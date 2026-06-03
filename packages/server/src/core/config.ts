@@ -1,0 +1,196 @@
+// Two-layer configuration: ~/.tianshu/config.json (global)
+// + ~/.tianshu/tenants/<id>/config.json (tenant override).
+//
+// Tenant config can only override fields on a whitelist (ADR-0001 §7).
+// Server-process knobs (port, log path) are global-only — a tenant must
+// not be able to flip the listener port.
+//
+// We DO NOT use a heavy schema library for v0; a hand-written validator
+// keeps the dependency footprint small and the behaviour obvious. As the
+// config grows, swap to typebox.
+
+import fs from "node:fs";
+import path from "node:path";
+import {
+  getGlobalConfigPath,
+  getTenantConfigPath,
+  getTianshuHome,
+} from "./paths.js";
+
+// ─── Types ────────────────────────────────────────────────────────────
+
+/** Fields that BOTH global and tenant configs can set. Tenant wins on conflict. */
+export interface OverridableConfig {
+  defaultModel?: string;
+  models?: ModelEntry[];
+  worker?: WorkerSettings;
+  oauth?: OAuthProviderConfig[];
+  branding?: BrandingConfig;
+  apiKeys?: Record<string, string>; // provider name → key
+}
+
+/** Fields that ONLY the global config controls. Tenant config attempting these is rejected. */
+export interface GlobalOnlyConfig {
+  server?: { port?: number; corsOrigin?: string; publicUrl?: string };
+  logging?: { level?: "debug" | "info" | "warn" | "error" };
+  /** Auto-create a `default` tenant if no tenants exist on first boot. */
+  autoCreateDefault?: boolean;
+  /** Override builtinConfig directory (handy for tests / Docker). */
+  builtinConfigDir?: string;
+}
+
+export interface ModelEntry {
+  id: string;
+  provider: string;
+  apiKeyEnv?: string;
+  baseUrl?: string;
+}
+
+export interface WorkerSettings {
+  count?: number;
+  pollMs?: number;
+  model?: string;
+}
+
+export interface OAuthProviderConfig {
+  id: string; // e.g. "github", "google"
+  type: "github" | "google" | "oidc" | "lark";
+  clientId?: string;
+  clientSecret?: string; // typically lives in secrets/, not config.json
+  issuer?: string; // for generic OIDC
+  scopes?: string[];
+}
+
+export interface BrandingConfig {
+  name?: string;
+  emoji?: string;
+}
+
+export type GlobalConfig = OverridableConfig & GlobalOnlyConfig;
+export type TenantConfig = OverridableConfig;
+
+/** Result of merging global ⊕ tenant. */
+export interface ResolvedConfig extends OverridableConfig, GlobalOnlyConfig {}
+
+// ─── Defaults ─────────────────────────────────────────────────────────
+
+export const DEFAULTS: Required<Pick<GlobalOnlyConfig, "autoCreateDefault">> &
+  Pick<GlobalOnlyConfig, "server" | "logging"> = {
+  autoCreateDefault: true,
+  server: { port: 3110, corsOrigin: "http://localhost:5183" },
+  logging: { level: "info" },
+};
+
+// ─── Whitelist enforcement ────────────────────────────────────────────
+
+/** Field names a tenant config is allowed to set. Reject any others. */
+const TENANT_WHITELIST = new Set<keyof OverridableConfig>([
+  "defaultModel",
+  "models",
+  "worker",
+  "oauth",
+  "branding",
+  "apiKeys",
+]);
+
+export class TenantConfigForbiddenFieldError extends Error {
+  readonly code = "TENANT_CONFIG_FORBIDDEN_FIELD" as const;
+  constructor(public readonly tenantId: string, public readonly field: string) {
+    super(
+      `tenant "${tenantId}" config.json sets "${field}", which is not in the override whitelist`,
+    );
+    this.name = "TenantConfigForbiddenFieldError";
+  }
+}
+
+function assertOnlyOverridable(tenantId: string, raw: Record<string, unknown>): void {
+  for (const key of Object.keys(raw)) {
+    if (!TENANT_WHITELIST.has(key as keyof OverridableConfig)) {
+      throw new TenantConfigForbiddenFieldError(tenantId, key);
+    }
+  }
+}
+
+// ─── Read / merge ─────────────────────────────────────────────────────
+
+function readJsonOrEmpty(filepath: string): Record<string, unknown> {
+  try {
+    const buf = fs.readFileSync(filepath, "utf8");
+    const parsed = JSON.parse(buf);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error(`expected JSON object, got ${typeof parsed}`);
+    }
+    return parsed as Record<string, unknown>;
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw new Error(
+      `failed to read config ${filepath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+export function loadGlobalConfig(home: string = getTianshuHome()): GlobalConfig {
+  const raw = readJsonOrEmpty(getGlobalConfigPath(home));
+  return raw as GlobalConfig;
+}
+
+export function loadTenantConfig(tenantId: string, home: string = getTianshuHome()): TenantConfig {
+  const raw = readJsonOrEmpty(getTenantConfigPath(tenantId, home));
+  assertOnlyOverridable(tenantId, raw);
+  return raw as TenantConfig;
+}
+
+/** Compute the effective config for a tenant. */
+export function resolveTenantConfig(tenantId: string, home: string = getTianshuHome()): ResolvedConfig {
+  const global = loadGlobalConfig(home);
+  const tenant = loadTenantConfig(tenantId, home);
+  return mergeConfigs(global, tenant);
+}
+
+/**
+ * Merge global and tenant configs. Tenant wins on overridable fields.
+ *
+ * - Scalars and arrays: tenant replaces global wholesale.
+ * - Objects (worker, branding, apiKeys): shallow-merge so tenant can override
+ *   single keys without restating the whole object.
+ */
+export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): ResolvedConfig {
+  return {
+    // global-only — never touched by tenant
+    server: global.server,
+    logging: global.logging,
+    autoCreateDefault: global.autoCreateDefault ?? DEFAULTS.autoCreateDefault,
+    builtinConfigDir: global.builtinConfigDir,
+
+    // overridable — tenant wins
+    defaultModel: tenant.defaultModel ?? global.defaultModel,
+    models: tenant.models ?? global.models,
+    worker: { ...global.worker, ...tenant.worker },
+    oauth: tenant.oauth ?? global.oauth,
+    branding: { ...global.branding, ...tenant.branding },
+    apiKeys: { ...global.apiKeys, ...tenant.apiKeys },
+  };
+}
+
+/** Atomic write. Writes to a temp file first, then rename. */
+export function writeTenantConfig(
+  tenantId: string,
+  cfg: TenantConfig,
+  home: string = getTianshuHome(),
+): void {
+  // Validate before writing so callers can't sneak forbidden fields in.
+  assertOnlyOverridable(tenantId, cfg as Record<string, unknown>);
+  const target = getTenantConfigPath(tenantId, home);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const tmp = `${target}.tmp.${process.pid}.${Date.now()}`;
+  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
+  fs.renameSync(tmp, target);
+}
+
+export function writeGlobalConfig(cfg: GlobalConfig, home: string = getTianshuHome()): void {
+  const target = getGlobalConfigPath(home);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  const tmp = `${target}.tmp.${process.pid}.${Date.now()}`;
+  fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
+  fs.renameSync(tmp, target);
+}

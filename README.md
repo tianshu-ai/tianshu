@@ -84,11 +84,16 @@ npm run dev
 
 This starts:
 
-- **Server** at <http://localhost:3100> (Express + WebSocket, hot reload)
-- **Web** at <http://localhost:5173> (Vite dev server, HMR)
+- **Server** at <http://localhost:3110> (Express + WebSocket, hot reload)
+- **Web** at <http://localhost:5183> (Vite dev server, HMR)
 
 The web app proxies `/api` and `/ws` to the server. Visit
-<http://localhost:5173> and you should see green health JSON.
+<http://localhost:5183> and you should see green health JSON.
+
+> Note: defaults are `3110 / 5183` (and not the more common `3100 / 5173`)
+> so this repo can run alongside its closed-source predecessor on the
+> same dev machine. Override via `PORT=` / vite config if you'd rather
+> use the legacy ports.
 
 ### Useful commands
 

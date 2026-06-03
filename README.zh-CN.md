@@ -80,11 +80,15 @@ npm run dev
 
 这会启动：
 
-- **Server**: <http://localhost:3100>（Express + WebSocket，热重载）
-- **Web**: <http://localhost:5173>（Vite，HMR）
+- **Server**: <http://localhost:3110>（Express + WebSocket，热重载）
+- **Web**: <http://localhost:5183>（Vite，HMR）
 
-Web 端会代理 `/api` 和 `/ws` 到 server。打开 <http://localhost:5173>
+Web 端会代理 `/api` 和 `/ws` 到 server。打开 <http://localhost:5183>
 能看到健康检查 JSON 即可。
+
+> 注：默认端口是 `3110 / 5183`（不是常见的 `3100 / 5173`），故意避开闭源前身项目，
+> 然后两者可以在同一台开发机上同时跑。需要老端口设 `PORT=` / 改 vite
+> 配置即可。
 
 ## 路线图
 
