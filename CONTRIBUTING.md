@@ -31,11 +31,14 @@ npm run dev
 
 This starts:
 
-- **Server** at `http://localhost:3100` (Express + WebSocket, hot-reload via `tsx watch`)
-- **Web** at `http://localhost:5173` (Vite dev server, HMR)
+- **Server** at `http://localhost:3110` (Express + WebSocket, hot-reload via `tsx watch`)
+- **Web** at `http://localhost:5183` (Vite dev server, HMR)
 
 The web app proxies `/api` and `/ws` to the server, so just open
-http://localhost:5173 and start chatting.
+http://localhost:5183 and start chatting.
+
+> Default ports differ from the closed-source repo (3100 / 5173) so
+> both projects can run side-by-side on the same dev machine.
 
 ### Useful single-package commands
 
