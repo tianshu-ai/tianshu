@@ -26,7 +26,7 @@
     "typecheck": "tsc -p packages/server/tsconfig.json --noEmit && tsc -p packages/web/tsconfig.json --noEmit"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0",
+    "concurrently": "^10.0.3",
     "typescript": "^5.7.0"
   }
 }
