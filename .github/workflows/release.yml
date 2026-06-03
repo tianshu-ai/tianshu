@@ -18,7 +18,7 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           # Manifest mode — release-please-config.json + .release-please-manifest.json
           # at the repo root drive everything. Keeps room to switch to
