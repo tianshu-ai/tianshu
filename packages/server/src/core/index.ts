@@ -83,3 +83,12 @@ export {
   type RequestCtx,
   type TenantMiddlewareOpts,
 } from "./middleware.js";
+
+export {
+  buildModel,
+  findModel,
+  getDefaultModel,
+  listModels,
+  resolveApiKey,
+  type ResolvedModelInfo,
+} from "./llm.js";
