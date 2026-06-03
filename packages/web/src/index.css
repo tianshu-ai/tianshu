@@ -1,4 +1,23 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/*
+ * Tailwind v4 prefers in-CSS theming via @theme. We replicate the
+ * closed-source repo's `brand` palette here so `bg-brand-500` etc.
+ * resolve consistently.
+ */
+@theme {
+  --color-brand-50:  #f0f4ff;
+  --color-brand-100: #dbe4ff;
+  --color-brand-200: #bac8ff;
+  --color-brand-300: #91a7ff;
+  --color-brand-400: #748ffc;
+  --color-brand-500: #5c7cfa;
+  --color-brand-600: #4c6ef5;
+  --color-brand-700: #4263eb;
+  --color-brand-800: #3b5bdb;
+  --color-brand-900: #364fc7;
+}
 
 :root {
   color-scheme: dark;
@@ -8,4 +27,60 @@ html,
 body,
 #root {
   height: 100%;
+}
+
+@layer base {
+  body {
+    @apply bg-gray-950 text-gray-100 antialiased;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-700 rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-600;
+  }
+}
+
+@layer components {
+  /* Markdown table styles in chat */
+  .prose table {
+    @apply border-collapse text-sm w-full;
+  }
+  .prose th {
+    @apply bg-gray-800 border border-gray-700 px-3 py-1.5 text-left font-medium text-gray-200;
+  }
+  .prose td {
+    @apply border border-gray-700 px-3 py-1.5 text-gray-300;
+  }
+  .prose tr:hover td {
+    @apply bg-gray-800/50;
+  }
+  .prose pre {
+    @apply overflow-x-auto;
+  }
+  .prose code {
+    @apply break-all;
+  }
+  .prose {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .btn-primary {
+    @apply bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+  .btn-ghost {
+    @apply hover:bg-gray-800 text-gray-300 hover:text-white px-3 py-2 rounded-lg transition-colors;
+  }
+  .input-base {
+    @apply bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent;
+  }
 }
