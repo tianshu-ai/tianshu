@@ -1,29 +1,24 @@
 import { useEffect, useRef } from "react";
-import {
-  PanelLeftClose,
-  PanelLeftOpen,
-  SquarePen,
-  FolderOpen,
-  Monitor,
-  LayoutDashboard,
-  Calendar,
-  BarChart3,
-} from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
 
 /**
- * Main column. Layout mirrors the closed-source predecessor's ChatArea:
- *   - h-12 top bar with sidebar toggle on the left and a row of panel
- *     toggles + "new session" on the right (placeholders for now)
- *   - centered welcome state with brand-tinted icon
- *   - scrolling message list constrained to max-w-3xl mx-auto
+ * Main column.
+ *
+ *   - h-12 top bar with sidebar toggle on the left, identity strip in
+ *     the middle
+ *   - scrolling message list (max-w-3xl)
  *   - composer at the bottom
  *
- * Right-side panels (files / browser / task board / calendar / usage)
- * arrive in later PRs; here they render as disabled icon buttons so the
- * chrome looks complete without being misleading.
+ * The top bar deliberately renders **no panel-toggle icons**. Per
+ * ADR-0003, every right-side surface (files, browser, task board, …)
+ * is a plugin: a tenant only sees the icons whose plugins they have
+ * actually installed. Disabled placeholder icons would violate the
+ * ADR's "not installed = not visible" rule, so this PR strips them.
+ * Once PR #31-#33 land the runtime + registry, icons reappear here
+ * via manifest contributions.
  */
 export default function ChatArea() {
   const messages = useChatStore((s) => s.messages);
@@ -63,26 +58,8 @@ export default function ChatArea() {
             <span className="text-gray-300">{me?.userId ?? "…"}</span>
           </span>
         </div>
-        <div className="flex items-center gap-1">
-          <PanelToggle title="New session (later PR)" disabled>
-            <SquarePen size={16} />
-          </PanelToggle>
-          <PanelToggle title="Browser view (later PR)" disabled>
-            <Monitor size={16} />
-          </PanelToggle>
-          <PanelToggle title="Workspace files (later PR)" disabled>
-            <FolderOpen size={16} />
-          </PanelToggle>
-          <PanelToggle title="Task board (later PR)" disabled>
-            <LayoutDashboard size={16} />
-          </PanelToggle>
-          <PanelToggle title="Scheduled jobs (later PR)" disabled>
-            <Calendar size={16} />
-          </PanelToggle>
-          <PanelToggle title="Usage (later PR)" disabled>
-            <BarChart3 size={16} />
-          </PanelToggle>
-        </div>
+        {/* Plugin-contributed icons reappear here when PR #33 lands. */}
+        <div className="flex items-center gap-1" />
       </header>
 
       {/* Messages */}
@@ -122,34 +99,6 @@ export default function ChatArea() {
 
       <ChatInput />
     </main>
-  );
-}
-
-function PanelToggle({
-  children,
-  title,
-  disabled,
-  active,
-}: {
-  children: React.ReactNode;
-  title: string;
-  disabled?: boolean;
-  active?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      title={title}
-      disabled={disabled}
-      className={
-        "rounded-lg p-1.5 transition-colors " +
-        (active
-          ? "bg-gray-700 text-white"
-          : "text-gray-400 hover:bg-gray-800 hover:text-gray-200 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-400")
-      }
-    >
-      {children}
-    </button>
   );
 }
 
