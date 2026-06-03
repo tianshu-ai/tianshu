@@ -42,7 +42,6 @@ export default function ChatArea() {
   const brand = me?.config.branding;
   const brandName = brand?.name ?? "Tianshu";
   const brandEmoji = brand?.emoji ?? "⭐";
-  const modelName = me?.defaultModel?.name ?? "—";
   const empty = messages.length === 0;
 
   return (
@@ -65,9 +64,6 @@ export default function ChatArea() {
           </span>
         </div>
         <div className="flex items-center gap-1">
-          <span className="mr-2 text-[11px] text-gray-500">
-            model <span className="text-gray-300">{modelName}</span>
-          </span>
           <PanelToggle title="New session (later PR)" disabled>
             <SquarePen size={16} />
           </PanelToggle>

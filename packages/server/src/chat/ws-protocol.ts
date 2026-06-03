@@ -12,7 +12,13 @@ import type { ChatMessage } from "./messages.js";
 export type ClientMsg =
   | { type: "hello" }
   | { type: "history" }
-  | { type: "prompt"; content: string }
+  | {
+      type: "prompt";
+      content: string;
+      /** Optional model id (e.g. 'anthropic/claude-sonnet-4-6'). When
+       *  absent the server falls back to config.defaultModel. */
+      modelId?: string;
+    }
   | { type: "abort" };
 
 // ─── Server → Client ──────────────────────────────────────────────
