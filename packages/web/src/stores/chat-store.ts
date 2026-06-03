@@ -24,6 +24,16 @@ interface ChatState {
   // ui chrome
   sidebarOpen: boolean;
 
+  // ── internal ──
+  /**
+   * Tracks whether init() has registered its singleton WS handlers /
+   * REST bootstrapping. React 19's StrictMode double-invokes effects in
+   * development which would otherwise leave us with two handlers per
+   * event type — every history/stream_delta/etc. would be processed
+   * twice and the UI would render duplicates and interleaved deltas.
+   */
+  _initialized: boolean;
+
   // actions
   init: () => void;
   toggleSidebar: () => void;
@@ -43,7 +53,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   sidebarOpen: true,
 
+  _initialized: false,
+
   init: () => {
+    if (get()._initialized) return;
+    set({ _initialized: true });
     api
       .me()
       .then((me) => set({ me }))
@@ -62,23 +76,38 @@ export const useChatStore = create<ChatState>((set, get) => ({
     tianshuWs.on("connected", () => tianshuWs.send({ type: "history" }));
     tianshuWs.on("history", (m) => set({ messages: m.messages }));
     tianshuWs.on("message_added", (m) =>
-      set((s) => ({ messages: [...s.messages, m.message] })),
+      set((s) => {
+        // Defensive de-dupe: a re-registered handler (e.g. across HMR
+        // boundaries that don't re-run our cleanup) could fire twice for
+        // the same message id. We never want to render the same row
+        // twice.
+        if (s.messages.some((x) => x.id === m.message.id)) return {} as Partial<ChatState>;
+        return { messages: [...s.messages, m.message] };
+      }),
     );
     tianshuWs.on("stream_start", () =>
-      set((s) => ({
-        isStreaming: true,
-        streamError: null,
-        messages: [
-          ...s.messages,
-          {
-            id: STREAMING_ID,
-            sessionId: "",
-            role: "assistant",
-            content: "",
-            createdAt: Date.now(),
-          },
-        ],
-      })),
+      set((s) => {
+        // If a streaming placeholder is already present (e.g. server
+        // emitted stream_start twice, or HMR), reuse it rather than
+        // stacking another one — deltas only target the first match.
+        if (s.messages.some((x) => x.id === STREAMING_ID)) {
+          return { isStreaming: true, streamError: null };
+        }
+        return {
+          isStreaming: true,
+          streamError: null,
+          messages: [
+            ...s.messages,
+            {
+              id: STREAMING_ID,
+              sessionId: "",
+              role: "assistant",
+              content: "",
+              createdAt: Date.now(),
+            },
+          ],
+        };
+      }),
     );
     tianshuWs.on("stream_delta", (m) =>
       set((s) => {
@@ -91,11 +120,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
     );
     tianshuWs.on("stream_end", (m) =>
       set((s) => {
-        const idx = s.messages.findIndex((x) => x.id === STREAMING_ID);
-        if (idx < 0) return { isStreaming: false };
-        const next = s.messages.slice();
-        next[idx] = m.message;
-        return { messages: next, isStreaming: false };
+        // Drop the streaming placeholder, then append the persisted
+        // message — unless we already saw an earlier message_added with
+        // the same id (paranoia for re-registered handlers).
+        const withoutPlaceholder = s.messages.filter((x) => x.id !== STREAMING_ID);
+        const alreadyHave = withoutPlaceholder.some((x) => x.id === m.message.id);
+        return {
+          messages: alreadyHave ? withoutPlaceholder : [...withoutPlaceholder, m.message],
+          isStreaming: false,
+        };
       }),
     );
     tianshuWs.on("stream_error", (m) =>
