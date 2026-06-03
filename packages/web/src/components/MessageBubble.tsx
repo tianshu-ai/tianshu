@@ -4,21 +4,21 @@ import { Bot, User } from "lucide-react";
 import type { WireMessage } from "../types/chat";
 
 /**
- * Renders a single chat message. Visually echoes the closed-source repo:
- * - role badge (icon + label) above the bubble
- * - markdown body inside, with GFM tables / code
- * - assistant bubble = neutral dark; user bubble = brand-tinted right-aligned
+ * Single message bubble. Visually echoes the closed-source predecessor:
+ *   - small role badge ABOVE the bubble (icon + label)
+ *   - markdown body inside, GFM tables / code
+ *   - assistant: neutral dark; user: brand-tinted, right-aligned
+ *   - streaming bubble shows a soft caret while content is empty
  */
 export default function MessageBubble({ m }: { m: WireMessage }) {
   const isUser = m.role === "user";
-  const isAssistant = m.role === "assistant";
 
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}>
         <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-gray-500">
-          {isUser ? <User size={11} /> : <Bot size={11} />}
-          <span>{isUser ? "you" : isAssistant ? "tianshu" : m.role}</span>
+          {isUser ? <User size={11} /> : <Bot size={11} className="text-blue-400" />}
+          <span>{isUser ? "you" : "tianshu"}</span>
         </div>
         <div
           className={
@@ -31,7 +31,7 @@ export default function MessageBubble({ m }: { m: WireMessage }) {
           {m.content ? (
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
           ) : (
-            <span className="text-gray-500">…</span>
+            <span className="inline-block h-4 w-1 animate-pulse bg-gray-500 align-middle" />
           )}
         </div>
       </div>
