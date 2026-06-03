@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: crazy-max/ghaction-github-labeler@v5
+      - uses: crazy-max/ghaction-github-labeler@v6
         with:
           yaml-file: .github/labels.yml
           # Strict mirror disabled — protects manually-added labels until
