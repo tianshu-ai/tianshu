@@ -156,20 +156,23 @@ Rules:
 - Cross-session retrieval (option **A** for v0): agents get a
   `search_history` tool. UI search comes later.
 
-### 6. Worker pool (deferred design)
+### 6. Worker pool (designed in ADR-0002)
 
-We do not implement workers in PR #20, but we reserve seats:
+The full worker design lives in [ADR-0002](./workers.md). Summary of
+what this ADR's schema must support:
 
-- Sessions table already has a `kind` column. Worker runs will be
-  `kind='worker'` rows.
+- Sessions table has a `kind` column (`user` | `worker` | `system`).
+  Worker runs are rows with `kind='worker'`.
 - Sandbox is tenant-scoped → workers run in the same per-tenant
-  sandbox. No extra design needed for isolation.
-- A future `tasks` table joins to `sessions(kind='worker')`.
-- WebSocket protocol will reserve a `subscribe_to_worker` message
-  type so a user can observe a running worker live.
-
-The unresolved question — how a worker accesses a user's
-`uploads/` — is left for the worker design ADR.
+  sandbox. No extra isolation work.
+- ADR-0002 introduces a `tasks` table and adds a `worker_role`
+  column on `sessions`. Both ship in the v0 schema even though no
+  worker code runs in PR #20 — avoids a later migration.
+- WebSocket protocol reserves a `subscribe_to_worker` message type
+  so a user can observe a running worker live.
+- Worker access to user `uploads/` is by **copy at dispatch time**
+  (see ADR-0002 §9); workers never see paths under
+  `/workspace/users/`.
 
 ### 7. Configuration
 

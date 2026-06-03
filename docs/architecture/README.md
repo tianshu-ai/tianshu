@@ -8,6 +8,7 @@ way it is — not just _what_ shape it has.
 | # | Title | Status |
 | --- | --- | --- |
 | 0001 | [Multi-tenancy from row 1](./multi-tenant.md) | Accepted |
+| 0002 | [Orchestrator + workers, with builtin/tenant config layering](./workers.md) | Accepted |
 
 ## How to write an ADR
 
