@@ -44,8 +44,14 @@ yarn-error.log*
 coverage/
 .nyc_output/
 
-# Local model config (contains API keys)
+# Local model / runtime config (contains API keys / SAP proxy URLs).
+# Repo only ships *.example files; the real configs live under
+# ~/.tianshu/ and must never be committed.
 tianshu.models.json
+.tianshu/
+tianshu-home/
+smoke-home/
+local-config/
 
 # Playwright
 .playwright-mcp/

@@ -22,7 +22,16 @@ import {
 /** Fields that BOTH global and tenant configs can set. Tenant wins on conflict. */
 export interface OverridableConfig {
   defaultModel?: string;
-  models?: ModelEntry[];
+  /**
+   * Provider catalog. Mirrors the closed-source `tianshu.models.json`
+   * format so existing config files transplant cleanly. The shape is
+   * `{ providers: { <providerId>: ProviderEntry } }`.
+   *
+   * `apiKey` strings support `${VAR}` and `${VAR:-fallback}` placeholders
+   * that we resolve at request time (not at config-load time, so secrets
+   * never sit in memory longer than necessary).
+   */
+  models?: ModelsCatalog;
   worker?: WorkerSettings;
   oauth?: OAuthProviderConfig[];
   branding?: BrandingConfig;
@@ -39,11 +48,28 @@ export interface GlobalOnlyConfig {
   builtinConfigDir?: string;
 }
 
+export interface ModelsCatalog {
+  providers: Record<string, ProviderEntry>;
+}
+
+export interface ProviderEntry {
+  baseUrl?: string;
+  api?: "anthropic-messages" | "openai-completions" | "google-generative-ai" | string;
+  apiKey?: string;     // may contain ${VAR} placeholders
+  group?: string;      // "Cloud" | "Local" | … (just a UI hint)
+  models?: ModelEntry[];
+}
+
 export interface ModelEntry {
   id: string;
-  provider: string;
-  apiKeyEnv?: string;
-  baseUrl?: string;
+  name?: string;
+  reasoning?: boolean;
+  contextWindow?: number;
+  maxTokens?: number;
+  supportsImages?: boolean;
+  mode?: "chat" | "image-gen" | string;
+  /** Free-form provider-specific compat flags. */
+  compat?: Record<string, unknown>;
 }
 
 export interface WorkerSettings {
