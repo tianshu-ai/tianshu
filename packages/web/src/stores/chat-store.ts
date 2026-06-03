@@ -10,6 +10,24 @@ import type { WireMessage } from "../types/chat";
 
 const STREAMING_ID = "__streaming__";
 
+const PREFERRED_MODEL_KEY = "tianshu.preferredModel";
+
+function loadPreferredModel(): string | null {
+  try {
+    return localStorage.getItem(PREFERRED_MODEL_KEY);
+  } catch {
+    return null;
+  }
+}
+function storePreferredModel(id: string | null): void {
+  try {
+    if (id) localStorage.setItem(PREFERRED_MODEL_KEY, id);
+    else localStorage.removeItem(PREFERRED_MODEL_KEY);
+  } catch {
+    /* swallow */
+  }
+}
+
 interface ChatState {
   // identity / branding
   me: Me | null;
@@ -20,6 +38,11 @@ interface ChatState {
   messages: WireMessage[];
   isStreaming: boolean;
   streamError: string | null;
+
+  // model selection — persisted to localStorage so the UI remembers your
+  // pick across reloads. The server still uses config.defaultModel as a
+  // fallback when no preferredModel is supplied with the prompt.
+  preferredModel: string | null;
 
   // ui chrome
   sidebarOpen: boolean;
@@ -40,6 +63,7 @@ interface ChatState {
   sendPrompt: (content: string) => void;
   abort: () => void;
   clearStreamError: () => void;
+  setPreferredModel: (id: string | null) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -50,6 +74,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   streamError: null,
+
+  preferredModel: loadPreferredModel(),
 
   sidebarOpen: true,
 
@@ -146,7 +172,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const trimmed = content.trim();
     if (!trimmed) return;
     if (get().isStreaming) return;
-    tianshuWs.send({ type: "prompt", content: trimmed });
+    const modelId = get().preferredModel ?? undefined;
+    tianshuWs.send({ type: "prompt", content: trimmed, modelId });
   },
 
   abort: () => {
@@ -154,4 +181,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearStreamError: () => set({ streamError: null }),
+
+  setPreferredModel: (id) => {
+    storePreferredModel(id);
+    set({ preferredModel: id });
+  },
 }));

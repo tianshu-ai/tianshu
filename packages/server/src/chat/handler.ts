@@ -20,6 +20,7 @@ import type {
 import type { WebSocket } from "ws";
 import {
   buildModel,
+  findModel,
   getDefaultModel,
   resolveApiKey,
   type ResolvedModelInfo,
@@ -72,13 +73,19 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       case "prompt": {
         if (aborter) aborter.abort(); // single in-flight prompt per socket
         aborter = new AbortController();
-        runPrompt({ ctx, userId, send, content: parsed.content, signal: aborter.signal })
-          .catch((err) => {
-            send({
-              type: "stream_error",
-              reason: err instanceof Error ? err.message : String(err),
-            });
+        runPrompt({
+          ctx,
+          userId,
+          send,
+          content: parsed.content,
+          modelId: parsed.modelId,
+          signal: aborter.signal,
+        }).catch((err) => {
+          send({
+            type: "stream_error",
+            reason: err instanceof Error ? err.message : String(err),
           });
+        });
         return;
       }
       case "abort": {
@@ -100,17 +107,21 @@ interface RunPromptArgs {
   userId: string;
   send: (msg: ServerMsg) => void;
   content: string;
+  modelId?: string;
   signal: AbortSignal;
 }
 
 async function runPrompt(args: RunPromptArgs): Promise<void> {
-  const { ctx, userId, send, content, signal } = args;
+  const { ctx, userId, send, content, modelId, signal } = args;
 
   const session = ensureActiveSession(ctx, userId);
   const userMsg = appendMessage(ctx, session, { role: "user", content });
   send({ type: "message_added", message: toWire(userMsg) });
 
-  const modelInfo = getDefaultModel(ctx.config);
+  // Caller may override the per-prompt model. Unknown ids fall back to
+  // the configured default rather than failing the prompt outright —
+  // the catalog is allowed to drift while the UI's local pick survives.
+  const modelInfo = (modelId ? findModel(ctx.config, modelId) : undefined) ?? getDefaultModel(ctx.config);
   if (!modelInfo) {
     send({
       type: "stream_error",
