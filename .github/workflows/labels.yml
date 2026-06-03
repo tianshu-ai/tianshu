@@ -1,0 +1,36 @@
+name: Sync labels
+
+# Sync repository labels from .github/labels.yml. Manual-only — labels
+# rarely change, no need to run on every push.
+#
+# Note: switched from EndBug/label-sync to crazy-max/ghaction-github-labeler
+# because the former has unreliable behaviour on private repos. The
+# initial label set is still tracked in .github/labels.yml as the
+# source of truth.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/labels.yml"
+      - ".github/workflows/labels.yml"
+
+permissions:
+  issues: write
+  pull-requests: write
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: crazy-max/ghaction-github-labeler@v5
+        with:
+          yaml-file: .github/labels.yml
+          # Strict mirror disabled — protects manually-added labels until
+          # the operator decides to switch to canonical-only.
+          skip-delete: true
+          dry-run: false

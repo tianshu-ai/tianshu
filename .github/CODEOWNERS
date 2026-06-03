@@ -1,0 +1,14 @@
+# GitHub CODEOWNERS — auto-request reviews from maintainers.
+#
+# Syntax: <pattern> <user1> [<user2> ...]
+# Patterns later in the file win. Keep this file short; a single
+# maintainer line covers everything until there are real teams.
+#
+# Docs: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default — every PR pings the maintainer
+* @yv200
+
+# Security policy must always go through the maintainer
+SECURITY.md @yv200
+.github/ @yv200

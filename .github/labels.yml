@@ -1,0 +1,84 @@
+# Repository labels — sync with `gh label create` or a labeler action.
+# Keep this list short; meaning per-label is more important than coverage.
+
+# ─── Type ─────────────────────────────────────────────────────
+- name: bug
+  color: d73a4a
+  description: Something isn't working
+- name: enhancement
+  color: a2eeef
+  description: New feature or improvement
+- name: docs
+  color: 0075ca
+  description: Documentation, README, examples
+- name: chore
+  color: cfd3d7
+  description: Build / tooling / maintenance
+- name: refactor
+  color: c5def5
+  description: Code change without user-visible behaviour change
+- name: test
+  color: bfd4f2
+  description: Tests-only changes
+
+# ─── State ────────────────────────────────────────────────────
+- name: needs-triage
+  color: e4e669
+  description: Awaiting first look from a maintainer
+- name: needs-info
+  color: fbca04
+  description: Author needs to provide more details
+- name: blocked
+  color: b60205
+  description: Waiting on an upstream issue / external dependency
+- name: wontfix
+  color: ffffff
+  description: Intentionally not addressed
+- name: duplicate
+  color: cfd3d7
+  description: Tracked elsewhere
+
+# ─── Audience ─────────────────────────────────────────────────
+- name: good first issue
+  color: 7057ff
+  description: Approachable for new contributors
+- name: help wanted
+  color: 008672
+  description: Maintainers welcome external help here
+
+# ─── Areas ────────────────────────────────────────────────────
+- name: area/server
+  color: 1d76db
+  description: packages/server
+- name: area/web
+  color: 5319e7
+  description: packages/web
+- name: area/agent
+  color: 0e8a16
+  description: pi-agent-core integration, orchestrator, workers
+- name: area/auth
+  color: bfdadc
+  description: better-auth, JWT, multi-tenancy
+- name: area/sandbox
+  color: 006b75
+  description: Per-tenant Linux sandbox / Microsandbox
+- name: area/browser
+  color: 0052cc
+  description: Browser sidecar, Playwright, noVNC
+- name: area/db
+  color: 5319e7
+  description: SQLite schema, migrations
+- name: area/ci
+  color: ededed
+  description: GitHub Actions, build, release
+- name: area/docs
+  color: 0075ca
+  description: Documentation surface
+
+# ─── Priority ─────────────────────────────────────────────────
+- name: priority/high
+  color: b60205
+  description: Tackle soon
+- name: priority/low
+  color: 0e8a16
+  description: Nice to have

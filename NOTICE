@@ -1,0 +1,18 @@
+Tianshu (天枢)
+Copyright 2026 Yu Yu and Tianshu contributors
+
+This product includes software developed by the Tianshu project
+(https://github.com/tianshu-ai/tianshu).
+
+This product depends on, but does not include, the following components,
+which are licensed separately:
+
+  - @mariozechner/pi-agent-core
+    Copyright (c) Mario Zechner
+    Licensed under the MIT License.
+    Source: https://github.com/badlogic/pi-mono
+
+  - @mariozechner/pi-ai
+    Copyright (c) Mario Zechner
+    Licensed under the MIT License.
+    Source: https://github.com/badlogic/pi-mono

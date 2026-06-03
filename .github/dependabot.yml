@@ -1,0 +1,106 @@
+# Dependabot — automated dependency PRs.
+# Docs: https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
+
+version: 2
+updates:
+  # ── npm: monorepo root ────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - chore
+      - dependencies
+    commit-message:
+      prefix: "chore(deps)"
+      include: scope
+    groups:
+      # Group all non-major TypeScript / build tooling into one PR per week.
+      build-tooling:
+        patterns:
+          - "typescript"
+          - "vite*"
+          - "@vitejs/*"
+          - "tsx"
+          - "concurrently"
+          - "vitest"
+        update-types:
+          - minor
+          - patch
+
+  # ── npm: server package ───────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: "/packages/server"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - chore
+      - dependencies
+      - area/server
+    commit-message:
+      prefix: "chore(deps,server)"
+      include: scope
+    groups:
+      types:
+        patterns:
+          - "@types/*"
+
+  # ── npm: web package ──────────────────────────────────────────────
+  - package-ecosystem: npm
+    directory: "/packages/web"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 5
+    labels:
+      - chore
+      - dependencies
+      - area/web
+    commit-message:
+      prefix: "chore(deps,web)"
+      include: scope
+    groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+      types:
+        patterns:
+          - "@types/*"
+
+  # ── GitHub Actions ────────────────────────────────────────────────
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels:
+      - chore
+      - dependencies
+      - area/ci
+    commit-message:
+      prefix: "chore(deps,ci)"
+      include: scope
+
+  # ── Docker base image ─────────────────────────────────────────────
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels:
+      - chore
+      - dependencies
+    commit-message:
+      prefix: "chore(deps,docker)"
+      include: scope

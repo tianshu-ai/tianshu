@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/tianshu-ai/tianshu/security/policy
+    about: Please report security issues privately, NOT in public issues. See SECURITY.md.
+  - name: Questions / discussion
+    url: https://github.com/tianshu-ai/tianshu/discussions
+    about: For open-ended questions, ideas, or showing off what you built.

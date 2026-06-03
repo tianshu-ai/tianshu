@@ -1,0 +1,28 @@
+name: Release
+
+# release-please reads conventional commit history on `main` and opens
+# (or updates) a release PR. Merging that PR cuts a tag + GitHub Release
+# and updates CHANGELOG.md and package.json versions automatically.
+#
+# Docs: https://github.com/googleapis/release-please-action
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          # Manifest mode — release-please-config.json + .release-please-manifest.json
+          # at the repo root drive everything. Keeps room to switch to
+          # per-package versioning later without touching this workflow.
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
