@@ -19,9 +19,12 @@ import {
   DEV_TENANT_ID,
   DEV_USER_ID,
   GlobalOps,
+  getDefaultModel,
+  listModels,
   loadGlobalConfig,
   tenantMiddleware,
 } from "./core/index.js";
+import { attachChatHandler } from "./chat/handler.js";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
 // both projects can run side-by-side on the same dev machine without
@@ -78,24 +81,55 @@ app.get("/api/me", (req, res) => {
     return;
   }
   const { tenant, userId } = req.ctx;
+  const def = getDefaultModel(tenant.config);
   res.json({
     tenantId: tenant.tenantId,
     userId,
     config: { branding: tenant.config.branding ?? null },
+    defaultModel: def ? { id: def.id, name: def.name, provider: def.providerId } : null,
     devTenant: tenant.tenantId === DEV_TENANT_ID && userId === DEV_USER_ID,
   });
 });
 
+app.get("/api/models", (req, res) => {
+  if (!req.ctx) {
+    res.status(500).json({ error: "no_ctx" });
+    return;
+  }
+  const list = listModels(req.ctx.tenant.config).map((m) => ({
+    id: m.id,
+    name: m.name,
+    provider: m.providerId,
+    group: m.group ?? null,
+    contextWindow: m.contextWindow,
+    reasoning: m.reasoning,
+  }));
+  res.json({ models: list, defaultModel: req.ctx.tenant.config.defaultModel ?? null });
+});
+
 const server = createServer(app);
 
-// Tiny WebSocket scaffold so the web client has something to connect to.
-// Real agent streaming + tenant binding arrives in a later PR.
+// Chat over WebSocket. Dev mode pins to the bootstrap tenant + user;
+// JWT-mode auth lands in a later PR and will replace the resolver.
 const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", (socket) => {
-  socket.send(JSON.stringify({ type: "connected", t: Date.now() }));
-  socket.on("message", (raw) => {
-    socket.send(JSON.stringify({ type: "echo", payload: raw.toString() }));
-  });
+  // Resolve identity. Today: dev tenant + dev user.
+  const tenantId = DEV_TENANT_ID;
+  const userId = DEV_USER_ID;
+  let ctx;
+  try {
+    ctx = globalOps.open(tenantId);
+  } catch (err) {
+    socket.send(
+      JSON.stringify({
+        type: "stream_error",
+        reason: `tenant ${tenantId} unavailable: ${err instanceof Error ? err.message : String(err)}`,
+      }),
+    );
+    socket.close();
+    return;
+  }
+  attachChatHandler({ ctx, userId, socket });
 });
 
 server.listen(PORT, () => {
