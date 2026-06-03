@@ -1,0 +1,21 @@
+# Architecture Decision Records (ADRs)
+
+Permanent, dated records of architecture decisions for Tianshu.
+Each ADR captures **context → decision → consequences**, so future
+contributors can understand _why_ a piece of the system is shaped the
+way it is — not just _what_ shape it has.
+
+| # | Title | Status |
+| --- | --- | --- |
+| 0001 | [Multi-tenancy from row 1](./multi-tenant.md) | Accepted |
+
+## How to write an ADR
+
+1. Copy the format of [ADR-0001](./multi-tenant.md).
+2. File it as `docs/architecture/<NNNN>-<slug>.md`.
+3. Include: `Status`, `Date`, `Author`, `Supersedes`.
+4. Update the table above.
+5. Link from the PR description that implements it.
+
+ADRs are immutable once accepted. If a decision is reversed, write a
+new ADR that supersedes it.
