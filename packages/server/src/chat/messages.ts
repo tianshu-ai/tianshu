@@ -11,6 +11,12 @@
 // keep the hot paths fast.
 
 import { randomUUID } from "node:crypto";
+import type {
+  AssistantMessage,
+  Message,
+  ToolResultMessage,
+  UserMessage,
+} from "@earendil-works/pi-ai";
 import type { TenantContext } from "../core/index.js";
 
 export interface ChatMessage {
@@ -92,6 +98,115 @@ export function appendMessage(
     )
     .run(id, session.id, msg.role, msg.content, now);
   return { id, sessionId: session.id, role: msg.role, content: msg.content, createdAt: now };
+}
+
+/**
+ * Persist a structured pi-ai Message (assistant w/ tool calls,
+ * toolResult, etc.). The full Message JSON goes into `content` and
+ * the row's role tracks the pi-ai role mapping (`toolResult` →
+ * `"tool"` so the existing role union covers it).
+ *
+ * Mirrors the closed-source repo's pattern of stuffing the entire
+ * AgentMessage JSON into a single column — keeps the schema simple
+ * and lets us re-hydrate the agent's exact message shape on resume.
+ */
+export function appendAgentMessage(
+  ctx: TenantContext,
+  session: ChatSession,
+  msg: AssistantMessage | ToolResultMessage | UserMessage,
+): ChatMessage {
+  const id = `msg_${randomUUID()}`;
+  const now = Date.now();
+  const role: ChatMessage["role"] =
+    msg.role === "toolResult" ? "tool" : msg.role;
+  const content = JSON.stringify(msg);
+  ctx.db
+    .prepare<
+      [string, string, string, string, number],
+      unknown
+    >(
+      `INSERT INTO messages (id, session_id, role, content, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+    .run(id, session.id, role, content, now);
+  return { id, sessionId: session.id, role, content, createdAt: now };
+}
+
+/**
+ * Re-hydrate persisted rows into the structured pi-ai Message log
+ * the agent loop expects. Plain-text rows (role=user with non-JSON
+ * content, the legacy form) are upgraded into pi-ai UserMessage/
+ * AssistantMessage shells.
+ */
+export function loadAgentHistory(
+  ctx: TenantContext,
+  userId: string,
+  defaults: {
+    api: AssistantMessage["api"];
+    provider: AssistantMessage["provider"];
+    model: string;
+  },
+): Message[] {
+  const rows = listMessagesForUser(ctx, userId);
+  const out: Message[] = [];
+  for (const r of rows) {
+    const parsed = tryParseMessage(r.content);
+    if (parsed && (parsed.role === "user" || parsed.role === "assistant" || parsed.role === "toolResult")) {
+      out.push(parsed);
+      continue;
+    }
+    // Legacy plain-text row (PR #21a and earlier).
+    if (r.role === "user") {
+      out.push({
+        role: "user",
+        content: [{ type: "text", text: r.content }],
+        timestamp: r.createdAt,
+      });
+    } else if (r.role === "assistant") {
+      out.push({
+        role: "assistant",
+        content: [{ type: "text", text: r.content }],
+        api: defaults.api,
+        provider: defaults.provider,
+        model: defaults.model,
+        usage: zeroUsage(),
+        stopReason: "stop",
+        timestamp: r.createdAt,
+      });
+    }
+    // tool / system rows that aren't structured JSON are dropped —
+    // they predate persistence support and have nothing to replay.
+  }
+  return out;
+}
+
+function tryParseMessage(content: string): Message | null {
+  if (!content || content[0] !== "{") return null;
+  try {
+    const obj = JSON.parse(content) as { role?: unknown };
+    if (
+      obj &&
+      typeof obj === "object" &&
+      typeof obj.role === "string" &&
+      (obj.role === "user" || obj.role === "assistant" || obj.role === "toolResult")
+    ) {
+      return obj as Message;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function zeroUsage(): AssistantMessage["usage"] {
+  return {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
 }
 
 /** Return the user's full conversation, chronological. PR #21 keeps it simple. */

@@ -129,7 +129,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
               id: STREAMING_ID,
               sessionId: "",
               role: "assistant",
-              content: "",
+              text: "",
               createdAt: Date.now(),
             },
           ],
@@ -141,7 +141,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         const idx = s.messages.findIndex((x) => x.id === STREAMING_ID);
         if (idx < 0) return {} as Partial<ChatState>;
         const next = s.messages.slice();
-        next[idx] = { ...next[idx]!, content: next[idx]!.content + m.delta };
+        next[idx] = { ...next[idx]!, text: next[idx]!.text + m.delta };
         return { messages: next };
       }),
     );

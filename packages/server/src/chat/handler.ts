@@ -35,11 +35,12 @@ import {
 } from "../core/index.js";
 import { buildToolset, type Toolset } from "../tools/index.js";
 import {
+  appendAgentMessage,
   appendMessage,
   ensureActiveSession,
   listMessagesForUser,
+  loadAgentHistory,
   type ChatMessage,
-  type ChatSession,
 } from "./messages.js";
 import { toWire, type ClientMsg, type ServerMsg } from "./ws-protocol.js";
 
@@ -143,11 +144,14 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   send({ type: "stream_start" });
 
-  // Fluent message log we mutate as the loop progresses. We start
-  // from on-disk history and append AssistantMessage / ToolResult
-  // entries in memory; final assistant text is persisted at the end
-  // of the loop (and tool calls/results when we add a richer schema).
-  const messages = loadHistoryAsMessages(ctx, session, modelInfo);
+  // Hydrate the conversation log from disk. Tool turns persisted by
+  // earlier prompts come back as structured pi-ai Messages; legacy
+  // plain-text rows are upgraded by loadAgentHistory.
+  const messages = loadAgentHistory(ctx, userId, {
+    api: modelInfo.api,
+    provider: modelInfo.providerId,
+    model: modelInfo.modelId,
+  });
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     if (signal.aborted) return;
@@ -162,7 +166,10 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
     const final = await consumeStream(stream, send);
     if (!final) return; // error already sent
 
-    // Persist the assistant turn into the in-memory log.
+    // Persist + push the assistant turn (text, thinking, and any
+    // tool calls — the full structured message goes to disk so the
+    // UI can replay the conversation faithfully on reload).
+    const assistantRow = appendAgentMessage(ctx, session, final);
     messages.push(final);
 
     if (final.stopReason === "toolUse") {
@@ -170,11 +177,13 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
         (c): c is ToolCall => c.type === "toolCall",
       );
       if (toolCalls.length === 0) {
-        // Model claimed toolUse but emitted none — bail to avoid loop.
-        break;
+        break; // claimed toolUse but emitted none — bail
       }
 
-      // Run every requested call, append a ToolResultMessage per call.
+      // Surface the assistant turn now so the UI can show the
+      // tool-call chips before any results land.
+      send({ type: "message_added", message: toWire(assistantRow) });
+
       for (const call of toolCalls) {
         send({
           type: "tool_call",
@@ -185,14 +194,6 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
 
         const result = await runOneTool(toolset, call);
         const summary = describeResult(result);
-        send({
-          type: "tool_result",
-          callId: call.id,
-          name: call.name,
-          ok: result.ok,
-          text: summary,
-        });
-
         const toolResult: ToolResultMessage = {
           role: "toolResult",
           toolCallId: call.id,
@@ -201,18 +202,22 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
           isError: !result.ok,
           timestamp: Date.now(),
         };
+        const toolRow = appendAgentMessage(ctx, session, toolResult);
+        send({
+          type: "tool_result",
+          callId: call.id,
+          name: call.name,
+          ok: result.ok,
+          text: summary,
+        });
+        send({ type: "message_added", message: toWire(toolRow) });
         messages.push(toolResult);
       }
-      continue; // round-trip back to the model
+      continue;
     }
 
     // stopReason: stop | length — done.
-    const finalText = collectText(final);
-    const persisted = appendMessage(ctx, session, {
-      role: "assistant",
-      content: finalText,
-    });
-    send({ type: "stream_end", message: toWire(persisted) });
+    send({ type: "stream_end", message: toWire(assistantRow) });
     return;
   }
 
@@ -269,57 +274,7 @@ function describeResult(r: AnyToolResult): string {
   return r.text;
 }
 
-function collectText(msg: AssistantMessage): string {
-  const parts: string[] = [];
-  for (const c of msg.content) {
-    if (c.type === "text") parts.push(c.text);
-  }
-  return parts.join("");
-}
 
-function loadHistoryAsMessages(
-  ctx: TenantContext,
-  session: ChatSession,
-  modelInfo: ResolvedModelInfo,
-): Message[] {
-  const history = listMessagesForUser(ctx, session.userId);
-  const messages: Message[] = [];
-  for (const m of history) {
-    if (m.role === "user") {
-      messages.push({
-        role: "user",
-        content: [{ type: "text", text: m.content } as TextContent],
-        timestamp: m.createdAt,
-      });
-    } else if (m.role === "assistant") {
-      messages.push({
-        role: "assistant",
-        content: [{ type: "text", text: m.content } as TextContent],
-        api: modelInfo.api,
-        provider: modelInfo.providerId,
-        model: modelInfo.modelId,
-        usage: zeroUsage(),
-        stopReason: "stop",
-        timestamp: m.createdAt,
-      });
-    }
-    // tool / system roles ignored for now — historical tool turns
-    // re-run fine without their old results, and we don't yet
-    // persist tool messages anyway.
-  }
-  return messages;
-}
-
-function zeroUsage() {
-  return {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    totalTokens: 0,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-}
 
 function defaultSystemPrompt(ctx: TenantContext): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
