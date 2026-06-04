@@ -156,5 +156,6 @@ export async function listPluginsForTenant(
     state: e.state,
     failedReason: e.failedReason ?? null,
     contributes: e.manifest.contributes ?? {},
+    clientEntry: e.manifest.client?.entry ?? null,
   }));
 }

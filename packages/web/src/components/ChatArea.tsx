@@ -4,6 +4,7 @@ import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
 import PluginManager from "./PluginManager";
+import PluginTopBarButtons from "./PluginTopBarButtons";
 
 /**
  * Main column.
@@ -13,13 +14,11 @@ import PluginManager from "./PluginManager";
  *   - scrolling message list (max-w-3xl)
  *   - composer at the bottom
  *
- * The top bar deliberately renders **no panel-toggle icons**. Per
- * ADR-0003, every right-side surface (files, browser, task board, …)
- * is a plugin: a tenant only sees the icons whose plugins they have
- * actually installed. Disabled placeholder icons would violate the
- * ADR's "not installed = not visible" rule, so this PR strips them.
- * Once PR #31-#33 land the runtime + registry, icons reappear here
- * via manifest contributions.
+ * The top bar's right side is **manifest-driven**: each active
+ * plugin's `contributes.topBarButtons` becomes a button here, and
+ * clicking one toggles the matching `rightPanels` entry in the
+ * column rendered by ChatLayout. The Plugin Manager itself is part
+ * of the bundled chat shell (per ADR-0003) and stays put.
  */
 export default function ChatArea() {
   const messages = useChatStore((s) => s.messages);
@@ -61,12 +60,9 @@ export default function ChatArea() {
             <span className="text-gray-300">{me?.userId ?? "…"}</span>
           </span>
         </div>
-        {/* Right side of the top bar.
-         *  - Plugin-contributed top-bar icons reappear here when PR #33 lands.
-         *  - The Plugin Manager button is part of the bundled chat shell
-         *    (per ADR-0003: it is not itself a plugin), so it stays put.
-         */}
         <div className="flex items-center gap-1">
+          <PluginTopBarButtons />
+          <div className="mx-1 h-5 w-px bg-gray-800" aria-hidden />
           <button
             type="button"
             onClick={() => setPluginManagerOpen(true)}

@@ -32,6 +32,7 @@ import {
   type CatalogEntry,
   type CatalogSnapshot,
 } from "../lib/api";
+import { usePluginStore } from "../stores/plugin-store";
 
 interface Props {
   open: boolean;
@@ -41,32 +42,22 @@ interface Props {
 type Tab = "installed" | "catalog";
 
 export default function PluginManager({ open, onClose }: Props) {
+  const plugins = usePluginStore((s) => s.plugins);
+  const setPlugins = usePluginStore((s) => s.setPlugins);
+  const loadPlugins = usePluginStore((s) => s.load);
+
   const [tab, setTab] = useState<Tab>("installed");
-  const [plugins, setPlugins] = useState<PluginListEntry[] | null>(null);
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Installed tab — load on first open.
+  // Installed tab — ensure the shared store is hydrated. The store's
+  // `load()` is idempotent so opening the modal again is cheap.
   useEffect(() => {
-    if (!open || plugins !== null) return;
-    let cancelled = false;
-    setError(null);
-    api
-      .plugins()
-      .then((r) => {
-        if (cancelled) return;
-        setPlugins(r.plugins);
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        setError(err instanceof Error ? err.message : String(err));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, plugins]);
+    if (!open) return;
+    void loadPlugins();
+  }, [open, loadPlugins]);
 
   // Catalog tab — load lazily on first switch.
   useEffect(() => {
@@ -113,6 +104,7 @@ export default function PluginManager({ open, onClose }: Props) {
       setPendingId(null);
     }
   }
+
 
   async function refreshCatalog() {
     setRefreshing(true);

@@ -30,6 +30,8 @@ export interface PluginListEntry {
   state: PluginState;
   failedReason: string | null;
   contributes: Record<string, unknown>;
+  /** manifest.client.entry — null when the plugin has no client side. */
+  clientEntry: string | null;
 }
 
 export interface CatalogEntry {
