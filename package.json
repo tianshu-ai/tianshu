@@ -18,7 +18,8 @@
   "workspaces": [
     "packages/plugin-sdk",
     "packages/server",
-    "packages/web"
+    "packages/web",
+    "plugins/*"
   ],
   "scripts": {
     "dev": "concurrently -n server,web -c blue,green \"npm run dev -w packages/server\" \"npm run dev -w packages/web\"",
