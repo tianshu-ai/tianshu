@@ -32,19 +32,19 @@ and are out of scope for this directory.
 ## How a plugin is wired
 
 1. The plugin's package builds to `dist/` like any other workspace.
-2. `packages/server/src/index.ts` imports each builtin plugin's
+2. `npm run sync:plugins` (also run automatically by `npm run build`
+   and `npm run dev`) copies each plugin's `manifest.json` into
+   `packages/server/builtinConfig/plugins/<id>/manifest.json` so
+   server-side discovery finds it at runtime. Those copies are
+   `.gitignore`d — the plugin source is the single source of truth.
+3. `packages/server/src/index.ts` imports each builtin plugin's
    `server` entry and registers it with the `PluginRegistry`'s
    `moduleMapResolver`.
-3. `packages/web/src/lib/plugin-registry.ts` (PR #33) imports each
-   plugin's `client` entry statically and wires the components into
-   the chat shell's contribution slots.
-4. The builtin manifests are also copied into
-   `packages/server/builtinConfig/plugins/<id>/manifest.json` at build
-   time so server-side discovery can find them at runtime.
-
-The exact build / wiring steps land in **ADR-0003 PR #32**. This
-directory is created ahead of that PR so plugin scaffolding can start
-without churning the repo root again.
+4. `packages/web/src/lib/plugin-registry.ts` (PR #33, planned) will
+   import each plugin's `client` entry statically and wire the
+   components into the chat shell's contribution slots. Until then
+   the panels exist as code but the chat shell renders only its own
+   built-in surfaces.
 
 ## Authoring rules (in short)
 

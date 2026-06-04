@@ -27,6 +27,7 @@ import {
 import { moduleMapResolver, PluginRegistry } from "./core/plugins/index.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
+import filesPlugin from "@tianshu-builtin/plugin-files/server";
 import { attachChatHandler } from "./chat/handler.js";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
@@ -38,11 +39,13 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:5183";
 const globalOps = new GlobalOps();
 
 // Plugin registry. The resolver maps `manifest.server.entry` strings
-// to actual server modules. v0 ships an empty map — PR #32 will fill
-// it with the four builtin plugin server modules. Tenant plugins (v1+)
-// will be loaded via dynamic import in the resolver.
+// to actual server modules. Builtin plugins are statically imported
+// here. Tenant plugins (v1+) will be loaded via dynamic import
+// in the resolver.
 const pluginRegistry = new PluginRegistry({
-  resolver: moduleMapResolver({}),
+  resolver: moduleMapResolver({
+    "@tianshu-builtin/plugin-files/server": filesPlugin,
+  }),
 });
 
 // Catalog client — fetches the list of installable plugins from the
