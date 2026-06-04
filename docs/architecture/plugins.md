@@ -379,10 +379,25 @@ the "plugin opt-in" semantics observable on the very first boot.
 | PR | Scope |
 | --- | --- |
 | **#30** (this) | ADR-0003 (docs only) |
-| **#31** | `@tianshu/plugin-sdk` package + server-side plugin discovery / activation / `GET /api/plugins` + tenant config `plugins` whitelist field |
+| **#31** | `@tianshu/plugin-sdk` package + server-side plugin discovery / activation / `GET /api/plugins` + tenant config `plugins` whitelist field. **Plugin Manager UI** (top-bar puzzle button) shipped together so PATCH replaces the "edit config + restart" workflow. |
 | **#32** | 4 builtin plugin stubs: `files` / `browser` / `task-board` / `calendar` (each with full manifest, minimal server.activate, client component stub). All not enabled by default. |
 | **#33** | Web `PluginRegistry`; replace ChatArea's hard-coded disabled icon row with manifest-driven rendering; drop the disabled placeholders. |
 | **#34** | Docs: CONTRIBUTING "How to write a plugin"; `config.example.json` `plugins` snippet; bootstrapDevTenantIfNeeded enables `files` so first boot has something. |
+
+### Catalog roll-out (parallel track)
+
+The catalog lets users discover and install plugins authored in
+separate repos. Hosted at
+[`tianshu-ai/plugin-registry`](https://github.com/tianshu-ai/plugin-registry);
+self-host by setting `TIANSHU_CATALOG_URL`.
+
+| PR | Scope |
+| --- | --- |
+| **P1** (this slice) | Read-only catalog: `GET /api/plugins/catalog` + `POST /api/plugins/catalog/refresh`; Plugin Manager gains a `Catalog` tab listing entries with author / version / verified badge. **Install button is disabled** — lands in P2. |
+| **P2** | `POST /api/plugins/install` — server downloads tarball, verifies declared `tarballSha256`, extracts to `<tenant>/_tenant/config/plugins/<id>/`, writes `enabled: true`, invalidates registry. Wires up the Catalog tab's Install button. |
+| **P3** | First end-to-end community plugin in its own repo (`tianshu-ai/plugin-pomodoro` or similar) and a getting-started doc. |
+| **P4** | Uninstall (delete on-disk dir + clear config). |
+| **P5** | Upgrade detection (compare installed version vs `latestVersion`; surface a badge in Plugin Manager). |
 
 ## References
 

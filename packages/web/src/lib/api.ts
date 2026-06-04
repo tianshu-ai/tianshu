@@ -32,6 +32,31 @@ export interface PluginListEntry {
   contributes: Record<string, unknown>;
 }
 
+export interface CatalogEntry {
+  id: string;
+  displayName: string;
+  description: string;
+  author: string;
+  verified: boolean;
+  repository: string;
+  homepage?: string;
+  license?: string;
+  tags: string[];
+  latestVersion: string;
+  tarballUrl: string;
+  tarballSha256: string;
+  tarballSize?: number;
+  tianshuRange: string;
+}
+
+export interface CatalogSnapshot {
+  source: string;
+  fetchedAt: string;
+  catalogUpdatedAt: string | null;
+  entries: CatalogEntry[];
+  entriesDropped: number;
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(path, { credentials: "include" });
   if (!r.ok) throw new Error(`${path} → ${r.status}`);
@@ -41,11 +66,23 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 async function patchJson<T>(path: string, body: unknown): Promise<T> {
+  return mutateJson<T>(path, "PATCH", body);
+}
+
+async function postJson<T>(path: string, body?: unknown): Promise<T> {
+  return mutateJson<T>(path, "POST", body);
+}
+
+async function mutateJson<T>(
+  path: string,
+  method: "PATCH" | "POST",
+  body?: unknown,
+): Promise<T> {
   const r = await fetch(path, {
-    method: "PATCH",
+    method,
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   const text = await r.text();
   if (!r.ok) {
@@ -71,4 +108,6 @@ export const api = {
     patchJson<{ plugins: PluginListEntry[] }>(`/api/plugins/${encodeURIComponent(id)}`, {
       enabled,
     }),
+  pluginCatalog: () => getJson<CatalogSnapshot>("/api/plugins/catalog"),
+  refreshPluginCatalog: () => postJson<CatalogSnapshot>("/api/plugins/catalog/refresh"),
 };

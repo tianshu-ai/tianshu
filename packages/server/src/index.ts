@@ -26,6 +26,7 @@ import {
 } from "./core/index.js";
 import { moduleMapResolver, PluginRegistry } from "./core/plugins/index.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
+import { CatalogClient } from "./catalog.js";
 import { attachChatHandler } from "./chat/handler.js";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
@@ -43,6 +44,11 @@ const globalOps = new GlobalOps();
 const pluginRegistry = new PluginRegistry({
   resolver: moduleMapResolver({}),
 });
+
+// Catalog client — fetches the list of installable plugins from the
+// `tianshu-ai/plugin-registry` repo. Override URL via
+// TIANSHU_CATALOG_URL for self-hosted catalogs.
+const catalogClient = new CatalogClient();
 
 // Create the dev tenant + dev user on first boot if global config allows.
 const bootstrap = bootstrapDevTenantIfNeeded(globalOps, loadGlobalConfig());
@@ -123,7 +129,14 @@ app.get("/api/models", (req, res) => {
 // ship it in v0 so the bundled Plugin Manager UI can flip
 // enable/disable without asking the user to hand-edit
 // `<tenant>/config.json`.
-app.use("/api", buildPluginsRouter({ registry: pluginRegistry, ops: globalOps }));
+app.use(
+  "/api",
+  buildPluginsRouter({
+    registry: pluginRegistry,
+    ops: globalOps,
+    catalog: catalogClient,
+  }),
+);
 
 const server = createServer(app);
 
