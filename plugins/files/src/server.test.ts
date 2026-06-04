@@ -35,22 +35,30 @@ function makeRes(): MockRes {
   return r;
 }
 
-function makeReq(query: Record<string, string> = {}): {
+function makeReq(query: Record<string, string> = {}, userId = "dev"): {
   query: Record<string, string>;
+  ctx: { userId: string };
 } {
-  return { query };
+  return { query, ctx: { userId } };
 }
 
+const USER_ID = "dev";
 let workspaceDir: string;
+let userHome: string;
 let exports_: PluginServerExports;
 
 beforeEach(() => {
   workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-files-"));
+  userHome = path.join(workspaceDir, "users", USER_ID);
+  // Seed the shared `_tenant/` area so we can prove the plugin doesn't
+  // expose it: it sits next to `users/<id>/` but the plugin must keep
+  // the user's view rooted at their own home.
   fs.mkdirSync(path.join(workspaceDir, "_tenant", "projects", "demo"), {
     recursive: true,
   });
   fs.writeFileSync(path.join(workspaceDir, "_tenant", "projects", "demo", "README.md"), "# Hello");
-  fs.writeFileSync(path.join(workspaceDir, "top.txt"), "top-level file");
+  fs.mkdirSync(path.join(userHome, "sub"), { recursive: true });
+  fs.writeFileSync(path.join(userHome, "top.txt"), "top-level file");
 
   const ctx = makeCtx(workspaceDir);
   const out = filesPlugin.activate(ctx);
@@ -73,12 +81,13 @@ function makeCtx(dir: string): PluginContext {
       error: vi.fn(),
     },
     workspaceDir: dir,
+    userHomeDir: (userId: string) => path.join(dir, "users", userId),
     broadcast: vi.fn(),
   };
 }
 
 describe("files plugin: list", () => {
-  it("lists workspace root with directories first", async () => {
+  it("lists the user's home as root, with directories first", async () => {
     const res = makeRes();
     await exports_.routes!.list(makeReq() as never, res as never);
     expect(res.statusCode).toBe(200);
@@ -87,20 +96,42 @@ describe("files plugin: list", () => {
       entries: Array<{ name: string; type: string }>;
     };
     expect(body.dir).toBe("/");
+    expect(body.entries[0]!.name).toBe("sub");
     expect(body.entries[0]!.type).toBe("directory");
-    expect(body.entries[0]!.name).toBe("_tenant");
     expect(body.entries.find((e) => e.name === "top.txt")).toBeDefined();
+    // Crucially, the shared `_tenant/` directory must NOT show up:
+    // the user's root is their home, not the tenant workspace.
+    expect(body.entries.find((e) => e.name === "_tenant")).toBeUndefined();
   });
 
   it("lists nested directories via dir= query", async () => {
+    fs.writeFileSync(path.join(userHome, "sub", "a.md"), "a");
     const res = makeRes();
     await exports_.routes!.list(
-      makeReq({ dir: "/_tenant/projects/demo" }) as never,
+      makeReq({ dir: "/sub" }) as never,
       res as never,
     );
     expect(res.statusCode).toBe(200);
     const body = res.body as { entries: Array<{ name: string }> };
-    expect(body.entries.map((e) => e.name)).toContain("README.md");
+    expect(body.entries.map((e) => e.name)).toContain("a.md");
+  });
+
+  it("creates the user home if missing", async () => {
+    fs.rmSync(userHome, { recursive: true, force: true });
+    const res = makeRes();
+    await exports_.routes!.list(makeReq() as never, res as never);
+    expect(res.statusCode).toBe(200);
+    expect(fs.existsSync(userHome)).toBe(true);
+  });
+
+  it("401s when no userId is on the request", async () => {
+    const res = makeRes();
+    // makeReq with empty userId simulates an unauthenticated request.
+    await exports_.routes!.list(
+      { query: {}, ctx: {} } as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(401);
   });
 
   it("rejects path traversal", async () => {
@@ -143,7 +174,7 @@ describe("files plugin: read", () => {
   });
 
   it("flags binary files without returning content", async () => {
-    const binaryPath = path.join(workspaceDir, "blob.bin");
+    const binaryPath = path.join(userHome, "blob.bin");
     fs.writeFileSync(binaryPath, Buffer.from([0, 1, 2, 3, 0]));
     const res = makeRes();
     await exports_.routes!.read(
@@ -157,7 +188,7 @@ describe("files plugin: read", () => {
   });
 
   it("413s on files larger than the cap", async () => {
-    const big = path.join(workspaceDir, "big.txt");
+    const big = path.join(userHome, "big.txt");
     fs.writeFileSync(big, Buffer.alloc(1_048_577, 0x61));
     const res = makeRes();
     await exports_.routes!.read(
@@ -177,7 +208,7 @@ describe("files plugin: read", () => {
   it("400s on directory paths", async () => {
     const res = makeRes();
     await exports_.routes!.read(
-      makeReq({ path: "/_tenant" }) as never,
+      makeReq({ path: "/sub" }) as never,
       res as never,
     );
     expect(res.statusCode).toBe(400);
@@ -196,7 +227,7 @@ describe("files plugin: read", () => {
 
 describe("files plugin: raw", () => {
   it("sets Content-Type and pipes the file", async () => {
-    fs.writeFileSync(path.join(workspaceDir, "hello.png"), Buffer.from([1, 2, 3]));
+    fs.writeFileSync(path.join(userHome, "hello.png"), Buffer.from([1, 2, 3]));
 
     const headers: Record<string, string> = {};
     const chunks: Buffer[] = [];

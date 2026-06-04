@@ -242,6 +242,7 @@ function makePluginContext(args: {
     config: { defaultModel: ctx.config.defaultModel, branding: ctx.config.branding },
     log,
     workspaceDir: ctx.workspaceDir,
+    userHomeDir: (userId: string) => ctx.userHomeDir(userId),
     broadcast: (type, payload) =>
       broadcast?.(ctx.tenantId, `${pluginId}:${type}`, payload),
   };

@@ -18,6 +18,10 @@ export interface PluginContext {
   log: PluginLogger;
   /** Absolute path to `<tenant>/workspace`. */
   workspaceDir: string;
+  /** Absolute path to a user's per-tenant home, i.e.
+   *  `<tenant>/workspace/users/<userId>`. Plugins resolve this at
+   *  request time using `req.ctx.userId` (set by host middleware). */
+  userHomeDir(userId: string): string;
   /** Send a WS message to every socket currently connected for this tenant. */
   broadcast(type: string, payload: unknown): void;
 }

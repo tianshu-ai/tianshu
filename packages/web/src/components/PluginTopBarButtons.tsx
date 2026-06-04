@@ -91,8 +91,13 @@ export default function PluginTopBarButtons() {
               setOpenPanel(isOpen ? null : panelTarget);
             }}
             className={[
-              "btn-ghost p-1.5",
-              isOpen && "bg-gray-800 text-brand-300",
+              // Match the closed-source repo's panel-toggle buttons:
+              // tight 1.5 padding, transparent default, gray hover,
+              // active state lights the slot up.
+              "rounded-lg p-1.5 transition-colors",
+              isOpen
+                ? "bg-gray-700 text-white"
+                : "text-gray-400 hover:bg-gray-800 hover:text-gray-200",
             ]
               .filter(Boolean)
               .join(" ")}

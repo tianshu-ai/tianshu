@@ -1,13 +1,17 @@
 // Server side of the `files` plugin.
 //
-// Read-only workspace browser. Lists directories and reads small text
-// files from the tenant workspace at `<tenant>/workspace/`. We don't
-// touch sandbox at all — the workspace is a host-side directory; the
-// sandbox just bind-mounts it (per ADR-0001 §4).
+// Read-only browser scoped to the **current user's home directory**
+// inside the tenant workspace, i.e. `<tenant>/workspace/users/<userId>/`.
+// Paths are presented to the UI as relative to that home ("/" = home),
+// which keeps each user's view of files isolated by default and avoids
+// exposing the shared `_tenant/` directory used by the agent runtime.
+//
+// Sandbox is not involved here — workspaces are host-side directories
+// that the sandbox bind-mounts (ADR-0001 §4).
 //
 // Path safety:
-//   - paths are accepted as workspace-relative ("/" = workspace root)
-//   - normalised, then asserted to live inside workspaceDir
+//   - paths are accepted as user-relative ("/" = user home)
+//   - normalised, then asserted to live inside the user's home
 //   - dotfiles are visible (workspace deliberately stores .config etc.)
 //
 // Hard limits:
@@ -17,6 +21,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import type { Request } from "express";
 import type {
   PluginContext,
   PluginRouteHandler,
@@ -41,8 +46,17 @@ const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     const list: PluginRouteHandler = (req, res) => {
       try {
+        const root = resolveRoot(ctx, req);
+        if (!root) {
+          res.status(401).json({ error: "no_user" });
+          return;
+        }
+        // Auto-create the user home on first read so a brand-new dev
+        // tenant doesn't 404 the very first time the UI loads.
+        if (!fs.existsSync(root)) fs.mkdirSync(root, { recursive: true });
+
         const requested = (req.query.dir as string | undefined) ?? "/";
-        const resolved = resolveInsideWorkspace(ctx.workspaceDir, requested);
+        const resolved = resolveInsideRoot(root, requested);
         if (!resolved) {
           res.status(400).json({ error: "bad_path" });
           return;
@@ -59,7 +73,7 @@ const plugin: PluginServerModule = {
         const entries = fs
           .readdirSync(resolved, { withFileTypes: true })
           .slice(0, MAX_LIST_ENTRIES)
-          .map((d): DirEntry => readEntry(resolved, ctx.workspaceDir, d));
+          .map((d): DirEntry => readEntry(resolved, root, d));
 
         // Directories first, then files; alphabetical inside each group.
         entries.sort((a, b) => {
@@ -68,7 +82,7 @@ const plugin: PluginServerModule = {
           return a.name.localeCompare(b.name);
         });
 
-        const rel = "/" + path.relative(ctx.workspaceDir, resolved).replace(/\\/g, "/");
+        const rel = "/" + path.relative(root, resolved).replace(/\\/g, "/");
         res.json({
           dir: rel === "/" || rel === "/." ? "/" : rel,
           entries,
@@ -82,12 +96,17 @@ const plugin: PluginServerModule = {
 
     const read: PluginRouteHandler = (req, res) => {
       try {
+        const root = resolveRoot(ctx, req);
+        if (!root) {
+          res.status(401).json({ error: "no_user" });
+          return;
+        }
         const requested = req.query.path as string | undefined;
         if (!requested) {
           res.status(400).json({ error: "missing_path" });
           return;
         }
-        const resolved = resolveInsideWorkspace(ctx.workspaceDir, requested);
+        const resolved = resolveInsideRoot(root, requested);
         if (!resolved) {
           res.status(400).json({ error: "bad_path" });
           return;
@@ -116,7 +135,7 @@ const plugin: PluginServerModule = {
         const looksBinary = probe.includes(0);
         if (looksBinary) {
           res.json({
-            path: workspaceRel(ctx.workspaceDir, resolved),
+            path: rootRel(root, resolved),
             size: stat.size,
             modifiedMs: stat.mtimeMs,
             binary: true,
@@ -124,7 +143,7 @@ const plugin: PluginServerModule = {
           return;
         }
         res.json({
-          path: workspaceRel(ctx.workspaceDir, resolved),
+          path: rootRel(root, resolved),
           size: stat.size,
           modifiedMs: stat.mtimeMs,
           binary: false,
@@ -143,12 +162,17 @@ const plugin: PluginServerModule = {
       // good fit. We deliberately allow the full file size here (no
       // 1 MB cap) since the response goes straight to the wire.
       try {
+        const root = resolveRoot(ctx, req);
+        if (!root) {
+          res.status(401).json({ error: "no_user" });
+          return;
+        }
         const requested = req.query.path as string | undefined;
         if (!requested) {
           res.status(400).json({ error: "missing_path" });
           return;
         }
-        const resolved = resolveInsideWorkspace(ctx.workspaceDir, requested);
+        const resolved = resolveInsideRoot(root, requested);
         if (!resolved) {
           res.status(400).json({ error: "bad_path" });
           return;
@@ -209,20 +233,34 @@ export default plugin;
 
 // ─── helpers ─────────────────────────────────────────────────────────
 
+/** Resolve the absolute root the request operates within — the user's
+ *  per-tenant home, i.e. `<tenant>/workspace/users/<userId>/`.
+ *
+ *  Returns null when the host middleware did not attach a `userId`
+ *  (e.g. unauthenticated request — the route handler should 401). */
+function resolveRoot(ctx: PluginContext, req: Request): string | null {
+  // The host's tenant middleware sets `req.ctx = { tenant, userId }`.
+  // We avoid importing the host's RequestCtx type here to keep the
+  // plugin SDK boundary clean; the runtime shape is documented.
+  const userId = (req as { ctx?: { userId?: string } }).ctx?.userId;
+  if (!userId) return null;
+  return ctx.userHomeDir(userId);
+}
+
 /** Returns the absolute path on disk if `requested` is a path inside
- *  `workspaceDir`, or null otherwise. Path traversal attempts and
- *  absolute paths outside the workspace are rejected. */
-function resolveInsideWorkspace(workspaceDir: string, requested: string): string | null {
-  // Normalise slashes; workspace-relative "/" → workspaceDir.
+ *  `root`, or null otherwise. Path traversal attempts and absolute
+ *  paths outside the root are rejected. */
+function resolveInsideRoot(root: string, requested: string): string | null {
+  // Normalise slashes; root-relative "/" → root.
   let rel = requested.startsWith("/") ? requested.slice(1) : requested;
   // Reject backslash-only paths and `..` segments before resolution.
   // path.resolve already eats `..` but we want to be loud about it.
   rel = rel.replace(/\\/g, "/");
   const segments = rel.split("/").filter((s) => s.length > 0);
   if (segments.some((s) => s === "..")) return null;
-  const resolved = path.resolve(workspaceDir, ...segments);
-  const wsAbs = path.resolve(workspaceDir);
-  if (!resolved.startsWith(wsAbs + path.sep) && resolved !== wsAbs) {
+  const resolved = path.resolve(root, ...segments);
+  const rootAbs = path.resolve(root);
+  if (!resolved.startsWith(rootAbs + path.sep) && resolved !== rootAbs) {
     return null;
   }
   return resolved;
@@ -230,7 +268,7 @@ function resolveInsideWorkspace(workspaceDir: string, requested: string): string
 
 function readEntry(
   parentDir: string,
-  workspaceDir: string,
+  root: string,
   dirent: fs.Dirent,
 ): DirEntry {
   const full = path.join(parentDir, dirent.name);
@@ -250,7 +288,7 @@ function readEntry(
       : "other";
   return {
     name: dirent.name,
-    path: workspaceRel(workspaceDir, full),
+    path: rootRel(root, full),
     type,
     size,
     modifiedMs,
@@ -258,7 +296,7 @@ function readEntry(
   };
 }
 
-function workspaceRel(workspaceDir: string, abs: string): string {
-  const rel = path.relative(workspaceDir, abs).replace(/\\/g, "/");
+function rootRel(root: string, abs: string): string {
+  const rel = path.relative(root, abs).replace(/\\/g, "/");
   return rel === "" ? "/" : "/" + rel;
 }
