@@ -30,7 +30,24 @@ export type ServerMsg =
   | { type: "stream_start" }
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
-  | { type: "stream_error"; reason: string };
+  | { type: "stream_error"; reason: string }
+  /** Agent invoked a tool. Sent before the tool runs so the UI can
+   *  render an in-progress chip. */
+  | {
+      type: "tool_call";
+      callId: string;
+      name: string;
+      arguments: Record<string, unknown>;
+    }
+  /** Tool finished. `text` is the human-readable summary the LLM will
+   *  see; `ok` lets the UI tint failures. */
+  | {
+      type: "tool_result";
+      callId: string;
+      name: string;
+      ok: boolean;
+      text: string;
+    };
 
 export interface WireMessage {
   id: string;

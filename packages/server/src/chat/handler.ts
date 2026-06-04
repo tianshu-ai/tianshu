@@ -1,21 +1,28 @@
 // WebSocket chat handler — wires together the tenant context, the
-// message store, and pi-ai's streamSimple.
+// message store, pi-ai's streamSimple, and the agent fs tools.
 //
-// PR #21 implements the smallest possible end-to-end:
-//   client opens /ws, sends {type:"hello"}, gets {type:"connected"} +
-//   history. client sends {type:"prompt", content}, server appends a
-//   user message, calls streamSimple with the full history, streams
-//   text_delta back, and on done appends + announces the assistant
-//   message.
+// Loop:
+//   1. user prompt arrives → append user message
+//   2. streamSimple with full history + tool schemas
+//   3. on toolcall_end events: run the tool against the per-user
+//      home, append tool_result to history, broadcast tool_call /
+//      tool_result events
+//   4. if the assistant message stops with `toolUse`, call
+//      streamSimple again with the appended ToolResultMessage(s).
+//   5. otherwise persist the assistant text and emit stream_end.
 //
-// Tools / system prompt / SOUL.md are deliberately deferred to PR #22.
+// We cap the number of tool turns per prompt at MAX_TURNS so a model
+// stuck in a feedback loop terminates instead of melting the host.
 
 import { streamSimple } from "@earendil-works/pi-ai";
 import type {
+  AssistantMessage,
   AssistantMessageEvent,
   Context,
   Message,
   TextContent,
+  ToolCall,
+  ToolResultMessage,
 } from "@earendil-works/pi-ai";
 import type { WebSocket } from "ws";
 import {
@@ -26,6 +33,7 @@ import {
   type ResolvedModelInfo,
   type TenantContext,
 } from "../core/index.js";
+import { buildToolset, type Toolset } from "../tools/index.js";
 import {
   appendMessage,
   ensureActiveSession,
@@ -34,6 +42,8 @@ import {
   type ChatSession,
 } from "./messages.js";
 import { toWire, type ClientMsg, type ServerMsg } from "./ws-protocol.js";
+
+const MAX_TURNS = 16;
 
 export interface ChatHandlerOpts {
   ctx: TenantContext;
@@ -118,9 +128,6 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   const userMsg = appendMessage(ctx, session, { role: "user", content });
   send({ type: "message_added", message: toWire(userMsg) });
 
-  // Caller may override the per-prompt model. Unknown ids fall back to
-  // the configured default rather than failing the prompt outright —
-  // the catalog is allowed to drift while the UI's local pick survives.
   const modelInfo = (modelId ? findModel(ctx.config, modelId) : undefined) ?? getDefaultModel(ctx.config);
   if (!modelInfo) {
     send({
@@ -131,39 +138,150 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   }
 
   const piModel = buildModel(modelInfo);
-  const piContext = buildContext(ctx, session, modelInfo);
   const apiKey = resolveApiKey(modelInfo);
+  const toolset = buildToolset(ctx.userHomeDir(userId));
 
   send({ type: "stream_start" });
 
-  const stream = streamSimple(piModel, piContext, { signal, apiKey });
+  // Fluent message log we mutate as the loop progresses. We start
+  // from on-disk history and append AssistantMessage / ToolResult
+  // entries in memory; final assistant text is persisted at the end
+  // of the loop (and tool calls/results when we add a richer schema).
+  const messages = loadHistoryAsMessages(ctx, session, modelInfo);
 
-  const collected: string[] = [];
-  for await (const event of stream as AsyncIterable<AssistantMessageEvent>) {
-    if (event.type === "text_delta") {
-      const delta = (event as Extract<AssistantMessageEvent, { type: "text_delta" }>).delta;
-      collected.push(delta);
-      send({ type: "stream_delta", delta });
-    } else if (event.type === "error") {
-      const reason =
-        (event as Extract<AssistantMessageEvent, { type: "error" }>).error?.errorMessage ??
-        "stream_error";
-      send({ type: "stream_error", reason });
-      return;
+  for (let turn = 0; turn < MAX_TURNS; turn++) {
+    if (signal.aborted) return;
+
+    const piContext: Context = {
+      systemPrompt: defaultSystemPrompt(ctx),
+      messages,
+      tools: toolset.schemas,
+    };
+
+    const stream = streamSimple(piModel, piContext, { signal, apiKey });
+    const final = await consumeStream(stream, send);
+    if (!final) return; // error already sent
+
+    // Persist the assistant turn into the in-memory log.
+    messages.push(final);
+
+    if (final.stopReason === "toolUse") {
+      const toolCalls = final.content.filter(
+        (c): c is ToolCall => c.type === "toolCall",
+      );
+      if (toolCalls.length === 0) {
+        // Model claimed toolUse but emitted none — bail to avoid loop.
+        break;
+      }
+
+      // Run every requested call, append a ToolResultMessage per call.
+      for (const call of toolCalls) {
+        send({
+          type: "tool_call",
+          callId: call.id,
+          name: call.name,
+          arguments: call.arguments,
+        });
+
+        const result = await runOneTool(toolset, call);
+        const summary = describeResult(result);
+        send({
+          type: "tool_result",
+          callId: call.id,
+          name: call.name,
+          ok: result.ok,
+          text: summary,
+        });
+
+        const toolResult: ToolResultMessage = {
+          role: "toolResult",
+          toolCallId: call.id,
+          toolName: call.name,
+          content: [{ type: "text", text: summary } as TextContent],
+          isError: !result.ok,
+          timestamp: Date.now(),
+        };
+        messages.push(toolResult);
+      }
+      continue; // round-trip back to the model
     }
+
+    // stopReason: stop | length — done.
+    const finalText = collectText(final);
+    const persisted = appendMessage(ctx, session, {
+      role: "assistant",
+      content: finalText,
+    });
+    send({ type: "stream_end", message: toWire(persisted) });
+    return;
   }
 
-  const finalText = collected.join("");
-  const assistantMsg = appendMessage(ctx, session, { role: "assistant", content: finalText });
-  send({ type: "stream_end", message: toWire(assistantMsg) });
+  send({
+    type: "stream_error",
+    reason: `agent loop exceeded ${MAX_TURNS} turns without resolving`,
+  });
 }
 
-/** Build a pi-ai Context from the user's full message history. */
-function buildContext(
+/** Run a single pi-ai stream to completion, forwarding text deltas
+ *  to the WS and returning the final AssistantMessage. Sends a
+ *  `stream_error` and returns null if the stream errored. */
+async function consumeStream(
+  stream: AsyncIterable<AssistantMessageEvent>,
+  send: (msg: ServerMsg) => void,
+): Promise<AssistantMessage | null> {
+  let final: AssistantMessage | null = null;
+  for await (const event of stream) {
+    if (event.type === "text_delta") {
+      send({ type: "stream_delta", delta: event.delta });
+    } else if (event.type === "done") {
+      final = event.message;
+    } else if (event.type === "error") {
+      const reason = event.error?.errorMessage ?? "stream_error";
+      send({ type: "stream_error", reason });
+      return null;
+    }
+  }
+  return final;
+}
+
+interface AnyToolResult {
+  ok: boolean;
+  text: string;
+}
+
+async function runOneTool(toolset: Toolset, call: ToolCall): Promise<AnyToolResult> {
+  const exec = toolset.executors[call.name];
+  if (!exec) {
+    return { ok: false, text: `unknown tool: ${call.name}` };
+  }
+  try {
+    const out = await exec(call.arguments);
+    return { ok: out.ok, text: out.text };
+  } catch (err) {
+    return {
+      ok: false,
+      text: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function describeResult(r: AnyToolResult): string {
+  return r.text;
+}
+
+function collectText(msg: AssistantMessage): string {
+  const parts: string[] = [];
+  for (const c of msg.content) {
+    if (c.type === "text") parts.push(c.text);
+  }
+  return parts.join("");
+}
+
+function loadHistoryAsMessages(
   ctx: TenantContext,
   session: ChatSession,
   modelInfo: ResolvedModelInfo,
-): Context {
+): Message[] {
   const history = listMessagesForUser(ctx, session.userId);
   const messages: Message[] = [];
   for (const m of history) {
@@ -180,31 +298,42 @@ function buildContext(
         api: modelInfo.api,
         provider: modelInfo.providerId,
         model: modelInfo.modelId,
-        usage: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 0,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-        },
+        usage: zeroUsage(),
         stopReason: "stop",
         timestamp: m.createdAt,
       });
     }
-    // tool/system roles are skipped at v0; they arrive with PR #22+.
+    // tool / system roles ignored for now — historical tool turns
+    // re-run fine without their old results, and we don't yet
+    // persist tool messages anyway.
   }
+  return messages;
+}
+
+function zeroUsage() {
   return {
-    systemPrompt: defaultSystemPrompt(ctx),
-    messages,
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   };
 }
 
 function defaultSystemPrompt(ctx: TenantContext): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
-  // Keep the v0 system prompt minimal; PR #22 will load _tenant/SOUL.md
-  // and tenant-level overrides.
-  return `You are ${brand}, an open-source AI assistant. Tenant: "${ctx.tenantId}". Reply concisely.`;
+  return [
+    `You are ${brand}, an open-source AI assistant.`,
+    `Tenant: "${ctx.tenantId}".`,
+    ``,
+    `You have access to the user's workspace through five filesystem tools:`,
+    `  list_dir, read_file, write_file, edit_file, glob.`,
+    `Paths are relative to the workspace root ("/" = root). The workspace`,
+    `is private to the current user; you cannot reach files outside it.`,
+    ``,
+    `Reply concisely. When you make changes, briefly say what you changed.`,
+  ].join("\n");
 }
 
 // re-exported here so server/index.ts only imports from one barrel.
