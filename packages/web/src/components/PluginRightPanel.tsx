@@ -53,7 +53,7 @@ export default function PluginRightPanel() {
   };
 
   return (
-    <aside className="flex h-full w-80 flex-shrink-0 flex-col border-l border-gray-800 bg-gray-900">
+    <aside className="flex h-full w-96 flex-shrink-0 flex-col border-l border-gray-800 bg-gray-900">
       <Component {...props} />
     </aside>
   );

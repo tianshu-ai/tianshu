@@ -193,3 +193,74 @@ describe("files plugin: read", () => {
     expect(res.statusCode).toBe(400);
   });
 });
+
+describe("files plugin: raw", () => {
+  it("sets Content-Type and pipes the file", async () => {
+    fs.writeFileSync(path.join(workspaceDir, "hello.png"), Buffer.from([1, 2, 3]));
+
+    const headers: Record<string, string> = {};
+    const chunks: Buffer[] = [];
+    let ended = false;
+    const fakeRes = {
+      statusCode: 200,
+      headersSent: false,
+      setHeader(name: string, value: string) {
+        headers[name] = value;
+      },
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(body: unknown) {
+        // Used only on error paths; capture so the assertions can detect.
+        (this as unknown as { body: unknown }).body = body;
+        return this;
+      },
+      // Stream-style sink: createReadStream(...).pipe(res) calls
+      // res.write / res.end. Vitest doesn't have a Writable stub so
+      // we hand-roll a minimal one.
+      on() { return this; },
+      once() { return this; },
+      emit() { return true; },
+      write(chunk: Buffer) {
+        chunks.push(chunk);
+        return true;
+      },
+      end(chunk?: Buffer) {
+        if (chunk) chunks.push(chunk);
+        ended = true;
+      },
+    };
+
+    await exports_.routes!.raw(
+      makeReq({ path: "/hello.png" }) as never,
+      fakeRes as never,
+    );
+    // Wait a tick for the pipe to flush.
+    await new Promise((r) => setTimeout(r, 30));
+
+    expect(headers["Content-Type"]).toBe("image/png");
+    expect(headers["Content-Length"]).toBe("3");
+    expect(ended).toBe(true);
+    const concatenated = Buffer.concat(chunks);
+    expect(concatenated.equals(Buffer.from([1, 2, 3]))).toBe(true);
+  });
+
+  it("404s missing file", async () => {
+    const res = makeRes();
+    await exports_.routes!.raw(
+      makeReq({ path: "/nope.png" }) as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("rejects path traversal", async () => {
+    const res = makeRes();
+    await exports_.routes!.raw(
+      makeReq({ path: "/../etc/passwd" }) as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(400);
+  });
+});

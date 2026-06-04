@@ -137,9 +137,72 @@ const plugin: PluginServerModule = {
       }
     };
 
-    return { routes: { list, read } };
+    const raw: PluginRouteHandler = (req, res) => {
+      // Stream a single file verbatim. Used by the UI to render images,
+      // PDFs, etc. — anything where the JSON `read` endpoint isn't a
+      // good fit. We deliberately allow the full file size here (no
+      // 1 MB cap) since the response goes straight to the wire.
+      try {
+        const requested = req.query.path as string | undefined;
+        if (!requested) {
+          res.status(400).json({ error: "missing_path" });
+          return;
+        }
+        const resolved = resolveInsideWorkspace(ctx.workspaceDir, requested);
+        if (!resolved) {
+          res.status(400).json({ error: "bad_path" });
+          return;
+        }
+        if (!fs.existsSync(resolved)) {
+          res.status(404).json({ error: "not_found" });
+          return;
+        }
+        const stat = fs.statSync(resolved);
+        if (stat.isDirectory()) {
+          res.status(400).json({ error: "is_directory" });
+          return;
+        }
+        const mime = mimeFor(path.extname(resolved).toLowerCase());
+        res.setHeader("Content-Type", mime);
+        res.setHeader("Content-Length", String(stat.size));
+        res.setHeader("Cache-Control", "no-store");
+        fs.createReadStream(resolved).pipe(res);
+      } catch (err) {
+        ctx.log.error("raw failed", { err: String(err) });
+        if (!res.headersSent) res.status(500).json({ error: "internal" });
+      }
+    };
+
+    return { routes: { list, read, raw } };
   },
 };
+
+const MIME_BY_EXT: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
+  ".ico": "image/x-icon",
+  ".svg": "image/svg+xml",
+  ".pdf": "application/pdf",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  ".mp3": "audio/mpeg",
+  ".wav": "audio/wav",
+  ".ogg": "audio/ogg",
+  ".txt": "text/plain; charset=utf-8",
+  ".md": "text/markdown; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+};
+
+function mimeFor(ext: string): string {
+  return MIME_BY_EXT[ext] ?? "application/octet-stream";
+}
 
 export const activate = plugin.activate.bind(plugin);
 export default plugin;
