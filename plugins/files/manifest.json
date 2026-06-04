@@ -27,7 +27,8 @@
     ],
     "apiRoutes": [
       { "method": "GET", "path": "/list", "handler": "list" },
-      { "method": "GET", "path": "/read", "handler": "read" }
+      { "method": "GET", "path": "/read", "handler": "read" },
+      { "method": "GET", "path": "/raw",  "handler": "raw"  }
     ]
   }
 }
