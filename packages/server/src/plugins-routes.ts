@@ -44,6 +44,41 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
   const { registry, ops, catalog } = opts;
   const r = Router();
 
+  // Plugin-contributed API routes are dispatched per-request so that
+  // (a) we don't have to mount-once at boot (tenants are lazy) and
+  // (b) enabling/disabling a plugin takes effect on the next request
+  // without re-mounting Express. Manifest contracts:
+  //   - declared path "/foo"          → /api/p/<plugin-id>/foo
+  //   - declared path "/foo/bar/baz"  → /api/p/<plugin-id>/foo/bar/baz
+  // We don't translate path params (`:id`) for v0 — plugins use
+  // query strings.
+  r.use("/p/:pluginId", async (req, res, next) => {
+    if (!req.ctx) {
+      res.status(500).json({ error: "no_ctx" });
+      return;
+    }
+    const pluginId = req.params.pluginId;
+    if (!PLUGIN_ID_RE.test(pluginId)) {
+      res.status(404).json({ error: "plugin_not_found" });
+      return;
+    }
+    try {
+      await registry.ensureForTenant(req.ctx.tenant);
+      const routes = collectRoutesForTenant(registry, req.ctx.tenant.tenantId);
+      const subPath = req.path.length === 0 || req.path === "/" ? "/" : req.path;
+      const match = routes.find(
+        (rt) => rt.pluginId === pluginId && rt.method === req.method && rt.path === subPath,
+      );
+      if (!match) {
+        res.status(404).json({ error: "plugin_route_not_found", pluginId, path: subPath });
+        return;
+      }
+      await match.handler(req, res);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // Catalog endpoints. Mounted before /plugins/:id so the static
   // segment wins over the param route in Express's router order.
   if (catalog) {
