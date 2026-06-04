@@ -7,7 +7,7 @@
 // test setup small and the failure surface focused on routing +
 // config persistence.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import fs from "node:fs";
 import os from "node:os";
@@ -24,6 +24,7 @@ import {
   PluginRegistry,
 } from "./core/plugins/index.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
+import { CatalogClient } from "./catalog.js";
 
 const TENANT = "acme";
 
@@ -62,7 +63,7 @@ function writeBuiltinManifest(id: string, manifest: object) {
   fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(manifest));
 }
 
-function buildApp() {
+function buildApp(opts: { catalog?: CatalogClient } = {}) {
   const app = express();
   app.use(express.json());
   app.use(
@@ -72,7 +73,10 @@ function buildApp() {
       resolveIdentity: () => ({ tenantId: TENANT, userId: "user_test" }),
     }),
   );
-  app.use("/api", buildPluginsRouter({ registry, ops }));
+  app.use(
+    "/api",
+    buildPluginsRouter({ registry, ops, catalog: opts.catalog }),
+  );
   return app;
 }
 
@@ -192,6 +196,75 @@ describe("plugins HTTP routes", () => {
       .send({ enabled: true });
     expect(res.status).toBe(404);
     expect(res.body.error).toBe("plugin_not_found");
+  });
+
+  it("GET /api/plugins/catalog returns a validated catalog snapshot", async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            schemaVersion: 1,
+            updatedAt: "2026-06-04T12:00:00Z",
+            plugins: [
+              {
+                id: "pomodoro",
+                displayName: "Pomodoro Timer",
+                description: "A focus timer.",
+                author: "tianshu-ai",
+                verified: true,
+                repository: "https://github.com/tianshu-ai/plugin-pomodoro",
+                latestVersion: "1.0.0",
+                tarballUrl: "https://example.com/p.tgz",
+                tarballSha256: "a".repeat(64),
+                tianshuRange: ">=0.2",
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+
+    const catalog = new CatalogClient({ url: "https://x/catalog.json", fetcher });
+    const app = buildApp({ catalog });
+
+    const res = await request(app).get("/api/plugins/catalog");
+    expect(res.status).toBe(200);
+    expect(res.body.entries).toHaveLength(1);
+    expect(res.body.entries[0].id).toBe("pomodoro");
+    expect(res.body.entriesDropped).toBe(0);
+  });
+
+  it("POST /api/plugins/catalog/refresh forces a re-fetch", async () => {
+    const fetcher = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({ schemaVersion: 1, plugins: [] }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+
+    const catalog = new CatalogClient({
+      url: "https://x/catalog.json",
+      fetcher,
+      ttlMs: 60_000,
+    });
+    const app = buildApp({ catalog });
+
+    await request(app).get("/api/plugins/catalog").expect(200);
+    await request(app).get("/api/plugins/catalog").expect(200);
+    expect(
+      (fetcher as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+    ).toBe(1);
+
+    await request(app).post("/api/plugins/catalog/refresh").expect(200);
+    expect(
+      (fetcher as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+    ).toBe(2);
+  });
+
+  it("GET /api/plugins/catalog 404s when no catalog client is wired", async () => {
+    const app = buildApp();
+    await request(app).get("/api/plugins/catalog").expect(404);
   });
 
   it("PATCH allows disabling an unknown plugin (prune stale entries)", async () => {

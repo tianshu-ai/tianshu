@@ -19,12 +19,20 @@ import {
   collectRoutesForTenant,
   PluginRegistry,
 } from "./core/plugins/index.js";
+import { CatalogClient } from "./catalog.js";
 
 const PLUGIN_ID_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
 export interface PluginsRouterOpts {
   registry: PluginRegistry;
   ops: GlobalOps;
+  /**
+   * Optional catalog client. When provided, mounts GET
+   * /plugins/catalog (and POST /plugins/catalog/refresh) so the
+   * Plugin Manager UI can list installable plugins. Tests skip this
+   * by leaving it undefined.
+   */
+  catalog?: CatalogClient;
 }
 
 /**
@@ -33,8 +41,30 @@ export interface PluginsRouterOpts {
  *   app.use("/api", buildPluginsRouter({ registry, ops }));
  */
 export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
-  const { registry, ops } = opts;
+  const { registry, ops, catalog } = opts;
   const r = Router();
+
+  // Catalog endpoints. Mounted before /plugins/:id so the static
+  // segment wins over the param route in Express's router order.
+  if (catalog) {
+    r.get("/plugins/catalog", async (_req, res, next) => {
+      try {
+        const snap = await catalog.get();
+        res.json(snap);
+      } catch (err) {
+        next(err);
+      }
+    });
+    r.post("/plugins/catalog/refresh", async (_req, res, next) => {
+      try {
+        catalog.invalidate();
+        const snap = await catalog.get({ force: true });
+        res.json(snap);
+      } catch (err) {
+        next(err);
+      }
+    });
+  }
 
   r.get("/plugins", async (req, res, next) => {
     if (!req.ctx) {
