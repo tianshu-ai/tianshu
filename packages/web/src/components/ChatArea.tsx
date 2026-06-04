@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen, Puzzle } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
+import { mergeToolTurns } from "../lib/merge-tool-turns";
 import ChatInput from "./ChatInput";
 import PluginManager from "./PluginManager";
 import PluginTopBarButtons from "./PluginTopBarButtons";
@@ -84,7 +85,7 @@ export default function ChatArea() {
           />
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
-            {messages.map((m, i) => (
+            {mergeToolTurns(messages).map((m, i) => (
               <div key={m.id} className={i === 0 ? "" : "mt-4"}>
                 <MessageBubble m={m} />
               </div>
