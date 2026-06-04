@@ -1,7 +1,8 @@
 // Tiny zustand store for chat state. Mirrors the shape of the
 // closed-source predecessor's chat-store.ts but only carries what the
-// minimal v0 UI needs (no sessions list, no channel bindings, no
-// workers — those land in later PRs).
+// minimal v0 UI needs (no channel bindings, no workers — those land
+// in later PRs). Sessions are not user-facing: the agent manages
+// compact / new-conversation itself (ADR-0001 §5).
 
 import { create } from "zustand";
 import { api, type Me, type ModelListEntry } from "../lib/api";

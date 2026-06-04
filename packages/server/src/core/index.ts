@@ -43,6 +43,7 @@ export {
   type ModelEntry,
   type ModelsCatalog,
   type OAuthProviderConfig,
+  type PluginsConfig,
   type ProviderEntry,
   type ResolvedConfig,
   type TenantConfig,

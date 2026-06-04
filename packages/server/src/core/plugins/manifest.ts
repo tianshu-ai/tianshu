@@ -1,0 +1,306 @@
+// Plugin manifest validation. Hand-written validator over plain JSON
+// to keep dependencies small. Mirrors the types declared in
+// `@tianshu/plugin-sdk/manifest.ts`.
+//
+// Throws PluginManifestError with a `pluginId` (when discoverable)
+// and a list of accumulated issues so the discovery step can mark
+// the manifest as failed instead of crashing the whole boot.
+
+import type {
+  ApiRouteContribution,
+  CommandContribution,
+  ContributesV1,
+  PluginManifest,
+  RightPanelContribution,
+  SidebarSectionContribution,
+  TopBarButtonContribution,
+  WsMessageContribution,
+} from "@tianshu/plugin-sdk";
+
+export class PluginManifestError extends Error {
+  readonly code = "PLUGIN_MANIFEST_INVALID" as const;
+  constructor(
+    public readonly pluginId: string | null,
+    public readonly issues: string[],
+  ) {
+    super(
+      `manifest invalid${pluginId ? ` for ${pluginId}` : ""}: ${issues.join("; ")}`,
+    );
+    this.name = "PluginManifestError";
+  }
+}
+
+const ID_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
+const SEMVER_RE = /^\d+\.\d+\.\d+(-[\w.-]+)?(\+[\w.-]+)?$/;
+const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"]);
+
+interface Acc {
+  issues: string[];
+}
+
+export function parseManifest(raw: unknown): PluginManifest {
+  const acc: Acc = { issues: [] };
+  if (!isPlainObject(raw)) {
+    throw new PluginManifestError(null, ["manifest must be a JSON object"]);
+  }
+
+  const id = expectString(raw, "id", acc);
+  if (id != null && !ID_RE.test(id)) {
+    acc.issues.push(`id "${id}" must match ${ID_RE}`);
+  }
+
+  const version = expectString(raw, "version", acc);
+  if (version != null && !SEMVER_RE.test(version)) {
+    acc.issues.push(`version "${version}" must be semver`);
+  }
+  const displayName = expectString(raw, "displayName", acc);
+
+  const description = optionalString(raw, "description", acc);
+  const author = optionalString(raw, "author", acc);
+  const license = optionalString(raw, "license", acc);
+  const permissions = optionalStringArray(raw, "permissions", acc);
+  const client = optionalEntryRef(raw, "client", acc);
+  const server = optionalEntryRef(raw, "server", acc);
+  const contributes = optionalContributes(raw.contributes, acc);
+
+  if (acc.issues.length > 0) {
+    throw new PluginManifestError(id ?? null, acc.issues);
+  }
+
+  return {
+    id: id!,
+    version: version!,
+    displayName: displayName!,
+    description,
+    author,
+    license,
+    permissions,
+    client,
+    server,
+    contributes,
+  };
+}
+
+function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isPlainObject(raw)) {
+    acc.issues.push("contributes must be an object");
+    return undefined;
+  }
+
+  const out: ContributesV1 = {};
+
+  if ("topBarButtons" in raw) {
+    out.topBarButtons = parseArray(raw.topBarButtons, "topBarButtons", acc, parseTopBarButton);
+  }
+  if ("rightPanels" in raw) {
+    out.rightPanels = parseArray(raw.rightPanels, "rightPanels", acc, parseRightPanel);
+  }
+  if ("sidebarSections" in raw) {
+    out.sidebarSections = parseArray(
+      raw.sidebarSections,
+      "sidebarSections",
+      acc,
+      parseSidebarSection,
+    );
+  }
+  if ("apiRoutes" in raw) {
+    out.apiRoutes = parseArray(raw.apiRoutes, "apiRoutes", acc, parseApiRoute);
+  }
+  if ("wsMessages" in raw) {
+    out.wsMessages = parseArray(raw.wsMessages, "wsMessages", acc, parseWsMessage);
+  }
+  if ("commands" in raw) {
+    out.commands = parseArray(raw.commands, "commands", acc, parseCommand);
+  }
+
+  return out;
+}
+
+function parseTopBarButton(raw: unknown, ctx: string, acc: Acc): TopBarButtonContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const icon = expectString(raw, "icon", acc, ctx);
+  const tooltip = optionalString(raw, "tooltip", acc, ctx);
+  const opensPanel = optionalString(raw, "opensPanel", acc, ctx);
+  const order = optionalNumber(raw, "order", acc, ctx);
+  if (id == null || icon == null) return null;
+  return { id, icon, tooltip, opensPanel, order };
+}
+
+function parseRightPanel(raw: unknown, ctx: string, acc: Acc): RightPanelContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const displayName = expectString(raw, "displayName", acc, ctx);
+  const component = expectString(raw, "component", acc, ctx);
+  if (id == null || displayName == null || component == null) return null;
+  return { id, displayName, component };
+}
+
+function parseSidebarSection(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): SidebarSectionContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const displayName = expectString(raw, "displayName", acc, ctx);
+  const component = expectString(raw, "component", acc, ctx);
+  const after = optionalString(raw, "after", acc, ctx);
+  const order = optionalNumber(raw, "order", acc, ctx);
+  if (id == null || displayName == null || component == null) return null;
+  return { id, displayName, component, after, order };
+}
+
+function parseApiRoute(raw: unknown, ctx: string, acc: Acc): ApiRouteContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const method = expectString(raw, "method", acc, ctx);
+  const pathStr = expectString(raw, "path", acc, ctx);
+  const handler = expectString(raw, "handler", acc, ctx);
+  if (method != null && !HTTP_METHODS.has(method)) {
+    acc.issues.push(`${ctx}.method "${method}" must be one of ${[...HTTP_METHODS].join(",")}`);
+    return null;
+  }
+  if (pathStr != null && !pathStr.startsWith("/")) {
+    acc.issues.push(`${ctx}.path "${pathStr}" must start with "/"`);
+    return null;
+  }
+  if (method == null || pathStr == null || handler == null) return null;
+  return {
+    method: method as ApiRouteContribution["method"],
+    path: pathStr,
+    handler,
+  };
+}
+
+function parseWsMessage(raw: unknown, ctx: string, acc: Acc): WsMessageContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const type = expectString(raw, "type", acc, ctx);
+  const handler = expectString(raw, "handler", acc, ctx);
+  if (type == null || handler == null) return null;
+  return { type, handler };
+}
+
+function parseCommand(raw: unknown, ctx: string, acc: Acc): CommandContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const title = expectString(raw, "title", acc, ctx);
+  if (id == null || title == null) return null;
+  return { id, title };
+}
+
+// ─── tiny helpers ──────────────────────────────────────────────────
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function expectString(
+  raw: Record<string, unknown>,
+  key: string,
+  acc: Acc,
+  ctx?: string,
+): string | undefined {
+  const v = raw[key];
+  if (typeof v !== "string" || v.length === 0) {
+    acc.issues.push(`${ctx ? `${ctx}.` : ""}${key} must be a non-empty string`);
+    return undefined;
+  }
+  return v;
+}
+
+function optionalString(
+  raw: Record<string, unknown>,
+  key: string,
+  acc: Acc,
+  ctx?: string,
+): string | undefined {
+  const v = raw[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "string") {
+    acc.issues.push(`${ctx ? `${ctx}.` : ""}${key} must be a string`);
+    return undefined;
+  }
+  return v;
+}
+
+function optionalNumber(
+  raw: Record<string, unknown>,
+  key: string,
+  acc: Acc,
+  ctx?: string,
+): number | undefined {
+  const v = raw[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== "number" || !Number.isFinite(v)) {
+    acc.issues.push(`${ctx ? `${ctx}.` : ""}${key} must be a finite number`);
+    return undefined;
+  }
+  return v;
+}
+
+function optionalStringArray(
+  raw: Record<string, unknown>,
+  key: string,
+  acc: Acc,
+): string[] | undefined {
+  const v = raw[key];
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v) || !v.every((x) => typeof x === "string")) {
+    acc.issues.push(`${key} must be an array of strings`);
+    return undefined;
+  }
+  return v as string[];
+}
+
+function optionalEntryRef(
+  raw: Record<string, unknown>,
+  key: string,
+  acc: Acc,
+): { entry: string } | undefined {
+  const v = raw[key];
+  if (v === undefined || v === null) return undefined;
+  if (!isPlainObject(v)) {
+    acc.issues.push(`${key} must be an object`);
+    return undefined;
+  }
+  const entry = expectString(v, "entry", acc, key);
+  if (entry == null) return undefined;
+  return { entry };
+}
+
+function parseArray<T>(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+  fn: (item: unknown, ctx: string, acc: Acc) => T | null,
+): T[] {
+  if (!Array.isArray(raw)) {
+    acc.issues.push(`${ctx} must be an array`);
+    return [];
+  }
+  const out: T[] = [];
+  raw.forEach((item, i) => {
+    const parsed = fn(item, `${ctx}[${i}]`, acc);
+    if (parsed) out.push(parsed);
+  });
+  return out;
+}
