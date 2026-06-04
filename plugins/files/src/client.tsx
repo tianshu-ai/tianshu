@@ -217,14 +217,14 @@ function FilesPanel({ plugin }: PanelProps) {
           <div className="relative flex-1">
             <Search
               size={14}
-              className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
             />
             <input
               type="text"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter files..."
-              className="w-full rounded border border-gray-800 bg-gray-900 py-1 pl-7 pr-2 text-sm text-gray-300 placeholder-gray-600 focus:border-gray-600 focus:outline-none"
+              className="w-full rounded border border-gray-800 bg-gray-900 py-1 pl-8 pr-2 text-sm text-gray-300 placeholder-gray-600 focus:border-gray-600 focus:outline-none"
             />
           </div>
           <button

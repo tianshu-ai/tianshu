@@ -1,6 +1,13 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+    // Builtin plugins live outside packages/web. Scan their compiled
+    // dist/ output AND their src/ so classNames are picked up.
+    "../../plugins/*/dist/**/*.{js,jsx}",
+    "../../plugins/*/src/**/*.{ts,tsx}",
+  ],
   darkMode: "class",
   theme: {
     extend: {

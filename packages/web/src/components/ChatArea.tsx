@@ -49,7 +49,7 @@ export default function ChatArea() {
           <button
             type="button"
             onClick={toggleSidebar}
-            className="btn-ghost p-1.5"
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
             title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
           >
             {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
@@ -60,13 +60,12 @@ export default function ChatArea() {
             <span className="text-gray-300">{me?.userId ?? "…"}</span>
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <PluginTopBarButtons />
-          <div className="mx-1 h-5 w-px bg-gray-800" aria-hidden />
           <button
             type="button"
             onClick={() => setPluginManagerOpen(true)}
-            className="btn-ghost p-1.5"
+            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
             title="Plugin Manager"
             aria-label="Open Plugin Manager"
           >

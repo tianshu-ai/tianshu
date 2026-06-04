@@ -40,6 +40,7 @@ describe("builtin files plugin", () => {
       expect(files!.state).toBe("active");
       expect(files!.exports?.routes).toHaveProperty("list");
       expect(files!.exports?.routes).toHaveProperty("read");
+      expect(files!.exports?.routes).toHaveProperty("raw");
       ops.closePool();
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
