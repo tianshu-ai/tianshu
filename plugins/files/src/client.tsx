@@ -335,11 +335,6 @@ function FilesPanel({ plugin }: PanelProps) {
         )}
       </div>
 
-      {/* Footer */}
-      <div className="border-t border-gray-800 px-3 py-1.5 text-[10px] text-gray-600">
-        {plugin.displayName} v{plugin.version}
-      </div>
-
       {preview && <FilePreviewModal entry={preview} onClose={() => setPreview(null)} />}
     </div>
   );
