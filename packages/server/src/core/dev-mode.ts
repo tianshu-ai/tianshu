@@ -11,6 +11,8 @@
 
 import {
   loadGlobalConfig,
+  loadTenantConfig,
+  writeTenantConfig,
   type GlobalConfig,
 } from "./config.js";
 import { GlobalOps } from "./global-ops.js";
@@ -50,6 +52,22 @@ export function bootstrapDevTenantIfNeeded(
     externalId: DEV_USER_EXTERNAL_ID,
     displayName: "Dev User",
   });
+
+  // Pre-enable the `files` builtin plugin so a fresh dev tenant has
+  // something visible in the Plugin Manager. Per ADR-0003 §11, the
+  // other builtin plugins ship as opt-in (browser / task-board / ...).
+  const tenantConfig = loadTenantConfig(DEV_TENANT_ID, home);
+  writeTenantConfig(
+    DEV_TENANT_ID,
+    {
+      ...tenantConfig,
+      plugins: {
+        ...(tenantConfig.plugins ?? {}),
+        files: { enabled: true, ...(tenantConfig.plugins?.files ?? {}) },
+      },
+    },
+    home,
+  );
 
   return { created: true, tenantId: DEV_TENANT_ID, userId: DEV_USER_ID };
 }

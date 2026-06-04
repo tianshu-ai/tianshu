@@ -5,6 +5,7 @@ import path from "node:path";
 import { DbPool } from "./db-pool.js";
 import { bootstrapDevTenantIfNeeded, DEV_TENANT_ID, DEV_USER_ID } from "./dev-mode.js";
 import { GlobalOps } from "./global-ops.js";
+import { loadTenantConfig } from "./config.js";
 
 let home: string;
 let prevHome: string | undefined;
@@ -34,6 +35,12 @@ describe("bootstrapDevTenantIfNeeded", () => {
       .prepare<[string], { id: string }>("SELECT id FROM users WHERE id = ?")
       .get(DEV_USER_ID);
     expect(userRow?.id).toBe(DEV_USER_ID);
+  });
+
+  it("pre-enables the files builtin plugin in the dev tenant", () => {
+    bootstrapDevTenantIfNeeded(ops, {});
+    const cfg = loadTenantConfig(DEV_TENANT_ID, home);
+    expect(cfg.plugins?.files).toEqual({ enabled: true });
   });
 
   it("is a no-op when tenants already exist", () => {
