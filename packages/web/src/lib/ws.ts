@@ -13,7 +13,9 @@ export type ServerEvent =
   | { type: "stream_start" }
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
-  | { type: "stream_error"; reason: string };
+  | { type: "stream_error"; reason: string }
+  | { type: "tool_call"; callId: string; name: string; arguments: Record<string, unknown> }
+  | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string };
 
 type EventType = ServerEvent["type"];
 type Handler<T extends EventType> = (msg: Extract<ServerEvent, { type: T }>) => void;
