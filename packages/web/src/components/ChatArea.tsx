@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { PanelLeftClose, PanelLeftOpen, Puzzle } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
 import ChatInput from "./ChatInput";
+import PluginManager from "./PluginManager";
 
 /**
  * Main column.
@@ -34,6 +35,8 @@ export default function ChatArea() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
+
   const brand = me?.config.branding;
   const brandName = brand?.name ?? "Tianshu";
   const brandEmoji = brand?.emoji ?? "⭐";
@@ -58,8 +61,22 @@ export default function ChatArea() {
             <span className="text-gray-300">{me?.userId ?? "…"}</span>
           </span>
         </div>
-        {/* Plugin-contributed icons reappear here when PR #33 lands. */}
-        <div className="flex items-center gap-1" />
+        {/* Right side of the top bar.
+         *  - Plugin-contributed top-bar icons reappear here when PR #33 lands.
+         *  - The Plugin Manager button is part of the bundled chat shell
+         *    (per ADR-0003: it is not itself a plugin), so it stays put.
+         */}
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={() => setPluginManagerOpen(true)}
+            className="btn-ghost p-1.5"
+            title="Plugin Manager"
+            aria-label="Open Plugin Manager"
+          >
+            <Puzzle size={16} />
+          </button>
+        </div>
       </header>
 
       {/* Messages */}
@@ -98,6 +115,11 @@ export default function ChatArea() {
       </div>
 
       <ChatInput />
+
+      <PluginManager
+        open={pluginManagerOpen}
+        onClose={() => setPluginManagerOpen(false)}
+      />
     </main>
   );
 }

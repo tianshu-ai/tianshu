@@ -24,6 +24,8 @@ import {
   loadGlobalConfig,
   tenantMiddleware,
 } from "./core/index.js";
+import { moduleMapResolver, PluginRegistry } from "./core/plugins/index.js";
+import { buildPluginsRouter } from "./plugins-routes.js";
 import { attachChatHandler } from "./chat/handler.js";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
@@ -33,6 +35,14 @@ const PORT = Number.parseInt(process.env.PORT ?? "3110", 10);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:5183";
 
 const globalOps = new GlobalOps();
+
+// Plugin registry. The resolver maps `manifest.server.entry` strings
+// to actual server modules. v0 ships an empty map — PR #32 will fill
+// it with the four builtin plugin server modules. Tenant plugins (v1+)
+// will be loaded via dynamic import in the resolver.
+const pluginRegistry = new PluginRegistry({
+  resolver: moduleMapResolver({}),
+});
 
 // Create the dev tenant + dev user on first boot if global config allows.
 const bootstrap = bootstrapDevTenantIfNeeded(globalOps, loadGlobalConfig());
@@ -107,6 +117,14 @@ app.get("/api/models", (req, res) => {
   res.json({ models: list, defaultModel: req.ctx.tenant.config.defaultModel ?? null });
 });
 
+// /api/plugins (GET + PATCH) — see ./plugins-routes.ts.
+//
+// ADR-0003 §8 originally reserved `PATCH /api/plugins/:id` for v1; we
+// ship it in v0 so the bundled Plugin Manager UI can flip
+// enable/disable without asking the user to hand-edit
+// `<tenant>/config.json`.
+app.use("/api", buildPluginsRouter({ registry: pluginRegistry, ops: globalOps }));
+
 const server = createServer(app);
 
 // Chat over WebSocket. Dev mode pins to the bootstrap tenant + user;
@@ -145,6 +163,8 @@ const shutdown = (signal: string) => {
   wss.close();
   server.close(() => {
     globalOps.closePool();
+    // Plugin caches die with the process; nothing to clean up here.
+    void pluginRegistry;
     process.exit(0);
   });
 };

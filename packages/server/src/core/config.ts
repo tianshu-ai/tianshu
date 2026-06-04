@@ -19,9 +19,15 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────
 
+/** Plugin enable/disable map (per ADR-0003 §4). Keys are plugin ids. */
+export type PluginsConfig = Record<string, { enabled?: boolean }>;
+
 /** Fields that BOTH global and tenant configs can set. Tenant wins on conflict. */
 export interface OverridableConfig {
   defaultModel?: string;
+  /** Per-plugin enable/disable. Listed-but-disabled and not-listed are
+   *  distinct: not listed = invisible everywhere. See ADR-0003 §4. */
+  plugins?: PluginsConfig;
   /**
    * Provider catalog. Mirrors the closed-source `tianshu.models.json`
    * format so existing config files transplant cleanly. The shape is
@@ -117,6 +123,7 @@ const TENANT_WHITELIST = new Set<keyof OverridableConfig>([
   "oauth",
   "branding",
   "apiKeys",
+  "plugins",
 ]);
 
 export class TenantConfigForbiddenFieldError extends Error {
@@ -195,6 +202,7 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     oauth: tenant.oauth ?? global.oauth,
     branding: { ...global.branding, ...tenant.branding },
     apiKeys: { ...global.apiKeys, ...tenant.apiKeys },
+    plugins: { ...global.plugins, ...tenant.plugins },
   };
 }
 

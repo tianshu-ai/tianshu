@@ -1,4 +1,4 @@
-import { Bot, Zap, ChevronDown, MessageSquare } from "lucide-react";
+import { Bot, Zap, ChevronDown, Hash } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 
 /**
@@ -15,15 +15,17 @@ import { useChatStore } from "../stores/chat-store";
  *   │     📚 羲和          idle  desc      │
  *   │     🎨 女娲          idle  desc      │
  *   │  ──────────────────                  │
- *   │  Sessions                            │
- *   │   💬 main             (active)       │
+ *   │  Channels                            │
+ *   │   #️⃣ webchat          (active)       │
  *   ├──────────────────────────────────────┤
  *   │  ⚪ user · member · v0.2.0    ▾      │  footer
  *   └──────────────────────────────────────┘
  *
- * Backend doesn't yet expose multi-session, channel bindings, or
- * worker liveness. We render static placeholder rows so the chrome is
- * complete; behaviour ships in later PRs.
+ * The user does not manage sessions — agents control compact / new
+ * conversation themselves (ADR-0001 §5). The list under "Channels"
+ * shows messaging channels (webchat / Lark / Slack / …). Backend
+ * doesn't yet expose channel bindings or worker liveness, so we
+ * render static placeholder rows for now.
  */
 export default function Sidebar() {
   const me = useChatStore((s) => s.me);
@@ -82,19 +84,19 @@ export default function Sidebar() {
 
       <div className="mx-3 my-2 border-b border-gray-800/50" />
 
-      {/* Sessions list — backend exposes only a single active session. */}
+      {/* Channels — webchat is always present; integrations land later. */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
         <div className="px-1 pb-1 pt-2 text-[10px] uppercase tracking-wider text-gray-600">
-          Sessions
+          Channels
         </div>
         <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-gray-800 px-3 py-1.5 text-white">
-          <MessageSquare size={12} className="flex-shrink-0" />
-          <span className="flex-1 truncate text-xs">main</span>
+          <Hash size={12} className="flex-shrink-0" />
+          <span className="flex-1 truncate text-xs">webchat</span>
           <span className="text-[9px] uppercase tracking-wider text-gray-500">active</span>
         </div>
         <p className="px-2 pt-2 text-[10px] leading-relaxed text-gray-600">
-          v0 keeps a single endless conversation per user (ADR-0001 §5).
-          Multi-session navigation lands later.
+          Sessions are managed by the agent, not the user (ADR-0001 §5).
+          Additional messaging channels (Lark / Slack / …) land later.
         </p>
       </nav>
 

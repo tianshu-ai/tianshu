@@ -11,9 +11,15 @@
 
 Tianshu's chat UI has a row of icons in the top bar that toggle
 right-side panels (files / browser / task-board / calendar / usage),
-plus sections in the sidebar (sessions, workers, channels in the
-closed-source predecessor). The closed-source repo wires every one of
-these in by hand inside the React tree.
+plus sections in the sidebar (workers, channels). The closed-source
+predecessor wires every one of these in by hand inside the React
+tree.
+
+> **Note on “sessions”.** Sessions are an internal-only concept in
+> Tianshu (per ADR-0001 §5): the agent decides when to compact and
+> when to start a fresh session, and the user-visible conversation is
+> a single endless stream. There is therefore no `sessions` sidebar
+> section to plug into.
 
 This does not match the project's positioning. Two reasons:
 
@@ -73,14 +79,16 @@ lives at `<tenant>/workspace/_tenant/config/plugins/<id>/`.
 
 ### 2. Always-on bundled surfaces
 
-Two surfaces are part of the chat shell itself, not plugins, and can
-not be uninstalled:
+One surface is part of the chat shell itself, not a plugin, and
+cannot be uninstalled:
 
-- **`new-session` button** in the top bar (creates a fresh session).
 - **`usage` panel** showing token / cost stats for the current tenant.
 
-These ship inside `@tianshu/web` and `@tianshu/server`, hard-coded.
+It ships inside `@tianshu/web` and `@tianshu/server`, hard-coded.
 Anything else is a plugin.
+
+(Sessions are agent-managed, not user-managed — see ADR-0001 §5 —
+so there is no “new session” affordance in the chrome.)
 
 ### 3. Layering & resolution
 
@@ -111,9 +119,10 @@ allow-list):
 - not listed → completely invisible (won't appear in admin UI's
   default view either; must `?show=available` opt-in)
 
-The v0 way to install/uninstall a plugin is "edit `config.json` and
-restart the server". A `PATCH /api/plugins/<id>` API + admin UI
-arrives in v1.
+The v0 way to install/uninstall a plugin is to flip the toggle in
+the bundled **Plugin Manager** modal (top-bar puzzle-piece icon).
+This writes to `<tenant>/config.json` atomically. Hand-editing the
+file + restarting still works for ops use cases.
 
 ### 5. Manifest schema
 
@@ -290,7 +299,18 @@ interface PluginListEntry {
 }
 ```
 
-Read-only in v0. v1 adds `PATCH /api/plugins/:id` for enable/disable.
+v0 ships both endpoints:
+
+```
+GET   /api/plugins             # list
+PATCH /api/plugins/:id         # body: { "enabled": boolean }
+```
+
+The Plugin Manager UI calls `PATCH` to flip enabled state for the
+current tenant. The server persists the change to
+`<tenant>/config.json`, invalidates the tenant's plugin registry
+cache, and re-runs discovery + activation so the new state is live
+for subsequent requests.
 
 ### 9. Activation & broadcast
 

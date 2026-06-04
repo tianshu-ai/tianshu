@@ -163,6 +163,11 @@ export class GlobalOps {
   get poolRef(): DbPool {
     return this.pool;
   }
+
+  /** Resolved TIANSHU_HOME this ops instance is rooted at. */
+  get homeDir(): string {
+    return this.home;
+  }
 }
 
 export {
