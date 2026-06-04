@@ -267,6 +267,53 @@ describe("plugins HTTP routes", () => {
     await request(app).get("/api/plugins/catalog").expect(404);
   });
 
+  it("dispatches plugin contributed routes under /api/p/<id>/...", async () => {
+    writeBuiltinManifest("hello", {
+      id: "hello",
+      version: "1.0.0",
+      displayName: "Hello",
+      server: { entry: "@hello/server" },
+      contributes: { apiRoutes: [{ method: "GET", path: "/say", handler: "hello" }] },
+    });
+    writeTenantConfig(TENANT, { plugins: { hello: { enabled: true } } }, home);
+    const app = buildApp();
+
+    const res = await request(app).get("/api/p/hello/say");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ greeting: "hi" });
+  });
+
+  it("returns 404 when the plugin path doesn't match any contribution", async () => {
+    writeBuiltinManifest("hello", {
+      id: "hello",
+      version: "1.0.0",
+      displayName: "Hello",
+      server: { entry: "@hello/server" },
+      contributes: { apiRoutes: [{ method: "GET", path: "/say", handler: "hello" }] },
+    });
+    writeTenantConfig(TENANT, { plugins: { hello: { enabled: true } } }, home);
+    const app = buildApp();
+
+    const res = await request(app).get("/api/p/hello/missing");
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("plugin_route_not_found");
+  });
+
+  it("returns 404 when the plugin is disabled", async () => {
+    writeBuiltinManifest("hello", {
+      id: "hello",
+      version: "1.0.0",
+      displayName: "Hello",
+      server: { entry: "@hello/server" },
+      contributes: { apiRoutes: [{ method: "GET", path: "/say", handler: "hello" }] },
+    });
+    // not enabled in tenant config
+    const app = buildApp();
+
+    const res = await request(app).get("/api/p/hello/say");
+    expect(res.status).toBe(404);
+  });
+
   it("PATCH allows disabling an unknown plugin (prune stale entries)", async () => {
     // Pre-seed a stale entry in tenant config that has no manifest.
     writeTenantConfig(
