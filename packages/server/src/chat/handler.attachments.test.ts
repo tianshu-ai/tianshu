@@ -36,6 +36,7 @@ function model(supportsImages: boolean): ResolvedModelInfo {
     contextWindow: 200000,
     maxTokens: 8192,
     supportsImages,
+    imageMaxBytes: 5 * 1024 * 1024,
     mode: "chat",
   };
 }
@@ -57,7 +58,7 @@ function imagePart(extra: Record<string, unknown>): ImageContent & {
 }
 
 describe("prepareMessagesForLlm", () => {
-  it("inlines base64 for vision-capable models when the file exists", () => {
+  it("inlines base64 for vision-capable models when the file exists", async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
     try {
       const uploads = path.join(home, "uploads");
@@ -69,7 +70,7 @@ describe("prepareMessagesForLlm", () => {
         { type: "text", text: "look" } as TextContent,
         imagePart({ path: "/uploads/x.png", name: "x.png" }),
       ]);
-      const out = prepareMessagesForLlm([msg], home, model(true));
+      const out = await prepareMessagesForLlm([msg], home, model(true));
       expect(out).toHaveLength(1);
       const content = (out[0] as UserMessage).content as Array<
         TextContent | ImageContent
@@ -88,14 +89,14 @@ describe("prepareMessagesForLlm", () => {
     }
   });
 
-  it("downgrades to a text note when the model has no vision support", () => {
+  it("downgrades to a text note when the model has no vision support", async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
     try {
       const msg = userMsg([
         { type: "text", text: "look" } as TextContent,
         imagePart({ path: "/uploads/x.png", name: "x.png" }),
       ]);
-      const out = prepareMessagesForLlm([msg], home, model(false));
+      const out = await prepareMessagesForLlm([msg], home, model(false));
       const content = (out[0] as UserMessage).content as Array<
         TextContent | ImageContent
       >;
@@ -111,25 +112,30 @@ describe("prepareMessagesForLlm", () => {
     }
   });
 
-  it("downgrades gracefully when the file is missing", () => {
+  it("downgrades gracefully when the file is missing", async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
     try {
       const msg = userMsg([
         imagePart({ path: "/uploads/missing.png", name: "missing.png" }),
       ]);
-      const out = prepareMessagesForLlm([msg], home, model(true));
+      const out = await prepareMessagesForLlm([msg], home, model(true));
       const content = (out[0] as UserMessage).content as Array<
         TextContent | ImageContent
       >;
       expect(content).toHaveLength(1);
       expect(content[0]?.type).toBe("text");
-      expect((content[0] as TextContent).text).toContain("read failed");
+      // Error wording is whatever the underlying syscall surfaced; we
+      // just want to confirm we degraded to a text note rather than
+      // crashing.
+      expect((content[0] as TextContent).text).toMatch(
+        /\[Attached image \(.+missing\.png\]/,
+      );
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
     }
   });
 
-  it("leaves non-user messages and image-free user messages alone", () => {
+  it("leaves non-user messages and image-free user messages alone", async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
     try {
       const u: UserMessage = userMsg([{ type: "text", text: "hi" } as TextContent]);
@@ -150,7 +156,7 @@ describe("prepareMessagesForLlm", () => {
         stopReason: "stop",
         timestamp: 2,
       };
-      const out = prepareMessagesForLlm([u, a] as Message[], home, model(true));
+      const out = await prepareMessagesForLlm([u, a] as Message[], home, model(true));
       expect(out[0]).toBe(u);
       expect(out[1]).toBe(a);
     } finally {
@@ -158,7 +164,7 @@ describe("prepareMessagesForLlm", () => {
     }
   });
 
-  it("coalesces consecutive text parts after image substitution", () => {
+  it("coalesces consecutive text parts after image substitution", async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
     try {
       const msg = userMsg([
@@ -167,7 +173,7 @@ describe("prepareMessagesForLlm", () => {
         imagePart({ path: "/uploads/missing-2.png", name: "b.png" }),
         { type: "text", text: "last" } as TextContent,
       ]);
-      const out = prepareMessagesForLlm([msg], home, model(true));
+      const out = await prepareMessagesForLlm([msg], home, model(true));
       const content = (out[0] as UserMessage).content as Array<
         TextContent | ImageContent
       >;

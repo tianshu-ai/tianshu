@@ -27,6 +27,8 @@ export interface ResolvedModelInfo {
   contextWindow: number;
   maxTokens: number;
   supportsImages: boolean;
+  /** Per-image byte cap before we hand it to the provider. */
+  imageMaxBytes: number;
   mode: "chat" | "image-gen";
   compat?: Record<string, unknown>;
   /** Raw apiKey string from config (may still contain ${VAR} placeholders). */
@@ -38,6 +40,23 @@ const DEFAULT_API_BY_PROVIDER: Record<string, Api> = {
   openai: "openai-completions",
   google: "google-generative-ai",
 };
+
+// Provider per-image byte caps. Anthropic publishes 5 MB; Gemini and
+// OpenAI accept up to 20 MB but recommend smaller. We pick the
+// vendor's published hard limit so a config-less setup just works.
+const DEFAULT_IMAGE_MAX_BYTES_BY_PROVIDER: Record<string, number> = {
+  anthropic: 5 * 1024 * 1024,
+  openai: 20 * 1024 * 1024,
+  google: 20 * 1024 * 1024,
+};
+const DEFAULT_IMAGE_MAX_BYTES_FALLBACK = 5 * 1024 * 1024;
+
+function defaultImageMaxBytes(providerId: string): number {
+  return (
+    DEFAULT_IMAGE_MAX_BYTES_BY_PROVIDER[providerId] ??
+    DEFAULT_IMAGE_MAX_BYTES_FALLBACK
+  );
+}
 
 /** Walk a ResolvedConfig and emit one `ResolvedModelInfo` per (provider, model). */
 export function listModels(config: ResolvedConfig): ResolvedModelInfo[] {
@@ -129,6 +148,7 @@ function toModelInfo(
     contextWindow: entry.contextWindow ?? 128000,
     maxTokens: entry.maxTokens ?? 4096,
     supportsImages: entry.supportsImages ?? true,
+    imageMaxBytes: entry.imageMaxBytes ?? defaultImageMaxBytes(providerId),
     mode: entry.mode === "image-gen" ? "image-gen" : "chat",
     compat: entry.compat,
     apiKeyTemplate: provider.apiKey,
