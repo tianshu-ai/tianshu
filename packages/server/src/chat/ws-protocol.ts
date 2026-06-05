@@ -86,6 +86,30 @@ export type ServerMsg =
       durationMs: number;
     };
 
+/**
+ * Display-only metadata for an assistant message. Populated by
+ * `toWire()` from the persisted `AssistantMessage` (pi-ai records
+ * model + usage on every turn). The chat shell renders these in a
+ * tiny line under the bubble — mirrors the closed-source predecessor
+ * (`packages/web/src/components/MessageBubble.tsx` MessageMeta).
+ *
+ * `contextWindow` lets the UI compute “12% ctx” without having to
+ * call the model registry itself; we resolve it server-side from the
+ * tenant config.
+ */
+export interface WireMessageMeta {
+  /** Provider/model id as recorded by pi-ai (e.g. "claude-sonnet-4-6"). */
+  model?: string;
+  usage?: {
+    input: number;
+    output: number;
+    totalTokens: number;
+  };
+  /** Active model's context window at the time we serialised, so the
+   *  client doesn't need to look it up. */
+  contextWindow?: number;
+}
+
 /** Single tool call inside an assistant message. */
 export interface WireToolCall {
   id: string;
@@ -120,10 +144,22 @@ export interface WireMessage {
   /** Files attached to this user message (path + mimeType only — the
    *  raw bytes stay on disk). The UI renders thumbnails / chips. */
   attachments?: WireAttachment[];
+  /** Display-only metadata for assistant messages (model, token
+   *  usage, context window). Undefined for user / tool rows. */
+  meta?: WireMessageMeta;
   createdAt: number;
 }
 
-export function toWire(m: ChatMessage): WireMessage {
+/**
+ * Optional helper a caller can supply so we can stamp
+ * `contextWindow` onto the meta of an assistant message. Stays
+ * optional because tests and the legacy plain-text path don't have
+ * a tenant config in scope. */
+export interface ToWireOpts {
+  contextWindowFor?: (modelId: string) => number | undefined;
+}
+
+export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
   const base = {
     id: m.id,
     sessionId: m.sessionId,
@@ -147,10 +183,12 @@ export function toWire(m: ChatMessage): WireMessage {
           name: String(c.name ?? ""),
           arguments: (c.arguments as Record<string, unknown>) ?? {},
         }));
+      const meta = extractAssistantMeta(obj, opts);
       return {
         ...base,
         text,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        meta,
       };
     }
     if (obj.role === "toolResult") {
@@ -225,6 +263,55 @@ export function toWire(m: ChatMessage): WireMessage {
   }
   // Legacy: content is a bare string.
   return { ...base, text: m.content };
+}
+
+/** Pull display-only meta off a parsed pi-ai AssistantMessage.
+ *  Returns undefined when nothing useful is present (legacy rows
+ *  without a usage block, etc.). */
+function extractAssistantMeta(
+  obj: Record<string, unknown>,
+  opts: ToWireOpts,
+): WireMessageMeta | undefined {
+  const model =
+    typeof obj.model === "string" && obj.model.length > 0
+      ? (obj.model as string)
+      : undefined;
+  const provider =
+    typeof obj.provider === "string" && obj.provider.length > 0
+      ? (obj.provider as string)
+      : undefined;
+  let usage: WireMessageMeta["usage"];
+  const u = obj.usage as Record<string, unknown> | undefined;
+  if (u && typeof u === "object") {
+    const input = numericField(u, "input");
+    const output = numericField(u, "output");
+    const totalTokens = numericField(u, "totalTokens");
+    if (input != null || output != null || totalTokens != null) {
+      usage = {
+        input: input ?? 0,
+        output: output ?? 0,
+        totalTokens: totalTokens ?? (input ?? 0) + (output ?? 0),
+      };
+    }
+  }
+  if (!model && !usage) return undefined;
+  // pi-ai stores `model` as the bare model id and `provider` as the
+  // provider id; tenant config keys models by `<provider>/<model>`.
+  // Compose the lookup id when both are present so we don't have to
+  // teach `contextWindowFor` about that split.
+  const fullId = provider && model ? `${provider}/${model}` : model;
+  const contextWindow = fullId
+    ? opts.contextWindowFor?.(fullId) ?? undefined
+    : undefined;
+  return { model, usage, contextWindow };
+}
+
+function numericField(
+  obj: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const v = obj[key];
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
 function tryParse(s: string): unknown {

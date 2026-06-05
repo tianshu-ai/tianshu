@@ -25,6 +25,21 @@ export interface WireAttachment {
   size?: number;
 }
 
+/** Display-only metadata stamped on assistant messages. The chat
+ *  shell renders these as a small line under the bubble (mirrors the
+ *  closed-source predecessor). */
+export interface WireMessageMeta {
+  /** Provider/model id (e.g. "claude-sonnet-4-6"). */
+  model?: string;
+  usage?: {
+    input: number;
+    output: number;
+    totalTokens: number;
+  };
+  /** Active model's context window so the client can show "X% ctx". */
+  contextWindow?: number;
+}
+
 export interface WireMessage {
   id: string;
   sessionId: string;
@@ -38,5 +53,8 @@ export interface WireMessage {
   /** Files attached to this user message (the bytes themselves stay
    *  on disk; this is metadata for chip rendering). */
   attachments?: WireAttachment[];
+  /** Assistant-only display metadata (model, token usage, context
+   *  window). Undefined for user/tool rows. */
+  meta?: WireMessageMeta;
   createdAt: number;
 }

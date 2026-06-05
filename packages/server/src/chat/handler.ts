@@ -58,6 +58,7 @@ import {
   toWire,
   type ClientMsg,
   type ServerMsg,
+  type ToWireOpts,
   type WireAttachment,
 } from "./ws-protocol.js";
 import {
@@ -100,7 +101,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         send({ type: "connected", tenantId: ctx.tenantId, userId });
         return;
       case "history": {
-        const messages = listMessagesForUser(ctx, userId).map(toWire);
+        const opts = makeWireOpts(ctx);
+        const messages = listMessagesForUser(ctx, userId).map((m) =>
+          toWire(m, opts),
+        );
         send({ type: "history", messages });
         return;
       }
@@ -169,6 +173,7 @@ interface RunPromptArgs {
 
 async function runPrompt(args: RunPromptArgs): Promise<void> {
   const { ctx, userId, send, content, modelId, attachments, signal } = args;
+  const wireOpts = makeWireOpts(ctx);
 
   let session = ensureActiveSession(ctx, userId);
 
@@ -208,7 +213,7 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   // them via a brief text note in the message body — it then
   // calls `read_file` if it actually wants the contents.
   const userMsg = persistUserPrompt(ctx, session, content, attachments);
-  send({ type: "message_added", message: toWire(userMsg) });
+  send({ type: "message_added", message: toWire(userMsg, wireOpts) });
 
   send({ type: "stream_start" });
 
@@ -258,7 +263,7 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
 
       // Surface the assistant turn now so the UI can show the
       // tool-call chips before any results land.
-      send({ type: "message_added", message: toWire(assistantRow) });
+      send({ type: "message_added", message: toWire(assistantRow, wireOpts) });
 
       for (const call of toolCalls) {
         send({
@@ -286,14 +291,14 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
           ok: result.ok,
           text: summary,
         });
-        send({ type: "message_added", message: toWire(toolRow) });
+        send({ type: "message_added", message: toWire(toolRow, wireOpts) });
         messages.push(toolResult);
       }
       continue;
     }
 
     // stopReason: stop | length — done.
-    send({ type: "stream_end", message: toWire(assistantRow) });
+    send({ type: "stream_end", message: toWire(assistantRow, wireOpts) });
     return;
   }
 
@@ -348,6 +353,18 @@ async function runOneTool(toolset: Toolset, call: ToolCall): Promise<AnyToolResu
 
 function describeResult(r: AnyToolResult): string {
   return r.text;
+}
+
+/** Build a `ToWireOpts` bound to the current tenant config. The
+ *  resolver lets `toWire` stamp `meta.contextWindow` on every
+ *  assistant row without each caller having to do the lookup. */
+function makeWireOpts(ctx: TenantContext): ToWireOpts {
+  return {
+    contextWindowFor: (modelId: string) => {
+      const info = findModel(ctx.config, modelId);
+      return info?.contextWindow;
+    },
+  };
 }
 
 // ─── compaction helpers ───────────────────────────────────────────────
@@ -471,7 +488,9 @@ async function runManualCompact(args: {
     });
     // Push a refreshed history so the UI swaps to the new session
     // immediately (the fork ack + summary stub plus any kept tail).
-    const wire = listMessagesForUser(ctx, userId).map(toWire);
+    const wire = listMessagesForUser(ctx, userId).map((m) =>
+      toWire(m, makeWireOpts(ctx)),
+    );
     send({ type: "history", messages: wire });
   } catch (err) {
     if (err instanceof CompactSkippedError) {
