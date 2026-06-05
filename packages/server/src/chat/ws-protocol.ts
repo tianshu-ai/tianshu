@@ -168,34 +168,44 @@ export function toWire(m: ChatMessage): WireMessage {
       // `attachments[]` already conveys what's attached. The DB still
       // carries the marker for the agent's pi-ai context.
       const text = stripAgentAttachmentMarkers(rawText);
-      const attachments = parts
-        .filter((c) => c.type === "image")
-        .map((c) => ({
-          path: typeof c.path === "string" ? c.path : "",
-          mimeType:
-            typeof c.mimeType === "string" ? c.mimeType : "application/octet-stream",
-          name: typeof c.name === "string" ? c.name : undefined,
-          size: typeof c.size === "number" ? c.size : undefined,
-        }))
-        .filter((a) => a.path.length > 0);
-      // Attachments persisted as a sibling field (non-image files
-      // recorded by the server during prompt handling).
+      // Attachment metadata: prefer the sibling `attachments` field
+      // (server-set by persistUserPrompt for every attachment, image
+      // or not). Fall back to deriving it from ImageContent parts so
+      // legacy rows written before that field existed still render.
       const stored = Array.isArray(obj.attachments)
-        ? (obj.attachments as Array<Record<string, unknown>>).map((a) => ({
-            path: typeof a.path === "string" ? a.path : "",
-            mimeType:
-              typeof a.mimeType === "string"
-                ? a.mimeType
-                : "application/octet-stream",
-            name: typeof a.name === "string" ? a.name : undefined,
-            size: typeof a.size === "number" ? a.size : undefined,
-          })).filter((a) => a.path.length > 0)
+        ? (obj.attachments as Array<Record<string, unknown>>)
+            .map((a) => ({
+              path: typeof a.path === "string" ? a.path : "",
+              mimeType:
+                typeof a.mimeType === "string"
+                  ? a.mimeType
+                  : "application/octet-stream",
+              name: typeof a.name === "string" ? a.name : undefined,
+              size: typeof a.size === "number" ? a.size : undefined,
+            }))
+            .filter((a) => a.path.length > 0)
         : [];
-      const merged = [...attachments, ...stored];
+      const fromImageParts =
+        stored.length === 0
+          ? parts
+              .filter((c) => c.type === "image")
+              .map((c) => ({
+                path: typeof c.path === "string" ? c.path : "",
+                mimeType:
+                  typeof c.mimeType === "string"
+                    ? c.mimeType
+                    : "application/octet-stream",
+                name: typeof c.name === "string" ? c.name : undefined,
+                size: typeof c.size === "number" ? c.size : undefined,
+              }))
+              .filter((a) => a.path.length > 0)
+          : [];
+      const attachments =
+        stored.length > 0 ? stored : fromImageParts;
       return {
         ...base,
         text,
-        attachments: merged.length > 0 ? merged : undefined,
+        attachments: attachments.length > 0 ? attachments : undefined,
       };
     }
   }

@@ -41,7 +41,9 @@ describe("toWire", () => {
     });
   });
 
-  it("structured user message: image content → wire attachments", () => {
+  it("legacy row: ImageContent without sibling `attachments` still surfaces", () => {
+    // Rows persisted before the sibling-attachments field landed
+    // only carry image metadata on the ImageContent parts.
     const stored = JSON.stringify({
       role: "user",
       content: [
@@ -163,27 +165,34 @@ describe("toWire", () => {
     expect(w.text).toBe("i wrote [TODO] earlier");
   });
 
-  it("structured user message: image part + sibling field both surface", () => {
+  it("prefers the sibling attachments field even when image parts duplicate it", () => {
+    // persistUserPrompt always records the full attachments list as
+    // a sibling field. Image parts in `content` carry the SAME
+    // image again so the LLM sees it as multimodal content. The
+    // wire layer must NOT report the image twice — the user only
+    // attached one file.
     const stored = JSON.stringify({
       role: "user",
       content: [
-        { type: "text", text: "two attachments" },
+        { type: "text", text: "this one" },
         {
           type: "image",
           data: "",
           mimeType: "image/png",
           path: "/uploads/x.png",
+          name: "x.png",
         },
       ],
       attachments: [
-        { path: "/uploads/data.csv", mimeType: "text/csv" },
+        { path: "/uploads/x.png", mimeType: "image/png", name: "x.png", size: 9 },
       ],
       timestamp: 1,
     });
     const w = toWire(row("user", stored));
-    expect(w.attachments).toHaveLength(2);
-    const paths = w.attachments!.map((a) => a.path);
-    expect(paths).toContain("/uploads/x.png");
-    expect(paths).toContain("/uploads/data.csv");
+    expect(w.attachments).toHaveLength(1);
+    expect(w.attachments![0]!.path).toBe("/uploads/x.png");
+    // size came from the sibling field (the source of truth), not
+    // from the ImageContent (which doesn't carry size).
+    expect(w.attachments![0]!.size).toBe(9);
   });
 });
