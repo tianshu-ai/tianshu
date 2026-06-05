@@ -3,6 +3,7 @@
 | Status | Accepted |
 | --- | --- |
 | Date | 2026-06-03 |
+| Updated | 2026-06-05 — projects moved from tenant-level to user-level (see Revision 2026-06-05) |
 | Author | Yu Yu |
 | Supersedes | — |
 
@@ -54,10 +55,10 @@ $TIANSHU_HOME/                          # default ~/.tianshu, env-overridable
     │       ├── _tenant/                # tenant-shared (the team's stuff)
     │       │   ├── SOUL.md             # team agent persona
     │       │   ├── MEMORY.md           # team long-term memory
-    │       │   ├── config/skills/      # team-shared skills
-    │       │   └── projects/<slug>/    # ALL projects live here (tenant-level)
+    │       │   └── config/skills/      # team-shared skills / orchestrator overrides
     │       └── users/<userId>/         # private to one user
     │           ├── USER.md
+    │           ├── projects/<slug>/    # ALL projects live here (user-level)
     │           ├── uploads/
     │           ├── tmp/
     │           └── trash/
@@ -67,14 +68,19 @@ $TIANSHU_HOME/                          # default ~/.tianshu, env-overridable
 
 ### 3. Workspace conventions
 
-- **All projects are tenant-level.** No private projects per user.
-  Rationale: this is a team product; projects are how teams organise
-  work, and they should be visible by default.
-- **`uploads/` `tmp/` `trash/` only exist under `users/<userId>/`.**
-  Rationale: uploads frequently contain credentials or sensitive
-  documents — default-private is safer than default-shared.
-- **`_tenant/` has no `tmp/` or `trash/`.** Shared space should not
-  accumulate temporary garbage by accident.
+- **All projects are user-level** (`users/<userId>/projects/<slug>/`).
+  Rationale: most v0 work is single-user; cross-user collaboration
+  happens through workers (which carry their own ACL via
+  `task.owner_user_id`) and a future explicit share mechanism, not by
+  default-shared filesystem visibility. This keeps day-0 isolation
+  simple and matches the per-user `cwd` model.
+- **`uploads/` `tmp/` `trash/` `projects/` only exist under
+  `users/<userId>/`.** Rationale: uploads frequently contain
+  credentials or sensitive documents — default-private is safer than
+  default-shared.
+- **`_tenant/` has no `tmp/`, `trash/`, or `projects/`.** Shared space
+  is for team-level config and persona only; it should not accumulate
+  user state.
 - **`SOUL.md` and `MEMORY.md` only exist at `_tenant/`.** Per-user
   personality lives in `users/<userId>/USER.md`.
 - **Reserved `_` prefix.** `_tenant`, `_shared`, `_archive`, … are
@@ -86,12 +92,12 @@ $TIANSHU_HOME/                          # default ~/.tianshu, env-overridable
   share that sandbox.
 - Mount: `<tenant>/workspace/` → `/workspace/`.
 - Default cwd for a user-bound session:
-  - If session is bound to a project → `/workspace/_tenant/projects/<slug>/`
+  - If session is bound to a project → `/workspace/users/<userId>/projects/<slug>/`
   - Otherwise → `/workspace/users/<userId>/`
 - **Explicit trade-off:** within a tenant, users do not have
   filesystem-level hard isolation. Soft isolation is enforced via
   default cwd + the system prompt. A teammate _can_ technically read
-  another teammate's `users/<otherUserId>/uploads/` if they go looking.
+  another teammate's `users/<otherUserId>/...` if they go looking.
   This matches the "team is a single trust domain" semantics. Users
   who need hard isolation must be in separate tenants.
 
@@ -170,9 +176,14 @@ what this ADR's schema must support:
   worker code runs in PR #20 — avoids a later migration.
 - WebSocket protocol reserves a `subscribe_to_worker` message type
   so a user can observe a running worker live.
-- Worker access to user `uploads/` is by **copy at dispatch time**
-  (see ADR-0002 §9); workers never see paths under
-  `/workspace/users/`.
+- Worker pool is **tenant-scoped** (one shared pool per tenant — for
+  capacity / quota / billing). Each task runs with the cwd of the
+  user who created it, i.e.
+  `/workspace/users/<task.owner_user_id>/projects/<task.project_slug>/`.
+  Workers see only the task owner's home; they do not cross to other
+  users in the same tenant. Inputs from `users/<owner>/uploads/` are
+  copied to the task's `inputs/<task-id>/` subdirectory at dispatch
+  time (see ADR-0002 §9).
 
 ### 7. Configuration
 
@@ -261,8 +272,32 @@ Out of scope for PR #20 (tracked separately):
 - Compact / `search_history` logic.
 - Worker pool.
 
+## Revision 2026-06-05 — projects moved to user level
+
+Original ADR placed projects under `_tenant/projects/<slug>/` ("all
+projects are tenant-level"). Reverted: projects now live under
+`users/<userId>/projects/<slug>/`. Drivers:
+
+- **Day-0 simplicity.** Most v0 work is single-user. Default-shared
+  filesystem visibility added cross-cutting questions (whose `tmp/`,
+  whose `inputs/`, whose ACL?) before any sharing UX existed.
+- **Worker model preserved.** Workers remain a tenant-scoped pool
+  (capacity / quota), but each task runs in the owner's home; this
+  is the same data flow as before, just rooted under `users/<owner>/`
+  instead of `_tenant/`.
+- **No DB schema change required.** `sessions.project_slug` and
+  `tasks.{owner_user_id, project_slug}` are unchanged — only the path
+  on disk changed.
+
+Follow-up (not in this revision):
+
+- Project sharing across users in a tenant. Likely a `project_acl`
+  table or symlink farm under `_tenant/shared/`. Not needed for v0.
+
 ## References
 
-- `memory/2026-06-03.md` (workspace-internal — Yu's session log).
+- `memory/2026-06-03.md` and `memory/2026-06-05.md`
+  (workspace-internal — Yu's session logs).
 - Old closed-source repo (`/Users/yuyu/git/tianshu`) — the
-  `workspace-template/` shape and tool docstrings (`/workspace/project/<slug>/` etc.) inform the team-side conventions.
+  `workspace-template/` shape and tool docstrings
+  (`/workspace/project/<slug>/` etc.) informed both conventions.

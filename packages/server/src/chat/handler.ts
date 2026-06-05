@@ -157,7 +157,7 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
     if (signal.aborted) return;
 
     const piContext: Context = {
-      systemPrompt: defaultSystemPrompt(ctx),
+      systemPrompt: defaultSystemPrompt(ctx, userId),
       messages,
       tools: toolset.schemas,
     };
@@ -276,16 +276,48 @@ function describeResult(r: AnyToolResult): string {
 
 
 
-function defaultSystemPrompt(ctx: TenantContext): string {
+/**
+ * Build the system prompt the orchestrator runs with.
+ *
+ * The prompt encodes the workspace scaffold defined in ADR-0001 so the
+ * agent has a stable mental model of where things live:
+ *
+ *   - Default cwd is the user's per-tenant home (`users/<userId>/`).
+ *   - Projects, uploads, scratch and trash all live under that home.
+ *   - The shared `_tenant/` area is read-only by convention (team
+ *     persona / memory / config).
+ *
+ * Tools currently expose a path model rooted at the user's home, so
+ * paths in this prompt are written relative to `./` (= cwd) for
+ * exactly that reason. When sandbox mounts land (PR #22+) the absolute
+ * `/workspace/...` view will become real and we'll surface it here.
+ *
+ * Worker / task vocabulary is intentionally absent: workers don't ship
+ * until PR #23+, and dangling references just let the model fabricate.
+ */
+export function defaultSystemPrompt(ctx: TenantContext, userId: string): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
   return [
     `You are ${brand}, an open-source AI assistant.`,
-    `Tenant: "${ctx.tenantId}".`,
+    `Tenant: "${ctx.tenantId}". User: "${userId}".`,
     ``,
-    `You have access to the user's workspace through five filesystem tools:`,
-    `  list_dir, read_file, write_file, edit_file, glob.`,
-    `Paths are relative to the workspace root ("/" = root). The workspace`,
-    `is private to the current user; you cannot reach files outside it.`,
+    `WORKSPACE LAYOUT`,
+    `Your default working directory is the user's private home in this tenant.`,
+    `Filesystem tools (list_dir, read_file, write_file, edit_file, glob) operate`,
+    `relative to this home ("/" = home).`,
+    ``,
+    `Personal directories (use freely):`,
+    `  ./projects/<slug>/   active work; reports, code, deliverables go here.`,
+    `  ./uploads/           files the user uploaded for you to look at.`,
+    `  ./tmp/               scratch space; clean up after yourself.`,
+    `  ./trash/             soft-delete; move things here instead of removing them.`,
+    `  ./USER.md            personal preferences (read on demand).`,
+    ``,
+    `Conventions:`,
+    `  - Deliverables go to ./projects/<slug>/, never the home root.`,
+    `  - When the user uploads a file, expect it under ./uploads/.`,
+    `  - Don't leave scratch artefacts in ./projects/ or the root — use ./tmp/.`,
+    `  - Other users' homes in this tenant are off-limits; you cannot reach them.`,
     ``,
     `Reply concisely. When you make changes, briefly say what you changed.`,
   ].join("\n");
