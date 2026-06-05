@@ -236,7 +236,7 @@ const plugin: PluginServerModule = {
         // in time.
         fs.mkdirSync(uploadsDir, { recursive: true });
 
-        const finalAbs = pickNonClashingPath(uploadsDir, safeName);
+        const finalAbs = stampWithTimestamp(uploadsDir, safeName);
         // Belt-and-braces: refuse if the resolution somehow escaped.
         if (!finalAbs.startsWith(uploadsDir + path.sep)) {
           res.status(400).json({ error: "bad_path" });
@@ -391,21 +391,48 @@ export function sanitiseFilename(input: string): string {
 }
 
 /**
- * Resolve a file path inside `dir` that does not collide with an
- * existing file. Suffix strategy: `name.ext`, `name-1.ext`,
- * `name-2.ext`, … We give up after 999 attempts to avoid
- * pathological loops and append a timestamp.
+ * Stamp a filename with the current local time so every upload
+ * gets a unique, human-readable name without overwriting prior
+ * uploads.
+ *
+ *   data.csv      → data-20260605-220900.csv
+ *   照片.png       → 照片-20260605-220900.png
+ *   no-extension  → no-extension-20260605-220900
+ *
+ * Rationale (vs auto-incremented `-1`/`-2` suffixes):
+ *   - `data-*.csv` files cluster naturally in any file listing.
+ *   - The path is stable: once handed out, it never changes meaning.
+ *     Agents that quoted the path in earlier turns can still find
+ *     the file.
+ *   - Server clock is the single source of truth, so two browsers
+ *     uploading the same name don't race-overwrite.
+ *
+ * Two uploads landing inside the same second still get a milliseconds
+ * suffix tacked on (`...-220900-123.csv`); we don't keep retrying
+ * names because the timestamp is already deterministic per call.
  */
-export function pickNonClashingPath(dir: string, name: string): string {
+export function stampWithTimestamp(
+  dir: string,
+  name: string,
+  now: Date = new Date(),
+): string {
   const ext = path.extname(name);
   const stem = name.slice(0, name.length - ext.length);
-  let candidate = path.join(dir, name);
+  const stamp = formatStamp(now);
+  let candidate = path.join(dir, `${stem}-${stamp}${ext}`);
   if (!fs.existsSync(candidate)) return candidate;
-  for (let i = 1; i <= 999; i++) {
-    candidate = path.join(dir, `${stem}-${i}${ext}`);
-    if (!fs.existsSync(candidate)) return candidate;
-  }
-  return path.join(dir, `${stem}-${Date.now()}${ext}`);
+  // Same-second collision — reach for milliseconds.
+  const ms = now.getMilliseconds().toString().padStart(3, "0");
+  candidate = path.join(dir, `${stem}-${stamp}-${ms}${ext}`);
+  return candidate;
+}
+
+function formatStamp(d: Date): string {
+  const pad = (n: number, w = 2) => n.toString().padStart(w, "0");
+  return (
+    `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}` +
+    `-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`
+  );
 }
 
 /**

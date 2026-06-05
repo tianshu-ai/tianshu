@@ -9,7 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
 import type { PluginContext, PluginServerExports } from "@tianshu/plugin-sdk";
-import filesPlugin, { sanitiseFilename, pickNonClashingPath } from "./server.js";
+import filesPlugin, { sanitiseFilename, stampWithTimestamp } from "./server.js";
 
 interface MockRes {
   statusCode: number;
@@ -336,21 +336,31 @@ describe("sanitiseFilename", () => {
   });
 });
 
-describe("pickNonClashingPath", () => {
-  it("returns the candidate as-is when the path is free", () => {
-    expect(pickNonClashingPath(userHome, "fresh.txt")).toBe(
-      path.join(userHome, "fresh.txt"),
+describe("stampWithTimestamp", () => {
+  // Use a fixed Date so the test asserts the format exactly.
+  const fixed = new Date(2026, 5, 5, 22, 9, 0, 0); // 2026-06-05 22:09:00 local
+
+  it("appends a YYYYMMDD-HHMMSS stamp before the extension", () => {
+    expect(stampWithTimestamp(userHome, "data.csv", fixed)).toBe(
+      path.join(userHome, "data-20260605-220900.csv"),
+    );
+    expect(stampWithTimestamp(userHome, "照片.png", fixed)).toBe(
+      path.join(userHome, "照片-20260605-220900.png"),
     );
   });
 
-  it("appends -1, -2, … when prior names exist", () => {
-    fs.writeFileSync(path.join(userHome, "x.txt"), "");
-    expect(pickNonClashingPath(userHome, "x.txt")).toBe(
-      path.join(userHome, "x-1.txt"),
+  it("handles names without an extension", () => {
+    expect(stampWithTimestamp(userHome, "README", fixed)).toBe(
+      path.join(userHome, "README-20260605-220900"),
     );
-    fs.writeFileSync(path.join(userHome, "x-1.txt"), "");
-    expect(pickNonClashingPath(userHome, "x.txt")).toBe(
-      path.join(userHome, "x-2.txt"),
+  });
+
+  it("falls back to a millisecond suffix when the stamped name already exists", () => {
+    const stamped = path.join(userHome, "x-20260605-220900.txt");
+    fs.writeFileSync(stamped, "first");
+    const same = new Date(2026, 5, 5, 22, 9, 0, 123);
+    expect(stampWithTimestamp(userHome, "x.txt", same)).toBe(
+      path.join(userHome, "x-20260605-220900-123.txt"),
     );
   });
 });
@@ -368,7 +378,7 @@ describe("files plugin: upload", () => {
     return stream;
   }
 
-  it("writes the file under uploads/ and returns its workspace path", async () => {
+  it("writes the file under uploads/ with a timestamp-stamped name", async () => {
     const res = makeRes();
     const body = Buffer.from("hello, world\n");
     await exports_.routes!.upload(
@@ -376,30 +386,43 @@ describe("files plugin: upload", () => {
       res as never,
     );
     expect(res.statusCode).toBe(200);
-    expect(res.body).toEqual({ path: "/uploads/note.txt", size: body.length });
-    const written = fs.readFileSync(
-      path.join(userHome, "uploads", "note.txt"),
+    const returnedPath = (res.body as { path: string }).path;
+    expect(returnedPath).toMatch(/^\/uploads\/note-\d{8}-\d{6}\.txt$/);
+    expect(fs.readFileSync(
+      path.join(userHome, returnedPath.replace(/^\//, "")),
       "utf8",
-    );
-    expect(written).toBe("hello, world\n");
+    )).toBe("hello, world\n");
   });
 
-  it("auto-suffixes colliding filenames", async () => {
-    const uploadsDir = path.join(userHome, "uploads");
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    fs.writeFileSync(path.join(uploadsDir, "x.txt"), "old");
-
-    const res = makeRes();
+  it("never overwrites a prior upload with the same source name", async () => {
+    const res1 = makeRes();
     await exports_.routes!.upload(
-      fakeUploadReq(encodeURIComponent("x.txt"), Buffer.from("new")) as never,
-      res as never,
+      fakeUploadReq(encodeURIComponent("x.txt"), Buffer.from("first")) as never,
+      res1 as never,
     );
-    expect(res.statusCode).toBe(200);
-    expect((res.body as { path: string }).path).toBe("/uploads/x-1.txt");
-    expect(fs.readFileSync(path.join(uploadsDir, "x.txt"), "utf8")).toBe("old");
-    expect(fs.readFileSync(path.join(uploadsDir, "x-1.txt"), "utf8")).toBe(
-      "new",
+    expect(res1.statusCode).toBe(200);
+
+    // Wait ≥ 1s so the second upload's stamp differs (we test
+    // human-friendly per-second precision; same-second is covered
+    // separately by the millisecond-fallback unit test above).
+    await new Promise((r) => setTimeout(r, 1100));
+
+    const res2 = makeRes();
+    await exports_.routes!.upload(
+      fakeUploadReq(encodeURIComponent("x.txt"), Buffer.from("second")) as never,
+      res2 as never,
     );
+    expect(res2.statusCode).toBe(200);
+
+    const path1 = (res1.body as { path: string }).path;
+    const path2 = (res2.body as { path: string }).path;
+    expect(path1).not.toBe(path2);
+    expect(
+      fs.readFileSync(path.join(userHome, path1.replace(/^\//, "")), "utf8"),
+    ).toBe("first");
+    expect(
+      fs.readFileSync(path.join(userHome, path2.replace(/^\//, "")), "utf8"),
+    ).toBe("second");
   });
 
   it("rejects requests without an X-Filename header", async () => {
@@ -412,7 +435,7 @@ describe("files plugin: upload", () => {
     expect(res.body).toMatchObject({ error: "missing_filename" });
   });
 
-  it("sanitises path-traversal filenames down to a basename", async () => {
+  it("sanitises path-traversal filenames down to a stamped basename", async () => {
     const res = makeRes();
     await exports_.routes!.upload(
       fakeUploadReq(
@@ -422,9 +445,10 @@ describe("files plugin: upload", () => {
       res as never,
     );
     expect(res.statusCode).toBe(200);
-    expect((res.body as { path: string }).path).toBe("/uploads/passwd");
+    const returnedPath = (res.body as { path: string }).path;
+    expect(returnedPath).toMatch(/^\/uploads\/passwd-\d{8}-\d{6}$/);
     expect(
-      fs.existsSync(path.join(userHome, "uploads", "passwd")),
+      fs.existsSync(path.join(userHome, returnedPath.replace(/^\//, ""))),
     ).toBe(true);
     // Confirm nothing escaped.
     expect(
