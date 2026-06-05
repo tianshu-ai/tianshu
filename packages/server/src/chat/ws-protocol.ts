@@ -18,8 +18,31 @@ export type ClientMsg =
       /** Optional model id (e.g. 'anthropic/claude-sonnet-4-6'). When
        *  absent the server falls back to config.defaultModel. */
       modelId?: string;
+      /**
+       * Files staged in the composer (per ADR-0003 §12).
+       *
+       * For image attachments the server constructs a multimodal
+       * UserMessage and inlines the file as base64 right before each
+       * LLM call. For non-image attachments the server adds a text
+       * note pointing at `path` so the agent can `read_file` it.
+       *
+       * Paths are user-home-relative ("/uploads/x.png" → the file
+       * lives at `<userHome>/uploads/x.png`).
+       */
+      attachments?: WireAttachment[];
     }
   | { type: "abort" };
+
+export interface WireAttachment {
+  /** User-home-relative path, always starts with "/". */
+  path: string;
+  /** RFC 6838 mime type ("image/png", "application/pdf", …). */
+  mimeType: string;
+  /** Original filename for UI display. Optional. */
+  name?: string;
+  /** Byte size on disk, when the client knows. Optional. */
+  size?: number;
+}
 
 // ─── Server → Client ──────────────────────────────────────────────
 
@@ -80,6 +103,9 @@ export interface WireMessage {
   toolCalls?: WireToolCall[];
   /** When this message is a tool result, the structured details. */
   toolResult?: WireToolResult;
+  /** Files attached to this user message (path + mimeType only — the
+   *  raw bytes stay on disk). The UI renders thumbnails / chips. */
+  attachments?: WireAttachment[];
   createdAt: number;
 }
 
@@ -131,11 +157,56 @@ export function toWire(m: ChatMessage): WireMessage {
       };
     }
     if (obj.role === "user" && Array.isArray(obj.content)) {
-      const text = (obj.content as Array<Record<string, unknown>>)
+      const parts = obj.content as Array<Record<string, unknown>>;
+      const rawText = parts
         .filter((c) => c.type === "text" && typeof c.text === "string")
         .map((c) => c.text as string)
         .join("");
-      return { ...base, text };
+      // Strip the agent-facing "[Attached file: name (mime) — available
+      // at ./uploads/...]" markers we inject server-side so the user's
+      // bubble shows their actual prose. The chip strip rendered from
+      // `attachments[]` already conveys what's attached. The DB still
+      // carries the marker for the agent's pi-ai context.
+      const text = stripAgentAttachmentMarkers(rawText);
+      // Attachment metadata: prefer the sibling `attachments` field
+      // (server-set by persistUserPrompt for every attachment, image
+      // or not). Fall back to deriving it from ImageContent parts so
+      // legacy rows written before that field existed still render.
+      const stored = Array.isArray(obj.attachments)
+        ? (obj.attachments as Array<Record<string, unknown>>)
+            .map((a) => ({
+              path: typeof a.path === "string" ? a.path : "",
+              mimeType:
+                typeof a.mimeType === "string"
+                  ? a.mimeType
+                  : "application/octet-stream",
+              name: typeof a.name === "string" ? a.name : undefined,
+              size: typeof a.size === "number" ? a.size : undefined,
+            }))
+            .filter((a) => a.path.length > 0)
+        : [];
+      const fromImageParts =
+        stored.length === 0
+          ? parts
+              .filter((c) => c.type === "image")
+              .map((c) => ({
+                path: typeof c.path === "string" ? c.path : "",
+                mimeType:
+                  typeof c.mimeType === "string"
+                    ? c.mimeType
+                    : "application/octet-stream",
+                name: typeof c.name === "string" ? c.name : undefined,
+                size: typeof c.size === "number" ? c.size : undefined,
+              }))
+              .filter((a) => a.path.length > 0)
+          : [];
+      const attachments =
+        stored.length > 0 ? stored : fromImageParts;
+      return {
+        ...base,
+        text,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      };
     }
   }
   // Legacy: content is a bare string.
@@ -149,4 +220,21 @@ function tryParse(s: string): unknown {
   } catch {
     return null;
   }
+}
+
+// Match the exact marker format emitted by chat handler's
+// persistUserPrompt(). Conservative — we only strip our own marker,
+// not arbitrary square-bracketed text the user might have typed.
+const ATTACHMENT_MARKER_RE =
+  /\[Attached file: [^\]]*— available at [^\]]*\]/g;
+
+function stripAgentAttachmentMarkers(text: string): string {
+  if (!text.includes("[Attached file: ")) return text;
+  const stripped = text.replace(ATTACHMENT_MARKER_RE, "");
+  // Collapse the leftover blank lines / trailing whitespace.
+  return stripped
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .join("\n")
+    .trim();
 }

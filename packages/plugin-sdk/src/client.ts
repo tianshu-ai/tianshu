@@ -45,11 +45,19 @@ export interface Attachment {
    * Populated by the plugin once the file is on disk.
    */
   path?: string;
+  /**
+   * RFC 6838 mime type. The host forwards this on the wire so the
+   * server can decide whether to treat the attachment as a vision
+   * input or a plain workspace file. Plugins should pass
+   * `File.type` here when available; default to
+   * `"application/octet-stream"`.
+   */
+  mimeType?: string;
   /** 0..1, optional progress for the chip. */
   progress?: number;
   /** Set when status === "error". */
   error?: string;
-  /** Plugin-defined metadata (mime type, dimensions, anything). */
+  /** Plugin-defined metadata (dimensions, hashes, anything). */
   meta?: Record<string, unknown>;
 }
 
@@ -89,10 +97,49 @@ export interface ComposerActionProps extends PanelProps {
   composer: ComposerApi;
 }
 
+// ─── Attachment renderers ────────────────────────────────────────────────
+
+/**
+ * One attachment as it lands in a user message. Mirrors the wire
+ * shape; the host re-exports it here so plugin authors only depend
+ * on the SDK.
+ */
+export interface AttachmentDescriptor {
+  /** User-home-relative path (always starts with "/"). */
+  path: string;
+  /** RFC 6838 mime type. */
+  mimeType: string;
+  /** Original filename for display. */
+  name?: string;
+  /** Byte size on disk, when known. */
+  size?: number;
+}
+
+export interface AttachmentRendererProps extends PanelProps {
+  attachment: AttachmentDescriptor;
+  /** "start" for assistant-side, "end" for user-side. The renderer
+   *  doesn't need to align itself — the host wraps a flex
+   *  container — but it can use this for asymmetrical decoration. */
+  align: "start" | "end";
+  /**
+   * Resolve a workspace path to an absolute URL the browser can
+   * fetch. The host owns this so renderer plugins don't hard-code
+   * `/api/p/files/raw` (which would couple them to the files
+   * plugin). Today the host implementation routes through the
+   * files plugin; tomorrow it might route through a CDN cache.
+   */
+  rawUrl: (path: string) => string;
+}
+
 export interface PluginClientExports {
   components: Record<
     string,
-    ComponentType<PanelProps | SidebarSectionProps | ComposerActionProps>
+    ComponentType<
+      | PanelProps
+      | SidebarSectionProps
+      | ComposerActionProps
+      | AttachmentRendererProps
+    >
   >;
 }
 

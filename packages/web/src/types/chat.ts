@@ -14,6 +14,17 @@ export interface WireToolResult {
   text: string;
 }
 
+export interface WireAttachment {
+  /** User-home-relative path, always starts with "/". */
+  path: string;
+  /** RFC 6838 mime type. */
+  mimeType: string;
+  /** Original filename for display. */
+  name?: string;
+  /** Byte size on disk, when known. */
+  size?: number;
+}
+
 export interface WireMessage {
   id: string;
   sessionId: string;
@@ -24,5 +35,8 @@ export interface WireMessage {
   toolCalls?: WireToolCall[];
   /** When this message is a tool result, the structured details. */
   toolResult?: WireToolResult;
+  /** Files attached to this user message (the bytes themselves stay
+   *  on disk; this is metadata for chip rendering). */
+  attachments?: WireAttachment[];
   createdAt: number;
 }

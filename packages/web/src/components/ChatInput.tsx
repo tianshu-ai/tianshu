@@ -5,6 +5,7 @@ import { useComposerStore } from "../stores/composer-store";
 import ModelSelector from "./ModelSelector";
 import PluginComposerActions from "./PluginComposerActions";
 import ComposerAttachments from "./ComposerAttachments";
+import type { WireAttachment } from "../types/chat";
 
 /**
  * Bottom composer.
@@ -74,12 +75,25 @@ export default function ChatInput() {
     setSubmitting(true);
     try {
       const finalText = await applyTransforms(trimmed);
+      // Collect ready attachments at the moment of send and forward
+      // them as a first-class field on the prompt. The server
+      // builds a multimodal UserMessage from this list (images go
+      // into ImageContent parts; non-images stay as references).
+      const ready = useComposerStore
+        .getState()
+        .attachments.filter((a) => a.status === "ready" && !!a.path);
+      const wire: WireAttachment[] = ready.map((a) => ({
+        path: a.path!,
+        mimeType: a.mimeType ?? "application/octet-stream",
+        name: a.name,
+        size: a.size,
+      }));
       // We tolerate transforms returning empty strings — there's
-      // probably no model that benefits from "" + we already gated on
-      // (text || attachments). If transforms drop everything that's
-      // their bug, not ours.
-      if (finalText.trim().length > 0 || attachmentCount > 0) {
-        sendPrompt(finalText);
+      // probably no model that benefits from "" + we already gated
+      // on (text || attachments). If transforms drop everything
+      // that's their bug, not ours.
+      if (finalText.trim().length > 0 || wire.length > 0) {
+        sendPrompt(finalText, wire.length > 0 ? wire : undefined);
       }
       setDraft("");
       clearAll();

@@ -19,11 +19,15 @@ import type {
   AssistantMessage,
   AssistantMessageEvent,
   Context,
+  ImageContent,
   Message,
   TextContent,
   ToolCall,
   ToolResultMessage,
+  UserMessage,
 } from "@earendil-works/pi-ai";
+import fs from "node:fs";
+import path from "node:path";
 import type { WebSocket } from "ws";
 import {
   buildModel,
@@ -42,7 +46,12 @@ import {
   loadAgentHistory,
   type ChatMessage,
 } from "./messages.js";
-import { toWire, type ClientMsg, type ServerMsg } from "./ws-protocol.js";
+import {
+  toWire,
+  type ClientMsg,
+  type ServerMsg,
+  type WireAttachment,
+} from "./ws-protocol.js";
 
 const MAX_TURNS = 16;
 
@@ -90,6 +99,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           send,
           content: parsed.content,
           modelId: parsed.modelId,
+          attachments: parsed.attachments,
           signal: aborter.signal,
         }).catch((err) => {
           send({
@@ -119,14 +129,20 @@ interface RunPromptArgs {
   send: (msg: ServerMsg) => void;
   content: string;
   modelId?: string;
+  attachments?: WireAttachment[];
   signal: AbortSignal;
 }
 
 async function runPrompt(args: RunPromptArgs): Promise<void> {
-  const { ctx, userId, send, content, modelId, signal } = args;
+  const { ctx, userId, send, content, modelId, attachments, signal } = args;
 
   const session = ensureActiveSession(ctx, userId);
-  const userMsg = appendMessage(ctx, session, { role: "user", content });
+  // Build a multimodal UserMessage on disk (path-only, no base64).
+  // Non-image attachments still appear in the wire `attachments`
+  // list so the UI can render chips, but the agent learns about
+  // them via a brief text note in the message body — it then
+  // calls `read_file` if it actually wants the contents.
+  const userMsg = persistUserPrompt(ctx, session, content, attachments);
   send({ type: "message_added", message: toWire(userMsg) });
 
   const modelInfo = (modelId ? findModel(ctx.config, modelId) : undefined) ?? getDefaultModel(ctx.config);
@@ -158,7 +174,11 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
 
     const piContext: Context = {
       systemPrompt: defaultSystemPrompt(ctx, userId),
-      messages,
+      // Inline base64 image data only at this point so the bytes
+      // never reach disk via the conversation log. The on-disk
+      // representation stays path-only — cheap, queryable,
+      // independent of base64 encoding choices.
+      messages: prepareMessagesForLlm(messages, ctx.userHomeDir(userId), modelInfo),
       tools: toolset.schemas,
     };
 
@@ -272,6 +292,160 @@ async function runOneTool(toolset: Toolset, call: ToolCall): Promise<AnyToolResu
 
 function describeResult(r: AnyToolResult): string {
   return r.text;
+}
+
+// ─── attachment helpers ───────────────────────────────────────────────
+
+/**
+ * Image content carries a sentinel `path` field on disk so the LLM
+ * call site can resolve it to bytes. pi-ai's ImageContent type
+ * doesn't declare it, but extra properties are passed through
+ * untouched until the live conversion happens.
+ *
+ * Same shape as the closed-source predecessor uses
+ * (`packages/server/src/agent-manager.ts`).
+ */
+interface PathImageContent extends ImageContent {
+  path?: string;
+  name?: string;
+  size?: number;
+}
+
+/** Persist the user's prompt as a multimodal UserMessage when there
+ *  are image attachments; otherwise as a plain text string (matches
+ *  PR #21 baseline). Always carries the full attachments array as a
+ *  sibling field so the UI can re-render chips for non-image
+ *  attachments after a reload. */
+function persistUserPrompt(
+  ctx: TenantContext,
+  session: ReturnType<typeof ensureActiveSession>,
+  content: string,
+  attachments: WireAttachment[] | undefined,
+): ChatMessage {
+  const atts = attachments ?? [];
+  if (atts.length === 0) {
+    return appendMessage(ctx, session, { role: "user", content });
+  }
+
+  const textParts: string[] = [];
+  if (content.trim().length > 0) textParts.push(content);
+  const imageParts: PathImageContent[] = [];
+
+  for (const att of atts) {
+    if (isImageMime(att.mimeType)) {
+      imageParts.push({
+        type: "image",
+        // pi-ai's ImageContent declares `data` mandatory; we put a
+        // placeholder here and overwrite at LLM-call time.
+        data: "",
+        mimeType: att.mimeType,
+        path: att.path,
+        name: att.name,
+        size: att.size,
+      });
+    } else {
+      // Non-image: nudge the agent toward the right read_file call
+      // without dumping bytes into the conversation log.
+      textParts.push(
+        `[Attached file: ${att.name ?? att.path} (${att.mimeType}) — available at .${att.path}]`,
+      );
+    }
+  }
+
+  const piContent: (TextContent | PathImageContent)[] = [];
+  if (textParts.length > 0) {
+    piContent.push({ type: "text", text: textParts.join("\n") });
+  }
+  piContent.push(...imageParts);
+
+  // Always carry the full attachments list as a sibling field so the
+  // wire layer (toWire) can render non-image chips after reload too.
+  const userMessage: UserMessage & { attachments: WireAttachment[] } = {
+    role: "user",
+    content: piContent.length > 0
+      ? piContent
+      : [{ type: "text", text: "" }],
+    timestamp: Date.now(),
+    attachments: atts,
+  } as UserMessage & { attachments: WireAttachment[] };
+  return appendAgentMessage(ctx, session, userMessage);
+}
+
+function isImageMime(m: string): boolean {
+  return typeof m === "string" && m.startsWith("image/");
+}
+
+/**
+ * Walk the message log and replace every UserMessage's image parts:
+ *
+ *   - When the model supports vision and the file exists on disk:
+ *     inline the base64 bytes into ImageContent.data.
+ *   - When the model is text-only OR the file vanished: replace the
+ *     image part with a short text note so the request isn't
+ *     rejected by providers that refuse mixed content.
+ *
+ * The original `messages` array is not mutated; we return a fresh
+ * array suitable for piContext.messages.
+ */
+export function prepareMessagesForLlm(
+  messages: Message[],
+  userHome: string,
+  modelInfo: ResolvedModelInfo,
+): Message[] {
+  return messages.map((m) => {
+    if (m.role !== "user" || !Array.isArray(m.content)) return m;
+    const hasImage = m.content.some((p) => p.type === "image");
+    if (!hasImage) return m;
+
+    const next = m.content.flatMap((part): (TextContent | ImageContent)[] => {
+      if (part.type !== "image") return [part];
+      const img = part as PathImageContent;
+      const name = img.name ?? (img.path ? path.basename(img.path) : "image");
+      if (!modelInfo.supportsImages) {
+        return [
+          {
+            type: "text",
+            text: `[Attached image (current model has no vision support): ${name}]`,
+          },
+        ];
+      }
+      if (!img.path) {
+        // Already inlined? Pass through as-is.
+        return [{ ...img }];
+      }
+      try {
+        const abs = path.join(userHome, img.path.startsWith("/") ? img.path.slice(1) : img.path);
+        const data = fs.readFileSync(abs);
+        return [
+          {
+            type: "image",
+            data: data.toString("base64"),
+            mimeType: img.mimeType,
+          },
+        ];
+      } catch {
+        return [
+          {
+            type: "text",
+            text: `[Attached image (read failed): ${name}]`,
+          },
+        ];
+      }
+    });
+
+    // Coalesce consecutive text parts — some providers don't like
+    // a chain of tiny text fragments.
+    const coalesced: (TextContent | ImageContent)[] = [];
+    for (const p of next) {
+      const last = coalesced[coalesced.length - 1];
+      if (last && last.type === "text" && p.type === "text") {
+        last.text = last.text ? `${last.text}\n${p.text}` : p.text;
+      } else {
+        coalesced.push(p);
+      }
+    }
+    return { ...m, content: coalesced };
+  });
 }
 
 
