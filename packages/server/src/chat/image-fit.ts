@@ -9,6 +9,12 @@
 //   4. Still over budget → throw. The chat layer falls back to a
 //      "[Attached image (too large to attach): name]" text note.
 //
+// IMPORTANT — the budget here is the *base64-encoded* byte count
+// because that's what providers actually measure. Anthropic's "5 MB
+// per image" is 5 MB of base64 string, which corresponds to ~3.75 MB
+// of raw bytes. We fold the 4/3 expansion into every comparison so
+// callers can keep talking in raw bytes.
+//
 // Why quality-first (per Yu, 2026-06-05):
 //   - Picture stays interpretable to the model even at q=35.
 //   - Resizing throws away information that's harder to recover.
@@ -44,6 +50,12 @@ const RESIZE_LONG_EDGE = 1568;
 // Mime types we never transcode.
 const PASSTHROUGH_MIMES = new Set(["image/svg+xml", "image/gif"]);
 
+/** base64 expansion factor. Three input bytes encode to four output
+ *  bytes; we round up so the budget check stays conservative. */
+function encodedSize(rawBytes: number): number {
+  return Math.ceil(rawBytes / 3) * 4;
+}
+
 export interface FitResult {
   /** Possibly-compressed bytes. */
   buf: Buffer;
@@ -66,7 +78,7 @@ export async function fitToLimit(
   mimeType: string,
   maxBytes: number,
 ): Promise<FitResult> {
-  if (buf.length <= maxBytes) {
+  if (encodedSize(buf.length) <= maxBytes) {
     return { buf, mimeType, passthrough: true };
   }
   if (PASSTHROUGH_MIMES.has(mimeType)) {
@@ -80,7 +92,7 @@ export async function fitToLimit(
   // Pass 1: quality ladder on the original pixels.
   for (const q of QUALITY_LADDER) {
     const out = await sharp(buf).jpeg({ quality: q }).toBuffer();
-    if (out.length <= maxBytes) {
+    if (encodedSize(out.length) <= maxBytes) {
       return { buf: out, mimeType: "image/jpeg", passthrough: false, quality: q };
     }
   }
@@ -96,7 +108,7 @@ export async function fitToLimit(
     .toBuffer();
   for (const q of QUALITY_LADDER) {
     const out = await sharp(resized).jpeg({ quality: q }).toBuffer();
-    if (out.length <= maxBytes) {
+    if (encodedSize(out.length) <= maxBytes) {
       return {
         buf: out,
         mimeType: "image/jpeg",
@@ -109,7 +121,7 @@ export async function fitToLimit(
 
   throw new Error(
     `image too large after q=35 + resize to ${RESIZE_LONG_EDGE}px: ` +
-      `${resized.length} bytes > ${maxBytes}`,
+      `${resized.length} raw bytes (${encodedSize(resized.length)} base64) > ${maxBytes}`,
   );
 }
 
@@ -194,7 +206,7 @@ export async function fitImageContent(
   maxBytes: number,
 ): Promise<ImageContent> {
   const buf = Buffer.from(ic.data, "base64");
-  if (buf.length <= maxBytes) return ic;
+  if (encodedSize(buf.length) <= maxBytes) return ic;
   const fitted = await fitToLimit(buf, ic.mimeType, maxBytes);
   if (fitted.passthrough) return ic;
   return {

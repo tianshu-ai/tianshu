@@ -64,13 +64,17 @@ describe("fitToLimit", () => {
     expect(fit.mimeType).toBe("image/png");
   });
 
-  it("transcodes to JPEG when raw bytes exceed the limit", async () => {
+  it("transcodes to JPEG when bytes exceed the (base64) limit", async () => {
+    // 800×800 of pure noise: ~2 MB raw PNG. Cap at 1 MB base64 —
+    // raw ~750 KB — forces transcoding through the quality ladder
+    // without needing to resize.
     const big = await noisyPng(800, 800);
-    expect(big.length).toBeGreaterThan(200_000);
-    const fit = await fitToLimit(big, "image/png", 200_000);
+    expect(big.length).toBeGreaterThan(1_000_000);
+    const fit = await fitToLimit(big, "image/png", 1_000_000);
     expect(fit.passthrough).toBe(false);
     expect(fit.mimeType).toBe("image/jpeg");
-    expect(fit.buf.length).toBeLessThanOrEqual(200_000);
+    const encoded = Math.ceil(fit.buf.length / 3) * 4;
+    expect(encoded).toBeLessThanOrEqual(1_000_000);
     expect([85, 75, 65, 55, 45, 35]).toContain(fit.quality);
   });
 
@@ -84,6 +88,20 @@ describe("fitToLimit", () => {
     expect(fit.buf.length).toBeLessThanOrEqual(1_000_000);
     expect(fit.resized).toBe(true);
     expect(fit.mimeType).toBe("image/jpeg");
+  });
+
+  it("compresses when raw bytes fit but base64 doesn't (regression)", async () => {
+    // A 4 MB raw PNG fits a 5 MB raw cap but balloons to ~5.3 MB once
+    // encoded as base64. Anthropic's 5 MB limit is on the encoded
+    // bytes. fitToLimit should treat the budget as base64-bound.
+    const big = await noisyPng(1200, 1200);
+    expect(big.length).toBeGreaterThan(4_000_000);
+    expect(big.length).toBeLessThan(5_242_880); // raw fits 5 MB
+    const fit = await fitToLimit(big, "image/png", 5_242_880);
+    expect(fit.passthrough).toBe(false);
+    // Encoded payload must fit the cap.
+    const encoded = Math.ceil(fit.buf.length / 3) * 4;
+    expect(encoded).toBeLessThanOrEqual(5_242_880);
   });
 
   it("passes SVG through even if oversized (caller handles)", async () => {
