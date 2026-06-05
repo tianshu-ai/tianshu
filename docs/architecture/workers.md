@@ -3,6 +3,7 @@
 | Status | Accepted |
 | --- | --- |
 | Date | 2026-06-03 |
+| Updated | 2026-06-05 — worker default cwd moved under `users/<owner>/projects/...` (see Revision 2026-06-05) |
 | Author | Yu Yu |
 | Supersedes | — |
 | Depends on | [ADR-0001 — Multi-tenancy from row 1](./multi-tenant.md) |
@@ -245,26 +246,28 @@ Per ADR-0001 the sandbox is tenant-scoped. Workers inherit that:
 
 | Resource | Boundary | Notes |
 |---|---|---|
+| Worker pool | Tenant | One pool / quota / model budget per tenant. |
 | Sandbox process | Tenant | Workers and human users share one container per tenant. |
-| Worker default cwd | `/workspace/_tenant/projects/<task.project_slug>/` | Every task is bound to a project. |
-| Read user `uploads/` | **Forbidden by default**. | See §9 for the explicit input-attachment mechanism. |
-| Write user-owned dirs | Forbidden. | Workers never write to `users/<userId>/`. |
-| Write `_tenant/projects/<slug>/` | Allowed for the slug it was assigned. | |
-| Read other workers' projects | Allowed (single trust domain). | Same rule as humans within a tenant. |
+| Worker default cwd | `/workspace/users/<task.owner_user_id>/projects/<task.project_slug>/` | Each task is bound to a (user, project) pair; the worker enters the owner's home, never another user's. |
+| Read other users' homes | Forbidden. | Workers see only the task owner's tree under `/workspace/users/<owner>/`. |
+| Read owner's `uploads/` directly | Forbidden by default. | See §9 for the explicit input-attachment mechanism. |
+| Write inside owner's project | Allowed for the assigned slug. | |
+| Write `_tenant/` | Forbidden. | Tenant-shared area is config + persona only; not a worker output target. |
 
 ### 9. Task inputs — copy, not link
 
 When the orchestrator dispatches a task that needs to consume files
-from a user's `uploads/`, the system **copies** those files into the
-project under a per-task subdirectory:
+from the task owner's `uploads/`, the system **copies** those files
+into the owner's project under a per-task subdirectory:
 
 ```
-/workspace/_tenant/projects/<slug>/inputs/<task-id>/
+/workspace/users/<owner_user_id>/projects/<slug>/inputs/<task-id>/
 └── <copied filename>
 ```
 
 The worker is given that path explicitly in its task brief. Workers
-**do not** receive paths under `/workspace/users/`.
+**do not** receive raw paths to `uploads/`, and do not see other
+users' homes at all.
 
 Why copy (not symlink, not bind-mount):
 
