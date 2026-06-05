@@ -77,9 +77,68 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
             ))}
           </div>
         )}
+
+        {!isUser && (m.meta || m.createdAt) && (
+          <MessageMeta
+            meta={m.meta}
+            createdAt={m.createdAt}
+            align="start"
+          />
+        )}
       </div>
     </div>
   );
+}
+
+function MessageMeta({
+  meta,
+  createdAt,
+  align,
+}: {
+  meta?: MergedMessage["meta"];
+  createdAt: number;
+  align: "start" | "end";
+}) {
+  const parts: React.ReactNode[] = [];
+
+  if (createdAt) parts.push(formatTime(createdAt));
+  if (meta?.model) parts.push(meta.model);
+  if (meta?.usage) {
+    const { input, output, totalTokens } = meta.usage;
+    parts.push(`↓${formatTokens(input)} ↑${formatTokens(output)}`);
+    if (meta.contextWindow && meta.contextWindow > 0) {
+      const pct = Math.round((totalTokens / meta.contextWindow) * 100);
+      parts.push(`${pct}% ctx`);
+    }
+  }
+  if (parts.length === 0) return null;
+
+  const justify = align === "end" ? "justify-end" : "justify-start";
+  return (
+    <div
+      className={`mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-gray-600 ${justify}`}
+    >
+      {parts.map((p, i) => (
+        <span key={i} className="flex items-center gap-1.5">
+          {i > 0 && <span className="text-gray-700">·</span>}
+          {p}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function formatTime(ms: number): string {
+  const d = new Date(ms);
+  const h = d.getHours().toString().padStart(2, "0");
+  const m = d.getMinutes().toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+function formatTokens(n: number): string {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "m";
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + "k";
+  return String(n);
 }
 
 function ToolCallRow({ call }: { call: MergedToolCall }) {
