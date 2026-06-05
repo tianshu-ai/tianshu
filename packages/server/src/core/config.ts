@@ -73,6 +73,10 @@ export interface ModelEntry {
   contextWindow?: number;
   maxTokens?: number;
   supportsImages?: boolean;
+  /** Per-image byte cap before we hand it to the provider. Defaults
+   *  by provider when omitted (see resolveImageMaxBytes). Override
+   *  for self-hosted gateways with custom limits. */
+  imageMaxBytes?: number;
   mode?: "chat" | "image-gen" | string;
   /** Free-form provider-specific compat flags. */
   compat?: Record<string, unknown>;

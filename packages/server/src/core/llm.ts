@@ -27,6 +27,8 @@ export interface ResolvedModelInfo {
   contextWindow: number;
   maxTokens: number;
   supportsImages: boolean;
+  /** Per-image byte cap before we hand it to the provider. */
+  imageMaxBytes: number;
   mode: "chat" | "image-gen";
   compat?: Record<string, unknown>;
   /** Raw apiKey string from config (may still contain ${VAR} placeholders). */
@@ -38,6 +40,34 @@ const DEFAULT_API_BY_PROVIDER: Record<string, Api> = {
   openai: "openai-completions",
   google: "google-generative-ai",
 };
+
+// Provider per-image byte caps (base64 size, not raw).
+//
+// We default to 1 MB across the board even though Anthropic accepts
+// up to 5 MB and OpenAI/Gemini up to 20 MB. Reasoning:
+//   - Vision encoders internally downscale to ~1568px long edge
+//     anyway; bigger inputs gain nothing visible to the model but
+//     cost real money on per-pixel pricing.
+//   - Smaller payloads cut latency dramatically (round-trip
+//     dominates above ~2 MB on most networks; gateways like Bedrock
+//     impose 60s end-to-end timeouts that high-res phone photos
+//     blow through).
+//   - Tenants who genuinely need higher fidelity (medical imaging,
+//     OCR-heavy layouts) override per-model via
+//     `provider.models[].imageMaxBytes` in tenant config.
+const DEFAULT_IMAGE_MAX_BYTES_BY_PROVIDER: Record<string, number> = {
+  anthropic: 1 * 1024 * 1024,
+  openai: 1 * 1024 * 1024,
+  google: 1 * 1024 * 1024,
+};
+const DEFAULT_IMAGE_MAX_BYTES_FALLBACK = 1 * 1024 * 1024;
+
+function defaultImageMaxBytes(providerId: string): number {
+  return (
+    DEFAULT_IMAGE_MAX_BYTES_BY_PROVIDER[providerId] ??
+    DEFAULT_IMAGE_MAX_BYTES_FALLBACK
+  );
+}
 
 /** Walk a ResolvedConfig and emit one `ResolvedModelInfo` per (provider, model). */
 export function listModels(config: ResolvedConfig): ResolvedModelInfo[] {
@@ -129,6 +159,7 @@ function toModelInfo(
     contextWindow: entry.contextWindow ?? 128000,
     maxTokens: entry.maxTokens ?? 4096,
     supportsImages: entry.supportsImages ?? true,
+    imageMaxBytes: entry.imageMaxBytes ?? defaultImageMaxBytes(providerId),
     mode: entry.mode === "image-gen" ? "image-gen" : "chat",
     compat: entry.compat,
     apiKeyTemplate: provider.apiKey,

@@ -52,6 +52,12 @@ import {
   type ServerMsg,
   type WireAttachment,
 } from "./ws-protocol.js";
+import {
+  cacheGet,
+  cachePut,
+  fitToLimit,
+  imageFitCacheKey,
+} from "./image-fit.js";
 
 const MAX_TURNS = 16;
 
@@ -178,7 +184,11 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
       // never reach disk via the conversation log. The on-disk
       // representation stays path-only — cheap, queryable,
       // independent of base64 encoding choices.
-      messages: prepareMessagesForLlm(messages, ctx.userHomeDir(userId), modelInfo),
+      messages: await prepareMessagesForLlm(
+        messages,
+        ctx.userHomeDir(userId),
+        modelInfo,
+      ),
       tools: toolset.schemas,
     };
 
@@ -387,56 +397,98 @@ function isImageMime(m: string): boolean {
  * The original `messages` array is not mutated; we return a fresh
  * array suitable for piContext.messages.
  */
-export function prepareMessagesForLlm(
+export async function prepareMessagesForLlm(
   messages: Message[],
   userHome: string,
   modelInfo: ResolvedModelInfo,
-): Message[] {
-  return messages.map((m) => {
-    if (m.role !== "user" || !Array.isArray(m.content)) return m;
+): Promise<Message[]> {
+  // Sequential rather than parallel-fancy: there's typically <=2
+  // images in flight at a time and sharp uses libvips which is
+  // already multi-threaded internally.
+  const out: Message[] = [];
+  for (const m of messages) {
+    if (m.role !== "user" || !Array.isArray(m.content)) {
+      out.push(m);
+      continue;
+    }
     const hasImage = m.content.some((p) => p.type === "image");
-    if (!hasImage) return m;
+    if (!hasImage) {
+      out.push(m);
+      continue;
+    }
 
-    const next = m.content.flatMap((part): (TextContent | ImageContent)[] => {
-      if (part.type !== "image") return [part];
+    const parts: (TextContent | ImageContent)[] = [];
+    for (const part of m.content) {
+      if (part.type !== "image") {
+        parts.push(part);
+        continue;
+      }
       const img = part as PathImageContent;
       const name = img.name ?? (img.path ? path.basename(img.path) : "image");
       if (!modelInfo.supportsImages) {
-        return [
-          {
-            type: "text",
-            text: `[Attached image (current model has no vision support): ${name}]`,
-          },
-        ];
+        parts.push({
+          type: "text",
+          text: `[Attached image (current model has no vision support): ${name}]`,
+        });
+        continue;
       }
       if (!img.path) {
         // Already inlined? Pass through as-is.
-        return [{ ...img }];
+        parts.push({ ...img });
+        continue;
       }
+      const abs = path.join(
+        userHome,
+        img.path.startsWith("/") ? img.path.slice(1) : img.path,
+      );
       try {
-        const abs = path.join(userHome, img.path.startsWith("/") ? img.path.slice(1) : img.path);
-        const data = fs.readFileSync(abs);
-        return [
-          {
-            type: "image",
-            data: data.toString("base64"),
-            mimeType: img.mimeType,
-          },
-        ];
-      } catch {
-        return [
-          {
-            type: "text",
-            text: `[Attached image (read failed): ${name}]`,
-          },
-        ];
+        const stat = fs.statSync(abs);
+        const cacheKey = imageFitCacheKey(
+          abs,
+          stat.mtimeMs,
+          modelInfo.imageMaxBytes,
+        );
+        const cached = cacheGet(cacheKey);
+        let buf: Buffer;
+        let mimeType: string;
+        if (cached) {
+          buf = cached.buf;
+          mimeType = cached.mimeType;
+        } else {
+          const raw = fs.readFileSync(abs);
+          // Most images sail through (already small); for the rest
+          // fitToLimit transcodes to a byte-bounded JPEG.
+          const fitted = await fitToLimit(
+            raw,
+            img.mimeType,
+            modelInfo.imageMaxBytes,
+          );
+          buf = fitted.buf;
+          mimeType = fitted.mimeType;
+          cachePut(cacheKey, buf, mimeType);
+        }
+        parts.push({
+          type: "image",
+          data: buf.toString("base64"),
+          mimeType,
+        });
+      } catch (err) {
+        const reason =
+          (err as { message?: string } | null)?.message ?? "read failed";
+        // Two failure shapes — the file vanished, or fitToLimit
+        // exhausted its retry ladder. Either way we don't want to
+        // poison the request: degrade to a text note.
+        parts.push({
+          type: "text",
+          text: `[Attached image (${reason}): ${name}]`,
+        });
       }
-    });
+    }
 
     // Coalesce consecutive text parts — some providers don't like
     // a chain of tiny text fragments.
     const coalesced: (TextContent | ImageContent)[] = [];
-    for (const p of next) {
+    for (const p of parts) {
       const last = coalesced[coalesced.length - 1];
       if (last && last.type === "text" && p.type === "text") {
         last.text = last.text ? `${last.text}\n${p.text}` : p.text;
@@ -444,8 +496,9 @@ export function prepareMessagesForLlm(
         coalesced.push(p);
       }
     }
-    return { ...m, content: coalesced };
-  });
+    out.push({ ...m, content: coalesced });
+  }
+  return out;
 }
 
 

@@ -19,6 +19,7 @@
     "dotenv": "^17.4.2",
     "express": "^5.1.0",
     "fast-glob": "^3.3.3",
+    "sharp": "^0.34.5",
     "ws": "^8.18.0"
   },
   "devDependencies": {
