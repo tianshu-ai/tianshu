@@ -158,10 +158,16 @@ export function toWire(m: ChatMessage): WireMessage {
     }
     if (obj.role === "user" && Array.isArray(obj.content)) {
       const parts = obj.content as Array<Record<string, unknown>>;
-      const text = parts
+      const rawText = parts
         .filter((c) => c.type === "text" && typeof c.text === "string")
         .map((c) => c.text as string)
         .join("");
+      // Strip the agent-facing "[Attached file: name (mime) — available
+      // at ./uploads/...]" markers we inject server-side so the user's
+      // bubble shows their actual prose. The chip strip rendered from
+      // `attachments[]` already conveys what's attached. The DB still
+      // carries the marker for the agent's pi-ai context.
+      const text = stripAgentAttachmentMarkers(rawText);
       const attachments = parts
         .filter((c) => c.type === "image")
         .map((c) => ({
@@ -204,4 +210,21 @@ function tryParse(s: string): unknown {
   } catch {
     return null;
   }
+}
+
+// Match the exact marker format emitted by chat handler's
+// persistUserPrompt(). Conservative — we only strip our own marker,
+// not arbitrary square-bracketed text the user might have typed.
+const ATTACHMENT_MARKER_RE =
+  /\[Attached file: [^\]]*— available at [^\]]*\]/g;
+
+function stripAgentAttachmentMarkers(text: string): string {
+  if (!text.includes("[Attached file: ")) return text;
+  const stripped = text.replace(ATTACHMENT_MARKER_RE, "");
+  // Collapse the leftover blank lines / trailing whitespace.
+  return stripped
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .join("\n")
+    .trim();
 }

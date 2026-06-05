@@ -101,6 +101,68 @@ describe("toWire", () => {
     ]);
   });
 
+  it("strips agent-facing [Attached file: …] markers from the wire text", () => {
+    // Server's persistUserPrompt embeds the marker so the LLM knows
+    // where the file lives; the user's bubble should show only the
+    // prose they actually typed.
+    const stored = JSON.stringify({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text:
+            "这个呢\n" +
+            "[Attached file: 账期客户清单及执行标准.xlsx (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet) — available at ./uploads/账期客户清单及执行标准.xlsx]",
+        },
+      ],
+      attachments: [
+        {
+          path: "/uploads/账期客户清单及执行标准.xlsx",
+          mimeType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          name: "账期客户清单及执行标准.xlsx",
+          size: 4096,
+        },
+      ],
+      timestamp: 1,
+    });
+    const w = toWire(row("user", stored));
+    expect(w.text).toBe("这个呢");
+    expect(w.attachments).toHaveLength(1);
+  });
+
+  it("strips multiple [Attached file: …] markers and leaves user prose", () => {
+    const stored = JSON.stringify({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text:
+            "看一下这两个\n" +
+            "[Attached file: a.csv (text/csv) — available at ./uploads/a.csv]\n" +
+            "[Attached file: b.pdf (application/pdf) — available at ./uploads/b.pdf]",
+        },
+      ],
+      attachments: [
+        { path: "/uploads/a.csv", mimeType: "text/csv" },
+        { path: "/uploads/b.pdf", mimeType: "application/pdf" },
+      ],
+      timestamp: 1,
+    });
+    const w = toWire(row("user", stored));
+    expect(w.text).toBe("看一下这两个");
+  });
+
+  it("leaves user-typed square-bracketed text alone", () => {
+    const stored = JSON.stringify({
+      role: "user",
+      content: [{ type: "text", text: "i wrote [TODO] earlier" }],
+      timestamp: 1,
+    });
+    const w = toWire(row("user", stored));
+    expect(w.text).toBe("i wrote [TODO] earlier");
+  });
+
   it("structured user message: image part + sibling field both surface", () => {
     const stored = JSON.stringify({
       role: "user",
