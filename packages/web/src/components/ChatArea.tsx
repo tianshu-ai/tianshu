@@ -29,6 +29,8 @@ export default function ChatArea() {
   const isStreaming = useChatStore((s) => s.isStreaming);
   const streamError = useChatStore((s) => s.streamError);
   const clearStreamError = useChatStore((s) => s.clearStreamError);
+  const compactNotice = useChatStore((s) => s.compactNotice);
+  const clearCompactNotice = useChatStore((s) => s.clearCompactNotice);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -100,6 +102,23 @@ export default function ChatArea() {
                   type="button"
                   onClick={clearStreamError}
                   className="ml-3 text-[11px] uppercase tracking-wider text-rose-300/80 hover:text-white"
+                >
+                  dismiss
+                </button>
+              </div>
+            )}
+            {compactNotice && (
+              <div className="flex items-center justify-between rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+                <span className="truncate">
+                  📌 Conversation history compacted (
+                  {compactNotice.reason === "auto" ? "auto" : "manual"}):{" "}
+                  {compactNotice.summarisedCount} earlier messages summarised,{" "}
+                  {compactNotice.keptCount} kept verbatim.
+                </span>
+                <button
+                  type="button"
+                  onClick={clearCompactNotice}
+                  className="ml-3 text-[11px] uppercase tracking-wider text-amber-300/80 hover:text-white"
                 >
                   dismiss
                 </button>

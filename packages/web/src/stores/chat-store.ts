@@ -39,6 +39,14 @@ interface ChatState {
   messages: WireMessage[];
   isStreaming: boolean;
   streamError: string | null;
+  /** Last "history compacted" notice. The chat area renders this as
+   *  an inline banner; user can dismiss to clear. */
+  compactNotice: {
+    reason: "auto" | "manual";
+    summarisedCount: number;
+    keptCount: number;
+    durationMs: number;
+  } | null;
 
   // model selection — persisted to localStorage so the UI remembers your
   // pick across reloads. The server still uses config.defaultModel as a
@@ -64,6 +72,7 @@ interface ChatState {
   sendPrompt: (content: string, attachments?: WireAttachment[]) => void;
   abort: () => void;
   clearStreamError: () => void;
+  clearCompactNotice: () => void;
   setPreferredModel: (id: string | null) => void;
 }
 
@@ -75,6 +84,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isStreaming: false,
   streamError: null,
+  compactNotice: null,
 
   preferredModel: loadPreferredModel(),
 
@@ -165,6 +175,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: s.messages.filter((x) => x.id !== STREAMING_ID),
       })),
     );
+    tianshuWs.on("history_compacted", (m) =>
+      set({
+        compactNotice: {
+          reason: m.reason,
+          summarisedCount: m.summarisedCount,
+          keptCount: m.keptCount,
+          durationMs: m.durationMs,
+        },
+      }),
+    );
   },
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
@@ -190,6 +210,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   clearStreamError: () => set({ streamError: null }),
+  clearCompactNotice: () => set({ compactNotice: null }),
 
   setPreferredModel: (id) => {
     storePreferredModel(id);

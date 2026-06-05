@@ -44,8 +44,16 @@ import {
   ensureActiveSession,
   listMessagesForUser,
   loadAgentHistory,
+  loadAgentHistoryForSession,
   type ChatMessage,
+  type ChatSession,
 } from "./messages.js";
+import {
+  COMPACT_THRESHOLD,
+  CompactSkippedError,
+  compactSession,
+} from "./compact.js";
+import { estimateTokens } from "./token-estimate.js";
 import {
   toWire,
   type ClientMsg,
@@ -99,6 +107,26 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       case "prompt": {
         if (aborter) aborter.abort(); // single in-flight prompt per socket
         aborter = new AbortController();
+        // Slash-command: `/compact` runs an immediate compaction
+        // pass without sending a fresh user prompt. Recognised when
+        // the typed body is exactly the marker plus optional
+        // whitespace and (for parity with the legacy CLI) `!`.
+        const trimmed = parsed.content.trim();
+        if (trimmed === "/compact" || trimmed === "/compact!") {
+          runManualCompact({
+            ctx,
+            userId,
+            send,
+            modelId: parsed.modelId,
+            signal: aborter.signal,
+          }).catch((err) => {
+            send({
+              type: "stream_error",
+              reason: err instanceof Error ? err.message : String(err),
+            });
+          });
+          return;
+        }
         runPrompt({
           ctx,
           userId,
@@ -142,15 +170,10 @@ interface RunPromptArgs {
 async function runPrompt(args: RunPromptArgs): Promise<void> {
   const { ctx, userId, send, content, modelId, attachments, signal } = args;
 
-  const session = ensureActiveSession(ctx, userId);
-  // Build a multimodal UserMessage on disk (path-only, no base64).
-  // Non-image attachments still appear in the wire `attachments`
-  // list so the UI can render chips, but the agent learns about
-  // them via a brief text note in the message body — it then
-  // calls `read_file` if it actually wants the contents.
-  const userMsg = persistUserPrompt(ctx, session, content, attachments);
-  send({ type: "message_added", message: toWire(userMsg) });
+  let session = ensureActiveSession(ctx, userId);
 
+  // Resolve the model up front — we need imageMaxBytes / context
+  // window for both auto-compact and the LLM call below.
   const modelInfo = (modelId ? findModel(ctx.config, modelId) : undefined) ?? getDefaultModel(ctx.config);
   if (!modelInfo) {
     send({
@@ -164,12 +187,35 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   const apiKey = resolveApiKey(modelInfo);
   const toolset = buildToolset(ctx.userHomeDir(userId));
 
+  // Auto-compact BEFORE persisting the new user message: we want
+  // the next turn to land in the post-compact session, not stuck
+  // attached to the about-to-be-archived one. The compact decision
+  // looks at the existing log only; the new prompt's contribution
+  // is bounded by the model's tools-and-prompt budget anyway.
+  session = await maybeAutoCompact({
+    ctx,
+    userId,
+    session,
+    modelInfo,
+    toolset,
+    send,
+    signal,
+  });
+
+  // Build a multimodal UserMessage on disk (path-only, no base64).
+  // Non-image attachments still appear in the wire `attachments`
+  // list so the UI can render chips, but the agent learns about
+  // them via a brief text note in the message body — it then
+  // calls `read_file` if it actually wants the contents.
+  const userMsg = persistUserPrompt(ctx, session, content, attachments);
+  send({ type: "message_added", message: toWire(userMsg) });
+
   send({ type: "stream_start" });
 
-  // Hydrate the conversation log from disk. Tool turns persisted by
-  // earlier prompts come back as structured pi-ai Messages; legacy
-  // plain-text rows are upgraded by loadAgentHistory.
-  const messages = loadAgentHistory(ctx, userId, {
+  // Hydrate the conversation log from disk — SCOPED TO THE ACTIVE
+  // SESSION so a recently-compacted parent session doesn't bleed
+  // back into the agent's context.
+  const { messages } = loadAgentHistoryForSession(ctx, session.id, {
     api: modelInfo.api,
     provider: modelInfo.providerId,
     model: modelInfo.modelId,
@@ -302,6 +348,141 @@ async function runOneTool(toolset: Toolset, call: ToolCall): Promise<AnyToolResu
 
 function describeResult(r: AnyToolResult): string {
   return r.text;
+}
+
+// ─── compaction helpers ───────────────────────────────────────────────
+
+/** Run a compaction pass if the projected input crosses the
+ *  threshold. Returns the (possibly new) active session. The
+ *  outbound socket gets a "history_compacted" notice on success so
+ *  the UI can show a "📌 historical chat compressed" marker.
+ *
+ *  Errors during compaction are non-fatal: we log them, surface a
+ *  stream_error notice, and keep the original session. The user
+ *  loses the auto-compact for this turn but the prompt still goes
+ *  out (better one expensive turn than a hard failure). */
+async function maybeAutoCompact(args: {
+  ctx: TenantContext;
+  userId: string;
+  session: ChatSession;
+  modelInfo: ResolvedModelInfo;
+  toolset: Toolset;
+  send: (msg: ServerMsg) => void;
+  signal: AbortSignal;
+}): Promise<ChatSession> {
+  const { ctx, userId, session, modelInfo, toolset, send, signal } = args;
+  if (!modelInfo.contextWindow || modelInfo.contextWindow <= 0) {
+    return session;
+  }
+  const { messages, rows } = loadAgentHistoryForSession(ctx, session.id, {
+    api: modelInfo.api,
+    provider: modelInfo.providerId,
+    model: modelInfo.modelId,
+  });
+  if (messages.length < 4) return session; // not worth
+
+  const tokens = estimateTokens({
+    systemPrompt: defaultSystemPrompt(ctx, userId),
+    messages,
+    tools: toolset.schemas,
+  });
+  const trigger = Math.floor(modelInfo.contextWindow * COMPACT_THRESHOLD);
+  if (tokens < trigger) return session;
+
+  try {
+    const result = await compactSession({
+      ctx,
+      userId,
+      oldSession: session,
+      pi: messages,
+      rows,
+      modelInfo,
+      signal,
+    });
+    send({
+      type: "history_compacted",
+      reason: "auto",
+      oldSessionId: result.oldSessionId,
+      newSessionId: result.newSession.id,
+      summarisedCount: result.summarisedCount,
+      keptCount: result.keptCount,
+      durationMs: result.durationMs,
+    });
+    return result.newSession;
+  } catch (err) {
+    if (err instanceof CompactSkippedError) return session;
+    send({
+      type: "stream_error",
+      reason: `auto-compact failed: ${err instanceof Error ? err.message : String(err)} (continuing without compact)`,
+    });
+    return session;
+  }
+}
+
+async function runManualCompact(args: {
+  ctx: TenantContext;
+  userId: string;
+  send: (msg: ServerMsg) => void;
+  modelId?: string;
+  signal: AbortSignal;
+}): Promise<void> {
+  const { ctx, userId, send, modelId, signal } = args;
+  const session = ensureActiveSession(ctx, userId);
+  const modelInfo =
+    (modelId ? findModel(ctx.config, modelId) : undefined) ??
+    getDefaultModel(ctx.config);
+  if (!modelInfo) {
+    send({
+      type: "stream_error",
+      reason: "no models configured",
+    });
+    return;
+  }
+  const { messages, rows } = loadAgentHistoryForSession(ctx, session.id, {
+    api: modelInfo.api,
+    provider: modelInfo.providerId,
+    model: modelInfo.modelId,
+  });
+  if (messages.length === 0) {
+    send({
+      type: "stream_error",
+      reason: "nothing to compact (no messages yet)",
+    });
+    return;
+  }
+  try {
+    const result = await compactSession({
+      ctx,
+      userId,
+      oldSession: session,
+      pi: messages,
+      rows,
+      modelInfo,
+      signal,
+    });
+    send({
+      type: "history_compacted",
+      reason: "manual",
+      oldSessionId: result.oldSessionId,
+      newSessionId: result.newSession.id,
+      summarisedCount: result.summarisedCount,
+      keptCount: result.keptCount,
+      durationMs: result.durationMs,
+    });
+    // Push a refreshed history so the UI swaps to the new session
+    // immediately (the fork ack + summary stub plus any kept tail).
+    const wire = listMessagesForUser(ctx, userId).map(toWire);
+    send({ type: "history", messages: wire });
+  } catch (err) {
+    if (err instanceof CompactSkippedError) {
+      send({ type: "stream_error", reason: `compact skipped: ${err.message}` });
+      return;
+    }
+    send({
+      type: "stream_error",
+      reason: `compact failed: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
 }
 
 // ─── attachment helpers ───────────────────────────────────────────────
