@@ -54,8 +54,10 @@ export function bootstrapDevTenantIfNeeded(
   });
 
   // Pre-enable the `files` builtin plugin so a fresh dev tenant has
-  // something visible in the Plugin Manager. Per ADR-0003 §11, the
-  // other builtin plugins ship as opt-in (browser / task-board / ...).
+  // the basic chat workflow (browse + attach files — the files
+  // plugin contributes both the right-side panel and the composer
+  // paperclip button) out of the box. Per ADR-0003 §11, the other
+  // builtin plugins ship opt-in (browser / task-board / ...).
   const tenantConfig = loadTenantConfig(DEV_TENANT_ID, home);
   writeTenantConfig(
     DEV_TENANT_ID,

@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Send, Square } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
+import { useComposerStore } from "../stores/composer-store";
 import ModelSelector from "./ModelSelector";
+import PluginComposerActions from "./PluginComposerActions";
+import ComposerAttachments from "./ComposerAttachments";
 
 /**
  * Bottom composer.
@@ -9,14 +12,22 @@ import ModelSelector from "./ModelSelector";
  * Visual layout mirrors the closed-source predecessor's ChatInput:
  *
  *   ┌────────────────────────────────────────────────────────┐
+ *   │  [ chip chip chip … ]   (optional attachments row)     │
  *   │                                                        │
  *   │  [ textarea ………………………………………………… ]                      │
  *   │                                                        │
- *   │  [        ]                          [ ModelSelector ] │
- *   │  (left toolbar — file attach, etc.   [ Send / Stop  ]  │
- *   │   ships in a later PR)                                 │
+ *   │  [📎 ⋯ ]                              [ ModelSelector ] │
+ *   │  (plugin composer actions)            [ Send / Stop  ] │
  *   │                                                        │
  *   └────────────────────────────────────────────────────────┘
+ *
+ * Plugin contributions decide what shows up on the left ("file attach"
+ * is shipped by the `uploads` plugin; future plugins can drop in
+ * voice-record, paste-image, etc. via `composerActions`).
+ *
+ * Send is disabled while any attachment is still uploading; transforms
+ * registered by plugins (`registerDraftTransform`) run in registration
+ * order on the draft just before it's sent.
  *
  * Enter sends, Shift+Enter inserts a newline.
  */
@@ -25,7 +36,13 @@ export default function ChatInput() {
   const sendPrompt = useChatStore((s) => s.sendPrompt);
   const abort = useChatStore((s) => s.abort);
 
+  const attachmentCount = useComposerStore((s) => s.attachments.length);
+  const hasPending = useComposerStore((s) => s.hasPending());
+  const applyTransforms = useComposerStore((s) => s.applyTransforms);
+  const clearAll = useComposerStore((s) => s.clearAll);
+
   const [draft, setDraft] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   // auto-resize textarea up to ~10 lines.
@@ -36,20 +53,45 @@ export default function ChatInput() {
     el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
   }, [draft]);
 
-  const submit = () => {
+  const sendAllowed = (() => {
+    if (isStreaming) return true; // shows Stop, always clickable
+    if (submitting) return false;
+    if (hasPending) return false;
+    // Allow sending with attachments + empty text (the "I just dropped
+    // these in, look at them" gesture).
+    return draft.trim().length > 0 || attachmentCount > 0;
+  })();
+
+  const submit = async () => {
     if (isStreaming) {
       abort();
       return;
     }
-    const v = draft.trim();
-    if (!v) return;
-    sendPrompt(v);
-    setDraft("");
+    if (submitting || hasPending) return;
+    const trimmed = draft.trimEnd();
+    if (!trimmed && attachmentCount === 0) return;
+
+    setSubmitting(true);
+    try {
+      const finalText = await applyTransforms(trimmed);
+      // We tolerate transforms returning empty strings — there's
+      // probably no model that benefits from "" + we already gated on
+      // (text || attachments). If transforms drop everything that's
+      // their bug, not ours.
+      if (finalText.trim().length > 0 || attachmentCount > 0) {
+        sendPrompt(finalText);
+      }
+      setDraft("");
+      clearAll();
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="border-t border-gray-800 bg-gray-950 px-4 py-3">
       <div className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-gray-800 bg-gray-900 p-3 focus-within:border-gray-700">
+        <ComposerAttachments />
         <textarea
           ref={ref}
           value={draft}
@@ -57,7 +99,7 @@ export default function ChatInput() {
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
-              submit();
+              void submit();
             }
           }}
           rows={1}
@@ -65,8 +107,8 @@ export default function ChatInput() {
           className="resize-none bg-transparent text-[14px] leading-relaxed text-gray-100 placeholder:text-gray-500 focus:outline-none"
         />
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {/* Left toolbar — file attach / compact / etc. ship later. */}
+          <div className="flex items-center gap-1">
+            <PluginComposerActions />
           </div>
           <div className="flex items-center gap-2">
             <ModelSelector />
@@ -82,10 +124,15 @@ export default function ChatInput() {
             ) : (
               <button
                 type="button"
-                onClick={submit}
-                disabled={!draft.trim()}
+                onClick={() => void submit()}
+                disabled={!sendAllowed}
                 className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
-                title="Send"
+                title={
+                  hasPending
+                    ? "Waiting for uploads to finish…"
+                    : "Send"
+                }
+                aria-label="Send"
               >
                 <Send size={18} />
               </button>

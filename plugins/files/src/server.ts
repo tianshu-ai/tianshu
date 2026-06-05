@@ -31,6 +31,7 @@ import type {
 
 const MAX_LIST_ENTRIES = 5000;
 const MAX_READ_BYTES = 1_048_576; // 1 MB
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MB
 
 interface DirEntry {
   name: string;
@@ -197,7 +198,73 @@ const plugin: PluginServerModule = {
       }
     };
 
-    return { routes: { list, read, raw } };
+    const upload: PluginRouteHandler = async (req, res) => {
+      // Single-file streamed upload. Wire format is intentionally
+      // minimal so we don't have to pull in multer / busboy: the
+      // request body is the raw file bytes and the filename arrives
+      // in the `X-Filename` header (URL-encoded by the client). The
+      // composer-side UploadButton makes one request per selected
+      // file; multi-file batching belongs to the client.
+      try {
+        const root = resolveRoot(ctx, req);
+        if (!root) {
+          res.status(401).json({ error: "no_user" });
+          return;
+        }
+        const rawHeader = req.headers["x-filename"];
+        const headerVal = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
+        if (!headerVal || typeof headerVal !== "string") {
+          res.status(400).json({ error: "missing_filename" });
+          return;
+        }
+        let suppliedName: string;
+        try {
+          suppliedName = decodeURIComponent(headerVal);
+        } catch {
+          res.status(400).json({ error: "bad_filename" });
+          return;
+        }
+        const safeName = sanitiseFilename(suppliedName);
+        if (!safeName) {
+          res.status(400).json({ error: "bad_filename" });
+          return;
+        }
+
+        const uploadsDir = path.join(root, "uploads");
+        // The user-template ships an `uploads/` directory but a
+        // hand-edited tenant might have removed it; recreate just
+        // in time.
+        fs.mkdirSync(uploadsDir, { recursive: true });
+
+        const finalAbs = pickNonClashingPath(uploadsDir, safeName);
+        // Belt-and-braces: refuse if the resolution somehow escaped.
+        if (!finalAbs.startsWith(uploadsDir + path.sep)) {
+          res.status(400).json({ error: "bad_path" });
+          return;
+        }
+
+        await streamRequestToFile(req, finalAbs, MAX_UPLOAD_BYTES);
+
+        const finalName = path.basename(finalAbs);
+        const stat = fs.statSync(finalAbs);
+        res.json({
+          path: `/uploads/${finalName}`,
+          size: stat.size,
+        });
+      } catch (err) {
+        const code = (err as { code?: string } | null)?.code;
+        if (code === "ETOOBIG") {
+          res.status(413).json({ error: "too_large", maxBytes: MAX_UPLOAD_BYTES });
+          return;
+        }
+        ctx.log.error("upload failed", { err: String(err) });
+        if (!res.headersSent) {
+          res.status(500).json({ error: "internal" });
+        }
+      }
+    };
+
+    return { routes: { list, read, raw, upload } };
   },
 };
 
@@ -299,4 +366,101 @@ function readEntry(
 function rootRel(root: string, abs: string): string {
   const rel = path.relative(root, abs).replace(/\\/g, "/");
   return rel === "" ? "/" : "/" + rel;
+}
+
+// ─── upload helpers ─────────────────────────────────────────────────
+
+/**
+ * Strip directory traversal pieces and shrink to a single safe name.
+ * Empty / hidden / fully sanitised-away names are returned as "".
+ */
+export function sanitiseFilename(input: string): string {
+  // Drop anything path-ish: take only the basename, then strip
+  // leading dots so `.htaccess`-style files don't sneak in (the user
+  // can still get them via the agent if they really want to).
+  const base = path.basename(input.replace(/\\/g, "/"));
+  // Replace any character that isn't reasonable in a filename. We
+  // allow letters, digits, dot, dash, underscore, space, and CJK.
+  const cleaned = base.replace(/[^\p{L}\p{N}._\- ]+/gu, "_");
+  // Collapse repeated underscores from substitution noise.
+  const collapsed = cleaned.replace(/_+/g, "_").trim();
+  if (!collapsed) return "";
+  if (collapsed === "." || collapsed === "..") return "";
+  // Cap length — most filesystems are 255 bytes; we go conservative.
+  return collapsed.slice(0, 200);
+}
+
+/**
+ * Resolve a file path inside `dir` that does not collide with an
+ * existing file. Suffix strategy: `name.ext`, `name-1.ext`,
+ * `name-2.ext`, … We give up after 999 attempts to avoid
+ * pathological loops and append a timestamp.
+ */
+export function pickNonClashingPath(dir: string, name: string): string {
+  const ext = path.extname(name);
+  const stem = name.slice(0, name.length - ext.length);
+  let candidate = path.join(dir, name);
+  if (!fs.existsSync(candidate)) return candidate;
+  for (let i = 1; i <= 999; i++) {
+    candidate = path.join(dir, `${stem}-${i}${ext}`);
+    if (!fs.existsSync(candidate)) return candidate;
+  }
+  return path.join(dir, `${stem}-${Date.now()}${ext}`);
+}
+
+/**
+ * Stream `req` into the destination file. Errors out early once
+ * `maxBytes` is exceeded. Cleans up the partial file on failure.
+ */
+function streamRequestToFile(
+  req: Request,
+  dest: string,
+  maxBytes: number,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const sink = fs.createWriteStream(dest);
+    let bytes = 0;
+    let aborted = false;
+
+    const cleanup = () => {
+      try {
+        if (fs.existsSync(dest)) fs.unlinkSync(dest);
+      } catch {
+        /* swallow */
+      }
+    };
+
+    req.on("data", (chunk: Buffer) => {
+      if (aborted) return;
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        aborted = true;
+        sink.destroy();
+        cleanup();
+        const err = new Error("too large") as Error & { code?: string };
+        err.code = "ETOOBIG";
+        reject(err);
+        return;
+      }
+      sink.write(chunk);
+    });
+    req.on("end", () => {
+      if (aborted) return;
+      sink.end();
+    });
+    req.on("error", (err) => {
+      aborted = true;
+      sink.destroy();
+      cleanup();
+      reject(err);
+    });
+    sink.on("error", (err) => {
+      aborted = true;
+      cleanup();
+      reject(err);
+    });
+    sink.on("finish", () => {
+      if (!aborted) resolve();
+    });
+  });
 }

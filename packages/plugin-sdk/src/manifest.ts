@@ -33,6 +33,13 @@ export interface ContributesV1 {
   topBarButtons?: TopBarButtonContribution[];
   rightPanels?: RightPanelContribution[];
   sidebarSections?: SidebarSectionContribution[];
+  /**
+   * Buttons in the chat composer (left of Send). The contributed
+   * component renders inside the input row and gets a `composer`
+   * prop with `useComposer()`-equivalent capabilities (manage
+   * attachments, register draft transforms). See ADR-0003 §7.
+   */
+  composerActions?: ComposerActionContribution[];
   apiRoutes?: ApiRouteContribution[];
   wsMessages?: WsMessageContribution[];
   commands?: CommandContribution[];
@@ -65,6 +72,21 @@ export interface SidebarSectionContribution {
    *  render after the named anchor. */
   after?: string;
   /** Smaller order = higher up among plugins sharing the same anchor. */
+  order?: number;
+}
+
+export interface ComposerActionContribution {
+  /** Local id; surfaced as `<plugin-id>.<id>` to the world. */
+  id: string;
+  /** lucide-react export name. Rendered next to the icon-only button. */
+  icon?: string;
+  tooltip?: string;
+  /** Key in the plugin's client-exports `components` map. The
+   *  component takes `ComposerActionProps`. If omitted, a built-in
+   *  icon-only button is rendered (clicking it triggers a
+   *  client-side default action via the manifest — reserved for v1). */
+  component: string;
+  /** Smaller order = further left among composer actions. Default 100. */
   order?: number;
 }
 

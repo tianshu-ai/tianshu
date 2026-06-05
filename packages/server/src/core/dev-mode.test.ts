@@ -41,6 +41,7 @@ describe("bootstrapDevTenantIfNeeded", () => {
     bootstrapDevTenantIfNeeded(ops, {});
     const cfg = loadTenantConfig(DEV_TENANT_ID, home);
     expect(cfg.plugins?.files).toEqual({ enabled: true });
+    expect(cfg.plugins?.uploads).toBeUndefined();
   });
 
   it("is a no-op when tenants already exist", () => {

@@ -1,0 +1,65 @@
+// Chip strip rendered above the textarea showing every staged
+// attachment plus a remove "x". A small spinner (icon swap) covers
+// the upload-in-progress state; errors render in red with the message
+// surfaced as a tooltip.
+
+import { File as FileIcon, Loader2, X, AlertTriangle } from "lucide-react";
+import { useComposerStore } from "../stores/composer-store";
+
+const KB = 1024;
+const MB = KB * 1024;
+
+function formatSize(bytes: number): string {
+  if (bytes < KB) return `${bytes} B`;
+  if (bytes < MB) return `${(bytes / KB).toFixed(1)} KB`;
+  return `${(bytes / MB).toFixed(1)} MB`;
+}
+
+export default function ComposerAttachments() {
+  const attachments = useComposerStore((s) => s.attachments);
+  const remove = useComposerStore((s) => s.removeAttachment);
+
+  if (attachments.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-2 pb-1">
+      {attachments.map((a) => {
+        const isUploading = a.status === "uploading";
+        const isError = a.status === "error";
+        return (
+          <div
+            key={a.id}
+            className={
+              "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs " +
+              (isError
+                ? "border-rose-700/60 bg-rose-950/40 text-rose-200"
+                : "border-gray-700 bg-gray-800 text-gray-200")
+            }
+            title={isError ? (a.error ?? "upload failed") : a.path ?? a.name}
+            aria-label={`attachment ${a.name}`}
+          >
+            {isUploading ? (
+              <Loader2 size={12} className="animate-spin text-brand-400" />
+            ) : isError ? (
+              <AlertTriangle size={12} className="text-rose-400" />
+            ) : (
+              <FileIcon size={12} className="text-gray-400" />
+            )}
+            <span className="max-w-[12rem] truncate">{a.name}</span>
+            <span className="text-[10px] text-gray-500">
+              {formatSize(a.size)}
+            </span>
+            <button
+              type="button"
+              onClick={() => remove(a.id)}
+              className="ml-0.5 rounded p-0.5 text-gray-500 hover:bg-gray-700 hover:text-gray-200"
+              aria-label="remove attachment"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
