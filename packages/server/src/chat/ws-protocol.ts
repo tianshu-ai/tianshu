@@ -18,8 +18,31 @@ export type ClientMsg =
       /** Optional model id (e.g. 'anthropic/claude-sonnet-4-6'). When
        *  absent the server falls back to config.defaultModel. */
       modelId?: string;
+      /**
+       * Files staged in the composer (per ADR-0003 §12).
+       *
+       * For image attachments the server constructs a multimodal
+       * UserMessage and inlines the file as base64 right before each
+       * LLM call. For non-image attachments the server adds a text
+       * note pointing at `path` so the agent can `read_file` it.
+       *
+       * Paths are user-home-relative ("/uploads/x.png" → the file
+       * lives at `<userHome>/uploads/x.png`).
+       */
+      attachments?: WireAttachment[];
     }
   | { type: "abort" };
+
+export interface WireAttachment {
+  /** User-home-relative path, always starts with "/". */
+  path: string;
+  /** RFC 6838 mime type ("image/png", "application/pdf", …). */
+  mimeType: string;
+  /** Original filename for UI display. Optional. */
+  name?: string;
+  /** Byte size on disk, when the client knows. Optional. */
+  size?: number;
+}
 
 // ─── Server → Client ──────────────────────────────────────────────
 
@@ -80,6 +103,9 @@ export interface WireMessage {
   toolCalls?: WireToolCall[];
   /** When this message is a tool result, the structured details. */
   toolResult?: WireToolResult;
+  /** Files attached to this user message (path + mimeType only — the
+   *  raw bytes stay on disk). The UI renders thumbnails / chips. */
+  attachments?: WireAttachment[];
   createdAt: number;
 }
 
@@ -131,11 +157,40 @@ export function toWire(m: ChatMessage): WireMessage {
       };
     }
     if (obj.role === "user" && Array.isArray(obj.content)) {
-      const text = (obj.content as Array<Record<string, unknown>>)
+      const parts = obj.content as Array<Record<string, unknown>>;
+      const text = parts
         .filter((c) => c.type === "text" && typeof c.text === "string")
         .map((c) => c.text as string)
         .join("");
-      return { ...base, text };
+      const attachments = parts
+        .filter((c) => c.type === "image")
+        .map((c) => ({
+          path: typeof c.path === "string" ? c.path : "",
+          mimeType:
+            typeof c.mimeType === "string" ? c.mimeType : "application/octet-stream",
+          name: typeof c.name === "string" ? c.name : undefined,
+          size: typeof c.size === "number" ? c.size : undefined,
+        }))
+        .filter((a) => a.path.length > 0);
+      // Attachments persisted as a sibling field (non-image files
+      // recorded by the server during prompt handling).
+      const stored = Array.isArray(obj.attachments)
+        ? (obj.attachments as Array<Record<string, unknown>>).map((a) => ({
+            path: typeof a.path === "string" ? a.path : "",
+            mimeType:
+              typeof a.mimeType === "string"
+                ? a.mimeType
+                : "application/octet-stream",
+            name: typeof a.name === "string" ? a.name : undefined,
+            size: typeof a.size === "number" ? a.size : undefined,
+          })).filter((a) => a.path.length > 0)
+        : [];
+      const merged = [...attachments, ...stored];
+      return {
+        ...base,
+        text,
+        attachments: merged.length > 0 ? merged : undefined,
+      };
     }
   }
   // Legacy: content is a bare string.

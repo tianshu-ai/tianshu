@@ -7,7 +7,7 @@
 import { create } from "zustand";
 import { api, type Me, type ModelListEntry } from "../lib/api";
 import { tianshuWs } from "../lib/ws";
-import type { WireMessage } from "../types/chat";
+import type { WireAttachment, WireMessage } from "../types/chat";
 
 const STREAMING_ID = "__streaming__";
 
@@ -61,7 +61,7 @@ interface ChatState {
   // actions
   init: () => void;
   toggleSidebar: () => void;
-  sendPrompt: (content: string) => void;
+  sendPrompt: (content: string, attachments?: WireAttachment[]) => void;
   abort: () => void;
   clearStreamError: () => void;
   setPreferredModel: (id: string | null) => void;
@@ -169,12 +169,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
-  sendPrompt: (content: string) => {
+  sendPrompt: (content: string, attachments?: WireAttachment[]) => {
     const trimmed = content.trim();
-    if (!trimmed) return;
+    const hasAttachments = attachments && attachments.length > 0;
+    // Allow empty text when attachments are present ("look at this")
+    // — the server side accepts that shape.
+    if (!trimmed && !hasAttachments) return;
     if (get().isStreaming) return;
     const modelId = get().preferredModel ?? undefined;
-    tianshuWs.send({ type: "prompt", content: trimmed, modelId });
+    tianshuWs.send({
+      type: "prompt",
+      content: trimmed,
+      modelId,
+      ...(hasAttachments ? { attachments } : {}),
+    });
   },
 
   abort: () => {

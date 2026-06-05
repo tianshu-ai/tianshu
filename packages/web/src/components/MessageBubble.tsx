@@ -30,6 +30,7 @@ import type {
   MergedMessage,
   MergedToolCall,
 } from "../lib/merge-tool-turns";
+import MessageAttachments from "./MessageAttachments";
 
 export default function MessageBubble({ m }: { m: MergedMessage }) {
   const isUser = m.role === "user";
@@ -64,6 +65,10 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
             <span className="inline-block h-4 w-1 animate-pulse bg-gray-500 align-middle" />
           </div>
         ) : null}
+
+        {isUser && m.attachments && m.attachments.length > 0 && (
+          <MessageAttachments attachments={m.attachments} align="end" />
+        )}
 
         {calls.length > 0 && (
           <div className={`mt-1.5 flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>

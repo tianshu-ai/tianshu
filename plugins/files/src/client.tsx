@@ -31,7 +31,6 @@ import {
   X,
 } from "lucide-react";
 import type {
-  Attachment,
   ComposerActionProps,
   PanelProps,
   PluginClientExports,
@@ -489,14 +488,11 @@ function UploadButton(props: ComposerActionProps) {
   const { composer } = props;
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Register the draft transform exactly once. It's an idempotent
-  // call inside the composer store so React 19 StrictMode's double
-  // effect invoke is safe.
-  useEffect(() => {
-    return composer.registerDraftTransform(addendumTransform);
-    // composer is a stable accessor; intentional one-shot.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // We do NOT register a draft transform anymore: image attachments
+  // ride on the WS prompt's `attachments` field as first-class
+  // content. The server constructs a multimodal UserMessage. For
+  // non-image files the server appends a brief text note pointing
+  // at the path so the agent can `read_file` if it wants.
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
@@ -509,6 +505,7 @@ function UploadButton(props: ComposerActionProps) {
           size: file.size,
           status: "error",
           error: `File exceeds ${(MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)} MB cap`,
+          mimeType: file.type || "application/octet-stream",
         });
         continue;
       }
@@ -516,6 +513,7 @@ function UploadButton(props: ComposerActionProps) {
         name: file.name,
         size: file.size,
         status: "uploading",
+        mimeType: file.type || "application/octet-stream",
       });
       void uploadOne(file, id, composer);
     }
@@ -589,26 +587,7 @@ async function safeText(resp: Response): Promise<string> {
   }
 }
 
-/**
- * Append an `[Attached files]` block to the user's message when any
- * attachments are ready. Format is deliberately simple text so the
- * agent (PR #46 system prompt) can pattern-match it without us
- * upgrading the WS protocol.
- */
-function addendumTransform(text: string, atts: Attachment[]): string {
-  if (atts.length === 0) return text;
-  // Wrap each path in an inline code span. Without it, Markdown
-  // renderers eat the leading dot and italicise the slashes — the
-  // path looks broken in the user bubble. Inline code keeps it
-  // verbatim and visually obvious.
-  const lines = atts
-    .filter((a) => a.path)
-    .map((a) => `- \`.${a.path}\` (${formatSize(a.size)})`);
-  if (lines.length === 0) return text;
-  const block = `[Attached files]\n${lines.join("\n")}`;
-  if (!text.trim()) return block;
-  return `${text.trimEnd()}\n\n${block}`;
-}
+
 
 const exports_: PluginClientExports = {
   components: {

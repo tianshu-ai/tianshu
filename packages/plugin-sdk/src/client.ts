@@ -45,11 +45,19 @@ export interface Attachment {
    * Populated by the plugin once the file is on disk.
    */
   path?: string;
+  /**
+   * RFC 6838 mime type. The host forwards this on the wire so the
+   * server can decide whether to treat the attachment as a vision
+   * input or a plain workspace file. Plugins should pass
+   * `File.type` here when available; default to
+   * `"application/octet-stream"`.
+   */
+  mimeType?: string;
   /** 0..1, optional progress for the chip. */
   progress?: number;
   /** Set when status === "error". */
   error?: string;
-  /** Plugin-defined metadata (mime type, dimensions, anything). */
+  /** Plugin-defined metadata (dimensions, hashes, anything). */
   meta?: Record<string, unknown>;
 }
 
