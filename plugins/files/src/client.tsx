@@ -597,9 +597,13 @@ async function safeText(resp: Response): Promise<string> {
  */
 function addendumTransform(text: string, atts: Attachment[]): string {
   if (atts.length === 0) return text;
+  // Wrap each path in an inline code span. Without it, Markdown
+  // renderers eat the leading dot and italicise the slashes — the
+  // path looks broken in the user bubble. Inline code keeps it
+  // verbatim and visually obvious.
   const lines = atts
     .filter((a) => a.path)
-    .map((a) => `- .${a.path} (${formatSize(a.size)})`);
+    .map((a) => `- \`.${a.path}\` (${formatSize(a.size)})`);
   if (lines.length === 0) return text;
   const block = `[Attached files]\n${lines.join("\n")}`;
   if (!text.trim()) return block;
