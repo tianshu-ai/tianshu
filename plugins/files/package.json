@@ -29,6 +29,7 @@
   "devDependencies": {
     "@types/node": "^25.9.1",
     "@types/react": "^19.0.0",
+    "lucide-react": "^1.17.0",
     "react": "^19.0.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"

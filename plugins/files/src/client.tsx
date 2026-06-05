@@ -30,7 +30,13 @@ import {
   Search,
   X,
 } from "lucide-react";
-import type { PanelProps, PluginClientExports } from "@tianshu/plugin-sdk/client";
+import type {
+  Attachment,
+  ComposerActionProps,
+  PanelProps,
+  PluginClientExports,
+} from "@tianshu/plugin-sdk/client";
+import { Paperclip } from "lucide-react";
 
 interface DirEntry {
   name: string;
@@ -462,9 +468,156 @@ function FilePreviewModal({
   );
 }
 
+// ─── Composer button: file uploads ─────────────────────────────────
+//
+// Renders one paperclip button in the chat composer. On click the
+// native file picker opens (multi-select). For each selected file:
+//
+//   1. composer.addAttachment({ status: "uploading" })
+//   2. POST /api/p/files/upload as raw bytes (X-Filename header)
+//   3. composer.updateAttachment(id, { status: "ready", path })
+//      or { status: "error", error } on failure
+//
+// We register a draft transform once so that whenever the composer
+// sends, the user's text gets a `[Attached files]` addendum. The
+// agent learns about ./uploads/ via the system prompt (PR #46) so
+// the addendum is purely informational.
+
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+function UploadButton(props: ComposerActionProps) {
+  const { composer } = props;
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Register the draft transform exactly once. It's an idempotent
+  // call inside the composer store so React 19 StrictMode's double
+  // effect invoke is safe.
+  useEffect(() => {
+    return composer.registerDraftTransform(addendumTransform);
+    // composer is a stable accessor; intentional one-shot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    e.target.value = ""; // reset so picking the same file twice still works
+
+    for (const file of files) {
+      if (file.size > MAX_UPLOAD_BYTES) {
+        composer.addAttachment({
+          name: file.name,
+          size: file.size,
+          status: "error",
+          error: `File exceeds ${(MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)} MB cap`,
+        });
+        continue;
+      }
+      const id = composer.addAttachment({
+        name: file.name,
+        size: file.size,
+        status: "uploading",
+      });
+      void uploadOne(file, id, composer);
+    }
+  };
+
+  const click = () => inputRef.current?.click();
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={click}
+        title="Attach file"
+        aria-label="Attach file"
+        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
+      >
+        <Paperclip size={16} />
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={onPick}
+      />
+    </>
+  );
+}
+
+async function uploadOne(
+  file: File,
+  attachmentId: string,
+  composer: ComposerActionProps["composer"],
+): Promise<void> {
+  try {
+    const resp = await fetch(`${API_BASE}/upload`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "X-Filename": encodeURIComponent(file.name),
+      },
+      body: file,
+    });
+    if (!resp.ok) {
+      const text = await safeText(resp);
+      composer.updateAttachment(attachmentId, {
+        status: "error",
+        error: `${resp.status}: ${text}`,
+      });
+      return;
+    }
+    const json = (await resp.json()) as { path: string; size: number };
+    composer.updateAttachment(attachmentId, {
+      status: "ready",
+      path: json.path,
+      size: json.size,
+    });
+  } catch (err) {
+    composer.updateAttachment(attachmentId, {
+      status: "error",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+async function safeText(resp: Response): Promise<string> {
+  try {
+    return (await resp.text()).slice(0, 200);
+  } catch {
+    return "(no body)";
+  }
+}
+
+/**
+ * Append an `[Attached files]` block to the user's message when any
+ * attachments are ready. Format is deliberately simple text so the
+ * agent (PR #46 system prompt) can pattern-match it without us
+ * upgrading the WS protocol.
+ */
+function addendumTransform(text: string, atts: Attachment[]): string {
+  if (atts.length === 0) return text;
+  // Wrap each path in an inline code span. Without it, Markdown
+  // renderers eat the leading dot and italicise the slashes — the
+  // path looks broken in the user bubble. Inline code keeps it
+  // verbatim and visually obvious.
+  const lines = atts
+    .filter((a) => a.path)
+    .map((a) => `- \`.${a.path}\` (${formatSize(a.size)})`);
+  if (lines.length === 0) return text;
+  const block = `[Attached files]\n${lines.join("\n")}`;
+  if (!text.trim()) return block;
+  return `${text.trimEnd()}\n\n${block}`;
+}
+
 const exports_: PluginClientExports = {
   components: {
     FilesPanel,
+    // Cast through a wide ComponentType because the SDK's components
+    // map is a union over PanelProps / SidebarSectionProps /
+    // ComposerActionProps, and UploadButton is narrower than that
+    // union.
+    UploadButton: UploadButton as PluginClientExports["components"][string],
   },
 };
 

@@ -7,8 +7,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { Readable } from "node:stream";
 import type { PluginContext, PluginServerExports } from "@tianshu/plugin-sdk";
-import filesPlugin from "./server.js";
+import filesPlugin, { sanitiseFilename, pickNonClashingPath } from "./server.js";
 
 interface MockRes {
   statusCode: number;
@@ -293,5 +294,151 @@ describe("files plugin: raw", () => {
       res as never,
     );
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// ─── upload ──────────────────────────────────────────────────────────
+
+describe("sanitiseFilename", () => {
+  it("returns a basename with the original extension", () => {
+    expect(sanitiseFilename("data.csv")).toBe("data.csv");
+    expect(sanitiseFilename("photo.JPG")).toBe("photo.JPG");
+  });
+
+  it("strips directory components", () => {
+    expect(sanitiseFilename("../../etc/passwd")).toBe("passwd");
+    expect(sanitiseFilename("/abs/path/to/x.txt")).toBe("x.txt");
+    expect(sanitiseFilename("dir/sub/dir/x.txt")).toBe("x.txt");
+  });
+
+  it("replaces unsafe characters", () => {
+    // path.basename doesn't treat `:` or `?` as separators, so the
+    // basename is `c?d.txt`; we then substitute the `?` with `_`.
+    expect(sanitiseFilename("a:b/c?d.txt")).toBe("c_d.txt");
+    expect(sanitiseFilename("hello*world?.png")).toMatch(
+      /^hello_world_?\.png$/,
+    );
+  });
+
+  it("keeps CJK characters", () => {
+    expect(sanitiseFilename("数据集.csv")).toBe("数据集.csv");
+  });
+
+  it("rejects empty / dotty noise", () => {
+    expect(sanitiseFilename("")).toBe("");
+    expect(sanitiseFilename(".")).toBe("");
+    expect(sanitiseFilename("..")).toBe("");
+  });
+
+  it("caps absurdly long names at 200 chars", () => {
+    const long = "a".repeat(500) + ".txt";
+    expect(sanitiseFilename(long).length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe("pickNonClashingPath", () => {
+  it("returns the candidate as-is when the path is free", () => {
+    expect(pickNonClashingPath(userHome, "fresh.txt")).toBe(
+      path.join(userHome, "fresh.txt"),
+    );
+  });
+
+  it("appends -1, -2, … when prior names exist", () => {
+    fs.writeFileSync(path.join(userHome, "x.txt"), "");
+    expect(pickNonClashingPath(userHome, "x.txt")).toBe(
+      path.join(userHome, "x-1.txt"),
+    );
+    fs.writeFileSync(path.join(userHome, "x-1.txt"), "");
+    expect(pickNonClashingPath(userHome, "x.txt")).toBe(
+      path.join(userHome, "x-2.txt"),
+    );
+  });
+});
+
+describe("files plugin: upload", () => {
+  function fakeUploadReq(filename: string | undefined, body: Buffer) {
+    const headers: Record<string, string | string[]> = {};
+    if (filename !== undefined) headers["x-filename"] = filename;
+    const stream = Readable.from([body]) as Readable & {
+      headers: typeof headers;
+      ctx: { userId: string };
+    };
+    stream.headers = headers;
+    stream.ctx = { userId: USER_ID };
+    return stream;
+  }
+
+  it("writes the file under uploads/ and returns its workspace path", async () => {
+    const res = makeRes();
+    const body = Buffer.from("hello, world\n");
+    await exports_.routes!.upload(
+      fakeUploadReq(encodeURIComponent("note.txt"), body) as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ path: "/uploads/note.txt", size: body.length });
+    const written = fs.readFileSync(
+      path.join(userHome, "uploads", "note.txt"),
+      "utf8",
+    );
+    expect(written).toBe("hello, world\n");
+  });
+
+  it("auto-suffixes colliding filenames", async () => {
+    const uploadsDir = path.join(userHome, "uploads");
+    fs.mkdirSync(uploadsDir, { recursive: true });
+    fs.writeFileSync(path.join(uploadsDir, "x.txt"), "old");
+
+    const res = makeRes();
+    await exports_.routes!.upload(
+      fakeUploadReq(encodeURIComponent("x.txt"), Buffer.from("new")) as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(200);
+    expect((res.body as { path: string }).path).toBe("/uploads/x-1.txt");
+    expect(fs.readFileSync(path.join(uploadsDir, "x.txt"), "utf8")).toBe("old");
+    expect(fs.readFileSync(path.join(uploadsDir, "x-1.txt"), "utf8")).toBe(
+      "new",
+    );
+  });
+
+  it("rejects requests without an X-Filename header", async () => {
+    const res = makeRes();
+    await exports_.routes!.upload(
+      fakeUploadReq(undefined, Buffer.from("x")) as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: "missing_filename" });
+  });
+
+  it("sanitises path-traversal filenames down to a basename", async () => {
+    const res = makeRes();
+    await exports_.routes!.upload(
+      fakeUploadReq(
+        encodeURIComponent("../../etc/passwd"),
+        Buffer.from("nope"),
+      ) as never,
+      res as never,
+    );
+    expect(res.statusCode).toBe(200);
+    expect((res.body as { path: string }).path).toBe("/uploads/passwd");
+    expect(
+      fs.existsSync(path.join(userHome, "uploads", "passwd")),
+    ).toBe(true);
+    // Confirm nothing escaped.
+    expect(
+      fs.existsSync(path.join(workspaceDir, "etc", "passwd")),
+    ).toBe(false);
+  });
+
+  it("401s when no user is attached to the request", async () => {
+    const res = makeRes();
+    const stream = Readable.from([Buffer.from("x")]) as Readable & {
+      headers: Record<string, string>;
+    };
+    stream.headers = { "x-filename": encodeURIComponent("a.txt") };
+    await exports_.routes!.upload(stream as never, res as never);
+    expect(res.statusCode).toBe(401);
   });
 });

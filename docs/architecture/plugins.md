@@ -3,6 +3,7 @@
 | Status | Accepted |
 | --- | --- |
 | Date | 2026-06-04 |
+| Updated | 2026-06-05 — added `composerActions` contribution + `useComposer()` host API (see §12) |
 | Author | Yu Yu |
 | Supersedes | — |
 | Depends on | [ADR-0001 — Multi-tenancy from row 1](./multi-tenant.md), [ADR-0002 — Orchestrator + workers](./workers.md) |
@@ -265,6 +266,10 @@ interface SidebarSectionProps extends PanelProps {
   isCollapsed: boolean;
   onToggleCollapse: () => void;
 }
+
+interface ComposerActionProps extends PanelProps {
+  composer: ComposerApi;                // see §12
+}
 ```
 
 A `PluginRegistry` in `@tianshu/web` statically imports every builtin
@@ -334,12 +339,110 @@ for subsequent requests.
 
 ### 11. Default tenant config (dev mode)
 
-The `bootstrapDevTenantIfNeeded` helper installs **only the
-`files` plugin** in the dev tenant's config.json. Browser /
-task-board / calendar are present as builtin plugins under
-`builtinConfig/plugins/` but are **not listed** in the dev tenant's
-config — the user has to opt in by editing `config.json`. This makes
-the "plugin opt-in" semantics observable on the very first boot.
+The `bootstrapDevTenantIfNeeded` helper installs **only the `files`
+plugin** in the dev tenant's `config.json`. The files plugin
+contributes both the right-side panel (browse / preview) and the
+composer paperclip button (upload), so a fresh install has the basic
+chat workflow out of the box. Other builtin plugins (browser /
+task-board / calendar) are present under `builtinConfig/plugins/`
+but are **not listed** in the dev tenant's config — the user has to
+opt in by editing `config.json`. This makes the "plugin opt-in"
+semantics observable on the very first boot.
+
+### 12. Composer contributions (added 2026-06-05)
+
+The chat composer (the textarea + send button at the bottom of the
+chat shell) is itself an extensible surface. Plugins contribute
+buttons to it via `contributes.composerActions[]`:
+
+```jsonc
+{
+  "contributes": {
+    "composerActions": [{
+      "id":        "attach",
+      "icon":      "Paperclip",        // lucide-react export name
+      "tooltip":   "Attach file",
+      "component": "UploadButton",     // key in client.components
+      "order":     100
+    }]
+  }
+}
+```
+
+A contributed component receives `ComposerActionProps`, which adds
+a `composer: ComposerApi` field to the standard `PanelProps`:
+
+```ts
+interface Attachment {
+  id: string;                           // host-assigned
+  name: string;
+  size: number;
+  status: "uploading" | "ready" | "error";
+  path?: string;                        // relative to user home, e.g. /uploads/x.csv
+  progress?: number;                    // 0..1
+  error?: string;
+  meta?: Record<string, unknown>;
+}
+
+interface ComposerApi {
+  attachments: Attachment[];
+  addAttachment(a: Omit<Attachment, "id">): string;
+  updateAttachment(id: string, patch: Partial<Omit<Attachment, "id">>): void;
+  removeAttachment(id: string): void;
+  registerDraftTransform(fn: DraftTransform): () => void;
+}
+
+type DraftTransform = (
+  text: string,
+  attachments: Attachment[],
+) => string | Promise<string>;
+```
+
+Plugins use the API in two coordinated ways:
+
+1. **Stage attachments.** Adding an `Attachment` makes the host
+   render a chip above the textarea and disables Send while any
+   attachment has `status === "uploading"`. Errored attachments do
+   not block sending — the user can remove them or send anyway.
+2. **Register a draft transform.** Just before the user's text is
+   sent, the host runs each registered transform in registration
+   order on the draft. This is how the `files` builtin's paperclip
+   appends an `[Attached files]` block so the agent (which already
+   knows about `./uploads/` from its system prompt — ADR-0001 §3)
+   sees the list without us touching the WebSocket protocol.
+
+The SDK exposes a `useComposer()` hook so plugin components can pull
+the live `ComposerApi` without prop-drilling:
+
+```ts
+import { useComposer } from "@tianshu/plugin-sdk/client";
+
+function UploadButton() {
+  const composer = useComposer();
+  // …
+}
+```
+
+The host installs the live accessor at boot via
+`__installUseComposer(...)`; the SDK keeps a single accessor slot.
+In unit tests for plugin components, install a fake accessor before
+rendering.
+
+**Why text addendum, not a new WS message field?** The chat protocol
+stays simple, the agent's mental model stays simple (PR #46 already
+taught it that uploads live in `./uploads/`), and the upload plugin
+is end-to-end reusable in environments that route messages through a
+different transport. A structured `attachments[]` field on the
+outbound message is a future option — it adds value when we want
+typed consumption (e.g. "this image is rendered to the model as
+image tokens") and that's not v0 surface.
+
+**Why share state through a host store, not a context provider?**
+Plugin composer components and the ChatInput live in unrelated
+subtrees under `ChatLayout`. Threading a context through both works
+but couples the layout shape to the SDK; a small zustand-backed
+store keeps the SDK's React surface to one hook (`useComposer`) and
+matches the rest of the web bundle's patterns.
 
 ## Consequences
 

@@ -96,6 +96,15 @@ describe("parseManifest", () => {
             order: 10,
           },
         ],
+        composerActions: [
+          {
+            id: "attach",
+            icon: "Paperclip",
+            tooltip: "Attach file",
+            component: "UploadButton",
+            order: 100,
+          },
+        ],
         apiRoutes: [{ method: "GET", path: "/list", handler: "listFiles" }],
         wsMessages: [{ type: "files.subscribe", handler: "handleSubscribe" }],
         commands: [{ id: "files.newProject", title: "New project" }],
@@ -103,5 +112,33 @@ describe("parseManifest", () => {
     });
     expect(m.contributes!.topBarButtons![0]!.id).toBe("files.toggle");
     expect(m.contributes!.apiRoutes![0]!.path).toBe("/list");
+    expect(m.contributes!.composerActions![0]!.component).toBe("UploadButton");
+    expect(m.contributes!.composerActions![0]!.icon).toBe("Paperclip");
+    expect(m.contributes!.composerActions![0]!.order).toBe(100);
+  });
+
+  it("composerActions[].id and component are required; icon/tooltip/order optional", () => {
+    expect(() =>
+      parseManifest({
+        id: "xx",
+        version: "1.0.0",
+        displayName: "X",
+        contributes: {
+          composerActions: [{ id: "attach" /* missing component */ }],
+        },
+      }),
+    ).toThrow(/component/);
+
+    // Minimal valid entry — only id + component.
+    const m = parseManifest({
+      id: "xx",
+      version: "1.0.0",
+      displayName: "X",
+      contributes: {
+        composerActions: [{ id: "attach", component: "UploadButton" }],
+      },
+    });
+    expect(m.contributes!.composerActions![0]!.id).toBe("attach");
+    expect(m.contributes!.composerActions![0]!.icon).toBeUndefined();
   });
 });
