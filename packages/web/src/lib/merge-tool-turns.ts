@@ -41,23 +41,16 @@ export function mergeToolTurns(messages: WireMessage[]): MergedMessage[] {
         ...c,
         result: resultsByCallId.get(c.id),
       }));
-      out.push({
-        id: m.id,
-        sessionId: m.sessionId,
-        role: m.role,
-        text: m.text,
-        createdAt: m.createdAt,
-        resolvedToolCalls: resolved,
-      });
+      // Strip the wire-only fields we already lifted into
+      // `resolvedToolCalls` and pass the rest through (notably
+      // `attachments`, added in PR #51 — dropping them silently is
+      // why uploaded files vanished from the user bubble).
+      const { toolCalls: _tc, toolResult: _tr, ...rest } = m;
+      out.push({ ...rest, resolvedToolCalls: resolved });
       continue;
     }
-    out.push({
-      id: m.id,
-      sessionId: m.sessionId,
-      role: m.role,
-      text: m.text,
-      createdAt: m.createdAt,
-    });
+    const { toolCalls: _tc, toolResult: _tr, ...rest } = m;
+    out.push(rest);
   }
   return out;
 }
