@@ -14,6 +14,7 @@
 
 import type { ComponentType } from "react";
 import type {
+  AttachmentRendererProps,
   ComposerActionProps,
   PanelProps,
   PluginClientExports,
@@ -23,7 +24,10 @@ import type {
 import filesPlugin from "@tianshu-builtin/plugin-files/client";
 
 type AnyComponent = ComponentType<
-  PanelProps | SidebarSectionProps | ComposerActionProps
+  | PanelProps
+  | SidebarSectionProps
+  | ComposerActionProps
+  | AttachmentRendererProps
 >;
 
 const ENTRIES: Record<string, PluginClientExports> = {

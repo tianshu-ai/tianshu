@@ -8,6 +8,7 @@
 
 import type {
   ApiRouteContribution,
+  AttachmentRendererContribution,
   CommandContribution,
   ComposerActionContribution,
   ContributesV1,
@@ -113,6 +114,14 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
       parseComposerAction,
     );
   }
+  if ("attachmentRenderers" in raw) {
+    out.attachmentRenderers = parseArray(
+      raw.attachmentRenderers,
+      "attachmentRenderers",
+      acc,
+      parseAttachmentRenderer,
+    );
+  }
   if ("apiRoutes" in raw) {
     out.apiRoutes = parseArray(raw.apiRoutes, "apiRoutes", acc, parseApiRoute);
   }
@@ -168,6 +177,38 @@ function parseComposerAction(
   const order = optionalNumber(raw, "order", acc, ctx);
   if (id == null || component == null) return null;
   return { id, component, icon, tooltip, order };
+}
+
+function parseAttachmentRenderer(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): AttachmentRendererContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const component = expectString(raw, "component", acc, ctx);
+  const mimePattern = expectString(raw, "mimePattern", acc, ctx);
+  const order = optionalNumber(raw, "order", acc, ctx);
+  if (id == null || component == null || mimePattern == null) return null;
+  // Reject anything that's not one of the three supported forms.
+  // We validate eagerly so a bad pattern fails fast at boot rather
+  // than silently never matching.
+  if (!isValidMimePattern(mimePattern)) {
+    acc.issues.push(
+      `${ctx}.mimePattern "${mimePattern}" must be "<type>/<subtype>", "<type>/*", or "*\u2009/ *"`,
+    );
+    return null;
+  }
+  return { id, component, mimePattern, order };
+}
+
+function isValidMimePattern(p: string): boolean {
+  if (p === "*/*") return true;
+  // type/* or type/subtype — simple grammar, no parameters.
+  return /^[A-Za-z0-9!#$&^_.+-]+\/(\*|[A-Za-z0-9!#$&^_.+-]+)$/.test(p);
 }
 
 function parseSidebarSection(

@@ -31,6 +31,7 @@ import {
   X,
 } from "lucide-react";
 import type {
+  AttachmentRendererProps,
   ComposerActionProps,
   PanelProps,
   PluginClientExports,
@@ -589,14 +590,63 @@ async function safeText(resp: Response): Promise<string> {
 
 
 
+// ─── Attachment renderers ────────────────────────────────────────────────
+//
+// Two contributions: ImageAttachment (mimePattern "image/*") and
+// FileAttachment (mimePattern "*/*", catch-all). The host walks
+// renderers in order so an image always reaches the image one
+// first; everything else falls through to the chip.
+//
+// `props.rawUrl` is provided by the host so we don't hard-code the
+// /api/p/files/raw path.
+
+function ImageAttachment({ attachment, rawUrl }: AttachmentRendererProps) {
+  const url = rawUrl(attachment.path);
+  const label = attachment.name ?? attachment.path;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      title={label}
+      className="overflow-hidden rounded-md border border-gray-800 bg-gray-900/60"
+    >
+      <img
+        src={url}
+        alt={label}
+        className="block max-h-48 max-w-[16rem] object-contain"
+        loading="lazy"
+      />
+    </a>
+  );
+}
+
+function FileAttachment({ attachment }: AttachmentRendererProps) {
+  const label = attachment.name ?? attachment.path;
+  return (
+    <div
+      className="flex items-center gap-1.5 rounded-md border border-gray-800 bg-gray-900/60 px-2 py-1 text-xs text-gray-200"
+      title={attachment.path}
+    >
+      <File size={12} className="text-gray-400" />
+      <span className="max-w-[12rem] truncate">{label}</span>
+      <span className="text-[10px] text-gray-500">
+        {formatSize(attachment.size ?? 0)}
+      </span>
+    </div>
+  );
+}
+
 const exports_: PluginClientExports = {
   components: {
     FilesPanel,
     // Cast through a wide ComponentType because the SDK's components
     // map is a union over PanelProps / SidebarSectionProps /
-    // ComposerActionProps, and UploadButton is narrower than that
-    // union.
+    // ComposerActionProps / AttachmentRendererProps, and individual
+    // components are narrower than the union.
     UploadButton: UploadButton as PluginClientExports["components"][string],
+    ImageAttachment: ImageAttachment as PluginClientExports["components"][string],
+    FileAttachment: FileAttachment as PluginClientExports["components"][string],
   },
 };
 

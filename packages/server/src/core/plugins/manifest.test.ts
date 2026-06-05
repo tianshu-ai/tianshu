@@ -117,6 +117,51 @@ describe("parseManifest", () => {
     expect(m.contributes!.composerActions![0]!.order).toBe(100);
   });
 
+  it("attachmentRenderers[].id, component, mimePattern are required; order optional", () => {
+    expect(() =>
+      parseManifest({
+        id: "xx",
+        version: "1.0.0",
+        displayName: "X",
+        contributes: {
+          attachmentRenderers: [{ id: "image" /* missing component, mimePattern */ }],
+        },
+      }),
+    ).toThrow();
+
+    const m = parseManifest({
+      id: "xx",
+      version: "1.0.0",
+      displayName: "X",
+      contributes: {
+        attachmentRenderers: [
+          { id: "image", component: "ImageAttachment", mimePattern: "image/*" },
+          { id: "pdf", component: "PdfAttachment", mimePattern: "application/pdf", order: 50 },
+          { id: "any", component: "FileAttachment", mimePattern: "*/*", order: 999 },
+        ],
+      },
+    });
+    const renderers = m.contributes!.attachmentRenderers!;
+    expect(renderers).toHaveLength(3);
+    expect(renderers[0]!.mimePattern).toBe("image/*");
+    expect(renderers[2]!.order).toBe(999);
+  });
+
+  it("attachmentRenderers[].mimePattern rejects garbage", () => {
+    expect(() =>
+      parseManifest({
+        id: "xx",
+        version: "1.0.0",
+        displayName: "X",
+        contributes: {
+          attachmentRenderers: [
+            { id: "r", component: "R", mimePattern: "not a mime" },
+          ],
+        },
+      }),
+    ).toThrow(/mimePattern/);
+  });
+
   it("composerActions[].id and component are required; icon/tooltip/order optional", () => {
     expect(() =>
       parseManifest({

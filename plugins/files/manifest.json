@@ -34,6 +34,20 @@
         "order": 100
       }
     ],
+    "attachmentRenderers": [
+      {
+        "id": "image",
+        "mimePattern": "image/*",
+        "component": "ImageAttachment",
+        "order": 100
+      },
+      {
+        "id": "any",
+        "mimePattern": "*/*",
+        "component": "FileAttachment",
+        "order": 999
+      }
+    ],
     "apiRoutes": [
       { "method": "GET",  "path": "/list",   "handler": "list"   },
       { "method": "GET",  "path": "/read",   "handler": "read"   },

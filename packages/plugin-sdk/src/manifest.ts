@@ -40,6 +40,14 @@ export interface ContributesV1 {
    * attachments, register draft transforms). See ADR-0003 §7.
    */
   composerActions?: ComposerActionContribution[];
+  /**
+   * Components that render the attachment chips/thumbnails attached
+   * to a user message. The host walks contributions in order and
+   * picks the first whose `mimePattern` matches the attachment's
+   * mime type. This is how the host stays decoupled from any
+   * particular file plugin's URL scheme. See ADR-0003 §12.
+   */
+  attachmentRenderers?: AttachmentRendererContribution[];
   apiRoutes?: ApiRouteContribution[];
   wsMessages?: WsMessageContribution[];
   commands?: CommandContribution[];
@@ -87,6 +95,26 @@ export interface ComposerActionContribution {
    *  client-side default action via the manifest — reserved for v1). */
   component: string;
   /** Smaller order = further left among composer actions. Default 100. */
+  order?: number;
+}
+
+export interface AttachmentRendererContribution {
+  /** Local id; surfaced as `<plugin-id>.<id>` to the world. */
+  id: string;
+  /**
+   * Mime pattern this renderer handles. Three forms supported:
+   *   - exact:        `application/pdf`
+   *   - type wildcard: `image/*`
+   *   - catchall:      `*\/*`
+   * Patterns are matched in plugin/contrib order; the first match
+   * wins. Plugins should give wildcards a higher (numerically
+   * larger) `order` so exact-match contributions get a chance first.
+   */
+  mimePattern: string;
+  /** Key in the plugin's client-exports `components` map. The
+   *  component receives `AttachmentRendererProps`. */
+  component: string;
+  /** Smaller order = checked first. Default 100. */
   order?: number;
 }
 
