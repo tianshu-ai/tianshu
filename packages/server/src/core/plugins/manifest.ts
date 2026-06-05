@@ -9,6 +9,7 @@
 import type {
   ApiRouteContribution,
   CommandContribution,
+  ComposerActionContribution,
   ContributesV1,
   PluginManifest,
   RightPanelContribution,
@@ -104,6 +105,14 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
       parseSidebarSection,
     );
   }
+  if ("composerActions" in raw) {
+    out.composerActions = parseArray(
+      raw.composerActions,
+      "composerActions",
+      acc,
+      parseComposerAction,
+    );
+  }
   if ("apiRoutes" in raw) {
     out.apiRoutes = parseArray(raw.apiRoutes, "apiRoutes", acc, parseApiRoute);
   }
@@ -141,6 +150,24 @@ function parseRightPanel(raw: unknown, ctx: string, acc: Acc): RightPanelContrib
   const component = expectString(raw, "component", acc, ctx);
   if (id == null || displayName == null || component == null) return null;
   return { id, displayName, component };
+}
+
+function parseComposerAction(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): ComposerActionContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const component = expectString(raw, "component", acc, ctx);
+  const icon = optionalString(raw, "icon", acc, ctx);
+  const tooltip = optionalString(raw, "tooltip", acc, ctx);
+  const order = optionalNumber(raw, "order", acc, ctx);
+  if (id == null || component == null) return null;
+  return { id, component, icon, tooltip, order };
 }
 
 function parseSidebarSection(
