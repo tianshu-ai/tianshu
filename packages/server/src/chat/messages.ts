@@ -138,6 +138,58 @@ export function appendAgentMessage(
  * content, the legacy form) are upgraded into pi-ai UserMessage/
  * AssistantMessage shells.
  */
+/**
+ * Re-hydrate persisted rows from a SPECIFIC session into the
+ * structured pi-ai Message log. Use this for the LLM hot path so
+ * compacted (=archived) parent sessions don't bleed back into the
+ * agent's context. The wider `loadAgentHistory(userId)` overload
+ * exists for compatibility and now wraps this one against the
+ * user's active session.
+ */
+export function loadAgentHistoryForSession(
+  ctx: TenantContext,
+  sessionId: string,
+  defaults: {
+    api: AssistantMessage["api"];
+    provider: AssistantMessage["provider"];
+    model: string;
+  },
+): { messages: Message[]; rows: ChatMessage[] } {
+  const rows = listMessagesForSession(ctx, sessionId);
+  const out: Message[] = [];
+  for (const r of rows) {
+    const parsed = tryParseMessage(r.content);
+    if (
+      parsed &&
+      (parsed.role === "user" ||
+        parsed.role === "assistant" ||
+        parsed.role === "toolResult")
+    ) {
+      out.push(parsed);
+      continue;
+    }
+    if (r.role === "user") {
+      out.push({
+        role: "user",
+        content: [{ type: "text", text: r.content }],
+        timestamp: r.createdAt,
+      });
+    } else if (r.role === "assistant") {
+      out.push({
+        role: "assistant",
+        content: [{ type: "text", text: r.content }],
+        api: defaults.api,
+        provider: defaults.provider,
+        model: defaults.model,
+        usage: zeroUsage(),
+        stopReason: "stop",
+        timestamp: r.createdAt,
+      });
+    }
+  }
+  return { messages: out, rows };
+}
+
 export function loadAgentHistory(
   ctx: TenantContext,
   userId: string,
@@ -210,6 +262,38 @@ function zeroUsage(): AssistantMessage["usage"] {
 }
 
 /** Return the user's full conversation, chronological. PR #21 keeps it simple. */
+/** Per-session, chronological. Used by the chat hot path (which
+ *  must not pull in messages from compacted parent sessions). */
+export function listMessagesForSession(
+  ctx: TenantContext,
+  sessionId: string,
+): ChatMessage[] {
+  return ctx.db
+    .prepare<
+      [string],
+      {
+        id: string;
+        session_id: string;
+        role: string;
+        content: string;
+        created_at: number;
+      }
+    >(
+      `SELECT id, session_id, role, content, created_at
+       FROM messages
+       WHERE session_id = ?
+       ORDER BY created_at ASC`,
+    )
+    .all(sessionId)
+    .map((r) => ({
+      id: r.id,
+      sessionId: r.session_id,
+      role: r.role as ChatMessage["role"],
+      content: r.content,
+      createdAt: r.created_at,
+    }));
+}
+
 export function listMessagesForUser(ctx: TenantContext, userId: string): ChatMessage[] {
   return ctx.db
     .prepare<

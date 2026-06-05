@@ -70,6 +70,20 @@ export type ServerMsg =
       name: string;
       ok: boolean;
       text: string;
+    }
+  /** A compaction pass just landed. Sent for both auto-compact (
+   *  triggered by the 50% context threshold) and manual `/compact`
+   *  invocations. The UI shows a "📌 history compacted" marker so
+   *  the user knows their next replies are running on a summary of
+   *  the older conversation. */
+  | {
+      type: "history_compacted";
+      reason: "auto" | "manual";
+      oldSessionId: string;
+      newSessionId: string;
+      summarisedCount: number;
+      keptCount: number;
+      durationMs: number;
     };
 
 /** Single tool call inside an assistant message. */
