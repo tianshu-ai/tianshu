@@ -63,7 +63,9 @@ function writeBuiltinManifest(id: string, manifest: object) {
   fs.writeFileSync(path.join(dir, "manifest.json"), JSON.stringify(manifest));
 }
 
-function buildApp(opts: { catalog?: CatalogClient } = {}) {
+function buildApp(
+  opts: { catalog?: CatalogClient; reloadResolver?: () => Promise<void> } = {},
+) {
   const app = express();
   app.use(express.json());
   app.use(
@@ -75,7 +77,12 @@ function buildApp(opts: { catalog?: CatalogClient } = {}) {
   );
   app.use(
     "/api",
-    buildPluginsRouter({ registry, ops, catalog: opts.catalog }),
+    buildPluginsRouter({
+      registry,
+      ops,
+      catalog: opts.catalog,
+      reloadResolver: opts.reloadResolver,
+    }),
   );
   return app;
 }
@@ -330,6 +337,18 @@ describe("plugins HTTP routes", () => {
 
     const cfg = loadTenantConfig(TENANT, home);
     expect(cfg.plugins?.ghost).toEqual({ enabled: false });
+  });
+
+  it("POST /api/plugins/refresh calls reloadResolver before invalidating registry", async () => {
+    let reloadCalls = 0;
+    const app = buildApp({
+      reloadResolver: async () => {
+        reloadCalls++;
+      },
+    });
+    const res = await request(app).post("/api/plugins/refresh");
+    expect(res.status).toBe(200);
+    expect(reloadCalls).toBe(1);
   });
 
   it("POST /api/plugins/refresh re-discovers on-disk plugins (ADR-0004 §16)", async () => {

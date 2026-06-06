@@ -1,0 +1,41 @@
+{
+  "id": "microsandbox",
+  "version": "0.1.0",
+  "displayName": "MicroSandbox",
+  "description": "Per-tenant shell sandbox running on microsandbox (Apple Virtualization.framework / KVM). Provides sandbox.shell and (later) browser.cdp.",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["workspace.read", "workspace.write", "process.spawn"],
+  "provides": ["sandbox.shell"],
+  "client": { "entry": "@tianshu-builtin/plugin-microsandbox/client" },
+  "server": { "entry": "@tianshu-builtin/plugin-microsandbox/server" },
+  "contributes": {
+    "topBarButtons": [
+      {
+        "id": "status",
+        "icon": "Box",
+        "tooltip": "MicroSandbox",
+        "opensPanel": "microsandbox.status",
+        "order": 200
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "status",
+        "displayName": "MicroSandbox",
+        "component": "SandboxStatusPanel"
+      }
+    ],
+    "sandboxes": [
+      {
+        "id": "main",
+        "kind": "shell",
+        "displayName": "MicroSandbox",
+        "module": "MicroSandboxRunner"
+      }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/status", "handler": "status" }
+    ]
+  }
+}

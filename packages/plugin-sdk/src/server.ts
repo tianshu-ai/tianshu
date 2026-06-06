@@ -85,12 +85,20 @@ export interface PluginServerExports {
   routes?: Record<string, PluginRouteHandler>;
   wsHandlers?: Record<string, PluginWsHandler>;
   /**
-   * Sandbox modules keyed by the `module` string used in
-   * `manifest.contributes.sandboxes[].module`. Each module's
-   * `start(ctx)` returns a `SandboxRunner`. The host calls `start`
-   * exactly once per tenant during activation.
+   * Ready-to-use sandbox runners keyed by the `module` string used
+   * in `manifest.contributes.sandboxes[].module`. The plugin's
+   * `activate(ctx)` is responsible for constructing each runner
+   * (typically in a small "facade" that picks between a real
+   * runtime and a nullable fallback) and exposing it here. The host
+   * picks the runner up by key and registers it under the matching
+   * `sandbox.<kind>` capability.
+   *
+   * The `SandboxModule` type below is exported for plugins that
+   * want to factor their runner construction into a `start(ctx) =>
+   * SandboxRunner` shape, but the host never invokes `start()`
+   * itself — plugins do that inside `activate()`.
    */
-  sandboxes?: Record<string, SandboxModule>;
+  sandboxes?: Record<string, SandboxRunner>;
 }
 
 // ─── Capability registry ────────────────────────────────────────
@@ -115,10 +123,13 @@ export interface CapabilityHandle {
 
 // ─── Sandbox surface (ADR-0004 §2) ─────────────────────────────
 
+/**
+ * Optional convenience interface for plugins that want to factor
+ * runner construction out of `activate()`. The host does not call
+ * `start()` itself — plugins call it from inside `activate()` and
+ * expose the returned runner via `exports.sandboxes[<key>]`.
+ */
 export interface SandboxModule {
-  /** Called once per tenant during plugin activation. The returned
-   *  runner is registered with the capability registry under the
-   *  matching `sandbox.<kind>` capability. */
   start(ctx: PluginContext): Promise<SandboxRunner>;
 }
 

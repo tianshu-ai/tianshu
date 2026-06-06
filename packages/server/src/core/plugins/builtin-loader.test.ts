@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { buildBuiltinResolver } from "./builtin-loader.js";
+import {
+  buildBuiltinResolver,
+  buildReloadingBuiltinResolver,
+} from "./builtin-loader.js";
 
 let pluginsRoot: string;
 let logs: Array<{ level: "info" | "warn"; msg: string }>;
@@ -105,6 +108,43 @@ describe("buildBuiltinResolver", () => {
     fs.rmSync(pluginsRoot, { recursive: true });
     const resolver = await buildBuiltinResolver({ pluginsRoot, log });
     expect(await resolver.resolve("@anything")).toBeNull();
+  });
+
+  it("reloading resolver picks up plugins added after construction", async () => {
+    // Boot with one plugin only.
+    writePlugin(
+      "alpha",
+      {
+        id: "alpha",
+        version: "1.0.0",
+        displayName: "Alpha",
+        server: { entry: "@scope/alpha/server" },
+      },
+      "export default { activate: () => ({}) };\n",
+    );
+    const resolver = await buildReloadingBuiltinResolver({ pluginsRoot, log });
+    expect(await resolver.resolve("@scope/alpha/server")).not.toBeNull();
+    expect(await resolver.resolve("@scope/late/server")).toBeNull();
+
+    // Drop a second plugin while the server is running.
+    writePlugin(
+      "late",
+      {
+        id: "late",
+        version: "1.0.0",
+        displayName: "Late",
+        server: { entry: "@scope/late/server" },
+      },
+      "export default { activate: () => ({}) };\n",
+    );
+
+    // Until reload(), the resolver still doesn't see it.
+    expect(await resolver.resolve("@scope/late/server")).toBeNull();
+
+    await resolver.reload();
+    expect(await resolver.resolve("@scope/late/server")).not.toBeNull();
+    // Old entry survives.
+    expect(await resolver.resolve("@scope/alpha/server")).not.toBeNull();
   });
 
   it("ignores entries starting with . or _", async () => {
