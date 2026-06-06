@@ -29,6 +29,22 @@ import { pathToFileURL } from "node:url";
 import type { PluginServerModule } from "@tianshu/plugin-sdk";
 import { moduleMapResolver, type ServerPluginModuleResolver } from "./registry.js";
 
+/**
+ * Resolver that can re-scan the builtins directory on demand. The
+ * registry holds onto a single resolver across the server's
+ * lifetime; without re-scan support, dropping a new plugin
+ * directory at runtime would never be picked up because the
+ * resolver's module map is fixed at server boot.
+ *
+ * `reload()` is what `POST /api/plugins/refresh` calls (alongside
+ * the registry's per-tenant invalidate) so adding a builtin = drop
+ * a directory + run sync:plugins + click Refresh.
+ */
+export interface ReloadingResolver {
+  resolve(entry: string): Promise<import("@tianshu/plugin-sdk").PluginServerModule | null>;
+  reload(): Promise<void>;
+}
+
 export interface BuiltinLoaderOpts {
   /**
    * Directory to scan. Each subdirectory is a plugin (must contain
@@ -51,16 +67,52 @@ export interface BuiltinLoaderOpts {
  *
  * Async because module loading uses dynamic `import()`. Call this
  * once at server boot and reuse the resolver for the registry.
+ *
+ * For dev / catalog-install scenarios where a new plugin directory
+ * appears after server boot, prefer {@link buildReloadingBuiltinResolver}
+ * which exposes a `reload()` method that re-scans on demand.
  */
 export async function buildBuiltinResolver(
   opts: BuiltinLoaderOpts,
 ): Promise<ServerPluginModuleResolver> {
+  const map = await scanPlugins(opts);
+  return moduleMapResolver(map);
+}
+
+/**
+ * Like {@link buildBuiltinResolver} but the returned resolver has a
+ * `reload()` method that re-scans the plugins directory and
+ * replaces its internal module map. Used by
+ * `POST /api/plugins/refresh`.
+ *
+ * Modules already imported by Node's ESM cache are reused on reload
+ * (same URL = same module). Dropped plugins are removed from the
+ * map but the underlying module objects stay live in the ESM cache;
+ * v0 doesn't try to evict them.
+ */
+export async function buildReloadingBuiltinResolver(
+  opts: BuiltinLoaderOpts,
+): Promise<ReloadingResolver> {
+  let map = await scanPlugins(opts);
+  return {
+    async resolve(entry: string) {
+      return map[entry] ?? null;
+    },
+    async reload() {
+      map = await scanPlugins(opts);
+    },
+  };
+}
+
+async function scanPlugins(
+  opts: BuiltinLoaderOpts,
+): Promise<Record<string, PluginServerModule>> {
   const log = opts.log ?? defaultLog;
   const map: Record<string, PluginServerModule> = {};
 
   if (!fs.existsSync(opts.pluginsRoot)) {
     log("info", `[builtin-loader] no plugins dir at ${opts.pluginsRoot}; nothing to load`);
-    return moduleMapResolver(map);
+    return map;
   }
 
   const ids = fs
@@ -102,9 +154,6 @@ export async function buildBuiltinResolver(
       const imported = (await import(pathToFileURL(distFile).href)) as
         | { default?: PluginServerModule }
         | PluginServerModule;
-      // Plugins compiled with `export default { activate }` end up as
-      // `{ default: { activate } }`. We accept both shapes so an
-      // author can pick either style.
       mod =
         "activate" in imported && typeof imported.activate === "function"
           ? (imported as PluginServerModule)
@@ -136,7 +185,7 @@ export async function buildBuiltinResolver(
     log("info", `[builtin-loader] loaded ${id} → ${serverEntry}`);
   }
 
-  return moduleMapResolver(map);
+  return map;
 }
 
 function defaultLog(level: "info" | "warn", msg: string): void {

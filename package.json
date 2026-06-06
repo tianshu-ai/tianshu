@@ -22,10 +22,13 @@
     "plugins/*"
   ],
   "scripts": {
-    "dev": "npm run build -w packages/plugin-sdk && npm run build -w plugins/files && npm run sync:plugins && concurrently -n server,web,plugin-files -c blue,green,magenta \"npm run dev -w packages/server\" \"npm run dev -w packages/web\" \"npm run dev -w plugins/files\"",
-    "build": "npm run build -w packages/plugin-sdk && npm run build -w plugins/files && npm run sync:plugins && npm run build -w packages/server && npm run build -w packages/web",
-    "test": "npm run test -w packages/plugin-sdk && npm run test -w plugins/files && npm run sync:plugins && npm run test -w packages/server && npm run test -w packages/web",
-    "typecheck": "tsc -p packages/plugin-sdk/tsconfig.json --noEmit && tsc -p plugins/files/tsconfig.json --noEmit && tsc -p packages/server/tsconfig.json --noEmit && tsc -p packages/web/tsconfig.json --noEmit",
+    "dev": "npm run build -w packages/plugin-sdk && npm run build:plugins && npm run sync:plugins && node scripts/dev-builtins.mjs",
+    "build": "npm run build -w packages/plugin-sdk && npm run build:plugins && npm run sync:plugins && npm run build -w packages/server && npm run build -w packages/web",
+    "build:plugins": "node scripts/run-builtin-script.mjs build",
+    "test": "npm run test -w packages/plugin-sdk && npm run test:plugins && npm run sync:plugins && npm run test -w packages/server && npm run test -w packages/web",
+    "test:plugins": "node scripts/run-builtin-script.mjs test",
+    "typecheck": "tsc -p packages/plugin-sdk/tsconfig.json --noEmit && node scripts/typecheck-plugins.mjs && tsc -p packages/server/tsconfig.json --noEmit && tsc -p packages/web/tsconfig.json --noEmit",
+    "typecheck:plugins": "node scripts/typecheck-plugins.mjs",
     "sync:plugins": "node scripts/sync-builtin-plugins.mjs"
   },
   "devDependencies": {

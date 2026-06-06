@@ -33,6 +33,16 @@ export interface PluginsRouterOpts {
    * by leaving it undefined.
    */
   catalog?: CatalogClient;
+  /**
+   * ADR-0004 §16: optional hook called by `POST /api/plugins/refresh`
+   * before invalidating the registry cache. The host wires this up
+   * to {@link buildReloadingBuiltinResolver}'s `reload()` so a
+   * freshly-dropped plugin directory is picked up by the resolver
+   * the same way the registry already picks up the manifest.
+   *
+   * Optional so existing tests / non-reloading wirings still work.
+   */
+  reloadResolver?: () => Promise<void>;
 }
 
 /**
@@ -125,6 +135,13 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       return;
     }
     try {
+      // Re-scan the builtins directory before invalidating the
+      // tenant registry, so a freshly-dropped plugin is reachable
+      // by `server.entry` lookups when the next ensureForTenant()
+      // re-activates everything.
+      if (opts.reloadResolver) {
+        await opts.reloadResolver();
+      }
       registry.invalidate(req.ctx.tenant.tenantId);
       const fresh = ops.open(req.ctx.tenant.tenantId);
       const list = await listPluginsForTenant(registry, fresh);

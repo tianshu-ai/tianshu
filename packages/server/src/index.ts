@@ -24,7 +24,7 @@ import {
   loadGlobalConfig,
   tenantMiddleware,
 } from "./core/index.js";
-import { buildBuiltinResolver, PluginRegistry } from "./core/plugins/index.js";
+import { buildReloadingBuiltinResolver, PluginRegistry } from "./core/plugins/index.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
 import path from "node:path";
@@ -54,8 +54,9 @@ const pluginsRoot = process.env.TIANSHU_PLUGINS_DIR
   ? path.resolve(process.env.TIANSHU_PLUGINS_DIR)
   : defaultPluginsRoot;
 
+const reloadingResolver = await buildReloadingBuiltinResolver({ pluginsRoot });
 const pluginRegistry = new PluginRegistry({
-  resolver: await buildBuiltinResolver({ pluginsRoot }),
+  resolver: reloadingResolver,
 });
 
 // Catalog client — fetches the list of installable plugins from the
@@ -148,6 +149,7 @@ app.use(
     registry: pluginRegistry,
     ops: globalOps,
     catalog: catalogClient,
+    reloadResolver: () => reloadingResolver.reload(),
   }),
 );
 
