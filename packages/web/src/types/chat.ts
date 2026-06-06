@@ -25,6 +25,21 @@ export interface WireAttachment {
   size?: number;
 }
 
+/** Ordered building blocks for an assistant message. Preserves the
+ *  pi-ai `content` array's interleaving of text and tool-call blocks
+ *  so the UI can render "text → tool call → text → tool call" the
+ *  way the model actually authored them. The legacy flattened
+ *  `text` + `toolCalls` fields are still set for backwards-compat
+ *  with older clients. */
+export type WireAssistantBlock =
+  | { kind: "text"; text: string }
+  | {
+      kind: "toolCall";
+      id: string;
+      name: string;
+      arguments: Record<string, unknown>;
+    };
+
 /** Display-only metadata stamped on assistant messages. The chat
  *  shell renders these as a small line under the bubble (mirrors the
  *  closed-source predecessor). */
@@ -48,6 +63,10 @@ export interface WireMessage {
   text: string;
   /** Tool calls authored by the assistant in this message, if any. */
   toolCalls?: WireToolCall[];
+  /** Ordered text + tool-call blocks for assistant messages. When
+   *  present, the UI renders these in order; falls back to
+   *  `text` + `toolCalls` for legacy rows. */
+  blocks?: WireAssistantBlock[];
   /** When this message is a tool result, the structured details. */
   toolResult?: WireToolResult;
   /** Files attached to this user message (the bytes themselves stay
