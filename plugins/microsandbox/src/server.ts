@@ -66,6 +66,17 @@ export default {
     active = { built, log: ctx.log };
     if (built.ready) {
       ctx.log.info(built.selectedReason);
+      // Eager start: kick off the VM in the background so the
+      // sandbox is warm by the time the agent (or the user) calls
+      // anything. Per Yu 2026-06-06: "还是一直开着，以后还要做后台一直跑的服务".
+      // Errors during warm-up land in runner.status().lastError; we
+      // don't await because activate() shouldn't block on it.
+      const runner = built.runner as unknown as {
+        warmUp?: () => void;
+      };
+      if (typeof runner.warmUp === "function") {
+        runner.warmUp();
+      }
     } else {
       ctx.log.warn(built.selectedReason);
     }
