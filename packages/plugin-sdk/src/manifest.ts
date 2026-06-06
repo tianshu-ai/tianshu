@@ -54,6 +54,13 @@ export interface ContributesV1 {
    */
   sandboxes?: SandboxContribution[];
   /**
+   * Agent tools the plugin contributes. The host collects every
+   * active plugin's tools each turn and registers them with the
+   * chat agent. `module` is the key in the plugin's
+   * `exports.tools` map.
+   */
+  tools?: ToolContribution[];
+  /**
    * Buttons in the chat composer (left of Send). The contributed
    * component renders inside the input row and gets a `composer`
    * prop with `useComposer()`-equivalent capabilities (manage
@@ -81,6 +88,16 @@ export interface SandboxContribution {
   kind: SandboxKind;
   displayName: string;
   /** Key in the plugin's server-exports `sandboxes` map. */
+  module: string;
+}
+
+export interface ToolContribution {
+  /** Local id, mostly for debugging / Plugin Manager UI. */
+  id: string;
+  /** Key in the plugin's server-exports `tools` map. The tool's
+   *  user-facing name (what the model sees) lives in the tool's
+   *  pi-ai schema, not here — we don't enforce a 1:1 between this
+   *  contribution id and the schema name. */
   module: string;
 }
 

@@ -158,7 +158,7 @@ const server = createServer(app);
 // Chat over WebSocket. Dev mode pins to the bootstrap tenant + user;
 // JWT-mode auth lands in a later PR and will replace the resolver.
 const wss = new WebSocketServer({ server, path: "/ws" });
-wss.on("connection", (socket) => {
+wss.on("connection", async (socket) => {
   // Resolve identity. Today: dev tenant + dev user.
   const tenantId = DEV_TENANT_ID;
   const userId = DEV_USER_ID;
@@ -175,7 +175,26 @@ wss.on("connection", (socket) => {
     socket.close();
     return;
   }
-  attachChatHandler({ ctx, userId, socket });
+  // Ensure plugins are activated so the agent can see
+  // sandbox.shell etc. without waiting for a GET /api/plugins.
+  try {
+    await pluginRegistry.ensureForTenant(ctx);
+  } catch (err) {
+    // Plugin activation failures shouldn't kill the chat session;
+    // they surface in /api/plugins as `state: failed`. Log and
+    // proceed without the capability set.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[tianshu] plugin activation failed for ${tenantId}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+  attachChatHandler({
+    ctx,
+    userId,
+    socket,
+    pluginRegistry,
+    homeDir: globalOps.homeDir,
+  });
 });
 
 server.listen(PORT, () => {

@@ -74,10 +74,19 @@ export interface ChatHandlerOpts {
   ctx: TenantContext;
   userId: string;
   socket: WebSocket;
+  /**
+   * Plugin registry for this tenant. The chat handler asks it for
+   * the current `toolsForTenant()` and a `hostCapabilities()`
+   * handle each agent turn, so plugin enable/disable flips are
+   * picked up without restarting the session.
+   */
+  pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
+  /** Tenant root dir on the host — fed into AgentToolContext. */
+  homeDir?: string;
 }
 
 export function attachChatHandler(opts: ChatHandlerOpts): void {
-  const { ctx, userId, socket } = opts;
+  const { ctx, userId, socket, pluginRegistry, homeDir } = opts;
 
   const send = (msg: ServerMsg) => {
     if (socket.readyState !== socket.OPEN) return;
@@ -139,6 +148,8 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           modelId: parsed.modelId,
           attachments: parsed.attachments,
           signal: aborter.signal,
+          pluginRegistry,
+          homeDir,
         }).catch((err) => {
           send({
             type: "stream_error",
@@ -169,10 +180,12 @@ interface RunPromptArgs {
   modelId?: string;
   attachments?: WireAttachment[];
   signal: AbortSignal;
+  pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
+  homeDir?: string;
 }
 
 async function runPrompt(args: RunPromptArgs): Promise<void> {
-  const { ctx, userId, send, content, modelId, attachments, signal } = args;
+  const { ctx, userId, send, content, modelId, attachments, signal, pluginRegistry, homeDir } = args;
   const wireOpts = makeWireOpts(ctx);
 
   let session = ensureActiveSession(ctx, userId);
@@ -190,7 +203,22 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   const piModel = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
-  const toolset = buildToolset(ctx.userHomeDir(userId));
+  const userHome = ctx.userHomeDir(userId);
+  const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId);
+  const toolset = await buildToolset({
+    userHome,
+    pluginTools,
+    toolContext: pluginTools && pluginTools.length > 0 && homeDir
+      ? {
+          tenantId: ctx.tenantId,
+          userId,
+          capabilities: pluginRegistry!.hostCapabilities(ctx.tenantId),
+          userHomeDir: userHome,
+          tenantHomeDir: homeDir,
+          log: makeLogger(ctx.tenantId, userId, send),
+        }
+      : undefined,
+  });
 
   // Auto-compact BEFORE persisting the new user message: we want
   // the next turn to land in the post-compact session, not stuck
@@ -335,6 +363,40 @@ interface AnyToolResult {
   text: string;
 }
 
+/**
+ * Normalise an executor's structured result to `{ ok, text }` for
+ * the chat log + LLM tool-result content. Two shapes are accepted:
+ *
+ * 1. Fs-style: `{ ok: boolean, text: string, ...extras }` — used as
+ *    is. This is what the original 5 fs tools return.
+ * 2. Anything else: stringified JSON. `ok` is derived from common
+ *    field hints (`ok`, `exit_code`, `state`) and falls back to
+ *    `true` when no clear signal exists. The full structured
+ *    result is JSON-encoded into `text` so the model sees every
+ *    field.
+ */
+function normaliseToolResult(out: unknown): AnyToolResult {
+  if (
+    out &&
+    typeof out === "object" &&
+    typeof (out as { text?: unknown }).text === "string" &&
+    typeof (out as { ok?: unknown }).ok === "boolean"
+  ) {
+    const r = out as { ok: boolean; text: string };
+    return { ok: r.ok, text: r.text };
+  }
+  if (out && typeof out === "object") {
+    const r = out as Record<string, unknown>;
+    let ok = true;
+    if (typeof r.ok === "boolean") ok = r.ok;
+    else if (typeof r.exit_code === "number") ok = r.exit_code === 0;
+    else if (typeof r.state === "string")
+      ok = r.state !== "error" && r.state !== "failed";
+    return { ok, text: JSON.stringify(out) };
+  }
+  return { ok: true, text: String(out ?? "") };
+}
+
 async function runOneTool(toolset: Toolset, call: ToolCall): Promise<AnyToolResult> {
   const exec = toolset.executors[call.name];
   if (!exec) {
@@ -342,7 +404,7 @@ async function runOneTool(toolset: Toolset, call: ToolCall): Promise<AnyToolResu
   }
   try {
     const out = await exec(call.arguments);
-    return { ok: out.ok, text: out.text };
+    return normaliseToolResult(out);
   } catch (err) {
     return {
       ok: false,
@@ -752,3 +814,18 @@ export function defaultSystemPrompt(ctx: TenantContext, userId: string): string 
 
 // re-exported here so server/index.ts only imports from one barrel.
 export type { ChatMessage };
+
+function makeLogger(
+  tenantId: string,
+  userId: string,
+  _send: (msg: ServerMsg) => void,
+): import("@tianshu/plugin-sdk").PluginLogger {
+  // Tools log to the server console for now; future PR can route
+  // structured tool logs to the chat UI as separate events.
+  const prefix = `[tenant:${tenantId}][user:${userId}][tool]`;
+  return {
+    info: (msg, meta) => console.log(`${prefix} ${msg}`, meta ?? ""),
+    warn: (msg, meta) => console.warn(`${prefix} ${msg}`, meta ?? ""),
+    error: (msg, meta) => console.error(`${prefix} ${msg}`, meta ?? ""),
+  };
+}

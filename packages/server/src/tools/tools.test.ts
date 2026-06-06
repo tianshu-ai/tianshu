@@ -255,8 +255,8 @@ describe("glob", () => {
 });
 
 describe("buildToolset", () => {
-  it("exposes 5 tool schemas with stable names", () => {
-    const ts = buildToolset(home);
+  it("exposes 5 tool schemas with stable names", async () => {
+    const ts = await buildToolset({ userHome: home });
     expect(ts.schemas.map((s) => s.name).sort()).toEqual([
       "edit_file",
       "glob",
@@ -268,7 +268,7 @@ describe("buildToolset", () => {
 
   it("invoking executor via the map calls the right tool", async () => {
     fs.writeFileSync(path.join(home, "a.txt"), "hi");
-    const ts = buildToolset(home);
+    const ts = await buildToolset({ userHome: home });
     const r = await ts.executors.read_file({ path: "/a.txt" });
     expect((r as { ok: boolean }).ok).toBe(true);
     expect((r as { text: string }).text).toContain("hi");
@@ -279,8 +279,8 @@ describe("buildToolset", () => {
     try {
       fs.writeFileSync(path.join(home, "secret-a.txt"), "alice secret");
       fs.writeFileSync(path.join(home2, "secret-b.txt"), "bob secret");
-      const tsA = buildToolset(home);
-      const tsB = buildToolset(home2);
+      const tsA = await buildToolset({ userHome: home });
+      const tsB = await buildToolset({ userHome: home2 });
 
       const a = (await tsA.executors.list_dir({})) as {
         entries: Array<{ name: string }>;
