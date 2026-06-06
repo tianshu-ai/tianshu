@@ -34,10 +34,14 @@
         "module": "MicroSandboxRunner"
       }
     ],
+    "tools": [
+      { "id": "exec",                 "module": "ExecTool" },
+      { "id": "reset_sandbox",        "module": "ResetSandboxTool" },
+      { "id": "get_sandbox_status",   "module": "GetSandboxStatusTool" },
+      { "id": "update_sandbox_config", "module": "UpdateSandboxConfigTool" }
+    ],
     "apiRoutes": [
-      { "method": "GET",  "path": "/status", "handler": "status" },
-      { "method": "POST", "path": "/exec",   "handler": "exec"   },
-      { "method": "POST", "path": "/reset",  "handler": "reset"  }
+      { "method": "GET", "path": "/status", "handler": "status" }
     ]
   }
 }

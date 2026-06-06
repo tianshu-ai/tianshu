@@ -428,4 +428,72 @@ describe("PluginRegistry", () => {
       /declared provides\["sandbox\.shell"\] without a backing sandboxes/,
     );
   });
+
+  // ADR-0004 N+3 — contributes.tools[] -----------------------------------
+
+  it("toolsForTenant() collects tools from every active plugin", async () => {
+    writeBuiltinManifest("toolsy", {
+      id: "toolsy",
+      version: "1.0.0",
+      displayName: "Toolsy",
+      server: { entry: "@toolsy/server" },
+      contributes: {
+        tools: [
+          { id: "first", module: "FirstTool" },
+          { id: "second", module: "SecondTool" },
+        ],
+      },
+    });
+    const FirstTool = {
+      schema: { name: "first", description: "", parameters: { type: "object" } },
+      execute: async () => ({ ok: true }),
+    };
+    const SecondTool = {
+      schema: { name: "second", description: "", parameters: { type: "object" } },
+      execute: async () => ({ ok: true }),
+    };
+    ops.create("acme");
+    writeTenantConfig("acme", { plugins: { toolsy: { enabled: true } } }, home);
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@toolsy/server": {
+          activate: () => ({ tools: { FirstTool, SecondTool } }),
+        },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    await reg.ensureForTenant(ctx);
+    const tools = reg.toolsForTenant(ctx.tenantId);
+    expect(tools.map((t) => t.tool.schema.name).sort()).toEqual(["first", "second"]);
+    expect(tools[0]!.pluginId).toBe("toolsy");
+  });
+
+  it("missing tool module marks the plugin failed when toolsForTenant() is called", async () => {
+    writeBuiltinManifest("broken-tools", {
+      id: "broken-tools",
+      version: "1.0.0",
+      displayName: "Broken",
+      server: { entry: "@broken/server" },
+      contributes: {
+        tools: [{ id: "missing", module: "NotExported" }],
+      },
+    });
+    ops.create("acme");
+    writeTenantConfig("acme", { plugins: { "broken-tools": { enabled: true } } }, home);
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@broken/server": { activate: () => ({ tools: {} }) },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    await reg.ensureForTenant(ctx);
+    reg.toolsForTenant(ctx.tenantId);
+    const entries = reg.listForTenant(ctx.tenantId);
+    expect(entries[0]!.state).toBe("failed");
+    expect(entries[0]!.failedReason).toMatch(/tools\["NotExported"\] missing/);
+  });
 });

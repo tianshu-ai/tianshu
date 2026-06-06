@@ -39,6 +39,7 @@
 
 import type {
   CapabilityHandle,
+  AgentTool,
   CapabilityName,
   PluginContext,
   PluginLogger,
@@ -326,6 +327,52 @@ export class PluginRegistry {
     return this.cache.get(tenantId)?.byCapability.get(name)?.value as T | undefined;
   }
 
+  /**
+   * Collect every tool every active plugin contributed for this
+   * tenant. Each entry pairs the tool object with its source
+   * plugin id (used for logging / Plugin Manager UI). The agent
+   * loop further filters by each tool's `available()` gate before
+   * registering with pi-ai.
+   */
+  toolsForTenant(tenantId: string): Array<{ pluginId: string; tool: AgentTool }> {
+    const out: Array<{ pluginId: string; tool: AgentTool }> = [];
+    const cached = this.cache.get(tenantId);
+    if (!cached) return out;
+    for (const e of cached.entries) {
+      if (e.state !== "active" || !e.manifest.contributes?.tools) continue;
+      const toolModules = e.exports?.tools ?? {};
+      for (const t of e.manifest.contributes.tools) {
+        const tool = toolModules[t.module];
+        if (!tool) {
+          // Manifest claimed a tool but exports.tools didn't expose
+          // the matching module. Mark plugin failed so the operator
+          // sees it in /api/plugins; skip emission.
+          e.state = "failed";
+          e.failedReason = `tools["${t.module}"] missing in plugin ${e.manifest.id}`;
+          delete e.exports;
+          continue;
+        }
+        out.push({ pluginId: e.manifest.id, tool });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Build a small read-only capability lookup handle scoped to one
+   * tenant. Same shape as `PluginContext.capabilities` but for
+   * host-side consumers (agent loop, tool factories) that don't
+   * have a `PluginContext`.
+   */
+  hostCapabilities(tenantId: string): HostCapabilityHandle {
+    return {
+      get: <T = unknown>(name: CapabilityName) =>
+        this.capabilityFor<T>(tenantId, name),
+      has: (name: CapabilityName) =>
+        Boolean(this.cache.get(tenantId)?.byCapability.has(name)),
+    };
+  }
+
   // ─── internals ─────────────────────────────────────────────────
 
   private async activate(
@@ -384,6 +431,17 @@ export class PluginRegistry {
       capabilityInfo: { provided: [], requires, missing: [] },
     };
   }
+}
+
+/**
+ * Read-only capability lookup handle for host code (agent loop,
+ * tool builders). Subset of `CapabilityHandle` from the SDK — we
+ * intentionally don't expose `on()` event subscription here so
+ * registry-mutation paths stay inside the registry itself.
+ */
+export interface HostCapabilityHandle {
+  get<T = unknown>(name: CapabilityName): T | undefined;
+  has(name: CapabilityName): boolean;
 }
 
 function failed(

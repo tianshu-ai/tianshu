@@ -20,7 +20,14 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────
 
 /** Plugin enable/disable map (per ADR-0003 §4). Keys are plugin ids. */
-export type PluginsConfig = Record<string, { enabled?: boolean }>;
+export type PluginsConfig = Record<
+  string,
+  {
+    enabled?: boolean;
+    /** Opaque per-plugin config; the host doesn't interpret it. */
+    config?: Record<string, unknown>;
+  }
+>;
 
 /** Fields that BOTH global and tenant configs can set. Tenant wins on conflict. */
 export interface OverridableConfig {

@@ -15,6 +15,7 @@ import type {
   PluginManifest,
   RightPanelContribution,
   SandboxContribution,
+  ToolContribution,
   SidebarSectionContribution,
   TopBarButtonContribution,
   WsMessageContribution,
@@ -174,6 +175,9 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
   if ("sandboxes" in raw) {
     out.sandboxes = parseArray(raw.sandboxes, "sandboxes", acc, parseSandbox);
   }
+  if ("tools" in raw) {
+    out.tools = parseArray(raw.tools, "tools", acc, parseTool);
+  }
   if ("composerActions" in raw) {
     out.composerActions = parseArray(
       raw.composerActions,
@@ -230,6 +234,17 @@ function parseRightPanel(raw: unknown, ctx: string, acc: Acc): RightPanelContrib
 }
 
 const SANDBOX_KINDS = new Set<SandboxContribution["kind"]>(["shell"]);
+
+function parseTool(raw: unknown, ctx: string, acc: Acc): ToolContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const moduleKey = expectString(raw, "module", acc, ctx);
+  if (id == null || moduleKey == null) return null;
+  return { id, module: moduleKey };
+}
 
 function parseSandbox(raw: unknown, ctx: string, acc: Acc): SandboxContribution | null {
   if (!isPlainObject(raw)) {

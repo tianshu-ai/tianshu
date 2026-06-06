@@ -99,6 +99,17 @@ export interface PluginServerExports {
    * itself — plugins do that inside `activate()`.
    */
   sandboxes?: Record<string, SandboxRunner>;
+  /**
+   * Agent tools the plugin contributes. Keys must match the
+   * `module` strings declared in `manifest.contributes.tools[]`.
+   * The host collects every active plugin's tools each agent turn
+   * and merges them with the core tool set (fs read/write/etc.).
+   *
+   * A tool's `available()` (if present) gates registration on a
+   * per-turn basis — use this for status-aware tools whose backing
+   * runner may not be ready yet.
+   */
+  tools?: Record<string, AgentTool>;
 }
 
 // ─── Capability registry ────────────────────────────────────────
@@ -119,6 +130,63 @@ export interface CapabilityHandle {
     ev: "registered" | "unregistered",
     fn: () => void,
   ): () => void;
+}
+
+// ─── Agent tools (ADR-0004 §10) ───────────────────────────────
+
+/**
+ * Per-call context handed to an agent tool's `execute()`. Lets the
+ * tool reach back into the tenant capability registry, the user's
+ * home dir, and a small log surface without re-deriving them. Host
+ * fills this in on every tool invocation.
+ */
+export interface AgentToolContext {
+  pluginId: string;
+  tenantId: string;
+  userId: string;
+  /** Read-only capability lookup. Subset of CapabilityHandle
+   *  (no event subscription) because tool execution is
+   *  request-scoped — if a capability flips during a turn, the
+   *  agent loop will pick that up next turn via toolsForTenant. */
+  capabilities: ReadOnlyCapabilityHandle;
+  /** Per-user workspace dir on the host filesystem. */
+  userHomeDir: string;
+  /** Tenant root dir (host filesystem). Plugins that need to write
+   *  to `<tenant>/_tenant/config/...` use this; most tools don't. */
+  tenantHomeDir: string;
+  log: PluginLogger;
+}
+
+/** Lookup-only subset of CapabilityHandle (no `on()`). */
+export interface ReadOnlyCapabilityHandle {
+  get<T = unknown>(name: CapabilityName): T | undefined;
+  has(name: CapabilityName): boolean;
+}
+
+/**
+ * A schema + executor pair that becomes an agent tool. The host
+ * collects these from every active plugin via
+ * `exports.tools[<module-key>]`, gates each one through
+ * `available()`, then registers the surviving schemas with the
+ * agent loop.
+ *
+ * Tools may return any JSON-serialisable value. The host normalises
+ * `{ ok, text }` for the chat log; if your result has both fields
+ * they're used verbatim, otherwise the host JSON-encodes the whole
+ * result into `text` and best-effort-derives `ok`.
+ */
+export interface AgentTool {
+  /** pi-ai Tool schema. Name is what the model sees. */
+  schema: import("@earendil-works/pi-ai").Tool;
+  /** Optional per-turn gate. Return false to hide the tool this
+   *  turn (e.g. when the backing capability is in `state: error`).
+   *  Default true. */
+  available?(ctx: AgentToolContext): boolean | Promise<boolean>;
+  /** Run the tool with the model-supplied args. */
+  execute(
+    args: Record<string, unknown>,
+    ctx: AgentToolContext,
+  ): unknown | Promise<unknown>;
 }
 
 // ─── Sandbox surface (ADR-0004 §2) ─────────────────────────────
