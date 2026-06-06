@@ -642,6 +642,152 @@ If the user wants a different image, they edit the Sandboxfile and
 call `reset()` (or restart the tenant). No "image build" step in our
 code path.
 
+### 15. Builtin plugin loading: file-scan instead of hard-coded
+
+ADR-0003 §7 said builtin plugins are statically `import`-ed in
+both the server (`packages/server/src/index.ts`'s
+`moduleMapResolver`) and the web bundle. This made adding a builtin
+a two-place change: drop a `manifest.json` directory **and** edit
+`index.ts`. With v0 having only `files` it was fine; with
+`microsandbox` (and the catalog letting tenants drop new plugin
+dirs at runtime) it stops being fine.
+
+This ADR revises the loading rule to **convention-based file
+scanning on both sides**:
+
+**Server** (Node ESM, fully dynamic):
+
+```ts
+// pseudo-code in core/plugins/registry.ts
+async function buildBuiltinResolver(builtinDir: string) {
+  const ids = await fs.readdir(path.join(builtinDir, "plugins"));
+  const map: Record<string, PluginServerModule> = {};
+  for (const id of ids) {
+    const manifestPath = path.join(builtinDir, "plugins", id, "manifest.json");
+    if (!fs.existsSync(manifestPath)) continue;
+    const manifest = parseManifest(JSON.parse(fs.readFileSync(manifestPath, "utf8")));
+    if (!manifest.server?.entry) continue;
+    const modUrl = pathToFileURL(
+      path.join(builtinDir, "plugins", id, "dist", "server.js"),
+    ).href;
+    const mod = await import(modUrl);
+    map[manifest.server.entry] = mod.default ?? mod;
+  }
+  return moduleMapResolver(map);
+}
+```
+
+The scan runs the **first** time a tenant calls
+`registry.ensureForTenant()` and the result feeds into a
+process-level resolver cache (Node's ESM cache deduplicates the
+actual module bodies). Subsequent tenants reuse the cached module
+graph, so this is not a per-tenant cost.
+
+**Web** (Vite static glob — still build-time, but no manual list):
+
+```ts
+// packages/web/src/plugins/registry.ts
+const manifests = import.meta.glob(
+  "/plugins/*/manifest.json",
+  { eager: true, import: "default" },
+);
+const clients = import.meta.glob(
+  "/plugins/*/dist/client.js",
+  { eager: true },
+);
+// build a (id, components) map from the two
+```
+
+Vite resolves the glob at build time, so adding a builtin = drop
+the directory + add it to the npm workspace, no edit to web
+entrypoint code. Tenant-installed plugins (catalog-downloaded)
+still go through the v1 dynamic-import path — not enabled in v0.
+
+What this is **not**: a third-party server-plugin runtime. The
+v0 trust model is unchanged — we only auto-load plugins that
+live under `builtinConfig/plugins/` (shipped with the server) or
+`<tenant>/_tenant/config/plugins/` (installed by an authenticated
+admin via the catalog or by hand). We do not run arbitrary code
+from random directories.
+
+### 16. Refresh protocol — lazy with explicit invalidation
+
+The registry already has `ensureForTenant()` (lazy, cached) and
+`invalidate(tenantId)` (drop cache so the next `ensureForTenant()`
+re-runs discovery + activation). v0 surfaces these to clients via:
+
+| Endpoint | Effect |
+| --- | --- |
+| `GET /api/plugins` | Reads cache. Triggers initial discovery + activation if cache is empty for this tenant. |
+| `PATCH /api/plugins/:id` | Writes `<tenant>/config.json`, calls `registry.invalidate(tenantId)`, returns fresh list. **Already implemented.** |
+| `POST /api/plugins/catalog/refresh` | Re-fetches the remote catalog (separate cache from the registry). Already implemented. |
+| `POST /api/plugins/refresh` *(new)* | Calls `registry.invalidate(tenantId)` and returns the freshly discovered + activated list. Use after manually dropping a plugin directory, after a `git pull` that adds a new builtin, or after a catalog install (§3). |
+| `POST /api/plugins/install` *(catalog P2)* | Downloads a tarball, extracts to `<tenant>/_tenant/config/plugins/<id>/`, writes `enabled: true` in tenant config, then internally calls `registry.invalidate(tenantId)` so the same response includes the activated entry. |
+
+Client-side, the Plugin Manager UI:
+
+- Shows a **Refresh** button next to the tab strip that calls
+  `POST /api/plugins/refresh`. Useful during local dev when the
+  user is editing a builtin in-tree.
+- Optimistically updates after `PATCH /api/plugins/:id` using the
+  returned list.
+- After `POST /api/plugins/install` succeeds, replaces the
+  Installed-tab list with the response (no extra round-trip).
+
+What we do **not** do in v0:
+
+- **No fs watcher.** Re-scanning is explicit (PATCH / refresh /
+  install). A watcher tempts plugin authors to think "hot reload
+works"; module cache invalidation in Node is fiddly enough that
+  the right answer for hot-edit-during-dev is restart the server.
+- **No process-wide invalidation API for client usage.** A tenant
+  cannot force re-discovery for *other* tenants. The catalog
+  install path runs server-side and only invalidates the calling
+  tenant; if an admin wants to push a builtin into every tenant
+  they restart the server.
+- **No module cache eviction on PATCH.** Toggling enabled →
+  disabled → enabled re-runs `activate()` against the same module.
+  Plugin authors must keep `activate()` idempotent if they hold
+  process-global state — already implied by ADR-0003 §6 ("failure
+  isolation") but worth restating.
+
+### 17. Builtin visibility (revises ADR-0003 §11)
+
+ADR-0003 §11 says "plugins not listed in `<tenant>/config.json`
+are completely invisible." That rule was written for the
+`browser / task-board / calendar` stubs and stays correct for
+**third-party / catalog-installed** plugins, but it doesn't fit
+builtins: a user expects builtins to be discoverable in the Plugin
+Manager without first hand-editing `config.json`.
+
+Revised rule:
+
+| Source | Listed in `config.json`? | Visible in Plugin Manager? | Active? |
+| --- | --- | --- | --- |
+| **builtin** | yes, `enabled: true` | ✅ Installed tab | ✅ |
+| **builtin** | yes, `enabled: false` | ✅ Installed tab (off) | ❌ |
+| **builtin** | not listed | ✅ Installed tab (off, default) | ❌ |
+| **tenant** (§catalog) | yes, `enabled: true` | ✅ Installed tab | ✅ |
+| **tenant** | not listed but on disk | ✅ Installed tab (off) | ❌ |
+| **tenant** | listed but not on disk | ❌ ("failed" diagnostic) | ❌ |
+| **catalog only** (not downloaded) | n/a | ✅ Catalog tab only | ❌ |
+
+The deciding rule: **"installed = on disk under a known plugin
+root"**, not "listed in config." Config decides activation, not
+visibility. ADR-0003 §4's three-state semantics (`listed+enabled`,
+`listed+disabled`, `not listed`) collapses for builtins into two
+states (`active`, `inactive`); the third state is not meaningfully
+different from listed+disabled and the UI no longer distinguishes
+them.
+
+Server impact: `listPluginsForTenant()` already returns failed +
+disabled rows; the change is in `ensureForTenant()` — builtins not
+listed in config now get `state: "disabled"` rather than being
+filtered out of `discoverPlugins()` results. The `?show=available`
+opt-in from ADR-0003 §4 becomes redundant for builtins; we keep
+it for tenant plugins-on-disk-but-not-config (rare, used during
+upgrade / manual install).
+
 ## Alternatives considered
 
 ### Plugin `type` field
@@ -706,7 +852,8 @@ Reconsider once we have >1 sandbox plugin in the wild.
 | PR | Scope |
 | --- | --- |
 | **N (this)** | ADR-0004 (docs only). |
-| **N+1** | `@tianshu/plugin-sdk` adds `SandboxRunner` / `SandboxModule` / `CapabilityHandle` + `KNOWN_CAPABILITIES` table; manifest types add `sandboxes[]`, `provides[]`, `requires[]`. Registry adds capability registry, topological sort, exclusivity checks. `GET /api/plugins` exposes capabilities[]. Tests cover requires-missing, exclusivity violation, cycle, requires-after-disable. |
+| **N+1** | `@tianshu/plugin-sdk` adds `SandboxRunner` / `SandboxModule` / `CapabilityHandle` + `KNOWN_CAPABILITIES` table; manifest types add `sandboxes[]`, `provides[]`, `requires[]`. Registry adds capability registry, topological sort, exclusivity checks. `GET /api/plugins` exposes capabilities[] and surfaces builtins as `disabled` rows even when not listed in tenant config (§17). `POST /api/plugins/refresh` endpoint added (§16). Tests cover requires-missing, exclusivity violation, cycle, requires-after-disable. |
+| **N+1.5** | Convert builtin server loading from hard-coded `moduleMapResolver` to file-scan dynamic import (§15, server side). Convert web `PluginRegistry` to `import.meta.glob` (§15, web side). No new builtins added in this PR — just the loader change with `files` continuing to work. Plugin Manager UI gains a Refresh button. |
 | **N+2** | `plugins/microsandbox/` builtin plugin: `nullable` runner first, then real microsandbox-binary integration behind a feature flag in `config.example.json`. Dev tenant config does **not** enable it by default — opt-in. |
 | **N+3** | Agent loop wires `exec` / `reset_sandbox` / `browser` tools to the capability registry (§10); status-gated. Right-panel `SandboxShellPanel` (interactive shell, port of `SandboxShell.tsx` from the closed-source repo) + `BrowserPanel` (noVNC / CDP viewport) + `SandboxStatusPanel` (lifecycle + Reset). |
 | **N+4** | (post-merge) Dynamic-packaging from user files (§9). Behind a separate flag because it shells out to `docker build` / similar. |
