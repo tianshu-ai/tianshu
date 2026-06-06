@@ -10,6 +10,7 @@ way it is — not just _what_ shape it has.
 | 0001 | [Multi-tenancy from row 1](./multi-tenant.md) | Accepted |
 | 0002 | [Orchestrator + workers, with builtin/tenant config layering](./workers.md) | Accepted |
 | 0003 | [Plugin system (UI panels, sidebar sections, API routes)](./plugins.md) | Accepted |
+| 0004 | [Plugin capabilities & sandbox contract](./sandboxes.md) | Draft |
 
 ## How to write an ADR
 
