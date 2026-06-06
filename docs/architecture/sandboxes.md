@@ -589,9 +589,17 @@ dependents.
 ADR-0003 §11 names the v0 builtin plugin set as
 `files / browser / task-board / calendar`, with `files` enabled in
 the dev tenant by default and the rest opt-in. **This ADR adds
-`microsandbox` as a fifth builtin** under
-`packages/server/builtinConfig/plugins/microsandbox/`, **opt-in by
-default** (not listed in the dev tenant's bootstrap config). Rationale:
+`microsandbox` as the fifth builtin.** The full post-ADR-0004 set is:
+
+| # | Plugin id | Provides | Dev-tenant default | Notes |
+| --- | --- | --- | --- | --- |
+| 1 | `files` | — | **enabled** | Workspace browser + composer paperclip. ADR-0003 §11. |
+| 2 | `browser` | — | opt-in | Browser panel stub; will be merged with `microsandbox`'s `browser.cdp` provider in a future ADR. |
+| 3 | `task-board` | — | opt-in | Kanban panel stub. ADR-0003 §11. |
+| 4 | `calendar` | — | opt-in | Calendar panel stub. ADR-0003 §11. |
+| 5 | `microsandbox` | `sandbox.shell`, `browser.cdp` | opt-in | New in ADR-0004. Lives at `packages/server/builtinConfig/plugins/microsandbox/`. |
+
+Why `microsandbox` is opt-in rather than enabled-by-default:
 
 - The microsandbox binary is user-supplied; auto-enabling would
   hard-fail every fresh install that doesn't have it on PATH.
@@ -606,6 +614,14 @@ default** (not listed in the dev tenant's bootstrap config). Rationale:
 The Plugin Manager UI (ADR-0003 §8) lists `microsandbox` in the
 "Available" view so a tenant admin can flip it on with one click,
 matching the existing pattern.
+
+**Open question deferred to a later ADR:** the existing `browser`
+builtin (panel stub) overlaps with `microsandbox`'s `browser.cdp`
+capability. v0 keeps them separate — the stub `browser` builtin
+is a client-only panel, `microsandbox`'s `browser.cdp` is the
+actual sidecar. When the agent's browser tool lands (PR N+3), it
+binds to the capability, not to the stub plugin. We unify the two
+in a follow-up once the surface stabilises.
 
 ### 14. Sandboxfile relationship
 
