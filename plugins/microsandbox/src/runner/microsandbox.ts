@@ -99,6 +99,33 @@ export class MicrosandboxRunner implements SandboxRunner {
     this.opts = opts;
   }
 
+  /**
+   * Kick off a VM start without waiting for it. Used by the plugin's
+   * `activate()` so the sandbox is warm by the time the user opens
+   * the chat — no first-exec stall, status panel reads `ready`
+   * within ~10s of plugin enable.
+   *
+   * Errors during warm-up land in `this.startError` and surface via
+   * `status()`; we don't throw because the caller (activate hook)
+   * shouldn't fail just because a background warm-up failed. The
+   * next real `exec()` will see the error state and surface it to
+   * the agent properly.
+   */
+  warmUp(): void {
+    if ((this.state as State) === "ready") return;
+    if (this.startPromise) return;
+    this.state = "starting";
+    this.startError = null;
+    this.startPromise = this.doStart()
+      .catch(() => {
+        // doStart already set state="error" + startError. Swallow
+        // here so the unhandled-rejection guard doesn't fire.
+      })
+      .finally(() => {
+        this.startPromise = null;
+      });
+  }
+
   async exec(req: ExecRequest): Promise<ExecResult> {
     const start = Date.now();
     try {

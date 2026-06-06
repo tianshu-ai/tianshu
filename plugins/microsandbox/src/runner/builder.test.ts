@@ -83,4 +83,23 @@ describe("buildRunner facade", () => {
     });
     expect(built.config.sandboxName).toBe("tianshu-acme");
   });
+
+  it("the real runner exposes warmUp() so the plugin can eager-start", async () => {
+    const built = await buildRunner({
+      pluginId: "microsandbox",
+      contributionId: "main",
+      tenantId: "acme",
+      workspaceDir,
+      rawConfig: {},
+      probeSdk: async () => ({ ok: true }),
+    });
+    // Type-narrow via `unknown` so we don't leak the SDK shape.
+    const r = built.runner as unknown as { warmUp?: () => void };
+    expect(typeof r.warmUp).toBe("function");
+    // Calling warmUp is fire-and-forget; it should not throw and
+    // should flip the runner out of "stopped".
+    r.warmUp!();
+    const status = await built.runner.status();
+    expect(["starting", "ready", "error"]).toContain(status.state);
+  });
 });
