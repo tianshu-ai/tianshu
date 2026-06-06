@@ -39,6 +39,12 @@ import {
 } from "../core/index.js";
 import { buildToolset, type Toolset } from "../tools/index.js";
 import {
+  filterSkillsForTenant,
+  loadSkillsForPlugin,
+  type LoadedSkill,
+} from "../core/plugins/skills.js";
+import { fileURLToPath } from "node:url";
+import {
   appendAgentMessage,
   appendMessage,
   ensureActiveSession,
@@ -205,12 +211,28 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   const apiKey = resolveApiKey(modelInfo);
   const userHome = ctx.userHomeDir(userId);
   const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
+  const allSkills = [
+    ...loadHostSkills(),
+    ...(pluginRegistry?.skillsForTenant(ctx.tenantId) ?? []),
+  ];
+  // Build a set of registered tool names from pluginTools' schemas.
+  // We don't yet know what `available()` will say, so we use the
+  // schema name; this slightly over-includes skills that depend on
+  // a tool that ends up hidden, but the agent simply won't reach
+  // for those. Conservative on the side of more visibility.
+  const declaredToolNames = new Set(pluginTools.map(({ tool }) => tool.schema.name));
+  const hostCaps = pluginRegistry?.hostCapabilities(ctx.tenantId) ?? emptyHostCapabilities();
+  const skills = filterSkillsForTenant(allSkills, {
+    hasTool: (n) => declaredToolNames.has(n),
+    hasCapability: (n) => hostCaps.has(n as never),
+  });
   const toolset = await buildToolset({
     pluginTools,
+    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
-      capabilities: pluginRegistry?.hostCapabilities(ctx.tenantId) ?? emptyHostCapabilities(),
+      capabilities: hostCaps,
       userHomeDir: userHome,
       tenantHomeDir: homeDir ?? "",
       log: makeLogger(ctx.tenantId, userId, send),
@@ -251,14 +273,7 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
     model: modelInfo.modelId,
   });
 
-  const toolNames = new Set(toolset.schemas.map((s) => s.name));
-  const systemPrompt = [
-    defaultSystemPrompt(ctx, userId),
-    "",
-    toolsetPromptHints(toolNames),
-  ]
-    .join("\n")
-    .trimEnd();
+  const systemPrompt = defaultSystemPrompt(ctx, userId);
 
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     if (signal.aborted) return;
@@ -823,53 +838,49 @@ export function defaultSystemPrompt(ctx: TenantContext, userId: string): string 
 }
 
 /**
- * Build a paragraph describing which tool surfaces the agent has
- * this turn. Lives next to the toolset assembler so adding a new
- * plugin can extend the prompt without editing the chat handler
- * directly. v0 hard-codes the two builtin plugin surfaces; future
- * work could let plugins contribute their own prompt fragments.
+ * Load skills shipped with the host repo (under `<repoRoot>/skills/`).
+ * These are surfaced to every tenant alongside plugin-contributed
+ * skills. Any with `when:` predicates are filtered later by
+ * `filterSkillsForTenant`.
+ *
+ * Result is cached per process — host skills are read-only at
+ * runtime, no need to re-stat per request.
  */
-export function toolsetPromptHints(toolNames: Set<string>): string {
-  const hints: string[] = [];
-  const hasFiles =
-    toolNames.has("list_dir") ||
-    toolNames.has("read_file") ||
-    toolNames.has("write_file");
-  const hasSandbox = toolNames.has("exec");
-
-  if (hasFiles && hasSandbox) {
-    hints.push(
-      `TWO FILE SURFACES`,
-      `You have BOTH host filesystem tools AND a shell sandbox. They overlap on purpose:`,
-      `  - list_dir / read_file / write_file / edit_file / glob operate on your`,
-      `    host home ("/" = your user home). Direct, persistent, no VM needed.`,
-      `  - exec runs commands inside the sandbox VM. Its default working dir is`,
-      `    your user home inside the guest — the SAME directory the file tools see,`,
-      `    bind-mounted from the host. So:`,
-      `      write_file("/foo.py", ...)`,
-      `      exec("python3 foo.py")     # finds the file you just wrote`,
-      `  - Files written by either side show up on the other immediately.`,
-      `  - Use file tools for simple reads/writes/edits (no VM cost).`,
-      `  - Use exec for anything that needs a real shell, package installs,`,
-      `    long-running scripts, or paths outside your home (e.g. /etc, /usr).`,
-      `  - reset_sandbox if exec keeps failing; get_sandbox_status to inspect.`,
-      ``,
-    );
-  } else if (hasFiles) {
-    hints.push(
-      `Filesystem tools (list_dir, read_file, write_file, edit_file, glob) operate`,
-      `relative to the user's home ("/" = home).`,
-      ``,
-    );
-  } else if (hasSandbox) {
-    hints.push(
-      `Shell sandbox: use \`exec\` to run commands inside the per-tenant VM.`,
-      `Workspace files persist at /workspace inside the guest.`,
-      `Use reset_sandbox if exec keeps failing; get_sandbox_status to inspect.`,
-      ``,
+let hostSkillsCache: LoadedSkill[] | null = null;
+export function loadHostSkills(): LoadedSkill[] {
+  if (hostSkillsCache) return hostSkillsCache;
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  // dist/chat/handler.js → ../../../skills, source/chat/handler.ts
+  // → ../../../skills. Either way, three levels up gets us to the
+  // server package root, which contains a `skills/` dir at build
+  // time. We override via TIANSHU_HOST_SKILLS_DIR for tests.
+  const fromEnv = process.env.TIANSHU_HOST_SKILLS_DIR;
+  const skillsDir = fromEnv
+    ? path.resolve(fromEnv)
+    : path.resolve(here, "..", "..", "skills");
+  if (!fs.existsSync(skillsDir)) {
+    hostSkillsCache = [];
+    return hostSkillsCache;
+  }
+  // Treat host skills as if they came from a synthetic `tianshu`
+  // plugin so log lines and plugin-id-derived names stay readable.
+  const contributions = fs
+    .readdirSync(skillsDir, { withFileTypes: true })
+    .filter((d) => d.isFile() && d.name.endsWith(".md"))
+    .map((d) => ({ id: d.name.replace(/\.md$/, ""), path: d.name }));
+  const result = loadSkillsForPlugin({
+    pluginId: "tianshu",
+    pluginDir: skillsDir,
+    contributions,
+  });
+  for (const f of result.failures) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[host-skills] ${f.source.contributionId} (${f.filePath}): ${f.reason}`,
     );
   }
-  return hints.join("\n");
+  hostSkillsCache = result.skills;
+  return hostSkillsCache;
 }
 
 // re-exported here so server/index.ts only imports from one barrel.

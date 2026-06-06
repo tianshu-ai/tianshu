@@ -53,6 +53,7 @@ import type {
 import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
+import { loadSkillsForPlugin, type LoadedSkill } from "./skills.js";
 
 export type PluginState = "active" | "disabled" | "failed" | "client-bundle-missing";
 
@@ -353,6 +354,38 @@ export class PluginRegistry {
           continue;
         }
         out.push({ pluginId: e.manifest.id, tool });
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Collect every skill contributed by every active plugin for
+   * this tenant. The host adds its own self-shipped skills on top
+   * of these (they live under `<repoRoot>/skills/`, not in any
+   * plugin). Caller filters by `when:` predicate against the
+   * current tool/capability set; see `filterSkillsForTenant`.
+   */
+  skillsForTenant(tenantId: string): LoadedSkill[] {
+    const out: LoadedSkill[] = [];
+    const cached = this.cache.get(tenantId);
+    if (!cached) return out;
+    for (const e of cached.entries) {
+      if (e.state !== "active" || !e.manifest.contributes?.skills) continue;
+      const result = loadSkillsForPlugin({
+        pluginId: e.manifest.id,
+        pluginDir: e.dir,
+        contributions: e.manifest.contributes.skills,
+      });
+      out.push(...result.skills);
+      for (const f of result.failures) {
+        // Surface skill load failures as plugin-failed so the Plugin
+        // Manager UI shows them; we don't fail the whole plugin
+        // because a missing skill file shouldn't kill its tools.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[plugin:${f.source.pluginId}] skill ${f.source.contributionId} (${f.filePath}): ${f.reason}`,
+        );
       }
     }
     return out;
