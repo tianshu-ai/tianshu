@@ -584,7 +584,30 @@ a tooltip listing the missing capability names. Disabling a provider
 that someone else `requires` shows a confirmation modal listing the
 dependents.
 
-### 13. Sandboxfile relationship
+### 13. Builtin plugin set update
+
+ADR-0003 §11 names the v0 builtin plugin set as
+`files / browser / task-board / calendar`, with `files` enabled in
+the dev tenant by default and the rest opt-in. **This ADR adds
+`microsandbox` as a fifth builtin** under
+`packages/server/builtinConfig/plugins/microsandbox/`, **opt-in by
+default** (not listed in the dev tenant's bootstrap config). Rationale:
+
+- The microsandbox binary is user-supplied; auto-enabling would
+  hard-fail every fresh install that doesn't have it on PATH.
+- Once enabled, the plugin still degrades gracefully via the
+  nullable runner (§9) — the user gets a status panel telling them
+  what's missing instead of a crash.
+- The opt-in pattern is consistent with how ADR-0003 already treats
+  `browser / task-board / calendar`: present under
+  `builtinConfig/plugins/`, invisible until added to
+  `<tenant>/config.json`.
+
+The Plugin Manager UI (ADR-0003 §8) lists `microsandbox` in the
+"Available" view so a tenant admin can flip it on with one click,
+matching the existing pattern.
+
+### 14. Sandboxfile relationship
 
 This plugin is a **driver**, not a packaging system. The contract is:
 
