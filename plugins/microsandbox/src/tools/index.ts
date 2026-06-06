@@ -29,6 +29,14 @@ function getRunner(ctx: AgentToolContext): SandboxRunner | undefined {
 
 // ─── exec ──────────────────────────────────────────────────────────
 
+// Path inside the sandbox guest where the active user's host home
+// is bind-mounted to. Mirrors the ./users/<userId>/ layout that the
+// host workspace uses (per ADR-0001 §2) so a relative path means
+// the same file on both sides.
+function defaultUserWorkdir(userId: string): string {
+  return `/workspace/users/${userId}`;
+}
+
 export const ExecTool: AgentTool = {
   schema: {
     name: "exec",
@@ -38,11 +46,16 @@ on first call (cold start ~10s), so subsequent calls in the same conversation ar
 Default timeout: ${DEFAULT_EXEC_TIMEOUT_MS / 1000}s. Raise \`timeout_ms\` for long-running tasks; cap is ${MAX_EXEC_TIMEOUT_MS / 1000}s.
 
 Outputs are truncated at ${STDOUT_LINE_CAP} lines / ${STDOUT_BYTE_CAP} bytes per stream. \
-Pipe to a file (\`> /workspace/out.log\`) if you need the full output, then read it with \
+Pipe to a file (\`> out.log\`) if you need the full output, then read it with \
 \`read_file\`.
 
-The workspace is bind-mounted at /workspace inside the guest. Files written there persist \
-on the host; everything else (installs, /tmp, …) is wiped when you call \`reset_sandbox\`.`,
+Default working dir is your user's home inside the sandbox — the same dir \
+\`write_file\`/\`read_file\` operate on. So \`write_file("/foo.py")\` followed by \
+\`exec("python3 foo.py")\` Just Works. Pass an absolute path in \`workdir\` to step outside (e.g. \
+to poke at \`/etc\` or \`/usr\`).
+
+Files written under your user dir persist on the host; everything else (installs, /tmp, …) \
+is wiped when you call \`reset_sandbox\`.`,
     parameters: Type.Object({
       command: Type.String({
         description:
@@ -50,7 +63,8 @@ on the host; everything else (installs, /tmp, …) is wiped when you call \`rese
       }),
       workdir: Type.Optional(
         Type.String({
-          description: "Working dir inside the guest. Default `/workspace`.",
+          description:
+            "Working dir inside the guest. Defaults to the user's home (= the same dir read_file/write_file see). Pass an absolute path to override.",
         }),
       ),
       timeout_ms: Type.Optional(
@@ -87,7 +101,7 @@ on the host; everything else (installs, /tmp, …) is wiped when you call \`rese
     const workdir =
       typeof (args as { workdir?: unknown }).workdir === "string"
         ? ((args as { workdir: string }).workdir as string)
-        : undefined;
+        : defaultUserWorkdir(ctx.userId);
     const timeoutMs = clampTimeout((args as { timeout_ms?: unknown }).timeout_ms);
     try {
       const result = await runner.exec({ command, workdir, timeoutMs });
