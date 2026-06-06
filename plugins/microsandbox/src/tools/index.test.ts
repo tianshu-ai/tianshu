@@ -120,6 +120,21 @@ describe("ExecTool.execute()", () => {
     );
     expect(r.execCalls[0]!.timeoutMs).toBe(1234);
   });
+
+  it("defaults workdir to /workspace/users/<userId> so write_file + exec align", async () => {
+    const r = new FakeRunner();
+    await ExecTool.execute({ command: "pwd" }, makeCtx({ runner: r }));
+    expect(r.execCalls[0]!.workdir).toBe("/workspace/users/user_x");
+  });
+
+  it("explicit workdir overrides the default", async () => {
+    const r = new FakeRunner();
+    await ExecTool.execute(
+      { command: "ls", workdir: "/etc" },
+      makeCtx({ runner: r }),
+    );
+    expect(r.execCalls[0]!.workdir).toBe("/etc");
+  });
   it("truncates oversize stdout", async () => {
     const r = new FakeRunner();
     r.fakeExec = async () => ({
