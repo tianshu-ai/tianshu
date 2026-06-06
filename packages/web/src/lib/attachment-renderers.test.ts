@@ -31,6 +31,7 @@ function plugin(
     failedReason: null,
     contributes: { attachmentRenderers: renderers },
     clientEntry: `@tianshu-builtin/plugin-${id}/client`,
+    capabilities: { provided: [], requires: [], missing: [] },
   };
 }
 

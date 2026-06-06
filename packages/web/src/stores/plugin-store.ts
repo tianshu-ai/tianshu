@@ -16,8 +16,13 @@ interface PluginState {
   error: string | null;
   /** id of the currently-open right panel (e.g. "files.main"), or null. */
   openPanel: string | null;
+  /** True while a refresh request is in flight; UI uses this to spin
+   *  the Refresh button. */
+  refreshing: boolean;
 
   load(): Promise<void>;
+  /** ADR-0004 §16: explicit re-discovery of on-disk plugins. */
+  refresh(): Promise<void>;
   setPlugins(list: PluginListEntry[]): void;
   setOpenPanel(id: string | null): void;
 }
@@ -26,6 +31,7 @@ export const usePluginStore = create<PluginState>((set, get) => ({
   plugins: null,
   error: null,
   openPanel: null,
+  refreshing: false,
 
   async load() {
     if (get().plugins !== null) return;
@@ -34,6 +40,21 @@ export const usePluginStore = create<PluginState>((set, get) => ({
       set({ plugins: r.plugins, error: null });
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) });
+    }
+  },
+
+  async refresh() {
+    if (get().refreshing) return;
+    set({ refreshing: true });
+    try {
+      const r = await api.refreshPlugins();
+      // Reuse setPlugins so the openPanel is reconciled if a panel's
+      // plugin disappeared / went disabled after the refresh.
+      get().setPlugins(r.plugins);
+    } catch (err) {
+      set({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      set({ refreshing: false });
     }
   },
 

@@ -45,6 +45,8 @@ export default function PluginManager({ open, onClose }: Props) {
   const plugins = usePluginStore((s) => s.plugins);
   const setPlugins = usePluginStore((s) => s.setPlugins);
   const loadPlugins = usePluginStore((s) => s.load);
+  const refreshPlugins = usePluginStore((s) => s.refresh);
+  const refreshingPlugins = usePluginStore((s) => s.refreshing);
 
   const [tab, setTab] = useState<Tab>("installed");
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null);
@@ -165,6 +167,21 @@ export default function PluginManager({ open, onClose }: Props) {
             )}
           </TabButton>
           <div className="flex-1" />
+          {tab === "installed" && (
+            <button
+              type="button"
+              onClick={() => void refreshPlugins()}
+              disabled={refreshingPlugins}
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+              title="Re-discover plugins on disk (after a manual install or git pull)"
+            >
+              <RefreshCw
+                size={12}
+                className={refreshingPlugins ? "animate-spin" : ""}
+              />
+              Refresh
+            </button>
+          )}
           {tab === "catalog" && catalog && (
             <button
               type="button"
@@ -303,6 +320,7 @@ function InstalledList({
             {p.description && (
               <p className="mt-1 text-xs text-gray-400">{p.description}</p>
             )}
+            <CapabilityBadges entry={p} />
             {p.failedReason && (
               <div className="mt-1 flex items-start gap-1 text-[11px] text-rose-300">
                 <AlertTriangle size={11} className="mt-px flex-shrink-0" />
@@ -319,6 +337,46 @@ function InstalledList({
         </li>
       ))}
     </ul>
+  );
+}
+
+function CapabilityBadges({ entry }: { entry: PluginListEntry }) {
+  const { provided, requires, missing } = entry.capabilities;
+  if (provided.length === 0 && requires.length === 0 && missing.length === 0) {
+    return null;
+  }
+  return (
+    <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
+      {provided.map((c) => (
+        <span
+          key={`p-${c}`}
+          className="rounded bg-emerald-900/40 px-1.5 py-0.5 text-emerald-300"
+          title={`This plugin provides ${c}`}
+        >
+          provides {c}
+        </span>
+      ))}
+      {requires
+        .filter((c) => !missing.includes(c))
+        .map((c) => (
+          <span
+            key={`r-${c}`}
+            className="rounded bg-sky-900/40 px-1.5 py-0.5 text-sky-300"
+            title={`This plugin requires ${c} (satisfied)`}
+          >
+            requires {c}
+          </span>
+        ))}
+      {missing.map((c) => (
+        <span
+          key={`m-${c}`}
+          className="rounded bg-rose-900/40 px-1.5 py-0.5 text-rose-300"
+          title={`This plugin requires ${c}, but no provider is enabled`}
+        >
+          missing {c}
+        </span>
+      ))}
+    </div>
   );
 }
 
