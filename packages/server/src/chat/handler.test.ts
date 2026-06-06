@@ -7,7 +7,7 @@
 // every future PR will lean on.
 
 import { describe, it, expect } from "vitest";
-import { defaultSystemPrompt } from "./handler.js";
+import { defaultSystemPrompt, toolsetPromptHints } from "./handler.js";
 import type { TenantContext } from "../core/index.js";
 
 function fakeCtx(over: Partial<TenantContext> = {}): TenantContext {
@@ -64,10 +64,32 @@ describe("defaultSystemPrompt", () => {
     expect(out.toLowerCase()).not.toContain("kanban");
   });
 
-  it("lists the five filesystem tools by name", () => {
+  // ADR-0004 N+3.5: filesystem tools are no longer mentioned in the
+  // default system prompt because they're contributed by the `files`
+  // plugin and may not be active for every tenant. The chat handler
+  // appends `toolsetPromptHints` to the system prompt at request time
+  // when the relevant plugins are enabled. This test pins both halves.
+  it("default prompt no longer hard-codes file tool names", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     for (const t of ["list_dir", "read_file", "write_file", "edit_file", "glob"]) {
-      expect(out).toContain(t);
+      expect(out).not.toContain(t);
     }
+  });
+
+  it("toolsetPromptHints lists files-only / sandbox-only / both surfaces", () => {
+    const filesOnly = toolsetPromptHints(
+      new Set(["list_dir", "read_file", "write_file", "edit_file", "glob"]),
+    );
+    expect(filesOnly).toContain("Filesystem tools");
+    expect(filesOnly).not.toContain("sandbox");
+
+    const sandboxOnly = toolsetPromptHints(new Set(["exec"]));
+    expect(sandboxOnly).toContain("Shell sandbox");
+    expect(sandboxOnly).not.toContain("Filesystem tools");
+
+    const both = toolsetPromptHints(
+      new Set(["list_dir", "read_file", "exec", "reset_sandbox"]),
+    );
+    expect(both).toContain("TWO FILE SURFACES");
   });
 });

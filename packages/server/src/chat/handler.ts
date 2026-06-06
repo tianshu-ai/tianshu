@@ -204,20 +204,17 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   const piModel = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
   const userHome = ctx.userHomeDir(userId);
-  const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId);
+  const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
   const toolset = await buildToolset({
-    userHome,
     pluginTools,
-    toolContext: pluginTools && pluginTools.length > 0 && homeDir
-      ? {
-          tenantId: ctx.tenantId,
-          userId,
-          capabilities: pluginRegistry!.hostCapabilities(ctx.tenantId),
-          userHomeDir: userHome,
-          tenantHomeDir: homeDir,
-          log: makeLogger(ctx.tenantId, userId, send),
-        }
-      : undefined,
+    toolContext: {
+      tenantId: ctx.tenantId,
+      userId,
+      capabilities: pluginRegistry?.hostCapabilities(ctx.tenantId) ?? emptyHostCapabilities(),
+      userHomeDir: userHome,
+      tenantHomeDir: homeDir ?? "",
+      log: makeLogger(ctx.tenantId, userId, send),
+    },
   });
 
   // Auto-compact BEFORE persisting the new user message: we want
@@ -254,11 +251,20 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
     model: modelInfo.modelId,
   });
 
+  const toolNames = new Set(toolset.schemas.map((s) => s.name));
+  const systemPrompt = [
+    defaultSystemPrompt(ctx, userId),
+    "",
+    toolsetPromptHints(toolNames),
+  ]
+    .join("\n")
+    .trimEnd();
+
   for (let turn = 0; turn < MAX_TURNS; turn++) {
     if (signal.aborted) return;
 
     const piContext: Context = {
-      systemPrompt: defaultSystemPrompt(ctx, userId),
+      systemPrompt,
       // Inline base64 image data only at this point so the bytes
       // never reach disk via the conversation log. The on-disk
       // representation stays path-only — cheap, queryable,
@@ -786,15 +792,18 @@ export async function prepareMessagesForLlm(
  */
 export function defaultSystemPrompt(ctx: TenantContext, userId: string): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
-  return [
+  const lines: string[] = [
     `You are ${brand}, an open-source AI assistant.`,
     `Tenant: "${ctx.tenantId}". User: "${userId}".`,
     ``,
     `WORKSPACE LAYOUT`,
     `Your default working directory is the user's private home in this tenant.`,
-    `Filesystem tools (list_dir, read_file, write_file, edit_file, glob) operate`,
-    `relative to this home ("/" = home).`,
-    ``,
+  ];
+
+  // Tool segments depend on which plugins are active; the chat
+  // handler injects matching capability text via a separate hook
+  // (see runPrompt). Keep the workspace layout independent.
+  lines.push(
     `Personal directories (use freely):`,
     `  ./projects/<slug>/   active work; reports, code, deliverables go here.`,
     `  ./uploads/           files the user uploaded for you to look at.`,
@@ -809,11 +818,66 @@ export function defaultSystemPrompt(ctx: TenantContext, userId: string): string 
     `  - Other users' homes in this tenant are off-limits; you cannot reach them.`,
     ``,
     `Reply concisely. When you make changes, briefly say what you changed.`,
-  ].join("\n");
+  );
+  return lines.join("\n");
+}
+
+/**
+ * Build a paragraph describing which tool surfaces the agent has
+ * this turn. Lives next to the toolset assembler so adding a new
+ * plugin can extend the prompt without editing the chat handler
+ * directly. v0 hard-codes the two builtin plugin surfaces; future
+ * work could let plugins contribute their own prompt fragments.
+ */
+export function toolsetPromptHints(toolNames: Set<string>): string {
+  const hints: string[] = [];
+  const hasFiles =
+    toolNames.has("list_dir") ||
+    toolNames.has("read_file") ||
+    toolNames.has("write_file");
+  const hasSandbox = toolNames.has("exec");
+
+  if (hasFiles && hasSandbox) {
+    hints.push(
+      `TWO FILE SURFACES`,
+      `You have BOTH host filesystem tools AND a shell sandbox. They overlap on purpose:`,
+      `  - list_dir / read_file / write_file / edit_file / glob operate on the host`,
+      `    workspace (per-user home). Direct, persistent, no VM needed.`,
+      `  - exec runs commands inside the sandbox VM. The /workspace path inside`,
+      `    the guest is bind-mounted from the same host workspace, so files written`,
+      `    by either side show up on the other.`,
+      `  - Use file tools for simple reads/writes/edits.`,
+      `  - Use exec for anything that needs a real shell, package installs,`,
+      `    long-running scripts, or paths outside /workspace inside the guest.`,
+      `  - reset_sandbox if exec keeps failing; get_sandbox_status to inspect.`,
+      ``,
+    );
+  } else if (hasFiles) {
+    hints.push(
+      `Filesystem tools (list_dir, read_file, write_file, edit_file, glob) operate`,
+      `relative to the user's home ("/" = home).`,
+      ``,
+    );
+  } else if (hasSandbox) {
+    hints.push(
+      `Shell sandbox: use \`exec\` to run commands inside the per-tenant VM.`,
+      `Workspace files persist at /workspace inside the guest.`,
+      `Use reset_sandbox if exec keeps failing; get_sandbox_status to inspect.`,
+      ``,
+    );
+  }
+  return hints.join("\n");
 }
 
 // re-exported here so server/index.ts only imports from one barrel.
 export type { ChatMessage };
+
+function emptyHostCapabilities(): import("../core/plugins/registry.js").HostCapabilityHandle {
+  return {
+    get: () => undefined,
+    has: () => false,
+  };
+}
 
 function makeLogger(
   tenantId: string,

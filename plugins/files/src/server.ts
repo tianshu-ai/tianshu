@@ -28,6 +28,13 @@ import type {
   PluginServerExports,
   PluginServerModule,
 } from "@tianshu/plugin-sdk";
+import {
+  ListDirTool,
+  ReadFileTool,
+  WriteFileTool,
+  EditFileTool,
+  GlobTool,
+} from "./tools/index.js";
 
 const MAX_LIST_ENTRIES = 5000;
 const MAX_READ_BYTES = 1_048_576; // 1 MB
@@ -264,7 +271,16 @@ const plugin: PluginServerModule = {
       }
     };
 
-    return { routes: { list, read, raw, upload } };
+    return {
+      routes: { list, read, raw, upload },
+      tools: {
+        ListDirTool,
+        ReadFileTool,
+        WriteFileTool,
+        EditFileTool,
+        GlobTool,
+      },
+    };
   },
 };
 

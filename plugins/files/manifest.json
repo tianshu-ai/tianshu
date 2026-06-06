@@ -53,6 +53,13 @@
       { "method": "GET",  "path": "/read",   "handler": "read"   },
       { "method": "GET",  "path": "/raw",    "handler": "raw"    },
       { "method": "POST", "path": "/upload", "handler": "upload" }
+    ],
+    "tools": [
+      { "id": "list_dir",   "module": "ListDirTool"   },
+      { "id": "read_file",  "module": "ReadFileTool"  },
+      { "id": "write_file", "module": "WriteFileTool" },
+      { "id": "edit_file",  "module": "EditFileTool"  },
+      { "id": "glob",       "module": "GlobTool"      }
     ]
   }
 }
