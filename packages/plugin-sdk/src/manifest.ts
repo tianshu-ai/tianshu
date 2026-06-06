@@ -84,7 +84,6 @@ export interface ContributesV1 {
   attachmentRenderers?: AttachmentRendererContribution[];
   apiRoutes?: ApiRouteContribution[];
   wsMessages?: WsMessageContribution[];
-  commands?: CommandContribution[];
 }
 
 export type SandboxKind = "shell";
@@ -201,7 +200,4 @@ export interface WsMessageContribution {
   handler: string;
 }
 
-export interface CommandContribution {
-  id: string;
-  title: string;
-}
+

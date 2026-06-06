@@ -65,6 +65,13 @@ export interface ActivePluginEntry {
   failedReason?: string;
   /** Available iff state === "active" */
   exports?: PluginServerExports;
+  /**
+   * The resolved server module. Held so `invalidate()` can call
+   * the plugin's `deactivate()` hook before dropping the cache;
+   * without this, e.g. microsandbox VMs would orphan when a tenant
+   * disables the plugin or evicts its DB pool entry.
+   */
+  module?: PluginServerModule;
   /** Capability inventory for this plugin, computed at activation
    *  time. Always present; empty arrays when nothing applies. */
   capabilityInfo: PluginCapabilityInfo;
@@ -305,9 +312,49 @@ export class PluginRegistry {
     return entries;
   }
 
-  /** Drop a tenant's cached registry — call on tenant softDelete or DB eviction. */
-  invalidate(tenantId: string): void {
+  /**
+   * Drop a tenant's cached registry. Calls each active plugin's
+   * `deactivate()` hook (best-effort, sequential) so plugins can
+   * release resources — sandbox VMs, child processes, file
+   * watchers, etc. — before the next `ensureForTenant()` rebuilds
+   * everything from scratch.
+   *
+   * Returns a promise so callers that want to ensure deactivation
+   * finished before re-entering `ensureForTenant` can await it. The
+   * existing `void`-returning callers (e.g. tenant softDelete on
+   * pool eviction) ignore the promise and that's fine — the host
+   * just won't wait for slow shutdowns to land.
+   */
+  invalidate(tenantId: string): Promise<void> {
+    const cached = this.cache.get(tenantId);
     this.cache.delete(tenantId);
+    if (!cached) return Promise.resolve();
+    return this.runDeactivations(cached.entries);
+  }
+
+  private async runDeactivations(entries: ActivePluginEntry[]): Promise<void> {
+    // Sequential, reverse-of-entries order. v0 ordering is
+    // reverse id-sort (entries are sorted alphabetically); a
+    // plugin's deactivate() should not rely on another plugin's
+    // capabilities still being up. A future revision may promote
+    // this to true reverse-topological if a real consumer needs
+    // it.
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i]!;
+      if (e.state !== "active") continue;
+      const fn = e.module?.deactivate;
+      if (typeof fn !== "function") continue;
+      try {
+        await fn();
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[plugin:${e.manifest.id}] deactivate() threw: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
   }
 
   /** For routes layer: look up the WS handler for a {tenant, type}. */
@@ -461,6 +508,7 @@ export class PluginRegistry {
       dir: p.dir,
       state: "active",
       exports: exports_,
+      module: mod,
       capabilityInfo: { provided: [], requires, missing: [] },
     };
   }
@@ -534,6 +582,9 @@ function makePluginContext(args: {
     pluginId,
     tenantId: ctx.tenantId,
     db: ctx.db,
+    tenantConfig: { defaultModel: ctx.config.defaultModel, branding: ctx.config.branding },
+    // Deprecated alias kept until the next major SDK bump so v0
+    // plugin code that read `ctx.config` still works.
     config: { defaultModel: ctx.config.defaultModel, branding: ctx.config.branding },
     log,
     workspaceDir: ctx.workspaceDir,

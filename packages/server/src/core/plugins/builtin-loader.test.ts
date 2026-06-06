@@ -161,4 +161,46 @@ describe("buildBuiltinResolver", () => {
     const resolver = await buildBuiltinResolver({ pluginsRoot, log });
     expect(await resolver.resolve("@scope/x/server")).toBeNull();
   });
+
+  // chore/plugin-sdk-cleanup: dist file mtime is appended as a query
+  // string so re-importing after a rebuild bypasses Node's ESM cache.
+  // Without this, plugin authors had to restart the server every
+  // edit — which is exactly the pain that motivated the fix.
+  it("reload picks up edited plugin code on the next import (cache-bust)", async () => {
+    const id = "shifty";
+    writePlugin(
+      id,
+      {
+        id,
+        version: "1.0.0",
+        displayName: "Shifty",
+        server: { entry: "@shifty/server" },
+      },
+      "export default { activate: () => ({ marker: 'v1' }) };\n",
+    );
+    const resolver = await buildReloadingBuiltinResolver({ pluginsRoot, log });
+    const v1 = await resolver.resolve("@shifty/server");
+    expect(v1).not.toBeNull();
+    const out1 = await (
+      v1!.activate as () => Promise<{ marker: string }>
+    )();
+    expect(out1.marker).toBe("v1");
+
+    // Edit the file in place; bump mtime so the cache-bust query
+    // string changes.
+    const distFile = path.join(pluginsRoot, id, "dist", "server.js");
+    fs.writeFileSync(
+      distFile,
+      "export default { activate: () => ({ marker: 'v2' }) };\n",
+    );
+    const future = (Date.now() + 1000) / 1000;
+    fs.utimesSync(distFile, future, future);
+
+    await resolver.reload();
+    const v2 = await resolver.resolve("@shifty/server");
+    const out2 = await (
+      v2!.activate as () => Promise<{ marker: string }>
+    )();
+    expect(out2.marker).toBe("v2");
+  });
 });

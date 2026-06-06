@@ -14,7 +14,9 @@ export interface PluginContext {
    * plugins must not call `close()` on it.
    */
   db: TenantDbHandle;
-  /** Resolved + merged tenant config. */
+  /** Resolved + merged tenant config (subset). */
+  tenantConfig: ResolvedConfigShape;
+  /** @deprecated Use `tenantConfig`. Removed in a future SDK version. */
   config: ResolvedConfigShape;
   /** Bound logger: prefixes [plugin:<id>] [tenant:<id>]. */
   log: PluginLogger;
@@ -164,16 +166,46 @@ export interface ReadOnlyCapabilityHandle {
 }
 
 /**
+ * Canonical result shape an agent tool should return. Two extra
+ * fields beyond `{ ok, text }` are recognised:
+ * - `data`: structured payload the host JSON-encodes into the chat
+ *   log alongside `text`, so the agent sees both the human-readable
+ *   summary and the structured details.
+ * - any other field: passed through verbatim for plugins that want
+ *   to attach custom metadata (e.g. `exit_code`, `duration_ms`).
+ *
+ * Tools MAY return arbitrary JSON-serialisable values; the host
+ * normalises them to `{ ok, text }` via `runOneTool`. Returning
+ * this canonical shape directly is preferred because the agent
+ * sees a consistent surface across plugins.
+ *
+ * Use the {@link okResult} / {@link errorResult} helpers in
+ * `tools/result.js` (or hand-roll) to build these.
+ */
+export interface ToolResult {
+  /** True iff the tool semantically succeeded. The host renders the
+   *  tool-call chip green when ok, red when not. */
+  ok: boolean;
+  /** Human-readable summary the agent sees. Keep it short — model
+   *  context is precious. Long output should go to a file via
+   *  another tool, not into `text`. */
+  text: string;
+  /** Optional structured payload preserved verbatim. */
+  data?: unknown;
+  /** Plugin-defined extras. Allowed but discouraged. */
+  [key: string]: unknown;
+}
+
+/**
  * A schema + executor pair that becomes an agent tool. The host
  * collects these from every active plugin via
  * `exports.tools[<module-key>]`, gates each one through
  * `available()`, then registers the surviving schemas with the
  * agent loop.
  *
- * Tools may return any JSON-serialisable value. The host normalises
- * `{ ok, text }` for the chat log; if your result has both fields
- * they're used verbatim, otherwise the host JSON-encodes the whole
- * result into `text` and best-effort-derives `ok`.
+ * Prefer returning a {@link ToolResult} from `execute()`. If you
+ * return any other JSON-serialisable value, the host JSON-encodes
+ * it into `text` and best-effort-derives `ok`.
  */
 export interface AgentTool {
   /** pi-ai Tool schema. Name is what the model sees. */
@@ -186,7 +218,17 @@ export interface AgentTool {
   execute(
     args: Record<string, unknown>,
     ctx: AgentToolContext,
-  ): unknown | Promise<unknown>;
+  ): ToolResult | unknown | Promise<ToolResult | unknown>;
+}
+
+/** Build an `ok=true` ToolResult. Optional `data` payload preserved. */
+export function okResult(text: string, data?: unknown): ToolResult {
+  return data === undefined ? { ok: true, text } : { ok: true, text, data };
+}
+
+/** Build an `ok=false` ToolResult. Optional `data` payload preserved. */
+export function errorResult(text: string, data?: unknown): ToolResult {
+  return data === undefined ? { ok: false, text } : { ok: false, text, data };
 }
 
 // ─── Sandbox surface (ADR-0004 §2) ─────────────────────────────

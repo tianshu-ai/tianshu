@@ -146,28 +146,49 @@ export interface PluginClientExports {
 // `useComposer` is implemented by the host (web bundle) and re-exported
 // here as a typed declaration so plugin authors `import { useComposer }
 // from "@tianshu/plugin-sdk/client"`. The host swaps the implementation
-// in via module-augmentation at runtime; in tests the SDK's own copy
-// throws to surface "this hook needs a host" mistakes early.
+// in via __installUseComposer().
 //
-// We do not declare this with `declare const`/`declare function`
-// because plugin packages may be transitively duplicated in tests; a
-// real (throwing) export keeps the import resolvable everywhere.
+// The accessor lives on `globalThis` instead of a module-local
+// `let` so that plugin packages with a transitively-duplicated SDK
+// copy still see the host's installed implementation. If the host
+// installed first into globalThis, *any* import of @tianshu/plugin-sdk/client
+// resolves to the same accessor.
+//
+// Runtime contract: host calls `__installUseComposer` exactly once
+// at bootstrap. Plugins call `useComposer` from inside a React
+// component rendered under the composer; the host's accessor reads
+// from its React context.
 
-let composerAccessor: (() => ComposerApi) | null = null;
+interface ComposerGlobalSlot {
+  __tianshuPluginSdkComposer__?: () => ComposerApi;
+}
+
+function globalSlot(): ComposerGlobalSlot {
+  // `globalThis` is the same in node, browser, and worker runtimes.
+  return globalThis as unknown as ComposerGlobalSlot;
+}
 
 /** Host-only: install the live `useComposer` accessor. The web bundle
  *  calls this once on bootstrap with a function that reads from its
  *  React context. */
 export function __installUseComposer(fn: () => ComposerApi): void {
-  composerAccessor = fn;
+  globalSlot().__tianshuPluginSdkComposer__ = fn;
+}
+
+/** Host-only: clear the installed accessor. Used by tests so each
+ *  test starts with a clean slate; production code should never
+ *  call this. */
+export function __resetUseComposerForTest(): void {
+  delete globalSlot().__tianshuPluginSdkComposer__;
 }
 
 export function useComposer(): ComposerApi {
-  if (!composerAccessor) {
+  const fn = globalSlot().__tianshuPluginSdkComposer__;
+  if (!fn) {
     throw new Error(
       "useComposer() called without a host: plugin SDK has no live ComposerApi. " +
         "If you are seeing this in a test, install one with __installUseComposer().",
     );
   }
-  return composerAccessor();
+  return fn();
 }
