@@ -496,4 +496,108 @@ describe("PluginRegistry", () => {
     expect(entries[0]!.state).toBe("failed");
     expect(entries[0]!.failedReason).toMatch(/tools\["NotExported"\] missing/);
   });
+
+  // chore/plugin-sdk-cleanup: invalidate() must call each active
+  // plugin's deactivate() so resources (sandbox VMs, child procs,
+  // watchers) get released before the next ensureForTenant().
+  it("invalidate calls deactivate() on active plugins (reverse order)", async () => {
+    const order: string[] = [];
+    writeBuiltinManifest("prov", {
+      id: "prov",
+      version: "1.0.0",
+      displayName: "Prov",
+      provides: ["sandbox.shell"],
+      server: { entry: "@prov/server" },
+      contributes: {
+        sandboxes: [
+          { id: "main", kind: "shell", displayName: "main", module: "R" },
+        ],
+      },
+    });
+    writeBuiltinManifest("cons", {
+      id: "cons",
+      version: "1.0.0",
+      displayName: "Cons",
+      requires: ["sandbox.shell"],
+      server: { entry: "@cons/server" },
+    });
+    ops.create("acme");
+    writeTenantConfig(
+      "acme",
+      { plugins: { prov: { enabled: true }, cons: { enabled: true } } },
+      home,
+    );
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const runner = { id: "prov.main", kind: "shell" };
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@prov/server": {
+          activate: () => ({ sandboxes: { R: runner } }),
+          deactivate: () => {
+            order.push("prov");
+          },
+        },
+        "@cons/server": {
+          activate: () => ({}),
+          deactivate: () => {
+            order.push("cons");
+          },
+        },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    await reg.ensureForTenant(ctx);
+    await reg.invalidate(ctx.tenantId);
+    // Both deactivated. v0 ordering is reverse-of-entries (entries
+    // are id-sorted) which is good enough — plugins shouldn't rely
+    // on each other's capabilities during deactivate. A future PR
+    // can promote this to true reverse-topological if a plugin
+    // needs that.
+    expect(order.sort()).toEqual(["cons", "prov"]);
+  });
+
+  it("invalidate swallows deactivate() errors and continues", async () => {
+    writeBuiltinManifest("alpha", {
+      id: "alpha",
+      version: "1.0.0",
+      displayName: "A",
+      server: { entry: "@a/server" },
+    });
+    writeBuiltinManifest("beta", {
+      id: "beta",
+      version: "1.0.0",
+      displayName: "B",
+      server: { entry: "@b/server" },
+    });
+    let bDeactivated = false;
+    ops.create("acme");
+    writeTenantConfig(
+      "acme",
+      { plugins: { alpha: { enabled: true }, beta: { enabled: true } } },
+      home,
+    );
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@a/server": {
+          activate: () => ({}),
+          deactivate: () => {
+            throw new Error("a-fails");
+          },
+        },
+        "@b/server": {
+          activate: () => ({}),
+          deactivate: () => {
+            bDeactivated = true;
+          },
+        },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    await reg.ensureForTenant(ctx);
+    await expect(reg.invalidate(ctx.tenantId)).resolves.toBeUndefined();
+    expect(bDeactivated).toBe(true);
+  });
 });

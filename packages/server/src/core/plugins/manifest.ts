@@ -9,7 +9,6 @@
 import type {
   ApiRouteContribution,
   AttachmentRendererContribution,
-  CommandContribution,
   ComposerActionContribution,
   ContributesV1,
   PluginManifest,
@@ -204,9 +203,10 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
   if ("wsMessages" in raw) {
     out.wsMessages = parseArray(raw.wsMessages, "wsMessages", acc, parseWsMessage);
   }
-  if ("commands" in raw) {
-    out.commands = parseArray(raw.commands, "commands", acc, parseCommand);
-  }
+  // `commands` slot was declared in ADR-0003 §5 but never wired
+  // through to a UI; chore/plugin-sdk-cleanup removed it. If a
+  // manifest still carries `commands`, ignore it silently — we
+  // don't want to fail-load existing plugins for an obsolete slot.
 
   return out;
 }
@@ -386,17 +386,6 @@ function parseWsMessage(raw: unknown, ctx: string, acc: Acc): WsMessageContribut
   const handler = expectString(raw, "handler", acc, ctx);
   if (type == null || handler == null) return null;
   return { type, handler };
-}
-
-function parseCommand(raw: unknown, ctx: string, acc: Acc): CommandContribution | null {
-  if (!isPlainObject(raw)) {
-    acc.issues.push(`${ctx} entry must be an object`);
-    return null;
-  }
-  const id = expectString(raw, "id", acc, ctx);
-  const title = expectString(raw, "title", acc, ctx);
-  if (id == null || title == null) return null;
-  return { id, title };
 }
 
 // ─── tiny helpers ──────────────────────────────────────────────────

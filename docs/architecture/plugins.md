@@ -444,6 +444,44 @@ but couples the layout shape to the SDK; a small zustand-backed
 store keeps the SDK's React surface to one hook (`useComposer`) and
 matches the rest of the web bundle's patterns.
 
+### 13. Trust model (added 2026-06-07)
+
+v0 plugins are **mutually trusted**. Concretely:
+
+- All plugins share the tenant SQLite handle. A plugin can read or
+  write any other plugin's tables. The host does not partition the
+  schema by plugin id.
+- All plugins share the workspace filesystem. A plugin can read or
+  write any path under `<tenant>/workspace/`, including other
+  plugins' state directories and other users' homes.
+- All plugins share the tenant config write surface. A plugin can
+  rewrite `<tenant>/config.json`, including disabling other
+  plugins or changing global settings.
+- `apiRoutes` mounted under `/api/p/<plugin-id>/...` share the
+  tenant middleware's auth. Plugin A can call plugin B's routes
+  with the same tenant credentials. There is no
+  per-plugin route ACL.
+- The `manifest.permissions[]` field is **declarative only**. The
+  host does not check it before any of the above.
+
+This is the right tradeoff for v0 because the only plugins that
+load are **builtins shipped in the host repo** (`files`,
+`microsandbox`) and tenant-installed plugins that the tenant admin
+chose to install — same trust level as installing an npm package.
+
+When the catalog ships third-party plugins (post-v1), this section
+gets superseded by a real trust-boundary ADR. Likely shape:
+
+- `permissions[]` enforced via a host-side gate that wraps
+  `db`, `fs`, `apiRoutes`, and capability lookups.
+- Plugin-to-plugin route calls require an explicit grant.
+- Tenant config writes from a plugin require a permission and run
+  through a validator that refuses changes to fields the plugin
+  doesn't own.
+
+**Until then: do not treat plugin boundaries as a security boundary.**
+A malicious plugin can do anything the tenant can do.
+
 ## Consequences
 
 ### Good

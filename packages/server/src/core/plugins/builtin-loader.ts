@@ -141,7 +141,10 @@ async function scanPlugins(
     }
 
     const distFile = path.join(pluginDir, "dist", "server.js");
-    if (!fs.existsSync(distFile)) {
+    let stat;
+    try {
+      stat = fs.statSync(distFile);
+    } catch {
       log(
         "warn",
         `[builtin-loader] ${id}: ${distFile} missing — run \`npm run build\` to compile builtin plugins`,
@@ -151,7 +154,14 @@ async function scanPlugins(
 
     let mod: PluginServerModule | null = null;
     try {
-      const imported = (await import(pathToFileURL(distFile).href)) as
+      // Cache-bust the import URL with the dist file's mtime so a
+      // POST /api/plugins/refresh after `npm run build -w plugins/<id>`
+      // actually re-imports the new code instead of returning the
+      // ESM cache's stale copy. Without this, plugin authors had to
+      // restart the entire server to see plugin changes (the
+      // "3 tsx instances fighting" pain we hit on 2026-06-06).
+      const importUrl = `${pathToFileURL(distFile).href}?v=${stat.mtimeMs}`;
+      const imported = (await import(importUrl)) as
         | { default?: PluginServerModule }
         | PluginServerModule;
       mod =

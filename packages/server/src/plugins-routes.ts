@@ -142,7 +142,10 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       if (opts.reloadResolver) {
         await opts.reloadResolver();
       }
-      registry.invalidate(req.ctx.tenant.tenantId);
+      // Await deactivate() so refreshing the plugin list while a
+      // sandbox VM is running tears it down before the next
+      // ensureForTenant brings up a fresh one.
+      await registry.invalidate(req.ctx.tenant.tenantId);
       const fresh = ops.open(req.ctx.tenant.tenantId);
       const list = await listPluginsForTenant(registry, fresh);
       res.json({ plugins: list });
@@ -193,7 +196,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       // Invalidate cached registry so the next discovery + activation
       // sees the new config. TenantContext is rebuilt on every call
       // to ops.open() so config is always re-read from disk.
-      registry.invalidate(tenantId);
+      await registry.invalidate(tenantId);
 
       const fresh = ops.open(tenantId);
       const list = await listPluginsForTenant(registry, fresh);
