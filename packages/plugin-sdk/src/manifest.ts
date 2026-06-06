@@ -13,7 +13,21 @@ export interface PluginManifest {
   description?: string;
   author?: string;
   license?: string;
-  /** Declarative permission strings (not enforced in v0). */
+  /**
+   * Declarative permission strings.
+   *
+   * ⚠️ **NOT enforced in v0.** Plugins run with full host privileges:
+   * they share the tenant DB, the workspace filesystem, and the
+   * tenant config write surface with each other. The host does not
+   * sandbox plugins from each other and does not check this list
+   * before granting access to anything. Authoring plugins as if
+   * these were enforced is fine — it documents intent for the user
+   * — but **never trust this list as a security boundary**.
+   *
+   * Real enforcement (capability gating, route ACLs, plugin-vs-plugin
+   * isolation) lands when the catalog ships third-party plugins;
+   * see `docs/architecture/plugins.md` §"Trust model".
+   */
   permissions?: string[];
   /**
    * Capabilities (ADR-0004 §3) this plugin claims to provide. Each
