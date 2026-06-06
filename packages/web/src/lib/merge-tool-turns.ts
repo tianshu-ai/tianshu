@@ -8,7 +8,12 @@
 // tool-result rows to their owning assistant turn (by `callId`), and
 // drops the now-redundant `role=tool` rows from the output.
 
-import type { WireMessage, WireToolCall, WireToolResult } from "../types/chat";
+import type {
+  WireAssistantBlock,
+  WireMessage,
+  WireToolCall,
+  WireToolResult,
+} from "../types/chat";
 
 /** Assistant turn enriched with the resolved result (if any) for each
  *  of its tool calls. */
@@ -17,9 +22,21 @@ export interface MergedToolCall extends WireToolCall {
   result?: WireToolResult;
 }
 
-export interface MergedMessage extends Omit<WireMessage, "toolCalls" | "toolResult"> {
+/** Same shape as `WireAssistantBlock` but tool-call blocks now carry
+ *  their resolved result. UI renders these in author order. */
+export type MergedAssistantBlock =
+  | { kind: "text"; text: string }
+  | (Extract<WireAssistantBlock, { kind: "toolCall" }> & { result?: WireToolResult });
+
+export interface MergedMessage
+  extends Omit<WireMessage, "toolCalls" | "toolResult" | "blocks"> {
   /** Assistant tool calls with their resolved results inlined. */
   resolvedToolCalls?: MergedToolCall[];
+  /** Author-ordered text + tool-call blocks with results inlined.
+   *  Populated whenever the wire message had `blocks`. UI prefers
+   *  this when set; falls back to `text + resolvedToolCalls` for
+   *  legacy rows. */
+  resolvedBlocks?: MergedAssistantBlock[];
 }
 
 export function mergeToolTurns(messages: WireMessage[]): MergedMessage[] {
@@ -36,20 +53,32 @@ export function mergeToolTurns(messages: WireMessage[]): MergedMessage[] {
   const out: MergedMessage[] = [];
   for (const m of messages) {
     if (m.role === "tool") continue;
-    if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-      const resolved: MergedToolCall[] = m.toolCalls.map((c) => ({
+    if (
+      m.role === "assistant" &&
+      ((m.toolCalls && m.toolCalls.length > 0) || (m.blocks && m.blocks.length > 0))
+    ) {
+      const resolved: MergedToolCall[] = (m.toolCalls ?? []).map((c) => ({
         ...c,
         result: resultsByCallId.get(c.id),
       }));
+      const resolvedBlocks: MergedAssistantBlock[] | undefined = m.blocks?.map(
+        (b): MergedAssistantBlock =>
+          b.kind === "toolCall"
+            ? { ...b, result: resultsByCallId.get(b.id) }
+            : b,
+      );
       // Strip the wire-only fields we already lifted into
-      // `resolvedToolCalls` and pass the rest through (notably
-      // `attachments`, added in PR #51 — dropping them silently is
-      // why uploaded files vanished from the user bubble).
-      const { toolCalls: _tc, toolResult: _tr, ...rest } = m;
-      out.push({ ...rest, resolvedToolCalls: resolved });
+      // `resolvedBlocks` / `resolvedToolCalls` and pass the rest
+      // through (notably `attachments`).
+      const { toolCalls: _tc, toolResult: _tr, blocks: _b, ...rest } = m;
+      out.push({
+        ...rest,
+        resolvedToolCalls: resolved.length > 0 ? resolved : undefined,
+        resolvedBlocks,
+      });
       continue;
     }
-    const { toolCalls: _tc, toolResult: _tr, ...rest } = m;
+    const { toolCalls: _tc, toolResult: _tr, blocks: _b, ...rest } = m;
     out.push(rest);
   }
   return out;

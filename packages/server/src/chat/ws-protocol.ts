@@ -125,6 +125,19 @@ export interface WireToolResult {
   text: string;
 }
 
+/** Ordered building blocks for an assistant message — preserves the
+ *  pi-ai `content` array's interleaving of text and tool calls so
+ *  the UI can render them in author order. Legacy `text` +
+ *  `toolCalls` are still populated for backwards-compat. */
+export type WireAssistantBlock =
+  | { kind: "text"; text: string }
+  | {
+      kind: "toolCall";
+      id: string;
+      name: string;
+      arguments: Record<string, unknown>;
+    };
+
 /**
  * Wire shape for one persisted message. The DB stores either a plain
  * string (legacy) or a JSON-serialised pi-ai Message; on the wire we
@@ -139,6 +152,10 @@ export interface WireMessage {
   text: string;
   /** Tool calls authored by the assistant in this message, if any. */
   toolCalls?: WireToolCall[];
+  /** Ordered text + tool-call blocks; only set on assistant messages.
+   *  Older client builds ignore this and fall back to
+   *  `text + toolCalls`. */
+  blocks?: WireAssistantBlock[];
   /** When this message is a tool result, the structured details. */
   toolResult?: WireToolResult;
   /** Files attached to this user message (path + mimeType only — the
@@ -172,22 +189,38 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
   if (parsed && typeof parsed === "object" && parsed !== null && "role" in parsed) {
     const obj = parsed as Record<string, unknown>;
     if (obj.role === "assistant" && Array.isArray(obj.content)) {
-      const text = (obj.content as Array<Record<string, unknown>>)
-        .filter((c) => c.type === "text" && typeof c.text === "string")
-        .map((c) => c.text as string)
+      const parts = obj.content as Array<Record<string, unknown>>;
+      const blocks: WireAssistantBlock[] = [];
+      for (const c of parts) {
+        if (c.type === "text" && typeof c.text === "string") {
+          blocks.push({ kind: "text", text: c.text });
+        } else if (c.type === "toolCall") {
+          blocks.push({
+            kind: "toolCall",
+            id: String(c.id ?? ""),
+            name: String(c.name ?? ""),
+            arguments: (c.arguments as Record<string, unknown>) ?? {},
+          });
+        }
+        // `thinking` and other future block types are intentionally
+        // dropped here — the UI surfaces them through other channels.
+      }
+      const text = blocks
+        .filter((b): b is Extract<WireAssistantBlock, { kind: "text" }> => b.kind === "text")
+        .map((b) => b.text)
         .join("");
-      const toolCalls = (obj.content as Array<Record<string, unknown>>)
-        .filter((c) => c.type === "toolCall")
-        .map((c) => ({
-          id: String(c.id ?? ""),
-          name: String(c.name ?? ""),
-          arguments: (c.arguments as Record<string, unknown>) ?? {},
-        }));
+      const toolCalls = blocks
+        .filter(
+          (b): b is Extract<WireAssistantBlock, { kind: "toolCall" }> =>
+            b.kind === "toolCall",
+        )
+        .map(({ kind: _k, ...rest }) => rest);
       const meta = extractAssistantMeta(obj, opts);
       return {
         ...base,
         text,
         toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+        blocks: blocks.length > 0 ? blocks : undefined,
         meta,
       };
     }
