@@ -14,10 +14,12 @@ import type {
   ContributesV1,
   PluginManifest,
   RightPanelContribution,
+  SandboxContribution,
   SidebarSectionContribution,
   TopBarButtonContribution,
   WsMessageContribution,
 } from "@tianshu/plugin-sdk";
+import { isCapabilityName } from "@tianshu/plugin-sdk";
 
 export class PluginManifestError extends Error {
   readonly code = "PLUGIN_MANIFEST_INVALID" as const;
@@ -61,9 +63,35 @@ export function parseManifest(raw: unknown): PluginManifest {
   const author = optionalString(raw, "author", acc);
   const license = optionalString(raw, "license", acc);
   const permissions = optionalStringArray(raw, "permissions", acc);
+  const provides = optionalCapabilityArray(raw, "provides", acc);
+  const requires = optionalCapabilityArray(raw, "requires", acc);
   const client = optionalEntryRef(raw, "client", acc);
   const server = optionalEntryRef(raw, "server", acc);
   const contributes = optionalContributes(raw.contributes, acc);
+
+  // ADR-0004 §3: every capability listed in `provides[]` must be
+  // backed by a real contribution. Today the only derivation rule
+  // is sandbox.<kind> ← contributes.sandboxes[].kind. browser.cdp is
+  // also accepted as it ships piggy-backed on a sandbox contribution
+  // (the BrowserSidecar getter on SandboxRunner). We don't enforce
+  // browser.cdp here — the registry sees the runner at activation
+  // time and decides; missing the actual sidecar surfaces as a
+  // failed activation, not a manifest error.
+  if (provides && provides.length > 0) {
+    const sandboxKinds = new Set(
+      (contributes?.sandboxes ?? []).map((s) => s.kind),
+    );
+    for (const cap of provides) {
+      if (cap.startsWith("sandbox.")) {
+        const kind = cap.slice("sandbox.".length);
+        if (!sandboxKinds.has(kind as SandboxContribution["kind"])) {
+          acc.issues.push(
+            `declared provides["${cap}"] without a backing sandboxes[] contribution of kind=${kind}`,
+          );
+        }
+      }
+    }
+  }
 
   if (acc.issues.length > 0) {
     throw new PluginManifestError(id ?? null, acc.issues);
@@ -77,10 +105,47 @@ export function parseManifest(raw: unknown): PluginManifest {
     author,
     license,
     permissions,
+    provides,
+    requires,
     client,
     server,
     contributes,
   };
+}
+
+function optionalCapabilityArray(
+  raw: Record<string, unknown>,
+  key: string,
+  acc: Acc,
+): string[] | undefined {
+  const v = raw[key];
+  if (v === undefined || v === null) return undefined;
+  if (!Array.isArray(v)) {
+    acc.issues.push(`${key} must be an array of capability strings`);
+    return undefined;
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < v.length; i++) {
+    const item = v[i];
+    if (typeof item !== "string") {
+      acc.issues.push(`${key}[${i}] must be a string`);
+      continue;
+    }
+    if (!isCapabilityName(item)) {
+      acc.issues.push(
+        `${key}[${i}] "${item}" is not a known capability (see KNOWN_CAPABILITIES in @tianshu/plugin-sdk)`,
+      );
+      continue;
+    }
+    if (seen.has(item)) {
+      acc.issues.push(`${key}[${i}] "${item}" listed more than once`);
+      continue;
+    }
+    seen.add(item);
+    out.push(item);
+  }
+  return out;
 }
 
 function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined {
@@ -105,6 +170,9 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
       acc,
       parseSidebarSection,
     );
+  }
+  if ("sandboxes" in raw) {
+    out.sandboxes = parseArray(raw.sandboxes, "sandboxes", acc, parseSandbox);
   }
   if ("composerActions" in raw) {
     out.composerActions = parseArray(
@@ -159,6 +227,32 @@ function parseRightPanel(raw: unknown, ctx: string, acc: Acc): RightPanelContrib
   const component = expectString(raw, "component", acc, ctx);
   if (id == null || displayName == null || component == null) return null;
   return { id, displayName, component };
+}
+
+const SANDBOX_KINDS = new Set<SandboxContribution["kind"]>(["shell"]);
+
+function parseSandbox(raw: unknown, ctx: string, acc: Acc): SandboxContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const kind = expectString(raw, "kind", acc, ctx);
+  const displayName = expectString(raw, "displayName", acc, ctx);
+  const moduleKey = expectString(raw, "module", acc, ctx);
+  if (kind != null && !SANDBOX_KINDS.has(kind as SandboxContribution["kind"])) {
+    acc.issues.push(
+      `${ctx}.kind "${kind}" must be one of ${[...SANDBOX_KINDS].join(", ")}`,
+    );
+    return null;
+  }
+  if (id == null || kind == null || displayName == null || moduleKey == null) return null;
+  return {
+    id,
+    kind: kind as SandboxContribution["kind"],
+    displayName,
+    module: moduleKey,
+  };
 }
 
 function parseComposerAction(

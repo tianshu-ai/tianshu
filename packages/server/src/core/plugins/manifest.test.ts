@@ -162,6 +162,79 @@ describe("parseManifest", () => {
     ).toThrow(/mimePattern/);
   });
 
+  // ADR-0004 — capability + sandboxes ----------------------------------
+
+  it("provides[] / requires[] accept only KNOWN_CAPABILITIES strings", () => {
+    expect(() =>
+      parseManifest({
+        id: "xx",
+        version: "1.0.0",
+        displayName: "X",
+        provides: ["sandbox.code"], // not in KNOWN_CAPABILITIES
+        contributes: {
+          sandboxes: [
+            { id: "main", kind: "shell", displayName: "X", module: "R" },
+          ],
+        },
+      }),
+    ).toThrow(/not a known capability/);
+
+    expect(() =>
+      parseManifest({
+        id: "xx",
+        version: "1.0.0",
+        displayName: "X",
+        requires: ["sandbox.shell", "sandbox.shell"], // dup
+      }),
+    ).toThrow(/listed more than once/);
+  });
+
+  it("provides[sandbox.shell] requires a backing sandboxes[] entry of kind=shell", () => {
+    expect(() =>
+      parseManifest({
+        id: "xx",
+        version: "1.0.0",
+        displayName: "X",
+        provides: ["sandbox.shell"],
+        // no sandboxes[] contribution
+      }),
+    ).toThrow(/without a backing sandboxes/);
+  });
+
+  it("sandboxes[].kind only accepts \"shell\" in v0", () => {
+    expect(() =>
+      parseManifest({
+        id: "xx",
+        version: "1.0.0",
+        displayName: "X",
+        contributes: {
+          sandboxes: [
+            { id: "main", kind: "vm", displayName: "X", module: "R" },
+          ],
+        },
+      }),
+    ).toThrow(/kind/);
+  });
+
+  it("accepts a microsandbox-style manifest declaring sandbox.shell + browser.cdp", () => {
+    const m = parseManifest({
+      id: "microsandbox",
+      version: "0.1.0",
+      displayName: "MicroSandbox",
+      provides: ["sandbox.shell", "browser.cdp"],
+      requires: [],
+      server: { entry: "@tianshu-builtin/plugin-microsandbox/server" },
+      client: { entry: "@tianshu-builtin/plugin-microsandbox/client" },
+      contributes: {
+        sandboxes: [
+          { id: "main", kind: "shell", displayName: "MicroSandbox", module: "MicroSandboxRunner" },
+        ],
+      },
+    });
+    expect(m.provides).toEqual(["sandbox.shell", "browser.cdp"]);
+    expect(m.contributes!.sandboxes![0]!.module).toBe("MicroSandboxRunner");
+  });
+
   it("composerActions[].id and component are required; icon/tooltip/order optional", () => {
     expect(() =>
       parseManifest({

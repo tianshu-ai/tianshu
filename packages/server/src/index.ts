@@ -24,10 +24,11 @@ import {
   loadGlobalConfig,
   tenantMiddleware,
 } from "./core/index.js";
-import { moduleMapResolver, PluginRegistry } from "./core/plugins/index.js";
+import { buildBuiltinResolver, PluginRegistry } from "./core/plugins/index.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
-import filesPlugin from "@tianshu-builtin/plugin-files/server";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { attachChatHandler } from "./chat/handler.js";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
@@ -38,14 +39,23 @@ const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:5183";
 
 const globalOps = new GlobalOps();
 
-// Plugin registry. The resolver maps `manifest.server.entry` strings
-// to actual server modules. Builtin plugins are statically imported
-// here. Tenant plugins (v1+) will be loaded via dynamic import
-// in the resolver.
+// Plugin registry. ADR-0004 §15: builtin server modules are
+// discovered by scanning the top-level `plugins/` directory rather
+// than hand-imported here. Adding a new builtin = drop a directory
+// with `manifest.json` + `dist/server.js`, no edit to this file.
+//
+// Tenant plugins (v1+) will be loaded via dynamic import in the
+// resolver alongside the builtins.
+const here = path.dirname(fileURLToPath(import.meta.url));
+// `dist/index.js` → ../../../plugins, mirroring the convention used
+// by the manifest discovery step in core/plugins/discovery.ts.
+const defaultPluginsRoot = path.resolve(here, "..", "..", "..", "plugins");
+const pluginsRoot = process.env.TIANSHU_PLUGINS_DIR
+  ? path.resolve(process.env.TIANSHU_PLUGINS_DIR)
+  : defaultPluginsRoot;
+
 const pluginRegistry = new PluginRegistry({
-  resolver: moduleMapResolver({
-    "@tianshu-builtin/plugin-files/server": filesPlugin,
-  }),
+  resolver: await buildBuiltinResolver({ pluginsRoot }),
 });
 
 // Catalog client — fetches the list of installable plugins from the

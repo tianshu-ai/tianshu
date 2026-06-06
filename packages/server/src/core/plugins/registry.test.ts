@@ -192,17 +192,16 @@ describe("PluginRegistry", () => {
     expect(entries[0]!.source).toBe("tenant");
   });
 
-  it("not listed = invisible (not in /api/plugins output)", async () => {
+  it("builtin not listed in tenant config still appears as disabled (ADR-0004 §17)", async () => {
     writeBuiltinManifest("hidden", {
       id: "hidden",
       version: "1.0.0",
       displayName: "Hidden",
     });
     ops.create("acme");
-    // No tenant plugins entry at all → discovery still finds builtin,
-    // but config marks it disabled. ADR-0003 §4: not listed and
-    // disabled differ semantically; both surface in listForTenant() so
-    // an admin can see what's available, with state=disabled.
+    // No tenant plugins entry at all → discovery still finds builtin
+    // and surfaces it as disabled so the Plugin Manager UI can show
+    // it ("installed = on disk", config decides activation only).
     const ctx = ops.open("acme");
     const reg = new PluginRegistry({
       resolver: moduleMapResolver({}),
@@ -210,5 +209,223 @@ describe("PluginRegistry", () => {
     });
     const entries = await reg.ensureForTenant(ctx);
     expect(entries[0]!.state).toBe("disabled");
+    expect(entries[0]!.capabilityInfo).toEqual({
+      provided: [],
+      requires: [],
+      missing: [],
+    });
+  });
+
+  // ADR-0004 — capability + requires + exclusivity tests ----------
+
+  it("sandbox.shell capability is registered when a sandboxes-shell contribution is present", async () => {
+    writeBuiltinManifest("sb", {
+      id: "sb",
+      version: "1.0.0",
+      displayName: "Sandbox",
+      provides: ["sandbox.shell"],
+      server: { entry: "@sb/server" },
+      contributes: {
+        sandboxes: [
+          { id: "main", kind: "shell", displayName: "main", module: "Runner" },
+        ],
+      },
+    });
+    const fakeRunner = { id: "sb.main", kind: "shell" };
+    ops.create("acme");
+    writeTenantConfig("acme", { plugins: { sb: { enabled: true } } }, home);
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@sb/server": {
+          activate: () => ({ sandboxes: { Runner: fakeRunner } }),
+        },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    const entries = await reg.ensureForTenant(ctx);
+    expect(entries[0]!.state).toBe("active");
+    expect(entries[0]!.capabilityInfo.provided).toEqual(["sandbox.shell"]);
+    expect(reg.capabilityFor(ctx.tenantId, "sandbox.shell")).toBe(fakeRunner);
+  });
+
+  it("requires capability that no plugin provides → plugin fails with named reason", async () => {
+    writeBuiltinManifest("consumer", {
+      id: "consumer",
+      version: "1.0.0",
+      displayName: "Consumer",
+      requires: ["sandbox.shell"],
+      server: { entry: "@consumer/server" },
+    });
+    ops.create("acme");
+    writeTenantConfig("acme", { plugins: { consumer: { enabled: true } } }, home);
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@consumer/server": { activate: () => ({}) },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    const entries = await reg.ensureForTenant(ctx);
+    expect(entries[0]!.state).toBe("failed");
+    expect(entries[0]!.failedReason).toMatch(/requires capability "sandbox.shell"/);
+    expect(entries[0]!.capabilityInfo.missing).toEqual(["sandbox.shell"]);
+  });
+
+  it("two providers of an exclusive capability → second one fails", async () => {
+    const runnerA = { id: "a.main", kind: "shell" };
+    const runnerB = { id: "b.main", kind: "shell" };
+    for (const id of ["sba", "sbb"]) {
+      writeBuiltinManifest(id, {
+        id,
+        version: "1.0.0",
+        displayName: id,
+        provides: ["sandbox.shell"],
+        server: { entry: `@${id}/server` },
+        contributes: {
+          sandboxes: [
+            { id: "main", kind: "shell", displayName: "main", module: "R" },
+          ],
+        },
+      });
+    }
+    ops.create("acme");
+    writeTenantConfig(
+      "acme",
+      { plugins: { sba: { enabled: true }, sbb: { enabled: true } } },
+      home,
+    );
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@sba/server": { activate: () => ({ sandboxes: { R: runnerA } }) },
+        "@sbb/server": { activate: () => ({ sandboxes: { R: runnerB } }) },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    const entries = await reg.ensureForTenant(ctx);
+    const byId = Object.fromEntries(entries.map((e) => [e.manifest.id, e]));
+    // Topo order is alphabetical when no edges; sba wins.
+    expect(byId.sba!.state).toBe("active");
+    expect(byId.sbb!.state).toBe("failed");
+    expect(byId.sbb!.failedReason).toMatch(/already provided by plugin sba/);
+    expect(reg.capabilityFor(ctx.tenantId, "sandbox.shell")).toBe(runnerA);
+  });
+
+  it("requires → provider activation order is correct", async () => {
+    const order: string[] = [];
+    const runner = { id: "prov.main", kind: "shell" };
+    writeBuiltinManifest("prov", {
+      id: "prov",
+      version: "1.0.0",
+      displayName: "Provider",
+      provides: ["sandbox.shell"],
+      server: { entry: "@prov/server" },
+      contributes: {
+        sandboxes: [
+          { id: "main", kind: "shell", displayName: "main", module: "R" },
+        ],
+      },
+    });
+    writeBuiltinManifest("cons", {
+      id: "cons",
+      version: "1.0.0",
+      displayName: "Consumer",
+      requires: ["sandbox.shell"],
+      server: { entry: "@cons/server" },
+    });
+    ops.create("acme");
+    writeTenantConfig(
+      "acme",
+      { plugins: { prov: { enabled: true }, cons: { enabled: true } } },
+      home,
+    );
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@prov/server": {
+          activate: () => {
+            order.push("prov");
+            return { sandboxes: { R: runner } };
+          },
+        },
+        "@cons/server": {
+          activate: (pluginCtx) => {
+            order.push("cons");
+            // Consumer's requires must be satisfied by the time it activates.
+            expect(pluginCtx.capabilities.has("sandbox.shell")).toBe(true);
+            expect(pluginCtx.capabilities.get("sandbox.shell")).toBe(runner);
+            return {};
+          },
+        },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    const entries = await reg.ensureForTenant(ctx);
+    expect(order).toEqual(["prov", "cons"]);
+    expect(entries.every((e) => e.state === "active")).toBe(true);
+  });
+
+  it("PluginContext.pluginConfig surfaces tenant config[plugins][id].config", async () => {
+    writeBuiltinManifest("sink", {
+      id: "sink",
+      version: "1.0.0",
+      displayName: "Sink",
+      server: { entry: "@sink/server" },
+    });
+    let captured: unknown = null;
+    ops.create("acme");
+    writeTenantConfig(
+      "acme",
+      { plugins: { sink: { enabled: true, config: { foo: 42 } } } },
+      home,
+    );
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@sink/server": {
+          activate: (pluginCtx) => {
+            captured = pluginCtx.pluginConfig;
+            return {};
+          },
+        },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    await reg.ensureForTenant(ctx);
+    expect(captured).toEqual({ foo: 42 });
+  });
+
+  it("provides[sandbox.shell] without backing sandboxes contribution → manifest rejected", async () => {
+    // Validator-level check (lives in core/plugins/manifest.ts): a
+    // plugin can't claim provides["sandbox.shell"] without an actual
+    // sandboxes[] contribution of kind=shell.
+    writeBuiltinManifest("empty", {
+      id: "empty",
+      version: "1.0.0",
+      displayName: "Empty",
+      provides: ["sandbox.shell"],
+      server: { entry: "@empty/server" },
+    });
+    ops.create("acme");
+    writeTenantConfig("acme", { plugins: { empty: { enabled: true } } }, home);
+    ops.poolRef.close("acme");
+    const ctx = ops.open("acme");
+    const reg = new PluginRegistry({
+      resolver: moduleMapResolver({
+        "@empty/server": { activate: () => ({}) },
+      }),
+      discoveryDirs: { builtinConfigDir: builtinDir, home },
+    });
+    const entries = await reg.ensureForTenant(ctx);
+    expect(entries[0]!.state).toBe("failed");
+    expect(entries[0]!.failedReason).toMatch(
+      /declared provides\["sandbox\.shell"\] without a backing sandboxes/,
+    );
   });
 });

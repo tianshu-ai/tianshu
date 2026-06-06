@@ -32,6 +32,14 @@ export interface PluginListEntry {
   contributes: Record<string, unknown>;
   /** manifest.client.entry — null when the plugin has no client side. */
   clientEntry: string | null;
+  /** ADR-0004 §3. Capabilities the plugin provides / requires, plus
+   *  any required ones that no provider satisfied (only non-empty for
+   *  failed plugins). */
+  capabilities: {
+    provided: string[];
+    requires: string[];
+    missing: string[];
+  };
 }
 
 export interface CatalogEntry {
@@ -110,6 +118,8 @@ export const api = {
     patchJson<{ plugins: PluginListEntry[] }>(`/api/plugins/${encodeURIComponent(id)}`, {
       enabled,
     }),
+  /** ADR-0004 §16: explicit re-discovery of on-disk plugins. */
+  refreshPlugins: () => postJson<{ plugins: PluginListEntry[] }>("/api/plugins/refresh"),
   pluginCatalog: () => getJson<CatalogSnapshot>("/api/plugins/catalog"),
   refreshPluginCatalog: () => postJson<CatalogSnapshot>("/api/plugins/catalog/refresh"),
 };
