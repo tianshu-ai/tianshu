@@ -114,6 +114,26 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
+  // ADR-0004 §16: explicit re-discovery. Useful after a manual
+  // catalog install, a `git pull` that adds a new builtin in dev, or
+  // any time the on-disk plugin set changed without a config edit.
+  // PATCH /plugins/:id already invalidates the registry; this route
+  // is for the no-config-change case.
+  r.post("/plugins/refresh", async (req, res, next) => {
+    if (!req.ctx) {
+      res.status(500).json({ error: "no_ctx" });
+      return;
+    }
+    try {
+      registry.invalidate(req.ctx.tenant.tenantId);
+      const fresh = ops.open(req.ctx.tenant.tenantId);
+      const list = await listPluginsForTenant(registry, fresh);
+      res.json({ plugins: list });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   r.patch("/plugins/:id", express.json(), async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
@@ -192,5 +212,10 @@ export async function listPluginsForTenant(
     failedReason: e.failedReason ?? null,
     contributes: e.manifest.contributes ?? {},
     clientEntry: e.manifest.client?.entry ?? null,
+    capabilities: {
+      provided: e.capabilityInfo.provided,
+      requires: e.capabilityInfo.requires,
+      missing: e.capabilityInfo.missing,
+    },
   }));
 }

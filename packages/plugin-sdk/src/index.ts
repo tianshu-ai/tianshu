@@ -9,5 +9,6 @@
 // author can install just the SDK in their package and pull both
 // halves from one source.
 
+export * from "./capabilities.js";
 export * from "./manifest.js";
 export * from "./server.js";

@@ -1,6 +1,6 @@
 // Server-side plugin registry: discovers + activates the plugins
 // enabled for a given tenant. Cached per tenant, invalidated on
-// tenant DB pool eviction.
+// tenant DB pool eviction or via PATCH /api/plugins/:id.
 //
 // State machine for a discovered plugin id:
 //
@@ -17,8 +17,29 @@
 // "client-bundle-missing" is reserved for v1 — we'll set it once
 // dynamic-import client loading lands. Today we always return
 // "active" / "disabled" / "failed".
+//
+// ADR-0004 additions on top of ADR-0003:
+//
+// - Topological activation order based on `requires[]` edges. A
+//   plugin's `activate()` only runs after every plugin providing its
+//   required capabilities is already active. Cycles fail the whole
+//   cycle (each member marked failed); plugins outside the cycle
+//   continue.
+// - Capability registry: a per-tenant map from capability name →
+//   provider entry + value. Sandbox runners are values of type
+//   `SandboxRunner` (registered under `sandbox.shell`); browser
+//   sidecars piggyback on the same runner via `runner.browser`
+//   (registered under `browser.cdp`).
+// - Exclusivity enforcement: capabilities flagged `exclusive: true`
+//   in `KNOWN_CAPABILITIES` reject a second provider; the second
+//   plugin in topo order is marked failed.
+// - Visibility (§17): builtin plugins NOT listed in tenant config
+//   still appear in `listForTenant()` as `state: "disabled"`. Tenant
+//   plugins on disk but not in config also appear as disabled.
 
 import type {
+  CapabilityHandle,
+  CapabilityName,
   PluginContext,
   PluginLogger,
   PluginManifest,
@@ -26,7 +47,9 @@ import type {
   PluginServerExports,
   PluginServerModule,
   PluginWsHandler,
+  SandboxRunner,
 } from "@tianshu/plugin-sdk";
+import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
 
@@ -40,6 +63,29 @@ export interface ActivePluginEntry {
   failedReason?: string;
   /** Available iff state === "active" */
   exports?: PluginServerExports;
+  /** Capability inventory for this plugin, computed at activation
+   *  time. Always present; empty arrays when nothing applies. */
+  capabilityInfo: PluginCapabilityInfo;
+}
+
+export interface PluginCapabilityInfo {
+  /** Capabilities this plugin provided successfully (registered in
+   *  `byCapability`). Empty for non-active plugins. */
+  provided: CapabilityName[];
+  /** Capabilities the manifest's `requires[]` listed. Always present
+   *  regardless of state. */
+  requires: CapabilityName[];
+  /** Subset of `requires` that no other plugin provided in this
+   *  tenant. For active plugins this is always empty (we wouldn't
+   *  have activated). For failed plugins it explains why. */
+  missing: CapabilityName[];
+}
+
+export interface ProvidedCapability {
+  capability: CapabilityName;
+  pluginId: string;
+  exclusive: boolean;
+  value: unknown;
 }
 
 export interface ServerPluginModuleResolver {
@@ -63,6 +109,7 @@ export interface RegistryOpts {
 interface CachedTenantRegistry {
   entries: ActivePluginEntry[];
   byWsType: Map<string, { entry: ActivePluginEntry; handler: PluginWsHandler }>;
+  byCapability: Map<CapabilityName, ProvidedCapability>;
 }
 
 export class PluginRegistry {
@@ -93,23 +140,131 @@ export class PluginRegistry {
         dir: f.dir,
         state: "failed",
         failedReason: f.issues.join("; "),
+        capabilityInfo: emptyCapabilityInfo(),
       });
     }
 
-    // Now process valid manifests against the tenant config.
+    // Compute activation order over the subset enabled in tenant
+    // config. `requires` edges only matter between enabled plugins;
+    // a disabled plugin can't satisfy anything.
+    const enabledIds = new Set(
+      discovery.plugins
+        .filter((p) => cfg[p.manifest.id]?.enabled === true)
+        .map((p) => p.manifest.id),
+    );
+
+    const ordered = topologicalOrder(discovery.plugins, enabledIds);
+    const enabledById = new Map(
+      discovery.plugins.map((p) => [p.manifest.id, p] as const),
+    );
+
+    // Plugins that aren't enabled show up as disabled rows, with
+    // their capabilityInfo precomputed for the UI.
     for (const p of discovery.plugins) {
-      const enabled = cfg[p.manifest.id]?.enabled === true;
-      if (!enabled) {
+      if (enabledIds.has(p.manifest.id)) continue;
+      entries.push({
+        manifest: p.manifest,
+        source: p.source,
+        dir: p.dir,
+        state: "disabled",
+        capabilityInfo: {
+          provided: [],
+          requires: capabilityList(p.manifest.requires),
+          missing: [],
+        },
+      });
+    }
+
+    // Cycle members are precomputed so we can fail them in one shot.
+    const cycleMembers = new Set(ordered.cycle);
+    const byCapability = new Map<CapabilityName, ProvidedCapability>();
+
+    // Activate plugins in topological order.
+    for (const id of ordered.order) {
+      const p = enabledById.get(id);
+      if (!p) continue;
+
+      // 1) Cycle members fail with a specific reason.
+      if (cycleMembers.has(id)) {
         entries.push({
           manifest: p.manifest,
           source: p.source,
           dir: p.dir,
-          state: "disabled",
+          state: "failed",
+          failedReason: `circular requires: ${ordered.cycle.join(" → ")}`,
+          capabilityInfo: {
+            provided: [],
+            requires: capabilityList(p.manifest.requires),
+            missing: [],
+          },
         });
         continue;
       }
-      const activated = await this.activate(ctx, p);
+
+      // 2) Resolve requires: every required capability must already
+      //    be in byCapability.
+      const requires = capabilityList(p.manifest.requires);
+      const missing = requires.filter((c) => !byCapability.has(c));
+      if (missing.length > 0) {
+        entries.push({
+          manifest: p.manifest,
+          source: p.source,
+          dir: p.dir,
+          state: "failed",
+          failedReason: `requires capability ${missing
+            .map((c) => `"${c}"`)
+            .join(", ")} — no provider enabled`,
+          capabilityInfo: { provided: [], requires, missing },
+        });
+        continue;
+      }
+
+      // 3) Exclusivity check: if this plugin provides any exclusive
+      //    capability already taken, fail it.
+      const declared = capabilityList(p.manifest.provides);
+      const conflict = declared.find((c) => {
+        const spec = KNOWN_CAPABILITIES[c];
+        return spec.exclusive && byCapability.has(c);
+      });
+      if (conflict) {
+        const owner = byCapability.get(conflict)!.pluginId;
+        entries.push({
+          manifest: p.manifest,
+          source: p.source,
+          dir: p.dir,
+          state: "failed",
+          failedReason: `capability "${conflict}" already provided by plugin ${owner}`,
+          capabilityInfo: { provided: [], requires, missing: [] },
+        });
+        continue;
+      }
+
+      // 4) Activate the plugin.
+      const activated = await this.activate(ctx, p, byCapability);
       entries.push(activated);
+
+      // 5) On success, register capabilities the plugin actually
+      //    backed (sandboxes contribution + runner.browser for
+      //    browser.cdp). If a declared capability has no backing
+      //    runner, mark the plugin failed.
+      if (activated.state === "active") {
+        const ok = registerProvidedCapabilities(activated, byCapability);
+        if (!ok.ok) {
+          activated.state = "failed";
+          activated.failedReason = ok.reason;
+          delete activated.exports;
+          activated.capabilityInfo = {
+            provided: [],
+            requires,
+            missing: [],
+          };
+          // Roll back any partial registrations from this plugin.
+          for (const cap of activated.capabilityInfo.provided) {
+            const owner = byCapability.get(cap);
+            if (owner?.pluginId === activated.manifest.id) byCapability.delete(cap);
+          }
+        }
+      }
     }
 
     // Build the WS dispatch map. Duplicate `wsMessages.type` registrations
@@ -144,7 +299,7 @@ export class PluginRegistry {
       a.manifest.id < b.manifest.id ? -1 : a.manifest.id > b.manifest.id ? 1 : 0,
     );
 
-    this.cache.set(ctx.tenantId, { entries, byWsType });
+    this.cache.set(ctx.tenantId, { entries, byWsType, byCapability });
     return entries;
   }
 
@@ -166,40 +321,59 @@ export class PluginRegistry {
     return this.cache.get(tenantId)?.entries ?? [];
   }
 
+  /** For agent / other host code: read the tenant capability registry. */
+  capabilityFor<T = unknown>(tenantId: string, name: CapabilityName): T | undefined {
+    return this.cache.get(tenantId)?.byCapability.get(name)?.value as T | undefined;
+  }
+
   // ─── internals ─────────────────────────────────────────────────
 
   private async activate(
     ctx: TenantContext,
     p: DiscoveredPlugin,
+    byCapability: Map<CapabilityName, ProvidedCapability>,
   ): Promise<ActivePluginEntry> {
+    const requires = capabilityList(p.manifest.requires);
+
     if (!p.manifest.server?.entry) {
       // No server entry → the plugin is client-only. v0 doesn't load
       // those (we'd need a registry for client-only plugins too); mark
       // as active with no exports.
-      return { manifest: p.manifest, source: p.source, dir: p.dir, state: "active" };
+      return {
+        manifest: p.manifest,
+        source: p.source,
+        dir: p.dir,
+        state: "active",
+        capabilityInfo: { provided: [], requires, missing: [] },
+      };
     }
     let mod: PluginServerModule | null = null;
     try {
       mod = await this.opts.resolver.resolve(p.manifest.server.entry);
     } catch (err) {
-      return failed(p, `module resolve threw: ${describe(err)}`);
+      return failed(p, requires, `module resolve threw: ${describe(err)}`);
     }
     if (!mod) {
-      return failed(p, `server.entry "${p.manifest.server.entry}" not registered`);
+      return failed(
+        p,
+        requires,
+        `server.entry "${p.manifest.server.entry}" not registered`,
+      );
     }
     if (typeof mod.activate !== "function") {
-      return failed(p, "server module does not export activate()");
+      return failed(p, requires, "server module does not export activate()");
     }
     const pluginCtx = makePluginContext({
       pluginId: p.manifest.id,
       ctx,
       broadcast: this.opts.broadcast,
+      byCapability,
     });
     let exports_: PluginServerExports;
     try {
       exports_ = await mod.activate(pluginCtx);
     } catch (err) {
-      return failed(p, `activate() threw: ${describe(err)}`);
+      return failed(p, requires, `activate() threw: ${describe(err)}`);
     }
     return {
       manifest: p.manifest,
@@ -207,12 +381,24 @@ export class PluginRegistry {
       dir: p.dir,
       state: "active",
       exports: exports_,
+      capabilityInfo: { provided: [], requires, missing: [] },
     };
   }
 }
 
-function failed(p: DiscoveredPlugin, reason: string): ActivePluginEntry {
-  return { manifest: p.manifest, source: p.source, dir: p.dir, state: "failed", failedReason: reason };
+function failed(
+  p: DiscoveredPlugin,
+  requires: CapabilityName[],
+  reason: string,
+): ActivePluginEntry {
+  return {
+    manifest: p.manifest,
+    source: p.source,
+    dir: p.dir,
+    state: "failed",
+    failedReason: reason,
+    capabilityInfo: { provided: [], requires, missing: [] },
+  };
 }
 
 function describe(err: unknown): string {
@@ -222,19 +408,37 @@ function describe(err: unknown): string {
 
 function readPluginsConfig(
   ctx: TenantContext,
-): Record<string, { enabled?: boolean }> {
+): Record<string, { enabled?: boolean; config?: Record<string, unknown> }> {
   const cfg = (ctx.config as { plugins?: unknown }).plugins;
   if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) return {};
-  return cfg as Record<string, { enabled?: boolean }>;
+  return cfg as Record<string, { enabled?: boolean; config?: Record<string, unknown> }>;
+}
+
+function readPluginConfig(ctx: TenantContext, pluginId: string): Record<string, unknown> {
+  const all = readPluginsConfig(ctx);
+  const c = all[pluginId]?.config;
+  return c && typeof c === "object" && !Array.isArray(c) ? (c as Record<string, unknown>) : {};
 }
 
 function makePluginContext(args: {
   pluginId: string;
   ctx: TenantContext;
   broadcast?: (tenantId: string, type: string, payload: unknown) => void;
+  byCapability: Map<CapabilityName, ProvidedCapability>;
 }): PluginContext {
-  const { pluginId, ctx, broadcast } = args;
+  const { pluginId, ctx, broadcast, byCapability } = args;
   const log: PluginLogger = bindLogger(pluginId, ctx.tenantId);
+  const capabilities: CapabilityHandle = {
+    get: <T = unknown>(name: CapabilityName) =>
+      byCapability.get(name)?.value as T | undefined,
+    has: (name: CapabilityName) => byCapability.has(name),
+    on: () => () => {
+      // v0: no-op. Lifecycle events are fired by registry.invalidate
+      // → ensureForTenant rebuilds, but we don't yet plumb listeners
+      // through. ADR-0004 §8 says v0 ships get/has only; on() is
+      // declared so plugins can write code that targets v1 already.
+    },
+  };
   return {
     pluginId,
     tenantId: ctx.tenantId,
@@ -245,6 +449,8 @@ function makePluginContext(args: {
     userHomeDir: (userId: string) => ctx.userHomeDir(userId),
     broadcast: (type, payload) =>
       broadcast?.(ctx.tenantId, `${pluginId}:${type}`, payload),
+    capabilities,
+    pluginConfig: readPluginConfig(ctx, pluginId),
   };
 }
 
@@ -303,4 +509,182 @@ export function collectRoutesForTenant(
     }
   }
   return out;
+}
+
+// ─── helpers ─────────────────────────────────────────────────────
+
+function capabilityList(raw: string[] | undefined): CapabilityName[] {
+  if (!raw) return [];
+  // Manifest validator already filtered to known names, but be
+  // defensive in case someone constructs a manifest in code (tests).
+  return raw.filter(isCapabilityName) as CapabilityName[];
+}
+
+function emptyCapabilityInfo(): PluginCapabilityInfo {
+  return { provided: [], requires: [], missing: [] };
+}
+
+interface TopoResult {
+  /** Activation order by id, plugins outside any cycle first. Cycle
+   *  members are appended in id order so they still get processed. */
+  order: string[];
+  /** Ids that participated in a cycle and must be marked failed. */
+  cycle: string[];
+}
+
+/**
+ * Kahn's algorithm over plugins in the enabled set. Edges are
+ * `requires(provider)` (provider satisfies the required capability),
+ * resolved by scanning every enabled plugin's `provides[]`. We don't
+ * care which specific provider satisfies a capability — any works.
+ */
+function topologicalOrder(
+  plugins: DiscoveredPlugin[],
+  enabledIds: Set<string>,
+): TopoResult {
+  // capability → ids of providers (within enabled set)
+  const providers = new Map<CapabilityName, string[]>();
+  for (const p of plugins) {
+    if (!enabledIds.has(p.manifest.id)) continue;
+    for (const cap of capabilityList(p.manifest.provides)) {
+      const arr = providers.get(cap) ?? [];
+      arr.push(p.manifest.id);
+      providers.set(cap, arr);
+    }
+  }
+
+  // For each enabled plugin, compute the set of plugin-ids it depends
+  // on (every provider of every required capability). Self-loops are
+  // dropped — a plugin can both provide and require the same capability
+  // (e.g. self-tests); we don't treat that as a cycle.
+  const deps = new Map<string, Set<string>>();
+  for (const p of plugins) {
+    if (!enabledIds.has(p.manifest.id)) continue;
+    const set = new Set<string>();
+    for (const cap of capabilityList(p.manifest.requires)) {
+      const provs = providers.get(cap) ?? [];
+      for (const provId of provs) {
+        if (provId !== p.manifest.id) set.add(provId);
+      }
+    }
+    deps.set(p.manifest.id, set);
+  }
+
+  const order: string[] = [];
+  const remaining = new Map(deps);
+  const ids = [...remaining.keys()].sort();
+
+  while (remaining.size > 0) {
+    // Pick all plugins with zero remaining deps; sort for determinism.
+    const ready = ids.filter((id) => remaining.has(id) && remaining.get(id)!.size === 0);
+    if (ready.length === 0) break; // cycle
+    for (const id of ready) {
+      order.push(id);
+      remaining.delete(id);
+      for (const [other, set] of remaining) {
+        if (set.delete(id) && set.size === 0) {
+          // Will be picked next iteration.
+        }
+        void other;
+      }
+    }
+  }
+
+  // Anything left is in a cycle.
+  const cycle = [...remaining.keys()].sort();
+  for (const id of cycle) order.push(id);
+  return { order, cycle };
+}
+
+/**
+ * After a plugin's `activate()` returns successfully, map its
+ * `provides[]` declarations to the actual values it exposes
+ * (sandbox runners, optional browser sidecar) and register them.
+ *
+ * Returns `{ ok: true }` if every declared capability was backed,
+ * or `{ ok: false, reason }` if a backing was missing.
+ *
+ * Side effects: mutates `entry.capabilityInfo.provided` and the
+ * passed-in `byCapability` map.
+ */
+function registerProvidedCapabilities(
+  entry: ActivePluginEntry,
+  byCapability: Map<CapabilityName, ProvidedCapability>,
+): { ok: true } | { ok: false; reason: string } {
+  const declared = capabilityList(entry.manifest.provides);
+  if (declared.length === 0) return { ok: true };
+
+  const sandboxes = entry.manifest.contributes?.sandboxes ?? [];
+  const sandboxModules = entry.exports?.sandboxes ?? {};
+
+  // Lazily start the first matching sandbox runner per kind.
+  // We only need one runner per provided sandbox.<kind> capability.
+  // The sandbox module's start() returned the runner object eagerly
+  // inside activate() — we expect plugins to surface ready runners
+  // via exports.sandboxes after their start logic runs in activate.
+  // Convention: exports.sandboxes is keyed by manifest.module string.
+
+  for (const cap of declared) {
+    if (cap.startsWith("sandbox.")) {
+      const kind = cap.slice("sandbox.".length);
+      const matching = sandboxes.find((s) => s.kind === kind);
+      if (!matching) {
+        return {
+          ok: false,
+          reason: `provides[\"${cap}\"] declared without a backing sandboxes[] entry of kind=${kind}`,
+        };
+      }
+      const runner = sandboxModules[matching.module] as unknown;
+      if (!runner || typeof runner !== "object") {
+        return {
+          ok: false,
+          reason: `sandboxes["${matching.module}"] missing or not an object in plugin ${entry.manifest.id}`,
+        };
+      }
+      byCapability.set(cap, {
+        capability: cap,
+        pluginId: entry.manifest.id,
+        exclusive: KNOWN_CAPABILITIES[cap].exclusive,
+        value: runner,
+      });
+      entry.capabilityInfo.provided.push(cap);
+      continue;
+    }
+
+    if (cap === "browser.cdp") {
+      // browser.cdp piggybacks on a sandbox runner with a populated
+      // `.browser` field. Find the first runner that exposes one.
+      let sidecar: unknown;
+      for (const s of sandboxes) {
+        const runner = sandboxModules[s.module] as
+          | { browser?: SandboxRunner["browser"] }
+          | undefined;
+        if (runner && runner.browser) {
+          sidecar = runner.browser;
+          break;
+        }
+      }
+      if (!sidecar) {
+        return {
+          ok: false,
+          reason: `provides[\"browser.cdp\"] declared but no sandbox runner exposes a .browser sidecar`,
+        };
+      }
+      byCapability.set(cap, {
+        capability: cap,
+        pluginId: entry.manifest.id,
+        exclusive: KNOWN_CAPABILITIES[cap].exclusive,
+        value: sidecar,
+      });
+      entry.capabilityInfo.provided.push(cap);
+      continue;
+    }
+
+    return {
+      ok: false,
+      reason: `unknown capability "${cap}" in provides[] (KNOWN_CAPABILITIES is the single source of truth)`,
+    };
+  }
+
+  return { ok: true };
 }

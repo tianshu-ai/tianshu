@@ -15,6 +15,20 @@ export interface PluginManifest {
   license?: string;
   /** Declarative permission strings (not enforced in v0). */
   permissions?: string[];
+  /**
+   * Capabilities (ADR-0004 §3) this plugin claims to provide. Each
+   * entry must be a member of `KNOWN_CAPABILITIES` and must be
+   * backed by an actual `contributes.*` entry. Validated at
+   * activation time.
+   */
+  provides?: string[];
+  /**
+   * Capabilities (ADR-0004 §5) this plugin needs from some other
+   * active plugin in the same tenant (or from itself, if it both
+   * provides and requires). Each entry must be a member of
+   * `KNOWN_CAPABILITIES`.
+   */
+  requires?: string[];
   client?: PluginEntryRef;
   server?: PluginEntryRef;
   contributes?: ContributesV1;
@@ -34,6 +48,12 @@ export interface ContributesV1 {
   rightPanels?: RightPanelContribution[];
   sidebarSections?: SidebarSectionContribution[];
   /**
+   * Sandbox runtime providers (ADR-0004 §1). Each entry registers a
+   * `SandboxRunner` whose `kind` selects which agent tools the
+   * core wires up (e.g. `kind: "shell"` → `exec` / `reset_sandbox`).
+   */
+  sandboxes?: SandboxContribution[];
+  /**
    * Buttons in the chat composer (left of Send). The contributed
    * component renders inside the input row and gets a `composer`
    * prop with `useComposer()`-equivalent capabilities (manage
@@ -51,6 +71,17 @@ export interface ContributesV1 {
   apiRoutes?: ApiRouteContribution[];
   wsMessages?: WsMessageContribution[];
   commands?: CommandContribution[];
+}
+
+export type SandboxKind = "shell";
+
+export interface SandboxContribution {
+  /** Local id; surfaced as `<plugin-id>.<id>` to the world. */
+  id: string;
+  kind: SandboxKind;
+  displayName: string;
+  /** Key in the plugin's server-exports `sandboxes` map. */
+  module: string;
 }
 
 export interface TopBarButtonContribution {

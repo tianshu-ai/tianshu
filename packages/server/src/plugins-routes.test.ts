@@ -331,4 +331,51 @@ describe("plugins HTTP routes", () => {
     const cfg = loadTenantConfig(TENANT, home);
     expect(cfg.plugins?.ghost).toEqual({ enabled: false });
   });
+
+  it("POST /api/plugins/refresh re-discovers on-disk plugins (ADR-0004 §16)", async () => {
+    const app = buildApp();
+
+    // First call: nothing on disk.
+    let list = await request(app).get("/api/plugins");
+    expect(list.body.plugins).toHaveLength(0);
+
+    // Drop a new builtin while the server is running.
+    writeBuiltinManifest("latecomer", {
+      id: "latecomer",
+      version: "1.0.0",
+      displayName: "Latecomer",
+      server: { entry: "@late/server" },
+    });
+
+    // GET still hits the cache from the first call — no rediscovery.
+    list = await request(app).get("/api/plugins");
+    expect(list.body.plugins).toHaveLength(0);
+
+    // POST refresh invalidates and rediscovers.
+    const refresh = await request(app).post("/api/plugins/refresh");
+    expect(refresh.status).toBe(200);
+    expect(refresh.body.plugins).toHaveLength(1);
+    expect(refresh.body.plugins[0]).toMatchObject({
+      id: "latecomer",
+      state: "disabled",
+    });
+  });
+
+  it("GET /api/plugins includes capabilities { provided, requires, missing }", async () => {
+    writeBuiltinManifest("hello", {
+      id: "hello",
+      version: "1.0.0",
+      displayName: "Hello",
+      requires: ["sandbox.shell"],
+      server: { entry: "@hello/server" },
+    });
+    const app = buildApp();
+    const res = await request(app).get("/api/plugins");
+    expect(res.status).toBe(200);
+    expect(res.body.plugins[0].capabilities).toEqual({
+      provided: [],
+      requires: ["sandbox.shell"],
+      missing: [],
+    });
+  });
 });
