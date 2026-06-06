@@ -35,7 +35,9 @@
       }
     ],
     "apiRoutes": [
-      { "method": "GET", "path": "/status", "handler": "status" }
+      { "method": "GET",  "path": "/status", "handler": "status" },
+      { "method": "POST", "path": "/exec",   "handler": "exec"   },
+      { "method": "POST", "path": "/reset",  "handler": "reset"  }
     ]
   }
 }

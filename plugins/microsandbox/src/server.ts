@@ -49,12 +49,63 @@ const statusRoute: PluginRouteHandler = async (_req, res) => {
   }
 };
 
+// Debug exec route. N+3 will deprecate this in favour of an agent
+// tool that goes through the capability registry, but until then
+// having a curl-able exec is the only way to validate the runner
+// actually starts a microVM. The route just shells through to
+// runner.exec and returns the structured result.
+const execRoute: PluginRouteHandler = async (req, res) => {
+  if (!active) {
+    res.status(503).json({ error: "not_started" });
+    return;
+  }
+  const body = req.body as { command?: unknown; workdir?: unknown; timeoutMs?: unknown } | undefined;
+  if (!body || typeof body.command !== "string" || body.command.length === 0) {
+    res.status(400).json({ error: "missing_command" });
+    return;
+  }
+  try {
+    const result = await active.built.runner.exec({
+      command: body.command,
+      workdir: typeof body.workdir === "string" ? body.workdir : undefined,
+      timeoutMs:
+        typeof body.timeoutMs === "number" && Number.isFinite(body.timeoutMs)
+          ? body.timeoutMs
+          : undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({
+      error: "exec_failed",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+};
+
+const resetRoute: PluginRouteHandler = async (_req, res) => {
+  if (!active) {
+    res.status(503).json({ error: "not_started" });
+    return;
+  }
+  try {
+    await active.built.runner.reset();
+    const status = await active.built.runner.status();
+    res.json({ ok: true, status });
+  } catch (err) {
+    res.status(500).json({
+      error: "reset_failed",
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+};
+
 export default {
   async activate(ctx: PluginContext): Promise<PluginServerExports> {
     const built = await buildRunner({
       pluginId: ctx.pluginId,
       contributionId: "main",
       workspaceDir: ctx.workspaceDir,
+      tenantId: ctx.tenantId,
       rawConfig: ctx.pluginConfig,
     });
     active = { built, log: ctx.log };
@@ -69,6 +120,8 @@ export default {
       },
       routes: {
         status: statusRoute,
+        exec: execRoute,
+        reset: resetRoute,
       },
     };
   },

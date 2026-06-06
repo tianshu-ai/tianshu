@@ -15,64 +15,72 @@ afterEach(() => {
 });
 
 describe("buildRunner facade", () => {
-  it("falls back to nullable when binary is not found", async () => {
+  it("falls back to nullable when the SDK probe fails", async () => {
     const built = await buildRunner({
       pluginId: "microsandbox",
       contributionId: "main",
+      tenantId: "acme",
       workspaceDir,
       rawConfig: {},
-      resolveBinary: async () => null,
+      probeSdk: async () => ({
+        ok: false,
+        reason: "no napi binary for fake-arch",
+      }),
     });
     expect(built.ready).toBe(false);
     expect(built.runner.kind).toBe("shell");
     const status = await built.runner.status();
     expect(status.state).toBe("error");
     expect(status.meta?.runner).toBe("nullable");
-    expect(built.selectedReason).toMatch(/microsandbox binary not found/);
+    expect(built.selectedReason).toMatch(/no napi binary/);
   });
 
-  it("uses the real runner when the binary resolves", async () => {
-    // Stub out `which microsandbox` with a known-existing binary
-    // (we don't actually exec it in this test, just check the
-    // facade picks the real runner path).
+  it("uses the real runner when the SDK probe succeeds", async () => {
     const built = await buildRunner({
       pluginId: "microsandbox",
       contributionId: "main",
+      tenantId: "acme",
       workspaceDir,
       rawConfig: {},
-      resolveBinary: async () => "/usr/bin/true", // any real file works
+      probeSdk: async () => ({ ok: true }),
     });
     expect(built.ready).toBe(true);
     const status = await built.runner.status();
-    expect(status.state).toBe("ready");
+    // The real runner reports stopped until first exec triggers
+    // doStart(); we check meta to confirm it's the real path.
     expect(status.meta?.runner).toBe("microsandbox");
+    expect(status.meta?.sandboxName).toBe("tianshu-acme");
   });
 
-  it("respects pluginConfig.binary override", async () => {
-    let observed: string | null = null;
-    await buildRunner({
-      pluginId: "microsandbox",
-      contributionId: "main",
-      workspaceDir,
-      rawConfig: { binary: "/opt/custom/microsandbox" },
-      resolveBinary: async (b) => {
-        observed = b;
-        return null; // force nullable, we only check the call
-      },
-    });
-    expect(observed).toBe("/opt/custom/microsandbox");
-  });
-
-  it("respects sandboxName + projectDir overrides in status meta", async () => {
+  it("respects sandbox config overrides via pluginConfig", async () => {
     const built = await buildRunner({
       pluginId: "microsandbox",
       contributionId: "main",
+      tenantId: "acme",
       workspaceDir,
-      rawConfig: { sandboxName: "myproj", projectDir: "alt" },
-      resolveBinary: async () => "/usr/bin/true",
+      rawConfig: {
+        image: "ubuntu:24.04",
+        cpus: 4,
+        memoryMib: 8192,
+        sandboxName: "my-vm",
+      },
+      probeSdk: async () => ({ ok: true }),
     });
-    const status = await built.runner.status();
-    expect(status.meta?.sandboxName).toBe("myproj");
-    expect(status.meta?.projectDir).toBe(path.join(workspaceDir, "alt"));
+    expect(built.config.image).toBe("ubuntu:24.04");
+    expect(built.config.cpus).toBe(4);
+    expect(built.config.memoryMib).toBe(8192);
+    expect(built.config.sandboxName).toBe("my-vm");
+  });
+
+  it("default sandbox name is tianshu-<tenantId>", async () => {
+    const built = await buildRunner({
+      pluginId: "microsandbox",
+      contributionId: "main",
+      tenantId: "acme",
+      workspaceDir,
+      rawConfig: {},
+      probeSdk: async () => ({ ok: true }),
+    });
+    expect(built.config.sandboxName).toBe("tianshu-acme");
   });
 });
