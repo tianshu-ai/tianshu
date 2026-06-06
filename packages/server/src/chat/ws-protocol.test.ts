@@ -195,4 +195,43 @@ describe("toWire", () => {
     // from the ImageContent (which doesn't carry size).
     expect(w.attachments![0]!.size).toBe(9);
   });
+
+  // ADR-0004 N+4 fix: assistant messages now expose an ordered
+  // `blocks` array preserving text/toolCall interleaving. Legacy
+  // `text` (joined) + `toolCalls` (flat) stay populated for
+  // backwards-compat with old clients.
+  it("assistant message gets ordered `blocks` preserving text/toolCall interleaving", () => {
+    const stored = JSON.stringify({
+      role: "assistant",
+      content: [
+        { type: "text", text: "first." },
+        { type: "toolCall", id: "c1", name: "list_dir", arguments: { p: "/" } },
+        { type: "text", text: "second." },
+        { type: "toolCall", id: "c2", name: "read_file", arguments: {} },
+      ],
+      timestamp: 1,
+    });
+    const w = toWire(row("assistant", stored));
+    expect(w.blocks).toEqual([
+      { kind: "text", text: "first." },
+      { kind: "toolCall", id: "c1", name: "list_dir", arguments: { p: "/" } },
+      { kind: "text", text: "second." },
+      { kind: "toolCall", id: "c2", name: "read_file", arguments: {} },
+    ]);
+    // Legacy fields still populated.
+    expect(w.text).toBe("first.second.");
+    expect(w.toolCalls).toHaveLength(2);
+  });
+
+  it("assistant message with only text has no blocks-only flag drama", () => {
+    const stored = JSON.stringify({
+      role: "assistant",
+      content: [{ type: "text", text: "hello" }],
+      timestamp: 1,
+    });
+    const w = toWire(row("assistant", stored));
+    expect(w.text).toBe("hello");
+    expect(w.toolCalls).toBeUndefined();
+    expect(w.blocks).toEqual([{ kind: "text", text: "hello" }]);
+  });
 });

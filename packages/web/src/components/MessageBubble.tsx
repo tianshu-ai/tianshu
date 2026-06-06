@@ -27,6 +27,7 @@ import {
   XCircle,
 } from "lucide-react";
 import type {
+  MergedAssistantBlock,
   MergedMessage,
   MergedToolCall,
 } from "../lib/merge-tool-turns";
@@ -34,8 +35,18 @@ import MessageAttachments from "./MessageAttachments";
 
 export default function MessageBubble({ m }: { m: MergedMessage }) {
   const isUser = m.role === "user";
+
+  // Prefer ordered `resolvedBlocks` (new wire shape, see
+  // ws-protocol.ts). Fall back to flattened `text + resolvedToolCalls`
+  // for tool/user/system rows and for legacy assistant rows that
+  // don't carry blocks.
+  const blocks = !isUser && m.resolvedBlocks && m.resolvedBlocks.length > 0
+    ? m.resolvedBlocks
+    : null;
+
   const hasText = m.text.length > 0;
   const calls = m.resolvedToolCalls ?? [];
+  const showStreamingPlaceholder = !isUser && !hasText && calls.length === 0 && !blocks;
 
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
@@ -45,37 +56,41 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
           <span>{isUser ? "you" : "tianshu"}</span>
         </div>
 
-        {/* Text body. Skip the bubble entirely for tool-only assistant
-            turns (text is empty + only tool calls); the placeholder
-            blink stays for the `streaming…` case (text empty AND no
-            tool calls yet). */}
-        {hasText ? (
-          <div
-            className={
-              "prose prose-invert prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed " +
-              (isUser
-                ? "border-brand-400/30 bg-brand-500/10 text-gray-100"
-                : "border-gray-800 bg-gray-900/60 text-gray-100")
-            }
-          >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+        {blocks ? (
+          <div className={`flex flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
+            {blocks.map((b, i) => renderAssistantBlock(b, i, isUser))}
           </div>
-        ) : !isUser && calls.length === 0 ? (
-          <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3.5 py-2.5">
-            <span className="inline-block h-4 w-1 animate-pulse bg-gray-500 align-middle" />
-          </div>
-        ) : null}
+        ) : (
+          <>
+            {hasText ? (
+              <div
+                className={
+                  "prose prose-invert prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed " +
+                  (isUser
+                    ? "border-brand-400/30 bg-brand-500/10 text-gray-100"
+                    : "border-gray-800 bg-gray-900/60 text-gray-100")
+                }
+              >
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+              </div>
+            ) : showStreamingPlaceholder ? (
+              <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3.5 py-2.5">
+                <span className="inline-block h-4 w-1 animate-pulse bg-gray-500 align-middle" />
+              </div>
+            ) : null}
+
+            {calls.length > 0 && (
+              <div className={`mt-1.5 flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+                {calls.map((c) => (
+                  <ToolCallRow key={c.id} call={c} />
+                ))}
+              </div>
+            )}
+          </>
+        )}
 
         {isUser && m.attachments && m.attachments.length > 0 && (
           <MessageAttachments attachments={m.attachments} align="end" />
-        )}
-
-        {calls.length > 0 && (
-          <div className={`mt-1.5 flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
-            {calls.map((c) => (
-              <ToolCallRow key={c.id} call={c} />
-            ))}
-          </div>
         )}
 
         {!isUser && (m.meta || m.createdAt) && (
@@ -88,6 +103,31 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
       </div>
     </div>
   );
+}
+
+function renderAssistantBlock(
+  block: MergedAssistantBlock,
+  i: number,
+  isUser: boolean,
+): React.ReactNode {
+  if (block.kind === "text") {
+    if (block.text.length === 0) return null;
+    return (
+      <div
+        key={`t${i}`}
+        className={
+          "prose prose-invert prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed " +
+          (isUser
+            ? "border-brand-400/30 bg-brand-500/10 text-gray-100"
+            : "border-gray-800 bg-gray-900/60 text-gray-100")
+        }
+      >
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{block.text}</ReactMarkdown>
+      </div>
+    );
+  }
+  // toolCall block: reuse the same chip the legacy path renders.
+  return <ToolCallRow key={`c${i}-${block.id}`} call={block} />;
 }
 
 function MessageMeta({
