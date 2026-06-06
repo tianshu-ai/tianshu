@@ -15,6 +15,7 @@ import type {
   PluginManifest,
   RightPanelContribution,
   SandboxContribution,
+  SkillContribution,
   ToolContribution,
   SidebarSectionContribution,
   TopBarButtonContribution,
@@ -178,6 +179,9 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
   if ("tools" in raw) {
     out.tools = parseArray(raw.tools, "tools", acc, parseTool);
   }
+  if ("skills" in raw) {
+    out.skills = parseArray(raw.skills, "skills", acc, parseSkill);
+  }
   if ("composerActions" in raw) {
     out.composerActions = parseArray(
       raw.composerActions,
@@ -244,6 +248,17 @@ function parseTool(raw: unknown, ctx: string, acc: Acc): ToolContribution | null
   const moduleKey = expectString(raw, "module", acc, ctx);
   if (id == null || moduleKey == null) return null;
   return { id, module: moduleKey };
+}
+
+function parseSkill(raw: unknown, ctx: string, acc: Acc): SkillContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const skillPath = expectString(raw, "path", acc, ctx);
+  if (id == null || skillPath == null) return null;
+  return { id, path: skillPath };
 }
 
 function parseSandbox(raw: unknown, ctx: string, acc: Acc): SandboxContribution | null {

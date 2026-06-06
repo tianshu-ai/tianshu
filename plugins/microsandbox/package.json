@@ -17,7 +17,7 @@
     },
     "./manifest.json": "./manifest.json"
   },
-  "files": ["dist", "src", "manifest.json"],
+  "files": ["dist", "src", "skills", "manifest.json"],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch --preserveWatchOutput",

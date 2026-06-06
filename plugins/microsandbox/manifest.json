@@ -40,6 +40,10 @@
       { "id": "get_sandbox_status",   "module": "GetSandboxStatusTool" },
       { "id": "update_sandbox_config", "module": "UpdateSandboxConfigTool" }
     ],
+    "skills": [
+      { "id": "exec-howto", "path": "skills/microsandbox-exec-howto.md" },
+      { "id": "config",     "path": "skills/microsandbox-config.md"     }
+    ],
     "apiRoutes": [
       { "method": "GET", "path": "/status", "handler": "status" }
     ]

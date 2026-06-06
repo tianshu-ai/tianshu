@@ -29,6 +29,7 @@ const ids = fs
   .map((d) => d.name);
 
 let copied = 0;
+let skillsCopied = 0;
 for (const id of ids) {
   const src = path.join(pluginsDir, id, "manifest.json");
   if (!fs.existsSync(src)) continue;
@@ -36,7 +37,27 @@ for (const id of ids) {
   fs.mkdirSync(dstDir, { recursive: true });
   fs.copyFileSync(src, path.join(dstDir, "manifest.json"));
   copied++;
+
+  // Skills (markdown files) live next to the manifest at runtime
+  // so registry.skillsForTenant() can resolve `contributes.skills[].path`
+  // against the manifest dir. Mirror the whole skills/ tree to
+  // builtinConfig.
+  const skillsSrc = path.join(pluginsDir, id, "skills");
+  if (fs.existsSync(skillsSrc) && fs.statSync(skillsSrc).isDirectory()) {
+    const skillsDst = path.join(dstDir, "skills");
+    fs.mkdirSync(skillsDst, { recursive: true });
+    for (const entry of fs.readdirSync(skillsSrc, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      fs.copyFileSync(
+        path.join(skillsSrc, entry.name),
+        path.join(skillsDst, entry.name),
+      );
+      skillsCopied++;
+    }
+  }
 }
 
 // eslint-disable-next-line no-console
-console.log(`[sync-builtin-plugins] synced ${copied} manifest(s) from plugins/ → builtinConfig/plugins/`);
+console.log(
+  `[sync-builtin-plugins] synced ${copied} manifest(s) and ${skillsCopied} skill file(s) from plugins/ → builtinConfig/plugins/`,
+);

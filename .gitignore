@@ -66,3 +66,4 @@ test-results/
 # Synced from plugins/<id>/manifest.json by scripts/sync-builtin-plugins.mjs.
 # Source of truth lives at plugins/<id>/manifest.json.
 packages/server/builtinConfig/plugins/*/manifest.json
+packages/server/builtinConfig/plugins/*/skills/

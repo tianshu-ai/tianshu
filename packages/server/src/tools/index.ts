@@ -17,8 +17,10 @@
 // can't touch files or run commands.
 
 import type { Tool } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { AgentTool, AgentToolContext, PluginLogger } from "@tianshu/plugin-sdk";
 import type { HostCapabilityHandle } from "../core/plugins/registry.js";
+import type { LoadedSkill } from "../core/plugins/skills.js";
 
 export type ToolResult = unknown;
 export type ToolExecutor = (args: Record<string, unknown>) => Promise<ToolResult> | ToolResult;
@@ -33,6 +35,13 @@ export interface Toolset {
 export interface BuildToolsetOpts {
   /** Plugin tools collected from `pluginRegistry.toolsForTenant`. */
   pluginTools: Array<{ pluginId: string; tool: AgentTool }>;
+  /** Skills available this turn (after `when:` filtering). The
+   *  assembler registers a meta-tool `load_skill(name)` whose
+   *  description lists every skill's name + description; the agent
+   *  pulls bodies into context on demand. Empty array → no
+   *  meta-tool registered (saves the model from seeing a tool that
+   *  does nothing useful). */
+  skills: LoadedSkill[];
   /** Context passed to each plugin tool's `available()` and
    *  `execute()`. Required iff `pluginTools` is non-empty. */
   toolContext: BuildToolContext;
@@ -58,6 +67,45 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
 
   const schemas: Tool[] = [];
   const executors: Record<string, ToolExecutor> = {};
+
+  // ADR-0004 §11: skill meta-tool. Registered first so the agent
+  // sees it ahead of plugin tools when the model lists the toolset.
+  if (opts.skills.length > 0) {
+    const byName = new Map(opts.skills.map((s) => [s.name, s] as const));
+    const skillList = opts.skills
+      .map((s) => `  - ${s.name}: ${s.description}`)
+      .join("\n");
+    schemas.push({
+      name: "load_skill",
+      description:
+        `Load a skill (a markdown how-to) into your context on demand. ` +
+        `Skills explain how to use specific tool combinations, the workspace ` +
+        `layout, etc. Read one when you're about to do something that the ` +
+        `description matches; you can load several. The body is appended to ` +
+        `the tool result and remains in context for this turn.\n\n` +
+        `Available skills:\n${skillList}`,
+      parameters: Type.Object({
+        name: Type.String({
+          description:
+            "The skill name. Must be one of the names listed in this tool's description.",
+        }),
+      }),
+    });
+    executors.load_skill = (args) => {
+      const name = String((args as { name?: unknown }).name ?? "");
+      const skill = byName.get(name);
+      if (!skill) {
+        return {
+          ok: false,
+          text: `unknown skill: "${name}". Available: ${[...byName.keys()].join(", ") || "(none)"}`,
+        };
+      }
+      return {
+        ok: true,
+        text: `# ${skill.name}\n\n${skill.description}\n\n${skill.body}`,
+      };
+    };
+  }
 
   for (const { pluginId, tool } of pluginTools) {
     const ctx: AgentToolContext = {

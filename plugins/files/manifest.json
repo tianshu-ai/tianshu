@@ -60,6 +60,9 @@
       { "id": "write_file", "module": "WriteFileTool" },
       { "id": "edit_file",  "module": "EditFileTool"  },
       { "id": "glob",       "module": "GlobTool"      }
+    ],
+    "skills": [
+      { "id": "workspace-layout", "path": "skills/files-workspace-layout.md" }
     ]
   }
 }

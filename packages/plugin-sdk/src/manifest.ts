@@ -61,6 +61,13 @@ export interface ContributesV1 {
    */
   tools?: ToolContribution[];
   /**
+   * Skills (markdown how-to files) the plugin ships. Each skill is
+   * advertised to the agent by name + description; the agent calls
+   * the host's `load_skill` meta-tool to pull the body into context
+   * on demand. See ADR-0004 §11.
+   */
+  skills?: SkillContribution[];
+  /**
    * Buttons in the chat composer (left of Send). The contributed
    * component renders inside the input row and gets a `composer`
    * prop with `useComposer()`-equivalent capabilities (manage
@@ -99,6 +106,18 @@ export interface ToolContribution {
    *  pi-ai schema, not here — we don't enforce a 1:1 between this
    *  contribution id and the schema name. */
   module: string;
+}
+
+export interface SkillContribution {
+  /** Local id; surfaced as `<plugin-id>.<id>` for logging. */
+  id: string;
+  /**
+   * Path (relative to the plugin's manifest dir) to the markdown
+   * skill file. Frontmatter declares `name`, `description`, and an
+   * optional `when` predicate. Body is whatever the agent should
+   * read after `load_skill(name)`.
+   */
+  path: string;
 }
 
 export interface TopBarButtonContribution {
