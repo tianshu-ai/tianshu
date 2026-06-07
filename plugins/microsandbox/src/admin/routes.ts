@@ -176,11 +176,24 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     }
   };
 
-  // POST /builds  → kicks off a build, returns the resulting metadata.
-  // v0 is synchronous: the request blocks until the build finishes
-  // (or fails). For long builds (10s of minutes) we'll add an
-  // SSE-streamed `/builds/stream` endpoint; this is good enough for
-  // the typical 10-30s case.
+  // POST /builds  → kick off a build.
+  //
+  // Two response modes share the same endpoint so we don't have to
+  // mint a second route in the manifest:
+  //
+  //   - default (no `stream` query): block until done, return one
+  //     JSON envelope { ok, build }. Test-friendly and equivalent to
+  //     the agent-tool path.
+  //   - `?stream=1` (or any truthy `stream`): respond with NDJSON
+  //     events as the build progresses, one JSON object per line:
+  //       {"type":"start","buildId":"…"}
+  //       {"type":"log","line":"[builder] apt-get install …"}
+  //       …
+  //       {"type":"done","build":{…}}                # success
+  //       {"type":"error","message":"…","stderr":"…"} # failure
+  //     The HTTP status is always 200 in stream mode — callers
+  //     decide success from the final event — because we've already
+  //     sent the headers by the time the build outcome is known.
   const postBuilds = async (req: Request, res: Response) => {
     const c = ctx(req);
     if (!c) {
@@ -216,7 +229,76 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     }
 
     const buildId = pickBuildId();
+    const stream =
+      req.query.stream !== undefined &&
+      req.query.stream !== "" &&
+      req.query.stream !== "0" &&
+      req.query.stream !== "false";
 
+    if (stream) {
+      // NDJSON stream. Set headers up front so the browser starts
+      // rendering as soon as the first chunk lands; flush manually
+      // after each write because Express + Node's default chunked
+      // encoding will otherwise buffer until the stream closes.
+      res.status(200);
+      res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+      res.setHeader("Cache-Control", "no-cache, no-transform");
+      res.setHeader("X-Accel-Buffering", "no");
+      // Express's compression middleware (when present) buffers
+      // unless we mark the response as no-transform; we set the
+      // header above and also call flushHeaders so the client sees
+      // 200 immediately.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const r = res as any;
+      if (typeof r.flushHeaders === "function") r.flushHeaders();
+
+      const send = (obj: Record<string, unknown>): void => {
+        try {
+          res.write(`${JSON.stringify(obj)}\n`);
+          if (typeof r.flush === "function") r.flush();
+        } catch {
+          /* socket gone; let the build finish anyway */
+        }
+      };
+
+      send({ type: "start", buildId, image: spec.image });
+
+      try {
+        const result = await buildSnapshot({
+          spec,
+          sandboxName: deps.sandboxName,
+          buildId,
+          tenantId: deps.tenantId,
+          workspaceDir: deps.workspaceDir,
+          onLog: (line) => send({ type: "log", line }),
+        });
+        const meta: BuildMetadata = {
+          buildId,
+          snapshotName: result.snapshotName,
+          baseImage: result.baseImage,
+          builtAt: new Date().toISOString(),
+          durationMs: result.durationMs,
+          logTail: result.logTail,
+          sandboxfilePath,
+        };
+        await writeBuildMetadata(home, meta);
+        send({ type: "done", build: meta });
+      } catch (err) {
+        if (err instanceof BuildFailedError) {
+          send({ type: "error", message: err.message, stderr: err.stderr });
+        } else {
+          send({
+            type: "error",
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      } finally {
+        res.end();
+      }
+      return;
+    }
+
+    // Buffered mode — unchanged from the original implementation.
     try {
       const result = await buildSnapshot({
         spec,

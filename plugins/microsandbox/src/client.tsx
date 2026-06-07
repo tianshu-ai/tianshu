@@ -398,7 +398,31 @@ function BuildsSection() {
   const [loading, setLoading] = useState(true);
   const [building, setBuilding] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
-  const [buildLog, setBuildLog] = useState<string | null>(null);
+  /** Live log lines for the in-progress build (or the most recent
+   *  one if it just finished). Cleared when a new build starts. */
+  const [buildLog, setBuildLog] = useState<string[]>([]);
+  /** When set, the current build is in the start → done/error window. */
+  const [buildStartedAt, setBuildStartedAt] = useState<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState<number>(0);
+  const logRef = useRef<HTMLPreElement | null>(null);
+
+  // Tick the elapsed counter so the spinner doesn't feel frozen even
+  // when the SDK goes quiet for many seconds (e.g. while it pulls a
+  // base image).
+  useEffect(() => {
+    if (buildStartedAt === null) return;
+    const i = window.setInterval(
+      () => setElapsedMs(Date.now() - buildStartedAt),
+      250,
+    );
+    return () => window.clearInterval(i);
+  }, [buildStartedAt]);
+
+  // Auto-scroll the log pane on every new line.
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [buildLog]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -420,22 +444,87 @@ function BuildsSection() {
   async function build() {
     setBuilding(true);
     setError(null);
-    setBuildLog(null);
+    setBuildLog([]);
+    setBuildStartedAt(Date.now());
+    setElapsedMs(0);
     try {
-      const r = await fetchJson<{ ok: true; build: BuildEntry }>(
-        `${ROUTE_BASE}/builds`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-        },
-      );
-      setBuildLog(r.build.logTail);
+      const r = await fetch(`${ROUTE_BASE}/builds?stream=1`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (!r.ok || !r.body) {
+        throw new Error(
+          `build request failed: HTTP ${r.status}${r.statusText ? " " + r.statusText : ""}`,
+        );
+      }
+      // Read NDJSON: one JSON object per "\n"-terminated line.
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let finalError: string | null = null;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        let nl: number;
+        // eslint-disable-next-line no-cond-assign
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          const raw = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!raw) continue;
+          let evt: { type: string; [k: string]: unknown };
+          try {
+            evt = JSON.parse(raw);
+          } catch {
+            // Treat malformed lines as raw log so we don't lose them.
+            setBuildLog((prev) => [...prev, raw]);
+            continue;
+          }
+          if (evt.type === "log" && typeof evt.line === "string") {
+            const line = evt.line;
+            setBuildLog((prev) => [...prev, line]);
+          } else if (evt.type === "start") {
+            setBuildLog((prev) => [
+              ...prev,
+              `[stream] build ${String(evt.buildId ?? "?")} started (image=${String(evt.image ?? "?")})`,
+            ]);
+          } else if (evt.type === "done") {
+            // The list reload below will surface the new entry; we
+            // don't need to do anything else here.
+          } else if (evt.type === "error") {
+            finalError = String(evt.message ?? "build failed");
+            const stderr =
+              typeof evt.stderr === "string" && evt.stderr.length > 0
+                ? `\n${evt.stderr}`
+                : "";
+            setBuildLog((prev) => [...prev, `[error] ${finalError}${stderr}`]);
+          }
+        }
+      }
+      // Drain any trailing partial line.
+      const tail = buf.trim();
+      if (tail) {
+        try {
+          const evt = JSON.parse(tail);
+          if (evt.type === "log" && typeof evt.line === "string") {
+            setBuildLog((prev) => [...prev, evt.line]);
+          }
+        } catch {
+          /* swallow */
+        }
+      }
+      if (finalError) {
+        setError(finalError);
+      }
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBuilding(false);
+      setBuildStartedAt(null);
     }
   }
 
@@ -494,19 +583,48 @@ function BuildsSection() {
       />
 
       {error && <Banner kind="error" text={error} />}
-      {building && (
+      {building && buildLog.length === 0 && (
         <Banner
           kind="info"
-          text="Building… this typically takes 10-30s for a slim base image plus a few apt/pip layers. The request blocks until the snapshot is captured."
+          text={
+            "Building… this typically takes 10-30s for a slim base image plus a few apt/pip layers. " +
+            (elapsedMs > 0
+              ? `(${(elapsedMs / 1000).toFixed(0)}s elapsed)`
+              : "")
+          }
         />
       )}
-      {buildLog && (
-        <details className="mb-3 rounded-md border border-gray-800 bg-gray-950 px-3 py-2 text-[11px]">
-          <summary className="cursor-pointer text-gray-400">Last build log tail</summary>
-          <pre className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-gray-300">
-            {buildLog}
+      {(building || buildLog.length > 0) && (
+        <div className="mb-3 overflow-hidden rounded-md border border-gray-800 bg-gray-950">
+          <div className="flex items-center justify-between border-b border-gray-800 px-3 py-1.5">
+            <div className="flex items-center gap-2 text-[11px] text-gray-300">
+              {building ? (
+                <Loader2 size={11} className="animate-spin text-emerald-400" />
+              ) : (
+                <CheckCircle2 size={11} className="text-emerald-400" />
+              )}
+              <span>
+                {building ? "Build in progress" : "Last build log"}
+              </span>
+              {building && elapsedMs > 0 && (
+                <span className="text-[10px] text-gray-500">
+                  {(elapsedMs / 1000).toFixed(0)}s
+                </span>
+              )}
+              <span className="text-[10px] text-gray-600">
+                {buildLog.length} line{buildLog.length === 1 ? "" : "s"}
+              </span>
+            </div>
+          </div>
+          <pre
+            ref={logRef}
+            className="max-h-72 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed text-gray-300"
+          >
+            {buildLog.length > 0
+              ? buildLog.join("\n")
+              : "… waiting for first log line …"}
           </pre>
-        </details>
+        </div>
       )}
 
       {data && data.builds.length === 0 && !building && (

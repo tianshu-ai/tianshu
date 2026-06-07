@@ -4,10 +4,16 @@ node_modules/
 
 # Build output
 dist/
-build/
 .next/
 .turbo/
 *.tsbuildinfo
+# Tooling output dirs (top-level + workspace roots only). We don't
+# blanket-ignore `build/` because plugins (e.g. microsandbox) keep
+# real source under <plugin>/src/build/. Restrict ignores to where a
+# build tool typically dumps artefacts.
+/build/
+packages/*/build/
+plugins/*/build/
 
 # Local env / secrets
 .env
