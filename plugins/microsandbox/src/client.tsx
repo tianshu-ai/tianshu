@@ -25,6 +25,7 @@ import {
   Terminal,
   Trash2,
   UploadCloud,
+  X,
 } from "lucide-react";
 import type {
   AdminPageProps,
@@ -245,6 +246,14 @@ function StateIcon({ state }: { state: SandboxStatusPayload["state"] }) {
 // ─── admin page: MicroSandboxAdminPage ─────────────────────────
 
 function MicroSandboxAdminPage(_props: AdminPageProps) {
+  // Bumping this counter signals "something changed in the sandbox
+  // lifecycle; sections that fetch derived state should re-fetch."
+  // BuildsSection bumps it after publish (with or without reset)
+  // and ShellSection bumps it after Reload builds. ResetSection
+  // listens and re-fetches status whenever it changes.
+  const [refreshTick, setRefreshTick] = useState(0);
+  const bumpRefresh = useCallback(() => setRefreshTick((n) => n + 1), []);
+
   return (
     <div className="mx-auto max-w-4xl px-6 py-6 text-gray-200">
       <header className="mb-6 border-b border-gray-800 pb-4">
@@ -259,11 +268,11 @@ function MicroSandboxAdminPage(_props: AdminPageProps) {
 
       <SandboxfileSection />
       <div className="my-6 border-t border-gray-800" />
-      <BuildsSection />
+      <BuildsSection onMutate={bumpRefresh} />
       <div className="my-6 border-t border-gray-800" />
       <ShellSection />
       <div className="my-6 border-t border-gray-800" />
-      <ResetSection />
+      <ResetSection refreshTick={refreshTick} onMutate={bumpRefresh} />
     </div>
   );
 }
@@ -392,7 +401,7 @@ function SandboxfileSection() {
   );
 }
 
-function BuildsSection() {
+function BuildsSection({ onMutate }: { onMutate: () => void }) {
   const [data, setData] = useState<BuildsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -528,15 +537,29 @@ function BuildsSection() {
     }
   }
 
-  async function publish(buildId: string) {
+  async function publish(buildId: string, reset: boolean) {
     setPublishingId(buildId);
     setError(null);
     try {
-      await fetchJson(
-        `${ROUTE_BASE}/builds/publish?build_id=${encodeURIComponent(buildId)}`,
-        { method: "POST" },
-      );
+      const url = `${ROUTE_BASE}/builds/publish?build_id=${encodeURIComponent(
+        buildId,
+      )}${reset ? "&reset=1" : ""}`;
+      const r = await fetchJson<{
+        ok: true;
+        reset: "skipped" | "ok" | { failed: string };
+      }>(url, { method: "POST" });
+      if (
+        reset &&
+        typeof r.reset === "object" &&
+        r.reset !== null &&
+        "failed" in r.reset
+      ) {
+        setError(`Published, but reset failed: ${r.reset.failed}`);
+      }
       await load();
+      // Tell sibling sections (Live sandbox status panel) the
+      // sandbox lifecycle changed so they can re-fetch.
+      onMutate();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -663,24 +686,38 @@ function BuildsSection() {
                     </code>
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => void publish(b.buildId)}
-                  disabled={publishingId === b.buildId || b.published}
-                  className="flex items-center gap-1 rounded-md border border-gray-800 px-2 py-1 text-[11px] text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                  title={
-                    b.published
-                      ? "Already the active snapshot"
-                      : "Make this build the tenant's active sandbox image"
-                  }
-                >
-                  {publishingId === b.buildId ? (
-                    <Loader2 size={11} className="animate-spin" />
-                  ) : (
-                    <UploadCloud size={11} />
+                <div className="flex flex-shrink-0 items-stretch gap-px overflow-hidden rounded-md border border-gray-800">
+                  <button
+                    type="button"
+                    onClick={() => void publish(b.buildId, false)}
+                    disabled={publishingId === b.buildId || b.published}
+                    className="flex items-center gap-1 px-2 py-1 text-[11px] text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    title={
+                      b.published
+                        ? "Already the active snapshot"
+                        : "Update the published pointer; the live VM keeps running until you reset."
+                    }
+                  >
+                    {publishingId === b.buildId ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <UploadCloud size={11} />
+                    )}
+                    {b.published ? "Active" : "Publish"}
+                  </button>
+                  {!b.published && (
+                    <button
+                      type="button"
+                      onClick={() => void publish(b.buildId, true)}
+                      disabled={publishingId === b.buildId}
+                      className="flex items-center gap-1 border-l border-gray-800 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      title="Publish + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
+                    >
+                      <RotateCcw size={11} />
+                      &amp; Reset
+                    </button>
                   )}
-                  {b.published ? "Active" : "Publish"}
-                </button>
+                </div>
               </div>
               {b.logTail && (
                 <details className="mt-1.5 text-[11px]">
@@ -709,12 +746,15 @@ interface ExecRunResult {
   stderr: string;
   durationMs: number;
   timedOut: boolean;
+  target?: { kind: "live" } | { kind: "build"; buildId: string; snapshotName: string };
 }
 
 interface ShellEntry {
   id: number;
   command: string;
   workdir: string;
+  /** "live" or a buildId; mirrors what we sent on the wire. */
+  target: string;
   startedAt: number;
   /** null while still running. */
   result: ExecRunResult | null;
@@ -725,23 +765,46 @@ interface ShellEntry {
 function ShellSection() {
   const [command, setCommand] = useState("");
   const [workdir, setWorkdir] = useState("/workspace");
+  const [target, setTarget] = useState<string>("live");
   const [history, setHistory] = useState<ShellEntry[]>([]);
   const [running, setRunning] = useState(false);
   const [historyIdx, setHistoryIdx] = useState<number | null>(null);
+  const [builds, setBuilds] = useState<BuildEntry[]>([]);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const idCounter = useRef(0);
+  /** AbortController for the in-flight /exec request; lets the user
+   *  bail out of a hanging command without waiting for the server
+   *  timeout. */
+  const abortRef = useRef<AbortController | null>(null);
 
   const recentCommands = history.map((h) => h.command);
+
+  // Pull the build list (newest first) so the user can pick a target.
+  // We re-fetch on focus to pick up freshly-built snapshots without
+  // a full page reload.
+  const loadBuilds = useCallback(async () => {
+    try {
+      const r = await fetchJson<BuildsPayload>(`${ROUTE_BASE}/builds`);
+      setBuilds(r.builds);
+    } catch {
+      /* non-fatal: just leave the dropdown without build entries */
+    }
+  }, []);
+  useEffect(() => {
+    void loadBuilds();
+  }, [loadBuilds]);
 
   async function run() {
     const cmd = command.trim();
     if (!cmd || running) return;
     const id = ++idCounter.current;
     const wd = workdir.trim() || "/workspace";
+    const targetSnapshot = target;
     const entry: ShellEntry = {
       id,
       command: cmd,
       workdir: wd,
+      target: targetSnapshot,
       startedAt: Date.now(),
       result: null,
       transportError: null,
@@ -750,31 +813,48 @@ function ShellSection() {
     setCommand("");
     setHistoryIdx(null);
     setRunning(true);
+    const ac = new AbortController();
+    abortRef.current = ac;
     try {
+      const payload: Record<string, unknown> = { command: cmd, workdir: wd };
+      if (targetSnapshot !== "live") {
+        payload.build_id = targetSnapshot;
+      }
       const r = await fetchJson<ExecRunResult>(`${ROUTE_BASE}/exec`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: cmd, workdir: wd }),
+        body: JSON.stringify(payload),
+        signal: ac.signal,
       });
       setHistory((h) =>
         h.map((e) => (e.id === id ? { ...e, result: r } : e)),
       );
     } catch (err) {
+      const aborted =
+        err instanceof DOMException && err.name === "AbortError";
+      const message = aborted
+        ? "Cancelled by user. The server-side timeout (60s default) will eventually tear the preview VM down."
+        : err instanceof Error
+          ? err.message
+          : String(err);
       setHistory((h) =>
         h.map((e) =>
-          e.id === id
-            ? {
-                ...e,
-                transportError: err instanceof Error ? err.message : String(err),
-              }
-            : e,
+          e.id === id ? { ...e, transportError: message } : e,
         ),
       );
     } finally {
       setRunning(false);
+      abortRef.current = null;
       // Refocus so the user can type the next command without
       // chasing the cursor.
       requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }
+
+  function cancel() {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
     }
   }
 
@@ -827,22 +907,42 @@ function ShellSection() {
     }
   }
 
+  const targetLabel =
+    target === "live"
+      ? "Live sandbox"
+      : `Preview build ${target}`;
+
   return (
     <section>
       <SectionHeader
         title="Shell"
-        description="Run a one-shot command inside the running sandbox. Defaults to bash semantics; equivalent to the agent's exec tool."
+        description={
+          target === "live"
+            ? "Run a one-shot command inside the running sandbox. Defaults to bash semantics; equivalent to the agent's exec tool."
+            : "Boot a throwaway VM from the selected build's snapshot, run the command, then tear it down. Lets you sanity-check a build before publishing. The live sandbox is not touched."
+        }
         actions={
-          <button
-            type="button"
-            onClick={clear}
-            disabled={history.length === 0}
-            className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 disabled:opacity-50"
-            title="Clear command history (does not affect the sandbox)"
-          >
-            <Trash2 size={12} />
-            Clear
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => void loadBuilds()}
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+              title="Refresh build list"
+            >
+              <RefreshCw size={11} />
+              Reload builds
+            </button>
+            <button
+              type="button"
+              onClick={clear}
+              disabled={history.length === 0}
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 disabled:opacity-50"
+              title="Clear command history (does not affect the sandbox)"
+            >
+              <Trash2 size={12} />
+              Clear
+            </button>
+          </>
         }
       />
 
@@ -865,8 +965,31 @@ function ShellSection() {
       </div>
 
       <div className="rounded-md border border-gray-800 bg-gray-950 p-2">
-        <div className="mb-1.5 flex items-center gap-2 text-[10px] text-gray-500">
-          <Terminal size={11} className="text-emerald-400" />
+        <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[10px] text-gray-500">
+          <span>target:</span>
+          <select
+            value={target}
+            onChange={(e) => setTarget(e.target.value)}
+            className={`rounded border px-2 py-0.5 font-mono text-[11px] text-gray-200 outline-none focus:border-blue-700 ${
+              target === "live"
+                ? "border-emerald-700/40 bg-gray-900"
+                : "border-amber-700/40 bg-amber-950/30"
+            }`}
+            title="Run against the live sandbox or boot a throwaway preview VM from a build"
+          >
+            <option value="live">Live sandbox</option>
+            {builds.length > 0 && (
+              <optgroup label="Preview build…">
+                {builds.map((b) => (
+                  <option key={b.buildId} value={b.buildId}>
+                    {b.buildId} · {b.baseImage}
+                    {b.published ? " (published)" : ""}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </select>
+          <span className="text-gray-600">·</span>
           <span>workdir:</span>
           <input
             type="text"
@@ -891,24 +1014,33 @@ function ShellSection() {
             rows={2}
             className="flex-1 resize-y rounded border border-gray-800 bg-gray-900 px-2 py-1 font-mono text-[12px] leading-relaxed text-gray-100 outline-none placeholder:text-gray-600 focus:border-blue-700 disabled:opacity-60"
           />
-          <button
-            type="button"
-            onClick={() => void run()}
-            disabled={running || command.trim().length === 0}
-            className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
-          >
-            {running ? (
-              <Loader2 size={12} className="animate-spin" />
-            ) : (
+          {running ? (
+            <button
+              type="button"
+              onClick={cancel}
+              className="flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-rose-500"
+              title="Abort the in-flight request. The preview VM is also torn down server-side after a server-enforced timeout (60s default)."
+            >
+              <X size={12} />
+              Cancel
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void run()}
+              disabled={command.trim().length === 0}
+              className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
+            >
               <Terminal size={12} />
-            )}
-            Run
-          </button>
+              Run
+            </button>
+          )}
         </div>
         <p className="mt-1 text-[10px] text-gray-600">
+          Target: <strong className="text-gray-400">{targetLabel}</strong>{" · "}
           Enter to run · Shift+Enter for a newline · ↑/↓ to walk
-          history. Per-call timeout 60s (max 5 min); this surface is
-          for sanity checks, not long-running jobs.
+          history. Per-call timeout 60s (max 5 min). Preview boots add
+          ~5-10s on top of the command time.
         </p>
       </div>
     </section>
@@ -932,6 +1064,20 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
           <AlertTriangle size={11} className="text-rose-400" />
         )}
         <code className="flex-1 break-all text-gray-200">{entry.command}</code>
+        <span
+          className={`rounded px-1 py-0.5 text-[9px] uppercase tracking-wide ${
+            entry.target === "live"
+              ? "bg-emerald-900/40 text-emerald-300"
+              : "bg-amber-900/40 text-amber-300"
+          }`}
+          title={
+            entry.target === "live"
+              ? "Ran against the tenant's live sandbox"
+              : `Ran against build ${entry.target}'s snapshot in a throwaway preview VM`
+          }
+        >
+          {entry.target === "live" ? "live" : `preview ${entry.target}`}
+        </span>
         <span className="text-[9px] text-gray-600">cwd:{entry.workdir}</span>
         {result && (
           <span
@@ -974,7 +1120,13 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
   );
 }
 
-function ResetSection() {
+function ResetSection({
+  refreshTick,
+  onMutate,
+}: {
+  refreshTick: number;
+  onMutate: () => void;
+}) {
   const [resetting, setResetting] = useState(false);
   const [status, setStatus] = useState<SandboxStatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -992,6 +1144,27 @@ function ResetSection() {
     void loadStatus();
   }, [loadStatus]);
 
+  // Re-fetch status whenever a sibling section signals the sandbox
+  // lifecycle changed (e.g. publish + reset, or a build was deleted).
+  // Skip on the initial render because loadStatus already ran above.
+  const firstTick = useRef(refreshTick);
+  useEffect(() => {
+    if (refreshTick === firstTick.current) return;
+    void loadStatus();
+  }, [refreshTick, loadStatus]);
+
+  // Live ticker: poll status while the VM is in a transient state
+  // (starting / stopping). Stops once we see a steady state so we
+  // don't hammer the runner forever.
+  useEffect(() => {
+    if (!status) return;
+    const transient =
+      status.state === "starting" || status.state === "stopped";
+    if (!transient) return;
+    const id = window.setInterval(() => void loadStatus(), 2000);
+    return () => window.clearInterval(id);
+  }, [status, loadStatus]);
+
   async function reset() {
     setResetting(true);
     setError(null);
@@ -1001,6 +1174,11 @@ function ResetSection() {
         { method: "POST" },
       );
       setStatus(r.status);
+      // Reset returns immediately after the runner promises to
+      // restart, but the VM may still be transitioning through
+      // “starting”. The transient-state ticker above will follow it
+      // until it settles on “ready”.
+      onMutate();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

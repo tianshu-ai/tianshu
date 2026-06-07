@@ -38,6 +38,7 @@ import {
   readSandboxfile,
   writeSandboxfile,
 } from "./sandboxfile-io.js";
+import { previewExec } from "./preview-exec.js";
 
 export interface AdminRoutesDeps {
   /** The active runner exposed by the plugin's activate() — used
@@ -332,10 +333,13 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     }
   };
 
-  // POST /builds/publish?build_id=… → makes the build the active
-  // sandbox image. Caller decides whether to also reset. We use a
-  // query string instead of a path param because v0's plugin route
-  // dispatcher does literal-path matching (no `:id` translation).
+  // POST /builds/publish?build_id=…[&reset=1] → makes the build the
+  // active sandbox image. With reset=1 we also tear down + restart
+  // the live VM so the new snapshot takes effect immediately;
+  // without it the pointer is updated but the live VM still runs
+  // the old image until the next manual reset (or process restart).
+  // We use a query string instead of a path param because v0's
+  // plugin route dispatcher does literal-path matching (no `:id`).
   const postPublish = async (req: Request, res: Response) => {
     const c = ctx(req);
     if (!c) {
@@ -348,6 +352,11 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
       res.status(400).json({ error: "missing_build_id" });
       return;
     }
+    const wantReset =
+      req.query.reset !== undefined &&
+      req.query.reset !== "" &&
+      req.query.reset !== "0" &&
+      req.query.reset !== "false";
     const home = userHomeDir(deps, c.userId);
     let meta: BuildMetadata | null;
     try {
@@ -379,10 +388,33 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
         publishedBy: c.userId,
       };
       await writePointer(deps.workspaceDir, pointer);
+
+      // Optional reset: bring the live VM down and back up so it
+      // boots fromSnapshot(<just-published>). Without this the
+      // pointer is durable but the running VM stays on the old
+      // image until something else triggers a restart.
+      let resetResult: "skipped" | "ok" | { failed: string } = "skipped";
+      if (wantReset) {
+        const runner = deps.getRunner();
+        if (!runner) {
+          resetResult = { failed: "runner_not_ready" };
+        } else {
+          try {
+            await runner.reset();
+            resetResult = "ok";
+          } catch (err) {
+            resetResult = {
+              failed: err instanceof Error ? err.message : String(err),
+            };
+          }
+        }
+      }
+
       res.json({
         ok: true,
         pointer,
         pointerPath: pointerPath(deps.workspaceDir),
+        reset: resetResult,
       });
     } catch (err) {
       res.status(500).json({
@@ -413,15 +445,22 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     }
   };
 
-  // POST /exec  body: { command, workdir?, timeoutMs? }
-  // Run a one-shot command inside the live sandbox. Used by the
-  // admin page's shell section so the user can sanity-check a
-  // build ("is libreoffice on PATH?") before publishing it.
+  // POST /exec  body: { command, workdir?, timeoutMs?, build_id? }
+  // Run a one-shot command. Two execution modes share the same
+  // endpoint:
   //
-  // The agent surface already has `exec` as a tool; this route
-  // exists because the admin page is a human surface that should
-  // not need an agent loop in the middle. We cap the per-call
-  // timeout at 5 minutes to match the agent tool's default.
+  //   - `build_id` omitted (default): run inside the tenant's live
+  //     sandbox VM. Cheap, immediate, but reflects whatever is
+  //     currently published.
+  //   - `build_id` set: spin up a short-lived preview VM
+  //     `fromSnapshot(<that build's snapshot>)`, run the command,
+  //     tear it down. Lets the user sanity-check a build before
+  //     calling publish.
+  //
+  // We cap the per-call timeout at 5 minutes; the live runner
+  // honors that natively, and previews ignore it (no SDK timeout
+  // hook in v0.4.x) but cap the boot+run+teardown sequence with
+  // their own internal handling.
   const ADMIN_EXEC_DEFAULT_TIMEOUT_MS = 60_000;
   const ADMIN_EXEC_MAX_TIMEOUT_MS = 5 * 60_000;
   const ADMIN_EXEC_OUTPUT_BYTE_CAP = 256 * 1024;
@@ -432,13 +471,13 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
       res.status(401).json({ error: "no_user" });
       return;
     }
-    const runner = deps.getRunner();
-    if (!runner) {
-      res.status(503).json({ error: "runner_not_ready" });
-      return;
-    }
     const body = req.body as
-      | { command?: unknown; workdir?: unknown; timeoutMs?: unknown }
+      | {
+          command?: unknown;
+          workdir?: unknown;
+          timeoutMs?: unknown;
+          build_id?: unknown;
+        }
       | undefined;
     const command = typeof body?.command === "string" ? body.command : "";
     if (!command.trim()) {
@@ -456,13 +495,77 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     if (timeoutMs > ADMIN_EXEC_MAX_TIMEOUT_MS) {
       timeoutMs = ADMIN_EXEC_MAX_TIMEOUT_MS;
     }
+    const buildId =
+      typeof body?.build_id === "string" && body.build_id.length > 0
+        ? body.build_id
+        : null;
 
+    const half = Math.floor(ADMIN_EXEC_OUTPUT_BYTE_CAP / 2);
+
+    if (buildId) {
+      // Preview mode: boot a short-lived VM from the build's
+      // snapshot. The live VM is untouched.
+      const home = userHomeDir(deps, c.userId);
+      let meta;
+      try {
+        meta = await readBuildMetadata(home, buildId);
+      } catch (err) {
+        res.status(500).json({
+          error: "read_metadata_failed",
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+      if (!meta) {
+        res.status(404).json({ error: "build_not_found", buildId });
+        return;
+      }
+      try {
+        const exists = await snapshotExists(meta.snapshotName);
+        if (!exists) {
+          res.status(410).json({
+            error: "snapshot_missing",
+            message: `snapshot "${meta.snapshotName}" no longer exists; rebuild first`,
+          });
+          return;
+        }
+        const r = await previewExec({
+          snapshotName: meta.snapshotName,
+          command,
+          workdir,
+          workspaceDir: deps.workspaceDir,
+          sandboxNamePrefix: deps.sandboxName,
+          timeoutMs,
+        });
+        res.json({
+          ok: r.exitCode === 0 && !r.timedOut,
+          exitCode: r.exitCode,
+          stdout: capUtf8(r.stdout, half),
+          stderr: capUtf8(r.stderr, half),
+          durationMs: r.durationMs,
+          timedOut: r.timedOut,
+          target: { kind: "build", buildId, snapshotName: meta.snapshotName },
+        });
+      } catch (err) {
+        res.status(500).json({
+          error: "preview_exec_failed",
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return;
+    }
+
+    // Live mode (default).
+    const runner = deps.getRunner();
+    if (!runner) {
+      res.status(503).json({ error: "runner_not_ready" });
+      return;
+    }
     try {
       const r = await runner.exec({ command, workdir, timeoutMs });
       // Cap stdout/stderr so a runaway command can't pin the
       // browser. Each capped to ~128 KB; agent has its own caps
       // upstream of this for tool calls.
-      const half = Math.floor(ADMIN_EXEC_OUTPUT_BYTE_CAP / 2);
       res.json({
         ok: r.exitCode === 0 && !r.timedOut,
         exitCode: r.exitCode,
@@ -470,6 +573,7 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
         stderr: capUtf8(r.stderr, half),
         durationMs: r.durationMs,
         timedOut: r.timedOut,
+        target: { kind: "live" },
       });
     } catch (err) {
       res.status(500).json({

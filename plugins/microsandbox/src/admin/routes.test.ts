@@ -227,6 +227,45 @@ describe("microsandbox admin routes", () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it("POST /exec with build_id 404s when build is not found", async () => {
+    const r = buildAdminRoutes({
+      getRunner: () => fakeRunner(),
+      tenantId: "tt",
+      tenantHomeDir: tmp,
+      workspaceDir: path.join(tmp, "tenants/tt/workspace"),
+      sandboxName: "tianshu-tt",
+    });
+    const res = makeRes();
+    await r.postExec(
+      makeReq({
+        userId: "uu",
+        body: { command: "hostname", build_id: "does-not-exist" },
+      }),
+      res as never,
+    );
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("POST /exec without build_id targets the live runner (kind=live)", async () => {
+    const fake = fakeRunner();
+    const r = buildAdminRoutes({
+      getRunner: () => fake,
+      tenantId: "tt",
+      tenantHomeDir: tmp,
+      workspaceDir: path.join(tmp, "tenants/tt/workspace"),
+      sandboxName: "tianshu-tt",
+    });
+    const res = makeRes();
+    await r.postExec(
+      makeReq({ userId: "uu", body: { command: "echo hi" } }),
+      res as never,
+    );
+    expect(res.statusCode).toBe(200);
+    const body = res.body as { target: { kind: string } };
+    expect(body.target.kind).toBe("live");
+    expect(fake.lastReq?.command).toBe("echo hi");
+  });
+
   it("POST /exec returns runner output and clamps timeoutMs", async () => {
     const fake = fakeRunner();
     const r = buildAdminRoutes({
