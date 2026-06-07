@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   Box,
   CheckCircle2,
+  Globe,
   Hammer,
   Loader2,
   RefreshCw,
@@ -1579,9 +1580,96 @@ function BrowserAdminPage(_props: AdminPageProps) {
   );
 }
 
+// ─── right-panel: BrowserViewportPanel ───────────────────────
+//
+// Embeds the per-tenant noVNC viewport in the chat shell's right
+// column so the user can watch what the agent's browser tools are
+// doing without leaving the conversation. The full Browser admin
+// page (live status + restart) still lives at
+// /admin/microsandbox/browser; this panel is the lightweight glance
+// view.
+//
+// Wiring: the BrowserSidecar reports the host port that supervisor's
+// websockify is forwarded to. We poll /browser/status for it (same
+// shape as the admin page uses) and slot it into an iframe pointing
+// at noVNC's `vnc_lite.html?autoconnect=1&resize=remote`. When the
+// browser stack isn't running yet, the panel shows an empty state
+// with a deep link to the admin Browser page.
+
+function BrowserViewportPanel(_props: PanelProps) {
+  const [data, setData] = useState<BrowserStatusPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await fetchJson<BrowserStatusPayload>(
+        `${ROUTE_BASE}/browser/status`,
+      );
+      setData(r);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Re-poll while the stack isn't ready so the iframe pops in the
+  // moment supervisord finishes booting. Stops polling once ready
+  // — the iframe handles its own connection lifecycle from there.
+  useEffect(() => {
+    if (data?.ready) return;
+    const id = window.setInterval(() => void load(), 4000);
+    return () => window.clearInterval(id);
+  }, [data?.ready, load]);
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-200">
+          <Globe size={14} className="text-brand-400" />
+          Browser
+        </div>
+        <a
+          href="/admin/microsandbox/browser"
+          className="text-[11px] text-gray-500 hover:text-gray-300"
+          title="Open the full Browser admin page"
+        >
+          admin →
+        </a>
+      </div>
+
+      {error && (
+        <div className="m-3 flex items-start gap-1.5 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[11px] text-rose-300">
+          <AlertTriangle size={12} className="mt-px flex-shrink-0" />
+          <span className="break-all">{error}</span>
+        </div>
+      )}
+
+      {data?.ready && data.ports.vnc ? (
+        <iframe
+          title="Browser viewport"
+          src={`http://localhost:${data.ports.vnc}/vnc_lite.html?autoconnect=1&resize=remote`}
+          className="min-h-0 flex-1 bg-gray-950"
+        />
+      ) : (
+        <div className="flex flex-1 items-center justify-center px-6 text-center text-[12px] text-gray-500">
+          {data
+            ? data.hint ?? "Browser stack not running."
+            : "Loading…"}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const clientExports: PluginClientExports = {
   components: {
     SandboxStatusPanel: SandboxStatusPanel as PluginClientExports["components"][string],
+    BrowserViewportPanel:
+      BrowserViewportPanel as PluginClientExports["components"][string],
     MicroSandboxAdminPage:
       MicroSandboxAdminPage as PluginClientExports["components"][string],
     BrowserAdminPage:
