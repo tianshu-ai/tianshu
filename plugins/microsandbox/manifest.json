@@ -2,11 +2,11 @@
   "id": "microsandbox",
   "version": "0.1.0",
   "displayName": "MicroSandbox",
-  "description": "Per-tenant shell sandbox running on microsandbox (Apple Virtualization.framework / KVM). Provides sandbox.shell and (later) browser.cdp.",
+  "description": "Per-tenant shell sandbox running on microsandbox (Apple Virtualization.framework / KVM). Provides sandbox.shell + an opt-in browser.cdp sidecar (Stealth Chromium via CloakBrowser + Playwright MCP + noVNC; lit up by a follow-up PR).",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["workspace.read", "workspace.write", "process.spawn"],
-  "provides": ["sandbox.shell"],
+  "provides": ["sandbox.shell", "browser.cdp"],
   "client": { "entry": "@tianshu-builtin/plugin-microsandbox/client" },
   "server": { "entry": "@tianshu-builtin/plugin-microsandbox/server" },
   "contributes": {
@@ -34,6 +34,14 @@
         "component": "MicroSandboxAdminPage",
         "group": "Plugins",
         "order": 100
+      },
+      {
+        "id": "browser",
+        "displayName": "Browser",
+        "icon": "Globe",
+        "component": "BrowserAdminPage",
+        "group": "Plugins",
+        "order": 110
       }
     ],
     "sandboxes": [
@@ -51,12 +59,16 @@
       { "id": "update_sandbox_config", "module": "UpdateSandboxConfigTool" },
       { "id": "build_sandbox",         "module": "BuildSandboxTool" },
       { "id": "list_sandbox_builds",   "module": "ListSandboxBuildsTool" },
-      { "id": "use_sandbox_build",     "module": "UseSandboxBuildTool" }
+      { "id": "use_sandbox_build",     "module": "UseSandboxBuildTool" },
+      { "id": "browser_navigate",      "module": "BrowserNavigateTool" },
+      { "id": "browser_snapshot",      "module": "BrowserSnapshotTool" },
+      { "id": "browser_screenshot",    "module": "BrowserScreenshotTool" }
     ],
     "skills": [
       { "id": "exec-howto",     "path": "skills/microsandbox-exec-howto.md" },
       { "id": "config",         "path": "skills/microsandbox-config.md" },
-      { "id": "build-use",      "path": "skills/microsandbox-build-use.md" }
+      { "id": "build-use",      "path": "skills/microsandbox-build-use.md" },
+      { "id": "browser-howto",  "path": "skills/microsandbox-browser-howto.md" }
     ],
     "apiRoutes": [
       { "method": "GET",  "path": "/status",          "handler": "status" },
@@ -66,7 +78,9 @@
       { "method": "POST", "path": "/builds",          "handler": "postBuilds" },
       { "method": "POST", "path": "/builds/use",      "handler": "postUseBuild" },
       { "method": "POST", "path": "/reset",           "handler": "postReset" },
-      { "method": "POST", "path": "/exec",            "handler": "postExec" }
+      { "method": "POST", "path": "/exec",            "handler": "postExec" },
+      { "method": "GET",  "path": "/browser/status",   "handler": "getBrowserStatus" },
+      { "method": "POST", "path": "/browser/restart",  "handler": "postBrowserRestart" }
     ]
   }
 }
