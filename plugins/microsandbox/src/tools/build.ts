@@ -1,4 +1,4 @@
-// Build / publish agent tools.
+// Build / use agent tools.
 //
 // Workflow (per ADR design 2026-06-07):
 //
@@ -14,7 +14,7 @@
 //   4. agent (or a tenant admin) calls `publish_sandbox(build_id)`
 //      → plugin writes <tenant>/_tenant/sandbox/current.json
 //      pointer. Next sandbox restart (reset_sandbox / next session)
-//      starts from the published snapshot via fromSnapshot(...).
+//      starts from the in-use snapshot via fromSnapshot(...).
 
 import * as path from "node:path";
 import { promises as fs } from "node:fs";
@@ -213,7 +213,7 @@ export const ListSandboxBuildsTool: AgentTool = {
     name: "list_sandbox_builds",
     description: `List past sandbox builds in your user home, newest first. Each row \
 includes build id, base image, build time, duration, and whether it's currently \
-published as the tenant's sandbox image.`,
+in use as the tenant's sandbox image.`,
     parameters: Type.Object({}),
   },
 
@@ -241,7 +241,7 @@ published as the tenant's sandbox image.`,
       });
     }
     const summary =
-      `${enriched.length} build(s); published: ${pointer?.snapshotName ?? "(none)"}\n` +
+      `${enriched.length} build(s); in use: ${pointer?.snapshotName ?? "(none)"}\n` +
       enriched
         .map(
           (b) =>
@@ -252,18 +252,18 @@ published as the tenant's sandbox image.`,
   },
 };
 
-// ─── publish_sandbox ───────────────────────────────────────────
+// ─── use_sandbox_build ─────────────────────────────────────────
 
-export const PublishSandboxTool: AgentTool = {
+export const UseSandboxBuildTool: AgentTool = {
   schema: {
-    name: "publish_sandbox",
-    description: `Publish a previously-built sandbox image as the tenant's active \
-sandbox. Writes <tenant>/_tenant/sandbox/current.json so the next reset_sandbox \
-(or the next session) boots from this snapshot instead of the configured default \
-image.
+    name: "use_sandbox_build",
+    description: `Switch the tenant to a previously-built sandbox image. Writes \
+<tenant>/_tenant/sandbox/current.json so the next reset_sandbox (or the next \
+session) boots from this snapshot instead of the configured default image.
 
-The currently-running sandbox VM is **not** automatically restarted. Call \
-\`reset_sandbox\` after this to make it live now.`,
+This is a tenant-scoped switch — it does not publish anything outside the \
+tenant. The currently-running sandbox VM is **not** automatically restarted. \
+Call \`reset_sandbox\` after this to make it live now.`,
     parameters: Type.Object({
       build_id: Type.String({
         description:
@@ -296,12 +296,15 @@ The currently-running sandbox VM is **not** automatically restarted. Call \
     const pointer: SandboxPointer = {
       snapshotName: meta.snapshotName,
       baseImage: meta.baseImage,
+      // Field names on disk stay publishedAt/publishedBy to keep
+      // existing pointer files readable without a migration. The
+      // user-facing terminology is "in use" / "switch".
       publishedAt: new Date().toISOString(),
       publishedBy: ctx.userId,
     };
     await writePointer(wsDir, pointer);
     return okResult(
-      `Published ${meta.snapshotName}. Call reset_sandbox to apply it to the running VM.`,
+      `Switched tenant to ${meta.snapshotName}. Call reset_sandbox to apply it to the running VM.`,
       { pointer, pointerPath: pointerPath(wsDir) },
     );
   },

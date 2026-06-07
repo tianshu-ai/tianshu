@@ -51,12 +51,12 @@
       { "id": "update_sandbox_config", "module": "UpdateSandboxConfigTool" },
       { "id": "build_sandbox",         "module": "BuildSandboxTool" },
       { "id": "list_sandbox_builds",   "module": "ListSandboxBuildsTool" },
-      { "id": "publish_sandbox",       "module": "PublishSandboxTool" }
+      { "id": "use_sandbox_build",     "module": "UseSandboxBuildTool" }
     ],
     "skills": [
       { "id": "exec-howto",     "path": "skills/microsandbox-exec-howto.md" },
       { "id": "config",         "path": "skills/microsandbox-config.md" },
-      { "id": "build-publish",  "path": "skills/microsandbox-build-publish.md" }
+      { "id": "build-use",      "path": "skills/microsandbox-build-use.md" }
     ],
     "apiRoutes": [
       { "method": "GET",  "path": "/status",          "handler": "status" },
@@ -64,7 +64,7 @@
       { "method": "PUT",  "path": "/sandboxfile",     "handler": "putSandboxfile" },
       { "method": "GET",  "path": "/builds",          "handler": "getBuilds" },
       { "method": "POST", "path": "/builds",          "handler": "postBuilds" },
-      { "method": "POST", "path": "/builds/publish",  "handler": "postPublish" },
+      { "method": "POST", "path": "/builds/use",      "handler": "postUseBuild" },
       { "method": "POST", "path": "/reset",           "handler": "postReset" },
       { "method": "POST", "path": "/exec",            "handler": "postExec" }
     ]

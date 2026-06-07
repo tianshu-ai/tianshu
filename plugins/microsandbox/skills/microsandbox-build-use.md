@@ -1,6 +1,6 @@
 ---
-name: microsandbox-build-publish
-description: How to author a Sandboxfile, build a snapshot, sanity-check it, then publish it as the tenant's active image. Covers the build → preview → publish → reset loop and the common failure modes.
+name: microsandbox-build-use
+description: How to author a Sandboxfile, build a snapshot, sanity-check it, then switch the tenant to use it. Covers the build → preview → use → reset loop and the common failure modes.
 when:
   toolPresent: build_sandbox
 ---
@@ -10,8 +10,8 @@ The sandbox image you customize via a Sandboxfile. Three tools cooperate:
 | Tool | What it does |
 |------|--------------|
 | `build_sandbox` | reads the Sandboxfile, boots a builder VM, runs the steps, captures a snapshot, writes build metadata. **Does not** affect the live sandbox. |
-| `list_sandbox_builds` | lists past builds (newest first), with which one is currently published. |
-| `publish_sandbox(build_id)` | swaps the tenant pointer to that build. The next `reset_sandbox` (or process restart) boots the new VM `fromSnapshot(...)`. |
+| `list_sandbox_builds` | lists past builds (newest first), with which one is currently in use. |
+| `use_sandbox_build(build_id)` | switches the tenant pointer to that build. The next `reset_sandbox` (or process restart) boots the new VM `fromSnapshot(...)`. Tenant-scoped — does not publish anything outside the tenant. |
 
 ## Sandboxfile location
 
@@ -51,7 +51,7 @@ call. Anything more complex goes in `exec`.
 1. write_file("/sandbox/Sandboxfile", "...")
 2. build_sandbox()                      # 30s–10min; returns build_id
 3. (sanity-check via the admin /shell preview, or via tools below)
-4. publish_sandbox(build_id)            # writes pointer
+4. use_sandbox_build(build_id)          # writes tenant pointer
 5. reset_sandbox()                      # live VM picks up the new snapshot
 ```
 
@@ -60,7 +60,8 @@ the build snapshot as against any image (the agent doesn't have a
 preview-exec equivalent yet — that's an admin UI feature). For agent
 flow, the cheap heuristic is: trust the build log tail
 (`build_sandbox` returns it) for "did the install command succeed?",
-then publish + reset, then run real verification commands via `exec`.
+then `use_sandbox_build` + `reset_sandbox`, then run real verification
+commands via `exec`.
 
 ## Common failure modes
 
@@ -118,11 +119,11 @@ Without `fc-cache`, the first LibreOffice invocation can spend 30+s
 rebuilding the font index (and sometimes hangs in our setup).
 
 ### Snapshot lost between sessions
-`publish_sandbox` writes a pointer file; the live VM only picks it up
-on `reset_sandbox`. If you publish but skip the reset, the next agent
-turn still runs the old image. The user's admin UI has a one-click
-"Publish & Reset" button that does both; from the agent always pair
-them.
+`use_sandbox_build` writes a tenant pointer; the live VM only picks
+it up on `reset_sandbox`. If you switch but skip the reset, the next
+agent turn still runs the old image. The user's admin UI has a
+one-click "Use & Reset" button that does both; from the agent always
+pair them.
 
 ## Snapshot retention
 
@@ -130,6 +131,11 @@ Snapshots live in microsandbox's local store under
 `~/.microsandbox/snapshots/<name>/`. They are *not* garbage-collected
 automatically in v0; build a lot and you'll fill the disk. Old builds
 can be removed manually with `rm -rf` on that path (no agent tool yet).
+
+The disk-format pointer file (`<tenant>/_tenant/sandbox/current.json`)
+still uses the field names `publishedAt`/`publishedBy` for backwards
+compatibility with existing tenants. The user-facing terminology is
+"in use" / "switch"; the on-disk fields are an implementation detail.
 
 ## Pre-flight checklist
 
@@ -142,12 +148,12 @@ Before calling `build_sandbox`, double-check:
 - [ ] If installing user-space binaries (Node, Go, …) you used a regional
       mirror — default mirrors are too slow inside the sandbox network.
 - [ ] You explicitly want this image — check with the user if you're
-      changing the published sandbox; that affects every future agent
-      turn.
+      switching the tenant's in-use build; that affects every future
+      agent turn.
 
 ## What NOT to do
 
-- Don't call `publish_sandbox(build_id)` without first reading
+- Don't call `use_sandbox_build(build_id)` without first reading
   `list_sandbox_builds` to confirm the snapshot still exists.
 - Don't run multi-stage workflows (download → compile → install) inline
   in the verification step — separate them. A failed download in line

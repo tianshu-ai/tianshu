@@ -11,7 +11,7 @@
 //      errors without rejecting the write.
 //   3. POST /builds returns 400 when there's no Sandboxfile, and
 //      400 with the parse error when one exists but doesn't parse.
-//   4. POST /builds/publish 404s on unknown build_id.
+//   4. POST /builds/use 404s on unknown build_id.
 //
 // We don't exercise buildSnapshot itself — that path needs the
 // microsandbox SDK (covered separately in builder.test.ts and the
@@ -167,18 +167,18 @@ describe("microsandbox admin routes", () => {
     expect([400, 503]).toContain(res.statusCode);
   });
 
-  it("POST /builds/publish 400s without build_id", async () => {
+  it("POST /builds/use 400s without build_id", async () => {
     const res = makeRes();
-    await routes.postPublish(
+    await routes.postUseBuild(
       makeReq({ userId: "uu", query: {} }),
       res as never,
     );
     expect(res.statusCode).toBe(400);
   });
 
-  it("POST /builds/publish 404s for unknown build_id", async () => {
+  it("POST /builds/use 404s for unknown build_id", async () => {
     const res = makeRes();
-    await routes.postPublish(
+    await routes.postUseBuild(
       makeReq({ userId: "uu", query: { build_id: "20260101-000000" } }),
       res as never,
     );

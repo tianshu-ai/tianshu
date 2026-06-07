@@ -1,7 +1,7 @@
 // HTTP route handlers for the MicroSandbox admin page.
 //
 // These mirror the agent-tool surface (build_sandbox /
-// list_sandbox_builds / publish_sandbox / reset_sandbox) but for
+// list_sandbox_builds / use_sandbox_build / reset_sandbox) but for
 // human use from the chat shell's `/admin` UI. We don't try to
 // abstract a single "operations" layer between the two — the agent
 // tools already encapsulate the workflow nicely, and the routes
@@ -333,14 +333,18 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     }
   };
 
-  // POST /builds/publish?build_id=…[&reset=1] → makes the build the
-  // active sandbox image. With reset=1 we also tear down + restart
+  // POST /builds/use?build_id=…[&reset=1] → mark a build as the
+  // one this tenant uses. With reset=1 we also tear down + restart
   // the live VM so the new snapshot takes effect immediately;
   // without it the pointer is updated but the live VM still runs
   // the old image until the next manual reset (or process restart).
   // We use a query string instead of a path param because v0's
   // plugin route dispatcher does literal-path matching (no `:id`).
-  const postPublish = async (req: Request, res: Response) => {
+  //
+  // Why "use" and not "publish": this is a tenant-internal switch,
+  // not an external publication. "Publish" implied broadcasting
+  // outside the tenant.
+  const postUseBuild = async (req: Request, res: Response) => {
     const c = ctx(req);
     if (!c) {
       res.status(401).json({ error: "no_user" });
@@ -390,7 +394,7 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
       await writePointer(deps.workspaceDir, pointer);
 
       // Optional reset: bring the live VM down and back up so it
-      // boots fromSnapshot(<just-published>). Without this the
+      // boots fromSnapshot(<just-selected>). Without this the
       // pointer is durable but the running VM stays on the old
       // image until something else triggers a restart.
       let resetResult: "skipped" | "ok" | { failed: string } = "skipped";
@@ -418,14 +422,14 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
       });
     } catch (err) {
       res.status(500).json({
-        error: "publish_failed",
+        error: "use_build_failed",
         message: err instanceof Error ? err.message : String(err),
       });
     }
   };
 
   // POST /reset → forces the running runner to reset (restart from
-  // the published pointer or the configured default image). Mirrors
+  // the in-use build pointer or the configured default image). Mirrors
   // the agent's `reset_sandbox` tool.
   const postReset = async (_req: Request, res: Response) => {
     const runner = deps.getRunner();
@@ -451,11 +455,11 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
   //
   //   - `build_id` omitted (default): run inside the tenant's live
   //     sandbox VM. Cheap, immediate, but reflects whatever is
-  //     currently published.
+  //     currently in use.
   //   - `build_id` set: spin up a short-lived preview VM
   //     `fromSnapshot(<that build's snapshot>)`, run the command,
   //     tear it down. Lets the user sanity-check a build before
-  //     calling publish.
+  //     switching the tenant to it.
   //
   // We cap the per-call timeout at 5 minutes; the live runner
   // honors that natively, and previews ignore it (no SDK timeout
@@ -588,7 +592,7 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     putSandboxfile,
     getBuilds,
     postBuilds,
-    postPublish,
+    postUseBuild,
     postReset,
     postExec,
   };

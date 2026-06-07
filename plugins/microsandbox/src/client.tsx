@@ -4,7 +4,7 @@
 //   1. SandboxStatusPanel  — minimal liveness panel rendered in the
 //                            chat shell's right column (rightPanels).
 //   2. MicroSandboxAdminPage — Sandboxfile editor + builds list +
-//                              publish / reset, rendered in the
+//                              use / reset, rendered in the
 //                              chat shell's `/admin` surface
 //                              (adminPages contribution, ADR-0004 §12).
 //
@@ -63,6 +63,8 @@ interface BuildEntry {
 
 interface BuildsPayload {
   builds: BuildEntry[];
+  /** Server still calls the pointer field `published` on the wire
+   *  to keep the storage format stable. UI labels it as "in use". */
   published: { snapshotName: string; baseImage: string; publishedAt: string } | null;
 }
 
@@ -179,7 +181,7 @@ function SandboxStatusPanel(_props: PanelProps) {
         )}
         {status && <StatusBody status={status} />}
         <p className="mt-3 text-[11px] leading-relaxed text-gray-500">
-          For Sandboxfile editing, builds, and publish/reset open the
+          For Sandboxfile editing, builds, and use/reset open the
           <a className="ml-1 text-brand-400 hover:underline" href="/admin/microsandbox/main">
             admin page
           </a>
@@ -248,9 +250,9 @@ function StateIcon({ state }: { state: SandboxStatusPayload["state"] }) {
 function MicroSandboxAdminPage(_props: AdminPageProps) {
   // Bumping this counter signals "something changed in the sandbox
   // lifecycle; sections that fetch derived state should re-fetch."
-  // BuildsSection bumps it after publish (with or without reset)
-  // and ShellSection bumps it after Reload builds. ResetSection
-  // listens and re-fetches status whenever it changes.
+  // BuildsSection bumps it after switching the in-use build
+  // (with or without reset). ResetSection listens and re-fetches
+  // status whenever it changes.
   const [refreshTick, setRefreshTick] = useState(0);
   const bumpRefresh = useCallback(() => setRefreshTick((n) => n + 1), []);
 
@@ -259,10 +261,10 @@ function MicroSandboxAdminPage(_props: AdminPageProps) {
       <header className="mb-6 border-b border-gray-800 pb-4">
         <h1 className="text-lg font-semibold text-gray-100">MicroSandbox</h1>
         <p className="mt-1 text-[12px] leading-relaxed text-gray-500">
-          Edit your Sandboxfile, build a new image, and publish it as
-          this tenant's active sandbox. Use the shell to sanity-check
-          the running VM (“does my apt package show up on PATH?”)
-          before publishing.
+          Edit your Sandboxfile, build a new image, and switch this
+          tenant to use it. Sanity-check a fresh build via the shell's
+          preview target (“does my apt package show up on PATH?”)
+          before flipping the tenant to it.
         </p>
       </header>
 
@@ -406,7 +408,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [building, setBuilding] = useState(false);
-  const [publishingId, setPublishingId] = useState<string | null>(null);
+  const [usingId, setUsingId] = useState<string | null>(null);
   /** Live log lines for the in-progress build (or the most recent
    *  one if it just finished). Cleared when a new build starts. */
   const [buildLog, setBuildLog] = useState<string[]>([]);
@@ -537,11 +539,11 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
     }
   }
 
-  async function publish(buildId: string, reset: boolean) {
-    setPublishingId(buildId);
+  async function useBuild(buildId: string, reset: boolean) {
+    setUsingId(buildId);
     setError(null);
     try {
-      const url = `${ROUTE_BASE}/builds/publish?build_id=${encodeURIComponent(
+      const url = `${ROUTE_BASE}/builds/use?build_id=${encodeURIComponent(
         buildId,
       )}${reset ? "&reset=1" : ""}`;
       const r = await fetchJson<{
@@ -554,7 +556,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
         r.reset !== null &&
         "failed" in r.reset
       ) {
-        setError(`Published, but reset failed: ${r.reset.failed}`);
+        setError(`Switched, but reset failed: ${r.reset.failed}`);
       }
       await load();
       // Tell sibling sections (Live sandbox status panel) the
@@ -563,7 +565,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setPublishingId(null);
+      setUsingId(null);
     }
   }
 
@@ -573,8 +575,8 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
         title="Builds"
         description={
           data?.published
-            ? `Published: ${data.published.snapshotName}`
-            : "Nothing published yet — the runner uses the configured default image."
+            ? `In use: ${data.published.snapshotName}`
+            : "No build selected — the runner uses the configured default image."
         }
         actions={
           <>
@@ -671,7 +673,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                     </code>
                     {b.published && (
                       <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] uppercase text-emerald-300">
-                        <CheckCircle2 size={10} /> published
+                        <CheckCircle2 size={10} /> in use
                       </span>
                     )}
                     <span className="text-[11px] text-gray-400">{b.baseImage}</span>
@@ -689,29 +691,29 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                 <div className="flex flex-shrink-0 items-stretch gap-px overflow-hidden rounded-md border border-gray-800">
                   <button
                     type="button"
-                    onClick={() => void publish(b.buildId, false)}
-                    disabled={publishingId === b.buildId || b.published}
+                    onClick={() => void useBuild(b.buildId, false)}
+                    disabled={usingId === b.buildId || b.published}
                     className="flex items-center gap-1 px-2 py-1 text-[11px] text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
                     title={
                       b.published
-                        ? "Already the active snapshot"
-                        : "Update the published pointer; the live VM keeps running until you reset."
+                        ? "This build is already in use by the tenant"
+                        : "Mark this build as the one the tenant uses; the live VM keeps running its current snapshot until you reset."
                     }
                   >
-                    {publishingId === b.buildId ? (
+                    {usingId === b.buildId ? (
                       <Loader2 size={11} className="animate-spin" />
                     ) : (
                       <UploadCloud size={11} />
                     )}
-                    {b.published ? "Active" : "Publish"}
+                    {b.published ? "In use" : "Use"}
                   </button>
                   {!b.published && (
                     <button
                       type="button"
-                      onClick={() => void publish(b.buildId, true)}
-                      disabled={publishingId === b.buildId}
+                      onClick={() => void useBuild(b.buildId, true)}
+                      disabled={usingId === b.buildId}
                       className="flex items-center gap-1 border-l border-gray-800 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
-                      title="Publish + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
+                      title="Switch tenant to this build + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
                     >
                       <RotateCcw size={11} />
                       &amp; Reset
@@ -919,7 +921,7 @@ function ShellSection() {
         description={
           target === "live"
             ? "Run a one-shot command inside the running sandbox. Defaults to bash semantics; equivalent to the agent's exec tool."
-            : "Boot a throwaway VM from the selected build's snapshot, run the command, then tear it down. Lets you sanity-check a build before publishing. The live sandbox is not touched."
+            : "Boot a throwaway VM from the selected build's snapshot, run the command, then tear it down. Lets you sanity-check a build before switching the tenant to it. The live sandbox is not touched."
         }
         actions={
           <>
@@ -983,7 +985,7 @@ function ShellSection() {
                 {builds.map((b) => (
                   <option key={b.buildId} value={b.buildId}>
                     {b.buildId} · {b.baseImage}
-                    {b.published ? " (published)" : ""}
+                    {b.published ? " (in use)" : ""}
                   </option>
                 ))}
               </optgroup>

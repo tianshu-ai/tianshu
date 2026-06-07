@@ -20,7 +20,7 @@ import type {
 export {
   BuildSandboxTool,
   ListSandboxBuildsTool,
-  PublishSandboxTool,
+  UseSandboxBuildTool,
 } from "./build.js";
 
 const DEFAULT_EXEC_TIMEOUT_MS = 5 * 60_000;

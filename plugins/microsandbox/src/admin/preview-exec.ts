@@ -1,7 +1,7 @@
 // One-shot command execution against a build snapshot.
 //
 // Used by the admin Shell when the user picks "test against build
-// <id>" before publishing. We boot a short-lived sandbox from the
+// <id>" before switching the tenant to it. We boot a short-lived sandbox from the
 // captured snapshot, run a single shell command, capture stdout +
 // stderr, then tear it down. The tenant's live VM is untouched.
 //

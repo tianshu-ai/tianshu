@@ -7,11 +7,11 @@
 //   under the manifest's `sandbox.shell` capability.
 // - exports.tools registers seven agent tools (exec, reset_sandbox,
 //   get_sandbox_status, update_sandbox_config, build_sandbox,
-//   list_sandbox_builds, publish_sandbox). The host collects
+//   list_sandbox_builds, use_sandbox_build). The host collects
 //   these via PluginRegistry.toolsForTenant() each agent turn and
 //   gates each through its own `available()` hook.
 // - exports.routes wires the GET /status, the four admin endpoints
-//   (sandboxfile read/write, builds list/build/publish), and the
+//   (sandboxfile read/write, builds list/build/use), and the
 //   reset endpoint behind /api/p/microsandbox/<route>.
 //
 // Browser sidecar (browser.cdp) and the chromium/Playwright-MCP
@@ -30,9 +30,9 @@ import {
   ExecTool,
   GetSandboxStatusTool,
   ListSandboxBuildsTool,
-  PublishSandboxTool,
   ResetSandboxTool,
   UpdateSandboxConfigTool,
+  UseSandboxBuildTool,
 } from "./tools/index.js";
 import { buildAdminRoutes } from "./admin/routes.js";
 
@@ -133,7 +133,7 @@ export default {
         UpdateSandboxConfigTool,
         BuildSandboxTool,
         ListSandboxBuildsTool,
-        PublishSandboxTool,
+        UseSandboxBuildTool,
       },
       routes: {
         status: statusRoute,
@@ -141,7 +141,7 @@ export default {
         putSandboxfile: adminRoutes.putSandboxfile,
         getBuilds: adminRoutes.getBuilds,
         postBuilds: adminRoutes.postBuilds,
-        postPublish: adminRoutes.postPublish,
+        postUseBuild: adminRoutes.postUseBuild,
         postReset: adminRoutes.postReset,
         postExec: adminRoutes.postExec,
       },

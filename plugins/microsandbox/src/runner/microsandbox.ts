@@ -187,20 +187,18 @@ export class MicrosandboxRunner implements SandboxRunner {
   }
 
   async reset(): Promise<void> {
+    console.log("[microsandbox] reset() begin");
     await this.shutdown();
-    // Reset state then immediately warm-up so the VM is back to
-    // "ready" without waiting for the next exec(). Without this,
-    // the admin Live-sandbox panel sits at state="stopped" until
-    // someone happens to call exec, which is confusing right after
-    // a Publish & Reset (the user wants to see the new snapshot
-    // running, not a stopped marker).
+    console.log(`[microsandbox] reset() shutdown done state=${this.state}`);
     this.state = "stopped";
     this.startError = null;
     this.handle = null;
     this.startPromise = null;
     this.lastExec = null;
     this.activeSnapshot = null;
+    console.log("[microsandbox] reset() calling warmUp()");
     this.warmUp();
+    console.log(`[microsandbox] reset() after warmUp state=${this.state} hasStartPromise=${!!this.startPromise}`);
   }
 
   async shutdown(): Promise<void> {
@@ -280,10 +278,10 @@ export class MicrosandboxRunner implements SandboxRunner {
       const ws = this.opts.workspaceDir;
       await fs.mkdir(ws, { recursive: true });
 
-      // If a tenant has published a custom snapshot via
-      // publish_sandbox, prefer that over the configured base image.
-      // Falls back to image(...) if no pointer or the snapshot was
-      // removed out-of-band.
+      // If the tenant has selected a custom build via
+      // use_sandbox_build, prefer that over the configured base
+      // image. Falls back to image(...) if no pointer or the
+      // snapshot was removed out-of-band.
       const pointer = await readPointer(ws);
       let useSnapshot: string | null = null;
       if (pointer) {
