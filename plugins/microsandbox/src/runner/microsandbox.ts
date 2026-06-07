@@ -188,12 +188,19 @@ export class MicrosandboxRunner implements SandboxRunner {
 
   async reset(): Promise<void> {
     await this.shutdown();
-    // Next exec() call will re-create.
+    // Reset state then immediately warm-up so the VM is back to
+    // "ready" without waiting for the next exec(). Without this,
+    // the admin Live-sandbox panel sits at state="stopped" until
+    // someone happens to call exec, which is confusing right after
+    // a Publish & Reset (the user wants to see the new snapshot
+    // running, not a stopped marker).
     this.state = "stopped";
     this.startError = null;
     this.handle = null;
     this.startPromise = null;
     this.lastExec = null;
+    this.activeSnapshot = null;
+    this.warmUp();
   }
 
   async shutdown(): Promise<void> {
