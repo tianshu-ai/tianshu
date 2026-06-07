@@ -66,7 +66,10 @@ exec:
 
   # CloakBrowser linux-arm64 binary. Pin to v145 chromium release;
   # bump the URL when CloakBrowser tags a new chromium-vNNN release.
-  - bash -c "mkdir -p /opt/cloakbrowser && curl -fsSL https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.159.7/cloakbrowser-linux-arm64.tar.gz | tar -xz -C /opt/cloakbrowser --strip-components=1"
+  # The tarball is FLAT (no top-level dir) and the entry binary is
+  # named `chrome` — no --strip-components, supervisor invokes
+  # /opt/cloakbrowser/chrome below.
+  - bash -c "mkdir -p /opt/cloakbrowser && curl -fsSL https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.159.7/cloakbrowser-linux-arm64.tar.gz | tar -xz -C /opt/cloakbrowser"
 
   # noVNC + websockify (small, pure-python, easy to vendor).
   - bash -c "mkdir -p /opt/novnc && curl -fsSL https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz | tar -xz -C /opt/novnc --strip-components=1"
@@ -90,10 +93,10 @@ exec:
   # newlines through `- bash -c '...'`. base64 -d sidesteps every
   # quoting/escape concern.
   - mkdir -p /etc/supervisor/conf.d
-  - bash -c "echo W3N1cGVydmlzb3JkXQpub2RhZW1vbj10cnVlCmxvZ2ZpbGU9L3Zhci9sb2cvc3VwZXJ2aXNvcmQubG9nCnBpZGZpbGU9L3Zhci9ydW4vc3VwZXJ2aXNvcmQucGlkCgpbcHJvZ3JhbTpkYnVzXQpjb21tYW5kPS91c3IvYmluL2RidXMtZGFlbW9uIC0tc3lzdGVtIC0tbm9mb3JrCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NQoKW3Byb2dyYW06eHZmYl0KY29tbWFuZD0vdXNyL2Jpbi9YdmZiIDo5OSAtc2NyZWVuIDAgMTI4MHg4MDB4MjQgLWFjICtleHRlbnNpb24gUkFORFIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0xMAoKW3Byb2dyYW06Zmx1eGJveF0KY29tbWFuZD0vdXNyL2Jpbi9mbHV4Ym94CmVudmlyb25tZW50PURJU1BMQVk9Ijo5OSIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0yMAoKW3Byb2dyYW06Y2hyb21pdW1dCmNvbW1hbmQ9L29wdC9jbG9ha2Jyb3dzZXIvY2xvYWticm93c2VyIC0tcmVtb3RlLWRlYnVnZ2luZy1wb3J0PTkyMjIgLS1uby1zYW5kYm94IC0td2luZG93LXNpemU9MTI4MCw4MDAKZW52aXJvbm1lbnQ9RElTUExBWT0iOjk5IgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTMwCgpbcHJvZ3JhbTpwbGF5d3JpZ2h0LW1jcF0KY29tbWFuZD0vdXNyL2xvY2FsL2Jpbi9ucHggQHBsYXl3cmlnaHQvbWNwQGxhdGVzdCAtLXBvcnQgMzIwMCAtLWJyb3dzZXIgY2hyb21pdW0gLS1jZHAtZW5kcG9pbnQgaHR0cDovLzEyNy4wLjAuMTo5MjIyCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NDAKCltwcm9ncmFtOngxMXZuY10KY29tbWFuZD0vdXNyL2Jpbi94MTF2bmMgLWRpc3BsYXkgOjk5IC1mb3JldmVyIC1zaGFyZWQgLW5vcHcgLXJmYnBvcnQgNTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTUwCgpbcHJvZ3JhbTpub3ZuY10KY29tbWFuZD0vb3B0L3dlYnNvY2tpZnkvcnVuIC0td2ViPS9vcHQvbm92bmMgNjA4MCBsb2NhbGhvc3Q6NTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTYwCg== | base64 -d > /etc/supervisor/conf.d/browser.conf"
+  - bash -c "echo W3N1cGVydmlzb3JkXQpub2RhZW1vbj10cnVlCmxvZ2ZpbGU9L3Zhci9sb2cvc3VwZXJ2aXNvcmQubG9nCnBpZGZpbGU9L3Zhci9ydW4vc3VwZXJ2aXNvcmQucGlkCgpbcHJvZ3JhbTpkYnVzXQpjb21tYW5kPS91c3IvYmluL2RidXMtZGFlbW9uIC0tc3lzdGVtIC0tbm9mb3JrCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NQoKW3Byb2dyYW06eHZmYl0KY29tbWFuZD0vdXNyL2Jpbi9YdmZiIDo5OSAtc2NyZWVuIDAgMTI4MHg4MDB4MjQgLWFjICtleHRlbnNpb24gUkFORFIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0xMAoKW3Byb2dyYW06Zmx1eGJveF0KY29tbWFuZD0vdXNyL2Jpbi9mbHV4Ym94CmVudmlyb25tZW50PURJU1BMQVk9Ijo5OSIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0yMAoKW3Byb2dyYW06Y2hyb21pdW1dCmNvbW1hbmQ9L29wdC9jbG9ha2Jyb3dzZXIvY2hyb21lIC0tcmVtb3RlLWRlYnVnZ2luZy1wb3J0PTkyMjIgLS1uby1zYW5kYm94IC0td2luZG93LXNpemU9MTI4MCw4MDAKZW52aXJvbm1lbnQ9RElTUExBWT0iOjk5IgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTMwCgpbcHJvZ3JhbTpwbGF5d3JpZ2h0LW1jcF0KY29tbWFuZD0vdXNyL2xvY2FsL2Jpbi9ucHggQHBsYXl3cmlnaHQvbWNwQGxhdGVzdCAtLXBvcnQgMzIwMCAtLWJyb3dzZXIgY2hyb21pdW0gLS1jZHAtZW5kcG9pbnQgaHR0cDovLzEyNy4wLjAuMTo5MjIyCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NDAKCltwcm9ncmFtOngxMXZuY10KY29tbWFuZD0vdXNyL2Jpbi94MTF2bmMgLWRpc3BsYXkgOjk5IC1mb3JldmVyIC1zaGFyZWQgLW5vcHcgLXJmYnBvcnQgNTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTUwCgpbcHJvZ3JhbTpub3ZuY10KY29tbWFuZD0vb3B0L3dlYnNvY2tpZnkvcnVuIC0td2ViPS9vcHQvbm92bmMgNjA4MCBsb2NhbGhvc3Q6NTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTYwCg== | base64 -d > /etc/supervisor/conf.d/browser.conf"
 
   # Verify the binaries we expect are reachable; fail the build
   # if anything is missing so the user knows BEFORE publishing.
-  - bash -c "/opt/cloakbrowser/cloakbrowser --version | head -1"
+  - bash -c "/opt/cloakbrowser/chrome --version | head -1"
   - bash -c "node --version && npm --version"
   - bash -c "test -f /opt/novnc/vnc_lite.html && test -x /opt/websockify/run"
