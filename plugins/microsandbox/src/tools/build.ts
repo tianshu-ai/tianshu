@@ -150,6 +150,17 @@ Returns the build id, snapshot name, base image, and a tail of the build log.`,
     const sandboxName = `tianshu-${ctx.tenantId}`;
     const wsDir = tenantWorkspaceDir(ctx);
 
+    // Capture every onLog line. The host doesn't yet stream
+    // tool-internal log lines to the chat UI, but we (a) tee them
+    // through ctx.log.info for the server console, and (b) include
+    // a tail (or full body on failure) in the agent-visible result
+    // so the agent isn't staring at a black box for 5+ minutes.
+    const log: string[] = [];
+    const onLog = (line: string) => {
+      log.push(line);
+      ctx.log.info(`[build_sandbox] ${line}`);
+    };
+
     try {
       const result = await buildSnapshot({
         spec: loaded.spec,
@@ -157,6 +168,7 @@ Returns the build id, snapshot name, base image, and a tail of the build log.`,
         buildId,
         tenantId: ctx.tenantId,
         workspaceDir: wsDir,
+        onLog,
       });
       const meta: BuildMetadata = {
         buildId,
@@ -170,12 +182,23 @@ Returns the build id, snapshot name, base image, and a tail of the build log.`,
       await writeBuildMetadata(ctx.userHomeDir, meta);
       return okResult(
         `Built ${result.snapshotName} in ${(result.durationMs / 1000).toFixed(1)}s. ` +
-          `Run publish_sandbox("${buildId}") to make it the tenant's active sandbox image.`,
+          `Run publish_sandbox("${buildId}") to make it the tenant's active sandbox image.\n\n` +
+          `Build log tail:\n${result.logTail}`,
         meta,
       );
     } catch (err) {
       if (err instanceof BuildFailedError) {
-        return errorResult(`build failed: ${err.message}`, { stderr: err.stderr });
+        // Surface the failing step + stderr in the human-visible
+        // text. The agent reads `text` first; previously this only
+        // had "build failed: <step>" with the stderr stashed in the
+        // structured payload, which several models silently ignored.
+        const tail = log.slice(-40).join("\n");
+        return errorResult(
+          `build failed: ${err.message}\n\n` +
+            `--- stderr ---\n${err.stderr}\n` +
+            `--- last log lines ---\n${tail}`,
+          { stderr: err.stderr, logTail: tail },
+        );
       }
       const msg = err instanceof Error ? err.message : String(err);
       return errorResult(`build threw: ${msg}`);
