@@ -81,54 +81,16 @@ exec:
   - bash -c "ln -sf /opt/node/bin/node /usr/local/bin/node && ln -sf /opt/node/bin/npm /usr/local/bin/npm && ln -sf /opt/node/bin/npx /usr/local/bin/npx"
   - bash -c "npm config set registry https://registry.npmmirror.com && npm install -g @playwright/mcp@latest"
 
-  # Supervisord config: Xvfb -> fluxbox -> chromium -> playwright-mcp -> websockify(noVNC).
+  # Supervisord config: dbus -> Xvfb -> fluxbox -> chromium ->
+  # playwright-mcp -> x11vnc -> websockify(noVNC).
+  #
+  # The whole conf is base64'd into one line because v0
+  # Sandboxfile parser only accepts single-line `- entry` items
+  # under exec:, and bash single-quoted heredocs can't carry
+  # newlines through `- bash -c '...'`. base64 -d sidesteps every
+  # quoting/escape concern.
   - mkdir -p /etc/supervisor/conf.d
-  - bash -c 'cat > /etc/supervisor/conf.d/browser.conf <<EOF
-[supervisord]
-nodaemon=true
-logfile=/var/log/supervisord.log
-pidfile=/var/run/supervisord.pid
-
-[program:dbus]
-command=/usr/bin/dbus-daemon --system --nofork
-autorestart=true
-priority=5
-
-[program:xvfb]
-command=/usr/bin/Xvfb :99 -screen 0 1280x800x24 -ac +extension RANDR
-autorestart=true
-priority=10
-
-[program:fluxbox]
-command=/usr/bin/fluxbox
-environment=DISPLAY=":99"
-autorestart=true
-priority=20
-
-[program:chromium]
-command=/opt/cloakbrowser/cloakbrowser --remote-debugging-port=9222 --no-sandbox --window-size=1280,800 --window-position=0,0
-environment=DISPLAY=":99"
-autorestart=true
-priority=30
-
-[program:playwright-mcp]
-# Connects to the existing chromium via CDP rather than launching its own.
-command=/usr/local/bin/npx @playwright/mcp@latest --port 3200 --browser chromium --cdp-endpoint http://127.0.0.1:9222
-autorestart=true
-priority=40
-
-[program:x11vnc]
-command=/usr/bin/x11vnc -display :99 -forever -shared -nopw -rfbport 5900
-autorestart=true
-priority=50
-
-[program:novnc]
-# websockify wraps the raw VNC into a WebSocket and serves the
-# noVNC static files at /vnc_lite.html.
-command=/opt/websockify/run --web=/opt/novnc 6080 localhost:5900
-autorestart=true
-priority=60
-EOF'
+  - bash -c "echo W3N1cGVydmlzb3JkXQpub2RhZW1vbj10cnVlCmxvZ2ZpbGU9L3Zhci9sb2cvc3VwZXJ2aXNvcmQubG9nCnBpZGZpbGU9L3Zhci9ydW4vc3VwZXJ2aXNvcmQucGlkCgpbcHJvZ3JhbTpkYnVzXQpjb21tYW5kPS91c3IvYmluL2RidXMtZGFlbW9uIC0tc3lzdGVtIC0tbm9mb3JrCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NQoKW3Byb2dyYW06eHZmYl0KY29tbWFuZD0vdXNyL2Jpbi9YdmZiIDo5OSAtc2NyZWVuIDAgMTI4MHg4MDB4MjQgLWFjICtleHRlbnNpb24gUkFORFIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0xMAoKW3Byb2dyYW06Zmx1eGJveF0KY29tbWFuZD0vdXNyL2Jpbi9mbHV4Ym94CmVudmlyb25tZW50PURJU1BMQVk9Ijo5OSIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0yMAoKW3Byb2dyYW06Y2hyb21pdW1dCmNvbW1hbmQ9L29wdC9jbG9ha2Jyb3dzZXIvY2xvYWticm93c2VyIC0tcmVtb3RlLWRlYnVnZ2luZy1wb3J0PTkyMjIgLS1uby1zYW5kYm94IC0td2luZG93LXNpemU9MTI4MCw4MDAKZW52aXJvbm1lbnQ9RElTUExBWT0iOjk5IgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTMwCgpbcHJvZ3JhbTpwbGF5d3JpZ2h0LW1jcF0KY29tbWFuZD0vdXNyL2xvY2FsL2Jpbi9ucHggQHBsYXl3cmlnaHQvbWNwQGxhdGVzdCAtLXBvcnQgMzIwMCAtLWJyb3dzZXIgY2hyb21pdW0gLS1jZHAtZW5kcG9pbnQgaHR0cDovLzEyNy4wLjAuMTo5MjIyCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NDAKCltwcm9ncmFtOngxMXZuY10KY29tbWFuZD0vdXNyL2Jpbi94MTF2bmMgLWRpc3BsYXkgOjk5IC1mb3JldmVyIC1zaGFyZWQgLW5vcHcgLXJmYnBvcnQgNTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTUwCgpbcHJvZ3JhbTpub3ZuY10KY29tbWFuZD0vb3B0L3dlYnNvY2tpZnkvcnVuIC0td2ViPS9vcHQvbm92bmMgNjA4MCBsb2NhbGhvc3Q6NTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTYwCg== | base64 -d > /etc/supervisor/conf.d/browser.conf"
 
   # Verify the binaries we expect are reachable; fail the build
   # if anything is missing so the user knows BEFORE publishing.
