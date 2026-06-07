@@ -62,6 +62,15 @@ export interface ContributesV1 {
   rightPanels?: RightPanelContribution[];
   sidebarSections?: SidebarSectionContribution[];
   /**
+   * Admin pages the plugin contributes to the chat shell's `/admin`
+   * surface (sidebar + nested route). Each entry shows up as a left-nav
+   * item under `/admin/<plugin-id>/<id>` and renders the named
+   * client component. Use this for management UIs that don't fit
+   * the right-panel form factor: full-width forms, multi-section
+   * settings pages, log viewers, etc. See ADR-0004 §12.
+   */
+  adminPages?: AdminPageContribution[];
+  /**
    * Sandbox runtime providers (ADR-0004 §1). Each entry registers a
    * `SandboxRunner` whose `kind` selects which agent tools the
    * core wires up (e.g. `kind: "shell"` → `exec` / `reset_sandbox`).
@@ -196,6 +205,24 @@ export interface AttachmentRendererContribution {
   component: string;
   /** Smaller order = checked first. Default 100. */
   order?: number;
+}
+
+export interface AdminPageContribution {
+  /** Local id; surfaced as `<plugin-id>.<id>` for routing/logging. */
+  id: string;
+  /** Sidebar label. */
+  displayName: string;
+  /** lucide-react export name; rendered next to the label. */
+  icon?: string;
+  /** Key in the plugin's client-exports `components` map. The
+   *  component receives `AdminPageProps`. */
+  component: string;
+  /** Smaller order = higher in the sidebar. Default 100. */
+  order?: number;
+  /** Optional sub-section title in the sidebar (e.g. "Sandbox",
+   *  "Models"). Pages with the same group render under one heading
+   *  in declaration order. */
+  group?: string;
 }
 
 export interface ApiRouteContribution {

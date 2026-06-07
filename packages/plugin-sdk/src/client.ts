@@ -24,6 +24,17 @@ export interface SidebarSectionProps extends PanelProps {
   onToggleCollapse: () => void;
 }
 
+/**
+ * Props handed to a plugin's admin-page component
+ * (manifest.contributes.adminPages[].component). The host renders
+ * these inside the chat shell's `/admin` shell, full-width.
+ */
+export interface AdminPageProps extends PanelProps {
+  /** The page id from the manifest contribution
+   *  (e.g. "main", "settings"). */
+  pageId: string;
+}
+
 // ── Composer (chat input) extensions ───────────────────────────────
 
 /**
@@ -139,6 +150,7 @@ export interface PluginClientExports {
       | SidebarSectionProps
       | ComposerActionProps
       | AttachmentRendererProps
+      | AdminPageProps
     >
   >;
 }
