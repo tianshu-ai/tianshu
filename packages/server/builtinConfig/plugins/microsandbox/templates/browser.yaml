@@ -1,0 +1,137 @@
+# Browser-enabled Sandboxfile.
+#
+# After build & use & reset, the tenant gets:
+#   - shell sandbox (existing exec/python tools)
+#   - Stealth Chromium (CloakBrowser linux-arm64 v145, MIT)
+#   - Playwright MCP server on guest 3200
+#   - Chromium DevTools Protocol on guest 9222
+#   - noVNC web viewport on guest 6080 (mounts in admin Browser page)
+#
+# The microsandbox runner forwards 9222/3200/6080 to host ports;
+# microsandbox-build-publish/use applies the snapshot, microsandbox
+# resets the live VM, and N+5.3 fills in BrowserSidecar's port
+# detection so the agent's browser_* tools light up.
+#
+# Build cost: ~5-10 min on first build (downloads ~600 MB of
+# CloakBrowser + ~250 MB of apt deps). Subsequent rebuilds reuse
+# the apt cache; the chromium tarball is hardpinned by URL so it's
+# cached by microsandbox after the first pull.
+
+image: python:3.12-slim
+cpus: 4
+memory_mib: 8192
+
+apt:
+  # X stack + xvfb for headed chromium without a display.
+  - xvfb
+  - x11vnc
+  - fluxbox          # tiny WM so chromium gets a window manager
+  - dbus-x11         # CloakBrowser refuses to start without a session bus
+  # Fonts: covers latin / CJK / emoji rendering at minimum.
+  - fonts-noto
+  - fonts-noto-cjk
+  - fonts-noto-color-emoji
+  - fontconfig
+  # Chromium runtime libs (CloakBrowser is a real chromium binary).
+  - libnss3
+  - libatk1.0-0
+  - libatk-bridge2.0-0
+  - libcups2
+  - libgbm1
+  - libxss1
+  - libasound2
+  - libxshmfence1
+  - libxkbcommon0
+  - libpango-1.0-0
+  - libxcomposite1
+  - libxdamage1
+  - libxrandr2
+  # Build/util.
+  - curl
+  - ca-certificates
+  - xz-utils
+  - supervisor       # process manager (runs Xvfb + chromium + MCP + noVNC)
+
+pip:
+  # Playwright MCP via Microsoft's official server (browser_navigate
+  # + accessibility snapshot semantics map directly).
+  - playwright
+  # CloakBrowser drop-in launcher; resolves the binary at runtime.
+  - cloakbrowser
+
+exec:
+  # APT mirror: keep apt fast for users in mainland CN. Comment
+  # this line out (or change the mirror) if you're somewhere else.
+  - sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
+
+  # CloakBrowser linux-arm64 binary. Pin to v145 chromium release;
+  # bump the URL when CloakBrowser tags a new chromium-vNNN release.
+  - bash -c "mkdir -p /opt/cloakbrowser && curl -fsSL https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.159.7/cloakbrowser-linux-arm64.tar.gz | tar -xz -C /opt/cloakbrowser --strip-components=1"
+
+  # noVNC + websockify (small, pure-python, easy to vendor).
+  - bash -c "mkdir -p /opt/novnc && curl -fsSL https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz | tar -xz -C /opt/novnc --strip-components=1"
+  - bash -c "mkdir -p /opt/websockify && curl -fsSL https://github.com/novnc/websockify/archive/refs/tags/v0.13.0.tar.gz | tar -xz -C /opt/websockify --strip-components=1"
+  - ln -sf /opt/novnc/vnc_lite.html /opt/novnc/index.html
+
+  # Playwright's @playwright/mcp via npm. Node ships with the
+  # python:3.12-slim image as part of `apt nodejs`; if your base
+  # doesn't have it, add the NodeSource binary install used in the
+  # build-use skill.
+  - bash -c "mkdir -p /opt/node && curl -fsSL https://npmmirror.com/mirrors/node/v22.20.0/node-v22.20.0-linux-arm64.tar.xz | tar -xJ -C /opt/node --strip-components=1"
+  - bash -c "ln -sf /opt/node/bin/node /usr/local/bin/node && ln -sf /opt/node/bin/npm /usr/local/bin/npm && ln -sf /opt/node/bin/npx /usr/local/bin/npx"
+  - bash -c "npm config set registry https://registry.npmmirror.com && npm install -g @playwright/mcp@latest"
+
+  # Supervisord config: Xvfb -> fluxbox -> chromium -> playwright-mcp -> websockify(noVNC).
+  - mkdir -p /etc/supervisor/conf.d
+  - bash -c 'cat > /etc/supervisor/conf.d/browser.conf <<EOF
+[supervisord]
+nodaemon=true
+logfile=/var/log/supervisord.log
+pidfile=/var/run/supervisord.pid
+
+[program:dbus]
+command=/usr/bin/dbus-daemon --system --nofork
+autorestart=true
+priority=5
+
+[program:xvfb]
+command=/usr/bin/Xvfb :99 -screen 0 1280x800x24 -ac +extension RANDR
+autorestart=true
+priority=10
+
+[program:fluxbox]
+command=/usr/bin/fluxbox
+environment=DISPLAY=":99"
+autorestart=true
+priority=20
+
+[program:chromium]
+command=/opt/cloakbrowser/cloakbrowser --remote-debugging-port=9222 --no-sandbox --window-size=1280,800 --window-position=0,0
+environment=DISPLAY=":99"
+autorestart=true
+priority=30
+
+[program:playwright-mcp]
+# Connects to the existing chromium via CDP rather than launching its own.
+command=/usr/local/bin/npx @playwright/mcp@latest --port 3200 --browser chromium --cdp-endpoint http://127.0.0.1:9222
+autorestart=true
+priority=40
+
+[program:x11vnc]
+command=/usr/bin/x11vnc -display :99 -forever -shared -nopw -rfbport 5900
+autorestart=true
+priority=50
+
+[program:novnc]
+# websockify wraps the raw VNC into a WebSocket and serves the
+# noVNC static files at /vnc_lite.html.
+command=/opt/websockify/run --web=/opt/novnc 6080 localhost:5900
+autorestart=true
+priority=60
+EOF'
+
+  # Verify the binaries we expect are reachable; fail the build
+  # if anything is missing so the user knows BEFORE publishing.
+  - bash -c "/opt/cloakbrowser/cloakbrowser --version | head -1"
+  - bash -c "node --version && npm --version"
+  - bash -c "test -f /opt/novnc/vnc_lite.html && test -x /opt/websockify/run"

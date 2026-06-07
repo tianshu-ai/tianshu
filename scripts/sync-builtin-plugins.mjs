@@ -30,6 +30,7 @@ const ids = fs
 
 let copied = 0;
 let skillsCopied = 0;
+let templatesCopied = 0;
 for (const id of ids) {
   const src = path.join(pluginsDir, id, "manifest.json");
   if (!fs.existsSync(src)) continue;
@@ -55,9 +56,38 @@ for (const id of ids) {
       skillsCopied++;
     }
   }
+
+  // Templates (yaml files) — same shape as skills. Plugins that
+  // ship Sandboxfile templates (like microsandbox) read them at
+  // activate-time, and the resolution path is
+  // `<manifest-dir>/templates/<file>`. We don't enforce a schema
+  // here; missing files surface as activation errors in the
+  // plugin, which is what we want.
+  const templatesSrc = path.join(pluginsDir, id, "templates");
+  if (fs.existsSync(templatesSrc) && fs.statSync(templatesSrc).isDirectory()) {
+    const templatesDst = path.join(dstDir, "templates");
+    fs.mkdirSync(templatesDst, { recursive: true });
+    for (const entry of fs.readdirSync(templatesSrc, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      // Allow yaml + readme; skip dotfiles.
+      if (entry.name.startsWith(".")) continue;
+      const lower = entry.name.toLowerCase();
+      if (
+        !lower.endsWith(".yaml") &&
+        !lower.endsWith(".yml") &&
+        !lower.endsWith(".md")
+      )
+        continue;
+      fs.copyFileSync(
+        path.join(templatesSrc, entry.name),
+        path.join(templatesDst, entry.name),
+      );
+      templatesCopied++;
+    }
+  }
 }
 
 // eslint-disable-next-line no-console
 console.log(
-  `[sync-builtin-plugins] synced ${copied} manifest(s) and ${skillsCopied} skill file(s) from plugins/ → builtinConfig/plugins/`,
+  `[sync-builtin-plugins] synced ${copied} manifest(s), ${skillsCopied} skill file(s), and ${templatesCopied} template file(s) from plugins/ → builtinConfig/plugins/`,
 );
