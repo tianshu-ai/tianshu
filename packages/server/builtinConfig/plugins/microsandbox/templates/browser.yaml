@@ -1,102 +1,81 @@
-# Browser-enabled Sandboxfile.
+# Browser-enabled Sandboxfile (CloakBrowser + Playwright MCP + noVNC).
 #
-# After build & use & reset, the tenant gets:
-#   - shell sandbox (existing exec/python tools)
-#   - Stealth Chromium (CloakBrowser linux-arm64 v145, MIT)
-#   - Playwright MCP server on guest 3200
-#   - Chromium DevTools Protocol on guest 9222
-#   - noVNC web viewport on guest 6080 (mounts in admin Browser page)
+# Verified end-to-end on Apple Silicon arm64: build → publish →
+# reset → all 6 supervisord processes RUNNING → CDP / MCP / noVNC
+# all reachable. Build cost: ~3-5 min on cache hit, ~10 min cold
+# (apt + Node + LibreOffice + 200 MB CloakBrowser tarball).
 #
-# The microsandbox runner forwards 9222/3200/6080 to host ports;
-# microsandbox-build-publish/use applies the snapshot, microsandbox
-# resets the live VM, and N+5.3 fills in BrowserSidecar's port
-# detection so the agent's browser_* tools light up.
+# After build & use, supervisord must be started inside the live
+# VM. N+5.3 will do that automatically; today the user runs:
+#   supervisord -c /etc/supervisor/conf.d/browser.conf
 #
-# Build cost: ~5-10 min on first build (downloads ~600 MB of
-# CloakBrowser + ~250 MB of apt deps). Subsequent rebuilds reuse
-# the apt cache; the chromium tarball is hardpinned by URL so it's
-# cached by microsandbox after the first pull.
+# Notes on the painful bits this template encodes:
+#  - dbus is intentionally NOT a supervisor program: dbus-x11 in
+#    debian:slim is missing /usr/share/dbus-1/system.conf and
+#    chromium headless doesn't need a system bus anyway.
+#  - chromium pinned to /tmp/chrome-profile so a stale profile
+#    lock from the build VM can't block startup. Snapshots will
+#    not preserve /tmp.
+#  - chromium binds CDP to 0.0.0.0 so port-forward picks it up.
+#  - Playwright MCP listens on 0.0.0.0; default ::1 was IPv6-only
+#    and unreachable from the IPv4-only host port-forward.
+#  - All multi-line config files (supervisord conf) go through
+#    base64 because the v0 Sandboxfile parser is single-line only
+#    and bash single-quoted heredocs don't carry \n correctly.
 
 image: python:3.12-slim
-cpus: 4
+cpus: 2
 memory_mib: 8192
 
-apt:
-  # X stack + xvfb for headed chromium without a display.
-  - xvfb
-  - x11vnc
-  - fluxbox          # tiny WM so chromium gets a window manager
-  - dbus-x11         # CloakBrowser refuses to start without a session bus
-  # Fonts: covers latin / CJK / emoji rendering at minimum.
-  - fonts-noto
-  - fonts-noto-cjk
-  - fonts-noto-color-emoji
-  - fontconfig
-  # Chromium runtime libs (CloakBrowser is a real chromium binary).
-  - libnss3
-  - libatk1.0-0
-  - libatk-bridge2.0-0
-  - libcups2
-  - libgbm1
-  - libxss1
-  - libasound2
-  - libxshmfence1
-  - libxkbcommon0
-  - libpango-1.0-0
-  - libxcomposite1
-  - libxdamage1
-  - libxrandr2
-  # Build/util.
-  - curl
-  - ca-certificates
-  - xz-utils
-  - supervisor       # process manager (runs Xvfb + chromium + MCP + noVNC)
-
-pip:
-  # Playwright MCP via Microsoft's official server (browser_navigate
-  # + accessibility snapshot semantics map directly).
-  - playwright
-  # CloakBrowser drop-in launcher; resolves the binary at runtime.
-  - cloakbrowser
-
 exec:
-  # APT mirror: keep apt fast for users in mainland CN. Comment
-  # this line out (or change the mirror) if you're somewhere else.
+  # APT 国内源（在其他地区可改成上游 deb.debian.org）
   - sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
+  - apt-get update -qq
 
-  # CloakBrowser linux-arm64 binary. Pin to v145 chromium release;
-  # bump the URL when CloakBrowser tags a new chromium-vNNN release.
-  # The tarball is FLAT (no top-level dir) and the entry binary is
-  # named `chrome` — no --strip-components, supervisor invokes
-  # /opt/cloakbrowser/chrome below.
-  - bash -c "mkdir -p /opt/cloakbrowser && curl -fsSL https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.159.7/cloakbrowser-linux-arm64.tar.gz | tar -xz -C /opt/cloakbrowser"
+  # 一行装完（无 dbus）
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates xz-utils fontconfig fonts-noto-cjk fonts-noto-color-emoji libreoffice-writer libreoffice-calc libreoffice-impress xvfb x11vnc fluxbox supervisor libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libxss1 libasound2 libxshmfence1 libxkbcommon0 libpango-1.0-0 libxcomposite1 libxdamage1 libxrandr2
 
-  # noVNC + websockify (small, pure-python, easy to vendor).
-  - bash -c "mkdir -p /opt/novnc && curl -fsSL https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz | tar -xz -C /opt/novnc --strip-components=1"
-  - bash -c "mkdir -p /opt/websockify && curl -fsSL https://github.com/novnc/websockify/archive/refs/tags/v0.13.0.tar.gz | tar -xz -C /opt/websockify --strip-components=1"
+  # Node 22 LTS（淘宝镜像）
+  - bash -c "curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors https://npmmirror.com/mirrors/node/v22.20.0/node-v22.20.0-linux-arm64.tar.xz | tar -xJ -C /usr/local --strip-components=1"
+  - npm config set registry https://registry.npmmirror.com
+
+  # CloakBrowser 200MB - ghproxy + retry + 落盘解压
+  # Tarball is FLAT (no top-level dir); entry binary is `chrome`.
+  - bash -c "mkdir -p /opt/cloakbrowser && curl -fsSL --retry 8 --retry-delay 8 --retry-all-errors --connect-timeout 30 -o /tmp/cb.tar.gz https://gh-proxy.com/https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.159.7/cloakbrowser-linux-arm64.tar.gz"
+  - bash -c "test $(stat -c %s /tmp/cb.tar.gz) -gt 100000000"
+  - tar -xzf /tmp/cb.tar.gz -C /opt/cloakbrowser
+  - rm -f /tmp/cb.tar.gz
+
+  # noVNC + websockify
+  - bash -c "mkdir -p /opt/novnc && curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors https://gh-proxy.com/https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz | tar -xz -C /opt/novnc --strip-components=1"
+  - bash -c "mkdir -p /opt/websockify && curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors https://gh-proxy.com/https://github.com/novnc/websockify/archive/refs/tags/v0.13.0.tar.gz | tar -xz -C /opt/websockify --strip-components=1"
   - ln -sf /opt/novnc/vnc_lite.html /opt/novnc/index.html
 
-  # Playwright's @playwright/mcp via npm. Node ships with the
-  # python:3.12-slim image as part of `apt nodejs`; if your base
-  # doesn't have it, add the NodeSource binary install used in the
-  # build-use skill.
-  - bash -c "mkdir -p /opt/node && curl -fsSL https://npmmirror.com/mirrors/node/v22.20.0/node-v22.20.0-linux-arm64.tar.xz | tar -xJ -C /opt/node --strip-components=1"
-  - bash -c "ln -sf /opt/node/bin/node /usr/local/bin/node && ln -sf /opt/node/bin/npm /usr/local/bin/npm && ln -sf /opt/node/bin/npx /usr/local/bin/npx"
-  - bash -c "npm config set registry https://registry.npmmirror.com && npm install -g @playwright/mcp@latest"
+  # Playwright MCP - 提前把 npm 包拉到 npx 缓存，runtime 启动不再下载
+  - npx -y @playwright/mcp@latest --help > /dev/null 2>&1
 
-  # Supervisord config: dbus -> Xvfb -> fluxbox -> chromium ->
-  # playwright-mcp -> x11vnc -> websockify(noVNC).
-  #
-  # The whole conf is base64'd into one line because v0
-  # Sandboxfile parser only accepts single-line `- entry` items
-  # under exec:, and bash single-quoted heredocs can't carry
-  # newlines through `- bash -c '...'`. base64 -d sidesteps every
-  # quoting/escape concern.
+  # 字体缓存（首次 LibreOffice / chromium CJK 渲染）
+  - fc-cache -fv
+
+  # supervisord 配置（base64 - 多行 conf 通过 v0 sandboxfile parser 的唯一办法）
   - mkdir -p /etc/supervisor/conf.d
-  - bash -c "echo W3N1cGVydmlzb3JkXQpub2RhZW1vbj10cnVlCmxvZ2ZpbGU9L3Zhci9sb2cvc3VwZXJ2aXNvcmQubG9nCnBpZGZpbGU9L3Zhci9ydW4vc3VwZXJ2aXNvcmQucGlkCgpbcHJvZ3JhbTpkYnVzXQpjb21tYW5kPS91c3IvYmluL2RidXMtZGFlbW9uIC0tc3lzdGVtIC0tbm9mb3JrCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NQoKW3Byb2dyYW06eHZmYl0KY29tbWFuZD0vdXNyL2Jpbi9YdmZiIDo5OSAtc2NyZWVuIDAgMTI4MHg4MDB4MjQgLWFjICtleHRlbnNpb24gUkFORFIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0xMAoKW3Byb2dyYW06Zmx1eGJveF0KY29tbWFuZD0vdXNyL2Jpbi9mbHV4Ym94CmVudmlyb25tZW50PURJU1BMQVk9Ijo5OSIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0yMAoKW3Byb2dyYW06Y2hyb21pdW1dCmNvbW1hbmQ9L29wdC9jbG9ha2Jyb3dzZXIvY2hyb21lIC0tcmVtb3RlLWRlYnVnZ2luZy1wb3J0PTkyMjIgLS1uby1zYW5kYm94IC0td2luZG93LXNpemU9MTI4MCw4MDAKZW52aXJvbm1lbnQ9RElTUExBWT0iOjk5IgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTMwCgpbcHJvZ3JhbTpwbGF5d3JpZ2h0LW1jcF0KY29tbWFuZD0vdXNyL2xvY2FsL2Jpbi9ucHggQHBsYXl3cmlnaHQvbWNwQGxhdGVzdCAtLXBvcnQgMzIwMCAtLWJyb3dzZXIgY2hyb21pdW0gLS1jZHAtZW5kcG9pbnQgaHR0cDovLzEyNy4wLjAuMTo5MjIyCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NDAKCltwcm9ncmFtOngxMXZuY10KY29tbWFuZD0vdXNyL2Jpbi94MTF2bmMgLWRpc3BsYXkgOjk5IC1mb3JldmVyIC1zaGFyZWQgLW5vcHcgLXJmYnBvcnQgNTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTUwCgpbcHJvZ3JhbTpub3ZuY10KY29tbWFuZD0vb3B0L3dlYnNvY2tpZnkvcnVuIC0td2ViPS9vcHQvbm92bmMgNjA4MCBsb2NhbGhvc3Q6NTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTYwCg== | base64 -d > /etc/supervisor/conf.d/browser.conf"
+  - bash -c "echo W3VuaXhfaHR0cF9zZXJ2ZXJdCmZpbGU9L3Zhci9ydW4vc3VwZXJ2aXNvci5zb2NrCmNobW9kPTA3MDAKCltzdXBlcnZpc29yZF0KbG9nZmlsZT0vdmFyL2xvZy9zdXBlcnZpc29yZC5sb2cKcGlkZmlsZT0vdmFyL3J1bi9zdXBlcnZpc29yZC5waWQKCltycGNpbnRlcmZhY2U6c3VwZXJ2aXNvcl0Kc3VwZXJ2aXNvci5ycGNpbnRlcmZhY2VfZmFjdG9yeT1zdXBlcnZpc29yLnJwY2ludGVyZmFjZTptYWtlX21haW5fcnBjaW50ZXJmYWNlCgpbc3VwZXJ2aXNvcmN0bF0Kc2VydmVydXJsPXVuaXg6Ly8vdmFyL3J1bi9zdXBlcnZpc29yLnNvY2sKCltwcm9ncmFtOnh2ZmJdCmNvbW1hbmQ9L3Vzci9iaW4vWHZmYiA6OTkgLXNjcmVlbiAwIDEyODB4ODAweDI0IC1hYyArZXh0ZW5zaW9uIFJBTkRSCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9MTAKCltwcm9ncmFtOmZsdXhib3hdCmNvbW1hbmQ9L3Vzci9iaW4vZmx1eGJveAplbnZpcm9ubWVudD1ESVNQTEFZPSI6OTkiCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9MjAKCltwcm9ncmFtOmNocm9taXVtXQpjb21tYW5kPS9vcHQvY2xvYWticm93c2VyL2Nocm9tZSAtLXJlbW90ZS1kZWJ1Z2dpbmctcG9ydD05MjIyIC0tcmVtb3RlLWRlYnVnZ2luZy1hZGRyZXNzPTAuMC4wLjAgLS1uby1zYW5kYm94IC0tZGlzYWJsZS1kZXYtc2htLXVzYWdlIC0tdXNlci1kYXRhLWRpcj0vdG1wL2Nocm9tZS1wcm9maWxlIC0td2luZG93LXNpemU9MTI4MCw4MDAKZW52aXJvbm1lbnQ9RElTUExBWT0iOjk5IgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTMwCnN0YXJ0c2Vjcz04CgpbcHJvZ3JhbTpwbGF5d3JpZ2h0LW1jcF0KY29tbWFuZD0vdXNyL2xvY2FsL2Jpbi9ucHggQHBsYXl3cmlnaHQvbWNwQGxhdGVzdCAtLWhvc3QgMC4wLjAuMCAtLXBvcnQgMzIwMCAtLWJyb3dzZXIgY2hyb21pdW0gLS1jZHAtZW5kcG9pbnQgaHR0cDovLzEyNy4wLjAuMTo5MjIyCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NDAKc3RhcnRzZWNzPTgKCltwcm9ncmFtOngxMXZuY10KY29tbWFuZD0vdXNyL2Jpbi94MTF2bmMgLWRpc3BsYXkgOjk5IC1mb3JldmVyIC1zaGFyZWQgLW5vcHcgLXJmYnBvcnQgNTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTUwCgpbcHJvZ3JhbTpub3ZuY10KY29tbWFuZD0vb3B0L3dlYnNvY2tpZnkvcnVuIC0td2ViPS9vcHQvbm92bmMgNjA4MCBsb2NhbGhvc3Q6NTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTYwCg== | base64 -d > /etc/supervisor/conf.d/browser.conf"
 
-  # Verify the binaries we expect are reachable; fail the build
-  # if anything is missing so the user knows BEFORE publishing.
-  - bash -c "/opt/cloakbrowser/chrome --version | head -1"
-  - bash -c "node --version && npm --version"
-  - bash -c "test -f /opt/novnc/vnc_lite.html && test -x /opt/websockify/run"
+  # Build 阶段启动 supervisord 一次，让 verify 步骤能 curl 到端口
+  - supervisord -c /etc/supervisor/conf.d/browser.conf
+  - sleep 18
+
+  # === Verify ============================================================
+  # 任一 fail 整个 build fail，避免 "build 成功但实际跑不起来"
+  - bash -c "node --version && npm --version && /opt/cloakbrowser/chrome --version | head -1"
+  # supervisor 没有 FATAL/EXITED/STOPPED
+  - bash -c "supervisorctl -c /etc/supervisor/conf.d/browser.conf status; supervisorctl -c /etc/supervisor/conf.d/browser.conf status | grep -E 'FATAL|EXITED|STOPPED' && exit 1 || true"
+  # 6 个 program 都 RUNNING
+  - bash -c "test $(supervisorctl -c /etc/supervisor/conf.d/browser.conf status | grep -c RUNNING) -eq 6"
+  # CDP 9222
+  - bash -c "curl -sS --max-time 8 http://127.0.0.1:9222/json/version | grep -q Browser"
+  # noVNC 6080
+  - bash -c "curl -sS --max-time 8 http://127.0.0.1:6080/vnc_lite.html | grep -qi DOCTYPE"
+  # Playwright MCP 3200（HTTP 403/404/200 都说明服务在 listen）
+  - bash -c "code=$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:3200/); echo MCP HTTP code=$code; test \"$code\" != \"000\""
+  - echo OK
