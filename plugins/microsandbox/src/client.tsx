@@ -1234,13 +1234,27 @@ function ResetSection({
               </code>
             </Field>
           )}
-          {extractMetaString(status.meta, "image") && (
-            <Field label="Image">
-              <code className="rounded bg-gray-800 px-1">
-                {extractMetaString(status.meta, "image")}
+          {extractMetaString(status.meta, "activeSnapshot") ? (
+            <Field label="Booted from">
+              <code className="rounded bg-emerald-900/40 px-1 text-emerald-200">
+                snapshot · {extractMetaString(status.meta, "activeSnapshot")}
               </code>
             </Field>
-          )}
+          ) : extractMetaString(status.meta, "image") ? (
+            <Field label="Booted from">
+              <code className="rounded bg-gray-800 px-1">
+                image · {extractMetaString(status.meta, "image")}
+              </code>
+            </Field>
+          ) : null}
+          {extractMetaString(status.meta, "image") &&
+            extractMetaString(status.meta, "activeSnapshot") && (
+              <Field label="Default image">
+                <code className="rounded bg-gray-800 px-1 text-gray-400">
+                  {extractMetaString(status.meta, "image")}
+                </code>
+              </Field>
+            )}
           {status.lastError && (
             <Field label="Last error">
               <span className="text-rose-300">{status.lastError}</span>
