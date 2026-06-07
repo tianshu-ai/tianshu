@@ -74,6 +74,7 @@
       { "method": "GET",  "path": "/status",          "handler": "status" },
       { "method": "GET",  "path": "/sandboxfile",     "handler": "getSandboxfile" },
       { "method": "PUT",  "path": "/sandboxfile",     "handler": "putSandboxfile" },
+      { "method": "GET",  "path": "/sandboxfile/templates", "handler": "getSandboxfileTemplates" },
       { "method": "GET",  "path": "/builds",          "handler": "getBuilds" },
       { "method": "POST", "path": "/builds",          "handler": "postBuilds" },
       { "method": "POST", "path": "/builds/use",      "handler": "postUseBuild" },

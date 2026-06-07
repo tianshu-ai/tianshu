@@ -1,0 +1,20 @@
+# Minimal Sandboxfile — same as the new-Sandboxfile placeholder.
+# Use this when you just want a clean python:3.12-slim with room
+# to add layers later.
+
+image: python:3.12-slim
+cpus: 4
+memory_mib: 4096
+
+# Uncomment and edit to add layers:
+# apt:
+#   - libreoffice-writer
+#   - fonts-noto-cjk
+# pip:
+#   - pandas
+#   - numpy
+# npm:
+#   - tsx
+#   - typescript
+# exec:
+#   - echo "ready"

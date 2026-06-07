@@ -18,6 +18,7 @@
 // stack land in a follow-up PR.
 
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   PluginContext,
   PluginRouteHandler,
@@ -39,6 +40,7 @@ import {
 } from "./tools/index.js";
 import { buildAdminRoutes } from "./admin/routes.js";
 import { buildBrowserRoutes } from "./admin/browser-routes.js";
+import { loadTemplates, type SandboxfileTemplate } from "./admin/templates.js";
 
 interface ActiveState {
   built: BuiltRunner;
@@ -50,6 +52,8 @@ interface ActiveState {
   tenantId: string;
   workspaceDir: string;
   sandboxName: string;
+  /** Sandboxfile templates loaded once at activate(). */
+  templates: SandboxfileTemplate[];
 }
 
 let active: ActiveState | null = null;
@@ -57,6 +61,14 @@ let active: ActiveState | null = null;
 function getRunner(): SandboxRunner | null {
   return active?.built.runner ?? null;
 }
+
+const templatesRoute: PluginRouteHandler = async (_req, res) => {
+  if (!active) {
+    res.status(503).json({ error: "not_started" });
+    return;
+  }
+  res.json({ templates: active.templates });
+};
 
 const statusRoute: PluginRouteHandler = async (_req, res) => {
   if (!active) {
@@ -93,6 +105,33 @@ export default {
     // (path.dirname twice → strip "/workspace" + strip "/<tenantId>"
     // gives `<tenantHomeDir>/tenants`; we want one more level up.)
     const tenantHomeDir = pathTenantHomeDir(ctx.workspaceDir);
+
+    // Templates live next to the manifest at runtime, mirrored
+    // to builtinConfig by sync-builtin-plugins.mjs. Resolve
+    // relative to this server.js (`dist/server.js`); the manifest
+    // dir is one level up.
+    const templatesDir = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "templates",
+    );
+    let templates: SandboxfileTemplate[] = [];
+    try {
+      templates = await loadTemplates(templatesDir);
+      ctx.log.info(
+        `loaded ${templates.length} sandbox template(s) from ${templatesDir}`,
+      );
+    } catch (err) {
+      // Don't fail activate — the user can still author from
+      // scratch. Surface as a warning so the plugin manager UI
+      // shows it.
+      ctx.log.warn(
+        `failed to load sandbox templates from ${templatesDir}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
     active = {
       built,
       log: ctx.log,
@@ -100,6 +139,7 @@ export default {
       tenantId: ctx.tenantId,
       workspaceDir: ctx.workspaceDir,
       sandboxName: `tianshu-${ctx.tenantId}`,
+      templates,
     };
     if (built.ready) {
       ctx.log.info(built.selectedReason);
@@ -150,6 +190,7 @@ export default {
         status: statusRoute,
         getSandboxfile: adminRoutes.getSandboxfile,
         putSandboxfile: adminRoutes.putSandboxfile,
+        getSandboxfileTemplates: templatesRoute,
         getBuilds: adminRoutes.getBuilds,
         postBuilds: adminRoutes.postBuilds,
         postUseBuild: adminRoutes.postUseBuild,

@@ -1,0 +1,81 @@
+# Browser-enabled Sandboxfile (CloakBrowser + Playwright MCP + noVNC).
+#
+# Verified end-to-end on Apple Silicon arm64: build → publish →
+# reset → all 6 supervisord processes RUNNING → CDP / MCP / noVNC
+# all reachable. Build cost: ~3-5 min on cache hit, ~10 min cold
+# (apt + Node + LibreOffice + 200 MB CloakBrowser tarball).
+#
+# After build & use, supervisord must be started inside the live
+# VM. N+5.3 will do that automatically; today the user runs:
+#   supervisord -c /etc/supervisor/conf.d/browser.conf
+#
+# Notes on the painful bits this template encodes:
+#  - dbus is intentionally NOT a supervisor program: dbus-x11 in
+#    debian:slim is missing /usr/share/dbus-1/system.conf and
+#    chromium headless doesn't need a system bus anyway.
+#  - chromium pinned to /tmp/chrome-profile so a stale profile
+#    lock from the build VM can't block startup. Snapshots will
+#    not preserve /tmp.
+#  - chromium binds CDP to 0.0.0.0 so port-forward picks it up.
+#  - Playwright MCP listens on 0.0.0.0; default ::1 was IPv6-only
+#    and unreachable from the IPv4-only host port-forward.
+#  - All multi-line config files (supervisord conf) go through
+#    base64 because the v0 Sandboxfile parser is single-line only
+#    and bash single-quoted heredocs don't carry \n correctly.
+
+image: python:3.12-slim
+cpus: 2
+memory_mib: 8192
+
+exec:
+  # APT 国内源（在其他地区可改成上游 deb.debian.org）
+  - sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
+  - apt-get update -qq
+
+  # 一行装完（无 dbus）
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates xz-utils fontconfig fonts-noto-cjk fonts-noto-color-emoji libreoffice-writer libreoffice-calc libreoffice-impress xvfb x11vnc fluxbox supervisor libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libxss1 libasound2 libxshmfence1 libxkbcommon0 libpango-1.0-0 libxcomposite1 libxdamage1 libxrandr2
+
+  # Node 22 LTS（淘宝镜像）
+  - bash -c "curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors https://npmmirror.com/mirrors/node/v22.20.0/node-v22.20.0-linux-arm64.tar.xz | tar -xJ -C /usr/local --strip-components=1"
+  - npm config set registry https://registry.npmmirror.com
+
+  # CloakBrowser 200MB - ghproxy + retry + 落盘解压
+  # Tarball is FLAT (no top-level dir); entry binary is `chrome`.
+  - bash -c "mkdir -p /opt/cloakbrowser && curl -fsSL --retry 8 --retry-delay 8 --retry-all-errors --connect-timeout 30 -o /tmp/cb.tar.gz https://gh-proxy.com/https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.159.7/cloakbrowser-linux-arm64.tar.gz"
+  - bash -c "test $(stat -c %s /tmp/cb.tar.gz) -gt 100000000"
+  - tar -xzf /tmp/cb.tar.gz -C /opt/cloakbrowser
+  - rm -f /tmp/cb.tar.gz
+
+  # noVNC + websockify
+  - bash -c "mkdir -p /opt/novnc && curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors https://gh-proxy.com/https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz | tar -xz -C /opt/novnc --strip-components=1"
+  - bash -c "mkdir -p /opt/websockify && curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors https://gh-proxy.com/https://github.com/novnc/websockify/archive/refs/tags/v0.13.0.tar.gz | tar -xz -C /opt/websockify --strip-components=1"
+  - ln -sf /opt/novnc/vnc_lite.html /opt/novnc/index.html
+
+  # Playwright MCP - 提前把 npm 包拉到 npx 缓存，runtime 启动不再下载
+  - npx -y @playwright/mcp@latest --help > /dev/null 2>&1
+
+  # 字体缓存（首次 LibreOffice / chromium CJK 渲染）
+  - fc-cache -fv
+
+  # supervisord 配置（base64 - 多行 conf 通过 v0 sandboxfile parser 的唯一办法）
+  - mkdir -p /etc/supervisor/conf.d
+  - bash -c "echo W3VuaXhfaHR0cF9zZXJ2ZXJdCmZpbGU9L3Zhci9ydW4vc3VwZXJ2aXNvci5zb2NrCmNobW9kPTA3MDAKCltzdXBlcnZpc29yZF0KbG9nZmlsZT0vdmFyL2xvZy9zdXBlcnZpc29yZC5sb2cKcGlkZmlsZT0vdmFyL3J1bi9zdXBlcnZpc29yZC5waWQKCltycGNpbnRlcmZhY2U6c3VwZXJ2aXNvcl0Kc3VwZXJ2aXNvci5ycGNpbnRlcmZhY2VfZmFjdG9yeT1zdXBlcnZpc29yLnJwY2ludGVyZmFjZTptYWtlX21haW5fcnBjaW50ZXJmYWNlCgpbc3VwZXJ2aXNvcmN0bF0Kc2VydmVydXJsPXVuaXg6Ly8vdmFyL3J1bi9zdXBlcnZpc29yLnNvY2sKCltwcm9ncmFtOnh2ZmJdCmNvbW1hbmQ9L3Vzci9iaW4vWHZmYiA6OTkgLXNjcmVlbiAwIDEyODB4ODAweDI0IC1hYyArZXh0ZW5zaW9uIFJBTkRSCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9MTAKCltwcm9ncmFtOmZsdXhib3hdCmNvbW1hbmQ9L3Vzci9iaW4vZmx1eGJveAplbnZpcm9ubWVudD1ESVNQTEFZPSI6OTkiCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9MjAKCltwcm9ncmFtOmNocm9taXVtXQpjb21tYW5kPS9vcHQvY2xvYWticm93c2VyL2Nocm9tZSAtLXJlbW90ZS1kZWJ1Z2dpbmctcG9ydD05MjIyIC0tcmVtb3RlLWRlYnVnZ2luZy1hZGRyZXNzPTAuMC4wLjAgLS1uby1zYW5kYm94IC0tZGlzYWJsZS1kZXYtc2htLXVzYWdlIC0tdXNlci1kYXRhLWRpcj0vdG1wL2Nocm9tZS1wcm9maWxlIC0td2luZG93LXNpemU9MTI4MCw4MDAKZW52aXJvbm1lbnQ9RElTUExBWT0iOjk5IgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTMwCnN0YXJ0c2Vjcz04CgpbcHJvZ3JhbTpwbGF5d3JpZ2h0LW1jcF0KY29tbWFuZD0vdXNyL2xvY2FsL2Jpbi9ucHggQHBsYXl3cmlnaHQvbWNwQGxhdGVzdCAtLWhvc3QgMC4wLjAuMCAtLXBvcnQgMzIwMCAtLWJyb3dzZXIgY2hyb21pdW0gLS1jZHAtZW5kcG9pbnQgaHR0cDovLzEyNy4wLjAuMTo5MjIyCmF1dG9yZXN0YXJ0PXRydWUKcHJpb3JpdHk9NDAKc3RhcnRzZWNzPTgKCltwcm9ncmFtOngxMXZuY10KY29tbWFuZD0vdXNyL2Jpbi94MTF2bmMgLWRpc3BsYXkgOjk5IC1mb3JldmVyIC1zaGFyZWQgLW5vcHcgLXJmYnBvcnQgNTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTUwCgpbcHJvZ3JhbTpub3ZuY10KY29tbWFuZD0vb3B0L3dlYnNvY2tpZnkvcnVuIC0td2ViPS9vcHQvbm92bmMgNjA4MCBsb2NhbGhvc3Q6NTkwMAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTYwCg== | base64 -d > /etc/supervisor/conf.d/browser.conf"
+
+  # Build 阶段启动 supervisord 一次，让 verify 步骤能 curl 到端口
+  - supervisord -c /etc/supervisor/conf.d/browser.conf
+  - sleep 18
+
+  # === Verify ============================================================
+  # 任一 fail 整个 build fail，避免 "build 成功但实际跑不起来"
+  - bash -c "node --version && npm --version && /opt/cloakbrowser/chrome --version | head -1"
+  # supervisor 没有 FATAL/EXITED/STOPPED
+  - bash -c "supervisorctl -c /etc/supervisor/conf.d/browser.conf status; supervisorctl -c /etc/supervisor/conf.d/browser.conf status | grep -E 'FATAL|EXITED|STOPPED' && exit 1 || true"
+  # 6 个 program 都 RUNNING
+  - bash -c "test $(supervisorctl -c /etc/supervisor/conf.d/browser.conf status | grep -c RUNNING) -eq 6"
+  # CDP 9222
+  - bash -c "curl -sS --max-time 8 http://127.0.0.1:9222/json/version | grep -q Browser"
+  # noVNC 6080
+  - bash -c "curl -sS --max-time 8 http://127.0.0.1:6080/vnc_lite.html | grep -qi DOCTYPE"
+  # Playwright MCP 3200（HTTP 403/404/200 都说明服务在 listen）
+  - bash -c "code=$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:3200/); echo MCP HTTP code=$code; test \"$code\" != \"000\""
+  - echo OK

@@ -279,6 +279,13 @@ function MicroSandboxAdminPage(_props: AdminPageProps) {
   );
 }
 
+interface SandboxfileTemplate {
+  id: string;
+  displayName: string;
+  description: string;
+  content: string;
+}
+
 function SandboxfileSection() {
   const [payload, setPayload] = useState<SandboxfilePayload | null>(null);
   const [draft, setDraft] = useState<string>("");
@@ -287,6 +294,7 @@ function SandboxfileSection() {
   const [error, setError] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [templates, setTemplates] = useState<SandboxfileTemplate[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -306,7 +314,42 @@ function SandboxfileSection() {
     void load();
   }, [load]);
 
+  // Templates are server-static; fetch once.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const r = await fetchJson<{ templates: SandboxfileTemplate[] }>(
+          `${ROUTE_BASE}/sandboxfile/templates`,
+        );
+        if (!cancelled) setTemplates(r.templates);
+      } catch {
+        // Non-fatal: leave the dropdown empty so users can still
+        // author from scratch.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const dirty = payload != null && draft !== payload.content;
+
+  function loadTemplate(id: string) {
+    if (!id) return;
+    const t = templates.find((x) => x.id === id);
+    if (!t) return;
+    if (
+      payload &&
+      draft !== payload.content &&
+      !window.confirm(
+        `You have unsaved changes. Replace the editor with the "${t.displayName}" template?`,
+      )
+    ) {
+      return;
+    }
+    setDraft(t.content);
+  }
 
   async function save() {
     setSaving(true);
@@ -344,6 +387,24 @@ function SandboxfileSection() {
         }
         actions={
           <>
+            {templates.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  loadTemplate(e.target.value);
+                  e.target.value = "";
+                }}
+                className="rounded-md border border-gray-800 bg-gray-900 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-700 focus:border-blue-700 focus:outline-none"
+                title="Replace the editor contents with a starting template"
+              >
+                <option value="">Load template…</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id} title={t.description}>
+                    {t.displayName}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
               onClick={() => void load()}
