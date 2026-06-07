@@ -7,6 +7,7 @@
 // the manifest as failed instead of crashing the whole boot.
 
 import type {
+  AdminPageContribution,
   ApiRouteContribution,
   AttachmentRendererContribution,
   ComposerActionContribution,
@@ -172,6 +173,9 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
       parseSidebarSection,
     );
   }
+  if ("adminPages" in raw) {
+    out.adminPages = parseArray(raw.adminPages, "adminPages", acc, parseAdminPage);
+  }
   if ("sandboxes" in raw) {
     out.sandboxes = parseArray(raw.sandboxes, "sandboxes", acc, parseSandbox);
   }
@@ -235,6 +239,21 @@ function parseRightPanel(raw: unknown, ctx: string, acc: Acc): RightPanelContrib
   const component = expectString(raw, "component", acc, ctx);
   if (id == null || displayName == null || component == null) return null;
   return { id, displayName, component };
+}
+
+function parseAdminPage(raw: unknown, ctx: string, acc: Acc): AdminPageContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const displayName = expectString(raw, "displayName", acc, ctx);
+  const component = expectString(raw, "component", acc, ctx);
+  const icon = optionalString(raw, "icon", acc, ctx);
+  const order = optionalNumber(raw, "order", acc, ctx);
+  const group = optionalString(raw, "group", acc, ctx);
+  if (id == null || displayName == null || component == null) return null;
+  return { id, displayName, component, icon, order, group };
 }
 
 const SANDBOX_KINDS = new Set<SandboxContribution["kind"]>(["shell"]);

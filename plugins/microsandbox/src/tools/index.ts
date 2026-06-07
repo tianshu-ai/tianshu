@@ -17,6 +17,11 @@ import type {
   SandboxRunner,
   SandboxStatus,
 } from "@tianshu/plugin-sdk";
+export {
+  BuildSandboxTool,
+  ListSandboxBuildsTool,
+  UseSandboxBuildTool,
+} from "./build.js";
 
 const DEFAULT_EXEC_TIMEOUT_MS = 5 * 60_000;
 const MAX_EXEC_TIMEOUT_MS = 30 * 60_000;

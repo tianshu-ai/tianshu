@@ -32,6 +32,8 @@ import type {
 import * as path from "node:path";
 import { promises as fs } from "node:fs";
 import type { MicroSandboxConfig } from "./types.js";
+import { readPointer } from "../build/pointer.js";
+import { snapshotExists } from "../build/builder.js";
 
 // Lazy-load the SDK so non-microsandbox deployments (or platforms
 // without the prebuilt napi binary) don't pay the import cost.
@@ -93,6 +95,9 @@ export class MicrosandboxRunner implements SandboxRunner {
   private handle: SandboxHandle | null = null;
   private startPromise: Promise<void> | null = null;
   private lastExec: LastExec | null = null;
+  /** Snapshot name actually being used by the live VM, or null when
+   *  booted from `image(...)`. Surfaced in status().meta. */
+  private activeSnapshot: string | null = null;
 
   constructor(opts: MicrosandboxRunnerOpts) {
     this.id = `${opts.pluginId}.${opts.contributionId}`;
@@ -182,13 +187,18 @@ export class MicrosandboxRunner implements SandboxRunner {
   }
 
   async reset(): Promise<void> {
+    console.log("[microsandbox] reset() begin");
     await this.shutdown();
-    // Next exec() call will re-create.
+    console.log(`[microsandbox] reset() shutdown done state=${this.state}`);
     this.state = "stopped";
     this.startError = null;
     this.handle = null;
     this.startPromise = null;
     this.lastExec = null;
+    this.activeSnapshot = null;
+    console.log("[microsandbox] reset() calling warmUp()");
+    this.warmUp();
+    console.log(`[microsandbox] reset() after warmUp state=${this.state} hasStartPromise=${!!this.startPromise}`);
   }
 
   async shutdown(): Promise<void> {
@@ -231,6 +241,7 @@ export class MicrosandboxRunner implements SandboxRunner {
         cpus: this.opts.config.cpus,
         memoryMib: this.opts.config.memoryMib,
         workspaceDir: this.opts.workspaceDir,
+        activeSnapshot: this.activeSnapshot ?? undefined,
         lastExec: this.lastExec ?? undefined,
       },
     };
@@ -267,29 +278,38 @@ export class MicrosandboxRunner implements SandboxRunner {
       const ws = this.opts.workspaceDir;
       await fs.mkdir(ws, { recursive: true });
 
-      // Build the sandbox. The exact builder API is:
-      //
-      //   Sandbox.builder(name)
-      //     .image(<oci-image>)
-      //     .cpus(n)
-      //     .memory(mib)
-      //     .volume("/workspace", m => m.bind(hostPath))
-      //     .replace(true)
-      //     .create()
-      //
+      // If the tenant has selected a custom build via
+      // use_sandbox_build, prefer that over the configured base
+      // image. Falls back to image(...) if no pointer or the
+      // snapshot was removed out-of-band.
+      const pointer = await readPointer(ws);
+      let useSnapshot: string | null = null;
+      if (pointer) {
+        const exists = await snapshotExists(pointer.snapshotName);
+        if (exists) {
+          useSnapshot = pointer.snapshotName;
+        }
+      }
+
       // napi-rs builder methods are runtime-typed; we re-cast through
       // a structural any-shape to keep the call sites readable.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const builder: any = (Sandbox as any)
+      let builder: any = (Sandbox as any)
         .builder(this.opts.config.sandboxName)
-        .image(this.opts.config.image)
         .cpus(this.opts.config.cpus)
         .memory(this.opts.config.memoryMib)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .volume("/workspace", (m: any) => m.bind(ws))
         .replace(true);
 
+      if (useSnapshot) {
+        builder = builder.fromSnapshot(useSnapshot);
+      } else {
+        builder = builder.image(this.opts.config.image);
+      }
+
       this.handle = (await builder.create()) as SandboxHandle;
+      this.activeSnapshot = useSnapshot;
       this.state = "ready";
       this.startedAt = Date.now();
     } catch (err) {

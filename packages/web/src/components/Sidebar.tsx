@@ -1,4 +1,5 @@
-import { Bot, Zap, ChevronDown, Hash } from "lucide-react";
+import { Bot, Zap, ChevronDown, Hash, ShieldCheck } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
 
 /**
@@ -99,6 +100,18 @@ export default function Sidebar() {
           Additional messaging channels (Lark / Slack / …) land later.
         </p>
       </nav>
+
+      {/* Admin entry. Visible to every signed-in user in v0; once
+       *  JWT auth ports over from the closed-source repo we'll
+       *  gate this on `me.role === "admin"`. */}
+      <Link
+        to="/admin"
+        className="mx-2 mb-1 mt-2 flex items-center gap-2 rounded-md px-3 py-2 text-xs text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+        title="Open admin shell"
+      >
+        <ShieldCheck size={12} className="flex-shrink-0 text-blue-400" />
+        <span>Admin</span>
+      </Link>
 
       {/* Footer */}
       <SidebarFooter />
