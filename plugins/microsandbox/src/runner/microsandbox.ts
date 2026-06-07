@@ -24,6 +24,7 @@
 //   keeps them around until the plugin is disabled.
 
 import type {
+  BrowserSidecar,
   ExecRequest,
   ExecResult,
   SandboxRunner,
@@ -34,6 +35,7 @@ import { promises as fs } from "node:fs";
 import type { MicroSandboxConfig } from "./types.js";
 import { readPointer } from "../build/pointer.js";
 import { snapshotExists } from "../build/builder.js";
+import { MicrosandboxBrowserSidecar } from "./browser.js";
 
 // Lazy-load the SDK so non-microsandbox deployments (or platforms
 // without the prebuilt napi binary) don't pay the import cost.
@@ -86,6 +88,10 @@ type SandboxHandle = {
 export class MicrosandboxRunner implements SandboxRunner {
   readonly id: string;
   readonly kind = "shell" as const;
+  /** Browser sidecar exposed via `provides: [browser.cdp]`. The
+   *  N+5.1 scaffold returns undefined ports; N+5.3 will fill them
+   *  in once chromium + Playwright MCP are running inside the VM. */
+  readonly browser: BrowserSidecar = new MicrosandboxBrowserSidecar();
   private readonly opts: MicrosandboxRunnerOpts;
   private readonly bornAt = Date.now();
 

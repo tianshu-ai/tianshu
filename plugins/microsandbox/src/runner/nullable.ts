@@ -10,6 +10,7 @@
 // about why nothing works.
 
 import type {
+  BrowserSidecar,
   ExecRequest,
   ExecResult,
   SandboxRunner,
@@ -17,6 +18,7 @@ import type {
 } from "@tianshu/plugin-sdk";
 import * as path from "node:path";
 import { promises as fs } from "node:fs";
+import { MicrosandboxBrowserSidecar } from "./browser.js";
 
 export interface NullableRunnerOpts {
   pluginId: string;
@@ -30,6 +32,12 @@ export interface NullableRunnerOpts {
 export class NullableRunner implements SandboxRunner {
   readonly id: string;
   readonly kind = "shell" as const;
+  /** Browser sidecar slot — even the nullable runner exposes one
+   *  so `browser.cdp` registers as a provider when the SDK loads
+   *  but the chromium stack hasn't been built yet. The sidecar
+   *  reports no ports and refuses restart, exactly matching the
+   *  nullable shell semantics. */
+  readonly browser: BrowserSidecar = new MicrosandboxBrowserSidecar();
   private readonly opts: NullableRunnerOpts;
   private readonly bornAt = Date.now();
 

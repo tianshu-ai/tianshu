@@ -1335,11 +1335,196 @@ function Banner({
 
 // ─── exports ───────────────────────────────────────────────────
 
+// ─── admin page: BrowserAdminPage ───────────────────────────
+//
+// N+5.1 scaffold. The chromium / Xvfb / x11vnc / noVNC stack
+// isn't shipped yet (lands in N+5.2/3). This page renders the
+// BrowserSidecar's reported state in a way that stays correct
+// across all upcoming states: today every value is null and we
+// say so honestly; once ports light up we render them; the
+// noVNC iframe slot is reserved below the status panel.
+//
+// Why a dedicated admin page instead of folding into the Sandbox
+// page: the Sandbox page is already four sections deep (file +
+// builds + shell + live). Adding a fifth pushes the noVNC
+// iframe (eventually 800x600+) below a fold that's already long.
+// A separate page also lets users bookmark / link directly to
+// /admin/microsandbox/browser.
+
+interface BrowserStatusPayload {
+  ready: boolean;
+  ports: { cdp: number | null; mcp: number | null; vnc: number | null };
+  lastViewport: { width: number; height: number } | null;
+  hint?: string;
+}
+
+function BrowserAdminPage(_props: AdminPageProps) {
+  const [data, setData] = useState<BrowserStatusPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [restarting, setRestarting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetchJson<BrowserStatusPayload>(`${ROUTE_BASE}/browser/status`);
+      setData(r);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  // Light polling: while not ready, re-check every 4s so that the
+  // moment a follow-up PR lights up chromium the page reflects it.
+  useEffect(() => {
+    if (data?.ready) return;
+    const id = window.setInterval(() => void load(), 4000);
+    return () => window.clearInterval(id);
+  }, [data?.ready, load]);
+
+  async function restart() {
+    setRestarting(true);
+    setError(null);
+    try {
+      const r = await fetchJson<{ ok: boolean; message: string }>(
+        `${ROUTE_BASE}/browser/restart`,
+        { method: "POST" },
+      );
+      if (!r.ok) setError(r.message);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRestarting(false);
+    }
+  }
+
+  return (
+    <div className="mx-auto max-w-4xl px-6 py-6 text-gray-200">
+      <header className="mb-6 border-b border-gray-800 pb-4">
+        <h1 className="text-lg font-semibold text-gray-100">Browser</h1>
+        <p className="mt-1 text-[12px] leading-relaxed text-gray-500">
+          Stealth Chromium (CloakBrowser) + Playwright MCP + noVNC,
+          running inside the same sandbox VM as your shell. The
+          browser layer ships with a Sandboxfile rebuild; once
+          live, this page hosts the noVNC viewport, restart
+          controls, and viewport metadata for the agent's browser
+          tools.
+        </p>
+      </header>
+
+      <SectionHeader
+        title="Status"
+        description={
+          data?.ready
+            ? "Browser stack is up."
+            : "Browser stack not running."
+        }
+        actions={
+          <>
+            <button
+              type="button"
+              onClick={() => void load()}
+              disabled={loading}
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+            >
+              <RefreshCw size={11} className={loading ? "animate-spin" : ""} />
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => void restart()}
+              disabled={restarting || !data?.ready}
+              className="flex items-center gap-1.5 rounded-md border border-rose-700/60 bg-rose-950/40 px-3 py-1.5 text-[11px] font-medium text-rose-200 hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+              title={
+                data?.ready
+                  ? "Restart chromium + Playwright MCP without rebuilding the sandbox."
+                  : "Browser stack must be running to restart it."
+              }
+            >
+              {restarting ? (
+                <Loader2 size={11} className="animate-spin" />
+              ) : (
+                <RotateCcw size={11} />
+              )}
+              Restart
+            </button>
+          </>
+        }
+      />
+
+      {error && <Banner kind="error" text={error} />}
+      {data?.hint && !error && <Banner kind="info" text={data.hint} />}
+
+      {data && (
+        <dl className="grid grid-cols-3 gap-x-4 gap-y-1.5 rounded-md border border-gray-800 bg-gray-900/40 p-3 text-[11px]">
+          <Field label="State">{data.ready ? "ready" : "not running"}</Field>
+          <Field label="CDP port">
+            {data.ports.cdp ? (
+              <code className="rounded bg-gray-800 px-1">localhost:{data.ports.cdp}</code>
+            ) : (
+              <span className="text-gray-500">—</span>
+            )}
+          </Field>
+          <Field label="MCP port">
+            {data.ports.mcp ? (
+              <code className="rounded bg-gray-800 px-1">localhost:{data.ports.mcp}</code>
+            ) : (
+              <span className="text-gray-500">—</span>
+            )}
+          </Field>
+          <Field label="noVNC port">
+            {data.ports.vnc ? (
+              <code className="rounded bg-gray-800 px-1">localhost:{data.ports.vnc}</code>
+            ) : (
+              <span className="text-gray-500">—</span>
+            )}
+          </Field>
+          <Field label="Viewport">
+            {data.lastViewport ? (
+              `${data.lastViewport.width}×${data.lastViewport.height}`
+            ) : (
+              <span className="text-gray-500">no client viewport reported yet</span>
+            )}
+          </Field>
+        </dl>
+      )}
+
+      {/* Where the noVNC iframe lands once N+5.3 wires it up. We
+       *  reserve the slot now so the visual rhythm of the page
+       *  doesn't jump when chromium ships. */}
+      {data?.ready && data.ports.vnc ? (
+        <div className="mt-4 overflow-hidden rounded-md border border-gray-800">
+          <iframe
+            title="Browser viewport"
+            src={`http://localhost:${data.ports.vnc}/vnc_lite.html?autoconnect=1&resize=remote`}
+            className="h-[640px] w-full bg-gray-950"
+          />
+        </div>
+      ) : (
+        <p className="mt-4 rounded-md border border-dashed border-gray-800 px-4 py-12 text-center text-[12px] text-gray-500">
+          The noVNC viewport will render here once the browser layer
+          is built into your Sandboxfile.
+        </p>
+      )}
+    </div>
+  );
+}
+
 const clientExports: PluginClientExports = {
   components: {
     SandboxStatusPanel: SandboxStatusPanel as PluginClientExports["components"][string],
     MicroSandboxAdminPage:
       MicroSandboxAdminPage as PluginClientExports["components"][string],
+    BrowserAdminPage:
+      BrowserAdminPage as PluginClientExports["components"][string],
   },
 };
 

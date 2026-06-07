@@ -26,6 +26,9 @@ import type {
 } from "@tianshu/plugin-sdk";
 import { buildRunner, type BuiltRunner } from "./runner/index.js";
 import {
+  BrowserNavigateTool,
+  BrowserScreenshotTool,
+  BrowserSnapshotTool,
   BuildSandboxTool,
   ExecTool,
   GetSandboxStatusTool,
@@ -35,6 +38,7 @@ import {
   UseSandboxBuildTool,
 } from "./tools/index.js";
 import { buildAdminRoutes } from "./admin/routes.js";
+import { buildBrowserRoutes } from "./admin/browser-routes.js";
 
 interface ActiveState {
   built: BuiltRunner;
@@ -114,6 +118,10 @@ export default {
       ctx.log.warn(built.selectedReason);
     }
 
+    const browserRoutes = buildBrowserRoutes({
+      getRunner,
+    });
+
     const adminRoutes = buildAdminRoutes({
       getRunner,
       tenantId: active.tenantId,
@@ -134,6 +142,9 @@ export default {
         BuildSandboxTool,
         ListSandboxBuildsTool,
         UseSandboxBuildTool,
+        BrowserNavigateTool,
+        BrowserSnapshotTool,
+        BrowserScreenshotTool,
       },
       routes: {
         status: statusRoute,
@@ -144,6 +155,8 @@ export default {
         postUseBuild: adminRoutes.postUseBuild,
         postReset: adminRoutes.postReset,
         postExec: adminRoutes.postExec,
+        getBrowserStatus: browserRoutes.getBrowserStatus,
+        postBrowserRestart: browserRoutes.postBrowserRestart,
       },
     };
   },

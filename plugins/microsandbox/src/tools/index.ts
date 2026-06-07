@@ -22,6 +22,11 @@ export {
   ListSandboxBuildsTool,
   UseSandboxBuildTool,
 } from "./build.js";
+export {
+  BrowserNavigateTool,
+  BrowserSnapshotTool,
+  BrowserScreenshotTool,
+} from "./browser.js";
 
 const DEFAULT_EXEC_TIMEOUT_MS = 5 * 60_000;
 const MAX_EXEC_TIMEOUT_MS = 30 * 60_000;
