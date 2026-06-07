@@ -143,6 +143,7 @@ export default {
         postBuilds: adminRoutes.postBuilds,
         postPublish: adminRoutes.postPublish,
         postReset: adminRoutes.postReset,
+        postExec: adminRoutes.postExec,
       },
     };
   },

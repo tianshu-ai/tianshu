@@ -190,4 +190,131 @@ describe("microsandbox admin routes", () => {
     await routes.postReset(makeReq({}), res as never);
     expect(res.statusCode).toBe(503);
   });
+
+  it("POST /exec 503s when runner not available", async () => {
+    const res = makeRes();
+    await routes.postExec(
+      makeReq({ userId: "uu", body: { command: "echo hi" } }),
+      res as never,
+    );
+    expect(res.statusCode).toBe(503);
+  });
+
+  it("POST /exec 401s when no user context", async () => {
+    // Use a runner-bearing factory so the 401 isn't shadowed by 503.
+    const r = buildAdminRoutes({
+      getRunner: () => fakeRunner(),
+      tenantId: "tt",
+      tenantHomeDir: tmp,
+      workspaceDir: path.join(tmp, "tenants/tt/workspace"),
+      sandboxName: "tianshu-tt",
+    });
+    const res = makeRes();
+    await r.postExec(makeReq({ body: { command: "echo hi" } }), res as never);
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("POST /exec 400s when command is missing or empty", async () => {
+    const r = buildAdminRoutes({
+      getRunner: () => fakeRunner(),
+      tenantId: "tt",
+      tenantHomeDir: tmp,
+      workspaceDir: path.join(tmp, "tenants/tt/workspace"),
+      sandboxName: "tianshu-tt",
+    });
+    const res = makeRes();
+    await r.postExec(makeReq({ userId: "uu", body: { command: "   " } }), res as never);
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("POST /exec returns runner output and clamps timeoutMs", async () => {
+    const fake = fakeRunner();
+    const r = buildAdminRoutes({
+      getRunner: () => fake,
+      tenantId: "tt",
+      tenantHomeDir: tmp,
+      workspaceDir: path.join(tmp, "tenants/tt/workspace"),
+      sandboxName: "tianshu-tt",
+    });
+    const res = makeRes();
+    await r.postExec(
+      makeReq({
+        userId: "uu",
+        body: {
+          command: "echo hi",
+          workdir: "/tmp",
+          timeoutMs: 999_999_999,
+        },
+      }),
+      res as never,
+    );
+    expect(res.statusCode).toBe(200);
+    const body = res.body as {
+      ok: boolean;
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+      durationMs: number;
+      timedOut: boolean;
+    };
+    expect(body.ok).toBe(true);
+    expect(body.exitCode).toBe(0);
+    expect(body.stdout).toBe("hi\n");
+    expect(fake.lastReq?.command).toBe("echo hi");
+    expect(fake.lastReq?.workdir).toBe("/tmp");
+    // 5 minute cap.
+    expect(fake.lastReq?.timeoutMs).toBe(5 * 60_000);
+  });
 });
+
+// ─── minimal SandboxRunner double for /exec tests ──────────────
+
+interface FakeRunner {
+  id: string;
+  kind: "shell";
+  lastReq: { command: string; workdir?: string; timeoutMs?: number } | null;
+  exec(req: { command: string; workdir?: string; timeoutMs?: number }): Promise<{
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+    durationMs: number;
+    timedOut: boolean;
+  }>;
+  readFile(p: string): Promise<string>;
+  writeFile(p: string, c: string): Promise<void>;
+  workspacePath(): string;
+  reset(): Promise<void>;
+  shutdown(): Promise<void>;
+  status(): Promise<{ state: "ready"; uptimeMs: 0 }>;
+}
+
+function fakeRunner(): FakeRunner {
+  const f: FakeRunner = {
+    id: "microsandbox.main",
+    kind: "shell",
+    lastReq: null,
+    async exec(req) {
+      f.lastReq = { command: req.command, workdir: req.workdir, timeoutMs: req.timeoutMs };
+      return {
+        exitCode: 0,
+        stdout: "hi\n",
+        stderr: "",
+        durationMs: 1,
+        timedOut: false,
+      };
+    },
+    async readFile() {
+      return "";
+    },
+    async writeFile() {},
+    workspacePath() {
+      return "/tmp";
+    },
+    async reset() {},
+    async shutdown() {},
+    async status() {
+      return { state: "ready", uptimeMs: 0 };
+    },
+  };
+  return f;
+}

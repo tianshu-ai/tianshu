@@ -12,7 +12,7 @@
 // `client.entry` per plugin. Tree-shaking keeps the panel-only path
 // cheap when the admin shell isn't open.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Box,
@@ -22,6 +22,8 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  Terminal,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import type {
@@ -249,14 +251,17 @@ function MicroSandboxAdminPage(_props: AdminPageProps) {
         <h1 className="text-lg font-semibold text-gray-100">MicroSandbox</h1>
         <p className="mt-1 text-[12px] leading-relaxed text-gray-500">
           Edit your Sandboxfile, build a new image, and publish it as
-          this tenant's active sandbox. Builds happen in a short-lived
-          VM and capture a snapshot you can roll back to.
+          this tenant's active sandbox. Use the shell to sanity-check
+          the running VM (“does my apt package show up on PATH?”)
+          before publishing.
         </p>
       </header>
 
       <SandboxfileSection />
       <div className="my-6 border-t border-gray-800" />
       <BuildsSection />
+      <div className="my-6 border-t border-gray-800" />
+      <ShellSection />
       <div className="my-6 border-t border-gray-800" />
       <ResetSection />
     </div>
@@ -574,6 +579,280 @@ function BuildsSection() {
         </ul>
       )}
     </section>
+  );
+}
+
+// ─── Shell (live exec inside the running sandbox) ──────────────
+
+interface ExecRunResult {
+  ok: boolean;
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  durationMs: number;
+  timedOut: boolean;
+}
+
+interface ShellEntry {
+  id: number;
+  command: string;
+  workdir: string;
+  startedAt: number;
+  /** null while still running. */
+  result: ExecRunResult | null;
+  /** Only set when the request itself blew up (network / 500). */
+  transportError: string | null;
+}
+
+function ShellSection() {
+  const [command, setCommand] = useState("");
+  const [workdir, setWorkdir] = useState("/workspace");
+  const [history, setHistory] = useState<ShellEntry[]>([]);
+  const [running, setRunning] = useState(false);
+  const [historyIdx, setHistoryIdx] = useState<number | null>(null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const idCounter = useRef(0);
+
+  const recentCommands = history.map((h) => h.command);
+
+  async function run() {
+    const cmd = command.trim();
+    if (!cmd || running) return;
+    const id = ++idCounter.current;
+    const wd = workdir.trim() || "/workspace";
+    const entry: ShellEntry = {
+      id,
+      command: cmd,
+      workdir: wd,
+      startedAt: Date.now(),
+      result: null,
+      transportError: null,
+    };
+    setHistory((h) => [...h, entry]);
+    setCommand("");
+    setHistoryIdx(null);
+    setRunning(true);
+    try {
+      const r = await fetchJson<ExecRunResult>(`${ROUTE_BASE}/exec`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command: cmd, workdir: wd }),
+      });
+      setHistory((h) =>
+        h.map((e) => (e.id === id ? { ...e, result: r } : e)),
+      );
+    } catch (err) {
+      setHistory((h) =>
+        h.map((e) =>
+          e.id === id
+            ? {
+                ...e,
+                transportError: err instanceof Error ? err.message : String(err),
+              }
+            : e,
+        ),
+      );
+    } finally {
+      setRunning(false);
+      // Refocus so the user can type the next command without
+      // chasing the cursor.
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }
+
+  function clear() {
+    setHistory([]);
+    idCounter.current = 0;
+  }
+
+  function recall(direction: 1 | -1) {
+    if (recentCommands.length === 0) return;
+    let next: number;
+    if (direction === -1) {
+      // ↑ — walk backwards through history.
+      if (historyIdx === null) {
+        next = recentCommands.length - 1;
+      } else if (historyIdx === 0) {
+        return;
+      } else {
+        next = historyIdx - 1;
+      }
+    } else {
+      // ↓ — walk forward, exit history at the bottom.
+      if (historyIdx === null) return;
+      if (historyIdx >= recentCommands.length - 1) {
+        setHistoryIdx(null);
+        setCommand("");
+        return;
+      }
+      next = historyIdx + 1;
+    }
+    setHistoryIdx(next);
+    setCommand(recentCommands[next] ?? "");
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void run();
+      return;
+    }
+    // Recall when the textarea is single-line; multi-line composition
+    // (Shift+Enter) keeps native arrow-key navigation.
+    const isSingleLine = !command.includes("\n");
+    if (e.key === "ArrowUp" && isSingleLine) {
+      e.preventDefault();
+      recall(-1);
+    } else if (e.key === "ArrowDown" && isSingleLine) {
+      e.preventDefault();
+      recall(1);
+    }
+  }
+
+  return (
+    <section>
+      <SectionHeader
+        title="Shell"
+        description="Run a one-shot command inside the running sandbox. Defaults to bash semantics; equivalent to the agent's exec tool."
+        actions={
+          <button
+            type="button"
+            onClick={clear}
+            disabled={history.length === 0}
+            className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 disabled:opacity-50"
+            title="Clear command history (does not affect the sandbox)"
+          >
+            <Trash2 size={12} />
+            Clear
+          </button>
+        }
+      />
+
+      {history.length === 0 && (
+        <p className="mb-2 rounded-md border border-dashed border-gray-800 px-3 py-3 text-center text-[11px] text-gray-500">
+          Try{" "}
+          <code className="rounded bg-gray-800 px-1 text-gray-300">ls /workspace</code>
+          {" · "}
+          <code className="rounded bg-gray-800 px-1 text-gray-300">python3 --version</code>
+          {" · "}
+          <code className="rounded bg-gray-800 px-1 text-gray-300">which libreoffice</code>
+          {"."}
+        </p>
+      )}
+
+      <div className="mb-2 max-h-[420px] space-y-2 overflow-y-auto">
+        {history.map((e) => (
+          <ShellEntryView key={e.id} entry={e} />
+        ))}
+      </div>
+
+      <div className="rounded-md border border-gray-800 bg-gray-950 p-2">
+        <div className="mb-1.5 flex items-center gap-2 text-[10px] text-gray-500">
+          <Terminal size={11} className="text-emerald-400" />
+          <span>workdir:</span>
+          <input
+            type="text"
+            value={workdir}
+            onChange={(e) => setWorkdir(e.target.value)}
+            spellCheck={false}
+            className="flex-1 rounded border border-gray-800 bg-gray-900 px-2 py-0.5 font-mono text-[11px] text-gray-200 outline-none focus:border-blue-700"
+          />
+        </div>
+        <div className="flex items-end gap-2">
+          <textarea
+            ref={inputRef}
+            value={command}
+            onChange={(e) => {
+              setCommand(e.target.value);
+              setHistoryIdx(null);
+            }}
+            onKeyDown={onKeyDown}
+            disabled={running}
+            spellCheck={false}
+            placeholder="echo hello"
+            rows={2}
+            className="flex-1 resize-y rounded border border-gray-800 bg-gray-900 px-2 py-1 font-mono text-[12px] leading-relaxed text-gray-100 outline-none placeholder:text-gray-600 focus:border-blue-700 disabled:opacity-60"
+          />
+          <button
+            type="button"
+            onClick={() => void run()}
+            disabled={running || command.trim().length === 0}
+            className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
+          >
+            {running ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Terminal size={12} />
+            )}
+            Run
+          </button>
+        </div>
+        <p className="mt-1 text-[10px] text-gray-600">
+          Enter to run · Shift+Enter for a newline · ↑/↓ to walk
+          history. Per-call timeout 60s (max 5 min); this surface is
+          for sanity checks, not long-running jobs.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+function ShellEntryView({ entry }: { entry: ShellEntry }) {
+  const { result, transportError } = entry;
+  const running = result === null && transportError === null;
+  const ok = result?.ok === true;
+  const failed = (result && !result.ok) || transportError != null;
+
+  return (
+    <div className="rounded-md border border-gray-800 bg-gray-900/50 px-3 py-2 font-mono text-[11px] leading-relaxed">
+      <div className="mb-1 flex items-center gap-2">
+        {running ? (
+          <Loader2 size={11} className="animate-spin text-gray-400" />
+        ) : ok ? (
+          <CheckCircle2 size={11} className="text-emerald-400" />
+        ) : (
+          <AlertTriangle size={11} className="text-rose-400" />
+        )}
+        <code className="flex-1 break-all text-gray-200">{entry.command}</code>
+        <span className="text-[9px] text-gray-600">cwd:{entry.workdir}</span>
+        {result && (
+          <span
+            className={
+              ok
+                ? "rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] text-emerald-300"
+                : "rounded bg-rose-900/40 px-1.5 py-0.5 text-[9px] text-rose-300"
+            }
+          >
+            exit {result.exitCode}
+            {result.timedOut && " · timed out"}
+            {" · "}
+            {(result.durationMs / 1000).toFixed(2)}s
+          </span>
+        )}
+      </div>
+      {transportError && (
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-rose-950/40 px-2 py-1 text-[11px] text-rose-200">
+          {transportError}
+        </pre>
+      )}
+      {result && (result.stdout || result.stderr) && (
+        <div className="space-y-1">
+          {result.stdout && (
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-gray-950 px-2 py-1 text-[11px] text-gray-200">
+              {result.stdout}
+            </pre>
+          )}
+          {result.stderr && (
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-amber-950/30 px-2 py-1 text-[11px] text-amber-200">
+              {result.stderr}
+            </pre>
+          )}
+        </div>
+      )}
+      {result && !result.stdout && !result.stderr && !failed && (
+        <p className="text-[10px] italic text-gray-500">(no output)</p>
+      )}
+    </div>
   );
 }
 

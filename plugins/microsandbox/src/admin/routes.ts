@@ -331,6 +331,72 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     }
   };
 
+  // POST /exec  body: { command, workdir?, timeoutMs? }
+  // Run a one-shot command inside the live sandbox. Used by the
+  // admin page's shell section so the user can sanity-check a
+  // build ("is libreoffice on PATH?") before publishing it.
+  //
+  // The agent surface already has `exec` as a tool; this route
+  // exists because the admin page is a human surface that should
+  // not need an agent loop in the middle. We cap the per-call
+  // timeout at 5 minutes to match the agent tool's default.
+  const ADMIN_EXEC_DEFAULT_TIMEOUT_MS = 60_000;
+  const ADMIN_EXEC_MAX_TIMEOUT_MS = 5 * 60_000;
+  const ADMIN_EXEC_OUTPUT_BYTE_CAP = 256 * 1024;
+
+  const postExec = async (req: Request, res: Response) => {
+    const c = ctx(req);
+    if (!c) {
+      res.status(401).json({ error: "no_user" });
+      return;
+    }
+    const runner = deps.getRunner();
+    if (!runner) {
+      res.status(503).json({ error: "runner_not_ready" });
+      return;
+    }
+    const body = req.body as
+      | { command?: unknown; workdir?: unknown; timeoutMs?: unknown }
+      | undefined;
+    const command = typeof body?.command === "string" ? body.command : "";
+    if (!command.trim()) {
+      res.status(400).json({ error: "missing_command" });
+      return;
+    }
+    const workdir =
+      typeof body?.workdir === "string" && body.workdir.length > 0
+        ? body.workdir
+        : undefined;
+    let timeoutMs: number = ADMIN_EXEC_DEFAULT_TIMEOUT_MS;
+    if (typeof body?.timeoutMs === "number" && Number.isFinite(body.timeoutMs)) {
+      timeoutMs = Math.max(1, Math.floor(body.timeoutMs));
+    }
+    if (timeoutMs > ADMIN_EXEC_MAX_TIMEOUT_MS) {
+      timeoutMs = ADMIN_EXEC_MAX_TIMEOUT_MS;
+    }
+
+    try {
+      const r = await runner.exec({ command, workdir, timeoutMs });
+      // Cap stdout/stderr so a runaway command can't pin the
+      // browser. Each capped to ~128 KB; agent has its own caps
+      // upstream of this for tool calls.
+      const half = Math.floor(ADMIN_EXEC_OUTPUT_BYTE_CAP / 2);
+      res.json({
+        ok: r.exitCode === 0 && !r.timedOut,
+        exitCode: r.exitCode,
+        stdout: capUtf8(r.stdout, half),
+        stderr: capUtf8(r.stderr, half),
+        durationMs: r.durationMs,
+        timedOut: r.timedOut,
+      });
+    } catch (err) {
+      res.status(500).json({
+        error: "exec_failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
   return {
     getSandboxfile,
     putSandboxfile,
@@ -338,5 +404,15 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     postBuilds,
     postPublish,
     postReset,
+    postExec,
   };
+}
+
+/** Truncate from the head so the most recent output stays visible.
+ *  Adds a marker line when truncation occurs. */
+function capUtf8(s: string, maxBytes: number): string {
+  const buf = Buffer.from(s, "utf8");
+  if (buf.byteLength <= maxBytes) return s;
+  const sliced = buf.subarray(buf.byteLength - maxBytes).toString("utf8");
+  return `[… ${buf.byteLength - maxBytes} bytes truncated …]\n${sliced}`;
 }

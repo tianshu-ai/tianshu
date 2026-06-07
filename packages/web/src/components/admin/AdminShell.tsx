@@ -115,7 +115,7 @@ export default function AdminShell() {
             element={
               pages.length > 0 ? (
                 <Navigate
-                  to={`${pages[0]!.pluginId}/${pages[0]!.pageId}`}
+                  to={`/admin/${pages[0]!.pluginId}/${pages[0]!.pageId}`}
                   replace
                 />
               ) : (
@@ -211,7 +211,7 @@ function AdminNavLink({ page }: { page: FlatAdminPage }) {
   const Icon = resolveLucideIcon(page.icon);
   return (
     <NavLink
-      to={`${page.pluginId}/${page.pageId}`}
+      to={`/admin/${page.pluginId}/${page.pageId}`}
       className={({ isActive }) =>
         `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
           isActive
