@@ -1,6 +1,23 @@
-import { Bot, Zap, ChevronDown, Hash, ShieldCheck } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import {
+  Bot,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Globe,
+  Hash,
+  ShieldCheck,
+  Zap,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
+import {
+  getSupportedLocales,
+  LOCALE_LABELS,
+  setLocale,
+  type Locale,
+} from "../lib/i18n";
+import { useLocale, useT } from "../hooks/useT";
 
 /**
  * Sidebar — visual layout mirrors the closed-source predecessor:
@@ -101,19 +118,11 @@ export default function Sidebar() {
         </p>
       </nav>
 
-      {/* Admin entry. Visible to every signed-in user in v0; once
-       *  JWT auth ports over from the closed-source repo we'll
-       *  gate this on `me.role === "admin"`. */}
-      <Link
-        to="/admin"
-        className="mx-2 mb-1 mt-2 flex items-center gap-2 rounded-md px-3 py-2 text-xs text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
-        title="Open admin shell"
-      >
-        <ShieldCheck size={12} className="flex-shrink-0 text-blue-400" />
-        <span>Admin</span>
-      </Link>
-
-      {/* Footer */}
+      {/* Footer (user pill).
+       *  Admin entry + language switcher live inside the popover
+       *  menu now — mirrors the closed-source predecessor's
+       *  GitHub/Linear-style profile dropdown so the sidebar isn't
+       *  cluttered with "Admin", "Settings", "Logout" links. */}
       <SidebarFooter />
     </aside>
   );
@@ -121,14 +130,54 @@ export default function Sidebar() {
 
 function SidebarFooter() {
   const me = useChatStore((s) => s.me);
+  const t = useT();
+  const locale = useLocale();
+  const locales = getSupportedLocales();
   const userId = me?.userId ?? "…";
   const initial = userId.slice(0, 1).toUpperCase();
-  const role = me?.devTenant ? "dev" : "member";
-  const subline = `${role} · ${me?.tenantId ?? ""}`;
+  const roleKey = me?.devTenant ? "user.role.dev" : "user.role.member";
+  const subline = `${t(roleKey)} · ${me?.tenantId ?? ""}`;
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [langOpen, setLangOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  // Close on outside click / Esc — standard popover dismissal.
+  // We only attach the listeners while the menu is open so
+  // un-mounting / collapsing the sidebar doesn't leak globals.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+        setLangOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        setLangOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
 
   return (
-    <div className="relative border-t border-gray-800">
-      <div className="flex w-full items-center gap-2 px-3 py-2 hover:bg-gray-800/60 transition-colors cursor-default">
+    <div className="relative border-t border-gray-800" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => setMenuOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        title={userId}
+        className="flex w-full items-center gap-2 px-3 py-2 hover:bg-gray-800/60 transition-colors"
+      >
         <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-[10px] font-semibold text-white">
           {initial}
         </div>
@@ -136,8 +185,93 @@ function SidebarFooter() {
           <div className="truncate text-[11px] text-gray-300">{userId}</div>
           <div className="truncate text-[10px] text-gray-600">{subline}</div>
         </div>
-        <ChevronDown size={12} className="text-gray-500" />
-      </div>
+        <ChevronDown
+          size={12}
+          className={`text-gray-500 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {menuOpen && (
+        <div
+          role="menu"
+          className="absolute bottom-full left-2 right-2 z-50 mb-1 rounded-md border border-gray-700 bg-gray-900 py-1 text-[12px] shadow-xl"
+        >
+          {/* Identity header inside menu, mirrors Linear/Discord style. */}
+          <div className="border-b border-gray-800 px-3 py-2">
+            <div className="truncate text-gray-200">{userId}</div>
+            <div className="truncate text-[10px] text-gray-600">{subline}</div>
+          </div>
+
+          {/* Admin entry. v0 shows it for everyone (no JWT yet);
+           *  when auth lands we'll gate on me.role === 'admin'. */}
+          <Link
+            to="/admin"
+            role="menuitem"
+            onClick={() => setMenuOpen(false)}
+            className="flex items-center gap-2 px-3 py-1.5 text-gray-200 hover:bg-gray-800"
+          >
+            <ShieldCheck size={14} className="text-gray-500" />
+            <span>{t("admin.title")}</span>
+          </Link>
+
+          {/* Language sub-menu — inline expansion keeps the popover
+           *  scoped instead of fanning out a second floating panel.
+           *  Pattern lifted from the closed-source predecessor's
+           *  GitHub-style profile dropdown. */}
+          <button
+            type="button"
+            role="menuitem"
+            aria-haspopup="menu"
+            aria-expanded={langOpen}
+            onClick={() => setLangOpen((v) => !v)}
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-gray-200 hover:bg-gray-800"
+          >
+            <Globe size={14} className="text-gray-500" />
+            <span className="flex-1 text-left">{t("lang.label")}</span>
+            <span className="text-[10px] text-gray-500">{LOCALE_LABELS[locale]}</span>
+            <ChevronRight
+              size={12}
+              className={`text-gray-500 transition-transform ${langOpen ? "rotate-90" : ""}`}
+            />
+          </button>
+          {langOpen && (
+            <ul role="menu" className="border-y border-gray-800 bg-gray-950/60">
+              {locales.map((l: Locale) => {
+                const active = l === locale;
+                return (
+                  <li
+                    key={l}
+                    role="menuitemradio"
+                    aria-checked={active}
+                    tabIndex={0}
+                    onClick={() => {
+                      setLocale(l);
+                      setLangOpen(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setLocale(l);
+                        setLangOpen(false);
+                      }
+                    }}
+                    className={`flex cursor-pointer items-center gap-2 py-1.5 pl-9 pr-3 outline-none ${
+                      active ? "text-blue-300" : "text-gray-300 hover:bg-gray-800"
+                    }`}
+                  >
+                    <span className="flex-1">{LOCALE_LABELS[l]}</span>
+                    {active && <Check size={13} className="text-blue-400" />}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {/* Sign-out is intentionally absent until JWT auth ports
+           *  over — there's nothing to sign out of yet. The menu's
+           *  shape leaves the slot ready. */}
+        </div>
+      )}
     </div>
   );
 }

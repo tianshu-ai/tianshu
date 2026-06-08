@@ -33,6 +33,7 @@ import { usePluginStore } from "../../stores/plugin-store";
 import { resolveComponent } from "../../lib/plugin-registry";
 import type { AdminPageProps } from "@tianshu/plugin-sdk/client";
 import type { PluginListEntry } from "../../lib/api";
+import { useT } from "../../hooks/useT";
 import McpServersPage from "./McpServersPage";
 
 interface ContributesAdminPage {
@@ -171,6 +172,8 @@ function AdminSidebar({
   pages: FlatAdminPage[];
   userLabel: string | null;
 }) {
+  const t = useT();
+  const shellTitle = t("admin.title");
   // Group consecutive pages sharing a group string. We keep insertion
   // order from the sort above so a plugin can bunch its pages even
   // when other plugins also contribute to "Plugins".
@@ -186,7 +189,7 @@ function AdminSidebar({
     <aside className="flex w-56 flex-shrink-0 flex-col border-r border-gray-800 bg-gray-900">
       <div className="flex h-14 items-center gap-2 border-b border-gray-800 px-4">
         <ShieldCheck size={16} className="text-blue-400" />
-        <span className="text-sm font-semibold text-gray-100">Admin</span>
+        <span className="text-sm font-semibold text-gray-100">{shellTitle}</span>
       </div>
 
       <nav className="flex-1 space-y-3 overflow-y-auto p-2">
