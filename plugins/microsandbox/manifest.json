@@ -34,14 +34,6 @@
         "component": "MicroSandboxAdminPage",
         "group": "Plugins",
         "order": 100
-      },
-      {
-        "id": "browser",
-        "displayName": "Browser",
-        "icon": "Globe",
-        "component": "BrowserAdminPage",
-        "group": "Plugins",
-        "order": 110
       }
     ],
     "sandboxes": [

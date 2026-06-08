@@ -103,8 +103,8 @@ export default function McpServersPage() {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-100">
             <Server size={18} className="text-brand-400" />
             MCP Servers
@@ -115,12 +115,15 @@ export default function McpServersPage() {
             enable/disable). User-configured servers are managed directly below.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        {/* flex-shrink-0 + whitespace-nowrap on each button so the
+         *  header description can wrap freely without compressing
+         *  the action buttons into 2-line boxes. */}
+        <div className="flex flex-shrink-0 items-center gap-2">
           <button
             type="button"
             onClick={fetchServers}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 rounded-md border border-gray-700 px-3 py-1.5 text-[12px] text-gray-300 hover:bg-gray-800/50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-700 px-3 py-1.5 text-[12px] text-gray-300 hover:bg-gray-800/50 disabled:opacity-50"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : undefined} />
             Refresh
@@ -128,7 +131,7 @@ export default function McpServersPage() {
           <button
             type="button"
             onClick={() => setEditing("new")}
-            className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500"
           >
             <Plus size={12} />
             Add server
