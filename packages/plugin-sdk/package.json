@@ -16,7 +16,10 @@
       "default": "./dist/client.js"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest run --passWithNoTests"
@@ -26,5 +29,8 @@
     "@types/react": "^19.0.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
   }
 }

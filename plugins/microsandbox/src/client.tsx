@@ -1,21 +1,28 @@
 // MicroSandbox plugin — client side.
 //
-// Two surfaces today:
-//   1. SandboxStatusPanel  — minimal liveness panel rendered in the
-//                            chat shell's right column (rightPanels).
-//   2. MicroSandboxAdminPage — Sandboxfile editor + builds list +
-//                              use / reset, rendered in the
-//                              chat shell's `/admin` surface
+// Surfaces:
+//   - MicroSandboxAdminPage  — Sandboxfile editor + builds list +
+//                              use / reset, rendered in the chat
+//                              shell's `/admin` surface
 //                              (adminPages contribution, ADR-0004 §12).
+//   - BrowserAdminPage       — live noVNC viewport + restart for the
+//                              browser sidecar (admin page, opt-in).
+//   - BrowserViewportPanel   — same noVNC iframe inlined in the chat
+//                              shell's right column so the user can
+//                              watch the agent drive the browser
+//                              without leaving the conversation.
 //
-// We bundle both into one client entry because manifests carry one
-// `client.entry` per plugin. Tree-shaking keeps the panel-only path
-// cheap when the admin shell isn't open.
+// (We used to ship a SandboxStatusPanel right-column widget too. It
+// was redundant once the admin page covered the same surface; gone
+// in N+5.4.)
+//
+// We bundle every component into one client entry because manifests
+// carry one `client.entry` per plugin. Tree-shaking keeps the
+// admin-only paths cheap when the chat shell is the only thing open.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
-  Box,
   CheckCircle2,
   Globe,
   Hammer,
@@ -124,129 +131,6 @@ function extractMetaString(
   return typeof v === "string" ? v : null;
 }
 
-// ─── right-panel: SandboxStatusPanel ───────────────────────────
-
-function SandboxStatusPanel(_props: PanelProps) {
-  const [status, setStatus] = useState<SandboxStatusPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-
-  const load = useCallback(async () => {
-    setRefreshing(true);
-    setError(null);
-    try {
-      const r = await fetchJson<SandboxStatusPayload>(`${ROUTE_BASE}/status`);
-      setStatus(r);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setRefreshing(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-200">
-          <Box size={14} className="text-brand-400" />
-          MicroSandbox
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={refreshing}
-          className="btn-ghost flex items-center gap-1 px-2 py-1 text-[11px] text-gray-400"
-          title="Re-fetch status"
-        >
-          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
-          Refresh
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-4 py-3 text-xs text-gray-300">
-        {error && (
-          <div className="mb-3 flex items-start gap-1.5 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-rose-300">
-            <AlertTriangle size={12} className="mt-px flex-shrink-0" />
-            <span className="break-all">{error}</span>
-          </div>
-        )}
-        {!status && !error && (
-          <div className="flex items-center gap-2 py-6 text-gray-500">
-            <Loader2 size={12} className="animate-spin" />
-            Loading…
-          </div>
-        )}
-        {status && <StatusBody status={status} />}
-        <p className="mt-3 text-[11px] leading-relaxed text-gray-500">
-          For Sandboxfile editing, builds, and use/reset open the
-          <a className="ml-1 text-brand-400 hover:underline" href="/admin/microsandbox/main">
-            admin page
-          </a>
-          .
-        </p>
-      </div>
-    </div>
-  );
-}
-
-function StatusBody({ status }: { status: SandboxStatusPayload }) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <StateIcon state={status.state} />
-        <span className="font-medium">
-          {status.runner === "nullable" ? "Not running" : status.state}
-        </span>
-        <span className="ml-auto rounded bg-gray-800 px-1.5 py-0.5 text-[10px] uppercase text-gray-400">
-          {status.runner}
-        </span>
-      </div>
-      {status.runner === "nullable" && status.lastError && (
-        <div className="rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-          {status.lastError}
-        </div>
-      )}
-      <dl className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-[11px]">
-        <Field label="Uptime">{formatUptime(status.uptimeMs)}</Field>
-        {extractMetaString(status.meta, "binaryPath") && (
-          <Field label="Binary">
-            <code className="break-all rounded bg-gray-800 px-1 text-gray-300">
-              {extractMetaString(status.meta, "binaryPath")}
-            </code>
-          </Field>
-        )}
-        {extractMetaString(status.meta, "projectDir") && (
-          <Field label="Project">
-            <code className="break-all rounded bg-gray-800 px-1 text-gray-300">
-              {extractMetaString(status.meta, "projectDir")}
-            </code>
-          </Field>
-        )}
-        {extractMetaString(status.meta, "sandboxName") && (
-          <Field label="Sandbox">
-            <code className="rounded bg-gray-800 px-1 text-gray-300">
-              {extractMetaString(status.meta, "sandboxName")}
-            </code>
-          </Field>
-        )}
-      </dl>
-    </div>
-  );
-}
-
-function StateIcon({ state }: { state: SandboxStatusPayload["state"] }) {
-  if (state === "ready" || state === "running") {
-    return <CheckCircle2 size={14} className="text-emerald-400" />;
-  }
-  if (state === "error") return <AlertTriangle size={14} className="text-rose-400" />;
-  return <Loader2 size={14} className="animate-spin text-gray-500" />;
-}
-
-// ─── admin page: MicroSandboxAdminPage ─────────────────────────
 
 function MicroSandboxAdminPage(_props: AdminPageProps) {
   // Bumping this counter signals "something changed in the sandbox
@@ -1559,17 +1443,17 @@ function BrowserAdminPage(_props: AdminPageProps) {
         </dl>
       )}
 
-      {/* Where the noVNC iframe lands once N+5.3 wires it up. We
-       *  reserve the slot now so the visual rhythm of the page
-       *  doesn't jump when chromium ships. resize=scale: Xvfb is
-       *  pinned to 1280x800 so RandR remote resize is a no-op;
-       *  scaling on the client keeps the full frame visible and
-       *  downscales to whatever width the iframe ends up at. */}
+      {/* noVNC iframe for the admin inspection view. resize=scale
+       *  + a fixed 16:10 aspect ratio: this page is for poking at
+       *  the live browser, not driving an agent through it, so we
+       *  don't run the host-side ResizeObserver / xrandr loop here.
+       *  The chat-shell BrowserViewportPanel (above) is where live
+       *  resize lives. */}
       {data?.ready && data.ports.vnc ? (
         <div className="mt-4 overflow-hidden rounded-md border border-gray-800">
           <iframe
             title="Browser viewport"
-            src={`http://localhost:${data.ports.vnc}/vnc_lite.html?autoconnect=1&resize=scale`}
+            src={`http://localhost:${data.ports.vnc}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`}
             className="aspect-[16/10] w-full bg-gray-950"
           />
         </div>
@@ -1595,18 +1479,43 @@ function BrowserAdminPage(_props: AdminPageProps) {
 // Wiring: the BrowserSidecar reports the host port that supervisor's
 // websockify is forwarded to. We poll /browser/status for it (same
 // shape as the admin page uses) and slot it into an iframe pointing
-// at noVNC's `vnc_lite.html?autoconnect=1&resize=scale`. When the
-// `resize=scale` (not `remote`): Xvfb in browser.yaml is pinned to
-// 1280x800, so server-side RandR resize is a no-op and tall narrow
-// iframes (right column ~780px) clipped the right half of the
-// viewport. Client-side scaling keeps the whole 1280x800 frame
-// visible, downscaled to whatever the iframe is sized at.
-// browser stack isn't running yet, the panel shows an empty state
-// with a deep link to the admin Browser page.
+// at noVNC's `vnc.html?autoconnect=true&resize=scale&reconnect=true`.
+// When the browser stack isn't running yet, the panel shows an empty
+// state with a deep link to the admin Browser page.
+//
+// `resize=scale` (not `remote`): the closed-source predecessor's
+// BrowserPanel ran the same way and copying that decision pays off
+// because it is the more forgiving combination. Logic, briefly:
+//
+//   - We drive the *real* Xvfb framebuffer from the host with
+//     `xrandr --fb` to match the iframe's pixel size, so chromium
+//     gets a 1:1 viewport and page content reflows correctly.
+//   - noVNC's client-side `scale` then becomes a no-op in the
+//     happy path; when the framebuffer and iframe drift by a few
+//     pixels (during a drag, after a layout settle), scaling
+//     keeps the canvas stretched edge-to-edge with no black bars
+//     or right-side cropping. `resize=remote` would instead ask
+//     the noVNC server to RandR-resize, but our Xvfb only has the
+//     initial 2400x1800 framebuffer mode — the request would either
+//     no-op or fight the host-driven xrandr.
+//   - `reconnect=true` so the iframe auto-recovers when a sandbox
+//     reset / supervisord restart drops websockify.
+//   - We use the full `vnc.html` (not the lite variant) because
+//     it ships the toolbar / settings / clipboard helpers users
+//     occasionally need; toolbar collapses to a thin strip.
+//
+// Why three resize layers — see browser-routes.ts postBrowserResize.
+// In short: xrandr keeps Xvfb sized to the iframe so chromium
+// fills it; wmctrl re-fits the chrome window inside the new
+// framebuffer; Playwright MCP's browser_resize tells chromium to
+// re-layout the *page viewport* (which is what makes pages reflow
+// to fit the new width — X11 alone won't do that).
 
 function BrowserViewportPanel(_props: PanelProps) {
   const [data, setData] = useState<BrowserStatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -1633,6 +1542,17 @@ function BrowserViewportPanel(_props: PanelProps) {
     return () => window.clearInterval(id);
   }, [data?.ready, load]);
 
+  // Drive the server-side three-layer resize from this panel's
+  // actual rendered size. We keep this self-contained instead of
+  // wiring through the chat shell because the panel is the only
+  // consumer that cares about pixel-perfect viewport sync, and the
+  // chat shell already throttles its own layout work elsewhere.
+  useDebouncedViewportSync({
+    container: containerRef,
+    enabled: !!(data?.ready && data.ports.vnc),
+    onDraggingChange: setDragging,
+  });
+
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2">
@@ -1656,26 +1576,143 @@ function BrowserViewportPanel(_props: PanelProps) {
         </div>
       )}
 
-      {data?.ready && data.ports.vnc ? (
-        <iframe
-          title="Browser viewport"
-          src={`http://localhost:${data.ports.vnc}/vnc_lite.html?autoconnect=1&resize=scale`}
-          className="min-h-0 flex-1 bg-gray-950"
-        />
-      ) : (
-        <div className="flex flex-1 items-center justify-center px-6 text-center text-[12px] text-gray-500">
-          {data
-            ? data.hint ?? "Browser stack not running."
-            : "Loading…"}
-        </div>
-      )}
+      <div
+        ref={containerRef}
+        className="relative min-h-0 flex-1 bg-gray-950"
+      >
+        {data?.ready && data.ports.vnc ? (
+          <iframe
+            title="Browser viewport"
+            src={`http://localhost:${data.ports.vnc}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`}
+            // Disable iframe pointer events while the user drags
+            // the chat-shell panel divider — otherwise noVNC swallows
+            // the cursor and the resize feels stuck.
+            style={{ pointerEvents: dragging ? "none" : undefined }}
+            className="absolute inset-0 h-full w-full bg-gray-950"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-gray-500">
+            {data
+              ? data.hint ?? "Browser stack not running."
+              : "Loading…"}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
+/**
+ * Watches a container's box, debounces resize events, and POSTs the
+ * latest size to `/browser/resize` once the user stops dragging.
+ *
+ * Implementation notes copied from the closed-source tianshu
+ * BrowserPanel:
+ *  - We listen to BOTH pointer and mouse events because the chat-shell
+ *    panel divider uses mousedown/move/up while pinch-zoom uses
+ *    pointer events.
+ *  - While a button is down we record the latest size but never send
+ *    it; on release we wait QUIET_MS for layout to settle, then send
+ *    once. This avoids hammering the backend (xrandr + wmctrl +
+ *    Playwright MCP ≈ 200ms each per call) during a continuous drag.
+ *  - We cap DPR at 2 because retina + a wide panel can balloon to
+ *    framebuffer sizes Xvfb's `-screen` ceiling will silently
+ *    truncate.
+ */
+function useDebouncedViewportSync(opts: {
+  container: React.RefObject<HTMLDivElement | null>;
+  enabled: boolean;
+  onDraggingChange: (b: boolean) => void;
+}): void {
+  const { container, enabled, onDraggingChange } = opts;
+  useEffect(() => {
+    if (!enabled) return;
+    const el = container.current;
+    if (!el) return;
+
+    const QUIET_MS = 300;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let dragging = false;
+    let pending: { w: number; h: number } | null = null;
+    let lastSent = { w: 0, h: 0 };
+
+    const post = (w: number, h: number) => {
+      void fetch(`${ROUTE_BASE}/browser/resize`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ width: w, height: h }),
+      }).catch(() => {
+        // Best-effort — a resize that doesn't reach the server
+        // just means the viewport stays at its last value, which
+        // noVNC's client-side scaling renders fine.
+      });
+    };
+
+    const flush = () => {
+      if (!pending) return;
+      const { w, h } = pending;
+      if (w < 320 || h < 240) return; // panel hidden / collapsed
+      if (
+        Math.abs(w - lastSent.w) < 8 &&
+        Math.abs(h - lastSent.h) < 8
+      ) {
+        return;
+      }
+      lastSent = { w, h };
+      pending = null;
+      post(w, h);
+    };
+
+    const scheduleFlush = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = null;
+        if (dragging) return; // still dragging — wait for release
+        flush();
+      }, QUIET_MS);
+    };
+
+    const onResize = (entries: ResizeObserverEntry[]) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const w = Math.round(entry.contentRect.width * dpr);
+      const h = Math.round(entry.contentRect.height * dpr);
+      pending = { w, h };
+      scheduleFlush();
+    };
+
+    const ro = new ResizeObserver(onResize);
+    ro.observe(el);
+
+    const setDragging = (v: boolean) => {
+      dragging = v;
+      onDraggingChange(v);
+      if (!v) scheduleFlush();
+    };
+    const onDown = () => setDragging(true);
+    const onUp = () => setDragging(false);
+    window.addEventListener("mousedown", onDown);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+
+    return () => {
+      ro.disconnect();
+      if (timer) clearTimeout(timer);
+      window.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [container, enabled, onDraggingChange]);
+}
+
 const clientExports: PluginClientExports = {
   components: {
-    SandboxStatusPanel: SandboxStatusPanel as PluginClientExports["components"][string],
     BrowserViewportPanel:
       BrowserViewportPanel as PluginClientExports["components"][string],
     MicroSandboxAdminPage:

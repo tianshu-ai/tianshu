@@ -75,7 +75,7 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
               </div>
             ) : showStreamingPlaceholder ? (
               <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3.5 py-2.5">
-                <span className="inline-block h-4 w-1 animate-pulse bg-gray-500 align-middle" />
+                <TypingDots />
               </div>
             ) : null}
 
@@ -250,4 +250,33 @@ function shortValue(v: unknown): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "\n…(truncated)";
+}
+
+/** Three-dot typing indicator. Each dot phases the same animation
+ *  by 150ms so it reads as "wave" rather than "blink". CSS sits
+ *  inline so we don't need to touch tailwind.config or pull in a
+ *  one-off keyframe just for this. */
+function TypingDots() {
+  return (
+    <span
+      className="inline-flex items-center gap-1"
+      aria-label="assistant is typing"
+    >
+      <Dot delay="0ms" />
+      <Dot delay="150ms" />
+      <Dot delay="300ms" />
+    </span>
+  );
+}
+
+function Dot({ delay }: { delay: string }) {
+  return (
+    <span
+      className="inline-block h-1.5 w-1.5 rounded-full bg-gray-500"
+      style={{
+        animation: "tianshuTypingDot 1.2s ease-in-out infinite",
+        animationDelay: delay,
+      }}
+    />
+  );
 }

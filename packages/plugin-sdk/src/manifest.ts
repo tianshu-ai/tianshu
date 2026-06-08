@@ -84,6 +84,16 @@ export interface ContributesV1 {
    */
   tools?: ToolContribution[];
   /**
+   * Dynamic *toolsets* the plugin contributes — most commonly an
+   * MCP server reflected through the SDK's `McpToolset`. Each entry
+   * names a `ToolsetProvider` exported from
+   * `exports.toolsetProviders`. The host calls
+   * `provider.listTools()` every turn so the visible tool surface
+   * can grow / shrink as upstream MCP servers come online or
+   * disappear, without re-activating the plugin.
+   */
+  toolsets?: ToolsetContribution[];
+  /**
    * Skills (markdown how-to files) the plugin ships. Each skill is
    * advertised to the agent by name + description; the agent calls
    * the host's `load_skill` meta-tool to pull the body into context
@@ -128,6 +138,17 @@ export interface ToolContribution {
    *  pi-ai schema, not here — we don't enforce a 1:1 between this
    *  contribution id and the schema name. */
   module: string;
+}
+
+export interface ToolsetContribution {
+  /** Local id, surfaced in the admin MCP servers view + plugin
+   *  manager. */
+  id: string;
+  /** Key in the plugin's server-exports `toolsetProviders` map. */
+  module: string;
+  /** Optional human label shown in the admin MCP servers view.
+   *  Defaults to `id`. */
+  displayName?: string;
 }
 
 export interface SkillContribution {

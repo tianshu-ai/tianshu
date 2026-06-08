@@ -20,6 +20,7 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  BrowserSidecar,
   PluginContext,
   PluginRouteHandler,
   PluginServerExports,
@@ -27,9 +28,6 @@ import type {
 } from "@tianshu/plugin-sdk";
 import { buildRunner, type BuiltRunner } from "./runner/index.js";
 import {
-  BrowserNavigateTool,
-  BrowserScreenshotTool,
-  BrowserSnapshotTool,
   BuildSandboxTool,
   ExecTool,
   GetSandboxStatusTool,
@@ -37,6 +35,7 @@ import {
   ResetSandboxTool,
   UpdateSandboxConfigTool,
   UseSandboxBuildTool,
+  makeBrowserToolset,
 } from "./tools/index.js";
 import { buildAdminRoutes } from "./admin/routes.js";
 import { buildBrowserRoutes } from "./admin/browser-routes.js";
@@ -170,6 +169,16 @@ export default {
       sandboxName: active.sandboxName,
     });
 
+    // The Playwright MCP toolset is wired regardless of whether
+    // the runner currently exposes a browser sidecar — listTools()
+    // simply returns [] until the sandbox starts emitting an MCP
+    // host port. Refresh on demand from the host /api/mcp/servers
+    // route or implicitly each agent turn.
+    const browserToolset = makeBrowserToolset({
+      getSidecar: (): BrowserSidecar | null => getRunner()?.browser ?? null,
+      log: ctx.log,
+    });
+
     return {
       sandboxes: {
         MicroSandboxRunner: built.runner,
@@ -182,9 +191,9 @@ export default {
         BuildSandboxTool,
         ListSandboxBuildsTool,
         UseSandboxBuildTool,
-        BrowserNavigateTool,
-        BrowserSnapshotTool,
-        BrowserScreenshotTool,
+      },
+      toolsetProviders: {
+        BrowserToolset: browserToolset,
       },
       routes: {
         status: statusRoute,
@@ -198,6 +207,7 @@ export default {
         postExec: adminRoutes.postExec,
         getBrowserStatus: browserRoutes.getBrowserStatus,
         postBrowserRestart: browserRoutes.postBrowserRestart,
+        postBrowserResize: browserRoutes.postBrowserResize,
       },
     };
   },

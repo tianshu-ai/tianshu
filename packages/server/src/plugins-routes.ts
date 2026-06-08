@@ -11,6 +11,8 @@ import express, { Router } from "express";
 import {
   GlobalOps,
   loadTenantConfig,
+  type McpServerEntry,
+  McpManager,
   TenantConfigForbiddenFieldError,
   writeTenantConfig,
   type TenantContext,
@@ -33,6 +35,27 @@ export interface PluginsRouterOpts {
    * by leaving it undefined.
    */
   catalog?: CatalogClient;
+  /**
+   * Host-owned MCP manager. Optional so tests skipping MCP routes
+   * still mount this router cleanly. When omitted the
+   * `/mcp/servers` POST/PATCH/DELETE routes return 503.
+   */
+  mcpManager?: McpManager;
+  /**
+   * Optional callback invoked when a plugin's enabled/disabled
+   * state changes via PATCH /plugins/:id. The host wires this to
+   * (a) broadcast a `plugins_changed` WS event so chat shells
+   *     redraw + the agent gets told its tool surface moved, and
+   * (b) append a synthetic system message into the user's active
+   *     chat session so the LLM stops hallucinating tools that
+   *     just got disabled.
+   * Missing in tests — they don't run a chat surface.
+   */
+  onPluginsChanged?: (
+    tenantId: string,
+    delta: import("./chat/ws-protocol.js").PluginsChangedDelta,
+    direction: "enabled" | "disabled",
+  ) => void;
   /**
    * ADR-0004 §16: optional hook called by `POST /api/plugins/refresh`
    * before invalidating the registry cache. The host wires this up
@@ -124,6 +147,210 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
+  // ─── MCP servers view (host-owned) ──────────────────────────
+  //
+  // GET   /api/mcp/servers       — list every MCP server visible to the
+  //                                tenant. Each entry has `source:
+  //                                "plugin" | "user"` so the admin UI
+  //                                can group + decide what's editable.
+  // POST  /api/mcp/servers       — add a user-owned server. Body:
+  //                                { id, url, displayName?, prefix?,
+  //                                  upstreamHost?, enabled? }.
+  // PATCH /api/mcp/servers/:id   — update a user-owned server.
+  //                                Plugin-owned ids reject 403.
+  // DELETE /api/mcp/servers/:id  — remove a user-owned server.
+  //
+  // Plugin-owned toolsets are read-only here — the admin UI tells
+  // the user to enable/disable the owning plugin instead.
+  r.get("/mcp/servers", async (req, res, next) => {
+    if (!req.ctx) {
+      res.status(500).json({ error: "no_ctx" });
+      return;
+    }
+    try {
+      await registry.ensureForTenant(req.ctx.tenant);
+      const tenantId = req.ctx.tenant.tenantId;
+      // First-pass list — includes whatever the toolsets had cached
+      // from prior calls / activate-time refresh.
+      let tsets = registry.toolsetsForTenant(tenantId);
+      // Opportunistic refresh of stale entries: the toolset list
+      // we get back may be empty / errored because the upstream
+      // (e.g. sandbox MCP server) wasn't reachable at activate
+      // time. Re-probe in parallel, capped by a short deadline so
+      // the page render isn't blocked indefinitely. Anything that
+      // fails again surfaces with `lastError`.
+      const stale: Array<Promise<unknown>> = [];
+      for (const ts of tsets) {
+        const snap = ts.snapshot;
+        const isStale =
+          !snap ||
+          snap.lastError !== undefined ||
+          (snap.tools.length === 0 && (snap.endpoint === undefined || snap.lastRefreshAt === undefined));
+        if (!isStale) continue;
+        // Resolve the live ToolsetProvider via PluginRegistry / McpManager.
+        const provider = registry.toolsetProviderFor(ts, tenantId);
+        const refreshFn = (provider as { refresh?: () => Promise<void> } | null)
+          ?.refresh;
+        if (typeof refreshFn === "function") {
+          stale.push(
+            refreshFn.call(provider).catch(() => undefined),
+          );
+        }
+      }
+      if (stale.length > 0) {
+        await Promise.race([
+          Promise.all(stale),
+          new Promise((r2) => setTimeout(r2, 4000)),
+        ]);
+        // Re-pull the list so we reflect fresh snapshots.
+        tsets = registry.toolsetsForTenant(tenantId);
+      }
+      res.json({ servers: tsets });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  r.post("/mcp/servers", express.json(), async (req, res, next) => {
+    if (!req.ctx) {
+      res.status(500).json({ error: "no_ctx" });
+      return;
+    }
+    if (!opts.mcpManager) {
+      res.status(503).json({ error: "mcp_manager_unavailable" });
+      return;
+    }
+    try {
+      const entry = parseUserEntry(req.body, { existingId: undefined });
+      if ("error" in entry) {
+        res.status(400).json(entry);
+        return;
+      }
+      const tenantId = req.ctx.tenant.tenantId;
+      const cfg = loadTenantConfig(tenantId, ops.homeDir);
+      const servers = [...(cfg.mcp?.servers ?? [])];
+      if (servers.some((s) => s.id === entry.value.id)) {
+        res.status(409).json({ error: "id_in_use", id: entry.value.id });
+        return;
+      }
+      servers.push(entry.value);
+      writeTenantConfig(
+        tenantId,
+        { ...cfg, mcp: { ...(cfg.mcp ?? {}), servers } },
+        ops.homeDir,
+      );
+      opts.mcpManager.reload(tenantId);
+      const tsets = registry.toolsetsForTenant(tenantId);
+      res.json({ servers: tsets });
+    } catch (err) {
+      if (err instanceof TenantConfigForbiddenFieldError) {
+        res.status(400).json({ error: "forbidden_field", message: err.message });
+        return;
+      }
+      next(err);
+    }
+  });
+
+  r.patch("/mcp/servers/:id", express.json(), async (req, res, next) => {
+    if (!req.ctx) {
+      res.status(500).json({ error: "no_ctx" });
+      return;
+    }
+    if (!opts.mcpManager) {
+      res.status(503).json({ error: "mcp_manager_unavailable" });
+      return;
+    }
+    try {
+      const id = req.params.id;
+      const tenantId = req.ctx.tenant.tenantId;
+      const cfg = loadTenantConfig(tenantId, ops.homeDir);
+      const servers = [...(cfg.mcp?.servers ?? [])];
+      const idx = servers.findIndex((s) => s.id === id);
+      if (idx === -1) {
+        res.status(404).json({ error: "server_not_found", id });
+        return;
+      }
+      const merged = parseUserEntry(
+        { ...servers[idx], ...(req.body as Record<string, unknown>), id },
+        { existingId: id },
+      );
+      if ("error" in merged) {
+        res.status(400).json(merged);
+        return;
+      }
+      servers[idx] = merged.value;
+      writeTenantConfig(
+        tenantId,
+        { ...cfg, mcp: { ...(cfg.mcp ?? {}), servers } },
+        ops.homeDir,
+      );
+      opts.mcpManager.reload(tenantId);
+      const tsets = registry.toolsetsForTenant(tenantId);
+      res.json({ servers: tsets });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  r.delete("/mcp/servers/:id", async (req, res, next) => {
+    if (!req.ctx) {
+      res.status(500).json({ error: "no_ctx" });
+      return;
+    }
+    if (!opts.mcpManager) {
+      res.status(503).json({ error: "mcp_manager_unavailable" });
+      return;
+    }
+    try {
+      const id = req.params.id;
+      const tenantId = req.ctx.tenant.tenantId;
+      const cfg = loadTenantConfig(tenantId, ops.homeDir);
+      const servers = (cfg.mcp?.servers ?? []).filter((s) => s.id !== id);
+      writeTenantConfig(
+        tenantId,
+        { ...cfg, mcp: { ...(cfg.mcp ?? {}), servers } },
+        ops.homeDir,
+      );
+      opts.mcpManager.reload(tenantId);
+      const tsets = registry.toolsetsForTenant(tenantId);
+      res.json({ servers: tsets });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Force a refresh on one toolset for this tenant. Works for
+  // both user-configured and plugin-contributed servers — the
+  // admin UI doesn't know (or care) which is which, only that a
+  // "Refresh" click should re-probe the upstream.
+  r.post("/mcp/servers/:id/refresh", async (req, res, next) => {
+    if (!req.ctx) {
+      res.status(500).json({ error: "no_ctx" });
+      return;
+    }
+    try {
+      await registry.ensureForTenant(req.ctx.tenant);
+      const id = req.params.id;
+      const tenantId = req.ctx.tenant.tenantId;
+      const tsets = registry.toolsetsForTenant(tenantId);
+      const target = tsets.find((t) => t.id === id);
+      if (!target) {
+        res.status(404).json({ error: "server_not_found", id });
+        return;
+      }
+      const provider = registry.toolsetProviderFor(target, tenantId);
+      const refreshFn = (provider as { refresh?: () => Promise<void> } | null)
+        ?.refresh;
+      if (typeof refreshFn === "function") {
+        await refreshFn.call(provider);
+      }
+      const fresh = registry.toolsetsForTenant(tenantId);
+      res.json({ servers: fresh });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   // ADR-0004 §16: explicit re-discovery. Useful after a manual
   // catalog install, a `git pull` that adds a new builtin in dev, or
   // any time the on-disk plugin set changed without a config edit.
@@ -179,13 +406,17 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       // builtin or tenant). Disable is allowed even for unknown ids —
       // it's harmless and lets users prune stale entries from config.
       await registry.ensureForTenant(req.ctx.tenant);
-      const known = registry
+      const knownEntry = registry
         .listForTenant(tenantId)
-        .some((e) => e.manifest.id === pluginId);
-      if (body.enabled && !known) {
+        .find((e) => e.manifest.id === pluginId);
+      if (body.enabled && !knownEntry) {
         res.status(404).json({ error: "plugin_not_found", pluginId });
         return;
       }
+
+      // Capture the previous state BEFORE we mutate so we can
+      // diff for the plugins_changed notification below.
+      const wasEnabled = knownEntry?.state === "active";
 
       // Mutate the persisted tenant config.
       const cfg = loadTenantConfig(tenantId, ops.homeDir);
@@ -200,6 +431,36 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
 
       const fresh = ops.open(tenantId);
       const list = await listPluginsForTenant(registry, fresh);
+
+      // Notify the chat surface so (a) the WS gets a
+      // `plugins_changed` event and (b) the active session gets
+      // told the agent's tool list moved. We compute the delta from
+      // the manifest — contributes.tools/toolsets is the source of
+      // truth for what tools come and go with this plugin.
+      if (opts.onPluginsChanged && knownEntry && wasEnabled !== body.enabled) {
+        const delta: import("./chat/ws-protocol.js").PluginsChangedDelta = {
+          pluginId,
+          displayName: knownEntry.manifest.displayName ?? pluginId,
+          tools:
+            knownEntry.manifest.contributes?.tools?.map((t) => t.id) ?? [],
+          toolsets:
+            knownEntry.manifest.contributes?.toolsets?.map((t) => t.id) ?? [],
+        };
+        try {
+          opts.onPluginsChanged(
+            tenantId,
+            delta,
+            body.enabled ? "enabled" : "disabled",
+          );
+        } catch (err) {
+          // Notifications are non-fatal — the PATCH itself succeeded.
+          console.warn(
+            `[plugins-routes] onPluginsChanged threw: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
       res.json({ plugins: list });
     } catch (err) {
       if (err instanceof TenantConfigForbiddenFieldError) {
@@ -238,4 +499,53 @@ export async function listPluginsForTenant(
       missing: e.capabilityInfo.missing,
     },
   }));
+}
+
+// Validation for the body of POST/PATCH /mcp/servers. Returns either
+// `{ value: <entry> }` or `{ error: <code>, message: ... }` so the
+// caller can hand the latter straight to `res.json`.
+function parseUserEntry(
+  raw: unknown,
+  ctx: { existingId: string | undefined },
+): { value: McpServerEntry } | { error: string; message: string } {
+  if (!raw || typeof raw !== "object") {
+    return { error: "bad_body", message: "expected JSON object" };
+  }
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === "string" ? r.id.trim() : "";
+  if (!id) return { error: "bad_id", message: "id is required" };
+  if (!/^[a-z0-9][a-z0-9-]{0,30}$/.test(id)) {
+    return {
+      error: "bad_id",
+      message: "id must be 1-31 chars: lowercase letters, digits, dashes",
+    };
+  }
+  if (ctx.existingId !== undefined && id !== ctx.existingId) {
+    return {
+      error: "id_immutable",
+      message: "id cannot be changed via PATCH",
+    };
+  }
+  const url = typeof r.url === "string" ? r.url.trim() : "";
+  if (!url) return { error: "bad_url", message: "url is required" };
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "http:" && u.protocol !== "https:") {
+      return { error: "bad_url", message: "url must be http(s)" };
+    }
+  } catch {
+    return { error: "bad_url", message: "url is not a valid URL" };
+  }
+  const entry: McpServerEntry = { id, url };
+  if (typeof r.displayName === "string" && r.displayName.length) {
+    entry.displayName = r.displayName.slice(0, 80);
+  }
+  if (typeof r.prefix === "string") {
+    entry.prefix = r.prefix.slice(0, 32);
+  }
+  if (typeof r.upstreamHost === "string" && r.upstreamHost.length) {
+    entry.upstreamHost = r.upstreamHost.slice(0, 200);
+  }
+  if (typeof r.enabled === "boolean") entry.enabled = r.enabled;
+  return { value: entry };
 }

@@ -24,7 +24,19 @@ export type ServerEvent =
       summarisedCount: number;
       keptCount: number;
       durationMs: number;
+    }
+  | {
+      type: "plugins_changed";
+      enabled: PluginsChangedDelta[];
+      disabled: PluginsChangedDelta[];
     };
+
+export interface PluginsChangedDelta {
+  pluginId: string;
+  displayName: string;
+  tools: string[];
+  toolsets: string[];
+}
 
 type EventType = ServerEvent["type"];
 type Handler<T extends EventType> = (msg: Extract<ServerEvent, { type: T }>) => void;

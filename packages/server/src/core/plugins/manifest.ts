@@ -182,6 +182,9 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
   if ("tools" in raw) {
     out.tools = parseArray(raw.tools, "tools", acc, parseTool);
   }
+  if ("toolsets" in raw) {
+    out.toolsets = parseArray(raw.toolsets, "toolsets", acc, parseToolset);
+  }
   if ("skills" in raw) {
     out.skills = parseArray(raw.skills, "skills", acc, parseSkill);
   }
@@ -267,6 +270,23 @@ function parseTool(raw: unknown, ctx: string, acc: Acc): ToolContribution | null
   const moduleKey = expectString(raw, "module", acc, ctx);
   if (id == null || moduleKey == null) return null;
   return { id, module: moduleKey };
+}
+
+function parseToolset(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): import("@tianshu/plugin-sdk").ToolsetContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const moduleKey = expectString(raw, "module", acc, ctx);
+  if (id == null || moduleKey == null) return null;
+  const displayName =
+    "displayName" in raw ? expectString(raw, "displayName", acc, ctx) ?? undefined : undefined;
+  return { id, module: moduleKey, displayName };
 }
 
 function parseSkill(raw: unknown, ctx: string, acc: Acc): SkillContribution | null {

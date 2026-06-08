@@ -19,6 +19,7 @@ import {
   DEV_TENANT_ID,
   DEV_USER_ID,
   GlobalOps,
+  McpManager,
   getDefaultModel,
   listModels,
   loadGlobalConfig,
@@ -30,6 +31,8 @@ import { CatalogClient } from "./catalog.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { attachChatHandler } from "./chat/handler.js";
+import { appendMessage, ensureActiveSession } from "./chat/messages.js";
+import type { PluginsChangedDelta } from "./chat/ws-protocol.js";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
 // both projects can run side-by-side on the same dev machine without
@@ -55,8 +58,10 @@ const pluginsRoot = process.env.TIANSHU_PLUGINS_DIR
   : defaultPluginsRoot;
 
 const reloadingResolver = await buildReloadingBuiltinResolver({ pluginsRoot });
+const mcpManager = new McpManager();
 const pluginRegistry = new PluginRegistry({
   resolver: reloadingResolver,
+  mcpManager,
 });
 
 // Catalog client — fetches the list of installable plugins from the
@@ -137,27 +142,75 @@ app.get("/api/models", (req, res) => {
   res.json({ models: list, defaultModel: req.ctx.tenant.config.defaultModel ?? null });
 });
 
+const server = createServer(app);
+
+// Chat over WebSocket. Dev mode pins to the bootstrap tenant + user;
+// JWT-mode auth lands in a later PR and will replace the resolver.
+const wss = new WebSocketServer({ server, path: "/ws" });
+
 // /api/plugins (GET + PATCH) — see ./plugins-routes.ts.
 //
 // ADR-0003 §8 originally reserved `PATCH /api/plugins/:id` for v1; we
 // ship it in v0 so the bundled Plugin Manager UI can flip
 // enable/disable without asking the user to hand-edit
 // `<tenant>/config.json`.
+//
+// We mount this router AFTER the WebSocketServer is built so the
+// onPluginsChanged hook can broadcast `plugins_changed` to every
+// open chat shell + append a synthetic system message into the
+// matching tenant's active session.
 app.use(
   "/api",
   buildPluginsRouter({
     registry: pluginRegistry,
     ops: globalOps,
     catalog: catalogClient,
+    mcpManager,
     reloadResolver: () => reloadingResolver.reload(),
+    onPluginsChanged: (tenantId, delta, direction) => {
+      // (a) tell every open chat shell so the UI can redraw
+      //     plugin manager state + show a transient banner.
+      const wsPayload = JSON.stringify({
+        type: "plugins_changed",
+        enabled: direction === "enabled" ? [delta] : [],
+        disabled: direction === "disabled" ? [delta] : [],
+      });
+      for (const client of wss.clients) {
+        // We don't yet do per-tenant socket bookkeeping (everyone
+        // is the dev tenant in v0); when JWT auth lands the
+        // wss.clients iteration grows a tenant filter.
+        if ((client as { readyState?: number }).readyState === 1) {
+          try {
+            (client as { send: (s: string) => void }).send(wsPayload);
+          } catch {
+            // best-effort
+          }
+        }
+      }
+      // (b) append a synthetic message to the user's active session
+      //     so the next agent turn's history reflects the new
+      //     reality (model can't keep hallucinating tools that
+      //     just got removed).
+      try {
+        const ctx = globalOps.open(tenantId);
+        const session = ensureActiveSession(ctx, DEV_USER_ID);
+        const text = renderPluginsChangedNote(delta, direction);
+        // Use role="user" so re-hydration treats it as part of the
+        // turn log (the "user" path is the only one that survives
+        // for legacy plain-text rows). The bracketed prefix tells
+        // both the model and any future routing layer that this
+        // is a system note, not a real user message.
+        appendMessage(ctx, session, { role: "user", content: text });
+      } catch (err) {
+        console.warn(
+          `[onPluginsChanged] failed to append session note: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    },
   }),
 );
-
-const server = createServer(app);
-
-// Chat over WebSocket. Dev mode pins to the bootstrap tenant + user;
-// JWT-mode auth lands in a later PR and will replace the resolver.
-const wss = new WebSocketServer({ server, path: "/ws" });
 wss.on("connection", async (socket) => {
   // Resolve identity. Today: dev tenant + dev user.
   const tenantId = DEV_TENANT_ID;
@@ -218,3 +271,44 @@ const shutdown = (signal: string) => {
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+/**
+ * Format a one-line system note about a plugin enable/disable for
+ * the agent's history log. We use a `[plugin-system]` prefix so the
+ * model (and any future log filter) can spot these without a
+ * structured-message round trip; the wording is deliberately direct
+ * so the model updates its tool-availability mental model on the
+ * next turn.
+ *
+ * Examples:
+ *   [plugin-system] Plugin "MicroSandbox" was disabled. The following
+ *   tools are no longer available: exec, reset_sandbox, browser_*.
+ *   Do not call them.
+ *
+ *   [plugin-system] Plugin "MicroSandbox" was enabled. New tools
+ *   available: exec, reset_sandbox, browser_*. Use them when helpful.
+ */
+function renderPluginsChangedNote(
+  delta: PluginsChangedDelta,
+  direction: "enabled" | "disabled",
+): string {
+  const tools = delta.tools.length ? delta.tools.join(", ") : null;
+  const toolsets = delta.toolsets.length ? delta.toolsets.join(", ") : null;
+  const surface =
+    [tools && `tools: ${tools}`, toolsets && `toolsets: ${toolsets}`]
+      .filter(Boolean)
+      .join("; ") || "no agent-facing surface";
+  if (direction === "enabled") {
+    return (
+      `[plugin-system] Plugin "${delta.displayName}" (${delta.pluginId}) was just ENABLED. ` +
+      `Newly available — ${surface}. ` +
+      `Use these when they help; their schemas appear in your tool list from this turn onwards.`
+    );
+  }
+  return (
+    `[plugin-system] Plugin "${delta.displayName}" (${delta.pluginId}) was just DISABLED. ` +
+    `No longer available — ${surface}. ` +
+    `Do not call any of these tools; they will return "unknown tool" errors. ` +
+    `Earlier turns in this conversation may reference them; treat that history as stale.`
+  );
+}
