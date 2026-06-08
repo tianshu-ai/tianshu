@@ -1561,13 +1561,16 @@ function BrowserAdminPage(_props: AdminPageProps) {
 
       {/* Where the noVNC iframe lands once N+5.3 wires it up. We
        *  reserve the slot now so the visual rhythm of the page
-       *  doesn't jump when chromium ships. */}
+       *  doesn't jump when chromium ships. resize=scale: Xvfb is
+       *  pinned to 1280x800 so RandR remote resize is a no-op;
+       *  scaling on the client keeps the full frame visible and
+       *  downscales to whatever width the iframe ends up at. */}
       {data?.ready && data.ports.vnc ? (
         <div className="mt-4 overflow-hidden rounded-md border border-gray-800">
           <iframe
             title="Browser viewport"
-            src={`http://localhost:${data.ports.vnc}/vnc_lite.html?autoconnect=1&resize=remote`}
-            className="h-[640px] w-full bg-gray-950"
+            src={`http://localhost:${data.ports.vnc}/vnc_lite.html?autoconnect=1&resize=scale`}
+            className="aspect-[16/10] w-full bg-gray-950"
           />
         </div>
       ) : (
@@ -1592,7 +1595,12 @@ function BrowserAdminPage(_props: AdminPageProps) {
 // Wiring: the BrowserSidecar reports the host port that supervisor's
 // websockify is forwarded to. We poll /browser/status for it (same
 // shape as the admin page uses) and slot it into an iframe pointing
-// at noVNC's `vnc_lite.html?autoconnect=1&resize=remote`. When the
+// at noVNC's `vnc_lite.html?autoconnect=1&resize=scale`. When the
+// `resize=scale` (not `remote`): Xvfb in browser.yaml is pinned to
+// 1280x800, so server-side RandR resize is a no-op and tall narrow
+// iframes (right column ~780px) clipped the right half of the
+// viewport. Client-side scaling keeps the whole 1280x800 frame
+// visible, downscaled to whatever the iframe is sized at.
 // browser stack isn't running yet, the panel shows an empty state
 // with a deep link to the admin Browser page.
 
@@ -1651,7 +1659,7 @@ function BrowserViewportPanel(_props: PanelProps) {
       {data?.ready && data.ports.vnc ? (
         <iframe
           title="Browser viewport"
-          src={`http://localhost:${data.ports.vnc}/vnc_lite.html?autoconnect=1&resize=remote`}
+          src={`http://localhost:${data.ports.vnc}/vnc_lite.html?autoconnect=1&resize=scale`}
           className="min-h-0 flex-1 bg-gray-950"
         />
       ) : (
