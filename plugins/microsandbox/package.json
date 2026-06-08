@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@tianshu/plugin-sdk": "*",
-    "microsandbox": "^0.4.5"
+    "microsandbox": "^0.5.5"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
