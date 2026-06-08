@@ -33,6 +33,7 @@ import { usePluginStore } from "../../stores/plugin-store";
 import { resolveComponent } from "../../lib/plugin-registry";
 import type { AdminPageProps } from "@tianshu/plugin-sdk/client";
 import type { PluginListEntry } from "../../lib/api";
+import McpServersPage from "./McpServersPage";
 
 interface ContributesAdminPage {
   id: string;
@@ -49,31 +50,60 @@ interface FlatAdminPage {
   pageId: string;
   displayName: string;
   icon?: string;
+  /** Component resolution: when `kind === "plugin"`, look up
+   *  `component` in the plugin's client bundle (clientEntry).
+   *  When `kind === "core"`, render `coreComponent` directly —
+   *  no plugin loading needed. */
+  kind: "plugin" | "core";
   component: string;
+  coreComponent?: React.ComponentType<AdminPageProps>;
   group?: string;
   order: number;
   clientEntry: string | null;
 }
 
+/**
+ * Pages shipped by the host itself (not by a plugin). These show up
+ * under a synthetic plugin id of `core` so we can route them through
+ * the same `:pluginId/:pageId` URL structure as plugin pages.
+ */
+const CORE_PAGES: FlatAdminPage[] = [
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "mcp",
+    displayName: "MCP Servers",
+    icon: "Server",
+    kind: "core",
+    component: "McpServersPage",
+    coreComponent: McpServersPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "Agent",
+    order: 10,
+    clientEntry: null,
+  },
+];
+
 function flattenAdminPages(plugins: PluginListEntry[] | null): FlatAdminPage[] {
-  if (!plugins) return [];
-  const out: FlatAdminPage[] = [];
-  for (const p of plugins) {
-    if (p.state !== "active") continue;
-    const pages =
-      (p.contributes as { adminPages?: ContributesAdminPage[] }).adminPages ?? [];
-    for (const page of pages) {
-      out.push({
-        pluginId: p.id,
-        pluginDisplayName: p.displayName,
-        pageId: page.id,
-        displayName: page.displayName,
-        icon: page.icon,
-        component: page.component,
-        group: page.group,
-        order: page.order ?? 100,
-        clientEntry: p.clientEntry,
-      });
+  const out: FlatAdminPage[] = [...CORE_PAGES];
+  if (plugins) {
+    for (const p of plugins) {
+      if (p.state !== "active") continue;
+      const pages =
+        (p.contributes as { adminPages?: ContributesAdminPage[] }).adminPages ?? [];
+      for (const page of pages) {
+        out.push({
+          pluginId: p.id,
+          pluginDisplayName: p.displayName,
+          pageId: page.id,
+          displayName: page.displayName,
+          icon: page.icon,
+          kind: "plugin",
+          component: page.component,
+          group: page.group,
+          order: page.order ?? 100,
+          clientEntry: p.clientEntry,
+        });
+      }
     }
   }
   // Sort by group label first, then explicit order, then display
@@ -246,9 +276,12 @@ function AdminPageHost({ pages }: { pages: FlatAdminPage[] }) {
 
   if (!page) return <EmptyState />;
 
-  const Component = resolveComponent(page.clientEntry, page.component) as
-    | React.ComponentType<AdminPageProps>
-    | null;
+  const Component =
+    page.kind === "core"
+      ? page.coreComponent ?? null
+      : (resolveComponent(page.clientEntry, page.component) as
+          | React.ComponentType<AdminPageProps>
+          | null);
 
   if (!Component) {
     return (

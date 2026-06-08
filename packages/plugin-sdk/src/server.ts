@@ -4,6 +4,7 @@ import type { Request, Response } from "express";
 import type { WebSocket } from "ws";
 import type { CapabilityName } from "./capabilities.js";
 import type { SandboxKind } from "./manifest.js";
+import type { ToolsetProvider } from "./mcp-toolset.js";
 
 /** Tenant-scoped context handed to every plugin's `activate(ctx)`. */
 export interface PluginContext {
@@ -112,6 +113,20 @@ export interface PluginServerExports {
    * runner may not be ready yet.
    */
   tools?: Record<string, AgentTool>;
+  /**
+   * Dynamic tool *providers* whose tool list can change at runtime.
+   * Today's only built-in implementation is `McpToolset`, which
+   * reflects an upstream MCP server's `tools/list` into AgentTools
+   * on each refresh — see `mcp-toolset.ts`. Keys must match the
+   * `module` strings declared in `manifest.contributes.toolsets[]`.
+   *
+   * The host calls `provider.listTools()` every time it builds the
+   * per-turn tool list, so the surface area can grow / shrink as
+   * MCP servers come and go without the plugin having to re-run
+   * `activate()`. Failures inside a provider are visible through
+   * the global MCP admin page (powered by `provider.snapshot?.()`).
+   */
+  toolsetProviders?: Record<string, ToolsetProvider>;
 }
 
 // ─── Capability registry ────────────────────────────────────────

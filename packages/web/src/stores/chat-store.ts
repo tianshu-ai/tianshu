@@ -119,22 +119,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // the same message id. We never want to render the same row
         // twice.
         if (s.messages.some((x) => x.id === m.message.id)) return {} as Partial<ChatState>;
-        return { messages: [...s.messages, m.message] };
+        // When the server pushes a finalised assistant turn that
+        // arrived via `message_added` (multi-turn agents emit one
+        // such message per intermediate tool-use turn), drop any
+        // streaming placeholder that's still hanging around so its
+        // accumulated deltas don't double the next turn's first
+        // message. The placeholder was visually replaced by the
+        // streamed text already, but stream_end never fires between
+        // turns — only at the end of the whole run — so without this
+        // sweep the placeholder keeps accreting deltas from turn 2+.
+        const withoutPlaceholder = s.messages.filter((x) => x.id !== STREAMING_ID);
+        return { messages: [...withoutPlaceholder, m.message] };
       }),
     );
     tianshuWs.on("stream_start", () =>
       set((s) => {
-        // If a streaming placeholder is already present (e.g. server
-        // emitted stream_start twice, or HMR), reuse it rather than
-        // stacking another one — deltas only target the first match.
-        if (s.messages.some((x) => x.id === STREAMING_ID)) {
-          return { isStreaming: true, streamError: null };
-        }
+        // The server emits one stream_start per *user prompt*, not
+        // per LLM turn. Multi-turn agent runs (turn 1 → toolUse →
+        // turn 2 → …) reuse the same placeholder for every text
+        // segment, so always start a fresh empty placeholder on
+        // stream_start — there should never be a pre-existing one
+        // because the previous run ended with stream_end / error.
+        // Stale placeholders (e.g. HMR) get cleaned up here too.
+        const withoutStale = s.messages.filter((x) => x.id !== STREAMING_ID);
         return {
           isStreaming: true,
           streamError: null,
           messages: [
-            ...s.messages,
+            ...withoutStale,
             {
               id: STREAMING_ID,
               sessionId: "",
@@ -148,9 +160,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
     );
     tianshuWs.on("stream_delta", (m) =>
       set((s) => {
-        const idx = s.messages.findIndex((x) => x.id === STREAMING_ID);
-        if (idx < 0) return {} as Partial<ChatState>;
-        const next = s.messages.slice();
+        // No placeholder yet? This is the first delta of an
+        // intermediate turn (the server doesn't send stream_start
+        // between toolUse turns). Spawn a fresh placeholder so the
+        // text has somewhere to land instead of getting silently
+        // dropped or, worse, glued onto the previous turn's text.
+        let next = s.messages;
+        let idx = next.findIndex((x) => x.id === STREAMING_ID);
+        if (idx < 0) {
+          next = [
+            ...next,
+            {
+              id: STREAMING_ID,
+              sessionId: "",
+              role: "assistant",
+              text: "",
+              createdAt: Date.now(),
+            },
+          ];
+          idx = next.length - 1;
+        } else {
+          next = next.slice();
+        }
         next[idx] = { ...next[idx]!, text: next[idx]!.text + m.delta };
         return { messages: next };
       }),
@@ -183,6 +214,34 @@ export const useChatStore = create<ChatState>((set, get) => ({
           keptCount: m.keptCount,
           durationMs: m.durationMs,
         },
+      }),
+    );
+    tianshuWs.on("plugins_changed", (m) =>
+      set((s) => {
+        // Drop a compact notice line into the visible chat so the
+        // user can see what the agent just learned about. The
+        // agent itself gets a richer system message via the server
+        // (see renderPluginsChangedNote in packages/server/src/index.ts).
+        const parts: string[] = [];
+        for (const d of m.enabled ?? []) {
+          parts.push(`+ ${d.displayName} enabled`);
+        }
+        for (const d of m.disabled ?? []) {
+          parts.push(`− ${d.displayName} disabled`);
+        }
+        if (parts.length === 0) return {} as Partial<ChatState>;
+        return {
+          messages: [
+            ...s.messages,
+            {
+              id: `plugin_change_${Date.now()}`,
+              sessionId: "",
+              role: "system",
+              text: `⛯ plugin: ${parts.join(", ")}`,
+              createdAt: Date.now(),
+            },
+          ],
+        };
       }),
     );
   },

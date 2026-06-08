@@ -49,6 +49,41 @@ export interface OverridableConfig {
   oauth?: OAuthProviderConfig[];
   branding?: BrandingConfig;
   apiKeys?: Record<string, string>; // provider name → key
+  /**
+   * User-managed MCP servers (additional to whatever active plugins
+   * contribute). Each entry becomes a `McpToolset` instance owned
+   * by the host's `McpManager`, so reflected tools land in the
+   * agent's tool list alongside plugin-contributed toolsets.
+   *
+   * Stored on the tenant config so per-tenant servers don't leak
+   * across tenants and so `tianshu/.config.json` survives a server
+   * restart. The host writes this surface through the `/api/mcp`
+   * routes; users can also hand-edit — we re-read on every config
+   * cycle.
+   */
+  mcp?: McpUserConfig;
+}
+
+export interface McpUserConfig {
+  servers?: McpServerEntry[];
+}
+
+export interface McpServerEntry {
+  /** Local id used in URLs + logs. Lowercase letters, digits, dashes. */
+  id: string;
+  /** Display name in the admin UI. Defaults to `id`. */
+  displayName?: string;
+  /** Tool name prefix. Defaults to `<id>_`. Pass `""` to disable. */
+  prefix?: string;
+  /** Streamable HTTP MCP endpoint URL (must include `/mcp` path). */
+  url: string;
+  /** Optional Host header override (when fronting an upstream that
+   *  validates Host — e.g. Playwright MCP behind a port forward). */
+  upstreamHost?: string;
+  /** Whether the server is currently active. Stored on the entry
+   *  rather than as a separate map so `mcp.servers[]` is a single
+   *  source of truth. Default true. */
+  enabled?: boolean;
 }
 
 /** Fields that ONLY the global config controls. Tenant config attempting these is rejected. */
@@ -135,6 +170,7 @@ const TENANT_WHITELIST = new Set<keyof OverridableConfig>([
   "branding",
   "apiKeys",
   "plugins",
+  "mcp",
 ]);
 
 export class TenantConfigForbiddenFieldError extends Error {
@@ -214,6 +250,7 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     branding: { ...global.branding, ...tenant.branding },
     apiKeys: { ...global.apiKeys, ...tenant.apiKeys },
     plugins: { ...global.plugins, ...tenant.plugins },
+    mcp: tenant.mcp ?? global.mcp,
   };
 }
 

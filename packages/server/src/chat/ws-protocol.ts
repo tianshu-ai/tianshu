@@ -84,7 +84,26 @@ export type ServerMsg =
       summarisedCount: number;
       keptCount: number;
       durationMs: number;
+    }
+  /** Plugin enable/disable just landed. `enabled` lists plugin ids
+   *  that came online (and what they brought — tools / toolsets);
+   *  `disabled` lists what went away. The chat shell renders a
+   *  brief notice; the agent loop also gets a synthetic system
+   *  message so the model knows its tool surface changed. */
+  | {
+      type: "plugins_changed";
+      enabled: PluginsChangedDelta[];
+      disabled: PluginsChangedDelta[];
     };
+
+export interface PluginsChangedDelta {
+  pluginId: string;
+  displayName: string;
+  /** Tools the plugin advertises in its manifest contributes.tools[]. */
+  tools: string[];
+  /** Toolsets the plugin advertises in its manifest contributes.toolsets[]. */
+  toolsets: string[];
+}
 
 /**
  * Display-only metadata for an assistant message. Populated by

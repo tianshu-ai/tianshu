@@ -12,13 +12,6 @@
   "contributes": {
     "topBarButtons": [
       {
-        "id": "status",
-        "icon": "Box",
-        "tooltip": "MicroSandbox",
-        "opensPanel": "microsandbox.status",
-        "order": 200
-      },
-      {
         "id": "browser",
         "icon": "Globe",
         "tooltip": "Browser viewport (noVNC)",
@@ -27,11 +20,6 @@
       }
     ],
     "rightPanels": [
-      {
-        "id": "status",
-        "displayName": "MicroSandbox",
-        "component": "SandboxStatusPanel"
-      },
       {
         "id": "browser",
         "displayName": "Browser",
@@ -71,10 +59,10 @@
       { "id": "update_sandbox_config", "module": "UpdateSandboxConfigTool" },
       { "id": "build_sandbox",         "module": "BuildSandboxTool" },
       { "id": "list_sandbox_builds",   "module": "ListSandboxBuildsTool" },
-      { "id": "use_sandbox_build",     "module": "UseSandboxBuildTool" },
-      { "id": "browser_navigate",      "module": "BrowserNavigateTool" },
-      { "id": "browser_snapshot",      "module": "BrowserSnapshotTool" },
-      { "id": "browser_screenshot",    "module": "BrowserScreenshotTool" }
+      { "id": "use_sandbox_build",     "module": "UseSandboxBuildTool" }
+    ],
+    "toolsets": [
+      { "id": "browser", "module": "BrowserToolset", "displayName": "Playwright (Browser)" }
     ],
     "skills": [
       { "id": "exec-howto",     "path": "skills/microsandbox-exec-howto.md" },
@@ -93,7 +81,8 @@
       { "method": "POST", "path": "/reset",           "handler": "postReset" },
       { "method": "POST", "path": "/exec",            "handler": "postExec" },
       { "method": "GET",  "path": "/browser/status",   "handler": "getBrowserStatus" },
-      { "method": "POST", "path": "/browser/restart",  "handler": "postBrowserRestart" }
+      { "method": "POST", "path": "/browser/restart",  "handler": "postBrowserRestart" },
+      { "method": "POST", "path": "/browser/resize",   "handler": "postBrowserResize" }
     ]
   }
 }

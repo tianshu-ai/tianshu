@@ -40,6 +40,8 @@ export {
   writeTenantConfig,
   type BrandingConfig,
   type GlobalConfig,
+  type McpServerEntry,
+  type McpUserConfig,
   type ModelEntry,
   type ModelsCatalog,
   type OAuthProviderConfig,
@@ -49,6 +51,8 @@ export {
   type TenantConfig,
   type WorkerSettings,
 } from "./config.js";
+
+export { McpManager, type McpUserToolsetSnapshot } from "./mcp-manager.js";
 
 export { DbPool, getDefaultPool } from "./db-pool.js";
 export { runMigrations, MIGRATIONS } from "./migrations/index.js";

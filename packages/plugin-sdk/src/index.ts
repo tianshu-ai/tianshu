@@ -12,3 +12,14 @@
 export * from "./capabilities.js";
 export * from "./manifest.js";
 export * from "./server.js";
+export {
+  McpToolset,
+  textOfMcpContent,
+  type McpEndpointResolver,
+  type McpToolDescriptor,
+  type McpToolFilter,
+  type McpToolsetEntry,
+  type McpToolsetOptions,
+  type McpToolsetSnapshot,
+  type ToolsetProvider,
+} from "./mcp-toolset.js";

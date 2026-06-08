@@ -97,6 +97,86 @@ export interface ProvidedCapability {
   value: unknown;
 }
 
+/**
+ * Cross-source view of one MCP toolset surfaced through
+ * `toolsetsForTenant()`. Either contributed by a plugin or
+ * configured by the user; the consumer (admin UI / agent loop)
+ * decides what to do with that distinction.
+ */
+export interface ToolsetSummary {
+  /** Where the toolset came from. */
+  source: "plugin" | "user";
+  /** Plugin id when source==plugin; literal `"core"` when source==user. */
+  sourceId: string;
+  /** Local id within the source. */
+  id: string;
+  /** Display label for the admin UI. */
+  displayName: string;
+  /** False only for user entries explicitly marked enabled=false. */
+  enabled: boolean;
+  /** ToolsetProvider's `name` (often == displayName but sometimes
+   *  finer-grained, e.g. McpToolset(name="playwright")). */
+  providerName: string;
+  /** McpToolset.snapshot() output when the provider exposes
+   *  snapshot(); null otherwise. */
+  snapshot:
+    | import("@tianshu/plugin-sdk").McpToolsetSnapshot
+    | null;
+  /** Reflected tool count (snapshot.tools.length when known, else
+   *  derived via listTools()). */
+  toolCount: number;
+  /** Verbatim user-config entry. Only present for source==user. */
+  userEntry?: {
+    id: string;
+    displayName?: string;
+    url: string;
+    prefix?: string;
+    upstreamHost?: string;
+    enabled: boolean;
+  };
+}
+
+function summariseToolset(args: {
+  source: "plugin" | "user";
+  sourceId: string;
+  id: string;
+  displayName: string;
+  enabled: boolean;
+  provider: import("@tianshu/plugin-sdk").ToolsetProvider;
+  logTag: string;
+}): ToolsetSummary {
+  let snapshot:
+    | import("@tianshu/plugin-sdk").McpToolsetSnapshot
+    | null = null;
+  try {
+    snapshot = args.provider.snapshot ? args.provider.snapshot() : null;
+  } catch (err) {
+    console.warn(
+      `[${args.logTag}] toolset "${args.id}" snapshot() threw: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+  let toolCount = snapshot?.tools.length ?? 0;
+  if (toolCount === 0) {
+    try {
+      toolCount = args.provider.listTools().length;
+    } catch {
+      toolCount = 0;
+    }
+  }
+  return {
+    source: args.source,
+    sourceId: args.sourceId,
+    id: args.id,
+    displayName: args.displayName,
+    enabled: args.enabled,
+    providerName: args.provider.name,
+    snapshot,
+    toolCount,
+  };
+}
+
 export interface ServerPluginModuleResolver {
   /**
    * Given a plugin's `manifest.server.entry` string, return the
@@ -109,6 +189,15 @@ export interface ServerPluginModuleResolver {
 
 export interface RegistryOpts {
   resolver: ServerPluginModuleResolver;
+  /**
+   * Optional host-owned MCP manager. When present, user-configured
+   * MCP toolsets (`tenant config.mcp.servers[]`) are merged into
+   * `toolsForTenant()` alongside plugin-contributed ones, and
+   * surface in `toolsetsForTenant()` with `source: "user"`.
+   *
+   * Optional so tests / older wirings still work without it.
+   */
+  mcpManager?: import("../mcp-manager.js").McpManager;
   /** Optional discovery override (for tests). */
   discoveryDirs?: { builtinConfigDir?: string; home?: string };
   /** Optional broadcast hook for the plugin context. Default no-op. */
@@ -386,10 +475,32 @@ export class PluginRegistry {
     const out: Array<{ pluginId: string; tool: AgentTool }> = [];
     const cached = this.cache.get(tenantId);
     if (!cached) return out;
+
+    // (0) User-configured MCP toolsets (host-owned). These are
+    // surfaced under a synthetic plugin id of `core` so the agent
+    // logging + plugin manager UI can tell them apart from plugin
+    // contributions.
+    if (this.opts.mcpManager) {
+      for (const provider of this.opts.mcpManager.providersForTenant(tenantId)) {
+        try {
+          for (const tool of provider.listTools()) {
+            out.push({ pluginId: "core", tool });
+          }
+        } catch (err) {
+          console.warn(
+            `[mcp:user] toolset "${provider.name}" listTools() threw: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+    }
     for (const e of cached.entries) {
-      if (e.state !== "active" || !e.manifest.contributes?.tools) continue;
+      if (e.state !== "active") continue;
+      // (1) Static tool contributions: one AgentTool per
+      // `manifest.contributes.tools[]` entry, looked up by `module`.
       const toolModules = e.exports?.tools ?? {};
-      for (const t of e.manifest.contributes.tools) {
+      for (const t of e.manifest.contributes?.tools ?? []) {
         const tool = toolModules[t.module];
         if (!tool) {
           // Manifest claimed a tool but exports.tools didn't expose
@@ -402,7 +513,128 @@ export class PluginRegistry {
         }
         out.push({ pluginId: e.manifest.id, tool });
       }
+      // (2) Dynamic toolset providers: each provider's listTools()
+      // is read every turn so MCP servers can come/go without a
+      // plugin reactivation. Errors inside listTools() are isolated
+      // (logged + skipped) so a single misbehaving toolset doesn't
+      // black out the agent's other tools.
+      if (e.state !== "active") continue;
+      const providerModules = e.exports?.toolsetProviders ?? {};
+      for (const ts of e.manifest.contributes?.toolsets ?? []) {
+        const provider = providerModules[ts.module];
+        if (!provider) {
+          e.state = "failed";
+          e.failedReason = `toolsetProviders["${ts.module}"] missing in plugin ${e.manifest.id}`;
+          delete e.exports;
+          continue;
+        }
+        let dynamic: AgentTool[] = [];
+        try {
+          dynamic = provider.listTools();
+        } catch (err) {
+          // Same behaviour as a per-call error inside an AgentTool:
+          // log and keep going. Don't poison the rest of the run.
+          console.warn(
+            `[plugins:${e.manifest.id}] toolset "${ts.id}" listTools() threw: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        for (const tool of dynamic) {
+          out.push({ pluginId: e.manifest.id, tool });
+        }
+      }
     }
+    return out;
+  }
+
+  /**
+   * Collect every toolset provider every active plugin contributed
+   * for this tenant. Powers the global `/admin/mcp` view, which
+   * lists every connected MCP server (or other dynamic toolset)
+   * across plugins. Each entry includes the snapshot if the
+   * provider exposes one.
+   */
+  /**
+   * Look up the live ToolsetProvider behind a toolset summary, so
+   * routes can call refresh() on it. Returns null when the source
+   * has gone away (plugin disabled, user entry deleted) since the
+   * summary was generated.
+   */
+  toolsetProviderFor(
+    summary: { source: "plugin" | "user"; sourceId: string; id: string },
+    tenantId: string,
+  ): import("@tianshu/plugin-sdk").ToolsetProvider | null {
+    if (summary.source === "user") {
+      if (!this.opts.mcpManager) return null;
+      const snaps = this.opts.mcpManager.snapshotsForTenant(tenantId);
+      return snaps.find((s) => s.id === summary.id)?.provider ?? null;
+    }
+    // source === "plugin"
+    const cached = this.cache.get(tenantId);
+    if (!cached) return null;
+    const entry = cached.entries.find(
+      (e) => e.manifest.id === summary.sourceId,
+    );
+    if (!entry || entry.state !== "active") return null;
+    const ts = entry.manifest.contributes?.toolsets?.find(
+      (t) => t.id === summary.id,
+    );
+    if (!ts) return null;
+    return entry.exports?.toolsetProviders?.[ts.module] ?? null;
+  }
+
+  toolsetsForTenant(tenantId: string): ToolsetSummary[] {
+    const out: ToolsetSummary[] = [];
+
+    // (1) Plugin-contributed toolsets. Source: their plugin id.
+    const cached = this.cache.get(tenantId);
+    if (cached) {
+      for (const e of cached.entries) {
+        if (e.state !== "active") continue;
+        const providers = e.exports?.toolsetProviders ?? {};
+        for (const ts of e.manifest.contributes?.toolsets ?? []) {
+          const provider = providers[ts.module];
+          if (!provider) continue;
+          out.push(summariseToolset({
+            source: "plugin",
+            sourceId: e.manifest.id,
+            id: ts.id,
+            displayName: ts.displayName ?? ts.id,
+            enabled: true,
+            provider,
+            logTag: `plugins:${e.manifest.id}`,
+          }));
+        }
+      }
+    }
+
+    // (2) User-configured toolsets (host-owned). Source: `"user"`.
+    if (this.opts.mcpManager) {
+      for (const snap of this.opts.mcpManager.snapshotsForTenant(tenantId)) {
+        out.push({
+          source: "user",
+          sourceId: "core",
+          id: snap.id,
+          displayName: snap.displayName,
+          enabled: snap.enabled,
+          providerName: snap.provider?.name ?? snap.displayName,
+          snapshot: snap.toolsetSnapshot,
+          toolCount: snap.toolsetSnapshot?.tools.length ?? 0,
+          // Round-trip the user's stored config so the admin UI can
+          // show url / upstreamHost / prefix in edit dialogs.
+          userEntry: {
+            id: snap.entry.id,
+            displayName: snap.entry.displayName,
+            url: snap.entry.url,
+            prefix: snap.entry.prefix,
+            upstreamHost: snap.entry.upstreamHost,
+            enabled: snap.entry.enabled !== false,
+          },
+        });
+      }
+    }
+
     return out;
   }
 

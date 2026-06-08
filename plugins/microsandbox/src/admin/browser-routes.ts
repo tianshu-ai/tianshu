@@ -18,12 +18,23 @@
 
 import type { Request, Response } from "express";
 import type { BrowserSidecar, SandboxRunner } from "@tianshu/plugin-sdk";
+import { McpToolset } from "@tianshu/plugin-sdk";
 
 export interface BrowserRoutesDeps {
   /** Same accessor pattern as the sandbox routes — lets the routes
    *  module stay decoupled from plugin activation timing. */
   getRunner(): SandboxRunner | null;
 }
+
+/**
+ * Cap viewport sizes the runner is willing to set. Matches Xvfb's
+ * `-screen 0 2400x1800x24` framebuffer in browser.yaml; overshooting
+ * means xrandr silently truncates.
+ */
+const VIEWPORT_MIN_W = 640;
+const VIEWPORT_MIN_H = 480;
+const VIEWPORT_MAX_W = 2400;
+const VIEWPORT_MAX_H = 1800;
 
 /** Public payload returned by GET /browser/status. Stable shape so
  *  the admin page can render meaningfully through every state of
@@ -118,8 +129,122 @@ export function buildBrowserRoutes(deps: BrowserRoutesDeps) {
     }
   };
 
+  // POST /api/p/microsandbox/browser/resize
+  //
+  // Three-layer dynamic resize, copy of the closed-source tianshu
+  // approach (see `/api/browser/resize` in the predecessor):
+  //   (1) xrandr --fb resizes the Xvfb framebuffer so noVNC isn't
+  //       letterboxed or cropped.
+  //   (2) wmctrl re-fits the chromium X11 window to the new
+  //       framebuffer.
+  //   (3) Playwright MCP browser_resize (== page.setViewportSize)
+  //       tells chromium to re-layout its inner viewport — without
+  //       this the X11 window changes but the page content stays
+  //       at its launch size and looks like "app only fills part of
+  //       the panel".
+  // Layer (3) also wins if the sandbox image is missing xrandr/
+  // wmctrl, because Playwright manages the viewport at the chrome
+  // level on its own. Layers (1)+(2) are best-effort.
+  //
+  // The host BrowserViewportPanel POSTs here as the user finishes
+  // dragging the panel resize handle (debounced client-side). We
+  // also stash the latest viewport on the BrowserSidecar so the
+  // browser tool can re-apply it after navigation.
+  const postBrowserResize = async (req: Request, res: Response) => {
+    const sidecar = getSidecar();
+    if (!sidecar) {
+      res.status(503).json({ ok: false, error: "no_sidecar" });
+      return;
+    }
+    const runner = deps.getRunner();
+    const body = (req.body ?? {}) as { width?: number; height?: number };
+    const w = clampInt(Number(body.width), VIEWPORT_MIN_W, VIEWPORT_MAX_W);
+    const h = clampInt(Number(body.height), VIEWPORT_MIN_H, VIEWPORT_MAX_H);
+    if (!w || !h) {
+      res.status(400).json({ ok: false, error: "viewport_required" });
+      return;
+    }
+
+    // (1) + (2): X11 layer — best-effort, errors non-fatal.
+    let x11Note: string | undefined;
+    if (runner && typeof (runner as { exec?: unknown }).exec === "function") {
+      const script =
+        `DISPLAY=:99 xrandr --fb ${w}x${h} 2>/dev/null || true; ` +
+        `WID=$(DISPLAY=:99 wmctrl -l 2>/dev/null | grep -iE 'chromium|chrome|google' | awk '{print $1; exit}'); ` +
+        `if [ -n "$WID" ]; then DISPLAY=:99 wmctrl -i -r "$WID" -e "0,0,0,${w},${h}" 2>/dev/null || true; fi`;
+      try {
+        await runner.exec({ command: script, timeoutMs: 10_000 });
+      } catch (err) {
+        x11Note =
+          err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    // (3): chromium viewport via Playwright MCP. This is what
+    // actually re-layouts the page content. Done after the X11
+    // resize so chrome doesn't fight us by trying to re-fit to
+    // the smaller window first.
+    let mcpNote: string | undefined;
+    const mcpPort = sidecar.mcpHostPort();
+    if (mcpPort) {
+      try {
+        // Spin up a single-shot McpToolset bound to the tenant's
+        // Playwright MCP, call browser_resize, drop. The toolset
+        // handles the Host-header pinning + SDK transport setup.
+        const ts = new McpToolset({
+          name: "playwright-resize",
+          prefix: "",
+          resolve: () => `http://127.0.0.1:${mcpPort}/mcp`,
+          upstreamHost: "localhost:3200",
+        });
+        await ts.refresh();
+        const tool = ts.listTools().find((t) => t.schema.name === "browser_resize");
+        if (tool) {
+          await tool.execute(
+            { width: w, height: h },
+            // Stub the per-call context the SDK expects — we don't
+            // care about logging beyond x11Note here.
+            {
+              pluginId: "microsandbox",
+              tenantId: "unknown",
+              userId: "unknown",
+              capabilities: { get: () => undefined, has: () => false },
+              userHomeDir: "",
+              tenantHomeDir: "",
+              log: { info: () => {}, warn: () => {}, error: () => {} },
+            },
+          );
+        } else {
+          mcpNote = "browser_resize not advertised by upstream MCP";
+        }
+      } catch (err) {
+        mcpNote = err instanceof Error ? err.message : String(err);
+      }
+    } else {
+      mcpNote = "MCP port not yet detected";
+    }
+
+    // Cache the latest viewport so the agent's browser tool can
+    // re-apply it automatically after each goto (chrome resets
+    // viewport on navigation).
+    sidecar.setLastViewport({ width: w, height: h });
+
+    res.json({
+      ok: true,
+      applied: { width: w, height: h },
+      ...(x11Note ? { x11Note } : {}),
+      ...(mcpNote ? { mcpNote } : {}),
+    });
+  };
+
   return {
     getBrowserStatus,
     postBrowserRestart,
+    postBrowserResize,
   };
+}
+
+function clampInt(n: number, lo: number, hi: number): number {
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(lo, Math.min(hi, Math.round(n)));
 }
