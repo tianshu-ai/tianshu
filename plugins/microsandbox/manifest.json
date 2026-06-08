@@ -17,6 +17,13 @@
         "tooltip": "MicroSandbox",
         "opensPanel": "microsandbox.status",
         "order": 200
+      },
+      {
+        "id": "browser",
+        "icon": "Globe",
+        "tooltip": "Browser viewport (noVNC)",
+        "opensPanel": "microsandbox.browser",
+        "order": 210
       }
     ],
     "rightPanels": [
@@ -24,6 +31,11 @@
         "id": "status",
         "displayName": "MicroSandbox",
         "component": "SandboxStatusPanel"
+      },
+      {
+        "id": "browser",
+        "displayName": "Browser",
+        "component": "BrowserViewportPanel"
       }
     ],
     "adminPages": [

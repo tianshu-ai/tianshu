@@ -36,6 +36,17 @@ import type { MicroSandboxConfig } from "./types.js";
 import { readPointer } from "../build/pointer.js";
 import { snapshotExists } from "../build/builder.js";
 import { MicrosandboxBrowserSidecar } from "./browser.js";
+import { pickFreePorts } from "./free-port.js";
+
+// Guest ports for the optional browser stack. The Sandboxfile
+// browser template wires CloakBrowser to 9222, Playwright MCP to
+// 3200, noVNC to 6080. We always forward all three even when
+// the active image doesn't include the browser layer —
+// microsandbox is fine with port forwards that nothing inside the
+// guest is listening on.
+const BROWSER_GUEST_CDP_PORT = 9222;
+const BROWSER_GUEST_MCP_PORT = 3200;
+const BROWSER_GUEST_VNC_PORT = 6080;
 
 // Lazy-load the SDK so non-microsandbox deployments (or platforms
 // without the prebuilt napi binary) don't pay the import cost.
@@ -297,6 +308,12 @@ export class MicrosandboxRunner implements SandboxRunner {
         }
       }
 
+      // Pick host ports for the browser stack BEFORE we hand the
+      // builder to napi. Doing this lazily later means another
+      // process could grab the port between snapshot boot and our
+      // .port() call.
+      const [cdpHost, mcpHost, vncHost] = await pickFreePorts(3);
+
       // napi-rs builder methods are runtime-typed; we re-cast through
       // a structural any-shape to keep the call sites readable.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -306,6 +323,13 @@ export class MicrosandboxRunner implements SandboxRunner {
         .memory(this.opts.config.memoryMib)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .volume("/workspace", (m: any) => m.bind(ws))
+        // Forward host:cdp -> guest:9222 and friends. Always wired
+        // even when the active image doesn't include the browser
+        // stack; the forward is a no-op until something inside the
+        // guest binds the matching guest port.
+        .port(cdpHost, BROWSER_GUEST_CDP_PORT)
+        .port(mcpHost, BROWSER_GUEST_MCP_PORT)
+        .port(vncHost, BROWSER_GUEST_VNC_PORT)
         .replace(true);
 
       if (useSnapshot) {
@@ -318,11 +342,59 @@ export class MicrosandboxRunner implements SandboxRunner {
       this.activeSnapshot = useSnapshot;
       this.state = "ready";
       this.startedAt = Date.now();
+
+      // Surface the host ports through the sidecar so the host
+      // capability registry advertises browser.cdp with real
+      // values, and the admin Browser page renders them.
+      // __setDetectedPorts is the runner's back-channel into its
+      // own sidecar; the public BrowserSidecar surface stays
+      // read-only.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (this.browser as any).__setDetectedPorts({
+        cdp: cdpHost,
+        mcp: mcpHost,
+        vnc: vncHost,
+      });
+
+      // If the snapshot includes the browser stack (its rootfs has
+      // the supervisord conf we ship in templates/browser.yaml),
+      // bring supervisord up. Otherwise it's a no-op silent.
+      // We don't await: supervisord forks into daemon mode in <1s
+      // and the sandbox is already "ready" once the VM exists.
+      void this.maybeStartBrowserStack();
     } catch (err) {
       this.state = "error";
       this.startError = err instanceof Error ? err.message : String(err);
       this.handle = null;
       throw err;
+    }
+  }
+
+  /**
+   * If the active image ships /etc/supervisor/conf.d/browser.conf
+   * (browser-template-built sandboxes), start supervisord. Best
+   * effort: any failure logs and is forgotten so the shell sandbox
+   * stays usable on plain images. The runtime conf check + the
+   * existing rm of the chrome profile lock from a previous boot
+   * keep restarts idempotent.
+   */
+  private async maybeStartBrowserStack(): Promise<void> {
+    if (!this.handle) return;
+    try {
+      const probe = await this.handle.shell(
+        "test -f /etc/supervisor/conf.d/browser.conf && command -v supervisord >/dev/null && echo present || echo absent",
+      );
+      const stdout = probe.stdout().trim();
+      if (stdout !== "present") return;
+      // Clean stale state from prior boots: socket from a dead
+      // supervisord, pid file, and the chrome profile lock the
+      // build VM may have left behind. Then daemonise.
+      await this.handle.shell(
+        "rm -f /var/run/supervisor.sock /var/run/supervisord.pid; rm -rf /tmp/chrome-profile; supervisord -c /etc/supervisor/conf.d/browser.conf",
+      );
+    } catch {
+      // Don't surface to startError — the shell sandbox itself is
+      // fine, only the optional browser stack failed.
     }
   }
 
