@@ -10,8 +10,23 @@
 //   1. it's ~150 KB pulled into the plugin bundle for what is, at
 //      this stage, four method calls (initialize, tools/list,
 //      tools/call, "notifications/initialized");
-//   2. Node 18+ has fetch built-in; reading SSE chunks is ~30 lines.
+//   2. node:http reads SSE chunks in ~30 lines.
 // If we end up calling more MCP servers we'll switch to the SDK.
+//
+// Why node:http and not Node's built-in fetch? Playwright MCP
+// validates the Host request header against its bound address
+// (default "localhost:<port>") and 403's mismatches with
+// `Access is only allowed at localhost:<port>`. We're behind a
+// per-tenant microsandbox port forward, so the upstream host
+// (e.g. 127.0.0.1:58474) is never "localhost:3200". Setting
+// `Host: localhost:3200` is the right answer — but Node's undici
+// fetch implementation silently overrides any caller-supplied Host
+// header with the URL's host (see undici's `Request` validation).
+// node:http lets us set Host explicitly, so we use that. The MCP
+// server itself can stay locked to localhost — no need to widen
+// `--allowed-hosts` in the sandboxfile.
+
+import { request as httpRequest, type IncomingMessage } from "node:http";
 
 const PROTOCOL_VERSION = "2025-06-18";
 const CLIENT_INFO = { name: "tianshu-microsandbox", version: "0.1.0" };
@@ -62,13 +77,28 @@ export class McpClient {
   private sessionId: string | null = null;
   private nextId = 1;
   private initialised = false;
+  private readonly host: string;
+  private readonly port: number;
+  /** Host header to send. Always the MCP server's bound address
+   *  inside the sandbox (default localhost:3200), regardless of
+   *  whatever forwarded port we connect to from the host. */
+  private readonly hostHeader: string;
 
   constructor(
     /** e.g. http://localhost:6701 (no trailing slash). */
     private readonly baseUrl: string,
     /** Per-call request timeout. Default 30s. */
     private readonly timeoutMs: number = 30_000,
-  ) {}
+    /** Override the upstream MCP server's bound Host. Defaults to
+     *  `localhost:3200` which is what the supervisord-managed
+     *  Playwright MCP listens on inside browser.yaml's VM. */
+    upstreamHost: string = "localhost:3200",
+  ) {
+    const u = new URL(baseUrl);
+    this.host = u.hostname;
+    this.port = u.port ? Number(u.port) : u.protocol === "https:" ? 443 : 80;
+    this.hostHeader = upstreamHost;
+  }
 
   /** One-shot: open an MCP session, call a tool, close. Caller
    *  doesn't have to manage session lifecycle. */
@@ -120,38 +150,30 @@ export class McpClient {
     };
     if (this.sessionId) headers["Mcp-Session-Id"] = this.sessionId;
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-    let resp: Response;
-    try {
-      resp = await fetch(`${this.baseUrl}/mcp`, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
+    const { res, status, headers: respHeaders } = await this.send(
+      headers,
+      JSON.stringify(body),
+    );
 
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
+    if (status < 200 || status >= 300) {
+      const text = await drain(res).catch(() => "");
       throw new McpClientError(
-        `MCP HTTP ${resp.status}: ${text.slice(0, 400)}`,
-        resp.status,
+        `MCP HTTP ${status}: ${text.slice(0, 400)}`,
+        status,
       );
     }
 
     // Server returns Mcp-Session-Id on the initialize response.
-    const newSession = resp.headers.get("Mcp-Session-Id");
-    if (newSession) this.sessionId = newSession;
+    const newSession = respHeaders["mcp-session-id"];
+    if (typeof newSession === "string") this.sessionId = newSession;
 
-    const ct = resp.headers.get("content-type") ?? "";
+    const ct = (respHeaders["content-type"] ?? "") as string;
     let envelope: JsonRpcResponse<T>;
     if (ct.includes("text/event-stream")) {
-      envelope = await readJsonRpcFromSse<T>(resp, id);
+      envelope = await readJsonRpcFromSse<T>(res, id);
     } else {
-      envelope = (await resp.json()) as JsonRpcResponse<T>;
+      const buf = await drain(res);
+      envelope = JSON.parse(buf) as JsonRpcResponse<T>;
     }
 
     if ("error" in envelope) {
@@ -169,21 +191,69 @@ export class McpClient {
     // Notifications have no id, no response needed; we still wait
     // for the HTTP 202/200 to make sure the server saw it before
     // we send the next request.
-    const resp = await fetch(`${this.baseUrl}/mcp`, {
-      method: "POST",
+    const { res, status } = await this.send(
       headers,
-      body: JSON.stringify({ jsonrpc: "2.0", method, params }),
-    });
-    if (!resp.ok) {
-      const text = await resp.text().catch(() => "");
+      JSON.stringify({ jsonrpc: "2.0", method, params }),
+    );
+    if (status < 200 || status >= 300) {
+      const text = await drain(res).catch(() => "");
       throw new McpClientError(
-        `MCP notify HTTP ${resp.status}: ${text.slice(0, 200)}`,
-        resp.status,
+        `MCP notify HTTP ${status}: ${text.slice(0, 200)}`,
+        status,
       );
     }
     // Drain body so the connection can be reused.
-    await resp.text().catch(() => "");
+    await drain(res).catch(() => "");
   }
+
+  /** Send a single POST to /mcp using node:http, with the Host
+   *  header pinned to the upstream MCP's bound address. */
+  private send(
+    headers: Record<string, string>,
+    body: string,
+  ): Promise<{
+    res: IncomingMessage;
+    status: number;
+    headers: NodeJS.Dict<string | string[]>;
+  }> {
+    return new Promise((resolve, reject) => {
+      const req = httpRequest(
+        {
+          host: this.host,
+          port: this.port,
+          path: "/mcp",
+          method: "POST",
+          headers: {
+            Host: this.hostHeader,
+            "Content-Length": Buffer.byteLength(body),
+            ...headers,
+          },
+        },
+        (res) => {
+          resolve({
+            res,
+            status: res.statusCode ?? 0,
+            headers: res.headers,
+          });
+        },
+      );
+      req.on("error", reject);
+      const timer = setTimeout(() => {
+        req.destroy(new Error(`MCP request timed out after ${this.timeoutMs}ms`));
+      }, this.timeoutMs);
+      req.on("close", () => clearTimeout(timer));
+      req.write(body);
+      req.end();
+    });
+  }
+}
+
+async function drain(res: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of res) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /**
@@ -192,19 +262,12 @@ export class McpClient {
  * (notifications/progress) before the final response; we skip those.
  */
 async function readJsonRpcFromSse<T>(
-  resp: Response,
+  res: IncomingMessage,
   expectId: number | string,
 ): Promise<JsonRpcResponse<T>> {
-  if (!resp.body) throw new McpClientError("MCP SSE response had no body");
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
   let buf = "";
-  // SSE event blocks are separated by blank lines.
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
+  for await (const chunk of res) {
+    buf += typeof chunk === "string" ? chunk : chunk.toString("utf8");
     let blockEnd: number;
     // eslint-disable-next-line no-cond-assign
     while ((blockEnd = buf.indexOf("\n\n")) >= 0) {
@@ -219,8 +282,8 @@ async function readJsonRpcFromSse<T>(
       try {
         const env = JSON.parse(payload) as JsonRpcResponse<T> & { id?: unknown };
         if (env.id === expectId) {
-          // Cancel the stream so the server can drop the connection.
-          reader.cancel().catch(() => {});
+          // Drop the connection so the server stops streaming.
+          res.destroy();
           return env;
         }
         // Otherwise it's a notification (id missing) or another
