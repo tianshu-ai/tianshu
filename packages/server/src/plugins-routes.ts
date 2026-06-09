@@ -393,9 +393,25 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       return;
     }
 
-    const body = req.body as { enabled?: unknown } | undefined;
-    if (!body || typeof body.enabled !== "boolean") {
-      res.status(400).json({ error: "missing_enabled_boolean" });
+    const body = req.body as
+      | { enabled?: unknown; config?: unknown }
+      | undefined;
+    if (!body) {
+      res.status(400).json({ error: "empty_body" });
+      return;
+    }
+    const hasEnabled = typeof body.enabled === "boolean";
+    const hasConfig =
+      body.config !== undefined &&
+      body.config !== null &&
+      typeof body.config === "object" &&
+      !Array.isArray(body.config);
+    if (!hasEnabled && !hasConfig) {
+      res.status(400).json({
+        error: "missing_enabled_or_config",
+        message:
+          "PATCH body must include `enabled: boolean` and/or `config: object`",
+      });
       return;
     }
 
@@ -409,7 +425,11 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       const knownEntry = registry
         .listForTenant(tenantId)
         .find((e) => e.manifest.id === pluginId);
-      if (body.enabled && !knownEntry) {
+      if (hasEnabled && body.enabled === true && !knownEntry) {
+        res.status(404).json({ error: "plugin_not_found", pluginId });
+        return;
+      }
+      if (hasConfig && !knownEntry) {
         res.status(404).json({ error: "plugin_not_found", pluginId });
         return;
       }
@@ -417,11 +437,22 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       // Capture the previous state BEFORE we mutate so we can
       // diff for the plugins_changed notification below.
       const wasEnabled = knownEntry?.state === "active";
+      const willEnabled = hasEnabled
+        ? (body.enabled as boolean)
+        : wasEnabled;
 
       // Mutate the persisted tenant config.
       const cfg = loadTenantConfig(tenantId, ops.homeDir);
       const plugins = { ...(cfg.plugins ?? {}) };
-      plugins[pluginId] = { ...(plugins[pluginId] ?? {}), enabled: body.enabled };
+      const existing = plugins[pluginId] ?? {};
+      const next: { enabled?: boolean; config?: Record<string, unknown> } = {
+        ...existing,
+      };
+      if (hasEnabled) next.enabled = body.enabled as boolean;
+      if (hasConfig) {
+        next.config = body.config as Record<string, unknown>;
+      }
+      plugins[pluginId] = next;
       writeTenantConfig(tenantId, { ...cfg, plugins }, ops.homeDir);
 
       // Invalidate cached registry so the next discovery + activation
@@ -437,7 +468,12 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       // told the agent's tool list moved. We compute the delta from
       // the manifest — contributes.tools/toolsets is the source of
       // truth for what tools come and go with this plugin.
-      if (opts.onPluginsChanged && knownEntry && wasEnabled !== body.enabled) {
+      if (
+        opts.onPluginsChanged &&
+        knownEntry &&
+        hasEnabled &&
+        wasEnabled !== willEnabled
+      ) {
         const delta: import("./chat/ws-protocol.js").PluginsChangedDelta = {
           pluginId,
           displayName: knownEntry.manifest.displayName ?? pluginId,
@@ -450,7 +486,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
           opts.onPluginsChanged(
             tenantId,
             delta,
-            body.enabled ? "enabled" : "disabled",
+            willEnabled ? "enabled" : "disabled",
           );
         } catch (err) {
           // Notifications are non-fatal — the PATCH itself succeeded.
@@ -483,6 +519,13 @@ export async function listPluginsForTenant(
   // surfaces the route shape AND lazily marks any plugin whose
   // manifest claims a missing route handler as failed.
   collectRoutesForTenant(registry, tenant.tenantId);
+
+  const tenantConfigPlugins =
+    (tenant.config.plugins ?? {}) as Record<
+      string,
+      { config?: Record<string, unknown> }
+    >;
+
   return registry.listForTenant(tenant.tenantId).map((e) => ({
     id: e.manifest.id,
     version: e.manifest.version,
@@ -493,6 +536,14 @@ export async function listPluginsForTenant(
     failedReason: e.failedReason ?? null,
     contributes: e.manifest.contributes ?? {},
     clientEntry: e.manifest.client?.entry ?? null,
+    /** Declarative form schema; UI uses this to render the config
+     *  panel. Null when the plugin doesn't expose user-editable
+     *  config. */
+    configSchema: e.manifest.configSchema ?? null,
+    /** Current persisted config object — same shape the plugin sees
+     *  via PluginContext.pluginConfig. Empty object when the user
+     *  hasn't customised anything. */
+    config: tenantConfigPlugins[e.manifest.id]?.config ?? {},
     capabilities: {
       provided: e.capabilityInfo.provided,
       requires: e.capabilityInfo.requires,

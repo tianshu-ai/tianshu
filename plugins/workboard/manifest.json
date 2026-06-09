@@ -1,0 +1,78 @@
+{
+  "id": "workboard",
+  "version": "0.1.0",
+  "displayName": "Workboard",
+  "description": "Kanban task board with a workers pool. The orchestrator drops tasks onto the board; workers pick them up, run them, and report back. v0.2 ships an echo worker so the full ready→in-progress→done loop is visible end-to-end; real worker roles (qianliyan / luban / xihe / nvwa) land in follow-up PRs.",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["workspace.read", "tenant.db"],
+  "client": { "entry": "@tianshu-builtin/plugin-workboard/client" },
+  "server": { "entry": "@tianshu-builtin/plugin-workboard/server" },
+  "contributes": {
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "Kanban",
+        "tooltip": "Task board",
+        "opensPanel": "workboard.main",
+        "order": 200
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "main",
+        "displayName": "Tasks",
+        "component": "WorkboardPanel"
+      }
+    ],
+    "sidebarSections": [
+      {
+        "id": "workers",
+        "displayName": "Workers",
+        "component": "WorkersSidebarSection",
+        "after": "workers",
+        "order": 100
+      }
+    ],
+    "tools": [
+      { "id": "task_list",   "module": "TaskListTool"   },
+      { "id": "task_create", "module": "TaskCreateTool" },
+      { "id": "task_update", "module": "TaskUpdateTool" },
+      { "id": "task_move",   "module": "TaskMoveTool"   },
+      { "id": "task_delete", "module": "TaskDeleteTool" }
+    ],
+    "skills": [
+      { "id": "workboard-howto", "path": "skills/workboard-howto.md" }
+    ],
+    "apiRoutes": [
+      { "method": "GET",    "path": "/tasks",           "handler": "listTasks"   },
+      { "method": "POST",   "path": "/tasks",           "handler": "createTask"  },
+      { "method": "PATCH",  "path": "/tasks/:id",       "handler": "patchTask"   },
+      { "method": "DELETE", "path": "/tasks/:id",       "handler": "deleteTask"  },
+      { "method": "GET",    "path": "/projects",        "handler": "listProjects" },
+      { "method": "GET",    "path": "/workers/status",  "handler": "workerStatus" },
+      { "method": "POST",   "path": "/workers/restart", "handler": "workerRestart" }
+    ]
+  },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "echo.enabled",
+        "label": "Enable echo worker",
+        "description": "v0.2 demo worker. Sleeps for the configured delay then writes a one-line result_summary, so the full ready → in-progress → done loop is visible end-to-end. Turn off when real workers ship.",
+        "kind": "boolean",
+        "default": true
+      },
+      {
+        "key": "echo.delayMs",
+        "label": "Echo worker delay",
+        "description": "How long the echo worker pretends to be busy on each task before marking it done. The echo worker has no real work to do (it just reflects the task title), so this number simulates execution time — useful for demoing the todo → in-progress → done flow on the kanban. 5000–10000 ms is comfortable for screen recordings; 0 makes tasks complete instantly.",
+        "kind": "number",
+        "default": 30000,
+        "min": 0,
+        "step": 1000,
+        "unit": "ms"
+      }
+    ]
+  }
+}

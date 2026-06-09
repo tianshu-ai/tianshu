@@ -1,0 +1,459 @@
+// SQL-level access to the `tasks` table.
+//
+// The schema lives in `packages/server/src/core/migrations/001-initial.ts`
+// (ADR-0002 §6) — workboard is the first feature that actually reads
+// and writes it. This module is the single chokepoint between the
+// rest of the plugin and the database, so future schema tweaks
+// (e.g. adding a `labels` column) only have to update one file.
+//
+// All functions take an explicit tenant-scoped `db` handle
+// (`PluginContext.db`). They never look up the handle themselves —
+// the activator passes it in. That keeps tests easy: just spin up an
+// in-memory better-sqlite3, run the migration, point this code at it.
+
+import type { TenantDbHandle } from "@tianshu/plugin-sdk";
+
+/** Task lifecycle. Mirrors ADR-0002 §6. */
+export type TaskStatus =
+  | "todo"
+  | "in_progress"
+  | "done"
+  | "stalled"
+  | "aborted";
+
+/** Display-only — UI renders columns in this order; `aborted` is
+ *  hidden by default. */
+export const VISIBLE_STATUSES: TaskStatus[] = [
+  "todo",
+  "in_progress",
+  "done",
+  "stalled",
+];
+
+export interface Task {
+  id: string;
+  projectSlug: string;
+  ownerUserId: string;
+  workerRole: string | null;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: number;
+  resultSummary: string | null;
+  /** Workspace paths (relative to the per-user home). */
+  resultFiles: string[];
+  sessionId: string | null;
+  /** Task ids that must reach status='done' before this task is
+   *  eligible for a worker. Owner-scoped: ids must belong to the
+   *  same user. Empty array = no prerequisites. */
+  dependsOn: string[];
+  createdAt: number;
+  startedAt: number | null;
+  endedAt: number | null;
+}
+
+interface TaskRow {
+  id: string;
+  project_slug: string;
+  owner_user_id: string;
+  worker_role: string | null;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: number;
+  result_summary: string | null;
+  result_files: string | null;
+  session_id: string | null;
+  depends_on: string | null;
+  created_at: number;
+  started_at: number | null;
+  ended_at: number | null;
+}
+
+function parseStringArray(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((p): p is string => typeof p === "string")
+      : [];
+  } catch {
+    // Older / hand-written rows may have non-JSON content; treat as
+    // empty rather than blow up the list endpoint.
+    return [];
+  }
+}
+
+function rowToTask(row: TaskRow): Task {
+  return {
+    id: row.id,
+    projectSlug: row.project_slug,
+    ownerUserId: row.owner_user_id,
+    workerRole: row.worker_role,
+    title: row.title,
+    description: row.description,
+    status: row.status as TaskStatus,
+    priority: row.priority,
+    resultSummary: row.result_summary,
+    resultFiles: parseStringArray(row.result_files),
+    sessionId: row.session_id,
+    dependsOn: parseStringArray(row.depends_on),
+    createdAt: row.created_at,
+    startedAt: row.started_at,
+    endedAt: row.ended_at,
+  };
+}
+
+export interface CreateTaskInput {
+  ownerUserId: string;
+  title: string;
+  description?: string | null;
+  projectSlug?: string;
+  workerRole?: string | null;
+  priority?: number;
+  /** Task ids that must reach status='done' first. Caller is
+   *  responsible for filtering to ids belonging to the same owner;
+   *  the route layer does that today. */
+  dependsOn?: string[];
+}
+
+const STATUS_VALUES = new Set<TaskStatus>([
+  "todo",
+  "in_progress",
+  "done",
+  "stalled",
+  "aborted",
+]);
+
+export function isTaskStatus(s: string): s is TaskStatus {
+  return STATUS_VALUES.has(s as TaskStatus);
+}
+
+/** Insert a fresh `todo` task. Caller supplies the id (UUID). */
+export function createTask(
+  db: TenantDbHandle,
+  id: string,
+  input: CreateTaskInput,
+): Task {
+  const now = Date.now();
+  const project = (input.projectSlug ?? "inbox").trim() || "inbox";
+  const role = input.workerRole?.trim() ? input.workerRole.trim() : null;
+  const priority = Number.isFinite(input.priority) ? Number(input.priority) : 0;
+  const dependsOn = sanitiseDependsOn(input.dependsOn, id);
+  db.prepare(
+    `INSERT INTO tasks (
+       id, project_slug, owner_user_id, worker_role,
+       title, description, status, priority,
+       result_summary, result_files, session_id, depends_on,
+       created_at, started_at, ended_at
+     ) VALUES (?, ?, ?, ?, ?, ?, 'todo', ?, NULL, NULL, NULL, ?, ?, NULL, NULL)`,
+  ).run(
+    id,
+    project,
+    input.ownerUserId,
+    role,
+    input.title.trim(),
+    input.description?.trim() || null,
+    priority,
+    JSON.stringify(dependsOn),
+    now,
+  );
+  const row = db
+    .prepare<[string], TaskRow>(`SELECT * FROM tasks WHERE id = ?`)
+    .get(id);
+  if (!row) throw new Error(`createTask: row ${id} vanished`);
+  return rowToTask(row);
+}
+
+export interface ListTasksOpts {
+  /** Filter by owner. v0 always passes the requesting user; the host
+   *  treats a tenant as a single trust domain (ADR-0001) so other
+   *  users in the same tenant could be allowed later, but for v0 we
+   *  scope the UI to "my tasks". */
+  ownerUserId?: string;
+  /** Filter by project slug; null means "any project". */
+  projectSlug?: string | null;
+  /** Filter by status; default returns the four visible columns. */
+  statuses?: TaskStatus[];
+  /** Hard cap on rows. Default 500. The board is per-user — no one
+   *  reasonably has more than a few hundred open tasks. */
+  limit?: number;
+}
+
+export function listTasks(db: TenantDbHandle, opts: ListTasksOpts = {}): Task[] {
+  const where: string[] = [];
+  const params: unknown[] = [];
+
+  if (opts.ownerUserId) {
+    where.push("owner_user_id = ?");
+    params.push(opts.ownerUserId);
+  }
+
+  if (opts.projectSlug !== undefined && opts.projectSlug !== null) {
+    where.push("project_slug = ?");
+    params.push(opts.projectSlug);
+  }
+
+  const statuses = opts.statuses && opts.statuses.length > 0
+    ? opts.statuses
+    : VISIBLE_STATUSES;
+  where.push(`status IN (${statuses.map(() => "?").join(",")})`);
+  params.push(...statuses);
+
+  const limit = Math.max(1, Math.min(opts.limit ?? 500, 2000));
+  const sql =
+    `SELECT * FROM tasks WHERE ${where.join(" AND ")}
+     ORDER BY priority DESC, created_at ASC
+     LIMIT ?`;
+  params.push(limit);
+
+  const rows = db.prepare<unknown[], TaskRow>(sql).all(...params);
+  return rows.map(rowToTask);
+}
+
+export function getTask(db: TenantDbHandle, id: string): Task | null {
+  const row = db
+    .prepare<[string], TaskRow>(`SELECT * FROM tasks WHERE id = ?`)
+    .get(id);
+  return row ? rowToTask(row) : null;
+}
+
+export interface UpdateTaskPatch {
+  title?: string;
+  description?: string | null;
+  projectSlug?: string;
+  priority?: number;
+  workerRole?: string | null;
+  status?: TaskStatus;
+  resultSummary?: string | null;
+  resultFiles?: string[];
+  sessionId?: string | null;
+  /** Replace the dependency list. Caller is responsible for vetting
+   *  ownership; the workboard route layer does that. Pass [] to
+   *  clear. */
+  dependsOn?: string[];
+  startedAt?: number | null;
+  endedAt?: number | null;
+}
+
+/** Patch a task. Status transitions are validated by the caller —
+ *  this function trusts whatever it gets. Returns the updated row,
+ *  or null if the id doesn't exist. */
+export function updateTask(
+  db: TenantDbHandle,
+  id: string,
+  patch: UpdateTaskPatch,
+): Task | null {
+  const sets: string[] = [];
+  const params: unknown[] = [];
+
+  if (patch.title !== undefined) {
+    sets.push("title = ?");
+    params.push(patch.title.trim());
+  }
+  if (patch.description !== undefined) {
+    sets.push("description = ?");
+    params.push(patch.description?.trim() || null);
+  }
+  if (patch.projectSlug !== undefined) {
+    sets.push("project_slug = ?");
+    params.push(patch.projectSlug.trim() || "inbox");
+  }
+  if (patch.priority !== undefined) {
+    sets.push("priority = ?");
+    params.push(Number(patch.priority));
+  }
+  if (patch.workerRole !== undefined) {
+    sets.push("worker_role = ?");
+    params.push(patch.workerRole?.trim() ? patch.workerRole.trim() : null);
+  }
+  if (patch.status !== undefined) {
+    sets.push("status = ?");
+    params.push(patch.status);
+  }
+  if (patch.resultSummary !== undefined) {
+    sets.push("result_summary = ?");
+    params.push(patch.resultSummary?.trim() || null);
+  }
+  if (patch.resultFiles !== undefined) {
+    sets.push("result_files = ?");
+    params.push(JSON.stringify(patch.resultFiles));
+  }
+  if (patch.sessionId !== undefined) {
+    sets.push("session_id = ?");
+    params.push(patch.sessionId);
+  }
+  if (patch.dependsOn !== undefined) {
+    sets.push("depends_on = ?");
+    params.push(JSON.stringify(sanitiseDependsOn(patch.dependsOn, id)));
+  }
+  if (patch.startedAt !== undefined) {
+    sets.push("started_at = ?");
+    params.push(patch.startedAt);
+  }
+  if (patch.endedAt !== undefined) {
+    sets.push("ended_at = ?");
+    params.push(patch.endedAt);
+  }
+
+  if (sets.length === 0) return getTask(db, id);
+
+  params.push(id);
+  db.prepare(`UPDATE tasks SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  return getTask(db, id);
+}
+
+export function deleteTask(db: TenantDbHandle, id: string): boolean {
+  const before = getTask(db, id);
+  if (!before) return false;
+  db.prepare(`DELETE FROM tasks WHERE id = ?`).run(id);
+  return true;
+}
+
+export interface ProjectSummary {
+  projectSlug: string;
+  todo: number;
+  inProgress: number;
+  done: number;
+  stalled: number;
+  total: number;
+}
+
+/** Group counts by project slug, scoped to one owner. Used by the
+ *  admin page's project filter dropdown. */
+export function listProjects(
+  db: TenantDbHandle,
+  ownerUserId: string,
+): ProjectSummary[] {
+  const rows = db
+    .prepare<[string], { project_slug: string; status: string; count: number }>(
+      `SELECT project_slug, status, COUNT(*) AS count
+       FROM tasks
+       WHERE owner_user_id = ?
+         AND status IN ('todo','in_progress','done','stalled')
+       GROUP BY project_slug, status
+       ORDER BY project_slug ASC`,
+    )
+    .all(ownerUserId);
+
+  const byProject = new Map<string, ProjectSummary>();
+  for (const row of rows) {
+    let entry = byProject.get(row.project_slug);
+    if (!entry) {
+      entry = {
+        projectSlug: row.project_slug,
+        todo: 0,
+        inProgress: 0,
+        done: 0,
+        stalled: 0,
+        total: 0,
+      };
+      byProject.set(row.project_slug, entry);
+    }
+    if (row.status === "todo") entry.todo = row.count;
+    else if (row.status === "in_progress") entry.inProgress = row.count;
+    else if (row.status === "done") entry.done = row.count;
+    else if (row.status === "stalled") entry.stalled = row.count;
+    entry.total += row.count;
+  }
+  return [...byProject.values()];
+}
+
+/**
+ * Atomically claim one ready (`todo`) task, flipping it to
+ * `in_progress` and stamping `started_at`. Returns null if the
+ * board is empty (or all eligible tasks are blocked by unfinished
+ * dependencies).
+ *
+ * The claim is atomic in SQLite by virtue of running inside one
+ * statement (`UPDATE ... WHERE id = (SELECT ...)`), then re-reading
+ * the updated row. SQLite's serialised writer makes a "two workers
+ * grab the same row" race impossible.
+ *
+ * Dependency check: we walk eligible candidates in priority order
+ * and skip any whose `depends_on` contains an id whose row is not
+ * yet `done`. The check happens in JS rather than SQL because the
+ * column is JSON-encoded; in practice the eligible set is tiny so
+ * this is fine.
+ */
+export function claimNextTask(
+  db: TenantDbHandle,
+  opts: { workerRole?: string | null; sessionId?: string | null } = {},
+): Task | null {
+  const role = opts.workerRole ?? null;
+  const sessionId = opts.sessionId ?? null;
+  const now = Date.now();
+
+  // Workers without a role take any task. Roled workers prefer
+  // tasks marked with their role, but also pick up role-less ones
+  // (so a single echo-worker covers everything in v0.2).
+  const eligible = role
+    ? db
+        .prepare<[string], TaskRow>(
+          `SELECT * FROM tasks
+           WHERE status = 'todo'
+             AND (worker_role IS NULL OR worker_role = ?)
+           ORDER BY priority DESC, created_at ASC
+           LIMIT 50`,
+        )
+        .all(role)
+    : db
+        .prepare<[], TaskRow>(
+          `SELECT * FROM tasks
+           WHERE status = 'todo'
+           ORDER BY priority DESC, created_at ASC
+           LIMIT 50`,
+        )
+        .all();
+
+  for (const row of eligible) {
+    const candidate = rowToTask(row);
+    if (!isEligible(db, candidate)) continue;
+
+    const result = db
+      .prepare<[number, string | null, string], { changes?: number }>(
+        `UPDATE tasks
+         SET status = 'in_progress', started_at = ?, session_id = ?
+         WHERE id = ? AND status = 'todo'`,
+      )
+      .run(now, sessionId, candidate.id) as { changes: number };
+    if (!result.changes) continue;
+
+    return getTask(db, candidate.id);
+  }
+  return null;
+}
+
+/** Returns true if every dependency of `task` is in status='done'.
+ *  An empty `dependsOn` is always eligible. */
+export function isEligible(db: TenantDbHandle, task: Task): boolean {
+  if (task.dependsOn.length === 0) return true;
+  const placeholders = task.dependsOn.map(() => "?").join(",");
+  const rows = db
+    .prepare<unknown[], { id: string; status: string }>(
+      `SELECT id, status FROM tasks WHERE id IN (${placeholders})`,
+    )
+    .all(...task.dependsOn);
+  // Missing rows count as unsatisfied — a deleted prerequisite
+  // doesn't auto-resolve. (Owner can re-point with task_update.)
+  if (rows.length !== task.dependsOn.length) return false;
+  return rows.every((r) => r.status === "done");
+}
+
+/** Trim, dedupe, and refuse self-references. */
+function sanitiseDependsOn(
+  raw: string[] | undefined,
+  selfId: string,
+): string[] {
+  if (!raw || raw.length === 0) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const candidate of raw) {
+    if (typeof candidate !== "string") continue;
+    const id = candidate.trim();
+    if (!id || id === selfId || seen.has(id)) continue;
+    seen.add(id);
+    out.push(id);
+  }
+  return out;
+}

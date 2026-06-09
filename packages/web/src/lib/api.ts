@@ -21,6 +21,33 @@ export interface ModelListEntry {
 // (ADR-0003 §8). Keep these in sync if the server shape changes.
 export type PluginState = "active" | "disabled" | "failed" | "client-bundle-missing";
 
+export type PluginConfigField =
+  | { kind: "boolean"; key: string; label: string; description?: string; default?: boolean }
+  | {
+      kind: "number";
+      key: string;
+      label: string;
+      description?: string;
+      default?: number;
+      min?: number;
+      max?: number;
+      step?: number;
+      unit?: string;
+    }
+  | {
+      kind: "string";
+      key: string;
+      label: string;
+      description?: string;
+      default?: string;
+      placeholder?: string;
+      multiline?: boolean;
+    };
+
+export interface PluginConfigSchema {
+  fields: PluginConfigField[];
+}
+
 export interface PluginListEntry {
   id: string;
   version: string;
@@ -32,6 +59,11 @@ export interface PluginListEntry {
   contributes: Record<string, unknown>;
   /** manifest.client.entry — null when the plugin has no client side. */
   clientEntry: string | null;
+  /** Declarative form schema; null when the plugin doesn't accept
+   *  user-editable config. */
+  configSchema: PluginConfigSchema | null;
+  /** Persisted user-supplied config object. Empty when defaults. */
+  config: Record<string, unknown>;
   /** ADR-0004 §3. Capabilities the plugin provides / requires, plus
    *  any required ones that no provider satisfied (only non-empty for
    *  failed plugins). */
@@ -117,6 +149,10 @@ export const api = {
   setPluginEnabled: (id: string, enabled: boolean) =>
     patchJson<{ plugins: PluginListEntry[] }>(`/api/plugins/${encodeURIComponent(id)}`, {
       enabled,
+    }),
+  setPluginConfig: (id: string, config: Record<string, unknown>) =>
+    patchJson<{ plugins: PluginListEntry[] }>(`/api/plugins/${encodeURIComponent(id)}`, {
+      config,
     }),
   /** ADR-0004 §16: explicit re-discovery of on-disk plugins. */
   refreshPlugins: () => postJson<{ plugins: PluginListEntry[] }>("/api/plugins/refresh"),

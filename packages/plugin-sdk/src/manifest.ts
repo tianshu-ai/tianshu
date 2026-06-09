@@ -46,6 +46,64 @@ export interface PluginManifest {
   client?: PluginEntryRef;
   server?: PluginEntryRef;
   contributes?: ContributesV1;
+  /**
+   * Optional declarative schema for the plugin's own config
+   * (`tenant config.plugins.<id>.config`). When present the host
+   * exposes a config form in the Plugin Manager UI; users edit
+   * fields, host writes back via `PATCH /api/plugins/:id`.
+   *
+   * Field kinds we currently support:
+   *   - boolean : checkbox
+   *   - number  : number input (with optional `min`, `max`, `step`)
+   *   - string  : single-line text input
+   *
+   * The schema is intentionally tiny — anything richer should land
+   * in a dedicated admin page contribution. The values are passed
+   * verbatim to the plugin via `PluginContext.pluginConfig`.
+   */
+  configSchema?: PluginConfigSchema;
+}
+
+export interface PluginConfigSchema {
+  /** Top-level fields. Order is preserved in the UI. */
+  fields: PluginConfigField[];
+}
+
+export type PluginConfigField =
+  | PluginConfigBoolField
+  | PluginConfigNumberField
+  | PluginConfigStringField;
+
+interface PluginConfigFieldBase {
+  /** Dotted path under the plugin's config object, e.g. "echo.enabled". */
+  key: string;
+  /** Short label shown next to the input. */
+  label: string;
+  /** Optional one-line help, rendered under the input. */
+  description?: string;
+}
+
+export interface PluginConfigBoolField extends PluginConfigFieldBase {
+  kind: "boolean";
+  default?: boolean;
+}
+
+export interface PluginConfigNumberField extends PluginConfigFieldBase {
+  kind: "number";
+  default?: number;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Optional unit suffix shown to the right of the input ("ms", "s", etc). */
+  unit?: string;
+}
+
+export interface PluginConfigStringField extends PluginConfigFieldBase {
+  kind: "string";
+  default?: string;
+  placeholder?: string;
+  /** When set, render as a textarea instead of an <input>. */
+  multiline?: boolean;
 }
 
 export interface PluginEntryRef {
