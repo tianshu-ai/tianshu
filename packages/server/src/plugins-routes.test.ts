@@ -176,7 +176,7 @@ describe("plugins HTTP routes", () => {
     expect(res.body.error).toBe("bad_plugin_id");
   });
 
-  it("PATCH rejects missing or non-boolean enabled", async () => {
+  it("PATCH rejects empty body or non-boolean / non-object payload", async () => {
     writeBuiltinManifest("hello", {
       id: "hello",
       version: "1.0.0",
@@ -185,15 +185,54 @@ describe("plugins HTTP routes", () => {
     });
     const app = buildApp();
 
+    // Empty body — nothing to update.
     let res = await request(app).patch("/api/plugins/hello").send({});
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("missing_enabled_boolean");
+    expect(res.body.error).toBe("missing_enabled_or_config");
 
+    // `enabled` must be a boolean. A bare string is rejected because
+    // the `hasEnabled` guard is strict; with no `config` either, the
+    // generic missing-keys error fires.
     res = await request(app)
       .patch("/api/plugins/hello")
       .send({ enabled: "yes" });
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe("missing_enabled_boolean");
+    expect(res.body.error).toBe("missing_enabled_or_config");
+  });
+
+  it("PATCH writes plugin config and surfaces it via GET", async () => {
+    writeBuiltinManifest("hello", {
+      id: "hello",
+      version: "1.0.0",
+      displayName: "Hello",
+      server: { entry: "@hello/server" },
+      configSchema: {
+        fields: [
+          { kind: "boolean", key: "echo.enabled", label: "Enable echo", default: true },
+          { kind: "number", key: "echo.delayMs", label: "Delay", default: 30000 },
+        ],
+      },
+    });
+    const app = buildApp();
+
+    // First enable the plugin so the config write target exists.
+    await request(app).patch("/api/plugins/hello").send({ enabled: true });
+
+    // Send a config patch.
+    const patch = await request(app)
+      .patch("/api/plugins/hello")
+      .send({ config: { echo: { enabled: false, delayMs: 500 } } });
+    expect(patch.status).toBe(200);
+
+    // GET should surface the new config.
+    const list = await request(app).get("/api/plugins");
+    const hello = list.body.plugins.find(
+      (p: { id: string }) => p.id === "hello",
+    );
+    expect(hello.config).toEqual({
+      echo: { enabled: false, delayMs: 500 },
+    });
+    expect(hello.configSchema?.fields?.length).toBe(2);
   });
 
   it("PATCH refuses to enable an unknown plugin (404)", async () => {

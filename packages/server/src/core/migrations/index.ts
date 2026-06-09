@@ -10,6 +10,7 @@
 
 import type { Database } from "better-sqlite3";
 import * as initial from "./001-initial.js";
+import * as taskDependencies from "./002-task-dependencies.js";
 
 export interface Migration {
   id: string;
@@ -17,7 +18,10 @@ export interface Migration {
 }
 
 /** Ordered list of migrations. Append, never reorder, never edit past entries. */
-export const MIGRATIONS: Migration[] = [{ id: initial.ID, up: initial.up }];
+export const MIGRATIONS: Migration[] = [
+  { id: initial.ID, up: initial.up },
+  { id: taskDependencies.ID, up: taskDependencies.up },
+];
 
 const ENSURE_MIGRATIONS_TABLE = `
   CREATE TABLE IF NOT EXISTS schema_migrations (

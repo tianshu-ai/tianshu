@@ -35,6 +35,7 @@ import type { AdminPageProps } from "@tianshu/plugin-sdk/client";
 import type { PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
 import McpServersPage from "./McpServersPage";
+import { PluginConfigForm } from "../PluginConfigForm";
 
 interface ContributesAdminPage {
   id: string;
@@ -103,6 +104,37 @@ function flattenAdminPages(plugins: PluginListEntry[] | null): FlatAdminPage[] {
           group: page.group,
           order: page.order ?? 100,
           clientEntry: p.clientEntry,
+        });
+      }
+
+      // Auto-inject a per-plugin settings page when the manifest
+      // declares a configSchema. The plugin's own admin pages still
+      // win on collisions (id === "settings"), so a plugin can
+      // override the auto-page with a richer hand-rolled one.
+      const hasConfig =
+        !!p.configSchema && (p.configSchema?.fields?.length ?? 0) > 0;
+      const declaredSettings = pages.some((page) => page.id === "settings");
+      if (hasConfig && !declaredSettings) {
+        out.push({
+          pluginId: p.id,
+          pluginDisplayName: p.displayName,
+          pageId: "settings",
+          // Sidebar entry uses the plugin's own display name so the
+          // user sees "Workboard" / "Files" / etc. rather than every
+          // line reading "Settings".
+          displayName: p.displayName,
+          icon: "Settings",
+          kind: "core",
+          component: "PluginConfigSettingsPage",
+          coreComponent: ((props: AdminPageProps) => (
+            <PluginConfigSettingsPage
+              {...props}
+              pluginId={p.id}
+            />
+          )) as React.ComponentType<AdminPageProps>,
+          group: "Plugins",
+          order: 90,
+          clientEntry: null,
         });
       }
     }
@@ -340,4 +372,55 @@ function resolveLucideIcon(name: string | undefined) {
   if (!name) return null;
   const all = Icons as unknown as Record<string, React.ComponentType<{ size?: number; className?: string }>>;
   return all[name] ?? null;
+}
+
+/**
+ * Auto-generated settings page for any active plugin with a
+ * `configSchema`. Lays the form out using the same chrome as the
+ * other host admin pages (max-w-5xl, padded section card, gray-950
+ * background). The plugin id is captured at flatten time so the
+ * form re-derives its value from the latest plugin list whenever
+ * the store mutates (toggle, save, etc.).
+ */
+function PluginConfigSettingsPage({
+  pluginId,
+}: AdminPageProps & { pluginId: string }) {
+  const plugins = usePluginStore((s) => s.plugins);
+  const plugin = plugins?.find((p) => p.id === pluginId);
+
+  return (
+    <div className="mx-auto max-w-5xl p-6">
+      <div className="mb-6">
+        <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-100">
+          <SettingsIcon size={18} className="text-brand-400" />
+          {plugin ? plugin.displayName : pluginId}
+        </h1>
+        {plugin?.description && (
+          <p className="mt-1 max-w-3xl text-[12px] text-gray-500">
+            {plugin.description}
+          </p>
+        )}
+      </div>
+      {!plugin ? (
+        <div className="rounded-md border border-dashed border-gray-800 px-4 py-6 text-center text-[12px] text-gray-500">
+          Plugin <code>{pluginId}</code> is not active.
+        </div>
+      ) : (
+        <section>
+          <div className="mb-2">
+            <h2 className="text-[13px] font-semibold uppercase tracking-wide text-gray-400">
+              Configuration
+            </h2>
+            <p className="text-[11px] text-gray-500">
+              Saving re-activates the plugin so changes take effect on the
+              next request.
+            </p>
+          </div>
+          <div className="rounded-md border border-gray-800 bg-gray-900/30 p-4">
+            <PluginConfigForm plugin={plugin} />
+          </div>
+        </section>
+      )}
+    </div>
+  );
 }

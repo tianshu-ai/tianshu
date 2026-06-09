@@ -12,6 +12,8 @@ import type {
   AttachmentRendererContribution,
   ComposerActionContribution,
   ContributesV1,
+  PluginConfigField,
+  PluginConfigSchema,
   PluginManifest,
   RightPanelContribution,
   SandboxContribution,
@@ -70,6 +72,7 @@ export function parseManifest(raw: unknown): PluginManifest {
   const client = optionalEntryRef(raw, "client", acc);
   const server = optionalEntryRef(raw, "server", acc);
   const contributes = optionalContributes(raw.contributes, acc);
+  const configSchema = optionalConfigSchema(raw.configSchema, acc);
 
   // ADR-0004 §3: every capability listed in `provides[]` must be
   // backed by a real contribution. Today the only derivation rule
@@ -112,7 +115,76 @@ export function parseManifest(raw: unknown): PluginManifest {
     client,
     server,
     contributes,
+    configSchema,
   };
+}
+
+function optionalConfigSchema(
+  raw: unknown,
+  acc: Acc,
+): PluginConfigSchema | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw !== "object" || Array.isArray(raw)) {
+    acc.issues.push("configSchema must be an object");
+    return undefined;
+  }
+  const obj = raw as { fields?: unknown };
+  if (!Array.isArray(obj.fields)) {
+    acc.issues.push("configSchema.fields must be an array");
+    return { fields: [] };
+  }
+  const fields: PluginConfigField[] = [];
+  for (let i = 0; i < obj.fields.length; i++) {
+    const f = obj.fields[i] as Record<string, unknown>;
+    if (!f || typeof f !== "object") {
+      acc.issues.push(`configSchema.fields[${i}] must be an object`);
+      continue;
+    }
+    if (typeof f.key !== "string" || !f.key) {
+      acc.issues.push(`configSchema.fields[${i}].key must be a non-empty string`);
+      continue;
+    }
+    if (typeof f.label !== "string" || !f.label) {
+      acc.issues.push(`configSchema.fields[${i}].label must be a non-empty string`);
+      continue;
+    }
+    if (f.kind === "boolean") {
+      fields.push({
+        kind: "boolean",
+        key: f.key,
+        label: f.label,
+        description: typeof f.description === "string" ? f.description : undefined,
+        default: typeof f.default === "boolean" ? f.default : undefined,
+      });
+    } else if (f.kind === "number") {
+      fields.push({
+        kind: "number",
+        key: f.key,
+        label: f.label,
+        description: typeof f.description === "string" ? f.description : undefined,
+        default: typeof f.default === "number" ? f.default : undefined,
+        min: typeof f.min === "number" ? f.min : undefined,
+        max: typeof f.max === "number" ? f.max : undefined,
+        step: typeof f.step === "number" ? f.step : undefined,
+        unit: typeof f.unit === "string" ? f.unit : undefined,
+      });
+    } else if (f.kind === "string") {
+      fields.push({
+        kind: "string",
+        key: f.key,
+        label: f.label,
+        description: typeof f.description === "string" ? f.description : undefined,
+        default: typeof f.default === "string" ? f.default : undefined,
+        placeholder: typeof f.placeholder === "string" ? f.placeholder : undefined,
+        multiline: f.multiline === true,
+      });
+    } else {
+      acc.issues.push(
+        `configSchema.fields[${i}].kind must be "boolean" | "number" | "string"`,
+      );
+    }
+  }
+  return { fields };
 }
 
 function optionalCapabilityArray(

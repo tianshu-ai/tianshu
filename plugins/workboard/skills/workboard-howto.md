@@ -1,0 +1,115 @@
+---
+name: workboard-howto
+description: How to use the workboard plugin — drop tasks on the kanban, watch the worker pool process them, and patch / move / delete rows. The board is per-user inside a tenant.
+---
+
+# Using the workboard
+
+The workboard plugin gives you a per-user kanban with five visible
+columns and a worker pool that automatically picks up `todo` tasks.
+This skill is the contract between you (the agent) and the user's
+view of the board.
+
+## When to use
+
+- The user asks you to "remember to do X later" → drop a task.
+- A multi-step request can be split into independent units of work
+  → file each unit as a task so the user can track progress.
+- You want to hand off a long-running step to a worker (echo for now;
+  real workers in follow-up PRs) → tag the task with `worker_role`.
+
+If the user is asking a one-shot question, do NOT create a task.
+Tasks are for work that survives across turns.
+
+## Tools at a glance
+
+| Tool          | Use when …                                                    |
+| ------------- | ------------------------------------------------------------- |
+| `task_list`   | Reading the board (always do this first to avoid duplicates). |
+| `task_create` | Adding a new ready task. Default project is `inbox`.          |
+| `task_update` | Changing title / description / priority / project.            |
+| `task_move`   | Walking a task between columns (`todo`→`in_progress`→`done`). |
+| `task_delete` | Removing a task you created by mistake.                       |
+
+## Status lifecycle
+
+```
+todo  →  in_progress  →  done
+                  ↘     ↗
+                   stalled  →  todo (re-queue)
+                       ↘
+                        aborted   (kept for audit, hidden by default)
+```
+
+- `todo` tasks are claimed by workers in the pool. Don't sit on them.
+- `in_progress` is set automatically when a worker claims, or when
+  you call `task_move(status="in_progress")` yourself.
+- `done` is the happy path: worker reports success.
+- `stalled` means a worker errored out. Move it back to `todo` to
+  retry, or look at `result_summary` to see what failed.
+- `aborted` is "delete with audit trail". Use `task_delete` instead
+  when there's nothing worth keeping.
+
+## Project slugs
+
+Tasks group under a free-form `project` slug (default `inbox`).
+Use this when the user has multiple parallel threads — e.g.
+`website-redesign`, `q3-research`. Re-use existing slugs; don't
+fragment with typos. Call `task_list` with no filter first to see
+what already exists.
+
+## Worker roles
+
+Every worker pool runs at least one `echo` worker — a 30-second
+sleep that writes a short result_summary. This exists so the loop
+is visible end-to-end.
+
+Real worker roles ship with later PRs (per ADR-0002 §1):
+
+- `qianliyan` 👁 — read-only codebase / workspace search.
+- `luban` 🛠 — generalist maker (code + documents).
+- `xihe` 📚 — external research (library docs, web fetch).
+- `nvwa` 🎨 — visual generation.
+
+Set `worker_role` on a task to pin it to one role. Leave it empty
+to let any worker pick it up.
+
+## Common patterns
+
+**Drop a task and forget it (delegated work):**
+
+```
+task_create({
+  title: "Convert the Q2 sales CSV to a one-page chart",
+  description: "Source: /uploads/q2-sales.csv. Output: /reports/q2.png",
+  worker_role: "luban"
+})
+```
+
+**Track your own progress (no worker — you'll move it yourself):**
+
+```
+task_create({
+  title: "Reach out to 5 candidate contributors",
+  worker_role: "echo"   // optional; an echo worker will mark it done
+})
+// later, after you do the work:
+task_move({ id: "<id>", status: "done", result_summary: "Sent 5 DMs" })
+```
+
+**Re-queue a stalled task after fixing the cause:**
+
+```
+task_move({ id: "<id>", status: "todo" })
+```
+
+## Don'ts
+
+- Don't poll `task_list` in a tight loop. The worker pool drains
+  immediately on writes; the user sees updates within a few
+  seconds via the kanban panel.
+- Don't create tasks for one-turn questions. The user will see
+  them pile up.
+- Don't hand-edit `result_summary` on a worker-completed task —
+  it's the worker's report. Use `task_update.description` for
+  your own notes.

@@ -7,8 +7,8 @@ import {
   Globe,
   Hash,
   ShieldCheck,
-  Zap,
 } from "lucide-react";
+import PluginSidebarSections from "./PluginSidebarSections";
 import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
 import {
@@ -64,39 +64,12 @@ export default function Sidebar() {
           <span className="text-sm font-medium">{brandName}</span>
         </div>
 
-        {/* Workers */}
-        <div className="px-3 py-2">
-          <div className="mb-2 flex items-center gap-2">
-            <Zap size={14} className="flex-shrink-0 text-gray-600" />
-            <span className="flex-1 text-sm font-medium text-gray-300">Workers</span>
-            <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[9px] text-gray-600">
-              0/4 busy
-            </span>
-          </div>
-          <div className="space-y-1.5">
-            {WORKERS.map((w) => (
-              <div
-                key={w.role}
-                className="flex cursor-pointer items-center gap-2 rounded py-0.5 pl-1 hover:bg-gray-700/30"
-                title={`${w.displayName} (${w.role}) — ${w.description}`}
-              >
-                <span className="w-5 flex-shrink-0 text-center text-base">{w.emoji}</span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[11px] font-medium text-gray-200">
-                      {w.displayName}
-                    </span>
-                    <span className="rounded bg-gray-800/60 px-1 py-px text-[9px] text-gray-600">
-                      idle
-                    </span>
-                  </div>
-                  <div className="truncate text-[9px] text-gray-600">
-                    {w.description}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+        {/* Workers — contributed by the workboard plugin (or any other
+         *  plugin claiming `sidebarSections.after = "workers"`). When
+         *  no plugin contributes the section we render nothing; the
+         *  sidebar collapses cleanly. */}
+        <div data-testid="sidebar-workers-anchor">
+          <PluginSidebarSections anchor="workers" />
         </div>
       </div>
 
@@ -276,16 +249,4 @@ function SidebarFooter() {
   );
 }
 
-interface WorkerStub {
-  role: string;
-  displayName: string;
-  emoji: string;
-  description: string;
-}
 
-const WORKERS: WorkerStub[] = [
-  { role: "qianliyan", displayName: "千里眼", emoji: "👁️", description: "Workspace search" },
-  { role: "luban",     displayName: "鲁班",   emoji: "🛠️", description: "Code & docs maker" },
-  { role: "xihe",      displayName: "羲和",   emoji: "📚", description: "External research" },
-  { role: "nvwa",      displayName: "女娲",   emoji: "🎨", description: "Image generation" },
-];
