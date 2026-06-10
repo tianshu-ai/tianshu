@@ -340,7 +340,11 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
     agentContext.messages.pop();
   }
 
-  let lastAssistantId: string | null = null;
+  // Stash the most recent assistant row so agent_end can echo it
+  // back as stream_end's `message` payload — the web UI uses that
+  // to clear its streaming placeholder and re-enable the send
+  // button. Without this, the UI sits in "sending…" forever.
+  let lastAssistantRow: ChatMessage | null = null;
   const emit = async (event: AgentEvent): Promise<void> => {
     if (event.type === "message_update") {
       const ev = event.assistantMessageEvent;
@@ -370,7 +374,7 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
       const m = event.message;
       if (m.role === "assistant") {
         const row = appendAgentMessage(ctx, session, m as AssistantMessage);
-        lastAssistantId = row.id;
+        lastAssistantRow = row;
         send({ type: "message_added", message: toWire(row, wireOpts) });
       } else if (m.role === "toolResult") {
         const tr = m as ToolResultMessage;
@@ -393,17 +397,34 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
       return;
     }
     if (event.type === "agent_end") {
-      // Final assistant turn ended naturally — emit stream_end with
-      // the last persisted assistant row id.
-      if (lastAssistantId) {
-        // Re-look up the row to satisfy toWire's input shape.
-        // Since appendAgentMessage already returned it, we cached
-        // the id. The simplest re-load is via the in-memory row
-        // captured at the time — retrieve from messages by id.
-        // For brevity we send a synthetic stream_end with no row;
-        // the UI's existing flow re-uses the latest message_added.
+      // Final assistant turn ended — emit stream_end with the last
+      // persisted assistant row so the UI can drop its streaming
+      // placeholder and re-enable the send button. If somehow no
+      // assistant row landed (shouldn't happen — pi always emits
+      // at least one), we still emit stream_end with a placeholder
+      // so the UI doesn't get stuck.
+      if (lastAssistantRow) {
+        send({
+          type: "stream_end",
+          message: toWire(lastAssistantRow, wireOpts),
+        });
+      } else {
+        // Fall through with a synthetic empty assistant row so the
+        // UI's stream_end handler still runs.
+        send({
+          type: "stream_end",
+          message: toWire(
+            {
+              id: `msg_empty_${Date.now()}`,
+              sessionId: session.id,
+              role: "assistant",
+              content: "",
+              createdAt: Date.now(),
+            },
+            wireOpts,
+          ),
+        });
       }
-      send({ type: "stream_end" } as never);
       return;
     }
   };
