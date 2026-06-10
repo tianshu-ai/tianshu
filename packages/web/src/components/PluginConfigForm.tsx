@@ -23,6 +23,7 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 import {
   api,
   type PluginConfigField,
+  type PluginConfigFieldGroup,
   type PluginListEntry,
 } from "../lib/api";
 import { usePluginStore } from "../stores/plugin-store";
@@ -79,17 +80,64 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
     );
   }
 
+  // Group fields by `field.group?.id`. Order is determined by the
+  // first occurrence of each group in the schema, with ungrouped
+  // fields keeping their schema-relative position. We render each
+  // group as a bordered card; ungrouped fields render flat so
+  // single-knob plugins keep their original look.
+  const blocks = groupFields(fields);
+
   return (
     <div className="space-y-5">
       <div className="space-y-5">
-        {fields.map((f) => (
-          <ConfigFieldRow
-            key={f.key}
-            field={f}
-            value={values[f.key]}
-            onChange={(v) => setValues((prev) => ({ ...prev, [f.key]: v }))}
-          />
-        ))}
+        {blocks.map((block, i) => {
+          if (block.kind === "field") {
+            return (
+              <ConfigFieldRow
+                key={`f:${i}:${block.field.key}`}
+                field={block.field}
+                value={values[block.field.key]}
+                onChange={(v) =>
+                  setValues((prev) => ({ ...prev, [block.field.key]: v }))
+                }
+              />
+            );
+          }
+          // Group: if the first field is a boolean, hoist it into
+          // the header as an inline toggle. This matches the
+          // "<Section> [on/off]" pattern that's common for
+          // runtime-style settings ("WORKER TYPE  echo  [●]") and
+          // saves a redundant "Enabled" row underneath the title.
+          const [firstField, ...restFields] = block.fields;
+          const headerToggle =
+            firstField && firstField.kind === "boolean"
+              ? {
+                  field: firstField,
+                  value: values[firstField.key] === true,
+                  onChange: (v: boolean) =>
+                    setValues((prev) => ({ ...prev, [firstField.key]: v })),
+                }
+              : null;
+          const renderedFields = headerToggle ? restFields : block.fields;
+          return (
+            <ConfigGroupCard
+              key={`g:${block.group.id}`}
+              group={block.group}
+              headerToggle={headerToggle}
+            >
+              {renderedFields.map((f) => (
+                <ConfigFieldRow
+                  key={f.key}
+                  field={f}
+                  value={values[f.key]}
+                  onChange={(v) =>
+                    setValues((prev) => ({ ...prev, [f.key]: v }))
+                  }
+                />
+              ))}
+            </ConfigGroupCard>
+          );
+        })}
       </div>
       {error && (
         <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[12px] text-rose-300">
@@ -157,6 +205,82 @@ function ConfigToggle({
         ].join(" ")}
       />
     </button>
+  );
+}
+
+type RenderBlock =
+  | { kind: "group"; group: PluginConfigFieldGroup; fields: PluginConfigField[] }
+  | { kind: "field"; field: PluginConfigField };
+
+function groupFields(fields: PluginConfigField[]): RenderBlock[] {
+  const blocks: RenderBlock[] = [];
+  const groupIndex = new Map<string, number>();
+  for (const f of fields) {
+    const g = f.group;
+    if (!g) {
+      blocks.push({ kind: "field", field: f });
+      continue;
+    }
+    const existing = groupIndex.get(g.id);
+    if (existing !== undefined) {
+      const block = blocks[existing] as Extract<RenderBlock, { kind: "group" }>;
+      block.fields.push(f);
+    } else {
+      groupIndex.set(g.id, blocks.length);
+      blocks.push({ kind: "group", group: g, fields: [f] });
+    }
+  }
+  return blocks;
+}
+
+/** Bordered card grouping related fields. The optional `badge`
+ *  shows up as an uppercase pill so concepts like "worker type"
+ *  read as a label rather than free text. When `headerToggle` is
+ *  passed, its switch is rendered on the right side of the
+ *  header bar so the master enable/disable can sit next to the
+ *  group title instead of taking its own row. */
+function ConfigGroupCard({
+  group,
+  headerToggle,
+  children,
+}: {
+  group: PluginConfigFieldGroup;
+  headerToggle?: {
+    field: PluginConfigField;
+    value: boolean;
+    onChange: (v: boolean) => void;
+  } | null;
+  children: React.ReactNode;
+}) {
+  const empty =
+    !children ||
+    (Array.isArray(children) && children.every((c) => c == null || c === false));
+  return (
+    <section className="rounded-md border border-gray-800 bg-gray-900/30 p-4">
+      <header className="flex flex-wrap items-center gap-2">
+        {group.badge && (
+          <span className="rounded border border-gray-700 bg-gray-800/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+            {group.badge}
+          </span>
+        )}
+        <h3 className="text-[13px] font-semibold text-gray-100">
+          {group.label}
+        </h3>
+        {headerToggle && (
+          <ConfigToggle
+            active={headerToggle.value}
+            onClick={() => headerToggle.onChange(!headerToggle.value)}
+            ariaLabel={headerToggle.field.label}
+          />
+        )}
+      </header>
+      {group.description && (
+        <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+          {group.description}
+        </p>
+      )}
+      {!empty && <div className="mt-3 space-y-4">{children}</div>}
+    </section>
   );
 }
 

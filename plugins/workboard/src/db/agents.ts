@@ -35,6 +35,11 @@ export interface WorkerAgent {
   source: "builtin" | "user";
   builtinKey: string | null;
   ownerUserId: string | null;
+  /** When false, the row stays in the table (config preserved) but
+   *  the pool doesn't allocate a slot for it — the user's primary
+   *  knob to mute an agent. Defaults to true for both seeded
+   *  builtin rows and freshly created user rows. */
+  enabled: boolean;
   overridesAt: number | null;
   createdAt: number;
   updatedAt: number;
@@ -53,6 +58,7 @@ interface WorkerAgentRow {
   source: string;
   builtin_key: string | null;
   owner_user_id: string | null;
+  enabled: number;
   overrides_at: number | null;
   created_at: number;
   updated_at: number;
@@ -84,6 +90,7 @@ function rowToAgent(row: WorkerAgentRow): WorkerAgent {
     source: row.source as WorkerAgent["source"],
     builtinKey: row.builtin_key,
     ownerUserId: row.owner_user_id,
+    enabled: row.enabled !== 0,
     overridesAt: row.overrides_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -115,6 +122,7 @@ export function ensureSchema(db: TenantDbHandle): void {
       source          TEXT NOT NULL CHECK (source IN ('builtin','user')),
       builtin_key     TEXT,
       owner_user_id   TEXT,
+      enabled         INTEGER NOT NULL DEFAULT 1,
       overrides_at    INTEGER,
       created_at      INTEGER NOT NULL,
       updated_at      INTEGER NOT NULL
@@ -135,6 +143,20 @@ export function ensureSchema(db: TenantDbHandle): void {
     .get();
   if (!hasCol) {
     db.exec(`ALTER TABLE tasks ADD COLUMN worker_agent_id TEXT`);
+  }
+
+  // `enabled` was added after the first cut shipped — backfill if
+  // the column is missing on an existing tenant DB.
+  const hasEnabled = db
+    .prepare<[], { name: string }>(
+      `SELECT name FROM pragma_table_info('workboard_worker_agents') WHERE name = 'enabled'`,
+    )
+    .get();
+  if (!hasEnabled) {
+    db.exec(
+      `ALTER TABLE workboard_worker_agents
+       ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1`,
+    );
   }
 }
 
@@ -187,6 +209,8 @@ export interface CreateWorkerAgentInput {
   toolsAllow?: string[] | null;
   skills?: string[] | null;
   ownerUserId?: string | null;
+  /** Defaults to true. */
+  enabled?: boolean;
 }
 
 export function createUserWorkerAgent(
@@ -196,13 +220,14 @@ export function createUserWorkerAgent(
 ): WorkerAgent {
   const now = Date.now();
   const id = randomUUID();
+  const enabled = input.enabled === false ? 0 : 1;
   db.prepare(
     `INSERT INTO workboard_worker_agents (
        id, tenant_id, kind, name, description,
        model_id, system_prompt, tools_allow, skills,
-       source, builtin_key, owner_user_id, overrides_at,
+       source, builtin_key, owner_user_id, enabled, overrides_at,
        created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'user', NULL, ?, NULL, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'user', NULL, ?, ?, NULL, ?, ?)`,
   ).run(
     id,
     tenantId,
@@ -214,6 +239,7 @@ export function createUserWorkerAgent(
     input.toolsAllow ? JSON.stringify(input.toolsAllow) : null,
     input.skills ? JSON.stringify(input.skills) : null,
     input.ownerUserId ?? null,
+    enabled,
     now,
     now,
   );
@@ -229,6 +255,7 @@ export interface UpdateWorkerAgentPatch {
   systemPrompt?: string | null;
   toolsAllow?: string[] | null;
   skills?: string[] | null;
+  enabled?: boolean;
 }
 
 /** Patch a worker agent. Always stamps `overrides_at` so the seed
@@ -266,12 +293,35 @@ export function updateWorkerAgent(
     sets.push("skills = ?");
     params.push(patch.skills ? JSON.stringify(patch.skills) : null);
   }
+  if (patch.enabled !== undefined) {
+    sets.push("enabled = ?");
+    params.push(patch.enabled ? 1 : 0);
+  }
 
   if (sets.length === 0) return getWorkerAgent(db, tenantId, id);
 
+  // Toggling `enabled` alone is a runtime mute, not a config
+  // override — don't stamp `overrides_at` so the next plugin
+  // upgrade can still flow display fields through. Any other field
+  // change DOES count as user customisation and locks the row
+  // against seed updates.
+  const onlyEnabled =
+    patch.enabled !== undefined &&
+    patch.name === undefined &&
+    patch.description === undefined &&
+    patch.modelId === undefined &&
+    patch.systemPrompt === undefined &&
+    patch.toolsAllow === undefined &&
+    patch.skills === undefined;
+
   const now = Date.now();
-  sets.push("updated_at = ?", "overrides_at = ?");
-  params.push(now, now);
+  if (onlyEnabled) {
+    sets.push("updated_at = ?");
+    params.push(now);
+  } else {
+    sets.push("updated_at = ?", "overrides_at = ?");
+    params.push(now, now);
+  }
   params.push(tenantId, id);
   db.prepare(
     `UPDATE workboard_worker_agents SET ${sets.join(", ")}

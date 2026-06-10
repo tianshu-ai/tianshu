@@ -71,6 +71,10 @@ const WORKER_KINDS: WorkerKindDef[] = [
     description:
       "Reflects the task title back as result_summary after a configurable delay. Demo worker — only useful while you're watching the kanban move.",
     userCreatable: false,
+    // Echo runtime has no per-agent tunables — every echo agent
+    // shares the plugin-wide `echo.delayMs`. Description is the
+    // only freeform field worth surfacing.
+    fields: ["description"],
   },
 ];
 
@@ -122,9 +126,11 @@ const plugin: PluginServerModule = {
       return null;
     };
 
-    const initialAgents = listWorkerAgents(ctx.db, ctx.tenantId).map(
-      (row): AgentSpec => ({ id: row.id, kind: row.kind, name: row.name }),
-    );
+    const initialAgents = listWorkerAgents(ctx.db, ctx.tenantId)
+      .filter((row) => row.enabled)
+      .map(
+        (row): AgentSpec => ({ id: row.id, kind: row.kind, name: row.name }),
+      );
 
     const pool = new WorkerPool({
       db: ctx.db,
@@ -153,9 +159,11 @@ const plugin: PluginServerModule = {
     );
 
     const onAgentsWrite = () => {
-      const next = listWorkerAgents(ctx.db, ctx.tenantId).map(
-        (row): AgentSpec => ({ id: row.id, kind: row.kind, name: row.name }),
-      );
+      const next = listWorkerAgents(ctx.db, ctx.tenantId)
+        .filter((row) => row.enabled)
+        .map(
+          (row): AgentSpec => ({ id: row.id, kind: row.kind, name: row.name }),
+        );
       pool.rebuild(next);
     };
 

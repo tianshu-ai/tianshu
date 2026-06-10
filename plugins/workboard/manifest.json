@@ -40,7 +40,6 @@
         "displayName": "Worker agents",
         "icon": "Bot",
         "component": "WorkerAgentsPage",
-        "group": "Workboard",
         "order": 10
       }
     ],
@@ -73,20 +72,29 @@
     "fields": [
       {
         "key": "echo.enabled",
-        "label": "Enable echo worker",
-        "description": "v0.2 demo worker. Sleeps for the configured delay then writes a one-line result_summary, so the full ready → in-progress → done loop is visible end-to-end. Turn off when real workers ship.",
+        "label": "Enabled",
         "kind": "boolean",
-        "default": true
+        "default": true,
+        "group": {
+          "id": "worker-type-echo",
+          "label": "echo",
+          "badge": "worker type"
+        }
       },
       {
         "key": "echo.delayMs",
-        "label": "Echo worker delay",
-        "description": "How long the echo worker pretends to be busy on each task before marking it done. The echo worker has no real work to do (it just reflects the task title), so this number simulates execution time — useful for demoing the todo → in-progress → done flow on the kanban. 5000–10000 ms is comfortable for screen recordings; 0 makes tasks complete instantly.",
+        "label": "Simulated execution delay",
+        "description": "How long an echo worker pretends to be busy on each task before marking it done. 0 makes tasks complete instantly.",
         "kind": "number",
         "default": 30000,
         "min": 0,
         "step": 1000,
-        "unit": "ms"
+        "unit": "ms",
+        "group": {
+          "id": "worker-type-echo",
+          "label": "echo",
+          "badge": "worker type"
+        }
       }
     ]
   }

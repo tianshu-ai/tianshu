@@ -13,6 +13,7 @@ import type {
   ComposerActionContribution,
   ContributesV1,
   PluginConfigField,
+  PluginConfigFieldGroup,
   PluginConfigSchema,
   PluginManifest,
   RightPanelContribution,
@@ -148,6 +149,7 @@ function optionalConfigSchema(
       acc.issues.push(`configSchema.fields[${i}].label must be a non-empty string`);
       continue;
     }
+    const group = parseConfigFieldGroup(f.group, `configSchema.fields[${i}].group`, acc);
     if (f.kind === "boolean") {
       fields.push({
         kind: "boolean",
@@ -155,6 +157,7 @@ function optionalConfigSchema(
         label: f.label,
         description: typeof f.description === "string" ? f.description : undefined,
         default: typeof f.default === "boolean" ? f.default : undefined,
+        group,
       });
     } else if (f.kind === "number") {
       fields.push({
@@ -167,6 +170,7 @@ function optionalConfigSchema(
         max: typeof f.max === "number" ? f.max : undefined,
         step: typeof f.step === "number" ? f.step : undefined,
         unit: typeof f.unit === "string" ? f.unit : undefined,
+        group,
       });
     } else if (f.kind === "string") {
       fields.push({
@@ -177,6 +181,7 @@ function optionalConfigSchema(
         default: typeof f.default === "string" ? f.default : undefined,
         placeholder: typeof f.placeholder === "string" ? f.placeholder : undefined,
         multiline: f.multiline === true,
+        group,
       });
     } else {
       acc.issues.push(
@@ -185,6 +190,32 @@ function optionalConfigSchema(
     }
   }
   return { fields };
+}
+
+function parseConfigFieldGroup(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): PluginConfigFieldGroup | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} must be an object`);
+    return undefined;
+  }
+  const id = typeof raw.id === "string" ? raw.id : null;
+  const label = typeof raw.label === "string" ? raw.label : null;
+  if (!id || !label) {
+    acc.issues.push(`${ctx} must include string id and label`);
+    return undefined;
+  }
+  const out: PluginConfigFieldGroup = { id, label };
+  if (typeof raw.badge === "string" && raw.badge.length > 0) {
+    out.badge = raw.badge;
+  }
+  if (typeof raw.description === "string" && raw.description.length > 0) {
+    out.description = raw.description;
+  }
+  return out;
 }
 
 function optionalCapabilityArray(

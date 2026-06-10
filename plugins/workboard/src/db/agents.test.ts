@@ -181,4 +181,54 @@ describe("workboard worker_agents", () => {
     const r = resetBuiltinAgent(db, "t1", u.id, new Map());
     expect(r).toBeNull();
   });
+
+  it("new agents default to enabled=true", () => {
+    const a = createUserWorkerAgent(db, "t1", { kind: "llm", name: "A" });
+    expect(a.enabled).toBe(true);
+  });
+
+  it("updateWorkerAgent flips enabled without stamping overrides_at", () => {
+    const a = createUserWorkerAgent(db, "t1", { kind: "llm", name: "A" });
+    const off = updateWorkerAgent(db, "t1", a.id, { enabled: false })!;
+    expect(off.enabled).toBe(false);
+    expect(off.overridesAt).toBeNull();
+    const on = updateWorkerAgent(db, "t1", a.id, { enabled: true })!;
+    expect(on.enabled).toBe(true);
+    expect(on.overridesAt).toBeNull();
+  });
+
+  it("updateWorkerAgent that touches name still stamps overrides_at", () => {
+    const a = createUserWorkerAgent(db, "t1", { kind: "llm", name: "A" });
+    const after = updateWorkerAgent(db, "t1", a.id, {
+      name: "B",
+      enabled: false,
+    })!;
+    expect(after.overridesAt).not.toBeNull();
+  });
+
+  // Field-allow-list checks live at the route layer, but the DB
+  // layer must accept whatever the route passes through — these
+  // here are belt-and-suspenders so a future refactor that moves
+  // some validation into the DB layer doesn't silently break the
+  // existing routes.
+
+  it("seed loop preserves user enabled state across re-seed", () => {
+    seedBuiltinAgents(db, "t1", [
+      { builtinKey: "k1", kind: "echo", name: "Echo demo" },
+    ]);
+    const seeded = listWorkerAgents(db, "t1")[0];
+    updateWorkerAgent(db, "t1", seeded.id, { enabled: false });
+
+    const r = seedBuiltinAgents(db, "t1", [
+      { builtinKey: "k1", kind: "echo", name: "Echo demo v2" },
+    ]);
+    // Row was only enabled-toggled (no overrides_at stamp), so the
+    // seed update path runs and refreshes display fields, but the
+    // user's enabled=false survives because the seed loop never
+    // writes the enabled column.
+    expect(r).toEqual({ inserted: 0, updated: 1, preserved: 0 });
+    const after = listWorkerAgents(db, "t1")[0];
+    expect(after.name).toBe("Echo demo v2");
+    expect(after.enabled).toBe(false);
+  });
 });

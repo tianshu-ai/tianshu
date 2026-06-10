@@ -85,6 +85,13 @@ const CORE_PAGES: FlatAdminPage[] = [
   },
 ];
 
+/** Sidebar group every plugin-contributed admin page is filed
+ *  under. We deliberately ignore `manifest.adminPages[].group` for
+ *  plugin pages so a plugin can't escape the Plugins section by
+ *  inventing its own top-level label. (Core / host-shipped pages
+ *  keep their own groups: Agent for MCP, etc.) */
+const PLUGIN_GROUP = "Plugins";
+
 function flattenAdminPages(plugins: PluginListEntry[] | null): FlatAdminPage[] {
   const out: FlatAdminPage[] = [...CORE_PAGES];
   if (plugins) {
@@ -101,7 +108,7 @@ function flattenAdminPages(plugins: PluginListEntry[] | null): FlatAdminPage[] {
           icon: page.icon,
           kind: "plugin",
           component: page.component,
-          group: page.group,
+          group: PLUGIN_GROUP,
           order: page.order ?? 100,
           clientEntry: p.clientEntry,
         });
@@ -132,7 +139,7 @@ function flattenAdminPages(plugins: PluginListEntry[] | null): FlatAdminPage[] {
               pluginId={p.id}
             />
           )) as React.ComponentType<AdminPageProps>,
-          group: "Plugins",
+          group: PLUGIN_GROUP,
           order: 90,
           clientEntry: null,
         });

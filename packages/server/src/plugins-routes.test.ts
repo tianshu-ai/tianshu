@@ -35,7 +35,20 @@ let registry: PluginRegistry;
 
 const helloModule: PluginServerModule = {
   activate: () => ({
-    routes: { hello: (_req, res) => res.json({ greeting: "hi" }) },
+    routes: {
+      hello: (_req, res) => res.json({ greeting: "hi" }),
+      // Echoes back the matched id so the test can assert path
+      // params land in `req.params`.
+      echoId: (req, res) =>
+        res.json({ id: (req.params as Record<string, string>).id ?? null }),
+      // Two-param route (e.g. /things/:id/sub/:action) — exercises
+      // multi-param matching.
+      echoTwo: (req, res) =>
+        res.json({
+          id: (req.params as Record<string, string>).id ?? null,
+          action: (req.params as Record<string, string>).action ?? null,
+        }),
+    },
     wsHandlers: { ping: () => {} },
   }),
 };
@@ -357,6 +370,54 @@ describe("plugins HTTP routes", () => {
     const app = buildApp();
 
     const res = await request(app).get("/api/p/hello/say");
+    expect(res.status).toBe(404);
+  });
+
+  it("dispatches plugin routes with `:id` path params", async () => {
+    writeBuiltinManifest("hello", {
+      id: "hello",
+      version: "1.0.0",
+      displayName: "Hello",
+      server: { entry: "@hello/server" },
+      contributes: {
+        apiRoutes: [
+          { method: "GET", path: "/things/:id", handler: "echoId" },
+          {
+            method: "POST",
+            path: "/things/:id/sub/:action",
+            handler: "echoTwo",
+          },
+          { method: "GET", path: "/things", handler: "hello" },
+        ],
+      },
+    });
+    writeTenantConfig(TENANT, { plugins: { hello: { enabled: true } } }, home);
+    const app = buildApp();
+
+    let res = await request(app).get("/api/p/hello/things/abc-123");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: "abc-123" });
+
+    res = await request(app).post("/api/p/hello/things/abc/sub/reset");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ id: "abc", action: "reset" });
+
+    // Static route still wins over the param route when the path
+    // is a literal match.
+    res = await request(app).get("/api/p/hello/things");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ greeting: "hi" });
+
+    // A param route should NOT swallow a deeper path — single segment.
+    res = await request(app).get("/api/p/hello/things/a/b");
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("plugin_route_not_found");
+
+    // url-encoded id is decoded before reaching the handler.
+    res = await request(app).get("/api/p/hello/things/abc%2Fdef");
+    // %2F isn't allowed in our segment regex, so this 404s rather
+    // than feeding `abc/def` into the handler. (Document the
+    // behaviour explicitly.)
     expect(res.status).toBe(404);
   });
 

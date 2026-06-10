@@ -36,10 +36,18 @@ interface WorkerAgent {
   source: "builtin" | "user";
   builtinKey: string | null;
   ownerUserId: string | null;
+  enabled: boolean;
   overridesAt: number | null;
   createdAt: number;
   updatedAt: number;
 }
+
+type WorkerKindField =
+  | "description"
+  | "modelId"
+  | "systemPrompt"
+  | "toolsAllow"
+  | "skills";
 
 interface WorkerKind {
   id: string;
@@ -47,6 +55,8 @@ interface WorkerKind {
   description?: string;
   userCreatable?: boolean;
   pluginId: string;
+  /** Optional fields this kind exposes; absent means "all". */
+  fields?: WorkerKindField[];
 }
 
 interface ApiResponse {
@@ -149,14 +159,23 @@ export default function WorkerAgentsPage() {
     setSaving(true);
     setError(null);
     try {
-      const body: Record<string, unknown> = {
-        name: editing.name,
-        description: editing.description.trim() || null,
-        modelId: editing.modelId.trim() || null,
-        systemPrompt: editing.systemPrompt.trim() || null,
-        toolsAllow: parseList(editing.toolsAllow),
-        skills: parseList(editing.skills),
-      };
+      const allow = allowedFieldsFor(editing.kind, data?.kinds ?? []);
+      const body: Record<string, unknown> = { name: editing.name };
+      if (allow.has("description")) {
+        body.description = editing.description.trim() || null;
+      }
+      if (allow.has("modelId")) {
+        body.modelId = editing.modelId.trim() || null;
+      }
+      if (allow.has("systemPrompt")) {
+        body.systemPrompt = editing.systemPrompt.trim() || null;
+      }
+      if (allow.has("toolsAllow")) {
+        body.toolsAllow = parseList(editing.toolsAllow);
+      }
+      if (allow.has("skills")) {
+        body.skills = parseList(editing.skills);
+      }
       let r: Response;
       if (editing.id) {
         r = await fetch(`/api/p/workboard/agents/${editing.id}`, {
@@ -205,6 +224,22 @@ export default function WorkerAgentsPage() {
       const r = await fetch(`/api/p/workboard/agents/${a.id}`, {
         method: "DELETE",
         credentials: "include",
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }
+
+  async function setEnabled(a: WorkerAgent, next: boolean) {
+    setError(null);
+    try {
+      const r = await fetch(`/api/p/workboard/agents/${a.id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: next }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       await refresh();
@@ -291,6 +326,7 @@ export default function WorkerAgentsPage() {
         <table className="w-full text-left text-[12px] text-gray-300">
           <thead className="bg-gray-900/50 text-[11px] uppercase tracking-wide text-gray-500">
             <tr>
+              <th className="px-3 py-2">On</th>
               <th className="px-3 py-2">Name</th>
               <th className="px-3 py-2">Kind</th>
               <th className="px-3 py-2">Source</th>
@@ -303,7 +339,7 @@ export default function WorkerAgentsPage() {
             {agents.length === 0 && (
               <tr>
                 <td
-                  colSpan={6}
+                  colSpan={7}
                   className="px-3 py-6 text-center text-[12px] text-gray-500"
                 >
                   No worker agents yet. Enable the workboard plugin to
@@ -314,8 +350,32 @@ export default function WorkerAgentsPage() {
             {agents.map((a) => (
               <tr
                 key={a.id}
-                className="border-t border-gray-800 hover:bg-gray-900/30"
+                className={`border-t border-gray-800 hover:bg-gray-900/30 ${
+                  a.enabled ? "" : "opacity-50"
+                }`}
               >
+                <td className="px-3 py-2">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={a.enabled}
+                    onClick={() => void setEnabled(a, !a.enabled)}
+                    title={
+                      a.enabled
+                        ? "Disable: pool stops scheduling for this agent (config preserved)."
+                        : "Enable: pool will allocate a worker slot on next rebuild."
+                    }
+                    className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                      a.enabled ? "bg-emerald-500" : "bg-gray-700"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                        a.enabled ? "translate-x-3.5" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </td>
                 <td className="px-3 py-2">
                   <div className="font-medium text-gray-100">{a.name}</div>
                   {a.description && (
@@ -397,6 +457,7 @@ export default function WorkerAgentsPage() {
         <EditDialog
           draft={editing}
           kinds={userCreatableKinds}
+          allKinds={data?.kinds ?? []}
           isNew={editing.id === null}
           saving={saving}
           onChange={setEditing}
@@ -408,9 +469,26 @@ export default function WorkerAgentsPage() {
   );
 }
 
+const ALL_OPTIONAL_FIELDS: WorkerKindField[] = [
+  "description",
+  "modelId",
+  "systemPrompt",
+  "toolsAllow",
+  "skills",
+];
+
+function allowedFieldsFor(
+  kindId: string,
+  kinds: WorkerKind[],
+): Set<WorkerKindField> {
+  const def = kinds.find((k) => k.id === kindId);
+  return new Set(def?.fields ?? ALL_OPTIONAL_FIELDS);
+}
+
 function EditDialog({
   draft,
   kinds,
+  allKinds,
   isNew,
   saving,
   onChange,
@@ -418,13 +496,20 @@ function EditDialog({
   onSave,
 }: {
   draft: EditDraft;
+  /** Kinds the picker offers when creating a new agent (already
+   *  filtered to userCreatable). */
   kinds: WorkerKind[];
+  /** Every kind, including non-userCreatable ones, used to look up
+   *  the field whitelist for the current draft (the user might be
+   *  editing a builtin echo agent whose kind isn't in `kinds`). */
+  allKinds: WorkerKind[];
   isNew: boolean;
   saving: boolean;
   onChange: (next: EditDraft) => void;
   onCancel: () => void;
   onSave: () => void;
 }) {
+  const allow = allowedFieldsFor(draft.kind, allKinds);
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/60 p-4">
       <div className="mt-12 w-full max-w-xl rounded-lg border border-gray-800 bg-gray-950 shadow-xl">
@@ -467,64 +552,83 @@ function EditDialog({
             />
           </Field>
 
-          <Field label="Description">
-            <input
-              type="text"
-              value={draft.description}
-              onChange={(e) =>
-                onChange({ ...draft, description: e.target.value })
-              }
-              className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
-            />
-          </Field>
+          {allow.has("description") && (
+            <Field label="Description">
+              <input
+                type="text"
+                value={draft.description}
+                onChange={(e) =>
+                  onChange({ ...draft, description: e.target.value })
+                }
+                className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+              />
+            </Field>
+          )}
 
-          <Field label="Model id" hint="Empty = use tenant default model.">
-            <input
-              type="text"
-              value={draft.modelId}
-              onChange={(e) =>
-                onChange({ ...draft, modelId: e.target.value })
-              }
-              placeholder="sap-proxy/claude-sonnet-4-6"
-              className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
-            />
-          </Field>
+          {allow.has("modelId") && (
+            <Field label="Model id" hint="Empty = use tenant default model.">
+              <input
+                type="text"
+                value={draft.modelId}
+                onChange={(e) =>
+                  onChange({ ...draft, modelId: e.target.value })
+                }
+                placeholder="sap-proxy/claude-sonnet-4-6"
+                className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+              />
+            </Field>
+          )}
 
-          <Field label="System prompt">
-            <textarea
-              value={draft.systemPrompt}
-              onChange={(e) =>
-                onChange({ ...draft, systemPrompt: e.target.value })
-              }
-              rows={4}
-              className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
-            />
-          </Field>
+          {allow.has("systemPrompt") && (
+            <Field label="System prompt">
+              <textarea
+                value={draft.systemPrompt}
+                onChange={(e) =>
+                  onChange({ ...draft, systemPrompt: e.target.value })
+                }
+                rows={4}
+                className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+              />
+            </Field>
+          )}
 
-          <Field
-            label="Allowed tools"
-            hint="Comma-separated tool names. Empty = no tools."
-          >
-            <input
-              type="text"
-              value={draft.toolsAllow}
-              onChange={(e) =>
-                onChange({ ...draft, toolsAllow: e.target.value })
-              }
-              placeholder="task_list, web_fetch"
-              className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
-            />
-          </Field>
+          {allow.has("toolsAllow") && (
+            <Field
+              label="Allowed tools"
+              hint="Comma-separated tool names. Empty = no tools."
+            >
+              <input
+                type="text"
+                value={draft.toolsAllow}
+                onChange={(e) =>
+                  onChange({ ...draft, toolsAllow: e.target.value })
+                }
+                placeholder="task_list, web_fetch"
+                className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+              />
+            </Field>
+          )}
 
-          <Field label="Skills" hint="Comma-separated skill names.">
-            <input
-              type="text"
-              value={draft.skills}
-              onChange={(e) => onChange({ ...draft, skills: e.target.value })}
-              placeholder="research-howto"
-              className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
-            />
-          </Field>
+          {allow.has("skills") && (
+            <Field label="Skills" hint="Comma-separated skill names.">
+              <input
+                type="text"
+                value={draft.skills}
+                onChange={(e) => onChange({ ...draft, skills: e.target.value })}
+                placeholder="research-howto"
+                className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+              />
+            </Field>
+          )}
+
+          {/* Edge case: kind has only `name` allowed (e.g. a future
+              kind that's pure metadata). Show a hint so the form
+              doesn't look broken. */}
+          {allow.size === 0 && (
+            <p className="text-[11px] text-gray-500">
+              No additional settings for this worker type.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-gray-800 px-4 py-3">

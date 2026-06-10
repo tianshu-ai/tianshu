@@ -81,6 +81,26 @@ interface PluginConfigFieldBase {
   label: string;
   /** Optional one-line help, rendered under the input. */
   description?: string;
+  /**
+   * Optional grouping. Fields sharing the same `group.id` render
+   * inside a bordered card with `group.label` as the section
+   * header; `group.badge` (when set) renders as a coloured pill
+   * next to the label so domain concepts (e.g. "worker type") get
+   * visual emphasis. Fields without `group` keep the flat layout.
+   */
+  group?: PluginConfigFieldGroup;
+}
+
+export interface PluginConfigFieldGroup {
+  /** Stable id; fields sharing this id are rendered together. */
+  id: string;
+  /** Section header text. */
+  label: string;
+  /** Optional small uppercase pill rendered next to the header.
+   *  Used today to highlight worker type names. */
+  badge?: string;
+  /** Optional one-line description under the header. */
+  description?: string;
 }
 
 export interface PluginConfigBoolField extends PluginConfigFieldBase {

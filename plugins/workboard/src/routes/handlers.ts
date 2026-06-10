@@ -41,6 +41,19 @@ import {
 } from "../db/agents.js";
 import type { WorkerPool } from "../worker/pool.js";
 
+/** Optional fields a worker kind can store on its agents. Every
+ *  kind always exposes `name` + `description`; the rest opt in.
+ *  The same set is used by the UI to decide which form rows to
+ *  render and by the REST handlers to reject fields a kind
+ *  hasn't opted into (so no stray system prompt sneaks onto an
+ *  echo agent). */
+export type WorkerKindField =
+  | "description"
+  | "modelId"
+  | "systemPrompt"
+  | "toolsAllow"
+  | "skills";
+
 export interface WorkerKindDef {
   id: string;
   displayName: string;
@@ -48,6 +61,28 @@ export interface WorkerKindDef {
   /** Default true. When false, hidden from the "new agent" picker;
    *  used for demo runtimes that should only ever exist as seeds. */
   userCreatable?: boolean;
+  /** Which optional fields this kind exposes in CRUD. `name` is
+   *  always allowed and isn't listed here. Default for backwards
+   *  compat is the full set ("description", "modelId",
+   *  "systemPrompt", "toolsAllow", "skills") so existing UI
+   *  doesn't lose anything; future kinds tighten the list. */
+  fields?: WorkerKindField[];
+}
+
+const ALL_FIELDS: WorkerKindField[] = [
+  "description",
+  "modelId",
+  "systemPrompt",
+  "toolsAllow",
+  "skills",
+];
+
+function allowedFieldsFor(
+  kind: string,
+  defs: WorkerKindDef[],
+): Set<WorkerKindField> {
+  const def = defs.find((k) => k.id === kind);
+  return new Set(def?.fields ?? ALL_FIELDS);
 }
 
 export interface RoutesDeps {
@@ -418,17 +453,40 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       return;
     }
 
+    const allow = allowedFieldsFor(kind, deps.workerKinds);
+    // Reject fields the kind didn't opt into so an echo agent
+    // can't accidentally carry an llm-shaped systemPrompt.
+    const stray = ALL_FIELDS.find(
+      (f) => !allow.has(f) && (body as Record<string, unknown>)[f] !== undefined,
+    );
+    if (stray) {
+      res.status(400).json({
+        error: "field_not_allowed_for_kind",
+        kind,
+        field: stray,
+      });
+      return;
+    }
     const description =
-      typeof body.description === "string" ? body.description : null;
-    const modelId = typeof body.modelId === "string" ? body.modelId : null;
+      allow.has("description") && typeof body.description === "string"
+        ? body.description
+        : null;
+    const modelId =
+      allow.has("modelId") && typeof body.modelId === "string"
+        ? body.modelId
+        : null;
     const systemPrompt =
-      typeof body.systemPrompt === "string" ? body.systemPrompt : null;
-    const toolsAllow = Array.isArray(body.toolsAllow)
-      ? body.toolsAllow.filter((x): x is string => typeof x === "string")
-      : null;
-    const skills = Array.isArray(body.skills)
-      ? body.skills.filter((x): x is string => typeof x === "string")
-      : null;
+      allow.has("systemPrompt") && typeof body.systemPrompt === "string"
+        ? body.systemPrompt
+        : null;
+    const toolsAllow =
+      allow.has("toolsAllow") && Array.isArray(body.toolsAllow)
+        ? body.toolsAllow.filter((x): x is string => typeof x === "string")
+        : null;
+    const skills =
+      allow.has("skills") && Array.isArray(body.skills)
+        ? body.skills.filter((x): x is string => typeof x === "string")
+        : null;
 
     const agent = createUserWorkerAgent(deps.db, deps.tenantId, {
       kind,
@@ -462,27 +520,42 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     }
     const body = (req.body ?? {}) as Record<string, unknown>;
     const patch: Parameters<typeof updateWorkerAgent>[3] = {};
+    const allow = allowedFieldsFor(before.kind, deps.workerKinds);
+    const stray = ALL_FIELDS.find(
+      (f) => !allow.has(f) && body[f] !== undefined,
+    );
+    if (stray) {
+      res.status(400).json({
+        error: "field_not_allowed_for_kind",
+        kind: before.kind,
+        field: stray,
+      });
+      return;
+    }
     if (typeof body.name === "string") patch.name = body.name;
-    if ("description" in body) {
+    if (allow.has("description") && "description" in body) {
       patch.description =
         typeof body.description === "string" ? body.description : null;
     }
-    if ("modelId" in body) {
+    if (allow.has("modelId") && "modelId" in body) {
       patch.modelId = typeof body.modelId === "string" ? body.modelId : null;
     }
-    if ("systemPrompt" in body) {
+    if (allow.has("systemPrompt") && "systemPrompt" in body) {
       patch.systemPrompt =
         typeof body.systemPrompt === "string" ? body.systemPrompt : null;
     }
-    if ("toolsAllow" in body) {
+    if (allow.has("toolsAllow") && "toolsAllow" in body) {
       patch.toolsAllow = Array.isArray(body.toolsAllow)
         ? body.toolsAllow.filter((x): x is string => typeof x === "string")
         : null;
     }
-    if ("skills" in body) {
+    if (allow.has("skills") && "skills" in body) {
       patch.skills = Array.isArray(body.skills)
         ? body.skills.filter((x): x is string => typeof x === "string")
         : null;
+    }
+    if (typeof body.enabled === "boolean") {
+      patch.enabled = body.enabled;
     }
     const after = updateWorkerAgent(deps.db, deps.tenantId, id, patch);
     deps.onAgentsWrite();
