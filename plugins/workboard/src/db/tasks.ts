@@ -35,6 +35,11 @@ export interface Task {
   projectSlug: string;
   ownerUserId: string;
   workerRole: string | null;
+  /** Structured replacement for `workerRole` (N+6.2). When set, the
+   *  pool dispatches to the matching `worker_agents` row regardless
+   *  of `workerRole`. Both fields coexist for one release; the pool
+   *  prefers `workerAgentId`. */
+  workerAgentId: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -57,6 +62,7 @@ interface TaskRow {
   project_slug: string;
   owner_user_id: string;
   worker_role: string | null;
+  worker_agent_id: string | null;
   title: string;
   description: string | null;
   status: string;
@@ -90,6 +96,7 @@ function rowToTask(row: TaskRow): Task {
     projectSlug: row.project_slug,
     ownerUserId: row.owner_user_id,
     workerRole: row.worker_role,
+    workerAgentId: row.worker_agent_id,
     title: row.title,
     description: row.description,
     status: row.status as TaskStatus,
@@ -110,6 +117,9 @@ export interface CreateTaskInput {
   description?: string | null;
   projectSlug?: string;
   workerRole?: string | null;
+  /** Pin the task to a specific worker agent (host DB id). When
+   *  set, the pool routes here instead of doing a role match. */
+  workerAgentId?: string | null;
   priority?: number;
   /** Task ids that must reach status='done' first. Caller is
    *  responsible for filtering to ids belonging to the same owner;
@@ -138,20 +148,23 @@ export function createTask(
   const now = Date.now();
   const project = (input.projectSlug ?? "inbox").trim() || "inbox";
   const role = input.workerRole?.trim() ? input.workerRole.trim() : null;
+  const agentId =
+    input.workerAgentId?.trim() ? input.workerAgentId.trim() : null;
   const priority = Number.isFinite(input.priority) ? Number(input.priority) : 0;
   const dependsOn = sanitiseDependsOn(input.dependsOn, id);
   db.prepare(
     `INSERT INTO tasks (
-       id, project_slug, owner_user_id, worker_role,
+       id, project_slug, owner_user_id, worker_role, worker_agent_id,
        title, description, status, priority,
        result_summary, result_files, session_id, depends_on,
        created_at, started_at, ended_at
-     ) VALUES (?, ?, ?, ?, ?, ?, 'todo', ?, NULL, NULL, NULL, ?, ?, NULL, NULL)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'todo', ?, NULL, NULL, NULL, ?, ?, NULL, NULL)`,
   ).run(
     id,
     project,
     input.ownerUserId,
     role,
+    agentId,
     input.title.trim(),
     input.description?.trim() || null,
     priority,
@@ -224,6 +237,7 @@ export interface UpdateTaskPatch {
   projectSlug?: string;
   priority?: number;
   workerRole?: string | null;
+  workerAgentId?: string | null;
   status?: TaskStatus;
   resultSummary?: string | null;
   resultFiles?: string[];
@@ -266,6 +280,12 @@ export function updateTask(
   if (patch.workerRole !== undefined) {
     sets.push("worker_role = ?");
     params.push(patch.workerRole?.trim() ? patch.workerRole.trim() : null);
+  }
+  if (patch.workerAgentId !== undefined) {
+    sets.push("worker_agent_id = ?");
+    params.push(
+      patch.workerAgentId?.trim() ? patch.workerAgentId.trim() : null,
+    );
   }
   if (patch.status !== undefined) {
     sets.push("status = ?");
@@ -378,33 +398,65 @@ export function listProjects(
  */
 export function claimNextTask(
   db: TenantDbHandle,
-  opts: { workerRole?: string | null; sessionId?: string | null } = {},
+  opts: {
+    workerRole?: string | null;
+    /** When set, only claim tasks whose `worker_agent_id` matches
+     *  this id, OR are unpinned and whose `worker_role` matches
+     *  the legacy role (so a worker covers both old and new
+     *  pinning surfaces). */
+    workerAgentId?: string | null;
+    sessionId?: string | null;
+  } = {},
 ): Task | null {
   const role = opts.workerRole ?? null;
+  const agentId = opts.workerAgentId ?? null;
   const sessionId = opts.sessionId ?? null;
   const now = Date.now();
 
-  // Workers without a role take any task. Roled workers prefer
-  // tasks marked with their role, but also pick up role-less ones
-  // (so a single echo-worker covers everything in v0.2).
-  const eligible = role
-    ? db
+  // Selection rules:
+  //   * worker pinned to an agent  →  rows pinned to the same
+  //     agent, OR rows with no agent pin and matching/empty role
+  //   * worker not pinned (legacy)  →  rows with no agent pin and
+  //     matching/empty role
+  // Either case rejects rows that are pinned to a *different*
+  // agent — the host DB owns the agent identity, so a wrong-agent
+  // claim would silently misroute work.
+  const eligible = (() => {
+    if (agentId) {
+      return db
+        .prepare<[string, string], TaskRow>(
+          `SELECT * FROM tasks
+           WHERE status = 'todo'
+             AND ( worker_agent_id = ?
+                   OR (worker_agent_id IS NULL
+                       AND (worker_role IS NULL OR worker_role = ?)))
+           ORDER BY priority DESC, created_at ASC
+           LIMIT 50`,
+        )
+        .all(agentId, role ?? "");
+    }
+    if (role) {
+      return db
         .prepare<[string], TaskRow>(
           `SELECT * FROM tasks
            WHERE status = 'todo'
+             AND worker_agent_id IS NULL
              AND (worker_role IS NULL OR worker_role = ?)
            ORDER BY priority DESC, created_at ASC
            LIMIT 50`,
         )
-        .all(role)
-    : db
-        .prepare<[], TaskRow>(
-          `SELECT * FROM tasks
-           WHERE status = 'todo'
-           ORDER BY priority DESC, created_at ASC
-           LIMIT 50`,
-        )
-        .all();
+        .all(role);
+    }
+    return db
+      .prepare<[], TaskRow>(
+        `SELECT * FROM tasks
+         WHERE status = 'todo'
+           AND worker_agent_id IS NULL
+         ORDER BY priority DESC, created_at ASC
+         LIMIT 50`,
+      )
+      .all();
+  })();
 
   for (const row of eligible) {
     const candidate = rowToTask(row);

@@ -38,6 +38,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { AdminPageProps, PanelProps, PluginClientExports, SidebarSectionProps } from "@tianshu/plugin-sdk/client";
+import WorkerAgentsPage from "./worker-agents-page.js";
 
 const API_BASE = "/api/p/workboard";
 
@@ -1763,6 +1764,8 @@ const clientExports: PluginClientExports = {
     WorkboardPanel: WorkboardPanel as PluginClientExports["components"][string],
     WorkersSidebarSection:
       WorkersSidebarSection as PluginClientExports["components"][string],
+    WorkerAgentsPage:
+      WorkerAgentsPage as PluginClientExports["components"][string],
   },
 };
 

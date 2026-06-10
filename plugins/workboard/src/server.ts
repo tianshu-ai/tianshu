@@ -1,21 +1,24 @@
-// Workboard plugin server entry (ADR-0002 §6 + ADR-0004 §10).
+// Workboard plugin server entry (ADR-0002 §6).
 //
 // What activate() does:
 //   1. Captures the tenant's shared SQLite handle (`ctx.db`). The
-//      `tasks` table was already created in the v0 schema migration,
-//      so we don't run any DDL here.
-//   2. Spins up a single `WorkerPool` with one `EchoWorker`. This is
-//      v0.2's deliberate "loop is visible end-to-end" choice — the
-//      echo worker just sleeps 30s and stamps a result_summary, but
-//      the kanban panel sees the task move through every column.
-//      Real worker roles (qianliyan / luban / xihe / nvwa, ADR-0002
-//      §1) replace this pool in N+6.2.
-//   3. Exposes five agent tools (task_list / task_create / task_update /
+//      `tasks` table was already created in 001-initial; the
+//      `workboard_worker_agents` table + the `tasks.worker_agent_id`
+//      column are owned by this plugin and ensured idempotently here
+//      (see db/agents.ts).
+//   2. Seeds the plugin's builtin agents (just the echo demo today)
+//      via the seed loop's "insert / update untouched / preserve
+//      user-edited" rule.
+//   3. Spins up a WorkerPool: one slot per agent whose `kind` we
+//      know how to staff. v0.2 ships a single runtime, `echo` —
+//      real LLM / tool runtimes ship as separate plugins later.
+//   4. Exposes five agent tools (task_list / task_create / task_update /
 //      task_move / task_delete). Tool writes call back into the pool
 //      so the worker drains immediately instead of waiting for the
 //      next REST nudge.
-//   4. Exposes seven REST routes (CRUD + projects + worker status).
-//      Routes mounted under /api/p/workboard/*.
+//   5. Exposes 12 REST routes (tasks CRUD + projects + worker status +
+//      worker_agents CRUD + reset). Mounted under `/api/p/workboard/*`.
+//   6. Registers an `adminPages` entry for the worker-agents UI.
 //
 // `deactivate()` stops the pool. The `ctx.db` handle is owned by the
 // host so we never close it.
@@ -25,7 +28,12 @@ import type {
   PluginServerExports,
   PluginServerModule,
 } from "@tianshu/plugin-sdk";
-import { EchoWorker, WorkerPool } from "./worker/pool.js";
+import {
+  EchoWorker,
+  WorkerPool,
+  type AgentSpec,
+  type WorkerHandle,
+} from "./worker/pool.js";
 import {
   buildTaskCreateTool,
   buildTaskDeleteTool,
@@ -34,7 +42,13 @@ import {
   buildTaskUpdateTool,
   type ToolDeps,
 } from "./tools/index.js";
-import { buildRoutes } from "./routes/handlers.js";
+import { buildRoutes, type WorkerKindDef } from "./routes/handlers.js";
+import {
+  ensureSchema,
+  listWorkerAgents,
+  seedBuiltinAgents,
+  type SeedAgentSpec,
+} from "./db/agents.js";
 
 interface ActiveState {
   pool: WorkerPool;
@@ -43,14 +57,44 @@ interface ActiveState {
 
 let active: ActiveState | null = null;
 
+/** WorkerKinds the workboard runtime knows how to staff. Kept as
+ *  plugin-local data — we no longer surface this as a manifest
+ *  contribution because nothing outside this plugin needs to know.
+ *  When a future plugin ships, say, a `kind=llm` runtime, it'll
+ *  expose its own admin page + factory; cross-plugin worker
+ *  composition is a separate design (workboard pool factory
+ *  pluggability) we'll do then. */
+const WORKER_KINDS: WorkerKindDef[] = [
+  {
+    id: "echo",
+    displayName: "Echo (demo)",
+    description:
+      "Reflects the task title back as result_summary after a configurable delay. Demo worker — only useful while you're watching the kanban move.",
+    userCreatable: false,
+  },
+];
+
+/** Builtin agents seeded on every activate. The seed loop respects
+ *  user edits (rows with `overrides_at IS NOT NULL` are left
+ *  alone). */
+const BUILTIN_AGENT_SEEDS: SeedAgentSpec[] = [
+  {
+    builtinKey: "echo-demo",
+    kind: "echo",
+    name: "Echo demo",
+    description: "Sleeps, then echoes the task title. Ships with the workboard plugin.",
+  },
+];
+
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     // Per-tenant config:
     //   plugins.workboard.config.echo.enabled  : boolean (default true)
     //   plugins.workboard.config.echo.delayMs  : number  (default 30 000)
     //
-    // Tests stub the worker via the new shape; the legacy top-level
-    // `echoDelayMs` is honoured for one release (delete after N+6.2).
+    // `echo.enabled=false` disables the echo runtime entirely
+    // (factory returns null), so even if a worker_agents row of
+    // kind=echo exists it just sits unstaffed.
     const cfg = (ctx.pluginConfig ?? {}) as {
       echoDelayMs?: number;
       echo?: { enabled?: boolean; delayMs?: number };
@@ -63,12 +107,31 @@ const plugin: PluginServerModule = {
           ? cfg.echoDelayMs
           : 30_000;
 
-    const workers = echoEnabled ? [new EchoWorker({ delayMs: echoDelayMs })] : [];
+    // Schema first, then seed. Both are idempotent.
+    ensureSchema(ctx.db);
+    const seedResult = seedBuiltinAgents(ctx.db, ctx.tenantId, BUILTIN_AGENT_SEEDS);
+    if (seedResult.inserted > 0 || seedResult.updated > 0) {
+      ctx.log.info("seeded worker agents", seedResult);
+    }
+
+    const factory = (a: AgentSpec): WorkerHandle | null => {
+      if (a.kind === "echo") {
+        if (!echoEnabled) return null;
+        return new EchoWorker(a.id, a.name, { delayMs: echoDelayMs });
+      }
+      return null;
+    };
+
+    const initialAgents = listWorkerAgents(ctx.db, ctx.tenantId).map(
+      (row): AgentSpec => ({ id: row.id, kind: row.kind, name: row.name }),
+    );
+
     const pool = new WorkerPool({
       db: ctx.db,
       log: ctx.log,
       broadcast: (type, payload) => ctx.broadcast(type, payload),
-      workers,
+      agents: initialAgents,
+      factory,
     });
     pool.start();
 
@@ -76,7 +139,7 @@ const plugin: PluginServerModule = {
     ctx.log.info("workboard activated", {
       echoEnabled,
       echoDelayMs,
-      workerCount: workers.length,
+      agentCount: initialAgents.length,
     });
 
     const toolDeps: ToolDeps = {
@@ -85,11 +148,26 @@ const plugin: PluginServerModule = {
       onTaskWrite: () => pool.nudge(),
     };
 
+    const seedsByKey = new Map<string, SeedAgentSpec>(
+      BUILTIN_AGENT_SEEDS.map((s) => [s.builtinKey, s]),
+    );
+
+    const onAgentsWrite = () => {
+      const next = listWorkerAgents(ctx.db, ctx.tenantId).map(
+        (row): AgentSpec => ({ id: row.id, kind: row.kind, name: row.name }),
+      );
+      pool.rebuild(next);
+    };
+
     const routes = buildRoutes({
       db: ctx.db,
+      tenantId: ctx.tenantId,
       log: ctx.log,
       pool,
       onTaskWrite: () => pool.nudge(),
+      onAgentsWrite,
+      workerKinds: WORKER_KINDS,
+      seedsByKey,
     });
 
     return {

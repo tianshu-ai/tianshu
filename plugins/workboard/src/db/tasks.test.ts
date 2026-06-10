@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { up as runInitialMigration } from "../../../../packages/server/src/core/migrations/001-initial.js";
 import { up as runDepsMigration } from "../../../../packages/server/src/core/migrations/002-task-dependencies.js";
+import { ensureSchema as ensureAgentsSchema } from "./agents.js";
 import {
   createTask,
   listTasks,
@@ -25,6 +26,7 @@ function freshDb(): Database.Database {
   db.pragma("journal_mode = MEMORY");
   runInitialMigration(db);
   runDepsMigration(db);
+  ensureAgentsSchema(db);
   // Tasks reference users(id); seed a stub user so the FK is valid.
   db.prepare(
     `INSERT INTO users (id, external_id, provider, display_name, created_at)
