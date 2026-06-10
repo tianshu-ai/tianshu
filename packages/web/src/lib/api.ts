@@ -21,28 +21,36 @@ export interface ModelListEntry {
 // (ADR-0003 §8). Keep these in sync if the server shape changes.
 export type PluginState = "active" | "disabled" | "failed" | "client-bundle-missing";
 
+export interface PluginConfigFieldGroup {
+  id: string;
+  label: string;
+  badge?: string;
+  description?: string;
+}
+
+interface PluginConfigFieldBase {
+  key: string;
+  label: string;
+  description?: string;
+  group?: PluginConfigFieldGroup;
+}
+
 export type PluginConfigField =
-  | { kind: "boolean"; key: string; label: string; description?: string; default?: boolean }
-  | {
+  | (PluginConfigFieldBase & { kind: "boolean"; default?: boolean })
+  | (PluginConfigFieldBase & {
       kind: "number";
-      key: string;
-      label: string;
-      description?: string;
       default?: number;
       min?: number;
       max?: number;
       step?: number;
       unit?: string;
-    }
-  | {
+    })
+  | (PluginConfigFieldBase & {
       kind: "string";
-      key: string;
-      label: string;
-      description?: string;
       default?: string;
       placeholder?: string;
       multiline?: boolean;
-    };
+    });
 
 export interface PluginConfigSchema {
   fields: PluginConfigField[];

@@ -30,14 +30,76 @@ import {
   type Task,
   type TaskStatus,
 } from "../db/tasks.js";
+import {
+  createUserWorkerAgent,
+  deleteWorkerAgent,
+  getWorkerAgent,
+  listWorkerAgents,
+  resetBuiltinAgent,
+  updateWorkerAgent,
+  type SeedAgentSpec,
+} from "../db/agents.js";
 import type { WorkerPool } from "../worker/pool.js";
+
+/** Optional fields a worker kind can store on its agents. Every
+ *  kind always exposes `name` + `description`; the rest opt in.
+ *  The same set is used by the UI to decide which form rows to
+ *  render and by the REST handlers to reject fields a kind
+ *  hasn't opted into (so no stray system prompt sneaks onto an
+ *  echo agent). */
+export type WorkerKindField =
+  | "description"
+  | "modelId"
+  | "systemPrompt"
+  | "toolsAllow"
+  | "skills";
+
+export interface WorkerKindDef {
+  id: string;
+  displayName: string;
+  description?: string;
+  /** Default true. When false, hidden from the "new agent" picker;
+   *  used for demo runtimes that should only ever exist as seeds. */
+  userCreatable?: boolean;
+  /** Which optional fields this kind exposes in CRUD. `name` is
+   *  always allowed and isn't listed here. Default for backwards
+   *  compat is the full set ("description", "modelId",
+   *  "systemPrompt", "toolsAllow", "skills") so existing UI
+   *  doesn't lose anything; future kinds tighten the list. */
+  fields?: WorkerKindField[];
+}
+
+const ALL_FIELDS: WorkerKindField[] = [
+  "description",
+  "modelId",
+  "systemPrompt",
+  "toolsAllow",
+  "skills",
+];
+
+function allowedFieldsFor(
+  kind: string,
+  defs: WorkerKindDef[],
+): Set<WorkerKindField> {
+  const def = defs.find((k) => k.id === kind);
+  return new Set(def?.fields ?? ALL_FIELDS);
+}
 
 export interface RoutesDeps {
   db: TenantDbHandle;
+  tenantId: string;
   log: PluginLogger;
   pool: WorkerPool;
   /** Notify the worker pool that a task changed. */
   onTaskWrite(): void;
+  /** Notify the worker pool that the agent set changed. */
+  onAgentsWrite(): void;
+  /** Workboard-internal kind catalogue. Surfaced to the admin UI
+   *  so the picker only offers kinds the runtime can staff. */
+  workerKinds: WorkerKindDef[];
+  /** Seed specs the plugin shipped, indexed by builtin_key, for
+   *  the reset endpoint. */
+  seedsByKey: Map<string, SeedAgentSpec>;
 }
 
 function userIdFromReq(req: Request): string | null {
@@ -159,6 +221,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       project?: unknown;
       priority?: unknown;
       workerRole?: unknown;
+      workerAgentId?: unknown;
       status?: unknown;
     };
     const title = typeof body.title === "string" ? body.title.trim() : "";
@@ -182,6 +245,8 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     const project = typeof body.project === "string" ? body.project : undefined;
     const priority = typeof body.priority === "number" ? body.priority : 0;
     const workerRole = typeof body.workerRole === "string" ? body.workerRole : null;
+    const workerAgentId =
+      typeof body.workerAgentId === "string" ? body.workerAgentId : null;
     const dependsOn = filterOwnedDeps(
       deps.db,
       userId,
@@ -195,6 +260,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       projectSlug: project,
       priority,
       workerRole,
+      workerAgentId,
       dependsOn,
     });
     // Optional second-step patch when caller pre-selected a non-`todo`
@@ -251,6 +317,12 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     if (typeof body.priority === "number") patch.priority = body.priority;
     if (body.workerRole === null || typeof body.workerRole === "string") {
       patch.workerRole = body.workerRole as string | null;
+    }
+    if (
+      body.workerAgentId === null ||
+      typeof body.workerAgentId === "string"
+    ) {
+      patch.workerAgentId = body.workerAgentId as string | null;
     }
     if (typeof body.status === "string") {
       if (!isTaskStatus(body.status)) {
@@ -341,6 +413,204 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     res.json({ ok: true });
   };
 
+  // ─── Worker agents (N+6.2 v2: plugin-owned) ───────────────────
+
+  const listAgentsHandler: PluginRouteHandler = (_req, res) => {
+    res.json({
+      agents: listWorkerAgents(deps.db, deps.tenantId),
+      kinds: deps.workerKinds,
+    });
+  };
+
+  const createAgentHandler: PluginRouteHandler = (req, res) => {
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no_user" });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const kind = typeof body.kind === "string" ? body.kind.trim() : "";
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!kind) {
+      res.status(400).json({ error: "kind_required" });
+      return;
+    }
+    if (!name) {
+      res.status(400).json({ error: "name_required" });
+      return;
+    }
+    if (name.length > 80) {
+      res.status(400).json({ error: "name_too_long" });
+      return;
+    }
+    const def = deps.workerKinds.find((k) => k.id === kind);
+    if (!def) {
+      res.status(400).json({ error: "unknown_kind", kind });
+      return;
+    }
+    if (def.userCreatable === false) {
+      res.status(400).json({ error: "kind_not_user_creatable", kind });
+      return;
+    }
+
+    const allow = allowedFieldsFor(kind, deps.workerKinds);
+    // Reject fields the kind didn't opt into so an echo agent
+    // can't accidentally carry an llm-shaped systemPrompt.
+    const stray = ALL_FIELDS.find(
+      (f) => !allow.has(f) && (body as Record<string, unknown>)[f] !== undefined,
+    );
+    if (stray) {
+      res.status(400).json({
+        error: "field_not_allowed_for_kind",
+        kind,
+        field: stray,
+      });
+      return;
+    }
+    const description =
+      allow.has("description") && typeof body.description === "string"
+        ? body.description
+        : null;
+    const modelId =
+      allow.has("modelId") && typeof body.modelId === "string"
+        ? body.modelId
+        : null;
+    const systemPrompt =
+      allow.has("systemPrompt") && typeof body.systemPrompt === "string"
+        ? body.systemPrompt
+        : null;
+    const toolsAllow =
+      allow.has("toolsAllow") && Array.isArray(body.toolsAllow)
+        ? body.toolsAllow.filter((x): x is string => typeof x === "string")
+        : null;
+    const skills =
+      allow.has("skills") && Array.isArray(body.skills)
+        ? body.skills.filter((x): x is string => typeof x === "string")
+        : null;
+
+    const agent = createUserWorkerAgent(deps.db, deps.tenantId, {
+      kind,
+      name,
+      description,
+      modelId,
+      systemPrompt,
+      toolsAllow,
+      skills,
+      ownerUserId: userId,
+    });
+    deps.onAgentsWrite();
+    res.status(201).json({ agent });
+  };
+
+  const patchAgentHandler: PluginRouteHandler = (req, res) => {
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no_user" });
+      return;
+    }
+    const id = stringParam(req, "id");
+    if (!id) {
+      res.status(400).json({ error: "id_required" });
+      return;
+    }
+    const before = getWorkerAgent(deps.db, deps.tenantId, id);
+    if (!before) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const patch: Parameters<typeof updateWorkerAgent>[3] = {};
+    const allow = allowedFieldsFor(before.kind, deps.workerKinds);
+    const stray = ALL_FIELDS.find(
+      (f) => !allow.has(f) && body[f] !== undefined,
+    );
+    if (stray) {
+      res.status(400).json({
+        error: "field_not_allowed_for_kind",
+        kind: before.kind,
+        field: stray,
+      });
+      return;
+    }
+    if (typeof body.name === "string") patch.name = body.name;
+    if (allow.has("description") && "description" in body) {
+      patch.description =
+        typeof body.description === "string" ? body.description : null;
+    }
+    if (allow.has("modelId") && "modelId" in body) {
+      patch.modelId = typeof body.modelId === "string" ? body.modelId : null;
+    }
+    if (allow.has("systemPrompt") && "systemPrompt" in body) {
+      patch.systemPrompt =
+        typeof body.systemPrompt === "string" ? body.systemPrompt : null;
+    }
+    if (allow.has("toolsAllow") && "toolsAllow" in body) {
+      patch.toolsAllow = Array.isArray(body.toolsAllow)
+        ? body.toolsAllow.filter((x): x is string => typeof x === "string")
+        : null;
+    }
+    if (allow.has("skills") && "skills" in body) {
+      patch.skills = Array.isArray(body.skills)
+        ? body.skills.filter((x): x is string => typeof x === "string")
+        : null;
+    }
+    if (typeof body.enabled === "boolean") {
+      patch.enabled = body.enabled;
+    }
+    const after = updateWorkerAgent(deps.db, deps.tenantId, id, patch);
+    deps.onAgentsWrite();
+    res.json({ agent: after });
+  };
+
+  const deleteAgentHandler: PluginRouteHandler = (req, res) => {
+    const id = stringParam(req, "id");
+    if (!id) {
+      res.status(400).json({ error: "id_required" });
+      return;
+    }
+    const before = getWorkerAgent(deps.db, deps.tenantId, id);
+    if (!before) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    if (before.source === "builtin") {
+      res.status(400).json({ error: "cannot_delete_builtin" });
+      return;
+    }
+    deleteWorkerAgent(deps.db, deps.tenantId, id);
+    deps.onAgentsWrite();
+    res.status(204).end();
+  };
+
+  const resetAgentHandler: PluginRouteHandler = (req, res) => {
+    const id = stringParam(req, "id");
+    if (!id) {
+      res.status(400).json({ error: "id_required" });
+      return;
+    }
+    const before = getWorkerAgent(deps.db, deps.tenantId, id);
+    if (!before) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    if (before.source !== "builtin" || !before.builtinKey) {
+      res.status(400).json({ error: "not_a_builtin_agent" });
+      return;
+    }
+    const after = resetBuiltinAgent(
+      deps.db,
+      deps.tenantId,
+      id,
+      deps.seedsByKey,
+    );
+    if (!after) {
+      res.status(400).json({ error: "seed_not_found" });
+      return;
+    }
+    deps.onAgentsWrite();
+    res.json({ agent: after });
+  };
+
   return {
     listTasks: listTasksHandler,
     createTask: createTaskHandler,
@@ -349,5 +619,10 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     listProjects: listProjectsHandler,
     workerStatus: workerStatusHandler,
     workerRestart: workerRestartHandler,
+    listAgents: listAgentsHandler,
+    createAgent: createAgentHandler,
+    patchAgent: patchAgentHandler,
+    deleteAgent: deleteAgentHandler,
+    resetAgent: resetAgentHandler,
   };
 }

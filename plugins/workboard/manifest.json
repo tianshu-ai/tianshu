@@ -2,7 +2,7 @@
   "id": "workboard",
   "version": "0.1.0",
   "displayName": "Workboard",
-  "description": "Kanban task board with a workers pool. The orchestrator drops tasks onto the board; workers pick them up, run them, and report back. v0.2 ships an echo worker so the full ready→in-progress→done loop is visible end-to-end; real worker roles (qianliyan / luban / xihe / nvwa) land in follow-up PRs.",
+  "description": "Kanban task board with a worker pool. The orchestrator drops tasks onto the board; workers pick them up, run them, and report back. v0.2 ships an echo worker so the full ready→in-progress→done loop is visible end-to-end; real worker runtimes (qianliyan / luban / xihe / nvwa) land in follow-up PRs as separate plugins.",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["workspace.read", "tenant.db"],
@@ -34,6 +34,15 @@
         "order": 100
       }
     ],
+    "adminPages": [
+      {
+        "id": "agents",
+        "displayName": "Worker agents",
+        "icon": "Bot",
+        "component": "WorkerAgentsPage",
+        "order": 10
+      }
+    ],
     "tools": [
       { "id": "task_list",   "module": "TaskListTool"   },
       { "id": "task_create", "module": "TaskCreateTool" },
@@ -45,33 +54,47 @@
       { "id": "workboard-howto", "path": "skills/workboard-howto.md" }
     ],
     "apiRoutes": [
-      { "method": "GET",    "path": "/tasks",           "handler": "listTasks"   },
-      { "method": "POST",   "path": "/tasks",           "handler": "createTask"  },
-      { "method": "PATCH",  "path": "/tasks/:id",       "handler": "patchTask"   },
-      { "method": "DELETE", "path": "/tasks/:id",       "handler": "deleteTask"  },
-      { "method": "GET",    "path": "/projects",        "handler": "listProjects" },
-      { "method": "GET",    "path": "/workers/status",  "handler": "workerStatus" },
-      { "method": "POST",   "path": "/workers/restart", "handler": "workerRestart" }
+      { "method": "GET",    "path": "/tasks",              "handler": "listTasks"     },
+      { "method": "POST",   "path": "/tasks",              "handler": "createTask"    },
+      { "method": "PATCH",  "path": "/tasks/:id",          "handler": "patchTask"     },
+      { "method": "DELETE", "path": "/tasks/:id",          "handler": "deleteTask"    },
+      { "method": "GET",    "path": "/projects",           "handler": "listProjects"  },
+      { "method": "GET",    "path": "/workers/status",     "handler": "workerStatus"  },
+      { "method": "POST",   "path": "/workers/restart",    "handler": "workerRestart" },
+      { "method": "GET",    "path": "/agents",             "handler": "listAgents"    },
+      { "method": "POST",   "path": "/agents",             "handler": "createAgent"   },
+      { "method": "PATCH",  "path": "/agents/:id",         "handler": "patchAgent"    },
+      { "method": "DELETE", "path": "/agents/:id",         "handler": "deleteAgent"   },
+      { "method": "POST",   "path": "/agents/:id/reset",   "handler": "resetAgent"    }
     ]
   },
   "configSchema": {
     "fields": [
       {
         "key": "echo.enabled",
-        "label": "Enable echo worker",
-        "description": "v0.2 demo worker. Sleeps for the configured delay then writes a one-line result_summary, so the full ready → in-progress → done loop is visible end-to-end. Turn off when real workers ship.",
+        "label": "Enabled",
         "kind": "boolean",
-        "default": true
+        "default": true,
+        "group": {
+          "id": "worker-type-echo",
+          "label": "echo",
+          "badge": "worker type"
+        }
       },
       {
         "key": "echo.delayMs",
-        "label": "Echo worker delay",
-        "description": "How long the echo worker pretends to be busy on each task before marking it done. The echo worker has no real work to do (it just reflects the task title), so this number simulates execution time — useful for demoing the todo → in-progress → done flow on the kanban. 5000–10000 ms is comfortable for screen recordings; 0 makes tasks complete instantly.",
+        "label": "Simulated execution delay",
+        "description": "How long an echo worker pretends to be busy on each task before marking it done. 0 makes tasks complete instantly.",
         "kind": "number",
         "default": 30000,
         "min": 0,
         "step": 1000,
-        "unit": "ms"
+        "unit": "ms",
+        "group": {
+          "id": "worker-type-echo",
+          "label": "echo",
+          "badge": "worker type"
+        }
       }
     ]
   }

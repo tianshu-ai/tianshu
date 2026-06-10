@@ -259,4 +259,68 @@ describe("parseManifest", () => {
     expect(m.contributes!.composerActions![0]!.id).toBe("attach");
     expect(m.contributes!.composerActions![0]!.icon).toBeUndefined();
   });
+
+  it("configSchema: parses optional `group` with badge", () => {
+    const m = parseManifest({
+      id: "xxx",
+      version: "1.0.0",
+      displayName: "X",
+      configSchema: {
+        fields: [
+          {
+            kind: "boolean",
+            key: "echo.enabled",
+            label: "Enable",
+            default: true,
+            group: {
+              id: "worker-type-echo",
+              label: "Echo runtime",
+              badge: "worker type · echo",
+              description: "v0.2 demo worker.",
+            },
+          },
+          {
+            kind: "number",
+            key: "echo.delayMs",
+            label: "Delay",
+            default: 30000,
+            group: { id: "worker-type-echo", label: "Echo runtime" },
+          },
+          {
+            kind: "string",
+            key: "unrelated",
+            label: "Other",
+            // No group — stays flat in the rendered form.
+          },
+        ],
+      },
+    });
+    const fields = m.configSchema!.fields;
+    expect(fields[0]!.group?.id).toBe("worker-type-echo");
+    expect(fields[0]!.group?.badge).toBe("worker type · echo");
+    expect(fields[0]!.group?.description).toBe("v0.2 demo worker.");
+    expect(fields[1]!.group?.id).toBe("worker-type-echo");
+    expect(fields[1]!.group?.badge).toBeUndefined();
+    expect(fields[2]!.group).toBeUndefined();
+  });
+
+  it("configSchema: rejects malformed group", () => {
+    expect(() =>
+      parseManifest({
+        id: "xxx",
+        version: "1.0.0",
+        displayName: "X",
+        configSchema: {
+          fields: [
+            {
+              kind: "boolean",
+              key: "k",
+              label: "L",
+              group: { id: "g" /* missing label */ },
+            },
+          ],
+        },
+      }),
+    ).toThrow(/group/);
+  });
 });

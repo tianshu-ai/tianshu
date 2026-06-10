@@ -240,6 +240,61 @@ Tenant config wins, falls through to global when missing. Whitelist
 enforcement (per ADR-0001): these three fields are explicitly in the
 tenant-overridable allow-list.
 
+#### 7.1 Worker agents (N+6.2)
+
+The `worker.count`/`worker.model` knobs above describe how many
+orchestrator-style workers run; **worker agents** are the actual
+configured instances the workboard pool dispatches to. The concept
+is fully owned by the workboard plugin — schema, REST, admin UI
+and seeding all live in `plugins/workboard/`. The host has zero
+worker_agent vocabulary.
+
+The plugin's `db/agents.ts` ensures the schema idempotently on
+every activation:
+
+```sql
+CREATE TABLE IF NOT EXISTS workboard_worker_agents (
+  id            TEXT PRIMARY KEY,
+  tenant_id     TEXT NOT NULL,
+  kind          TEXT NOT NULL,            -- runtime kind (echo|llm|...)
+  name          TEXT NOT NULL,
+  description   TEXT,
+  model_id      TEXT,
+  system_prompt TEXT,
+  tools_allow   TEXT,                     -- JSON array of tool names
+  skills        TEXT,                     -- JSON array of skill names
+  source        TEXT NOT NULL,            -- 'builtin' | 'user'
+  builtin_key   TEXT,                     -- non-null iff source='builtin'
+  owner_user_id TEXT,                     -- NULL = tenant-shared
+  overrides_at  INTEGER,                  -- NULL until first user edit
+  created_at    INTEGER NOT NULL,
+  updated_at    INTEGER NOT NULL
+);
+-- plus tasks.worker_agent_id (nullable, also added by ensureSchema)
+```
+
+Lifecycle:
+
+- **Plugin seeds builtin agents** on activation from a hard-coded
+  `BUILTIN_AGENT_SEEDS` array in `server.ts`. The seed loop upserts
+  by `(tenant_id, builtin_key)` and respects user edits: rows whose
+  `overrides_at` is non-NULL are left alone, so plugin updates
+  never clobber user customisation.
+- **Users CRUD their own agents** via
+  `/api/p/workboard/agents`. Builtin rows can be edited (stamps
+  `overrides_at`) or reset (clears `overrides_at` and re-applies
+  the seed) but not deleted.
+- **Pool dispatch.** The pool reads `workboard_worker_agents` on
+  activation and on every `onAgentsWrite` callback (fired by the
+  REST handlers right after a write), then asks its
+  kind→handle factory to build one slot per known kind. Tasks
+  pinned to a specific `worker_agent_id` are claimed only by that
+  slot; unpinned tasks fall back to the legacy `worker_role`
+  match.
+- **Cross-plugin worker runtimes** (e.g. a future `kind=llm`
+  agent) compose by extending the workboard pool factory — a
+  separate design we'll cut when the second runtime ships.
+
 ### 8. Resource boundary recap
 
 Per ADR-0001 the sandbox is tenant-scoped. Workers inherit that:

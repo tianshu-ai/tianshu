@@ -1,33 +1,45 @@
 // In-memory worker pool.
 //
-// v0.2 ships a single role: `echo`. When a task lands on the board:
-//   1. The plugin's task-creation path nudges the pool.
-//   2. The pool claims one ready task per nudge (atomic UPDATE — see
-//      `claimNextTask` in db/tasks.ts).
-//   3. After a configurable delay (default 30s) the worker writes a
-//      tiny `result_summary`, flips status to `done`, and broadcasts
-//      a `workboard.task` WS event so the UI updates without polling.
+// One pool per active tenant. Each "slot" inside the pool wraps a
+// configured worker agent (host table `worker_agents`, declared by
+// migration 003-worker-agents and seeded by plugins via the
+// `defaultWorkerAgents` manifest contribution).
 //
-// Why not a full polling loop? `tasks` writes always happen through
-// this plugin's REST + agent-tool surface, so we have a clean event
-// hook on the write side — no need to scan the DB on a timer.
-// Restart-recovery is handled separately (see `recoverInProgress` at
-// the bottom): on plugin activation we flip orphaned `in_progress`
-// rows back to `todo`, then nudge once.
+// Lifecycle of a task:
+//   1. Anyone (REST, agent tool, kanban UI) writes a `todo` row and
+//      nudges the pool.
+//   2. Each non-busy slot calls `claimNextTask` with its agent id +
+//      kind-derived role; SQLite's serialised writer makes the
+//      claim atomic. Tasks pinned to a different agent are skipped.
+//   3. The slot's `WorkerHandle.run()` does the real work and
+//      resolves with a terminal status. v0.2 ships one runtime,
+//      `echo`, that just sleeps + reflects the title; real LLM /
+//      tool runtimes ship later as separate plugins (ADR-0002 §1).
 //
-// Real worker roles (qianliyan / luban / xihe / nvwa, ADR-0002 §1)
-// land in N+6.2. The interface here is shaped so the only thing
-// that changes is `WorkerHandle.run()`: today it's a 30s sleep,
-// tomorrow it boots a worker session and waits for completion.
+// `nudge()` is event-driven: every write path calls it. There's no
+// polling loop. On plugin activate we also call `recoverOrphaned`
+// once to flip in-flight tasks (left over from a process crash)
+// back to `todo`.
+//
+// `rebuild()` lets the host call back when the agent list changes
+// (create / patch / delete / reset). The new slot set is computed
+// from a fresh agent snapshot; in-flight slots that still match an
+// agent id keep going (no work is killed).
 
 import type { PluginLogger, TenantDbHandle } from "@tianshu/plugin-sdk";
 import { claimNextTask, updateTask, type Task } from "../db/tasks.js";
 
-/** What a single worker promises to do with one claimed task.
+/** What a single slot promises to do with one claimed task.
  *  Resolves with the task's terminal state — usually `done`, but a
  *  worker may legitimately mark a task `stalled` if it gives up. */
 export interface WorkerHandle {
-  role: string;
+  /** Stable id of the underlying `worker_agents` row. */
+  agentId: string;
+  /** Display label for the kanban sidebar / status endpoint. */
+  name: string;
+  /** Runtime kind (`echo`, `llm`, ...). Used for `worker_role`
+   *  fallback so legacy task pinning keeps working. */
+  kind: string;
   run(task: Task): Promise<TerminalUpdate>;
 }
 
@@ -37,21 +49,40 @@ export interface TerminalUpdate {
   resultFiles?: string[];
 }
 
+/** Snapshot row the pool needs about each worker_agents entry.
+ *  Re-declared structurally so the pool doesn't depend on either
+ *  the host's row type or the workboard plugin's local view. */
+export interface AgentSpec {
+  id: string;
+  kind: string;
+  name: string;
+}
+
+export type WorkerHandleFactory = (agent: AgentSpec) => WorkerHandle | null;
+
 export interface WorkerPoolDeps {
   db: TenantDbHandle;
   log: PluginLogger;
   /** Notifies subscribers (chat shell) that a task changed. */
   broadcast(type: string, payload: unknown): void;
-  /** Workers in the pool. v0.2 has one entry: the echo worker. */
-  workers: WorkerHandle[];
+  /** Initial set of agent specs. Replace later via `rebuild`. */
+  agents: AgentSpec[];
+  /** Returns a `WorkerHandle` for an agent, or null if the kind
+   *  isn't supported (e.g. an LLM agent on a build that hasn't
+   *  shipped that runtime yet). Null kinds are skipped quietly. */
+  factory: WorkerHandleFactory;
 }
 
 export class WorkerPool {
   private nudgeTimer: NodeJS.Timeout | null = null;
-  private busy = new Set<string>();
+  /** agentId → "in-flight task id" (or undefined = idle). */
+  private busy = new Map<string, string>();
+  private workers: WorkerHandle[] = [];
   private stopped = false;
 
-  constructor(private deps: WorkerPoolDeps) {}
+  constructor(private deps: WorkerPoolDeps) {
+    this.workers = this.buildHandles(deps.agents);
+  }
 
   /** Drain orphaned in_progress rows + kick off processing. */
   start(): void {
@@ -69,14 +100,38 @@ export class WorkerPool {
     }
   }
 
+  /** Replace the agent set (host calls this after worker_agents
+   *  rows change). In-flight agents that survive the swap keep
+   *  draining their current task; agents that vanished are
+   *  abandoned (their in-flight task will end and just not be
+   *  re-claimed). */
+  rebuild(agents: AgentSpec[]): void {
+    if (this.stopped) return;
+    const next = this.buildHandles(agents);
+    // Drop busy entries whose agent no longer exists, so a future
+    // resurrection of the same id starts clean.
+    const survivingIds = new Set(next.map((w) => w.agentId));
+    for (const id of [...this.busy.keys()]) {
+      if (!survivingIds.has(id)) this.busy.delete(id);
+    }
+    this.workers = next;
+    this.deps.log.info("workboard: rebuilt pool", {
+      workerCount: next.length,
+      agents: next.map((w) => ({ id: w.agentId, kind: w.kind })),
+    });
+    this.nudge();
+  }
+
   /** Snapshot for the admin page + `GET /workers/status`. */
-  status(): { workers: { role: string; busy: boolean }[]; running: string[] } {
+  status(): { workers: { agentId: string; name: string; kind: string; busy: boolean }[]; running: string[] } {
     return {
-      workers: this.deps.workers.map((w) => ({
-        role: w.role,
-        busy: [...this.busy].some((tid) => tid.startsWith(`${w.role}:`)),
+      workers: this.workers.map((w) => ({
+        agentId: w.agentId,
+        name: w.name,
+        kind: w.kind,
+        busy: this.busy.has(w.agentId),
       })),
-      running: [...this.busy].map((entry) => entry.split(":", 2)[1]),
+      running: [...this.busy.values()],
     };
   }
 
@@ -93,35 +148,51 @@ export class WorkerPool {
 
   // ─── internals ─────────────────────────────────────────
 
+  private buildHandles(agents: AgentSpec[]): WorkerHandle[] {
+    const out: WorkerHandle[] = [];
+    for (const a of agents) {
+      const handle = this.deps.factory(a);
+      if (!handle) {
+        this.deps.log.info("workboard: skipping agent (kind unsupported)", {
+          agentId: a.id,
+          kind: a.kind,
+          name: a.name,
+        });
+        continue;
+      }
+      out.push(handle);
+    }
+    return out;
+  }
+
   private async drain(): Promise<void> {
     if (this.stopped) return;
 
-    for (const worker of this.deps.workers) {
-      if ([...this.busy].some((entry) => entry.startsWith(`${worker.role}:`))) {
-        // Worker is already on a task. v0.2 is single-task-per-role
-        // because the echo worker is the whole game; richer
-        // concurrency belongs to N+6.2+.
-        continue;
-      }
-      const claimed = claimNextTask(this.deps.db, { workerRole: worker.role });
+    for (const worker of this.workers) {
+      if (this.busy.has(worker.agentId)) continue;
+      const claimed = claimNextTask(this.deps.db, {
+        workerAgentId: worker.agentId,
+        workerRole: worker.kind,
+      });
       if (!claimed) continue;
 
-      const key = `${worker.role}:${claimed.id}`;
-      this.busy.add(key);
+      this.busy.set(worker.agentId, claimed.id);
       this.deps.broadcast("workboard.task", {
         kind: "claimed",
         taskId: claimed.id,
-        workerRole: worker.role,
+        workerAgentId: worker.agentId,
+        workerName: worker.name,
       });
       this.deps.log.info("workboard: claimed task", {
         taskId: claimed.id,
-        worker: worker.role,
+        agentId: worker.agentId,
+        worker: worker.name,
         title: claimed.title,
       });
 
       // Run the worker async so we don't block the drain loop.
       void this.runOne(worker, claimed).finally(() => {
-        this.busy.delete(key);
+        this.busy.delete(worker.agentId);
         // After one completion there might be more tasks waiting —
         // re-nudge so the pool keeps draining.
         if (!this.stopped) this.nudge();
@@ -136,7 +207,8 @@ export class WorkerPool {
     } catch (err) {
       this.deps.log.error("workboard: worker threw — marking stalled", {
         taskId: task.id,
-        worker: worker.role,
+        agentId: worker.agentId,
+        worker: worker.name,
         err: err instanceof Error ? err.message : String(err),
       });
       update = {
@@ -157,12 +229,14 @@ export class WorkerPool {
     this.deps.broadcast("workboard.task", {
       kind: "completed",
       taskId: task.id,
-      workerRole: worker.role,
+      workerAgentId: worker.agentId,
+      workerName: worker.name,
       status: update.status,
     });
     this.deps.log.info("workboard: task completed", {
       taskId: task.id,
-      worker: worker.role,
+      agentId: worker.agentId,
+      worker: worker.name,
       status: update.status,
     });
   }
@@ -187,10 +261,14 @@ export class WorkerPool {
 
 /** Echo worker — useful as a v0.2 demo and a regression test bed. */
 export class EchoWorker implements WorkerHandle {
-  readonly role = "echo";
+  readonly kind = "echo";
 
   /** Default 30s; tests pass a smaller value. */
-  constructor(private opts: { delayMs?: number; signal?: AbortSignal } = {}) {}
+  constructor(
+    public readonly agentId: string,
+    public readonly name: string,
+    private opts: { delayMs?: number; signal?: AbortSignal } = {},
+  ) {}
 
   async run(task: Task): Promise<TerminalUpdate> {
     const ms = this.opts.delayMs ?? 30_000;

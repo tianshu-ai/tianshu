@@ -25,6 +25,58 @@ import { CatalogClient } from "./catalog.js";
 
 const PLUGIN_ID_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
+/** Compiled form of a manifest-declared plugin route path. */
+interface PluginPathPattern {
+  /** RegExp anchored end-to-end against the request subPath. */
+  re: RegExp;
+  /** Capture-group order corresponds to occurrence in the
+   *  declared path. */
+  paramNames: string[];
+}
+
+/** Compiles `"/agents/:id/reset"` once and caches it. Plugin
+ *  manifests are bounded so the cache stays small. */
+const pluginPathCache = new Map<string, PluginPathPattern>();
+
+function compilePluginPath(declared: string): PluginPathPattern {
+  const cached = pluginPathCache.get(declared);
+  if (cached) return cached;
+  const paramNames: string[] = [];
+  // Escape regex specials, then turn `:name` segments into capture
+  // groups. We restrict the capture to a single URL segment
+  // (`[A-Za-z0-9._~-]+`) so nested routes still work — a `/a/:id`
+  // pattern shouldn't swallow `/a/b/c`.
+  const escaped = declared
+    .replace(/[.+*?^${}()|[\]\\]/g, (c) => `\\${c}`)
+    .replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, (_m, name: string) => {
+      paramNames.push(name);
+      return "([A-Za-z0-9._~-]+)";
+    });
+  const re = new RegExp(`^${escaped}$`);
+  const compiled = { re, paramNames };
+  pluginPathCache.set(declared, compiled);
+  return compiled;
+}
+
+/** Match `subPath` against a declared route path. Returns the
+ *  param map (possibly empty) on success, or null on miss. */
+function matchPluginPath(
+  declared: string,
+  subPath: string,
+): Record<string, string> | null {
+  const { re, paramNames } = compilePluginPath(declared);
+  const m = re.exec(subPath);
+  if (!m) return null;
+  const out: Record<string, string> = {};
+  for (let i = 0; i < paramNames.length; i++) {
+    const v = m[i + 1];
+    if (v !== undefined) {
+      out[paramNames[i]!] = decodeURIComponent(v);
+    }
+  }
+  return out;
+}
+
 export interface PluginsRouterOpts {
   registry: PluginRegistry;
   ops: GlobalOps;
@@ -81,10 +133,14 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
   // (a) we don't have to mount-once at boot (tenants are lazy) and
   // (b) enabling/disabling a plugin takes effect on the next request
   // without re-mounting Express. Manifest contracts:
-  //   - declared path "/foo"          → /api/p/<plugin-id>/foo
-  //   - declared path "/foo/bar/baz"  → /api/p/<plugin-id>/foo/bar/baz
-  // We don't translate path params (`:id`) for v0 — plugins use
-  // query strings.
+  //   - declared path "/foo"            → /api/p/<plugin-id>/foo
+  //   - declared path "/foo/:id"        → /api/p/<plugin-id>/foo/<anything>
+  //                                       and `:id` is exposed in
+  //                                       req.params.id at handler
+  //                                       time.
+  // Path params accept `[A-Za-z0-9._~-]+` (one URL segment, no
+  // slashes) which matches Express's default behaviour closely
+  // enough for our handful of CRUD-style routes.
   r.use("/p/:pluginId", async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
@@ -99,12 +155,26 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       await registry.ensureForTenant(req.ctx.tenant);
       const routes = collectRoutesForTenant(registry, req.ctx.tenant.tenantId);
       const subPath = req.path.length === 0 || req.path === "/" ? "/" : req.path;
-      const match = routes.find(
-        (rt) => rt.pluginId === pluginId && rt.method === req.method && rt.path === subPath,
-      );
+      let match: (typeof routes)[number] | null = null;
+      let matchedParams: Record<string, string> | null = null;
+      for (const rt of routes) {
+        if (rt.pluginId !== pluginId || rt.method !== req.method) continue;
+        const params = matchPluginPath(rt.path, subPath);
+        if (params) {
+          match = rt;
+          matchedParams = params;
+          break;
+        }
+      }
       if (!match) {
         res.status(404).json({ error: "plugin_route_not_found", pluginId, path: subPath });
         return;
+      }
+      // Express has already populated `req.params.pluginId` for the
+      // outer mount; fold the inner route's params on top so the
+      // handler sees them.
+      if (matchedParams) {
+        Object.assign(req.params, matchedParams);
       }
       await match.handler(req, res);
     } catch (err) {

@@ -38,6 +38,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { AdminPageProps, PanelProps, PluginClientExports, SidebarSectionProps } from "@tianshu/plugin-sdk/client";
+import WorkerAgentsPage from "./worker-agents-page.js";
 
 const API_BASE = "/api/p/workboard";
 
@@ -86,7 +87,7 @@ interface ProjectSummary {
 }
 
 interface WorkerSnapshot {
-  workers: { role: string; busy: boolean }[];
+  workers: { agentId: string; name: string; kind: string; busy: boolean }[];
   running: string[];
 }
 
@@ -1348,11 +1349,12 @@ function WorkerStatusRow({
   return (
     <div className="px-6 py-1.5 border-b border-gray-800 text-[11px] flex items-center gap-2 text-gray-300 flex-wrap flex-shrink-0">
       <Hammer className="w-3 h-3 text-gray-500" />
-      <span className="text-gray-500">Workers:</span>
+      <span className="text-gray-500">Worker types:</span>
       {snapshot.workers.map((w) => (
         <span
-          key={w.role}
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border ${
+          key={w.agentId}
+          title={`Type: ${w.kind}\nAgent: ${w.name}`}
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border font-mono uppercase tracking-wide ${
             w.busy
               ? "bg-blue-900/40 border-blue-700 text-blue-100"
               : "bg-gray-900 border-gray-700 text-gray-400"
@@ -1363,7 +1365,7 @@ function WorkerStatusRow({
           ) : (
             <CheckCircle2 className="w-2.5 h-2.5" />
           )}
-          {w.role}
+          {w.kind}
         </span>
       ))}
       {snapshot.running.length > 0 && (
@@ -1693,7 +1695,12 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
           </div>
         ) : (
           realWorkers.map((w) => (
-            <SidebarWorkerRow key={w.role} role={w.role} busy={w.busy} />
+            <SidebarWorkerRow
+              key={w.agentId}
+              name={w.name}
+              kind={w.kind}
+              busy={w.busy}
+            />
           ))
         )}
       </div>
@@ -1702,28 +1709,31 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
 }
 
 function SidebarWorkerRow({
-  role,
+  name,
+  kind,
   busy,
 }: {
-  role: string;
+  name: string;
+  kind: string;
   busy: boolean;
 }) {
-  // The plugin only knows its own workers; v0.2 ships `echo`. We map
-  // role → emoji + description here so the row reads nicely without
-  // pushing display strings up into the server response.
-  const display = describeWorker(role);
+  // Workboard surface shows worker *kind* (a.k.a. type) as the
+  // primary identity — a workboard cares about "what runtime is
+  // this", not "which configured instance". The agent's display
+  // name (set in Settings → Plugins → Worker agents) is shown as a
+  // smaller subline so the user can still tell two echo agents
+  // apart.
+  const emoji = kindEmoji(kind);
   return (
     <div
       className="flex cursor-default items-center gap-2 rounded py-0.5 pl-1 hover:bg-gray-700/30"
-      title={`${display.displayName} — ${display.description}`}
+      title={`Worker type: ${kind}\nAgent: ${name}`}
     >
-      <span className="w-5 flex-shrink-0 text-center text-base">
-        {display.emoji}
-      </span>
+      <span className="w-5 flex-shrink-0 text-center text-base">{emoji}</span>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-medium text-gray-200">
-            {display.displayName}
+          <span className="truncate rounded bg-violet-950/40 px-1 py-px font-mono text-[10px] font-semibold uppercase tracking-wide text-violet-200">
+            {kind}
           </span>
           <span
             className={`rounded px-1 py-px text-[9px] ${
@@ -1735,27 +1745,15 @@ function SidebarWorkerRow({
             {busy ? "busy" : "idle"}
           </span>
         </div>
-        <div className="truncate text-[9px] text-gray-600">
-          {display.description}
-        </div>
+        <div className="truncate text-[9px] text-gray-600">{name}</div>
       </div>
     </div>
   );
 }
 
-function describeWorker(role: string): {
-  emoji: string;
-  displayName: string;
-  description: string;
-} {
-  if (role === "echo") {
-    return {
-      emoji: "🔁",
-      displayName: "echo",
-      description: "v0.2 echo worker",
-    };
-  }
-  return { emoji: "⚙️", displayName: role, description: "" };
+function kindEmoji(kind: string): string {
+  if (kind === "echo") return "🔁";
+  return "⚙️";
 }
 
 const clientExports: PluginClientExports = {
@@ -1763,6 +1761,8 @@ const clientExports: PluginClientExports = {
     WorkboardPanel: WorkboardPanel as PluginClientExports["components"][string],
     WorkersSidebarSection:
       WorkersSidebarSection as PluginClientExports["components"][string],
+    WorkerAgentsPage:
+      WorkerAgentsPage as PluginClientExports["components"][string],
   },
 };
 
