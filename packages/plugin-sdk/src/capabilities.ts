@@ -29,6 +29,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Provide a headless chromium reachable via Chrome DevTools Protocol + Playwright MCP, with a noVNC viewport for the user.",
   },
+  "host.agentLoop": {
+    exclusive: true,
+    description:
+      "Run a headless agent loop on behalf of a worker: spin up a kind='worker' session, call the LLM with the tenant's tool/skill set, persist messages, enforce first-response/idle/max-run timeouts, and return a structured terminal result. Provided by the host (not by a plugin); workboard's LLM worker requires it.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;

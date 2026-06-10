@@ -437,3 +437,61 @@ export function buildTaskDeleteTool(deps: ToolDeps): AgentTool {
     },
   };
 }
+
+/**
+ * Special agent tool the LLM worker calls to wrap up the task it
+ * was assigned. The agent-loop's wrapper picks the structured
+ * `summary` / `files` fields off the return value and resolves the
+ * loop with `status=done`. Calling this tool is the *only* way for
+ * an LLM worker to mark its task complete — walking off without it
+ * leaves the loop stalled.
+ *
+ * The tool intentionally has no side-effect on the workboard's
+ * tasks table itself — the LLMWorker class writes the row using
+ * the captured summary/files, keeping the agent ignorant of the
+ * caller's task id. (An LLM that didn't know the task id couldn't
+ * forge a completion for someone else's task.)
+ */
+export function buildTaskCompleteTool(): AgentTool {
+  return {
+    schema: {
+      name: "task_complete",
+      description:
+        "Call this when you have finished the task you were assigned. " +
+        "Pass a one-line `summary` of what you produced and an optional " +
+        "list of `files` you wrote (paths under your home dir). After this " +
+        "call, the worker terminates and the orchestrator reads your summary.",
+      parameters: Type.Object({
+        summary: Type.String({
+          description: "One-line summary of the result. Required.",
+        }),
+        files: Type.Optional(
+          Type.Array(Type.String(), {
+            description:
+              "Optional list of output file paths the worker produced.",
+          }),
+        ),
+      }),
+    },
+    execute: (raw): ToolReturn => {
+      const args = raw as { summary?: unknown; files?: unknown };
+      const summary =
+        typeof args.summary === "string" ? args.summary.trim() : "";
+      if (!summary) {
+        return { ok: false, text: "summary is required" };
+      }
+      const files = Array.isArray(args.files)
+        ? args.files.filter((f): f is string => typeof f === "string")
+        : [];
+      // The agent-loop wrapper picks up the canonical summary/files
+      // off the *arguments* the agent passed (see
+      // `wrappedExecutors[task_complete]` in chat/agent-loop.ts), so
+      // we don't need to thread them through the return shape.
+      return {
+        ok: true,
+        text: "Task marked complete. The worker will exit.",
+        data: { summary, files },
+      };
+    },
+  };
+}

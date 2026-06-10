@@ -6,6 +6,7 @@
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["workspace.read", "tenant.db"],
+  "requires": ["host.agentLoop"],
   "client": { "entry": "@tianshu-builtin/plugin-workboard/client" },
   "server": { "entry": "@tianshu-builtin/plugin-workboard/server" },
   "contributes": {
@@ -93,6 +94,62 @@
         "group": {
           "id": "worker-type-echo",
           "label": "echo",
+          "badge": "worker type"
+        }
+      },
+      {
+        "key": "llm.enabled",
+        "label": "Enabled",
+        "kind": "boolean",
+        "default": true,
+        "group": {
+          "id": "worker-type-llm",
+          "label": "llm",
+          "badge": "worker type"
+        }
+      },
+      {
+        "key": "llm.firstResponseSec",
+        "label": "First-response timeout",
+        "description": "Hard cap on how long the LLM has to start streaming the very first event of the run. Catches connection-hung scenarios. Set to 0 to disable.",
+        "kind": "number",
+        "default": 300,
+        "min": 0,
+        "step": 30,
+        "unit": "s",
+        "group": {
+          "id": "worker-type-llm",
+          "label": "llm",
+          "badge": "worker type"
+        }
+      },
+      {
+        "key": "llm.idleSec",
+        "label": "Idle timeout",
+        "description": "Mid-stream silence cap: if the LLM goes this long without emitting any event, abort the run as stuck. Long enough to allow large `write_file` arguments to stream through.",
+        "kind": "number",
+        "default": 600,
+        "min": 0,
+        "step": 60,
+        "unit": "s",
+        "group": {
+          "id": "worker-type-llm",
+          "label": "llm",
+          "badge": "worker type"
+        }
+      },
+      {
+        "key": "llm.maxRunSec",
+        "label": "Max run time",
+        "description": "Total wall-clock cap for one task run, across all turns. Protects against runaway loops.",
+        "kind": "number",
+        "default": 1800,
+        "min": 0,
+        "step": 60,
+        "unit": "s",
+        "group": {
+          "id": "worker-type-llm",
+          "label": "llm",
           "badge": "worker type"
         }
       }

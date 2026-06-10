@@ -1,28 +1,36 @@
 // WebSocket chat handler — wires together the tenant context, the
-// message store, pi-ai's streamSimple, and the agent fs tools.
+// message store, pi-agent-core's runAgentLoop, and the plugin tool
+// surface.
 //
-// Loop:
-//   1. user prompt arrives → append user message
-//   2. streamSimple with full history + tool schemas
-//   3. on toolcall_end events: run the tool against the per-user
-//      home, append tool_result to history, broadcast tool_call /
-//      tool_result events
-//   4. if the assistant message stops with `toolUse`, call
-//      streamSimple again with the appended ToolResultMessage(s).
-//   5. otherwise persist the assistant text and emit stream_end.
+// Per-turn flow:
+//   1. user prompt arrives → maybe-compact → persist user message
+//   2. hand the prompt to piRunAgentLoop with the tenant's tools
+//      and skills, plus a config that caps assistant turns at
+//      MAX_TURNS
+//   3. emit() callback bridges pi events to the WS protocol:
+//        text_delta deltas → stream_delta
+//        toolcall_start → tool_call (UI shows chips early)
+//        message_end (assistant) → persist + message_added
+//        message_end (toolResult) → persist + tool_result + message_added
+//        agent_end → stream_end
 //
-// We cap the number of tool turns per prompt at MAX_TURNS so a model
-// stuck in a feedback loop terminates instead of melting the host.
+// MAX_TURNS exists because a model that decides to call its tools
+// in a loop with no productive progress would otherwise burn budget
+// forever. shouldStopAfterTurn enforces it.
 
-import { streamSimple } from "@earendil-works/pi-ai";
+import { runAgentLoop as piRunAgentLoop } from "@earendil-works/pi-agent-core";
+import type {
+  AgentContext,
+  AgentEvent,
+  AgentLoopConfig,
+  AgentMessage,
+} from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
-  AssistantMessageEvent,
   Context,
   ImageContent,
   Message,
   TextContent,
-  ToolCall,
   ToolResultMessage,
   UserMessage,
 } from "@earendil-works/pi-ai";
@@ -38,6 +46,7 @@ import {
   type TenantContext,
 } from "../core/index.js";
 import { buildToolset, type Toolset } from "../tools/index.js";
+import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
 import {
   filterSkillsForTenant,
   loadSkillsForPlugin,
@@ -275,167 +284,165 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   const systemPrompt = defaultSystemPrompt(ctx, userId);
 
-  for (let turn = 0; turn < MAX_TURNS; turn++) {
-    if (signal.aborted) return;
-
-    const piContext: Context = {
-      systemPrompt,
-      // Inline base64 image data only at this point so the bytes
-      // never reach disk via the conversation log. The on-disk
-      // representation stays path-only — cheap, queryable,
-      // independent of base64 encoding choices.
-      messages: await prepareMessagesForLlm(
-        messages,
-        ctx.userHomeDir(userId),
-        modelInfo,
+  // Hand off to pi-agent-core. Bridge events back to WS:
+  //   * text_delta deltas → stream_delta
+  //   * message_end (assistant) → persist + message_added
+  //   * message_end (toolResult) → persist + tool_result + message_added
+  //   * tool call start → emit tool_call event up-front so the UI
+  //                       can render chips before results land
+  // The host's existing user-prompt persistence stays in place; we
+  // pass the LLM-ready snapshot as the loop's initial context. Pi
+  // will not re-emit message_start/end for the prompt because we
+  // hand it in as `context.messages` rather than `prompts[]`.
+  const adapted = adaptToolset(toolset);
+  const llmReady = await prepareMessagesForLlm(
+    messages,
+    ctx.userHomeDir(userId),
+    modelInfo,
+  );
+  const agentContext: AgentContext = {
+    systemPrompt,
+    messages: [...llmReady] as AgentMessage[],
+    tools: adapted.tools,
+  };
+  const config: AgentLoopConfig = {
+    model: piModel,
+    apiKey,
+    convertToLlm: (msgs: AgentMessage[]) =>
+      msgs.filter(
+        (m): m is Message =>
+          m.role === "user" || m.role === "assistant" || m.role === "toolResult",
       ),
-      tools: toolset.schemas,
-    };
-
-    const stream = streamSimple(piModel, piContext, { signal, apiKey });
-    const final = await consumeStream(stream, send);
-    if (!final) return; // error already sent
-
-    // Persist + push the assistant turn (text, thinking, and any
-    // tool calls — the full structured message goes to disk so the
-    // UI can replay the conversation faithfully on reload).
-    const assistantRow = appendAgentMessage(ctx, session, final);
-    messages.push(final);
-
-    if (final.stopReason === "toolUse") {
-      const toolCalls = final.content.filter(
-        (c): c is ToolCall => c.type === "toolCall",
-      );
-      if (toolCalls.length === 0) {
-        break; // claimed toolUse but emitted none — bail
+    shouldStopAfterTurn: ({ newMessages }) => {
+      const assistantCount = newMessages.filter(
+        (m) => m.role === "assistant",
+      ).length;
+      return assistantCount >= MAX_TURNS;
+    },
+    afterToolCall: async ({ result }) => {
+      if (isAdapterError(result.details)) {
+        return { isError: true };
       }
+      return undefined;
+    },
+  };
 
-      // Surface the assistant turn now so the UI can show the
-      // tool-call chips before any results land.
-      send({ type: "message_added", message: toWire(assistantRow, wireOpts) });
+  // We split the just-persisted user prompt off the LLM-ready
+  // messages list and hand it to pi as `prompts[]`, so pi emits
+  // message_start/end through our sink the same way assistant
+  // turns do. This keeps the WS event timeline consistent and
+  // avoids double-emitting (pi never re-emits messages it found
+  // pre-seeded in `context.messages`).
+  const promptInputs: AgentMessage[] = [];
+  const lastCtx = agentContext.messages[agentContext.messages.length - 1];
+  if (lastCtx && lastCtx.role === "user") {
+    promptInputs.push(lastCtx as AgentMessage);
+    agentContext.messages.pop();
+  }
 
-      for (const call of toolCalls) {
-        send({
-          type: "tool_call",
-          callId: call.id,
-          name: call.name,
-          arguments: call.arguments,
-        });
-
-        const result = await runOneTool(toolset, call);
-        const summary = describeResult(result);
-        const toolResult: ToolResultMessage = {
-          role: "toolResult",
-          toolCallId: call.id,
-          toolName: call.name,
-          content: [{ type: "text", text: summary } as TextContent],
-          isError: !result.ok,
-          timestamp: Date.now(),
-        };
-        const toolRow = appendAgentMessage(ctx, session, toolResult);
+  // Stash the most recent assistant row so agent_end can echo it
+  // back as stream_end's `message` payload — the web UI uses that
+  // to clear its streaming placeholder and re-enable the send
+  // button. Without this, the UI sits in "sending…" forever.
+  let lastAssistantRow: ChatMessage | null = null;
+  const emit = async (event: AgentEvent): Promise<void> => {
+    if (event.type === "message_update") {
+      const ev = event.assistantMessageEvent;
+      if (ev.type === "text_delta" && typeof ev.delta === "string") {
+        send({ type: "stream_delta", delta: ev.delta });
+      } else if (ev.type === "toolcall_start") {
+        // Pi delivers toolcall id via the partial assistant message
+        // (the toolCall block at contentIndex). Pull it out for the
+        // UI's tool_call event so chips can render before the tool
+        // result lands.
+        const partial = (ev as { partial?: { content?: unknown[] } }).partial;
+        const block = partial?.content?.[
+          (ev as { contentIndex: number }).contentIndex
+        ] as { id?: string; name?: string; arguments?: unknown } | undefined;
+        if (block && block.id && block.name) {
+          send({
+            type: "tool_call",
+            callId: block.id,
+            name: block.name,
+            arguments: (block.arguments as Record<string, unknown>) ?? {},
+          });
+        }
+      }
+      return;
+    }
+    if (event.type === "message_end") {
+      const m = event.message;
+      if (m.role === "assistant") {
+        const row = appendAgentMessage(ctx, session, m as AssistantMessage);
+        lastAssistantRow = row;
+        send({ type: "message_added", message: toWire(row, wireOpts) });
+      } else if (m.role === "toolResult") {
+        const tr = m as ToolResultMessage;
+        const row = appendAgentMessage(ctx, session, tr);
+        const text = tr.content
+          .map((c) => (c.type === "text" ? c.text : ""))
+          .join("");
         send({
           type: "tool_result",
-          callId: call.id,
-          name: call.name,
-          ok: result.ok,
-          text: summary,
+          callId: tr.toolCallId,
+          name: tr.toolName,
+          ok: !tr.isError,
+          text,
         });
-        send({ type: "message_added", message: toWire(toolRow, wireOpts) });
-        messages.push(toolResult);
+        send({ type: "message_added", message: toWire(row, wireOpts) });
+      } else if (m.role === "user") {
+        // The user prompt was already persisted by persistUserPrompt;
+        // skip silently.
       }
-      continue;
+      return;
     }
-
-    // stopReason: stop | length — done.
-    send({ type: "stream_end", message: toWire(assistantRow, wireOpts) });
-    return;
-  }
-
-  send({
-    type: "stream_error",
-    reason: `agent loop exceeded ${MAX_TURNS} turns without resolving`,
-  });
-}
-
-/** Run a single pi-ai stream to completion, forwarding text deltas
- *  to the WS and returning the final AssistantMessage. Sends a
- *  `stream_error` and returns null if the stream errored. */
-async function consumeStream(
-  stream: AsyncIterable<AssistantMessageEvent>,
-  send: (msg: ServerMsg) => void,
-): Promise<AssistantMessage | null> {
-  let final: AssistantMessage | null = null;
-  for await (const event of stream) {
-    if (event.type === "text_delta") {
-      send({ type: "stream_delta", delta: event.delta });
-    } else if (event.type === "done") {
-      final = event.message;
-    } else if (event.type === "error") {
-      const reason = event.error?.errorMessage ?? "stream_error";
-      send({ type: "stream_error", reason });
-      return null;
+    if (event.type === "agent_end") {
+      // Final assistant turn ended — emit stream_end with the last
+      // persisted assistant row so the UI can drop its streaming
+      // placeholder and re-enable the send button. If somehow no
+      // assistant row landed (shouldn't happen — pi always emits
+      // at least one), we still emit stream_end with a placeholder
+      // so the UI doesn't get stuck.
+      if (lastAssistantRow) {
+        send({
+          type: "stream_end",
+          message: toWire(lastAssistantRow, wireOpts),
+        });
+      } else {
+        // Fall through with a synthetic empty assistant row so the
+        // UI's stream_end handler still runs.
+        send({
+          type: "stream_end",
+          message: toWire(
+            {
+              id: `msg_empty_${Date.now()}`,
+              sessionId: session.id,
+              role: "assistant",
+              content: "",
+              createdAt: Date.now(),
+            },
+            wireOpts,
+          ),
+        });
+      }
+      return;
     }
-  }
-  return final;
-}
+  };
 
-interface AnyToolResult {
-  ok: boolean;
-  text: string;
-}
-
-/**
- * Normalise an executor's structured result to `{ ok, text }` for
- * the chat log + LLM tool-result content. Two shapes are accepted:
- *
- * 1. Fs-style: `{ ok: boolean, text: string, ...extras }` — used as
- *    is. This is what the original 5 fs tools return.
- * 2. Anything else: stringified JSON. `ok` is derived from common
- *    field hints (`ok`, `exit_code`, `state`) and falls back to
- *    `true` when no clear signal exists. The full structured
- *    result is JSON-encoded into `text` so the model sees every
- *    field.
- */
-function normaliseToolResult(out: unknown): AnyToolResult {
-  if (
-    out &&
-    typeof out === "object" &&
-    typeof (out as { text?: unknown }).text === "string" &&
-    typeof (out as { ok?: unknown }).ok === "boolean"
-  ) {
-    const r = out as { ok: boolean; text: string };
-    return { ok: r.ok, text: r.text };
-  }
-  if (out && typeof out === "object") {
-    const r = out as Record<string, unknown>;
-    let ok = true;
-    if (typeof r.ok === "boolean") ok = r.ok;
-    else if (typeof r.exit_code === "number") ok = r.exit_code === 0;
-    else if (typeof r.state === "string")
-      ok = r.state !== "error" && r.state !== "failed";
-    return { ok, text: JSON.stringify(out) };
-  }
-  return { ok: true, text: String(out ?? "") };
-}
-
-async function runOneTool(toolset: Toolset, call: ToolCall): Promise<AnyToolResult> {
-  const exec = toolset.executors[call.name];
-  if (!exec) {
-    return { ok: false, text: `unknown tool: ${call.name}` };
-  }
   try {
-    const out = await exec(call.arguments);
-    return normaliseToolResult(out);
+    await piRunAgentLoop(
+      promptInputs,
+      agentContext,
+      config,
+      emit,
+      signal,
+    );
   } catch (err) {
-    return {
-      ok: false,
-      text: err instanceof Error ? err.message : String(err),
-    };
+    send({
+      type: "stream_error",
+      reason: err instanceof Error ? err.message : String(err),
+    });
   }
-}
-
-function describeResult(r: AnyToolResult): string {
-  return r.text;
 }
 
 /** Build a `ToWireOpts` bound to the current tenant config. The

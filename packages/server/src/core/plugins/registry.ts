@@ -202,6 +202,24 @@ export interface RegistryOpts {
   discoveryDirs?: { builtinConfigDir?: string; home?: string };
   /** Optional broadcast hook for the plugin context. Default no-op. */
   broadcast?: (tenantId: string, type: string, payload: unknown) => void;
+  /**
+   * Capabilities the host itself provides (i.e. not coming from a
+   * plugin's `provides[]`). Pre-seeded into every tenant's
+   * capability map BEFORE plugin activation so plugins listing the
+   * same name in `requires[]` can pick them up.
+   *
+   * Each entry is a factory: it gets the tenant context and
+   * returns the capability value to expose. This lets host-side
+   * capabilities bind per-tenant state (db, config) without the
+   * plugin needing to know about it.
+   *
+   * Today the only entry is `host.agentLoop` (the workboard plugin
+   * uses it to run LLM workers). Adding new ones is a host change,
+   * not a plugin change.
+   */
+  hostCapabilities?: Partial<
+    Record<CapabilityName, (ctx: TenantContext) => unknown>
+  >;
 }
 
 interface CachedTenantRegistry {
@@ -276,6 +294,21 @@ export class PluginRegistry {
     // Cycle members are precomputed so we can fail them in one shot.
     const cycleMembers = new Set(ordered.cycle);
     const byCapability = new Map<CapabilityName, ProvidedCapability>();
+
+    // Pre-seed host-provided capabilities so plugins requiring
+    // them can resolve. The synthetic provider id `__host__` makes
+    // it obvious in logs that no plugin owns these.
+    for (const [cap, factory] of Object.entries(this.opts.hostCapabilities ?? {})) {
+      if (!isCapabilityName(cap) || !factory) continue;
+      const value = factory(ctx);
+      if (value === undefined || value === null) continue;
+      byCapability.set(cap as CapabilityName, {
+        capability: cap as CapabilityName,
+        pluginId: "__host__",
+        exclusive: KNOWN_CAPABILITIES[cap as CapabilityName].exclusive,
+        value,
+      });
+    }
 
     // Activate plugins in topological order.
     for (const id of ordered.order) {

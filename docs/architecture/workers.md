@@ -291,9 +291,69 @@ Lifecycle:
   pinned to a specific `worker_agent_id` are claimed only by that
   slot; unpinned tasks fall back to the legacy `worker_role`
   match.
-- **Cross-plugin worker runtimes** (e.g. a future `kind=llm`
-  agent) compose by extending the workboard pool factory — a
-  separate design we'll cut when the second runtime ships.
+- **Cross-plugin worker runtimes** compose by extending the
+  workboard pool factory. The first non-echo runtime ships in
+  N+6.3 (`kind=llm`) and is detailed below.
+
+#### 7.2 LLM worker runtime (N+6.3)
+
+`kind=llm` agents drive an actual LLM through the host's standard
+agent loop. The plugin's `LLMWorker` is intentionally thin: it
+translates a Task to a prompt, hands off to the host's
+`host.agentLoop` capability, and writes the terminal result back
+to `tasks` when the LLM calls `task_complete`.
+
+Lifecycle:
+
+1. Pool claims a task from the kanban.
+2. `LLMWorker.run(task)` builds an initial prompt with the task
+   title + description and a reminder that the agent must call
+   `task_complete` to finish.
+3. It calls `host.agentLoop.run({...})`. The runner:
+   - creates a `kind='worker'` session owned by the task's user;
+   - resolves the model from the agent row, falling back to the
+     tenant default;
+   - applies per-agent overrides (`system_prompt`, `tools_allow`,
+     `skills`) to the toolset;
+   - runs the streamSimple → toolcall → stream loop capped at
+     MAX_TURNS=16;
+   - enforces three layered timeouts (per
+     `plugins.workboard.config.llm.*`): first-response, idle, and
+     total max-run — same shape as the closed-source predecessor.
+4. The LLM ends the run by calling `task_complete(summary, files)`.
+   The runner captures the args and resolves `status='done'`.
+   Walking off without it resolves `status='stalled'`.
+5. `LLMWorker` translates the result to a `TerminalUpdate` and the
+   pool writes it back to `tasks`.
+
+Key design choices:
+
+- **Worker session, not user session.** Each task gets its own
+  `kind='worker'` session row, archived after the run. The
+  orchestrator chat stays clean; a future admin UI can render
+  "what did Agent X do for Task T" by walking the worker session.
+- **`host.agentLoop` is a host-provided capability.** The plugin
+  `requires: ["host.agentLoop"]`; the host registers a runner
+  factory in `RegistryOpts.hostCapabilities` so every tenant gets
+  a ctx-bound runner pre-seeded. Plugins never import server
+  modules directly.
+- **No new `worker_agents` columns.** Re-uses the generic
+  `model_id / system_prompt / tools_allow / skills` columns added
+  in N+6.2. The kind's `fields[]` whitelist advertises which the
+  UI surfaces and the REST handler accepts.
+- **`task_complete` is a workboard-contributed tool**, not part
+  of the agent loop itself. The loop discovers it by name and wraps
+  its executor to capture summary/files. Other callers of
+  `host.agentLoop` can ship their own completion contract or skip
+  it.
+
+What's deliberately NOT here yet:
+
+- Per-tenant or per-user model quotas.
+- Streaming progress events back to a UI — transcript visible via
+  messages table only.
+- Multi-plugin LLM worker variants — the workboard factory is the
+  seam to extend when needed.
 
 ### 8. Resource boundary recap
 

@@ -33,6 +33,12 @@ import { fileURLToPath } from "node:url";
 import { attachChatHandler } from "./chat/handler.js";
 import { appendMessage, ensureActiveSession } from "./chat/messages.js";
 import type { PluginsChangedDelta } from "./chat/ws-protocol.js";
+import { runAgentLoop } from "./chat/agent-loop.js";
+import type {
+  AgentLoopRunner,
+  AgentLoopRunnerRequest,
+  AgentLoopRunnerResult,
+} from "@tianshu/plugin-sdk";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
 // both projects can run side-by-side on the same dev machine without
@@ -59,9 +65,47 @@ const pluginsRoot = process.env.TIANSHU_PLUGINS_DIR
 
 const reloadingResolver = await buildReloadingBuiltinResolver({ pluginsRoot });
 const mcpManager = new McpManager();
-const pluginRegistry = new PluginRegistry({
+// Forward-declared so the host.agentLoop factory can close over it
+// before construction; assigned right below.
+let pluginRegistry: PluginRegistry;
+pluginRegistry = new PluginRegistry({
   resolver: reloadingResolver,
   mcpManager,
+  hostCapabilities: {
+    "host.agentLoop": (ctx) => {
+      const runner: AgentLoopRunner = {
+        run: async (
+          req: AgentLoopRunnerRequest,
+        ): Promise<AgentLoopRunnerResult> => {
+          const result = await runAgentLoop({
+            ctx,
+            userId: req.userId,
+            initialUserMessage: req.initialUserMessage,
+            systemPrompt: req.systemPrompt,
+            modelId: req.modelId,
+            toolsAllow: req.toolsAllow,
+            skillsAllow: req.skillsAllow,
+            sessionTitle: req.sessionTitle,
+            workerRole: req.workerRole,
+            parentSessionId: req.parentSessionId,
+            timeouts: req.timeouts,
+            signal: req.signal,
+            pluginRegistry,
+            homeDir: ctx.workspaceDir,
+          });
+          return {
+            status: result.status,
+            summary: result.summary,
+            files: result.files,
+            sessionId: result.sessionId,
+            turns: result.turns,
+            reason: result.reason,
+          };
+        },
+      };
+      return runner;
+    },
+  },
 });
 
 // Catalog client — fetches the list of installable plugins from the

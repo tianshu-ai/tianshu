@@ -24,17 +24,20 @@
 // host so we never close it.
 
 import type {
+  AgentLoopRunner,
   PluginContext,
   PluginServerExports,
   PluginServerModule,
 } from "@tianshu/plugin-sdk";
 import {
   EchoWorker,
+  LLMWorker,
   WorkerPool,
   type AgentSpec,
   type WorkerHandle,
 } from "./worker/pool.js";
 import {
+  buildTaskCompleteTool,
   buildTaskCreateTool,
   buildTaskDeleteTool,
   buildTaskListTool,
@@ -48,6 +51,7 @@ import {
   listWorkerAgents,
   seedBuiltinAgents,
   type SeedAgentSpec,
+  type WorkerAgent,
 } from "./db/agents.js";
 
 interface ActiveState {
@@ -76,6 +80,16 @@ const WORKER_KINDS: WorkerKindDef[] = [
     // only freeform field worth surfacing.
     fields: ["description"],
   },
+  {
+    id: "llm",
+    displayName: "LLM agent",
+    description:
+      "Runs a configurable LLM agent loop on the task: spins up a worker session, calls the model with the per-agent system prompt + tool/skill allow-list, and writes the result back when the agent calls `task_complete`.",
+    userCreatable: true,
+    // Full set — LLM agents are the canonical "configure everything"
+    // worker type.
+    fields: ["description", "modelId", "systemPrompt", "toolsAllow", "skills"],
+  },
 ];
 
 /** Builtin agents seeded on every activate. The seed loop respects
@@ -87,6 +101,13 @@ const BUILTIN_AGENT_SEEDS: SeedAgentSpec[] = [
     kind: "echo",
     name: "Echo demo",
     description: "Sleeps, then echoes the task title. Ships with the workboard plugin.",
+  },
+  {
+    builtinKey: "llm-default",
+    kind: "llm",
+    name: "Default LLM",
+    description:
+      "Runs the tenant's default model with the host's standard tool set. Edit me to add a system prompt or restrict tools.",
   },
 ];
 
@@ -102,6 +123,12 @@ const plugin: PluginServerModule = {
     const cfg = (ctx.pluginConfig ?? {}) as {
       echoDelayMs?: number;
       echo?: { enabled?: boolean; delayMs?: number };
+      llm?: {
+        enabled?: boolean;
+        firstResponseSec?: number;
+        idleSec?: number;
+        maxRunSec?: number;
+      };
     };
     const echoEnabled = cfg.echo?.enabled !== false;
     const echoDelayMs =
@@ -110,6 +137,25 @@ const plugin: PluginServerModule = {
         : typeof cfg.echoDelayMs === "number" && cfg.echoDelayMs >= 0
           ? cfg.echoDelayMs
           : 30_000;
+    const llmEnabled = cfg.llm?.enabled !== false;
+    const llmTimeouts = {
+      firstResponseMs:
+        sec(cfg.llm?.firstResponseSec, /* default */ 300) * 1_000,
+      idleMs: sec(cfg.llm?.idleSec, /* default */ 600) * 1_000,
+      maxRunMs: sec(cfg.llm?.maxRunSec, /* default */ 1_800) * 1_000,
+    };
+
+    // host.agentLoop is registered by the host before any plugin
+    // activates (see server/index.ts hostCapabilities). If it's
+    // missing we still come up — echo agents work without it —
+    // but every kind=llm row will be skipped at factory time.
+    const agentLoopRunner =
+      ctx.capabilities.get<AgentLoopRunner>("host.agentLoop");
+    if (!agentLoopRunner) {
+      ctx.log.warn(
+        "host.agentLoop capability missing — LLM workers will be skipped",
+      );
+    }
 
     // Schema first, then seed. Both are idempotent.
     ensureSchema(ctx.db);
@@ -118,10 +164,41 @@ const plugin: PluginServerModule = {
       ctx.log.info("seeded worker agents", seedResult);
     }
 
+    // Owner discovery: agent rows don't pin to a user, but every
+    // task does. The factory builds a handle without a task in
+    // hand, so we precompute a `defaultUserId` per agent from
+    // either `owner_user_id` (if the agent itself was created by
+    // a specific user) or fall back to the first user we find in
+    // the tenant. The handle uses task.ownerUserId at run-time;
+    // this default is only used when the task somehow lacks one.
+    const fallbackUser = firstUserId(ctx.db);
+    const agentRowsById = new Map<string, WorkerAgent>();
+    for (const a of listWorkerAgents(ctx.db, ctx.tenantId)) {
+      agentRowsById.set(a.id, a);
+    }
+
     const factory = (a: AgentSpec): WorkerHandle | null => {
       if (a.kind === "echo") {
         if (!echoEnabled) return null;
         return new EchoWorker(a.id, a.name, { delayMs: echoDelayMs });
+      }
+      if (a.kind === "llm") {
+        if (!llmEnabled) return null;
+        if (!agentLoopRunner) return null;
+        const row = agentRowsById.get(a.id);
+        const defaultUserId = row?.ownerUserId ?? fallbackUser ?? "unknown";
+        return new LLMWorker({
+          agentId: a.id,
+          name: a.name,
+          defaultUserId,
+          systemPrompt: row?.systemPrompt ?? null,
+          modelId: row?.modelId ?? null,
+          toolsAllow: row?.toolsAllow ?? null,
+          skillsAllow: row?.skills ?? null,
+          timeouts: llmTimeouts,
+          runner: agentLoopRunner,
+          log: ctx.log,
+        });
       }
       return null;
     };
@@ -159,7 +236,12 @@ const plugin: PluginServerModule = {
     );
 
     const onAgentsWrite = () => {
-      const next = listWorkerAgents(ctx.db, ctx.tenantId)
+      const fresh = listWorkerAgents(ctx.db, ctx.tenantId);
+      // Refresh the cached agent rows so the factory rebuilds
+      // LLMWorkers with the user's latest settings.
+      agentRowsById.clear();
+      for (const a of fresh) agentRowsById.set(a.id, a);
+      const next = fresh
         .filter((row) => row.enabled)
         .map(
           (row): AgentSpec => ({ id: row.id, kind: row.kind, name: row.name }),
@@ -185,6 +267,7 @@ const plugin: PluginServerModule = {
         TaskUpdateTool: buildTaskUpdateTool(toolDeps),
         TaskMoveTool: buildTaskMoveTool(toolDeps),
         TaskDeleteTool: buildTaskDeleteTool(toolDeps),
+        TaskCompleteTool: buildTaskCompleteTool(),
       },
       routes,
     };
@@ -196,6 +279,22 @@ const plugin: PluginServerModule = {
     active = null;
   },
 };
+
+function sec(raw: unknown, fallback: number): number {
+  return typeof raw === "number" && Number.isFinite(raw) && raw >= 0
+    ? raw
+    : fallback;
+}
+
+/** Read one user id from the tenant DB to use as a fallback when a
+ *  task lands without an owner. Returns null if the tenant somehow
+ *  has zero users — the LLMWorker then can't run. */
+function firstUserId(db: PluginContext["db"]): string | null {
+  const row = db
+    .prepare<[], { id: string }>(`SELECT id FROM users ORDER BY created_at ASC LIMIT 1`)
+    .get();
+  return row?.id ?? null;
+}
 
 export const activate = plugin.activate.bind(plugin);
 export const deactivate = plugin.deactivate?.bind(plugin);

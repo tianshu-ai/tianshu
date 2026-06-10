@@ -37,6 +37,73 @@ export interface ChatSession {
   createdAt: number;
 }
 
+/**
+ * Create a fresh `kind="worker"` session, owned by the requesting
+ * user. Each task gets its own worker session so the message
+ * history is bounded to one task's worth of work — this lets the
+ * UI show "What did Worker X do for task T?" cleanly without a
+ * bunch of unrelated turns leaking in.
+ *
+ * `parentSessionId` is the `kind='user'` session that requested
+ * the worker (i.e. the orchestrator chat the user is talking to).
+ * It's stored so a future `/admin/sessions` view can render the
+ * worker session as a child of the user session.
+ */
+export function createWorkerSession(
+  ctx: TenantContext,
+  args: {
+    userId: string;
+    workerRole?: string | null;
+    parentSessionId?: string | null;
+    title?: string | null;
+  },
+): ChatSession {
+  const id = `session_${randomUUID()}`;
+  const now = Date.now();
+  ctx.db
+    .prepare<
+      [string, string, string | null, string, string, string | null, string | null, number],
+      unknown
+    >(
+      `INSERT INTO sessions
+         (id, user_id, parent_id, status, kind, worker_role, title, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      id,
+      args.userId,
+      args.parentSessionId ?? null,
+      "active",
+      "worker",
+      args.workerRole ?? null,
+      args.title ?? null,
+      now,
+    );
+  return {
+    id,
+    userId: args.userId,
+    parentId: args.parentSessionId ?? null,
+    status: "active",
+    kind: "worker",
+    title: args.title ?? null,
+    createdAt: now,
+  };
+}
+
+/** Mark a session archived (status='archived', ended_at=now). Used
+ *  when a worker session finishes so it doesn't keep showing up as
+ *  active in admin tooling. */
+export function archiveSession(
+  ctx: TenantContext,
+  sessionId: string,
+): void {
+  ctx.db
+    .prepare<[number, string], unknown>(
+      `UPDATE sessions SET status = 'archived', ended_at = ? WHERE id = ?`,
+    )
+    .run(Date.now(), sessionId);
+}
+
 /** Look up the user's currently-active session, creating one on demand. */
 export function ensureActiveSession(ctx: TenantContext, userId: string): ChatSession {
   const existing = ctx.db

@@ -12,6 +12,7 @@
 export * from "./capabilities.js";
 export * from "./manifest.js";
 export * from "./server.js";
+export * from "./agent-loop.js";
 export {
   McpToolset,
   textOfMcpContent,
