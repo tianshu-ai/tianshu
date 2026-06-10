@@ -18,12 +18,12 @@
 // in a loop with no productive progress would otherwise burn budget
 // forever. shouldStopAfterTurn enforces it.
 
-import { runAgentLoop as piRunAgentLoop } from "@earendil-works/pi-agent-core";
-import type {
-  AgentContext,
-  AgentEvent,
-  AgentLoopConfig,
-  AgentMessage,
+import {
+  AgentHarness,
+  Session as PiSession,
+  type AgentHarnessEvent,
+  type AgentHarnessOwnEvent,
+  type AgentMessage,
 } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
@@ -47,6 +47,9 @@ import {
 } from "../core/index.js";
 import { buildToolset, type Toolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
+import { SqliteSessionRepo } from "./sqlite-session-repo.js";
+import { SqliteSessionStorage } from "./sqlite-session-storage.js";
+import { makeStubExecutionEnv } from "./stub-execution-env.js";
 import {
   filterSkillsForTenant,
   loadSkillsForPlugin,
@@ -202,6 +205,7 @@ interface RunPromptArgs {
 async function runPrompt(args: RunPromptArgs): Promise<void> {
   const { ctx, userId, send, content, modelId, attachments, signal, pluginRegistry, homeDir } = args;
   const wireOpts = makeWireOpts(ctx);
+  const repo = new SqliteSessionRepo(ctx);
 
   let session = ensureActiveSession(ctx, userId);
 
@@ -248,201 +252,333 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
     },
   });
 
-  // Auto-compact BEFORE persisting the new user message: we want
-  // the next turn to land in the post-compact session, not stuck
-  // attached to the about-to-be-archived one. The compact decision
-  // looks at the existing log only; the new prompt's contribution
-  // is bounded by the model's tools-and-prompt budget anyway.
-  session = await maybeAutoCompact({
-    ctx,
-    userId,
-    session,
-    modelInfo,
-    toolset,
-    send,
-    signal,
-  });
-
-  // Build a multimodal UserMessage on disk (path-only, no base64).
-  // Non-image attachments still appear in the wire `attachments`
-  // list so the UI can render chips, but the agent learns about
-  // them via a brief text note in the message body — it then
-  // calls `read_file` if it actually wants the contents.
-  const userMsg = persistUserPrompt(ctx, session, content, attachments);
-  send({ type: "message_added", message: toWire(userMsg, wireOpts) });
-
-  send({ type: "stream_start" });
-
-  // Hydrate the conversation log from disk — SCOPED TO THE ACTIVE
-  // SESSION so a recently-compacted parent session doesn't bleed
-  // back into the agent's context.
-  const { messages } = loadAgentHistoryForSession(ctx, session.id, {
-    api: modelInfo.api,
-    provider: modelInfo.providerId,
-    model: modelInfo.modelId,
-  });
-
-  const systemPrompt = defaultSystemPrompt(ctx, userId);
-
-  // Hand off to pi-agent-core. Bridge events back to WS:
-  //   * text_delta deltas → stream_delta
-  //   * message_end (assistant) → persist + message_added
-  //   * message_end (toolResult) → persist + tool_result + message_added
-  //   * tool call start → emit tool_call event up-front so the UI
-  //                       can render chips before results land
-  // The host's existing user-prompt persistence stays in place; we
-  // pass the LLM-ready snapshot as the loop's initial context. Pi
-  // will not re-emit message_start/end for the prompt because we
-  // hand it in as `context.messages` rather than `prompts[]`.
-  const adapted = adaptToolset(toolset);
-  const llmReady = await prepareMessagesForLlm(
-    messages,
+  // Convert wire attachments into:
+  //   * `images` — base64 ImageContent[] for vision-capable models
+  //   * `prompt prefix` — a short text note for non-image files
+  //                        pointing the agent at the path
+  //
+  // Non-image bytes never reach the LLM directly; the agent reads
+  // them via tools (`read_file`, or shell `pdftotext` for pdfs).
+  const { promptText, images, originalAttachments } = await prepareUserInput(
+    content,
+    attachments,
     ctx.userHomeDir(userId),
     modelInfo,
   );
-  const agentContext: AgentContext = {
-    systemPrompt,
-    messages: [...llmReady] as AgentMessage[],
-    tools: adapted.tools,
-  };
-  const config: AgentLoopConfig = {
-    model: piModel,
-    apiKey,
-    convertToLlm: (msgs: AgentMessage[]) =>
-      msgs.filter(
-        (m): m is Message =>
-          m.role === "user" || m.role === "assistant" || m.role === "toolResult",
-      ),
-    shouldStopAfterTurn: ({ newMessages }) => {
-      const assistantCount = newMessages.filter(
-        (m) => m.role === "assistant",
-      ).length;
-      return assistantCount >= MAX_TURNS;
-    },
-    afterToolCall: async ({ result }) => {
-      if (isAdapterError(result.details)) {
-        return { isError: true };
-      }
-      return undefined;
-    },
-  };
 
-  // We split the just-persisted user prompt off the LLM-ready
-  // messages list and hand it to pi as `prompts[]`, so pi emits
-  // message_start/end through our sink the same way assistant
-  // turns do. This keeps the WS event timeline consistent and
-  // avoids double-emitting (pi never re-emits messages it found
-  // pre-seeded in `context.messages`).
-  const promptInputs: AgentMessage[] = [];
-  const lastCtx = agentContext.messages[agentContext.messages.length - 1];
-  if (lastCtx && lastCtx.role === "user") {
-    promptInputs.push(lastCtx as AgentMessage);
-    agentContext.messages.pop();
+  // Build the harness session ourselves so we can keep a handle
+  // on the storage — we need to stash sibling attachments on it
+  // before the harness's user-message persistence fires.
+  const storage = new SqliteSessionStorage(ctx, session.id);
+  const piSession = new PiSession(storage);
+  if (originalAttachments && originalAttachments.length > 0) {
+    storage.pendingUserAttachments = {
+      attachments: originalAttachments as unknown[],
+    };
   }
+  void repo;
 
-  // Stash the most recent assistant row so agent_end can echo it
-  // back as stream_end's `message` payload — the web UI uses that
-  // to clear its streaming placeholder and re-enable the send
-  // button. Without this, the UI sits in "sending…" forever.
+  send({ type: "stream_start" });
+
+  const adapted = adaptToolset(toolset);
+  const harness = new AgentHarness({
+    env: makeStubExecutionEnv(ctx.userHomeDir(userId)),
+    session: piSession,
+    tools: adapted.tools,
+    systemPrompt: defaultSystemPrompt(ctx, userId),
+    model: piModel,
+    getApiKeyAndHeaders: async () => ({ apiKey }),
+  });
+
+  // External abort → harness.abort()
+  const onAbort = () => void harness.abort();
+  signal.addEventListener("abort", onAbort, { once: true });
+
   let lastAssistantRow: ChatMessage | null = null;
-  const emit = async (event: AgentEvent): Promise<void> => {
-    if (event.type === "message_update") {
-      const ev = event.assistantMessageEvent;
-      if (ev.type === "text_delta" && typeof ev.delta === "string") {
-        send({ type: "stream_delta", delta: ev.delta });
-      } else if (ev.type === "toolcall_start") {
-        // Pi delivers toolcall id via the partial assistant message
-        // (the toolCall block at contentIndex). Pull it out for the
-        // UI's tool_call event so chips can render before the tool
-        // result lands.
-        const partial = (ev as { partial?: { content?: unknown[] } }).partial;
-        const block = partial?.content?.[
-          (ev as { contentIndex: number }).contentIndex
-        ] as { id?: string; name?: string; arguments?: unknown } | undefined;
-        if (block && block.id && block.name) {
-          send({
-            type: "tool_call",
-            callId: block.id,
-            name: block.name,
-            arguments: (block.arguments as Record<string, unknown>) ?? {},
-          });
-        }
-      }
-      return;
-    }
-    if (event.type === "message_end") {
-      const m = event.message;
-      if (m.role === "assistant") {
-        const row = appendAgentMessage(ctx, session, m as AssistantMessage);
+  let assistantTurns = 0;
+  let streamErrorSent = false;
+
+  const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
+    bridgeHarnessEventToWs(event, {
+      ctx,
+      session,
+      send,
+      wireOpts,
+      onAssistantPersisted: (row) => {
         lastAssistantRow = row;
-        send({ type: "message_added", message: toWire(row, wireOpts) });
-      } else if (m.role === "toolResult") {
-        const tr = m as ToolResultMessage;
-        const row = appendAgentMessage(ctx, session, tr);
-        const text = tr.content
-          .map((c) => (c.type === "text" ? c.text : ""))
-          .join("");
-        send({
-          type: "tool_result",
-          callId: tr.toolCallId,
-          name: tr.toolName,
-          ok: !tr.isError,
-          text,
-        });
-        send({ type: "message_added", message: toWire(row, wireOpts) });
-      } else if (m.role === "user") {
-        // The user prompt was already persisted by persistUserPrompt;
-        // skip silently.
-      }
-      return;
-    }
-    if (event.type === "agent_end") {
-      // Final assistant turn ended — emit stream_end with the last
-      // persisted assistant row so the UI can drop its streaming
-      // placeholder and re-enable the send button. If somehow no
-      // assistant row landed (shouldn't happen — pi always emits
-      // at least one), we still emit stream_end with a placeholder
-      // so the UI doesn't get stuck.
-      if (lastAssistantRow) {
-        send({
-          type: "stream_end",
-          message: toWire(lastAssistantRow, wireOpts),
-        });
-      } else {
-        // Fall through with a synthetic empty assistant row so the
-        // UI's stream_end handler still runs.
-        send({
-          type: "stream_end",
-          message: toWire(
-            {
-              id: `msg_empty_${Date.now()}`,
-              sessionId: session.id,
-              role: "assistant",
-              content: "",
-              createdAt: Date.now(),
-            },
-            wireOpts,
-          ),
-        });
-      }
-      return;
-    }
-  };
+        assistantTurns++;
+        if (assistantTurns >= MAX_TURNS) {
+          void harness.abort();
+        }
+      },
+      onStreamError: () => {
+        streamErrorSent = true;
+      },
+    });
+  });
 
   try {
-    await piRunAgentLoop(
-      promptInputs,
-      agentContext,
-      config,
-      emit,
-      signal,
-    );
+    await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
+    await harness.waitForIdle();
   } catch (err) {
-    send({
-      type: "stream_error",
-      reason: err instanceof Error ? err.message : String(err),
-    });
+    if (!streamErrorSent) {
+      send({
+        type: "stream_error",
+        reason: err instanceof Error ? err.message : String(err),
+      });
+      streamErrorSent = true;
+    }
+  } finally {
+    unsubscribe();
+    signal.removeEventListener("abort", onAbort);
+    if (storage) storage.pendingUserAttachments = null;
   }
+
+  // Emit stream_end so the UI re-enables the send button.
+  if (!streamErrorSent) {
+    if (lastAssistantRow) {
+      send({ type: "stream_end", message: toWire(lastAssistantRow, wireOpts) });
+    } else {
+      // Synthetic placeholder so the UI doesn't get stuck.
+      send({
+        type: "stream_end",
+        message: toWire(
+          {
+            id: `msg_empty_${Date.now()}`,
+            sessionId: session.id,
+            role: "assistant",
+            content: "",
+            createdAt: Date.now(),
+          },
+          wireOpts,
+        ),
+      });
+    }
+  }
+}
+
+/**
+ * Translate (text, wire-attachments) → a single text + ImageContent[]
+ * suitable for `harness.prompt(text, { images })`.
+ *
+ *   * Image attachments → fitted to the model's byte budget +
+ *     emitted as ImageContent[].
+ *   * Non-image attachments → a one-liner prepended to the user
+ *     text pointing the agent at the file path.
+ *   * Vision-incapable model → every image is replaced by a
+ *     [Attached image: name (no vision support)] note.
+ */
+async function prepareUserInput(
+  content: string,
+  attachments: WireAttachment[] | undefined,
+  userHome: string,
+  modelInfo: ResolvedModelInfo,
+): Promise<{
+  promptText: string;
+  images: ImageContent[];
+  originalAttachments: WireAttachment[];
+}> {
+  const atts = attachments ?? [];
+  if (atts.length === 0) {
+    return { promptText: content, images: [], originalAttachments: atts };
+  }
+  const fileLines: string[] = [];
+  const images: ImageContent[] = [];
+  for (const att of atts) {
+    const isImage = att.mimeType.startsWith("image/");
+    if (!isImage) {
+      fileLines.push(
+        `[Attached file: ${att.name ?? att.path} (${att.mimeType}) — readable at .${att.path}]`,
+      );
+      continue;
+    }
+    if (!modelInfo.supportsImages) {
+      fileLines.push(
+        `[Attached image (current model has no vision support): ${att.name ?? att.path}]`,
+      );
+      continue;
+    }
+    const abs = path.join(
+      userHome,
+      att.path.startsWith("/") ? att.path.slice(1) : att.path,
+    );
+    try {
+      const stat = fs.statSync(abs);
+      const cacheKey = imageFitCacheKey(
+        abs,
+        stat.mtimeMs,
+        modelInfo.imageMaxBytes,
+      );
+      const cached = cacheGet(cacheKey);
+      let buf: Buffer;
+      let mimeType: string;
+      if (cached) {
+        buf = cached.buf;
+        mimeType = cached.mimeType;
+      } else {
+        const raw = fs.readFileSync(abs);
+        const fitted = await fitToLimit(
+          raw,
+          att.mimeType,
+          modelInfo.imageMaxBytes,
+        );
+        buf = fitted.buf;
+        mimeType = fitted.mimeType;
+        cachePut(cacheKey, buf, mimeType);
+      }
+      images.push({
+        type: "image",
+        data: buf.toString("base64"),
+        mimeType,
+      });
+    } catch (err) {
+      const reason =
+        (err as { message?: string } | null)?.message ?? "read failed";
+      fileLines.push(
+        `[Attached image: ${att.name ?? att.path} — read failed: ${reason}]`,
+      );
+    }
+  }
+  const prefix = fileLines.length > 0 ? fileLines.join("\n") + "\n\n" : "";
+  return {
+    promptText: prefix + content,
+    images,
+    originalAttachments: atts,
+  };
+}
+
+/**
+ * Translate one harness event into the legacy chat WS protocol.
+ * Every assistant / toolResult message that lands in the harness
+ * session is re-broadcast here so the existing UI flow keeps
+ * working unchanged.
+ */
+function bridgeHarnessEventToWs(
+  event: AgentHarnessEvent,
+  args: {
+    ctx: TenantContext;
+    session: ChatSession;
+    send: (msg: ServerMsg) => void;
+    wireOpts: ToWireOpts;
+    onAssistantPersisted: (row: ChatMessage) => void;
+    onStreamError: () => void;
+  },
+): void {
+  const { ctx, session, send, wireOpts, onAssistantPersisted, onStreamError } =
+    args;
+  const e = event as AgentHarnessOwnEvent | { type: string };
+
+  // Pi-low-level events first (text_delta etc).
+  const lowType = (event as { type: string }).type;
+  if (lowType === "message_update") {
+    const upd = event as {
+      type: "message_update";
+      assistantMessageEvent: { type: string; delta?: string };
+    };
+    if (
+      upd.assistantMessageEvent.type === "text_delta" &&
+      typeof upd.assistantMessageEvent.delta === "string"
+    ) {
+      send({ type: "stream_delta", delta: upd.assistantMessageEvent.delta });
+    }
+    return;
+  }
+  if (lowType === "message_end") {
+    const m = (event as { message: AgentMessage }).message;
+    if (m.role === "assistant") {
+      // Read back the row that storage just wrote so toWire has
+      // the persisted ChatMessage shape.
+      const row = readBackLatestMessage(ctx, session.id, "assistant");
+      if (row) {
+        onAssistantPersisted(row);
+        send({ type: "message_added", message: toWire(row, wireOpts) });
+      }
+    } else if (m.role === "user") {
+      const row = readBackLatestMessage(ctx, session.id, "user");
+      if (row) {
+        send({ type: "message_added", message: toWire(row, wireOpts) });
+      }
+    }
+    return;
+  }
+
+  // Harness-own tool events: emit chips before/after each call.
+  if (e.type === "tool_call") {
+    const tc = e as AgentHarnessOwnEvent & { type: "tool_call" };
+    send({
+      type: "tool_call",
+      callId: tc.toolCallId,
+      name: tc.toolName,
+      arguments: tc.input,
+    });
+    return;
+  }
+  if (e.type === "tool_result") {
+    const tr = e as AgentHarnessOwnEvent & {
+      type: "tool_result";
+      toolCallId: string;
+      toolName: string;
+      content: Array<{ type: string; text?: string }>;
+      isError: boolean;
+    };
+    const text = tr.content
+      .map((c) => (c.type === "text" && typeof c.text === "string" ? c.text : ""))
+      .join("");
+    const row = readBackLatestMessage(ctx, session.id, "tool");
+    send({
+      type: "tool_result",
+      callId: tr.toolCallId,
+      name: tr.toolName,
+      ok: !tr.isError,
+      text,
+    });
+    if (row) {
+      send({ type: "message_added", message: toWire(row, wireOpts) });
+    }
+    return;
+  }
+
+  // Surface stream-level errors as the legacy stream_error so the
+  // UI handles them the same way it always has.
+  if (lowType === "agent_end" || lowType === "settled") {
+    return;
+  }
+}
+
+/** Read the most recently persisted message of a given role from
+ *  `messages`. Used by the WS bridge to pick up the row the harness
+ *  just wrote (so we can `toWire` it for the client). */
+function readBackLatestMessage(
+  ctx: TenantContext,
+  sessionId: string,
+  role: "user" | "assistant" | "tool",
+): ChatMessage | null {
+  const row = ctx.db
+    .prepare<
+      [string, string],
+      {
+        id: string;
+        session_id: string;
+        role: ChatMessage["role"];
+        content: string;
+        created_at: number;
+      }
+    >(
+      `SELECT id, session_id, role, content, created_at
+       FROM messages
+       WHERE session_id = ? AND role = ? AND entry_type = 'message'
+       ORDER BY created_at DESC, rowid DESC
+       LIMIT 1`,
+    )
+    .get(sessionId, role);
+  if (!row) return null;
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    role: row.role,
+    content: row.content,
+    createdAt: row.created_at,
+  };
 }
 
 /** Build a `ToWireOpts` bound to the current tenant config. The

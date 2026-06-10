@@ -11,6 +11,7 @@
 import type { Database } from "better-sqlite3";
 import * as initial from "./001-initial.js";
 import * as taskDependencies from "./002-task-dependencies.js";
+import * as sessionTree from "./003-session-tree.js";
 
 export interface Migration {
   id: string;
@@ -21,6 +22,7 @@ export interface Migration {
 export const MIGRATIONS: Migration[] = [
   { id: initial.ID, up: initial.up },
   { id: taskDependencies.ID, up: taskDependencies.up },
+  { id: sessionTree.ID, up: sessionTree.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `
