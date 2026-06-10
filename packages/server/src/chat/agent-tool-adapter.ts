@@ -29,7 +29,46 @@ import type {
 } from "@earendil-works/pi-agent-core";
 import type { TextContent } from "@earendil-works/pi-ai";
 import type { Toolset } from "../tools/index.js";
-import { normaliseToolResult } from "./handler.js";
+
+export interface AnyToolResult {
+  ok: boolean;
+  text: string;
+}
+
+/**
+ * Normalise an executor's structured return value to `{ ok, text }`.
+ * Two shapes are accepted:
+ *
+ *   1. Fs-style: `{ ok: boolean, text: string, ...extras }` — used
+ *      as-is.
+ *   2. Anything else: JSON-encoded into `text`. `ok` is derived
+ *      from common hints (`ok`, `exit_code`, `state`) and defaults
+ *      to true when there's no clear signal.
+ *
+ *  Lives in the adapter file because it's the only consumer now
+ *  that the host's chat handler runs through pi-agent-core.
+ */
+export function normaliseToolResult(out: unknown): AnyToolResult {
+  if (
+    out &&
+    typeof out === "object" &&
+    typeof (out as { text?: unknown }).text === "string" &&
+    typeof (out as { ok?: unknown }).ok === "boolean"
+  ) {
+    const r = out as { ok: boolean; text: string };
+    return { ok: r.ok, text: r.text };
+  }
+  if (out && typeof out === "object") {
+    const r = out as Record<string, unknown>;
+    let ok = true;
+    if (typeof r.ok === "boolean") ok = r.ok;
+    else if (typeof r.exit_code === "number") ok = r.exit_code === 0;
+    else if (typeof r.state === "string")
+      ok = r.state !== "error" && r.state !== "failed";
+    return { ok, text: JSON.stringify(out) };
+  }
+  return { ok: true, text: String(out ?? "") };
+}
 
 export interface AdaptedToolset {
   /** pi-agent-core tools, ready to drop into AgentContext.tools. */

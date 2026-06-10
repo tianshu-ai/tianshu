@@ -1,18 +1,22 @@
 // WebSocket chat handler — wires together the tenant context, the
-// message store, pi-ai's streamSimple, and the agent fs tools.
+// message store, pi-agent-core's runAgentLoop, and the plugin tool
+// surface.
 //
-// Loop:
-//   1. user prompt arrives → append user message
-//   2. streamSimple with full history + tool schemas
-//   3. on toolcall_end events: run the tool against the per-user
-//      home, append tool_result to history, broadcast tool_call /
-//      tool_result events
-//   4. if the assistant message stops with `toolUse`, call
-//      streamSimple again with the appended ToolResultMessage(s).
-//   5. otherwise persist the assistant text and emit stream_end.
+// Per-turn flow:
+//   1. user prompt arrives → maybe-compact → persist user message
+//   2. hand the prompt to piRunAgentLoop with the tenant's tools
+//      and skills, plus a config that caps assistant turns at
+//      MAX_TURNS
+//   3. emit() callback bridges pi events to the WS protocol:
+//        text_delta deltas → stream_delta
+//        toolcall_start → tool_call (UI shows chips early)
+//        message_end (assistant) → persist + message_added
+//        message_end (toolResult) → persist + tool_result + message_added
+//        agent_end → stream_end
 //
-// We cap the number of tool turns per prompt at MAX_TURNS so a model
-// stuck in a feedback loop terminates instead of melting the host.
+// MAX_TURNS exists because a model that decides to call its tools
+// in a loop with no productive progress would otherwise burn budget
+// forever. shouldStopAfterTurn enforces it.
 
 import { runAgentLoop as piRunAgentLoop } from "@earendil-works/pi-agent-core";
 import type {
@@ -23,12 +27,10 @@ import type {
 } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
-  AssistantMessageEvent,
   Context,
   ImageContent,
   Message,
   TextContent,
-  ToolCall,
   ToolResultMessage,
   UserMessage,
 } from "@earendil-works/pi-ai";
@@ -420,90 +422,6 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
       reason: err instanceof Error ? err.message : String(err),
     });
   }
-}
-
-/** Run a single pi-ai stream to completion, forwarding text deltas
- *  to the WS and returning the final AssistantMessage. Sends a
- *  `stream_error` and returns null if the stream errored. */
-async function consumeStream(
-  stream: AsyncIterable<AssistantMessageEvent>,
-  send: (msg: ServerMsg) => void,
-): Promise<AssistantMessage | null> {
-  let final: AssistantMessage | null = null;
-  for await (const event of stream) {
-    if (event.type === "text_delta") {
-      send({ type: "stream_delta", delta: event.delta });
-    } else if (event.type === "done") {
-      final = event.message;
-    } else if (event.type === "error") {
-      const reason = event.error?.errorMessage ?? "stream_error";
-      send({ type: "stream_error", reason });
-      return null;
-    }
-  }
-  return final;
-}
-
-export interface AnyToolResult {
-  ok: boolean;
-  text: string;
-}
-
-/**
- * Normalise an executor's structured result to `{ ok, text }` for
- * the chat log + LLM tool-result content. Two shapes are accepted:
- *
- * 1. Fs-style: `{ ok: boolean, text: string, ...extras }` — used as
- *    is. This is what the original 5 fs tools return.
- * 2. Anything else: stringified JSON. `ok` is derived from common
- *    field hints (`ok`, `exit_code`, `state`) and falls back to
- *    `true` when no clear signal exists. The full structured
- *    result is JSON-encoded into `text` so the model sees every
- *    field.
- */
-export function normaliseToolResult(out: unknown): AnyToolResult {
-  if (
-    out &&
-    typeof out === "object" &&
-    typeof (out as { text?: unknown }).text === "string" &&
-    typeof (out as { ok?: unknown }).ok === "boolean"
-  ) {
-    const r = out as { ok: boolean; text: string };
-    return { ok: r.ok, text: r.text };
-  }
-  if (out && typeof out === "object") {
-    const r = out as Record<string, unknown>;
-    let ok = true;
-    if (typeof r.ok === "boolean") ok = r.ok;
-    else if (typeof r.exit_code === "number") ok = r.exit_code === 0;
-    else if (typeof r.state === "string")
-      ok = r.state !== "error" && r.state !== "failed";
-    return { ok, text: JSON.stringify(out) };
-  }
-  return { ok: true, text: String(out ?? "") };
-}
-
-export async function runOneTool(
-  toolset: Toolset,
-  call: ToolCall,
-): Promise<AnyToolResult> {
-  const exec = toolset.executors[call.name];
-  if (!exec) {
-    return { ok: false, text: `unknown tool: ${call.name}` };
-  }
-  try {
-    const out = await exec(call.arguments);
-    return normaliseToolResult(out);
-  } catch (err) {
-    return {
-      ok: false,
-      text: err instanceof Error ? err.message : String(err),
-    };
-  }
-}
-
-function describeResult(r: AnyToolResult): string {
-  return r.text;
 }
 
 /** Build a `ToWireOpts` bound to the current tenant config. The

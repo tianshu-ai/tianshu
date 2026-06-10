@@ -190,9 +190,9 @@ export interface ReadOnlyCapabilityHandle {
  *   to attach custom metadata (e.g. `exit_code`, `duration_ms`).
  *
  * Tools MAY return arbitrary JSON-serialisable values; the host
- * normalises them to `{ ok, text }` via `runOneTool`. Returning
- * this canonical shape directly is preferred because the agent
- * sees a consistent surface across plugins.
+ * normalises them to `{ ok, text }` before they reach the LLM.
+ * Returning this canonical shape directly is preferred because
+ * the agent sees a consistent surface across plugins.
  *
  * Use the {@link okResult} / {@link errorResult} helpers in
  * `tools/result.js` (or hand-roll) to build these.
