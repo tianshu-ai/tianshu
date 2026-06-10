@@ -26,7 +26,12 @@
 // from a fresh agent snapshot; in-flight slots that still match an
 // agent id keep going (no work is killed).
 
-import type { PluginLogger, TenantDbHandle } from "@tianshu/plugin-sdk";
+import type {
+  AgentLoopRunner,
+  AgentLoopRunnerRequest,
+  PluginLogger,
+  TenantDbHandle,
+} from "@tianshu/plugin-sdk";
 import { claimNextTask, updateTask, type Task } from "../db/tasks.js";
 
 /** What a single slot promises to do with one claimed task.
@@ -278,6 +283,104 @@ export class EchoWorker implements WorkerHandle {
       resultSummary: `Echo worker reflected: "${task.title}"`,
     };
   }
+}
+
+/**
+ * LLM worker. Delegates the heavy lifting (model call, tool loop,
+ * session persistence, timeouts) to the host's `host.agentLoop`
+ * capability — this class just translates between the workboard's
+ * Task shape and the runner's request/result shape.
+ *
+ * Per-agent overrides come from the `worker_agents` row that
+ * spawned this handle (system prompt, model, allowed tools/skills).
+ * Plugin-wide timeouts come from `plugins.workboard.config.llm.*`.
+ */
+export interface LLMWorkerConfig {
+  agentId: string;
+  name: string;
+  /** ownerUserId of the task we'll run. The runner needs a userId
+   *  to scope tool contexts and the worker session row. */
+  defaultUserId: string;
+  systemPrompt?: string | null;
+  modelId?: string | null;
+  toolsAllow?: string[] | null;
+  skillsAllow?: string[] | null;
+  timeouts?: AgentLoopRunnerRequest["timeouts"];
+  runner: AgentLoopRunner;
+  log: PluginLogger;
+}
+
+export class LLMWorker implements WorkerHandle {
+  readonly kind = "llm";
+  readonly agentId: string;
+  readonly name: string;
+
+  constructor(private readonly cfg: LLMWorkerConfig) {
+    this.agentId = cfg.agentId;
+    this.name = cfg.name;
+  }
+
+  async run(task: Task): Promise<TerminalUpdate> {
+    const userId = task.ownerUserId || this.cfg.defaultUserId;
+    const initialUserMessage = buildInitialPrompt(task);
+    const result = await this.cfg.runner.run({
+      userId,
+      initialUserMessage,
+      systemPrompt: this.cfg.systemPrompt ?? undefined,
+      modelId: this.cfg.modelId ?? undefined,
+      toolsAllow: this.cfg.toolsAllow ?? undefined,
+      skillsAllow: this.cfg.skillsAllow ?? undefined,
+      sessionTitle: task.title,
+      workerRole: this.kind,
+      timeouts: this.cfg.timeouts,
+    });
+
+    this.cfg.log.info("llm worker terminal", {
+      agentId: this.agentId,
+      taskId: task.id,
+      status: result.status,
+      reason: result.reason,
+      sessionId: result.sessionId,
+      turns: result.turns,
+    });
+
+    if (result.status === "done") {
+      return {
+        status: "done",
+        resultSummary: result.summary,
+        resultFiles: result.files,
+      };
+    }
+    if (result.status === "aborted") {
+      return {
+        status: "aborted",
+        resultSummary: result.summary || "aborted",
+      };
+    }
+    // stalled / error → stalled (keeps task on the kanban so the
+    // user can see the failure and decide whether to retry).
+    return {
+      status: "stalled",
+      resultSummary:
+        `[${result.reason}] ${result.summary}`.slice(0, 800) ||
+        "worker stalled",
+    };
+  }
+}
+
+function buildInitialPrompt(task: Task): string {
+  const lines = [`Execute the task: "${task.title}".`];
+  if (task.description && task.description.trim()) {
+    lines.push("", `Details:`, task.description.trim());
+  }
+  lines.push(
+    "",
+    `When you finish, call the \`task_complete\` tool with a one-line ` +
+      `\`summary\` of what you produced and (optional) a list of \`files\` ` +
+      `you wrote. Don't reply with prose alone — the orchestrator only sees ` +
+      `the summary you pass to task_complete.`,
+  );
+  return lines.join("\n");
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

@@ -379,7 +379,7 @@ async function consumeStream(
   return final;
 }
 
-interface AnyToolResult {
+export interface AnyToolResult {
   ok: boolean;
   text: string;
 }
@@ -396,7 +396,7 @@ interface AnyToolResult {
  *    result is JSON-encoded into `text` so the model sees every
  *    field.
  */
-function normaliseToolResult(out: unknown): AnyToolResult {
+export function normaliseToolResult(out: unknown): AnyToolResult {
   if (
     out &&
     typeof out === "object" &&
@@ -418,7 +418,10 @@ function normaliseToolResult(out: unknown): AnyToolResult {
   return { ok: true, text: String(out ?? "") };
 }
 
-async function runOneTool(toolset: Toolset, call: ToolCall): Promise<AnyToolResult> {
+export async function runOneTool(
+  toolset: Toolset,
+  call: ToolCall,
+): Promise<AnyToolResult> {
   const exec = toolset.executors[call.name];
   if (!exec) {
     return { ok: false, text: `unknown tool: ${call.name}` };
