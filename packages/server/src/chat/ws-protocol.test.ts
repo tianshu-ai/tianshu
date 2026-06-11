@@ -104,9 +104,14 @@ describe("toWire", () => {
   });
 
   it("strips agent-facing [Attached file: …] markers from the wire text", () => {
-    // Server's persistUserPrompt embeds the marker so the LLM knows
-    // where the file lives; the user's bubble should show only the
-    // prose they actually typed.
+    // The chat handler's prepareUserInput embeds the marker so the
+    // LLM knows where the file lives; the user's bubble should show
+    // only the prose they actually typed.
+    //
+    // Marker shape: legacy `— available at .<path>` (pre-N+6.4) and
+    // current `— readable at .<path>` (N+6.4) both round-trip the
+    // same way through toWire().  This row uses the legacy form on
+    // purpose to confirm we don't regress on stored sessions.
     const stored = JSON.stringify({
       role: "user",
       content: [
@@ -166,11 +171,12 @@ describe("toWire", () => {
   });
 
   it("prefers the sibling attachments field even when image parts duplicate it", () => {
-    // persistUserPrompt always records the full attachments list as
-    // a sibling field. Image parts in `content` carry the SAME
-    // image again so the LLM sees it as multimodal content. The
-    // wire layer must NOT report the image twice — the user only
-    // attached one file.
+    // The storage layer always records the full attachments list as
+    // a sibling field on the user message (see
+    // SqliteSessionStorage.appendEntry). Image parts in `content`
+    // carry the SAME image again so the LLM sees it as multimodal
+    // content. The wire layer must NOT report the image twice — the
+    // user only attached one file.
     const stored = JSON.stringify({
       role: "user",
       content: [

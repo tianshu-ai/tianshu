@@ -273,9 +273,10 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
       // carries the marker for the agent's pi-ai context.
       const text = stripAgentAttachmentMarkers(rawText);
       // Attachment metadata: prefer the sibling `attachments` field
-      // (server-set by persistUserPrompt for every attachment, image
-      // or not). Fall back to deriving it from ImageContent parts so
-      // legacy rows written before that field existed still render.
+      // (server-set by SqliteSessionStorage.appendEntry for every
+      // attachment, image or not). Fall back to deriving it from
+      // ImageContent parts so legacy rows written before that field
+      // existed still render.
       const stored = Array.isArray(obj.attachments)
         ? (obj.attachments as Array<Record<string, unknown>>)
             .map((a) => ({
@@ -375,11 +376,16 @@ function tryParse(s: string): unknown {
   }
 }
 
-// Match the exact marker format emitted by chat handler's
-// persistUserPrompt(). Conservative — we only strip our own marker,
-// not arbitrary square-bracketed text the user might have typed.
+// Match the marker formats the chat handler injects so the agent
+// has a path for non-image attachments. Conservative — we only
+// strip our own markers, not arbitrary square-bracketed text the
+// user might have typed. Two phrasings are matched:
+//   - `— available at .<path>`  (legacy, written by pre-N+6.4
+//     persistUserPrompt rows still in the DB)
+//   - `— readable at .<path>`   (current, written by
+//     prepareUserInput)
 const ATTACHMENT_MARKER_RE =
-  /\[Attached file: [^\]]*— available at [^\]]*\]/g;
+  /\[Attached file: [^\]]*— (?:available|readable) at [^\]]*\]/g;
 
 function stripAgentAttachmentMarkers(text: string): string {
   if (!text.includes("[Attached file: ")) return text;

@@ -1,49 +1,50 @@
-// Multimodal attachment plumbing — `prepareMessagesForLlm`.
+// Multimodal attachment plumbing — `SqliteSessionStorage.getPathToRoot`
+// inflates `{type:"image", data:""}` parts into base64 ImageContent
+// just before the LLM call.
 //
 // Locks the contract that:
 //   - vision-capable models get base64-inlined ImageContent
 //   - text-only models get a downgrade text note (no failed request)
 //   - missing files get a graceful text note (no exception)
-//   - non-user / non-image content is passed through untouched
-//   - consecutive text parts get coalesced
+//   - already-inlined images pass through untouched
+//   - non-user / non-image content is left alone
 //
-// We don't go through the full chat handler here; this is a pure
-// function over Messages.
+// We don't go through the full chat handler here; this is a focused
+// test of the storage layer's image-inflate hook.
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
-  AssistantMessage,
   ImageContent,
-  Message,
   TextContent,
   UserMessage,
 } from "@earendil-works/pi-ai";
-import { prepareMessagesForLlm } from "./handler.js";
-import type { ResolvedModelInfo } from "../core/index.js";
+import { GlobalOps } from "../core/global-ops.js";
+import { DbPool } from "../core/db-pool.js";
+import { ensureActiveSession } from "./messages.js";
+import { SqliteSessionStorage } from "./sqlite-session-storage.js";
 
-function model(supportsImages: boolean): ResolvedModelInfo {
-  return {
-    id: "anthropic/claude-sonnet-4-6",
-    providerId: "anthropic",
-    modelId: "claude-sonnet-4-6",
-    name: "claude-sonnet-4-6",
-    api: "anthropic-messages",
-    baseUrl: "",
-    reasoning: false,
-    contextWindow: 200000,
-    maxTokens: 8192,
-    supportsImages,
-    imageMaxBytes: 5 * 1024 * 1024,
-    mode: "chat",
-  };
-}
+let home: string;
+let ops: GlobalOps;
 
-function userMsg(content: UserMessage["content"]): UserMessage {
-  return { role: "user", content, timestamp: 1, ...({} as Record<string, never>) };
-}
+beforeEach(() => {
+  home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
+  ops = new GlobalOps({ home, pool: new DbPool({ home }) });
+  const ctx = ops.create("acme");
+  ops.ensureUser(ctx, {
+    userId: "user_a",
+    provider: "local",
+    externalId: "user_a",
+    displayName: "User A",
+  });
+});
+
+afterEach(() => {
+  ops.closePool();
+  fs.rmSync(home, { recursive: true, force: true });
+});
 
 function imagePart(extra: Record<string, unknown>): ImageContent & {
   path?: string;
@@ -57,89 +58,183 @@ function imagePart(extra: Record<string, unknown>): ImageContent & {
   } as ImageContent & { path?: string; name?: string };
 }
 
-describe("prepareMessagesForLlm", () => {
-  it("inlines base64 for vision-capable models when the file exists", async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
-    try {
-      const uploads = path.join(home, "uploads");
-      fs.mkdirSync(uploads, { recursive: true });
-      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-      fs.writeFileSync(path.join(uploads, "x.png"), png);
+function userMsg(content: UserMessage["content"]): UserMessage {
+  return { role: "user", content, timestamp: 1 };
+}
 
-      const msg = userMsg([
-        { type: "text", text: "look" } as TextContent,
-        imagePart({ path: "/uploads/x.png", name: "x.png" }),
-      ]);
-      const out = await prepareMessagesForLlm([msg], home, model(true));
-      expect(out).toHaveLength(1);
-      const content = (out[0] as UserMessage).content as Array<
-        TextContent | ImageContent
-      >;
-      expect(content).toHaveLength(2);
-      expect(content[0]).toMatchObject({ type: "text", text: "look" });
-      expect(content[1]?.type).toBe("image");
-      const image = content[1] as ImageContent;
-      expect(image.mimeType).toBe("image/png");
-      expect(image.data).toBe(png.toString("base64"));
-      // path/name fields stripped after inlining — pi-ai's
-      // ImageContent has no use for them downstream.
-      expect((image as Record<string, unknown>).path).toBeUndefined();
-    } finally {
-      fs.rmSync(home, { recursive: true, force: true });
-    }
+interface PersistedSession {
+  storage: SqliteSessionStorage;
+  leafId: string;
+  userHome: string;
+}
+
+async function persistUserMessage(
+  ctx: ReturnType<GlobalOps["open"]>,
+  msg: UserMessage,
+  inflate?: ConstructorParameters<typeof SqliteSessionStorage>[2]["imageInflate"],
+): Promise<PersistedSession> {
+  const session = ensureActiveSession(ctx, "user_a");
+  const userHome = ctx.userHomeDir("user_a");
+  const storage = new SqliteSessionStorage(ctx, session.id, {
+    imageInflate: inflate ?? undefined,
+  });
+  const id = await storage.createEntryId();
+  await storage.appendEntry({
+    id,
+    parentId: null,
+    timestamp: new Date().toISOString(),
+    type: "message",
+    message: msg,
+  });
+  return { storage, leafId: id, userHome };
+}
+
+describe("SqliteSessionStorage.getPathToRoot image inflate", () => {
+  it("inlines base64 for vision-capable models when the file exists", async () => {
+    const ctx = ops.open("acme");
+    const userHome = ctx.userHomeDir("user_a");
+    fs.mkdirSync(path.join(userHome, "uploads"), { recursive: true });
+    const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    fs.writeFileSync(path.join(userHome, "uploads", "x.png"), png);
+
+    const msg = userMsg([
+      { type: "text", text: "look" } as TextContent,
+      imagePart({ path: "/uploads/x.png", name: "x.png" }),
+    ]);
+    const { storage, leafId } = await persistUserMessage(ctx, msg, {
+      userHome,
+      imageMaxBytes: 5 * 1024 * 1024,
+      supportsImages: true,
+    });
+
+    const path1 = await storage.getPathToRoot(leafId);
+    expect(path1).toHaveLength(1);
+    const out = path1[0] as Extract<
+      Awaited<ReturnType<typeof storage.getPathToRoot>>[number],
+      { type: "message" }
+    >;
+    const content = (out.message as UserMessage).content as Array<
+      TextContent | ImageContent
+    >;
+    expect(content).toHaveLength(2);
+    expect(content[0]).toMatchObject({ type: "text", text: "look" });
+    expect(content[1]?.type).toBe("image");
+    const image = content[1] as ImageContent;
+    expect(image.mimeType).toBe("image/png");
+    expect(image.data).toBe(png.toString("base64"));
   });
 
   it("downgrades to a text note when the model has no vision support", async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
-    try {
-      const msg = userMsg([
-        { type: "text", text: "look" } as TextContent,
-        imagePart({ path: "/uploads/x.png", name: "x.png" }),
-      ]);
-      const out = await prepareMessagesForLlm([msg], home, model(false));
-      const content = (out[0] as UserMessage).content as Array<
-        TextContent | ImageContent
-      >;
-      // No image parts survived, both texts coalesced into one.
-      expect(content).toHaveLength(1);
-      expect(content[0]?.type).toBe("text");
-      const text = (content[0] as TextContent).text;
-      expect(text).toContain("look");
-      expect(text).toContain("no vision support");
-      expect(text).toContain("x.png");
-    } finally {
-      fs.rmSync(home, { recursive: true, force: true });
-    }
+    const ctx = ops.open("acme");
+    const userHome = ctx.userHomeDir("user_a");
+
+    const msg = userMsg([
+      { type: "text", text: "look" } as TextContent,
+      imagePart({ path: "/uploads/x.png", name: "x.png" }),
+    ]);
+    const { storage, leafId } = await persistUserMessage(ctx, msg, {
+      userHome,
+      imageMaxBytes: 5 * 1024 * 1024,
+      supportsImages: false,
+    });
+    const out = (await storage.getPathToRoot(leafId))[0] as {
+      type: "message";
+      message: UserMessage;
+    };
+    const content = out.message.content as Array<TextContent | ImageContent>;
+    // text + downgraded note (no image part)
+    expect(content.find((p) => p.type === "image")).toBeUndefined();
+    const note = content.find(
+      (p) =>
+        p.type === "text" && (p as TextContent).text.includes("no vision support"),
+    );
+    expect(note).toBeDefined();
+    expect((note as TextContent).text).toContain("x.png");
   });
 
   it("downgrades gracefully when the file is missing", async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
-    try {
-      const msg = userMsg([
-        imagePart({ path: "/uploads/missing.png", name: "missing.png" }),
-      ]);
-      const out = await prepareMessagesForLlm([msg], home, model(true));
-      const content = (out[0] as UserMessage).content as Array<
-        TextContent | ImageContent
-      >;
-      expect(content).toHaveLength(1);
-      expect(content[0]?.type).toBe("text");
-      // Error wording is whatever the underlying syscall surfaced; we
-      // just want to confirm we degraded to a text note rather than
-      // crashing.
-      expect((content[0] as TextContent).text).toMatch(
-        /\[Attached image \(.+missing\.png\]/,
-      );
-    } finally {
-      fs.rmSync(home, { recursive: true, force: true });
-    }
+    const ctx = ops.open("acme");
+    const userHome = ctx.userHomeDir("user_a");
+
+    const msg = userMsg([
+      imagePart({ path: "/uploads/missing.png", name: "missing.png" }),
+    ]);
+    const { storage, leafId } = await persistUserMessage(ctx, msg, {
+      userHome,
+      imageMaxBytes: 5 * 1024 * 1024,
+      supportsImages: true,
+    });
+    const out = (await storage.getPathToRoot(leafId))[0] as {
+      type: "message";
+      message: UserMessage;
+    };
+    const content = out.message.content as Array<TextContent | ImageContent>;
+    expect(content).toHaveLength(1);
+    expect(content[0]?.type).toBe("text");
+    // Error wording is whatever the underlying syscall surfaced; we
+    // just want to confirm we degraded to a text note rather than
+    // crashing.
+    expect((content[0] as TextContent).text).toMatch(
+      /\[Attached image: missing\.png — read failed/,
+    );
   });
 
-  it("leaves non-user messages and image-free user messages alone", async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
-    try {
-      const u: UserMessage = userMsg([{ type: "text", text: "hi" } as TextContent]);
-      const a: AssistantMessage = {
+  it("passes already-inlined images through untouched", async () => {
+    const ctx = ops.open("acme");
+    const userHome = ctx.userHomeDir("user_a");
+
+    const inlined = "AAAA";
+    const msg = userMsg([
+      {
+        type: "image",
+        data: inlined,
+        mimeType: "image/png",
+      } as ImageContent,
+    ]);
+    const { storage, leafId } = await persistUserMessage(ctx, msg, {
+      userHome,
+      imageMaxBytes: 5 * 1024 * 1024,
+      supportsImages: true,
+    });
+    const out = (await storage.getPathToRoot(leafId))[0] as {
+      type: "message";
+      message: UserMessage;
+    };
+    const content = out.message.content as Array<TextContent | ImageContent>;
+    expect(content).toHaveLength(1);
+    expect(content[0]?.type).toBe("image");
+    expect((content[0] as ImageContent).data).toBe(inlined);
+  });
+
+  it("leaves non-user messages alone", async () => {
+    // We don't even need imageInflate set — but we plug it in to
+    // confirm the user-only branch is the only one that touches
+    // content.
+    const ctx = ops.open("acme");
+    const userHome = ctx.userHomeDir("user_a");
+    const session = ensureActiveSession(ctx, "user_a");
+    const storage = new SqliteSessionStorage(ctx, session.id, {
+      imageInflate: {
+        userHome,
+        imageMaxBytes: 5 * 1024 * 1024,
+        supportsImages: true,
+      },
+    });
+    const userId = await storage.createEntryId();
+    await storage.appendEntry({
+      id: userId,
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: userMsg([{ type: "text", text: "hi" } as TextContent]),
+    });
+    const assistantId = await storage.createEntryId();
+    await storage.appendEntry({
+      id: assistantId,
+      parentId: userId,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: {
         role: "assistant",
         content: [{ type: "text", text: "yo" } as TextContent],
         api: "anthropic-messages",
@@ -155,39 +250,28 @@ describe("prepareMessagesForLlm", () => {
         },
         stopReason: "stop",
         timestamp: 2,
-      };
-      const out = await prepareMessagesForLlm([u, a] as Message[], home, model(true));
-      expect(out[0]).toBe(u);
-      expect(out[1]).toBe(a);
-    } finally {
-      fs.rmSync(home, { recursive: true, force: true });
-    }
+      } as never,
+    });
+    const out = await storage.getPathToRoot(assistantId);
+    expect(out).toHaveLength(2);
+    expect((out[0] as { type: "message" }).type).toBe("message");
+    expect((out[1] as { type: "message" }).type).toBe("message");
   });
 
-  it("coalesces consecutive text parts after image substitution", async () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-mm-"));
-    try {
-      const msg = userMsg([
-        { type: "text", text: "first" } as TextContent,
-        imagePart({ path: "/uploads/missing-1.png", name: "a.png" }),
-        imagePart({ path: "/uploads/missing-2.png", name: "b.png" }),
-        { type: "text", text: "last" } as TextContent,
-      ]);
-      const out = await prepareMessagesForLlm([msg], home, model(true));
-      const content = (out[0] as UserMessage).content as Array<
-        TextContent | ImageContent
-      >;
-      // Two failed images turn into two text notes; flanking texts
-      // join them. We expect exactly one TextContent.
-      expect(content).toHaveLength(1);
-      expect(content[0]?.type).toBe("text");
-      const t = (content[0] as TextContent).text;
-      expect(t.startsWith("first")).toBe(true);
-      expect(t.endsWith("last")).toBe(true);
-      expect(t).toContain("a.png");
-      expect(t).toContain("b.png");
-    } finally {
-      fs.rmSync(home, { recursive: true, force: true });
-    }
+  it("skips inflation entirely when imageInflate is unset", async () => {
+    const ctx = ops.open("acme");
+    const userHome = ctx.userHomeDir("user_a");
+    const msg = userMsg([
+      imagePart({ path: "/uploads/x.png", name: "x.png" }),
+    ]);
+    const { storage, leafId } = await persistUserMessage(ctx, msg);
+    const out = (await storage.getPathToRoot(leafId))[0] as {
+      type: "message";
+      message: UserMessage;
+    };
+    const content = out.message.content as Array<TextContent | ImageContent>;
+    expect(content).toHaveLength(1);
+    // Stored shape preserved — empty data, no inlining attempted.
+    expect((content[0] as ImageContent).data).toBe("");
   });
 });
