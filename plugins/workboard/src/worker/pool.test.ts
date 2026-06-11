@@ -5,6 +5,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { up as runInitialMigration } from "../../../../packages/server/src/core/migrations/001-initial.js";
 import { up as runDepsMigration } from "../../../../packages/server/src/core/migrations/002-task-dependencies.js";
+import { up as runStatusRename } from "../../../../packages/server/src/core/migrations/005-task-status-rename.js";
 import { ensureSchema as ensureAgentsSchema } from "../db/agents.js";
 import { createTask, getTask, updateTask } from "../db/tasks.js";
 import {
@@ -19,6 +20,7 @@ function freshDb(): Database.Database {
   db.pragma("journal_mode = MEMORY");
   runInitialMigration(db);
   runDepsMigration(db);
+  runStatusRename(db);
   ensureAgentsSchema(db);
   db.prepare(
     `INSERT INTO users (id, external_id, provider, display_name, created_at)
@@ -125,7 +127,7 @@ describe("WorkerPool", () => {
     pool.stop();
   });
 
-  it("worker that throws marks the task stalled", async () => {
+  it("worker that throws goes back to ready with failure_reason; stalls after MAX_ATTEMPTS", async () => {
     createTask(db, "t1", { ownerUserId: "u1", title: "boom" });
 
     const brokenFactory = (a: AgentSpec): WorkerHandle | null => ({
@@ -145,11 +147,17 @@ describe("WorkerPool", () => {
       factory: brokenFactory,
     });
     pool.start();
-    await pause(20);
+    // The pool re-nudges after every failure, so a synchronously
+    // throwing worker burns through the retry budget very quickly.
+    // We just wait long enough for it to settle in stalled, then
+    // assert end-state: 3 attempts, stalled, failure_reason set.
+    await pause(80);
 
     const t = getTask(db, "t1");
     expect(t?.status).toBe("stalled");
-    expect(t?.resultSummary).toContain("nope");
+    expect(t?.attempts).toBe(3);
+    expect(t?.failureReason).toContain("nope");
+    expect(t?.resultSummary).toBeNull();
     pool.stop();
   });
 
@@ -236,7 +244,7 @@ describe("WorkerPool", () => {
     createTask(db, "t1", { ownerUserId: "u1", title: "post-stop" });
     pool.nudge();
     await pause(20);
-    expect(getTask(db, "t1")?.status).toBe("todo");
+    expect(getTask(db, "t1")?.status).toBe("ready");
   });
 
   it("rebuild() picks up new agents added at runtime", async () => {
@@ -251,7 +259,7 @@ describe("WorkerPool", () => {
     pool.start();
     await pause(15);
     // No agents -> task still todo
-    expect(getTask(db, "t1")?.status).toBe("todo");
+    expect(getTask(db, "t1")?.status).toBe("ready");
 
     pool.rebuild([ECHO_AGENT]);
     await pause(20);
