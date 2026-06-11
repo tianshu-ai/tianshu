@@ -459,8 +459,18 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     }
 
     const after = updateTask(deps.db, id, patch);
-    if (after && after.status === "ready" && before.status !== "ready") {
-      deps.onTaskWrite();
+    // Nudge the pool whenever the patch could change task
+    // eligibility for ANY downstream worker:
+    //   - status → 'ready'  : this task itself just became eligible.
+    //   - status → 'done'   : downstream tasks that depend on this
+    //                         one may now be unblocked.
+    // Forgetting the second case is the bug Yu hit: T1–T3 manually
+    // patched to 'done' didn't release T4, which kept the chain
+    // wedged until a manual workers/restart.
+    if (after && after.status !== before.status) {
+      if (after.status === "ready" || after.status === "done") {
+        deps.onTaskWrite();
+      }
     }
     res.json({ task: after ? taskJson(after) : null });
   };

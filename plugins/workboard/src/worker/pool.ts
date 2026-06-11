@@ -83,10 +83,20 @@ export interface WorkerPoolDeps {
    *  isn't supported (e.g. an LLM agent on a build that hasn't
    *  shipped that runtime yet). Null kinds are skipped quietly. */
   factory: WorkerHandleFactory;
+  /** Optional fallback poll interval in ms. The pool is
+   *  primarily event-driven (`nudge` on every write path), but a
+   *  cheap periodic drain catches tasks that became eligible
+   *  through a code path that forgot to nudge — plus anything
+   *  triggered outside the workboard plugin (direct DB writes,
+   *  cron jobs). 0 disables. Default 15_000. */
+  pollIntervalMs?: number;
 }
+
+const DEFAULT_POLL_INTERVAL_MS = 15_000;
 
 export class WorkerPool {
   private nudgeTimer: NodeJS.Timeout | null = null;
+  private pollTimer: NodeJS.Timeout | null = null;
   /** agentId → "in-flight task id" (or undefined = idle). */
   private busy = new Map<string, string>();
   private workers: WorkerHandle[] = [];
@@ -100,6 +110,21 @@ export class WorkerPool {
   start(): void {
     this.recoverOrphaned();
     this.nudge();
+    // Fallback periodic drain. The pool is primarily event-driven,
+    // but a cheap interval catches tasks that became eligible
+    // through a code path that forgot to call onTaskWrite() (e.g.
+    // a worker outside this plugin marking its predecessor done).
+    // The work itself is `claimNextTask` which is a single SQLite
+    // SELECT — it costs effectively nothing when the queue is
+    // empty, so we don't need to be clever about scheduling.
+    const poll = this.deps.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
+    if (poll > 0) {
+      this.pollTimer = setInterval(() => {
+        if (!this.stopped) this.nudge();
+      }, poll);
+      // Don't keep the process alive just for the poll timer.
+      this.pollTimer.unref?.();
+    }
   }
 
   /** Mark the pool stopped. Any work already in flight finishes;
@@ -109,6 +134,10 @@ export class WorkerPool {
     if (this.nudgeTimer) {
       clearTimeout(this.nudgeTimer);
       this.nudgeTimer = null;
+    }
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer);
+      this.pollTimer = null;
     }
   }
 
