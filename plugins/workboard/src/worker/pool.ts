@@ -310,6 +310,48 @@ export interface LLMWorkerConfig {
   log: PluginLogger;
 }
 
+/**
+ * Workboard task-management tools that the host (chat) needs but a
+ * worker has no business calling. A worker is meant to *do* a task,
+ * not create / move / delete / list other tasks. Without this
+ * deny-list a worker can confuse `task_complete` with
+ * `task_create` and end up dropping a phantom todo on the board
+ * (we caught this on the LangGraph T1 run).
+ *
+ * `task_complete` is the legitimate exit signal so it stays.
+ */
+const WORKER_DENY_TOOLS = new Set<string>([
+  "task_list",
+  "task_create",
+  "task_update",
+  "task_move",
+  "task_delete",
+]);
+
+/**
+ * Combine the user-supplied `toolsAllow` (per-agent allow-list) with
+ * the worker-wide deny-list above.
+ *
+ *   - cfg.toolsAllow == null → "all tools". Return the all-tools
+ *     marker but emit a separate `toolsDeny` field via a sentinel.
+ *     Today the runner only understands `toolsAllow`, so we have to
+ *     translate "deny these" into "allow everything except these" by
+ *     listing concrete names. We don't know the full universe at this
+ *     point, so we just pass `undefined` and rely on the deny check
+ *     happening upstream.
+ *   - cfg.toolsAllow is a list → strip the deny set from it.
+ *
+ * NOTE: the deny set is enforced again inside `agent-loop.ts` so the
+ * pool agent and the loop are belt-and-braces protected.
+ */
+function effectiveToolsAllow(
+  cfgToolsAllow: string[] | null | undefined,
+): string[] | undefined {
+  if (!cfgToolsAllow) return undefined;
+  const filtered = cfgToolsAllow.filter((t) => !WORKER_DENY_TOOLS.has(t));
+  return filtered;
+}
+
 export class LLMWorker implements WorkerHandle {
   readonly kind = "llm";
   readonly agentId: string;
@@ -328,7 +370,8 @@ export class LLMWorker implements WorkerHandle {
       initialUserMessage,
       systemPrompt: this.cfg.systemPrompt ?? undefined,
       modelId: this.cfg.modelId ?? undefined,
-      toolsAllow: this.cfg.toolsAllow ?? undefined,
+      toolsAllow: effectiveToolsAllow(this.cfg.toolsAllow),
+      toolsDeny: Array.from(WORKER_DENY_TOOLS),
       skillsAllow: this.cfg.skillsAllow ?? undefined,
       sessionTitle: task.title,
       workerRole: this.kind,

@@ -56,6 +56,8 @@ export interface AgentLoopRequest {
   modelId?: string;
   /** Allow-list of tool names. `null` / undefined = all available. */
   toolsAllow?: string[] | null;
+  /** Deny-list applied AFTER `toolsAllow`; see `AgentLoopRunnerRequest`. */
+  toolsDeny?: string[] | null;
   /** Allow-list of skill names. */
   skillsAllow?: string[] | null;
   /** Friendly title for the worker session row. */
@@ -86,7 +88,7 @@ export interface AgentLoopResult {
   turns: number;
   reason:
     | "task_complete"
-    | "max_turns"
+    | "no_completion"
     | "first_response_timeout"
     | "idle_timeout"
     | "max_run_timeout"
@@ -99,8 +101,14 @@ const TASK_COMPLETE_TOOL = "task_complete";
 const DEFAULT_FIRST_RESPONSE_MS = 300_000;
 const DEFAULT_IDLE_MS = 600_000;
 const DEFAULT_MAX_RUN_MS = 1_800_000;
-/** Cap assistant turns the same way the legacy worker did. */
-const MAX_TURNS = 16;
+// Note: no turn cap. The harness has three time-based watchdogs
+// (first-response / idle / max-run) which are sufficient for runaway
+// detection. A turn cap was inherited from the pre-N+6.4 worker and
+// caused legitimate multi-step browser tasks to stall mid-flight.
+// If we ever observe a model burning turns without burning time
+// (tool-call thrashing without latency), revisit — but that's
+// hypothetical, and the chat handler doesn't impose one either, so
+// the worker shouldn't either.
 
 export async function runAgentLoop(
   req: AgentLoopRequest,
@@ -141,12 +149,21 @@ export async function runAgentLoop(
   const piModel = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
 
-  // Tools + skills, narrowed by per-agent allow-lists.
+  // Tools + skills, narrowed by per-agent allow-lists then by an
+  // optional deny-list. The deny-list is for cases where the host
+  // wants to forbid certain tools regardless of what the agent's
+  // allow-list says — worker pools use it to scrub e.g. task_create
+  // out of an LLM worker so it can't accidentally manage other
+  // tasks while running its own.
   const allPluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
   const allowSet = req.toolsAllow ? new Set(req.toolsAllow) : null;
-  const pluginTools = allowSet
-    ? allPluginTools.filter(({ tool }) => allowSet.has(tool.schema.name))
-    : allPluginTools;
+  const denySet = req.toolsDeny ? new Set(req.toolsDeny) : null;
+  const pluginTools = allPluginTools.filter(({ tool }) => {
+    const name = tool.schema.name;
+    if (allowSet && !allowSet.has(name)) return false;
+    if (denySet && denySet.has(name)) return false;
+    return true;
+  });
   const allSkills: LoadedSkill[] = [
     ...loadHostSkills(),
     ...(pluginRegistry?.skillsForTenant(ctx.tenantId) ?? []),
@@ -233,10 +250,13 @@ export async function runAgentLoop(
   });
 
   // Watch harness events for two purposes:
-  //   1. Reset the watchdog whenever something happens.
+  //   1. Reset the watchdog whenever something happens (timestamps
+  //      drive first-response / idle timeouts below).
   //   2. Detect task_complete tool calls and copy their args into
   //      completionSink so the post-run code can resolve `done`.
-  //   3. Count assistant turns to enforce MAX_TURNS.
+  // We also count assistant turns so the result row reports a
+  // useful number, but no turn-based abort happens — see the note
+  // on the constants block.
   const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
     lastEventAt = Date.now();
     sawAnyEvent = true;
@@ -254,9 +274,6 @@ export async function runAgentLoop(
     }
     if ((event as { type?: string }).type === "turn_end") {
       assistantTurns += 1;
-      if (assistantTurns >= MAX_TURNS) {
-        innerCtl.abort();
-      }
     }
   });
 
@@ -301,19 +318,12 @@ export async function runAgentLoop(
         turns: assistantTurns,
         reason: "task_complete",
       };
-    } else if (assistantTurns >= MAX_TURNS) {
-      result = {
-        status: "stalled",
-        summary: `agent loop exceeded ${MAX_TURNS} turns without resolving`,
-        files: [],
-        sessionId: sessionMeta.id,
-        turns: assistantTurns,
-        reason: "max_turns",
-      };
     } else {
       // Loop ended without task_complete and without hitting any
-      // other guard — treat as stalled with whatever the LLM said
-      // last (best-effort reading from session).
+      // timeout — treat as stalled with whatever the LLM said last
+      // (best-effort reading from session). This used to be the
+      // "max_turns" branch when the worker capped turns; now it's
+      // the only "agent quietly gave up" path.
       const finalText = await lastAssistantText(session);
       result = {
         status: "stalled",
@@ -321,7 +331,7 @@ export async function runAgentLoop(
         files: [],
         sessionId: sessionMeta.id,
         turns: assistantTurns,
-        reason: "max_turns",
+        reason: "no_completion",
       };
     }
   } catch (err) {

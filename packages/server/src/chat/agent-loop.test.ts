@@ -126,11 +126,11 @@ describe("runAgentLoop (worker)", () => {
     __abortAcked = false;
   });
 
-  it("plain LLM reply (no task_complete) → stalled", async () => {
+  it("plain LLM reply (no task_complete) → stalled / no_completion", async () => {
     __script = {
       events: [
         // No tool_result → completionSink stays empty → loop ends
-        // naturally → host classifies as stalled.
+        // naturally → host classifies as stalled with reason=no_completion.
       ],
     };
 
@@ -141,7 +141,7 @@ describe("runAgentLoop (worker)", () => {
     });
 
     expect(r.status).toBe("stalled");
-    expect(r.reason).toBe("max_turns");
+    expect(r.reason).toBe("no_completion");
   });
 
   it("task_complete tool_result → done with summary + files", async () => {
