@@ -486,8 +486,6 @@ function bridgeHarnessEventToWs(
   if (lowType === "message_end") {
     const m = (event as { message: AgentMessage }).message;
     if (m.role === "assistant") {
-      // Read back the row that storage just wrote so toWire has
-      // the persisted ChatMessage shape.
       const row = readBackLatestMessage(ctx, session.id, "assistant");
       if (row) {
         onAssistantPersisted(row);
@@ -498,43 +496,54 @@ function bridgeHarnessEventToWs(
       if (row) {
         send({ type: "message_added", message: toWire(row, wireOpts) });
       }
+    } else if ((m as { role?: string }).role === "toolResult") {
+      // SqliteSessionStorage just wrote the tool-result row;
+      // forward it to the UI so the chip materialises into a
+      // proper message in the transcript.
+      const row = readBackLatestMessage(ctx, session.id, "tool");
+      if (row) {
+        send({ type: "message_added", message: toWire(row, wireOpts) });
+      }
     }
     return;
   }
 
-  // Harness-own tool events: emit chips before/after each call.
-  if (e.type === "tool_call") {
-    const tc = e as AgentHarnessOwnEvent & { type: "tool_call" };
+  // Pi's low-level tool events: tool_execution_start fires when
+  // the harness begins running a tool, tool_execution_end after
+  // it completes. We emit the legacy tianshu chip events around
+  // them so the existing UI flow keeps working.
+  if (lowType === "tool_execution_start") {
+    const tc = event as unknown as {
+      toolCallId: string;
+      toolName: string;
+      args: unknown;
+    };
     send({
       type: "tool_call",
       callId: tc.toolCallId,
       name: tc.toolName,
-      arguments: tc.input,
+      arguments: (tc.args as Record<string, unknown>) ?? {},
     });
     return;
   }
-  if (e.type === "tool_result") {
-    const tr = e as AgentHarnessOwnEvent & {
-      type: "tool_result";
+  if (lowType === "tool_execution_end") {
+    const te = event as unknown as {
       toolCallId: string;
       toolName: string;
-      content: Array<{ type: string; text?: string }>;
-      isError: boolean;
+      result: { content: Array<{ type: string; text?: string }> } | undefined;
+      isError?: boolean;
     };
-    const text = tr.content
+    const blocks = te.result?.content ?? [];
+    const text = blocks
       .map((c) => (c.type === "text" && typeof c.text === "string" ? c.text : ""))
       .join("");
-    const row = readBackLatestMessage(ctx, session.id, "tool");
     send({
       type: "tool_result",
-      callId: tr.toolCallId,
-      name: tr.toolName,
-      ok: !tr.isError,
+      callId: te.toolCallId,
+      name: te.toolName,
+      ok: !te.isError,
       text,
     });
-    if (row) {
-      send({ type: "message_added", message: toWire(row, wireOpts) });
-    }
     return;
   }
 
