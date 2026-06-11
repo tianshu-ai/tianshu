@@ -264,42 +264,59 @@ export class WorkerPool {
     if (update.status === "done") {
       // Success: clear the failure trail and reset the attempt
       // counter so future re-runs (e.g. a follow-up edit + manual
-      // re-queue) start clean.
+      // re-queue) start clean. Also drop the `stalled` label —
+      // a manual retry that succeeds shouldn't leave the warning
+      // badge stuck on the card.
+      const fresh = getTask(this.deps.db, task.id) ?? task;
+      const cleanedLabels = fresh.labels.filter((l) => l !== "stalled");
       updateTask(this.deps.db, task.id, {
         status: "done",
         resultSummary: update.resultSummary ?? null,
         resultFiles: update.resultFiles ?? [],
         failureReason: null,
+        labels: cleanedLabels,
         attempts: 0,
         endedAt: now,
       });
     } else {
-      // Failure (`stalled` from agent-loop, `aborted`, or worker
-      // exception). Bump attempts and decide whether to re-queue.
-      // We re-read the row to get the up-to-date attempts count
-      // — the task came in with the value at claim time, but
+      // Failure (`stalled` / `aborted` from agent-loop, or a worker
+      // exception). Bump attempts and decide whether to re-queue
+      // automatically or surface the failure.
+      //
+      // Failure stays in the `ready` status throughout — the task
+      // never leaves the kanban's ready column. Once attempts
+      // crosses MAX_ATTEMPTS we stamp a `stalled` LABEL, which
+      // takes the row out of the pool's claim filter (see
+      // POOL_SKIP_LABELS in db/tasks.ts) without hiding it from
+      // the user. Mirrors the closed-source predecessor.
+      //
+      // We re-read the row to get the up-to-date attempts count —
+      // the task came in with the value at claim time, but
       // intervening user edits could have changed it (e.g. user
       // PATCHed back to ready and reset attempts).
       const fresh = getTask(this.deps.db, task.id) ?? task;
       const nextAttempts = (fresh.attempts ?? 0) + 1;
       const reason =
         update.resultSummary ?? `worker ${update.status} without summary`;
-      const finalStall = nextAttempts >= MAX_ATTEMPTS;
+      const giveUp = nextAttempts >= MAX_ATTEMPTS;
+      const baseLabels = fresh.labels.filter((l) => l !== "stalled");
+      const nextLabels = giveUp ? [...baseLabels, "stalled"] : baseLabels;
       updateTask(this.deps.db, task.id, {
-        status: finalStall ? "stalled" : "ready",
+        status: "ready",
         // Keep the result_summary clean for `done` only; failures
-        // live in `failure_reason` so the UI can render them as a
-        // warning chip without cluttering successful summaries.
+        // live in `failure_reason` so the UI can render a warning
+        // chip without cluttering successful summaries.
         resultSummary: null,
         resultFiles: update.resultFiles ?? [],
         failureReason: reason,
         attempts: nextAttempts,
-        // Reset session/started so the next claim re-stamps them.
-        // Keep ended_at clear on retry so the kanban shows the
-        // task as "waiting again" rather than "finished".
-        sessionId: finalStall ? fresh.sessionId : null,
-        startedAt: finalStall ? fresh.startedAt : null,
-        endedAt: finalStall ? now : null,
+        labels: nextLabels,
+        // Clear session/started so the next claim re-stamps them.
+        // Stamp ended_at on the give-up case so the timeline shows
+        // when the task was parked.
+        sessionId: null,
+        startedAt: null,
+        endedAt: giveUp ? now : null,
       });
     }
     this.deps.broadcast("workboard.task", {

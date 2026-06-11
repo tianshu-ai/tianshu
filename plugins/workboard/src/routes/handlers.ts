@@ -187,12 +187,16 @@ function taskJson(t: Task): Record<string, unknown> {
     description: t.description,
     project: t.projectSlug,
     workerRole: t.workerRole,
+    workerAgentId: t.workerAgentId,
     status: t.status,
     priority: t.priority,
     resultSummary: t.resultSummary,
     resultFiles: t.resultFiles,
     sessionId: t.sessionId,
     dependsOn: t.dependsOn,
+    labels: t.labels,
+    failureReason: t.failureReason,
+    attempts: t.attempts,
     createdAt: t.createdAt,
     startedAt: t.startedAt,
     endedAt: t.endedAt,
@@ -230,7 +234,6 @@ function projectsJson(rows: ProjectSummary[]): Record<string, unknown>[] {
     ready: p.ready,
     inProgress: p.inProgress,
     done: p.done,
-    stalled: p.stalled,
     total: p.total,
   }));
 }
@@ -260,7 +263,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
         statuses.push(trimmed);
       }
     } else if (includeAborted) {
-      statuses = ["ready", "in_progress", "done", "stalled"];
+      statuses = ["ready", "in_progress", "done"];
     }
 
     const rows = listTasks(deps.db, {
@@ -328,6 +331,11 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       userId,
       (body as { dependsOn?: unknown }).dependsOn,
     );
+    const labelsArg = Array.isArray((body as { labels?: unknown }).labels)
+      ? ((body as { labels: unknown[] }).labels.filter(
+          (l): l is string => typeof l === "string",
+        ) as string[])
+      : undefined;
 
     let task = createTask(deps.db, randomUUID(), {
       ownerUserId: userId,
@@ -338,6 +346,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       workerRole,
       workerAgentId,
       dependsOn,
+      labels: labelsArg,
     });
     // Optional second-step patch when caller pre-selected a non-`ready`
     // status (e.g. user added a card directly into the In-progress
@@ -347,7 +356,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       const now = Date.now();
       const patch: Parameters<typeof updateTask>[2] = { status: initialStatus };
       if (initialStatus === "in_progress") patch.startedAt = now;
-      if (initialStatus === "done" || initialStatus === "stalled") {
+      if (initialStatus === "done") {
         patch.endedAt = now;
       }
       const after = updateTask(deps.db, task.id, patch);
@@ -432,7 +441,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       if (body.status === "in_progress" && !before.startedAt) {
         patch.startedAt = now;
       }
-      if (body.status === "done" || body.status === "stalled") {
+      if (body.status === "done") {
         patch.endedAt = now;
       }
       if (body.status === "ready") {
@@ -457,8 +466,27 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
         patch.dependsOn = filtered.filter((depId) => depId !== id);
       }
     }
+    if (Array.isArray(body.labels)) {
+      patch.labels = (body.labels as unknown[]).filter(
+        (l): l is string => typeof l === "string",
+      );
+    }
 
     const after = updateTask(deps.db, id, patch);
+    // If the patch removed a pool-skip label (e.g. user cleared
+    // 'stalled' to retry), nudge so the pool re-considers the row
+    // even though status didn't change.
+    if (after && patch.labels !== undefined) {
+      const wasSkipped = before.labels.some((l) =>
+        ["stalled", "draft"].includes(l),
+      );
+      const stillSkipped = after.labels.some((l) =>
+        ["stalled", "draft"].includes(l),
+      );
+      if (wasSkipped && !stillSkipped && after.status === "ready") {
+        deps.onTaskWrite();
+      }
+    }
     // Nudge the pool whenever the patch could change task
     // eligibility for ANY downstream worker:
     //   - status → 'ready'  : this task itself just became eligible.

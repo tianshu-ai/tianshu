@@ -24,6 +24,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   ChevronDown,
   Clock,
@@ -42,11 +43,7 @@ import WorkerAgentsPage from "./worker-agents-page.js";
 
 const API_BASE = "/api/p/workboard";
 
-type TaskStatus =
-  | "ready"
-  | "in_progress"
-  | "done"
-  | "stalled"
+type TaskStatus = "ready" | "in_progress" | "done";
 
 
 interface Task {
@@ -55,6 +52,7 @@ interface Task {
   description: string | null;
   project: string;
   workerRole: string | null;
+  workerAgentId?: string | null;
   status: TaskStatus;
   priority: number;
   resultSummary: string | null;
@@ -62,6 +60,17 @@ interface Task {
   sessionId: string | null;
   /** Task ids that must reach status='done' first. */
   dependsOn: string[];
+  /** Free-form labels. The pool reserves `stalled` (set
+   *  automatically after MAX_ATTEMPTS failed runs) and `draft`
+   *  (user opt-in) — either keeps the row in `ready` but skipped
+   *  by the pool. UI paints a warning chip when present. */
+  labels?: string[];
+  /** Last failure reason, set when the pool re-queued the task
+   *  after a failed run. Cleared on success. */
+  failureReason?: string | null;
+  /** How many failed runs accumulated against this task. Reset
+   *  to 0 on success. */
+  attempts?: number;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -82,7 +91,6 @@ interface ProjectSummary {
   ready: number;
   inProgress: number;
   done: number;
-  stalled: number;
   total: number;
 }
 
@@ -106,10 +114,8 @@ const BOARD_COLUMNS: ColumnSpec[] = [
   { status: "done",        label: "Done",        color: "border-emerald-500/40 bg-emerald-500/5",  dot: "bg-emerald-400" },
 ];
 
-const EXTRA_COLUMNS: ColumnSpec[] = [
-  { status: "stalled", label: "Stalled", color: "border-orange-500/40 bg-orange-500/5", dot: "bg-orange-400" },
-  
-];
+// `stalled` is no longer a column — it's a label that paints a
+// warning chip on the ready card. See LABELED_BADGES below.
 
 async function getJson<T>(url: string): Promise<T> {
   const r = await fetch(url, { credentials: "include" });
@@ -163,7 +169,7 @@ function projectChipsFromSummary(
     if (visibleStatuses.includes("ready")) n += p.ready;
     if (visibleStatuses.includes("in_progress")) n += p.inProgress;
     if (visibleStatuses.includes("done")) n += p.done;
-    if (visibleStatuses.includes("stalled")) n += p.stalled;
+
     return n;
   };
   const filtered = projects
@@ -446,8 +452,7 @@ function WorkboardPanel(_props: PanelProps) {
 // ─── Admin page: full board ──────────────────────────────────────
 
 function WorkboardAdminPage(_props: AdminPageProps) {
-  const [includeArchived, setIncludeArchived] = useState(false);
-  const ctrl = useBoardController({ includeArchived, withWorker: true });
+  const ctrl = useBoardController({ includeArchived: false, withWorker: true });
   const [projectFilter, setProjectFilter] = useState<string>("");
   const [selected, setSelected] = useState<Task | null>(null);
 
@@ -463,9 +468,7 @@ function WorkboardAdminPage(_props: AdminPageProps) {
     }
   }, [ctrl.tasks, selected]);
 
-  const visibleStatuses: TaskStatus[] = includeArchived
-    ? ["ready", "in_progress", "done", "stalled"]
-    : ["ready", "in_progress", "done"];
+  const visibleStatuses: TaskStatus[] = ["ready", "in_progress", "done"];
 
   const visibleTasks = useMemo(() => {
     if (!ctrl.tasks) return null;
@@ -482,9 +485,7 @@ function WorkboardAdminPage(_props: AdminPageProps) {
     [ctrl.projects, visibleStatuses],
   );
 
-  const renderColumns = includeArchived
-    ? [...BOARD_COLUMNS, ...EXTRA_COLUMNS]
-    : BOARD_COLUMNS;
+  const renderColumns = BOARD_COLUMNS;
 
   const drag = ctrl.bindDrag();
 
@@ -518,17 +519,6 @@ function WorkboardAdminPage(_props: AdminPageProps) {
           active={projectFilter}
           onPick={setProjectFilter}
           showAll
-          rightExtras={
-            <label className="ml-auto flex items-center gap-1.5 text-[11px] text-gray-400 shrink-0 mr-2">
-              <input
-                type="checkbox"
-                checked={includeArchived}
-                onChange={(e) => setIncludeArchived(e.target.checked)}
-                className="accent-blue-600"
-              />
-              Show stalled / aborted
-            </label>
-          }
         />
       )}
 
@@ -823,6 +813,24 @@ function BoardCard({
               </span>
             )}
           </div>
+          {(task.labels ?? []).includes("stalled") && (
+            <div
+              className="mt-1 flex items-start gap-1 rounded border border-orange-500/40 bg-orange-500/5 px-1.5 py-1 text-[10px] text-orange-200"
+              title={task.failureReason ?? ""}
+            >
+              <AlertTriangle className="w-3 h-3 mt-px shrink-0" />
+              <span className="min-w-0 flex-1 break-words line-clamp-3">
+                stalled
+                {(task.attempts ?? 0) > 0 ? ` after ${task.attempts} attempts` : ""}
+                {task.failureReason ? `: ${task.failureReason}` : ""}
+              </span>
+            </div>
+          )}
+          {(task.labels ?? []).includes("draft") && (
+            <div className="mt-1 inline-block rounded border border-yellow-500/40 bg-yellow-500/5 px-1.5 py-px text-[10px] text-yellow-200">
+              draft — pool will skip
+            </div>
+          )}
           {task.description && !expanded && (
             <div className="text-[10.5px] text-gray-400 mt-0.5 line-clamp-2 whitespace-pre-line">
               {task.description}
@@ -948,7 +956,6 @@ function Section({
 function nextStatus(status: TaskStatus): TaskStatus | null {
   if (status === "ready") return "in_progress";
   if (status === "in_progress") return "done";
-  if (status === "stalled") return "ready";
   return null;
 }
 
@@ -1427,12 +1434,7 @@ function TaskModal({
     task.dependsOn,
   ]);
 
-  const allStatuses: TaskStatus[] = [
-    "ready",
-    "in_progress",
-    "done",
-    "stalled",
-  ];
+  const allStatuses: TaskStatus[] = ["ready", "in_progress", "done"];
 
   const save = async () => {
     await onPatch({
