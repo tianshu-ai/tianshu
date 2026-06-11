@@ -437,6 +437,7 @@ function WorkboardPanel(_props: PanelProps) {
                 projects={ctrl.projects}
                 workerRoles={KNOWN_WORKER_ROLES}
                 allTasks={ctrl.tasks ?? []}
+                onPatchTask={ctrl.patchTask}
                 onDragStart={drag.onDragStart}
                 onDragEnd={drag.onDragEnd}
                 onDrop={drag.onDrop}
@@ -558,6 +559,7 @@ function WorkboardAdminPage(_props: AdminPageProps) {
                 projects={ctrl.projects}
                 workerRoles={KNOWN_WORKER_ROLES}
                 allTasks={ctrl.tasks ?? []}
+                onPatchTask={ctrl.patchTask}
                 onDragStart={drag.onDragStart}
                 onDragEnd={drag.onDragEnd}
                 onDrop={drag.onDrop}
@@ -590,6 +592,7 @@ function KanbanColumn({
   busyId,
   compact,
   onAddTask,
+  onPatchTask,
   projects,
   workerRoles,
   onDragStart,
@@ -604,6 +607,9 @@ function KanbanColumn({
   busyId: string | null;
   compact?: boolean;
   onAddTask: (input: AddTaskInput) => void;
+  /** Card-initiated patches — e.g. the “Retry” button on a
+   *  stalled-label chip clears the label so the pool re-claims. */
+  onPatchTask: (id: string, patch: Record<string, unknown>) => Promise<void>;
   projects: ProjectSummary[];
   workerRoles: string[];
   onDragStart: (e: DragEvent, taskId: string) => void;
@@ -663,6 +669,7 @@ function KanbanColumn({
             compact={compact}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
+            onPatch={onPatchTask}
           />
         ))}
 
@@ -726,6 +733,7 @@ function BoardCard({
   compact,
   onDragStart,
   onDragEnd,
+  onPatch,
 }: {
   task: Task;
   meta: TaskMeta;
@@ -733,6 +741,7 @@ function BoardCard({
   compact?: boolean;
   onDragStart: (e: DragEvent, taskId: string) => void;
   onDragEnd: () => void;
+  onPatch: (id: string, patch: Record<string, unknown>) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasMore =
@@ -817,6 +826,7 @@ function BoardCard({
             <div
               className="mt-1 flex items-start gap-1 rounded border border-orange-500/40 bg-orange-500/5 px-1.5 py-1 text-[10px] text-orange-200"
               title={task.failureReason ?? ""}
+              onClick={(e) => e.stopPropagation()}
             >
               <AlertTriangle className="w-3 h-3 mt-px shrink-0" />
               <span className="min-w-0 flex-1 break-words line-clamp-3">
@@ -824,11 +834,52 @@ function BoardCard({
                 {(task.attempts ?? 0) > 0 ? ` after ${task.attempts} attempts` : ""}
                 {task.failureReason ? `: ${task.failureReason}` : ""}
               </span>
+              {/* Clear the `stalled` label → the pool re-claims the
+                  task on its next nudge (the route handler emits one
+                  on label-clear). attempts is also reset to 0 so the
+                  retry counter starts clean. */}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void onPatch(task.id, {
+                    labels: (task.labels ?? []).filter(
+                      (l) => l !== "stalled",
+                    ),
+                    attempts: 0,
+                    failureReason: null,
+                  });
+                }}
+                className="shrink-0 rounded border border-orange-500/40 px-1 py-px text-[9.5px] font-medium text-orange-100 hover:bg-orange-500/15 disabled:opacity-50"
+              >
+                Retry
+              </button>
             </div>
           )}
           {(task.labels ?? []).includes("draft") && (
-            <div className="mt-1 inline-block rounded border border-yellow-500/40 bg-yellow-500/5 px-1.5 py-px text-[10px] text-yellow-200">
-              draft — pool will skip
+            <div
+              className="mt-1 flex items-center gap-1.5"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <span className="inline-block rounded border border-yellow-500/40 bg-yellow-500/5 px-1.5 py-px text-[10px] text-yellow-200">
+                draft — pool will skip
+              </span>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void onPatch(task.id, {
+                    labels: (task.labels ?? []).filter(
+                      (l) => l !== "draft",
+                    ),
+                  });
+                }}
+                className="rounded border border-yellow-500/40 px-1 py-px text-[9.5px] font-medium text-yellow-100 hover:bg-yellow-500/15 disabled:opacity-50"
+              >
+                Publish
+              </button>
             </div>
           )}
           {task.description && !expanded && (
