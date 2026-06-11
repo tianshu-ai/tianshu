@@ -30,6 +30,8 @@
 // fields).
 
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import type {
   AgentMessage,
   SessionMetadata,
@@ -42,6 +44,31 @@ import type {
   UserMessage,
 } from "@earendil-works/pi-ai";
 import type { TenantContext } from "../core/index.js";
+import {
+  cacheGet,
+  cachePut,
+  fitToLimit,
+  imageFitCacheKey,
+} from "./image-fit.js";
+
+/**
+ * How `getPathToRoot` should hydrate stored `{type:"image"}` parts
+ * before handing the path back to pi's LLM call site.
+ *
+ * `userHome` is the per-user root the wire-side `path` field is
+ * relative to (e.g. `/tenant/users/<userId>`). `imageMaxBytes` is
+ * the model's encoded-base64 budget; `supportsImages` is the
+ * vision flag from `ResolvedModelInfo`.
+ *
+ * Caller leaves this unset on storages that don't drive an LLM
+ * call (manual compact, repo-level fork, tests). In that case
+ * `getPathToRoot` returns image parts with their stored shape
+ * untouched. */
+export interface ImageInflateOptions {
+  userHome: string;
+  imageMaxBytes: number;
+  supportsImages: boolean;
+}
 
 interface MessagesRow {
   id: string;
@@ -109,10 +136,20 @@ export class SqliteSessionStorage
    *  use. */
   pendingUserAttachments: PendingUserAttachments | null = null;
 
+  /** Optional: when set, `getPathToRoot` reads the bytes for every
+   *  `{type:"image"}` part it finds in a user message, runs them
+   *  through `fitToLimit`, and emits a fresh ImageContent with
+   *  inline base64. Failed reads degrade to a short text note —
+   *  same shape the chat handler used to write before N+6.4. */
+  imageInflate: ImageInflateOptions | null = null;
+
   constructor(
     private readonly ctx: TenantContext,
     private readonly sessionId: string,
-  ) {}
+    options: { imageInflate?: ImageInflateOptions } = {},
+  ) {
+    this.imageInflate = options.imageInflate ?? null;
+  }
 
   async getMetadata(): Promise<SqliteSessionMetadata> {
     const row = this.ctx.db
@@ -266,7 +303,7 @@ export class SqliteSessionStorage
       )
       .all(this.sessionId);
     const byId = new Map(rows.map((r) => [r.id, r] as const));
-    const path: SessionTreeEntry[] = [];
+    let path: SessionTreeEntry[] = [];
     let cursor: string | null = leafId;
     const guard = new Set<string>();
     while (cursor) {
@@ -277,23 +314,24 @@ export class SqliteSessionStorage
       path.unshift(rowToEntry(r));
       cursor = r.parent_id;
     }
-    // Fallback: if the parent chain didn't reach every row in the
-    // session (legacy sessions where pre-N+6.4 backfill only set
-    // parent_id on a fan, not a chain), splice in the rest by
-    // created_at order. This keeps old sessions usable until the
-    // chain naturally rebuilds with each new turn.
-    if (path.length < rows.length) {
-      const seen = new Set(path.map((e) => e.id));
-      const merged: SessionTreeEntry[] = [];
-      for (const r of rows) {
-        if (seen.has(r.id)) continue;
-        merged.push(rowToEntry(r));
-      }
-      // Append the un-chained legacy rows BEFORE the chain we
-      // walked from leafId, since the chain we walked is the
-      // freshest tail. The order of `merged` is already ASC by
-      // created_at, so chronology is preserved.
-      return [...merged, ...path];
+    // Migration 004 guarantees every session's parent_id forms a
+    // strict chronological chain rooted at NULL, so the walk above
+    // covers every row when leafId is current. We deliberately
+    // don't paper over a short walk here — if it happens we want
+    // to see it (storage corruption / out-of-date leaf_id) rather
+    // than silently splice rows in.
+    if (this.imageInflate) {
+      const inflate = this.imageInflate;
+      path = await Promise.all(
+        path.map(async (entry) =>
+          entry.type === "message" && entry.message.role === "user"
+            ? {
+                ...entry,
+                message: await inflateUserImages(entry.message, inflate),
+              }
+            : entry,
+        ),
+      );
     }
     return path;
   }
@@ -392,7 +430,7 @@ function parseMessage(content: string, role: MessagesRow["role"]): AgentMessage 
     typeof parsed === "object" &&
     typeof (parsed as { role?: unknown }).role === "string"
   ) {
-    return sanitiseMessage(parsed as AgentMessage);
+    return parsed as AgentMessage;
   }
   // Legacy plain-text rows: best-effort upgrade.
   if (role === "user") {
@@ -442,41 +480,111 @@ function parseMessage(content: string, role: MessagesRow["role"]): AgentMessage 
 }
 
 /**
- * Strip image parts that have empty base64 `data` from a message.
+ * Hydrate a user message's `{type:"image"}` parts before the LLM
+ * call.
  *
- * Background: legacy rows (pre-N+6.4) stored user messages with
- * `{type:"image", path, data:""}` blocks; the chat handler used to
- * inject base64 lazily right before the LLM call. The harness
- * reads messages directly from storage, so we'd be sending empty
- * base64 to Anthropic and getting a 400 back. Until we route
- * base64 injection through here too (a follow-up), demote any
- * empty-image part to a short text note so the request still goes
- * out with valid content.
+ * Stored shape: `{ type:"image", path, mimeType, name?, size?,
+ * data:"" }`. The chat handler writes this when the user uploads
+ * a file (size + path are stable, base64 isn't — stuffing it on
+ * disk would bloat every read). At LLM-call time we resolve the
+ * path under `userHome`, run the bytes through `fitToLimit` (which
+ * caches by path|mtime|maxBytes) and emit a fresh ImageContent
+ * with inline base64.
+ *
+ * Three failure shapes degrade to a short text note instead of
+ * poisoning the request:
+ *   - vision-incapable model → `[Attached image (no vision support):
+ *     <name>]`
+ *   - file vanished or read errored → `[Attached image: <name> —
+ *     read failed: <reason>]`
+ *   - already-inlined image (no `path`) → pass through verbatim
  */
-function sanitiseMessage(msg: AgentMessage): AgentMessage {
+async function inflateUserImages(
+  msg: AgentMessage,
+  options: ImageInflateOptions,
+): Promise<AgentMessage> {
   if (msg.role !== "user" || !Array.isArray(msg.content)) return msg;
   const parts = msg.content as unknown as Array<Record<string, unknown>>;
   let mutated = false;
   const out: Array<Record<string, unknown>> = [];
   for (const part of parts) {
-    if (part.type === "image") {
-      const data = typeof part.data === "string" ? part.data : "";
-      if (data.length === 0) {
-        const name =
-          typeof part.name === "string"
-            ? part.name
-            : typeof part.path === "string"
-              ? part.path
-              : "image";
-        out.push({
-          type: "text",
-          text: `[Attached image: ${name} — read failed (empty payload)]`,
-        });
-        mutated = true;
-        continue;
-      }
+    if (part.type !== "image") {
+      out.push(part);
+      continue;
     }
-    out.push(part);
+    const data = typeof part.data === "string" ? part.data : "";
+    const filePath =
+      typeof part.path === "string" && part.path.length > 0
+        ? (part.path as string)
+        : "";
+    const name =
+      typeof part.name === "string"
+        ? (part.name as string)
+        : filePath
+          ? path.basename(filePath)
+          : "image";
+    if (data.length > 0) {
+      // Already inlined (e.g. a turn we just persisted) — keep it.
+      out.push(part);
+      continue;
+    }
+    if (!options.supportsImages) {
+      out.push({
+        type: "text",
+        text: `[Attached image (current model has no vision support): ${name}]`,
+      });
+      mutated = true;
+      continue;
+    }
+    if (!filePath) {
+      // Nothing to read — strip and degrade.
+      out.push({
+        type: "text",
+        text: `[Attached image: ${name} — read failed (empty payload)]`,
+      });
+      mutated = true;
+      continue;
+    }
+    const abs = path.join(
+      options.userHome,
+      filePath.startsWith("/") ? filePath.slice(1) : filePath,
+    );
+    try {
+      const stat = fs.statSync(abs);
+      const cacheKey = imageFitCacheKey(
+        abs,
+        stat.mtimeMs,
+        options.imageMaxBytes,
+      );
+      const cached = cacheGet(cacheKey);
+      let buf: Buffer;
+      let mimeType: string;
+      if (cached) {
+        buf = cached.buf;
+        mimeType = cached.mimeType;
+      } else {
+        const raw = fs.readFileSync(abs);
+        const mt = typeof part.mimeType === "string" ? part.mimeType : "";
+        const fitted = await fitToLimit(raw, mt, options.imageMaxBytes);
+        buf = fitted.buf;
+        mimeType = fitted.mimeType;
+        cachePut(cacheKey, buf, mimeType);
+      }
+      out.push({
+        type: "image",
+        data: buf.toString("base64"),
+        mimeType,
+      });
+      mutated = true;
+    } catch (err) {
+      const reason =
+        (err as { message?: string } | null)?.message ?? "read failed";
+      out.push({
+        type: "text",
+        text: `[Attached image: ${name} — read failed: ${reason}]`,
+      });
+      mutated = true;
+    }
   }
   if (!mutated) return msg;
   return { ...msg, content: out } as unknown as AgentMessage;

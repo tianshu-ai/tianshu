@@ -600,4 +600,160 @@ describe("PluginRegistry", () => {
     await expect(reg.invalidate(ctx.tenantId)).resolves.toBeUndefined();
     expect(bDeactivated).toBe(true);
   });
+
+  describe("refreshStaleToolsets", () => {
+    function makeProvider(opts: {
+      name: string;
+      stale: boolean;
+      onRefresh: () => void;
+    }): import("@tianshu/plugin-sdk").ToolsetProvider {
+      const snapshotState = opts.stale
+        ? {
+            name: opts.name,
+            prefix: "",
+            endpoint: undefined,
+            tools: [],
+            lastRefreshAt: undefined,
+            lastError: undefined,
+          }
+        : {
+            name: opts.name,
+            prefix: "",
+            endpoint: "http://127.0.0.1:9999",
+            tools: [{ toolName: "x", upstream: { name: "x" } }],
+            lastRefreshAt: Date.now(),
+            lastError: undefined,
+          };
+      return {
+        name: opts.name,
+        snapshot: () => snapshotState,
+        listTools: () => [],
+        refresh: async () => {
+          opts.onRefresh();
+        },
+      } as unknown as import("@tianshu/plugin-sdk").ToolsetProvider;
+    }
+
+    async function setupTenantWithToolsets(providers: Record<string, import("@tianshu/plugin-sdk").ToolsetProvider>) {
+      writeBuiltinManifest("toolsetshost", {
+        id: "toolsetshost",
+        version: "1.0.0",
+        displayName: "With toolsets",
+        server: { entry: "@toolsets/server" },
+        contributes: {
+          toolsets: Object.keys(providers).map((id) => ({
+            id,
+            module: id,
+            displayName: id,
+          })),
+        },
+      });
+      ops.create("acme");
+      writeTenantConfig(
+        "acme",
+        { plugins: { toolsetshost: { enabled: true } } },
+        home,
+      );
+      ops.poolRef.close("acme");
+      const ctx = ops.open("acme");
+      const mod: PluginServerModule = {
+        activate: () => ({
+          toolsetProviders: providers as unknown as Record<
+            string,
+            import("@tianshu/plugin-sdk").ToolsetProvider
+          >,
+        }),
+      };
+      const reg = new PluginRegistry({
+        resolver: moduleMapResolver({ "@toolsets/server": mod }),
+        discoveryDirs: { builtinConfigDir: builtinDir, home },
+      });
+      await reg.ensureForTenant(ctx);
+      return { reg, ctx };
+    }
+
+    it("refreshes only stale providers and skips healthy ones", async () => {
+      const calls = { stale: 0, fresh: 0 };
+      const { reg, ctx } = await setupTenantWithToolsets({
+        stale: makeProvider({
+          name: "stale",
+          stale: true,
+          onRefresh: () => calls.stale++,
+        }),
+        fresh: makeProvider({
+          name: "fresh",
+          stale: false,
+          onRefresh: () => calls.fresh++,
+        }),
+      });
+      const refreshed = await reg.refreshStaleToolsets(ctx.tenantId, 2000);
+      expect(refreshed).toBe(1);
+      expect(calls.stale).toBe(1);
+      expect(calls.fresh).toBe(0);
+    });
+
+    it("swallows per-toolset refresh errors", async () => {
+      const { reg, ctx } = await setupTenantWithToolsets({
+        bad: {
+          name: "bad",
+          snapshot: () => ({
+            name: "bad",
+            prefix: "",
+            endpoint: undefined,
+            tools: [],
+            lastRefreshAt: undefined,
+            lastError: undefined,
+          }),
+          listTools: () => [],
+          refresh: async () => {
+            throw new Error("upstream-down");
+          },
+        } as unknown as import("@tianshu/plugin-sdk").ToolsetProvider,
+      });
+      // Doesn't throw; counts the call regardless of outcome.
+      await expect(
+        reg.refreshStaleToolsets(ctx.tenantId, 2000),
+      ).resolves.toBe(1);
+    });
+
+    it("returns 0 when nothing is stale", async () => {
+      const { reg, ctx } = await setupTenantWithToolsets({
+        a: makeProvider({ name: "a", stale: false, onRefresh: () => {} }),
+        b: makeProvider({ name: "b", stale: false, onRefresh: () => {} }),
+      });
+      await expect(
+        reg.refreshStaleToolsets(ctx.tenantId, 2000),
+      ).resolves.toBe(0);
+    });
+
+    it("caps total wait at deadlineMs even when refresh hangs", async () => {
+      let resolved = false;
+      const slow: import("@tianshu/plugin-sdk").ToolsetProvider = {
+        name: "slow",
+        snapshot: () => ({
+          name: "slow",
+          prefix: "",
+          endpoint: undefined,
+          tools: [],
+          lastRefreshAt: undefined,
+          lastError: undefined,
+        }),
+        listTools: () => [],
+        refresh: () =>
+          new Promise<void>((r) => {
+            setTimeout(() => {
+              resolved = true;
+              r();
+            }, 10_000);
+          }),
+      } as unknown as import("@tianshu/plugin-sdk").ToolsetProvider;
+      const { reg, ctx } = await setupTenantWithToolsets({ slow });
+      const t0 = Date.now();
+      const count = await reg.refreshStaleToolsets(ctx.tenantId, 100);
+      const elapsed = Date.now() - t0;
+      expect(count).toBe(1);
+      expect(elapsed).toBeLessThan(2000);
+      expect(resolved).toBe(false);
+    });
+  });
 });

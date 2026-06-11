@@ -240,42 +240,15 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     try {
       await registry.ensureForTenant(req.ctx.tenant);
       const tenantId = req.ctx.tenant.tenantId;
-      // First-pass list — includes whatever the toolsets had cached
-      // from prior calls / activate-time refresh.
-      let tsets = registry.toolsetsForTenant(tenantId);
       // Opportunistic refresh of stale entries: the toolset list
       // we get back may be empty / errored because the upstream
       // (e.g. sandbox MCP server) wasn't reachable at activate
       // time. Re-probe in parallel, capped by a short deadline so
       // the page render isn't blocked indefinitely. Anything that
       // fails again surfaces with `lastError`.
-      const stale: Array<Promise<unknown>> = [];
-      for (const ts of tsets) {
-        const snap = ts.snapshot;
-        const isStale =
-          !snap ||
-          snap.lastError !== undefined ||
-          (snap.tools.length === 0 && (snap.endpoint === undefined || snap.lastRefreshAt === undefined));
-        if (!isStale) continue;
-        // Resolve the live ToolsetProvider via PluginRegistry / McpManager.
-        const provider = registry.toolsetProviderFor(ts, tenantId);
-        const refreshFn = (provider as { refresh?: () => Promise<void> } | null)
-          ?.refresh;
-        if (typeof refreshFn === "function") {
-          stale.push(
-            refreshFn.call(provider).catch(() => undefined),
-          );
-        }
-      }
-      if (stale.length > 0) {
-        await Promise.race([
-          Promise.all(stale),
-          new Promise((r2) => setTimeout(r2, 4000)),
-        ]);
-        // Re-pull the list so we reflect fresh snapshots.
-        tsets = registry.toolsetsForTenant(tenantId);
-      }
-      res.json({ servers: tsets });
+      const refreshed = await registry.refreshStaleToolsets(tenantId, 4000);
+      void refreshed;
+      res.json({ servers: registry.toolsetsForTenant(tenantId) });
     } catch (err) {
       next(err);
     }

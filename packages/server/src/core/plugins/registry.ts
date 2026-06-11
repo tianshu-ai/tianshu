@@ -617,6 +617,52 @@ export class PluginRegistry {
     return entry.exports?.toolsetProviders?.[ts.module] ?? null;
   }
 
+  /**
+   * Re-probe every toolset whose snapshot looks stale (no
+   * endpoint, errored last attempt, or empty after a never-yet
+   * refresh). Used by both the chat handler (per-turn warmup so
+   * MCP tools that came online after plugin activation — e.g.
+   * Playwright once the sandbox boots — reach the agent surface
+   * without a manual /admin/mcp refresh) and the admin servers
+   * route (so the page render reflects fresh state).
+   *
+   * Refreshes run in parallel and the whole helper resolves no
+   * later than `deadlineMs`. We swallow per-toolset errors so a
+   * single broken upstream doesn't poison the warmup pass; the
+   * snapshot keeps `lastError` for the admin UI to surface.
+   *
+   * Returns the number of refresh() calls actually issued so
+   * callers can log / decide whether the call was worth it.
+   */
+  async refreshStaleToolsets(
+    tenantId: string,
+    deadlineMs: number,
+  ): Promise<number> {
+    const tsets = this.toolsetsForTenant(tenantId);
+    const stale: Array<Promise<unknown>> = [];
+    for (const ts of tsets) {
+      const snap = ts.snapshot;
+      const isStale =
+        !snap ||
+        snap.lastError !== undefined ||
+        (snap.tools.length === 0 &&
+          (snap.endpoint === undefined || snap.lastRefreshAt === undefined));
+      if (!isStale) continue;
+      const provider = this.toolsetProviderFor(ts, tenantId);
+      const refreshFn = (provider as { refresh?: () => Promise<void> } | null)
+        ?.refresh;
+      if (typeof refreshFn === "function") {
+        stale.push(refreshFn.call(provider).catch(() => undefined));
+      }
+    }
+    if (stale.length === 0) return 0;
+    await Promise.race([
+      Promise.all(stale),
+      new Promise((resolve) => setTimeout(resolve, deadlineMs)),
+    ]);
+    return stale.length;
+  }
+
   toolsetsForTenant(tenantId: string): ToolsetSummary[] {
     const out: ToolsetSummary[] = [];
 

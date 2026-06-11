@@ -29,7 +29,6 @@ import type {
   AssistantMessage,
   Context,
   ImageContent,
-  Message,
   TextContent,
   ToolResultMessage,
   UserMessage,
@@ -45,7 +44,7 @@ import {
   type ResolvedModelInfo,
   type TenantContext,
 } from "../core/index.js";
-import { buildToolset, type Toolset } from "../tools/index.js";
+import { buildToolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
 import { SqliteSessionStorage } from "./sqlite-session-storage.js";
@@ -57,21 +56,13 @@ import {
 } from "../core/plugins/skills.js";
 import { fileURLToPath } from "node:url";
 import {
-  appendAgentMessage,
-  appendMessage,
   ensureActiveSession,
   listMessagesForUser,
-  loadAgentHistory,
   loadAgentHistoryForSession,
   type ChatMessage,
   type ChatSession,
 } from "./messages.js";
-import {
-  COMPACT_THRESHOLD,
-  CompactSkippedError,
-  compactSession,
-} from "./compact.js";
-import { estimateTokens } from "./token-estimate.js";
+import { CompactSkippedError, compactSession } from "./compact.js";
 import {
   toWire,
   type ClientMsg,
@@ -223,6 +214,28 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   const piModel = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
   const userHome = ctx.userHomeDir(userId);
+
+  // MCP toolsets (e.g. plugin-microsandbox's Playwright server)
+  // expose a `tools/list` only after the upstream is reachable.
+  // Plugin activation kicks off a fire-and-forget initial refresh,
+  // but the upstream often isn't ready yet (sandbox still booting,
+  // user-configured server still being saved). Without a per-turn
+  // warmup the agent never sees these tools until someone hits
+  // `/admin/mcp` to refresh by hand. Run the same opportunistic
+  // refresh the admin route does, but with a tighter deadline so
+  // we don't block a chat turn for too long when an upstream is
+  // genuinely down.
+  if (pluginRegistry) {
+    try {
+      await pluginRegistry.refreshStaleToolsets(ctx.tenantId, 1500);
+    } catch {
+      // refreshStaleToolsets already swallows per-toolset errors;
+      // a thrown one would mean the registry itself faulted, which
+      // we don't want to surface as a chat failure either — the
+      // agent will simply see whatever toolset state we already
+      // had.
+    }
+  }
   const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
   const allSkills = [
     ...loadHostSkills(),
@@ -268,8 +281,16 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   // Build the harness session ourselves so we can keep a handle
   // on the storage — we need to stash sibling attachments on it
-  // before the harness's user-message persistence fires.
-  const storage = new SqliteSessionStorage(ctx, session.id);
+  // before the harness's user-message persistence fires, and we
+  // hand it the model's vision profile so its `getPathToRoot`
+  // reads + base64-encodes images on demand at LLM-call time.
+  const storage = new SqliteSessionStorage(ctx, session.id, {
+    imageInflate: {
+      userHome,
+      imageMaxBytes: modelInfo.imageMaxBytes,
+      supportsImages: modelInfo.supportsImages,
+    },
+  });
   const piSession = new PiSession(storage);
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
@@ -603,73 +624,12 @@ function makeWireOpts(ctx: TenantContext): ToWireOpts {
 }
 
 // ─── compaction helpers ───────────────────────────────────────────────
-
-/** Run a compaction pass if the projected input crosses the
- *  threshold. Returns the (possibly new) active session. The
- *  outbound socket gets a "history_compacted" notice on success so
- *  the UI can show a "📌 historical chat compressed" marker.
- *
- *  Errors during compaction are non-fatal: we log them, surface a
- *  stream_error notice, and keep the original session. The user
- *  loses the auto-compact for this turn but the prompt still goes
- *  out (better one expensive turn than a hard failure). */
-async function maybeAutoCompact(args: {
-  ctx: TenantContext;
-  userId: string;
-  session: ChatSession;
-  modelInfo: ResolvedModelInfo;
-  toolset: Toolset;
-  send: (msg: ServerMsg) => void;
-  signal: AbortSignal;
-}): Promise<ChatSession> {
-  const { ctx, userId, session, modelInfo, toolset, send, signal } = args;
-  if (!modelInfo.contextWindow || modelInfo.contextWindow <= 0) {
-    return session;
-  }
-  const { messages, rows } = loadAgentHistoryForSession(ctx, session.id, {
-    api: modelInfo.api,
-    provider: modelInfo.providerId,
-    model: modelInfo.modelId,
-  });
-  if (messages.length < 4) return session; // not worth
-
-  const tokens = estimateTokens({
-    systemPrompt: defaultSystemPrompt(ctx, userId),
-    messages,
-    tools: toolset.schemas,
-  });
-  const trigger = Math.floor(modelInfo.contextWindow * COMPACT_THRESHOLD);
-  if (tokens < trigger) return session;
-
-  try {
-    const result = await compactSession({
-      ctx,
-      userId,
-      oldSession: session,
-      pi: messages,
-      rows,
-      modelInfo,
-      signal,
-    });
-    send({
-      type: "history_compacted",
-      reason: "auto",
-      oldSessionId: result.oldSessionId,
-      newSessionId: result.newSession.id,
-      summarisedCount: result.summarisedCount,
-      keptCount: result.keptCount,
-      durationMs: result.durationMs,
-    });
-    return result.newSession;
-  } catch (err) {
-    if (err instanceof CompactSkippedError) return session;
-    send({
-      type: "stream_error",
-      reason: `auto-compact failed: ${err instanceof Error ? err.message : String(err)} (continuing without compact)`,
-    });
-    return session;
-  }
-}
+//
+// Auto-compaction is a follow-up: pi-agent-core's `transformContext`
+// hook is the right place to run it (it owns the message slice that
+// goes to the LLM, including hot-loaded image bytes). Until that
+// lands, only the user-driven `/compact` slash-command path below
+// is wired up.
 
 async function runManualCompact(args: {
   ctx: TenantContext;
@@ -738,205 +698,6 @@ async function runManualCompact(args: {
     });
   }
 }
-
-// ─── attachment helpers ───────────────────────────────────────────────
-
-/**
- * Image content carries a sentinel `path` field on disk so the LLM
- * call site can resolve it to bytes. pi-ai's ImageContent type
- * doesn't declare it, but extra properties are passed through
- * untouched until the live conversion happens.
- *
- * Same shape as the closed-source predecessor uses
- * (`packages/server/src/agent-manager.ts`).
- */
-interface PathImageContent extends ImageContent {
-  path?: string;
-  name?: string;
-  size?: number;
-}
-
-/** Persist the user's prompt as a multimodal UserMessage when there
- *  are image attachments; otherwise as a plain text string (matches
- *  PR #21 baseline). Always carries the full attachments array as a
- *  sibling field so the UI can re-render chips for non-image
- *  attachments after a reload. */
-function persistUserPrompt(
-  ctx: TenantContext,
-  session: ReturnType<typeof ensureActiveSession>,
-  content: string,
-  attachments: WireAttachment[] | undefined,
-): ChatMessage {
-  const atts = attachments ?? [];
-  if (atts.length === 0) {
-    return appendMessage(ctx, session, { role: "user", content });
-  }
-
-  const textParts: string[] = [];
-  if (content.trim().length > 0) textParts.push(content);
-  const imageParts: PathImageContent[] = [];
-
-  for (const att of atts) {
-    if (isImageMime(att.mimeType)) {
-      imageParts.push({
-        type: "image",
-        // pi-ai's ImageContent declares `data` mandatory; we put a
-        // placeholder here and overwrite at LLM-call time.
-        data: "",
-        mimeType: att.mimeType,
-        path: att.path,
-        name: att.name,
-        size: att.size,
-      });
-    } else {
-      // Non-image: nudge the agent toward the right read_file call
-      // without dumping bytes into the conversation log.
-      textParts.push(
-        `[Attached file: ${att.name ?? att.path} (${att.mimeType}) — available at .${att.path}]`,
-      );
-    }
-  }
-
-  const piContent: (TextContent | PathImageContent)[] = [];
-  if (textParts.length > 0) {
-    piContent.push({ type: "text", text: textParts.join("\n") });
-  }
-  piContent.push(...imageParts);
-
-  // Always carry the full attachments list as a sibling field so the
-  // wire layer (toWire) can render non-image chips after reload too.
-  const userMessage: UserMessage & { attachments: WireAttachment[] } = {
-    role: "user",
-    content: piContent.length > 0
-      ? piContent
-      : [{ type: "text", text: "" }],
-    timestamp: Date.now(),
-    attachments: atts,
-  } as UserMessage & { attachments: WireAttachment[] };
-  return appendAgentMessage(ctx, session, userMessage);
-}
-
-function isImageMime(m: string): boolean {
-  return typeof m === "string" && m.startsWith("image/");
-}
-
-/**
- * Walk the message log and replace every UserMessage's image parts:
- *
- *   - When the model supports vision and the file exists on disk:
- *     inline the base64 bytes into ImageContent.data.
- *   - When the model is text-only OR the file vanished: replace the
- *     image part with a short text note so the request isn't
- *     rejected by providers that refuse mixed content.
- *
- * The original `messages` array is not mutated; we return a fresh
- * array suitable for piContext.messages.
- */
-export async function prepareMessagesForLlm(
-  messages: Message[],
-  userHome: string,
-  modelInfo: ResolvedModelInfo,
-): Promise<Message[]> {
-  // Sequential rather than parallel-fancy: there's typically <=2
-  // images in flight at a time and sharp uses libvips which is
-  // already multi-threaded internally.
-  const out: Message[] = [];
-  for (const m of messages) {
-    if (m.role !== "user" || !Array.isArray(m.content)) {
-      out.push(m);
-      continue;
-    }
-    const hasImage = m.content.some((p) => p.type === "image");
-    if (!hasImage) {
-      out.push(m);
-      continue;
-    }
-
-    const parts: (TextContent | ImageContent)[] = [];
-    for (const part of m.content) {
-      if (part.type !== "image") {
-        parts.push(part);
-        continue;
-      }
-      const img = part as PathImageContent;
-      const name = img.name ?? (img.path ? path.basename(img.path) : "image");
-      if (!modelInfo.supportsImages) {
-        parts.push({
-          type: "text",
-          text: `[Attached image (current model has no vision support): ${name}]`,
-        });
-        continue;
-      }
-      if (!img.path) {
-        // Already inlined? Pass through as-is.
-        parts.push({ ...img });
-        continue;
-      }
-      const abs = path.join(
-        userHome,
-        img.path.startsWith("/") ? img.path.slice(1) : img.path,
-      );
-      try {
-        const stat = fs.statSync(abs);
-        const cacheKey = imageFitCacheKey(
-          abs,
-          stat.mtimeMs,
-          modelInfo.imageMaxBytes,
-        );
-        const cached = cacheGet(cacheKey);
-        let buf: Buffer;
-        let mimeType: string;
-        if (cached) {
-          buf = cached.buf;
-          mimeType = cached.mimeType;
-        } else {
-          const raw = fs.readFileSync(abs);
-          // Most images sail through (already small); for the rest
-          // fitToLimit transcodes to a byte-bounded JPEG.
-          const fitted = await fitToLimit(
-            raw,
-            img.mimeType,
-            modelInfo.imageMaxBytes,
-          );
-          buf = fitted.buf;
-          mimeType = fitted.mimeType;
-          cachePut(cacheKey, buf, mimeType);
-        }
-        parts.push({
-          type: "image",
-          data: buf.toString("base64"),
-          mimeType,
-        });
-      } catch (err) {
-        const reason =
-          (err as { message?: string } | null)?.message ?? "read failed";
-        // Two failure shapes — the file vanished, or fitToLimit
-        // exhausted its retry ladder. Either way we don't want to
-        // poison the request: degrade to a text note.
-        parts.push({
-          type: "text",
-          text: `[Attached image (${reason}): ${name}]`,
-        });
-      }
-    }
-
-    // Coalesce consecutive text parts — some providers don't like
-    // a chain of tiny text fragments.
-    const coalesced: (TextContent | ImageContent)[] = [];
-    for (const p of parts) {
-      const last = coalesced[coalesced.length - 1];
-      if (last && last.type === "text" && p.type === "text") {
-        last.text = last.text ? `${last.text}\n${p.text}` : p.text;
-      } else {
-        coalesced.push(p);
-      }
-    }
-    out.push({ ...m, content: coalesced });
-  }
-  return out;
-}
-
-
 
 /**
  * Build the system prompt the orchestrator runs with.
