@@ -15,6 +15,7 @@
 // monospace pre block.
 
 import { useState } from "react";
+import type { ComponentProps } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -32,6 +33,32 @@ import type {
   MergedToolCall,
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
+import { rewriteWorkspaceUri } from "../lib/workspace-uri";
+
+// urlTransform runs for both `[link](url)` and `![alt](src)`. We
+// keep behaviour symmetric on purpose: a workspace:// link in prose
+// should also resolve to the raw file route so users can click
+// through. The actual rewrite lives in lib/workspace-uri.ts so it
+// can be unit-tested without React.
+function urlTransform(url: string): string {
+  if (!url) return url;
+  return rewriteWorkspaceUri(url);
+}
+
+function MarkdownImg(props: ComponentProps<"img">) {
+  const { src, alt, ...rest } = props;
+  return (
+    <img
+      src={src}
+      alt={alt ?? ""}
+      loading="lazy"
+      className="my-2 max-h-96 max-w-full rounded-lg border border-gray-700/50"
+      {...rest}
+    />
+  );
+}
+
+const MARKDOWN_COMPONENTS = { img: MarkdownImg } as const;
 
 export default function MessageBubble({ m }: { m: MergedMessage }) {
   const isUser = m.role === "user";
@@ -71,7 +98,13 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
                     : "border-gray-800 bg-gray-900/60 text-gray-100")
                 }
               >
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.text}</ReactMarkdown>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  urlTransform={urlTransform}
+                  components={MARKDOWN_COMPONENTS}
+                >
+                  {m.text}
+                </ReactMarkdown>
               </div>
             ) : showStreamingPlaceholder ? (
               <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3.5 py-2.5">
@@ -122,7 +155,13 @@ function renderAssistantBlock(
             : "border-gray-800 bg-gray-900/60 text-gray-100")
         }
       >
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{block.text}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          urlTransform={urlTransform}
+          components={MARKDOWN_COMPONENTS}
+        >
+          {block.text}
+        </ReactMarkdown>
       </div>
     );
   }

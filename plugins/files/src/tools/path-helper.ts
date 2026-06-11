@@ -8,13 +8,16 @@
 //     tools (host injects its contents into the system prompt instead)
 //   - host filesystem outside the user home is rejected
 //
-// Path inputs are accepted in three shapes for ergonomics:
-//   - "/foo/bar"        → user home + foo/bar
-//   - "foo/bar"         → user home + foo/bar  (relative is the same)
-//   - "/workspace/foo"  → user home + foo      (alias kept so existing
-//                                                LLM training data
-//                                                with `/workspace/...`
-//                                                still resolves)
+// Path inputs are accepted in four shapes for ergonomics:
+//   - "workspace:///foo/bar"  → user home + foo/bar  (canonical — the
+//                                                     shape this
+//                                                     module emits)
+//   - "/foo/bar"              → user home + foo/bar
+//   - "foo/bar"               → user home + foo/bar  (relative is the same)
+//   - "/workspace/foo"        → user home + foo      (alias kept so existing
+//                                                     LLM training data
+//                                                     with `/workspace/...`
+//                                                     still resolves)
 // Anything containing a literal `..` segment is rejected up front so a
 // trick like "/workspace/../etc/passwd" cannot squeeze past resolve().
 
@@ -36,9 +39,20 @@ export function resolveInUserHome(userHome: string, requested: string): string {
   if (typeof requested !== "string" || requested.length === 0) {
     throw new PathOutsideRootError(requested);
   }
+  let rel = requested.replace(/\\/g, "/");
+  // Strip the canonical workspace:// scheme. Two authority shapes
+  // are accepted: "workspace:///foo" (empty authority — what we
+  // emit) and "workspace://foo" (non-empty authority — a tolerated
+  // alias since LLMs sometimes drop the third slash).
+  if (rel.startsWith("workspace:///")) {
+    rel = rel.slice("workspace:///".length);
+  } else if (rel.startsWith("workspace://")) {
+    rel = rel.slice("workspace://".length);
+  } else if (rel === "workspace:") {
+    rel = "";
+  }
   // Strip the optional /workspace/ prefix; agents trained on the old
   // tianshu schema use it.
-  let rel = requested.replace(/\\/g, "/");
   if (rel.startsWith("/workspace/")) rel = rel.slice("/workspace/".length);
   else if (rel === "/workspace") rel = "";
   // Strip a leading slash; "/" → root.
@@ -67,4 +81,29 @@ export function toDisplayPath(userHome: string, abs: string): string {
   const rel = path.relative(userHome, abs).replace(/\\/g, "/");
   if (rel === "" || rel === ".") return "/";
   return "/" + rel;
+}
+
+/**
+ * Convert an absolute path back to a `workspace:///foo/bar` URI
+ * rooted at the user home. This is the canonical, single-source-of-
+ * truth shape every fs tool returns in its result text and entry
+ * fields, so the chat UI can recognise file references with one
+ * regex (no need to reverse-engineer the host filesystem prefix or
+ * decide whether a relative `./x` should be rewritten).
+ *
+ * The empty authority (`workspace:///foo`, three slashes) is
+ * intentional: by RFC 3986 a `file:` URL also uses an empty
+ * authority before the path. Keeping the same shape means the LLM
+ * can think of it as a file URL with a workspace scheme.
+ *
+ * Throws if `abs` is outside the user home; callers should
+ * guarantee that by going through `resolveInUserHome` first.
+ */
+export function toWorkspaceUri(userHome: string, abs: string): string {
+  const rel = path.relative(userHome, abs).replace(/\\/g, "/");
+  if (rel.startsWith("..")) {
+    throw new PathOutsideRootError(abs);
+  }
+  if (rel === "" || rel === ".") return "workspace:///";
+  return "workspace:///" + rel;
 }

@@ -8,7 +8,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
-import { resolveInUserHome, toDisplayPath, PathOutsideRootError } from "./path-helper.js";
+import {
+  resolveInUserHome,
+  toWorkspaceUri,
+  PathOutsideRootError,
+} from "./path-helper.js";
 
 const MAX_ENTRIES = 5000;
 
@@ -97,7 +101,7 @@ export function executeListDir(
         : "other";
     return {
       name: d.name,
-      path: toDisplayPath(userHome, full),
+      path: toWorkspaceUri(userHome, full),
       type,
       size,
       modifiedMs,
@@ -115,7 +119,7 @@ export function executeListDir(
   const lines = entries.map((e) =>
     e.type === "directory" ? `${e.path}/` : `${e.path}  (${e.size} bytes)`,
   );
-  const header = `Directory ${toDisplayPath(userHome, resolved)} (${entries.length} ${entries.length === 1 ? "entry" : "entries"}${truncated ? ", truncated" : ""}):`;
+  const header = `Directory ${toWorkspaceUri(userHome, resolved)} (${entries.length} ${entries.length === 1 ? "entry" : "entries"}${truncated ? ", truncated" : ""}):`;
   return {
     ok: true,
     text: [header, ...lines].join("\n"),

@@ -9,7 +9,11 @@ import fs from "node:fs";
 import fg from "fast-glob";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
-import { resolveInUserHome, toDisplayPath, PathOutsideRootError } from "./path-helper.js";
+import {
+  resolveInUserHome,
+  toWorkspaceUri,
+  PathOutsideRootError,
+} from "./path-helper.js";
 
 const MAX_RESULTS = 1000;
 
@@ -87,7 +91,7 @@ export async function executeGlob(
   const truncated = found.length > MAX_RESULTS;
   const slice = truncated ? found.slice(0, MAX_RESULTS) : found;
   const matches = slice.map((rel) =>
-    toDisplayPath(root, `${root}/${rel}`),
+    toWorkspaceUri(root, `${root}/${rel}`),
   );
 
   const header = `${matches.length} match${matches.length === 1 ? "" : "es"}${truncated ? ` (truncated at ${MAX_RESULTS})` : ""}:`;

@@ -871,6 +871,13 @@ export function defaultSystemPrompt(ctx: TenantContext, userId: string): string 
     `  - Don't leave scratch artefacts in ./projects/ or the root — use ./tmp/.`,
     `  - Other users' homes in this tenant are off-limits; you cannot reach them.`,
     ``,
+    `Referencing files in your reply:`,
+    `  - When you point at a workspace file in your response (e.g. an image you`,
+    `    just wrote, a generated report, an attachment), use the workspace://`,
+    `    URI you got back from the fs tool, e.g. \`![cover](workspace:///projects/x/cover.png)\`.`,
+    `  - The chat UI knows how to render those; absolute host paths or bare`,
+    `    "./foo" links won't preview.`,
+    ``,
     `Reply concisely. When you make changes, briefly say what you changed.`,
   );
   return lines.join("\n");

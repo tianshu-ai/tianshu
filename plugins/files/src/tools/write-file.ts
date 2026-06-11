@@ -12,7 +12,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
-import { resolveInUserHome, PathOutsideRootError } from "./path-helper.js";
+import {
+  resolveInUserHome,
+  toWorkspaceUri,
+  PathOutsideRootError,
+} from "./path-helper.js";
 
 const MAX_WRITE_BYTES = 5_000_000; // 5 MB
 
@@ -77,7 +81,11 @@ export function executeWriteFile(
 
   return {
     ok: true,
-    text: `wrote ${buf.length} bytes to ${args.path}`,
+    // Emit the canonical workspace:// URI so the LLM has one shape
+    // to reference produced files in its reply (the chat UI's
+    // urlTransform recognises it). Single source of truth: every
+    // fs tool round-trips paths through toWorkspaceUri.
+    text: `wrote ${buf.length} bytes to ${toWorkspaceUri(userHome, resolved)}`,
     bytesWritten: buf.length,
   };
 }
