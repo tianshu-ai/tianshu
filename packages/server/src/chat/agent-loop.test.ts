@@ -1,115 +1,79 @@
-// Tests for chat/agent-loop.ts.
+// Tests for chat/agent-loop.ts (worker-side runner).
 //
-// We mock @earendil-works/pi-agent-core's `runAgentLoop` so the
-// test drives the loop's emit() callback directly, instead of
-// going through pi-ai's network path. The harness records a
-// scripted sequence of AgentEvents per test.
+// We mock @earendil-works/pi-agent-core's `AgentHarness` so the
+// suite drives the loop deterministically without going through
+// pi-ai's network path. `Session` and other pi exports are
+// preserved via importOriginal so the rest of the chat module
+// (which constructs Session directly via SqliteSessionStorage)
+// still works.
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import Database from "better-sqlite3";
-import type {
-  AgentEvent,
-  AgentMessage,
-} from "@earendil-works/pi-agent-core";
-import type {
-  AssistantMessage,
-  TextContent,
-  ToolCall,
-} from "@earendil-works/pi-ai";
+import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
 
-// Choreographed events the mocked pi runAgentLoop will emit each
-// time the suite calls it. Set per test.
-let __scriptedEvents: AgentEvent[] = [];
+// Test harness: each test sets a "scripted run" that controls how
+// the mocked AgentHarness behaves once `prompt()` is called.
+interface ScriptedRun {
+  /** Events to fire in order to subscribers. */
+  events: AgentHarnessEvent[];
+  /** Pause between agent_start and event emission, so the
+   *  watchdog can fire mid-run. */
+  delayMs?: number;
+}
 
-// Track whether the watchdog should drive an abort BEFORE the
-// scripted events run (used by the timeout test).
-let __scriptedDelayMs = 0;
+let __script: ScriptedRun = { events: [] };
+let __abortAcked = false;
 
-vi.mock("@earendil-works/pi-agent-core", async () => {
+vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
+
+  class FakeHarness {
+    private listeners: Array<(e: AgentHarnessEvent) => void> = [];
+    private aborted = false;
+    constructor(_options: unknown) {}
+    subscribe(listener: (e: AgentHarnessEvent) => void) {
+      this.listeners.push(listener);
+      return () => {
+        this.listeners = this.listeners.filter((l) => l !== listener);
+      };
+    }
+    async prompt(_text: string): Promise<void> {
+      const emit = (e: AgentHarnessEvent) => {
+        for (const l of this.listeners) l(e);
+      };
+      emit({ type: "agent_start" } as AgentHarnessEvent);
+      if (__script.delayMs && __script.delayMs > 0) {
+        await new Promise<void>((r) => setTimeout(r, __script.delayMs));
+      }
+      if (this.aborted) {
+        emit({ type: "agent_end", messages: [] } as AgentHarnessEvent);
+        return;
+      }
+      for (const e of __script.events) {
+        if (this.aborted) break;
+        emit(e);
+      }
+      emit({ type: "agent_end", messages: [] } as AgentHarnessEvent);
+    }
+    async waitForIdle() {
+      // pi calls turn_end internally; we already ran prompt to
+      // completion, so resolve immediately.
+    }
+    async abort() {
+      this.aborted = true;
+      __abortAcked = true;
+    }
+  }
+
   return {
-    runAgentLoop: async (
-      prompts: AgentMessage[],
-      context: any,
-      config: any,
-      emit: (event: AgentEvent) => Promise<void> | void,
-      signal?: AbortSignal,
-    ) => {
-      // Mirror pi's behaviour: append every event-emitted message
-      // back into the shared context so the host can read final
-      // text out of `context.messages` after the loop exits.
-      const ctxMessages: AgentMessage[] = context.messages ?? [];
-      const pushToCtx = (m: AgentMessage) => ctxMessages.push(m);
-      // Mimic pi's external contract: agent_start → events →
-      // agent_end. afterToolCall hook is invoked for every
-      // tool_execution_end so the host can flag terminate /
-      // isError.
-      await emit({ type: "agent_start" });
-      // Optional pause so the watchdog can fire mid-run.
-      if (__scriptedDelayMs > 0) {
-        await new Promise<void>((resolve) => {
-          const t = setTimeout(resolve, __scriptedDelayMs);
-          signal?.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(t);
-              resolve();
-            },
-            { once: true },
-          );
-        });
-      }
-      if (signal?.aborted) {
-        await emit({
-          type: "agent_end",
-          messages: [],
-        });
-        return [];
-      }
-      const newMessages: AgentMessage[] = [...prompts];
-      prompts.forEach(pushToCtx);
-      for (const event of __scriptedEvents) {
-        if (signal?.aborted) break;
-        if (event.type === "tool_execution_end") {
-          // Run the host's afterToolCall hook so terminate /
-          // isError flow back into the run.
-          const fakeAssistant: AssistantMessage = {
-            role: "assistant",
-            content: [],
-            stopReason: "toolUse",
-            usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            api: "anthropic" as never,
-            provider: "fake" as never,
-            model: "fakemodel",
-            timestamp: Date.now(),
-          };
-          await config.afterToolCall?.({
-            assistantMessage: fakeAssistant,
-            toolCall: {
-              type: "toolCall",
-              id: event.toolCallId,
-              name: event.toolName,
-              arguments: event.args,
-            } as ToolCall,
-            args: event.args,
-            result: event.result,
-            isError: event.isError,
-            context: { systemPrompt: "", messages: newMessages },
-          });
-        }
-        if (event.type === "message_end") {
-          newMessages.push(event.message);
-          pushToCtx(event.message);
-        }
-        await emit(event);
-      }
-      await emit({ type: "agent_end", messages: newMessages });
-      return newMessages;
-    },
+    ...actual,
+    AgentHarness: FakeHarness as unknown as typeof actual.AgentHarness,
   };
 });
 
 import { up as runInitialMigration } from "../core/migrations/001-initial.js";
 import { up as runDepsMigration } from "../core/migrations/002-task-dependencies.js";
+import { up as runSessionTreeMigration } from "../core/migrations/003-session-tree.js";
 import type { TenantContext } from "../core/index.js";
 import { runAgentLoop } from "./agent-loop.js";
 
@@ -118,6 +82,7 @@ function freshDb(): Database.Database {
   db.pragma("journal_mode = MEMORY");
   runInitialMigration(db);
   runDepsMigration(db);
+  runSessionTreeMigration(db);
   db.prepare(
     `INSERT INTO users (id, external_id, provider, display_name, created_at)
      VALUES (?, ?, ?, ?, ?)`,
@@ -140,7 +105,9 @@ function fakeCtx(db: Database.Database): TenantContext {
             api: "anthropic" as never,
             apiKey: "test-key",
             baseUrl: "http://localhost:0",
-            models: [{ id: "fakemodel", name: "Fake", contextWindow: 100_000 }],
+            models: [
+              { id: "fakemodel", name: "Fake", contextWindow: 100_000 },
+            ],
           },
         },
       },
@@ -148,40 +115,24 @@ function fakeCtx(db: Database.Database): TenantContext {
   } as unknown as TenantContext;
 }
 
-function textBlock(text: string): TextContent {
-  return { type: "text", text };
-}
-
-function assistantMsg(content: AssistantMessage["content"]): AssistantMessage {
-  return {
-    role: "assistant",
-    content,
-    stopReason: content.some((c) => c.type === "toolCall") ? "toolUse" : "stop",
-    usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    api: "anthropic" as never,
-    provider: "fakeprov" as never,
-    model: "fakemodel",
-    timestamp: Date.now(),
-  };
-}
-
-describe("runAgentLoop", () => {
+describe("runAgentLoop (worker)", () => {
   let db: Database.Database;
   let ctx: TenantContext;
 
   beforeEach(() => {
     db = freshDb();
     ctx = fakeCtx(db);
-    __scriptedEvents = [];
-    __scriptedDelayMs = 0;
+    __script = { events: [] };
+    __abortAcked = false;
   });
 
-  it("plain LLM reply (no tools) → stalled (worker must call task_complete)", async () => {
-    const msg = assistantMsg([textBlock("here is what I think")]);
-    __scriptedEvents = [
-      { type: "message_start", message: msg },
-      { type: "message_end", message: msg },
-    ];
+  it("plain LLM reply (no task_complete) → stalled", async () => {
+    __script = {
+      events: [
+        // No tool_result → completionSink stays empty → loop ends
+        // naturally → host classifies as stalled.
+      ],
+    };
 
     const r = await runAgentLoop({
       ctx,
@@ -191,32 +142,22 @@ describe("runAgentLoop", () => {
 
     expect(r.status).toBe("stalled");
     expect(r.reason).toBe("max_turns");
-    expect(r.summary).toBe("here is what I think");
   });
 
-  it("toolCall(task_complete) → done with summary + files", async () => {
-    const call: ToolCall = {
-      type: "toolCall",
-      id: "c1",
-      name: "task_complete",
-      arguments: { summary: "I shipped v1", files: ["report.md"] },
-    };
-    const asstMsg = assistantMsg([call]);
-    __scriptedEvents = [
-      { type: "message_start", message: asstMsg },
-      { type: "message_end", message: asstMsg },
-      {
-        type: "tool_execution_end",
-        toolCallId: "c1",
-        toolName: "task_complete",
-        args: { summary: "I shipped v1", files: ["report.md"] },
-        result: {
-          content: [textBlock("ok")],
+  it("task_complete tool_result → done with summary + files", async () => {
+    __script = {
+      events: [
+        {
+          type: "tool_result",
+          toolCallId: "c1",
+          toolName: "task_complete",
+          input: { summary: "I shipped v1", files: ["report.md"] },
+          content: [],
           details: undefined,
-        },
-        isError: false,
-      } as AgentEvent,
-    ];
+          isError: false,
+        } as AgentHarnessEvent,
+      ],
+    };
 
     const r = await runAgentLoop({
       ctx,
@@ -231,10 +172,7 @@ describe("runAgentLoop", () => {
   });
 
   it("max-run timeout → error / max_run_timeout", async () => {
-    // Force the watchdog to fire by holding the loop open for 500ms
-    // with maxRunMs=1.
-    __scriptedDelayMs = 500;
-    __scriptedEvents = [];
+    __script = { events: [], delayMs: 500 };
 
     const r = await runAgentLoop({
       ctx,
@@ -245,10 +183,11 @@ describe("runAgentLoop", () => {
 
     expect(r.status).toBe("error");
     expect(r.reason).toBe("max_run_timeout");
+    expect(__abortAcked).toBe(true);
   });
 
-  it("aborted via signal → status=aborted, reason=aborted", async () => {
-    __scriptedDelayMs = 500;
+  it("external abort → aborted", async () => {
+    __script = { events: [], delayMs: 500 };
     const ac = new AbortController();
     setTimeout(() => ac.abort(), 50);
 
@@ -262,5 +201,6 @@ describe("runAgentLoop", () => {
 
     expect(r.status).toBe("aborted");
     expect(r.reason).toBe("aborted");
+    expect(__abortAcked).toBe(true);
   });
 });
