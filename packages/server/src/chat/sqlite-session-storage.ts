@@ -204,6 +204,13 @@ export class SqliteSessionStorage
         row.entry_details,
         row.created_at,
       );
+    // Advance the leaf so the next appendMessage call picks this
+    // row as its parent. Pi's Session class reads the leafId at
+    // turn-start time but never writes it back — the storage owns
+    // that responsibility. Without this, every entry in a turn
+    // gets the SAME parent (the leaf at turn-start), which makes
+    // path-to-root walk only return one entry.
+    await this.setLeafId(mutated.id);
   }
 
   async getEntry(id: string): Promise<SessionTreeEntry | undefined> {
@@ -254,7 +261,8 @@ export class SqliteSessionStorage
     const rows = this.ctx.db
       .prepare<[string], MessagesRow>(
         `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
-         FROM messages WHERE session_id = ?`,
+         FROM messages WHERE session_id = ?
+         ORDER BY created_at ASC, rowid ASC`,
       )
       .all(this.sessionId);
     const byId = new Map(rows.map((r) => [r.id, r] as const));
@@ -268,6 +276,24 @@ export class SqliteSessionStorage
       if (!r) break;
       path.unshift(rowToEntry(r));
       cursor = r.parent_id;
+    }
+    // Fallback: if the parent chain didn't reach every row in the
+    // session (legacy sessions where pre-N+6.4 backfill only set
+    // parent_id on a fan, not a chain), splice in the rest by
+    // created_at order. This keeps old sessions usable until the
+    // chain naturally rebuilds with each new turn.
+    if (path.length < rows.length) {
+      const seen = new Set(path.map((e) => e.id));
+      const merged: SessionTreeEntry[] = [];
+      for (const r of rows) {
+        if (seen.has(r.id)) continue;
+        merged.push(rowToEntry(r));
+      }
+      // Append the un-chained legacy rows BEFORE the chain we
+      // walked from leafId, since the chain we walked is the
+      // freshest tail. The order of `merged` is already ASC by
+      // created_at, so chronology is preserved.
+      return [...merged, ...path];
     }
     return path;
   }
@@ -366,7 +392,7 @@ function parseMessage(content: string, role: MessagesRow["role"]): AgentMessage 
     typeof parsed === "object" &&
     typeof (parsed as { role?: unknown }).role === "string"
   ) {
-    return parsed as AgentMessage;
+    return sanitiseMessage(parsed as AgentMessage);
   }
   // Legacy plain-text rows: best-effort upgrade.
   if (role === "user") {
@@ -413,6 +439,47 @@ function parseMessage(content: string, role: MessagesRow["role"]): AgentMessage 
     content: [{ type: "text", text: content } as never],
     timestamp: Date.now(),
   } as UserMessage;
+}
+
+/**
+ * Strip image parts that have empty base64 `data` from a message.
+ *
+ * Background: legacy rows (pre-N+6.4) stored user messages with
+ * `{type:"image", path, data:""}` blocks; the chat handler used to
+ * inject base64 lazily right before the LLM call. The harness
+ * reads messages directly from storage, so we'd be sending empty
+ * base64 to Anthropic and getting a 400 back. Until we route
+ * base64 injection through here too (a follow-up), demote any
+ * empty-image part to a short text note so the request still goes
+ * out with valid content.
+ */
+function sanitiseMessage(msg: AgentMessage): AgentMessage {
+  if (msg.role !== "user" || !Array.isArray(msg.content)) return msg;
+  const parts = msg.content as unknown as Array<Record<string, unknown>>;
+  let mutated = false;
+  const out: Array<Record<string, unknown>> = [];
+  for (const part of parts) {
+    if (part.type === "image") {
+      const data = typeof part.data === "string" ? part.data : "";
+      if (data.length === 0) {
+        const name =
+          typeof part.name === "string"
+            ? part.name
+            : typeof part.path === "string"
+              ? part.path
+              : "image";
+        out.push({
+          type: "text",
+          text: `[Attached image: ${name} — read failed (empty payload)]`,
+        });
+        mutated = true;
+        continue;
+      }
+    }
+    out.push(part);
+  }
+  if (!mutated) return msg;
+  return { ...msg, content: out } as unknown as AgentMessage;
 }
 
 function safeParse(s: string): unknown {
