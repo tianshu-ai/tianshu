@@ -38,7 +38,69 @@ import {
   resetBuiltinAgent,
   updateWorkerAgent,
   type SeedAgentSpec,
+  type WorkerAgent,
 } from "../db/agents.js";
+
+/**
+ * Validate that a task's worker assignment can actually be picked
+ * up by some live worker, before we let it land in the DB.
+ *
+ * Without this check a task could be created against an agent the
+ * user disabled (or that never existed), or with a worker_role no
+ * enabled agent matches — the pool would silently never claim
+ * it. The user sees a forever-`ready` card with no explanation.
+ *
+ * Returns null when the assignment is fine (or absent), and an
+ * `{ code, message }` envelope when it isn't. Caller maps that
+ * to a 400 + JSON.
+ *
+ * Rules:
+ *   - workerAgentId set: must exist for this tenant AND be enabled.
+ *     If both are set, workerRole is ignored (the pool uses agent
+ *     pinning when present), so we don't enforce role-match here.
+ *   - workerRole set, workerAgentId absent: at least one enabled
+ *     agent in this tenant must have `kind === workerRole`.
+ *   - both absent: any enabled agent (regardless of role) can pick
+ *     the task up. The pool only fails closed if there are zero
+ *     enabled agents at all — we surface that case as a warning,
+ *     not an error, since the user can fix it later by enabling
+ *     a worker.
+ */
+export function validateAssignableWorker(
+  agents: WorkerAgent[],
+  args: { workerAgentId: string | null; workerRole: string | null },
+): { code: string; message: string } | null {
+  const { workerAgentId, workerRole } = args;
+  if (workerAgentId) {
+    const target = agents.find((a) => a.id === workerAgentId);
+    if (!target) {
+      return {
+        code: "agent_not_found",
+        message: `Worker agent ${workerAgentId} doesn't exist in this tenant.`,
+      };
+    }
+    if (!target.enabled) {
+      return {
+        code: "agent_disabled",
+        message: `Worker agent "${target.name}" is disabled. Enable it under Settings → Plugins → Worker agents, or pick another agent.`,
+      };
+    }
+    return null;
+  }
+  if (workerRole) {
+    const candidates = agents.filter(
+      (a) => a.enabled && a.kind === workerRole,
+    );
+    if (candidates.length === 0) {
+      return {
+        code: "no_enabled_worker_for_role",
+        message: `No enabled worker has kind="${workerRole}". Either enable an existing worker of that kind or pick a different role.`,
+      };
+    }
+    return null;
+  }
+  return null;
+}
 import type { WorkerPool } from "../worker/pool.js";
 
 /** Optional fields a worker kind can store on its agents. Every
@@ -247,6 +309,20 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     const workerRole = typeof body.workerRole === "string" ? body.workerRole : null;
     const workerAgentId =
       typeof body.workerAgentId === "string" ? body.workerAgentId : null;
+
+    // Reject up-front if the task points at an agent that's
+    // disabled / missing, or a role no enabled agent serves —
+    // otherwise the row would land in the DB and stay forever
+    // `ready` because the pool has nothing matching to claim it.
+    const assignErr = validateAssignableWorker(
+      listWorkerAgents(deps.db, deps.tenantId),
+      { workerAgentId, workerRole },
+    );
+    if (assignErr) {
+      res.status(400).json(assignErr);
+      return;
+    }
+
     const dependsOn = filterOwnedDeps(
       deps.db,
       userId,
@@ -319,6 +395,32 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       typeof body.workerAgentId === "string"
     ) {
       patch.workerAgentId = body.workerAgentId as string | null;
+    }
+
+    // If the patch touches the assignment surface, validate the new
+    // (post-patch) target. Falling through to the pool with a stale
+    // assignment would silently park the task in `ready` after a
+    // re-queue. Use the patched values where present, otherwise the
+    // current row's values — we don't want to spuriously fail when
+    // the user is patching only e.g. priority and the agent assigned
+    // long ago has since been disabled (different bug to surface).
+    const touchesAssignment =
+      patch.workerAgentId !== undefined || patch.workerRole !== undefined;
+    if (touchesAssignment) {
+      const nextAgentId =
+        patch.workerAgentId !== undefined
+          ? patch.workerAgentId
+          : before.workerAgentId;
+      const nextRole =
+        patch.workerRole !== undefined ? patch.workerRole : before.workerRole;
+      const assignErr = validateAssignableWorker(
+        listWorkerAgents(deps.db, deps.tenantId),
+        { workerAgentId: nextAgentId, workerRole: nextRole },
+      );
+      if (assignErr) {
+        res.status(400).json(assignErr);
+        return;
+      }
     }
     if (typeof body.status === "string") {
       if (!isTaskStatus(body.status)) {

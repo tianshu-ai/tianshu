@@ -40,6 +40,7 @@ import {
   type Task,
   type TaskStatus,
 } from "../db/tasks.js";
+import { listWorkerAgents } from "../db/agents.js";
 
 export interface ToolDeps {
   db: TenantDbHandle;
@@ -257,13 +258,30 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
         args.depends_on,
         id,
       );
+      // Reject up-front if the task points at a worker_role no
+      // enabled agent serves — otherwise the row would land in the
+      // DB and stay forever `ready` because the pool has nothing
+      // matching to claim it. Same check the REST createTask path
+      // does (see routes/handlers.ts validateAssignableWorker).
+      const role = args.worker_role ?? null;
+      if (role) {
+        const candidates = listWorkerAgents(deps.db, ctx.tenantId).filter(
+          (a) => a.enabled && a.kind === role,
+        );
+        if (candidates.length === 0) {
+          return {
+            ok: false,
+            text: `No enabled worker has kind="${role}". Either enable an existing worker of that kind under Settings → Plugins → Worker agents, or omit worker_role so any worker can pick the task up.`,
+          };
+        }
+      }
       const task = createTask(deps.db, id, {
         ownerUserId: ctx.userId,
         title,
         description: args.description,
         projectSlug: args.project,
         priority: args.priority,
-        workerRole: args.worker_role ?? null,
+        workerRole: role,
         dependsOn,
       });
       const blocked = !isEligible(deps.db, task);
@@ -319,6 +337,21 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         // v0 keeps the board single-user. Future: add an explicit
         // share mechanism + relax this check.
         return { ok: false, text: `task ${args.id} is not yours` };
+      }
+      // If the patch changes the role, validate the new role is
+      // serviceable (same rule as on create). args.worker_role of
+      // `undefined` means "don't touch"; an explicit `null` clears
+      // the role pin (always safe).
+      if (args.worker_role !== undefined && args.worker_role !== null) {
+        const candidates = listWorkerAgents(deps.db, ctx.tenantId).filter(
+          (a) => a.enabled && a.kind === args.worker_role,
+        );
+        if (candidates.length === 0) {
+          return {
+            ok: false,
+            text: `No enabled worker has kind="${args.worker_role}". Enable a matching worker under Settings → Plugins → Worker agents, or pass worker_role=null to clear the pin.`,
+          };
+        }
       }
       const patch: Parameters<typeof updateTask>[2] = {
         title: args.title,
