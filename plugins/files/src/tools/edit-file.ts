@@ -12,7 +12,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
-import { resolveInUserHome, PathOutsideRootError } from "./path-helper.js";
+import {
+  resolveInUserHome,
+  toWorkspaceUri,
+  PathOutsideRootError,
+} from "./path-helper.js";
 
 export interface EditFileToolResult {
   ok: boolean;
@@ -89,7 +93,7 @@ export function executeEditFile(
 
   return {
     ok: true,
-    text: `edited ${args.path} (${args.old_text.length} → ${args.new_text.length} chars)`,
+    text: `edited ${toWorkspaceUri(userHome, resolved)} (${args.old_text.length} → ${args.new_text.length} chars)`,
     occurrences: 1,
   };
 }

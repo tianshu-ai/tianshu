@@ -11,7 +11,11 @@
 import fs from "node:fs";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
-import { resolveInUserHome, PathOutsideRootError } from "./path-helper.js";
+import {
+  resolveInUserHome,
+  toWorkspaceUri,
+  PathOutsideRootError,
+} from "./path-helper.js";
 
 export const MAX_TEXT_BYTES = 500_000;
 
@@ -101,10 +105,11 @@ export function executeReadFile(
     const nextOffset = offset + bytesRead;
     const more = nextOffset < stat.size;
 
+    const uri = toWorkspaceUri(userHome, resolved);
     const header =
       stat.size <= MAX_TEXT_BYTES
-        ? `// ${args.path} (${stat.size} bytes)`
-        : `// ${args.path} bytes ${offset}–${nextOffset} of ${stat.size}` +
+        ? `// ${uri} (${stat.size} bytes)`
+        : `// ${uri} bytes ${offset}–${nextOffset} of ${stat.size}` +
           (more
             ? ` — call read_file again with offset=${nextOffset} for the next chunk`
             : " (final chunk)");

@@ -81,7 +81,10 @@ describe("files plugin tools", () => {
       { pattern: "**/*.md" },
       makeCtx(),
     )) as { matches?: string[] };
-    expect(out.matches?.sort()).toEqual(["/a.md", "/b.md"]);
+    expect(out.matches?.sort()).toEqual([
+      "workspace:///a.md",
+      "workspace:///b.md",
+    ]);
   });
 
   it("each tool exports the expected schema name", () => {
