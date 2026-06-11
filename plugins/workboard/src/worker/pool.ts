@@ -32,7 +32,14 @@ import type {
   PluginLogger,
   TenantDbHandle,
 } from "@tianshu/plugin-sdk";
-import { claimNextTask, updateTask, type Task } from "../db/tasks.js";
+import { claimNextTask, getTask, updateTask, type Task } from "../db/tasks.js";
+
+/**
+ * After this many failed runs in a row, the pool stops re-queueing
+ * the task and parks it in `stalled` for the user to deal with.
+ * Matches the closed-source predecessor's MAX_ATTEMPTS.
+ */
+export const MAX_ATTEMPTS = 3;
 
 /** What a single slot promises to do with one claimed task.
  *  Resolves with the task's terminal state — usually `done`, but a
@@ -210,7 +217,7 @@ export class WorkerPool {
     try {
       update = await worker.run(task);
     } catch (err) {
-      this.deps.log.error("workboard: worker threw — marking stalled", {
+      this.deps.log.error("workboard: worker threw", {
         taskId: task.id,
         agentId: worker.agentId,
         worker: worker.name,
@@ -225,12 +232,47 @@ export class WorkerPool {
     if (this.stopped) return;
 
     const now = Date.now();
-    updateTask(this.deps.db, task.id, {
-      status: update.status,
-      resultSummary: update.resultSummary ?? null,
-      resultFiles: update.resultFiles ?? [],
-      endedAt: now,
-    });
+    if (update.status === "done") {
+      // Success: clear the failure trail and reset the attempt
+      // counter so future re-runs (e.g. a follow-up edit + manual
+      // re-queue) start clean.
+      updateTask(this.deps.db, task.id, {
+        status: "done",
+        resultSummary: update.resultSummary ?? null,
+        resultFiles: update.resultFiles ?? [],
+        failureReason: null,
+        attempts: 0,
+        endedAt: now,
+      });
+    } else {
+      // Failure (`stalled` from agent-loop, `aborted`, or worker
+      // exception). Bump attempts and decide whether to re-queue.
+      // We re-read the row to get the up-to-date attempts count
+      // — the task came in with the value at claim time, but
+      // intervening user edits could have changed it (e.g. user
+      // PATCHed back to ready and reset attempts).
+      const fresh = getTask(this.deps.db, task.id) ?? task;
+      const nextAttempts = (fresh.attempts ?? 0) + 1;
+      const reason =
+        update.resultSummary ?? `worker ${update.status} without summary`;
+      const finalStall = nextAttempts >= MAX_ATTEMPTS;
+      updateTask(this.deps.db, task.id, {
+        status: finalStall ? "stalled" : "ready",
+        // Keep the result_summary clean for `done` only; failures
+        // live in `failure_reason` so the UI can render them as a
+        // warning chip without cluttering successful summaries.
+        resultSummary: null,
+        resultFiles: update.resultFiles ?? [],
+        failureReason: reason,
+        attempts: nextAttempts,
+        // Reset session/started so the next claim re-stamps them.
+        // Keep ended_at clear on retry so the kanban shows the
+        // task as "waiting again" rather than "finished".
+        sessionId: finalStall ? fresh.sessionId : null,
+        startedAt: finalStall ? fresh.startedAt : null,
+        endedAt: finalStall ? now : null,
+      });
+    }
     this.deps.broadcast("workboard.task", {
       kind: "completed",
       taskId: task.id,
@@ -244,13 +286,17 @@ export class WorkerPool {
       worker: worker.name,
       status: update.status,
     });
+    // After a failure that goes back to ready, kick the pool so
+    // another slot can pick it up (or the same slot after another
+    // task) without waiting for the timer.
+    if (update.status !== "done" && !this.stopped) this.nudge();
   }
 
   private recoverOrphaned(): void {
     const result = this.deps.db
       .prepare(
         `UPDATE tasks
-         SET status = 'todo',
+         SET status = 'ready',
              started_at = NULL,
              session_id = NULL
          WHERE status = 'in_progress'`,

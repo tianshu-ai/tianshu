@@ -13,18 +13,31 @@
 
 import type { TenantDbHandle } from "@tianshu/plugin-sdk";
 
-/** Task lifecycle. Mirrors ADR-0002 §6. */
-export type TaskStatus =
-  | "todo"
-  | "in_progress"
-  | "done"
-  | "stalled"
-  | "aborted";
+/**
+ * Task lifecycle. Four states (was five before migration 005).
+ *
+ *   ready       — in the queue, eligible for a worker (deps done,
+ *                 attempts < MAX_ATTEMPTS). Newly-created tasks land
+ *                 here. Failed runs come back here too with
+ *                 `attempts++` and a `failureReason`.
+ *   in_progress — a worker has claimed it.
+ *   done        — worker called task_complete, summary recorded.
+ *   stalled     — final graveyard. A task only ends up here after
+ *                 the worker pool has retried it MAX_ATTEMPTS times
+ *                 without a `done`. The user must intervene
+ *                 (PATCH back to ready / edit description / delete).
+ *
+ * Renamed in 005:
+ *   `todo` → `ready`           (semantics-driven rename)
+ *   `aborted` → folded into `ready` (failure_reason carries why)
+ */
+export type TaskStatus = "ready" | "in_progress" | "done" | "stalled";
 
-/** Display-only — UI renders columns in this order; `aborted` is
- *  hidden by default. */
+/** Display-only — UI renders columns in this order. `stalled` lives
+ *  outside the default set since it's the final-failure column the
+ *  user only opens via the "show archived" toggle. */
 export const VISIBLE_STATUSES: TaskStatus[] = [
-  "todo",
+  "ready",
   "in_progress",
   "done",
   "stalled",
@@ -52,6 +65,15 @@ export interface Task {
    *  eligible for a worker. Owner-scoped: ids must belong to the
    *  same user. Empty array = no prerequisites. */
   dependsOn: string[];
+  /** Last failure reason; populated when the worker pool put a
+   *  task back into `ready` after a failed run, or stamped onto a
+   *  task that ended up in the final `stalled` graveyard. Null on
+   *  fresh tasks and on successful runs. */
+  failureReason: string | null;
+  /** How many times the worker pool has run this task without
+   *  reaching `done`. Reset to 0 on success. The pool stops
+   *  re-queueing after MAX_ATTEMPTS — task moves to `stalled`. */
+  attempts: number;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -71,6 +93,8 @@ interface TaskRow {
   result_files: string | null;
   session_id: string | null;
   depends_on: string | null;
+  failure_reason: string | null;
+  attempts: number;
   created_at: number;
   started_at: number | null;
   ended_at: number | null;
@@ -105,6 +129,8 @@ function rowToTask(row: TaskRow): Task {
     resultFiles: parseStringArray(row.result_files),
     sessionId: row.session_id,
     dependsOn: parseStringArray(row.depends_on),
+    failureReason: row.failure_reason,
+    attempts: row.attempts ?? 0,
     createdAt: row.created_at,
     startedAt: row.started_at,
     endedAt: row.ended_at,
@@ -128,18 +154,17 @@ export interface CreateTaskInput {
 }
 
 const STATUS_VALUES = new Set<TaskStatus>([
-  "todo",
+  "ready",
   "in_progress",
   "done",
   "stalled",
-  "aborted",
 ]);
 
 export function isTaskStatus(s: string): s is TaskStatus {
   return STATUS_VALUES.has(s as TaskStatus);
 }
 
-/** Insert a fresh `todo` task. Caller supplies the id (UUID). */
+/** Insert a fresh `ready` task. Caller supplies the id (UUID). */
 export function createTask(
   db: TenantDbHandle,
   id: string,
@@ -157,8 +182,9 @@ export function createTask(
        id, project_slug, owner_user_id, worker_role, worker_agent_id,
        title, description, status, priority,
        result_summary, result_files, session_id, depends_on,
+       failure_reason, attempts,
        created_at, started_at, ended_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'todo', ?, NULL, NULL, NULL, ?, ?, NULL, NULL)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, NULL, NULL)`,
   ).run(
     id,
     project,
@@ -246,6 +272,8 @@ export interface UpdateTaskPatch {
    *  ownership; the workboard route layer does that. Pass [] to
    *  clear. */
   dependsOn?: string[];
+  failureReason?: string | null;
+  attempts?: number;
   startedAt?: number | null;
   endedAt?: number | null;
 }
@@ -307,6 +335,14 @@ export function updateTask(
     sets.push("depends_on = ?");
     params.push(JSON.stringify(sanitiseDependsOn(patch.dependsOn, id)));
   }
+  if (patch.failureReason !== undefined) {
+    sets.push("failure_reason = ?");
+    params.push(patch.failureReason);
+  }
+  if (patch.attempts !== undefined) {
+    sets.push("attempts = ?");
+    params.push(Number(patch.attempts));
+  }
   if (patch.startedAt !== undefined) {
     sets.push("started_at = ?");
     params.push(patch.startedAt);
@@ -332,7 +368,7 @@ export function deleteTask(db: TenantDbHandle, id: string): boolean {
 
 export interface ProjectSummary {
   projectSlug: string;
-  todo: number;
+  ready: number;
   inProgress: number;
   done: number;
   stalled: number;
@@ -350,7 +386,7 @@ export function listProjects(
       `SELECT project_slug, status, COUNT(*) AS count
        FROM tasks
        WHERE owner_user_id = ?
-         AND status IN ('todo','in_progress','done','stalled')
+         AND status IN ('ready','in_progress','done','stalled')
        GROUP BY project_slug, status
        ORDER BY project_slug ASC`,
     )
@@ -362,7 +398,7 @@ export function listProjects(
     if (!entry) {
       entry = {
         projectSlug: row.project_slug,
-        todo: 0,
+        ready: 0,
         inProgress: 0,
         done: 0,
         stalled: 0,
@@ -370,7 +406,7 @@ export function listProjects(
       };
       byProject.set(row.project_slug, entry);
     }
-    if (row.status === "todo") entry.todo = row.count;
+    if (row.status === "ready") entry.ready = row.count;
     else if (row.status === "in_progress") entry.inProgress = row.count;
     else if (row.status === "done") entry.done = row.count;
     else if (row.status === "stalled") entry.stalled = row.count;
@@ -380,10 +416,9 @@ export function listProjects(
 }
 
 /**
- * Atomically claim one ready (`todo`) task, flipping it to
- * `in_progress` and stamping `started_at`. Returns null if the
- * board is empty (or all eligible tasks are blocked by unfinished
- * dependencies).
+ * Atomically claim one `ready` task, flipping it to `in_progress`
+ * and stamping `started_at`. Returns null if the board is empty
+ * (or all eligible tasks are blocked by unfinished dependencies).
  *
  * The claim is atomic in SQLite by virtue of running inside one
  * statement (`UPDATE ... WHERE id = (SELECT ...)`), then re-reading
@@ -426,7 +461,7 @@ export function claimNextTask(
       return db
         .prepare<[string, string], TaskRow>(
           `SELECT * FROM tasks
-           WHERE status = 'todo'
+           WHERE status = 'ready'
              AND ( worker_agent_id = ?
                    OR (worker_agent_id IS NULL
                        AND (worker_role IS NULL OR worker_role = ?)))
@@ -439,7 +474,7 @@ export function claimNextTask(
       return db
         .prepare<[string], TaskRow>(
           `SELECT * FROM tasks
-           WHERE status = 'todo'
+           WHERE status = 'ready'
              AND worker_agent_id IS NULL
              AND (worker_role IS NULL OR worker_role = ?)
            ORDER BY priority DESC, created_at ASC
@@ -450,7 +485,7 @@ export function claimNextTask(
     return db
       .prepare<[], TaskRow>(
         `SELECT * FROM tasks
-         WHERE status = 'todo'
+         WHERE status = 'ready'
            AND worker_agent_id IS NULL
          ORDER BY priority DESC, created_at ASC
          LIMIT 50`,
@@ -466,7 +501,7 @@ export function claimNextTask(
       .prepare<[number, string | null, string], { changes?: number }>(
         `UPDATE tasks
          SET status = 'in_progress', started_at = ?, session_id = ?
-         WHERE id = ? AND status = 'todo'`,
+         WHERE id = ? AND status = 'ready'`,
       )
       .run(now, sessionId, candidate.id) as { changes: number };
     if (!result.changes) continue;

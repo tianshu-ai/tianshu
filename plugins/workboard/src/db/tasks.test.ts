@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
 import { up as runInitialMigration } from "../../../../packages/server/src/core/migrations/001-initial.js";
 import { up as runDepsMigration } from "../../../../packages/server/src/core/migrations/002-task-dependencies.js";
+import { up as runStatusRename } from "../../../../packages/server/src/core/migrations/005-task-status-rename.js";
 import { ensureSchema as ensureAgentsSchema } from "./agents.js";
 import {
   createTask,
@@ -26,6 +27,7 @@ function freshDb(): Database.Database {
   db.pragma("journal_mode = MEMORY");
   runInitialMigration(db);
   runDepsMigration(db);
+  runStatusRename(db);
   ensureAgentsSchema(db);
   // Tasks reference users(id); seed a stub user so the FK is valid.
   db.prepare(
@@ -52,7 +54,7 @@ describe("tasks db layer", () => {
     });
     expect(task.id).toBe("t1");
     expect(task.title).toBe("Hello");
-    expect(task.status).toBe("todo");
+    expect(task.status).toBe("ready");
     expect(task.projectSlug).toBe("inbox");
     expect(task.priority).toBe(0);
     expect(task.workerRole).toBeNull();
@@ -265,7 +267,7 @@ describe("tasks db layer", () => {
     const byName = Object.fromEntries(projects.map((p) => [p.projectSlug, p]));
     expect(byName.alpha).toEqual({
       projectSlug: "alpha",
-      todo: 1,
+      ready: 1,
       inProgress: 0,
       done: 1,
       stalled: 0,
@@ -273,7 +275,7 @@ describe("tasks db layer", () => {
     });
     expect(byName.beta).toEqual({
       projectSlug: "beta",
-      todo: 0,
+      ready: 0,
       inProgress: 1,
       done: 0,
       stalled: 0,

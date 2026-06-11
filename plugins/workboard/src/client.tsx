@@ -43,11 +43,11 @@ import WorkerAgentsPage from "./worker-agents-page.js";
 const API_BASE = "/api/p/workboard";
 
 type TaskStatus =
-  | "todo"
+  | "ready"
   | "in_progress"
   | "done"
   | "stalled"
-  | "aborted";
+
 
 interface Task {
   id: string;
@@ -79,7 +79,7 @@ interface TaskMeta {
 
 interface ProjectSummary {
   project: string;
-  todo: number;
+  ready: number;
   inProgress: number;
   done: number;
   stalled: number;
@@ -101,14 +101,14 @@ interface ColumnSpec {
 }
 
 const BOARD_COLUMNS: ColumnSpec[] = [
-  { status: "todo",        label: "Todo",        color: "border-indigo-500/40 bg-indigo-500/5",    dot: "bg-indigo-400" },
+  { status: "ready",       label: "Ready",        color: "border-indigo-500/40 bg-indigo-500/5",    dot: "bg-indigo-400" },
   { status: "in_progress", label: "In progress", color: "border-amber-500/40 bg-amber-500/5",      dot: "bg-amber-400 animate-pulse" },
   { status: "done",        label: "Done",        color: "border-emerald-500/40 bg-emerald-500/5",  dot: "bg-emerald-400" },
 ];
 
 const EXTRA_COLUMNS: ColumnSpec[] = [
   { status: "stalled", label: "Stalled", color: "border-orange-500/40 bg-orange-500/5", dot: "bg-orange-400" },
-  { status: "aborted", label: "Aborted", color: "border-red-500/40 bg-red-500/5",       dot: "bg-red-400" },
+  
 ];
 
 async function getJson<T>(url: string): Promise<T> {
@@ -160,7 +160,7 @@ function projectChipsFromSummary(
 ): { key: string; label: string; count: number }[] {
   const sumFor = (p: ProjectSummary): number => {
     let n = 0;
-    if (visibleStatuses.includes("todo")) n += p.todo;
+    if (visibleStatuses.includes("ready")) n += p.ready;
     if (visibleStatuses.includes("in_progress")) n += p.inProgress;
     if (visibleStatuses.includes("done")) n += p.done;
     if (visibleStatuses.includes("stalled")) n += p.stalled;
@@ -367,7 +367,7 @@ function WorkboardPanel(_props: PanelProps) {
 
   const chips = useMemo(
     () =>
-      projectChipsFromSummary(ctrl.projects, ["todo", "in_progress", "done"]),
+      projectChipsFromSummary(ctrl.projects, ["ready", "in_progress", "done"]),
     [ctrl.projects],
   );
 
@@ -464,8 +464,8 @@ function WorkboardAdminPage(_props: AdminPageProps) {
   }, [ctrl.tasks, selected]);
 
   const visibleStatuses: TaskStatus[] = includeArchived
-    ? ["todo", "in_progress", "done", "stalled", "aborted"]
-    : ["todo", "in_progress", "done"];
+    ? ["ready", "in_progress", "done", "stalled"]
+    : ["ready", "in_progress", "done"];
 
   const visibleTasks = useMemo(() => {
     if (!ctrl.tasks) return null;
@@ -651,7 +651,7 @@ function KanbanColumn({
         >
           {tasks.length}
         </span>
-        {column.status === "todo" && (
+        {column.status === "ready" && (
           <button
             type="button"
             title="Add task"
@@ -692,15 +692,15 @@ function KanbanColumn({
         {!showAdd && tasks.length === 0 && (
           <li
             className={`text-center text-[10px] text-gray-600 py-3 ${
-              column.status === "todo"
+              column.status === "ready"
                 ? "cursor-pointer hover:text-gray-400"
                 : ""
             }`}
             onClick={
-              column.status === "todo" ? () => setShowAdd(true) : undefined
+              column.status === "ready" ? () => setShowAdd(true) : undefined
             }
           >
-            {column.status === "todo"
+            {column.status === "ready"
               ? "empty — click to add"
               : "empty"}
           </li>
@@ -724,7 +724,7 @@ function computeMeta(task: Task, allTasks: Task[]): TaskMeta {
   // visibly blocked until the user re-points or removes it.
   const missingDepCount = (task.dependsOn?.length ?? 0) - deps.length;
   const blocked =
-    task.status === "todo" &&
+    task.status === "ready" &&
     (pendingDeps.length > 0 || missingDepCount > 0);
   return { deps, pendingDeps, blocked };
 }
@@ -946,9 +946,9 @@ function Section({
 }
 
 function nextStatus(status: TaskStatus): TaskStatus | null {
-  if (status === "todo") return "in_progress";
+  if (status === "ready") return "in_progress";
   if (status === "in_progress") return "done";
-  if (status === "stalled") return "todo";
+  if (status === "stalled") return "ready";
   return null;
 }
 
@@ -1428,11 +1428,10 @@ function TaskModal({
   ]);
 
   const allStatuses: TaskStatus[] = [
-    "todo",
+    "ready",
     "in_progress",
     "done",
     "stalled",
-    "aborted",
   ];
 
   const save = async () => {

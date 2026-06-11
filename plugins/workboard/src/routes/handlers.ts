@@ -165,7 +165,7 @@ const deps_unused_marker: { db: import("@tianshu/plugin-sdk").TenantDbHandle } =
 function projectsJson(rows: ProjectSummary[]): Record<string, unknown>[] {
   return rows.map((p) => ({
     project: p.projectSlug,
-    todo: p.todo,
+    ready: p.ready,
     inProgress: p.inProgress,
     done: p.done,
     stalled: p.stalled,
@@ -198,7 +198,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
         statuses.push(trimmed);
       }
     } else if (includeAborted) {
-      statuses = ["todo", "in_progress", "done", "stalled", "aborted"];
+      statuses = ["ready", "in_progress", "done", "stalled"];
     }
 
     const rows = listTasks(deps.db, {
@@ -263,19 +263,15 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       workerAgentId,
       dependsOn,
     });
-    // Optional second-step patch when caller pre-selected a non-`todo`
+    // Optional second-step patch when caller pre-selected a non-`ready`
     // status (e.g. user added a card directly into the In-progress
     // column). Done in-process so the create + status flip land
     // atomically from the client's perspective.
-    if (initialStatus && initialStatus !== "todo") {
+    if (initialStatus && initialStatus !== "ready") {
       const now = Date.now();
       const patch: Parameters<typeof updateTask>[2] = { status: initialStatus };
       if (initialStatus === "in_progress") patch.startedAt = now;
-      if (
-        initialStatus === "done" ||
-        initialStatus === "stalled" ||
-        initialStatus === "aborted"
-      ) {
+      if (initialStatus === "done" || initialStatus === "stalled") {
         patch.endedAt = now;
       }
       const after = updateTask(deps.db, task.id, patch);
@@ -334,14 +330,10 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       if (body.status === "in_progress" && !before.startedAt) {
         patch.startedAt = now;
       }
-      if (
-        body.status === "done" ||
-        body.status === "stalled" ||
-        body.status === "aborted"
-      ) {
+      if (body.status === "done" || body.status === "stalled") {
         patch.endedAt = now;
       }
-      if (body.status === "todo") {
+      if (body.status === "ready") {
         patch.startedAt = null;
         patch.endedAt = null;
         patch.resultSummary = null;
@@ -365,7 +357,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     }
 
     const after = updateTask(deps.db, id, patch);
-    if (after && after.status === "todo" && before.status !== "todo") {
+    if (after && after.status === "ready" && before.status !== "ready") {
       deps.onTaskWrite();
     }
     res.json({ task: after ? taskJson(after) : null });

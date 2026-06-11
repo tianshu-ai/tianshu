@@ -13,6 +13,7 @@ import * as initial from "./001-initial.js";
 import * as taskDependencies from "./002-task-dependencies.js";
 import * as sessionTree from "./003-session-tree.js";
 import * as rebuildMessageChain from "./004-rebuild-message-chain.js";
+import * as taskStatusRename from "./005-task-status-rename.js";
 
 export interface Migration {
   id: string;
@@ -25,6 +26,7 @@ export const MIGRATIONS: Migration[] = [
   { id: taskDependencies.ID, up: taskDependencies.up },
   { id: sessionTree.ID, up: sessionTree.up },
   { id: rebuildMessageChain.ID, up: rebuildMessageChain.up },
+  { id: taskStatusRename.ID, up: taskStatusRename.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `

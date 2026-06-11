@@ -55,8 +55,10 @@ interface ToolReturn {
 }
 
 const STATUS_DESCRIPTION =
-  'One of "todo", "in_progress", "done", "stalled", "aborted". ' +
-  '"todo" tasks are picked up by the worker pool. The board UI hides "aborted" by default.';
+  'One of "ready", "in_progress", "done", "stalled". ' +
+  '"ready" tasks are picked up by the worker pool. "stalled" is the ' +
+  'final-failure column for tasks that retried past MAX_ATTEMPTS — ' +
+  'move them back to "ready" once you fix the cause.';
 
 function summarise(t: Task, blocked: boolean): Record<string, unknown> {
   return {
@@ -182,7 +184,7 @@ export function buildTaskListTool(deps: ToolDeps): AgentTool {
       });
       const blocked = new Set<string>();
       for (const t of tasks) {
-        if (t.status === "todo" && !isEligible(deps.db, t)) {
+        if (t.status === "ready" && !isEligible(deps.db, t)) {
           blocked.add(t.id);
         }
       }
@@ -335,7 +337,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
       }
       const patched = updateTask(deps.db, args.id, patch);
       const blocked = patched
-        ? patched.status === "todo" && !isEligible(deps.db, patched)
+        ? patched.status === "ready" && !isEligible(deps.db, patched)
         : false;
       return {
         ok: true,
@@ -351,8 +353,8 @@ export function buildTaskMoveTool(deps: ToolDeps): AgentTool {
     schema: {
       name: "task_move",
       description:
-        "Change a task's status column. Valid targets: todo, in_progress, done, stalled, aborted. " +
-        "Moving back to 'todo' re-queues the task for the worker pool.",
+        "Change a task's status column. Valid targets: ready, in_progress, done, stalled. " +
+        "Moving back to 'ready' re-queues the task for the worker pool.",
       parameters: Type.Object({
         id: Type.String(),
         status: Type.String({ description: STATUS_DESCRIPTION }),
@@ -388,21 +390,25 @@ export function buildTaskMoveTool(deps: ToolDeps): AgentTool {
       }
       // Handy timestamp accounting so the UI doesn't have to guess.
       if (status === "in_progress" && !before.startedAt) patch.startedAt = now;
-      if (status === "done" || status === "stalled" || status === "aborted") {
+      if (status === "done" || status === "stalled") {
         patch.endedAt = now;
       }
-      if (status === "todo") {
+      if (status === "ready") {
         patch.startedAt = null;
         patch.endedAt = null;
         patch.resultSummary = null;
+        // Manual re-queue clears the failure trail too — the user
+        // is saying "this is fixed, try again".
+        patch.failureReason = null;
+        patch.attempts = 0;
       }
       const after = updateTask(deps.db, args.id, patch);
 
       // Re-queueing → kick the pool so the worker drains immediately.
-      if (status === "todo") deps.onTaskWrite();
+      if (status === "ready") deps.onTaskWrite();
 
       const blocked = after
-        ? after.status === "todo" && !isEligible(deps.db, after)
+        ? after.status === "ready" && !isEligible(deps.db, after)
         : false;
       return {
         ok: true,
@@ -419,7 +425,7 @@ export function buildTaskDeleteTool(deps: ToolDeps): AgentTool {
       name: "task_delete",
       description:
         "Remove a task from the board. The id is gone for good — there's no undo. " +
-        "Prefer task_move with status='aborted' if you want to keep the audit trail.",
+        "Prefer task_move with status='stalled' if you want to keep the audit trail.",
       parameters: Type.Object({
         id: Type.String(),
       }),
