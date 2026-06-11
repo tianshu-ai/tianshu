@@ -471,6 +471,20 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
         (l): l is string => typeof l === "string",
       );
     }
+    if (typeof body.attempts === "number" && Number.isFinite(body.attempts)) {
+      // Allow the user to reset the retry counter ("Retry" button
+      // on the stalled-label chip). We don't need a stricter
+      // contract — attempts is informational; if a client sets a
+      // weird value the worker pool just keeps incrementing from
+      // there.
+      patch.attempts = body.attempts;
+    }
+    if (
+      typeof body.failureReason === "string" ||
+      body.failureReason === null
+    ) {
+      patch.failureReason = body.failureReason as string | null;
+    }
 
     const after = updateTask(deps.db, id, patch);
     // If the patch removed a pool-skip label (e.g. user cleared
