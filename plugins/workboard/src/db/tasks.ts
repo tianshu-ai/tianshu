@@ -14,33 +14,35 @@
 import type { TenantDbHandle } from "@tianshu/plugin-sdk";
 
 /**
- * Task lifecycle. Four states (was five before migration 005).
+ * Task lifecycle — only three states.
  *
  *   ready       — in the queue, eligible for a worker (deps done,
- *                 attempts < MAX_ATTEMPTS). Newly-created tasks land
- *                 here. Failed runs come back here too with
- *                 `attempts++` and a `failureReason`.
+ *                 not labelled `stalled` or `draft`). Newly-created
+ *                 tasks land here. Failed runs come back here too
+ *                 with `attempts++`, `failureReason`, and — once
+ *                 attempts cross `MAX_ATTEMPTS` — a `stalled` label.
  *   in_progress — a worker has claimed it.
  *   done        — worker called task_complete, summary recorded.
- *   stalled     — final graveyard. A task only ends up here after
- *                 the worker pool has retried it MAX_ATTEMPTS times
- *                 without a `done`. The user must intervene
- *                 (PATCH back to ready / edit description / delete).
  *
- * Renamed in 005:
- *   `todo` → `ready`           (semantics-driven rename)
- *   `aborted` → folded into `ready` (failure_reason carries why)
+ * Failure modes are expressed via labels instead of a separate
+ * status column (mirrors the closed-source predecessor):
+ *
+ *   labels: ['stalled']  failed too many times; pool skips. User
+ *                        clears the label or edits + retries.
+ *   labels: ['draft']    not ready for the pool yet; pool skips.
+ *
+ * Migration history:
+ *   003 added the entry tree.
+ *   005 renamed `todo` → `ready`, folded `aborted` into `ready`.
+ *   006 turned the `stalled` STATUS into a `stalled` LABEL.
  */
-export type TaskStatus = "ready" | "in_progress" | "done" | "stalled";
+export type TaskStatus = "ready" | "in_progress" | "done";
 
-/** Display-only — UI renders columns in this order. `stalled` lives
- *  outside the default set since it's the final-failure column the
- *  user only opens via the "show archived" toggle. */
+/** Display-only — the kanban shows exactly these three columns. */
 export const VISIBLE_STATUSES: TaskStatus[] = [
   "ready",
   "in_progress",
   "done",
-  "stalled",
 ];
 
 export interface Task {
@@ -71,13 +73,26 @@ export interface Task {
    *  fresh tasks and on successful runs. */
   failureReason: string | null;
   /** How many times the worker pool has run this task without
-   *  reaching `done`. Reset to 0 on success. The pool stops
-   *  re-queueing after MAX_ATTEMPTS — task moves to `stalled`. */
+   *  reaching `done`. Reset to 0 on success. After MAX_ATTEMPTS
+   *  failures the pool stamps a `stalled` label so the task stays
+   *  visible in the ready column but is no longer claimed. */
   attempts: number;
+  /** Free-form labels. Two are reserved by the worker pool:
+   *    - `stalled` — set after MAX_ATTEMPTS failed runs; pool skips
+   *      these rows when claiming. Clearing the label re-queues.
+   *    - `draft`   — user-set; same skip semantics. "Not ready yet,
+   *      don't pick up."
+   *  Anything else is treated as user metadata; the UI renders
+   *  the names verbatim. */
+  labels: string[];
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
 }
+
+/** Labels that take the row out of pool consideration even when
+ *  status='ready'. Mirrors the closed-source predecessor. */
+export const POOL_SKIP_LABELS: readonly string[] = ["stalled", "draft"];
 
 interface TaskRow {
   id: string;
@@ -95,6 +110,7 @@ interface TaskRow {
   depends_on: string | null;
   failure_reason: string | null;
   attempts: number;
+  labels: string | null;
   created_at: number;
   started_at: number | null;
   ended_at: number | null;
@@ -131,6 +147,7 @@ function rowToTask(row: TaskRow): Task {
     dependsOn: parseStringArray(row.depends_on),
     failureReason: row.failure_reason,
     attempts: row.attempts ?? 0,
+    labels: parseStringArray(row.labels),
     createdAt: row.created_at,
     startedAt: row.started_at,
     endedAt: row.ended_at,
@@ -151,13 +168,28 @@ export interface CreateTaskInput {
    *  responsible for filtering to ids belonging to the same owner;
    *  the route layer does that today. */
   dependsOn?: string[];
+  /** Free-form labels (deduped + trimmed). The reserved labels
+   *  `stalled` / `draft` keep the task out of the pool's claim
+   *  filter (see POOL_SKIP_LABELS). */
+  labels?: string[];
+}
+
+function sanitiseLabels(input: string[] | undefined): string[] {
+  if (!Array.isArray(input)) return [];
+  const out = new Set<string>();
+  for (const raw of input) {
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    out.add(trimmed);
+  }
+  return [...out];
 }
 
 const STATUS_VALUES = new Set<TaskStatus>([
   "ready",
   "in_progress",
   "done",
-  "stalled",
 ]);
 
 export function isTaskStatus(s: string): s is TaskStatus {
@@ -177,14 +209,15 @@ export function createTask(
     input.workerAgentId?.trim() ? input.workerAgentId.trim() : null;
   const priority = Number.isFinite(input.priority) ? Number(input.priority) : 0;
   const dependsOn = sanitiseDependsOn(input.dependsOn, id);
+  const labels = sanitiseLabels(input.labels);
   db.prepare(
     `INSERT INTO tasks (
        id, project_slug, owner_user_id, worker_role, worker_agent_id,
        title, description, status, priority,
        result_summary, result_files, session_id, depends_on,
-       failure_reason, attempts,
+       failure_reason, attempts, labels,
        created_at, started_at, ended_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, NULL, NULL)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL)`,
   ).run(
     id,
     project,
@@ -195,6 +228,7 @@ export function createTask(
     input.description?.trim() || null,
     priority,
     JSON.stringify(dependsOn),
+    JSON.stringify(labels),
     now,
   );
   const row = db
@@ -274,6 +308,10 @@ export interface UpdateTaskPatch {
   dependsOn?: string[];
   failureReason?: string | null;
   attempts?: number;
+  /** Replace the labels list. Pass [] to clear. The pool's reserved
+   *  labels (`stalled`, `draft`) follow the same rules as everything
+   *  else here — sanitised, deduped. */
+  labels?: string[];
   startedAt?: number | null;
   endedAt?: number | null;
 }
@@ -343,6 +381,10 @@ export function updateTask(
     sets.push("attempts = ?");
     params.push(Number(patch.attempts));
   }
+  if (patch.labels !== undefined) {
+    sets.push("labels = ?");
+    params.push(JSON.stringify(sanitiseLabels(patch.labels)));
+  }
   if (patch.startedAt !== undefined) {
     sets.push("started_at = ?");
     params.push(patch.startedAt);
@@ -371,7 +413,7 @@ export interface ProjectSummary {
   ready: number;
   inProgress: number;
   done: number;
-  stalled: number;
+
   total: number;
 }
 
@@ -386,7 +428,7 @@ export function listProjects(
       `SELECT project_slug, status, COUNT(*) AS count
        FROM tasks
        WHERE owner_user_id = ?
-         AND status IN ('ready','in_progress','done','stalled')
+         AND status IN ('ready','in_progress','done')
        GROUP BY project_slug, status
        ORDER BY project_slug ASC`,
     )
@@ -401,7 +443,6 @@ export function listProjects(
         ready: 0,
         inProgress: 0,
         done: 0,
-        stalled: 0,
         total: 0,
       };
       byProject.set(row.project_slug, entry);
@@ -409,7 +450,6 @@ export function listProjects(
     if (row.status === "ready") entry.ready = row.count;
     else if (row.status === "in_progress") entry.inProgress = row.count;
     else if (row.status === "done") entry.done = row.count;
-    else if (row.status === "stalled") entry.stalled = row.count;
     entry.total += row.count;
   }
   return [...byProject.values()];
@@ -511,9 +551,24 @@ export function claimNextTask(
   return null;
 }
 
-/** Returns true if every dependency of `task` is in status='done'.
- *  An empty `dependsOn` is always eligible. */
+/**
+ * Whether the pool may claim this task right now.
+ *
+ * Three checks, all must pass:
+ *   1. status === 'ready' — caller pre-filters but we double-check
+ *      since `isEligible` is also called from the chat-side
+ *      `task_create`/`task_update` tools to compute the
+ *      "blocked" hint shown to the agent.
+ *   2. labels don't include any pool-skip label (`stalled`,
+ *      `draft`). These are the user's "don't pick this up yet"
+ *      signal.
+ *   3. every dependency is in status='done'. Missing rows count
+ *      as unsatisfied — a deleted prerequisite doesn't
+ *      auto-resolve. (Owner can re-point with task_update.)
+ */
 export function isEligible(db: TenantDbHandle, task: Task): boolean {
+  if (task.status !== "ready") return false;
+  if (task.labels.some((l) => POOL_SKIP_LABELS.includes(l))) return false;
   if (task.dependsOn.length === 0) return true;
   const placeholders = task.dependsOn.map(() => "?").join(",");
   const rows = db
@@ -521,8 +576,6 @@ export function isEligible(db: TenantDbHandle, task: Task): boolean {
       `SELECT id, status FROM tasks WHERE id IN (${placeholders})`,
     )
     .all(...task.dependsOn);
-  // Missing rows count as unsatisfied — a deleted prerequisite
-  // doesn't auto-resolve. (Owner can re-point with task_update.)
   if (rows.length !== task.dependsOn.length) return false;
   return rows.every((r) => r.status === "done");
 }

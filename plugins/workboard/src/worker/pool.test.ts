@@ -6,6 +6,7 @@ import Database from "better-sqlite3";
 import { up as runInitialMigration } from "../../../../packages/server/src/core/migrations/001-initial.js";
 import { up as runDepsMigration } from "../../../../packages/server/src/core/migrations/002-task-dependencies.js";
 import { up as runStatusRename } from "../../../../packages/server/src/core/migrations/005-task-status-rename.js";
+import { up as runTaskLabels } from "../../../../packages/server/src/core/migrations/006-task-labels.js";
 import { ensureSchema as ensureAgentsSchema } from "../db/agents.js";
 import { createTask, getTask, updateTask } from "../db/tasks.js";
 import {
@@ -21,6 +22,7 @@ function freshDb(): Database.Database {
   runInitialMigration(db);
   runDepsMigration(db);
   runStatusRename(db);
+  runTaskLabels(db);
   ensureAgentsSchema(db);
   db.prepare(
     `INSERT INTO users (id, external_id, provider, display_name, created_at)
@@ -149,13 +151,15 @@ describe("WorkerPool", () => {
     pool.start();
     // The pool re-nudges after every failure, so a synchronously
     // throwing worker burns through the retry budget very quickly.
-    // We just wait long enough for it to settle in stalled, then
-    // assert end-state: 3 attempts, stalled, failure_reason set.
+    // We just wait long enough for it to settle, then assert
+    // end-state: 3 attempts, status still 'ready', a 'stalled'
+    // label so the pool stops claiming, failure_reason set.
     await pause(80);
 
     const t = getTask(db, "t1");
-    expect(t?.status).toBe("stalled");
+    expect(t?.status).toBe("ready");
     expect(t?.attempts).toBe(3);
+    expect(t?.labels).toContain("stalled");
     expect(t?.failureReason).toContain("nope");
     expect(t?.resultSummary).toBeNull();
     pool.stop();

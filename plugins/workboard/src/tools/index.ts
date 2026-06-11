@@ -56,10 +56,10 @@ interface ToolReturn {
 }
 
 const STATUS_DESCRIPTION =
-  'One of "ready", "in_progress", "done", "stalled". ' +
-  '"ready" tasks are picked up by the worker pool. "stalled" is the ' +
-  'final-failure column for tasks that retried past MAX_ATTEMPTS — ' +
-  'move them back to "ready" once you fix the cause.';
+  'One of "ready", "in_progress", "done". ' +
+  '"ready" tasks are picked up by the worker pool. ' +
+  'Tasks tagged with the "stalled" or "draft" label stay in "ready" ' +
+  'but are skipped by the pool until the label is removed.';
 
 function summarise(t: Task, blocked: boolean): Record<string, unknown> {
   return {
@@ -72,6 +72,9 @@ function summarise(t: Task, blocked: boolean): Record<string, unknown> {
     description: t.description,
     resultSummary: t.resultSummary,
     dependsOn: t.dependsOn,
+    labels: t.labels,
+    failureReason: t.failureReason,
+    attempts: t.attempts,
     blocked,
     createdAt: t.createdAt,
     startedAt: t.startedAt,
@@ -141,7 +144,7 @@ export function buildTaskListTool(deps: ToolDeps): AgentTool {
       name: "task_list",
       description:
         "List tasks on the workboard. Defaults to the four visible columns " +
-        "(todo / in_progress / done / stalled). Pass a project filter to scope " +
+        "(ready / in_progress / done). Pass a project filter to scope " +
         "to one slug, or status to override the default columns. Use this before " +
         "task_create to avoid duplicates.",
       parameters: Type.Object({
@@ -235,6 +238,12 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
               "Task ids that must reach status='done' before this task is eligible for a worker. Use this to express 'B starts after A'. Ids that don't belong to you are silently ignored.",
           }),
         ),
+        labels: Type.Optional(
+          Type.Array(Type.String(), {
+            description:
+              "Free-form labels. Reserved values: 'stalled' (after MAX_ATTEMPTS pool failures, set automatically) and 'draft' (user opt-in: keeps the task in ready column but the pool skips it until cleared).",
+          }),
+        ),
       }),
     },
     execute: (raw, ctx: AgentToolContext): ToolReturn => {
@@ -245,6 +254,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
         priority?: number;
         worker_role?: string;
         depends_on?: string[];
+        labels?: string[];
       };
       const title = args.title?.trim();
       if (!title) return { ok: false, text: "title is required" };
@@ -283,6 +293,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
         priority: args.priority,
         workerRole: role,
         dependsOn,
+        labels: args.labels,
       });
       const blocked = !isEligible(deps.db, task);
       deps.onTaskWrite();
@@ -304,7 +315,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
       name: "task_update",
       description:
         "Patch a task. Pass id + any subset of (title, description, project, " +
-        "priority, worker_role, depends_on). For status changes use task_move.",
+        "priority, worker_role, depends_on, labels). For status changes use task_move.",
       parameters: Type.Object({
         id: Type.String(),
         title: Type.Optional(Type.String()),
@@ -318,6 +329,12 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
               "Replace the dependency list. Pass [] to clear. Ids must belong to you; bogus ids are silently dropped.",
           }),
         ),
+        labels: Type.Optional(
+          Type.Array(Type.String(), {
+            description:
+              "Replace the labels list. Pass [] to clear. Reserved: 'stalled' (set automatically by the pool after MAX_ATTEMPTS failures), 'draft' (pool skip).",
+          }),
+        ),
       }),
     },
     execute: (raw, ctx: AgentToolContext): ToolReturn => {
@@ -329,6 +346,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         priority?: number;
         worker_role?: string | null;
         depends_on?: string[];
+        labels?: string[];
       };
       if (!args.id) return { ok: false, text: "id is required" };
       const before = getTask(deps.db, args.id);
@@ -368,7 +386,21 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
           args.id,
         );
       }
+      if (args.labels !== undefined) {
+        patch.labels = args.labels;
+      }
       const patched = updateTask(deps.db, args.id, patch);
+      // If the patch dropped the `stalled` / `draft` label the
+      // task may now be claimable; nudge so the pool re-considers.
+      if (
+        patched &&
+        args.labels !== undefined &&
+        before.labels.some((l) => ["stalled", "draft"].includes(l)) &&
+        !patched.labels.some((l) => ["stalled", "draft"].includes(l)) &&
+        patched.status === "ready"
+      ) {
+        deps.onTaskWrite();
+      }
       const blocked = patched
         ? patched.status === "ready" && !isEligible(deps.db, patched)
         : false;
@@ -386,7 +418,7 @@ export function buildTaskMoveTool(deps: ToolDeps): AgentTool {
     schema: {
       name: "task_move",
       description:
-        "Change a task's status column. Valid targets: ready, in_progress, done, stalled. " +
+        "Change a task's status column. Valid targets: ready, in_progress, done. " +
         "Moving back to 'ready' re-queues the task for the worker pool.",
       parameters: Type.Object({
         id: Type.String(),
@@ -394,7 +426,7 @@ export function buildTaskMoveTool(deps: ToolDeps): AgentTool {
         result_summary: Type.Optional(
           Type.String({
             description:
-              "Optional one-line summary for the result column (typically used when moving to done/stalled).",
+              "Optional one-line summary for the result column (typically used when moving to done).",
           }),
         ),
       }),
@@ -423,7 +455,7 @@ export function buildTaskMoveTool(deps: ToolDeps): AgentTool {
       }
       // Handy timestamp accounting so the UI doesn't have to guess.
       if (status === "in_progress" && !before.startedAt) patch.startedAt = now;
-      if (status === "done" || status === "stalled") {
+      if (status === "done") {
         patch.endedAt = now;
       }
       if (status === "ready") {
@@ -461,7 +493,7 @@ export function buildTaskDeleteTool(deps: ToolDeps): AgentTool {
       name: "task_delete",
       description:
         "Remove a task from the board. The id is gone for good — there's no undo. " +
-        "Prefer task_move with status='stalled' if you want to keep the audit trail.",
+        "Add the 'stalled' label via task_update if you want to keep the audit trail.",
       parameters: Type.Object({
         id: Type.String(),
       }),

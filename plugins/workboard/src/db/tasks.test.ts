@@ -10,6 +10,7 @@ import Database from "better-sqlite3";
 import { up as runInitialMigration } from "../../../../packages/server/src/core/migrations/001-initial.js";
 import { up as runDepsMigration } from "../../../../packages/server/src/core/migrations/002-task-dependencies.js";
 import { up as runStatusRename } from "../../../../packages/server/src/core/migrations/005-task-status-rename.js";
+import { up as runTaskLabels } from "../../../../packages/server/src/core/migrations/006-task-labels.js";
 import { ensureSchema as ensureAgentsSchema } from "./agents.js";
 import {
   createTask,
@@ -28,6 +29,7 @@ function freshDb(): Database.Database {
   runInitialMigration(db);
   runDepsMigration(db);
   runStatusRename(db);
+  runTaskLabels(db);
   ensureAgentsSchema(db);
   // Tasks reference users(id); seed a stub user so the FK is valid.
   db.prepare(
@@ -270,7 +272,6 @@ describe("tasks db layer", () => {
       ready: 1,
       inProgress: 0,
       done: 1,
-      stalled: 0,
       total: 2,
     });
     expect(byName.beta).toEqual({
@@ -278,11 +279,36 @@ describe("tasks db layer", () => {
       ready: 0,
       inProgress: 1,
       done: 0,
-      stalled: 0,
       total: 1,
     });
     expect(byName.alpha.total + byName.beta.total).toBe(3);
     // u2's row not visible.
     expect(projects.every((p) => p.total > 0)).toBe(true);
+  });
+
+  it("isEligible respects pool-skip labels (`stalled`, `draft`)", () => {
+    createTask(db, "a", { ownerUserId: "u1", title: "a" });
+    createTask(db, "b", { ownerUserId: "u1", title: "b", labels: ["draft"] });
+    createTask(db, "c", { ownerUserId: "u1", title: "c", labels: ["stalled"] });
+    expect(isEligible(db, getTask(db, "a")!)).toBe(true);
+    expect(isEligible(db, getTask(db, "b")!)).toBe(false);
+    expect(isEligible(db, getTask(db, "c")!)).toBe(false);
+  });
+
+  it("createTask sanitises label inputs (trim, dedupe, drop empties)", () => {
+    const t = createTask(db, "x", {
+      ownerUserId: "u1",
+      title: "x",
+      labels: ["  draft  ", "draft", "", "urgent"],
+    });
+    expect(t.labels.sort()).toEqual(["draft", "urgent"]);
+  });
+
+  it("updateTask can replace labels (and supports clearing with [])", () => {
+    createTask(db, "x", { ownerUserId: "u1", title: "x", labels: ["draft"] });
+    let t = updateTask(db, "x", { labels: ["stalled", "q3"] });
+    expect(t?.labels.sort()).toEqual(["q3", "stalled"]);
+    t = updateTask(db, "x", { labels: [] });
+    expect(t?.labels).toEqual([]);
   });
 });
