@@ -72,10 +72,11 @@ export type ServerMsg =
       text: string;
     }
   /** A compaction pass just landed. Sent for both auto-compact (
-   *  triggered by the 50% context threshold) and manual `/compact`
-   *  invocations. The UI shows a "📌 history compacted" marker so
-   *  the user knows their next replies are running on a summary of
-   *  the older conversation. */
+   *  triggered by pi's `shouldCompact()` against the model's
+   *  context window) and manual `/compact` invocations. The UI
+   *  shows a "📌 history compacted" marker so the user knows
+   *  their next replies are running on a summary of the older
+   *  conversation. */
   | {
       type: "history_compacted";
       reason: "auto" | "manual";
@@ -84,6 +85,10 @@ export type ServerMsg =
       summarisedCount: number;
       keptCount: number;
       durationMs: number;
+      /** Estimated context tokens before compaction. Only set on
+       *  the harness-driven auto-compact path; the legacy
+       *  /compact slash command still leaves this undefined. */
+      tokensBefore?: number;
     }
   /** Plugin enable/disable just landed. `enabled` lists plugin ids
    *  that came online (and what they brought — tools / toolsets);

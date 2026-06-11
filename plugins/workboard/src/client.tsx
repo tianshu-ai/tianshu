@@ -1717,22 +1717,25 @@ function SidebarWorkerRow({
   kind: string;
   busy: boolean;
 }) {
-  // Workboard surface shows worker *kind* (a.k.a. type) as the
-  // primary identity — a workboard cares about "what runtime is
-  // this", not "which configured instance". The agent's display
-  // name (set in Settings → Plugins → Worker agents) is shown as a
-  // smaller subline so the user can still tell two echo agents
-  // apart.
+  // The agent's display name (set in Settings → Plugins → Worker
+  // agents) is the primary identity — the user wants to know which
+  // configured instance this is at a glance. The worker *kind*
+  // (echo / llm / future ADR-0002 roles) is shown as a small
+  // secondary tag so two agents of the same kind stay
+  // distinguishable without making the kind dominate the row.
   const emoji = kindEmoji(kind);
   return (
     <div
       className="flex cursor-default items-center gap-2 rounded py-0.5 pl-1 hover:bg-gray-700/30"
-      title={`Worker type: ${kind}\nAgent: ${name}`}
+      title={`Agent: ${name}\nWorker type: ${kind}`}
     >
       <span className="w-5 flex-shrink-0 text-center text-base">{emoji}</span>
       <div className="min-w-0 flex-1">
+        <div className="truncate text-xs font-medium text-gray-200">
+          {name}
+        </div>
         <div className="flex items-center gap-1.5">
-          <span className="truncate rounded bg-violet-950/40 px-1 py-px font-mono text-[10px] font-semibold uppercase tracking-wide text-violet-200">
+          <span className="truncate rounded bg-gray-800/80 px-1 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-gray-400">
             {kind}
           </span>
           <span
@@ -1745,7 +1748,6 @@ function SidebarWorkerRow({
             {busy ? "busy" : "idle"}
           </span>
         </div>
-        <div className="truncate text-[9px] text-gray-600">{name}</div>
       </div>
     </div>
   );

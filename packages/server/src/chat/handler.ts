@@ -20,10 +20,15 @@
 
 import {
   AgentHarness,
+  DEFAULT_COMPACTION_SETTINGS,
   Session as PiSession,
+  estimateContextTokens,
+  shouldCompact,
   type AgentHarnessEvent,
   type AgentHarnessOwnEvent,
   type AgentMessage,
+  type CompactionSettings,
+  type SessionTreeEntry,
 } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
@@ -355,6 +360,24 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
     if (storage) storage.pendingUserAttachments = null;
   }
 
+  // Auto-compact: pi-agent-core ships compact() but no auto-trigger.
+  // After every successful turn, decide whether to fire it.
+  if (!streamErrorSent) {
+    await maybeAutoCompact({
+      session,
+      piSession,
+      harness,
+      modelInfo,
+      send,
+      onSuccessRefresh: () => {
+        const wire = listMessagesForUser(ctx, userId).map((m) =>
+          toWire(m, makeWireOpts(ctx)),
+        );
+        send({ type: "history", messages: wire });
+      },
+    });
+  }
+
   // Emit stream_end so the UI re-enables the send button.
   if (!streamErrorSent) {
     if (lastAssistantRow) {
@@ -625,11 +648,114 @@ function makeWireOpts(ctx: TenantContext): ToWireOpts {
 
 // ─── compaction helpers ───────────────────────────────────────────────
 //
-// Auto-compaction is a follow-up: pi-agent-core's `transformContext`
-// hook is the right place to run it (it owns the message slice that
-// goes to the LLM, including hot-loaded image bytes). Until that
-// lands, only the user-driven `/compact` slash-command path below
-// is wired up.
+// Auto-compaction:
+//   - decision: shouldCompactBranch() decides whether the current
+//     branch is over the context-window threshold pi defines.
+//   - action: maybeAutoCompact() pulls the branch, asks the
+//     decision helper, and on `true` calls harness.compact().
+//
+// Skipped on:
+//   - the model has no `contextWindow` declared (we'd compact
+//     every turn against an undefined window)
+//   - DEFAULT_COMPACTION_SETTINGS.enabled is false (future-proofs
+//     a per-tenant override even though today the constant is true)
+//
+// The user-driven `/compact` slash command still goes through the
+// legacy `compactSession` helper, which forks a new session id;
+// matches the previous behaviour the UI / DB already understands.
+// Migrating /compact onto `harness.compact()` is a separate
+// cleanup — same in-place semantics as auto-compact, but loses
+// the fork-on-explicit-request pattern.
+
+export interface ShouldCompactBranchInput {
+  branch: SessionTreeEntry[];
+  contextWindow: number | undefined;
+  settings?: CompactionSettings;
+}
+
+/**
+ * Pure decision function: given a branch (the entries pi's
+ * harness sees as the active turn history) and the model's
+ * context window, return whether the next turn should run
+ * compaction first.
+ *
+ * Exported for tests; runtime callers go through
+ * `maybeAutoCompact` which folds storage + harness in.
+ */
+export function shouldCompactBranch(
+  input: ShouldCompactBranchInput,
+): boolean {
+  const settings = input.settings ?? DEFAULT_COMPACTION_SETTINGS;
+  if (!settings.enabled) return false;
+  if (!input.contextWindow || input.contextWindow <= 0) return false;
+  const messages: AgentMessage[] = [];
+  for (const entry of input.branch) {
+    if (entry.type === "message") messages.push(entry.message);
+  }
+  if (messages.length === 0) return false;
+  const usage = estimateContextTokens(messages);
+  return shouldCompact(usage.tokens, input.contextWindow, settings);
+}
+
+async function maybeAutoCompact(args: {
+  session: ChatSession;
+  piSession: PiSession;
+  harness: AgentHarness;
+  modelInfo: ResolvedModelInfo;
+  send: (msg: ServerMsg) => void;
+  onSuccessRefresh: () => void;
+}): Promise<void> {
+  const { session, piSession, harness, modelInfo, send, onSuccessRefresh } = args;
+  let branch: SessionTreeEntry[];
+  try {
+    branch = await piSession.getBranch();
+  } catch (err) {
+    // Reading the branch for shouldCompact shouldn't throw, but
+    // belt-and-braces: never let the compact-decision path break
+    // the turn that already succeeded.
+    console.warn(
+      `[chat] auto-compact decision failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return;
+  }
+  if (
+    !shouldCompactBranch({
+      branch,
+      contextWindow: modelInfo.contextWindow,
+    })
+  ) {
+    return;
+  }
+  try {
+    const result = await harness.compact();
+    send({
+      type: "history_compacted",
+      reason: "auto",
+      // Old protocol carried oldSessionId/newSessionId because
+      // the legacy compactSession forked. pi's compact() writes
+      // a compaction entry into the SAME session — no fork — so
+      // both ids point at the current one.
+      oldSessionId: session.id,
+      newSessionId: session.id,
+      // Pi's compact() doesn't tell us how many entries it
+      // summarised / kept. The UI uses these counts for a small
+      // "📌 N messages compressed" badge; we leave them at 0
+      // until pi exposes the figures.
+      summarisedCount: 0,
+      keptCount: 0,
+      durationMs: 0,
+      tokensBefore: result.tokensBefore,
+    });
+    onSuccessRefresh();
+  } catch (err) {
+    // Auto-compact failures are non-fatal: the user got their
+    // turn back, the next turn will simply be expensive.
+    send({
+      type: "stream_error",
+      reason: `auto-compact failed: ${err instanceof Error ? err.message : String(err)} (continuing without compact)`,
+    });
+  }
+}
 
 async function runManualCompact(args: {
   ctx: TenantContext;
