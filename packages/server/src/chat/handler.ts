@@ -214,6 +214,28 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   const piModel = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
   const userHome = ctx.userHomeDir(userId);
+
+  // MCP toolsets (e.g. plugin-microsandbox's Playwright server)
+  // expose a `tools/list` only after the upstream is reachable.
+  // Plugin activation kicks off a fire-and-forget initial refresh,
+  // but the upstream often isn't ready yet (sandbox still booting,
+  // user-configured server still being saved). Without a per-turn
+  // warmup the agent never sees these tools until someone hits
+  // `/admin/mcp` to refresh by hand. Run the same opportunistic
+  // refresh the admin route does, but with a tighter deadline so
+  // we don't block a chat turn for too long when an upstream is
+  // genuinely down.
+  if (pluginRegistry) {
+    try {
+      await pluginRegistry.refreshStaleToolsets(ctx.tenantId, 1500);
+    } catch {
+      // refreshStaleToolsets already swallows per-toolset errors;
+      // a thrown one would mean the registry itself faulted, which
+      // we don't want to surface as a chat failure either — the
+      // agent will simply see whatever toolset state we already
+      // had.
+    }
+  }
   const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
   const allSkills = [
     ...loadHostSkills(),
