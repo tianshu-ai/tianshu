@@ -296,4 +296,32 @@ describe("WorkerPool", () => {
     expect(getTask(db, "t2")?.status).toBe("done");
     pool.stop();
   });
+
+  it("fallback polling claims a ready task whose write path didn't nudge", async () => {
+    // Simulate the dependency-release bug: a task lands in the DB
+    // through a code path that forgot to call onTaskWrite (e.g. a
+    // direct DB INSERT, a sibling plugin marking its predecessor
+    // done). Without the fallback poll the task would stay ready
+    // forever; with it, the next interval picks it up.
+    const pool = new WorkerPool({
+      db,
+      log: noopLog,
+      broadcast: () => {},
+      agents: [ECHO_AGENT],
+      factory: echoFactory(5),
+      pollIntervalMs: 30,
+    });
+    pool.start();
+    // Give the initial nudge time to drain (the queue is empty so
+    // it'll just no-op and clear).
+    await pause(15);
+    // Now insert a task without nudging — only the fallback poll
+    // can pick it up.
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("t1", "inbox", "u1", "silent task", Date.now());
+    await pause(80);
+    expect(getTask(db, "t1")?.status).toBe("done");
+    pool.stop();
+  });
 });

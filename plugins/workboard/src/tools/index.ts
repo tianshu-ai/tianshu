@@ -438,7 +438,10 @@ export function buildTaskMoveTool(deps: ToolDeps): AgentTool {
       const after = updateTask(deps.db, args.id, patch);
 
       // Re-queueing → kick the pool so the worker drains immediately.
-      if (status === "ready") deps.onTaskWrite();
+      // Nudge the pool when the move could create new claimable
+      // work: putting THIS task back to ready, OR marking it done
+      // and thereby unblocking any task that depended on it.
+      if (status === "ready" || status === "done") deps.onTaskWrite();
 
       const blocked = after
         ? after.status === "ready" && !isEligible(deps.db, after)
