@@ -22,6 +22,10 @@ export interface AgentLoopRunnerRequest {
   modelId?: string;
   /** Allow-list of tool names. `null` / undefined = all available. */
   toolsAllow?: string[] | null;
+  /** Deny-list applied AFTER `toolsAllow`. Used by worker pools to
+   *  scrub tools that are unsafe in worker context (e.g. workboard's
+   *  task_create) regardless of what the agent's allow-list says. */
+  toolsDeny?: string[] | null;
   /** Allow-list of skill names; same semantics. */
   skillsAllow?: string[] | null;
   /** Friendly title for the worker session row. */
@@ -50,7 +54,7 @@ export interface AgentLoopRunnerResult {
   turns: number;
   reason:
     | "task_complete"
-    | "max_turns"
+    | "no_completion"
     | "first_response_timeout"
     | "idle_timeout"
     | "max_run_timeout"

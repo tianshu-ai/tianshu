@@ -84,6 +84,7 @@ pluginRegistry = new PluginRegistry({
             systemPrompt: req.systemPrompt,
             modelId: req.modelId,
             toolsAllow: req.toolsAllow,
+            toolsDeny: req.toolsDeny,
             skillsAllow: req.skillsAllow,
             sessionTitle: req.sessionTitle,
             workerRole: req.workerRole,
