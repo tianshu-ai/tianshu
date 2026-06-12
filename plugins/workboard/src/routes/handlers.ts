@@ -132,6 +132,14 @@ export interface WorkerKindDef {
   fields?: WorkerKindField[];
 }
 
+/**
+ * Maximum number of tasks accepted in a single batch create / delete
+ * request. Picked to be generous for human-driven UI cases ("select
+ * 30 cards, delete") while still bounding the worst case for the
+ * single-statement assignable-worker validation pass.
+ */
+const BATCH_LIMIT = 100;
+
 const ALL_FIELDS: WorkerKindField[] = [
   "description",
   "modelId",
@@ -275,57 +283,57 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     res.json({ tasks: rows.map(taskJson) });
   };
 
-  const createTaskHandler: PluginRouteHandler = (req, res) => {
-    const userId = userIdFromReq(req);
-    if (!userId) {
-      res.status(401).json({ error: "no_user" });
-      return;
-    }
-    const body = (req.body ?? {}) as {
-      title?: unknown;
-      description?: unknown;
-      project?: unknown;
-      priority?: unknown;
-      workerRole?: unknown;
-      workerAgentId?: unknown;
-      status?: unknown;
-    };
+  /**
+   * Try to create one task on behalf of `userId`. Returns either
+   * `{ ok: true, task }` or `{ ok: false, error, status }` so the
+   * batch handler can aggregate results without short-circuiting.
+   *
+   * `agents` is passed in instead of being fetched per-row so a
+   * 100-task batch only hits the DB once for the worker list.
+   */
+  const createOne = (
+    userId: string,
+    body: Record<string, unknown>,
+    agents: ReturnType<typeof listWorkerAgents>,
+  ): {
+    ok: boolean;
+    task?: ReturnType<typeof taskJson>;
+    error?: string;
+    status?: number;
+    [k: string]: unknown;
+  } => {
     const title = typeof body.title === "string" ? body.title.trim() : "";
-    if (!title) {
-      res.status(400).json({ error: "title_required" });
-      return;
-    }
-    if (title.length > 200) {
-      res.status(400).json({ error: "title_too_long" });
-      return;
-    }
+    if (!title) return { ok: false, error: "title_required", status: 400 };
+    if (title.length > 200)
+      return { ok: false, error: "title_too_long", status: 400 };
+
     let initialStatus: TaskStatus | null = null;
     if (typeof body.status === "string") {
       if (!isTaskStatus(body.status)) {
-        res.status(400).json({ error: "bad_status", status: body.status });
-        return;
+        return {
+          ok: false,
+          error: "bad_status",
+          status: 400,
+          received: body.status,
+        };
       }
       initialStatus = body.status;
     }
-    const description = typeof body.description === "string" ? body.description : null;
-    const project = typeof body.project === "string" ? body.project : undefined;
+    const description =
+      typeof body.description === "string" ? body.description : null;
+    const project =
+      typeof body.project === "string" ? body.project : undefined;
     const priority = typeof body.priority === "number" ? body.priority : 0;
-    const workerRole = typeof body.workerRole === "string" ? body.workerRole : null;
+    const workerRole =
+      typeof body.workerRole === "string" ? body.workerRole : null;
     const workerAgentId =
       typeof body.workerAgentId === "string" ? body.workerAgentId : null;
 
-    // Reject up-front if the task points at an agent that's
-    // disabled / missing, or a role no enabled agent serves —
-    // otherwise the row would land in the DB and stay forever
-    // `ready` because the pool has nothing matching to claim it.
-    const assignErr = validateAssignableWorker(
-      listWorkerAgents(deps.db, deps.tenantId),
-      { workerAgentId, workerRole },
-    );
-    if (assignErr) {
-      res.status(400).json(assignErr);
-      return;
-    }
+    const assignErr = validateAssignableWorker(agents, {
+      workerAgentId,
+      workerRole,
+    });
+    if (assignErr) return { ok: false, ...assignErr, status: 400 };
 
     const dependsOn = filterOwnedDeps(
       deps.db,
@@ -363,8 +371,67 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       const after = updateTask(deps.db, task.id, patch);
       if (after) task = after;
     }
-    deps.onTaskWrite();
-    res.status(201).json({ task: taskJson(task) });
+    return { ok: true, task: taskJson(task) };
+  };
+
+  /**
+   * POST /tasks  — batch create.
+   *
+   * Accepts either:
+   *   - `{ tasks: TaskInput[] }`         (preferred, batch shape)
+   *   - `TaskInput`                       (legacy single-task body — wrapped
+   *                                        into a 1-element batch internally)
+   *
+   * Always responds with `{ results: BatchResult[] }` whose order
+   * matches the input. Each result is either
+   *   `{ ok: true, task }`
+   * or
+   *   `{ ok: false, error, ...details }`
+   *
+   * Per-item failures do NOT abort the batch — good rows still
+   * land. The HTTP status is 201 if at least one task was created,
+   * 400 if every row failed.
+   *
+   * The single-task wrapping is here so existing clients (the
+   * react panel + the chat-shell) keep working without a flag
+   * day; new callers should send the batch shape.
+   */
+  const createTaskHandler: PluginRouteHandler = (req, res) => {
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no_user" });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const inputs: Record<string, unknown>[] = Array.isArray(body.tasks)
+      ? (body.tasks as Record<string, unknown>[])
+      : [body];
+    if (inputs.length === 0) {
+      res.status(400).json({ error: "tasks_empty" });
+      return;
+    }
+    if (inputs.length > BATCH_LIMIT) {
+      res
+        .status(400)
+        .json({ error: "batch_too_large", limit: BATCH_LIMIT });
+      return;
+    }
+    // Cache the agent list once for the whole batch.
+    const agents = listWorkerAgents(deps.db, deps.tenantId);
+    let anyOk = false;
+    const results = inputs.map((input) => {
+      if (!input || typeof input !== "object") {
+        return { ok: false, error: "task_input_not_object" };
+      }
+      const r = createOne(userId, input, agents);
+      if (r.ok) anyOk = true;
+      // Strip the internal `status` hint before sending — clients
+      // get a flat envelope per row.
+      const { status: _ignored, ...rest } = r;
+      return rest;
+    });
+    if (anyOk) deps.onTaskWrite();
+    res.status(anyOk ? 201 : 400).json({ results });
   };
 
   const patchTaskHandler: PluginRouteHandler = (req, res) => {
@@ -569,28 +636,70 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     });
   };
 
+  /**
+   * Try to delete one task on behalf of `userId`. Returns a per-row
+   * result envelope so the batch handler can aggregate.
+   */
+  const deleteOne = (
+    userId: string,
+    id: unknown,
+  ): { ok: boolean; id?: string; error?: string } => {
+    if (typeof id !== "string" || !id.trim()) {
+      return { ok: false, error: "id_required" };
+    }
+    const before = getTask(deps.db, id);
+    if (!before) return { ok: false, id, error: "not_found" };
+    if (before.ownerUserId !== userId)
+      return { ok: false, id, error: "not_yours" };
+    deleteTask(deps.db, id);
+    return { ok: true, id };
+  };
+
+  /**
+   * POST /tasks/delete  — batch delete.
+   *
+   * Body: `{ ids: string[] }`. Always responds with
+   * `{ results: { ok, id, error? }[] }` whose order matches the
+   * input.
+   *
+   * We use POST + a side path instead of `DELETE /tasks` because
+   * not every HTTP intermediary forwards a request body on DELETE,
+   * and we want the contract to be unambiguous.
+   *
+   * Per-item failures do not abort the batch. The HTTP status is
+   * 200 if any row was deleted, 400 if every row failed (most
+   * commonly: ids belonged to someone else, or were unknown).
+   */
   const deleteTaskHandler: PluginRouteHandler = (req, res) => {
     const userId = userIdFromReq(req);
     if (!userId) {
       res.status(401).json({ error: "no_user" });
       return;
     }
-    const id = stringParam(req, "id");
-    if (!id) {
-      res.status(400).json({ error: "id_required" });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const ids = Array.isArray(body.ids) ? (body.ids as unknown[]) : null;
+    if (!ids) {
+      res.status(400).json({ error: "ids_required" });
       return;
     }
-    const before = getTask(deps.db, id);
-    if (!before) {
-      res.status(404).json({ error: "not_found" });
+    if (ids.length === 0) {
+      res.status(400).json({ error: "ids_empty" });
       return;
     }
-    if (before.ownerUserId !== userId) {
-      res.status(403).json({ error: "not_yours" });
+    if (ids.length > BATCH_LIMIT) {
+      res
+        .status(400)
+        .json({ error: "batch_too_large", limit: BATCH_LIMIT });
       return;
     }
-    deleteTask(deps.db, id);
-    res.status(204).end();
+    let anyOk = false;
+    const results = ids.map((id) => {
+      const r = deleteOne(userId, id);
+      if (r.ok) anyOk = true;
+      return r;
+    });
+    if (anyOk) deps.onTaskWrite();
+    res.status(anyOk ? 200 : 400).json({ results });
   };
 
   const listProjectsHandler: PluginRouteHandler = (req, res) => {

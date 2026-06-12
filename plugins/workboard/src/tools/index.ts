@@ -3,10 +3,10 @@
 // Five tools cover the kanban surface from the agent's side:
 //
 //   - task_list   — read the board (status-grouped, optional project filter)
-//   - task_create — drop a new ready task on the board
+//   - task_create — drop one or more new ready tasks on the board (batch)
 //   - task_update — patch title / description / priority / project
 //   - task_move   — move a task between status columns
-//   - task_delete — remove a task
+//   - task_delete — remove one or more tasks (batch)
 //
 // Worker-side helpers (claim / complete) intentionally do NOT live
 // here — workers don't run inside the agent loop, they live inside
@@ -204,107 +204,150 @@ export function buildTaskListTool(deps: ToolDeps): AgentTool {
   };
 }
 
+/**
+ * Schema for one task inside a `task_create` batch. Kept as a
+ * named TypeBox object so the description renders cleanly inside
+ * the array's items schema.
+ */
+const TaskCreateItem = Type.Object({
+  title: Type.String({ description: "Short human-readable title." }),
+  description: Type.Optional(
+    Type.String({ description: "Long-form notes / context for the worker." }),
+  ),
+  project: Type.Optional(
+    Type.String({ description: "Project slug. Default \"inbox\"." }),
+  ),
+  priority: Type.Optional(
+    Type.Number({
+      description: "Higher = picked up first. Range -10..10; default 0.",
+    }),
+  ),
+  worker_role: Type.Optional(
+    Type.String({
+      description:
+        'Restrict to one role (e.g. "echo", "qianliyan"). Omit to let any worker pick it up.',
+    }),
+  ),
+  depends_on: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "Task ids that must reach status='done' before this task is eligible for a worker. Use this to express 'B starts after A'. Ids that don't belong to you are silently ignored.",
+    }),
+  ),
+  labels: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "Free-form labels. Reserved values: 'stalled' (after MAX_ATTEMPTS pool failures, set automatically) and 'draft' (user opt-in: keeps the task in ready column but the pool skips it until cleared).",
+    }),
+  ),
+});
+
+type TaskCreateItemArgs = {
+  title?: string;
+  description?: string;
+  project?: string;
+  priority?: number;
+  worker_role?: string;
+  depends_on?: string[];
+  labels?: string[];
+};
+
 export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
   return {
     schema: {
       name: "task_create",
       description:
-        "Drop a new task on the workboard. Defaults to status=todo, project=inbox. " +
-        "Workers in the pool will pick up todo tasks automatically. " +
-        "Optionally tag with worker_role to direct the task at a specific worker " +
-        "(role-less tasks are claimed by any worker).",
+        "Drop one or more new tasks on the workboard. Always pass a `tasks` array — " +
+        "single-task callers should send a 1-element array. Defaults are " +
+        "status=ready, project=inbox; workers in the pool will pick up ready " +
+        "tasks automatically. Per-row failures (e.g. an unknown worker_role) do " +
+        "NOT abort the rest of the batch — each row reports independently in " +
+        "the response's `results` array.",
       parameters: Type.Object({
-        title: Type.String({ description: "Short human-readable title." }),
-        description: Type.Optional(
-          Type.String({ description: "Long-form notes / context for the worker." }),
-        ),
-        project: Type.Optional(
-          Type.String({ description: "Project slug. Default \"inbox\"." }),
-        ),
-        priority: Type.Optional(
-          Type.Number({
-            description:
-              "Higher = picked up first. Range -10..10; default 0.",
-          }),
-        ),
-        worker_role: Type.Optional(
-          Type.String({
-            description:
-              'Restrict to one role (e.g. "echo", "qianliyan"). Omit to let any worker pick it up.',
-          }),
-        ),
-        depends_on: Type.Optional(
-          Type.Array(Type.String(), {
-            description:
-              "Task ids that must reach status='done' before this task is eligible for a worker. Use this to express 'B starts after A'. Ids that don't belong to you are silently ignored.",
-          }),
-        ),
-        labels: Type.Optional(
-          Type.Array(Type.String(), {
-            description:
-              "Free-form labels. Reserved values: 'stalled' (after MAX_ATTEMPTS pool failures, set automatically) and 'draft' (user opt-in: keeps the task in ready column but the pool skips it until cleared).",
-          }),
-        ),
+        tasks: Type.Array(TaskCreateItem, {
+          minItems: 1,
+          maxItems: 100,
+          description:
+            "Tasks to create, in the order they should appear in `results`.",
+        }),
       }),
     },
     execute: (raw, ctx: AgentToolContext): ToolReturn => {
-      const args = raw as {
-        title?: string;
-        description?: string;
-        project?: string;
-        priority?: number;
-        worker_role?: string;
-        depends_on?: string[];
-        labels?: string[];
-      };
-      const title = args.title?.trim();
-      if (!title) return { ok: false, text: "title is required" };
-      if (title.length > 200) {
-        return { ok: false, text: "title too long (max 200 chars)" };
+      const args = raw as { tasks?: TaskCreateItemArgs[] };
+      const items = Array.isArray(args.tasks) ? args.tasks : [];
+      if (items.length === 0) {
+        return { ok: false, text: "tasks array must not be empty" };
       }
-      const id = randomUUID();
-      const dependsOn = sanitiseDepsForOwner(
-        deps.db,
-        ctx.userId,
-        args.depends_on,
-        id,
-      );
-      // Reject up-front if the task points at a worker_role no
-      // enabled agent serves — otherwise the row would land in the
-      // DB and stay forever `ready` because the pool has nothing
-      // matching to claim it. Same check the REST createTask path
-      // does (see routes/handlers.ts validateAssignableWorker).
-      const role = args.worker_role ?? null;
-      if (role) {
-        const candidates = listWorkerAgents(deps.db, ctx.tenantId).filter(
-          (a) => a.enabled && a.kind === role,
-        );
-        if (candidates.length === 0) {
+      // Cache the worker-agent list once for the whole batch —
+      // creating 50 tasks against the same role shouldn't hit the
+      // DB 50 times for the same lookup.
+      const agents = listWorkerAgents(deps.db, ctx.tenantId);
+      type Row = {
+        ok: boolean;
+        index: number;
+        task?: ReturnType<typeof summarise>;
+        text?: string;
+      };
+      const results: Row[] = items.map((item, index) => {
+        const title = item?.title?.trim();
+        if (!title) {
+          return { ok: false, index, text: "title is required" };
+        }
+        if (title.length > 200) {
           return {
             ok: false,
-            text: `No enabled worker has kind="${role}". Either enable an existing worker of that kind under Settings → Plugins → Worker agents, or omit worker_role so any worker can pick the task up.`,
+            index,
+            text: "title too long (max 200 chars)",
           };
         }
-      }
-      const task = createTask(deps.db, id, {
-        ownerUserId: ctx.userId,
-        title,
-        description: args.description,
-        projectSlug: args.project,
-        priority: args.priority,
-        workerRole: role,
-        dependsOn,
-        labels: args.labels,
+        const id = randomUUID();
+        const dependsOn = sanitiseDepsForOwner(
+          deps.db,
+          ctx.userId,
+          item.depends_on,
+          id,
+        );
+        const role = item.worker_role ?? null;
+        if (role) {
+          const candidates = agents.filter(
+            (a) => a.enabled && a.kind === role,
+          );
+          if (candidates.length === 0) {
+            return {
+              ok: false,
+              index,
+              text: `No enabled worker has kind="${role}". Either enable an existing worker of that kind under Settings → Plugins → Worker agents, or omit worker_role so any worker can pick the task up.`,
+            };
+          }
+        }
+        const task = createTask(deps.db, id, {
+          ownerUserId: ctx.userId,
+          title,
+          description: item.description,
+          projectSlug: item.project,
+          priority: item.priority,
+          workerRole: role,
+          dependsOn,
+          labels: item.labels,
+        });
+        const blocked = !isEligible(deps.db, task);
+        return {
+          ok: true,
+          index,
+          task: summarise(task, blocked),
+        };
       });
-      const blocked = !isEligible(deps.db, task);
-      deps.onTaskWrite();
-      const blockedNote = blocked
-        ? ` (blocked by ${dependsOn.length} unfinished prerequisite${dependsOn.length === 1 ? "" : "s"})`
-        : "";
+      const okCount = results.filter((r) => r.ok).length;
+      if (okCount > 0) deps.onTaskWrite();
+      const failCount = results.length - okCount;
+      const summary =
+        failCount === 0
+          ? `Created ${okCount} task${okCount === 1 ? "" : "s"}.`
+          : `Created ${okCount}/${results.length} task${results.length === 1 ? "" : "s"}; ${failCount} failed.`;
       return {
-        ok: true,
-        text: `Created task ${task.id}: ${task.title} (status=todo, project=${task.projectSlug})${blockedNote}`,
-        data: { task: summarise(task, blocked) },
+        ok: okCount > 0,
+        text: summary,
+        data: { results },
       };
     },
   };
@@ -493,22 +536,55 @@ export function buildTaskDeleteTool(deps: ToolDeps): AgentTool {
     schema: {
       name: "task_delete",
       description:
-        "Remove a task from the board. The id is gone for good — there's no undo. " +
-        "Add the 'stalled' label via task_update if you want to keep the audit trail.",
+        "Remove one or more tasks from the board. Always pass an `ids` array — " +
+        "single-task callers should send a 1-element array. Per-row failures " +
+        "(unknown id, not yours) do NOT abort the rest of the batch — each " +
+        "id reports independently in `results`. The deletion is permanent; " +
+        "add the 'stalled' label via task_update if you want to keep an audit " +
+        "trail instead.",
       parameters: Type.Object({
-        id: Type.String(),
+        ids: Type.Array(Type.String(), {
+          minItems: 1,
+          maxItems: 100,
+          description: "Task ids to delete, order matches the `results`.",
+        }),
       }),
     },
     execute: (raw, ctx: AgentToolContext): ToolReturn => {
-      const args = raw as { id?: string };
-      if (!args.id) return { ok: false, text: "id is required" };
-      const before = getTask(deps.db, args.id);
-      if (!before) return { ok: false, text: `task not found: ${args.id}` };
-      if (before.ownerUserId !== ctx.userId) {
-        return { ok: false, text: `task ${args.id} is not yours` };
+      const args = raw as { ids?: string[] };
+      const ids = Array.isArray(args.ids) ? args.ids : [];
+      if (ids.length === 0) {
+        return { ok: false, text: "ids array must not be empty" };
       }
-      deleteTask(deps.db, args.id);
-      return { ok: true, text: `Deleted task ${args.id}.` };
+      type Row = { ok: boolean; id: string; text?: string };
+      const results: Row[] = ids.map((id) => {
+        if (typeof id !== "string" || !id) {
+          return {
+            ok: false,
+            id: String(id ?? ""),
+            text: "id is required",
+          };
+        }
+        const before = getTask(deps.db, id);
+        if (!before) return { ok: false, id, text: `task not found: ${id}` };
+        if (before.ownerUserId !== ctx.userId) {
+          return { ok: false, id, text: `task ${id} is not yours` };
+        }
+        deleteTask(deps.db, id);
+        return { ok: true, id };
+      });
+      const okCount = results.filter((r) => r.ok).length;
+      if (okCount > 0) deps.onTaskWrite();
+      const failCount = results.length - okCount;
+      const summary =
+        failCount === 0
+          ? `Deleted ${okCount} task${okCount === 1 ? "" : "s"}.`
+          : `Deleted ${okCount}/${results.length} task${results.length === 1 ? "" : "s"}; ${failCount} failed.`;
+      return {
+        ok: okCount > 0,
+        text: summary,
+        data: { results },
+      };
     },
   };
 }
