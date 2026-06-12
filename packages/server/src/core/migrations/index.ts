@@ -15,6 +15,7 @@ import * as sessionTree from "./003-session-tree.js";
 import * as rebuildMessageChain from "./004-rebuild-message-chain.js";
 import * as taskStatusRename from "./005-task-status-rename.js";
 import * as taskLabels from "./006-task-labels.js";
+import * as sessionInbox from "./007-session-inbox.js";
 
 export interface Migration {
   id: string;
@@ -29,6 +30,7 @@ export const MIGRATIONS: Migration[] = [
   { id: rebuildMessageChain.ID, up: rebuildMessageChain.up },
   { id: taskStatusRename.ID, up: taskStatusRename.up },
   { id: taskLabels.ID, up: taskLabels.up },
+  { id: sessionInbox.ID, up: sessionInbox.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `

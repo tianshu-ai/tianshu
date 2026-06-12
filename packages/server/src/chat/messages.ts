@@ -389,6 +389,124 @@ export function listMessagesForUser(ctx: TenantContext, userId: string): ChatMes
     }));
 }
 
+/** Hard caps on page size. Server enforces; clients can request
+ *  smaller. The 500 ceiling is generous — most chat UIs render at
+ *  most ~50 at a time — but caps catastrophic misuse. */
+export const HISTORY_PAGE_DEFAULT = 100;
+export const HISTORY_PAGE_MAX = 500;
+
+export interface MessagePage {
+  /** Oldest-first slice of the user's transcript. */
+  messages: ChatMessage[];
+  /** True when at least one message older than the slice exists.
+   *  Drives the "Load earlier" button on the client. */
+  hasMore: boolean;
+}
+
+/**
+ * Return the most recent `limit` messages for `userId`, optionally
+ * walking back from a `before` cursor (exclusive).
+ *
+ * The query trick: we sort DESC + LIMIT to pick the right slice,
+ * then reverse in JS so the public API stays oldest-first (the
+ * format the chat UI prepends / appends without re-sorting).
+ *
+ * `hasMore` is computed by asking for one extra row; if the DB
+ * returned `limit + 1`, there's more older content and we drop
+ * the spare. This is one round-trip with one index seek.
+ */
+export function listMessagesForUserPage(
+  ctx: TenantContext,
+  userId: string,
+  opts: { limit?: number; before?: string } = {},
+): MessagePage {
+  const requested = Number.isFinite(opts.limit)
+    ? Math.max(1, Math.min(HISTORY_PAGE_MAX, Number(opts.limit)))
+    : HISTORY_PAGE_DEFAULT;
+  const probe = requested + 1;
+
+  // Resolve `before` to a (created_at, id) tuple so we can do a
+  // strict "older than" comparison that survives same-ms inserts.
+  // If `before` doesn't resolve to an existing row we ignore the
+  // cursor and return the latest page — stale ids come up when
+  // the user follows a deep link to a deleted message.
+  //
+  // Note we filter by `s.kind = 'user'` everywhere here. The chat
+  // UI is for the user's chat sessions only; worker sessions
+  // (kind='worker') belong to the workboard plugin's transcript
+  // surface and have their own viewer (`/tasks/:id/history`).
+  // Mixing them here used to surface empty assistant messages
+  // from worker LLM runs in the user's chat scrollback.
+  let cursor: { ts: number; id: string } | null = null;
+  if (opts.before) {
+    const row = ctx.db
+      .prepare<[string, string], { id: string; created_at: number }>(
+        `SELECT m.id, m.created_at FROM messages m
+         JOIN sessions s ON m.session_id = s.id
+         WHERE m.id = ? AND s.user_id = ? AND s.kind = 'user'`,
+      )
+      .get(opts.before, userId);
+    if (row) cursor = { ts: row.created_at, id: row.id };
+  }
+
+  const rows = cursor
+    ? ctx.db
+        .prepare<
+          [string, number, number, string, number],
+          {
+            id: string;
+            session_id: string;
+            role: string;
+            content: string;
+            created_at: number;
+          }
+        >(
+          `SELECT m.id, m.session_id, m.role, m.content, m.created_at
+           FROM messages m
+           JOIN sessions s ON m.session_id = s.id
+           WHERE s.user_id = ? AND s.kind = 'user'
+             AND (m.created_at < ?
+                  OR (m.created_at = ? AND m.id < ?))
+           ORDER BY m.created_at DESC, m.id DESC
+           LIMIT ?`,
+        )
+        .all(userId, cursor.ts, cursor.ts, cursor.id, probe)
+    : ctx.db
+        .prepare<
+          [string, number],
+          {
+            id: string;
+            session_id: string;
+            role: string;
+            content: string;
+            created_at: number;
+          }
+        >(
+          `SELECT m.id, m.session_id, m.role, m.content, m.created_at
+           FROM messages m
+           JOIN sessions s ON m.session_id = s.id
+           WHERE s.user_id = ? AND s.kind = 'user'
+           ORDER BY m.created_at DESC, m.id DESC
+           LIMIT ?`,
+        )
+        .all(userId, probe);
+
+  const hasMore = rows.length > requested;
+  const sliced = hasMore ? rows.slice(0, requested) : rows;
+  // Public API returns oldest-first.
+  sliced.reverse();
+  return {
+    hasMore,
+    messages: sliced.map((r) => ({
+      id: r.id,
+      sessionId: r.session_id,
+      role: r.role as ChatMessage["role"],
+      content: r.content,
+      createdAt: r.created_at,
+    })),
+  };
+}
+
 function rowToSession(r: {
   id: string;
   user_id: string;

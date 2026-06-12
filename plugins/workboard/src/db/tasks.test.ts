@@ -11,6 +11,7 @@ import { up as runInitialMigration } from "../../../../packages/server/src/core/
 import { up as runDepsMigration } from "../../../../packages/server/src/core/migrations/002-task-dependencies.js";
 import { up as runStatusRename } from "../../../../packages/server/src/core/migrations/005-task-status-rename.js";
 import { up as runTaskLabels } from "../../../../packages/server/src/core/migrations/006-task-labels.js";
+import { up as runSessionInbox } from "../../../../packages/server/src/core/migrations/007-session-inbox.js";
 import { ensureSchema as ensureAgentsSchema } from "./agents.js";
 import {
   createTask,
@@ -30,6 +31,7 @@ function freshDb(): Database.Database {
   runDepsMigration(db);
   runStatusRename(db);
   runTaskLabels(db);
+  runSessionInbox(db);
   ensureAgentsSchema(db);
   // Tasks reference users(id); seed a stub user so the FK is valid.
   db.prepare(
@@ -151,6 +153,22 @@ describe("tasks db layer", () => {
 
     const c = claimNextTask(db);
     expect(c).toBeNull();
+  });
+
+  it("claimNextTask refuses second claim while the worker has one in flight", () => {
+    // Source-of-truth guard: even if the in-memory busy map
+    // drifted (rebuild race, dropped stale entries, etc.), the
+    // SQL itself must reject a second claim by the same worker.
+    createTask(db, "a", { ownerUserId: "u1", title: "a", priority: 1 });
+    createTask(db, "b", { ownerUserId: "u1", title: "b", priority: 1 });
+    const first = claimNextTask(db, { workerAgentId: "agent-1" });
+    expect(first?.id).toBe("a");
+    const second = claimNextTask(db, { workerAgentId: "agent-1" });
+    expect(second).toBeNull();
+    // After the first task ends, the worker can claim again.
+    updateTask(db, "a", { status: "done", endedAt: Date.now() });
+    const third = claimNextTask(db, { workerAgentId: "agent-1" });
+    expect(third?.id).toBe("b");
   });
 
   it("claimNextTask role-aware: matches own role + role-less tasks, skips foreign roles", () => {

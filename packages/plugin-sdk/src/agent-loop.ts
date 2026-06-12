@@ -44,6 +44,40 @@ export interface AgentLoopRunnerRequest {
   };
   /** External abort signal. */
   signal?: AbortSignal;
+  /**
+   * Fires once, immediately after the worker session row has been
+   * inserted into the host DB and before the first LLM call.
+   *
+   * Plugins use this to link a long-running task row to its
+   * session id ASAP — without it, the workboard plugin would have
+   * to wait until the run terminated to write back
+   * `tasks.session_id`, which means the kanban Execution tab
+   * couldn't tail an in-progress conversation.
+   *
+   * Errors thrown by the callback are caught + logged and do not
+   * abort the run.
+   */
+  onSessionStart?: (sessionId: string) => void;
+  /**
+   * Resume a previous worker session instead of creating a fresh
+   * one. The host opens the existing session row and the LLM sees
+   * its prior transcript as context.
+   *
+   * Workboard uses this to retry a stalled task without losing the
+   * transcript that explains *why* it stalled — the new run
+   * picks up where the old one left off and (typically) just
+   * needs to call task_complete to finish.
+   *
+   * If the id doesn't exist, the host falls back to creating a new
+   * session and logs a warning rather than throwing.
+   */
+  resumeSessionId?: string;
+  /**
+   * Prompt to send when `resumeSessionId` is set. Defaults to a
+   * generic nudge reminding the agent it didn't call task_complete
+   * last time. Ignored when starting a fresh session.
+   */
+  resumePrompt?: string;
 }
 
 export interface AgentLoopRunnerResult {

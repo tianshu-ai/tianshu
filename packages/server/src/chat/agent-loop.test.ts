@@ -29,6 +29,16 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 
   class FakeHarness {
     private listeners: Array<(e: AgentHarnessEvent) => void> = [];
+    // pi-agent-core dispatches some events (notably tool_result) on
+    // a separate hook channel via `harness.on(type, handler)`. The
+    // real harness's `subscribe(...)` listener never sees those.
+    // Mirror that split here so tests catch any regression where
+    // server code goes back to listening on subscribe and silently
+    // misses tool_result.
+    private hookHandlers = new Map<
+      string,
+      Array<(e: AgentHarnessEvent) => unknown>
+    >();
     private aborted = false;
     constructor(_options: unknown) {}
     subscribe(listener: (e: AgentHarnessEvent) => void) {
@@ -37,8 +47,27 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         this.listeners = this.listeners.filter((l) => l !== listener);
       };
     }
+    on(type: string, handler: (e: AgentHarnessEvent) => unknown) {
+      const arr = this.hookHandlers.get(type) ?? [];
+      arr.push(handler);
+      this.hookHandlers.set(type, arr);
+      return () => {
+        const next = (this.hookHandlers.get(type) ?? []).filter(
+          (h) => h !== handler,
+        );
+        this.hookHandlers.set(type, next);
+      };
+    }
     async prompt(_text: string): Promise<void> {
       const emit = (e: AgentHarnessEvent) => {
+        const t = (e as { type?: string }).type;
+        // Hook-channel events (tool_call / tool_result / context /
+        // session_before_compact / etc.) go to `on(type, ...)`
+        // handlers, NOT subscribe.
+        if (t === "tool_result" || t === "tool_call") {
+          for (const h of this.hookHandlers.get(t) ?? []) h(e);
+          return;
+        }
         for (const l of this.listeners) l(e);
       };
       emit({ type: "agent_start" } as AgentHarnessEvent);

@@ -11,7 +11,31 @@ import type { ChatMessage } from "./messages.js";
 
 export type ClientMsg =
   | { type: "hello" }
-  | { type: "history" }
+  /**
+   * Initial / refresh history fetch.
+   *
+   * Returns the most recent `limit` messages (ascending by
+   * created_at, like a chat log). Default 100; max 500. Older
+   * messages can be paged in via `history_more`.
+   *
+   * Without paging, busy users can rack up thousands of messages
+   * across sessions and a fresh socket would have to ship the
+   * whole transcript on connect — both server (one big query +
+   * frame) and client (one big render) suffer. With paging, the
+   * usual fast-path stays fast and only users who scroll up pay
+   * the cost of older history.
+   */
+  | { type: "history"; limit?: number }
+  /**
+   * Page in older history, exclusive of `before`. Cursor is the
+   * oldest message id currently in the client's store; server
+   * returns the next `limit` messages older than that id.
+   */
+  | {
+      type: "history_more";
+      before: string;
+      limit?: number;
+    }
   | {
       type: "prompt";
       content: string;
@@ -48,7 +72,24 @@ export interface WireAttachment {
 
 export type ServerMsg =
   | { type: "connected"; tenantId: string; userId: string }
-  | { type: "history"; messages: WireMessage[] }
+  /**
+   * Replaces the client's current message list. Sent on initial
+   * `history` request and after a session switch. `hasMore` tells
+   * the client whether older pages exist (drives the "Load
+   * earlier" button visibility).
+   */
+  | { type: "history"; messages: WireMessage[]; hasMore: boolean }
+  /**
+   * Prepends an older page to the client's current message list.
+   * Sent in response to `history_more`. `messages` are still in
+   * ascending order (oldest first).
+   */
+  | {
+      type: "history_page";
+      messages: WireMessage[];
+      hasMore: boolean;
+      before: string;
+    }
   | { type: "message_added"; message: WireMessage }
   | { type: "stream_start" }
   | { type: "stream_delta"; delta: string }

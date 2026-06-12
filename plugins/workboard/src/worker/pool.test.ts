@@ -7,11 +7,13 @@ import { up as runInitialMigration } from "../../../../packages/server/src/core/
 import { up as runDepsMigration } from "../../../../packages/server/src/core/migrations/002-task-dependencies.js";
 import { up as runStatusRename } from "../../../../packages/server/src/core/migrations/005-task-status-rename.js";
 import { up as runTaskLabels } from "../../../../packages/server/src/core/migrations/006-task-labels.js";
+import { up as runSessionInbox } from "../../../../packages/server/src/core/migrations/007-session-inbox.js";
 import { ensureSchema as ensureAgentsSchema } from "../db/agents.js";
 import { createTask, getTask, updateTask } from "../db/tasks.js";
 import {
   EchoWorker,
   WorkerPool,
+  effectiveToolsAllow,
   type AgentSpec,
   type WorkerHandle,
 } from "./pool.js";
@@ -23,6 +25,7 @@ function freshDb(): Database.Database {
   runDepsMigration(db);
   runStatusRename(db);
   runTaskLabels(db);
+  runSessionInbox(db);
   ensureAgentsSchema(db);
   db.prepare(
     `INSERT INTO users (id, external_id, provider, display_name, created_at)
@@ -46,6 +49,42 @@ const ECHO_AGENT: AgentSpec = { id: "agent-echo", kind: "echo", name: "Echo" };
 const echoFactory = (delayMs: number) =>
   (a: AgentSpec): WorkerHandle | null =>
     a.kind === "echo" ? new EchoWorker(a.id, a.name, { delayMs }) : null;
+
+describe("effectiveToolsAllow", () => {
+  // task_complete is the only legitimate exit signal a worker has.
+  // Without it the run will time out / be killed for stalling even
+  // on a perfectly-completed task. So no matter what the user did
+  // with their per-agent allow-list, the pool MUST inject it.
+  it("injects task_complete when user trimmed it out", () => {
+    expect(effectiveToolsAllow(["web_search"])).toEqual([
+      "web_search",
+      "task_complete",
+    ]);
+  });
+
+  it("keeps task_complete when user already listed it", () => {
+    const out = effectiveToolsAllow(["web_search", "task_complete"]);
+    // Only one copy — we don't want duplicate entries leaking into
+    // pi-ai's tool registration.
+    expect(out).toEqual(["web_search", "task_complete"]);
+  });
+
+  it("strips deny-listed tools (e.g. task_create) but keeps required", () => {
+    const out = effectiveToolsAllow([
+      "web_search",
+      "task_create",
+      "task_complete",
+    ]);
+    expect(out).toEqual(["web_search", "task_complete"]);
+  });
+
+  it("returns undefined for null/empty allow-list (= all tools)", () => {
+    // Undefined means "don't narrow" — task_complete is in the
+    // host's all-tools set automatically, so no injection needed.
+    expect(effectiveToolsAllow(null)).toBeUndefined();
+    expect(effectiveToolsAllow(undefined)).toBeUndefined();
+  });
+});
 
 describe("WorkerPool", () => {
   let db: Database.Database;
@@ -127,6 +166,62 @@ describe("WorkerPool", () => {
 
     expect(getTask(db, "t1")?.status).toBe("done");
     pool.stop();
+  });
+
+  it("orphan recovery bumps attempts so flapping hosts can't loop forever", () => {
+    // A task that was claimed by a worker the previous boot:
+    // before the fix, recoverOrphaned just reset status to ready
+    // without touching attempts, so a host that crashed once
+    // every claim would re-claim the same task indefinitely. We
+    // now treat each orphan recovery as a stall so MAX_ATTEMPTS
+    // eventually parks the row.
+    createTask(db, "t1", { ownerUserId: "u1", title: "stuck" });
+    updateTask(db, "t1", {
+      status: "in_progress",
+      startedAt: Date.now(),
+      attempts: 0,
+    });
+
+    const pool = new WorkerPool({
+      db,
+      log: noopLog,
+      broadcast: () => {},
+      agents: [],
+      factory: () => null,
+    });
+    pool.start();
+    pool.stop();
+    const after = getTask(db, "t1");
+    expect(after?.status).toBe("ready");
+    expect(after?.attempts).toBe(1);
+    expect(after?.failureReason).toMatch(/host restart/);
+    expect(after?.labels).not.toContain("stalled");
+  });
+
+  it("orphan recovery stamps `stalled` label after MAX_ATTEMPTS", () => {
+    // After MAX_ATTEMPTS-1 retries, one more orphan recovery
+    // should park the row with the stalled label so the pool
+    // stops re-claiming it.
+    createTask(db, "t1", { ownerUserId: "u1", title: "unstable" });
+    updateTask(db, "t1", {
+      status: "in_progress",
+      startedAt: Date.now(),
+      attempts: 2, // already two prior attempts
+    });
+
+    const pool = new WorkerPool({
+      db,
+      log: noopLog,
+      broadcast: () => {},
+      agents: [],
+      factory: () => null,
+    });
+    pool.start();
+    pool.stop();
+    const after = getTask(db, "t1");
+    expect(after?.attempts).toBe(3);
+    expect(after?.labels).toContain("stalled");
+    expect(after?.status).toBe("ready"); // park, don't hide
   });
 
   it("worker that throws goes back to ready with failure_reason; stalls after MAX_ATTEMPTS", async () => {

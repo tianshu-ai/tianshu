@@ -31,10 +31,22 @@ export default function ChatArea() {
   const clearStreamError = useChatStore((s) => s.clearStreamError);
   const compactNotice = useChatStore((s) => s.compactNotice);
   const clearCompactNotice = useChatStore((s) => s.clearCompactNotice);
+  const hasMoreHistory = useChatStore((s) => s.hasMoreHistory);
+  const loadingMore = useChatStore((s) => s.loadingMore);
+  const loadEarlier = useChatStore((s) => s.loadEarlier);
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  // Track the previous last-message id so we can tell "new tail
+  // arrived" (auto-scroll) apart from "older page prepended"
+  // (do nothing — the user just clicked Load earlier and would
+  // be confused if we yanked them back to the bottom).
+  const prevLastIdRef = useRef<string | null>(null);
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    const lastId = messages.length > 0 ? messages[messages.length - 1].id : null;
+    if (lastId && lastId !== prevLastIdRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+    prevLastIdRef.current = lastId;
   }, [messages]);
 
   const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
@@ -87,6 +99,20 @@ export default function ChatArea() {
           />
         ) : (
           <div className="mx-auto max-w-3xl space-y-4">
+            {hasMoreHistory && (
+              // "Load earlier" button at the top of the transcript.
+              // Server-paginated: clicking sends `history_more` with
+              // the oldest current message id as cursor; the
+              // returned page is prepended in chat-store.
+              <button
+                type="button"
+                onClick={loadEarlier}
+                disabled={loadingMore}
+                className="w-full rounded-lg bg-gray-800/50 py-2 text-xs text-gray-500 hover:text-gray-300 disabled:cursor-default disabled:opacity-60"
+              >
+                {loadingMore ? "Loading…" : "Load earlier messages"}
+              </button>
+            )}
             {mergeToolTurns(messages).map((m, i) => (
               <div key={m.id} className={i === 0 ? "" : "mt-4"}>
                 <MessageBubble m={m} />

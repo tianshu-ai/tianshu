@@ -8,7 +8,13 @@ import type { WireMessage } from "../types/chat";
 
 export type ServerEvent =
   | { type: "connected"; tenantId: string; userId: string }
-  | { type: "history"; messages: WireMessage[] }
+  | { type: "history"; messages: WireMessage[]; hasMore: boolean }
+  | {
+      type: "history_page";
+      messages: WireMessage[];
+      hasMore: boolean;
+      before: string;
+    }
   | { type: "message_added"; message: WireMessage }
   | { type: "stream_start" }
   | { type: "stream_delta"; delta: string }
