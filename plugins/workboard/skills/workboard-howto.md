@@ -76,13 +76,22 @@ to let any worker pick it up.
 
 ## Common patterns
 
+> **task_create / task_delete are batch tools.** Always wrap items in
+> the `tasks` / `ids` array — even for a single row. Per-row
+> failures don't abort the rest of the batch; check the
+> `results[]` field in the response.
+
 **Drop a task and forget it (delegated work):**
 
 ```
 task_create({
-  title: "Convert the Q2 sales CSV to a one-page chart",
-  description: "Source: /uploads/q2-sales.csv. Output: /reports/q2.png",
-  worker_role: "luban"
+  tasks: [
+    {
+      title: "Convert the Q2 sales CSV to a one-page chart",
+      description: "Source: /uploads/q2-sales.csv. Output: /reports/q2.png",
+      worker_role: "luban"
+    }
+  ]
 })
 ```
 
@@ -90,11 +99,29 @@ task_create({
 
 ```
 task_create({
-  title: "Reach out to 5 candidate contributors",
-  worker_role: "echo"   // optional; an echo worker will mark it done
+  tasks: [
+    {
+      title: "Reach out to 5 candidate contributors",
+      worker_role: "echo"   // optional; an echo worker will mark it done
+    }
+  ]
 })
 // later, after you do the work:
 task_move({ id: "<id>", status: "done", result_summary: "Sent 5 DMs" })
+```
+
+**Bulk-create a roadmap, then drop them all:**
+
+```
+task_create({
+  tasks: [
+    { title: "Stage 1: write spec",        worker_role: "echo" },
+    { title: "Stage 2: implement",         worker_role: "luban" },
+    { title: "Stage 3: test",              worker_role: "luban" },
+  ]
+})
+// later:
+task_delete({ ids: ["<id1>", "<id2>", "<id3>"] })
 ```
 
 **Re-queue a stalled task after fixing the cause:**

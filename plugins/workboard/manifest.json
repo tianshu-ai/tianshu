@@ -57,9 +57,9 @@
     "apiRoutes": [
       { "method": "GET",    "path": "/tasks",              "handler": "listTasks"     },
       { "method": "POST",   "path": "/tasks",              "handler": "createTask"    },
+      { "method": "POST",   "path": "/tasks/delete",       "handler": "deleteTask"    },
       { "method": "PATCH",  "path": "/tasks/:id",          "handler": "patchTask"     },
       { "method": "GET",    "path": "/tasks/:id/history",  "handler": "taskHistory"   },
-      { "method": "DELETE", "path": "/tasks/:id",          "handler": "deleteTask"    },
       { "method": "GET",    "path": "/projects",           "handler": "listProjects"  },
       { "method": "GET",    "path": "/workers/status",     "handler": "workerStatus"  },
       { "method": "POST",   "path": "/workers/restart",    "handler": "workerRestart" },

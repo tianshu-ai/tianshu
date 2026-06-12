@@ -274,14 +274,27 @@ function useBoardController(opts: {
           input.project && input.project !== PROJECT_INBOX_KEY
             ? input.project
             : undefined;
-        await sendJson<{ task: Task }>(`${API_BASE}/tasks`, {
-          title: input.title,
-          status,
-          project,
-          priority: input.priority || 0,
-          workerRole: input.workerRole || null,
-          description: input.description || null,
+        // POST /tasks is now a batch endpoint. For single-card adds
+        // (the kanban + button) we wrap into a 1-element batch and
+        // surface the per-row error if it failed.
+        const resp = await sendJson<{
+          results: { ok: boolean; task?: Task; error?: string }[];
+        }>(`${API_BASE}/tasks`, {
+          tasks: [
+            {
+              title: input.title,
+              status,
+              project,
+              priority: input.priority || 0,
+              workerRole: input.workerRole || null,
+              description: input.description || null,
+            },
+          ],
         });
+        const row = resp?.results?.[0];
+        if (row && !row.ok) {
+          throw new Error(row.error ?? "create_failed");
+        }
         await reload();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
@@ -309,7 +322,16 @@ function useBoardController(opts: {
     async (id: string) => {
       setBusyId(id);
       try {
-        await sendJson(`${API_BASE}/tasks/${id}`, null, "DELETE");
+        // DELETE is now a batch endpoint at POST /tasks/delete.
+        // Wrap the single-id case into a 1-element ids array so the
+        // existing modal "Delete" button keeps working unchanged.
+        const resp = await sendJson<{
+          results: { ok: boolean; id?: string; error?: string }[];
+        }>(`${API_BASE}/tasks/delete`, { ids: [id] });
+        const row = resp?.results?.[0];
+        if (row && !row.ok) {
+          throw new Error(row.error ?? "delete_failed");
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
