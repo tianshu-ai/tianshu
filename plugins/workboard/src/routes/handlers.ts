@@ -40,6 +40,7 @@ import {
   type SeedAgentSpec,
   type WorkerAgent,
 } from "../db/agents.js";
+import { readSessionHistory } from "../db/session-history.js";
 
 /**
  * Validate that a task's worker assignment can actually be picked
@@ -517,6 +518,57 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     res.json({ task: after ? taskJson(after) : null });
   };
 
+  /**
+   * GET /tasks/:id/history
+   *
+   * Returns the worker session transcript for the task's most
+   * recent run (`tasks.session_id`). The kanban Execution tab and
+   * the chat-side `task_get_history` agent tool both consume this.
+   *
+   * Auth: same as listTasks — you can only see history for tasks
+   * you own. A task without `session_id` (never claimed) returns
+   * `{ entries: [] }` rather than 404 so the UI can still render
+   * an "hasn't run yet" empty state without an error toast.
+   */
+  const taskHistoryHandler: PluginRouteHandler = (req, res) => {
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no_user" });
+      return;
+    }
+    const id = stringParam(req, "id");
+    if (!id) {
+      res.status(400).json({ error: "id_required" });
+      return;
+    }
+    const task = getTask(deps.db, id);
+    if (!task) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    if (task.ownerUserId !== userId) {
+      res.status(403).json({ error: "not_yours" });
+      return;
+    }
+    const sessionId = task.sessionId;
+    if (!sessionId) {
+      res.json({
+        sessionId: null,
+        entries: [],
+        attempts: task.attempts,
+        failureReason: task.failureReason,
+      });
+      return;
+    }
+    const entries = readSessionHistory(deps.db, sessionId);
+    res.json({
+      sessionId,
+      entries,
+      attempts: task.attempts,
+      failureReason: task.failureReason,
+    });
+  };
+
   const deleteTaskHandler: PluginRouteHandler = (req, res) => {
     const userId = userIdFromReq(req);
     if (!userId) {
@@ -761,6 +813,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     listTasks: listTasksHandler,
     createTask: createTaskHandler,
     patchTask: patchTaskHandler,
+    taskHistory: taskHistoryHandler,
     deleteTask: deleteTaskHandler,
     listProjects: listProjectsHandler,
     workerStatus: workerStatusHandler,

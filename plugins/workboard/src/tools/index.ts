@@ -41,6 +41,7 @@ import {
   type TaskStatus,
 } from "../db/tasks.js";
 import { listWorkerAgents } from "../db/agents.js";
+import { readSessionHistory } from "../db/session-history.js";
 
 export interface ToolDeps {
   db: TenantDbHandle;
@@ -508,6 +509,71 @@ export function buildTaskDeleteTool(deps: ToolDeps): AgentTool {
       }
       deleteTask(deps.db, args.id);
       return { ok: true, text: `Deleted task ${args.id}.` };
+    },
+  };
+}
+
+/**
+ * Read a task's worker execution transcript.
+ *
+ * The chat-side orchestrator calls this when the user asks "why
+ * did T4 fail?" — the orchestrator gets the full assistant /
+ * tool-call / tool-result trail of the worker's most recent run
+ * and can reason about it directly. The same data backs the
+ * kanban Execution tab; both views go through this code path so
+ * the agent can never see anything the user can't.
+ *
+ * Empty `entries` is the normal response for a task that has
+ * never been claimed (`tasks.session_id IS NULL`).
+ */
+export function buildTaskGetHistoryTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_get_history",
+      description:
+        "Fetch the worker's execution transcript for a task you own. " +
+        "Returns the chronological list of assistant / tool-call / " +
+        "tool-result rows from the worker's most recent run, plus " +
+        "attempts and failure_reason. Use this when the user wants " +
+        "to know why a task stalled or what the worker actually did.",
+      parameters: Type.Object({
+        id: Type.String({ description: "Task id." }),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { id?: string };
+      if (!args.id) return { ok: false, text: "id is required" };
+      const task = getTask(deps.db, args.id);
+      if (!task) return { ok: false, text: `task not found: ${args.id}` };
+      if (task.ownerUserId !== ctx.userId) {
+        return { ok: false, text: `task ${args.id} is not yours` };
+      }
+      const sessionId = task.sessionId;
+      if (!sessionId) {
+        return {
+          ok: true,
+          text: `Task ${args.id} has no execution history yet (never claimed by a worker).`,
+          data: {
+            taskId: task.id,
+            sessionId: null,
+            attempts: task.attempts,
+            failureReason: task.failureReason,
+            entries: [],
+          },
+        };
+      }
+      const entries = readSessionHistory(deps.db, sessionId);
+      return {
+        ok: true,
+        text: `Found ${entries.length} entries from the worker session for task ${args.id}.`,
+        data: {
+          taskId: task.id,
+          sessionId,
+          attempts: task.attempts,
+          failureReason: task.failureReason,
+          entries,
+        },
+      };
     },
   };
 }

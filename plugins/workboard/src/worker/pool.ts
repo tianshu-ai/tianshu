@@ -311,11 +311,15 @@ export class WorkerPool {
         failureReason: reason,
         attempts: nextAttempts,
         labels: nextLabels,
-        // Clear session/started so the next claim re-stamps them.
+        // Keep session_id pointing at the most recent run — the
+        // user / chat agent uses it to inspect the failure
+        // transcript via task_get_history. Clearing started_at
+        // is fine because the next claim will re-stamp it; the
+        // session stays linked even across retries (a fresh run
+        // overwrites with its own session_id at claim time).
+        startedAt: null,
         // Stamp ended_at on the give-up case so the timeline shows
         // when the task was parked.
-        sessionId: null,
-        startedAt: null,
         endedAt: giveUp ? now : null,
       });
     }
@@ -418,6 +422,9 @@ const WORKER_DENY_TOOLS = new Set<string>([
   "task_update",
   "task_move",
   "task_delete",
+  // History is for the orchestrator/user explaining a task,
+  // not for the worker introspecting its peers.
+  "task_get_history",
 ]);
 
 /**
