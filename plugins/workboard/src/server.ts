@@ -39,6 +39,7 @@ import {
 import {
   buildTaskCompleteTool,
   buildTaskCreateTool,
+  buildTaskGetHistoryTool,
   buildTaskDeleteTool,
   buildTaskListTool,
   buildTaskMoveTool,
@@ -267,6 +268,7 @@ const plugin: PluginServerModule = {
         TaskUpdateTool: buildTaskUpdateTool(toolDeps),
         TaskMoveTool: buildTaskMoveTool(toolDeps),
         TaskDeleteTool: buildTaskDeleteTool(toolDeps),
+        TaskGetHistoryTool: buildTaskGetHistoryTool(toolDeps),
         TaskCompleteTool: buildTaskCompleteTool(),
       },
       routes,
