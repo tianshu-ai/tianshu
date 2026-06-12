@@ -38,7 +38,14 @@ import type {
   AgentLoopRunner,
   AgentLoopRunnerRequest,
   AgentLoopRunnerResult,
+  SessionInboxCapability,
 } from "@tianshu/plugin-sdk";
+import {
+  enqueue as inboxEnqueue,
+  bindIdleRunner,
+} from "./chat/session-inbox.js";
+import { runPrompt } from "./chat/handler.js";
+import { broadcastToUser } from "./chat/active-harnesses.js";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
 // both projects can run side-by-side on the same dev machine without
@@ -72,6 +79,10 @@ pluginRegistry = new PluginRegistry({
   resolver: reloadingResolver,
   mcpManager,
   hostCapabilities: {
+    "host.sessionInbox": (ctx): SessionInboxCapability => ({
+      enqueue: (targetSessionId, message) =>
+        inboxEnqueue(ctx, targetSessionId, message),
+    }),
     "host.agentLoop": (ctx) => {
       const runner: AgentLoopRunner = {
         run: async (
@@ -91,6 +102,8 @@ pluginRegistry = new PluginRegistry({
             parentSessionId: req.parentSessionId,
             timeouts: req.timeouts,
             signal: req.signal,
+            onSessionStart: req.onSessionStart,
+            resumeSessionId: req.resumeSessionId,
             pluginRegistry,
             homeDir: ctx.workspaceDir,
           });
@@ -125,6 +138,75 @@ if (bootstrap.created) {
   // eslint-disable-next-line no-console
   console.log(`[tianshu] tenants found: [${globalOps.list().join(", ")}]`);
 }
+
+// Wire the session-inbox idle runner. When a worker pool finishes
+// a task and the parent chat session is idle (no active harness),
+// the inbox kicks a background `runPrompt` turn so the agent
+// reacts to the notification immediately instead of waiting for
+// the user to send something.
+//
+// We bind here (one-shot, process-wide) so the inbox module
+// doesn't have to import the host registry directly. The runner
+// closure resolves the tenant from globalOps at call time — the
+// session row already lives in some tenant DB; tonight there's
+// only one (default), but the closure is tenant-agnostic.
+bindIdleRunner(async ({ sessionId, userId, promptText }) => {
+  // Find which tenant owns this session. If none, give up
+  // silently — the inbox row stays delivered=false and will be
+  // flushed on the next user prompt anyway.
+  let owningCtx:
+    | ReturnType<typeof globalOps.open>
+    | null = null;
+  for (const tenantId of globalOps.list()) {
+    const ctx = globalOps.open(tenantId);
+    const row = ctx.db
+      .prepare<[string], { id: string }>(
+        `SELECT id FROM sessions WHERE id = ?`,
+      )
+      .get(sessionId);
+    if (row) {
+      owningCtx = ctx;
+      break;
+    }
+  }
+  if (!owningCtx) {
+    console.warn(
+      `[idle-runner] no tenant found for session ${sessionId}; skipping`,
+    );
+    return;
+  }
+  const ctx = owningCtx;
+
+  // Stream events out to every chat tab the user has open. If
+  // they have no tabs (offline), the turn still runs and its
+  // assistant message persists; next reconnect's history fetch
+  // surfaces it.
+  const send = (msg: import("./chat/ws-protocol.js").ServerMsg) =>
+    broadcastToUser(userId, msg);
+
+  // The runner needs an AbortController so a wedged provider
+  // can't pin the inbox queue forever. We don't expose this to
+  // the user (no user-facing abort button for an inbox turn);
+  // simply give the run a generous deadline.
+  const controller = new AbortController();
+  const deadline = setTimeout(
+    () => controller.abort(),
+    5 * 60 * 1000,
+  );
+  try {
+    await runPrompt({
+      ctx,
+      userId,
+      send,
+      content: promptText,
+      signal: controller.signal,
+      pluginRegistry,
+      homeDir: ctx.workspaceDir,
+    });
+  } finally {
+    clearTimeout(deadline);
+  }
+});
 
 const app = express();
 app.use(

@@ -56,6 +56,16 @@ export interface BuildToolContext {
   userHomeDir: string;
   tenantHomeDir: string;
   log: PluginLogger;
+  /**
+   * Session this toolset belongs to. Plumbed through to every
+   * tool's `AgentToolContext.sessionId` so plugins can attribute
+   * side-effects (e.g. workboard's task_create stamping
+   * `tasks.parent_session_id`) back to the asking session.
+   *
+   * Optional: tools instantiated outside any chat / worker
+   * context (e.g. unit tests) may skip it.
+   */
+  sessionId?: string;
 }
 
 /**
@@ -116,6 +126,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       userHomeDir: toolContext.userHomeDir,
       tenantHomeDir: toolContext.tenantHomeDir,
       log: toolContext.log,
+      sessionId: toolContext.sessionId,
     };
     let available = true;
     if (tool.available) {

@@ -34,6 +34,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Run a headless agent loop on behalf of a worker: spin up a kind='worker' session, call the LLM with the tenant's tool/skill set, persist messages, enforce first-response/idle/max-run timeouts, and return a structured terminal result. Provided by the host (not by a plugin); workboard's LLM worker requires it.",
   },
+  "host.sessionInbox": {
+    exclusive: true,
+    description:
+      "Deliver a system-level message to a chat session's inbox. If the session has an active turn running, the message is queued via harness.followUp(); otherwise it persists in the DB and is flushed as a system note the next time the session takes a user turn. Provided by the host; workboard uses this to notify the parent agent when a delegated task finishes.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;

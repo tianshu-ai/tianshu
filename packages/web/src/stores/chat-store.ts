@@ -37,6 +37,15 @@ interface ChatState {
 
   // conversation
   messages: WireMessage[];
+  /** True iff the server reports older messages exist beyond the
+   *  oldest one currently in `messages`. Drives the "Load earlier"
+   *  button visibility. False after a successful page that
+   *  exhausted the source. */
+  hasMoreHistory: boolean;
+  /** Token returned by the server identifying the cursor we last
+   *  asked from. Used to ignore stale `history_page` responses
+   *  (e.g. user clicks Load earlier twice fast). */
+  loadingMore: boolean;
   isStreaming: boolean;
   streamError: string | null;
   /** Last "history compacted" notice. The chat area renders this as
@@ -71,6 +80,9 @@ interface ChatState {
   toggleSidebar: () => void;
   sendPrompt: (content: string, attachments?: WireAttachment[]) => void;
   abort: () => void;
+  /** Request the next older page. No-op when already loading or
+   *  when `hasMoreHistory` is false. */
+  loadEarlier: () => void;
   clearStreamError: () => void;
   clearCompactNotice: () => void;
   setPreferredModel: (id: string | null) => void;
@@ -82,6 +94,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
   meError: null,
 
   messages: [],
+  hasMoreHistory: false,
+  loadingMore: false,
   isStreaming: false,
   streamError: null,
   compactNotice: null,
@@ -111,7 +125,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
     tianshuWs.connect();
     // History fetch as soon as we're connected.
     tianshuWs.on("connected", () => tianshuWs.send({ type: "history" }));
-    tianshuWs.on("history", (m) => set({ messages: m.messages }));
+    tianshuWs.on("history", (m) =>
+      set({ messages: m.messages, hasMoreHistory: m.hasMore, loadingMore: false }),
+    );
+    tianshuWs.on("history_page", (m) =>
+      set((s) => {
+        // Drop server-side dupes (a refresh + concurrent load_earlier
+        // can race). The server returns oldest-first; we prepend.
+        const existing = new Set(s.messages.map((x) => x.id));
+        const fresh = m.messages.filter((x) => !existing.has(x.id));
+        return {
+          messages: [...fresh, ...s.messages],
+          hasMoreHistory: m.hasMore,
+          loadingMore: false,
+        };
+      }),
+    );
     tianshuWs.on("message_added", (m) =>
       set((s) => {
         // Defensive de-dupe: a re-registered handler (e.g. across HMR
@@ -266,6 +295,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   abort: () => {
     tianshuWs.send({ type: "abort" });
+  },
+
+  loadEarlier: () => {
+    const s = get();
+    if (s.loadingMore || !s.hasMoreHistory || s.messages.length === 0) return;
+    const before = s.messages[0]?.id;
+    if (!before) return;
+    set({ loadingMore: true });
+    tianshuWs.send({ type: "history_more", before });
   },
 
   clearStreamError: () => set({ streamError: null }),

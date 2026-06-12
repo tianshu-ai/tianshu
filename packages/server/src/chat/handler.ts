@@ -52,6 +52,15 @@ import {
 import { buildToolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
+import {
+  drainPending as drainInbox,
+  renderForPrompt as renderInboxForPrompt,
+  markDeliveredFromMessage,
+} from "./session-inbox.js";
+import {
+  registerActiveHarness,
+  registerUserSendChannel,
+} from "./active-harnesses.js";
 import { SqliteSessionStorage } from "./sqlite-session-storage.js";
 import { makeStubExecutionEnv } from "./stub-execution-env.js";
 import {
@@ -63,6 +72,7 @@ import { fileURLToPath } from "node:url";
 import {
   ensureActiveSession,
   listMessagesForUser,
+  listMessagesForUserPage,
   loadAgentHistoryForSession,
   type ChatMessage,
   type ChatSession,
@@ -74,6 +84,7 @@ import {
   type ServerMsg,
   type ToWireOpts,
   type WireAttachment,
+  type WireMessage,
 } from "./ws-protocol.js";
 import {
   cacheGet,
@@ -109,6 +120,11 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
   send({ type: "connected", tenantId: ctx.tenantId, userId });
 
+  // Register this socket's send thunk so the session-inbox idle
+  // runner can broadcast a background turn's stream to every
+  // tab the user has open. unregister fires on `close` below.
+  const unregisterUserChannel = registerUserSendChannel(userId, send);
+
   let aborter: AbortController | null = null;
 
   socket.on("message", (raw) => {
@@ -125,10 +141,28 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       case "history": {
         const opts = makeWireOpts(ctx);
-        const messages = listMessagesForUser(ctx, userId).map((m) =>
-          toWire(m, opts),
-        );
-        send({ type: "history", messages });
+        const page = listMessagesForUserPage(ctx, userId, {
+          limit: parsed.limit,
+        });
+        send({
+          type: "history",
+          messages: page.messages.map((m) => toWire(m, opts)),
+          hasMore: page.hasMore,
+        });
+        return;
+      }
+      case "history_more": {
+        const opts = makeWireOpts(ctx);
+        const page = listMessagesForUserPage(ctx, userId, {
+          limit: parsed.limit,
+          before: parsed.before,
+        });
+        send({
+          type: "history_page",
+          messages: page.messages.map((m) => toWire(m, opts)),
+          hasMore: page.hasMore,
+          before: parsed.before,
+        });
         return;
       }
       case "prompt": {
@@ -183,6 +217,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   socket.on("close", () => {
     aborter?.abort();
     aborter = null;
+    unregisterUserChannel();
   });
 }
 
@@ -198,7 +233,7 @@ interface RunPromptArgs {
   homeDir?: string;
 }
 
-async function runPrompt(args: RunPromptArgs): Promise<void> {
+export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const { ctx, userId, send, content, modelId, attachments, signal, pluginRegistry, homeDir } = args;
   const wireOpts = makeWireOpts(ctx);
   const repo = new SqliteSessionRepo(ctx);
@@ -267,6 +302,7 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
       userHomeDir: userHome,
       tenantHomeDir: homeDir ?? "",
       log: makeLogger(ctx.tenantId, userId, send),
+      sessionId: session.id,
     },
   });
 
@@ -277,12 +313,25 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   //
   // Non-image bytes never reach the LLM directly; the agent reads
   // them via tools (`read_file`, or shell `pdftotext` for pdfs).
-  const { promptText, images, originalAttachments } = await prepareUserInput(
-    content,
-    attachments,
-    ctx.userHomeDir(userId),
-    modelInfo,
-  );
+  const { promptText: rawPromptText, images, originalAttachments } =
+    await prepareUserInput(
+      content,
+      attachments,
+      ctx.userHomeDir(userId),
+      modelInfo,
+    );
+
+  // Drain the session inbox before the agent sees the user's
+  // prompt. Anything dropped here while the session was idle
+  // (e.g. a worker pool reporting task_done) is rendered as a
+  // system-note prefix above the user's text. The agent thus
+  // gets full context: "these messages arrived for you while
+  // you were idle, AND here's the next thing the user said".
+  const inboxDelivered = drainInbox(ctx, session.id);
+  const inboxPrefix = renderInboxForPrompt(inboxDelivered);
+  const promptText = inboxPrefix
+    ? `${inboxPrefix}<user>\n${rawPromptText}\n</user>`
+    : rawPromptText;
 
   // Build the harness session ourselves so we can keep a handle
   // on the storage — we need to stash sibling attachments on it
@@ -320,11 +369,38 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
   const onAbort = () => void harness.abort();
   signal.addEventListener("abort", onAbort, { once: true });
 
+  // Register this harness in the process-local registry so the
+  // session inbox can route a live `enqueue()` through
+  // `harness.followUp(...)` instead of leaving the message stuck
+  // in `pending` until the user types again. Cleared in finally.
+  const unregisterHarness = registerActiveHarness(session.id, harness);
+
   let lastAssistantRow: ChatMessage | null = null;
   let assistantTurns = 0;
   let streamErrorSent = false;
 
+  // Track tool calls the agent emitted but never produced a
+  // tool_result for. Provider terminations / aborts can leave a
+  // toolCall hanging — the UI shows a perpetual spinner. We
+  // synthesise a failed tool_result for any leftover entry in
+  // the finally block so the chip resolves.
+  const outstandingToolCalls = new Map<
+    string,
+    { name: string }
+  >();
+
   const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
+    const ev = event as { type?: string };
+    if (ev.type === "tool_execution_start") {
+      const tc = event as unknown as {
+        toolCallId: string;
+        toolName: string;
+      };
+      outstandingToolCalls.set(tc.toolCallId, { name: tc.toolName });
+    } else if (ev.type === "tool_execution_end") {
+      const te = event as unknown as { toolCallId: string };
+      outstandingToolCalls.delete(te.toolCallId);
+    }
     bridgeHarnessEventToWs(event, {
       ctx,
       session,
@@ -355,7 +431,26 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
       streamErrorSent = true;
     }
   } finally {
+    // Resolve any tool-call chip the UI is still showing as
+    // running. Provider termination after a `tool_call` event
+    // but before the matching `tool_execution_end` strands the
+    // chip in `running` state forever; emit a synthetic failed
+    // result so the bubble renders an error and the run can
+    // visually move on.
+    for (const [callId, info] of outstandingToolCalls) {
+      send({
+        type: "tool_result",
+        callId,
+        name: info.name,
+        ok: false,
+        text: streamErrorSent
+          ? "Tool call interrupted by stream error."
+          : "Tool call did not return before the run ended.",
+      });
+    }
+    outstandingToolCalls.clear();
     unsubscribe();
+    unregisterHarness();
     signal.removeEventListener("abort", onAbort);
     if (storage) storage.pendingUserAttachments = null;
   }
@@ -370,18 +465,35 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
       modelInfo,
       send,
       onSuccessRefresh: () => {
-        const wire = listMessagesForUser(ctx, userId).map((m) =>
-          toWire(m, makeWireOpts(ctx)),
-        );
-        send({ type: "history", messages: wire });
+        // Refresh after compaction: same default page size as the
+        // initial fetch. The compacted session is what the client
+        // wants to see; we don't try to preserve the older paged-in
+        // window because compaction logically replaces it.
+        const page = listMessagesForUserPage(ctx, userId);
+        send({
+          type: "history",
+          messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
+          hasMore: page.hasMore,
+        });
       },
     });
   }
 
   // Emit stream_end so the UI re-enables the send button.
+  //
+  // Skip the persisted row when its rendered text is empty —
+  // those happen when the agent only emitted tool calls in the
+  // final turn and never said anything user-facing. Showing
+  // them produces a content-less bubble ("…") that just
+  // confuses the user; the tool result chips above already
+  // tell the story. Synthesise the placeholder branch instead
+  // so the UI re-enables the send button without rendering an
+  // empty bubble.
+  const lastWire = lastAssistantRow ? toWire(lastAssistantRow, wireOpts) : null;
+  const lastIsEmpty = !!lastWire && !hasVisibleAssistantText(lastWire);
   if (!streamErrorSent) {
-    if (lastAssistantRow) {
-      send({ type: "stream_end", message: toWire(lastAssistantRow, wireOpts) });
+    if (lastWire && !lastIsEmpty) {
+      send({ type: "stream_end", message: lastWire });
     } else {
       // Synthetic placeholder so the UI doesn't get stuck.
       send({
@@ -399,6 +511,19 @@ async function runPrompt(args: RunPromptArgs): Promise<void> {
       });
     }
   }
+}
+
+/**
+ * True iff the wire-encoded assistant message has at least one
+ * visible text segment. Tool calls / tool results don't count
+ * — they render as their own chips elsewhere; an assistant
+ * "message" with only those segments is a content-less bubble
+ * we should suppress.
+ */
+function hasVisibleAssistantText(m: WireMessage): boolean {
+  if (m.role !== "assistant") return true;
+  if (typeof m.text === "string" && m.text.trim().length > 0) return true;
+  return false;
 }
 
 /**
@@ -532,12 +657,39 @@ function bridgeHarnessEventToWs(
     if (m.role === "assistant") {
       const row = readBackLatestMessage(ctx, session.id, "assistant");
       if (row) {
+        // Always notify the run controller (lastAssistantRow gets
+        // tracked here) so MAX_TURNS counting and the stream_end
+        // selection in the caller stay correct, even if we
+        // suppress the wire message below.
         onAssistantPersisted(row);
-        send({ type: "message_added", message: toWire(row, wireOpts) });
+        const wire = toWire(row, wireOpts);
+        // Suppress empty assistant messages (no user-visible
+        // text segments). They show up as bare "…" bubbles
+        // when the agent's final turn was tool-only — the tool
+        // result chips above already tell the story. The same
+        // filter is applied at stream_end below.
+        if (hasVisibleAssistantText(wire)) {
+          send({ type: "message_added", message: wire });
+        }
       }
     } else if (m.role === "user") {
       const row = readBackLatestMessage(ctx, session.id, "user");
       if (row) {
+        // pi just persisted a user message. If it carries inbox
+        // markers, this is the proof we needed that the inbox
+        // followUp was actually consumed — mark those rows
+        // delivered now so they don't get redelivered as a
+        // prefix on the next user prompt. See
+        // session-inbox.ts's markDeliveredFromMessage.
+        try {
+          markDeliveredFromMessage(ctx, row.content);
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            "[handler] markDeliveredFromMessage failed:",
+            err instanceof Error ? err.message : err,
+          );
+        }
         send({ type: "message_added", message: toWire(row, wireOpts) });
       }
     } else if ((m as { role?: string }).role === "toolResult") {
@@ -809,10 +961,12 @@ async function runManualCompact(args: {
     });
     // Push a refreshed history so the UI swaps to the new session
     // immediately (the fork ack + summary stub plus any kept tail).
-    const wire = listMessagesForUser(ctx, userId).map((m) =>
-      toWire(m, makeWireOpts(ctx)),
-    );
-    send({ type: "history", messages: wire });
+    const page = listMessagesForUserPage(ctx, userId);
+    send({
+      type: "history",
+      messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
+      hasMore: page.hasMore,
+    });
   } catch (err) {
     if (err instanceof CompactSkippedError) {
       send({ type: "stream_error", reason: `compact skipped: ${err.message}` });
