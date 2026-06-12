@@ -329,6 +329,11 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           workerRole: role,
           dependsOn,
           labels: item.labels,
+          // Stamp the asking session so the pool knows who to
+          // notify when this task finishes. Tools called outside
+          // an LLM context (none of these today, but possible
+          // for an internal job) just leave it null.
+          parentSessionId: ctx.sessionId ?? null,
         });
         const blocked = !isEligible(deps.db, task);
         return {

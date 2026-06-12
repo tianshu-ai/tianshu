@@ -1,4 +1,4 @@
-// Workboard plugin — client side.
+// Workboard plugin - client side.
 //
 // Right-column kanban panel inside the chat shell. 3 horizontal
 // columns (todo / in-progress / done), sized for the narrow right
@@ -6,7 +6,7 @@
 // dependency chips show 1f512 / 1f517 state.
 //
 // `WorkboardAdminPage` is kept in this file but NOT contributed via
-// the manifest — it lived as a /admin/workboard/main page in earlier
+// the manifest - it lived as a /admin/workboard/main page in earlier
 // drafts; Yu asked to drop the admin surface for v0.2 because the
 // right-rail panel covers everything the human needs. We keep the
 // component so re-exposing it later is a one-line manifest change
@@ -23,10 +23,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertTriangle,
+  Bot,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   Clock,
   Hammer,
   Kanban,
@@ -34,8 +37,12 @@ import {
   Loader2,
   Lock,
   Plus,
+  RefreshCw,
+  ScrollText,
   Trash2,
+  User,
   X,
+  XCircle,
   Zap,
 } from "lucide-react";
 import type { AdminPageProps, PanelProps, PluginClientExports, SidebarSectionProps } from "@tianshu/plugin-sdk/client";
@@ -62,7 +69,7 @@ interface Task {
   dependsOn: string[];
   /** Free-form labels. The pool reserves `stalled` (set
    *  automatically after MAX_ATTEMPTS failed runs) and `draft`
-   *  (user opt-in) — either keeps the row in `ready` but skipped
+   *  (user opt-in) - either keeps the row in `ready` but skipped
    *  by the pool. UI paints a warning chip when present. */
   labels?: string[];
   /** Last failure reason, set when the pool re-queued the task
@@ -99,6 +106,33 @@ interface WorkerSnapshot {
   running: string[];
 }
 
+/**
+ * Worker-session transcript entry, mirrored from
+ * `plugins/workboard/src/db/session-history.ts` (server-side). We
+ * redeclare here instead of importing because the client bundle
+ * shouldn't pull SQL helpers; the wire shape is small enough that
+ * keeping it in lockstep is cheap.
+ */
+interface HistoryToolCall {
+  callId: string;
+  toolName: string;
+  argsJson: string;
+}
+interface HistoryToolResult {
+  callId: string;
+  toolName: string;
+  ok?: boolean;
+  text: string;
+}
+interface HistoryEntry {
+  id: string;
+  createdAt: number;
+  role: "user" | "assistant" | "tool" | "system";
+  text: string;
+  toolCalls?: HistoryToolCall[];
+  toolResult?: HistoryToolResult;
+}
+
 const PROJECT_INBOX_KEY = "***";
 
 interface ColumnSpec {
@@ -114,7 +148,7 @@ const BOARD_COLUMNS: ColumnSpec[] = [
   { status: "done",        label: "Done",        color: "border-emerald-500/40 bg-emerald-500/5",  dot: "bg-emerald-400" },
 ];
 
-// `stalled` is no longer a column — it's a label that paints a
+// `stalled` is no longer a column - it's a label that paints a
 // warning chip on the ready card. See LABELED_BADGES below.
 
 async function getJson<T>(url: string): Promise<T> {
@@ -629,7 +663,7 @@ function KanbanColumn({
   busyId: string | null;
   compact?: boolean;
   onAddTask: (input: AddTaskInput) => void;
-  /** Card-initiated patches — e.g. the “Retry” button on a
+  /** Card-initiated patches - e.g. the "Retry" button on a
    *  stalled-label chip clears the label so the pool re-claims. */
   onPatchTask: (id: string, patch: Record<string, unknown>) => Promise<void>;
   projects: ProjectSummary[];
@@ -720,7 +754,7 @@ function KanbanColumn({
             }
           >
             {column.status === "ready"
-              ? "empty — click to add"
+              ? "empty - click to add"
               : "empty"}
           </li>
         )}
@@ -769,7 +803,11 @@ function BoardCard({
   const hasMore =
     Boolean(task.description?.trim()) ||
     Boolean(task.resultSummary?.trim()) ||
-    meta.deps.length > 0;
+    meta.deps.length > 0 ||
+    // Anything with a session_id has a worker transcript worth
+    // showing — even an in-progress task with no description.
+    Boolean(task.sessionId) ||
+    task.status === "in_progress";
   return (
     <li
       draggable
@@ -786,7 +824,7 @@ function BoardCard({
         // Don't fight click-vs-drag heuristics: only flip on real
         // mouse clicks, not when dragstart bubbled up. The browser
         // suppresses click after a drag, so this is mostly belt &
-        // braces — but we do swallow the event so the column-level
+        // braces - but we do swallow the event so the column-level
         // drop handler doesn't see it.
         e.stopPropagation();
         if (hasMore) setExpanded((v) => !v);
@@ -885,7 +923,7 @@ function BoardCard({
               onClick={(e) => e.stopPropagation()}
             >
               <span className="inline-block rounded border border-yellow-500/40 bg-yellow-500/5 px-1.5 py-px text-[10px] text-yellow-200">
-                draft — pool will skip
+                draft - pool will skip
               </span>
               <button
                 type="button"
@@ -981,14 +1019,14 @@ function BoardCard({
           )}
           <div className="grid grid-cols-2 gap-x-3 gap-y-0 text-[9.5px] text-gray-500 pt-1">
             <div>
-              Created 
+              Created 
               <span className="text-gray-300">
                 {new Date(task.createdAt).toLocaleString()}
               </span>
             </div>
             {task.startedAt && (
               <div>
-                Started 
+                Started 
                 <span className="text-gray-300">
                   {new Date(task.startedAt).toLocaleString()}
                 </span>
@@ -996,17 +1034,410 @@ function BoardCard({
             )}
             {task.endedAt && (
               <div>
-                Ended 
+                Ended 
                 <span className="text-gray-300">
                   {new Date(task.endedAt).toLocaleString()}
                 </span>
               </div>
             )}
           </div>
+          <ExecutionSection task={task} />
         </div>
       )}
     </li>
   );
+}
+
+/**
+ * Trigger row that opens the worker transcript in a full dialog.
+ *
+ * The card body is too narrow for a chat-style transcript, so we
+ * render a thin button on the expanded card and pop a modal when
+ * clicked. The modal owns the polling loop — closed cards do no
+ * background work.
+ */
+function ExecutionSection({ task }: { task: Task }) {
+  const [open, setOpen] = useState(false);
+  const showButton = task.status === "in_progress" || Boolean(task.sessionId);
+  if (!showButton) return null;
+  return (
+    <>
+      <div className="pt-1">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(true);
+          }}
+          className="inline-flex items-center gap-1.5 rounded border border-gray-700 px-1.5 py-0.5 text-[10px] text-gray-300 hover:border-gray-500 hover:bg-gray-800"
+        >
+          <ScrollText className="w-3 h-3" />
+          View transcript
+          {task.status === "in_progress" && (
+            <span className="flex items-center gap-1 text-amber-300">
+              <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
+              live
+            </span>
+          )}
+        </button>
+      </div>
+      {open && (
+        <ExecutionDialog task={task} onClose={() => setOpen(false)} />
+      )}
+    </>
+  );
+}
+
+/**
+ * Modal that renders the worker session transcript.
+ *
+ * Visual model lifted from packages/web's MessageBubble:
+ *   - role=user      → right-aligned brand-tinted card
+ *   - role=assistant → left-aligned dark card; tool calls render
+ *                      as collapsible chips below
+ *   - role=tool      → not shown directly — the result is folded
+ *                      back into its calling assistant turn
+ *
+ * While `task.status === "in_progress"` the dialog polls every 3s
+ * so the user can watch the LLM type. Stops on close or terminal
+ * status. Auto-scrolls to the bottom on new entries unless the
+ * user has scrolled away (so reading old messages doesn't yank).
+ */
+function ExecutionDialog({
+  task,
+  onClose,
+}: {
+  task: Task;
+  onClose: () => void;
+}) {
+  const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const stickToBottomRef = useRef(true);
+
+  const fetchHistory = useCallback(async () => {
+    if (!task.id) return;
+    setLoading(true);
+    try {
+      const data = await getJson<{
+        sessionId: string | null;
+        entries: HistoryEntry[];
+      }>(`${API_BASE}/tasks/${task.id}/history`);
+      setEntries(data.entries ?? []);
+      setSessionId(data.sessionId ?? null);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [task.id]);
+
+  useEffect(() => {
+    void fetchHistory();
+  }, [fetchHistory]);
+
+  // Tail while the task is running.
+  useEffect(() => {
+    if (task.status !== "in_progress") return;
+    const t = setInterval(() => void fetchHistory(), 3000);
+    return () => clearInterval(t);
+  }, [task.status, fetchHistory]);
+
+  // Auto-scroll to bottom on new entries when user is at bottom.
+  useEffect(() => {
+    if (!stickToBottomRef.current) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [entries]);
+
+  const onScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickToBottomRef.current = distance < 80;
+  };
+
+  const merged = useMemo(
+    () => mergeAssistantToolResults(entries ?? []),
+    [entries],
+  );
+
+  // The card itself is `<li draggable>`, so anything we render
+  // INSIDE it inherits the drag intent — selecting text would
+  // grab the whole card. Portal the dialog to document.body so
+  // it sits next to the kanban column, not under it.
+  return createPortal(
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
+      // Belt + braces: even portalled, an ancestor draggable
+      // boundary on document body wouldn't apply, but if a
+      // dragstart somehow bubbles up from inside the dialog we
+      // suppress it so text selection wins.
+      onDragStart={(e) => e.stopPropagation()}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        draggable={false}
+        className="flex h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-950 shadow-xl"
+      >
+        <header className="flex items-center gap-2 border-b border-gray-800 px-4 py-2.5">
+          <ScrollText className="h-4 w-4 text-gray-500" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-sm font-medium text-gray-100">
+              {task.title}
+            </div>
+            <div className="flex items-center gap-2 text-[10px] text-gray-500">
+              <span>worker transcript</span>
+              {sessionId && (
+                <span className="font-mono text-gray-600">· {sessionId}</span>
+              )}
+              {task.status === "in_progress" && (
+                <span className="flex items-center gap-1 text-amber-300">
+                  ·
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                  tailing
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => void fetchHistory()}
+            disabled={loading}
+            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200 disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+            />
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </header>
+
+        <div
+          ref={scrollRef}
+          onScroll={onScroll}
+          className="flex-1 overflow-y-auto p-4 space-y-3"
+        >
+          {error && (
+            <div className="rounded border border-rose-700/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">
+              {error}
+            </div>
+          )}
+          {entries === null && loading && (
+            <div className="text-xs italic text-gray-500">Loading…</div>
+          )}
+          {entries !== null && merged.length === 0 && !loading && (
+            <div className="text-xs italic text-gray-500">
+              {task.sessionId
+                ? "No messages yet."
+                : "Worker hasn't started yet."}
+            </div>
+          )}
+          {merged.map((row) => (
+            <ExecutionTurn key={row.id} row={row} />
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+interface MergedTurn {
+  id: string;
+  createdAt: number;
+  role: "user" | "assistant" | "system";
+  text: string;
+  /** Tool calls from THIS assistant turn, with their result
+   *  envelope already attached (looked up from later tool rows). */
+  calls: Array<{
+    call: HistoryToolCall;
+    result?: HistoryToolResult;
+  }>;
+}
+
+/**
+ * Walk the raw chronologically-ordered entries and merge tool
+ * results back into the assistant turn that called them. Mirrors
+ * `mergeToolTurns` in packages/web but works on our flat
+ * HistoryEntry shape. Tool rows themselves are dropped from the
+ * output — the result text lives on the call's chip.
+ */
+function mergeAssistantToolResults(
+  entries: HistoryEntry[],
+): MergedTurn[] {
+  // Index tool results by callId once.
+  const resultByCallId = new Map<string, HistoryToolResult>();
+  for (const e of entries) {
+    if (e.role === "tool" && e.toolResult?.callId) {
+      resultByCallId.set(e.toolResult.callId, e.toolResult);
+    }
+  }
+  const out: MergedTurn[] = [];
+  for (const e of entries) {
+    if (e.role === "tool") continue;
+    const calls = (e.toolCalls ?? []).map((tc) => ({
+      call: tc,
+      result: resultByCallId.get(tc.callId),
+    }));
+    out.push({
+      id: e.id,
+      createdAt: e.createdAt,
+      role: e.role === "user" ? "user" : e.role === "assistant" ? "assistant" : "system",
+      text: e.text,
+      calls,
+    });
+  }
+  return out;
+}
+
+/** One assistant / user turn rendered MessageBubble-style. */
+function ExecutionTurn({ row }: { row: MergedTurn }) {
+  const isUser = row.role === "user";
+  return (
+    <div className={isUser ? "flex justify-end" : "flex justify-start"}>
+      <div
+        className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}
+      >
+        <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-gray-500">
+          {isUser ? (
+            <User className="h-3 w-3" />
+          ) : (
+            <Bot className="h-3 w-3 text-blue-400" />
+          )}
+          <span>{isUser ? "you" : row.role}</span>
+          <span className="text-gray-700">·</span>
+          <span className="text-gray-600">
+            {new Date(row.createdAt).toLocaleTimeString()}
+          </span>
+        </div>
+        {row.text && (
+          <div
+            className={`whitespace-pre-line break-words rounded-lg border px-3 py-2 text-[13px] leading-relaxed ${
+              isUser
+                ? "border-brand-400/30 bg-brand-500/10 text-gray-100"
+                : "border-gray-800 bg-gray-900/60 text-gray-100"
+            }`}
+          >
+            {row.text}
+          </div>
+        )}
+        {row.calls.length > 0 && (
+          <div
+            className={`mt-1.5 flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}
+          >
+            {row.calls.map((c, i) => (
+              <ToolCallChip key={c.call.callId || `c${i}`} {...c} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Collapsible tool-call chip; click to reveal the result body. */
+function ToolCallChip({
+  call,
+  result,
+}: {
+  call: HistoryToolCall;
+  result?: HistoryToolResult;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const running = !result;
+  const isError = !!result && result.ok === false;
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={() => !running && setExpanded((v) => !v)}
+        className={`flex select-none items-center gap-1.5 py-0.5 text-xs ${
+          running
+            ? "cursor-default text-gray-500"
+            : "cursor-pointer text-gray-500 hover:text-gray-300"
+        }`}
+      >
+        {running ? (
+          <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+        ) : isError ? (
+          <XCircle className="h-3 w-3 text-rose-400/70" />
+        ) : (
+          <CheckCircle2 className="h-3 w-3 text-emerald-500/60" />
+        )}
+        <code className="font-mono text-[12px] text-blue-300">
+          {call.toolName}
+        </code>
+        <span className="font-mono text-[11px] text-gray-600">
+          {summariseArgsJson(call.argsJson)}
+        </span>
+        {running ? (
+          <span className="text-[11px] text-gray-600">running…</span>
+        ) : expanded ? (
+          <ChevronDown className="h-3 w-3 text-gray-600" />
+        ) : (
+          <ChevronRight className="h-3 w-3 text-gray-600" />
+        )}
+      </button>
+      {expanded && result && (
+        <pre
+          className={`mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] ${
+            isError
+              ? "border-rose-700/40 bg-rose-950/30 text-rose-200"
+              : "border-gray-800/60 bg-gray-900/60 text-gray-300"
+          }`}
+        >
+          {truncateText(result.text || "(empty)", 4000)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+function summariseArgsJson(argsJson: string): string {
+  if (!argsJson) return "()";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(argsJson);
+  } catch {
+    // Not JSON — just truncate.
+    return argsJson.length > 60 ? `(${argsJson.slice(0, 57)}…)` : `(${argsJson})`;
+  }
+  if (!parsed || typeof parsed !== "object") return `(${argsJson})`;
+  const obj = parsed as Record<string, unknown>;
+  const keys = Object.keys(obj);
+  if (keys.length === 0) return "()";
+  return keys
+    .slice(0, 3)
+    .map((k) => `${k}=${shortVal(obj[k])}`)
+    .join(" ");
+}
+
+function shortVal(v: unknown): string {
+  if (typeof v === "string")
+    return v.length > 40 ? `"${v.slice(0, 37)}…"` : `"${v}"`;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (v == null) return String(v);
+  return JSON.stringify(v).slice(0, 40);
+}
+
+function truncateText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return s.slice(0, max - 1) + "\n…(truncated)";
 }
 
 function Section({
@@ -1113,7 +1544,7 @@ function AddTaskRow({
               onCancel();
             }
           }}
-          placeholder="Task title…"
+          placeholder="Task title..."
           className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[11.5px] text-gray-100 outline-none focus:border-blue-500"
         />
         <button
@@ -1142,7 +1573,7 @@ function AddTaskRow({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional notes for the worker…"
+              placeholder="Optional notes for the worker..."
               rows={2}
               className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100 outline-none focus:border-blue-500 resize-y"
             />
@@ -1198,7 +1629,7 @@ function AddTaskRow({
 
       <div className="flex items-center gap-1 pt-1">
         <span className="text-[9.5px] text-gray-600 truncate">
-          {showMore ? "Enter saves" : "Enter · Esc cancel"}
+          {showMore ? "Enter saves" : "Enter · Esc cancel"}
         </span>
         <button
           type="button"
@@ -1235,7 +1666,7 @@ function FieldRow({
 // Multi-select tag chips. Candidates are filtered to the same
 // project (when set) so the user doesn't have to scroll past every
 // task they own. Picking a candidate adds a chip; clicking the chip
-// removes it. The blank "select…" option in the dropdown is the
+// removes it. The blank "select..." option in the dropdown is the
 // affordance for adding more.
 
 function DependencyPicker({
@@ -1251,7 +1682,7 @@ function DependencyPicker({
   /** Optional project slug to scope the candidates. Empty / Inbox
    *  shows tasks without a project. */
   project?: string;
-  /** Optional id to exclude (the task being edited — it can't depend
+  /** Optional id to exclude (the task being edited - it can't depend
    *  on itself). */
   excludeId?: string;
 }) {
@@ -1284,7 +1715,7 @@ function DependencyPicker({
             const t = candidateMap.get(id);
             const label = t
               ? t.title
-              : `${id.slice(0, 6)}… (deleted)`;
+              : `${id.slice(0, 6)}... (deleted)`;
             const done = t?.status === "done";
             return (
               <span
@@ -1332,7 +1763,7 @@ function DependencyPicker({
             ? value.length === 0
               ? "(no other tasks)"
               : "(no more candidates)"
-            : "Add prerequisite…"}
+            : "Add prerequisite..."}
         </option>
         {filtered.map((t) => (
           <option key={t.id} value={t.id}>
@@ -1422,7 +1853,7 @@ function WorkerStatusRow({
   if (!snapshot) {
     return (
       <div className="px-6 py-1.5 border-b border-gray-800 text-[11px] text-gray-500 flex-shrink-0">
-        Workers: loading…
+        Workers: loading...
       </div>
     );
   }
@@ -1710,7 +2141,7 @@ function TaskModal({
   );
 }
 
-// `WorkboardAdminPage` is intentionally not in `components` — the
+// `WorkboardAdminPage` is intentionally not in `components` - the
 // manifest's `adminPages` contribution was removed; resurrect it by
 // re-adding both at the same time.
 void WorkboardAdminPage;
@@ -1792,7 +2223,7 @@ function SidebarWorkerRow({
   busy: boolean;
 }) {
   // The agent's display name (set in Settings → Plugins → Worker
-  // agents) is the primary identity — the user wants to know which
+  // agents) is the primary identity - the user wants to know which
   // configured instance this is at a glance. The worker *kind*
   // (echo / llm / future ADR-0002 roles) is shown as a small
   // secondary tag so two agents of the same kind stay

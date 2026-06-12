@@ -28,6 +28,7 @@ import type {
   PluginContext,
   PluginServerExports,
   PluginServerModule,
+  SessionInboxCapability,
 } from "@tianshu/plugin-sdk";
 import {
   EchoWorker,
@@ -199,6 +200,7 @@ const plugin: PluginServerModule = {
           timeouts: llmTimeouts,
           runner: agentLoopRunner,
           log: ctx.log,
+          db: ctx.db,
         });
       }
       return null;
@@ -210,12 +212,30 @@ const plugin: PluginServerModule = {
         (row): AgentSpec => ({ id: row.id, kind: row.kind, name: row.name }),
       );
 
+    // Capability-driven inbox bridge. Tenant has the
+    // `host.sessionInbox` capability iff the host registered it
+    // (which it does in packages/server/src/index.ts). Plugin
+    // operates fine without — the pool's terminal hook just
+    // skips the notification.
+    const sessionInbox = ctx.capabilities.get<SessionInboxCapability>(
+      "host.sessionInbox",
+    );
     const pool = new WorkerPool({
       db: ctx.db,
       log: ctx.log,
       broadcast: (type, payload) => ctx.broadcast(type, payload),
       agents: initialAgents,
       factory,
+      notifyParentSession: sessionInbox
+        ? (sessionId, message) => {
+            void sessionInbox.enqueue(sessionId, message).catch((err) => {
+              ctx.log.warn("workboard: inbox enqueue failed", {
+                sessionId,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            });
+          }
+        : undefined,
     });
     pool.start();
 

@@ -78,6 +78,14 @@ export interface AgentLoopRequest {
   };
   /** External abort signal. */
   signal?: AbortSignal;
+  /** Fires once after the worker session row has been inserted. */
+  onSessionStart?: (sessionId: string) => void;
+  /**
+   * Resume an existing worker session instead of creating a fresh
+   * one. When set, `initialUserMessage` is treated as a follow-up
+   * prompt within the existing transcript.
+   */
+  resumeSessionId?: string;
 }
 
 export interface AgentLoopResult {
@@ -123,14 +131,68 @@ export async function runAgentLoop(
   } = req;
 
   const repo = new SqliteSessionRepo(ctx);
-  const session = await repo.create({
-    userId,
-    kind: "worker",
-    workerRole: req.workerRole ?? null,
-    parentSessionId: req.parentSessionId ?? null,
-    title: req.sessionTitle ?? null,
-  });
+  // Resume vs. fresh:
+  //   - When the caller (e.g. workboard's retry path) passes
+  //     `resumeSessionId` AND that session still exists in this
+  //     tenant's DB, we open it. The LLM sees the prior turns
+  //     as context and `initialUserMessage` is appended as a
+  //     follow-up prompt — think "continue from where we left
+  //     off".
+  //   - Otherwise (fresh task, or stale id) we create a brand
+  //     new session row.
+  // We catch errors from `open` rather than letting them throw,
+  // so a stale id doesn't kill the run — we silently fall back
+  // to fresh and log a warning.
+  let session: Awaited<ReturnType<typeof repo.create>> | null = null;
+  let resumed = false;
+  if (req.resumeSessionId) {
+    try {
+      // `repo.open` only consumes metadata.id internally (see
+      // SqliteSessionRepo.open). The other fields are required by
+      // the type but ignored at runtime; we pass plausible values
+      // sourced from the request so we don't accidentally load a
+      // session belonging to another tenant.
+      session = await repo.open({
+        id: req.resumeSessionId,
+        createdAt: new Date(0).toISOString(),
+        tenantId: ctx.tenantId,
+        userId,
+        kind: "worker",
+        workerRole: req.workerRole ?? null,
+        parentSessionId: req.parentSessionId ?? null,
+        title: req.sessionTitle ?? null,
+      });
+      resumed = true;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[agent-loop] resumeSessionId=${req.resumeSessionId} not found; creating fresh session`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  if (!session) {
+    session = await repo.create({
+      userId,
+      kind: "worker",
+      workerRole: req.workerRole ?? null,
+      parentSessionId: req.parentSessionId ?? null,
+      title: req.sessionTitle ?? null,
+    });
+  }
   const sessionMeta = await session.getMetadata();
+  // Notify caller of the freshly-created session row so callers
+  // (e.g. the workboard plugin) can link long-running tasks to
+  // their session id before the LLM loop runs. We swallow errors
+  // because a misbehaving callback shouldn't abort the run.
+  if (req.onSessionStart) {
+    try {
+      req.onSessionStart(sessionMeta.id);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn("[agent-loop] onSessionStart callback threw", err);
+    }
+  }
 
   // Resolve model.
   const modelInfo =
@@ -195,6 +257,10 @@ export async function runAgentLoop(
         error: (msg, meta) =>
           console.error(`[agent-loop] ${msg}`, meta ?? ""),
       },
+      // Worker session id — currently no worker tool needs this,
+      // but future plugins (e.g. a sub-task spawner) will, and
+      // it costs nothing to plumb through.
+      sessionId: sessionMeta.id,
     },
   });
   const adapted = adaptToolset(toolset);
@@ -257,24 +323,44 @@ export async function runAgentLoop(
   // We also count assistant turns so the result row reports a
   // useful number, but no turn-based abort happens — see the note
   // on the constants block.
+  // Heartbeat + turn counter on the broadcast channel. `subscribe`
+  // delivers anything the harness `emitAny`/`emitOwn`s; we use it
+  // for watchdog-resetting and counting assistant turns. The
+  // `tool_result` hook below is on a SEPARATE channel — see comment.
   const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
     lastEventAt = Date.now();
     sawAnyEvent = true;
-    const e = event as AgentHarnessOwnEvent;
-    if (e.type === "tool_result" && e.toolName === TASK_COMPLETE_TOOL) {
-      const input = e.input as { summary?: unknown; files?: unknown };
-      if (typeof input.summary === "string") {
-        completionSink.summary = input.summary;
-      }
-      if (Array.isArray(input.files)) {
-        completionSink.files = input.files.filter(
-          (x): x is string => typeof x === "string",
-        );
-      }
-    }
     if ((event as { type?: string }).type === "turn_end") {
       assistantTurns += 1;
     }
+  });
+
+  // Detect task_complete tool calls and capture the agent's args
+  // into completionSink so the post-run code can resolve `done`.
+  //
+  // IMPORTANT: tool_result is dispatched via `emitHook` (the
+  // hook channel) and NOT via `emitAny` (the subscribe channel).
+  // pi-agent-core's `harness.subscribe(...)` listener never sees
+  // tool_result events — only `harness.on("tool_result", ...)`
+  // does. We learned this the hard way: a successful task_complete
+  // call would land in the DB but `completionSink.summary` stayed
+  // undefined, the run terminated as `no_completion`, and the
+  // pool re-queued the task forever.
+  const unhookToolResult = harness.on("tool_result", (e) => {
+    if (e.toolName !== TASK_COMPLETE_TOOL) return;
+    const input = e.input as { summary?: unknown; files?: unknown };
+    if (typeof input.summary === "string") {
+      completionSink.summary = input.summary;
+    }
+    if (Array.isArray(input.files)) {
+      completionSink.files = input.files.filter(
+        (x): x is string => typeof x === "string",
+      );
+    }
+    // Also bump the watchdog — a tool_result counts as activity.
+    lastEventAt = Date.now();
+    sawAnyEvent = true;
+    return undefined;
   });
 
   let result: AgentLoopResult;
@@ -361,6 +447,7 @@ export async function runAgentLoop(
   } finally {
     clearInterval(watchdog);
     unsubscribe();
+    unhookToolResult();
     externalSignal?.removeEventListener("abort", onExternalAbort);
     // Mark the worker session archived so admin tooling stops
     // showing it as active.

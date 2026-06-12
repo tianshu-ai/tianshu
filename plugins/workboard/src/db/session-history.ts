@@ -85,7 +85,15 @@ function rowToEntry(row: RawRow): HistoryEntry {
   }
 
   if (parsed && typeof parsed === "object") {
-    const obj = parsed as { content?: unknown };
+    const obj = parsed as Record<string, unknown>;
+    // pi-ai stores `tool` rows with the envelope role set to
+    // "toolResult" and the meta (toolCallId / toolName / isError)
+    // *at the top level*, not inside the content array. Detect
+    // that shape early so we can build a HistoryToolResult.
+    const envelopeRole = typeof obj.role === "string" ? obj.role : "";
+    if (envelopeRole === "toolResult" || base.role === "tool") {
+      return toolResultEnvelopeToEntry(base, obj);
+    }
     const content = obj.content;
     if (typeof content === "string") {
       return { ...base, text: content };
@@ -96,6 +104,45 @@ function rowToEntry(row: RawRow): HistoryEntry {
   }
 
   return { ...base, text: safeJson(parsed) };
+}
+
+/**
+ * Tool-result envelope shape:
+ *
+ *   {
+ *     role: "toolResult",
+ *     toolCallId: "toolu_...",
+ *     toolName: "browser_navigate",
+ *     content: [{ type: "text", text: "..." }, ...]   // or string
+ *     isError?: boolean,
+ *   }
+ *
+ * Top-level meta drives the chip; content goes into both
+ * `text` (so a UI without chip support still shows something)
+ * and `toolResult.text` (the chip body).
+ */
+function toolResultEnvelopeToEntry(
+  base: { id: string; createdAt: number; role: HistoryEntryRole },
+  envelope: Record<string, unknown>,
+): HistoryEntry {
+  const callId =
+    typeof envelope.toolCallId === "string"
+      ? envelope.toolCallId
+      : typeof envelope.tool_use_id === "string"
+        ? envelope.tool_use_id
+        : typeof envelope.toolUseId === "string"
+          ? envelope.toolUseId
+          : "";
+  const name =
+    typeof envelope.toolName === "string" ? envelope.toolName : "?";
+  const ok =
+    typeof envelope.isError === "boolean" ? !envelope.isError : undefined;
+  const text = renderToolResultBody(envelope.content);
+  return {
+    ...base,
+    text,
+    toolResult: { callId, toolName: name, ok, text },
+  };
 }
 
 function contentArrayToEntry(
@@ -119,14 +166,21 @@ function contentArrayToEntry(
           `[image${typeof p.mimeType === "string" ? ` ${p.mimeType}` : ""}]`,
         );
         break;
+      // pi-ai writes camelCase (`toolCall` / `toolResult`); the
+      // older snake_case forms come from Anthropic-style raw
+      // dumps. We accept both so this keeps working if the
+      // serialisation layer ever changes.
       case "tool_use":
-      case "toolUse": {
+      case "toolUse":
+      case "toolCall": {
         const id =
           typeof p.id === "string"
             ? p.id
-            : typeof p.toolUseId === "string"
-              ? p.toolUseId
-              : "";
+            : typeof p.toolCallId === "string"
+              ? p.toolCallId
+              : typeof p.toolUseId === "string"
+                ? p.toolUseId
+                : "";
         const name =
           typeof p.name === "string"
             ? p.name
@@ -144,11 +198,13 @@ function contentArrayToEntry(
       case "tool_result":
       case "toolResult": {
         const id =
-          typeof p.tool_use_id === "string"
-            ? p.tool_use_id
-            : typeof p.toolUseId === "string"
-              ? p.toolUseId
-              : "";
+          typeof p.toolCallId === "string"
+            ? p.toolCallId
+            : typeof p.tool_use_id === "string"
+              ? p.tool_use_id
+              : typeof p.toolUseId === "string"
+                ? p.toolUseId
+                : "";
         const name =
           typeof p.toolName === "string"
             ? p.toolName
@@ -156,14 +212,25 @@ function contentArrayToEntry(
               ? p.name
               : "?";
         const text = renderToolResultBody(p.content);
-        const okFlag = typeof p.ok === "boolean" ? p.ok : undefined;
+        // pi-ai stores the verbose envelope under `details` for
+        // assistant-side rendering; isError on the top level
+        // signals a failed call.
+        const okFlag =
+          typeof p.ok === "boolean"
+            ? p.ok
+            : typeof p.isError === "boolean"
+              ? !p.isError
+              : undefined;
         toolResult = {
           callId: id,
           toolName: name,
           ok: okFlag,
           text,
         };
-        if (text) textChunks.push(text);
+        // Don't smuggle the result into textChunks — that
+        // double-renders it once as the assistant message text
+        // and once in the tool-result chip. The chip alone is
+        // the truthful surface.
         break;
       }
       default:

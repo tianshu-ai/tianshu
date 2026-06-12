@@ -77,6 +77,21 @@ export interface WorkerPoolDeps {
   log: PluginLogger;
   /** Notifies subscribers (chat shell) that a task changed. */
   broadcast(type: string, payload: unknown): void;
+  /**
+   * Optional inbox sink. When the task being completed has a
+   * `parentSessionId` (typically a chat session whose LLM called
+   * `task_create`), the pool drops a one-line `task_done` /
+   * `task_stalled` message into that session's inbox so the
+   * asking agent picks up the result on its next turn.
+   *
+   * Optional because a tenant can disable the inbox capability
+   * (or the inbox plugin can fail-open) without breaking pool
+   * operation — we just skip the notification.
+   */
+  notifyParentSession?: (
+    parentSessionId: string,
+    message: { kind: "task_done" | "task_stalled"; text: string; meta?: Record<string, unknown> },
+  ) => void;
   /** Initial set of agent specs. Replace later via `rebuild`. */
   agents: AgentSpec[];
   /** Returns a `WorkerHandle` for an agent, or null if the kind
@@ -336,6 +351,58 @@ export class WorkerPool {
       worker: worker.name,
       status: update.status,
     });
+
+    // Drop a system-level note into the asking session's inbox.
+    // Done case is fire-and-forget good news; stalled is only
+    // emitted on FINAL stall (attempts hit MAX_ATTEMPTS), not on
+    // every retry — we don't want the agent to react to
+    // intermediate failures the pool will retry on its own.
+    //
+    // We re-read the task because `update*` calls above may have
+    // mutated labels/attempts and we want the truthful end-state
+    // to base the giveUp decision on.
+    if (this.deps.notifyParentSession && task.parentSessionId) {
+      try {
+        const finalRow = getTask(this.deps.db, task.id);
+        const labels = finalRow?.labels ?? [];
+        const stalledNow = labels.includes("stalled");
+        if (update.status === "done") {
+          this.deps.notifyParentSession(task.parentSessionId, {
+            kind: "task_done",
+            text:
+              `Task "${task.title}" finished. Summary: ${update.resultSummary ?? "(none)"}` +
+              (update.resultFiles && update.resultFiles.length > 0
+                ? `\nFiles: ${update.resultFiles.join(", ")}`
+                : ""),
+            meta: {
+              taskId: task.id,
+              workerAgentId: worker.agentId,
+              files: update.resultFiles ?? [],
+            },
+          });
+        } else if (stalledNow) {
+          this.deps.notifyParentSession(task.parentSessionId, {
+            kind: "task_stalled",
+            text:
+              `Task "${task.title}" stalled after ${MAX_ATTEMPTS} attempts. ` +
+              `Last error: ${update.resultSummary ?? "(no summary)"}`,
+            meta: {
+              taskId: task.id,
+              workerAgentId: worker.agentId,
+              attempts: finalRow?.attempts ?? null,
+            },
+          });
+        }
+        // intermediate retries (status!=done && !stalledNow) — silent
+      } catch (err) {
+        // notifyParentSession is best-effort; a failure must not
+        // break the pool. Log and continue.
+        this.deps.log.warn("workboard: notifyParentSession failed", {
+          taskId: task.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
     // After a failure that goes back to ready, kick the pool so
     // another slot can pick it up (or the same slot after another
     // task) without waiting for the timer.
@@ -343,20 +410,68 @@ export class WorkerPool {
   }
 
   private recoverOrphaned(): void {
-    const result = this.deps.db
-      .prepare(
-        `UPDATE tasks
+    // Any task left in `in_progress` when this pool boots is by
+    // definition orphaned: the previous host process died (crash,
+    // restart, dev-time `touch index.ts`) while a worker was
+    // mid-run, and there's no in-memory busy slot to inherit.
+    //
+    // We treat it like a stall — bump attempts, stamp a failure
+    // reason, and put the row back in the ready column. Without
+    // bumping, a flapping host could claim the same task 100
+    // times before noticing nothing was making progress; with the
+    // bump, after MAX_ATTEMPTS the row gets the `stalled` label
+    // and the user has to clear it explicitly to retry.
+    //
+    // session_id is intentionally NOT cleared here: the previous
+    // transcript is still useful for debugging "why did this
+    // crash?". The next claim overwrites session_id anyway, so
+    // the row only ever points at the most recent run.
+    const orphans = this.deps.db
+      .prepare<
+        [],
+        { id: string; attempts: number | null; labels: string }
+      >(
+        `SELECT id, attempts, labels FROM tasks WHERE status = 'in_progress'`,
+      )
+      .all();
+    if (orphans.length === 0) return;
+    const update = this.deps.db.prepare(
+      `UPDATE tasks
          SET status = 'ready',
              started_at = NULL,
-             session_id = NULL
-         WHERE status = 'in_progress'`,
-      )
-      .run() as { changes: number };
-    if (result.changes > 0) {
-      this.deps.log.info("workboard: reclaimed orphaned in_progress tasks", {
-        count: result.changes,
-      });
+             attempts = ?,
+             failure_reason = ?,
+             labels = ?
+       WHERE id = ?`,
+    );
+    for (const row of orphans) {
+      const nextAttempts = (row.attempts ?? 0) + 1;
+      const giveUp = nextAttempts >= MAX_ATTEMPTS;
+      // Parse labels (TEXT JSON column). On a parse failure fall
+      // back to []: the task will surface as ready/un-stalled,
+      // which is recoverable, vs. a sql error which would
+      // crash boot.
+      let labels: string[] = [];
+      try {
+        const parsed = JSON.parse(row.labels);
+        if (Array.isArray(parsed)) {
+          labels = parsed.filter((l): l is string => typeof l === "string");
+        }
+      } catch {
+        labels = [];
+      }
+      const baseLabels = labels.filter((l) => l !== "stalled");
+      const nextLabels = giveUp ? [...baseLabels, "stalled"] : baseLabels;
+      update.run(
+        nextAttempts,
+        "reclaimed after host restart (worker did not finish)",
+        JSON.stringify(nextLabels),
+        row.id,
+      );
     }
+    this.deps.log.info("workboard: reclaimed orphaned in_progress tasks", {
+      count: orphans.length,
+    });
   }
 }
 
@@ -404,6 +519,9 @@ export interface LLMWorkerConfig {
   timeouts?: AgentLoopRunnerRequest["timeouts"];
   runner: AgentLoopRunner;
   log: PluginLogger;
+  /** DB handle for stamping `tasks.session_id` early so the
+   *  Execution tab can tail an in-progress conversation. */
+  db: TenantDbHandle;
 }
 
 /**
@@ -428,26 +546,46 @@ const WORKER_DENY_TOOLS = new Set<string>([
 ]);
 
 /**
- * Combine the user-supplied `toolsAllow` (per-agent allow-list) with
- * the worker-wide deny-list above.
+ * Tools that the worker MUST have available, no matter what the
+ * user configured per-agent. `task_complete` is the only legitimate
+ * exit signal a worker has — if the user trims it out of
+ * `toolsAllow`, the worker can't tell the orchestrator it's done
+ * and the run will time out / be killed for stalling, even on a
+ * perfectly-completed task. So we force-inject it here at the pool
+ * boundary, after the user's allow-list has been applied.
  *
- *   - cfg.toolsAllow == null → "all tools". Return the all-tools
- *     marker but emit a separate `toolsDeny` field via a sentinel.
- *     Today the runner only understands `toolsAllow`, so we have to
- *     translate "deny these" into "allow everything except these" by
- *     listing concrete names. We don't know the full universe at this
- *     point, so we just pass `undefined` and rely on the deny check
- *     happening upstream.
- *   - cfg.toolsAllow is a list → strip the deny set from it.
+ * Keep this list small; anything in here is something the worker
+ * runtime depends on for control-flow correctness, NOT something
+ * an agent designer might want to choose.
+ */
+const WORKER_REQUIRED_TOOLS = ["task_complete"] as const;
+
+/**
+ * Combine the user-supplied `toolsAllow` (per-agent allow-list) with
+ * the worker-wide deny-list and required-list above.
+ *
+ *   - cfg.toolsAllow == null → "all tools". The runner sees an
+ *     undefined allow-list (= no narrowing) and `toolsDeny` does the
+ *     scrubbing. task_complete is automatically in the all-tools
+ *     set, so we don't need to inject it here.
+ *   - cfg.toolsAllow is a list → strip the deny set from it AND
+ *     ensure the required-set is present, so the user can't
+ *     accidentally lock the worker out of its own exit hatch.
  *
  * NOTE: the deny set is enforced again inside `agent-loop.ts` so the
  * pool agent and the loop are belt-and-braces protected.
  */
-function effectiveToolsAllow(
+export function effectiveToolsAllow(
   cfgToolsAllow: string[] | null | undefined,
 ): string[] | undefined {
   if (!cfgToolsAllow) return undefined;
   const filtered = cfgToolsAllow.filter((t) => !WORKER_DENY_TOOLS.has(t));
+  // Force-inject required tools the user may have omitted. We add
+  // rather than replace so the rest of their curated allow-list
+  // stays intact.
+  for (const t of WORKER_REQUIRED_TOOLS) {
+    if (!filtered.includes(t)) filtered.push(t);
+  }
   return filtered;
 }
 
@@ -463,7 +601,23 @@ export class LLMWorker implements WorkerHandle {
 
   async run(task: Task): Promise<TerminalUpdate> {
     const userId = task.ownerUserId || this.cfg.defaultUserId;
-    const initialUserMessage = buildInitialPrompt(task);
+    // Retry semantics:
+    //   - First attempt (attempts=0)               → fresh session,
+    //                                                  full task brief.
+    //   - Retry with prior session_id present       → resume that
+    //                                                  session and
+    //                                                  send a short
+    //                                                  retry nudge
+    //                                                  instead of
+    //                                                  re-pasting the
+    //                                                  whole task.
+    //   - Retry without prior session_id (rare:
+    //     legacy task or DB inconsistency)          → fall back to
+    //                                                  fresh session.
+    const isRetry = (task.attempts ?? 0) > 0 && Boolean(task.sessionId);
+    const initialUserMessage = isRetry
+      ? buildRetryPrompt(task)
+      : buildInitialPrompt(task);
     const result = await this.cfg.runner.run({
       userId,
       initialUserMessage,
@@ -475,6 +629,28 @@ export class LLMWorker implements WorkerHandle {
       sessionTitle: task.title,
       workerRole: this.kind,
       timeouts: this.cfg.timeouts,
+      // Resume the prior conversation when retrying so the LLM
+      // sees its own earlier work + tool results, doesn't waste
+      // a full re-research cycle, and — critically for the user
+      // — the kanban Execution dialog shows one continuous
+      // transcript across attempts instead of N independent
+      // session windows.
+      resumeSessionId: isRetry ? task.sessionId ?? undefined : undefined,
+      // Stamp the session id on the task row as soon as the host
+      // creates the session, not when the run terminates. The
+      // kanban Execution tab tails this in-progress conversation
+      // via /tasks/:id/history; without an early stamp the tab
+      // can't find a session id until the LLM finishes.
+      onSessionStart: (sessionId) => {
+        try {
+          updateTask(this.cfg.db, task.id, { sessionId });
+        } catch (err) {
+          this.cfg.log.warn("workboard: stamp sessionId on task failed", {
+            taskId: task.id,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
+      },
     });
 
     this.cfg.log.info("llm worker terminal", {
@@ -523,6 +699,34 @@ function buildInitialPrompt(task: Task): string {
       `the summary you pass to task_complete.`,
   );
   return lines.join("\n");
+}
+
+/**
+ * Prompt used when a task is being retried in a resumed session.
+ *
+ * The LLM already sees its prior turns + tool results in context,
+ * so we only nudge it about the missing exit signal. We also tell
+ * it the attempt count so it can decide "finalize now" vs. "keep
+ * digging" — if attempts is high, that's a hint to wrap up.
+ *
+ * Why we don't repeat the full task brief: the original prompt is
+ * still at the top of the resumed transcript. Repeating it would
+ * just inflate context and risk the LLM treating it as a fresh
+ * task, undoing whatever progress was already made.
+ */
+function buildRetryPrompt(task: Task): string {
+  const reasonNote = task.failureReason
+    ? `Last attempt didn't finish cleanly. Reason recorded: ${task.failureReason.slice(0, 200)}\n`
+    : "Last attempt didn't finish cleanly.\n";
+  return [
+    `(retry attempt ${(task.attempts ?? 0) + 1} of ${MAX_ATTEMPTS} on the same task)`,
+    "",
+    reasonNote,
+    `Continue from where you left off. If the work is actually done, ` +
+      `call \`task_complete\` with a one-line summary now — the ` +
+      `orchestrator only counts a task as finished when you call ` +
+      `that tool.`,
+  ].join("\n");
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

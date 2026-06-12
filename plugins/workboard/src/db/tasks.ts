@@ -88,6 +88,14 @@ export interface Task {
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
+  /**
+   * Session that asked for this task (typically a chat session
+   * whose LLM called `task_create`). Used by the worker pool's
+   * terminal hook to drop a task_done / task_stalled message into
+   * that session's inbox. NULL for tasks created outside an LLM
+   * call (kanban add button, REST API, sync from external).
+   */
+  parentSessionId: string | null;
 }
 
 /** Labels that take the row out of pool consideration even when
@@ -114,6 +122,7 @@ interface TaskRow {
   created_at: number;
   started_at: number | null;
   ended_at: number | null;
+  parent_session_id: string | null;
 }
 
 function parseStringArray(raw: string | null): string[] {
@@ -151,6 +160,7 @@ function rowToTask(row: TaskRow): Task {
     createdAt: row.created_at,
     startedAt: row.started_at,
     endedAt: row.ended_at,
+    parentSessionId: row.parent_session_id,
   };
 }
 
@@ -172,6 +182,10 @@ export interface CreateTaskInput {
    *  `stalled` / `draft` keep the task out of the pool's claim
    *  filter (see POOL_SKIP_LABELS). */
   labels?: string[];
+  /** Session that asked for this task. Stamped on every row that
+   *  was created from inside an LLM tool call so the worker pool
+   *  can later notify it. */
+  parentSessionId?: string | null;
 }
 
 function sanitiseLabels(input: string[] | undefined): string[] {
@@ -216,8 +230,9 @@ export function createTask(
        title, description, status, priority,
        result_summary, result_files, session_id, depends_on,
        failure_reason, attempts, labels,
-       created_at, started_at, ended_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL)`,
+       created_at, started_at, ended_at,
+       parent_session_id
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL, ?)`,
   ).run(
     id,
     project,
@@ -230,6 +245,7 @@ export function createTask(
     JSON.stringify(dependsOn),
     JSON.stringify(labels),
     now,
+    input.parentSessionId ?? null,
   );
   const row = db
     .prepare<[string], TaskRow>(`SELECT * FROM tasks WHERE id = ?`)
@@ -537,13 +553,53 @@ export function claimNextTask(
     const candidate = rowToTask(row);
     if (!isEligible(db, candidate)) continue;
 
-    const result = db
-      .prepare<[number, string | null, string], { changes?: number }>(
-        `UPDATE tasks
-         SET status = 'in_progress', started_at = ?, session_id = ?
-         WHERE id = ? AND status = 'ready'`,
-      )
-      .run(now, sessionId, candidate.id) as { changes: number };
+    // Claim atomically. The UPDATE has THREE jobs:
+    //   1. flip status ready → in_progress
+    //   2. stamp started_at + session_id + worker_agent_id so the
+    //      board surfaces "who is doing what"
+    //   3. enforce "one task in flight per worker" — the
+    //      `NOT EXISTS` subclause refuses the claim if this
+    //      worker (or, for an unpinned worker, any task this
+    //      worker would consider its own) is already running
+    //      another task. This is the source of truth; the pool's
+    //      in-memory `busy` map is just an optimisation, and
+    //      survives rebuild() / disable+enable cycles where the
+    //      memory state could otherwise drift.
+    //
+    // The subquery uses the same agent-vs-role logic as the
+    // SELECT above: with `agentId` set we check rows pinned to
+    // this exact agent; without an agent we fall back to any
+    // in_progress row matching this role.
+    const claimSql = agentId
+      ? `UPDATE tasks
+           SET status = 'in_progress',
+               started_at = ?,
+               session_id = ?,
+               worker_agent_id = ?
+         WHERE id = ? AND status = 'ready'
+           AND NOT EXISTS (
+             SELECT 1 FROM tasks AS busy
+             WHERE busy.status = 'in_progress'
+               AND busy.worker_agent_id = ?
+           )`
+      : `UPDATE tasks
+           SET status = 'in_progress',
+               started_at = ?,
+               session_id = ?
+         WHERE id = ? AND status = 'ready'
+           AND NOT EXISTS (
+             SELECT 1 FROM tasks AS busy
+             WHERE busy.status = 'in_progress'
+               AND busy.worker_role = ?
+               AND busy.worker_agent_id IS NULL
+           )`;
+    const result = (
+      agentId
+        ? db
+            .prepare(claimSql)
+            .run(now, sessionId, agentId, candidate.id, agentId)
+        : db.prepare(claimSql).run(now, sessionId, candidate.id, role ?? "")
+    ) as { changes: number };
     if (!result.changes) continue;
 
     return getTask(db, candidate.id);

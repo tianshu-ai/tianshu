@@ -172,6 +172,17 @@ export interface AgentToolContext {
    *  to `<tenant>/_tenant/config/...` use this; most tools don't. */
   tenantHomeDir: string;
   log: PluginLogger;
+  /**
+   * Id of the chat / worker session the LLM that called this tool
+   * is running in. Plugins use it to attribute side-effects back
+   * to the asking session (e.g. workboard's task_create stamps
+   * `tasks.parent_session_id` so the worker pool can later notify
+   * this session when the task finishes).
+   *
+   * Optional: tools invoked outside an LLM session (e.g. internal
+   * scheduled jobs) won't have one.
+   */
+  sessionId?: string;
 }
 
 /** Lookup-only subset of CapabilityHandle (no `on()`). */
