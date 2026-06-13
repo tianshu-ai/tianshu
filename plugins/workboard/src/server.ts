@@ -23,6 +23,7 @@
 // `deactivate()` stops the pool. The `ctx.db` handle is owned by the
 // host so we never close it.
 
+import path from "node:path";
 import type {
   AgentLoopRunner,
   PluginContext,
@@ -53,6 +54,7 @@ import {
 import { buildRoutes, type WorkerKindDef } from "./routes/handlers.js";
 import { ensureSchema } from "./db/schema.js";
 import { loadWorkerAgents } from "./fs-worker-agents.js";
+import { computeEffectiveSkillsFor } from "./effective-skills.js";
 import type { WorkerAgent } from "./types.js";
 
 interface ActiveState {
@@ -265,6 +267,21 @@ const plugin: PluginServerModule = {
     };
     void onAgentsWrite;
 
+    // host.skillCatalog drives the "effective skills" expansion
+    // shipped to the admin UI — plugins ship skills via this
+    // capability and the host self-shipped ones live there too.
+    // Optional: if the host doesn't expose it (older host /
+    // disabled cap), the helper just falls back to the tenant
+    // layers.
+    const skillCatalog =
+      ctx.capabilities.get<SkillCatalogCapability>("host.skillCatalog") ??
+      null;
+    const tenantConfigDir = path.join(
+      ctx.workspaceDir,
+      "_tenant",
+      "config",
+    );
+
     const routes = buildRoutes({
       db: ctx.db,
       tenantId: ctx.tenantId,
@@ -275,6 +292,15 @@ const plugin: PluginServerModule = {
       // GET /agents reads through the same fs-first merge the
       // pool uses, so the admin UI sees identical inventory.
       listMergedAgents: () => refreshAgentInventory(),
+      // Per-agent effective skill list (resolves toolsAllow=null
+      // / skillsAllow=null to a concrete list rooted in the host
+      // catalog + the tenant fs layers).
+      computeEffectiveSkills: (agent) =>
+        computeEffectiveSkillsFor({
+          agent,
+          hostSkillCatalog: skillCatalog,
+          tenantConfigDir,
+        }),
     });
 
     return {

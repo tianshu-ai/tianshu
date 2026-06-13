@@ -33,6 +33,12 @@ interface WorkerAgent {
   overridesAt: number | null;
   createdAt: number;
   updatedAt: number;
+  /** Server-computed list of skills this worker will actually
+   *  see in `<available_skills>` at run-time. Combines host +
+   *  plugin + tenant shared + per-worker fs layers, then
+   *  applies the agent's allow-list. Always present in the
+   *  GET /agents response post PR-C. */
+  effectiveSkills?: string[];
 }
 
 interface WorkerKindDef {
@@ -334,10 +340,25 @@ function AgentDetail({
     () => effective(agent.toolsAllow, toolCatalog, /* applyDeny */ true),
     [agent.toolsAllow, toolCatalog],
   );
-  const skills = useMemo(
-    () => effective(agent.skills, skillCatalog, /* applyDeny */ false),
-    [agent.skills, skillCatalog],
-  );
+  // Skills are now resolved server-side (server walks every
+  // visible skill layer, applies the allow-list, returns names).
+  // We keep `effective(...)` for tools because the catalog there
+  // is genuinely global; for skills the per-worker layer matters
+  // and only the server can see the right slug.
+  const skills = useMemo<EffectiveList>(() => {
+    if (agent.effectiveSkills) {
+      const items = [...agent.effectiveSkills].sort();
+      // "explicit" badge when the agent.json carries an
+      // allow-list, else "effective".
+      return agent.skills
+        ? { kind: "explicit", items }
+        : { kind: "effective", items };
+    }
+    // Older server (pre PR-C) didn't ship effectiveSkills.
+    // Fall back to the tools-style catalog expansion so the UI
+    // doesn't go blank.
+    return effective(agent.skills, skillCatalog, /* applyDeny */ false);
+  }, [agent.effectiveSkills, agent.skills, skillCatalog]);
   return (
     <div className="mt-1 space-y-3 rounded-md border border-gray-800 bg-gray-900/40 p-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">

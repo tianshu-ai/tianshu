@@ -168,6 +168,19 @@ export interface RoutesDeps {
    *  pluggable accessor so tests can inject a deterministic list.
    */
   listMergedAgents(): WorkerAgent[];
+  /**
+   * Per-agent effective skill list — what `<available_skills>`
+   * will actually contain when the worker runs. Combines:
+   *   - host self-shipped skills (`packages/server/skills/`)
+   *   - plugin skills via `host.skillCatalog`
+   *   - tenant shared skills (`_tenant/config/skills/`)
+   *   - tenant per-worker skills (`_tenant/config/workers/<slug>/skills/`)
+   *  Then narrows by the agent's `skillsAllow` (null = no
+   *  restriction; non-null = explicit allow-list — same rule
+   *  the agent loop applies).
+   *  Returns names only; the UI doesn't need bodies.
+   */
+  computeEffectiveSkills(agent: WorkerAgent): string[];
 }
 
 function userIdFromReq(req: Request): string | null {
@@ -720,8 +733,13 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
   // ─── Worker agents (N+6.2 v2: plugin-owned) ───────────────────
 
   const listAgentsHandler: PluginRouteHandler = (_req, res) => {
+    const agents = deps.listMergedAgents();
+    const augmented = agents.map((a) => ({
+      ...a,
+      effectiveSkills: deps.computeEffectiveSkills(a),
+    }));
     res.json({
-      agents: deps.listMergedAgents(),
+      agents: augmented,
       kinds: deps.workerKinds,
     });
   };
