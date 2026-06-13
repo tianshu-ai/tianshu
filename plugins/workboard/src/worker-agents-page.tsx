@@ -48,9 +48,26 @@ interface AgentsResponse {
   kinds: WorkerKindDef[];
 }
 
+interface CatalogEntry {
+  name: string;
+  description: string;
+  pluginId: string;
+}
+
 export function WorkerAgentsPage(): ReactElement {
   const [agents, setAgents] = useState<WorkerAgent[]>([]);
   const [kinds, setKinds] = useState<WorkerKindDef[]>([]);
+  // Effective host catalogues. Used to resolve `toolsAllow=null`
+  // / `skillsAllow=null` to a concrete list in the detail panel
+  // — "no restriction" means "every entry the host currently
+  // exposes", and we show those entries explicitly so the user
+  // can answer "what can this worker actually call?".
+  const [toolCatalog, setToolCatalog] = useState<CatalogEntry[] | null>(
+    null,
+  );
+  const [skillCatalog, setSkillCatalog] = useState<CatalogEntry[] | null>(
+    null,
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Set of expanded slugs. UI is per-row collapsible like a
@@ -73,16 +90,29 @@ export function WorkerAgentsPage(): ReactElement {
     setLoading(true);
     setError(null);
     try {
-      const r = await fetch("/api/p/workboard/agents", {
-        credentials: "include",
-      });
-      if (!r.ok) {
-        setError(`GET /agents → HTTP ${r.status}`);
+      // Three independent endpoints, parallel.
+      const [agentsR, toolsR, skillsR] = await Promise.all([
+        fetch("/api/p/workboard/agents", { credentials: "include" }),
+        fetch("/api/tools", { credentials: "include" }),
+        fetch("/api/skills", { credentials: "include" }),
+      ]);
+      if (!agentsR.ok) {
+        setError(`GET /agents → HTTP ${agentsR.status}`);
         return;
       }
-      const j = (await r.json()) as AgentsResponse;
+      const j = (await agentsR.json()) as AgentsResponse;
       setAgents(j.agents);
       setKinds(j.kinds);
+      // Catalog endpoints are best-effort — if they fail we just
+      // skip the "effective" expansion in the detail panel.
+      if (toolsR.ok) {
+        const tj = (await toolsR.json()) as { tools?: CatalogEntry[] };
+        setToolCatalog(tj.tools ?? []);
+      }
+      if (skillsR.ok) {
+        const sj = (await skillsR.json()) as { skills?: CatalogEntry[] };
+        setSkillCatalog(sj.skills ?? []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -233,7 +263,12 @@ export function WorkerAgentsPage(): ReactElement {
                   isOpen ? (
                     <tr key={`${a.id}-detail`} className="bg-gray-950">
                       <td colSpan={6} className="px-3 pb-4 pt-1">
-                        <AgentDetail agent={a} slotUri={slotUri(a)} />
+                        <AgentDetail
+                          agent={a}
+                          slotUri={slotUri(a)}
+                          toolCatalog={toolCatalog}
+                          skillCatalog={skillCatalog}
+                        />
                       </td>
                     </tr>
                   ) : null,
@@ -247,20 +282,61 @@ export function WorkerAgentsPage(): ReactElement {
   );
 }
 
+// Workboard's runtime-enforced deny set, mirrored client-side so
+// the "effective tools" expansion is honest about what the worker
+// actually gets to call. Source of truth is
+// `plugins/workboard/src/worker/tool-policy.ts:WORKER_DENY_TOOLS`.
+const WORKER_DENY_TOOLS_CLIENT = new Set<string>([
+  "task_list",
+  "task_create",
+  "task_update",
+  "task_move",
+  "task_delete",
+  "task_get_history",
+]);
+
+type EffectiveList =
+  | { kind: "explicit"; items: string[] }
+  | { kind: "effective"; items: string[] }
+  | { kind: "unknown" };
+
+function effective(
+  allow: string[] | null,
+  catalog: CatalogEntry[] | null,
+  applyDeny: boolean,
+): EffectiveList {
+  if (allow) {
+    const items = applyDeny
+      ? allow.filter((n) => !WORKER_DENY_TOOLS_CLIENT.has(n))
+      : [...allow];
+    return { kind: "explicit", items: items.sort() };
+  }
+  if (catalog === null) return { kind: "unknown" };
+  const items = catalog
+    .map((e) => e.name)
+    .filter((n) => (applyDeny ? !WORKER_DENY_TOOLS_CLIENT.has(n) : true))
+    .sort();
+  return { kind: "effective", items };
+}
+
 function AgentDetail({
   agent,
   slotUri,
+  toolCatalog,
+  skillCatalog,
 }: {
   agent: WorkerAgent;
   slotUri: string;
+  toolCatalog: CatalogEntry[] | null;
+  skillCatalog: CatalogEntry[] | null;
 }): ReactElement {
   const tools = useMemo(
-    () => (agent.toolsAllow ? [...agent.toolsAllow].sort() : null),
-    [agent.toolsAllow],
+    () => effective(agent.toolsAllow, toolCatalog, /* applyDeny */ true),
+    [agent.toolsAllow, toolCatalog],
   );
   const skills = useMemo(
-    () => (agent.skills ? [...agent.skills].sort() : null),
-    [agent.skills],
+    () => effective(agent.skills, skillCatalog, /* applyDeny */ false),
+    [agent.skills, skillCatalog],
   );
   return (
     <div className="mt-1 space-y-3 rounded-md border border-gray-800 bg-gray-900/40 p-3">
@@ -281,16 +357,8 @@ function AgentDetail({
         )}
       </div>
 
-      <DetailSection
-        title="Allowed tools"
-        empty="No restriction — every host tool the worker layer permits."
-        items={tools}
-      />
-      <DetailSection
-        title="Allowed skills"
-        empty="No restriction — every host / plugin / tenant skill is visible."
-        items={skills}
-      />
+      <DetailSection title="Allowed tools" data={tools} />
+      <DetailSection title="Allowed skills" data={skills} />
 
       <div>
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
@@ -312,34 +380,55 @@ function AgentDetail({
 
 function DetailSection({
   title,
-  empty,
-  items,
+  data,
 }: {
   title: string;
-  empty: string;
-  items: readonly string[] | null;
+  data: EffectiveList;
 }): ReactElement {
+  let badge: ReactElement | null = null;
+  if (data.kind === "explicit") {
+    badge = (
+      <span
+        className="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300"
+        title="agent.json declared this list explicitly"
+      >
+        explicit
+      </span>
+    );
+  } else if (data.kind === "effective") {
+    badge = (
+      <span
+        className="rounded bg-amber-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300"
+        title="agent.json has no allow-list — worker sees every entry below"
+      >
+        effective (no restriction)
+      </span>
+    );
+  }
   return (
     <div>
       <div className="mb-1 flex items-center gap-2">
         <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
           {title}
         </span>
-        {items && (
+        {data.kind !== "unknown" && (
           <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-400">
-            {items.length}
+            {data.items.length}
           </span>
         )}
+        {badge}
       </div>
-      {items === null ? (
-        <div className="text-[11px] italic text-gray-500">{empty}</div>
-      ) : items.length === 0 ? (
+      {data.kind === "unknown" ? (
+        <div className="text-[11px] italic text-gray-500">
+          (catalog not loaded — reload the page)
+        </div>
+      ) : data.items.length === 0 ? (
         <div className="text-[11px] italic text-gray-500">
           (empty list — worker can call nothing)
         </div>
       ) : (
         <div className="flex flex-wrap gap-1">
-          {items.map((name) => (
+          {data.items.map((name) => (
             <code
               key={name}
               className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-300"
