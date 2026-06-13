@@ -29,6 +29,8 @@ import type {
   PluginServerExports,
   PluginServerModule,
   SessionInboxCapability,
+  ToolCatalogCapability,
+  SkillCatalogCapability,
 } from "@tianshu/plugin-sdk";
 import {
   EchoWorker,
@@ -37,6 +39,7 @@ import {
   type AgentSpec,
   type WorkerHandle,
 } from "./worker/pool.js";
+import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 import {
   buildTaskCompleteTool,
   buildTaskCreateTool,
@@ -97,6 +100,54 @@ const WORKER_KINDS: WorkerKindDef[] = [
 /** Builtin agents seeded on every activate. The seed loop respects
  *  user edits (rows with `overrides_at IS NOT NULL` are left
  *  alone). */
+/**
+ * SOUL-style worker prompt. Mirrors the OpenClaw convention
+ * (SOUL.md / SKILL.md persona files): an opening identity line,
+ * core responsibilities, and a hard contract on the exit signal.
+ *
+ * Workers are stateless from the user's perspective — the orchestrator
+ * agent fans tasks out, each worker takes one task at a time, runs to
+ * completion, and reports back via task_complete. The prompt below is
+ * what we want EVERY default LLM worker to know without the user
+ * having to fill anything in. Per-agent overrides on top of this stay
+ * possible (the seed only writes when the row hasn't been edited).
+ *
+ * Keep this prompt short. Workers don't need to know about the chat
+ * shell or other agents — they just need to do one task and finish.
+ */
+const LLM_WORKER_SOUL = `You are a workboard worker agent.
+
+You were started because the orchestrator dropped a task on the
+kanban for you. Each invocation handles ONE task end-to-end and
+then exits.
+
+## Your job
+
+- Read the task title and description carefully. The user (the
+  asking agent) wrote them; treat them as the spec.
+- Use whatever tools you need to do the work. The host's standard
+  tool set is available unless the orchestrator restricted you.
+- Write deliverables under the user's workspace (./projects/<slug>/
+  for finished output, ./tmp/ for scratch).
+
+## Exit contract (important)
+
+When you're done — or if the task is impossible and you've
+decided to give up — call the \`task_complete\` tool with a
+one-line \`summary\` of what you produced (or, on failure, why
+you couldn't). Optionally include \`files\` for paths you wrote.
+
+The orchestrator only sees the summary you pass to task_complete
+— prose alone won't reach it. If you finish without calling this
+tool, the pool counts the run as stalled and will retry.
+
+Do NOT ask the user clarifying questions: there's no human in
+your loop. If the spec is ambiguous, make a reasonable choice,
+proceed, and explain the choice in the task_complete summary.
+
+Reply concisely. Don't narrate every tool call — just do the
+work.`;
+
 const BUILTIN_AGENT_SEEDS: SeedAgentSpec[] = [
   {
     builtinKey: "echo-demo",
@@ -109,7 +160,8 @@ const BUILTIN_AGENT_SEEDS: SeedAgentSpec[] = [
     kind: "llm",
     name: "Default LLM",
     description:
-      "Runs the tenant's default model with the host's standard tool set. Edit me to add a system prompt or restrict tools.",
+      "Default LLM worker. Picks up tasks tagged with worker_role=llm (or unrouted) and runs them to task_complete.",
+    systemPrompt: LLM_WORKER_SOUL,
   },
 ];
 
@@ -161,9 +213,91 @@ const plugin: PluginServerModule = {
 
     // Schema first, then seed. Both are idempotent.
     ensureSchema(ctx.db);
-    const seedResult = seedBuiltinAgents(ctx.db, ctx.tenantId, BUILTIN_AGENT_SEEDS);
+
+    // Resolve the host's current tool / skill catalogs so the
+    // Default LLM seed lists every allowed tool/skill explicitly.
+    // Capabilities are optional — if the host doesn't expose them
+    // (older host, capability disabled), we fall back to null,
+    // which the worker treats as "no restriction". Either way the
+    // runtime behaviour is the same; the listed form is just
+    // friendlier in the settings UI.
+    const toolCatalogCap = ctx.capabilities.get<ToolCatalogCapability>(
+      "host.toolCatalog",
+    );
+    const skillCatalogCap = ctx.capabilities.get<SkillCatalogCapability>(
+      "host.skillCatalog",
+    );
+    // Workboard's own tools aren't in the host's tool catalog at
+    // *our* activation time — the registry is still mid-activate
+    // for this plugin. Seed them from the manifest so the
+    // Default LLM agent gets them on the first activation pass.
+    //
+    // The orchestration tools (task_list / task_create / etc.)
+    // are deliberately excluded: those belong to the orchestrator
+    // agent (the chat session that calls task_create to delegate),
+    // not to the worker that's executing one task. The worker's
+    // only board-facing tool is task_complete — its exit signal.
+    // Granting the orchestration set to a worker would just be
+    // visually misleading; runtime would still reject the call
+    // via WORKER_DENY_TOOLS in pool.ts. Mirroring the deny set in
+    // the seed keeps the UI honest about what the worker can do.
+    // Deny set lives in ./worker/tool-policy.ts (shared with the
+    // pool runtime + admin UI).
+    const ownTools = ["task_complete"];
+    const ownSkills = ["workboard-howto"];
+
+    const catalogTools = toolCatalogCap
+      ? toolCatalogCap.list().map((e) => e.name)
+      : [];
+    const catalogSkills = skillCatalogCap
+      ? skillCatalogCap.list().map((e) => e.name)
+      : [];
+
+    // Union, dedup, alphabetic. Filter out any orchestration tools
+    // the catalog might have (workboard's own tools won't be there
+    // mid-activate, but if a future re-seed pass picks them up,
+    // we still want them gone for the worker's allow-list).
+    const allToolNames =
+      catalogTools.length === 0 && !toolCatalogCap
+        ? null
+        : [...new Set([...catalogTools, ...ownTools])]
+            .filter((n) => !WORKER_DENY_TOOLS_SET.has(n))
+            .sort((a, b) => a.localeCompare(b));
+    const allSkillNames =
+      catalogSkills.length === 0 && !skillCatalogCap
+        ? null
+        : [...new Set([...catalogSkills, ...ownSkills])].sort((a, b) =>
+            a.localeCompare(b),
+          );
+
+    // Inject the resolved catalogs into the seed for the LLM
+    // worker. The seed for the echo worker doesn't carry these
+    // fields. We do this on every activate (not just first install)
+    // so a plugin enable that adds new tools propagates into the
+    // builtin agent's allow-list, as long as the user hasn't
+    // edited it themselves (seedBuiltinAgents skips rows whose
+    // overrides_at is set).
+    const seedsForThisActivation = BUILTIN_AGENT_SEEDS.map((s) =>
+      s.builtinKey === "llm-default"
+        ? {
+            ...s,
+            toolsAllow: allToolNames ?? s.toolsAllow,
+            skills: allSkillNames ?? s.skills,
+          }
+        : s,
+    );
+
+    const seedResult = seedBuiltinAgents(
+      ctx.db,
+      ctx.tenantId,
+      seedsForThisActivation,
+    );
     if (seedResult.inserted > 0 || seedResult.updated > 0) {
-      ctx.log.info("seeded worker agents", seedResult);
+      ctx.log.info("seeded worker agents", {
+        ...seedResult,
+        toolCount: allToolNames?.length ?? null,
+        skillCount: allSkillNames?.length ?? null,
+      });
     }
 
     // Owner discovery: agent rows don't pin to a user, but every

@@ -22,6 +22,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 
 interface WorkerAgent {
   id: string;
@@ -114,6 +115,22 @@ export default function WorkerAgentsPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<EditDraft | null>(null);
   const [saving, setSaving] = useState(false);
+  // Models list for the model-id dropdown. Pulled from the host's
+  // /api/models endpoint exactly once when the page mounts. We
+  // fall back to the empty list (text input) if the call fails so
+  // a misconfigured host doesn't lock the editor.
+  const [models, setModels] = useState<
+    { id: string; name: string; provider: string }[]
+  >([]);
+  const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
+  // Tool / skill catalogues for the ChipPicker. Empty = picker
+  // falls back to its legacy freetext input.
+  const [allTools, setAllTools] = useState<
+    { name: string; description: string; pluginId: string }[]
+  >([]);
+  const [allSkills, setAllSkills] = useState<
+    { name: string; description: string; pluginId: string }[]
+  >([]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -130,6 +147,74 @@ export default function WorkerAgentsPage() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // One-shot host catalog fetch on mount. Plugin client bundles
+  // share the same origin/cookies, so /api/* is reachable
+  // directly. Three independent fetches — partial failure leaves
+  // the affected picker in freetext fallback mode but doesn't
+  // block the others.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadJsonOrNull(url: string): Promise<unknown> {
+      try {
+        const r = await fetch(url, { credentials: "include" });
+        return r.ok ? await r.json() : null;
+      } catch {
+        return null;
+      }
+    }
+    void Promise.all([
+      loadJsonOrNull("/api/models"),
+      loadJsonOrNull("/api/tools"),
+      loadJsonOrNull("/api/skills"),
+    ]).then(([modelsJ, toolsJ, skillsJ]) => {
+      if (cancelled) return;
+      const mj = modelsJ as
+        | {
+            models?: { id: string; name: string; provider: string }[];
+            defaultModel?: string | null;
+          }
+        | null;
+      if (mj) {
+        setModels(
+          (mj.models ?? []).map((m) => ({
+            id: m.id,
+            name: m.name,
+            provider: m.provider,
+          })),
+        );
+        setDefaultModelId(mj.defaultModel ?? null);
+      }
+      const tj = toolsJ as
+        | {
+            tools?: { name: string; description: string; pluginId: string }[];
+          }
+        | null;
+      if (tj) {
+        // Hide orchestration-only workboard tools (task_list /
+        // task_create / ...). Workers run a single task; those
+        // tools belong to the chat orchestrator. Runtime denies
+        // them anyway (worker/pool.ts), so listing them here
+        // would just be a misleading checkbox the user can't
+        // actually grant. Single source of truth lives in
+        // ./worker/tool-policy.ts.
+        setAllTools(
+          (tj.tools ?? []).filter(
+            (t) => !WORKER_DENY_TOOLS_SET.has(t.name),
+          ),
+        );
+      }
+      const sj = skillsJ as
+        | {
+            skills?: { name: string; description: string; pluginId: string }[];
+          }
+        | null;
+      if (sj) setAllSkills(sj.skills ?? []);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -460,6 +545,10 @@ export default function WorkerAgentsPage() {
           allKinds={data?.kinds ?? []}
           isNew={editing.id === null}
           saving={saving}
+          models={models}
+          defaultModelId={defaultModelId}
+          allTools={allTools}
+          allSkills={allSkills}
           onChange={setEditing}
           onCancel={() => setEditing(null)}
           onSave={() => void save()}
@@ -491,6 +580,10 @@ function EditDialog({
   allKinds,
   isNew,
   saving,
+  models,
+  defaultModelId,
+  allTools,
+  allSkills,
   onChange,
   onCancel,
   onSave,
@@ -505,6 +598,17 @@ function EditDialog({
   allKinds: WorkerKind[];
   isNew: boolean;
   saving: boolean;
+  /** Host's known models, fetched once at page mount via /api/models.
+   *  Empty array means we couldn't reach the host (or none configured)
+   *  — the dialog falls back to a freetext input. */
+  models: { id: string; name: string; provider: string }[];
+  /** Default model id from /api/models; surfaced as a hint after the
+   *  empty option in the picker. */
+  defaultModelId: string | null;
+  /** Tool / skill catalogues from the host. Empty = ChipPicker
+   *  falls back to its legacy freetext input. */
+  allTools: { name: string; description: string; pluginId: string }[];
+  allSkills: { name: string; description: string; pluginId: string }[];
   onChange: (next: EditDraft) => void;
   onCancel: () => void;
   onSave: () => void;
@@ -566,21 +670,54 @@ function EditDialog({
           )}
 
           {allow.has("modelId") && (
-            <Field label="Model id" hint="Empty = use tenant default model.">
-              <input
-                type="text"
-                value={draft.modelId}
-                onChange={(e) =>
-                  onChange({ ...draft, modelId: e.target.value })
-                }
-                placeholder="sap-proxy/claude-sonnet-4-6"
-                className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
-              />
+            <Field
+              label="Model"
+              hint={
+                defaultModelId
+                  ? `Empty = use tenant default (${defaultModelId}).`
+                  : "Empty = use tenant default model."
+              }
+            >
+              {models.length > 0 ? (
+                <select
+                  value={draft.modelId}
+                  onChange={(e) =>
+                    onChange({ ...draft, modelId: e.target.value })
+                  }
+                  className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+                >
+                  <option value="">
+                    — use tenant default 
+                    {defaultModelId ? `(${defaultModelId})` : ""}
+                  </option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} — {m.id}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                // Models list unreachable / empty: fall back to
+                // freetext so the user can still type an id rather
+                // than be stuck with no input at all.
+                <input
+                  type="text"
+                  value={draft.modelId}
+                  onChange={(e) =>
+                    onChange({ ...draft, modelId: e.target.value })
+                  }
+                  placeholder="sap-proxy/claude-sonnet-4-6"
+                  className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+                />
+              )}
             </Field>
           )}
 
           {allow.has("systemPrompt") && (
-            <Field label="System prompt">
+            <Field
+              label="System prompt"
+              hint="Empty = host default. Builtin LLM workers ship with a SOUL-style worker prompt; clear this field to fall back to it."
+            >
               <textarea
                 value={draft.systemPrompt}
                 onChange={(e) =>
@@ -595,28 +732,29 @@ function EditDialog({
           {allow.has("toolsAllow") && (
             <Field
               label="Allowed tools"
-              hint="Comma-separated tool names. Empty = no tools."
+              hint="Empty = unlimited (every tool the host exposes; task_complete is always injected)."
             >
-              <input
-                type="text"
+              <ChipPicker
                 value={draft.toolsAllow}
-                onChange={(e) =>
-                  onChange({ ...draft, toolsAllow: e.target.value })
+                onChange={(next) =>
+                  onChange({ ...draft, toolsAllow: next })
                 }
-                placeholder="task_list, web_fetch"
-                className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+                catalog={allTools}
+                emptyHint="— unlimited (no restriction)"
               />
             </Field>
           )}
 
           {allow.has("skills") && (
-            <Field label="Skills" hint="Comma-separated skill names.">
-              <input
-                type="text"
+            <Field
+              label="Skills"
+              hint="Empty = unlimited (every skill the host exposes)."
+            >
+              <ChipPicker
                 value={draft.skills}
-                onChange={(e) => onChange({ ...draft, skills: e.target.value })}
-                placeholder="research-howto"
-                className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+                onChange={(next) => onChange({ ...draft, skills: next })}
+                catalog={allSkills}
+                emptyHint="— unlimited (no restriction)"
               />
             </Field>
           )}
@@ -673,5 +811,210 @@ function Field({
         <span className="mt-1 block text-[11px] text-gray-600">{hint}</span>
       )}
     </label>
+  );
+}
+
+/**
+ * Chip-style multi-select for the tools / skills allow-lists.
+ *
+ * - The model in the parent state is a comma-separated string
+ *   (so the existing parseList path on save still works). We
+ *   read it as `Set<string>` for fast membership checks and
+ *   write back a normalised ", "-joined string on every change.
+ * - Catalogue (everything the host exposes) is shown in a scrollable
+ *   list under a search box; click an entry to add / remove.
+ *   Selected entries are mirrored above as removable chips.
+ * - If `catalog` is empty (host endpoint failed), we fall back
+ *   to the legacy freetext input so the editor isn't unusable.
+ */
+function ChipPicker({
+  value,
+  onChange,
+  catalog,
+  emptyHint,
+  placeholder,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  catalog: { name: string; description: string; pluginId: string }[];
+  emptyHint?: string;
+  placeholder?: string;
+}) {
+  const [search, setSearch] = useState("");
+
+  // Parse the comma-separated string into a stable order set.
+  const selected = useMemo(() => {
+    const parts = value
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+    return parts;
+  }, [value]);
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+
+  const writeBack = useCallback(
+    (next: string[]) => {
+      // Dedup while preserving order.
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const n of next) {
+        if (seen.has(n)) continue;
+        seen.add(n);
+        out.push(n);
+      }
+      onChange(out.join(", "));
+    },
+    [onChange],
+  );
+
+  const toggle = (name: string) => {
+    if (selectedSet.has(name)) {
+      writeBack(selected.filter((n) => n !== name));
+    } else {
+      writeBack([...selected, name]);
+    }
+  };
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return catalog;
+    return catalog.filter(
+      (e) =>
+        e.name.toLowerCase().includes(q) ||
+        e.description.toLowerCase().includes(q) ||
+        e.pluginId.toLowerCase().includes(q),
+    );
+  }, [catalog, search]);
+
+  // Catalog unreachable → legacy freetext input. Keeps the page
+  // usable when the host endpoints are not yet wired or fail.
+  if (catalog.length === 0) {
+    return (
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder ?? "comma, separated, names"}
+        className="w-full rounded-md border border-gray-700 bg-gray-900 px-2 py-1.5 text-[12px] text-gray-100"
+      />
+    );
+  }
+
+  // Surface orphaned selections (entries selected but no longer in
+  // catalog — typically after a plugin disable) at the top of the
+  // list so the user can clear them. Otherwise everything renders
+  // in the single scrollable list.
+  const catalogNames = new Set(catalog.map((e) => e.name));
+  const orphaned = selected.filter((n) => !catalogNames.has(n));
+
+  // Header bar: count + select-all / clear shortcuts. "Select
+  // all" only operates on currently visible (post-search)
+  // entries, so a search-narrowed pick is possible without
+  // scrolling.
+  const visibleNames = visible.map((v) => v.name);
+  const allVisibleSelected =
+    visibleNames.length > 0 &&
+    visibleNames.every((n) => selectedSet.has(n));
+
+  return (
+    <div className="rounded-md border border-gray-700 bg-gray-900 p-1.5">
+      <div className="mb-1 flex items-center gap-1.5">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search…"
+          className="flex-1 rounded border border-gray-800 bg-gray-950 px-1.5 py-0.5 text-[11px] text-gray-100"
+        />
+        <span className="text-[10px] text-gray-500">
+          {selected.length}/{catalog.length} selected
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            if (allVisibleSelected) {
+              writeBack(selected.filter((n) => !visibleNames.includes(n)));
+            } else {
+              writeBack([...selected, ...visibleNames]);
+            }
+          }}
+          disabled={visibleNames.length === 0}
+          className="rounded border border-gray-700 px-1.5 py-0.5 text-[10px] text-gray-300 hover:border-gray-500 hover:bg-gray-800 disabled:opacity-50"
+          title={allVisibleSelected ? "Deselect all visible" : "Select all visible"}
+        >
+          {allVisibleSelected ? "clear" : "all"}
+        </button>
+      </div>
+      {selected.length === 0 && (
+        <div className="px-1.5 py-0.5 text-[11px] italic text-gray-500">
+          {emptyHint ?? "None selected."}
+        </div>
+      )}
+      {orphaned.length > 0 && (
+        <div className="mb-1 rounded border border-amber-700/60 bg-amber-950/20 px-1.5 py-1 text-[10px] text-amber-200">
+          <div className="mb-0.5 font-semibold">
+            {orphaned.length} no longer in catalog
+          </div>
+          <div className="flex flex-wrap gap-1">
+            {orphaned.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => toggle(name)}
+                className="flex items-center gap-1 rounded-full border border-amber-700 bg-amber-950/40 px-1.5 py-0 text-[10px] text-amber-200 hover:border-rose-500 hover:bg-rose-950/40 hover:text-rose-200"
+                title="Click to remove"
+              >
+                <span className="font-mono">{name}</span>
+                <X size={9} />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <ul className="max-h-56 overflow-y-auto">
+        {visible.length === 0 && (
+          <li className="px-1.5 py-1 text-[11px] italic text-gray-500">
+            No matches.
+          </li>
+        )}
+        {visible.map((entry) => {
+          const checked = selectedSet.has(entry.name);
+          return (
+            <li key={entry.name}>
+              <button
+                type="button"
+                onClick={() => toggle(entry.name)}
+                className={`flex w-full items-start gap-1.5 rounded px-1.5 py-1 text-left text-[11px] ${
+                  checked
+                    ? "bg-emerald-950/30 text-emerald-100"
+                    : "text-gray-200 hover:bg-gray-800"
+                }`}
+              >
+                <span
+                  className={`mt-px flex h-3 w-3 shrink-0 items-center justify-center rounded border ${
+                    checked
+                      ? "border-emerald-500 bg-emerald-500/30 text-emerald-200"
+                      : "border-gray-600"
+                  }`}
+                >
+                  {checked ? "✓" : ""}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="font-mono">{entry.name}</span>
+                  <span className="ml-1.5 text-[10px] text-gray-500">
+                    {entry.pluginId}
+                  </span>
+                  {entry.description && (
+                    <span className="block truncate text-[10px] text-gray-500">
+                      {entry.description}
+                    </span>
+                  )}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

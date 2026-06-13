@@ -39,6 +39,16 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Deliver a system-level message to a chat session's inbox. If the session has an active turn running, the message is queued via harness.followUp(); otherwise it persists in the DB and is flushed as a system note the next time the session takes a user turn. Provided by the host; workboard uses this to notify the parent agent when a delegated task finishes.",
   },
+  "host.toolCatalog": {
+    exclusive: true,
+    description:
+      "Read the tool catalog the host can offer to the current tenant: every tool name registered by the host plus every active plugin's contributions. Plugins use this to seed allow-list defaults (e.g. workboard's Default LLM agent grants every tool by default rather than 'unlimited' meaning silent fallthrough).",
+  },
+  "host.skillCatalog": {
+    exclusive: true,
+    description:
+      "Read the skill catalog the host can offer to the current tenant: every skill name registered host-side plus every active plugin's contributions. Same role as host.toolCatalog but for the skill allow-list field.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;
