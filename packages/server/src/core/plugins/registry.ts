@@ -54,6 +54,7 @@ import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
 import { loadSkillsForPlugin, type LoadedSkill } from "./skills.js";
+import { seedAgentDirs } from "../agent-seeds.js";
 
 export type PluginState = "active" | "disabled" | "failed" | "client-bundle-missing";
 
@@ -813,6 +814,37 @@ export class PluginRegistry {
     } catch (err) {
       return failed(p, requires, `activate() threw: ${describe(err)}`);
     }
+
+    // Drop manifest-declared agent seeds into the tenant's worker
+    // config tree. Idempotent (existing slots are preserved), so
+    // it's safe to run on every activate — including hot reloads
+    // that re-activate a plugin in the same process.
+    const seeds = p.manifest.contributes?.agentSeeds;
+    if (seeds && seeds.length > 0) {
+      try {
+        const r = seedAgentDirs({
+          tenantId: ctx.tenantId,
+          pluginId: p.manifest.id,
+          pluginDir: p.dir,
+          seeds,
+        });
+        if (r.inserted.length || r.invalid.length) {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[plugin:${p.manifest.id}] [tenant:${ctx.tenantId}] agent-seeds inserted=[${r.inserted.join(", ")}] preserved=[${r.preserved.join(", ")}] invalid=[${r.invalid.join(", ")}]`,
+          );
+        }
+      } catch (err) {
+        // Don't fail activation just because a seed couldn't be
+        // copied — the worker pool can still run any user-managed
+        // workers already on disk.
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[plugin:${p.manifest.id}] agent-seeds failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     return {
       manifest: p.manifest,
       source: p.source,

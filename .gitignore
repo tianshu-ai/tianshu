@@ -69,7 +69,9 @@ test-results/
 *.seed
 *.pid.lock
 
-# Synced from plugins/<id>/manifest.json by scripts/sync-builtin-plugins.mjs.
-# Source of truth lives at plugins/<id>/manifest.json.
+# Synced from plugins/<id>/... by scripts/sync-builtin-plugins.mjs.
+# Source of truth lives at plugins/<id>/.
 packages/server/builtinConfig/plugins/*/manifest.json
 packages/server/builtinConfig/plugins/*/skills/
+packages/server/builtinConfig/plugins/*/templates/
+packages/server/builtinConfig/plugins/*/agent-seeds/

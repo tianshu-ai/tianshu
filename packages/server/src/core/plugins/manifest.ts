@@ -8,6 +8,7 @@
 
 import type {
   AdminPageContribution,
+  AgentSeedContribution,
   ApiRouteContribution,
   AttachmentRendererContribution,
   ComposerActionContribution,
@@ -291,6 +292,14 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
   if ("skills" in raw) {
     out.skills = parseArray(raw.skills, "skills", acc, parseSkill);
   }
+  if ("agentSeeds" in raw) {
+    out.agentSeeds = parseArray(
+      raw.agentSeeds,
+      "agentSeeds",
+      acc,
+      parseAgentSeed,
+    );
+  }
   if ("composerActions" in raw) {
     out.composerActions = parseArray(
       raw.composerActions,
@@ -401,6 +410,21 @@ function parseSkill(raw: unknown, ctx: string, acc: Acc): SkillContribution | nu
   const skillPath = expectString(raw, "path", acc, ctx);
   if (id == null || skillPath == null) return null;
   return { id, path: skillPath };
+}
+
+function parseAgentSeed(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): AgentSeedContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const seedPath = expectString(raw, "path", acc, ctx);
+  if (id == null || seedPath == null) return null;
+  return { id, path: seedPath };
 }
 
 function parseSandbox(raw: unknown, ctx: string, acc: Acc): SandboxContribution | null {

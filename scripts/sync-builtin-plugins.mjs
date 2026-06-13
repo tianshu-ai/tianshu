@@ -31,6 +31,7 @@ const ids = fs
 let copied = 0;
 let skillsCopied = 0;
 let templatesCopied = 0;
+let agentSeedFiles = 0;
 for (const id of ids) {
   const src = path.join(pluginsDir, id, "manifest.json");
   if (!fs.existsSync(src)) continue;
@@ -85,9 +86,34 @@ for (const id of ids) {
       templatesCopied++;
     }
   }
+
+  // Agent seeds — each entry in `contributes.agentSeeds` is a
+  // directory bundle copied verbatim into the tenant on first
+  // plugin activation (see core/agent-seeds.ts). Mirror the
+  // whole subtree so `<manifest-dir>/<seed.path>/...` resolves
+  // identically in dev and packaged installs.
+  const agentSeedsSrc = path.join(pluginsDir, id, "agent-seeds");
+  if (
+    fs.existsSync(agentSeedsSrc) &&
+    fs.statSync(agentSeedsSrc).isDirectory()
+  ) {
+    const agentSeedsDst = path.join(dstDir, "agent-seeds");
+    fs.rmSync(agentSeedsDst, { recursive: true, force: true });
+    fs.cpSync(agentSeedsSrc, agentSeedsDst, { recursive: true });
+    // Count files for the summary line; cpSync doesn't return one.
+    const stack = [agentSeedsDst];
+    while (stack.length) {
+      const dir = stack.pop();
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) stack.push(full);
+        else if (e.isFile()) agentSeedFiles++;
+      }
+    }
+  }
 }
 
 // eslint-disable-next-line no-console
 console.log(
-  `[sync-builtin-plugins] synced ${copied} manifest(s), ${skillsCopied} skill file(s), and ${templatesCopied} template file(s) from plugins/ → builtinConfig/plugins/`,
+  `[sync-builtin-plugins] synced ${copied} manifest(s), ${skillsCopied} skill file(s), ${templatesCopied} template file(s), and ${agentSeedFiles} agent-seed file(s) from plugins/ → builtinConfig/plugins/`,
 );

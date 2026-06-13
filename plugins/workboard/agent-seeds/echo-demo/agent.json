@@ -1,0 +1,7 @@
+{
+  "kind": "echo",
+  "displayName": "Echo demo",
+  "description": "Sleeps, then echoes the task title. Ships with the workboard plugin.",
+  "enabled": true,
+  "source": "builtin"
+}

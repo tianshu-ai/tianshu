@@ -179,6 +179,26 @@ export interface ContributesV1 {
    */
   skills?: SkillContribution[];
   /**
+   * Worker-agent seed bundles the plugin ships. On first activation
+   * for a tenant, the host copies each entry's `path` into
+   * `<tenant>/_tenant/config/workers/<id>/`. Already-existing
+   * directories are left alone, so a user edit survives plugin
+   * upgrades and a deleted seed stays deleted (mirrors the
+   * `ensureTenantConfigDefaults` semantics for skill bundles).
+   *
+   * The seed directory layout matches the runtime layout the loader
+   * expects:
+   *
+   *   <id>/
+   *     agent.json           (required: kind, modelId?, enabled, ...)
+   *     SOUL.md              (optional: system prompt)
+   *     skills/<name>/...    (optional: pre-installed skills)
+   *
+   * `<id>` becomes the worker's slug — stable, kebab-case,
+   * unique within the plugin.
+   */
+  agentSeeds?: AgentSeedContribution[];
+  /**
    * Buttons in the chat composer (left of Send). The contributed
    * component renders inside the input row and gets a `composer`
    * prop with `useComposer()`-equivalent capabilities (manage
@@ -237,6 +257,24 @@ export interface SkillContribution {
    * skill file. Frontmatter declares `name`, `description`, and an
    * optional `when` predicate. Body is whatever the agent should
    * read after `load_skill(name)`.
+   */
+  path: string;
+}
+
+export interface AgentSeedContribution {
+  /**
+   * Local slug. Becomes the directory name under
+   * `_tenant/config/workers/<id>/`. Kebab-case, must be unique
+   * within this plugin (and ideally across plugins; collisions are
+   * resolved last-writer-wins with a console warning).
+   */
+  id: string;
+  /**
+   * Path to the seed directory, relative to the plugin's manifest.
+   * The host copies the *contents* of this directory into the
+   * tenant slot — not the directory itself — so an `agent.json`
+   * sitting at `<path>/agent.json` lands at
+   * `_tenant/config/workers/<id>/agent.json`.
    */
   path: string;
 }

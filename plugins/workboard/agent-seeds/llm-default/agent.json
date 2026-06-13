@@ -1,0 +1,7 @@
+{
+  "kind": "llm",
+  "displayName": "Default LLM",
+  "description": "Default LLM worker. Picks up tasks tagged with worker_role=llm (or unrouted) and runs them to task_complete.",
+  "enabled": true,
+  "source": "builtin"
+}
