@@ -64,7 +64,7 @@
     ],
     "agentSeeds": [
       { "id": "echo-demo",   "path": "agent-seeds/echo-demo"   },
-      { "id": "default-llm", "path": "agent-seeds/default-llm" }
+      { "id": "llm-default", "path": "agent-seeds/llm-default" }
     ],
     "apiRoutes": [
       { "method": "GET",    "path": "/tasks",              "handler": "listTasks"     },
