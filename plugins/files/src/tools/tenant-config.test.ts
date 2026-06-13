@@ -91,32 +91,101 @@ describe("checkWritable scope rules", () => {
     ).toBe(true);
   });
 
-  it("main may NOT write under workers/<kind>/", () => {
+  it("main MAY write under workers/<slug>/ (any sub-path)", () => {
     const home = freshTenantHome();
     const root = getTenantConfigRoot(home);
     expect(
-      checkWritable(home, path.join(root, "workers", "llm", "skills", "x"), MAIN).ok,
-    ).toBe(false);
-  });
-
-  it("worker may write only its own kind layer", () => {
-    const home = freshTenantHome();
-    const root = getTenantConfigRoot(home);
-    expect(
-      checkWritable(home, path.join(root, "workers", "llm", "skills", "x"), WORKER_LLM).ok,
+      checkWritable(
+        home,
+        path.join(root, "workers", "sonnet-researcher", "agent.json"),
+        MAIN,
+      ).ok,
     ).toBe(true);
     expect(
-      checkWritable(home, path.join(root, "workers", "echo", "skills", "x"), WORKER_LLM).ok,
+      checkWritable(
+        home,
+        path.join(root, "workers", "sonnet-researcher", "SOUL.md"),
+        MAIN,
+      ).ok,
+    ).toBe(true);
+    expect(
+      checkWritable(
+        home,
+        path.join(root, "workers", "sonnet-researcher", "skills", "foo"),
+        MAIN,
+      ).ok,
+    ).toBe(true);
+  });
+
+  it("main may NOT write to a top-level non-allowlisted path", () => {
+    const home = freshTenantHome();
+    const root = getTenantConfigRoot(home);
+    expect(
+      checkWritable(home, path.join(root, "MEMORY.md"), MAIN).ok,
     ).toBe(false);
     expect(
-      checkWritable(home, path.join(root, "main", "skills", "x"), WORKER_ECHO).ok,
+      checkWritable(home, path.join(root, "unknown-section"), MAIN).ok,
     ).toBe(false);
   });
 
-  it("rejects writes to root or non-skills subtrees", () => {
+  it("worker may write only its own kind/slug layer (skills only)", () => {
+    const home = freshTenantHome();
+    const root = getTenantConfigRoot(home);
+    expect(
+      checkWritable(
+        home,
+        path.join(root, "workers", "llm", "skills", "x"),
+        WORKER_LLM,
+      ).ok,
+    ).toBe(true);
+    expect(
+      checkWritable(
+        home,
+        path.join(root, "workers", "echo", "skills", "x"),
+        WORKER_LLM,
+      ).ok,
+    ).toBe(false);
+    expect(
+      checkWritable(home, path.join(root, "main", "skills", "x"), WORKER_ECHO)
+        .ok,
+    ).toBe(false);
+    // Workers can NOT touch their own agent.json or SOUL.md
+    // (would race with the loader mid-run).
+    expect(
+      checkWritable(
+        home,
+        path.join(root, "workers", "llm", "agent.json"),
+        WORKER_LLM,
+      ).ok,
+    ).toBe(false);
+  });
+
+  it("worker with explicit slug uses slug, not kind", () => {
+    const home = freshTenantHome();
+    const root = getTenantConfigRoot(home);
+    const scope: AgentScope = {
+      kind: "worker",
+      workerKind: "llm",
+      slug: "sonnet-researcher",
+    };
+    expect(
+      checkWritable(
+        home,
+        path.join(root, "workers", "sonnet-researcher", "skills", "x"),
+        scope,
+      ).ok,
+    ).toBe(true);
+    expect(
+      checkWritable(home, path.join(root, "workers", "llm", "skills", "x"), scope)
+        .ok,
+    ).toBe(false);
+  });
+
+  it("rejects writes to root", () => {
     const home = freshTenantHome();
     const root = getTenantConfigRoot(home);
     expect(checkWritable(home, root, MAIN).ok).toBe(false);
+    // main/<not skills>/ is not in the allow-list either.
     expect(
       checkWritable(home, path.join(root, "main", "MEMORY.md"), MAIN).ok,
     ).toBe(false);

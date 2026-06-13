@@ -33,6 +33,12 @@ export interface AgentLoopRunnerRequest {
   /** Worker role. Use the kind id (e.g. \"llm\") when called from a
    *  worker pool. */
   workerRole?: string | null;
+  /** Worker filesystem slug — the directory name under
+   *  `_tenant/config/workers/<slug>/`. Drives the
+   *  `tenant_config_write` boundary so a worker can author skills
+   *  inside its own bundle. When omitted, the tools fall back to
+   *  scoping by `workerRole`. */
+  workerSlug?: string | null;
   /** Parent session id (the user's main session that requested
    *  the worker). Lets the UI render worker sessions as children. */
   parentSessionId?: string | null;

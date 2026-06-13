@@ -143,6 +143,7 @@ pluginRegistry = new PluginRegistry({
             skillsAllow: req.skillsAllow,
             sessionTitle: req.sessionTitle,
             workerRole: req.workerRole,
+            workerSlug: req.workerSlug,
             parentSessionId: req.parentSessionId,
             timeouts: req.timeouts,
             signal: req.signal,

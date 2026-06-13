@@ -69,6 +69,10 @@ export interface AgentLoopRequest {
   sessionTitle?: string | null;
   /** Worker role to stamp on the session row. */
   workerRole?: string | null;
+  /** Worker filesystem slug (matches `_tenant/config/workers/<slug>/`).
+   *  Forwarded to `agentScope.slug` so `tenant_config_write` can
+   *  scope writes to this worker's own bundle. */
+  workerSlug?: string | null;
   /** Parent (user) session id. */
   parentSessionId?: string | null;
   /** Plugin registry for tool/skill discovery. */
@@ -287,10 +291,15 @@ export async function runAgentLoop(
       userHomeDir: ctx.userHomeDir(userId),
       tenantHomeDir: homeDir ?? "",
       // Worker scope. `workerRole` is the worker_agent kind id
-      // (e.g. "llm"). Drives `tenant_config_write` boundary so a
-      // worker can only write to its own `workers/<kind>/skills/`.
+      // (e.g. "llm"); `workerSlug` is the fs directory name. Drives
+      // `tenant_config_write` boundary so a worker can write under
+      // its own `workers/<slug>/skills/` (and read everything).
       agentScope: req.workerRole
-        ? { kind: "worker", workerKind: req.workerRole }
+        ? {
+            kind: "worker",
+            workerKind: req.workerRole,
+            slug: req.workerSlug ?? undefined,
+          }
         : { kind: "main" },
       log: {
         info: (msg, meta) => console.log(`[agent-loop] ${msg}`, meta ?? ""),

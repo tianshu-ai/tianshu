@@ -48,13 +48,6 @@ import {
   buildTaskListTool,
   buildTaskMoveTool,
   buildTaskUpdateTool,
-  buildWorkerAgentCreateTool,
-  buildWorkerAgentDeleteTool,
-  buildWorkerAgentKindsListTool,
-  buildWorkerAgentListTool,
-  buildWorkerAgentResetTool,
-  buildWorkerAgentUpdateTool,
-  type AgentToolDeps,
   type ToolDeps,
 } from "./tools/index.js";
 import { buildRoutes, type WorkerKindDef } from "./routes/handlers.js";
@@ -66,6 +59,7 @@ import {
   type WorkerAgent,
 } from "./db/agents.js";
 import { loadMergedWorkerAgents } from "./fs-worker-agents.js";
+import { migrateWorkerAgentsToFs } from "./migrate-worker-agents.js";
 
 interface ActiveState {
   pool: WorkerPool;
@@ -308,6 +302,29 @@ const plugin: PluginServerModule = {
       });
     }
 
+    // One-shot DB → fs migration. Idempotent; for every DB row
+    // whose slug isn't already a workers/<slug>/ directory, dump
+    // the row's config into a fresh agent.json + SOUL.md. Existing
+    // fs slots win, so this won't clobber a user edit.
+    try {
+      const dbRowsForMigration = listWorkerAgents(ctx.db, ctx.tenantId);
+      const m = migrateWorkerAgentsToFs({
+        tenantHomeDir: ctx.workspaceDir,
+        dbAgents: dbRowsForMigration,
+        onWarn: (msg) => ctx.log.warn(msg),
+      });
+      if (m.migrated.length > 0) {
+        ctx.log.info("migrate-workers: dumped DB rows to fs", {
+          migrated: m.migrated,
+          preserved: m.preserved,
+        });
+      }
+    } catch (err) {
+      ctx.log.warn("migrate-workers: migration failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+
     // Owner discovery: agent rows don't pin to a user, but every
     // task does. The factory builds a handle without a task in
     // hand, so we precompute a `defaultUserId` per agent from
@@ -422,20 +439,12 @@ const plugin: PluginServerModule = {
       BUILTIN_AGENT_SEEDS.map((s) => [s.builtinKey, s]),
     );
 
-    // worker_agent_* tools share `toolDeps` and add the
-    // tenant/kind/seed context that agent CRUD needs. We build it
-    // here (instead of inline in the tool factory list below) so
-    // `onAgentsWrite` is in scope by the time the tools are wired.
-    const agentToolDeps: AgentToolDeps = {
-      ...toolDeps,
-      tenantId: ctx.tenantId,
-      workerKinds: WORKER_KINDS,
-      seedsByKey,
-      // Closed-over reference so tool callers go through the same
-      // pool-rebuild path the REST handlers use. Defined just below.
-      onAgentsWrite: () => onAgentsWrite(),
-    };
-
+    // The orchestrator-side worker_agent_* tools (PR #96) are
+    // gone now — tenant_config_write covers the same ground in
+    // a uniform filesystem-first way. We still need
+    // `onAgentsWrite` for the REST surface (the worker-agent
+    // admin page calls it after PATCH/POST/DELETE), so keep that
+    // function but drop the AgentToolDeps wiring.
     const onAgentsWrite = () => {
       const fresh = refreshAgentInventory();
       // Refresh the cached agent rows so the factory rebuilds
@@ -470,12 +479,7 @@ const plugin: PluginServerModule = {
         TaskDeleteTool: buildTaskDeleteTool(toolDeps),
         TaskGetHistoryTool: buildTaskGetHistoryTool(toolDeps),
         TaskCompleteTool: buildTaskCompleteTool(),
-        WorkerAgentKindsListTool: buildWorkerAgentKindsListTool(agentToolDeps),
-        WorkerAgentListTool: buildWorkerAgentListTool(agentToolDeps),
-        WorkerAgentCreateTool: buildWorkerAgentCreateTool(agentToolDeps),
-        WorkerAgentUpdateTool: buildWorkerAgentUpdateTool(agentToolDeps),
-        WorkerAgentDeleteTool: buildWorkerAgentDeleteTool(agentToolDeps),
-        WorkerAgentResetTool: buildWorkerAgentResetTool(agentToolDeps),
+
       },
       routes,
     };

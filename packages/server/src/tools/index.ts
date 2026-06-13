@@ -50,7 +50,7 @@ export interface BuildToolContext {
    *  inside `buildToolset` if the caller doesn't pass it. */
   agentScope?:
     | { kind: "main" }
-    | { kind: "worker"; workerKind: string };
+    | { kind: "worker"; workerKind: string; slug?: string };
   log: PluginLogger;
   /**
    * Session this toolset belongs to. Plumbed through to every
