@@ -59,3 +59,58 @@ export function seedUserWorkspace(tenantId: string, userId: string, home?: strin
   const templates = getTemplatesDir();
   copyDirRecursive(path.join(templates, USER_TEMPLATE), userHome);
 }
+
+/**
+ * Backfill missing template subtrees into an existing tenant.
+ *
+ * `seedTenantWorkspace` only fires the first time a tenant is
+ * created — once `_tenant/` exists it bails out. That's correct
+ * for SOUL.md / MEMORY.md (user may have edited them) but wrong
+ * for additive config the host ships later, e.g. the
+ * `_tenant/config/main/skills/skill-creator/` bundle that backs
+ * the agent-managed skill workflow.
+ *
+ * `ensureTenantConfigDefaults` walks the template's `config/` tree
+ * and copies each *missing* file/dir into the tenant. Existing
+ * files are left alone, so a user-edited skill is never
+ * overwritten. Skills the user removed will be re-seeded — that's
+ * intentional; if you want to disable a builtin skill, set
+ * `enabled: false` in its frontmatter rather than deleting the
+ * directory.
+ */
+export function ensureTenantConfigDefaults(
+  tenantId: string,
+  home?: string,
+): void {
+  const templates = getTemplatesDir();
+  const tenantConfigSrc = path.join(templates, TENANT_TEMPLATE, "config");
+  if (!fs.existsSync(tenantConfigSrc)) return;
+  const tenantConfigDst = path.join(
+    getTenantSharedDir(tenantId, home),
+    "config",
+  );
+  fs.mkdirSync(tenantConfigDst, { recursive: true });
+  copyMissing(tenantConfigSrc, tenantConfigDst);
+}
+
+/** Copy files/dirs from `src` into `dst`, skipping anything already
+ *  present at the destination. Symlinks are followed but not copied
+ *  as symlinks — the tenant config tree is treated as plain data. */
+function copyMissing(src: string, dst: string): void {
+  const entries = fs.readdirSync(src, { withFileTypes: true });
+  for (const entry of entries) {
+    const srcPath = path.join(src, entry.name);
+    const dstPath = path.join(dst, entry.name);
+    if (entry.isDirectory()) {
+      if (!fs.existsSync(dstPath)) {
+        fs.cpSync(srcPath, dstPath, { recursive: true });
+      } else {
+        copyMissing(srcPath, dstPath);
+      }
+    } else if (entry.isFile() || entry.isSymbolicLink()) {
+      if (!fs.existsSync(dstPath)) {
+        fs.copyFileSync(srcPath, dstPath);
+      }
+    }
+  }
+}

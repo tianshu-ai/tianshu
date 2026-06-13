@@ -64,6 +64,49 @@ export function getTenantSharedDir(tenantId: string, home?: string): string {
   return path.join(getTenantWorkspaceDir(tenantId, home), "_tenant");
 }
 
+/** Per-tenant agent-config root, where SKILL.md trees, SOUL.md and
+ *  related agent-facing files live. The chat handler scans this on
+ *  every turn (no host restart required for new skills).
+ *
+ *  Layout:
+ *    _tenant/config/skills/<name>/SKILL.md             — shared skills
+ *    _tenant/config/main/skills/<name>/SKILL.md        — main agent only
+ *    _tenant/config/workers/<kind>/skills/<name>/SKILL.md
+ *                                                       — worker-kind only
+ *  (More files like SOUL.md / MEMORY.md are reserved for follow-up
+ *  changes; the directory shape is intentionally future-compatible.)
+ */
+export function getTenantConfigDir(tenantId: string, home?: string): string {
+  return path.join(getTenantSharedDir(tenantId, home), "config");
+}
+
+export function getTenantSharedSkillsDir(
+  tenantId: string,
+  home?: string,
+): string {
+  return path.join(getTenantConfigDir(tenantId, home), "skills");
+}
+
+export function getTenantMainSkillsDir(
+  tenantId: string,
+  home?: string,
+): string {
+  return path.join(getTenantConfigDir(tenantId, home), "main", "skills");
+}
+
+export function getTenantWorkerSkillsDir(
+  tenantId: string,
+  workerKind: string,
+  home?: string,
+): string {
+  return path.join(
+    getTenantConfigDir(tenantId, home),
+    "workers",
+    workerKind,
+    "skills",
+  );
+}
+
 export function getTenantUsersDir(tenantId: string, home?: string): string {
   return path.join(getTenantWorkspaceDir(tenantId, home), "users");
 }

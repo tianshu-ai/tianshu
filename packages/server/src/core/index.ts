@@ -68,6 +68,7 @@ export {
 
 export {
   getTemplatesDir,
+  ensureTenantConfigDefaults,
   seedTenantWorkspace,
   seedUserWorkspace,
   TENANT_TEMPLATE,

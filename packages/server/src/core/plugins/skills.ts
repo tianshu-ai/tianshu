@@ -81,56 +81,121 @@ export function loadSkillsForPlugin(args: {
     const filePath = path.resolve(args.pluginDir, c.path);
     const source = { pluginId: args.pluginId, contributionId: c.id };
 
-    if (!fs.existsSync(filePath)) {
-      failures.push({ source, filePath, reason: "skill file not found" });
-      continue;
+    const loaded = loadSkillFromFile({ filePath, source });
+    if (loaded.ok) {
+      skills.push(loaded.skill);
+    } else {
+      failures.push({ source, filePath, reason: loaded.reason });
     }
+  }
 
-    let raw: string;
-    try {
-      raw = fs.readFileSync(filePath, "utf8");
-    } catch (err) {
-      failures.push({
-        source,
-        filePath,
-        reason: `read failed: ${err instanceof Error ? err.message : String(err)}`,
-      });
-      continue;
-    }
+  return { skills, failures };
+}
 
-    const parsed = parseFrontmatter(raw);
-    if (!parsed.ok) {
-      failures.push({ source, filePath, reason: parsed.reason });
-      continue;
-    }
-    const { frontmatter, body } = parsed;
+/**
+ * Discover OpenClaw-style directory skills under `rootDir`.
+ *
+ * Each immediate subdirectory whose name doesn't start with `.` and
+ * which contains a `SKILL.md` becomes one skill. Frontmatter parsing
+ * mirrors `loadSkillsForPlugin`. Optional sibling dirs (`scripts/`,
+ * `references/`, `assets/`) are deliberately not eagerly loaded —
+ * the agent reads them on demand via the regular file tools, just
+ * like Claude Code / OpenClaw do.
+ *
+ * Returns `{skills:[], failures:[]}` when `rootDir` doesn't exist
+ * (so callers can probe many candidate locations cheaply).
+ */
+export function loadDirectorySkills(args: {
+  rootDir: string;
+  /** Synthetic plugin id used in `LoadedSkill.source.pluginId` for
+   *  log/diagnostic readability. */
+  pluginId: string;
+}): SkillLoadResult {
+  const skills: LoadedSkill[] = [];
+  const failures: SkillLoadFailure[] = [];
+  if (!fs.existsSync(args.rootDir)) return { skills, failures };
 
-    const name = pickString(frontmatter, "name");
-    const description = pickString(frontmatter, "description");
-    if (!name) {
-      failures.push({ source, filePath, reason: "frontmatter missing `name`" });
-      continue;
-    }
-    if (!description) {
-      failures.push({
-        source,
-        filePath,
-        reason: "frontmatter missing `description`",
-      });
-      continue;
-    }
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(args.rootDir, { withFileTypes: true });
+  } catch (err) {
+    return {
+      skills,
+      failures: [
+        {
+          source: { pluginId: args.pluginId, contributionId: "<root>" },
+          filePath: args.rootDir,
+          reason: `readdir failed: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      ],
+    };
+  }
 
-    skills.push({
-      source,
-      filePath,
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    if (entry.name.startsWith(".")) continue;
+    const skillMd = path.join(args.rootDir, entry.name, "SKILL.md");
+    if (!fs.existsSync(skillMd)) continue;
+    const source = {
+      pluginId: args.pluginId,
+      contributionId: entry.name,
+    };
+    const loaded = loadSkillFromFile({ filePath: skillMd, source });
+    if (loaded.ok) {
+      skills.push(loaded.skill);
+    } else {
+      failures.push({ source, filePath: skillMd, reason: loaded.reason });
+    }
+  }
+
+  return { skills, failures };
+}
+
+interface LoadedSkillResult {
+  ok: true;
+  skill: LoadedSkill;
+}
+interface LoadedSkillError {
+  ok: false;
+  reason: string;
+}
+
+function loadSkillFromFile(args: {
+  filePath: string;
+  source: { pluginId: string; contributionId: string };
+}): LoadedSkillResult | LoadedSkillError {
+  if (!fs.existsSync(args.filePath)) {
+    return { ok: false, reason: "skill file not found" };
+  }
+  let raw: string;
+  try {
+    raw = fs.readFileSync(args.filePath, "utf8");
+  } catch (err) {
+    return {
+      ok: false,
+      reason: `read failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  const parsed = parseFrontmatter(raw);
+  if (!parsed.ok) return { ok: false, reason: parsed.reason };
+  const { frontmatter, body } = parsed;
+  const name = pickString(frontmatter, "name");
+  const description = pickString(frontmatter, "description");
+  if (!name) return { ok: false, reason: "frontmatter missing `name`" };
+  if (!description) {
+    return { ok: false, reason: "frontmatter missing `description`" };
+  }
+  return {
+    ok: true,
+    skill: {
+      source: args.source,
+      filePath: args.filePath,
       name,
       description,
       when: extractWhen(frontmatter),
       body: body.trim(),
-    });
-  }
-
-  return { skills, failures };
+    },
+  };
 }
 
 // ─── frontmatter parser ─────────────────────────────────────────
