@@ -8,8 +8,14 @@
 // surface; this page just shows what the loader sees so the user
 // can sanity-check.
 
-import { useCallback, useEffect, useState, type ReactElement } from "react";
-import { Bot, RefreshCw } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactElement,
+} from "react";
+import { Bot, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
 
 interface WorkerAgent {
   id: string;
@@ -47,6 +53,21 @@ export function WorkerAgentsPage(): ReactElement {
   const [kinds, setKinds] = useState<WorkerKindDef[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set of expanded slugs. UI is per-row collapsible like a
+  // stacked accordion — we deliberately allow multiple open at
+  // once because comparing two workers' tool sets is the
+  // common task.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const toggle = useCallback((slug: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -75,6 +96,12 @@ export function WorkerAgentsPage(): ReactElement {
 
   const kindLabel = (id: string): string =>
     kinds.find((k) => k.id === id)?.displayName ?? id;
+
+  // Pre-derive a stable URI for the slot, used in the detail
+  // banner so the user can copy-paste it into a chat to ask the
+  // agent to edit the worker.
+  const slotUri = (a: WorkerAgent): string =>
+    `tenant-config:///workers/${a.builtinKey ?? a.id}/`;
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -151,50 +178,177 @@ export function WorkerAgentsPage(): ReactElement {
                 </td>
               </tr>
             ) : (
-              agents.map((a) => (
-                <tr key={a.id} className="hover:bg-gray-900/40">
-                  <td className="px-3 py-2">
-                    <span
-                      className={`inline-flex h-2 w-2 rounded-full ${a.enabled ? "bg-emerald-500" : "bg-gray-600"}`}
-                      title={a.enabled ? "enabled" : "disabled"}
-                    />
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="font-medium text-gray-100">{a.name}</div>
-                    {a.description && (
-                      <div className="text-[11px] text-gray-500">
-                        {a.description}
+              agents.flatMap((a) => {
+                const isOpen = expanded.has(a.id);
+                return [
+                  <tr
+                    key={`${a.id}-row`}
+                    className="cursor-pointer hover:bg-gray-900/40"
+                    onClick={() => toggle(a.id)}
+                  >
+                    <td className="px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        {isOpen ? (
+                          <ChevronDown size={12} className="text-gray-500" />
+                        ) : (
+                          <ChevronRight size={12} className="text-gray-500" />
+                        )}
+                        <span
+                          className={`inline-flex h-2 w-2 rounded-full ${a.enabled ? "bg-emerald-500" : "bg-gray-600"}`}
+                          title={a.enabled ? "enabled" : "disabled"}
+                        />
                       </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2">
-                    <code className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-300">
-                      {kindLabel(a.kind)}
-                    </code>
-                  </td>
-                  <td className="px-3 py-2">
-                    {a.source === "builtin" ? (
-                      <span className="rounded bg-indigo-950 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
-                        builtin
-                      </span>
-                    ) : (
-                      <span className="rounded bg-gray-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
-                        user
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-[11px] text-gray-400">
-                    {a.modelId ?? "—"}
-                  </td>
-                  <td className="px-3 py-2 font-mono text-[11px] text-gray-500">
-                    {a.builtinKey ?? a.id}
-                  </td>
-                </tr>
-              ))
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="font-medium text-gray-100">{a.name}</div>
+                      {a.description && (
+                        <div className="text-[11px] text-gray-500">
+                          {a.description}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <code className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-300">
+                        {kindLabel(a.kind)}
+                      </code>
+                    </td>
+                    <td className="px-3 py-2">
+                      {a.source === "builtin" ? (
+                        <span className="rounded bg-indigo-950 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
+                          builtin
+                        </span>
+                      ) : (
+                        <span className="rounded bg-gray-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                          user
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-[11px] text-gray-400">
+                      {a.modelId ?? "—"}
+                    </td>
+                    <td className="px-3 py-2 font-mono text-[11px] text-gray-500">
+                      {a.builtinKey ?? a.id}
+                    </td>
+                  </tr>,
+                  isOpen ? (
+                    <tr key={`${a.id}-detail`} className="bg-gray-950">
+                      <td colSpan={6} className="px-3 pb-4 pt-1">
+                        <AgentDetail agent={a} slotUri={slotUri(a)} />
+                      </td>
+                    </tr>
+                  ) : null,
+                ];
+              })
             )}
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function AgentDetail({
+  agent,
+  slotUri,
+}: {
+  agent: WorkerAgent;
+  slotUri: string;
+}): ReactElement {
+  const tools = useMemo(
+    () => (agent.toolsAllow ? [...agent.toolsAllow].sort() : null),
+    [agent.toolsAllow],
+  );
+  const skills = useMemo(
+    () => (agent.skills ? [...agent.skills].sort() : null),
+    [agent.skills],
+  );
+  return (
+    <div className="mt-1 space-y-3 rounded-md border border-gray-800 bg-gray-900/40 p-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">
+        <span>
+          slot:{" "}
+          <code className="rounded bg-gray-800 px-1.5 py-0.5 text-gray-300">
+            {slotUri}
+          </code>
+        </span>
+        {agent.modelId && (
+          <span>
+            model:{" "}
+            <code className="rounded bg-gray-800 px-1.5 py-0.5 text-gray-300">
+              {agent.modelId}
+            </code>
+          </span>
+        )}
+      </div>
+
+      <DetailSection
+        title="Allowed tools"
+        empty="No restriction — every host tool the worker layer permits."
+        items={tools}
+      />
+      <DetailSection
+        title="Allowed skills"
+        empty="No restriction — every host / plugin / tenant skill is visible."
+        items={skills}
+      />
+
+      <div>
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+          System prompt (SOUL.md)
+        </div>
+        {agent.systemPrompt ? (
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-gray-950 p-2 text-[11px] leading-relaxed text-gray-300">
+            {agent.systemPrompt}
+          </pre>
+        ) : (
+          <div className="text-[11px] italic text-gray-500">
+            (none — worker uses the kind default)
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DetailSection({
+  title,
+  empty,
+  items,
+}: {
+  title: string;
+  empty: string;
+  items: readonly string[] | null;
+}): ReactElement {
+  return (
+    <div>
+      <div className="mb-1 flex items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+          {title}
+        </span>
+        {items && (
+          <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-400">
+            {items.length}
+          </span>
+        )}
+      </div>
+      {items === null ? (
+        <div className="text-[11px] italic text-gray-500">{empty}</div>
+      ) : items.length === 0 ? (
+        <div className="text-[11px] italic text-gray-500">
+          (empty list — worker can call nothing)
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-1">
+          {items.map((name) => (
+            <code
+              key={name}
+              className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-300"
+            >
+              {name}
+            </code>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
