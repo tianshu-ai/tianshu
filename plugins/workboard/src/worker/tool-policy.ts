@@ -36,6 +36,15 @@ export const WORKER_DENY_TOOLS: readonly string[] = [
   // History is for the orchestrator/user explaining a task,
   // not for the worker introspecting its peers.
   "task_get_history",
+  // Worker-agent CRUD belongs to the orchestrator. A worker is
+  // configured *before* it runs; letting it self-mutate — or
+  // mutate peers — would just be a self-foot-gun.
+  "worker_agent_kinds_list",
+  "worker_agent_list",
+  "worker_agent_create",
+  "worker_agent_update",
+  "worker_agent_delete",
+  "worker_agent_reset",
 ] as const;
 
 export const WORKER_DENY_TOOLS_SET: ReadonlySet<string> = new Set(
