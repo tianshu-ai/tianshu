@@ -33,6 +33,11 @@ import type {
   TenantDbHandle,
 } from "@tianshu/plugin-sdk";
 import { claimNextTask, getTask, updateTask, type Task } from "../db/tasks.js";
+import {
+  WORKER_DENY_TOOLS as WORKER_DENY_TOOLS_LIST,
+  WORKER_DENY_TOOLS_SET,
+  WORKER_REQUIRED_TOOLS,
+} from "./tool-policy.js";
 
 /**
  * After this many failed runs in a row, the pool stops re-queueing
@@ -524,41 +529,9 @@ export interface LLMWorkerConfig {
   db: TenantDbHandle;
 }
 
-/**
- * Workboard task-management tools that the host (chat) needs but a
- * worker has no business calling. A worker is meant to *do* a task,
- * not create / move / delete / list other tasks. Without this
- * deny-list a worker can confuse `task_complete` with
- * `task_create` and end up dropping a phantom todo on the board
- * (we caught this on the LangGraph T1 run).
- *
- * `task_complete` is the legitimate exit signal so it stays.
- */
-const WORKER_DENY_TOOLS = new Set<string>([
-  "task_list",
-  "task_create",
-  "task_update",
-  "task_move",
-  "task_delete",
-  // History is for the orchestrator/user explaining a task,
-  // not for the worker introspecting its peers.
-  "task_get_history",
-]);
-
-/**
- * Tools that the worker MUST have available, no matter what the
- * user configured per-agent. `task_complete` is the only legitimate
- * exit signal a worker has — if the user trims it out of
- * `toolsAllow`, the worker can't tell the orchestrator it's done
- * and the run will time out / be killed for stalling, even on a
- * perfectly-completed task. So we force-inject it here at the pool
- * boundary, after the user's allow-list has been applied.
- *
- * Keep this list small; anything in here is something the worker
- * runtime depends on for control-flow correctness, NOT something
- * an agent designer might want to choose.
- */
-const WORKER_REQUIRED_TOOLS = ["task_complete"] as const;
+// Deny / required sets live in `./tool-policy.ts` so server seeds,
+// the runtime pool, and the admin UI all share the same list.
+const WORKER_DENY_TOOLS = WORKER_DENY_TOOLS_SET;
 
 /**
  * Combine the user-supplied `toolsAllow` (per-agent allow-list) with
@@ -624,7 +597,7 @@ export class LLMWorker implements WorkerHandle {
       systemPrompt: this.cfg.systemPrompt ?? undefined,
       modelId: this.cfg.modelId ?? undefined,
       toolsAllow: effectiveToolsAllow(this.cfg.toolsAllow),
-      toolsDeny: Array.from(WORKER_DENY_TOOLS),
+      toolsDeny: [...WORKER_DENY_TOOLS_LIST],
       skillsAllow: this.cfg.skillsAllow ?? undefined,
       sessionTitle: task.title,
       workerRole: this.kind,

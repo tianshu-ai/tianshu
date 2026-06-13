@@ -39,6 +39,8 @@ import type {
   AgentLoopRunnerRequest,
   AgentLoopRunnerResult,
   SessionInboxCapability,
+  ToolCatalogCapability,
+  SkillCatalogCapability,
 } from "@tianshu/plugin-sdk";
 import {
   enqueue as inboxEnqueue,
@@ -82,6 +84,47 @@ pluginRegistry = new PluginRegistry({
     "host.sessionInbox": (ctx): SessionInboxCapability => ({
       enqueue: (targetSessionId, message) =>
         inboxEnqueue(ctx, targetSessionId, message),
+    }),
+    // Tool / skill catalog — plugins use these to seed default
+    // allow-lists (e.g. workboard's Default LLM agent grants every
+    // tool the host advertises, recomputed at activation time so
+    // newly-installed plugins automatically extend the seed set).
+    //
+    // The closures resolve the registry at call time (not capture)
+    // so they always reflect the current set of active plugins;
+    // a plugin enable/disable cycle on a *separate* plugin will be
+    // visible to whoever calls list() next.
+    "host.toolCatalog": (ctx): ToolCatalogCapability => ({
+      list() {
+        const entries = pluginRegistry.toolsForTenant(ctx.tenantId);
+        const byName = new Map<
+          string,
+          { name: string; description: string; pluginId: string }
+        >();
+        for (const { pluginId, tool } of entries) {
+          if (byName.has(tool.schema.name)) continue;
+          byName.set(tool.schema.name, {
+            name: tool.schema.name,
+            description: tool.schema.description ?? "",
+            pluginId,
+          });
+        }
+        return [...byName.values()].sort((a, b) =>
+          a.name.localeCompare(b.name),
+        );
+      },
+    }),
+    "host.skillCatalog": (ctx): SkillCatalogCapability => ({
+      list() {
+        return pluginRegistry
+          .skillsForTenant(ctx.tenantId)
+          .map((s) => ({
+            name: s.name,
+            description: s.description,
+            pluginId: s.source.pluginId,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
+      },
     }),
     "host.agentLoop": (ctx) => {
       const runner: AgentLoopRunner = {
@@ -267,6 +310,66 @@ app.get("/api/models", (req, res) => {
     reasoning: m.reasoning,
   }));
   res.json({ models: list, defaultModel: req.ctx.tenant.config.defaultModel ?? null });
+});
+
+/**
+ * Tool catalog for the current tenant. Used by the worker-agents
+ * settings page to render an allow-list picker instead of the old
+ * comma-separated freetext field.
+ *
+ * Returns ALL tools the host registry knows about (host built-ins +
+ * every active plugin's contributions). Per-agent allow-list
+ * filtering happens at the worker; this endpoint is just the
+ * universe to pick from.
+ */
+app.get("/api/tools", (req, res) => {
+  if (!req.ctx) {
+    res.status(500).json({ error: "no_ctx" });
+    return;
+  }
+  const entries = pluginRegistry.toolsForTenant(req.ctx.tenant.tenantId);
+  // De-dupe by tool name; if two plugins shipped the same name
+  // we still only show it once. Stable sort by name for the UI.
+  const byName = new Map<
+    string,
+    { name: string; description: string; pluginId: string }
+  >();
+  for (const { pluginId, tool } of entries) {
+    if (byName.has(tool.schema.name)) continue;
+    byName.set(tool.schema.name, {
+      name: tool.schema.name,
+      description: tool.schema.description ?? "",
+      pluginId,
+    });
+  }
+  const tools = [...byName.values()].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
+  res.json({ tools });
+});
+
+/**
+ * Skill catalog for the current tenant. Same role as /api/tools —
+ * the universe of skills available, host-shipped + plugin-shipped,
+ * for the worker-agents allow-list picker.
+ */
+app.get("/api/skills", (req, res) => {
+  if (!req.ctx) {
+    res.status(500).json({ error: "no_ctx" });
+    return;
+  }
+  const skills = pluginRegistry.skillsForTenant(req.ctx.tenant.tenantId);
+  // Same shape as /api/tools — just the bits the picker UI needs.
+  // We expose the description (frontmatter) so the picker can
+  // render a tooltip; the body markdown stays server-side.
+  const out = skills
+    .map((s) => ({
+      name: s.name,
+      description: s.description,
+      pluginId: s.source.pluginId,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  res.json({ skills: out });
 });
 
 const server = createServer(app);
