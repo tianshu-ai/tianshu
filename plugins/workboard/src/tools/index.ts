@@ -236,16 +236,10 @@ const TaskCreateItem = Type.Object({
       description: "Higher = picked up first. Range -10..10; default 0.",
     }),
   ),
-  worker_role: Type.Optional(
-    Type.String({
-      description:
-        'Restrict by worker kind (e.g. "echo", "llm"). Any enabled worker of that kind can pick the task up. Mutually exclusive with worker_agent_id; if both are given, worker_agent_id wins.',
-    }),
-  ),
   worker_agent_id: Type.Optional(
     Type.String({
       description:
-        "Pin the task to a specific worker by slug (e.g. \"coder\", \"llm-default\"). The slug is the directory name under tenant-config:///workers/<slug>/. Use this when you want a particular worker to pick the task up; the kind comes from that worker's agent.json automatically.",
+        "Slug of the worker that should pick this task up (e.g. \"coder\", \"llm-default\"). Use `tenant_config_list({path:\"workers\"})` to see what's registered. Omitting this leaves the task unpinned — any enabled worker can grab it, but you lose control over which one. Pinning by slug is the recommended path; kind-based dispatch is no longer exposed.",
     }),
   ),
   depends_on: Type.Optional(
@@ -267,7 +261,6 @@ type TaskCreateItemArgs = {
   description?: string;
   project?: string;
   priority?: number;
-  worker_role?: string;
   worker_agent_id?: string;
   depends_on?: string[];
   labels?: string[];
@@ -281,7 +274,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
         "Drop one or more new tasks on the workboard. Always pass a `tasks` array — " +
         "single-task callers should send a 1-element array. Defaults are " +
         "status=ready, project=inbox; workers in the pool will pick up ready " +
-        "tasks automatically. Per-row failures (e.g. an unknown worker_role) do " +
+        "tasks automatically. Per-row failures (e.g. an unknown worker_agent_id) do " +
         "NOT abort the rest of the batch — each row reports independently in " +
         "the response's `results` array.",
       parameters: Type.Object({
@@ -329,7 +322,6 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           id,
         );
         const explicitAgentId = item.worker_agent_id?.trim() || null;
-        const role = explicitAgentId ? null : item.worker_role ?? null;
         if (explicitAgentId) {
           const target = agents.find((a) => a.id === explicitAgentId);
           if (!target) {
@@ -346,17 +338,6 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
               text: `Worker agent "${target.name}" (${explicitAgentId}) is disabled. Enable it (set agent.json enabled: true) or pick another worker.`,
             };
           }
-        } else if (role) {
-          const candidates = agents.filter(
-            (a) => a.enabled && a.kind === role,
-          );
-          if (candidates.length === 0) {
-            return {
-              ok: false,
-              index,
-              text: `No enabled worker has kind="${role}". Use \`tenant_config_list({ path: "workers" })\` to see what's registered, then pin a specific worker via worker_agent_id, or change to a kind that exists ("llm" / "echo").`,
-            };
-          }
         }
         const task = createTask(deps.db, id, {
           ownerUserId: ctx.userId,
@@ -364,7 +345,10 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           description: item.description,
           projectSlug: item.project,
           priority: item.priority,
-          workerRole: role,
+          // workerRole no longer set from the tool surface —
+          // dispatch is by worker_agent_id (slug) only. The DB
+          // column stays for backwards compat with existing rows.
+          workerRole: null,
           workerAgentId: explicitAgentId,
           dependsOn,
           labels: item.labels,
@@ -403,14 +387,19 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
       name: "task_update",
       description:
         "Patch a task. Pass id + any subset of (title, description, project, " +
-        "priority, worker_role, depends_on, labels). For status changes use task_move.",
+        "priority, worker_agent_id, depends_on, labels). For status changes use task_move.",
       parameters: Type.Object({
         id: Type.String(),
         title: Type.Optional(Type.String()),
         description: Type.Optional(Type.String()),
         project: Type.Optional(Type.String()),
         priority: Type.Optional(Type.Number()),
-        worker_role: Type.Optional(Type.String()),
+        worker_agent_id: Type.Optional(
+          Type.Union([Type.String(), Type.Null()], {
+            description:
+              "Repin to a different worker by slug, or pass null to clear the pin (any enabled worker can grab it). Use `tenant_config_list({path:\"workers\"})` to see slugs.",
+          }),
+        ),
         depends_on: Type.Optional(
           Type.Array(Type.String(), {
             description:
@@ -432,7 +421,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         description?: string;
         project?: string;
         priority?: number;
-        worker_role?: string | null;
+        worker_agent_id?: string | null;
         depends_on?: string[];
         labels?: string[];
       };
@@ -444,18 +433,30 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         // share mechanism + relax this check.
         return { ok: false, text: `task ${args.id} is not yours` };
       }
-      // If the patch changes the role, validate the new role is
-      // serviceable (same rule as on create). args.worker_role of
-      // `undefined` means "don't touch"; an explicit `null` clears
-      // the role pin (always safe).
-      if (args.worker_role !== undefined && args.worker_role !== null) {
-        const candidates = listAgents(ctx.tenantId, ctx.tenantHomeDir).filter(
-          (a) => a.enabled && a.kind === args.worker_role,
-        );
-        if (candidates.length === 0) {
+      // If the patch changes the pin, validate the slug exists
+      // and is enabled (same rule as on create). `undefined` =
+      // don't touch; explicit `null` = clear the pin.
+      if (args.worker_agent_id !== undefined && args.worker_agent_id !== null) {
+        const slug = args.worker_agent_id.trim();
+        if (!slug) {
           return {
             ok: false,
-            text: `No enabled worker has kind="${args.worker_role}". Enable a matching worker under Settings → Plugins → Worker agents, or pass worker_role=null to clear the pin.`,
+            text: "worker_agent_id is empty; pass null to clear the pin or a slug to pin.",
+          };
+        }
+        const target = listAgents(ctx.tenantId, ctx.tenantHomeDir).find(
+          (a) => a.id === slug,
+        );
+        if (!target) {
+          return {
+            ok: false,
+            text: `Worker agent "${slug}" doesn't exist. Use \`tenant_config_list({path:"workers"})\` for available slugs.`,
+          };
+        }
+        if (!target.enabled) {
+          return {
+            ok: false,
+            text: `Worker agent "${target.name}" (${slug}) is disabled. Enable it or pick another.`,
           };
         }
       }
@@ -464,7 +465,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         description: args.description,
         projectSlug: args.project,
         priority: args.priority,
-        workerRole: args.worker_role,
+        workerAgentId: args.worker_agent_id,
       };
       if (args.depends_on !== undefined) {
         patch.dependsOn = sanitiseDepsForOwner(
