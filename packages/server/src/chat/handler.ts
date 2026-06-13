@@ -309,13 +309,16 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   });
   const toolset = await buildToolset({
     pluginTools,
-    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
       capabilities: hostCaps,
       userHomeDir: userHome,
       tenantHomeDir: homeDir ?? "",
+      // Main chat agent. Drives `tenant_config_write` boundary in
+      // the files plugin: main may write to `main/skills/` and
+      // shared `skills/`.
+      agentScope: { kind: "main" },
       log: makeLogger(ctx.tenantId, userId, send),
       sessionId: session.id,
     },
@@ -375,7 +378,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     env: makeStubExecutionEnv(ctx.userHomeDir(userId)),
     session: piSession,
     tools: adapted.tools,
-    systemPrompt: defaultSystemPrompt(ctx, userId),
+    systemPrompt: defaultSystemPrompt(ctx, userId, skills),
     model: piModel,
     getApiKeyAndHeaders: async () => ({ apiKey }),
   });
@@ -1013,7 +1016,11 @@ async function runManualCompact(args: {
  * Worker / task vocabulary is intentionally absent: workers don't ship
  * until PR #23+, and dangling references just let the model fabricate.
  */
-export function defaultSystemPrompt(ctx: TenantContext, userId: string): string {
+export function defaultSystemPrompt(
+  ctx: TenantContext,
+  userId: string,
+  skills: readonly LoadedSkill[] = [],
+): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
   const lines: string[] = [
     `You are ${brand}, an open-source AI assistant.`,
@@ -1049,7 +1056,84 @@ export function defaultSystemPrompt(ctx: TenantContext, userId: string): string 
     ``,
     `Reply concisely. When you make changes, briefly say what you changed.`,
   );
+
+  const skillBlock = formatAvailableSkillsBlock(skills);
+  if (skillBlock) lines.push("", skillBlock);
+
   return lines.join("\n");
+}
+
+/**
+ * Render the `<available_skills>` block that's appended to every
+ * system prompt — the host default prompt for the main chat agent,
+ * AND any custom worker prompt coming from `worker_agents.system_prompt`.
+ *
+ * Worker LLMs need this just as badly as the main agent: without
+ * it they only see plugin-shipped skills via `tenant_config_list`,
+ * not their per-tenant ones. Workers ship a kind-specific
+ * `system_prompt` in the worker_agents table, and the agent-loop
+ * bypasses `defaultSystemPrompt` when that's set; so we expose the
+ * skill block as a reusable helper and the loop appends it after
+ * the kind-specific prompt.
+ *
+ * Returns "" when the skills list is empty so callers can drop the
+ * block entirely (no leading blank lines, no half-empty XML).
+ */
+export function formatAvailableSkillsBlock(
+  skills: readonly LoadedSkill[],
+): string {
+  if (skills.length === 0) return "";
+  const lines: string[] = [
+    `AVAILABLE SKILLS`,
+    `Each skill is a directory bundle under the tenant config tree. The`,
+    `<location> below points at the SKILL.md — read it on demand with the`,
+    `\`tenant_config_read\` tool when the description matches what you're`,
+    `about to do. Sibling files (\`scripts/\`, \`references/\`, \`assets/\`)`,
+    `live alongside SKILL.md and are read with the same tool.`,
+    ``,
+    `<available_skills>`,
+  ];
+  for (const skill of skills) {
+    lines.push(
+      `  <skill>`,
+      `    <name>${skill.name}</name>`,
+      `    <description>${skill.description}</description>`,
+      `    <location>${skillLocationUri(skill)}</location>`,
+      `  </skill>`,
+    );
+  }
+  lines.push(`</available_skills>`);
+  return lines.join("\n");
+}
+
+/** Build the location URI we expose to the agent for a skill.
+ *
+ *  - Tenant skills (loaded via `loadTenantSkills`) get a
+ *    `tenant-config:///...` URI rooted at `_tenant/config/`.
+ *  - Host + plugin skills (read-only, shipped on disk under host
+ *    or plugin dirs) fall back to their absolute filePath — the
+ *    agent can't read them anyway through `tenant_config_read`,
+ *    but the URI gives it a stable identifier to mention.
+ */
+function skillLocationUri(skill: LoadedSkill): string {
+  const pid = skill.source.pluginId;
+  if (
+    pid === "tenant-shared" ||
+    pid === "tenant-main" ||
+    pid.startsWith("tenant-worker-")
+  ) {
+    // filePath looks like `<home>/tenants/<id>/workspace/_tenant/config/<rest>`.
+    // Strip everything up to and including `_tenant/config/` so the URI
+    // is portable across tenants.
+    const idx = skill.filePath.indexOf("_tenant/config/");
+    if (idx >= 0) {
+      const rel = skill.filePath
+        .slice(idx + "_tenant/config/".length)
+        .replace(/\\/g, "/");
+      return `tenant-config:///${rel}`;
+    }
+  }
+  return skill.filePath;
 }
 
 /**

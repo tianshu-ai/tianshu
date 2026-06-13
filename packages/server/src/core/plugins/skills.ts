@@ -3,8 +3,9 @@
 // A "skill" is a markdown how-to file that ships alongside its
 // owning plugin (host self-ships some too). The agent doesn't see
 // skill bodies by default \u2014 instead it sees a list of
-// `{ name, description }` and pulls a body into context on demand
-// via the host meta-tool `load_skill(name)`.
+// `{ name, description, location }` injected into the system
+// prompt and pulls a body into context on demand via the files
+// plugin's `tenant_config_read` / `read_file` tools.
 //
 // Frontmatter shape:
 //
@@ -34,8 +35,10 @@ export interface LoadedSkill {
   source: { pluginId: string; contributionId: string };
   /** Absolute path to the skill file, for hot-reload diagnostics. */
   filePath: string;
-  /** From frontmatter \u2014 unique across all enabled skills. The agent
-   *  uses this name when calling `load_skill(name)`. */
+  /** From frontmatter \u2014 unique across all enabled skills. Used
+   *  in the `<available_skills>` block injected into the system
+   *  prompt; the agent reads the body via the corresponding file
+   *  tool. */
   name: string;
   /** From frontmatter \u2014 single-line summary the agent uses to decide
    *  whether to load the skill. Keep it specific. */
@@ -43,8 +46,8 @@ export interface LoadedSkill {
   /** Optional gate: only show this skill to the agent when the
    *  predicate is satisfied for the current tenant. */
   when?: SkillWhen;
-  /** The full markdown body (after frontmatter). What `load_skill`
-   *  returns. */
+  /** The full markdown body (after frontmatter). Kept in memory so
+   *  callers (e.g. tests, future helpers) can avoid a re-read. */
   body: string;
 }
 

@@ -1,5 +1,14 @@
+// buildToolset behaviour after the meta-tool migration.
+//
+// The host no longer registers `load_skill`. Skills are announced
+// in the system prompt via <available_skills> and read via the
+// files plugin's `tenant_config_*` tools (filesystem-first model).
+// These tests just lock in that the assembler stays focused on
+// plugin-tool wiring.
+
 import { describe, expect, it } from "vitest";
-import type { LoadedSkill } from "../core/plugins/skills.js";
+import type { AgentTool } from "@tianshu/plugin-sdk";
+import { Type } from "typebox";
 import { buildToolset, type BuildToolContext } from "./index.js";
 
 const noopLog = {
@@ -17,66 +26,80 @@ const fakeContext: BuildToolContext = {
   log: noopLog,
 };
 
-function makeSkill(name: string, body = "BODY"): LoadedSkill {
+function fakeTool(name: string): AgentTool {
   return {
-    source: { pluginId: "p", contributionId: name },
-    filePath: `/tmp/${name}.md`,
-    name,
-    description: `Skill ${name} description.`,
-    body,
+    schema: {
+      name,
+      description: `Tool ${name}.`,
+      parameters: Type.Object({}),
+    },
+    execute: () => ({ ok: true, text: name }),
   };
 }
 
-describe("buildToolset skill meta-tool", () => {
-  it("registers no `load_skill` when there are no skills", async () => {
+describe("buildToolset", () => {
+  it("returns an empty toolset when no plugins contribute", async () => {
     const ts = await buildToolset({
       pluginTools: [],
-      skills: [],
       toolContext: fakeContext,
     });
     expect(ts.schemas).toHaveLength(0);
+    expect(ts.executors).toEqual({});
+  });
+
+  it("does NOT register a load_skill meta-tool anymore", async () => {
+    const ts = await buildToolset({
+      pluginTools: [],
+      toolContext: fakeContext,
+    });
     expect(ts.executors.load_skill).toBeUndefined();
   });
 
-  it("registers load_skill when at least one skill is present", async () => {
-    const skills = [makeSkill("alpha"), makeSkill("beta")];
+  it("registers each plugin tool by schema name", async () => {
     const ts = await buildToolset({
-      pluginTools: [],
-      skills,
+      pluginTools: [
+        { pluginId: "p", tool: fakeTool("alpha") },
+        { pluginId: "p", tool: fakeTool("beta") },
+      ],
       toolContext: fakeContext,
     });
-    const meta = ts.schemas.find((s) => s.name === "load_skill");
-    expect(meta).toBeDefined();
-    expect(meta!.description).toContain("alpha:");
-    expect(meta!.description).toContain("beta:");
+    expect(ts.schemas.map((s) => s.name).sort()).toEqual(["alpha", "beta"]);
+    expect(typeof ts.executors.alpha).toBe("function");
   });
 
-  it("load_skill executor returns the skill body, framed by name + description", async () => {
+  it("hides a tool whose available() returns false", async () => {
+    const tool: AgentTool = {
+      schema: {
+        name: "hidden",
+        description: "x",
+        parameters: Type.Object({}),
+      },
+      available: () => false,
+      execute: () => ({ ok: true, text: "x" }),
+    };
     const ts = await buildToolset({
-      pluginTools: [],
-      skills: [makeSkill("alpha", "alpha body")],
+      pluginTools: [{ pluginId: "p", tool }],
       toolContext: fakeContext,
     });
-    const out = (await ts.executors.load_skill!({ name: "alpha" })) as {
-      ok: boolean;
-      text: string;
-    };
-    expect(out.ok).toBe(true);
-    expect(out.text).toContain("# alpha");
-    expect(out.text).toContain("alpha body");
+    expect(ts.schemas).toHaveLength(0);
   });
 
-  it("load_skill on unknown name returns ok=false with available list", async () => {
-    const ts = await buildToolset({
-      pluginTools: [],
-      skills: [makeSkill("alpha")],
-      toolContext: fakeContext,
-    });
-    const out = (await ts.executors.load_skill!({ name: "bogus" })) as {
-      ok: boolean;
-      text: string;
+  it("skips a name collision and warns instead of overwriting", async () => {
+    const log = {
+      ...noopLog,
+      warn: () => {
+        warnCount++;
+      },
     };
-    expect(out.ok).toBe(false);
-    expect(out.text).toContain("alpha");
+    let warnCount = 0;
+    const ts = await buildToolset({
+      pluginTools: [
+        { pluginId: "p1", tool: fakeTool("alpha") },
+        { pluginId: "p2", tool: fakeTool("alpha") },
+      ],
+      toolContext: { ...fakeContext, log },
+    });
+    expect(ts.schemas).toHaveLength(1);
+    expect(warnCount).toBe(1);
   });
 });

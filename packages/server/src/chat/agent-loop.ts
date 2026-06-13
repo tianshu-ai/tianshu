@@ -38,7 +38,11 @@ import {
   filterSkillsForTenant,
   type LoadedSkill,
 } from "../core/plugins/skills.js";
-import { defaultSystemPrompt, loadHostSkills } from "./handler.js";
+import {
+  defaultSystemPrompt,
+  formatAvailableSkillsBlock,
+  loadHostSkills,
+} from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
@@ -254,20 +258,40 @@ export async function runAgentLoop(
     get: () => undefined,
     has: () => false,
   };
+  // skillsAllow scopes only host + plugin skills (the kind that
+  // appear in `host.skillCatalog`, which is what the worker-agent
+  // ChipPicker is built from). Tenant skills don't participate in
+  // that catalog — they're discovered live from
+  // `_tenant/config/.../skills/` every turn. Letting allowlist
+  // filtering see them would silently hide every newly-dropped
+  // tenant skill until the user re-saves the worker_agent row,
+  // which is exactly the bug Yu hit (test-shared / test-llm gone
+  // from the worker's <available_skills>). So: tenant skills pass
+  // through unconditionally; if a user wants to hide one from a
+  // worker, they remove the skill directory.
   const skillsAllowed = req.skillsAllow ? new Set(req.skillsAllow) : null;
   const skills = filterSkillsForTenant(allSkills, {
     hasTool: (n) => declaredToolNames.has(n),
     hasCapability: (n) => hostCaps.has(n as never),
-  }).filter((s) => !skillsAllowed || skillsAllowed.has(s.name));
+  }).filter((s) => {
+    if (!skillsAllowed) return true;
+    if (s.source.pluginId.startsWith("tenant-")) return true;
+    return skillsAllowed.has(s.name);
+  });
   const toolset = await buildToolset({
     pluginTools,
-    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
       capabilities: hostCaps,
       userHomeDir: ctx.userHomeDir(userId),
       tenantHomeDir: homeDir ?? "",
+      // Worker scope. `workerRole` is the worker_agent kind id
+      // (e.g. "llm"). Drives `tenant_config_write` boundary so a
+      // worker can only write to its own `workers/<kind>/skills/`.
+      agentScope: req.workerRole
+        ? { kind: "worker", workerKind: req.workerRole }
+        : { kind: "main" },
       log: {
         info: (msg, meta) => console.log(`[agent-loop] ${msg}`, meta ?? ""),
         warn: (msg, meta) => console.warn(`[agent-loop] ${msg}`, meta ?? ""),
@@ -282,7 +306,22 @@ export async function runAgentLoop(
   });
   const adapted = adaptToolset(toolset);
 
-  const systemPrompt = req.systemPrompt ?? defaultSystemPrompt(ctx, userId);
+  // Two paths into the worker system prompt:
+  //   * `req.systemPrompt` set — the worker_agent table provided a
+  //     kind-specific SOUL-style prompt; we use it verbatim and
+  //     append the available-skills block so the worker can still
+  //     discover tenant skills.
+  //   * Otherwise fall back to the host default, which already
+  //     includes the block.
+  let systemPrompt: string;
+  if (req.systemPrompt) {
+    const skillBlock = formatAvailableSkillsBlock(skills);
+    systemPrompt = skillBlock
+      ? `${req.systemPrompt}\n\n${skillBlock}`
+      : req.systemPrompt;
+  } else {
+    systemPrompt = defaultSystemPrompt(ctx, userId, skills);
+  }
   const firstResponseMs =
     req.timeouts?.firstResponseMs ?? DEFAULT_FIRST_RESPONSE_MS;
   const idleMs = req.timeouts?.idleMs ?? DEFAULT_IDLE_MS;
