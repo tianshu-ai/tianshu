@@ -357,6 +357,20 @@ export default function WorkerAgentsPage() {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
+      <div className="mb-4 rounded-md border border-amber-900/40 bg-amber-950/30 px-3 py-2 text-[12px] leading-relaxed text-amber-200/90">
+        <div className="font-semibold text-amber-100">Migrating to filesystem config</div>
+        <p className="mt-1 text-amber-200/70">
+          Worker config now lives at{" "}
+          <code className="rounded bg-amber-950/60 px-1 py-0.5 text-amber-100">_tenant/config/workers/&lt;slug&gt;/</code>{" "}
+          —  <code className="text-amber-100">agent.json</code> +{" "}
+          <code className="text-amber-100">SOUL.md</code> + an optional{" "}
+          <code className="text-amber-100">skills/</code> directory. The chat
+          agent's <code className="text-amber-100">tenant_config_write</code> tool
+          can author worker bundles directly. The form below still works for
+          rows that haven't migrated yet but is going away — prefer editing
+          the files.
+        </p>
+      </div>
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-100">

@@ -97,7 +97,7 @@ export function toTenantConfigUri(
  */
 export type AgentScope =
   | { kind: "main" }
-  | { kind: "worker"; workerKind: string };
+  | { kind: "worker"; workerKind: string; slug?: string };
 
 export interface WriteCheck {
   ok: boolean;
@@ -119,7 +119,16 @@ export function checkWritable(
     return { ok: false, reason: "outside tenant-config root" };
   }
   const segments = rel.split("/");
-  // Main agent: shared skills/ OR main/skills/
+
+  // Main agent. Allowed prefixes:
+  //   skills/...                        → shared skill bundle
+  //   main/skills/...                   → main-only skill bundle
+  //   workers/<slug>/...                → author / edit any worker
+  //                                      bundle (agent.json,
+  //                                      SOUL.md, skills/, etc).
+  // Anything else (root files, future top-level surfaces) is
+  // rejected so the agent can't accidentally write SOUL/MEMORY
+  // for the tenant itself.
   if (scope.kind === "main") {
     if (segments[0] === "skills") {
       return { ok: true, scopeLabel: "shared" };
@@ -127,22 +136,36 @@ export function checkWritable(
     if (segments[0] === "main" && segments[1] === "skills") {
       return { ok: true, scopeLabel: "main" };
     }
+    if (
+      segments[0] === "workers" &&
+      segments[1] &&
+      segments[1].length > 0
+    ) {
+      return { ok: true, scopeLabel: `workers/${segments[1]}` };
+    }
     return {
       ok: false,
       reason:
-        "main agent may only write under skills/ or main/skills/ in tenant-config",
+        "main agent may only write under skills/, main/skills/, or workers/<slug>/ in tenant-config",
     };
   }
-  // Worker: workers/<kind>/skills/ only
+
+  // Worker. Strict: only the worker's own skills/ directory.
+  // Workers should not edit their own agent.json / SOUL.md (loop
+  // would self-reload mid-run). The slug is preferred because the
+  // filesystem keys off slug, not kind. If a slug isn't supplied
+  // we fall back to kind for legacy callers — mostly the
+  // existing pre-PR-A path.
+  const workerSegment = scope.slug || scope.workerKind;
   if (
     segments[0] === "workers" &&
-    segments[1] === scope.workerKind &&
+    segments[1] === workerSegment &&
     segments[2] === "skills"
   ) {
-    return { ok: true, scopeLabel: `worker:${scope.workerKind}` };
+    return { ok: true, scopeLabel: `worker:${workerSegment}` };
   }
   return {
     ok: false,
-    reason: `worker (kind=${scope.workerKind}) may only write under workers/${scope.workerKind}/skills/`,
+    reason: `worker (slug=${scope.slug ?? "—"}, kind=${scope.workerKind}) may only write under workers/${workerSegment}/skills/`,
   };
 }

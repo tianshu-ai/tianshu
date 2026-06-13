@@ -192,7 +192,16 @@ export interface AgentToolContext {
    */
   agentScope?:
     | { kind: "main" }
-    | { kind: "worker"; workerKind: string };
+    | {
+        kind: "worker";
+        workerKind: string;
+        /** Worker's filesystem slug (matches the directory name
+         *  under `_tenant/config/workers/<slug>/`). When unset the
+         *  worker is running with no fs presence — falling back to
+         *  the legacy DB-only path. Used by the tenant_config_*
+         *  tools to scope writes to this worker's own bundle. */
+        slug?: string;
+      };
   log: PluginLogger;
   /**
    * Id of the chat / worker session the LLM that called this tool

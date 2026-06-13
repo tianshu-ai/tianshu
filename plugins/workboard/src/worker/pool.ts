@@ -601,6 +601,11 @@ export class LLMWorker implements WorkerHandle {
       skillsAllow: this.cfg.skillsAllow ?? undefined,
       sessionTitle: task.title,
       workerRole: this.kind,
+      // The fs migration uses the agent id as the directory slug
+      // (see plugin/workboard/src/fs-worker-agents.ts:toWorkerAgent).
+      // Forward it so tenant_config_write knows which workers/<slug>/
+      // bundle this run owns.
+      workerSlug: this.cfg.agentId,
       timeouts: this.cfg.timeouts,
       // Resume the prior conversation when retrying so the LLM
       // sees its own earlier work + tool results, doesn't waste
