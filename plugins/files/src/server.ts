@@ -34,6 +34,12 @@ import {
   WriteFileTool,
   EditFileTool,
   GlobTool,
+  TenantConfigListTool,
+  TenantConfigReadTool,
+  TenantConfigWriteTool,
+  TenantConfigEditTool,
+  TenantConfigDeleteTool,
+  TenantConfigGlobTool,
 } from "./tools/index.js";
 
 const MAX_LIST_ENTRIES = 5000;
@@ -279,6 +285,12 @@ const plugin: PluginServerModule = {
         WriteFileTool,
         EditFileTool,
         GlobTool,
+        TenantConfigListTool,
+        TenantConfigReadTool,
+        TenantConfigWriteTool,
+        TenantConfigEditTool,
+        TenantConfigDeleteTool,
+        TenantConfigGlobTool,
       },
     };
   },

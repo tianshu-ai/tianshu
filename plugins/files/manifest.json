@@ -55,11 +55,17 @@
       { "method": "POST", "path": "/upload", "handler": "upload" }
     ],
     "tools": [
-      { "id": "list_dir",   "module": "ListDirTool"   },
-      { "id": "read_file",  "module": "ReadFileTool"  },
-      { "id": "write_file", "module": "WriteFileTool" },
-      { "id": "edit_file",  "module": "EditFileTool"  },
-      { "id": "glob",       "module": "GlobTool"      }
+      { "id": "list_dir",              "module": "ListDirTool"            },
+      { "id": "read_file",             "module": "ReadFileTool"           },
+      { "id": "write_file",            "module": "WriteFileTool"          },
+      { "id": "edit_file",             "module": "EditFileTool"           },
+      { "id": "glob",                  "module": "GlobTool"               },
+      { "id": "tenant_config_list",    "module": "TenantConfigListTool"   },
+      { "id": "tenant_config_read",    "module": "TenantConfigReadTool"   },
+      { "id": "tenant_config_write",   "module": "TenantConfigWriteTool"  },
+      { "id": "tenant_config_edit",    "module": "TenantConfigEditTool"   },
+      { "id": "tenant_config_delete",  "module": "TenantConfigDeleteTool" },
+      { "id": "tenant_config_glob",    "module": "TenantConfigGlobTool"   }
     ],
     "skills": [
       { "id": "workspace-layout", "path": "skills/files-workspace-layout.md" }

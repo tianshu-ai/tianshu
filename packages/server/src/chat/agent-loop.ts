@@ -261,13 +261,18 @@ export async function runAgentLoop(
   }).filter((s) => !skillsAllowed || skillsAllowed.has(s.name));
   const toolset = await buildToolset({
     pluginTools,
-    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
       capabilities: hostCaps,
       userHomeDir: ctx.userHomeDir(userId),
       tenantHomeDir: homeDir ?? "",
+      // Worker scope. `workerRole` is the worker_agent kind id
+      // (e.g. "llm"). Drives `tenant_config_write` boundary so a
+      // worker can only write to its own `workers/<kind>/skills/`.
+      agentScope: req.workerRole
+        ? { kind: "worker", workerKind: req.workerRole }
+        : { kind: "main" },
       log: {
         info: (msg, meta) => console.log(`[agent-loop] ${msg}`, meta ?? ""),
         warn: (msg, meta) => console.warn(`[agent-loop] ${msg}`, meta ?? ""),
@@ -282,7 +287,8 @@ export async function runAgentLoop(
   });
   const adapted = adaptToolset(toolset);
 
-  const systemPrompt = req.systemPrompt ?? defaultSystemPrompt(ctx, userId);
+  const systemPrompt =
+    req.systemPrompt ?? defaultSystemPrompt(ctx, userId, skills);
   const firstResponseMs =
     req.timeouts?.firstResponseMs ?? DEFAULT_FIRST_RESPONSE_MS;
   const idleMs = req.timeouts?.idleMs ?? DEFAULT_IDLE_MS;

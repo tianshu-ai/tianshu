@@ -309,13 +309,16 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   });
   const toolset = await buildToolset({
     pluginTools,
-    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
       capabilities: hostCaps,
       userHomeDir: userHome,
       tenantHomeDir: homeDir ?? "",
+      // Main chat agent. Drives `tenant_config_write` boundary in
+      // the files plugin: main may write to `main/skills/` and
+      // shared `skills/`.
+      agentScope: { kind: "main" },
       log: makeLogger(ctx.tenantId, userId, send),
       sessionId: session.id,
     },
@@ -375,7 +378,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     env: makeStubExecutionEnv(ctx.userHomeDir(userId)),
     session: piSession,
     tools: adapted.tools,
-    systemPrompt: defaultSystemPrompt(ctx, userId),
+    systemPrompt: defaultSystemPrompt(ctx, userId, skills),
     model: piModel,
     getApiKeyAndHeaders: async () => ({ apiKey }),
   });
@@ -1013,7 +1016,11 @@ async function runManualCompact(args: {
  * Worker / task vocabulary is intentionally absent: workers don't ship
  * until PR #23+, and dangling references just let the model fabricate.
  */
-export function defaultSystemPrompt(ctx: TenantContext, userId: string): string {
+export function defaultSystemPrompt(
+  ctx: TenantContext,
+  userId: string,
+  skills: readonly LoadedSkill[] = [],
+): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
   const lines: string[] = [
     `You are ${brand}, an open-source AI assistant.`,
@@ -1049,7 +1056,63 @@ export function defaultSystemPrompt(ctx: TenantContext, userId: string): string 
     ``,
     `Reply concisely. When you make changes, briefly say what you changed.`,
   );
+
+  if (skills.length > 0) {
+    lines.push(
+      ``,
+      `AVAILABLE SKILLS`,
+      `Each skill is a directory bundle under the tenant config tree. The`,
+      `<location> below points at the SKILL.md — read it on demand with the`,
+      `\`tenant_config_read\` tool when the description matches what you're`,
+      `about to do. Sibling files (\`scripts/\`, \`references/\`, \`assets/\`)`,
+      `live alongside SKILL.md and are read with the same tool.`,
+      ``,
+      `<available_skills>`,
+    );
+    for (const skill of skills) {
+      const loc = skillLocationUri(skill);
+      lines.push(
+        `  <skill>`,
+        `    <name>${skill.name}</name>`,
+        `    <description>${skill.description}</description>`,
+        `    <location>${loc}</location>`,
+        `  </skill>`,
+      );
+    }
+    lines.push(`</available_skills>`);
+  }
+
   return lines.join("\n");
+}
+
+/** Build the location URI we expose to the agent for a skill.
+ *
+ *  - Tenant skills (loaded via `loadTenantSkills`) get a
+ *    `tenant-config:///...` URI rooted at `_tenant/config/`.
+ *  - Host + plugin skills (read-only, shipped on disk under host
+ *    or plugin dirs) fall back to their absolute filePath — the
+ *    agent can't read them anyway through `tenant_config_read`,
+ *    but the URI gives it a stable identifier to mention.
+ */
+function skillLocationUri(skill: LoadedSkill): string {
+  const pid = skill.source.pluginId;
+  if (
+    pid === "tenant-shared" ||
+    pid === "tenant-main" ||
+    pid.startsWith("tenant-worker-")
+  ) {
+    // filePath looks like `<home>/tenants/<id>/workspace/_tenant/config/<rest>`.
+    // Strip everything up to and including `_tenant/config/` so the URI
+    // is portable across tenants.
+    const idx = skill.filePath.indexOf("_tenant/config/");
+    if (idx >= 0) {
+      const rel = skill.filePath
+        .slice(idx + "_tenant/config/".length)
+        .replace(/\\/g, "/");
+      return `tenant-config:///${rel}`;
+    }
+  }
+  return skill.filePath;
 }
 
 /**

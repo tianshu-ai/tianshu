@@ -171,6 +171,28 @@ export interface AgentToolContext {
   /** Tenant root dir (host filesystem). Plugins that need to write
    *  to `<tenant>/_tenant/config/...` use this; most tools don't. */
   tenantHomeDir: string;
+  /**
+   * Agent identity inside the tenant.
+   *
+   *   - { kind: "main" }
+   *     The chat-shell agent the user is talking to. Default if a
+   *     plugin tool is invoked outside any agent loop (e.g. from a
+   *     route handler).
+   *   - { kind: "worker", workerKind: "<id>" }
+   *     A worker pool run; `workerKind` is the worker_agent kind
+   *     id (e.g. "llm", "echo").
+   *
+   * Tools that touch shared tenant config (skills, future SOUL/
+   * MEMORY surfaces) use this to enforce a write boundary: main
+   * may write to `_tenant/config/main/...` and `_tenant/config/`;
+   * workers may only write to `_tenant/config/workers/<kind>/...`.
+   * Reads are not gated by this field.
+   *
+   * Optional for backwards compatibility — missing means "main".
+   */
+  agentScope?:
+    | { kind: "main" }
+    | { kind: "worker"; workerKind: string };
   log: PluginLogger;
   /**
    * Id of the chat / worker session the LLM that called this tool
