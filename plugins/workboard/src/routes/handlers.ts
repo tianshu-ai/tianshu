@@ -140,7 +140,7 @@ export interface WorkerKindDef {
  */
 const BATCH_LIMIT = 100;
 
-const ALL_FIELDS: WorkerKindField[] = [
+export const ALL_WORKER_KIND_FIELDS: readonly WorkerKindField[] = [
   "description",
   "modelId",
   "systemPrompt",
@@ -148,12 +148,16 @@ const ALL_FIELDS: WorkerKindField[] = [
   "skills",
 ];
 
-function allowedFieldsFor(
+/** Internal alias kept for the in-file references that predate
+ *  the `ALL_WORKER_KIND_FIELDS` export. */
+const ALL_FIELDS = ALL_WORKER_KIND_FIELDS;
+
+export function allowedFieldsFor(
   kind: string,
   defs: WorkerKindDef[],
 ): Set<WorkerKindField> {
   const def = defs.find((k) => k.id === kind);
-  return new Set(def?.fields ?? ALL_FIELDS);
+  return new Set(def?.fields ?? ALL_WORKER_KIND_FIELDS);
 }
 
 export interface RoutesDeps {
