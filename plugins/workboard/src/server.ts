@@ -48,6 +48,13 @@ import {
   buildTaskListTool,
   buildTaskMoveTool,
   buildTaskUpdateTool,
+  buildWorkerAgentCreateTool,
+  buildWorkerAgentDeleteTool,
+  buildWorkerAgentKindsListTool,
+  buildWorkerAgentListTool,
+  buildWorkerAgentResetTool,
+  buildWorkerAgentUpdateTool,
+  type AgentToolDeps,
   type ToolDeps,
 } from "./tools/index.js";
 import { buildRoutes, type WorkerKindDef } from "./routes/handlers.js";
@@ -390,6 +397,20 @@ const plugin: PluginServerModule = {
       BUILTIN_AGENT_SEEDS.map((s) => [s.builtinKey, s]),
     );
 
+    // worker_agent_* tools share `toolDeps` and add the
+    // tenant/kind/seed context that agent CRUD needs. We build it
+    // here (instead of inline in the tool factory list below) so
+    // `onAgentsWrite` is in scope by the time the tools are wired.
+    const agentToolDeps: AgentToolDeps = {
+      ...toolDeps,
+      tenantId: ctx.tenantId,
+      workerKinds: WORKER_KINDS,
+      seedsByKey,
+      // Closed-over reference so tool callers go through the same
+      // pool-rebuild path the REST handlers use. Defined just below.
+      onAgentsWrite: () => onAgentsWrite(),
+    };
+
     const onAgentsWrite = () => {
       const fresh = listWorkerAgents(ctx.db, ctx.tenantId);
       // Refresh the cached agent rows so the factory rebuilds
@@ -424,6 +445,12 @@ const plugin: PluginServerModule = {
         TaskDeleteTool: buildTaskDeleteTool(toolDeps),
         TaskGetHistoryTool: buildTaskGetHistoryTool(toolDeps),
         TaskCompleteTool: buildTaskCompleteTool(),
+        WorkerAgentKindsListTool: buildWorkerAgentKindsListTool(agentToolDeps),
+        WorkerAgentListTool: buildWorkerAgentListTool(agentToolDeps),
+        WorkerAgentCreateTool: buildWorkerAgentCreateTool(agentToolDeps),
+        WorkerAgentUpdateTool: buildWorkerAgentUpdateTool(agentToolDeps),
+        WorkerAgentDeleteTool: buildWorkerAgentDeleteTool(agentToolDeps),
+        WorkerAgentResetTool: buildWorkerAgentResetTool(agentToolDeps),
       },
       routes,
     };
