@@ -118,6 +118,29 @@ describe("loadTenantSkills (worker scope)", () => {
     expect(byName.get("beta")).toBe("llm extra");
   });
 
+  it("prefers slug over workerKind when both are present", () => {
+    const home = freshHome();
+    const sharedDir = getTenantSharedSkillsDir("t1", home);
+    const kindDir = getTenantWorkerSkillsDir("t1", "llm", home);
+    const slugDir = getTenantWorkerSkillsDir("t1", "llm-default", home);
+    fs.mkdirSync(sharedDir, { recursive: true });
+    fs.mkdirSync(kindDir, { recursive: true });
+    fs.mkdirSync(slugDir, { recursive: true });
+    writeSkill(sharedDir, "alpha", FRONTMATTER("alpha", "shared"));
+    writeSkill(kindDir, "alpha", FRONTMATTER("alpha", "kind-llm"));
+    writeSkill(slugDir, "alpha", FRONTMATTER("alpha", "slug-llm-default"));
+
+    const skills = loadTenantSkills({
+      tenantId: "t1",
+      scope: { kind: "worker", workerKind: "llm", slug: "llm-default" },
+      home,
+    });
+    const byName = new Map(skills.map((s) => [s.name, s.description]));
+    // slug wins; the kind layer at `workers/llm/skills/` is
+    // ignored because the loader resolves to the slug directory.
+    expect(byName.get("alpha")).toBe("slug-llm-default");
+  });
+
   it("falls back to shared layer when workerKind is empty", () => {
     const home = freshHome();
     const sharedDir = getTenantSharedSkillsDir("t1", home);

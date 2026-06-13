@@ -29,7 +29,17 @@ import { loadDirectorySkills, type LoadedSkill } from "./plugins/skills.js";
 
 export type TenantSkillScope =
   | { kind: "main" }
-  | { kind: "worker"; workerKind: string };
+  | {
+      kind: "worker";
+      /** Worker kind id (e.g. "llm"). Used as a fallback if no
+       *  slug is provided — most callers should pass `slug`
+       *  instead, since multiple workers can share a kind. */
+      workerKind: string;
+      /** Worker filesystem slug (= directory name under
+       *  `_tenant/config/workers/<slug>/`). Preferred over
+       *  `workerKind` for resolving the per-worker skill layer. */
+      slug?: string;
+    };
 
 /** Scan tenant skill roots and return the merged, deduped list. */
 export function loadTenantSkills(args: {
@@ -61,11 +71,17 @@ export function loadTenantSkills(args: {
       pluginId: "tenant-main",
       rootDir: getTenantMainSkillsDir(tenantId, home),
     });
-  } else if (scope.workerKind) {
-    layers.push({
-      pluginId: `tenant-worker-${scope.workerKind}`,
-      rootDir: getTenantWorkerSkillsDir(tenantId, scope.workerKind, home),
-    });
+  } else {
+    // Resolve the kind-specific layer. Prefer the explicit slug
+    // (matches the on-disk directory name) and fall back to the
+    // worker kind for legacy callers that haven't been updated.
+    const dirName = scope.slug || scope.workerKind;
+    if (dirName) {
+      layers.push({
+        pluginId: `tenant-worker-${dirName}`,
+        rootDir: getTenantWorkerSkillsDir(tenantId, dirName, home),
+      });
+    }
   }
   // worker scope without a kind: shared layer only — there's no
   // kind-specific directory to load.

@@ -235,13 +235,18 @@ export async function runAgentLoop(
     if (denySet && denySet.has(name)) return false;
     return true;
   });
-  // Worker-scoped tenant skills: shared `_tenant/config/skills/` plus
-  // the kind-specific override at `_tenant/config/workers/<kind>/skills/`.
-  // We pin scope by `req.workerRole` (= the worker_agent kind id, e.g.
-  // "llm" / "echo"); when no role is provided we still pick up the
-  // shared layer so generic worker runs see user-written skills.
+  // Worker-scoped tenant skills: shared `_tenant/config/skills/`
+  // plus the per-worker layer at
+  // `_tenant/config/workers/<slug>/skills/`. We prefer `req.workerSlug`
+  // when present (matches the on-disk directory exactly); the
+  // workerKind fallback is for legacy callers that don't yet
+  // forward the slug.
   const tenantWorkerScope = req.workerRole
-    ? { kind: "worker" as const, workerKind: req.workerRole }
+    ? {
+        kind: "worker" as const,
+        workerKind: req.workerRole,
+        slug: req.workerSlug ?? undefined,
+      }
     : { kind: "worker" as const, workerKind: "" };
   const allSkills: LoadedSkill[] = [
     ...loadHostSkills(),
