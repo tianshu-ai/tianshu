@@ -62,6 +62,10 @@
     "skills": [
       { "id": "workboard-howto", "path": "skills/workboard-howto.md" }
     ],
+    "agentSeeds": [
+      { "id": "echo-demo",   "path": "agent-seeds/echo-demo"   },
+      { "id": "default-llm", "path": "agent-seeds/default-llm" }
+    ],
     "apiRoutes": [
       { "method": "GET",    "path": "/tasks",              "handler": "listTasks"     },
       { "method": "POST",   "path": "/tasks",              "handler": "createTask"    },

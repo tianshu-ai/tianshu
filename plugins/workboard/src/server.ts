@@ -65,6 +65,7 @@ import {
   type SeedAgentSpec,
   type WorkerAgent,
 } from "./db/agents.js";
+import { loadMergedWorkerAgents } from "./fs-worker-agents.js";
 
 interface ActiveState {
   pool: WorkerPool;
@@ -315,8 +316,32 @@ const plugin: PluginServerModule = {
     // the tenant. The handle uses task.ownerUserId at run-time;
     // this default is only used when the task somehow lacks one.
     const fallbackUser = firstUserId(ctx.db);
+    // Worker-agent inventory is read from two sources during the
+    // DB → fs migration:
+    //   1. fs:  `<tenant>/_tenant/config/workers/<slug>/agent.json`
+    //          (the new source of truth, seeded via the manifest's
+    //          `agentSeeds[]` contribution)
+    //   2. db:  the legacy `worker_agents` table (kept as a
+    //          fallback so user-created rows from before the
+    //          migration keep running)
+    // fs wins on identity collisions; same-slug DB rows are hidden.
+    function refreshAgentInventory(): WorkerAgent[] {
+      const dbAgents = listWorkerAgents(ctx.db, ctx.tenantId);
+      const merged = loadMergedWorkerAgents({
+        tenantId: ctx.tenantId,
+        tenantHomeDir: ctx.workspaceDir,
+        dbAgents,
+      });
+      for (const e of merged.fsErrors) {
+        ctx.log.warn("workboard: fs worker agent has errors", {
+          slug: e.slug,
+          reasons: e.reasons,
+        });
+      }
+      return merged.agents;
+    }
     const agentRowsById = new Map<string, WorkerAgent>();
-    for (const a of listWorkerAgents(ctx.db, ctx.tenantId)) {
+    for (const a of refreshAgentInventory()) {
       agentRowsById.set(a.id, a);
     }
 
@@ -347,7 +372,7 @@ const plugin: PluginServerModule = {
       return null;
     };
 
-    const initialAgents = listWorkerAgents(ctx.db, ctx.tenantId)
+    const initialAgents = [...agentRowsById.values()]
       .filter((row) => row.enabled)
       .map(
         (row): AgentSpec => ({ id: row.id, kind: row.kind, name: row.name }),
@@ -412,7 +437,7 @@ const plugin: PluginServerModule = {
     };
 
     const onAgentsWrite = () => {
-      const fresh = listWorkerAgents(ctx.db, ctx.tenantId);
+      const fresh = refreshAgentInventory();
       // Refresh the cached agent rows so the factory rebuilds
       // LLMWorkers with the user's latest settings.
       agentRowsById.clear();
