@@ -1057,31 +1057,52 @@ export function defaultSystemPrompt(
     `Reply concisely. When you make changes, briefly say what you changed.`,
   );
 
-  if (skills.length > 0) {
-    lines.push(
-      ``,
-      `AVAILABLE SKILLS`,
-      `Each skill is a directory bundle under the tenant config tree. The`,
-      `<location> below points at the SKILL.md — read it on demand with the`,
-      `\`tenant_config_read\` tool when the description matches what you're`,
-      `about to do. Sibling files (\`scripts/\`, \`references/\`, \`assets/\`)`,
-      `live alongside SKILL.md and are read with the same tool.`,
-      ``,
-      `<available_skills>`,
-    );
-    for (const skill of skills) {
-      const loc = skillLocationUri(skill);
-      lines.push(
-        `  <skill>`,
-        `    <name>${skill.name}</name>`,
-        `    <description>${skill.description}</description>`,
-        `    <location>${loc}</location>`,
-        `  </skill>`,
-      );
-    }
-    lines.push(`</available_skills>`);
-  }
+  const skillBlock = formatAvailableSkillsBlock(skills);
+  if (skillBlock) lines.push("", skillBlock);
 
+  return lines.join("\n");
+}
+
+/**
+ * Render the `<available_skills>` block that's appended to every
+ * system prompt — the host default prompt for the main chat agent,
+ * AND any custom worker prompt coming from `worker_agents.system_prompt`.
+ *
+ * Worker LLMs need this just as badly as the main agent: without
+ * it they only see plugin-shipped skills via `tenant_config_list`,
+ * not their per-tenant ones. Workers ship a kind-specific
+ * `system_prompt` in the worker_agents table, and the agent-loop
+ * bypasses `defaultSystemPrompt` when that's set; so we expose the
+ * skill block as a reusable helper and the loop appends it after
+ * the kind-specific prompt.
+ *
+ * Returns "" when the skills list is empty so callers can drop the
+ * block entirely (no leading blank lines, no half-empty XML).
+ */
+export function formatAvailableSkillsBlock(
+  skills: readonly LoadedSkill[],
+): string {
+  if (skills.length === 0) return "";
+  const lines: string[] = [
+    `AVAILABLE SKILLS`,
+    `Each skill is a directory bundle under the tenant config tree. The`,
+    `<location> below points at the SKILL.md — read it on demand with the`,
+    `\`tenant_config_read\` tool when the description matches what you're`,
+    `about to do. Sibling files (\`scripts/\`, \`references/\`, \`assets/\`)`,
+    `live alongside SKILL.md and are read with the same tool.`,
+    ``,
+    `<available_skills>`,
+  ];
+  for (const skill of skills) {
+    lines.push(
+      `  <skill>`,
+      `    <name>${skill.name}</name>`,
+      `    <description>${skill.description}</description>`,
+      `    <location>${skillLocationUri(skill)}</location>`,
+      `  </skill>`,
+    );
+  }
+  lines.push(`</available_skills>`);
   return lines.join("\n");
 }
 

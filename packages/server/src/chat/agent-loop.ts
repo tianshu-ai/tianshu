@@ -38,7 +38,11 @@ import {
   filterSkillsForTenant,
   type LoadedSkill,
 } from "../core/plugins/skills.js";
-import { defaultSystemPrompt, loadHostSkills } from "./handler.js";
+import {
+  defaultSystemPrompt,
+  formatAvailableSkillsBlock,
+  loadHostSkills,
+} from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
@@ -287,8 +291,22 @@ export async function runAgentLoop(
   });
   const adapted = adaptToolset(toolset);
 
-  const systemPrompt =
-    req.systemPrompt ?? defaultSystemPrompt(ctx, userId, skills);
+  // Two paths into the worker system prompt:
+  //   * `req.systemPrompt` set — the worker_agent table provided a
+  //     kind-specific SOUL-style prompt; we use it verbatim and
+  //     append the available-skills block so the worker can still
+  //     discover tenant skills.
+  //   * Otherwise fall back to the host default, which already
+  //     includes the block.
+  let systemPrompt: string;
+  if (req.systemPrompt) {
+    const skillBlock = formatAvailableSkillsBlock(skills);
+    systemPrompt = skillBlock
+      ? `${req.systemPrompt}\n\n${skillBlock}`
+      : req.systemPrompt;
+  } else {
+    systemPrompt = defaultSystemPrompt(ctx, userId, skills);
+  }
   const firstResponseMs =
     req.timeouts?.firstResponseMs ?? DEFAULT_FIRST_RESPONSE_MS;
   const idleMs = req.timeouts?.idleMs ?? DEFAULT_IDLE_MS;
