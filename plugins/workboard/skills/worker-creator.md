@@ -55,6 +55,34 @@ tenant_config_write({
 `tenant_config_list` / `tenant_config_read` to inspect existing
 workers (see `tenant-config:///workers/`).
 
+## Critical rules — read before writing anything
+
+1. **`kind` must be one of the registered kinds.** As of today
+   that's `"llm"` and `"echo"`. Calling it `"coder"` or
+   `"researcher"` does NOT create a new runtime; the loader
+   skips unknown kinds with a warning and the worker never
+   shows up in the pool. If you want a Sonnet-driven coding
+   worker, the kind is still `"llm"` — the *role* lives in
+   `displayName` / `description` / `SOUL.md`.
+
+2. **The system prompt goes in `SOUL.md`, not `agent.json`.**
+   Two reasons: long markdown with quotes / backticks doesn't
+   round-trip through JSON cleanly (you'll bork the file with
+   a parse error), and the loader doesn't read prompt fields
+   from agent.json. Always write SOUL.md as a separate
+   `tenant_config_write` call.
+
+3. **`agent.json` knows nothing about slug.** The slug is the
+   directory name (`workers/<slug>/`). Do not add a `slug:`
+   field; it's silently ignored, which is worse than rejected.
+
+4. **Allowed top-level keys in `agent.json`:** `kind`,
+   `displayName`, `description`, `modelId`, `toolsAllow`,
+   `skillsAllow`, `enabled`, `source`. Anything else is
+   ignored. If your worker isn't doing what you expect, check
+   the server log for `fs worker agent has errors` — that's
+   where the loader complains.
+
 ## `agent.json` schema
 
 ```jsonc
@@ -160,21 +188,38 @@ the standard skill format — see `skill-creator` for details.
    tenant_config_list({ path: "workers" })
    ```
 2. Pick a slug; confirm with the user if you're unsure.
-3. Write `agent.json`. If `kind: "llm"`, decide on
-   `modelId` and (optionally) `toolsAllow` / `skillsAllow`. **If
-   in doubt, omit them — unrestricted is the right default for
-   most cases.**
-4. Optionally write `SOUL.md`.
+3. Write `agent.json` with **only** the keys listed in the
+   schema above. Pick `kind: "llm"` for any LLM-driven worker
+   (the worker's role lives in displayName + SOUL.md, not in
+   the kind id). If in doubt about
+   `toolsAllow` / `skillsAllow`, omit them — unrestricted is
+   the right default for most cases.
+4. **Separately** call `tenant_config_write` again to write
+   `SOUL.md` if the worker needs a custom prompt. Do NOT try
+   to embed the prompt as a string inside `agent.json`.
 5. Optionally seed any private skills under `skills/<name>/SKILL.md`.
 6. Tell the user: pool picks the new worker up on the next
    worker-pool refresh (currently: server restart). Mention this
    cost — they may want to pick a moment to restart.
 7. After a refresh, point them at the Worker agents admin page
    so they can verify the row + expand it to see the effective
-   tools/skills the worker will actually have.
+   tools/skills the worker will actually have. If the row
+   doesn't appear there, look at `tenant_config_read({ path:
+   "workers/<slug>/agent.json" })` and the server log for
+   loader errors.
 
 ## Common mistakes
 
+- **Inventing a new `kind` for the role**. `kind` is the
+  runtime, not a label — only `"llm"` and `"echo"` exist
+  today. "Coder" / "researcher" / "reviewer" are all
+  `kind: "llm"` with different SOUL.md.
+- **Embedding the system prompt in `agent.json`** (e.g. as
+  `"soul": "..."`). Won't be read, will break the JSON parser
+  the moment the prompt contains a quote.
+- **Adding `slug` / `id` / unknown keys to `agent.json`**.
+  Slug is the directory name; the loader uses fixed key names
+  (see schema). Anything else is silently ignored.
 - **Empty array thinking it means "default"**. `[]` means
   "deny everything". Use `null` (or omit the field entirely)
   for "no restriction".
