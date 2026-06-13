@@ -239,7 +239,13 @@ const TaskCreateItem = Type.Object({
   worker_role: Type.Optional(
     Type.String({
       description:
-        'Restrict to one role (e.g. "echo", "qianliyan"). Omit to let any worker pick it up.',
+        'Restrict by worker kind (e.g. "echo", "llm"). Any enabled worker of that kind can pick the task up. Mutually exclusive with worker_agent_id; if both are given, worker_agent_id wins.',
+    }),
+  ),
+  worker_agent_id: Type.Optional(
+    Type.String({
+      description:
+        "Pin the task to a specific worker by slug (e.g. \"coder\", \"llm-default\"). The slug is the directory name under tenant-config:///workers/<slug>/. Use this when you want a particular worker to pick the task up; the kind comes from that worker's agent.json automatically.",
     }),
   ),
   depends_on: Type.Optional(
@@ -262,6 +268,7 @@ type TaskCreateItemArgs = {
   project?: string;
   priority?: number;
   worker_role?: string;
+  worker_agent_id?: string;
   depends_on?: string[];
   labels?: string[];
 };
@@ -321,8 +328,25 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           item.depends_on,
           id,
         );
-        const role = item.worker_role ?? null;
-        if (role) {
+        const explicitAgentId = item.worker_agent_id?.trim() || null;
+        const role = explicitAgentId ? null : item.worker_role ?? null;
+        if (explicitAgentId) {
+          const target = agents.find((a) => a.id === explicitAgentId);
+          if (!target) {
+            return {
+              ok: false,
+              index,
+              text: `Worker agent "${explicitAgentId}" doesn't exist in this tenant. Use \`tenant_config_list({ path: "workers" })\` to see available slugs.`,
+            };
+          }
+          if (!target.enabled) {
+            return {
+              ok: false,
+              index,
+              text: `Worker agent "${target.name}" (${explicitAgentId}) is disabled. Enable it (set agent.json enabled: true) or pick another worker.`,
+            };
+          }
+        } else if (role) {
           const candidates = agents.filter(
             (a) => a.enabled && a.kind === role,
           );
@@ -330,7 +354,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
             return {
               ok: false,
               index,
-              text: `No enabled worker has kind="${role}". Either enable an existing worker of that kind under Settings → Plugins → Worker agents, or omit worker_role so any worker can pick the task up.`,
+              text: `No enabled worker has kind="${role}". Use \`tenant_config_list({ path: "workers" })\` to see what's registered, then pin a specific worker via worker_agent_id, or change to a kind that exists ("llm" / "echo").`,
             };
           }
         }
@@ -341,6 +365,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           projectSlug: item.project,
           priority: item.priority,
           workerRole: role,
+          workerAgentId: explicitAgentId,
           dependsOn,
           labels: item.labels,
           // Stamp the asking session so the pool knows who to
