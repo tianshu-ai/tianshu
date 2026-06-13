@@ -8,7 +8,7 @@ import { up as runDepsMigration } from "../../../../packages/server/src/core/mig
 import { up as runStatusRename } from "../../../../packages/server/src/core/migrations/005-task-status-rename.js";
 import { up as runTaskLabels } from "../../../../packages/server/src/core/migrations/006-task-labels.js";
 import { up as runSessionInbox } from "../../../../packages/server/src/core/migrations/007-session-inbox.js";
-import { ensureSchema as ensureAgentsSchema } from "../db/agents.js";
+import { ensureSchema as ensureAgentsSchema } from "../db/schema.js";
 import { createTask, getTask, updateTask } from "../db/tasks.js";
 import {
   EchoWorker,

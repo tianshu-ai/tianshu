@@ -1,29 +1,20 @@
-// Bridge between the new filesystem-backed worker-agent layout
-// (`<tenant>/_tenant/config/workers/<slug>/`) and the existing
-// `WorkerAgent` shape the pool / factory consume. PR-A keeps the
-// DB-backed table around as a fallback so we can ship the
-// filesystem path without breaking the kanban Execution dialog
-// or the existing seed flow; later PRs (B/C) flip the source of
-// truth and drop the table.
+// Filesystem-backed worker-agent loader.
 //
-// Merge rule when both sources have a row for the same identity:
-//   * Identity match: fs.slug === db.builtin_key (for builtin
-//     rows) OR fs.slug === db.id (defensive).
-//   * Filesystem wins. The DB row is kept around but the pool
-//     ignores it as long as the fs slot exists.
+// Post-PR-C2 the legacy `worker_agents` SQLite table is gone;
+// `<tenant>/_tenant/config/workers/<slug>/` is the only source.
+// Each subdirectory is one worker:
 //
-// fs records that don't satisfy `WorkerAgent` (missing kind, etc.)
-// are dropped with a warning instead of crashing — admin UI
-// surfaces the same errors via the loader's `errors` field, so
-// the user can fix them.
+//   <slug>/
+//     agent.json    (required)
+//     SOUL.md       (optional; system prompt)
+//     skills/...    (optional; picked up by tenant-skills loader)
 //
-// We deliberately do NOT import the host's worker-agents-fs.ts —
-// plugins shouldn't reach into server internals. The loader is
-// small enough to own here.
+// The loader is plugin-local on purpose — plugins shouldn't reach
+// into server internals.
 
 import fs from "node:fs";
 import path from "node:path";
-import type { WorkerAgent } from "./db/agents.js";
+import type { WorkerAgent } from "./types.js";
 
 interface SpecJson {
   kind?: string;
@@ -44,51 +35,29 @@ interface FsRecord {
   errors: string[];
 }
 
-export interface MergedWorkerAgents {
-  /** All agents the pool should consider, fs-first then any
-   *  db-only rows (rows whose builtinKey isn't shadowed by an fs
-   *  slot). Ordered by name. */
+export interface LoadResult {
   agents: WorkerAgent[];
   /** Slugs whose fs record had errors — surfaced for logging. */
   fsErrors: Array<{ slug: string; reasons: string[] }>;
 }
 
-export function loadMergedWorkerAgents(args: {
+export function loadWorkerAgents(args: {
   tenantId: string;
   tenantHomeDir: string;
-  dbAgents: readonly WorkerAgent[];
-}): MergedWorkerAgents {
+}): LoadResult {
   const fsRecords = scanFsWorkers(args.tenantHomeDir);
-  const fsAgents: WorkerAgent[] = [];
+  const agents: WorkerAgent[] = [];
   const fsErrors: Array<{ slug: string; reasons: string[] }> = [];
-  const fsSlugs = new Set<string>();
 
   for (const r of fsRecords) {
     if (r.errors.length > 0) {
       fsErrors.push({ slug: r.slug, reasons: r.errors });
       if (!r.spec.kind) continue;
     }
-    fsSlugs.add(r.slug);
-    fsAgents.push(toWorkerAgent(args.tenantId, r));
+    agents.push(toWorkerAgent(args.tenantId, r));
   }
-
-  // Drop any DB row whose identity overlaps an fs slot. `builtin_key`
-  // is the natural identity for builtin rows (post-migration the
-  // fs slug equals the old builtin_key); for user-created rows
-  // there's no overlap with fs slugs unless the user creates a
-  // user row with the same name as a seed. We always prefer the
-  // fs version.
-  const shadowed = new Set<string>();
-  for (const a of args.dbAgents) {
-    if (a.builtinKey && fsSlugs.has(a.builtinKey)) shadowed.add(a.id);
-    if (fsSlugs.has(a.id)) shadowed.add(a.id);
-  }
-  const dbAgentsKept = args.dbAgents.filter((a) => !shadowed.has(a.id));
-
-  const merged = [...fsAgents, ...dbAgentsKept].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-  return { agents: merged, fsErrors };
+  agents.sort((a, b) => a.name.localeCompare(b.name));
+  return { agents, fsErrors };
 }
 
 function scanFsWorkers(tenantHomeDir: string): FsRecord[] {

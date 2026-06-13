@@ -40,7 +40,21 @@ import {
   type Task,
   type TaskStatus,
 } from "../db/tasks.js";
-import { listWorkerAgents, type WorkerAgent } from "../db/agents.js";
+import { loadWorkerAgents } from "../fs-worker-agents.js";
+import type { WorkerAgent } from "../types.js";
+
+/** PR-C2 replaces the listWorkerAgents() DB call with a fs scan.
+ *  Helper kept local so the existing call sites change as little
+ *  as possible. The tool surface still passes through `deps.db`
+ *  (some tools genuinely need it), so we don't bother routing
+ *  tenantHomeDir through ToolDeps; we just rebuild the path from
+ *  the tenant id we already have. */
+function listAgents(
+  tenantId: string,
+  tenantHomeDir: string,
+): WorkerAgent[] {
+  return loadWorkerAgents({ tenantId, tenantHomeDir }).agents;
+}
 import { readSessionHistory } from "../db/session-history.js";
 
 export interface ToolDeps {
@@ -281,7 +295,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
       // Cache the worker-agent list once for the whole batch —
       // creating 50 tasks against the same role shouldn't hit the
       // DB 50 times for the same lookup.
-      const agents = listWorkerAgents(deps.db, ctx.tenantId);
+      const agents = listAgents(ctx.tenantId, ctx.tenantHomeDir);
       type Row = {
         ok: boolean;
         index: number;
@@ -410,7 +424,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
       // `undefined` means "don't touch"; an explicit `null` clears
       // the role pin (always safe).
       if (args.worker_role !== undefined && args.worker_role !== null) {
-        const candidates = listWorkerAgents(deps.db, ctx.tenantId).filter(
+        const candidates = listAgents(ctx.tenantId, ctx.tenantHomeDir).filter(
           (a) => a.enabled && a.kind === args.worker_role,
         );
         if (candidates.length === 0) {
