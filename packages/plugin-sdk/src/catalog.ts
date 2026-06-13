@@ -27,6 +27,13 @@ export interface SkillCatalogEntry {
   name: string;
   description: string;
   pluginId: string;
+  /** Frontmatter `scope:` field, if any. "main" hides the skill
+   *  from worker runs; "worker" hides it from the main chat
+   *  agent. Undefined means visible to both — the legacy
+   *  default. Plugins / UIs that surface skills per-agent
+   *  honour this filter themselves; the host doesn't strip
+   *  scoped skills from the catalog. */
+  scope?: "main" | "worker";
 }
 
 export interface SkillCatalogCapability {

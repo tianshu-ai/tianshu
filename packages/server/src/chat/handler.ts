@@ -306,6 +306,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const skills = filterSkillsForTenant(allSkills, {
     hasTool: (n) => declaredToolNames.has(n),
     hasCapability: (n) => hostCaps.has(n as never),
+    agentScope: "main",
   });
   const toolset = await buildToolset({
     pluginTools,

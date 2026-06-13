@@ -1,6 +1,7 @@
 ---
 name: worker-creator
 description: How to create or edit a workboard worker agent — agent.json fields, the kind/slug/SOUL trio, allow-list semantics (omit = unrestricted), and which tools to use. Read this when the user asks you to add, configure, or tighten a worker's permissions.
+scope: main
 ---
 
 # Authoring workboard worker agents

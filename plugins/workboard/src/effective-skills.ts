@@ -39,10 +39,17 @@ export function computeEffectiveSkillsFor(
   const names = new Set<string>();
 
   // Layer 1+2: host + plugin skills via the catalog capability.
+  // We're rendering a worker's effective view, so drop entries
+  // marked `scope: main` (those are documentation aimed at the
+  // chat agent, not workers). Tenant skills aren't filtered —
+  // they go through their own scope mechanism via tenant skill
+  // loader, which we mirror here by directory layout.
   if (args.hostSkillCatalog) {
     try {
       for (const e of args.hostSkillCatalog.list()) {
-        if (e?.name) names.add(e.name);
+        if (!e?.name) continue;
+        if (e.scope === "main") continue;
+        names.add(e.name);
       }
     } catch {
       // Catalog hiccup is non-fatal; we still have the tenant

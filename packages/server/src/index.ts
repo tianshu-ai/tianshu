@@ -123,6 +123,7 @@ pluginRegistry = new PluginRegistry({
             name: s.name,
             description: s.description,
             pluginId: s.source.pluginId,
+            scope: s.scope,
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
       },
@@ -385,6 +386,10 @@ app.get("/api/skills", (req, res) => {
       name: s.name,
       description: s.description,
       pluginId: s.source.pluginId,
+      // Surface the frontmatter `scope:` field so the
+      // worker-agents-page can hide "scope: main" skills from a
+      // worker's effective list. Undefined = visible to both.
+      scope: s.scope,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
   res.json({ skills: out });

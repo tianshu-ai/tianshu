@@ -282,6 +282,7 @@ export async function runAgentLoop(
   const skills = filterSkillsForTenant(allSkills, {
     hasTool: (n) => declaredToolNames.has(n),
     hasCapability: (n) => hostCaps.has(n as never),
+    agentScope: "worker",
   }).filter((s) => {
     if (!skillsAllowed) return true;
     if (s.source.pluginId.startsWith("tenant-")) return true;

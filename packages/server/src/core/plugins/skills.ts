@@ -46,6 +46,11 @@ export interface LoadedSkill {
   /** Optional gate: only show this skill to the agent when the
    *  predicate is satisfied for the current tenant. */
   when?: SkillWhen;
+  /** Optional agent-scope filter — "main" hides the skill from
+   *  worker runs, "worker" hides it from the main chat agent.
+   *  Omitted means visible to both, the legacy default. Filtering
+   *  is applied alongside `when:` by `filterSkillsForTenant`. */
+  scope?: "main" | "worker";
   /** The full markdown body (after frontmatter). Kept in memory so
    *  callers (e.g. tests, future helpers) can avoid a re-read. */
   body: string;
@@ -188,6 +193,9 @@ function loadSkillFromFile(args: {
   if (!description) {
     return { ok: false, reason: "frontmatter missing `description`" };
   }
+  const scope = pickString(frontmatter, "scope");
+  const scopeNarrowed: LoadedSkill["scope"] =
+    scope === "main" || scope === "worker" ? scope : undefined;
   return {
     ok: true,
     skill: {
@@ -196,6 +204,7 @@ function loadSkillFromFile(args: {
       name,
       description,
       when: extractWhen(frontmatter),
+      scope: scopeNarrowed,
       body: body.trim(),
     },
   };
@@ -300,14 +309,30 @@ function extractWhen(fm: Frontmatter): SkillWhen | undefined {
 }
 
 /**
- * Filter skills by their `when:` predicate against the current
- * tenant state.
+ * Filter skills by their `when:` predicate and `scope:` field
+ * against the current tenant state.
+ *
+ * `agentScope` (`"main"` | `"worker"`) determines who's loading
+ * the skill list right now. A skill marked `scope: main` is
+ * hidden from worker runs; `scope: worker` is hidden from the
+ * main chat agent. Skills without a `scope:` are visible to
+ * both, the legacy default. Omit `agentScope` (or pass undefined)
+ * to bypass the scope filter entirely — useful for callers that
+ * want the unfiltered universe (e.g. admin UIs).
  */
 export function filterSkillsForTenant(
   skills: LoadedSkill[],
-  ctx: { hasTool(name: string): boolean; hasCapability(name: string): boolean },
+  ctx: {
+    hasTool(name: string): boolean;
+    hasCapability(name: string): boolean;
+    /** Agent loading the skills now. Match against `skill.scope`. */
+    agentScope?: "main" | "worker";
+  },
 ): LoadedSkill[] {
   return skills.filter((s) => {
+    if (s.scope && ctx.agentScope && s.scope !== ctx.agentScope) {
+      return false;
+    }
     if (!s.when) return true;
     if (s.when.toolPresent && !ctx.hasTool(s.when.toolPresent)) return false;
     if (s.when.capabilityPresent && !ctx.hasCapability(s.when.capabilityPresent)) {
