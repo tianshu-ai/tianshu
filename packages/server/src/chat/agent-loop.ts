@@ -39,6 +39,7 @@ import {
   type LoadedSkill,
 } from "../core/plugins/skills.js";
 import { defaultSystemPrompt, loadHostSkills } from "./handler.js";
+import { loadTenantSkills } from "../core/tenant-skills.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
@@ -226,9 +227,25 @@ export async function runAgentLoop(
     if (denySet && denySet.has(name)) return false;
     return true;
   });
+  // Worker-scoped tenant skills: shared `_tenant/config/skills/` plus
+  // the kind-specific override at `_tenant/config/workers/<kind>/skills/`.
+  // We pin scope by `req.workerRole` (= the worker_agent kind id, e.g.
+  // "llm" / "echo"); when no role is provided we still pick up the
+  // shared layer so generic worker runs see user-written skills.
+  const tenantWorkerScope = req.workerRole
+    ? { kind: "worker" as const, workerKind: req.workerRole }
+    : { kind: "worker" as const, workerKind: "" };
   const allSkills: LoadedSkill[] = [
     ...loadHostSkills(),
     ...(pluginRegistry?.skillsForTenant(ctx.tenantId) ?? []),
+    ...loadTenantSkills({
+      tenantId: ctx.tenantId,
+      scope: tenantWorkerScope,
+      onFailure: (f) =>
+        console.warn(
+          `[tenant-skills:${f.scope}] ${f.filePath}: ${f.reason}`,
+        ),
+    }),
   ];
   const declaredToolNames = new Set(
     pluginTools.map(({ tool }) => tool.schema.name),

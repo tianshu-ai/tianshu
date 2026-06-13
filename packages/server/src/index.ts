@@ -20,6 +20,7 @@ import {
   DEV_USER_ID,
   GlobalOps,
   McpManager,
+  ensureTenantConfigDefaults,
   getDefaultModel,
   listModels,
   loadGlobalConfig,
@@ -180,6 +181,22 @@ if (bootstrap.created) {
 } else {
   // eslint-disable-next-line no-console
   console.log(`[tianshu] tenants found: [${globalOps.list().join(", ")}]`);
+}
+
+// Backfill any additive `_tenant/config/` content the host ships
+// after a tenant was first created. Existing files are never
+// overwritten; only missing paths get copied. Cheap (one shallow
+// readdir per tenant on boot).
+for (const tenantId of globalOps.list()) {
+  try {
+    ensureTenantConfigDefaults(tenantId);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[tianshu] ensureTenantConfigDefaults(${tenantId}) failed:`,
+      err,
+    );
+  }
 }
 
 // Wire the session-inbox idle runner. When a worker pool finishes

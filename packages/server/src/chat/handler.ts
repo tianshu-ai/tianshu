@@ -68,6 +68,7 @@ import {
   loadSkillsForPlugin,
   type LoadedSkill,
 } from "../core/plugins/skills.js";
+import { loadTenantSkills } from "../core/tenant-skills.js";
 import { fileURLToPath } from "node:url";
 import {
   ensureActiveSession,
@@ -277,9 +278,23 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }
   }
   const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
+  // Skill priority (later wins on the dedup key, which is the
+  // directory name for tenant skills and the contribution id for
+  // host/plugin skills): host bundle → plugins → tenant scope.
+  // Tenant scope wins by design — the user can override or shadow a
+  // shipped skill by dropping a same-named directory under
+  // `_tenant/config/{skills,main/skills}/`.
   const allSkills = [
     ...loadHostSkills(),
     ...(pluginRegistry?.skillsForTenant(ctx.tenantId) ?? []),
+    ...loadTenantSkills({
+      tenantId: ctx.tenantId,
+      scope: { kind: "main" },
+      onFailure: (f) =>
+        console.warn(
+          `[tenant-skills:${f.scope}] ${f.filePath}: ${f.reason}`,
+        ),
+    }),
   ];
   // Build a set of registered tool names from pluginTools' schemas.
   // We don't yet know what `available()` will say, so we use the
