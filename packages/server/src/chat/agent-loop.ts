@@ -258,11 +258,26 @@ export async function runAgentLoop(
     get: () => undefined,
     has: () => false,
   };
+  // skillsAllow scopes only host + plugin skills (the kind that
+  // appear in `host.skillCatalog`, which is what the worker-agent
+  // ChipPicker is built from). Tenant skills don't participate in
+  // that catalog — they're discovered live from
+  // `_tenant/config/.../skills/` every turn. Letting allowlist
+  // filtering see them would silently hide every newly-dropped
+  // tenant skill until the user re-saves the worker_agent row,
+  // which is exactly the bug Yu hit (test-shared / test-llm gone
+  // from the worker's <available_skills>). So: tenant skills pass
+  // through unconditionally; if a user wants to hide one from a
+  // worker, they remove the skill directory.
   const skillsAllowed = req.skillsAllow ? new Set(req.skillsAllow) : null;
   const skills = filterSkillsForTenant(allSkills, {
     hasTool: (n) => declaredToolNames.has(n),
     hasCapability: (n) => hostCaps.has(n as never),
-  }).filter((s) => !skillsAllowed || skillsAllowed.has(s.name));
+  }).filter((s) => {
+    if (!skillsAllowed) return true;
+    if (s.source.pluginId.startsWith("tenant-")) return true;
+    return skillsAllowed.has(s.name);
+  });
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {
