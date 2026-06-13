@@ -54,7 +54,8 @@
       { "id": "task_complete",            "module": "TaskCompleteTool"           }
     ],
     "skills": [
-      { "id": "workboard-howto", "path": "skills/workboard-howto.md" }
+      { "id": "workboard-howto", "path": "skills/workboard-howto.md" },
+      { "id": "worker-creator", "path": "skills/worker-creator.md" }
     ],
     "agentSeeds": [
       { "id": "echo-demo",   "path": "agent-seeds/echo-demo"   },
