@@ -54,9 +54,10 @@
       { "id": "task_complete",            "module": "TaskCompleteTool"           }
     ],
     "skills": [
-      { "id": "workboard-howto", "path": "skills/workboard-howto.md"  },
-      { "id": "worker-creator",  "path": "skills/worker-creator.md"   },
-      { "id": "worker-fleet",    "path": "skills/worker-fleet.md"     }
+      { "id": "workboard-howto",          "path": "skills/workboard-howto.md"          },
+      { "id": "worker-creator",           "path": "skills/worker-creator.md"           },
+      { "id": "worker-fleet",             "path": "skills/worker-fleet.md"             },
+      { "id": "large-input-large-output", "path": "skills/large-input-large-output.md" }
     ],
     "agentSeeds": [
       { "id": "echo-demo",   "path": "agent-seeds/echo-demo"   },

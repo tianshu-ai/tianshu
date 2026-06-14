@@ -214,6 +214,34 @@ If the description fits in two sentences, the task is too small
 or too vague — either inline it (don't fleet at all) or split
 it into more concrete subtasks.
 
+## When the task ingests / produces a lot
+
+If a task asks the worker to read ≥ 2 non-trivial files **and**
+produce a single large output (long HTML / md / generated
+code), you've crossed the threshold where naive prompting
+breaks: the worker batches all the reads into one turn, the
+tool results dominate the prompt, and the next call returns
+empty (`no_completion`).
+
+Two levers from the orchestrator side:
+
+1. **Tell the worker to read this skill in the task description**:
+   "Read the `large-input-large-output` skill before starting;
+   apply pattern 1 (read-then-summarise) and pattern 2 (skeleton
+   then fill)." Workers won't reach for that skill unless the
+   description prompts them — the skill is `scope: worker` so
+   they see it in `<available_skills>`, but they have to choose
+   to read it.
+2. **Or split the task**: one task per source file producing a
+   summary, plus one final assembly task reading only the
+   summaries. This is the bigger hammer; use it when the input
+   set is large enough (≥ 4 files, or any individual file > 30
+   KB) that even pattern 1 would push the worker close to its
+   context window.
+
+This isn't about being defensive — it's about matching the
+task shape to the underlying token economics.
+
 ## Worked example: "Build me a URL shortener"
 
 User says: *Build me a URL shortener service prototype.* You,
