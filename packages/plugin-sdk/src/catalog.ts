@@ -39,3 +39,33 @@ export interface SkillCatalogEntry {
 export interface SkillCatalogCapability {
   list(): SkillCatalogEntry[];
 }
+
+export interface ModelCatalogEntry {
+  /** Provider-prefixed id passed to `modelId` fields, e.g.
+   *  `sap-proxy/claude-sonnet-4-6`, `anthropic/claude-opus-4-7`,
+   *  `sap-perplexity/sonar-pro`. This is the value an agent.json
+   *  or task overrides should set. */
+  id: string;
+  /** Display name from the host config (`models[].name`). */
+  name: string;
+  /** Provider id (`anthropic`, `sap-proxy`, etc.). Already in the
+   *  prefix of `id`; surfaced separately for UI grouping. */
+  provider: string;
+  /** Optional grouping label (`Cloud`, `Local`, ...). */
+  group?: string;
+  /** Context window in tokens, from host config. */
+  contextWindow: number;
+  /** True iff the model emits chain-of-thought / reasoning
+   *  tokens we shouldn't show to the user verbatim. */
+  reasoning: boolean;
+}
+
+export interface ModelCatalogCapability {
+  /** Read the model catalog visible to the current tenant.
+   *  Driven by `tenant.config.models.providers` resolved via
+   *  `listModels()` in @tianshu/server. The default model id
+   *  (used when `agent.json.modelId === null`) is exposed
+   *  separately so worker-creator and other tools don't have
+   *  to hard-code which entry is the fallback. */
+  list(): { models: ModelCatalogEntry[]; defaultModelId: string | null };
+}

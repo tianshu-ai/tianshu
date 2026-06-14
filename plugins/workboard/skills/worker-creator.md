@@ -121,11 +121,13 @@ workers (see `tenant-config:///workers/`).
   // Optional: free-form description for humans.
   "description": "Long-form research worker, slow but careful.",
 
-  // Optional: model id (kind=llm only).
-  // Examples: "sap-proxy/claude-sonnet-4-6",
-  //           "sap-openai/gpt-5",
-  //           "sap-gemini/gemini-2.5-pro".
-  // Omit to use the host default.
+  // Optional: model id (kind=llm only). Don't guess — call
+  // `model_list` first to see which providers/models the host
+  // has registered AND which one is the default. Examples
+  // depend on host config but typically look like
+  // "sap-proxy/claude-sonnet-4-6", "sap-openai/gpt-5",
+  // "sap-perplexity/sonar-pro". Omit (or set null) to use the
+  // host default.
   "modelId": "sap-proxy/claude-sonnet-4-6",
 
   // Optional: tool / skill allow-lists. SEE BELOW for semantics.

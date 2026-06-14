@@ -46,6 +46,7 @@ import type {
   SessionInboxCapability,
   ToolCatalogCapability,
   SkillCatalogCapability,
+  ModelCatalogCapability,
 } from "@tianshu/plugin-sdk";
 import {
   enqueue as inboxEnqueue,
@@ -136,6 +137,25 @@ pluginRegistry = new PluginRegistry({
             scope: s.scope,
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
+      },
+    }),
+    // Model catalog — lets worker-creator / model_list pick a
+    // modelId without round-tripping through `/api/models`.
+    "host.modelCatalog": (ctx): ModelCatalogCapability => ({
+      list() {
+        const cfg = ctx.config;
+        const models = listModels(cfg).map((m) => ({
+          id: m.id,
+          name: m.name,
+          provider: m.providerId,
+          group: m.group,
+          contextWindow: m.contextWindow,
+          reasoning: m.reasoning,
+        }));
+        return {
+          models: models.sort((a, b) => a.id.localeCompare(b.id)),
+          defaultModelId: cfg.defaultModel ?? null,
+        };
       },
     }),
     "host.agentLoop": (ctx) => {

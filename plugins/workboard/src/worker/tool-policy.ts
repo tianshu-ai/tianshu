@@ -43,6 +43,10 @@ export const WORKER_DENY_TOOLS: readonly string[] = [
   "task_retry_fresh",
   "task_extend_timeout",
   "task_abort",
+  // Model catalog is for the orchestrator deciding which model
+  // to pin a NEW worker to; a worker has no business
+  // introspecting peers' configs.
+  "model_list",
   // Worker-agent CRUD belongs to the orchestrator. A worker is
   // configured *before* it runs; letting it self-mutate — or
   // mutate peers — would just be a self-foot-gun.
