@@ -4,7 +4,7 @@
 // shows up close to the policy.
 
 import { describe, expect, it } from "vitest";
-import type { WorkerAgent } from "../db/agents.js";
+import type { WorkerAgent } from "../types.js";
 import { validateAssignableWorker } from "./handlers.js";
 
 function agent(

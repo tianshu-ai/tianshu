@@ -54,7 +54,8 @@
       { "id": "task_complete",            "module": "TaskCompleteTool"           }
     ],
     "skills": [
-      { "id": "workboard-howto", "path": "skills/workboard-howto.md" }
+      { "id": "workboard-howto", "path": "skills/workboard-howto.md" },
+      { "id": "worker-creator", "path": "skills/worker-creator.md" }
     ],
     "agentSeeds": [
       { "id": "echo-demo",   "path": "agent-seeds/echo-demo"   },
@@ -69,11 +70,7 @@
       { "method": "GET",    "path": "/projects",           "handler": "listProjects"  },
       { "method": "GET",    "path": "/workers/status",     "handler": "workerStatus"  },
       { "method": "POST",   "path": "/workers/restart",    "handler": "workerRestart" },
-      { "method": "GET",    "path": "/agents",             "handler": "listAgents"    },
-      { "method": "POST",   "path": "/agents",             "handler": "createAgent"   },
-      { "method": "PATCH",  "path": "/agents/:id",         "handler": "patchAgent"    },
-      { "method": "DELETE", "path": "/agents/:id",         "handler": "deleteAgent"   },
-      { "method": "POST",   "path": "/agents/:id/reset",   "handler": "resetAgent"    }
+      { "method": "GET",    "path": "/agents",             "handler": "listAgents"    }
     ]
   },
   "configSchema": {

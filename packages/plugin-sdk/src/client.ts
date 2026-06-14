@@ -204,3 +204,68 @@ export function useComposer(): ComposerApi {
   }
   return fn();
 }
+
+// ─── OpenFile capability ────────────────────────────────────────
+//
+// Intent-style file open. Anyone (workboard task cards, attachment
+// renderers, future apps) can ask the host to "open this workspace
+// file" without knowing what "open" means in the current shell.
+// The Files plugin registers the actual implementation — a modal
+// preview dialog — by calling __installOpenFileApi() at mount
+// time; until that runs (or if Files isn't enabled in this tenant)
+// the host's bootstrap fallback opens the raw URL in a new tab.
+// Same install-once + globalSlot trick we use for useComposer so
+// duplicated SDK copies in plugin bundles still see the same hook.
+
+export interface OpenFileApi {
+  /** Open a file living inside the user workspace. `path` accepts
+   *  the same shapes the file tools accept: a `workspace:///foo`
+   *  URI, a leading-slash absolute path, or a bare relative path.
+   *  Implementations may render an in-page modal, switch to the
+   *  files panel, open a new tab — anything UX-appropriate. */
+  open(path: string): void;
+}
+
+interface OpenFileGlobalSlot {
+  __tianshuPluginSdkOpenFile__?: OpenFileApi;
+}
+
+function openFileSlot(): OpenFileGlobalSlot {
+  return globalThis as unknown as OpenFileGlobalSlot;
+}
+
+/** Host or files-plugin only: register an OpenFileApi. The host
+ *  installs a fallback at bootstrap; the Files plugin overrides
+ *  it on mount with its dialog-based implementation. Last writer
+ *  wins. */
+export function __installOpenFileApi(api: OpenFileApi): void {
+  openFileSlot().__tianshuPluginSdkOpenFile__ = api;
+}
+
+/** Test helper. */
+export function __resetOpenFileApiForTest(): void {
+  delete openFileSlot().__tianshuPluginSdkOpenFile__;
+}
+
+/** Hook returning the live `open(path)` callable. Stable across
+ *  re-renders — always reads from the slot, so a late
+ *  __installOpenFileApi() takes effect on the next call without
+ *  forcing a re-mount. Throws only if absolutely no implementation
+ *  has ever been installed (which means the host bootstrap was
+ *  skipped). */
+export function useOpenFile(): OpenFileApi["open"] {
+  return (path: string): void => {
+    const api = openFileSlot().__tianshuPluginSdkOpenFile__;
+    if (!api) {
+      // Last-resort UX so the click does *something* useful even
+      // before any registrar has installed: stick the path in the
+      // URL bar of a new tab. Never reachable in production where
+      // the host installs a fallback at bootstrap.
+      const cleaned = path.replace(/^workspace:\/\/+/, "/");
+      const url = `/api/p/files/raw?path=${encodeURIComponent(cleaned)}`;
+      window.open(url, "_blank", "noopener");
+      return;
+    }
+    api.open(path);
+  };
+}

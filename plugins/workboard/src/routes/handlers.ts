@@ -30,16 +30,7 @@ import {
   type Task,
   type TaskStatus,
 } from "../db/tasks.js";
-import {
-  createUserWorkerAgent,
-  deleteWorkerAgent,
-  getWorkerAgent,
-  listWorkerAgents,
-  resetBuiltinAgent,
-  updateWorkerAgent,
-  type SeedAgentSpec,
-  type WorkerAgent,
-} from "../db/agents.js";
+import type { WorkerAgent } from "../types.js";
 import { readSessionHistory } from "../db/session-history.js";
 
 /**
@@ -167,14 +158,29 @@ export interface RoutesDeps {
   pool: WorkerPool;
   /** Notify the worker pool that a task changed. */
   onTaskWrite(): void;
-  /** Notify the worker pool that the agent set changed. */
-  onAgentsWrite(): void;
   /** Workboard-internal kind catalogue. Surfaced to the admin UI
    *  so the picker only offers kinds the runtime can staff. */
   workerKinds: WorkerKindDef[];
-  /** Seed specs the plugin shipped, indexed by builtin_key, for
-   *  the reset endpoint. */
-  seedsByKey: Map<string, SeedAgentSpec>;
+  /**
+   * Returns the merged worker-agent inventory (fs first, DB
+   *  fallback) for the GET /agents endpoint. The plugin owns the
+   *  merge logic in `fs-worker-agents.ts`; this is just a
+   *  pluggable accessor so tests can inject a deterministic list.
+   */
+  listMergedAgents(): WorkerAgent[];
+  /**
+   * Per-agent effective skill list — what `<available_skills>`
+   * will actually contain when the worker runs. Combines:
+   *   - host self-shipped skills (`packages/server/skills/`)
+   *   - plugin skills via `host.skillCatalog`
+   *   - tenant shared skills (`_tenant/config/skills/`)
+   *   - tenant per-worker skills (`_tenant/config/workers/<slug>/skills/`)
+   *  Then narrows by the agent's `skillsAllow` (null = no
+   *  restriction; non-null = explicit allow-list — same rule
+   *  the agent loop applies).
+   *  Returns names only; the UI doesn't need bodies.
+   */
+  computeEffectiveSkills(agent: WorkerAgent): string[];
 }
 
 function userIdFromReq(req: Request): string | null {
@@ -298,7 +304,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
   const createOne = (
     userId: string,
     body: Record<string, unknown>,
-    agents: ReturnType<typeof listWorkerAgents>,
+    agents: WorkerAgent[],
   ): {
     ok: boolean;
     task?: ReturnType<typeof taskJson>;
@@ -421,7 +427,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       return;
     }
     // Cache the agent list once for the whole batch.
-    const agents = listWorkerAgents(deps.db, deps.tenantId);
+    const agents = deps.listMergedAgents();
     let anyOk = false;
     const results = inputs.map((input) => {
       if (!input || typeof input !== "object") {
@@ -495,7 +501,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       const nextRole =
         patch.workerRole !== undefined ? patch.workerRole : before.workerRole;
       const assignErr = validateAssignableWorker(
-        listWorkerAgents(deps.db, deps.tenantId),
+        deps.listMergedAgents(),
         { workerAgentId: nextAgentId, workerRole: nextRole },
       );
       if (assignErr) {
@@ -727,199 +733,15 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
   // ─── Worker agents (N+6.2 v2: plugin-owned) ───────────────────
 
   const listAgentsHandler: PluginRouteHandler = (_req, res) => {
+    const agents = deps.listMergedAgents();
+    const augmented = agents.map((a) => ({
+      ...a,
+      effectiveSkills: deps.computeEffectiveSkills(a),
+    }));
     res.json({
-      agents: listWorkerAgents(deps.db, deps.tenantId),
+      agents: augmented,
       kinds: deps.workerKinds,
     });
-  };
-
-  const createAgentHandler: PluginRouteHandler = (req, res) => {
-    const userId = userIdFromReq(req);
-    if (!userId) {
-      res.status(401).json({ error: "no_user" });
-      return;
-    }
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const kind = typeof body.kind === "string" ? body.kind.trim() : "";
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!kind) {
-      res.status(400).json({ error: "kind_required" });
-      return;
-    }
-    if (!name) {
-      res.status(400).json({ error: "name_required" });
-      return;
-    }
-    if (name.length > 80) {
-      res.status(400).json({ error: "name_too_long" });
-      return;
-    }
-    const def = deps.workerKinds.find((k) => k.id === kind);
-    if (!def) {
-      res.status(400).json({ error: "unknown_kind", kind });
-      return;
-    }
-    if (def.userCreatable === false) {
-      res.status(400).json({ error: "kind_not_user_creatable", kind });
-      return;
-    }
-
-    const allow = allowedFieldsFor(kind, deps.workerKinds);
-    // Reject fields the kind didn't opt into so an echo agent
-    // can't accidentally carry an llm-shaped systemPrompt.
-    const stray = ALL_FIELDS.find(
-      (f) => !allow.has(f) && (body as Record<string, unknown>)[f] !== undefined,
-    );
-    if (stray) {
-      res.status(400).json({
-        error: "field_not_allowed_for_kind",
-        kind,
-        field: stray,
-      });
-      return;
-    }
-    const description =
-      allow.has("description") && typeof body.description === "string"
-        ? body.description
-        : null;
-    const modelId =
-      allow.has("modelId") && typeof body.modelId === "string"
-        ? body.modelId
-        : null;
-    const systemPrompt =
-      allow.has("systemPrompt") && typeof body.systemPrompt === "string"
-        ? body.systemPrompt
-        : null;
-    const toolsAllow =
-      allow.has("toolsAllow") && Array.isArray(body.toolsAllow)
-        ? body.toolsAllow.filter((x): x is string => typeof x === "string")
-        : null;
-    const skills =
-      allow.has("skills") && Array.isArray(body.skills)
-        ? body.skills.filter((x): x is string => typeof x === "string")
-        : null;
-
-    const agent = createUserWorkerAgent(deps.db, deps.tenantId, {
-      kind,
-      name,
-      description,
-      modelId,
-      systemPrompt,
-      toolsAllow,
-      skills,
-      ownerUserId: userId,
-    });
-    deps.onAgentsWrite();
-    res.status(201).json({ agent });
-  };
-
-  const patchAgentHandler: PluginRouteHandler = (req, res) => {
-    const userId = userIdFromReq(req);
-    if (!userId) {
-      res.status(401).json({ error: "no_user" });
-      return;
-    }
-    const id = stringParam(req, "id");
-    if (!id) {
-      res.status(400).json({ error: "id_required" });
-      return;
-    }
-    const before = getWorkerAgent(deps.db, deps.tenantId, id);
-    if (!before) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
-    const body = (req.body ?? {}) as Record<string, unknown>;
-    const patch: Parameters<typeof updateWorkerAgent>[3] = {};
-    const allow = allowedFieldsFor(before.kind, deps.workerKinds);
-    const stray = ALL_FIELDS.find(
-      (f) => !allow.has(f) && body[f] !== undefined,
-    );
-    if (stray) {
-      res.status(400).json({
-        error: "field_not_allowed_for_kind",
-        kind: before.kind,
-        field: stray,
-      });
-      return;
-    }
-    if (typeof body.name === "string") patch.name = body.name;
-    if (allow.has("description") && "description" in body) {
-      patch.description =
-        typeof body.description === "string" ? body.description : null;
-    }
-    if (allow.has("modelId") && "modelId" in body) {
-      patch.modelId = typeof body.modelId === "string" ? body.modelId : null;
-    }
-    if (allow.has("systemPrompt") && "systemPrompt" in body) {
-      patch.systemPrompt =
-        typeof body.systemPrompt === "string" ? body.systemPrompt : null;
-    }
-    if (allow.has("toolsAllow") && "toolsAllow" in body) {
-      patch.toolsAllow = Array.isArray(body.toolsAllow)
-        ? body.toolsAllow.filter((x): x is string => typeof x === "string")
-        : null;
-    }
-    if (allow.has("skills") && "skills" in body) {
-      patch.skills = Array.isArray(body.skills)
-        ? body.skills.filter((x): x is string => typeof x === "string")
-        : null;
-    }
-    if (typeof body.enabled === "boolean") {
-      patch.enabled = body.enabled;
-    }
-    const after = updateWorkerAgent(deps.db, deps.tenantId, id, patch);
-    deps.onAgentsWrite();
-    res.json({ agent: after });
-  };
-
-  const deleteAgentHandler: PluginRouteHandler = (req, res) => {
-    const id = stringParam(req, "id");
-    if (!id) {
-      res.status(400).json({ error: "id_required" });
-      return;
-    }
-    const before = getWorkerAgent(deps.db, deps.tenantId, id);
-    if (!before) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
-    if (before.source === "builtin") {
-      res.status(400).json({ error: "cannot_delete_builtin" });
-      return;
-    }
-    deleteWorkerAgent(deps.db, deps.tenantId, id);
-    deps.onAgentsWrite();
-    res.status(204).end();
-  };
-
-  const resetAgentHandler: PluginRouteHandler = (req, res) => {
-    const id = stringParam(req, "id");
-    if (!id) {
-      res.status(400).json({ error: "id_required" });
-      return;
-    }
-    const before = getWorkerAgent(deps.db, deps.tenantId, id);
-    if (!before) {
-      res.status(404).json({ error: "not_found" });
-      return;
-    }
-    if (before.source !== "builtin" || !before.builtinKey) {
-      res.status(400).json({ error: "not_a_builtin_agent" });
-      return;
-    }
-    const after = resetBuiltinAgent(
-      deps.db,
-      deps.tenantId,
-      id,
-      deps.seedsByKey,
-    );
-    if (!after) {
-      res.status(400).json({ error: "seed_not_found" });
-      return;
-    }
-    deps.onAgentsWrite();
-    res.json({ agent: after });
   };
 
   return {
@@ -932,9 +754,5 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     workerStatus: workerStatusHandler,
     workerRestart: workerRestartHandler,
     listAgents: listAgentsHandler,
-    createAgent: createAgentHandler,
-    patchAgent: patchAgentHandler,
-    deleteAgent: deleteAgentHandler,
-    resetAgent: resetAgentHandler,
   };
 }

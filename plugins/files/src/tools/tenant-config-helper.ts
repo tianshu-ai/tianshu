@@ -21,12 +21,40 @@ export class TenantConfigPathError extends Error {
   }
 }
 
-/** Absolute on-disk root for the tenant config tree. */
+/** Absolute on-disk root for the tenant config tree.
+ *
+ *  `tenantHomeDir` is the **per-tenant** root and may be either:
+ *    - `<...>/tenants/<id>`              (preferred form)
+ *    - `<...>/tenants/<id>/workspace`    (also accepted because
+ *      `AgentToolContext.tenantHomeDir` is currently filled by
+ *      handler/agent-loop with `ctx.workspaceDir` for symmetry
+ *      with the file-plugin call sites)
+ *
+ *  Anything else — e.g. the global `~/.tianshu` root — is a
+ *  bug; the resulting path would write into a tenant-bleeding
+ *  shared location. We can't easily detect that here, so the
+ *  contract is on the caller (host wires this from
+ *  ctx.workspaceDir / similar). */
 export function getTenantConfigRoot(tenantHomeDir: string): string {
-  // tenantHomeDir is `<...>/tenants/<id>` per
-  // `getTenantRoot()` in @tianshu/server. Tools see it via
-  // AgentToolContext.tenantHomeDir.
-  return path.resolve(tenantHomeDir, "workspace", "_tenant", "config");
+  // Try `<root>/_tenant/config/` first — matches the
+  // tenantHomeDir = workspaceDir form. Fall back to
+  // `<root>/workspace/_tenant/config/` for callers passing the
+  // tenant root proper.
+  const direct = path.resolve(tenantHomeDir, "_tenant", "config");
+  const viaWorkspace = path.resolve(
+    tenantHomeDir,
+    "workspace",
+    "_tenant",
+    "config",
+  );
+  // We can't `existsSync()` here without making this fs-aware
+  // (and the helper is also used to *create* paths). Pick the
+  // workspace form when `tenantHomeDir` looks like a workspace
+  // dir already, else the via-workspace form. Heuristic: ends
+  // in `workspace` or `workspace/`.
+  const trimmed = tenantHomeDir.replace(/[/\\]+$/, "");
+  if (trimmed.endsWith("workspace")) return direct;
+  return viaWorkspace;
 }
 
 /**

@@ -40,7 +40,21 @@ import {
   type Task,
   type TaskStatus,
 } from "../db/tasks.js";
-import { listWorkerAgents, type WorkerAgent } from "../db/agents.js";
+import { loadWorkerAgents } from "../fs-worker-agents.js";
+import type { WorkerAgent } from "../types.js";
+
+/** PR-C2 replaces the listWorkerAgents() DB call with a fs scan.
+ *  Helper kept local so the existing call sites change as little
+ *  as possible. The tool surface still passes through `deps.db`
+ *  (some tools genuinely need it), so we don't bother routing
+ *  tenantHomeDir through ToolDeps; we just rebuild the path from
+ *  the tenant id we already have. */
+function listAgents(
+  tenantId: string,
+  tenantHomeDir: string,
+): WorkerAgent[] {
+  return loadWorkerAgents({ tenantId, tenantHomeDir }).agents;
+}
 import { readSessionHistory } from "../db/session-history.js";
 
 export interface ToolDeps {
@@ -222,10 +236,10 @@ const TaskCreateItem = Type.Object({
       description: "Higher = picked up first. Range -10..10; default 0.",
     }),
   ),
-  worker_role: Type.Optional(
+  worker_agent_id: Type.Optional(
     Type.String({
       description:
-        'Restrict to one role (e.g. "echo", "qianliyan"). Omit to let any worker pick it up.',
+        "Slug of the worker that should pick this task up (e.g. \"coder\", \"llm-default\"). Use `tenant_config_list({path:\"workers\"})` to see what's registered. Omitting this leaves the task unpinned — any enabled worker can grab it, but you lose control over which one. Pinning by slug is the recommended path; kind-based dispatch is no longer exposed.",
     }),
   ),
   depends_on: Type.Optional(
@@ -247,7 +261,7 @@ type TaskCreateItemArgs = {
   description?: string;
   project?: string;
   priority?: number;
-  worker_role?: string;
+  worker_agent_id?: string;
   depends_on?: string[];
   labels?: string[];
 };
@@ -260,7 +274,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
         "Drop one or more new tasks on the workboard. Always pass a `tasks` array — " +
         "single-task callers should send a 1-element array. Defaults are " +
         "status=ready, project=inbox; workers in the pool will pick up ready " +
-        "tasks automatically. Per-row failures (e.g. an unknown worker_role) do " +
+        "tasks automatically. Per-row failures (e.g. an unknown worker_agent_id) do " +
         "NOT abort the rest of the batch — each row reports independently in " +
         "the response's `results` array.",
       parameters: Type.Object({
@@ -281,7 +295,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
       // Cache the worker-agent list once for the whole batch —
       // creating 50 tasks against the same role shouldn't hit the
       // DB 50 times for the same lookup.
-      const agents = listWorkerAgents(deps.db, ctx.tenantId);
+      const agents = listAgents(ctx.tenantId, ctx.tenantHomeDir);
       type Row = {
         ok: boolean;
         index: number;
@@ -307,16 +321,21 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           item.depends_on,
           id,
         );
-        const role = item.worker_role ?? null;
-        if (role) {
-          const candidates = agents.filter(
-            (a) => a.enabled && a.kind === role,
-          );
-          if (candidates.length === 0) {
+        const explicitAgentId = item.worker_agent_id?.trim() || null;
+        if (explicitAgentId) {
+          const target = agents.find((a) => a.id === explicitAgentId);
+          if (!target) {
             return {
               ok: false,
               index,
-              text: `No enabled worker has kind="${role}". Either enable an existing worker of that kind under Settings → Plugins → Worker agents, or omit worker_role so any worker can pick the task up.`,
+              text: `Worker agent "${explicitAgentId}" doesn't exist in this tenant. Use \`tenant_config_list({ path: "workers" })\` to see available slugs.`,
+            };
+          }
+          if (!target.enabled) {
+            return {
+              ok: false,
+              index,
+              text: `Worker agent "${target.name}" (${explicitAgentId}) is disabled. Enable it (set agent.json enabled: true) or pick another worker.`,
             };
           }
         }
@@ -326,7 +345,11 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           description: item.description,
           projectSlug: item.project,
           priority: item.priority,
-          workerRole: role,
+          // workerRole no longer set from the tool surface —
+          // dispatch is by worker_agent_id (slug) only. The DB
+          // column stays for backwards compat with existing rows.
+          workerRole: null,
+          workerAgentId: explicitAgentId,
           dependsOn,
           labels: item.labels,
           // Stamp the asking session so the pool knows who to
@@ -364,14 +387,19 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
       name: "task_update",
       description:
         "Patch a task. Pass id + any subset of (title, description, project, " +
-        "priority, worker_role, depends_on, labels). For status changes use task_move.",
+        "priority, worker_agent_id, depends_on, labels). For status changes use task_move.",
       parameters: Type.Object({
         id: Type.String(),
         title: Type.Optional(Type.String()),
         description: Type.Optional(Type.String()),
         project: Type.Optional(Type.String()),
         priority: Type.Optional(Type.Number()),
-        worker_role: Type.Optional(Type.String()),
+        worker_agent_id: Type.Optional(
+          Type.Union([Type.String(), Type.Null()], {
+            description:
+              "Repin to a different worker by slug, or pass null to clear the pin (any enabled worker can grab it). Use `tenant_config_list({path:\"workers\"})` to see slugs.",
+          }),
+        ),
         depends_on: Type.Optional(
           Type.Array(Type.String(), {
             description:
@@ -393,7 +421,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         description?: string;
         project?: string;
         priority?: number;
-        worker_role?: string | null;
+        worker_agent_id?: string | null;
         depends_on?: string[];
         labels?: string[];
       };
@@ -405,18 +433,30 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         // share mechanism + relax this check.
         return { ok: false, text: `task ${args.id} is not yours` };
       }
-      // If the patch changes the role, validate the new role is
-      // serviceable (same rule as on create). args.worker_role of
-      // `undefined` means "don't touch"; an explicit `null` clears
-      // the role pin (always safe).
-      if (args.worker_role !== undefined && args.worker_role !== null) {
-        const candidates = listWorkerAgents(deps.db, ctx.tenantId).filter(
-          (a) => a.enabled && a.kind === args.worker_role,
-        );
-        if (candidates.length === 0) {
+      // If the patch changes the pin, validate the slug exists
+      // and is enabled (same rule as on create). `undefined` =
+      // don't touch; explicit `null` = clear the pin.
+      if (args.worker_agent_id !== undefined && args.worker_agent_id !== null) {
+        const slug = args.worker_agent_id.trim();
+        if (!slug) {
           return {
             ok: false,
-            text: `No enabled worker has kind="${args.worker_role}". Enable a matching worker under Settings → Plugins → Worker agents, or pass worker_role=null to clear the pin.`,
+            text: "worker_agent_id is empty; pass null to clear the pin or a slug to pin.",
+          };
+        }
+        const target = listAgents(ctx.tenantId, ctx.tenantHomeDir).find(
+          (a) => a.id === slug,
+        );
+        if (!target) {
+          return {
+            ok: false,
+            text: `Worker agent "${slug}" doesn't exist. Use \`tenant_config_list({path:"workers"})\` for available slugs.`,
+          };
+        }
+        if (!target.enabled) {
+          return {
+            ok: false,
+            text: `Worker agent "${target.name}" (${slug}) is disabled. Enable it or pick another.`,
           };
         }
       }
@@ -425,7 +465,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         description: args.description,
         projectSlug: args.project,
         priority: args.priority,
-        workerRole: args.worker_role,
+        workerAgentId: args.worker_agent_id,
       };
       if (args.depends_on !== undefined) {
         patch.dependsOn = sanitiseDepsForOwner(

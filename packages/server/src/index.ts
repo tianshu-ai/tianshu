@@ -123,6 +123,7 @@ pluginRegistry = new PluginRegistry({
             name: s.name,
             description: s.description,
             pluginId: s.source.pluginId,
+            scope: s.scope,
           }))
           .sort((a, b) => a.name.localeCompare(b.name));
       },
@@ -385,6 +386,10 @@ app.get("/api/skills", (req, res) => {
       name: s.name,
       description: s.description,
       pluginId: s.source.pluginId,
+      // Surface the frontmatter `scope:` field so the
+      // worker-agents-page can hide "scope: main" skills from a
+      // worker's effective list. Undefined = visible to both.
+      scope: s.scope,
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
   res.json({ skills: out });
@@ -494,7 +499,14 @@ wss.on("connection", async (socket) => {
     userId,
     socket,
     pluginRegistry,
-    homeDir: globalOps.homeDir,
+    // tenantHomeDir is the **per-tenant** root, not the global
+    // tianshu home. Mirror the worker-loop call site (host.agentLoop
+    // above) which passes ctx.workspaceDir. Passing
+    // globalOps.homeDir made tenant_config_* tools land writes
+    // under `~/.tianshu/workspace/_tenant/...` instead of
+    // `~/.tianshu/tenants/<id>/workspace/_tenant/...` — a
+    // tenant-isolation hole. ADR-0001 §2.
+    homeDir: ctx.workspaceDir,
   });
 });
 

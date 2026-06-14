@@ -23,6 +23,7 @@
 // `deactivate()` stops the pool. The `ctx.db` handle is owned by the
 // host so we never close it.
 
+import path from "node:path";
 import type {
   AgentLoopRunner,
   PluginContext,
@@ -51,15 +52,10 @@ import {
   type ToolDeps,
 } from "./tools/index.js";
 import { buildRoutes, type WorkerKindDef } from "./routes/handlers.js";
-import {
-  ensureSchema,
-  listWorkerAgents,
-  seedBuiltinAgents,
-  type SeedAgentSpec,
-  type WorkerAgent,
-} from "./db/agents.js";
-import { loadMergedWorkerAgents } from "./fs-worker-agents.js";
-import { migrateWorkerAgentsToFs } from "./migrate-worker-agents.js";
+import { ensureSchema } from "./db/schema.js";
+import { loadWorkerAgents } from "./fs-worker-agents.js";
+import { computeEffectiveSkillsFor } from "./effective-skills.js";
+import type { WorkerAgent } from "./types.js";
 
 interface ActiveState {
   pool: WorkerPool;
@@ -98,75 +94,6 @@ const WORKER_KINDS: WorkerKindDef[] = [
     fields: ["description", "modelId", "systemPrompt", "toolsAllow", "skills"],
   },
 ];
-
-/** Builtin agents seeded on every activate. The seed loop respects
- *  user edits (rows with `overrides_at IS NOT NULL` are left
- *  alone). */
-/**
- * SOUL-style worker prompt. Mirrors the OpenClaw convention
- * (SOUL.md / SKILL.md persona files): an opening identity line,
- * core responsibilities, and a hard contract on the exit signal.
- *
- * Workers are stateless from the user's perspective — the orchestrator
- * agent fans tasks out, each worker takes one task at a time, runs to
- * completion, and reports back via task_complete. The prompt below is
- * what we want EVERY default LLM worker to know without the user
- * having to fill anything in. Per-agent overrides on top of this stay
- * possible (the seed only writes when the row hasn't been edited).
- *
- * Keep this prompt short. Workers don't need to know about the chat
- * shell or other agents — they just need to do one task and finish.
- */
-const LLM_WORKER_SOUL = `You are a workboard worker agent.
-
-You were started because the orchestrator dropped a task on the
-kanban for you. Each invocation handles ONE task end-to-end and
-then exits.
-
-## Your job
-
-- Read the task title and description carefully. The user (the
-  asking agent) wrote them; treat them as the spec.
-- Use whatever tools you need to do the work. The host's standard
-  tool set is available unless the orchestrator restricted you.
-- Write deliverables under the user's workspace (./projects/<slug>/
-  for finished output, ./tmp/ for scratch).
-
-## Exit contract (important)
-
-When you're done — or if the task is impossible and you've
-decided to give up — call the \`task_complete\` tool with a
-one-line \`summary\` of what you produced (or, on failure, why
-you couldn't). Optionally include \`files\` for paths you wrote.
-
-The orchestrator only sees the summary you pass to task_complete
-— prose alone won't reach it. If you finish without calling this
-tool, the pool counts the run as stalled and will retry.
-
-Do NOT ask the user clarifying questions: there's no human in
-your loop. If the spec is ambiguous, make a reasonable choice,
-proceed, and explain the choice in the task_complete summary.
-
-Reply concisely. Don't narrate every tool call — just do the
-work.`;
-
-const BUILTIN_AGENT_SEEDS: SeedAgentSpec[] = [
-  {
-    builtinKey: "echo-demo",
-    kind: "echo",
-    name: "Echo demo",
-    description: "Sleeps, then echoes the task title. Ships with the workboard plugin.",
-  },
-  {
-    builtinKey: "llm-default",
-    kind: "llm",
-    name: "Default LLM",
-    description:
-      "Default LLM worker. Picks up tasks tagged with worker_role=llm (or unrouted) and runs them to task_complete.",
-    systemPrompt: LLM_WORKER_SOUL,
-  },
-];
-
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     // Per-tenant config:
@@ -213,117 +140,9 @@ const plugin: PluginServerModule = {
       );
     }
 
-    // Schema first, then seed. Both are idempotent.
+    // Drop the legacy worker_agents table if it's still around;
+    // ensure tasks.worker_agent_id (now used as a slug column) exists.
     ensureSchema(ctx.db);
-
-    // Resolve the host's current tool / skill catalogs so the
-    // Default LLM seed lists every allowed tool/skill explicitly.
-    // Capabilities are optional — if the host doesn't expose them
-    // (older host, capability disabled), we fall back to null,
-    // which the worker treats as "no restriction". Either way the
-    // runtime behaviour is the same; the listed form is just
-    // friendlier in the settings UI.
-    const toolCatalogCap = ctx.capabilities.get<ToolCatalogCapability>(
-      "host.toolCatalog",
-    );
-    const skillCatalogCap = ctx.capabilities.get<SkillCatalogCapability>(
-      "host.skillCatalog",
-    );
-    // Workboard's own tools aren't in the host's tool catalog at
-    // *our* activation time — the registry is still mid-activate
-    // for this plugin. Seed them from the manifest so the
-    // Default LLM agent gets them on the first activation pass.
-    //
-    // The orchestration tools (task_list / task_create / etc.)
-    // are deliberately excluded: those belong to the orchestrator
-    // agent (the chat session that calls task_create to delegate),
-    // not to the worker that's executing one task. The worker's
-    // only board-facing tool is task_complete — its exit signal.
-    // Granting the orchestration set to a worker would just be
-    // visually misleading; runtime would still reject the call
-    // via WORKER_DENY_TOOLS in pool.ts. Mirroring the deny set in
-    // the seed keeps the UI honest about what the worker can do.
-    // Deny set lives in ./worker/tool-policy.ts (shared with the
-    // pool runtime + admin UI).
-    const ownTools = ["task_complete"];
-    const ownSkills = ["workboard-howto"];
-
-    const catalogTools = toolCatalogCap
-      ? toolCatalogCap.list().map((e) => e.name)
-      : [];
-    const catalogSkills = skillCatalogCap
-      ? skillCatalogCap.list().map((e) => e.name)
-      : [];
-
-    // Union, dedup, alphabetic. Filter out any orchestration tools
-    // the catalog might have (workboard's own tools won't be there
-    // mid-activate, but if a future re-seed pass picks them up,
-    // we still want them gone for the worker's allow-list).
-    const allToolNames =
-      catalogTools.length === 0 && !toolCatalogCap
-        ? null
-        : [...new Set([...catalogTools, ...ownTools])]
-            .filter((n) => !WORKER_DENY_TOOLS_SET.has(n))
-            .sort((a, b) => a.localeCompare(b));
-    const allSkillNames =
-      catalogSkills.length === 0 && !skillCatalogCap
-        ? null
-        : [...new Set([...catalogSkills, ...ownSkills])].sort((a, b) =>
-            a.localeCompare(b),
-          );
-
-    // Inject the resolved catalogs into the seed for the LLM
-    // worker. The seed for the echo worker doesn't carry these
-    // fields. We do this on every activate (not just first install)
-    // so a plugin enable that adds new tools propagates into the
-    // builtin agent's allow-list, as long as the user hasn't
-    // edited it themselves (seedBuiltinAgents skips rows whose
-    // overrides_at is set).
-    const seedsForThisActivation = BUILTIN_AGENT_SEEDS.map((s) =>
-      s.builtinKey === "llm-default"
-        ? {
-            ...s,
-            toolsAllow: allToolNames ?? s.toolsAllow,
-            skills: allSkillNames ?? s.skills,
-          }
-        : s,
-    );
-
-    const seedResult = seedBuiltinAgents(
-      ctx.db,
-      ctx.tenantId,
-      seedsForThisActivation,
-    );
-    if (seedResult.inserted > 0 || seedResult.updated > 0) {
-      ctx.log.info("seeded worker agents", {
-        ...seedResult,
-        toolCount: allToolNames?.length ?? null,
-        skillCount: allSkillNames?.length ?? null,
-      });
-    }
-
-    // One-shot DB → fs migration. Idempotent; for every DB row
-    // whose slug isn't already a workers/<slug>/ directory, dump
-    // the row's config into a fresh agent.json + SOUL.md. Existing
-    // fs slots win, so this won't clobber a user edit.
-    try {
-      const dbRowsForMigration = listWorkerAgents(ctx.db, ctx.tenantId);
-      const m = migrateWorkerAgentsToFs({
-        tenantHomeDir: ctx.workspaceDir,
-        dbAgents: dbRowsForMigration,
-        onWarn: (msg) => ctx.log.warn(msg),
-      });
-      if (m.migrated.length > 0) {
-        ctx.log.info("migrate-workers: dumped DB rows to fs", {
-          migrated: m.migrated,
-          preserved: m.preserved,
-        });
-      }
-    } catch (err) {
-      ctx.log.warn("migrate-workers: migration failed", {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    }
 
     // Owner discovery: agent rows don't pin to a user, but every
     // task does. The factory builds a handle without a task in
@@ -333,29 +152,22 @@ const plugin: PluginServerModule = {
     // the tenant. The handle uses task.ownerUserId at run-time;
     // this default is only used when the task somehow lacks one.
     const fallbackUser = firstUserId(ctx.db);
-    // Worker-agent inventory is read from two sources during the
-    // DB → fs migration:
-    //   1. fs:  `<tenant>/_tenant/config/workers/<slug>/agent.json`
-    //          (the new source of truth, seeded via the manifest's
-    //          `agentSeeds[]` contribution)
-    //   2. db:  the legacy `worker_agents` table (kept as a
-    //          fallback so user-created rows from before the
-    //          migration keep running)
-    // fs wins on identity collisions; same-slug DB rows are hidden.
+    // Worker-agent inventory is read from disk — each subdirectory
+    // under `<tenant>/_tenant/config/workers/<slug>/` is one
+    // worker. Filesystem is the only source post-PR-C2; the
+    // legacy `workboard_worker_agents` table is gone.
     function refreshAgentInventory(): WorkerAgent[] {
-      const dbAgents = listWorkerAgents(ctx.db, ctx.tenantId);
-      const merged = loadMergedWorkerAgents({
+      const r = loadWorkerAgents({
         tenantId: ctx.tenantId,
         tenantHomeDir: ctx.workspaceDir,
-        dbAgents,
       });
-      for (const e of merged.fsErrors) {
+      for (const e of r.fsErrors) {
         ctx.log.warn("workboard: fs worker agent has errors", {
           slug: e.slug,
           reasons: e.reasons,
         });
       }
-      return merged.agents;
+      return r.agents;
     }
     const agentRowsById = new Map<string, WorkerAgent>();
     for (const a of refreshAgentInventory()) {
@@ -435,20 +247,15 @@ const plugin: PluginServerModule = {
       onTaskWrite: () => pool.nudge(),
     };
 
-    const seedsByKey = new Map<string, SeedAgentSpec>(
-      BUILTIN_AGENT_SEEDS.map((s) => [s.builtinKey, s]),
-    );
-
-    // The orchestrator-side worker_agent_* tools (PR #96) are
-    // gone now — tenant_config_write covers the same ground in
-    // a uniform filesystem-first way. We still need
-    // `onAgentsWrite` for the REST surface (the worker-agent
-    // admin page calls it after PATCH/POST/DELETE), so keep that
-    // function but drop the AgentToolDeps wiring.
+    // Pool refresh hook. Used to be wired to the (now retired)
+    // worker_agent_* REST surface so a save/delete from the admin
+    // page would rebuild the pool immediately. Filesystem edits
+    // (the new path) don't go through here — pool currently picks
+    // them up on the next activate / process restart. A follow-up
+    // PR adds a chokidar watcher to call this on `_tenant/config/
+    // workers/**` changes.
     const onAgentsWrite = () => {
       const fresh = refreshAgentInventory();
-      // Refresh the cached agent rows so the factory rebuilds
-      // LLMWorkers with the user's latest settings.
       agentRowsById.clear();
       for (const a of fresh) agentRowsById.set(a.id, a);
       const next = fresh
@@ -458,6 +265,22 @@ const plugin: PluginServerModule = {
         );
       pool.rebuild(next);
     };
+    void onAgentsWrite;
+
+    // host.skillCatalog drives the "effective skills" expansion
+    // shipped to the admin UI — plugins ship skills via this
+    // capability and the host self-shipped ones live there too.
+    // Optional: if the host doesn't expose it (older host /
+    // disabled cap), the helper just falls back to the tenant
+    // layers.
+    const skillCatalog =
+      ctx.capabilities.get<SkillCatalogCapability>("host.skillCatalog") ??
+      null;
+    const tenantConfigDir = path.join(
+      ctx.workspaceDir,
+      "_tenant",
+      "config",
+    );
 
     const routes = buildRoutes({
       db: ctx.db,
@@ -465,9 +288,19 @@ const plugin: PluginServerModule = {
       log: ctx.log,
       pool,
       onTaskWrite: () => pool.nudge(),
-      onAgentsWrite,
       workerKinds: WORKER_KINDS,
-      seedsByKey,
+      // GET /agents reads through the same fs-first merge the
+      // pool uses, so the admin UI sees identical inventory.
+      listMergedAgents: () => refreshAgentInventory(),
+      // Per-agent effective skill list (resolves toolsAllow=null
+      // / skillsAllow=null to a concrete list rooted in the host
+      // catalog + the tenant fs layers).
+      computeEffectiveSkills: (agent) =>
+        computeEffectiveSkillsFor({
+          agent,
+          hostSkillCatalog: skillCatalog,
+          tenantConfigDir,
+        }),
     });
 
     return {
