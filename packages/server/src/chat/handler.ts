@@ -308,6 +308,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     hasCapability: (n) => hostCaps.has(n as never),
     agentScope: "main",
   });
+  // Plugin-contributed prompt fragments: short imperative
+  // sentences declared in `manifest.contributes.systemPromptFragments`,
+  // injected on every turn for every active plugin in the tenant.
+  // Workers don't get these (the agent-loop's worker path uses a
+  // separate prompt path).
+  const pluginFragments =
+    pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {
@@ -379,7 +386,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     env: makeStubExecutionEnv(ctx.userHomeDir(userId)),
     session: piSession,
     tools: adapted.tools,
-    systemPrompt: defaultSystemPrompt(ctx, userId, skills),
+    systemPrompt: defaultSystemPrompt(ctx, userId, skills, pluginFragments),
     model: piModel,
     getApiKeyAndHeaders: async () => ({ apiKey }),
   });
@@ -1017,10 +1024,24 @@ async function runManualCompact(args: {
  * Worker / task vocabulary is intentionally absent: workers don't ship
  * until PR #23+, and dangling references just let the model fabricate.
  */
+/** Plugin-contributed system-prompt fragment (see
+ *  `manifest.contributes.systemPromptFragments`). The handler
+ *  pulls these from the plugin registry on every turn and injects
+ *  them between the workspace section and the available-skills
+ *  block, grouped by plugin so the agent can attribute the
+ *  guidance. */
+export interface PluginPromptFragment {
+  pluginId: string;
+  pluginDisplayName: string;
+  fragmentId: string;
+  text: string;
+}
+
 export function defaultSystemPrompt(
   ctx: TenantContext,
   userId: string,
   skills: readonly LoadedSkill[] = [],
+  pluginFragments: readonly PluginPromptFragment[] = [],
 ): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
   const lines: string[] = [
@@ -1058,9 +1079,47 @@ export function defaultSystemPrompt(
     `Reply concisely. When you make changes, briefly say what you changed.`,
   );
 
+  const fragmentBlock = formatPluginPromptFragments(pluginFragments);
+  if (fragmentBlock) lines.push("", fragmentBlock);
+
   const skillBlock = formatAvailableSkillsBlock(skills);
   if (skillBlock) lines.push("", skillBlock);
 
+  return lines.join("\n");
+}
+
+/** Render plugin-contributed system-prompt fragments. Grouped by
+ *  plugin so the agent sees one section per plugin (workboard
+ *  rules in one block, microsandbox rules in another, etc), and
+ *  so debugging prompts is straightforward ("this guidance came
+ *  from plugin X"). Returns an empty string when no fragments
+ *  are contributed. */
+export function formatPluginPromptFragments(
+  fragments: readonly PluginPromptFragment[],
+): string {
+  if (fragments.length === 0) return "";
+  const byPlugin = new Map<
+    string,
+    { displayName: string; texts: string[] }
+  >();
+  for (const f of fragments) {
+    const slot = byPlugin.get(f.pluginId);
+    if (slot) {
+      slot.texts.push(f.text);
+    } else {
+      byPlugin.set(f.pluginId, {
+        displayName: f.pluginDisplayName,
+        texts: [f.text],
+      });
+    }
+  }
+  const lines: string[] = ["## Plugin guidance"];
+  for (const [pid, slot] of byPlugin) {
+    lines.push(``, `### ${slot.displayName} (${pid})`);
+    for (const t of slot.texts) {
+      lines.push(t.trim());
+    }
+  }
   return lines.join("\n");
 }
 

@@ -199,6 +199,23 @@ export interface ContributesV1 {
    */
   agentSeeds?: AgentSeedContribution[];
   /**
+   * Static system-prompt fragments injected into the main chat
+   * agent's prompt when this plugin is active for the current
+   * tenant. Use sparingly — each fragment costs context budget
+   * on every turn for every user. The right shape is a short
+   * imperative sentence or two that changes the agent's default
+   * disposition; long instructions belong in skills (which are
+   * read on demand) instead.
+   *
+   * Worker-side prompts are not affected. Only the main chat
+   * agent loads these.
+   *
+   * Example: workboard ships a fragment that nudges the main
+   * agent toward delegating non-trivial requests to the worker
+   * pool rather than doing the work in-line.
+   */
+  systemPromptFragments?: SystemPromptFragmentContribution[];
+  /**
    * Buttons in the chat composer (left of Send). The contributed
    * component renders inside the input row and gets a `composer`
    * prop with `useComposer()`-equivalent capabilities (manage
@@ -259,6 +276,19 @@ export interface SkillContribution {
    * read after `load_skill(name)`.
    */
   path: string;
+}
+
+export interface SystemPromptFragmentContribution {
+  /** Local id; surfaced as `<plugin-id>.<id>` for log lines. */
+  id: string;
+  /**
+   * The literal markdown / plain text injected into the system
+   * prompt. Wrapped automatically in a section header derived
+   * from the plugin's displayName so the agent can tell where
+   * the rule came from. Keep it tight — one or two sentences
+   * unless you really need more.
+   */
+  text: string;
 }
 
 export interface AgentSeedContribution {

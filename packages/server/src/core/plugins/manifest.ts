@@ -20,6 +20,7 @@ import type {
   RightPanelContribution,
   SandboxContribution,
   SkillContribution,
+  SystemPromptFragmentContribution,
   ToolContribution,
   SidebarSectionContribution,
   TopBarButtonContribution,
@@ -300,6 +301,14 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
       parseAgentSeed,
     );
   }
+  if ("systemPromptFragments" in raw) {
+    out.systemPromptFragments = parseArray(
+      raw.systemPromptFragments,
+      "systemPromptFragments",
+      acc,
+      parseSystemPromptFragment,
+    );
+  }
   if ("composerActions" in raw) {
     out.composerActions = parseArray(
       raw.composerActions,
@@ -425,6 +434,21 @@ function parseAgentSeed(
   const seedPath = expectString(raw, "path", acc, ctx);
   if (id == null || seedPath == null) return null;
   return { id, path: seedPath };
+}
+
+function parseSystemPromptFragment(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): SystemPromptFragmentContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const text = expectString(raw, "text", acc, ctx);
+  if (id == null || text == null) return null;
+  return { id, text };
 }
 
 function parseSandbox(raw: unknown, ctx: string, acc: Acc): SandboxContribution | null {
