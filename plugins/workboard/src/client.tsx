@@ -31,6 +31,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  FileText,
   Hammer,
   Kanban,
   Link2,
@@ -223,6 +224,10 @@ interface BoardController {
   tasks: Task[] | null;
   projects: ProjectSummary[];
   worker: WorkerSnapshot | null;
+  /** Slug → worker display name, for the assignee chip on each
+   *  card. Refreshed alongside tasks (every 3s); cheap because
+   *  the agent set typically has ≤5 entries. */
+  agentNames: Map<string, string>;
   error: string | null;
   busyId: string | null;
   reload(): Promise<void>;
@@ -244,6 +249,9 @@ function useBoardController(opts: {
   const [tasks, setTasks] = useState<Task[] | null>(null);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [worker, setWorker] = useState<WorkerSnapshot | null>(null);
+  const [agentNames, setAgentNames] = useState<Map<string, string>>(
+    () => new Map(),
+  );
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const dragTaskId = useRef<string | null>(null);
@@ -259,6 +267,9 @@ function useBoardController(opts: {
       const requests: Promise<unknown>[] = [
         getJson<{ tasks: Task[] }>(url),
         getJson<{ projects: ProjectSummary[] }>(`${API_BASE}/projects`),
+        getJson<{
+          agents: Array<{ id: string; name: string }>;
+        }>(`${API_BASE}/agents`),
       ];
       if (opts.withWorker) {
         requests.push(getJson<WorkerSnapshot>(`${API_BASE}/workers/status`));
@@ -266,8 +277,14 @@ function useBoardController(opts: {
       const results = await Promise.all(requests);
       setTasks((results[0] as { tasks: Task[] }).tasks);
       setProjects((results[1] as { projects: ProjectSummary[] }).projects);
+      const agentList = (results[2] as {
+        agents: Array<{ id: string; name: string }>;
+      }).agents;
+      setAgentNames(
+        new Map(agentList.map((a) => [a.id, a.name])),
+      );
       if (opts.withWorker) {
-        setWorker(results[2] as WorkerSnapshot);
+        setWorker(results[3] as WorkerSnapshot);
       }
       setError(null);
     } catch (err) {
@@ -401,6 +418,7 @@ function useBoardController(opts: {
     tasks,
     projects,
     worker,
+    agentNames,
     error,
     busyId,
     reload,
@@ -492,6 +510,7 @@ function WorkboardPanel(_props: PanelProps) {
                 }
                 projects={ctrl.projects}
                 workerRoles={KNOWN_WORKER_ROLES}
+                agentNames={ctrl.agentNames}
                 allTasks={ctrl.tasks ?? []}
                 onPatchTask={ctrl.patchTask}
                 onDragStart={drag.onDragStart}
@@ -614,6 +633,7 @@ function WorkboardAdminPage(_props: AdminPageProps) {
                 }
                 projects={ctrl.projects}
                 workerRoles={KNOWN_WORKER_ROLES}
+                agentNames={ctrl.agentNames}
                 allTasks={ctrl.tasks ?? []}
                 onPatchTask={ctrl.patchTask}
                 onDragStart={drag.onDragStart}
@@ -651,6 +671,7 @@ function KanbanColumn({
   onPatchTask,
   projects,
   workerRoles,
+  agentNames,
   onDragStart,
   onDragEnd,
   onDrop,
@@ -668,6 +689,8 @@ function KanbanColumn({
   onPatchTask: (id: string, patch: Record<string, unknown>) => Promise<void>;
   projects: ProjectSummary[];
   workerRoles: string[];
+  /** Slug → worker display name for the assignee chip. */
+  agentNames: Map<string, string>;
   onDragStart: (e: DragEvent, taskId: string) => void;
   onDragEnd: () => void;
   onDrop: (e: DragEvent, targetStatus: TaskStatus) => void;
@@ -723,6 +746,7 @@ function KanbanColumn({
             meta={computeMeta(t, allTasks)}
             busy={busyId === t.id}
             compact={compact}
+            agentNames={agentNames}
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             onPatch={onPatchTask}
@@ -787,6 +811,7 @@ function BoardCard({
   meta,
   busy,
   compact,
+  agentNames,
   onDragStart,
   onDragEnd,
   onPatch,
@@ -795,6 +820,9 @@ function BoardCard({
   meta: TaskMeta;
   busy: boolean;
   compact?: boolean;
+  /** Slug → worker display name. The card pulls the assignee
+   *  label from this map; missing entries fall back to the slug. */
+  agentNames: Map<string, string>;
   onDragStart: (e: DragEvent, taskId: string) => void;
   onDragEnd: () => void;
   onPatch: (id: string, patch: Record<string, unknown>) => Promise<void>;
@@ -848,8 +876,22 @@ function BoardCard({
                 p{task.priority}
               </span>
             )}
-            {task.workerRole && (
-              <span className="text-[9px] px-1 rounded bg-indigo-900/50 text-indigo-100">
+            {task.workerAgentId && (
+              <span
+                className="text-[9px] px-1 rounded bg-indigo-900/50 text-indigo-100"
+                title={`Assigned to ${task.workerAgentId} (slug)`}
+              >
+                @{agentNames.get(task.workerAgentId) ?? task.workerAgentId}
+              </span>
+            )}
+            {!task.workerAgentId && task.workerRole && (
+              // Legacy rows: pre-PR-C tasks still carry workerRole
+              // (kind id) without a workerAgentId. Show it so old
+              // records aren't blank.
+              <span
+                className="text-[9px] px-1 rounded bg-gray-800 text-gray-400"
+                title="Legacy: dispatched by kind, not pinned to a slug"
+              >
                 {task.workerRole}
               </span>
             )}
@@ -985,6 +1027,17 @@ function BoardCard({
               <div className="text-[10.5px] text-emerald-300/90 italic whitespace-pre-line break-words max-h-48 overflow-y-auto">
                 → {task.resultSummary}
               </div>
+            </Section>
+          )}
+          {task.resultFiles.length > 0 && (
+            <Section label={`Files (${task.resultFiles.length})`}>
+              <ul className="space-y-0.5">
+                {task.resultFiles.map((p) => (
+                  <li key={p}>
+                    <DeliveryFile path={p} />
+                  </li>
+                ))}
+              </ul>
             </Section>
           )}
           {meta.deps.length > 0 && (
@@ -1454,6 +1507,35 @@ function Section({
       </div>
       {children}
     </div>
+  );
+}
+
+/** One row of the task's `resultFiles[]`. Renders the path as a
+ *  monospace chip; clicking opens the raw file in a new tab via
+ *  the files plugin's GET /raw endpoint. The path is whatever the
+ *  worker passed to task_complete — typically a workspace-rooted
+ *  path like `/projects/<slug>/foo.py` or a `workspace:///...`
+ *  URI. We strip the URI prefix before handing it to the API.
+ *  Files outside the user's workspace will 404 from the raw
+ *  endpoint; we don't pre-validate here. */
+function DeliveryFile({ path }: { path: string }): React.ReactElement {
+  const stripped = path.replace(/^workspace:\/\/+/, "/");
+  const url = `/api/p/files/raw?path=${encodeURIComponent(stripped)}`;
+  // Display the basename in the chip and the full path in the
+  // tooltip so the row stays compact on small cards.
+  const display = stripped.split("/").filter(Boolean).pop() || stripped;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center gap-1 max-w-full text-[10.5px] font-mono text-emerald-300 hover:text-emerald-200 hover:underline truncate"
+      title={stripped}
+    >
+      <FileText className="w-3 h-3 shrink-0 opacity-70" />
+      <span className="truncate">{display}</span>
+    </a>
   );
 }
 
