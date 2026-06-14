@@ -317,6 +317,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
   const toolset = await buildToolset({
     pluginTools,
+    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
@@ -1184,10 +1185,10 @@ export function formatAvailableSkillsBlock(
   if (skills.length === 0) return "";
   const lines: string[] = [
     `## Skills`,
-    `Scan <available_skills>. If one clearly applies, read its SKILL.md at exact <location> with \`tenant_config_read\` (tenant skills) or \`read_file\` (host/plugin skills), then follow it.`,
+    `Scan <available_skills>. If one clearly applies, load it with \`read_skill({ name: "<the name from <name> tag>" })\`, then follow it.`,
     `If several apply, choose the most specific. If none clearly apply, read none.`,
     `One skill up front max. Never guess/fabricate skill paths.`,
-    `Skill bundles may ship sibling files (\`scripts/\`, \`references/\`, \`assets/\`) next to SKILL.md — read them with the same tool when SKILL.md tells you to.`,
+    `Skill bundles may ship sibling files (\`scripts/\`, \`references/\`, \`assets/\`) next to SKILL.md — those still go through the regular file tools (\`read_file\` for workspace paths, \`tenant_config_read\` for tenant-config paths) using the relative paths SKILL.md mentions.`,
     ``,
     `<available_skills>`,
   ];

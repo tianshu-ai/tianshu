@@ -291,6 +291,7 @@ export async function runAgentLoop(
   });
   const toolset = await buildToolset({
     pluginTools,
+    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
