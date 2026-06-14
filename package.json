@@ -1,6 +1,6 @@
 {
   "name": "tianshu",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "An open AI agent platform with a sidecar browser. Built in public.",
   "license": "Apache-2.0",
