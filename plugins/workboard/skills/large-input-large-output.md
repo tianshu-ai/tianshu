@@ -85,19 +85,33 @@ Sequence:
    ```
    The skeleton is small (50-150 lines). It pins down structure
    so subsequent edits are local.
-2. For each section, do **one** `edit_file` that replaces
-   exactly that section's `<!-- TODO -->` marker with the
-   real content.
-3. Each `edit_file` call's `new_text` should be focused — if a
-   section runs past ~400 lines, split the marker further first
-   (skeleton-of-skeleton), don't try to dump the whole section
-   in one edit.
+2. Fill the placeholders. `edit_file` accepts a batch of edits
+   in one call — prefer that over one tool call per section
+   when the new_texts are short enough that the combined call
+   isn't itself a giant token blob:
+   ```
+   edit_file({
+     path: "<final-output-path>",
+     edits: [
+       { old_text: "<!-- TODO: section A -->", new_text: "<...>" },
+       { old_text: "<!-- TODO: section B -->", new_text: "<...>" },
+       ...
+     ]
+   })
+   ```
+   The batch is atomic: either every edit applies or the file is
+   left untouched and the result tells you which edit tripped.
+3. If a section's content is itself big (~400+ lines of HTML /
+   prose), split it across two skeletons-within-the-skeleton
+   first, then fill each in its own batch. Don't try to dump
+   one massive section in one edit.
 
 This pattern has three side benefits:
 
 - The output file exists from step 1, so a partial run still
   leaves something on disk.
-- If a section's edit fails, you can retry just that section.
+- Atomic batches mean a typo in edit #5 doesn't leave edits 1-4
+  half-applied; you fix the typo and resubmit.
 - The agent can `read_file` what it just wrote when composing
   later sections, keeping coherence without re-loading sources.
 
@@ -137,6 +151,9 @@ workspace) both support `offset` + `limit`. Use them.
   if the model can produce it without truncating, the next
   agent / human reading the work has nothing to follow until
   the whole thing lands. Skeleton + edits is friendlier.
+- **One `edit_file` call per section** when you have many
+  small sections. The `edits` array supports a batch — use it
+  to cut tool-call round-trips.
 
 ## When you're stuck mid-task
 

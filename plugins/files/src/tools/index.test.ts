@@ -52,7 +52,7 @@ describe("files plugin tools", () => {
     expect(r.text).toContain("hello world");
   });
 
-  it("edit_file replaces a unique substring via the wrapper", async () => {
+  it("edit_file replaces a unique substring via the wrapper (single-edit shorthand)", async () => {
     fs.writeFileSync(path.join(userHome, "a.txt"), "alpha beta gamma");
     const out = (await EditFileTool.execute(
       { path: "/a.txt", old_text: "beta", new_text: "BETA" },
@@ -61,6 +61,50 @@ describe("files plugin tools", () => {
     expect(out.ok).toBe(true);
     expect(fs.readFileSync(path.join(userHome, "a.txt"), "utf8")).toBe(
       "alpha BETA gamma",
+    );
+  });
+
+  it("edit_file applies a batch atomically", async () => {
+    fs.writeFileSync(
+      path.join(userHome, "b.txt"),
+      "<!-- TODO: section A -->\n<!-- TODO: section B -->",
+    );
+    const out = (await EditFileTool.execute(
+      {
+        path: "/b.txt",
+        edits: [
+          { old_text: "<!-- TODO: section A -->", new_text: "<h2>A</h2>\n<p>...</p>" },
+          { old_text: "<!-- TODO: section B -->", new_text: "<h2>B</h2>\n<p>...</p>" },
+        ],
+      },
+      makeCtx(),
+    )) as { ok: boolean; edits?: unknown[] };
+    expect(out.ok).toBe(true);
+    expect(out.edits).toHaveLength(2);
+    const after = fs.readFileSync(path.join(userHome, "b.txt"), "utf8");
+    expect(after).toContain("<h2>A</h2>");
+    expect(after).toContain("<h2>B</h2>");
+    expect(after).not.toContain("<!-- TODO");
+  });
+
+  it("edit_file rolls back the whole batch if any edit fails", async () => {
+    fs.writeFileSync(path.join(userHome, "c.txt"), "alpha beta gamma");
+    const out = (await EditFileTool.execute(
+      {
+        path: "/c.txt",
+        edits: [
+          { old_text: "alpha", new_text: "AAA" },
+          // missing target — batch must abort with the file
+          // untouched, not partially-applied.
+          { old_text: "delta", new_text: "DDD" },
+        ],
+      },
+      makeCtx(),
+    )) as { ok: boolean; failedEditIndex?: number };
+    expect(out.ok).toBe(false);
+    expect(out.failedEditIndex).toBe(2);
+    expect(fs.readFileSync(path.join(userHome, "c.txt"), "utf8")).toBe(
+      "alpha beta gamma",
     );
   });
 

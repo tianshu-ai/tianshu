@@ -78,7 +78,12 @@ export const EditFileTool: AgentTool = {
   execute: (args, ctx: AgentToolContext) =>
     executeEditFile(
       ctx.userHomeDir,
-      args as { path: string; old_text: string; new_text: string },
+      args as {
+        path: string;
+        edits?: Array<{ old_text: string; new_text: string }>;
+        old_text?: string;
+        new_text?: string;
+      },
     ),
 };
 
@@ -126,7 +131,12 @@ export const TenantConfigEditTool: AgentTool = {
     executeTenantConfigEdit(
       ctx.tenantHomeDir,
       scopeFromCtx(ctx),
-      args as { path: string; old_text: string; new_text: string },
+      args as {
+        path: string;
+        edits?: Array<{ old_text: string; new_text: string }>;
+        old_text?: string;
+        new_text?: string;
+      },
     ),
 };
 
