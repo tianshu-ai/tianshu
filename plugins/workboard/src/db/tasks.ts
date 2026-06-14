@@ -17,24 +17,36 @@ import type { TenantDbHandle } from "@tianshu/plugin-sdk";
  * Task lifecycle — only three states.
  *
  *   ready       — in the queue, eligible for a worker (deps done,
- *                 not labelled `stalled` or `draft`). Newly-created
- *                 tasks land here. Failed runs come back here too
- *                 with `attempts++`, `failureReason`, and — once
- *                 attempts cross `MAX_ATTEMPTS` — a `stalled` label.
+ *                 not labelled `awaiting-intervention` / `stalled`
+ *                 / `draft`). Newly-created tasks land here, and
+ *                 so do tasks the main agent revived via
+ *                 task_continue / task_retry_fresh.
  *   in_progress — a worker has claimed it.
- *   done        — worker called task_complete, summary recorded.
+ *   done        — task_complete, or main agent called task_abort.
  *
  * Failure modes are expressed via labels instead of a separate
  * status column (mirrors the closed-source predecessor):
  *
- *   labels: ['stalled']  failed too many times; pool skips. User
- *                        clears the label or edits + retries.
+ *   labels: ['awaiting-intervention']  the worker run failed or
+ *                        timed out; the pool stamped a reason
+ *                        and notified the parent session. The
+ *                        pool will NOT pick the task up again
+ *                        until the main agent clears the label
+ *                        (via task_continue / task_retry_fresh /
+ *                        task_abort). 008 introduced this.
+ *   labels: ['stalled']  legacy label. Treated identically to
+ *                        awaiting-intervention by the pool's
+ *                        skip filter. Existing rows from before
+ *                        008 keep working.
  *   labels: ['draft']    not ready for the pool yet; pool skips.
  *
  * Migration history:
  *   003 added the entry tree.
  *   005 renamed `todo` → `ready`, folded `aborted` into `ready`.
  *   006 turned the `stalled` STATUS into a `stalled` LABEL.
+ *   008 added timeout_ms / intervention_reason / intervention_at
+ *       and introduced the `awaiting-intervention` label that
+ *       replaces the auto-retry loop with main-agent dispatch.
  */
 export type TaskStatus = "ready" | "in_progress" | "done";
 
@@ -72,19 +84,39 @@ export interface Task {
    *  task that ended up in the final `stalled` graveyard. Null on
    *  fresh tasks and on successful runs. */
   failureReason: string | null;
-  /** How many times the worker pool has run this task without
-   *  reaching `done`. Reset to 0 on success. After MAX_ATTEMPTS
-   *  failures the pool stamps a `stalled` label so the task stays
-   *  visible in the ready column but is no longer claimed. */
+  /** Counter only. Bumped on every fresh claim. Doesn't drive
+   *  any policy after the 008 intervention model — the pool no
+   *  longer auto-retries; failures route to the parent agent
+   *  via the `awaiting-intervention` label. Kept here so the UI
+   *  / inbox can show "3rd time we tried this" if it wants. */
   attempts: number;
-  /** Free-form labels. Two are reserved by the worker pool:
-   *    - `stalled` — set after MAX_ATTEMPTS failed runs; pool skips
-   *      these rows when claiming. Clearing the label re-queues.
-   *    - `draft`   — user-set; same skip semantics. "Not ready yet,
-   *      don't pick up."
-   *  Anything else is treated as user metadata; the UI renders
-   *  the names verbatim. */
+  /** Free-form labels. Three are reserved by the worker pool
+   *  (see `POOL_SKIP_LABELS`):
+   *    - `awaiting-intervention` — stamped by the pool on any
+   *      worker failure or watchdog timeout. The main (parent)
+   *      session is notified; the pool will not claim the task
+   *      again until the label is cleared (task_continue /
+   *      task_retry_fresh / task_abort do this).
+   *    - `stalled` — legacy alias kept for backwards-compat with
+   *      pre-008 rows + tools that still set it. Same skip
+   *      semantics as awaiting-intervention.
+   *    - `draft`   — user-set; same skip semantics. "Not ready
+   *      yet, don't pick up."
+   *  Anything else is user metadata; the UI renders verbatim. */
   labels: string[];
+  /** Soft per-task budget in ms. Pool watchdog cancels the
+   *  worker if it's still running at started_at + timeout_ms,
+   *  and routes the task to intervention with a timeout reason.
+   *  Default 600_000 (10 minutes); main agent extends via
+   *  task_extend_timeout. */
+  timeoutMs: number;
+  /** Free-text reason populated when the pool stamps
+   *  `awaiting-intervention`. Cleared when the label is cleared
+   *  (i.e. on the next fresh claim). NULL on healthy rows. */
+  interventionReason: string | null;
+  /** ms timestamp the row entered awaiting-intervention. NULL
+   *  on healthy rows. */
+  interventionAt: number | null;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -99,8 +131,25 @@ export interface Task {
 }
 
 /** Labels that take the row out of pool consideration even when
- *  status='ready'. Mirrors the closed-source predecessor. */
-export const POOL_SKIP_LABELS: readonly string[] = ["stalled", "draft"];
+ *  status='ready'. Mirrors the closed-source predecessor.
+ *
+ *  Order matters for diagnostics only — the pool checks
+ *  membership, not order. `awaiting-intervention` first because
+ *  it's the post-008 default failure label. */
+export const POOL_SKIP_LABELS: readonly string[] = [
+  "awaiting-intervention",
+  "stalled",
+  "draft",
+];
+
+/** The single canonical failure label used by the post-008 pool.
+ *  Tools that revive a task should clear this. */
+export const INTERVENTION_LABEL = "awaiting-intervention";
+
+/** Default per-task watchdog budget. 10 minutes felt like the
+ *  shortest interval where "slow but making progress" wouldn't
+ *  trip the watchdog and "stuck on a dead model call" would. */
+export const DEFAULT_TASK_TIMEOUT_MS = 600_000;
 
 interface TaskRow {
   id: string;
@@ -123,6 +172,9 @@ interface TaskRow {
   started_at: number | null;
   ended_at: number | null;
   parent_session_id: string | null;
+  timeout_ms: number | null;
+  intervention_reason: string | null;
+  intervention_at: number | null;
 }
 
 function parseStringArray(raw: string | null): string[] {
@@ -161,6 +213,9 @@ function rowToTask(row: TaskRow): Task {
     startedAt: row.started_at,
     endedAt: row.ended_at,
     parentSessionId: row.parent_session_id,
+    timeoutMs: row.timeout_ms ?? DEFAULT_TASK_TIMEOUT_MS,
+    interventionReason: row.intervention_reason,
+    interventionAt: row.intervention_at,
   };
 }
 
@@ -179,13 +234,18 @@ export interface CreateTaskInput {
    *  the route layer does that today. */
   dependsOn?: string[];
   /** Free-form labels (deduped + trimmed). The reserved labels
-   *  `stalled` / `draft` keep the task out of the pool's claim
-   *  filter (see POOL_SKIP_LABELS). */
+   *  `awaiting-intervention` / `stalled` / `draft` keep the task
+   *  out of the pool's claim filter (see POOL_SKIP_LABELS). */
   labels?: string[];
   /** Session that asked for this task. Stamped on every row that
    *  was created from inside an LLM tool call so the worker pool
    *  can later notify it. */
   parentSessionId?: string | null;
+  /** Optional override for the per-task watchdog budget. Bigger
+   *  jobs (long research, full website generation) can ask for
+   *  more time up front rather than relying on the main agent
+   *  to extend on the fly. Falls back to DEFAULT_TASK_TIMEOUT_MS. */
+  timeoutMs?: number | null;
 }
 
 function sanitiseLabels(input: string[] | undefined): string[] {
@@ -224,6 +284,10 @@ export function createTask(
   const priority = Number.isFinite(input.priority) ? Number(input.priority) : 0;
   const dependsOn = sanitiseDependsOn(input.dependsOn, id);
   const labels = sanitiseLabels(input.labels);
+  const timeoutMs =
+    typeof input.timeoutMs === "number" && Number.isFinite(input.timeoutMs)
+      ? Math.max(1000, Math.floor(input.timeoutMs))
+      : DEFAULT_TASK_TIMEOUT_MS;
   db.prepare(
     `INSERT INTO tasks (
        id, project_slug, owner_user_id, worker_role, worker_agent_id,
@@ -231,8 +295,9 @@ export function createTask(
        result_summary, result_files, session_id, depends_on,
        failure_reason, attempts, labels,
        created_at, started_at, ended_at,
-       parent_session_id
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL, ?)`,
+       parent_session_id, timeout_ms,
+       intervention_reason, intervention_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, NULL, NULL, NULL, ?, NULL, 0, ?, ?, NULL, NULL, ?, ?, NULL, NULL)`,
   ).run(
     id,
     project,
@@ -246,6 +311,7 @@ export function createTask(
     JSON.stringify(labels),
     now,
     input.parentSessionId ?? null,
+    timeoutMs,
   );
   const row = db
     .prepare<[string], TaskRow>(`SELECT * FROM tasks WHERE id = ?`)
@@ -325,11 +391,18 @@ export interface UpdateTaskPatch {
   failureReason?: string | null;
   attempts?: number;
   /** Replace the labels list. Pass [] to clear. The pool's reserved
-   *  labels (`stalled`, `draft`) follow the same rules as everything
-   *  else here — sanitised, deduped. */
+   *  labels (`awaiting-intervention`, `stalled`, `draft`) follow
+   *  the same rules as everything else here — sanitised, deduped. */
   labels?: string[];
   startedAt?: number | null;
   endedAt?: number | null;
+  /** Bump or shrink the watchdog budget. Used by
+   *  `task_extend_timeout`. */
+  timeoutMs?: number;
+  /** Free-text reason; pass `null` to clear (used when reviving
+   *  a task via task_continue / task_retry_fresh). */
+  interventionReason?: string | null;
+  interventionAt?: number | null;
 }
 
 /** Patch a task. Status transitions are validated by the caller —
@@ -408,6 +481,22 @@ export function updateTask(
   if (patch.endedAt !== undefined) {
     sets.push("ended_at = ?");
     params.push(patch.endedAt);
+  }
+  if (patch.timeoutMs !== undefined) {
+    sets.push("timeout_ms = ?");
+    params.push(
+      Number.isFinite(patch.timeoutMs)
+        ? Math.max(1000, Math.floor(patch.timeoutMs))
+        : DEFAULT_TASK_TIMEOUT_MS,
+    );
+  }
+  if (patch.interventionReason !== undefined) {
+    sets.push("intervention_reason = ?");
+    params.push(patch.interventionReason);
+  }
+  if (patch.interventionAt !== undefined) {
+    sets.push("intervention_at = ?");
+    params.push(patch.interventionAt);
   }
 
   if (sets.length === 0) return getTask(db, id);

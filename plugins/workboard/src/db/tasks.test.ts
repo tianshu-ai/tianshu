@@ -12,6 +12,7 @@ import { up as runDepsMigration } from "../../../../packages/server/src/core/mig
 import { up as runStatusRename } from "../../../../packages/server/src/core/migrations/005-task-status-rename.js";
 import { up as runTaskLabels } from "../../../../packages/server/src/core/migrations/006-task-labels.js";
 import { up as runSessionInbox } from "../../../../packages/server/src/core/migrations/007-session-inbox.js";
+import { up as runTaskIntervention } from "../../../../packages/server/src/core/migrations/008-task-intervention.js";
 import { ensureSchema as ensureAgentsSchema } from "./schema.js";
 import {
   createTask,
@@ -32,6 +33,7 @@ function freshDb(): Database.Database {
   runStatusRename(db);
   runTaskLabels(db);
   runSessionInbox(db);
+  runTaskIntervention(db);
   ensureAgentsSchema(db);
   // Tasks reference users(id); seed a stub user so the FK is valid.
   db.prepare(

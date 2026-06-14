@@ -34,6 +34,30 @@ worker run.
 If the user is **just running tasks** on existing workers, this
 skill is not relevant — use `workboard-howto` instead.
 
+## Reuse first, create second
+
+Before writing a new `workers/<slug>/agent.json`, *always*:
+
+```
+tenant_config_list({ path: "workers" })
+```
+
+If an existing worker fits the role (match by responsibility,
+not by name), reuse it. If it almost fits, edit its SOUL.md
+instead of forking. Only build a new bundle when:
+
+- nothing existing fits and the user's request genuinely needs
+  a new role, **or**
+- the user explicitly asked for a new worker ("make a separate
+  worker for X").
+
+This is the single most-violated rule. The cost of a stray
+worker isn't the disk space — it's the maintenance burden
+and the row clutter the user sees in Worker agents. See the
+`worker-fleet` skill's "Reuse over create" section for the
+full checklist; this skill assumes you've already decided a
+new worker is the right move.
+
 ## Tool you'll use
 
 `tenant_config_write` does all writes. Don't reach for any

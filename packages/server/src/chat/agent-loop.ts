@@ -42,6 +42,7 @@ import {
   defaultSystemPrompt,
   formatAvailableSkillsBlock,
   loadHostSkills,
+  tryAutoCompact,
 } from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
@@ -290,6 +291,7 @@ export async function runAgentLoop(
   });
   const toolset = await buildToolset({
     pluginTools,
+    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
@@ -398,11 +400,50 @@ export async function runAgentLoop(
   // delivers anything the harness `emitAny`/`emitOwn`s; we use it
   // for watchdog-resetting and counting assistant turns. The
   // `tool_result` hook below is on a SEPARATE channel — see comment.
+  // Reentrancy guard for the auto-compact path. compact() runs
+  // its own LLM call (= more turn_end events emitted while we're
+  // mid-compaction). Without the guard those nested events would
+  // re-trigger compact() forever; see also handler.ts where the
+  // chat path is naturally serial because the turn loop drains
+  // before the next turn_end fires.
+  let compactInFlight = false;
   const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
     lastEventAt = Date.now();
     sawAnyEvent = true;
     if ((event as { type?: string }).type === "turn_end") {
       assistantTurns += 1;
+      // Auto-compact for workers: fire-and-forget after every
+      // assistant turn. Same threshold as the chat path; the
+      // worker had been stalling on no_completion when a single
+      // task accumulated >70% of the model's context window
+      // (e.g. a research worker reading 5 large source files).
+      // We reach for compact ASAP rather than waiting for the
+      // next prompt because the worker is autonomously chaining
+      // turns — if we let context grow until the next call, the
+      // call itself fails.
+      if (!compactInFlight && modelInfo.contextWindow) {
+        compactInFlight = true;
+        void (async () => {
+          try {
+            const r = await tryAutoCompact({
+              piSession: session!,
+              harness,
+              contextWindow: modelInfo.contextWindow,
+            });
+            if (r.compacted) {
+              console.log(
+                `[agent-loop] worker auto-compact ran (tokensBefore=${r.tokensBefore})`,
+              );
+            } else if (r.error) {
+              console.warn(
+                `[agent-loop] worker auto-compact failed: ${r.error}`,
+              );
+            }
+          } finally {
+            compactInFlight = false;
+          }
+        })();
+      }
     }
   });
 

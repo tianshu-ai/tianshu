@@ -9,8 +9,22 @@
 //   and let the host implementation match it structurally. Same
 //   pattern as `AgentLoopRunner`.
 
-/** Kinds of inbox messages the host knows how to render. */
-export type InboxMessageKind = "task_done" | "task_stalled" | "system_note";
+/** Kinds of inbox messages the host knows how to render.
+ *
+ *  - `task_done` — worker called task_complete cleanly.
+ *  - `task_intervention_required` (008+) — worker run failed,
+ *    timed out, or hit watchdog; main agent decides next step
+ *    (continue / retry_fresh / extend_timeout / abort).
+ *  - `task_stalled` — legacy alias kept for forward compat with
+ *    pre-008 senders. Host renderer treats it identically to
+ *    `task_intervention_required`.
+ *  - `system_note` — generic kernel/admin note.
+ */
+export type InboxMessageKind =
+  | "task_done"
+  | "task_intervention_required"
+  | "task_stalled"
+  | "system_note";
 
 export interface InboxMessage {
   /**

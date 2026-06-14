@@ -261,7 +261,57 @@ describe("tenant_config_edit", () => {
       new_text: "y",
     });
     expect(r.ok).toBe(false);
-    expect(r.occurrences).toBe(2);
+    // Post-batch refactor: the failure surface has moved from
+    // `occurrences` to `failedEditIndex` + a count embedded in
+    // the error text. The single-edit shorthand still trips the
+    // same path — just under edit #1.
+    expect(r.failedEditIndex).toBe(1);
+    expect(r.text).toMatch(/appears 2 times/);
+  });
+
+  it("applies a batch of edits atomically and reports a delta", () => {
+    const home = freshTenantHome();
+    executeTenantConfigWrite(home, MAIN, {
+      path: "skills/foo/SKILL.md",
+      content: "alpha beta gamma",
+    });
+    const r = executeTenantConfigEdit(home, MAIN, {
+      path: "skills/foo/SKILL.md",
+      edits: [
+        { old_text: "alpha", new_text: "AAA" },
+        { old_text: "gamma", new_text: "CCC" },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    expect(r.edits).toHaveLength(2);
+    const after = executeTenantConfigRead(home, {
+      path: "skills/foo/SKILL.md",
+    });
+    expect(after.text).toContain("AAA beta CCC");
+  });
+
+  it("rolls back the whole batch when one edit fails (atomicity)", () => {
+    const home = freshTenantHome();
+    executeTenantConfigWrite(home, MAIN, {
+      path: "skills/foo/SKILL.md",
+      content: "alpha beta gamma",
+    });
+    const r = executeTenantConfigEdit(home, MAIN, {
+      path: "skills/foo/SKILL.md",
+      edits: [
+        { old_text: "alpha", new_text: "AAA" },
+        // `delta` doesn't exist — batch must abort and leave the
+        // file untouched, even though the first edit was valid.
+        { old_text: "delta", new_text: "DDD" },
+      ],
+    });
+    expect(r.ok).toBe(false);
+    expect(r.failedEditIndex).toBe(2);
+    const after = executeTenantConfigRead(home, {
+      path: "skills/foo/SKILL.md",
+    });
+    expect(after.text).toContain("alpha beta gamma");
+    expect(after.text).not.toContain("AAA");
   });
 });
 
