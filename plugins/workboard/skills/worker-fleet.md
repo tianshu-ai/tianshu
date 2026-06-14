@@ -26,6 +26,47 @@ This skill is for when it doesn't. Three signals say "fleet":
 If none of those apply, **don't build a fleet** — overhead
 without payoff.
 
+## Reuse over create (read this twice)
+
+Before creating any new worker, run:
+
+```
+tenant_config_list({ path: "workers" })
+```
+
+For every role you think you need, ask in this order:
+
+1. **Does an existing worker fit?** Match by responsibility, not
+   by name. The `coder` worker is a generalist code writer —
+   reuse it instead of inventing `frontend-dev` / `backend-dev`
+   / `python-coder` siblings. The `llm-default` worker is a
+   generalist for everything that doesn't need a sharper SOUL.
+2. **Can the existing worker do this with a clearer task
+   description?** Most "bad" outputs are bad task descriptions,
+   not wrong workers. Tighten the description first.
+3. **Can a small SOUL.md edit on the existing worker absorb the
+   new role?** If the new role is a 20% twist on an existing
+   one, edit `tenant_config_write workers/<slug>/SOUL.md`
+   instead of forking.
+4. **Only when 1–3 fail or the user explicitly asked for a new
+   worker** — build the new one.
+
+Proliferating workers is the most common over-engineering trap.
+Three consequences if you do it anyway:
+
+- Each new SOUL is one more thing to maintain when behaviour
+  drifts.
+- The user sees more rows in the Worker agents page than they
+  needed; the cognitive load is on them, not you.
+- Identity collisions get more likely (a `writer` and a
+  `content-writer` confuse both the user and future you).
+
+Ack the reuse decision out loud to the user when you make it:
+"I'll use the existing `coder` worker for the build step — it
+fits." That gives them a chance to override ("actually I want
+a separate `coder-typescript` for this project") before you
+commit.
+
 ## When NOT to fleet (just as important)
 
 - One-shot Q&A, retrieval, or chat-as-thinking — main agent.
@@ -184,13 +225,26 @@ classic 3-role flow":
 **Step 2.** Read worker-creator skill (the *how* of writing
 agent.json + SOUL.md).
 
-**Step 3.** Check what already exists:
+**Step 3.** Check what already exists — reuse over create:
 ```
 tenant_config_list({ path: "workers" })
 ```
-You probably have `coder` / `llm-default` / `echo-demo`. The
-fleet you want: `architect`, `coder`, `qa`. `coder` exists, so
-you only build the missing two.
+For each role, walk the reuse-over-create checklist above. The
+fleet you want: `architect`, `coder`, `qa`. Suppose the tenant
+has `coder` / `llm-default` / `echo-demo`:
+
+- **architect** — no existing worker is a good fit (we want
+  one that explicitly *doesn't* code), build it.
+- **coder** — already there. Reuse, don't fork into
+  `coder-typescript` or similar.
+- **qa** — no existing fit (we want one that doesn't read
+  source), build it.
+
+Net: 2 new workers, 1 reused. Tell the user before writing:
+"I'll reuse the existing `coder` worker for the build step,
+and create `architect` + `qa` for design and testing. OK?"
+This gives them a chance to override (e.g. "please make a
+dedicated `coder-ts` for this project") before you commit.
 
 **Step 4.** Create architect:
 ```
