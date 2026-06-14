@@ -1,10 +1,13 @@
 // buildToolset behaviour after the meta-tool migration.
 //
-// The host no longer registers `load_skill`. Skills are announced
-// in the system prompt via <available_skills> and read via the
-// files plugin's `tenant_config_*` tools (filesystem-first model).
-// These tests just lock in that the assembler stays focused on
-// plugin-tool wiring.
+// Skills are announced in the system prompt via <available_skills>
+// and loaded via the unified `read_skill(name)` meta-tool the
+// host registers when the toolset has any skills attached. (Plugin
+// / host skill files don't live anywhere read_file or
+// tenant_config_read can reach, so a name-keyed meta-tool is the
+// simplest single-surface API.)
+// These tests lock in the assembler's plugin-tool wiring + the
+// read_skill registration policy.
 
 import { describe, expect, it } from "vitest";
 import type { AgentTool } from "@tianshu/plugin-sdk";
@@ -47,12 +50,63 @@ describe("buildToolset", () => {
     expect(ts.executors).toEqual({});
   });
 
-  it("does NOT register a load_skill meta-tool anymore", async () => {
+  it("does NOT register the legacy load_skill meta-tool", async () => {
     const ts = await buildToolset({
       pluginTools: [],
       toolContext: fakeContext,
     });
     expect(ts.executors.load_skill).toBeUndefined();
+  });
+
+  it("registers read_skill iff the toolset has skills attached", async () => {
+    const tsNone = await buildToolset({
+      pluginTools: [],
+      toolContext: fakeContext,
+    });
+    expect(tsNone.executors.read_skill).toBeUndefined();
+
+    const tsWithSkills = await buildToolset({
+      pluginTools: [],
+      toolContext: fakeContext,
+      skills: [
+        {
+          source: { pluginId: "workboard", contributionId: "howto" },
+          filePath: "/abs/skills/howto.md",
+          name: "workboard-howto",
+          description: "how to use the board",
+          body: "## body\nuse it well",
+        },
+      ],
+    });
+    expect(typeof tsWithSkills.executors.read_skill).toBe("function");
+    const r = (await tsWithSkills.executors.read_skill!({
+      name: "workboard-howto",
+    })) as { ok: boolean; text: string };
+    expect(r.ok).toBe(true);
+    expect(r.text).toContain("workboard-howto");
+    expect(r.text).toContain("use it well");
+  });
+
+  it("read_skill rejects unknown names with a helpful message", async () => {
+    const ts = await buildToolset({
+      pluginTools: [],
+      toolContext: fakeContext,
+      skills: [
+        {
+          source: { pluginId: "x", contributionId: "a" },
+          filePath: "/x/a.md",
+          name: "alpha",
+          description: "a",
+          body: "",
+        },
+      ],
+    });
+    const r = (await ts.executors.read_skill!({
+      name: "no-such",
+    })) as { ok: boolean; text: string };
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/unknown skill/);
+    expect(r.text).toMatch(/alpha/);
   });
 
   it("registers each plugin tool by schema name", async () => {

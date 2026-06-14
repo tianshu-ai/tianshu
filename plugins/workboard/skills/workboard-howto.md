@@ -37,21 +37,26 @@ Tasks are for work that survives across turns.
 ## Status lifecycle
 
 ```
-todo  →  in_progress  →  done
-                  ↘     ↗
-                   stalled  →  todo (re-queue)
-                       ↘
-                        aborted   (kept for audit, hidden by default)
+ready  →  in_progress  →  done
+                   ↘     ↗
+                    awaiting-intervention   (label, not status)
+                          ↘
+                           main agent picks task_continue /
+                           task_retry_fresh / task_extend_timeout /
+                           task_abort
 ```
 
-- `todo` tasks are claimed by workers in the pool. Don't sit on them.
-- `in_progress` is set automatically when a worker claims, or when
-  you call `task_move(status="in_progress")` yourself.
-- `done` is the happy path: worker reports success.
-- `stalled` means a worker errored out. Move it back to `todo` to
-  retry, or look at `result_summary` to see what failed.
-- `aborted` is "delete with audit trail". Use `task_delete` instead
-  when there's nothing worth keeping.
+- `ready` tasks are claimable by workers. Don't sit on them.
+- `in_progress` is set automatically when a worker claims.
+- `done` is the happy path: worker called `task_complete`, OR
+  you called `task_abort` on a stuck task (with a reason).
+- A failure / watchdog timeout adds the `awaiting-intervention`
+  label to a `ready` row and drops a `task_intervention_required`
+  notification on you. Pick one of the four intervention tools —
+  do NOT just `task_move(status="ready")`, that would skip the
+  reason-tracking and re-queue without context.
+- The legacy `stalled` label is treated identically by the pool's
+  skip filter; old rows still work.
 
 ## Project slugs
 
@@ -132,10 +137,21 @@ task_create({
 task_delete({ ids: ["<id1>", "<id2>", "<id3>"] })
 ```
 
-**Re-queue a stalled task after fixing the cause:**
+**Revive an awaiting-intervention task:**
 
 ```
-task_move({ id: "<id>", status: "todo" })
+// resume the same session, optional hint:
+task_continue({ task_id: "<id>", hint: "use skeleton-then-fill" })
+
+// or start a brand new session, optional revised brief:
+task_retry_fresh({ task_id: "<id>", description: "..." })
+
+// or just give it more time (especially when failure_reason
+// starts with "watchdog timeout"):
+task_extend_timeout({ task_id: "<id>", additional_ms: 600_000 })
+
+// or give up:
+task_abort({ task_id: "<id>", reason: "data missing" })
 ```
 
 ## Don'ts

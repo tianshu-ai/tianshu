@@ -36,10 +36,16 @@ import {
   listTasks,
   updateTask,
   isTaskStatus,
+  INTERVENTION_LABEL,
+  DEFAULT_TASK_TIMEOUT_MS,
   VISIBLE_STATUSES,
   type Task,
   type TaskStatus,
 } from "../db/tasks.js";
+import {
+  appendContinuationHint,
+  stripContinuationHint,
+} from "../worker/pool.js";
 import { loadWorkerAgents } from "../fs-worker-agents.js";
 import type { WorkerAgent } from "../types.js";
 
@@ -62,6 +68,15 @@ export interface ToolDeps {
   log: PluginLogger;
   /** Called after a write so the worker pool drains pending todos. */
   onTaskWrite(): void;
+  /**
+   * Cancel an in-flight worker run by task id. Returns true iff
+   * a runner was actively cancelled. Used by `task_abort` to
+   * interrupt a task that's still mid-flight when the main agent
+   * decides to give up; passed through from
+   * WorkerPool.cancelTaskRun. Optional so test harnesses can
+   * skip wiring it.
+   */
+  onTaskCancel?(taskId: string): boolean;
 }
 
 interface ToolReturn {
@@ -694,6 +709,317 @@ export function buildTaskGetHistoryTool(deps: ToolDeps): AgentTool {
           failureReason: task.failureReason,
           entries,
         },
+      };
+    },
+  };
+}
+
+// ─── Intervention tools (008+) ─────────────────────────────────────
+//
+// Failed worker runs no longer auto-retry; they park the row in
+// awaiting-intervention and notify the parent (main) agent. The
+// main agent then picks one of these four to resolve:
+//
+//   - task_continue       resume the same session, optionally with
+//                         a hint about what changed.
+//   - task_retry_fresh    discard the prior session and start over,
+//                         optionally with a revised description.
+//   - task_extend_timeout add wall-clock budget. If the worker is
+//                         still running, the watchdog picks the
+//                         new value up on its next tick. If the
+//                         row is parked in intervention because of
+//                         a timeout, this also revives it.
+//   - task_abort          give up: mark the task done with a
+//                         failure summary so downstream deps stop
+//                         waiting.
+
+/**
+ * Validate task ownership + presence; return `{ task, error }`
+ * union so callers can write a flat error path.
+ */
+function loadOwnedTask(
+  deps: ToolDeps,
+  ctx: AgentToolContext,
+  id: string | undefined,
+): { task: Task; error?: undefined } | { task?: undefined; error: ToolReturn } {
+  if (!id) {
+    return { error: { ok: false, text: "task_id is required" } };
+  }
+  const task = getTask(deps.db, id);
+  if (!task) {
+    return { error: { ok: false, text: `task not found: ${id}` } };
+  }
+  if (task.ownerUserId !== ctx.userId) {
+    return { error: { ok: false, text: `task ${id} is not yours` } };
+  }
+  return { task };
+}
+
+export function buildTaskContinueTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_continue",
+      description:
+        "Revive an awaiting-intervention task by resuming its prior " +
+        "worker session. The worker reuses its existing context (no " +
+        "re-paste of the brief), with an optional `hint` from you " +
+        "the orchestrator about what changed or what to try next " +
+        "(e.g. 'use the skeleton-then-fill pattern; previous attempt " +
+        "hit an output cap'). Use this when the prior transcript is " +
+        "useful and the task description is still right. For a hard " +
+        "reset use `task_retry_fresh`.",
+      parameters: Type.Object({
+        task_id: Type.String(),
+        hint: Type.Optional(
+          Type.String({
+            description:
+              "One- or two-paragraph nudge surfaced to the worker on resume. " +
+              "Optional but strongly recommended — a bare retry usually " +
+              "reproduces the same failure.",
+          }),
+        ),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { task_id?: string; hint?: string };
+      const found = loadOwnedTask(deps, ctx, args.task_id);
+      if (found.error) return found.error;
+      const task = found.task;
+      if (!task.sessionId) {
+        return {
+          ok: false,
+          text:
+            `Task ${task.id} has no prior session to resume. ` +
+            `Use task_retry_fresh instead.`,
+        };
+      }
+      const hint =
+        typeof args.hint === "string" ? args.hint.trim() : "";
+      const nextDescription = hint
+        ? appendContinuationHint(task.description, hint)
+        : stripContinuationHint(task.description ?? "");
+      const cleanedLabels = task.labels.filter(
+        (l) => l !== INTERVENTION_LABEL && l !== "stalled",
+      );
+      updateTask(deps.db, task.id, {
+        labels: cleanedLabels,
+        description: nextDescription || null,
+        // Don't clear sessionId — LLMWorker.run keys off it +
+        // attempts>0 to pick up the prior transcript.
+        startedAt: null,
+        endedAt: null,
+        interventionReason: null,
+        interventionAt: null,
+      });
+      deps.onTaskWrite();
+      return {
+        ok: true,
+        text:
+          `Resuming task ${task.id} on session ${task.sessionId}` +
+          (hint ? ` with hint: ${hint.slice(0, 120)}` : "") +
+          ".",
+      };
+    },
+  };
+}
+
+export function buildTaskRetryFreshTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_retry_fresh",
+      description:
+        "Revive an awaiting-intervention task by starting a brand new " +
+        "worker session (the prior transcript is left in place but " +
+        "unused). Pass an optional `description` to rewrite the brief " +
+        "— useful when the original prompt itself was the problem. " +
+        "For resume-with-context use `task_continue` instead.",
+      parameters: Type.Object({
+        task_id: Type.String(),
+        description: Type.Optional(
+          Type.String({
+            description:
+              "Replace the task description. Omit to keep the existing one. " +
+              "Continuation hints from prior attempts are stripped — a " +
+              "fresh retry shouldn't carry resume notes.",
+          }),
+        ),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { task_id?: string; description?: string };
+      const found = loadOwnedTask(deps, ctx, args.task_id);
+      if (found.error) return found.error;
+      const task = found.task;
+      const cleanedLabels = task.labels.filter(
+        (l) => l !== INTERVENTION_LABEL && l !== "stalled",
+      );
+      // Detach the prior session so LLMWorker.run takes the
+      // fresh-start branch (`shouldResume` false).
+      const patch: Parameters<typeof updateTask>[2] = {
+        labels: cleanedLabels,
+        sessionId: null,
+        attempts: 0,
+        failureReason: null,
+        startedAt: null,
+        endedAt: null,
+        interventionReason: null,
+        interventionAt: null,
+      };
+      if (typeof args.description === "string") {
+        patch.description = args.description.trim() || null;
+      } else {
+        // Even when not rewriting, drop any continuation-hint
+        // block left over from previous task_continue calls.
+        patch.description = stripContinuationHint(task.description ?? "") || null;
+      }
+      updateTask(deps.db, task.id, patch);
+      deps.onTaskWrite();
+      return {
+        ok: true,
+        text:
+          `Reset task ${task.id} for a fresh worker session` +
+          (typeof args.description === "string" ? " with revised description" : "") +
+          ".",
+      };
+    },
+  };
+}
+
+export function buildTaskExtendTimeoutTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_extend_timeout",
+      description:
+        "Grow a task's wall-clock budget. Pass `additional_ms` to add to " +
+        "the existing timeout, or `set_ms` to override absolutely. If " +
+        "the task is currently in_progress the watchdog picks the new " +
+        "value up on its next tick (no restart needed). If it's parked " +
+        "in awaiting-intervention specifically because of a watchdog " +
+        "timeout, this tool ALSO revives the row — you don't have to " +
+        "chain a separate task_continue.",
+      parameters: Type.Object({
+        task_id: Type.String(),
+        additional_ms: Type.Optional(
+          Type.Number({
+            description:
+              "Milliseconds to add to the current timeout_ms. Either this " +
+              "or `set_ms` must be present.",
+          }),
+        ),
+        set_ms: Type.Optional(
+          Type.Number({
+            description:
+              "Absolute new timeout_ms. Overrides additional_ms when both " +
+              "are passed.",
+          }),
+        ),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as {
+        task_id?: string;
+        additional_ms?: number;
+        set_ms?: number;
+      };
+      const found = loadOwnedTask(deps, ctx, args.task_id);
+      if (found.error) return found.error;
+      const task = found.task;
+      let nextTimeout: number;
+      if (typeof args.set_ms === "number" && Number.isFinite(args.set_ms)) {
+        nextTimeout = Math.max(1000, Math.floor(args.set_ms));
+      } else if (
+        typeof args.additional_ms === "number" &&
+        Number.isFinite(args.additional_ms)
+      ) {
+        nextTimeout = Math.max(
+          1000,
+          Math.floor((task.timeoutMs ?? DEFAULT_TASK_TIMEOUT_MS) + args.additional_ms),
+        );
+      } else {
+        return {
+          ok: false,
+          text: "pass either `additional_ms` or `set_ms`",
+        };
+      }
+      const patch: Parameters<typeof updateTask>[2] = {
+        timeoutMs: nextTimeout,
+      };
+      // If the row is currently parked because of a timeout,
+      // revive it the same way task_continue would. We detect a
+      // timeout-parked row by the canonical reason prefix the
+      // watchdog writes.
+      const wasTimeoutParked =
+        task.labels.includes(INTERVENTION_LABEL) &&
+        (task.interventionReason ?? "").startsWith("watchdog timeout");
+      if (wasTimeoutParked) {
+        patch.labels = task.labels.filter(
+          (l) => l !== INTERVENTION_LABEL && l !== "stalled",
+        );
+        patch.startedAt = null;
+        patch.endedAt = null;
+        patch.interventionReason = null;
+        patch.interventionAt = null;
+      }
+      updateTask(deps.db, task.id, patch);
+      if (wasTimeoutParked) deps.onTaskWrite();
+      const summary = wasTimeoutParked
+        ? `Extended task ${task.id} timeout to ${nextTimeout}ms and resumed it.`
+        : `Extended task ${task.id} timeout to ${nextTimeout}ms.`;
+      return { ok: true, text: summary };
+    },
+  };
+}
+
+export function buildTaskAbortTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_abort",
+      description:
+        "Give up on a task. Marks it `done` with a failure summary so " +
+        "any downstream dependents stop waiting, and cancels the " +
+        "in-flight worker run if one is still going. Use when retry / " +
+        "continue won't help (bad spec, blocked by missing data, " +
+        "infrastructure broken).",
+      parameters: Type.Object({
+        task_id: Type.String(),
+        reason: Type.String({
+          description:
+            "One- or two-sentence explanation. Stored as the task's " +
+            "result_summary so the user / downstream tasks see why.",
+        }),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { task_id?: string; reason?: string };
+      const found = loadOwnedTask(deps, ctx, args.task_id);
+      if (found.error) return found.error;
+      const task = found.task;
+      const reason = (args.reason ?? "").trim();
+      if (!reason) {
+        return { ok: false, text: "reason is required" };
+      }
+      // Cancel any live runner first so it doesn't keep eating
+      // tokens past abort.
+      const cancelled = deps.onTaskCancel?.(task.id) ?? false;
+      const cleanedLabels = task.labels.filter(
+        (l) => l !== INTERVENTION_LABEL && l !== "stalled",
+      );
+      updateTask(deps.db, task.id, {
+        status: "done",
+        labels: cleanedLabels,
+        resultSummary: `[aborted] ${reason}`.slice(0, 800),
+        endedAt: Date.now(),
+        interventionReason: null,
+        interventionAt: null,
+      });
+      // Done unblocks dependents — nudge.
+      deps.onTaskWrite();
+      return {
+        ok: true,
+        text:
+          `Aborted task ${task.id}: ${reason}` +
+          (cancelled ? " (cancelled in-flight worker)" : "") +
+          ".",
       };
     },
   };

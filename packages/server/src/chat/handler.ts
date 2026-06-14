@@ -308,8 +308,16 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     hasCapability: (n) => hostCaps.has(n as never),
     agentScope: "main",
   });
+  // Plugin-contributed prompt fragments: short imperative
+  // sentences declared in `manifest.contributes.systemPromptFragments`,
+  // injected on every turn for every active plugin in the tenant.
+  // Workers don't get these (the agent-loop's worker path uses a
+  // separate prompt path).
+  const pluginFragments =
+    pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
   const toolset = await buildToolset({
     pluginTools,
+    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
@@ -379,7 +387,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     env: makeStubExecutionEnv(ctx.userHomeDir(userId)),
     session: piSession,
     tools: adapted.tools,
-    systemPrompt: defaultSystemPrompt(ctx, userId, skills),
+    systemPrompt: defaultSystemPrompt(ctx, userId, skills, pluginFragments),
     model: piModel,
     getApiKeyAndHeaders: async () => ({ apiKey }),
   });
@@ -868,6 +876,60 @@ export function shouldCompactBranch(
   return shouldCompact(usage.tokens, input.contextWindow, settings);
 }
 
+/**
+ * Pure-side-effect helper that drives one auto-compact decision
+ * + (if needed) action against any AgentHarness, with no
+ * dependency on the chat WebSocket or session-row plumbing.
+ *
+ * Reused by:
+ *   - the main chat handler after every successful turn
+ *   - the worker agent loop (agent-loop.ts) on a configurable
+ *     cadence so a long-running worker can recover from runaway
+ *     context growth instead of stalling with `no_completion`.
+ *
+ * Returns one of:
+ *   - { compacted: false }                    — below threshold,
+ *     no work done
+ *   - { compacted: true,  tokensBefore: N }   — ran compact()
+ *     successfully
+ *   - { compacted: false, error: "..." }      — attempted but
+ *     compact() threw; caller decides whether to surface this
+ */
+export interface AutoCompactDecision {
+  compacted: boolean;
+  tokensBefore?: number;
+  error?: string;
+}
+
+export async function tryAutoCompact(args: {
+  piSession: PiSession;
+  harness: AgentHarness;
+  contextWindow: number | undefined;
+}): Promise<AutoCompactDecision> {
+  const { piSession, harness, contextWindow } = args;
+  let branch: SessionTreeEntry[];
+  try {
+    branch = await piSession.getBranch();
+  } catch (err) {
+    console.warn(
+      `[chat] auto-compact decision failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { compacted: false };
+  }
+  if (!shouldCompactBranch({ branch, contextWindow })) {
+    return { compacted: false };
+  }
+  try {
+    const result = await harness.compact();
+    return { compacted: true, tokensBefore: result.tokensBefore };
+  } catch (err) {
+    return {
+      compacted: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 async function maybeAutoCompact(args: {
   session: ChatSession;
   piSession: PiSession;
@@ -877,55 +939,40 @@ async function maybeAutoCompact(args: {
   onSuccessRefresh: () => void;
 }): Promise<void> {
   const { session, piSession, harness, modelInfo, send, onSuccessRefresh } = args;
-  let branch: SessionTreeEntry[];
-  try {
-    branch = await piSession.getBranch();
-  } catch (err) {
-    // Reading the branch for shouldCompact shouldn't throw, but
-    // belt-and-braces: never let the compact-decision path break
-    // the turn that already succeeded.
-    console.warn(
-      `[chat] auto-compact decision failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
-  if (
-    !shouldCompactBranch({
-      branch,
-      contextWindow: modelInfo.contextWindow,
-    })
-  ) {
-    return;
-  }
-  try {
-    const result = await harness.compact();
-    send({
-      type: "history_compacted",
-      reason: "auto",
-      // Old protocol carried oldSessionId/newSessionId because
-      // the legacy compactSession forked. pi's compact() writes
-      // a compaction entry into the SAME session — no fork — so
-      // both ids point at the current one.
-      oldSessionId: session.id,
-      newSessionId: session.id,
-      // Pi's compact() doesn't tell us how many entries it
-      // summarised / kept. The UI uses these counts for a small
-      // "📌 N messages compressed" badge; we leave them at 0
-      // until pi exposes the figures.
-      summarisedCount: 0,
-      keptCount: 0,
-      durationMs: 0,
-      tokensBefore: result.tokensBefore,
-    });
-    onSuccessRefresh();
-  } catch (err) {
-    // Auto-compact failures are non-fatal: the user got their
-    // turn back, the next turn will simply be expensive.
+  const decision = await tryAutoCompact({
+    piSession,
+    harness,
+    contextWindow: modelInfo.contextWindow,
+  });
+  if (decision.error) {
+    // Auto-compact failure on the chat path: surface as a
+    // stream_error so the user knows next turn may be expensive.
     send({
       type: "stream_error",
-      reason: `auto-compact failed: ${err instanceof Error ? err.message : String(err)} (continuing without compact)`,
+      reason: `auto-compact failed: ${decision.error} (continuing without compact)`,
     });
+    return;
   }
+  if (!decision.compacted) return;
+  send({
+    type: "history_compacted",
+    reason: "auto",
+    // Old protocol carried oldSessionId/newSessionId because
+    // the legacy compactSession forked. pi's compact() writes
+    // a compaction entry into the SAME session — no fork — so
+    // both ids point at the current one.
+    oldSessionId: session.id,
+    newSessionId: session.id,
+    // Pi's compact() doesn't tell us how many entries it
+    // summarised / kept. The UI uses these counts for a small
+    // "📌 N messages compressed" badge; we leave them at 0
+    // until pi exposes the figures.
+    summarisedCount: 0,
+    keptCount: 0,
+    durationMs: 0,
+    tokensBefore: decision.tokensBefore,
+  });
+  onSuccessRefresh();
 }
 
 async function runManualCompact(args: {
@@ -1017,10 +1064,24 @@ async function runManualCompact(args: {
  * Worker / task vocabulary is intentionally absent: workers don't ship
  * until PR #23+, and dangling references just let the model fabricate.
  */
+/** Plugin-contributed system-prompt fragment (see
+ *  `manifest.contributes.systemPromptFragments`). The handler
+ *  pulls these from the plugin registry on every turn and injects
+ *  them between the workspace section and the available-skills
+ *  block, grouped by plugin so the agent can attribute the
+ *  guidance. */
+export interface PluginPromptFragment {
+  pluginId: string;
+  pluginDisplayName: string;
+  fragmentId: string;
+  text: string;
+}
+
 export function defaultSystemPrompt(
   ctx: TenantContext,
   userId: string,
   skills: readonly LoadedSkill[] = [],
+  pluginFragments: readonly PluginPromptFragment[] = [],
 ): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
   const lines: string[] = [
@@ -1058,9 +1119,47 @@ export function defaultSystemPrompt(
     `Reply concisely. When you make changes, briefly say what you changed.`,
   );
 
+  const fragmentBlock = formatPluginPromptFragments(pluginFragments);
+  if (fragmentBlock) lines.push("", fragmentBlock);
+
   const skillBlock = formatAvailableSkillsBlock(skills);
   if (skillBlock) lines.push("", skillBlock);
 
+  return lines.join("\n");
+}
+
+/** Render plugin-contributed system-prompt fragments. Grouped by
+ *  plugin so the agent sees one section per plugin (workboard
+ *  rules in one block, microsandbox rules in another, etc), and
+ *  so debugging prompts is straightforward ("this guidance came
+ *  from plugin X"). Returns an empty string when no fragments
+ *  are contributed. */
+export function formatPluginPromptFragments(
+  fragments: readonly PluginPromptFragment[],
+): string {
+  if (fragments.length === 0) return "";
+  const byPlugin = new Map<
+    string,
+    { displayName: string; texts: string[] }
+  >();
+  for (const f of fragments) {
+    const slot = byPlugin.get(f.pluginId);
+    if (slot) {
+      slot.texts.push(f.text);
+    } else {
+      byPlugin.set(f.pluginId, {
+        displayName: f.pluginDisplayName,
+        texts: [f.text],
+      });
+    }
+  }
+  const lines: string[] = ["## Plugin guidance"];
+  for (const [pid, slot] of byPlugin) {
+    lines.push(``, `### ${slot.displayName} (${pid})`);
+    for (const t of slot.texts) {
+      lines.push(t.trim());
+    }
+  }
   return lines.join("\n");
 }
 
@@ -1086,10 +1185,10 @@ export function formatAvailableSkillsBlock(
   if (skills.length === 0) return "";
   const lines: string[] = [
     `## Skills`,
-    `Scan <available_skills>. If one clearly applies, read its SKILL.md at exact <location> with \`tenant_config_read\` (tenant skills) or \`read_file\` (host/plugin skills), then follow it.`,
+    `Scan <available_skills>. If one clearly applies, load it with \`read_skill({ name: "<the name from <name> tag>" })\`, then follow it.`,
     `If several apply, choose the most specific. If none clearly apply, read none.`,
     `One skill up front max. Never guess/fabricate skill paths.`,
-    `Skill bundles may ship sibling files (\`scripts/\`, \`references/\`, \`assets/\`) next to SKILL.md — read them with the same tool when SKILL.md tells you to.`,
+    `Skill bundles may ship sibling files (\`scripts/\`, \`references/\`, \`assets/\`) next to SKILL.md — those still go through the regular file tools (\`read_file\` for workspace paths, \`tenant_config_read\` for tenant-config paths) using the relative paths SKILL.md mentions.`,
     ``,
     `<available_skills>`,
   ];

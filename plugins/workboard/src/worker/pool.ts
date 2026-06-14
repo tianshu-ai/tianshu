@@ -32,7 +32,13 @@ import type {
   PluginLogger,
   TenantDbHandle,
 } from "@tianshu/plugin-sdk";
-import { claimNextTask, getTask, updateTask, type Task } from "../db/tasks.js";
+import {
+  claimNextTask,
+  getTask,
+  updateTask,
+  INTERVENTION_LABEL,
+  type Task,
+} from "../db/tasks.js";
 import {
   WORKER_DENY_TOOLS as WORKER_DENY_TOOLS_LIST,
   WORKER_DENY_TOOLS_SET,
@@ -40,11 +46,16 @@ import {
 } from "./tool-policy.js";
 
 /**
- * After this many failed runs in a row, the pool stops re-queueing
- * the task and parks it in `stalled` for the user to deal with.
- * Matches the closed-source predecessor's MAX_ATTEMPTS.
+ * Legacy threshold from the auto-retry era. Migration 008 replaced
+ * the auto-retry loop with main-agent intervention, so the pool no
+ * longer consults this value to decide whether to give up. We keep
+ * it exported (1) for the existing test that locks in the
+ * "give up" behaviour against the old API, and (2) so external
+ * callers depending on the symbol don't trip a build break in the
+ * same release that ships the behaviour change. Any future use
+ * site should treat "any failure" as the give-up condition.
  */
-export const MAX_ATTEMPTS = 3;
+export const MAX_ATTEMPTS = 1;
 
 /** What a single slot promises to do with one claimed task.
  *  Resolves with the task's terminal state — usually `done`, but a
@@ -57,7 +68,15 @@ export interface WorkerHandle {
   /** Runtime kind (`echo`, `llm`, ...). Used for `worker_role`
    *  fallback so legacy task pinning keeps working. */
   kind: string;
-  run(task: Task): Promise<TerminalUpdate>;
+  /**
+   * Run the task. The pool passes a per-run AbortSignal so a
+   * watchdog timeout (or future explicit-cancel paths) can
+   * interrupt the worker mid-flight; honoring the signal is
+   * best-effort — a worker that ignores it just keeps running
+   * past the deadline, which costs the watchdog one extra
+   * intervention and nothing else.
+   */
+  run(task: Task, signal: AbortSignal): Promise<TerminalUpdate>;
 }
 
 export interface TerminalUpdate {
@@ -95,7 +114,11 @@ export interface WorkerPoolDeps {
    */
   notifyParentSession?: (
     parentSessionId: string,
-    message: { kind: "task_done" | "task_stalled"; text: string; meta?: Record<string, unknown> },
+    message: {
+      kind: "task_done" | "task_intervention_required";
+      text: string;
+      meta?: Record<string, unknown>;
+    },
   ) => void;
   /** Initial set of agent specs. Replace later via `rebuild`. */
   agents: AgentSpec[];
@@ -117,8 +140,13 @@ const DEFAULT_POLL_INTERVAL_MS = 15_000;
 export class WorkerPool {
   private nudgeTimer: NodeJS.Timeout | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
+  private watchdogTimer: NodeJS.Timeout | null = null;
   /** agentId → "in-flight task id" (or undefined = idle). */
   private busy = new Map<string, string>();
+  /** taskId → AbortController for the run. Lets the watchdog (or
+   *  pool shutdown) cancel a worker mid-flight without scanning
+   *  every WorkerHandle. */
+  private runControllers = new Map<string, AbortController>();
   private workers: WorkerHandle[] = [];
   private stopped = false;
 
@@ -145,6 +173,19 @@ export class WorkerPool {
       // Don't keep the process alive just for the poll timer.
       this.pollTimer.unref?.();
     }
+
+    // Watchdog: every 5s scan in-flight tasks and cancel any
+    // whose `started_at + timeout_ms` has passed. Cancelling the
+    // AbortController causes the agent-loop runner to wind down,
+    // returning a terminal `aborted` update; runOne's terminal
+    // handler then routes the task into intervention with a
+    // "timeout" reason. 5s polling is fine — the budget is in
+    // minutes, and a few seconds of slop is invisible to humans.
+    this.watchdogTimer = setInterval(() => {
+      if (this.stopped) return;
+      this.runWatchdog();
+    }, 5_000);
+    this.watchdogTimer.unref?.();
   }
 
   /** Mark the pool stopped. Any work already in flight finishes;
@@ -158,6 +199,75 @@ export class WorkerPool {
     if (this.pollTimer) {
       clearInterval(this.pollTimer);
       this.pollTimer = null;
+    }
+    if (this.watchdogTimer) {
+      clearInterval(this.watchdogTimer);
+      this.watchdogTimer = null;
+    }
+    // Be polite: cancel every in-flight run so we don't keep
+    // burning model tokens after a tenant disable.
+    for (const ctl of this.runControllers.values()) {
+      try {
+        ctl.abort();
+      } catch {
+        // best-effort
+      }
+    }
+    this.runControllers.clear();
+  }
+
+  /**
+   * Cancel an in-flight run by task id. Returns true iff there
+   * was a controller to abort. Used by `task_extend_timeout` is
+   * NOT — that one just bumps the row's timeout_ms; the watchdog
+   * picks the new value up on its next tick — but `task_abort`
+   * uses it to interrupt a runaway worker.
+   */
+  cancelTaskRun(taskId: string): boolean {
+    const ctl = this.runControllers.get(taskId);
+    if (!ctl) return false;
+    try {
+      ctl.abort();
+    } catch {
+      // best-effort
+    }
+    return true;
+  }
+
+  /** Watchdog scan. Visible for testing. */
+  runWatchdog(): void {
+    const now = Date.now();
+    for (const [taskId] of this.runControllers) {
+      // Re-read the row each tick so a `task_extend_timeout` that
+      // grew the budget mid-flight takes effect immediately.
+      const fresh = getTask(this.deps.db, taskId);
+      if (!fresh || !fresh.startedAt) continue;
+      const deadline = fresh.startedAt + fresh.timeoutMs;
+      if (now < deadline) continue;
+      this.deps.log.warn("workboard: watchdog cancelling task", {
+        taskId,
+        startedAt: fresh.startedAt,
+        timeoutMs: fresh.timeoutMs,
+        overrunMs: now - deadline,
+      });
+      const ctl = this.runControllers.get(taskId);
+      if (ctl) {
+        try {
+          // Mark the reason on the row BEFORE aborting so the
+          // terminal handler in runOne (which writes the
+          // intervention payload) sees "watchdog timeout" rather
+          // than the bare "aborted" the agent-loop reports.
+          updateTask(this.deps.db, taskId, {
+            failureReason: `watchdog timeout (${Math.round(fresh.timeoutMs / 1000)}s budget exceeded by ${Math.round((now - deadline) / 1000)}s)`,
+          });
+        } catch (err) {
+          this.deps.log.warn("workboard: watchdog stamp failed", {
+            taskId,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
+        ctl.abort();
+      }
     }
   }
 
@@ -262,9 +372,19 @@ export class WorkerPool {
   }
 
   private async runOne(worker: WorkerHandle, task: Task): Promise<void> {
+    // Per-run AbortController. Two things can fire it:
+    //   1. The watchdog (deadline = startedAt + timeout_ms).
+    //   2. The pool stopping (`stop()` aborts every in-flight
+    //      controller so workers don't keep burning model
+    //      tokens past shutdown).
+    // The controller lives in `runControllers` keyed by taskId
+    // so the watchdog can reach it without holding a closure
+    // reference.
+    const ctl = new AbortController();
+    this.runControllers.set(task.id, ctl);
     let update: TerminalUpdate;
     try {
-      update = await worker.run(task);
+      update = await worker.run(task, ctl.signal);
     } catch (err) {
       this.deps.log.error("workboard: worker threw", {
         taskId: task.id,
@@ -276,6 +396,8 @@ export class WorkerPool {
         status: "stalled",
         resultSummary: `Worker error: ${err instanceof Error ? err.message : String(err)}`,
       };
+    } finally {
+      this.runControllers.delete(task.id);
     }
 
     if (this.stopped) return;
@@ -284,11 +406,13 @@ export class WorkerPool {
     if (update.status === "done") {
       // Success: clear the failure trail and reset the attempt
       // counter so future re-runs (e.g. a follow-up edit + manual
-      // re-queue) start clean. Also drop the `stalled` label —
+      // re-queue) start clean. Also drop the intervention labels —
       // a manual retry that succeeds shouldn't leave the warning
       // badge stuck on the card.
       const fresh = getTask(this.deps.db, task.id) ?? task;
-      const cleanedLabels = fresh.labels.filter((l) => l !== "stalled");
+      const cleanedLabels = fresh.labels.filter(
+        (l) => l !== INTERVENTION_LABEL && l !== "stalled",
+      );
       updateTask(this.deps.db, task.id, {
         status: "done",
         resultSummary: update.resultSummary ?? null,
@@ -297,50 +421,45 @@ export class WorkerPool {
         labels: cleanedLabels,
         attempts: 0,
         endedAt: now,
+        interventionReason: null,
+        interventionAt: null,
       });
     } else {
-      // Failure (`stalled` / `aborted` from agent-loop, or a worker
-      // exception). Bump attempts and decide whether to re-queue
-      // automatically or surface the failure.
+      // Failure (worker stalled / aborted, exception, or watchdog
+      // timeout). Post-008 behaviour: do NOT auto-retry. Stamp
+      // `awaiting-intervention`, write a structured reason, and
+      // notify the parent session so the main agent decides
+      // whether to continue (resume same session), retry fresh,
+      // extend the timeout, or abort.
       //
-      // Failure stays in the `ready` status throughout — the task
-      // never leaves the kanban's ready column. Once attempts
-      // crosses MAX_ATTEMPTS we stamp a `stalled` LABEL, which
-      // takes the row out of the pool's claim filter (see
-      // POOL_SKIP_LABELS in db/tasks.ts) without hiding it from
-      // the user. Mirrors the closed-source predecessor.
-      //
-      // We re-read the row to get the up-to-date attempts count —
-      // the task came in with the value at claim time, but
-      // intervening user edits could have changed it (e.g. user
-      // PATCHed back to ready and reset attempts).
+      // We still bump `attempts` as a passive counter (it shows
+      // up in the UI / inbox text), but it no longer drives any
+      // policy.
       const fresh = getTask(this.deps.db, task.id) ?? task;
       const nextAttempts = (fresh.attempts ?? 0) + 1;
       const reason =
         update.resultSummary ?? `worker ${update.status} without summary`;
-      const giveUp = nextAttempts >= MAX_ATTEMPTS;
-      const baseLabels = fresh.labels.filter((l) => l !== "stalled");
-      const nextLabels = giveUp ? [...baseLabels, "stalled"] : baseLabels;
+      const baseLabels = fresh.labels.filter(
+        (l) => l !== INTERVENTION_LABEL && l !== "stalled",
+      );
+      const nextLabels = [...baseLabels, INTERVENTION_LABEL];
       updateTask(this.deps.db, task.id, {
         status: "ready",
-        // Keep the result_summary clean for `done` only; failures
-        // live in `failure_reason` so the UI can render a warning
-        // chip without cluttering successful summaries.
         resultSummary: null,
         resultFiles: update.resultFiles ?? [],
         failureReason: reason,
         attempts: nextAttempts,
         labels: nextLabels,
         // Keep session_id pointing at the most recent run — the
-        // user / chat agent uses it to inspect the failure
-        // transcript via task_get_history. Clearing started_at
-        // is fine because the next claim will re-stamp it; the
-        // session stays linked even across retries (a fresh run
-        // overwrites with its own session_id at claim time).
+        // chat agent uses it (via task_continue) to resume the
+        // same conversation.
         startedAt: null,
-        // Stamp ended_at on the give-up case so the timeline shows
-        // when the task was parked.
-        endedAt: giveUp ? now : null,
+        // Stamp ended_at so the timeline shows when the run
+        // ended; task_continue / task_retry_fresh clears it on
+        // re-queue.
+        endedAt: now,
+        interventionReason: reason,
+        interventionAt: now,
       });
     }
     this.deps.broadcast("workboard.task", {
@@ -358,19 +477,13 @@ export class WorkerPool {
     });
 
     // Drop a system-level note into the asking session's inbox.
-    // Done case is fire-and-forget good news; stalled is only
-    // emitted on FINAL stall (attempts hit MAX_ATTEMPTS), not on
-    // every retry — we don't want the agent to react to
-    // intermediate failures the pool will retry on its own.
-    //
-    // We re-read the task because `update*` calls above may have
-    // mutated labels/attempts and we want the truthful end-state
-    // to base the giveUp decision on.
+    // Post-008: every non-`done` terminal update is an
+    // intervention event — the pool no longer auto-retries. The
+    // payload tells the main agent which task, why it failed, and
+    // which tools are available to revive it.
     if (this.deps.notifyParentSession && task.parentSessionId) {
       try {
-        const finalRow = getTask(this.deps.db, task.id);
-        const labels = finalRow?.labels ?? [];
-        const stalledNow = labels.includes("stalled");
+        const finalRow = getTask(this.deps.db, task.id) ?? task;
         if (update.status === "done") {
           this.deps.notifyParentSession(task.parentSessionId, {
             kind: "task_done",
@@ -385,20 +498,34 @@ export class WorkerPool {
               files: update.resultFiles ?? [],
             },
           });
-        } else if (stalledNow) {
+        } else {
           this.deps.notifyParentSession(task.parentSessionId, {
-            kind: "task_stalled",
+            kind: "task_intervention_required",
             text:
-              `Task "${task.title}" stalled after ${MAX_ATTEMPTS} attempts. ` +
-              `Last error: ${update.resultSummary ?? "(no summary)"}`,
+              `Task "${task.title}" needs your attention.\n` +
+              `Reason: ${update.resultSummary ?? "(no summary)"}\n` +
+              `Decide: task_continue (resume same session, optional hint), ` +
+              `task_retry_fresh (start over with a new session, optional ` +
+              `revised description), task_extend_timeout (give it more ` +
+              `wall-clock time), or task_abort (mark done with a failure ` +
+              `summary).`,
             meta: {
               taskId: task.id,
               workerAgentId: worker.agentId,
-              attempts: finalRow?.attempts ?? null,
+              workerKind: worker.kind,
+              attempts: finalRow.attempts,
+              sessionId: finalRow.sessionId,
+              terminalStatus: update.status,
+              interventionReason: finalRow.interventionReason,
+              suggestedActions: [
+                "task_continue",
+                "task_retry_fresh",
+                "task_extend_timeout",
+                "task_abort",
+              ],
             },
           });
         }
-        // intermediate retries (status!=done && !stalledNow) — silent
       } catch (err) {
         // notifyParentSession is best-effort; a failure must not
         // break the pool. Log and continue.
@@ -408,10 +535,10 @@ export class WorkerPool {
         });
       }
     }
-    // After a failure that goes back to ready, kick the pool so
-    // another slot can pick it up (or the same slot after another
-    // task) without waiting for the timer.
-    if (update.status !== "done" && !this.stopped) this.nudge();
+    // No automatic re-nudge on failure: the row is parked under
+    // `awaiting-intervention` and the pool's claim filter skips it
+    // until the main agent revives it explicitly. Nudging would
+    // just spin one drain pass that finds nothing.
   }
 
   private recoverOrphaned(): void {
@@ -420,42 +547,46 @@ export class WorkerPool {
     // restart, dev-time `touch index.ts`) while a worker was
     // mid-run, and there's no in-memory busy slot to inherit.
     //
-    // We treat it like a stall — bump attempts, stamp a failure
-    // reason, and put the row back in the ready column. Without
-    // bumping, a flapping host could claim the same task 100
-    // times before noticing nothing was making progress; with the
-    // bump, after MAX_ATTEMPTS the row gets the `stalled` label
-    // and the user has to clear it explicitly to retry.
+    // Post-008 we treat it the same way runtime failures get
+    // treated: park in `ready` + `awaiting-intervention`, write
+    // a reason, notify the parent session if any. The main agent
+    // then decides task_continue / task_retry_fresh / task_abort.
     //
     // session_id is intentionally NOT cleared here: the previous
     // transcript is still useful for debugging "why did this
-    // crash?". The next claim overwrites session_id anyway, so
-    // the row only ever points at the most recent run.
+    // crash?" and main agent's task_continue resumes from it.
     const orphans = this.deps.db
       .prepare<
         [],
-        { id: string; attempts: number | null; labels: string }
+        {
+          id: string;
+          attempts: number | null;
+          labels: string;
+          parent_session_id: string | null;
+          title: string;
+        }
       >(
-        `SELECT id, attempts, labels FROM tasks WHERE status = 'in_progress'`,
+        `SELECT id, attempts, labels, parent_session_id, title
+         FROM tasks WHERE status = 'in_progress'`,
       )
       .all();
     if (orphans.length === 0) return;
+    const now = Date.now();
     const update = this.deps.db.prepare(
       `UPDATE tasks
          SET status = 'ready',
              started_at = NULL,
+             ended_at = ?,
              attempts = ?,
              failure_reason = ?,
-             labels = ?
+             labels = ?,
+             intervention_reason = ?,
+             intervention_at = ?
        WHERE id = ?`,
     );
+    const reason = "reclaimed after host restart (worker did not finish)";
     for (const row of orphans) {
       const nextAttempts = (row.attempts ?? 0) + 1;
-      const giveUp = nextAttempts >= MAX_ATTEMPTS;
-      // Parse labels (TEXT JSON column). On a parse failure fall
-      // back to []: the task will surface as ready/un-stalled,
-      // which is recoverable, vs. a sql error which would
-      // crash boot.
       let labels: string[] = [];
       try {
         const parsed = JSON.parse(row.labels);
@@ -465,14 +596,47 @@ export class WorkerPool {
       } catch {
         labels = [];
       }
-      const baseLabels = labels.filter((l) => l !== "stalled");
-      const nextLabels = giveUp ? [...baseLabels, "stalled"] : baseLabels;
+      const baseLabels = labels.filter(
+        (l) => l !== INTERVENTION_LABEL && l !== "stalled",
+      );
+      const nextLabels = [...baseLabels, INTERVENTION_LABEL];
       update.run(
+        now,
         nextAttempts,
-        "reclaimed after host restart (worker did not finish)",
+        reason,
         JSON.stringify(nextLabels),
+        reason,
+        now,
         row.id,
       );
+      // Inbox-notify the parent so the main agent picks the
+      // intervention up on its next turn rather than discovering
+      // a stuck task days later.
+      if (this.deps.notifyParentSession && row.parent_session_id) {
+        try {
+          this.deps.notifyParentSession(row.parent_session_id, {
+            kind: "task_intervention_required",
+            text:
+              `Task "${row.title}" needs your attention.\n` +
+              `Reason: ${reason}\n` +
+              `Decide: task_continue / task_retry_fresh / ` +
+              `task_extend_timeout / task_abort.`,
+            meta: {
+              taskId: row.id,
+              attempts: nextAttempts,
+              terminalStatus: "orphaned",
+              suggestedActions: [
+                "task_continue",
+                "task_retry_fresh",
+                "task_extend_timeout",
+                "task_abort",
+              ],
+            },
+          });
+        } catch {
+          // best-effort
+        }
+      }
     }
     this.deps.log.info("workboard: reclaimed orphaned in_progress tasks", {
       count: orphans.length,
@@ -491,14 +655,55 @@ export class EchoWorker implements WorkerHandle {
     private opts: { delayMs?: number; signal?: AbortSignal } = {},
   ) {}
 
-  async run(task: Task): Promise<TerminalUpdate> {
+  async run(task: Task, signal: AbortSignal): Promise<TerminalUpdate> {
     const ms = this.opts.delayMs ?? 30_000;
-    await sleep(ms, this.opts.signal);
+    // Two cancellation sources: the constructor-level signal
+    // (tests use it to short-circuit a long sleep) and the
+    // pool-supplied per-run signal (watchdog / shutdown). Either
+    // wins.
+    const merged = mergeAbortSignals(this.opts.signal, signal);
+    try {
+      await sleep(ms, merged);
+    } catch (err) {
+      // Aborted echo worker still returns a terminal update so the
+      // pool can route to intervention rather than blowing up.
+      return {
+        status: "aborted",
+        resultSummary: `Echo worker aborted: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
     return {
       status: "done",
       resultSummary: `Echo worker reflected: "${task.title}"`,
     };
   }
+}
+
+/** Merge an arbitrary number of AbortSignals into one. The result
+ *  fires when any input fires. */
+function mergeAbortSignals(
+  ...signals: Array<AbortSignal | undefined>
+): AbortSignal {
+  const ctl = new AbortController();
+  for (const s of signals) {
+    if (!s) continue;
+    if (s.aborted) {
+      ctl.abort();
+      return ctl.signal;
+    }
+    s.addEventListener(
+      "abort",
+      () => {
+        try {
+          ctl.abort();
+        } catch {
+          // ignore
+        }
+      },
+      { once: true },
+    );
+  }
+  return ctl.signal;
 }
 
 /**
@@ -572,27 +777,23 @@ export class LLMWorker implements WorkerHandle {
     this.name = cfg.name;
   }
 
-  async run(task: Task): Promise<TerminalUpdate> {
+  async run(task: Task, signal: AbortSignal): Promise<TerminalUpdate> {
     const userId = task.ownerUserId || this.cfg.defaultUserId;
-    // Retry semantics:
-    //   - First attempt (attempts=0)               → fresh session,
-    //                                                  full task brief.
-    //   - Retry with prior session_id present       → resume that
-    //                                                  session and
-    //                                                  send a short
-    //                                                  retry nudge
-    //                                                  instead of
-    //                                                  re-pasting the
-    //                                                  whole task.
-    //   - Retry without prior session_id (rare:
-    //     legacy task or DB inconsistency)          → fall back to
-    //                                                  fresh session.
-    const isRetry = (task.attempts ?? 0) > 0 && Boolean(task.sessionId);
-    const initialUserMessage = isRetry
-      ? buildRetryPrompt(task)
+    // Resume vs. fresh-start:
+    //   - First time the row is seen (attempts=0) or no
+    //     session_id captured yet  → fresh session, full brief.
+    //   - attempts>0 with a session_id  → either main agent
+    //     called task_continue (which set session_continuation_hint)
+    //     or task_retry_fresh (which cleared session_id, so we
+    //     don't enter this branch). Resume the prior session and
+    //     pass a short nudge instead of re-pasting the brief.
+    const shouldResume = (task.attempts ?? 0) > 0 && Boolean(task.sessionId);
+    const initialUserMessage = shouldResume
+      ? buildContinuationPrompt(task)
       : buildInitialPrompt(task);
     const result = await this.cfg.runner.run({
       userId,
+      signal,
       initialUserMessage,
       systemPrompt: this.cfg.systemPrompt ?? undefined,
       modelId: this.cfg.modelId ?? undefined,
@@ -607,13 +808,13 @@ export class LLMWorker implements WorkerHandle {
       // bundle this run owns.
       workerSlug: this.cfg.agentId,
       timeouts: this.cfg.timeouts,
-      // Resume the prior conversation when retrying so the LLM
+      // Resume the prior conversation when continuing so the LLM
       // sees its own earlier work + tool results, doesn't waste
       // a full re-research cycle, and — critically for the user
       // — the kanban Execution dialog shows one continuous
       // transcript across attempts instead of N independent
       // session windows.
-      resumeSessionId: isRetry ? task.sessionId ?? undefined : undefined,
+      resumeSessionId: shouldResume ? task.sessionId ?? undefined : undefined,
       // Stamp the session id on the task row as soon as the host
       // creates the session, not when the run terminates. The
       // kanban Execution tab tails this in-progress conversation
@@ -648,9 +849,19 @@ export class LLMWorker implements WorkerHandle {
       };
     }
     if (result.status === "aborted") {
+      // Distinguish three abort sources for the intervention text:
+      //   1. watchdog stamped a `failureReason` before aborting
+      //      — the row already carries the message; just echo
+      //      something concise here.
+      //   2. shutdown / explicit cancel without a reason — keep
+      //      the runner's own summary.
+      // Either way the row ends up in awaiting-intervention.
+      const fresh = getTask(this.cfg.db, task.id);
+      const watchdogReason = fresh?.failureReason;
       return {
         status: "aborted",
-        resultSummary: result.summary || "aborted",
+        resultSummary:
+          watchdogReason ?? result.summary ?? "aborted",
       };
     }
     // stalled / error → stalled (keeps task on the kanban so the
@@ -680,31 +891,79 @@ function buildInitialPrompt(task: Task): string {
 }
 
 /**
- * Prompt used when a task is being retried in a resumed session.
+ * Prompt used when the main agent revives a task via
+ * task_continue and we resume the prior session. The LLM already
+ * sees its earlier turns + tool results in context, so this is a
+ * thin nudge — plus the optional hint the main agent attached.
  *
- * The LLM already sees its prior turns + tool results in context,
- * so we only nudge it about the missing exit signal. We also tell
- * it the attempt count so it can decide "finalize now" vs. "keep
- * digging" — if attempts is high, that's a hint to wrap up.
- *
- * Why we don't repeat the full task brief: the original prompt is
- * still at the top of the resumed transcript. Repeating it would
- * just inflate context and risk the LLM treating it as a fresh
- * task, undoing whatever progress was already made.
+ * Why we don't repeat the full brief: it's at the top of the
+ * resumed transcript. Repeating inflates context and risks the
+ * worker treating it as a fresh task, undoing prior progress.
  */
-function buildRetryPrompt(task: Task): string {
-  const reasonNote = task.failureReason
-    ? `Last attempt didn't finish cleanly. Reason recorded: ${task.failureReason.slice(0, 200)}\n`
-    : "Last attempt didn't finish cleanly.\n";
-  return [
-    `(retry attempt ${(task.attempts ?? 0) + 1} of ${MAX_ATTEMPTS} on the same task)`,
+function buildContinuationPrompt(task: Task): string {
+  const reason = task.interventionReason ?? task.failureReason;
+  const lines: string[] = [
+    `(continuing from prior session; attempt #${(task.attempts ?? 0) + 1})`,
     "",
-    reasonNote,
+  ];
+  if (reason) {
+    lines.push(`The previous run did not finish cleanly. Recorded reason:`);
+    lines.push(reason.slice(0, 400));
+    lines.push("");
+  }
+  // The main agent may have appended a hint via task.description
+  // before re-queueing (task_continue forwards the hint into a
+  // dedicated marker block). Surface it loud and clear.
+  const hint = extractContinuationHint(task.description);
+  if (hint) {
+    lines.push(`Operator note: ${hint}`);
+    lines.push("");
+  }
+  lines.push(
     `Continue from where you left off. If the work is actually done, ` +
       `call \`task_complete\` with a one-line summary now — the ` +
       `orchestrator only counts a task as finished when you call ` +
       `that tool.`,
-  ].join("\n");
+  );
+  return lines.join("\n");
+}
+
+const CONTINUATION_HINT_BEGIN = "<!-- continuation-hint -->";
+const CONTINUATION_HINT_END = "<!-- /continuation-hint -->";
+
+export function extractContinuationHint(
+  description: string | null | undefined,
+): string | null {
+  if (!description) return null;
+  const start = description.lastIndexOf(CONTINUATION_HINT_BEGIN);
+  if (start < 0) return null;
+  const end = description.indexOf(CONTINUATION_HINT_END, start);
+  if (end < 0) return null;
+  return description
+    .slice(start + CONTINUATION_HINT_BEGIN.length, end)
+    .trim() || null;
+}
+
+export function appendContinuationHint(
+  description: string | null | undefined,
+  hint: string,
+): string {
+  // Wipe any previous hint marker so we don't accumulate stale
+  // notes across multiple task_continue calls.
+  const cleaned = stripContinuationHint(description ?? "");
+  const block = `${CONTINUATION_HINT_BEGIN}\n${hint.trim()}\n${CONTINUATION_HINT_END}`;
+  return cleaned ? `${cleaned.trimEnd()}\n\n${block}` : block;
+}
+
+export function stripContinuationHint(description: string): string {
+  const start = description.lastIndexOf(CONTINUATION_HINT_BEGIN);
+  if (start < 0) return description;
+  const end = description.indexOf(CONTINUATION_HINT_END, start);
+  if (end < 0) return description;
+  return (
+    description.slice(0, start) +
+    description.slice(end + CONTINUATION_HINT_END.length)
+  ).replace(/\n{3,}/g, "\n\n");
 }
 
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {

@@ -751,6 +751,51 @@ export class PluginRegistry {
   }
 
   /**
+   * Static system-prompt fragments contributed by every active
+   * plugin in this tenant. Each entry carries the plugin id +
+   * displayName so the host can wrap fragments in a section
+   * header before injection. Order: stable by plugin id, then
+   * by contribution id, so the resulting prompt is
+   * deterministic across reloads.
+   */
+  systemPromptFragmentsForTenant(
+    tenantId: string,
+  ): Array<{
+    pluginId: string;
+    pluginDisplayName: string;
+    fragmentId: string;
+    text: string;
+  }> {
+    const out: Array<{
+      pluginId: string;
+      pluginDisplayName: string;
+      fragmentId: string;
+      text: string;
+    }> = [];
+    const cached = this.cache.get(tenantId);
+    if (!cached) return out;
+    for (const e of cached.entries) {
+      if (e.state !== "active") continue;
+      const fragments = e.manifest.contributes?.systemPromptFragments;
+      if (!fragments || fragments.length === 0) continue;
+      for (const f of fragments) {
+        out.push({
+          pluginId: e.manifest.id,
+          pluginDisplayName: e.manifest.displayName ?? e.manifest.id,
+          fragmentId: f.id,
+          text: f.text,
+        });
+      }
+    }
+    return out.sort((a, b) => {
+      if (a.pluginId !== b.pluginId) {
+        return a.pluginId.localeCompare(b.pluginId);
+      }
+      return a.fragmentId.localeCompare(b.fragmentId);
+    });
+  }
+
+  /**
    * Build a small read-only capability lookup handle scoped to one
    * tenant. Same shape as `PluginContext.capabilities` but for
    * host-side consumers (agent loop, tool factories) that don't

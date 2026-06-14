@@ -36,6 +36,13 @@ export const WORKER_DENY_TOOLS: readonly string[] = [
   // History is for the orchestrator/user explaining a task,
   // not for the worker introspecting its peers.
   "task_get_history",
+  // Intervention tools (008+) are orchestrator-only. A worker
+  // looking at its own row and self-reviving would loop the
+  // pool indefinitely; same logic as the rest of this list.
+  "task_continue",
+  "task_retry_fresh",
+  "task_extend_timeout",
+  "task_abort",
   // Worker-agent CRUD belongs to the orchestrator. A worker is
   // configured *before* it runs; letting it self-mutate — or
   // mutate peers — would just be a self-foot-gun.

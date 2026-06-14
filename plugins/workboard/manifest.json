@@ -54,12 +54,20 @@
       { "id": "task_complete",            "module": "TaskCompleteTool"           }
     ],
     "skills": [
-      { "id": "workboard-howto", "path": "skills/workboard-howto.md" },
-      { "id": "worker-creator", "path": "skills/worker-creator.md" }
+      { "id": "workboard-howto",          "path": "skills/workboard-howto.md"          },
+      { "id": "worker-creator",           "path": "skills/worker-creator.md"           },
+      { "id": "worker-fleet",             "path": "skills/worker-fleet.md"             },
+      { "id": "large-input-large-output", "path": "skills/large-input-large-output.md" }
     ],
     "agentSeeds": [
       { "id": "echo-demo",   "path": "agent-seeds/echo-demo"   },
       { "id": "llm-default", "path": "agent-seeds/llm-default" }
+    ],
+    "systemPromptFragments": [
+      {
+        "id": "prefer-delegation",
+        "text": "The workboard is active in this tenant. For any non-trivial user request — anything that takes more than a few minutes, fans out into multiple steps, or has clearly separable roles (design / build / test, research / write, etc.) — your default is to DELEGATE to worker agents via `task_create` rather than execute it yourself. Read the `worker-fleet` skill for fleet design and the `worker-creator` skill for authoring agent.json + SOUL.md. Reuse existing workers (run `tenant_config_list({path:\"workers\"})` first) before creating new ones. Do the work yourself directly only when (a) the user explicitly says so (\"do it yourself\" / \"don't use a worker\"), (b) the request is trivial (a single tool call, a one-line answer, a quick lookup), or (c) the user is mid-conversation and a synchronous reply is what they want. When in doubt, ack the plan (\"I'll create a fleet of N workers and dispatch via the kanban\") and give the user a chance to override."
+      }
     ],
     "apiRoutes": [
       { "method": "GET",    "path": "/tasks",              "handler": "listTasks"     },
