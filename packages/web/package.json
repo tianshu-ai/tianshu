@@ -26,7 +26,7 @@
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^6.0.2",
     "autoprefixer": "^10.4.20",
-    "happy-dom": "^20.10.2",
+    "happy-dom": "^20.10.3",
     "postcss": "^8.4.49",
     "tailwindcss": "^4.3.0",
     "typescript": "^6.0.3",
