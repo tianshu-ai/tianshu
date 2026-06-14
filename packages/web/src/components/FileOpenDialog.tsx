@@ -52,6 +52,57 @@ function classifyMime(mime: string): ViewState["kind"] {
   return "binary";
 }
 
+/** Best-effort MIME guess from extension. Mirrors the small table
+ *  in plugins/files/src/server.ts so we get the same answer
+ *  client-side without round-tripping a HEAD. */
+function mimeForExt(path: string): string {
+  const ext = path.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+  switch (ext) {
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".webp":
+      return "image/webp";
+    case ".svg":
+      return "image/svg+xml";
+    case ".pdf":
+      return "application/pdf";
+    case ".mp4":
+      return "video/mp4";
+    case ".webm":
+      return "video/webm";
+    case ".mp3":
+      return "audio/mpeg";
+    case ".wav":
+      return "audio/wav";
+    case ".ogg":
+      return "audio/ogg";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".md":
+      return "text/markdown; charset=utf-8";
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".js":
+    case ".jsx":
+    case ".ts":
+    case ".tsx":
+      return "text/javascript; charset=utf-8";
+    case ".csv":
+      return "text/csv; charset=utf-8";
+    case "":
+      return "application/octet-stream";
+    default:
+      return "text/plain; charset=utf-8";
+  }
+}
+
 function basenameOf(p: string): string {
   const cleaned = p.replace(/^workspace:\/\/+/, "/");
   const segs = cleaned.split("/").filter(Boolean);
@@ -85,46 +136,49 @@ export default function FileOpenDialog(): ReactElement | null {
     const controller = new AbortController();
     const cleaned = intent.path.replace(/^workspace:\/\/+/, "/");
 
+    // Strategy: hit `/api/p/files/read` first. Returns either
+    // {binary:false, content, size} (text — show inline) or
+    // {binary:true, size} (binary — we then dispatch on extension
+    // to pick a native viewer tag, or fall back to a download stub).
+    // We deliberately skip a HEAD on /raw because the host's plugin
+    // router only registers GET handlers — a HEAD comes back 404.
     void (async () => {
       try {
-        // Use HEAD on /raw to grab the MIME without paying for the
-        // body — most browsers send a Range request afterwards
-        // anyway when we set the <img>/<video> src.
-        const head = await fetch(rawUrl(cleaned), {
-          method: "HEAD",
-          credentials: "include",
-          signal: controller.signal,
-        });
-        if (head.status === 404) {
+        const r = await fetch(
+          `/api/p/files/read?path=${encodeURIComponent(cleaned)}`,
+          { credentials: "include", signal: controller.signal },
+        );
+        if (r.status === 404) {
           setView({ kind: "error", message: "File not found." });
           return;
         }
-        if (!head.ok) {
+        if (r.status === 413) {
+          // File above /read's size cap. Fall through to binary
+          // view so the user can still download via /raw.
+          const j = (await r.json()) as { size?: number };
           setView({
-            kind: "error",
-            message: `HEAD ${rawUrl(cleaned)} → ${head.status}`,
+            kind: "binary",
+            mime: "application/octet-stream",
+            size: j.size ?? 0,
           });
           return;
         }
-        const mime = head.headers.get("Content-Type") ?? "application/octet-stream";
-        const size = Number(head.headers.get("Content-Length") ?? "0");
-        const kind = classifyMime(mime);
-
-        if (kind === "text") {
-          // Pull text content via /read so we can show it inline
-          // with truncation + line wrap.
-          const r = await fetch(
-            `/api/p/files/read?path=${encodeURIComponent(cleaned)}`,
-            { credentials: "include", signal: controller.signal },
-          );
-          if (!r.ok) {
-            setView({
-              kind: "error",
-              message: `read failed: HTTP ${r.status}`,
-            });
-            return;
-          }
-          const j = (await r.json()) as { content?: string; truncated?: boolean };
+        if (!r.ok) {
+          setView({
+            kind: "error",
+            message: `read failed: HTTP ${r.status}`,
+          });
+          return;
+        }
+        const j = (await r.json()) as {
+          content?: string;
+          truncated?: boolean;
+          binary?: boolean;
+          size?: number;
+        };
+        const size = j.size ?? 0;
+        if (!j.binary) {
+          const mime = mimeForExt(cleaned);
           setView({
             kind: "text",
             content: j.content ?? "",
@@ -134,12 +188,19 @@ export default function FileOpenDialog(): ReactElement | null {
           });
           return;
         }
-        if (kind === "binary") {
-          setView({ kind: "binary", mime, size });
+        // Binary: pick a viewer by extension.
+        const mime = mimeForExt(cleaned);
+        const kind = classifyMime(mime);
+        if (
+          kind === "image" ||
+          kind === "pdf" ||
+          kind === "video" ||
+          kind === "audio"
+        ) {
+          setView({ kind, mime } as ViewState);
           return;
         }
-        // image / pdf / video / audio: hand the URL to a native tag.
-        setView({ kind, mime } as ViewState);
+        setView({ kind: "binary", mime, size });
       } catch (err) {
         if ((err as { name?: string }).name === "AbortError") return;
         setView({
