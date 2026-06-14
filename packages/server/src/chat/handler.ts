@@ -875,6 +875,60 @@ export function shouldCompactBranch(
   return shouldCompact(usage.tokens, input.contextWindow, settings);
 }
 
+/**
+ * Pure-side-effect helper that drives one auto-compact decision
+ * + (if needed) action against any AgentHarness, with no
+ * dependency on the chat WebSocket or session-row plumbing.
+ *
+ * Reused by:
+ *   - the main chat handler after every successful turn
+ *   - the worker agent loop (agent-loop.ts) on a configurable
+ *     cadence so a long-running worker can recover from runaway
+ *     context growth instead of stalling with `no_completion`.
+ *
+ * Returns one of:
+ *   - { compacted: false }                    — below threshold,
+ *     no work done
+ *   - { compacted: true,  tokensBefore: N }   — ran compact()
+ *     successfully
+ *   - { compacted: false, error: "..." }      — attempted but
+ *     compact() threw; caller decides whether to surface this
+ */
+export interface AutoCompactDecision {
+  compacted: boolean;
+  tokensBefore?: number;
+  error?: string;
+}
+
+export async function tryAutoCompact(args: {
+  piSession: PiSession;
+  harness: AgentHarness;
+  contextWindow: number | undefined;
+}): Promise<AutoCompactDecision> {
+  const { piSession, harness, contextWindow } = args;
+  let branch: SessionTreeEntry[];
+  try {
+    branch = await piSession.getBranch();
+  } catch (err) {
+    console.warn(
+      `[chat] auto-compact decision failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return { compacted: false };
+  }
+  if (!shouldCompactBranch({ branch, contextWindow })) {
+    return { compacted: false };
+  }
+  try {
+    const result = await harness.compact();
+    return { compacted: true, tokensBefore: result.tokensBefore };
+  } catch (err) {
+    return {
+      compacted: false,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
 async function maybeAutoCompact(args: {
   session: ChatSession;
   piSession: PiSession;
@@ -884,55 +938,40 @@ async function maybeAutoCompact(args: {
   onSuccessRefresh: () => void;
 }): Promise<void> {
   const { session, piSession, harness, modelInfo, send, onSuccessRefresh } = args;
-  let branch: SessionTreeEntry[];
-  try {
-    branch = await piSession.getBranch();
-  } catch (err) {
-    // Reading the branch for shouldCompact shouldn't throw, but
-    // belt-and-braces: never let the compact-decision path break
-    // the turn that already succeeded.
-    console.warn(
-      `[chat] auto-compact decision failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
-  }
-  if (
-    !shouldCompactBranch({
-      branch,
-      contextWindow: modelInfo.contextWindow,
-    })
-  ) {
-    return;
-  }
-  try {
-    const result = await harness.compact();
-    send({
-      type: "history_compacted",
-      reason: "auto",
-      // Old protocol carried oldSessionId/newSessionId because
-      // the legacy compactSession forked. pi's compact() writes
-      // a compaction entry into the SAME session — no fork — so
-      // both ids point at the current one.
-      oldSessionId: session.id,
-      newSessionId: session.id,
-      // Pi's compact() doesn't tell us how many entries it
-      // summarised / kept. The UI uses these counts for a small
-      // "📌 N messages compressed" badge; we leave them at 0
-      // until pi exposes the figures.
-      summarisedCount: 0,
-      keptCount: 0,
-      durationMs: 0,
-      tokensBefore: result.tokensBefore,
-    });
-    onSuccessRefresh();
-  } catch (err) {
-    // Auto-compact failures are non-fatal: the user got their
-    // turn back, the next turn will simply be expensive.
+  const decision = await tryAutoCompact({
+    piSession,
+    harness,
+    contextWindow: modelInfo.contextWindow,
+  });
+  if (decision.error) {
+    // Auto-compact failure on the chat path: surface as a
+    // stream_error so the user knows next turn may be expensive.
     send({
       type: "stream_error",
-      reason: `auto-compact failed: ${err instanceof Error ? err.message : String(err)} (continuing without compact)`,
+      reason: `auto-compact failed: ${decision.error} (continuing without compact)`,
     });
+    return;
   }
+  if (!decision.compacted) return;
+  send({
+    type: "history_compacted",
+    reason: "auto",
+    // Old protocol carried oldSessionId/newSessionId because
+    // the legacy compactSession forked. pi's compact() writes
+    // a compaction entry into the SAME session — no fork — so
+    // both ids point at the current one.
+    oldSessionId: session.id,
+    newSessionId: session.id,
+    // Pi's compact() doesn't tell us how many entries it
+    // summarised / kept. The UI uses these counts for a small
+    // "📌 N messages compressed" badge; we leave them at 0
+    // until pi exposes the figures.
+    summarisedCount: 0,
+    keptCount: 0,
+    durationMs: 0,
+    tokensBefore: decision.tokensBefore,
+  });
+  onSuccessRefresh();
 }
 
 async function runManualCompact(args: {
