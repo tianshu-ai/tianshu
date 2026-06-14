@@ -12,7 +12,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.79.0",
-    "@earendil-works/pi-ai": "^0.79.0",
+    "@earendil-works/pi-ai": "^0.79.3",
     "@tianshu/plugin-sdk": "*",
     "better-sqlite3": "^12.10.0",
     "cors": "^2.8.5",
