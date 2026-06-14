@@ -148,6 +148,20 @@ export function checkWritable(
   }
   const segments = rel.split("/");
 
+  // Mirror tree (`skills/_host/...`) is a read-only window onto
+  // host- and plugin-shipped SKILL.md bundles. Writing there is
+  // pointless because the host overwrites the tree on every
+  // boot from the source-of-truth files in the plugin / host
+  // repo. Refuse explicitly so the agent gets a clear message
+  // instead of editing a doomed file.
+  if (segments[0] === "skills" && segments[1] === "_host") {
+    return {
+      ok: false,
+      reason:
+        "skills/_host/ is a read-only mirror of host & plugin skills (overwritten on every boot). Edit the source SKILL.md in the plugin or host repo instead.",
+    };
+  }
+
   // Main agent. Allowed prefixes:
   //   skills/...                        → shared skill bundle
   //   main/skills/...                   → main-only skill bundle

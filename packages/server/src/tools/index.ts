@@ -39,15 +39,13 @@ export interface BuildToolsetOpts {
    *  `execute()`. Required iff `pluginTools` is non-empty. */
   toolContext: BuildToolContext;
   /**
-   * Skills the agent can see this turn. When non-empty, we expose
-   * a `read_skill(name)` meta-tool that returns the skill body
-   * verbatim. Without this, the agent would have to guess which
-   * tool to use for which skill family (host skills aren't in any
-   * plugin's read scope; plugin skills aren't either; tenant
-   * skills are reachable via tenant_config_read but the agent
-   * has to construct the path correctly). One tool, one
-   * argument, one return shape — same UX no matter where the
-   * skill lives.
+   * Deprecated. Used to feed a `read_skill` meta-tool; the
+   * registry now mirrors host / plugin SKILL.md into the tenant
+   * config tree so `tenant_config_read` reaches every skill
+   * source via its <available_skills> URI. Kept on the type one
+   * release for back-compat with old callers.
+   *
+   * @deprecated
    */
   skills?: readonly LoadedSkill[];
 }
@@ -88,58 +86,15 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
   const schemas: Tool[] = [];
   const executors: Record<string, ToolExecutor> = {};
 
-  // ─── read_skill meta-tool ──────────────────────────────────
-  //
-  // Backstory: we used to expose `load_skill(name)` and removed
-  // it in favour of "read the SKILL.md file directly". That
-  // works for tenant skills (the chat agent reads them via
-  // tenant_config_read with a `tenant-config:///` URI). It does
-  // NOT work for plugin / host skills — they live outside the
-  // tenant config tree, so neither read_file nor tenant_config_read
-  // can fetch them, and a worker that tries
-  // `read_file('/Users/.../builtinConfig/.../SKILL.md')` gets a
-  // 404. Bring back a small meta-tool keyed by skill name; it's
-  // the simplest stable surface across all three skill sources.
-  if (opts.skills && opts.skills.length > 0) {
-    const byName = new Map<string, LoadedSkill>();
-    for (const s of opts.skills) {
-      // Last-writer-wins on collisions — the same merge order
-      // the system prompt's <available_skills> block uses.
-      byName.set(s.name, s);
-    }
-    schemas.push({
-      name: "read_skill",
-      description:
-        "Load a skill's SKILL.md body into your context by its `name` (the value in <available_skills>'s <name> tag). Use this for any skill source — host, plugin, or tenant. The body comes back verbatim, including frontmatter. Use sparingly; one skill up front is the right cadence.",
-      parameters: Type.Object({
-        name: Type.String({
-          description: "Skill name as listed in <available_skills>.",
-        }),
-      }),
-    });
-    executors.read_skill = (args) => {
-      const name = String((args as { name?: unknown }).name ?? "").trim();
-      if (!name) return { ok: false, text: "name is required" };
-      const skill = byName.get(name);
-      if (!skill) {
-        return {
-          ok: false,
-          text: `unknown skill: "${name}". Available: ${[...byName.keys()].sort().join(", ") || "(none)"}`,
-        };
-      }
-      return {
-        ok: true,
-        text: `# ${skill.name}\n\n${skill.description}\n\n${skill.body}`,
-      };
-    };
-  }
-
-  // Skills are now discovered via the per-tenant filesystem layer
-  // (`<tenant>/_tenant/config/...`) and announced in the system
-  // prompt's <available_skills> block. The agent reads them via
-  // the files plugin's `tenant_config_*` tools — plus the
-  // `read_skill` meta-tool above for any-source loading. There is no
-  // host meta-tool for skill loading anymore.
+  // No skill meta-tool. The registry mirrors host / plugin
+  // SKILL.md into `<tenant>/_tenant/config/skills/_host/<pid>/
+  // <id>/SKILL.md` at activation time, so the agent reads any
+  // skill (tenant-authored, plugin-shipped, or host-shipped)
+  // via `tenant_config_read` against the URI advertised in
+  // `<available_skills>`. One tool, one path shape, no
+  // special case. `opts.skills` is kept on the type one
+  // release for back-compat but is intentionally ignored here.
+  void opts.skills;
 
   const agentScope = toolContext.agentScope ?? { kind: "main" as const };
 

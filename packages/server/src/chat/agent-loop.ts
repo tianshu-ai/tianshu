@@ -41,7 +41,6 @@ import {
 import {
   defaultSystemPrompt,
   formatAvailableSkillsBlock,
-  loadHostSkills,
   tryAutoCompact,
 } from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
@@ -250,8 +249,10 @@ export async function runAgentLoop(
       }
     : { kind: "worker" as const, workerKind: "" };
   const allSkills: LoadedSkill[] = [
-    ...loadHostSkills(),
-    ...(pluginRegistry?.skillsForTenant(ctx.tenantId) ?? []),
+    // mirrored = host + plugin skills, all carrying
+    // tenant-config:/// paths the worker's tenant_config_read can
+    // open. See registry.mirroredSkillsForTenant.
+    ...(pluginRegistry?.mirroredSkillsForTenant(ctx.tenantId) ?? []),
     ...loadTenantSkills({
       tenantId: ctx.tenantId,
       scope: tenantWorkerScope,
@@ -291,7 +292,6 @@ export async function runAgentLoop(
   });
   const toolset = await buildToolset({
     pluginTools,
-    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,

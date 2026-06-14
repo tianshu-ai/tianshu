@@ -280,13 +280,16 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
   // Skill priority (later wins on the dedup key, which is the
   // directory name for tenant skills and the contribution id for
-  // host/plugin skills): host bundle → plugins → tenant scope.
+  // host/plugin skills): host+plugin (mirrored) → tenant scope.
   // Tenant scope wins by design — the user can override or shadow a
   // shipped skill by dropping a same-named directory under
-  // `_tenant/config/{skills,main/skills}/`.
+  // `_tenant/config/{skills,main/skills}/`. The mirrored copies
+  // live under `_tenant/config/skills/_host/<pid>/<id>/SKILL.md`
+  // and carry tenant-config:/// filePaths so the system prompt's
+  // <available_skills> block can advertise them in the same shape
+  // as user-authored skills.
   const allSkills = [
-    ...loadHostSkills(),
-    ...(pluginRegistry?.skillsForTenant(ctx.tenantId) ?? []),
+    ...(pluginRegistry?.mirroredSkillsForTenant(ctx.tenantId) ?? []),
     ...loadTenantSkills({
       tenantId: ctx.tenantId,
       scope: { kind: "main" },
@@ -317,7 +320,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
   const toolset = await buildToolset({
     pluginTools,
-    skills,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
@@ -1185,7 +1187,7 @@ export function formatAvailableSkillsBlock(
   if (skills.length === 0) return "";
   const lines: string[] = [
     `## Skills`,
-    `Scan <available_skills>. If one clearly applies, load it with \`read_skill({ name: "<the name from <name> tag>" })\`, then follow it.`,
+    `Scan <available_skills>. If one clearly applies, read its SKILL.md at the exact <location> with \`tenant_config_read\`, then follow it. All skill locations are tenant-config:/// URIs — host / plugin skills are mirrored into the tenant config tree at boot, so one tool reads them all.`,
     `If several apply, choose the most specific. If none clearly apply, read none.`,
     `One skill up front max. Never guess/fabricate skill paths.`,
     `Skill bundles may ship sibling files (\`scripts/\`, \`references/\`, \`assets/\`) next to SKILL.md — those still go through the regular file tools (\`read_file\` for workspace paths, \`tenant_config_read\` for tenant-config paths) using the relative paths SKILL.md mentions.`,
@@ -1215,23 +1217,23 @@ export function formatAvailableSkillsBlock(
  *    but the URI gives it a stable identifier to mention.
  */
 function skillLocationUri(skill: LoadedSkill): string {
-  const pid = skill.source.pluginId;
-  if (
-    pid === "tenant-shared" ||
-    pid === "tenant-main" ||
-    pid.startsWith("tenant-worker-")
-  ) {
-    // filePath looks like `<home>/tenants/<id>/workspace/_tenant/config/<rest>`.
-    // Strip everything up to and including `_tenant/config/` so the URI
-    // is portable across tenants.
-    const idx = skill.filePath.indexOf("_tenant/config/");
-    if (idx >= 0) {
-      const rel = skill.filePath
-        .slice(idx + "_tenant/config/".length)
-        .replace(/\\/g, "/");
-      return `tenant-config:///${rel}`;
-    }
+  // Every skill that lives under a tenant config tree — user-
+  // authored, plugin-mirrored, host-mirrored — emits a portable
+  // `tenant-config:///<rest>` URI. The pluginId no longer
+  // matters here; the mirror layer in the registry stamps
+  // plugin/host skills with `_tenant/config/skills/_host/...`
+  // filePaths just like user skills.
+  const idx = skill.filePath.indexOf("_tenant/config/");
+  if (idx >= 0) {
+    const rel = skill.filePath
+      .slice(idx + "_tenant/config/".length)
+      .replace(/\\/g, "/");
+    return `tenant-config:///${rel}`;
   }
+  // Fall-through: a skill whose filePath isn't under _tenant/
+  // config/. This shouldn't happen post-mirror; if it does, we'd
+  // rather surface the absolute path than silently hide the
+  // skill, so the agent can at least diagnose the gap.
   return skill.filePath;
 }
 

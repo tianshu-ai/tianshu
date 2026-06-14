@@ -182,3 +182,91 @@ describe("filterSkillsForTenant", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("mirrorSkillsToTenantConfig", () => {
+  let tenantConfigDir: string;
+  beforeEach(() => {
+    tenantConfigDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "tianshu-skill-mirror-"),
+    );
+  });
+  afterEach(() => {
+    fs.rmSync(tenantConfigDir, { recursive: true, force: true });
+  });
+
+  function fakeSkill(over: Partial<LoadedSkill> = {}): LoadedSkill {
+    return {
+      source: { pluginId: "p1", contributionId: "alpha" },
+      filePath: "/orig/alpha.md",
+      name: "alpha",
+      description: "first",
+      body: "# Alpha\n\nbody body body",
+      ...over,
+    };
+  }
+
+  it("writes SKILL.md under skills/_host/<pid>/<id>/ and rebinds filePath", async () => {
+    const { mirrorSkillsToTenantConfig } = await import("./skills.js");
+    const out = mirrorSkillsToTenantConfig({
+      tenantConfigDir,
+      skills: [fakeSkill()],
+      log: { info: () => {}, warn: () => {} },
+    });
+    expect(out).toHaveLength(1);
+    const expectedAbs = path.join(
+      tenantConfigDir,
+      "skills",
+      "_host",
+      "p1",
+      "alpha",
+      "SKILL.md",
+    );
+    expect(out[0]!.filePath).toBe(expectedAbs);
+    expect(fs.existsSync(expectedAbs)).toBe(true);
+    const written = fs.readFileSync(expectedAbs, "utf8");
+    expect(written).toContain("name: alpha");
+    expect(written).toContain("description: first");
+    expect(written).toContain("body body body");
+  });
+
+  it("emits scope frontmatter when present", async () => {
+    const { mirrorSkillsToTenantConfig } = await import("./skills.js");
+    const out = mirrorSkillsToTenantConfig({
+      tenantConfigDir,
+      skills: [fakeSkill({ scope: "worker" })],
+      log: { info: () => {}, warn: () => {} },
+    });
+    const txt = fs.readFileSync(out[0]!.filePath, "utf8");
+    expect(txt).toMatch(/scope: worker/);
+  });
+
+  it("is idempotent — second call doesn't rewrite when content is unchanged", async () => {
+    const { mirrorSkillsToTenantConfig } = await import("./skills.js");
+    const skill = fakeSkill();
+    const out1 = mirrorSkillsToTenantConfig({
+      tenantConfigDir,
+      skills: [skill],
+      log: { info: () => {}, warn: () => {} },
+    });
+    const mtime1 = fs.statSync(out1[0]!.filePath).mtimeMs;
+    // Wait one tick so a re-write would necessarily bump mtime.
+    await new Promise((r) => setTimeout(r, 10));
+    mirrorSkillsToTenantConfig({
+      tenantConfigDir,
+      skills: [skill],
+      log: { info: () => {}, warn: () => {} },
+    });
+    const mtime2 = fs.statSync(out1[0]!.filePath).mtimeMs;
+    expect(mtime2).toBe(mtime1);
+  });
+});
+
+describe("isMirroredSkillPath", () => {
+  it("matches paths under skills/_host/", async () => {
+    const { isMirroredSkillPath } = await import("./skills.js");
+    expect(isMirroredSkillPath("skills/_host/p/x/SKILL.md")).toBe(true);
+    expect(isMirroredSkillPath("/skills/_host/p/x/SKILL.md")).toBe(true);
+    expect(isMirroredSkillPath("skills/foo/SKILL.md")).toBe(false);
+    expect(isMirroredSkillPath("workers/coder/skills/x/SKILL.md")).toBe(false);
+  });
+});
