@@ -23,6 +23,7 @@
 // `deactivate()` stops the pool. The `ctx.db` handle is owned by the
 // host so we never close it.
 
+import fs from "node:fs";
 import path from "node:path";
 import type {
   AgentLoopRunner,
@@ -60,6 +61,14 @@ import type { WorkerAgent } from "./types.js";
 interface ActiveState {
   pool: WorkerPool;
   log: PluginContext["log"];
+  /** Filesystem watcher on `_tenant/config/workers/` so a new
+   *  worker bundle landing on disk (via tenant_config_write or
+   *  the user's editor) rebuilds the pool without a host
+   *  restart. Closed in deactivate(). */
+  workersWatcher: fs.FSWatcher | null;
+  /** Debounce timer for the watcher — file editors trigger 3-5
+   *  events per save. */
+  workersWatcherTimer: NodeJS.Timeout | null;
 }
 
 let active: ActiveState | null = null;
@@ -234,7 +243,56 @@ const plugin: PluginServerModule = {
     });
     pool.start();
 
-    active = { pool, log: ctx.log };
+    // Wire the filesystem watcher. Recursive so any change
+    // under `<workspace>/_tenant/config/workers/**` triggers a
+    // rebuild — new slug, edited agent.json, deleted SOUL.md,
+    // anything. Debounced to coalesce the burst of events most
+    // editors emit on a single save (write + rename + chmod).
+    //
+    // Failure to watch (e.g. dir doesn't exist yet on first run)
+    // is non-fatal: the workboard still works, just without
+    // hot-reload, which is the pre-008 behaviour anyway.
+    const workersDir = path.join(
+      ctx.workspaceDir,
+      "_tenant",
+      "config",
+      "workers",
+    );
+    let workersWatcher: fs.FSWatcher | null = null;
+    let workersWatcherTimer: NodeJS.Timeout | null = null;
+    try {
+      // Make sure the directory exists so fs.watch doesn't throw
+      // on tenants whose first task hasn't created any workers
+      // yet (the agent-seed code creates this lazily).
+      fs.mkdirSync(workersDir, { recursive: true });
+      workersWatcher = fs.watch(
+        workersDir,
+        { recursive: true, persistent: false },
+        () => {
+          if (workersWatcherTimer) return;
+          workersWatcherTimer = setTimeout(() => {
+            workersWatcherTimer = null;
+            try {
+              ctx.log.info("workboard: worker bundle changed, rebuilding pool");
+              onAgentsWrite();
+            } catch (err) {
+              ctx.log.warn("workboard: pool rebuild failed", {
+                err: err instanceof Error ? err.message : String(err),
+              });
+            }
+          }, 250);
+        },
+      );
+      // Don't keep the process alive just for this watcher.
+      workersWatcher.unref?.();
+    } catch (err) {
+      ctx.log.warn("workboard: workers/ watcher could not start", {
+        err: err instanceof Error ? err.message : String(err),
+        path: workersDir,
+      });
+    }
+
+    active = { pool, log: ctx.log, workersWatcher, workersWatcherTimer };
     ctx.log.info("workboard activated", {
       echoEnabled,
       echoDelayMs,
@@ -247,13 +305,13 @@ const plugin: PluginServerModule = {
       onTaskWrite: () => pool.nudge(),
     };
 
-    // Pool refresh hook. Used to be wired to the (now retired)
-    // worker_agent_* REST surface so a save/delete from the admin
-    // page would rebuild the pool immediately. Filesystem edits
-    // (the new path) don't go through here — pool currently picks
-    // them up on the next activate / process restart. A follow-up
-    // PR adds a chokidar watcher to call this on `_tenant/config/
-    // workers/**` changes.
+    // Pool refresh hook. The legacy worker_agent_* REST surface
+    // (now retired) used to call this on every CRUD; today the
+    // source of truth is the filesystem under
+    // `_tenant/config/workers/<slug>/`. We watch that dir and
+    // rebuild the pool whenever a bundle is added / removed /
+    // edited so newly-created worker agents show up without a
+    // host restart.
     const onAgentsWrite = () => {
       const fresh = refreshAgentInventory();
       agentRowsById.clear();
@@ -265,7 +323,6 @@ const plugin: PluginServerModule = {
         );
       pool.rebuild(next);
     };
-    void onAgentsWrite;
 
     // host.skillCatalog drives the "effective skills" expansion
     // shipped to the admin UI — plugins ship skills via this
@@ -319,6 +376,14 @@ const plugin: PluginServerModule = {
   },
 
   async deactivate() {
+    if (active?.workersWatcherTimer) {
+      clearTimeout(active.workersWatcherTimer);
+    }
+    try {
+      active?.workersWatcher?.close();
+    } catch {
+      // best-effort
+    }
     active?.pool.stop();
     active?.log.info("workboard deactivated");
     active = null;
