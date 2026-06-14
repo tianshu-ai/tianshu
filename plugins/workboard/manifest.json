@@ -51,7 +51,12 @@
       { "id": "task_move",                "module": "TaskMoveTool"               },
       { "id": "task_delete",              "module": "TaskDeleteTool"             },
       { "id": "task_get_history",         "module": "TaskGetHistoryTool"         },
-      { "id": "task_complete",            "module": "TaskCompleteTool"           }
+      { "id": "task_complete",            "module": "TaskCompleteTool"           },
+      { "id": "task_continue",            "module": "TaskContinueTool"           },
+      { "id": "task_retry_fresh",         "module": "TaskRetryFreshTool"         },
+      { "id": "task_extend_timeout",      "module": "TaskExtendTimeoutTool"      },
+      { "id": "task_abort",               "module": "TaskAbortTool"              },
+      { "id": "model_list",               "module": "ModelListTool"              }
     ],
     "skills": [
       { "id": "workboard-howto",          "path": "skills/workboard-howto.md"          },
