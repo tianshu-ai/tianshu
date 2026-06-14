@@ -36,6 +36,7 @@ import type {
   PanelProps,
   PluginClientExports,
 } from "@tianshu/plugin-sdk/client";
+import { __installOpenFileApi } from "@tianshu/plugin-sdk/client";
 import { Paperclip } from "lucide-react";
 
 interface DirEntry {
@@ -636,6 +637,23 @@ function FileAttachment({ attachment }: AttachmentRendererProps) {
     </div>
   );
 }
+
+// Register the Files plugin's `OpenFileApi` implementation as soon
+// as the bundle loads. Anyone who calls `useOpenFile()` after this
+// runs gets the modal-dialog flow below; before this runs, the host
+// bootstrap fallback opens the raw URL in a new tab. The handler
+// just sets a window event so the always-mounted FilesOpenHost
+// component can render the dialog — we can't render React from a
+// module top-level.
+__installOpenFileApi({
+  open(path: string): void {
+    window.dispatchEvent(
+      new CustomEvent("tianshu:files:open", {
+        detail: { path },
+      }),
+    );
+  },
+});
 
 const exports_: PluginClientExports = {
   components: {

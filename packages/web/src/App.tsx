@@ -11,6 +11,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import ChatLayout from "./components/ChatLayout";
 import AdminShell from "./components/admin/AdminShell";
+import FileOpenDialog from "./components/FileOpenDialog";
 
 export default function App() {
   return (
@@ -20,6 +21,11 @@ export default function App() {
         <Route path="/admin/*" element={<AdminShell />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      {/* Always-mounted overlay listening for `tianshu:files:open`
+       *  intents emitted by useOpenFile() callers (workboard task
+       *  cards, attachment renderers, ...). Lives outside the
+       *  router so the dialog persists across route changes. */}
+      <FileOpenDialog />
     </BrowserRouter>
   );
 }

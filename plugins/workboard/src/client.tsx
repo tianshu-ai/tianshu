@@ -46,7 +46,13 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
-import type { AdminPageProps, PanelProps, PluginClientExports, SidebarSectionProps } from "@tianshu/plugin-sdk/client";
+import {
+  useOpenFile,
+  type AdminPageProps,
+  type PanelProps,
+  type PluginClientExports,
+  type SidebarSectionProps,
+} from "@tianshu/plugin-sdk/client";
 import WorkerAgentsPage from "./worker-agents-page.js";
 
 const API_BASE = "/api/p/workboard";
@@ -1519,23 +1525,24 @@ function Section({
  *  Files outside the user's workspace will 404 from the raw
  *  endpoint; we don't pre-validate here. */
 function DeliveryFile({ path }: { path: string }): React.ReactElement {
+  const open = useOpenFile();
   const stripped = path.replace(/^workspace:\/\/+/, "/");
-  const url = `/api/p/files/raw?path=${encodeURIComponent(stripped)}`;
   // Display the basename in the chip and the full path in the
   // tooltip so the row stays compact on small cards.
   const display = stripped.split("/").filter(Boolean).pop() || stripped;
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      onClick={(e) => e.stopPropagation()}
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        open(stripped);
+      }}
       className="inline-flex items-center gap-1 max-w-full text-[10.5px] font-mono text-emerald-300 hover:text-emerald-200 hover:underline truncate"
       title={stripped}
     >
       <FileText className="w-3 h-3 shrink-0 opacity-70" />
       <span className="truncate">{display}</span>
-    </a>
+    </button>
   );
 }
 
