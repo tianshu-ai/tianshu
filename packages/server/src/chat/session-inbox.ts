@@ -456,8 +456,14 @@ function rowToDelivered(row: InboxRow): DeliveredMessage {
  * Format intentionally uses XML-ish tags so the LLM can tell
  * "messages addressed to me while I was idle" apart from the
  * user's own input. The tags carry the kind so the agent has a
- * hint about what to do (a `task_done` is informational; a
- * `task_stalled` may need follow-up).
+ * hint about what to do:
+ *   - `task_done` is informational; brief acknowledge.
+ *   - `task_intervention_required` (post-008) means a worker
+ *     hit a failure / timeout and the orchestrator NEEDS the
+ *     main agent to pick: task_continue, task_retry_fresh,
+ *     task_extend_timeout, or task_abort. Don't just
+ *     acknowledge — act.
+ *   - `task_stalled` is the legacy spelling of the above.
  */
 export function renderForPrompt(messages: DeliveredMessage[]): string {
   if (messages.length === 0) return "";
@@ -473,9 +479,20 @@ export function renderForPrompt(messages: DeliveredMessage[]): string {
   //
   // The new wording: brief acknowledge, then yield. The agent
   // still has the kanban + task_get_history if it wants to dig.
+  // Note for the LLM: split guidance by kind so an
+  // intervention_required block prompts a decision while a
+  // task_done block stays informational.
+  const hasIntervention = messages.some(
+    (m) =>
+      m.message.kind === "task_intervention_required" ||
+      m.message.kind === "task_stalled",
+  );
+  const guidance = hasIntervention
+    ? `${messages.length} background notification${messages.length === 1 ? "" : "s"} arrived. At least one is a task_intervention_required: read its meta + the task's history if useful, then call ONE of task_continue / task_retry_fresh / task_extend_timeout / task_abort to keep the work moving. For task_done blocks, brief acknowledge is enough.`
+    : `${messages.length} background notification${messages.length === 1 ? "" : "s"} arrived while you were idle. Briefly acknowledge them in one short message (one line per notification is enough) and stop \u2014 do NOT investigate, evaluate, or take new action unless the user explicitly asks.`;
   return [
     "<system-note>",
-    `${messages.length} background notification${messages.length === 1 ? "" : "s"} arrived while you were idle. Briefly acknowledge them in one short message (one line per notification is enough) and stop \u2014 do NOT investigate, evaluate, or take new action unless the user explicitly asks.`,
+    guidance,
     "",
     ...blocks,
     "</system-note>",
@@ -488,6 +505,7 @@ export function renderForPrompt(messages: DeliveredMessage[]): string {
 /** Test-only convenience: surface kinds for assertions. */
 export const KNOWN_KINDS: readonly InboxMessageKind[] = [
   "task_done",
+  "task_intervention_required",
   "task_stalled",
   "system_note",
 ];

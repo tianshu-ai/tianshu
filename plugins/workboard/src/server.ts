@@ -42,9 +42,13 @@ import {
 } from "./worker/pool.js";
 import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 import {
+  buildTaskAbortTool,
   buildTaskCompleteTool,
+  buildTaskContinueTool,
   buildTaskCreateTool,
+  buildTaskExtendTimeoutTool,
   buildTaskGetHistoryTool,
+  buildTaskRetryFreshTool,
   buildTaskDeleteTool,
   buildTaskListTool,
   buildTaskMoveTool,
@@ -245,6 +249,11 @@ const plugin: PluginServerModule = {
       db: ctx.db,
       log: ctx.log,
       onTaskWrite: () => pool.nudge(),
+      // task_abort uses this to cancel the in-flight worker run
+      // when the main agent gives up. Returns false (no-op) if
+      // the task isn't actively running, which is fine — the
+      // status update from the abort tool is what counts.
+      onTaskCancel: (taskId) => pool.cancelTaskRun(taskId),
     };
 
     // Pool refresh hook. Used to be wired to the (now retired)
@@ -312,7 +321,12 @@ const plugin: PluginServerModule = {
         TaskDeleteTool: buildTaskDeleteTool(toolDeps),
         TaskGetHistoryTool: buildTaskGetHistoryTool(toolDeps),
         TaskCompleteTool: buildTaskCompleteTool(),
-
+        // 008+ intervention tools (main-agent-only by access; the
+        // worker pool's deny list keeps workers from calling them).
+        TaskContinueTool: buildTaskContinueTool(toolDeps),
+        TaskRetryFreshTool: buildTaskRetryFreshTool(toolDeps),
+        TaskExtendTimeoutTool: buildTaskExtendTimeoutTool(toolDeps),
+        TaskAbortTool: buildTaskAbortTool(toolDeps),
       },
       routes,
     };

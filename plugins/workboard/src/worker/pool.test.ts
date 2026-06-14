@@ -8,6 +8,7 @@ import { up as runDepsMigration } from "../../../../packages/server/src/core/mig
 import { up as runStatusRename } from "../../../../packages/server/src/core/migrations/005-task-status-rename.js";
 import { up as runTaskLabels } from "../../../../packages/server/src/core/migrations/006-task-labels.js";
 import { up as runSessionInbox } from "../../../../packages/server/src/core/migrations/007-session-inbox.js";
+import { up as runTaskIntervention } from "../../../../packages/server/src/core/migrations/008-task-intervention.js";
 import { ensureSchema as ensureAgentsSchema } from "../db/schema.js";
 import { createTask, getTask, updateTask } from "../db/tasks.js";
 import {
@@ -26,6 +27,7 @@ function freshDb(): Database.Database {
   runStatusRename(db);
   runTaskLabels(db);
   runSessionInbox(db);
+  runTaskIntervention(db);
   ensureAgentsSchema(db);
   db.prepare(
     `INSERT INTO users (id, external_id, provider, display_name, created_at)
@@ -149,9 +151,12 @@ describe("WorkerPool", () => {
     pool.stop();
   });
 
-  it("recovers orphaned in_progress tasks on start()", async () => {
+  it("recovers orphaned in_progress tasks on start() into awaiting-intervention", async () => {
+    // Post-008: an orphan no longer auto-retries. recoverOrphaned
+    // parks the row in awaiting-intervention so the main agent
+    // decides task_continue / task_retry_fresh / task_abort. The
+    // echo worker doesn't pick it up anymore.
     createTask(db, "t1", { ownerUserId: "u1", title: "stuck" });
-    // simulate a previous boot that died mid-run
     updateTask(db, "t1", { status: "in_progress", startedAt: Date.now() });
 
     const pool = new WorkerPool({
@@ -164,17 +169,18 @@ describe("WorkerPool", () => {
     pool.start();
     await pause(40);
 
-    expect(getTask(db, "t1")?.status).toBe("done");
+    const after = getTask(db, "t1");
+    expect(after?.status).toBe("ready");
+    expect(after?.labels).toContain("awaiting-intervention");
+    expect(after?.failureReason).toMatch(/host restart/);
+    expect(after?.interventionReason).toMatch(/host restart/);
     pool.stop();
   });
 
-  it("orphan recovery bumps attempts so flapping hosts can't loop forever", () => {
-    // A task that was claimed by a worker the previous boot:
-    // before the fix, recoverOrphaned just reset status to ready
-    // without touching attempts, so a host that crashed once
-    // every claim would re-claim the same task indefinitely. We
-    // now treat each orphan recovery as a stall so MAX_ATTEMPTS
-    // eventually parks the row.
+  it("orphan recovery parks the row in awaiting-intervention immediately (no retry budget)", () => {
+    // 008 collapsed the multi-attempt orphan loop into a single
+    // "park + ask main agent" step. Attempts still bumps as a
+    // counter, but doesn't drive policy.
     createTask(db, "t1", { ownerUserId: "u1", title: "stuck" });
     updateTask(db, "t1", {
       status: "in_progress",
@@ -195,37 +201,22 @@ describe("WorkerPool", () => {
     expect(after?.status).toBe("ready");
     expect(after?.attempts).toBe(1);
     expect(after?.failureReason).toMatch(/host restart/);
-    expect(after?.labels).not.toContain("stalled");
+    expect(after?.labels).toContain("awaiting-intervention");
+    expect(after?.interventionReason).toMatch(/host restart/);
+    expect(after?.interventionAt).toBeTypeOf("number");
   });
 
-  it("orphan recovery stamps `stalled` label after MAX_ATTEMPTS", () => {
-    // After MAX_ATTEMPTS-1 retries, one more orphan recovery
-    // should park the row with the stalled label so the pool
-    // stops re-claiming it.
-    createTask(db, "t1", { ownerUserId: "u1", title: "unstable" });
-    updateTask(db, "t1", {
-      status: "in_progress",
-      startedAt: Date.now(),
-      attempts: 2, // already two prior attempts
+  it("worker that throws parks the row in awaiting-intervention and notifies the parent (no retry loop)", async () => {
+    // 008: a runtime exception is one of the failure paths that
+    // route to intervention. We expect ONE attempt + the
+    // awaiting-intervention label, plus a notifyParentSession
+    // call with kind=task_intervention_required (when a parent
+    // session is set).
+    createTask(db, "t1", {
+      ownerUserId: "u1",
+      title: "boom",
+      parentSessionId: "s-parent",
     });
-
-    const pool = new WorkerPool({
-      db,
-      log: noopLog,
-      broadcast: () => {},
-      agents: [],
-      factory: () => null,
-    });
-    pool.start();
-    pool.stop();
-    const after = getTask(db, "t1");
-    expect(after?.attempts).toBe(3);
-    expect(after?.labels).toContain("stalled");
-    expect(after?.status).toBe("ready"); // park, don't hide
-  });
-
-  it("worker that throws goes back to ready with failure_reason; stalls after MAX_ATTEMPTS", async () => {
-    createTask(db, "t1", { ownerUserId: "u1", title: "boom" });
 
     const brokenFactory = (a: AgentSpec): WorkerHandle | null => ({
       agentId: a.id,
@@ -236,27 +227,31 @@ describe("WorkerPool", () => {
       },
     });
 
+    const notifications: Array<{ session: string; kind: string }> = [];
     const pool = new WorkerPool({
       db,
       log: noopLog,
       broadcast: () => {},
       agents: [{ id: "broken", kind: "broken", name: "Broken" }],
       factory: brokenFactory,
+      notifyParentSession: (s, m) =>
+        notifications.push({ session: s, kind: m.kind }),
     });
     pool.start();
-    // The pool re-nudges after every failure, so a synchronously
-    // throwing worker burns through the retry budget very quickly.
-    // We just wait long enough for it to settle, then assert
-    // end-state: 3 attempts, status still 'ready', a 'stalled'
-    // label so the pool stops claiming, failure_reason set.
-    await pause(80);
+    // Single failure path: the row should settle quickly because
+    // there's no auto-retry loop to burn through.
+    await pause(40);
 
     const t = getTask(db, "t1");
     expect(t?.status).toBe("ready");
-    expect(t?.attempts).toBe(3);
-    expect(t?.labels).toContain("stalled");
+    expect(t?.attempts).toBe(1);
+    expect(t?.labels).toContain("awaiting-intervention");
     expect(t?.failureReason).toContain("nope");
+    expect(t?.interventionReason).toContain("nope");
     expect(t?.resultSummary).toBeNull();
+    expect(notifications).toEqual([
+      { session: "s-parent", kind: "task_intervention_required" },
+    ]);
     pool.stop();
   });
 

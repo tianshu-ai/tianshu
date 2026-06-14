@@ -321,18 +321,51 @@ render delivery-file chips clicking through to the file open
 dialog — point the user there rather than dumping content
 inline).
 
-## Failure handling
+## Failure handling (the intervention loop)
 
-- **A worker calls task_complete with `summary` describing
-  failure**: read its session transcript via `task_get_history`
-  to understand why; either patch the description and re-run
-  (`task_move` to ready), or take it over yourself.
-- **A task is `stalled` (label set after MAX_ATTEMPTS retries)**:
-  same diagnosis path, but you usually need to fix the worker's
-  SOUL.md or rebalance the fleet.
-- **Cascade — a downstream task fails because its upstream
-  delivered the wrong thing**: don't blame the downstream
-  worker. Re-run the upstream with a tighter description.
+The worker pool no longer auto-retries. Every worker failure or
+watchdog timeout parks the row with the `awaiting-intervention`
+label and drops a `task_intervention_required` notification into
+your inbox. **You** decide what happens next; the pool just
+waits.
+
+The four levers (use whichever fits, never just `task_move`
+back to ready manually):
+
+- `task_continue(task_id, hint?)` — resume the SAME worker
+  session. The transcript stays; only your hint is appended.
+  Use when the prior session was on the right track and just
+  needs a small correction ("don't dump the whole HTML in one
+  write_file; use skeleton-then-fill").
+- `task_retry_fresh(task_id, description?)` — throw away the
+  prior session, start a brand new one, optionally rewrite the
+  brief. Use when the original prompt itself was the problem
+  or the worker went so far off-track that resuming is worse
+  than restarting.
+- `task_extend_timeout(task_id, additional_ms)` — the worker
+  is still doing useful work, it just needs more clock. If the
+  failure was specifically a watchdog timeout, this also
+  revives the row (no need to chain task_continue).
+- `task_abort(task_id, reason)` — give up; mark the task done
+  with a failure summary so dependents stop waiting. Use when
+  the spec is fundamentally broken or the data is missing.
+
+Diagnosis flow:
+
+1. Read the inbox `meta.interventionReason` first — watchdog
+   timeouts say so explicitly, runtime errors carry the
+   exception text, stream tears say `terminated`.
+2. If meta isn't enough, call `task_get_history(task_id)` to
+   see what the worker actually did. The last few entries are
+   usually the smoking gun (e.g. an aborted write_file with a
+   giant `content` argument means context / output blew up).
+3. Pick the lever. Output: one tool call, no extended prose
+   — the user is watching.
+
+Cascade rules: a downstream task that fails because its
+upstream delivered the wrong thing is not the worker's fault.
+Revise the upstream task (task_retry_fresh with a tighter
+description) before touching the downstream.
 
 When in doubt, ask the user — fleet design is a judgement call,
 and the user has context the description doesn't carry.
