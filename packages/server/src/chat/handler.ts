@@ -1085,12 +1085,11 @@ export function formatAvailableSkillsBlock(
 ): string {
   if (skills.length === 0) return "";
   const lines: string[] = [
-    `AVAILABLE SKILLS`,
-    `Each skill is a directory bundle under the tenant config tree. The`,
-    `<location> below points at the SKILL.md — read it on demand with the`,
-    `\`tenant_config_read\` tool when the description matches what you're`,
-    `about to do. Sibling files (\`scripts/\`, \`references/\`, \`assets/\`)`,
-    `live alongside SKILL.md and are read with the same tool.`,
+    `## Skills`,
+    `Scan <available_skills>. If one clearly applies, read its SKILL.md at exact <location> with \`tenant_config_read\` (tenant skills) or \`read_file\` (host/plugin skills), then follow it.`,
+    `If several apply, choose the most specific. If none clearly apply, read none.`,
+    `One skill up front max. Never guess/fabricate skill paths.`,
+    `Skill bundles may ship sibling files (\`scripts/\`, \`references/\`, \`assets/\`) next to SKILL.md — read them with the same tool when SKILL.md tells you to.`,
     ``,
     `<available_skills>`,
   ];
