@@ -43,6 +43,7 @@ import {
 } from "./worker/pool.js";
 import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 import {
+  buildModelListTool,
   buildTaskAbortTool,
   buildTaskCompleteTool,
   buildTaskContinueTool,
@@ -384,6 +385,9 @@ const plugin: PluginServerModule = {
         TaskRetryFreshTool: buildTaskRetryFreshTool(toolDeps),
         TaskExtendTimeoutTool: buildTaskExtendTimeoutTool(toolDeps),
         TaskAbortTool: buildTaskAbortTool(toolDeps),
+        // Model catalog (main agent only — the available() guard
+        // and the worker deny-list both block worker access).
+        ModelListTool: buildModelListTool(),
       },
       routes,
     };

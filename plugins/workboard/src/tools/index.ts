@@ -25,6 +25,7 @@ import { Type } from "typebox";
 import type {
   AgentTool,
   AgentToolContext,
+  ModelCatalogCapability,
   TenantDbHandle,
   PluginLogger,
 } from "@tianshu/plugin-sdk";
@@ -1039,6 +1040,65 @@ export function buildTaskAbortTool(deps: ToolDeps): AgentTool {
  * caller's task id. (An LLM that didn't know the task id couldn't
  * forge a completion for someone else's task.)
  */
+/**
+ * Read the host's LLM model catalog. Designed for the main
+ * (orchestrator) agent so it can pick a `modelId` for new
+ * worker bundles instead of guessing or asking the user. Workers
+ * can't see this tool (deny-listed in tool-policy.ts).
+ */
+export function buildModelListTool(): AgentTool {
+  return {
+    schema: {
+      name: "model_list",
+      description:
+        "List the LLM models the host can use for worker bundles. " +
+        "Returns id (e.g. `anthropic/claude-sonnet-4-6`), provider, " +
+        "context window, reasoning flag, plus the host's default model. " +
+        "Use this when authoring `agent.json` so `modelId` points at a " +
+        "real entry rather than a guess.",
+      parameters: Type.Object({}),
+    },
+    available: (ctx) =>
+      ctx.capabilities.has("host.modelCatalog") && ctx.agentScope?.kind === "main",
+    execute: (_raw, ctx: AgentToolContext): ToolReturn => {
+      const cap = ctx.capabilities.get<ModelCatalogCapability>(
+        "host.modelCatalog",
+      );
+      if (!cap) {
+        return {
+          ok: false,
+          text: "host.modelCatalog capability not available on this host",
+        };
+      }
+      const { models, defaultModelId } = cap.list();
+      if (models.length === 0) {
+        return {
+          ok: true,
+          text:
+            "No models registered. Host config has no `models.providers` " +
+            "entries; ask the user to add a provider before pinning a worker.",
+          data: { models: [], defaultModelId: null },
+        };
+      }
+      // One-line summary plus a structured payload so the agent
+      // can pick a model without re-parsing the text.
+      const lines = models.map((m) => {
+        const tag = m.id === defaultModelId ? " (default)" : "";
+        const reason = m.reasoning ? " reasoning" : "";
+        return `- ${m.id}${tag} — ${m.name} [${m.provider}, ctx=${m.contextWindow}${reason}]`;
+      });
+      return {
+        ok: true,
+        text:
+          `Host offers ${models.length} model${models.length === 1 ? "" : "s"}` +
+          (defaultModelId ? ` (default: ${defaultModelId})` : "") +
+          `:\n${lines.join("\n")}`,
+        data: { models, defaultModelId },
+      };
+    },
+  };
+}
+
 export function buildTaskCompleteTool(): AgentTool {
   return {
     schema: {

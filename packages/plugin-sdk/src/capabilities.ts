@@ -49,6 +49,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Read the skill catalog the host can offer to the current tenant: every skill name registered host-side plus every active plugin's contributions. Same role as host.toolCatalog but for the skill allow-list field.",
   },
+  "host.modelCatalog": {
+    exclusive: true,
+    description:
+      "Read the LLM model catalog the host can offer to the current tenant: every provider/model registered in the host's `models.providers` config, plus the default modelId. Used by the main agent and worker-creator to pick a model for new worker bundles instead of hard-coding ids.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;
