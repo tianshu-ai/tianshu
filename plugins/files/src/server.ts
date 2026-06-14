@@ -204,6 +204,24 @@ const plugin: PluginServerModule = {
         res.setHeader("Content-Type", mime);
         res.setHeader("Content-Length", String(stat.size));
         res.setHeader("Cache-Control", "no-store");
+        // Without Content-Disposition the browser uses the URL
+        // path's last segment as the filename, so a click on
+        // `/api/p/files/raw?path=foo.py` saves a file named
+        // "raw". Set `inline` so previewable types (images,
+        // text/*, PDFs) render in the tab rather than
+        // downloading; the filename is what the path ends in
+        // so "Save As" picks something useful.
+        const baseName =
+          path.basename(resolved) || "file";
+        // RFC 5987-style filename* is the safest way to ship
+        // non-ASCII names; we always provide both `filename` (a
+        // best-effort ASCII fallback) and `filename*` so old
+        // browsers don't choke on UTF-8.
+        const asciiSafe = baseName.replace(/[^\x20-\x7e]+/g, "_");
+        res.setHeader(
+          "Content-Disposition",
+          `inline; filename="${asciiSafe}"; filename*=UTF-8''${encodeURIComponent(baseName)}`,
+        );
         fs.createReadStream(resolved).pipe(res);
       } catch (err) {
         ctx.log.error("raw failed", { err: String(err) });
@@ -312,11 +330,41 @@ const MIME_BY_EXT: Record<string, string> = {
   ".wav": "audio/wav",
   ".ogg": "audio/ogg",
   ".txt": "text/plain; charset=utf-8",
+  ".log": "text/plain; charset=utf-8",
   ".md": "text/markdown; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".jsx": "text/javascript; charset=utf-8",
+  ".ts": "text/plain; charset=utf-8",
+  ".tsx": "text/plain; charset=utf-8",
+  ".py": "text/plain; charset=utf-8",
+  ".pyi": "text/plain; charset=utf-8",
+  ".rb": "text/plain; charset=utf-8",
+  ".rs": "text/plain; charset=utf-8",
+  ".go": "text/plain; charset=utf-8",
+  ".java": "text/plain; charset=utf-8",
+  ".kt": "text/plain; charset=utf-8",
+  ".swift": "text/plain; charset=utf-8",
+  ".c": "text/plain; charset=utf-8",
+  ".h": "text/plain; charset=utf-8",
+  ".cpp": "text/plain; charset=utf-8",
+  ".hpp": "text/plain; charset=utf-8",
+  ".cs": "text/plain; charset=utf-8",
+  ".sh": "text/plain; charset=utf-8",
+  ".bash": "text/plain; charset=utf-8",
+  ".zsh": "text/plain; charset=utf-8",
+  ".yaml": "text/plain; charset=utf-8",
+  ".yml": "text/plain; charset=utf-8",
+  ".toml": "text/plain; charset=utf-8",
+  ".ini": "text/plain; charset=utf-8",
+  ".cfg": "text/plain; charset=utf-8",
+  ".conf": "text/plain; charset=utf-8",
+  ".env": "text/plain; charset=utf-8",
+  ".sql": "text/plain; charset=utf-8",
+  ".csv": "text/csv; charset=utf-8",
+  ".xml": "text/xml; charset=utf-8",
 };
 
 function mimeFor(ext: string): string {
