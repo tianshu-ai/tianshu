@@ -31,7 +31,11 @@ import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { attachChatHandler } from "./chat/handler.js";
+import {
+  attachChatHandler,
+  loadHostSkills,
+  runPrompt,
+} from "./chat/handler.js";
 import { appendMessage, ensureActiveSession } from "./chat/messages.js";
 import type { PluginsChangedDelta } from "./chat/ws-protocol.js";
 import { runAgentLoop } from "./chat/agent-loop.js";
@@ -47,7 +51,7 @@ import {
   enqueue as inboxEnqueue,
   bindIdleRunner,
 } from "./chat/session-inbox.js";
-import { runPrompt } from "./chat/handler.js";
+
 import { broadcastToUser } from "./chat/active-harnesses.js";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
@@ -81,6 +85,12 @@ let pluginRegistry: PluginRegistry;
 pluginRegistry = new PluginRegistry({
   resolver: reloadingResolver,
   mcpManager,
+  // Plugin/host skills get mirrored into each tenant's config
+  // tree so the agent can read them via `tenant_config_read`
+  // exactly like tenant-authored ones — same tool, same path
+  // shape. The loader is plumbed through so the registry can
+  // collect them at activate-time.
+  hostSkillsLoader: () => loadHostSkills(),
   hostCapabilities: {
     "host.sessionInbox": (ctx): SessionInboxCapability => ({
       enqueue: (targetSessionId, message) =>

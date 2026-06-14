@@ -50,10 +50,15 @@ import type {
   PluginWsHandler,
   SandboxRunner,
 } from "@tianshu/plugin-sdk";
+import path from "node:path";
 import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
-import { loadSkillsForPlugin, type LoadedSkill } from "./skills.js";
+import {
+  loadSkillsForPlugin,
+  mirrorSkillsToTenantConfig,
+  type LoadedSkill,
+} from "./skills.js";
 import { seedAgentDirs } from "../agent-seeds.js";
 
 export type PluginState = "active" | "disabled" | "failed" | "client-bundle-missing";
@@ -221,12 +226,31 @@ export interface RegistryOpts {
   hostCapabilities?: Partial<
     Record<CapabilityName, (ctx: TenantContext) => unknown>
   >;
+  /**
+   * Optional loader for skills shipped with the host repo (under
+   * `<server-package>/skills/`). Wired by the boot sequence so
+   * `ensureForTenant` can mirror them into the tenant config tree
+   * alongside plugin skills, and so `mirroredSkillsForTenant`
+   * returns a single unified list. Without this loader the
+   * registry just mirrors plugin skills, which keeps tests
+   * dependency-free.
+   */
+  hostSkillsLoader?: () => readonly LoadedSkill[];
 }
 
 interface CachedTenantRegistry {
   entries: ActivePluginEntry[];
   byWsType: Map<string, { entry: ActivePluginEntry; handler: PluginWsHandler }>;
   byCapability: Map<CapabilityName, ProvidedCapability>;
+  /**
+   * Plugin + host skills, mirrored into
+   * `<tenant>/_tenant/config/skills/_host/<pid>/<id>/SKILL.md` and
+   * with their `filePath` rebound to that location. Computed once
+   * per `ensureForTenant`. Callers (system prompt, tool wiring)
+   * use this so the agent always sees a `tenant-config:///` URI
+   * that `tenant_config_read` can actually open.
+   */
+  mirroredSkills: LoadedSkill[];
 }
 
 export class PluginRegistry {
@@ -431,8 +455,57 @@ export class PluginRegistry {
       a.manifest.id < b.manifest.id ? -1 : a.manifest.id > b.manifest.id ? 1 : 0,
     );
 
-    this.cache.set(ctx.tenantId, { entries, byWsType, byCapability });
+    // Mirror host + plugin skills into the tenant config tree.
+    // We collect plugin skills the same way `skillsForTenant` does
+    // and append host skills via the optional loader. The mirror
+    // helper rewrites each entry's filePath to the tenant-config
+    // path so the system prompt's <available_skills> block can
+    // advertise URIs the agent can actually read.
+    const tenantConfigDir = path.join(
+      ctx.workspaceDir,
+      "_tenant",
+      "config",
+    );
+    const collected: LoadedSkill[] = [];
+    for (const e of entries) {
+      if (e.state !== "active" || !e.manifest.contributes?.skills) continue;
+      const r = loadSkillsForPlugin({
+        pluginId: e.manifest.id,
+        pluginDir: e.dir,
+        contributions: e.manifest.contributes.skills,
+      });
+      collected.push(...r.skills);
+    }
+    if (this.opts.hostSkillsLoader) {
+      collected.push(...this.opts.hostSkillsLoader());
+    }
+    const mirroredSkills = mirrorSkillsToTenantConfig({
+      tenantConfigDir,
+      skills: collected,
+      log: {
+        info: (m, meta) => console.log(`[skill-mirror] ${m}`, meta ?? ""),
+        warn: (m, meta) => console.warn(`[skill-mirror] ${m}`, meta ?? ""),
+      },
+    });
+
+    this.cache.set(ctx.tenantId, {
+      entries,
+      byWsType,
+      byCapability,
+      mirroredSkills,
+    });
     return entries;
+  }
+
+  /**
+   * Plugin + host skills, with `filePath` pointing at the
+   * mirrored copy under `_tenant/config/skills/_host/...`.
+   * Replaces `skillsForTenant` for runtime callers (system
+   * prompt, tool factories). The original method is kept for
+   * tests that pre-date the mirror layer.
+   */
+  mirroredSkillsForTenant(tenantId: string): LoadedSkill[] {
+    return this.cache.get(tenantId)?.mirroredSkills ?? [];
   }
 
   /**

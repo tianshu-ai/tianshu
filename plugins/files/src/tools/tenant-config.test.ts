@@ -228,6 +228,16 @@ describe("tenant_config_write + read round-trip", () => {
     expect(w.ok).toBe(true);
     expect(w.scope).toBe("worker:llm");
   });
+
+  it("refuses to write under skills/_host/ (the host-mirror tree)", () => {
+    const home = freshTenantHome();
+    const w = executeTenantConfigWrite(home, MAIN, {
+      path: "skills/_host/files/large-input/SKILL.md",
+      content: "---\nname: x\ndescription: x\n---\n",
+    });
+    expect(w.ok).toBe(false);
+    expect(w.text).toMatch(/_host\/.*read-only/);
+  });
 });
 
 describe("tenant_config_edit", () => {

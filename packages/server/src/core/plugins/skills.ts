@@ -341,3 +341,158 @@ export function filterSkillsForTenant(
     return true;
   });
 }
+
+// ─── tenant-config mirroring ─────────────────────────────────────
+//
+// Why mirror at all
+//   - Plugin / host SKILL.md files live outside any tenant
+//     workspace (under `<repoRoot>/skills/` or `<pluginDir>/
+//     skills/`), so `tenant_config_read` (scoped to
+//     `_tenant/config/`) and `read_file` (scoped to the user
+//     workspace) can't reach them.
+//   - We tried a `read_skill(name)` meta-tool. It works but is a
+//     special case agents have to learn. The user's preference is
+//     "skills are files, read them like any other file" — so we
+//     mirror once at boot and let `tenant_config_read` do the
+//     work.
+//
+// Mirror layout
+//   <tenant>/_tenant/config/skills/_host/<pluginId>/<skillId>/SKILL.md
+//
+// `_host/` namespacing keeps user-authored tenant skills (under
+// `skills/<name>/SKILL.md`) and worker bundles cleanly separate
+// from things the host owns. The mirror tree is overwritten on
+// every boot — the source of truth lives in the plugin / host
+// repo, edits there are pointless and `tenant_config_write`
+// refuses paths under `skills/_host/` to make that explicit.
+
+const HOST_SKILL_NAMESPACE = "_host";
+
+export function mirroredSkillRelPath(pluginId: string, contributionId: string) {
+  return `skills/${HOST_SKILL_NAMESPACE}/${pluginId}/${contributionId}/SKILL.md`;
+}
+
+/** Absolute path of the mirror entry for one skill, given the
+ *  tenant's `_tenant/config/` root. */
+export function mirroredSkillFilePath(
+  tenantConfigDir: string,
+  pluginId: string,
+  contributionId: string,
+): string {
+  return path.join(
+    tenantConfigDir,
+    "skills",
+    HOST_SKILL_NAMESPACE,
+    pluginId,
+    contributionId,
+    "SKILL.md",
+  );
+}
+
+/** True iff a `_tenant/config/...` path falls under the host
+ *  mirror tree. Used by `tenant_config_write` to refuse writes
+ *  there (the source of truth is the plugin / host repo). */
+export function isMirroredSkillPath(relPath: string): boolean {
+  // Strip leading slash if any so callers can pass either form.
+  const trimmed = relPath.replace(/^\/+/, "");
+  return trimmed.startsWith(`skills/${HOST_SKILL_NAMESPACE}/`);
+}
+
+/**
+ * Write the body of every supplied skill to its mirror location
+ * under `tenantConfigDir`. Idempotent — files are rewritten on
+ * every call. Returns the skills with `filePath` rebound to the
+ * mirror path so callers (system prompt, tools) advertise the
+ * tenant-config URI instead of the absolute host path the agent
+ * can't read.
+ *
+ * We rebind in a NEW LoadedSkill so the original (used for in-
+ * memory body access) keeps its real filePath for diagnostics.
+ *
+ * Failure to write a single mirror entry is logged but does not
+ * abort the rest — a skill we couldn't mirror just falls through
+ * to its original (unreachable) filePath, which is no worse than
+ * the pre-mirror state.
+ */
+export function mirrorSkillsToTenantConfig(args: {
+  tenantConfigDir: string;
+  skills: readonly LoadedSkill[];
+  log: { info: (msg: string, meta?: unknown) => void; warn: (msg: string, meta?: unknown) => void };
+}): LoadedSkill[] {
+  const out: LoadedSkill[] = [];
+  for (const s of args.skills) {
+    const dest = mirroredSkillFilePath(
+      args.tenantConfigDir,
+      s.source.pluginId,
+      s.source.contributionId,
+    );
+    try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      // Reconstruct the on-disk file from frontmatter + body so
+      // the mirrored copy is a self-contained SKILL.md, not just
+      // the body. The agent reads the mirrored path and gets back
+      // the same shape it would have seen at the source.
+      const text = renderSkillFile(s);
+      // Only rewrite if the content actually changed — avoids
+      // tripping the workboard fs.watch on every boot when nothing
+      // moved. (The watcher debounces, but writing zero-delta files
+      // every activate is still wasteful.)
+      let existing: string | null = null;
+      try {
+        existing = fs.readFileSync(dest, "utf8");
+      } catch {
+        existing = null;
+      }
+      if (existing !== text) {
+        const tmp = `${dest}.tmp.${process.pid}.${Date.now()}`;
+        fs.writeFileSync(tmp, text);
+        fs.renameSync(tmp, dest);
+      }
+      out.push({ ...s, filePath: dest });
+    } catch (err) {
+      args.log.warn("[skills] mirror failed", {
+        pluginId: s.source.pluginId,
+        contributionId: s.source.contributionId,
+        dest,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      out.push(s); // fall through with original filePath
+    }
+  }
+  return out;
+}
+
+/** Reconstruct the SKILL.md text from a LoadedSkill. The original
+ *  on-disk file may have used yaml-style frontmatter; we emit a
+ *  canonical, hand-parseable form that the same loader can re-read
+ *  if anyone ever points loadSkillsForPlugin at the mirror tree. */
+function renderSkillFile(s: LoadedSkill): string {
+  const lines: string[] = ["---"];
+  lines.push(`name: ${s.name}`);
+  lines.push(`description: ${s.description}`);
+  if (s.scope) lines.push(`scope: ${s.scope}`);
+  if (s.when?.toolPresent) {
+    lines.push(`when:`);
+    lines.push(`  toolPresent: ${s.when.toolPresent}`);
+  } else if (s.when?.capabilityPresent) {
+    lines.push(`when:`);
+    lines.push(`  capabilityPresent: ${s.when.capabilityPresent}`);
+  }
+  lines.push("---");
+  lines.push("");
+  lines.push(s.body);
+  return lines.join("\n");
+}
+
+/** Remove every entry under `skills/_host/` for a tenant. Useful
+ *  when a plugin is disabled / uninstalled and we don't want stale
+ *  mirror copies advertising skills the agent can no longer use.
+ *  Best-effort: a missing directory is fine. */
+export function cleanupMirroredSkills(tenantConfigDir: string): void {
+  const root = path.join(tenantConfigDir, "skills", HOST_SKILL_NAMESPACE);
+  try {
+    fs.rmSync(root, { recursive: true, force: true });
+  } catch {
+    // best-effort
+  }
+}
