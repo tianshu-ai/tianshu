@@ -27,7 +27,7 @@ import type {
   AgentTool as PiAgentTool,
   AgentToolResult,
 } from "@earendil-works/pi-agent-core";
-import type { TextContent } from "@earendil-works/pi-ai";
+import type { TextContent, Tool as PiTool } from "@earendil-works/pi-ai";
 import type { Toolset } from "../tools/index.js";
 
 export interface AnyToolResult {
@@ -91,6 +91,27 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
       // flip individual plugin tools to "parallel" later when their
       // contract documents thread-safety.
       executionMode: "sequential",
+      // pi-agent-core calls `prepareArguments` BEFORE schema
+      // validation. We use it to detect Anthropic stream
+      // truncation — a frequent failure mode where the
+      // assistant emits a tool_use block whose input_json never
+      // finishes streaming, so the framework receives `{}` (or a
+      // partial dict missing required fields). The default error
+      // message ("must have required property X") looks like a
+      // model mistake, so the model dutifully retries the tool
+      // call AND HITS THE SAME TRUNCATION. By throwing a more
+      // diagnostic error here — in pi-agent-core's prepare phase,
+      // which still gets converted into an immediate error tool
+      // result — we tell the model what actually happened so it
+      // changes strategy on the retry (often: re-issue the call
+      // earlier in the turn before context bloats).
+      prepareArguments: (raw: unknown) => {
+        const truncated = detectStreamTruncation(schema, raw);
+        if (truncated) {
+          throw new Error(truncated);
+        }
+        return raw;
+      },
       execute: async (
         _toolCallId: string,
         params: unknown,
@@ -142,4 +163,78 @@ export function isAdapterError(result: unknown): boolean {
   return Boolean(
     (result as { __ok?: boolean } | null | undefined)?.__ok === false,
   );
+}
+
+/**
+ * Heuristic: did Anthropic / Bedrock truncate the tool_use input
+ * stream before the assistant finished serialising arguments?
+ *
+ * Returns a diagnostic message when truncation is the most likely
+ * explanation; the caller (prepareArguments hook) throws it so
+ * the model sees a clear "stream cut, retry differently" prompt
+ * instead of pi-ai's default schema error.
+ *
+ * Two signal cases — both confined to "the framework received
+ * suspiciously little JSON, AND the schema clearly expected more":
+ *
+ *   1. params is null / not an object → received nothing at all.
+ *   2. params is an object missing one or more required fields.
+ *      We list the missing ones; the model can usually tell from
+ *      the names which call it tried to make.
+ *
+ * If the model legitimately omitted a required field on its own
+ * (rare but possible — bad system prompt, distracted run), the
+ * message still helps it: "you didn't pass X" is true either
+ * way, only the "stream may have been truncated" hint is
+ * speculative. We word it accordingly.
+ */
+function detectStreamTruncation(
+  schema: PiTool,
+  rawArgs: unknown,
+): string | null {
+  const required = extractRequiredKeys(schema);
+  if (required.length === 0) return null;
+
+  if (rawArgs == null || typeof rawArgs !== "object") {
+    return formatTruncationError(schema.name, required, required);
+  }
+  const args = rawArgs as Record<string, unknown>;
+  const missing = required.filter((k) => !(k in args));
+  if (missing.length === 0) return null;
+  // If MOST of the required fields are missing AND args has zero
+  // present keys, treat it as full truncation (the most common
+  // shape we've actually observed). Otherwise it's just a
+  // partial — still worth flagging, but with a slightly softer
+  // hint.
+  return formatTruncationError(schema.name, required, missing);
+}
+
+function extractRequiredKeys(schema: PiTool): string[] {
+  // pi-ai uses TypeBox JSON-schema-ish objects. The `required`
+  // field is a top-level array of strings. Defensive: the schema
+  // may not carry it (Type.Object infers required from non-Optional
+  // members at compile time and stamps the array onto the JSON
+  // schema, but plugin authors could in principle hand-craft a
+  // schema without one).
+  const params = (schema as { parameters?: { required?: unknown } }).parameters;
+  const req = params?.required;
+  if (!Array.isArray(req)) return [];
+  return req.filter((k): k is string => typeof k === "string");
+}
+
+function formatTruncationError(
+  toolName: string,
+  required: string[],
+  missing: string[],
+): string {
+  const reqList = required.map((k) => `\`${k}\``).join(", ");
+  const missList = missing.map((k) => `\`${k}\``).join(", ");
+  const suspectsTruncation = missing.length === required.length;
+  const head = suspectsTruncation
+    ? `Tool call to \`${toolName}\` arrived with empty arguments — the model's tool_use input stream may have been truncated by the provider before parameters finished serialising.`
+    : `Tool call to \`${toolName}\` is missing required field${missing.length === 1 ? "" : "s"} ${missList}. This often means the provider truncated the tool_use input stream mid-write.`;
+  const requiredHint = `Required: ${reqList}.`;
+  const retryAdvice =
+    "To retry: re-issue the tool call as the FIRST action in your next assistant turn (no preamble text), and keep `description` / `content` / similar long fields concise. If you keep hitting the same truncation, switch tactics — use the skeleton-then-fill pattern (write a short scaffold first, then fill sections via batch `edit_file`) instead of one giant call.";
+  return `${head} ${requiredHint} ${retryAdvice}`;
 }
