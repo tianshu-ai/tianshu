@@ -1,0 +1,65 @@
+{
+  "id": "web-search",
+  "version": "0.1.0",
+  "displayName": "Web Search",
+  "description": "Web search via Tavily and Brave Search APIs. One tool, two providers, automatic fallback. Set API keys in Settings → Plugins.",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["network.external"],
+  "server": { "entry": "@tianshu-builtin/plugin-web-search/server" },
+  "contributes": {
+    "tools": [
+      { "id": "web_search", "module": "WebSearchTool" }
+    ],
+    "skills": [
+      {
+        "id": "web-search-howto",
+        "path": "skills/web-search-howto.md"
+      }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/health", "handler": "getHealth" },
+      { "method": "POST", "path": "/health/reset", "handler": "resetHealth" }
+    ]
+  },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "tavilyApiKey",
+        "label": "Tavily API key",
+        "kind": "secret",
+        "placeholder": "tvly-...",
+        "description": "Sign up at tavily.com (free tier 1000 searches/month). Stored under <tenant>/secrets/, never returned to the browser."
+      },
+      {
+        "key": "braveApiKey",
+        "label": "Brave Search API key",
+        "kind": "secret",
+        "placeholder": "BSA...",
+        "description": "Optional. Get a free key at api-dashboard.search.brave.com (2000/month). Used as fallback when Tavily fails or returns nothing."
+      },
+      {
+        "key": "preferredProvider",
+        "label": "Preferred provider",
+        "kind": "select",
+        "default": "tavily",
+        "options": [
+          { "label": "Tavily", "value": "tavily" },
+          { "label": "Brave", "value": "brave" }
+        ],
+        "description": "Tried first when both keys are set. The other provider is used as automatic fallback only on transient errors (network / 5xx / 429). Auth failures (401 / 403) park the bad key in the health cache; clear it from Settings after fixing the key."
+      },
+      {
+        "key": "timeoutMs",
+        "label": "Per-request timeout",
+        "kind": "number",
+        "unit": "ms",
+        "min": 1000,
+        "max": 60000,
+        "step": 500,
+        "default": 8000,
+        "description": "Network timeout for each provider call. Increase if you hit timeouts on slow networks."
+      }
+    ]
+  }
+}

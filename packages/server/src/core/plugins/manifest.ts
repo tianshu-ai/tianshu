@@ -185,9 +185,51 @@ function optionalConfigSchema(
         multiline: f.multiline === true,
         group,
       });
+    } else if (f.kind === "secret") {
+      fields.push({
+        kind: "secret",
+        key: f.key,
+        label: f.label,
+        description: typeof f.description === "string" ? f.description : undefined,
+        placeholder: typeof f.placeholder === "string" ? f.placeholder : undefined,
+        group,
+      });
+    } else if (f.kind === "select") {
+      const rawOptions = Array.isArray(f.options) ? f.options : [];
+      const options: Array<{ label: string; value: string }> = [];
+      for (let j = 0; j < rawOptions.length; j++) {
+        const o = rawOptions[j] as Record<string, unknown>;
+        if (
+          o &&
+          typeof o === "object" &&
+          typeof o.value === "string" &&
+          typeof o.label === "string"
+        ) {
+          options.push({ label: o.label, value: o.value });
+        } else {
+          acc.issues.push(
+            `configSchema.fields[${i}].options[${j}] must be { label: string, value: string }`,
+          );
+        }
+      }
+      if (options.length === 0) {
+        acc.issues.push(
+          `configSchema.fields[${i}].options must contain at least one option`,
+        );
+        continue;
+      }
+      fields.push({
+        kind: "select",
+        key: f.key,
+        label: f.label,
+        description: typeof f.description === "string" ? f.description : undefined,
+        default: typeof f.default === "string" ? f.default : undefined,
+        options,
+        group,
+      });
     } else {
       acc.issues.push(
-        `configSchema.fields[${i}].kind must be "boolean" | "number" | "string"`,
+        `configSchema.fields[${i}].kind must be "boolean" | "number" | "string" | "secret" | "select"`,
       );
     }
   }

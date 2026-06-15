@@ -347,6 +347,92 @@ function ConfigFieldRow({
       </div>
     );
   }
+  if (field.kind === "select") {
+    const sel =
+      typeof value === "string"
+        ? value
+        : (field.default ?? field.options[0]?.value ?? "");
+    return (
+      <div className="text-[12px]">
+        <label className="mb-1 block font-medium text-gray-200">
+          {field.label}
+        </label>
+        <select
+          value={sel}
+          onChange={(e) => onChange(e.target.value)}
+          className={INPUT_BASE}
+        >
+          {field.options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {field.description && (
+          <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+            {field.description}
+          </p>
+        )}
+      </div>
+    );
+  }
+  if (field.kind === "secret") {
+    // The redacted shape coming back from the server looks like
+    // `{ __secret: true, set: <bool> }`. The user typing into the
+    // input gives us a plain string, which we just pass through to
+    // the form's value map. On save, splitSecrets sees a plain
+    // string and persists it; sees the redacted shape and treats
+    // it as a no-op; sees `{ __secret: true, clear: true }` (set
+    // by the Clear button below) and removes the secret.
+    const isRedacted =
+      value !== null &&
+      typeof value === "object" &&
+      (value as { __secret?: unknown }).__secret === true;
+    const isSet =
+      isRedacted && (value as { set?: unknown }).set === true;
+    const stringValue = typeof value === "string" ? value : "";
+    return (
+      <div className="text-[12px]">
+        <label className="mb-1 block font-medium text-gray-200">
+          {field.label}
+          {isSet ? (
+            <span className="ml-2 rounded bg-emerald-700/40 px-1.5 py-0.5 text-[10px] uppercase text-emerald-300">
+              set
+            </span>
+          ) : null}
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            type="password"
+            value={stringValue}
+            placeholder={
+              isSet
+                ? "••• stored — type a new value to replace, or click Clear"
+                : (field.placeholder ?? "")
+            }
+            autoComplete="new-password"
+            spellCheck={false}
+            onChange={(e) => onChange(e.target.value)}
+            className={INPUT_BASE}
+          />
+          {isSet && stringValue === "" && (
+            <button
+              type="button"
+              className="shrink-0 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-[11px] text-gray-300 hover:border-rose-700 hover:text-rose-300"
+              onClick={() => onChange({ __secret: true, clear: true })}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        {field.description && (
+          <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+            {field.description}
+          </p>
+        )}
+      </div>
+    );
+  }
   // string
   const s = typeof value === "string" ? value : (field.default ?? "");
   return (
@@ -395,6 +481,15 @@ function initialValues(
     }
     if (f.kind === "boolean") out[f.key] = f.default ?? false;
     else if (f.kind === "number") out[f.key] = f.default ?? 0;
+    else if (f.kind === "secret")
+      // No `default` for secrets (manifests must not bake in keys).
+      // Initial value is the empty string — the field will render
+      // as "unset" and the input will be empty. The persisted
+      // shape (redacted obj) only appears here when the form
+      // re-loads after a save with stored credentials.
+      out[f.key] = "";
+    else if (f.kind === "select")
+      out[f.key] = f.default ?? f.options[0]?.value ?? "";
     else out[f.key] = f.default ?? "";
   }
   return out;

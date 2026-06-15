@@ -59,6 +59,10 @@ import {
   mirrorSkillsToTenantConfig,
   type LoadedSkill,
 } from "./skills.js";
+import {
+  loadPluginSecrets,
+  mergePluginSecrets,
+} from "./secrets.js";
 import { seedAgentDirs } from "../agent-seeds.js";
 
 export type PluginState = "active" | "disabled" | "failed" | "client-bundle-missing";
@@ -1014,10 +1018,22 @@ function readPluginsConfig(
   return cfg as Record<string, { enabled?: boolean; config?: Record<string, unknown> }>;
 }
 
-function readPluginConfig(ctx: TenantContext, pluginId: string): Record<string, unknown> {
+function readPluginConfig(
+  ctx: TenantContext,
+  pluginId: string,
+): Record<string, unknown> {
   const all = readPluginsConfig(ctx);
   const c = all[pluginId]?.config;
-  return c && typeof c === "object" && !Array.isArray(c) ? (c as Record<string, unknown>) : {};
+  const raw =
+    c && typeof c === "object" && !Array.isArray(c)
+      ? (c as Record<string, unknown>)
+      : {};
+  // Splice in any plugin secrets stored under <tenant>/secrets/
+  // BEFORE handing the object to the plugin. The plugin sees a
+  // single flat config blob; the split between config.json and
+  // secrets/ is a host concern.
+  const secrets = loadPluginSecrets(ctx.secretsDir, pluginId);
+  return mergePluginSecrets(raw, secrets);
 }
 
 function makePluginContext(args: {
