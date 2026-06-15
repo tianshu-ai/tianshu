@@ -24,7 +24,13 @@ export const DEFAULT_CONFIG: MicroSandboxConfig = {
   sandboxName: "default", // overridden per-tenant by the facade
   image: "python:3.12-slim",
   cpus: 2,
-  memoryMib: 2048,
+  // 4 GiB is the smallest value where pip-installing the standard
+  // Python data science stack + a chromium build doesn't OOM.
+  // Browser-heavy (Playwright + multi-tab) workloads still want
+  // to bump to 8192+ via the plugin config UI, but at 4 GiB the
+  // out-of-the-box experience doesn't hit "the kernel killed our
+  // pip install" on first run.
+  memoryMib: 4096,
   idleShutdownMs: 14_400_000, // 4h
   execTimeoutMs: 300_000, // 5min
 };

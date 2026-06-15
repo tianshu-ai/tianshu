@@ -28,6 +28,35 @@ import {
 } from "../lib/api";
 import { usePluginStore } from "../stores/plugin-store";
 
+/**
+ * Wrapper that lets a plugin's own admin page fold in this same
+ * config form by id. Reads the latest snapshot from the plugin
+ * store so a save in one tab updates this instance in place. If
+ * the plugin id isn't loaded yet (initial mount race) the
+ * component renders nothing rather than a flicker; the next
+ * store update fills it in.
+ */
+export function PluginConfigFormById({
+  pluginId,
+  className,
+}: {
+  pluginId: string;
+  className?: string;
+}) {
+  const plugin = usePluginStore((s) =>
+    (s.plugins ?? []).find((p) => p.id === pluginId) ?? null,
+  );
+  if (!plugin) return null;
+  if (!plugin.configSchema || (plugin.configSchema.fields?.length ?? 0) === 0) {
+    return null;
+  }
+  return (
+    <div className={className}>
+      <PluginConfigForm plugin={plugin} />
+    </div>
+  );
+}
+
 export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
   const setPlugins = usePluginStore((s) => s.setPlugins);
   const fields = plugin.configSchema?.fields ?? [];

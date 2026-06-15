@@ -157,3 +157,61 @@ describe("microsandbox browser routes", () => {
     expect(await sidecar.restart()).toBe(false);
   });
 });
+
+describe("MicrosandboxBrowserSidecar.health", () => {
+  it("returns ok=false with helpful suggestion when no port is mapped", async () => {
+    const sidecar = new MicrosandboxBrowserSidecar();
+    const h = await sidecar.health();
+    expect(h.ok).toBe(false);
+    expect(h.error).toMatch(/CDP host port/);
+    expect(h.suggestion).toMatch(/browser stack/);
+  });
+
+  it("returns ok=true with browser version when CDP responds", async () => {
+    // Spin a tiny http server that mimics /json/version on a free
+    // port, then point the sidecar at it.
+    const http = await import("node:http");
+    const server = http.createServer((req, res) => {
+      if (req.url === "/json/version") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ Browser: "Chrome/145.0.0.0" }));
+        return;
+      }
+      res.writeHead(404).end();
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.address() as { port: number }).port;
+    try {
+      const sidecar = new MicrosandboxBrowserSidecar();
+      sidecar.__setDetectedPorts({ cdp: port });
+      const h = await sidecar.health();
+      expect(h.ok).toBe(true);
+      expect(h.browser).toMatch(/Chrome/);
+      expect(h.cdpHostPort).toBe(port);
+      expect(h.latencyMs).toBeGreaterThanOrEqual(0);
+    } finally {
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  });
+
+  it("returns ok=false with reset_sandbox suggestion on connect refused", async () => {
+    // Bind a port to grab it, then close it so we know nothing is
+    // listening. Race-y in theory, fine in practice for a local
+    // ephemeral port that nothing else will reclaim mid-test.
+    const net = await import("node:net");
+    const probe = net.createServer();
+    await new Promise<void>((r) => probe.listen(0, "127.0.0.1", r));
+    const port = (probe.address() as { port: number }).port;
+    await new Promise<void>((r) => probe.close(() => r()));
+
+    const sidecar = new MicrosandboxBrowserSidecar();
+    sidecar.__setDetectedPorts({ cdp: port });
+    const h = await sidecar.health();
+    expect(h.ok).toBe(false);
+    // Either ECONNREFUSED, or "fetch failed" wrapping it — both
+    // mean "nothing listening". The suggestion should still
+    // mention browser_restart / reset_sandbox.
+    expect(h.suggestion).toMatch(/browser_restart|reset_sandbox/);
+    expect(h.cdpHostPort).toBe(port);
+  });
+});

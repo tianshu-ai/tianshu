@@ -8,10 +8,16 @@ import "./index.css";
 // keeps a single accessor slot and we plug ours in here.
 import {
   __installOpenFileApi,
+  __installPluginConfigForm,
   __installUseComposer,
 } from "@tianshu/plugin-sdk/client";
 import { getComposerApi } from "./stores/composer-store";
+import { PluginConfigFormById } from "./components/PluginConfigForm";
 __installUseComposer(getComposerApi);
+// Plugins import `PluginConfigForm` from the SDK to fold the
+// host's auto-generated config form into their own admin pages.
+// Same install-once trick as useComposer / OpenFileApi.
+__installPluginConfigForm(PluginConfigFormById);
 
 // Bootstrap fallback for OpenFileApi.
 //

@@ -59,6 +59,34 @@ If the user is **not** watching the page (no admin tab open), the
 viewport falls back to `1280x800`. Don't write skills that
 hard-code coordinates — they'll only work for one viewport.
 
+## When the browser tools hang
+
+If a `browser_*` call returns a confusing timeout / error, or
+`exec` itself sticks (the symptom is "the conversation just
+stops emitting tokens for 30+s"), call:
+
+```
+browser_health_check()
+```
+
+It probes CDP `/json/version` with a 2.5s timeout and returns
+`{ok, latencyMs, error?, suggestion?}`. The `suggestion` field
+tells you the next concrete recovery step:
+
+- **CDP host port not mapped**: the snapshot you booted doesn't
+  ship the browser stack. Build one that does (template
+  `browser.yaml`).
+- **CDP not reachable / connect refused**: chromium or
+  supervisord crashed inside the guest. Try `browser_restart`
+  first (cheap, ~5s). If the next `browser_health_check` still
+  fails, escalate to `reset_sandbox`.
+- **CDP probe timed out**: the sandbox VM itself is wedged.
+  Skip `browser_restart` (it'll hang too) and go straight to
+  `reset_sandbox`. Files under `/workspace` survive.
+
+Don't loop the probe — call once, act on the suggestion, call
+again only after attempting recovery.
+
 ## What NOT to do
 
 - Don't `browser_navigate` to user input as a URL without
