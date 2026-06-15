@@ -14,6 +14,7 @@ import { Type } from "typebox";
 import type {
   AgentTool,
   AgentToolContext,
+  BrowserSidecar,
   SandboxRunner,
   SandboxStatus,
 } from "@tianshu/plugin-sdk";
@@ -360,3 +361,61 @@ function requiresReset(changes: Partial<Record<ConfigurableKey, unknown>>): bool
     (k) => k === "image" || k === "cpus" || k === "memoryMib" || k === "sandboxName",
   );
 }
+
+// ─── browser_health_check ─────────────────────────────────────────
+//
+// Probes CDP /json/version through the host port forward and turns
+// the outcome into an agent-readable {ok, latency, error?, suggestion?}
+// envelope. Sidecar's `health()` does the heavy lifting; this tool
+// just routes capability lookup + result shaping.
+//
+// Why a tool and not a passive monitor: a passive monitor would
+// either dump notifications into the chat ("CDP latency 2400ms!")
+// — noisy when the sandbox is fine — or have to maintain its own
+// definition of "fine", which we don't yet have data to set well.
+// As a tool, the agent calls it AFTER a browser_* call returned a
+// suspicious error and decides whether to call browser_restart /
+// reset_sandbox / give up. That matches today's intervention
+// model (worker → main agent → decision) without bolting on a
+// background process.
+
+function getBrowserSidecar(
+  ctx: AgentToolContext,
+): BrowserSidecar | undefined {
+  return ctx.capabilities.get<BrowserSidecar>("browser.cdp");
+}
+
+export const BrowserHealthCheckTool: AgentTool = {
+  schema: {
+    name: "browser_health_check",
+    description:
+      "Probe the in-sandbox browser stack (chromium + Playwright MCP). " +
+      "Returns `{ok, latencyMs, browser?, error?, suggestion?}`. " +
+      "Call this after a browser_* tool returned a confusing error or " +
+      "exec-style timeout to confirm whether the browser stack itself is " +
+      "alive. The `suggestion` field, when present, names the next " +
+      "concrete recovery step (browser_restart / reset_sandbox).",
+    parameters: Type.Object({}),
+  },
+  available: (ctx) => ctx.capabilities.has("browser.cdp"),
+  async execute(_args, ctx) {
+    const sidecar = getBrowserSidecar(ctx);
+    if (!sidecar) {
+      return {
+        ok: false,
+        text: "browser.cdp capability not registered (no browser sidecar)",
+        data: { ok: false, error: "no sidecar" },
+      };
+    }
+    const h = await sidecar.health();
+    const head = h.ok
+      ? `Browser CDP healthy (${h.latencyMs}ms${h.browser ? `, ${h.browser}` : ""})`
+      : `Browser CDP unhealthy: ${h.error ?? "(no error message)"}`;
+    const tail = h.suggestion ? `\nSuggested next step: ${h.suggestion}` : "";
+    return {
+      ok: h.ok,
+      text: head + tail,
+      data: h,
+    };
+  },
+};

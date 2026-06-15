@@ -51,7 +51,8 @@
       { "id": "update_sandbox_config", "module": "UpdateSandboxConfigTool" },
       { "id": "build_sandbox",         "module": "BuildSandboxTool" },
       { "id": "list_sandbox_builds",   "module": "ListSandboxBuildsTool" },
-      { "id": "use_sandbox_build",     "module": "UseSandboxBuildTool" }
+      { "id": "use_sandbox_build",     "module": "UseSandboxBuildTool" },
+      { "id": "browser_health_check", "module": "BrowserHealthCheckTool" }
     ],
     "toolsets": [
       { "id": "browser", "module": "BrowserToolset", "displayName": "Playwright (Browser)" }
@@ -75,6 +76,42 @@
       { "method": "GET",  "path": "/browser/status",   "handler": "getBrowserStatus" },
       { "method": "POST", "path": "/browser/restart",  "handler": "postBrowserRestart" },
       { "method": "POST", "path": "/browser/resize",   "handler": "postBrowserResize" }
+    ]
+  },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "memoryMib",
+        "label": "Sandbox memory",
+        "kind": "number",
+        "unit": "MiB",
+        "min": 512,
+        "max": 65536,
+        "step": 512,
+        "default": 2048,
+        "description": "RAM allotted to the sandbox VM. Increase to 8192+ MiB for browser-heavy workloads (chromium + Playwright MCP), 12288+ for build-time pip / npm of large stacks. Restart the sandbox (Reset) for the new value to take effect."
+      },
+      {
+        "key": "cpus",
+        "label": "vCPU count",
+        "kind": "number",
+        "min": 1,
+        "max": 16,
+        "step": 1,
+        "default": 2,
+        "description": "Logical CPU count handed to the sandbox VM. Reset the sandbox after changing."
+      },
+      {
+        "key": "execTimeoutMs",
+        "label": "Per-exec timeout",
+        "kind": "number",
+        "unit": "ms",
+        "min": 5000,
+        "max": 1800000,
+        "step": 5000,
+        "default": 300000,
+        "description": "Max wall-clock time for one `exec` call before it's force-killed. Bump this for long-running installers; consider running them with `nohup setsid … &` instead."
+      }
     ]
   }
 }

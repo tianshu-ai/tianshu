@@ -114,14 +114,22 @@ function flattenAdminPages(plugins: PluginListEntry[] | null): FlatAdminPage[] {
         });
       }
 
-      // Auto-inject a per-plugin settings page when the manifest
-      // declares a configSchema. The plugin's own admin pages still
-      // win on collisions (id === "settings"), so a plugin can
-      // override the auto-page with a richer hand-rolled one.
+      // Auto-inject a per-plugin "Settings" page when:
+      //   1) the manifest declares a configSchema, AND
+      //   2) the plugin has NO admin page of its own.
+      //
+      // If the plugin has any admin page, we skip the inject —
+      // the form is folded into THAT page's header by
+      // `renderConfigFormBanner` below, so the user doesn't see
+      // two sidebar entries (one "plugin admin" + one
+      // "Settings") for the same plugin. This matches what users
+      // actually expect: "the place I configure microsandbox is
+      // the microsandbox admin page".
       const hasConfig =
         !!p.configSchema && (p.configSchema?.fields?.length ?? 0) > 0;
+      const hasOwnAdminPage = pages.length > 0;
       const declaredSettings = pages.some((page) => page.id === "settings");
-      if (hasConfig && !declaredSettings) {
+      if (hasConfig && !hasOwnAdminPage && !declaredSettings) {
         out.push({
           pluginId: p.id,
           pluginDisplayName: p.displayName,

@@ -28,6 +28,7 @@ import type {
 } from "@tianshu/plugin-sdk";
 import { buildRunner, type BuiltRunner } from "./runner/index.js";
 import {
+  BrowserHealthCheckTool,
   BuildSandboxTool,
   ExecTool,
   GetSandboxStatusTool,
@@ -76,10 +77,48 @@ const statusRoute: PluginRouteHandler = async (_req, res) => {
   }
   try {
     const status = await active.built.runner.status();
+    // Live memory probe — cheap, useful, and the user's #1 ask
+    // ("is the sandbox actually using the 8 GiB I gave it, or
+    // OOM-ing at 2 GiB because of some default I don't see?").
+    // Only probe when state==='ready' so a status poll doesn't
+    // cold-start an idle sandbox; nullable / starting / error all
+    // skip and the UI just shows "—".
+    let liveMemory: {
+      totalKb: number;
+      availableKb: number;
+      usedKb: number;
+    } | null = null;
+    if (status.state === "ready" && active.built.ready) {
+      try {
+        const r = await active.built.runner.exec({
+          command:
+            "awk '/^MemTotal/{t=$2}/^MemAvailable/{a=$2}END{print t\" \"a}' /proc/meminfo",
+          // Tight timeout: meminfo on a live VM is a sub-ms read.
+          // If we can't get an answer in 2s the VM is wedged and
+          // skipping memory in the response is the right call.
+          timeoutMs: 2000,
+        });
+        if (r.exitCode === 0) {
+          const [tStr, aStr] = r.stdout.trim().split(/\s+/);
+          const t = Number(tStr);
+          const a = Number(aStr);
+          if (Number.isFinite(t) && Number.isFinite(a)) {
+            liveMemory = {
+              totalKb: t,
+              availableKb: a,
+              usedKb: Math.max(0, t - a),
+            };
+          }
+        }
+      } catch {
+        // Probe is best-effort. Fall through with liveMemory=null.
+      }
+    }
     res.json({
       ...status,
       ready: active.built.ready,
       runner: active.built.ready ? "microsandbox" : "nullable",
+      liveMemory,
     });
   } catch (err) {
     res.status(500).json({
@@ -191,6 +230,7 @@ export default {
         BuildSandboxTool,
         ListSandboxBuildsTool,
         UseSandboxBuildTool,
+        BrowserHealthCheckTool,
       },
       toolsetProviders: {
         BrowserToolset: browserToolset,

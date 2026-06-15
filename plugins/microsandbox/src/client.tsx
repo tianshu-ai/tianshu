@@ -41,6 +41,7 @@ import type {
   PanelProps,
   PluginClientExports,
 } from "@tianshu/plugin-sdk/client";
+import { PluginConfigForm } from "@tianshu/plugin-sdk/client";
 
 // ─── shared types + helpers ────────────────────────────────────
 
@@ -51,6 +52,14 @@ interface SandboxStatusPayload {
   meta?: Record<string, unknown>;
   ready: boolean;
   runner: "microsandbox" | "nullable";
+  /** Snapshot of /proc/meminfo from inside the live VM. Probed
+   *  by the host's status route (only when state==="ready"), so
+   *  null on a stopped or starting sandbox. */
+  liveMemory: {
+    totalKb: number;
+    availableKb: number;
+    usedKb: number;
+  } | null;
 }
 
 // Mirrors `BrowserStatusPayload` from
@@ -133,6 +142,19 @@ function formatUptime(ms: number): string {
   if (m < 60) return `${m}m ${s % 60}s`;
   const h = Math.floor(m / 60);
   return `${h}h ${m % 60}m`;
+}
+
+/** Render kB values from /proc/meminfo as a compact human
+ *  string ("1.2 GiB" / "864 MiB"). meminfo's "kB" is actually
+ *  KiB (1024-based) so we use 1024 throughout. */
+function formatKb(kb: number): string {
+  if (!Number.isFinite(kb) || kb < 0) return "—";
+  if (kb < 1024) return `${kb} KiB`;
+  const mib = kb / 1024;
+  if (mib < 1024) return `${Math.round(mib)} MiB`;
+  const gib = mib / 1024;
+  // 0.1 GiB precision; "1.2 GiB" is more readable than "1234 MiB".
+  return `${gib.toFixed(1)} GiB`;
 }
 
 function extractMetaString(
@@ -1181,8 +1203,9 @@ function ResetSection({
       />
 
       {error && <Banner kind="error" text={error} />}
-      {status && (
-        <dl className="grid grid-cols-3 gap-x-4 gap-y-1.5 rounded-md border border-gray-800 bg-gray-900/40 p-3 text-[11px]">
+      <div className="rounded-md border border-gray-800 bg-gray-900/40">
+        {status && (
+        <dl className="grid grid-cols-3 gap-x-4 gap-y-1.5 p-3 text-[11px]">
           <Field label="State">
             {status.runner === "nullable" ? "not running" : status.state}
           </Field>
@@ -1216,13 +1239,43 @@ function ResetSection({
                 </code>
               </Field>
             )}
+          {status.liveMemory && (
+            <Field label="Memory">
+              <span title={`${formatKb(status.liveMemory.usedKb)} used · ${formatKb(status.liveMemory.availableKb)} available · ${formatKb(status.liveMemory.totalKb)} total`}>
+                {formatKb(status.liveMemory.usedKb)}
+                <span className="text-gray-500">
+                  {" / "}
+                  {formatKb(status.liveMemory.totalKb)} ({" "}
+                  {Math.round((status.liveMemory.usedKb / status.liveMemory.totalKb) * 100)}
+                  %)
+                </span>
+              </span>
+            </Field>
+          )}
           {status.lastError && (
             <Field label="Last error">
               <span className="text-rose-300">{status.lastError}</span>
             </Field>
           )}
         </dl>
-      )}
+        )}
+        {/* Runtime parameters live in the SAME panel as the
+            status grid above so the user reads them as one
+            "Live sandbox" surface (state at the top, knobs at
+            the bottom). The thin border-top is the only visual
+            separator between read state and editable state. */}
+        <div className="border-t border-gray-800 px-3 py-3">
+          <div className="mb-2 flex items-baseline justify-between gap-2 text-[11px]">
+            <span className="font-medium uppercase tracking-wide text-gray-500">
+              Runtime parameters
+            </span>
+            <span className="text-gray-600">
+              applies on next reset
+            </span>
+          </div>
+          <PluginConfigForm pluginId="microsandbox" />
+        </div>
+      </div>
     </section>
   );
 }

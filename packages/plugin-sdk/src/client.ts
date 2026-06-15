@@ -253,6 +253,56 @@ export function __resetOpenFileApiForTest(): void {
  *  forcing a re-mount. Throws only if absolutely no implementation
  *  has ever been installed (which means the host bootstrap was
  *  skipped). */
+// ─── PluginConfigForm — re-export of the host's auto-generated
+// config form, exposed so a plugin's own admin page can fold it
+// in alongside its richer UI (Sandbox status / build history /
+// etc.) instead of getting a duplicated "Settings" sidebar entry.
+//
+// Same install-once + globalSlot trick. Host installs the
+// component on bootstrap; plugin imports `PluginConfigForm` and
+// renders <PluginConfigForm pluginId="microsandbox" /> wherever
+// makes sense. The form looks up its own data from the live
+// plugin store, so the plugin only needs to pass the id.
+
+import * as React from "react";
+
+export interface PluginConfigFormProps {
+  /** Plugin id (matches manifest.id). Form pulls schema + values
+   *  from the host's live plugin store on every render, so a
+   *  config save in another tab updates this in place. */
+  pluginId: string;
+  /** Optional className applied to the root form container. */
+  className?: string;
+}
+
+interface PluginConfigFormGlobalSlot {
+  __tianshuPluginSdkPluginConfigForm__?: React.ComponentType<PluginConfigFormProps>;
+}
+
+function pluginConfigFormSlot(): PluginConfigFormGlobalSlot {
+  return globalThis as unknown as PluginConfigFormGlobalSlot;
+}
+
+export function __installPluginConfigForm(
+  C: React.ComponentType<PluginConfigFormProps>,
+): void {
+  pluginConfigFormSlot().__tianshuPluginSdkPluginConfigForm__ = C;
+}
+
+export function __resetPluginConfigFormForTest(): void {
+  delete pluginConfigFormSlot().__tianshuPluginSdkPluginConfigForm__;
+}
+
+/** Renders the auto-generated config form for `pluginId`. If the
+ *  plugin has no `configSchema` or no fields, renders nothing
+ *  (so the calling component can drop it in unconditionally). */
+export const PluginConfigForm: React.ComponentType<PluginConfigFormProps> =
+  (props) => {
+    const C = pluginConfigFormSlot().__tianshuPluginSdkPluginConfigForm__;
+    if (!C) return null;
+    return React.createElement(C, props);
+  };
+
 export function useOpenFile(): OpenFileApi["open"] {
   return (path: string): void => {
     const api = openFileSlot().__tianshuPluginSdkOpenFile__;

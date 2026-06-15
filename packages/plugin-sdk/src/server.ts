@@ -377,6 +377,42 @@ export interface BrowserSidecar {
   /** Restart chromium + playwright-mcp without rebuilding the whole
    *  sandbox. Returns true on success. */
   restart(): Promise<boolean>;
+  /**
+   * Probe the browser stack and report whether it answers a CDP
+   * discovery request right now. The implementation does
+   * `GET http://127.0.0.1:<cdpHostPort>/json/version` with a
+   * short timeout and translates the outcome into a single
+   * status object the agent can act on:
+   *
+   *   - ok=true: chromium answered, latencyMs is the round-trip,
+   *     `browser`/`webSocketDebuggerUrl` echoed for diagnostics.
+   *   - ok=false: cdpHostPort isn't set (sidecar has no chromium),
+   *     or the probe timed out / 5xx'd / connection-reset. The
+   *     `error` and `suggestion` strings are agent-readable so
+   *     the tool result can pass them through verbatim.
+   *
+   * Cheap (~1-5ms when healthy). Safe to call from a tool result
+   * post-hook on every browser_* call without serious cost.
+   */
+  health(): Promise<BrowserSidecarHealth>;
+}
+
+export interface BrowserSidecarHealth {
+  ok: boolean;
+  latencyMs: number;
+  /** Browser version string from /json/version when the probe
+   *  succeeded; absent on failure. */
+  browser?: string;
+  /** Failure reason when ok=false; absent on success. */
+  error?: string;
+  /** Agent-actionable next step when ok=false. Examples:
+   *    "call browser_restart to re-spawn chromium + Playwright MCP"
+   *    "the sandbox itself is unhealthy; ask the orchestrator to reset_sandbox"
+   *  Absent on success. */
+  suggestion?: string;
+  /** Host CDP port at probe time. Useful for diagnostics when
+   *  the port forward itself moved (e.g. after reset_sandbox). */
+  cdpHostPort?: number;
 }
 
 /** A server-side plugin module exports `activate` (required) and
