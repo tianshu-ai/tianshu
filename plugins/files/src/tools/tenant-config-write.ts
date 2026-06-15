@@ -39,7 +39,17 @@ export function tenantConfigWriteSchema(): Tool {
       "`skills/` or `main/skills/`; workers may write only under " +
       "`workers/<their-kind>/skills/`. Reads are unrestricted. Use " +
       "this to author or update a SKILL.md (and its sibling files " +
-      "like scripts/foo.py, references/bar.md, assets/baz.txt).",
+      "like scripts/foo.py, references/bar.md, assets/baz.txt).\n\n" +
+      "Guidelines:\n" +
+      "- Use `tenant_config_write` ONLY for new files or complete " +
+      "rewrites. For targeted changes prefer `tenant_config_edit` " +
+      "(its `edits[]` accepts multiple disjoint replacements in " +
+      "one call).\n" +
+      "- For long content, write a skeleton first and fill the " +
+      "placeholders with `tenant_config_edit`. One `write` call " +
+      "carrying thousands of lines of `content` will trip the " +
+      "provider's tool-call stream truncation and the call will " +
+      "fail with `content` missing entirely.",
     parameters: Type.Object({
       path: Type.String({
         description:

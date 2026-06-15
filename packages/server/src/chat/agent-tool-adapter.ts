@@ -79,6 +79,14 @@ export interface AdaptedToolset {
 }
 
 export function adaptToolset(toolset: Toolset): AdaptedToolset {
+  // Per-toolset truncation counter. The toolset is freshly built
+  // per agent loop run (chat handler / worker pool), so this map
+  // covers "this agent's lifetime" — the natural granularity
+  // for an escalation rule. Resetting between turns would let a
+  // model thrash forever: hit truncation once per turn, get the
+  // permissive message, repeat. Persisting across turns lets us
+  // catch "second time the same tool ate truncation" reliably.
+  const truncationCount = new Map<string, number>();
   const tools: PiAgentTool[] = toolset.schemas.map((schema) => {
     const exec = toolset.executors[schema.name];
     const piTool: PiAgentTool = {
@@ -108,6 +116,19 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
       prepareArguments: (raw: unknown) => {
         const truncated = detectStreamTruncation(schema, raw);
         if (truncated) {
+          // Escalate on repeat. After the first truncation the
+          // model already saw the standard hint ("re-issue first,
+          // keep fields concise, use skeleton-then-fill"). If it
+          // hits truncation a second time on the same tool inside
+          // the same agent run, hinting harder rarely helps — the
+          // model is stuck. Switch to a fatal-flavored message
+          // that explicitly forbids the bad pattern and tells it
+          // exactly which alternative tools to call.
+          const prior = truncationCount.get(schema.name) ?? 0;
+          truncationCount.set(schema.name, prior + 1);
+          if (prior >= 1) {
+            throw new Error(formatRepeatTruncationError(schema.name, prior + 1));
+          }
           throw new Error(truncated);
         }
         return raw;
@@ -237,4 +258,47 @@ function formatTruncationError(
   const retryAdvice =
     "To retry: re-issue the tool call as the FIRST action in your next assistant turn (no preamble text), and keep `description` / `content` / similar long fields concise. If you keep hitting the same truncation, switch tactics — use the skeleton-then-fill pattern (write a short scaffold first, then fill sections via batch `edit_file`) instead of one giant call.";
   return `${head} ${requiredHint} ${retryAdvice}`;
+}
+
+/**
+ * Second-time truncation on the same tool in the same agent run.
+ * The model has already seen the permissive hint and ignored it,
+ * so we make the failure mode explicit and prescribe one specific
+ * alternative — "don't call this tool again, use these instead".
+ *
+ * Tool-specific advice covers the two we actually see thrash:
+ *   - write_file / tenant_config_write → skeleton + edit_file
+ *   - everything else → generic "split the call into smaller chunks"
+ *
+ * The wording is intentionally direct ("STOP calling") because the
+ * permissive version above already failed; subtle is for first-
+ * time messages, not for the loop-breaker.
+ */
+function formatRepeatTruncationError(
+  toolName: string,
+  attempts: number,
+): string {
+  const head =
+    `Tool call to \`${toolName}\` truncated again (attempt ${attempts}). ` +
+    "The first hint did not change the outcome, so the call shape " +
+    "itself is the problem.";
+  const isWriter =
+    toolName === "write_file" || toolName === "tenant_config_write";
+  const prescription = isWriter
+    ? `STOP calling \`${toolName}\` with a large \`content\` payload. Instead:\n` +
+      `  1. Call \`${toolName}\` ONCE with a small skeleton (title, ` +
+      `headings, and \`<!-- TODO: section X -->\` placeholders only).\n` +
+      "  2. Use `edit_file` (or `tenant_config_edit`) with `edits[]` to " +
+      "replace each placeholder with its real content. The batch form " +
+      "of edit_file accepts multiple disjoint replacements in one call " +
+      "— plan two or three sections per edit_file call rather than one " +
+      "giant write.\n\n" +
+      "Read the `large-input-large-output` skill for the worked example. " +
+      "Do not attempt another `write_file` with the same content shape; " +
+      "the next attempt will fail the same way."
+    : `STOP retrying \`${toolName}\` with the same shape. Split the request ` +
+      "into smaller calls (fewer items, shorter strings) before calling it " +
+      "again. The provider's tool-use input stream cannot accept the size " +
+      "of payload you keep submitting.";
+  return `${head}\n\n${prescription}`;
 }

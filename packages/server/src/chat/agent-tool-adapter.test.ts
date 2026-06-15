@@ -103,3 +103,114 @@ describe("adaptToolset prepareArguments stream-truncation detector", () => {
     expect(msg).toMatch(/edit_file/);
   });
 });
+
+describe("repeat-truncation escalation", () => {
+  it("escalates to a fatal-flavored message on second truncation of same tool", () => {
+    const adapted = adaptToolset({
+      schemas: [
+        {
+          name: "write_file",
+          description: "write",
+          parameters: Type.Object({
+            path: Type.String(),
+            content: Type.String(),
+          }),
+        },
+      ],
+      executors: { write_file: () => ({ ok: true, text: "" }) },
+    });
+    const tool = adapted.tools[0]!;
+    // 1st: permissive hint. We use `{path: '/x'}` (partial
+    // truncation — content missing) since that's the dominant
+    // shape in the wild; the detector still flags it as a
+    // truncation candidate, just with the partial wording.
+    let first = "";
+    try {
+      tool.prepareArguments?.({ path: "/x.md" });
+    } catch (err) {
+      first = err instanceof Error ? err.message : String(err);
+    }
+    expect(first).toMatch(/missing required field/);
+    expect(first).not.toMatch(/STOP calling/);
+    // 2nd: prescriptive
+    let second = "";
+    try {
+      tool.prepareArguments?.({ path: "/x.md" });
+    } catch (err) {
+      second = err instanceof Error ? err.message : String(err);
+    }
+    expect(second).toMatch(/truncated again \(attempt 2\)/);
+    expect(second).toMatch(/STOP calling `write_file`/);
+    expect(second).toMatch(/skeleton/);
+    expect(second).toMatch(/edit_file/);
+  });
+
+  it("escalation is per-tool: write_file's count doesn't bleed into edit_file", () => {
+    const adapted = adaptToolset({
+      schemas: [
+        {
+          name: "write_file",
+          description: "write",
+          parameters: Type.Object({
+            path: Type.String(),
+            content: Type.String(),
+          }),
+        },
+        {
+          name: "edit_file",
+          description: "edit",
+          parameters: Type.Object({
+            path: Type.String(),
+            edits: Type.Array(Type.Object({})),
+          }),
+        },
+      ],
+      executors: {
+        write_file: () => ({ ok: true, text: "" }),
+        edit_file: () => ({ ok: true, text: "" }),
+      },
+    });
+    const writeTool = adapted.tools.find((t) => t.name === "write_file")!;
+    const editTool = adapted.tools.find((t) => t.name === "edit_file")!;
+    // burn write_file's permissive slot
+    expect(() => writeTool.prepareArguments?.({ path: "/x" })).toThrow(
+      /missing required field/,
+    );
+    // edit_file's first miss should still get the permissive
+    // wording (counter is per-tool, not global)
+    let editMsg = "";
+    try {
+      editTool.prepareArguments?.({ path: "/x" });
+    } catch (err) {
+      editMsg = err instanceof Error ? err.message : String(err);
+    }
+    expect(editMsg).toMatch(/missing required field/);
+    expect(editMsg).not.toMatch(/STOP calling/);
+  });
+
+  it("non-writer tools get the generic split-it-up advice on repeat", () => {
+    const adapted = adaptToolset({
+      schemas: [
+        {
+          name: "task_create",
+          description: "create",
+          parameters: Type.Object({
+            tasks: Type.Array(Type.Object({})),
+          }),
+        },
+      ],
+      executors: { task_create: () => ({ ok: true, text: "" }) },
+    });
+    const tool = adapted.tools[0]!;
+    expect(() => tool.prepareArguments?.({})).toThrow();
+    let msg = "";
+    try {
+      tool.prepareArguments?.({});
+    } catch (err) {
+      msg = err instanceof Error ? err.message : String(err);
+    }
+    expect(msg).toMatch(/STOP retrying/);
+    expect(msg).toMatch(/Split the request/);
+    expect(msg).not.toMatch(/skeleton/);
+  });
+});

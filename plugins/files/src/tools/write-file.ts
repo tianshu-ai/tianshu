@@ -30,9 +30,18 @@ export function writeFileSchema(): Tool {
   return {
     name: "write_file",
     description:
-      "Create or overwrite a file in the workspace. Parent directories are created if " +
-      "missing. Use this for new files or full rewrites; for small targeted changes " +
-      "prefer `edit_file`.",
+      "Create or overwrite a file in the workspace. Parent directories are " +
+      "created if missing.\n\nGuidelines:\n" +
+      "- Use `write_file` ONLY for new files or complete rewrites of small " +
+      "files. For changes to an existing file prefer `edit_file` (its " +
+      "`edits[]` accepts multiple disjoint replacements in one call).\n" +
+      "- For long output (HTML reports, multi-section markdown, etc.), " +
+      "write a small skeleton with `<!-- TODO: section X -->` placeholders " +
+      "FIRST, then fill each section with `edit_file`. A single " +
+      "`write_file` carrying thousands of lines of `content` will trip the " +
+      "provider's tool-call stream truncation and the call will fail with " +
+      "`content` missing entirely. The skill `large-input-large-output` " +
+      "covers the full pattern.",
     parameters: Type.Object({
       path: Type.String({
         description: 'Path relative to the workspace root, e.g. "/notes/today.md".',
