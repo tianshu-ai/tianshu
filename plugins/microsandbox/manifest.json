@@ -61,7 +61,8 @@
       { "id": "exec-howto",     "path": "skills/microsandbox-exec-howto.md" },
       { "id": "config",         "path": "skills/microsandbox-config.md" },
       { "id": "build-use",      "path": "skills/microsandbox-build-use.md" },
-      { "id": "browser-howto",  "path": "skills/microsandbox-browser-howto.md" }
+      { "id": "browser-howto",  "path": "skills/microsandbox-browser-howto.md" },
+      { "id": "libreoffice",   "path": "skills/microsandbox-libreoffice.md" }
     ],
     "apiRoutes": [
       { "method": "GET",  "path": "/status",          "handler": "status" },

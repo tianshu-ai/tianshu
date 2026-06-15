@@ -98,6 +98,33 @@ read_file("/out.log")
 
 …or pipe through `tail`/`sed` inline.
 
+## Pre-installed tools (don't `apt install` / `pip install` what's already there)
+
+The sandbox image ships with these out of the box. Use them
+directly instead of installing alternatives:
+
+- **`soffice`** (LibreOffice 25.2) — headless docx / xlsx / pptx /
+  pdf conversion. See `microsandbox-libreoffice` for the full
+  conversion table, sandbox-specific gotchas (single-instance
+  lock, AF_UNIX status, font cache), and "when soffice is the
+  WRONG tool".
+- **`chromium` / Playwright MCP** — see `microsandbox-browser-howto`.
+  Don't `playwright install chromium`; the sandbox already has it
+  on CDP 9222 + MCP 3200.
+- **`node`, `npm`, `npx`** — Node 22 LTS, configured to npmmirror
+  in CN. `npm install <pkg>` works; just don't try to upgrade
+  Node itself.
+- **`fc-cache`** — already run at build time, so CJK fonts render
+  in `soffice` and `chromium` without a 30s cold start.
+- **`pdftoppm`** (Poppler) — PDF → PNG / JPEG, the right tool
+  for multi-page rasterisation (used by the LibreOffice and
+  PPTX flows).
+
+If you need something not on this list and it's a one-shot:
+`apt-get install -y <pkg>` works in the running VM but won't
+survive a `reset_sandbox`. For persistence, edit Sandboxfile
+and rebuild (see `microsandbox-build-use`).
+
 ## When to reset
 
 Call `reset_sandbox` only when:
