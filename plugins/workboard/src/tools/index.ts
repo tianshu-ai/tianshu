@@ -571,6 +571,16 @@ export function buildTaskMoveTool(deps: ToolDeps): AgentTool {
         // is saying "this is fixed, try again".
         patch.failureReason = null;
         patch.attempts = 0;
+        // Drop the post-008 intervention labels so the pool's
+        // claim filter (POOL_SKIP_LABELS) lets the task through.
+        // Without this, task_move-back-to-ready leaves the row
+        // in a zombie state: status=ready (visible in the queue
+        // column) but skipped by every drain pass.
+        patch.labels = before.labels.filter(
+          (l) => l !== INTERVENTION_LABEL && l !== "stalled",
+        );
+        patch.interventionReason = null;
+        patch.interventionAt = null;
       }
       const after = updateTask(deps.db, args.id, patch);
 
