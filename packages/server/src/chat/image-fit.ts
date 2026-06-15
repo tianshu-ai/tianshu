@@ -29,12 +29,22 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 
 // sharp is heavy (native libvips). Lazy-load so unit tests that
 // never touch image content don't pay startup cost.
-type SharpModule = typeof import("sharp");
-let sharpInstance: SharpModule | null = null;
-async function loadSharp(): Promise<SharpModule> {
+//
+// Note on the type: sharp >= 0.35 dropped the dual `module is
+// callable AND a namespace` shape it had on 0.34. The CJS / ESM
+// re-export now exposes the namespace at the top level, with the
+// callable factory living under `default`. Typing
+// `typeof import("sharp")` no longer satisfies
+// `(buf) => Sharp`, so we pin the module type to the default
+// export's type instead.
+type SharpFactory = typeof import("sharp").default;
+let sharpInstance: SharpFactory | null = null;
+async function loadSharp(): Promise<SharpFactory> {
   if (sharpInstance) return sharpInstance;
   const m = await import("sharp");
-  sharpInstance = (m.default ?? m) as SharpModule;
+  // `m.default` on 0.35; older releases exposed the callable at
+  // the top-level so we keep the fallback for forward+back compat.
+  sharpInstance = (m.default ?? (m as unknown as SharpFactory));
   return sharpInstance;
 }
 
