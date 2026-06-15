@@ -81,6 +81,9 @@ type State = "stopped" | "starting" | "ready" | "error";
 // compile-time dep on the napi types. The actual methods we call
 // (exec, stopAndWait, removePersisted) are exercised by the runner
 // itself; mistyping is caught at runtime.
+/** Minimal subset of microsandbox's `Sandbox` we touch. The SDK
+ *  exposes a much richer surface; we only declare what we use so a
+ *  type drift in microsandbox doesn't break our build. */
 type SandboxHandle = {
   exec(cmd: string, args?: Iterable<string>): Promise<{
     code: number;
@@ -92,8 +95,27 @@ type SandboxHandle = {
     stdout(): string;
     stderr(): string;
   }>;
+  /** Streaming variant of shell(). Returns an ExecHandle whose
+   *  `kill()` we use to enforce per-exec timeouts — plain
+   *  `shell()` blocks indefinitely if the host-guest exec
+   *  channel dies mid-stream. */
+  shellStream(script: string): Promise<ExecHandleLike>;
   stopAndWait(): Promise<unknown>;
   removePersisted(): Promise<unknown>;
+};
+
+/** Subset of microsandbox's `ExecHandle` (returned by `shellStream`)
+ *  that our timeout wrapper relies on. */
+type ExecHandleLike = {
+  /** Drain stdout/stderr and wait for exit. */
+  collect(): Promise<{
+    code: number;
+    stdout(): string;
+    stderr(): string;
+  }>;
+  /** SIGKILL the process group. Best-effort; safe to call after
+   *  the process has already exited. */
+  kill(): Promise<void>;
 };
 
 export class MicrosandboxRunner implements SandboxRunner {
@@ -150,6 +172,15 @@ export class MicrosandboxRunner implements SandboxRunner {
 
   async exec(req: ExecRequest): Promise<ExecResult> {
     const start = Date.now();
+    // Resolve effective timeout: caller-supplied wins, then
+    // tenant-config (configurable via the new admin form), then
+    // DEFAULT_CONFIG.execTimeoutMs (5 min). 0 / undefined means
+    // "no timeout" — we still recommend the configured one but
+    // honour an explicit opt-out for the rare e2e fixture.
+    const timeoutMs =
+      typeof req.timeoutMs === "number" && Number.isFinite(req.timeoutMs)
+        ? Math.max(0, req.timeoutMs)
+        : this.opts.config.execTimeoutMs;
     try {
       const handle = await this.ensureStarted();
       const workdir = req.workdir ?? "/workspace";
@@ -159,7 +190,77 @@ export class MicrosandboxRunner implements SandboxRunner {
       // The microsandbox shell() wraps with `bash -lc` and ignores
       // `cd` failures.
       const script = `set -e; cd "${shellEscape(workdir)}"; ${req.command}`;
-      const out = await handle.shell(script);
+      // Use shellStream (which yields an ExecHandle we can kill)
+      // instead of shell (which is fire-and-wait). With a handle
+      // we can race `collect()` against a timeout and call
+      // `handle.kill()` on overrun, instead of letting the SDK
+      // sit forever waiting for an exit event that never comes.
+      // The "exec session ended without exit event" failure mode
+      // Yu was hitting was specifically this: a 13-minute exec
+      // where the host-guest channel had broken, but our code had
+      // no way to give up on it.
+      // Sentinel object identity — not a string — so TS narrows
+      // the union cleanly without us casting the ExecOutput shape.
+      const TIMEOUT = Symbol("exec-timeout");
+      const exec = await handle.shellStream(script);
+      let timer: NodeJS.Timeout | null = null;
+      const collectP = exec.collect();
+      const timeoutP =
+        timeoutMs > 0
+          ? new Promise<typeof TIMEOUT>((resolve) => {
+              timer = setTimeout(() => {
+                // Best-effort: SIGKILL the running process. If the
+                // channel itself is dead, kill() may also fail;
+                // we just want to break out of collect()'s wait so
+                // the caller sees a structured timeout instead of
+                // an unbounded hang.
+                exec.kill().catch(() => {});
+                resolve(TIMEOUT);
+              }, timeoutMs);
+            })
+          : new Promise<never>(() => {});
+      const winner = await Promise.race([collectP, timeoutP]);
+      if (timer) clearTimeout(timer);
+      if (winner === TIMEOUT) {
+        // Try to drain whatever stdout/stderr the kill produced;
+        // collect() resolves shortly after kill on a healthy channel.
+        let partial: { stdout: string; stderr: string } = {
+          stdout: "",
+          stderr: "",
+        };
+        try {
+          const drained = await Promise.race([
+            collectP,
+            new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+          ]);
+          if (drained) {
+            partial = { stdout: drained.stdout(), stderr: drained.stderr() };
+          }
+        } catch {
+          // best-effort drain
+        }
+        const durationMs = Date.now() - start;
+        this.lastExec = {
+          at: Date.now(),
+          ok: false,
+          durationMs,
+          exitCode: -1,
+        };
+        return {
+          exitCode: -1,
+          stdout: partial.stdout,
+          stderr:
+            (partial.stderr ? partial.stderr + "\n" : "") +
+            `[microsandbox] exec timed out after ${timeoutMs}ms; sent SIGKILL. ` +
+            `If you need a longer budget, raise plugins.microsandbox.config.execTimeoutMs ` +
+            `(currently ${this.opts.config.execTimeoutMs}ms) or pass timeoutMs in the call. ` +
+            `For commands that should outlive the call (servers, supervisord), ` +
+            `start them with 'nohup setsid … > /tmp/log 2>&1 < /dev/null &'.`,
+          durationMs,
+          timedOut: true,
+        };
+      }
+      const out = winner;
       const durationMs = Date.now() - start;
       const exitCode = out.code;
       this.lastExec = {
@@ -173,16 +274,32 @@ export class MicrosandboxRunner implements SandboxRunner {
         stdout: out.stdout(),
         stderr: out.stderr(),
         durationMs,
-        timedOut: false, // SDK doesn't expose timeout signal in v0.4.x
+        timedOut: false,
       };
     } catch (err) {
       const durationMs = Date.now() - start;
       const message = err instanceof Error ? err.message : String(err);
       this.lastExec = { at: Date.now(), ok: false, durationMs, exitCode: -1 };
+      // "exec session ended without exit event" is the SDK's way
+      // of saying the host-guest channel died mid-stream. The
+      // sandbox itself may still be reachable (status=ready) but
+      // any further `exec` calls have a high chance of doing the
+      // same. Surface a recovery hint so the agent doesn't loop.
+      const looksLikeChannelLoss =
+        message.includes("exec session ended") ||
+        message.includes("without exit event") ||
+        message.includes("connection closed") ||
+        message.includes("channel closed");
+      const advice = looksLikeChannelLoss
+        ? "\n[microsandbox] the exec channel between host and guest agent died " +
+          "mid-stream. The VM itself may still be running, but new exec calls " +
+          "are likely to repeat the failure. Recovery: call `reset_sandbox`. " +
+          "Files under /workspace survive a reset."
+        : "";
       return {
         exitCode: -1,
         stdout: "",
-        stderr: `microsandbox exec failed: ${message}`,
+        stderr: `microsandbox exec failed: ${message}${advice}`,
         durationMs,
         timedOut: false,
       };
