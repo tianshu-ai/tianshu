@@ -18,8 +18,11 @@ import {
   type TenantContext,
 } from "./core/index.js";
 import {
+  applyPluginSecretPatch,
   collectRoutesForTenant,
+  loadPluginSecrets,
   PluginRegistry,
+  redactSecretsInConfig,
 } from "./core/plugins/index.js";
 import { CatalogClient } from "./catalog.js";
 
@@ -484,6 +487,35 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
         ? (body.enabled as boolean)
         : wasEnabled;
 
+      // Split the incoming config into (a) cleartext fields, kept
+      // in tenant config.json, and (b) secret fields, sliced out
+      // and persisted under <tenant>/secrets/plugin-<id>.json.
+      // The split is driven by the manifest's configSchema: a
+      // field with kind="secret" goes to secrets/, everything
+      // else stays in config.json. Without a schema (no fields
+      // declared) the body lands wholesale in config.json —
+      // legacy plugins keep working unchanged.
+      let plainConfig: Record<string, unknown> | undefined;
+      let secretPatch:
+        | Parameters<typeof applyPluginSecretPatch>[2]
+        | undefined;
+      if (hasConfig) {
+        const fields = knownEntry?.manifest.configSchema?.fields ?? [];
+        const secretKeys = new Set(
+          fields.filter((f) => f.kind === "secret").map((f) => f.key),
+        );
+        if (secretKeys.size === 0) {
+          plainConfig = body.config as Record<string, unknown>;
+        } else {
+          const split = splitSecrets(
+            body.config as Record<string, unknown>,
+            secretKeys,
+          );
+          plainConfig = split.plain;
+          secretPatch = split.secrets;
+        }
+      }
+
       // Mutate the persisted tenant config.
       const cfg = loadTenantConfig(tenantId, ops.homeDir);
       const plugins = { ...(cfg.plugins ?? {}) };
@@ -492,11 +524,24 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
         ...existing,
       };
       if (hasEnabled) next.enabled = body.enabled as boolean;
-      if (hasConfig) {
-        next.config = body.config as Record<string, unknown>;
+      if (plainConfig !== undefined) {
+        next.config = plainConfig;
       }
       plugins[pluginId] = next;
       writeTenantConfig(tenantId, { ...cfg, plugins }, ops.homeDir);
+
+      // And then persist the secret patch (if any) to the secrets/
+      // file. Done AFTER config.json so a config write that
+      // succeeded but a secrets write that failed leaves the
+      // tenant in a recoverable state — the form just retries.
+      if (secretPatch && Object.keys(secretPatch).length > 0) {
+        const tenantForSecrets = ops.open(tenantId);
+        applyPluginSecretPatch(
+          tenantForSecrets.secretsDir,
+          pluginId,
+          secretPatch,
+        );
+      }
 
       // Invalidate cached registry so the next discovery + activation
       // sees the new config. TenantContext is rebuilt on every call
@@ -553,6 +598,75 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
   return r;
 }
 
+/**
+ * Walk a posted plugin config object and split out the secret
+ * fields. Secret keys are dotted paths (matching the form's flat
+ * value map shape); we drop them from the cleartext object and
+ * collect them into a SecretPatch the caller hands to
+ * applyPluginSecretPatch.
+ *
+ * Two value shapes the form may submit per secret field:
+ *   - string  — user typed a new value; persist it.
+ *   - { __secret: true, set: <bool> }  — the redacted shape
+ *     (form was rendered against an existing config and the user
+ *     didn't touch the field). Treated as a no-op so saving the
+ *     form without re-typing the key keeps the existing secret
+ *     intact.
+ *   - { __secret: true, clear: true }  — explicit clear; deletes
+ *     the secret from secrets/. (The form's "clear" button sends
+ *     this.)
+ */
+function splitSecrets(
+  body: Record<string, unknown>,
+  secretKeys: Set<string>,
+): {
+  plain: Record<string, unknown>;
+  secrets: Parameters<typeof applyPluginSecretPatch>[2];
+} {
+  const plain: Record<string, unknown> = {};
+  const secrets: Parameters<typeof applyPluginSecretPatch>[2] = {};
+  // We only walk top-level keys for now — dotted secret keys
+  // ("foo.bar") are nested by the form before being sent, so the
+  // POST body contains nested objects. We recurse to find them.
+  const visit = (
+    obj: Record<string, unknown>,
+    prefix: string,
+    plainTarget: Record<string, unknown>,
+  ) => {
+    for (const [k, v] of Object.entries(obj)) {
+      const dotted = prefix ? `${prefix}.${k}` : k;
+      if (secretKeys.has(dotted)) {
+        if (typeof v === "string") {
+          secrets[dotted] = v;
+        } else if (
+          v &&
+          typeof v === "object" &&
+          (v as { __secret?: unknown }).__secret === true
+        ) {
+          if ((v as { clear?: unknown }).clear === true) {
+            secrets[dotted] = { __secret: true, clear: true };
+          }
+          // else: redacted shape — no-op (leave existing secret).
+        }
+        // Don't write the secret to plain.
+        continue;
+      }
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        plainTarget[k] = {};
+        visit(
+          v as Record<string, unknown>,
+          dotted,
+          plainTarget[k] as Record<string, unknown>,
+        );
+      } else {
+        plainTarget[k] = v;
+      }
+    }
+  };
+  visit(body, "", plain);
+  return { plain, secrets };
+}
+
 export async function listPluginsForTenant(
   registry: PluginRegistry,
   tenant: TenantContext,
@@ -569,7 +683,23 @@ export async function listPluginsForTenant(
       { config?: Record<string, unknown> }
     >;
 
-  return registry.listForTenant(tenant.tenantId).map((e) => ({
+  return registry.listForTenant(tenant.tenantId).map((e) => {
+    const rawConfig = tenantConfigPlugins[e.manifest.id]?.config ?? {};
+    // Redact any `secret`-kind fields before exposing the config
+    // to the browser. The plugin admin form only needs to know
+    // whether each secret is set; the cleartext stays on disk
+    // under `<tenant>/secrets/plugin-<id>.json`.
+    const fields = e.manifest.configSchema?.fields ?? [];
+    const hasSecrets = fields.some((f) => f.kind === "secret");
+    let safeConfig: Record<string, unknown> = rawConfig;
+    if (hasSecrets) {
+      const secrets = loadPluginSecrets(
+        tenant.secretsDir,
+        e.manifest.id,
+      );
+      safeConfig = redactSecretsInConfig(rawConfig, fields, secrets);
+    }
+    return {
     id: e.manifest.id,
     version: e.manifest.version,
     displayName: e.manifest.displayName,
@@ -584,15 +714,17 @@ export async function listPluginsForTenant(
      *  config. */
     configSchema: e.manifest.configSchema ?? null,
     /** Current persisted config object — same shape the plugin sees
-     *  via PluginContext.pluginConfig. Empty object when the user
-     *  hasn't customised anything. */
-    config: tenantConfigPlugins[e.manifest.id]?.config ?? {},
+     *  via PluginContext.pluginConfig, except `secret`-kind values
+     *  are replaced with `{ __secret: true, set: <bool> }` so the
+     *  browser never sees cleartext. */
+    config: safeConfig,
     capabilities: {
       provided: e.capabilityInfo.provided,
       requires: e.capabilityInfo.requires,
       missing: e.capabilityInfo.missing,
     },
-  }));
+    };
+  });
 }
 
 // Validation for the body of POST/PATCH /mcp/servers. Returns either

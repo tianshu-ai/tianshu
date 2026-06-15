@@ -50,6 +50,15 @@ export type PluginConfigField =
       default?: string;
       placeholder?: string;
       multiline?: boolean;
+    })
+  | (PluginConfigFieldBase & {
+      kind: "secret";
+      placeholder?: string;
+    })
+  | (PluginConfigFieldBase & {
+      kind: "select";
+      default?: string;
+      options: Array<{ label: string; value: string }>;
     });
 
 export interface PluginConfigSchema {

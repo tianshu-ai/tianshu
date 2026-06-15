@@ -72,7 +72,9 @@ export interface PluginConfigSchema {
 export type PluginConfigField =
   | PluginConfigBoolField
   | PluginConfigNumberField
-  | PluginConfigStringField;
+  | PluginConfigStringField
+  | PluginConfigSecretField
+  | PluginConfigSelectField;
 
 interface PluginConfigFieldBase {
   /** Dotted path under the plugin's config object, e.g. "echo.enabled". */
@@ -124,6 +126,50 @@ export interface PluginConfigStringField extends PluginConfigFieldBase {
   placeholder?: string;
   /** When set, render as a textarea instead of an <input>. */
   multiline?: boolean;
+}
+
+/**
+ * Secret string — API key, OAuth client secret, anything the user
+ * shouldn't see in plaintext after entering. Storage rules differ
+ * from `string`:
+ *   - persisted to `<tenant>/secrets/plugin-<id>.json` (mode 0700,
+ *     already a sibling-only directory) instead of `config.json`,
+ *     so a leak of `config.json` doesn't leak credentials.
+ *   - the GET /api/plugins response REDACTS the value: clients see
+ *     `{ "<key>": { "__secret": true, "set": true|false } }` and
+ *     never the cleartext.
+ *   - PATCH semantics: passing a string sets it; passing
+ *     `{ "__secret": true, "clear": true }` removes it; omitting
+ *     the field leaves the existing value untouched. ("submit-the-
+ *     redacted-shape-back" stays a no-op, which is what the form
+ *     does on save when the user didn't touch the field.)
+ *
+ * The plugin sees the cleartext at activation time (merged into
+ * `pluginConfig` from `secrets/`) — same shape as a regular string
+ * field, no extra plumbing in the plugin code.
+ */
+export interface PluginConfigSecretField extends PluginConfigFieldBase {
+  kind: "secret";
+  /** Optional placeholder, e.g. "tvly-...". No `default`: secrets
+   *  must come from the user, not the manifest. */
+  placeholder?: string;
+}
+
+/**
+ * Single-choice picker. Used when the field has a small fixed set
+ * of valid values (e.g. "tavily" | "brave") — lets the form
+ * surface a labelled dropdown instead of a free-text input the
+ * user might typo into.
+ *
+ *   - `default` is the option's `value` (not its label) — same
+ *     contract as the persisted config.
+ *   - `options[].label` is the human-readable text shown in the
+ *     dropdown; `options[].value` is what's persisted.
+ */
+export interface PluginConfigSelectField extends PluginConfigFieldBase {
+  kind: "select";
+  default?: string;
+  options: Array<{ label: string; value: string }>;
 }
 
 export interface PluginEntryRef {
