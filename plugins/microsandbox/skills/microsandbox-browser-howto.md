@@ -16,6 +16,42 @@ stack:
 | `browser_snapshot()` | You want to *act on* the page next. Returns an accessibility tree (roles, names, refs). Cheap, structured, easy to reason about. |
 | `browser_screenshot()` | You need pixels — visual diffing, vision-model prompting, sharing a screenshot back to the user. |
 
+## Don't install another browser
+
+The sandbox **already has** a chromium running on port 9222 (CDP),
+a Playwright MCP server on 3200, and noVNC on 6080. You will
+sometimes feel like reaching for `pip install playwright &&
+playwright install chromium` or `npx playwright install` to do
+your own scripted scrape — don't.
+
+- `playwright install chromium` downloads ~200 MB to the sandbox
+  every time. The sandbox is ephemeral; the next reset throws
+  the download away. Network egress is restricted; the install
+  often hangs or 403s.
+- A second chromium would race the first for `--user-data-dir`,
+  CDP port 9222, and X11 display :99.
+- The MCP tools (`browser_navigate`, etc.) already cover the 90%
+  case more cheaply than a hand-rolled Playwright script.
+
+Use the MCP tools first. If you genuinely need scripted control
+(login flows with conditional logic, multi-step forms),
+connect to the existing chromium via CDP from inside the sandbox
+shell:
+
+```python
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    # Reuse the already-running browser — no install step.
+    browser = p.chromium.connect_over_cdp("http://127.0.0.1:9222")
+    page = browser.contexts[0].new_page()
+    page.goto("https://example.com")
+    print(page.title())
+```
+
+`pip install playwright` (the Python package) is fine — it's
+small. **Skip the `playwright install` step**. You're connecting
+to an existing browser, not launching a new one.
+
 ## Default workflow
 
 ```
