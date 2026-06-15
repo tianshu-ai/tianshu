@@ -74,10 +74,17 @@ interface Task {
   sessionId: string | null;
   /** Task ids that must reach status='done' first. */
   dependsOn: string[];
-  /** Free-form labels. The pool reserves `stalled` (set
-   *  automatically after MAX_ATTEMPTS failed runs) and `draft`
-   *  (user opt-in) - either keeps the row in `ready` but skipped
-   *  by the pool. UI paints a warning chip when present. */
+  /** Free-form labels. The pool reserves three:
+   *   - `awaiting-intervention` (008+) — set on any worker run
+   *     failure / watchdog timeout. The pool skips it; main
+   *     agent or operator must call task_continue /
+   *     task_retry_fresh / task_extend_timeout / task_abort to
+   *     resolve it.
+   *   - `stalled` — legacy alias kept for pre-008 rows.
+   *   - `draft` — user opt-in "don't pick up yet".
+   *  Any of these keeps the row in `ready` but invisible to
+   *  the worker pool. The UI paints a warning chip when one is
+   *  present so the operator can see why a task is stuck. */
   labels?: string[];
   /** Last failure reason, set when the pool re-queued the task
    *  after a failed run. Cleared on success. */
@@ -85,6 +92,12 @@ interface Task {
   /** How many failed runs accumulated against this task. Reset
    *  to 0 on success. */
   attempts?: number;
+  /** 008+: free-text reason populated when the pool stamps
+   *  `awaiting-intervention`. Cleared on the next fresh
+   *  claim. */
+  interventionReason?: string | null;
+  /** 008+: ms timestamp the row entered awaiting-intervention. */
+  interventionAt?: number | null;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -930,6 +943,52 @@ function BoardCard({
               </span>
             )}
           </div>
+          {(task.labels ?? []).includes("awaiting-intervention") && (
+            <div
+              className="mt-1 flex items-start gap-1 rounded border border-rose-500/50 bg-rose-500/10 px-1.5 py-1 text-[10px] text-rose-200"
+              title={task.interventionReason ?? task.failureReason ?? ""}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <AlertTriangle className="w-3 h-3 mt-px shrink-0" />
+              <span className="min-w-0 flex-1 break-words line-clamp-3">
+                <span className="font-medium">awaiting intervention</span>
+                {task.interventionAt
+                  ? ` (${formatRelative(task.interventionAt)})`
+                  : ""}
+                {(task.interventionReason ?? task.failureReason)
+                  ? `: ${task.interventionReason ?? task.failureReason}`
+                  : ""}
+              </span>
+              {/* Quick-retry button. Clears the intervention
+                  labels + reason; pool's drain pass picks the
+                  task up again on the next nudge (route handler
+                  emits one on label-clear). For semantic revival
+                  ("continue prior session" vs. "start fresh")
+                  the orchestrator agent should use
+                  task_continue / task_retry_fresh / task_abort
+                  instead. */}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void onPatch(task.id, {
+                    labels: (task.labels ?? []).filter(
+                      (l) =>
+                        l !== "awaiting-intervention" && l !== "stalled",
+                    ),
+                    attempts: 0,
+                    failureReason: null,
+                    interventionReason: null,
+                    interventionAt: null,
+                  });
+                }}
+                className="shrink-0 rounded border border-rose-500/40 px-1 py-px text-[9.5px] font-medium text-rose-100 hover:bg-rose-500/20 disabled:opacity-50"
+              >
+                Retry
+              </button>
+            </div>
+          )}
           {(task.labels ?? []).includes("stalled") && (
             <div
               className="mt-1 flex items-start gap-1 rounded border border-orange-500/40 bg-orange-500/5 px-1.5 py-1 text-[10px] text-orange-200"
@@ -2350,6 +2409,23 @@ function SidebarWorkerRow({
 function kindEmoji(kind: string): string {
   if (kind === "echo") return "🔁";
   return "⚙️";
+}
+
+/** Compact "5m ago" / "2h ago" / "3d ago" rendering for an ms
+ *  timestamp. Used by the awaiting-intervention chip so the
+ *  operator sees how long the task has been parked at a glance.
+ *  We deliberately avoid `Intl.RelativeTimeFormat` because its
+ *  output ("5 minutes ago") is too verbose for a chip. */
+function formatRelative(ms: number): string {
+  const delta = Math.max(0, Date.now() - ms);
+  const sec = Math.round(delta / 1000);
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min}m ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  const day = Math.round(hr / 24);
+  return `${day}d ago`;
 }
 
 const clientExports: PluginClientExports = {
