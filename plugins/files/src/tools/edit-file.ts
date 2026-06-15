@@ -67,27 +67,31 @@ export function editFileSchema(): Tool {
         description:
           'Path relative to the workspace root, e.g. "/notes/today.md".',
       }),
-      edits: Type.Optional(
-        Type.Array(
-          Type.Object({
-            old_text: Type.String({
-              description:
-                "Exact text to find. Must appear exactly once at edit time.",
-            }),
-            new_text: Type.String({
-              description: "Replacement text.",
-            }),
-          }),
-          {
+      // `edits` is REQUIRED at the schema level so the host's
+      // truncation detector fires when the model emits
+      // `{path: "..."}` with the array dropped — a common stream
+      // truncation pattern. The legacy `{old_text, new_text}`
+      // shorthand is still accepted at runtime (executeEditFile
+      // re-shapes it into a single-element edits array) for
+      // back-compat with existing callers, but the schema only
+      // documents the canonical form.
+      edits: Type.Array(
+        Type.Object({
+          old_text: Type.String({
             description:
-              "List of edits to apply in order. Use this for batch updates; " +
-              "skip if you're using the legacy single-edit shorthand.",
-          },
-        ),
+              "Exact text to find. Must appear exactly once at edit time.",
+          }),
+          new_text: Type.String({
+            description: "Replacement text.",
+          }),
+        }),
+        {
+          minItems: 1,
+          description:
+            "List of edits to apply in order, atomic (all or nothing). " +
+            "Each entry is one find/replace pair.",
+        },
       ),
-      // Backwards-compat single-edit shape; ignored when `edits` is set.
-      old_text: Type.Optional(Type.String()),
-      new_text: Type.Optional(Type.String()),
     }),
   };
 }
