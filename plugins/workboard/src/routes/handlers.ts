@@ -219,6 +219,11 @@ function taskJson(t: Task): Record<string, unknown> {
     createdAt: t.createdAt,
     startedAt: t.startedAt,
     endedAt: t.endedAt,
+    // 008+ intervention markers — the UI uses these to render
+    // the awaiting-intervention chip + relative timestamp.
+    interventionReason: t.interventionReason,
+    interventionAt: t.interventionAt,
+    timeoutMs: t.timeoutMs,
   };
 }
 
@@ -563,18 +568,35 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     ) {
       patch.failureReason = body.failureReason as string | null;
     }
+    if (
+      typeof body.interventionReason === "string" ||
+      body.interventionReason === null
+    ) {
+      patch.interventionReason = body.interventionReason as string | null;
+    }
+    if (
+      typeof body.interventionAt === "number" ||
+      body.interventionAt === null
+    ) {
+      patch.interventionAt = body.interventionAt as number | null;
+    }
+    if (
+      typeof body.timeoutMs === "number" &&
+      Number.isFinite(body.timeoutMs)
+    ) {
+      patch.timeoutMs = body.timeoutMs;
+    }
 
     const after = updateTask(deps.db, id, patch);
     // If the patch removed a pool-skip label (e.g. user cleared
-    // 'stalled' to retry), nudge so the pool re-considers the row
-    // even though status didn't change.
+    // 'awaiting-intervention' / 'stalled' to retry), nudge so the
+    // pool re-considers the row even though status didn't change.
+    // 008+ added `awaiting-intervention`; clearing it via the UI
+    // should re-queue exactly the same way clearing `stalled` does.
     if (after && patch.labels !== undefined) {
-      const wasSkipped = before.labels.some((l) =>
-        ["stalled", "draft"].includes(l),
-      );
-      const stillSkipped = after.labels.some((l) =>
-        ["stalled", "draft"].includes(l),
-      );
+      const skipLabels = ["awaiting-intervention", "stalled", "draft"];
+      const wasSkipped = before.labels.some((l) => skipLabels.includes(l));
+      const stillSkipped = after.labels.some((l) => skipLabels.includes(l));
       if (wasSkipped && !stillSkipped && after.status === "ready") {
         deps.onTaskWrite();
       }
