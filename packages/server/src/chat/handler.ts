@@ -1119,6 +1119,25 @@ export function defaultSystemPrompt(
     `    "./foo" links won't preview.`,
     ``,
     `Reply concisely. When you make changes, briefly say what you changed.`,
+    ``,
+    // Tool guidelines block. Modelled on OpenClaw's
+    // `promptGuidelines` array per tool: short, imperative,
+    // visible at the top of every system prompt instead of
+    // buried in tool descriptions. Each line is a habit we
+    // want the agent to keep across the whole session, not a
+    // per-call spec. Add to this list when the same correction
+    // shows up in 2+ different runs.
+    `## Tool guidelines`,
+    ``,
+    `File creation / edits:`,
+    `- Use \`write_file\` ONLY for new files or complete rewrites of small files (≲ ~500 lines / ~40KB). For long output (HTML reports, multi-section markdown), write a small skeleton with \`<!-- TODO: section X -->\` placeholders FIRST, then fill each section with \`edit_file\`. A single \`write_file\` carrying thousands of lines of \`content\` will trip the provider's tool-call stream truncation.`,
+    `- Use \`edit_file\` for any change to an existing file. Pass MULTIPLE replacements in one call via the \`edits[]\` array — don't issue 4 separate \`edit_file\` calls when one batch will do.`,
+    `- Each \`edit_file\` \`old_text\` must appear EXACTLY ONCE in the current file. Keep \`old_text\` as small as possible while still being unique — don't pad with large unchanged regions to "connect" two distant changes; emit two separate edits in the same batch instead.`,
+    `- The only edit kind is exact-text replace. Insertions / deletions / appends are expressed as a replace where \`new_text\` includes the surrounding anchor (e.g. delete = \`{old_text: "X", new_text: ""}\`; insert-before-X = \`{old_text: "X", new_text: "new\\nX"}\`).`,
+    ``,
+    `Sandbox shell (\`exec\`):`,
+    `- Don't run a foreground server with \`exec\` (\`python -m http.server\`, \`npm start\`). The call will hang until host timeout. Background it: \`nohup setsid <cmd> > /tmp/log 2>&1 < /dev/null &\` then \`curl\` to verify.`,
+    `- The sandbox already ships chromium (CDP 9222), Playwright MCP (3200), LibreOffice, Node 22, Python 3.12. Don't \`apt install\` / \`pip install\` / \`playwright install\` what's already there.`,
   );
 
   const fragmentBlock = formatPluginPromptFragments(pluginFragments);

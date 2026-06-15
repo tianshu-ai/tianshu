@@ -67,10 +67,37 @@ describe("defaultSystemPrompt", () => {
   // ADR-0004 N+4: tool-specific guidance now lives in skill markdown
   // files (host-shipped or plugin-contributed), not the system prompt.
   // Default prompt stays plugin-agnostic.
-  it("default prompt no longer hard-codes file tool names", () => {
+  it("default prompt carries tool guidelines for the writer + sandbox tools", () => {
+    // The old assertion ("prompt doesn't mention any tool name")
+    // was right for the era when the prompt was meant to be
+    // tool-agnostic and every plugin contributed its own
+    // discovery block. After we observed Yu's agents looping on
+    // truncation / re-installing chromium / starting servers in
+    // the foreground, OpenClaw's pattern won out: short, named,
+    // imperative "tool guidelines" up front in the system prompt
+    // are the single most-effective behaviour nudge we have.
+    // The trade-off is the prompt now mentions specific tools by
+    // name, which is fine — these tools are part of the host
+    // contract, not arbitrary plugin contributions.
     const out = defaultSystemPrompt(fakeCtx(), "alice");
-    for (const t of ["list_dir", "read_file", "write_file", "edit_file", "glob"]) {
-      expect(out).not.toContain(t);
-    }
+    expect(out).toContain("## Tool guidelines");
+    // Writer hints
+    expect(out).toContain("write_file");
+    expect(out).toContain("edit_file");
+    expect(out).toMatch(/skeleton/i);
+    expect(out).toMatch(/edits\[\]/);
+    // Sandbox hints
+    expect(out).toContain("exec");
+    expect(out).toMatch(/nohup/);
+  });
+  it("default prompt warns about installing duplicates of pre-shipped tools", () => {
+    const out = defaultSystemPrompt(fakeCtx(), "alice");
+    // From the same skill family Yu hit at runtime: agents
+    // reflexively reinstalling chromium / libreoffice burns
+    // sandbox time and survives no resets. Keep the warning in
+    // the prompt so it shows up to the main agent too (its
+    // worker-scope skill is invisible in main scope).
+    expect(out).toMatch(/playwright install/);
+    expect(out).toMatch(/already ships/);
   });
 });
