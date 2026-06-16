@@ -23,6 +23,9 @@ interface ScriptedRun {
 
 let __script: ScriptedRun = { events: [] };
 let __abortAcked = false;
+/** Captured by FakeHarness's constructor on every run.
+ *  Tests inspect this to assert prompt-stitching behaviour. */
+let __lastSystemPrompt: string | undefined;
 
 vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
@@ -40,7 +43,11 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       Array<(e: AgentHarnessEvent) => unknown>
     >();
     private aborted = false;
-    constructor(_options: unknown) {}
+    constructor(options: unknown) {
+      const sp = (options as { systemPrompt?: string } | undefined)
+        ?.systemPrompt;
+      __lastSystemPrompt = sp;
+    }
     subscribe(listener: (e: AgentHarnessEvent) => void) {
       this.listeners.push(listener);
       return () => {
@@ -231,5 +238,121 @@ describe("runAgentLoop (worker)", () => {
     expect(r.status).toBe("aborted");
     expect(r.reason).toBe("aborted");
     expect(__abortAcked).toBe(true);
+  });
+
+  // ─── ADR-0007 PR-B: worker fragment injection ──────────────────
+  //
+  // Workers go through `runAgentLoop` (not the chat handler), and
+  // historically skipped plugin fragments entirely when a SOUL prompt
+  // was set. ADR-0006 problem #2 / ADR-0007 PR-B closes that gap by
+  // having `runAgentLoop` consult `pluginRegistry.systemPromptFragmentsForTenant`
+  // and stitch the rendered block into the worker's system prompt.
+  //
+  // We assert on the captured systemPrompt rather than mocking the
+  // renderer, because (a) the renderer is the host's responsibility
+  // and (b) a regression that drops the renderer call would still
+  // pass a renderer-only mock test.
+
+  function makeFragmentRegistry(
+    fragments: Array<{
+      pluginId: string;
+      pluginDisplayName: string;
+      fragmentId: string;
+      text: string;
+    }>,
+  ) {
+    return {
+      systemPromptFragmentsForTenant: () => fragments,
+      toolsForTenant: () => [],
+      mirroredSkillsForTenant: () => [],
+      hostCapabilities: () => ({
+        get: () => undefined,
+        has: () => false,
+      }),
+    } as unknown as Parameters<typeof runAgentLoop>[0]["pluginRegistry"];
+  }
+
+  it("worker with SOUL prompt: fragments are stitched in after SOUL", async () => {
+    __script = { events: [] };
+    await runAgentLoop({
+      ctx,
+      userId: "u1",
+      initialUserMessage: "do the thing",
+      systemPrompt: "You are FooWorker. Soul body.",
+      pluginRegistry: makeFragmentRegistry([
+        {
+          pluginId: "files",
+          pluginDisplayName: "Files",
+          fragmentId: "read-before-edit",
+          text: "- Call read_file before edit_file.",
+        },
+      ]),
+    });
+    expect(__lastSystemPrompt).toBeDefined();
+    expect(__lastSystemPrompt).toContain("You are FooWorker.");
+    expect(__lastSystemPrompt).toContain("## Plugin guidance");
+    expect(__lastSystemPrompt).toContain("Files (files)");
+    expect(__lastSystemPrompt).toContain("Call read_file before edit_file.");
+    // Order: SOUL first, then fragments. Both should land before any
+    // skills block (we don't have skills in this test, but the
+    // assertion catches the regression where fragments end up above
+    // the SOUL).
+    const soulIdx = __lastSystemPrompt!.indexOf("You are FooWorker.");
+    const fragIdx = __lastSystemPrompt!.indexOf("## Plugin guidance");
+    expect(soulIdx).toBeGreaterThanOrEqual(0);
+    expect(fragIdx).toBeGreaterThan(soulIdx);
+  });
+
+  it("worker with SOUL prompt + no fragments: prompt stays unchanged", async () => {
+    __script = { events: [] };
+    await runAgentLoop({
+      ctx,
+      userId: "u1",
+      initialUserMessage: "do the thing",
+      systemPrompt: "You are BareWorker. Nothing fancy.",
+      pluginRegistry: makeFragmentRegistry([]),
+    });
+    expect(__lastSystemPrompt).toBeDefined();
+    expect(__lastSystemPrompt).toContain("You are BareWorker.");
+    expect(__lastSystemPrompt).not.toContain("## Plugin guidance");
+  });
+
+  it("worker without SOUL prompt: fragments reach defaultSystemPrompt path", async () => {
+    __script = { events: [] };
+    await runAgentLoop({
+      ctx,
+      userId: "u1",
+      initialUserMessage: "do the thing",
+      // No systemPrompt — falls back to defaultSystemPrompt(ctx, userId, skills, pluginFragments).
+      pluginRegistry: makeFragmentRegistry([
+        {
+          pluginId: "microsandbox",
+          pluginDisplayName: "Microsandbox",
+          fragmentId: "no-foreground-servers",
+          text: "- Don't run a foreground server with exec.",
+        },
+      ]),
+    });
+    expect(__lastSystemPrompt).toBeDefined();
+    expect(__lastSystemPrompt).toContain("## Plugin guidance");
+    expect(__lastSystemPrompt).toContain("Microsandbox (microsandbox)");
+    expect(__lastSystemPrompt).toContain(
+      "Don't run a foreground server with exec.",
+    );
+  });
+
+  it("worker without pluginRegistry at all: prompt assembly still works", async () => {
+    __script = { events: [] };
+    await runAgentLoop({
+      ctx,
+      userId: "u1",
+      initialUserMessage: "do the thing",
+      systemPrompt: "You are SoloWorker.",
+      // No pluginRegistry — callers from older code paths or tests
+      // shouldn't be forced to provide one.
+    });
+    expect(__lastSystemPrompt).toBeDefined();
+    expect(__lastSystemPrompt).toContain("You are SoloWorker.");
+    expect(__lastSystemPrompt).not.toContain("## Plugin guidance");
   });
 });
