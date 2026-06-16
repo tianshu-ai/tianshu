@@ -38,7 +38,24 @@ npm:
 # Free-form shell commands, run last, in array order.
 exec:
   - sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources
-  - bash -c "curl -fsSL https://npmmirror.com/mirrors/node/v22.20.0/node-v22.20.0-linux-arm64.tar.xz | tar -xJ -C /usr/local --strip-components=1"
+  # Multi-source fallback for the Node tarball. nodejs.org first,
+  # npmmirror as backup. --connect-timeout / --max-time keep curl
+  # from hanging when a mirror RSTs mid-download.
+  - |
+    bash -c '
+      set -eu; VER=v22.20.0; F=node-${VER}-linux-arm64.tar.xz
+      for u in https://nodejs.org/dist/${VER}/${F} \
+               https://npmmirror.com/mirrors/node/${VER}/${F} \
+               https://registry.npmmirror.com/-/binary/node/${VER}/${F}; do
+        echo "[node] trying $u"
+        if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
+             --connect-timeout 30 --max-time 600 "$u" \
+           | tar -xJ -C /usr/local --strip-components=1; then
+          echo "[node] installed from $u"; exit 0
+        fi
+      done
+      echo "[node] all sources exhausted" >&2; exit 1
+    '
 ```
 
 The four list slots are convenience wrappers: `apt`/`pip`/`npm` produce one
@@ -99,7 +116,23 @@ nodejs and grab a binary from a CN mirror:
 ```yaml
 exec:
   - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates xz-utils
-  - bash -c "curl -fsSL https://npmmirror.com/mirrors/node/v22.20.0/node-v22.20.0-linux-arm64.tar.xz | tar -xJ -C /usr/local --strip-components=1"
+  # Multi-source fallback — don't rely on a single CN mirror; it
+  # WILL flake. nodejs.org first, npmmirror as backup.
+  - |
+    bash -c '
+      set -eu; VER=v22.20.0; F=node-${VER}-linux-arm64.tar.xz
+      for u in https://nodejs.org/dist/${VER}/${F} \
+               https://npmmirror.com/mirrors/node/${VER}/${F} \
+               https://registry.npmmirror.com/-/binary/node/${VER}/${F}; do
+        echo "[node] trying $u"
+        if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
+             --connect-timeout 30 --max-time 600 "$u" \
+           | tar -xJ -C /usr/local --strip-components=1; then
+          echo "[node] installed from $u"; exit 0
+        fi
+      done
+      echo "[node] all sources exhausted" >&2; exit 1
+    '
   - npm config set registry https://registry.npmmirror.com
 ```
 
