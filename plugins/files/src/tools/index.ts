@@ -14,7 +14,14 @@
 // routes. Putting the agent tools here keeps every "files for the
 // agent / user" surface in one plugin.
 
-import type { AgentTool, AgentToolContext } from "@tianshu/plugin-sdk";
+import { readFileSync } from "node:fs";
+import type {
+  AgentTool,
+  AgentToolContext,
+  LspCapability,
+  LspDiagnoseResult,
+} from "@tianshu/plugin-sdk";
+import { resolveInUserHome } from "./path-helper.js";
 import { listDirSchema, executeListDir } from "./list-dir.js";
 import { readFileSchema, executeReadFile } from "./read-file.js";
 import { writeFileSchema, executeWriteFile } from "./write-file.js";
@@ -70,18 +77,24 @@ export const ReadFileTool: AgentTool = {
 
 export const WriteFileTool: AgentTool = {
   schema: writeFileSchema(),
-  execute: (args, ctx: AgentToolContext) =>
-    executeWriteFile(
+  execute: async (args, ctx: AgentToolContext) => {
+    const result = executeWriteFile(
       ctx.userHomeDir,
       args as { path: string; content: string },
       ctx.sessionId,
-    ),
+    );
+    return appendLspDiagnostics(
+      result,
+      ctx,
+      args as { path: string; content: string },
+    );
+  },
 };
 
 export const EditFileTool: AgentTool = {
   schema: editFileSchema(),
-  execute: (args, ctx: AgentToolContext) =>
-    executeEditFile(
+  execute: async (args, ctx: AgentToolContext) => {
+    const result = executeEditFile(
       ctx.userHomeDir,
       args as {
         path: string;
@@ -90,8 +103,83 @@ export const EditFileTool: AgentTool = {
         new_text?: string;
       },
       ctx.sessionId,
-    ),
+    );
+    return appendLspDiagnostics(
+      result,
+      ctx,
+      args as { path: string },
+    );
+  },
 };
+
+/**
+ * After a successful write/edit, ask the host's LSP service for
+ * diagnostics on the touched file and append the formatted block
+ * to the tool's text. ADR-0005 §"Diagnostic delivery" — sync,
+ * 3 s timeout, never throws, degrades silently when LSP is
+ * disabled or the language has no LSP. The text appended is
+ * what we want the model to see in the same turn that produced
+ * the edit, so it can react inline rather than several tool
+ * calls later.
+ */
+async function appendLspDiagnostics<
+  T extends { ok: boolean; text: string },
+>(
+  result: T,
+  ctx: AgentToolContext,
+  args: { path: string; content?: string },
+): Promise<T> {
+  // Don't bother on failed writes — there's nothing on disk to
+  // diagnose.
+  if (!result.ok) return result;
+  const cap = ctx.capabilities.get<LspCapability>("host.lsp");
+  if (!cap) return result;
+  let resolved: string;
+  try {
+    resolved = resolveInUserHome(ctx.userHomeDir, args.path);
+  } catch {
+    // Path checks already happened in the underlying tool; if it
+    // somehow rejects here just skip diagnostics.
+    return result;
+  }
+  // We need the post-edit contents to push via didChange. For
+  // write_file the agent supplied them; for edit_file the
+  // executor returned ok without echoing them, so we read from
+  // disk — cheap (we just wrote it) and avoids drifting from
+  // what the LS will actually see when it loads the file.
+  let contents: string;
+  if (typeof args.content === "string") {
+    contents = args.content;
+  } else {
+    try {
+      contents = fsReadFile(resolved);
+    } catch {
+      return result;
+    }
+  }
+  let diag: LspDiagnoseResult;
+  try {
+    diag = await cap.diagnoseAfterEdit({
+      filePath: resolved,
+      contents,
+    });
+  } catch {
+    // Capability is supposed to never throw, but if it does
+    // we'd rather drop diagnostics than break the edit.
+    return result;
+  }
+  if (!diag.text && !diag.unavailable) return result;
+  const trailer = diag.text
+    ? `\n\n${diag.text}`
+    : `\n\n[lsp] diagnostics unavailable: ${diag.unavailable}`;
+  return { ...result, text: result.text + trailer };
+}
+
+function fsReadFile(absolutePath: string): string {
+  // Lazy-import node:fs so this module stays browser-bundle-safe
+  // (the SDK consumer only imports tool schemas).
+  return readFileSync(absolutePath, "utf8");
+}
 
 export const GlobTool: AgentTool = {
   schema: globSchema(),
