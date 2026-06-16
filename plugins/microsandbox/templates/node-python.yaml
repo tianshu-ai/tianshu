@@ -1,47 +1,86 @@
-# Node.js + Python combo Sandboxfile.
+# Node + Python + Browser Sandboxfile (CloakBrowser + Playwright MCP + noVNC).
 #
-# Why this template exists:
-#   从 nodejs.org / NodeSource 现场装 Node.js 在国内网络下经常龟速
-#   (二进制包 30-40 MB，TCP 重置/超时常见)。本模板的解法是：
-#     1. base image 直接用官方 node:22-slim — Docker hub 镜像加速
-#        (daemon.json 里配的 docker.m.daocloud.io 之类) 拉得很快，
-#        node + npm 已经在镜像里。
-#     2. apt 走阿里云源装 python3。
-#     3. npm 顺手切到 npmmirror，后续 npm install 也快。
+# 与 browser.yaml 功能一致，区别只在 base image 与 Node 安装方式：
+#   - browser.yaml: base = python:3.12-slim，Node 22 从 nodejs.org 多源 fallback 现场下载
+#   - 本模板:        base = node:22-slim，Node 已在 docker hub 镜像里拉得快；apt 上 python3
 #
-# 适合：需要同时跑 Node 工具链 (tsx / playwright / esbuild) 和
-#      Python 脚本 (数据清洗 / pandas) 的场景。
+# 国内网络下 docker hub 走 daemon.json 镜像加速 (docker.m.daocloud.io 等)
+# 拉 node:22-slim 比从 nodejs.org/NodeSource 现场下 30-40MB tarball 快得多，
+# build 时间显著缩短。
 #
-# 不需要 Python 时直接用 minimal.yaml 改 image: node:22-slim 即可。
+# Verified end-to-end on Apple Silicon arm64: build → publish →
+# reset → all 6 supervisord processes RUNNING → CDP / MCP / noVNC
+# all reachable.
+#
+# Notes on the painful bits this template encodes (与 browser.yaml 同):
+#  - dbus is intentionally NOT a supervisor program: dbus-x11 in
+#    debian:slim is missing /usr/share/dbus-1/system.conf and
+#    chromium headless doesn't need a system bus anyway.
+#  - chromium pinned to /tmp/chrome-profile so a stale profile
+#    lock from the build VM can't block startup. Snapshots will
+#    not preserve /tmp.
+#  - chromium binds CDP to 0.0.0.0 so port-forward picks it up.
+#  - Playwright MCP listens on 0.0.0.0; default ::1 was IPv6-only
+#    and unreachable from the IPv4-only host port-forward.
+#  - All multi-line config files (supervisord conf) go through
+#    base64 because the v0 Sandboxfile parser is single-line only
+#    and bash single-quoted heredocs don't carry \n correctly.
 
 image: node:22-slim
-cpus: 4
-memory_mib: 4096
+cpus: 2
+memory_mib: 8192
 
 exec:
-  # APT 国内源（其他地区可注释掉这两行走 deb.debian.org 上游）
+  # APT 国内源（其他地区可改成上游 deb.debian.org）
   - sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
   - apt-get update -qq
 
-  # Python 3 + pip + venv（node:22-slim 是 Debian bookworm，python3 = 3.11）
-  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-pip python3-venv ca-certificates curl
+  # 一行装完 (无 dbus)。比 browser.yaml 多 python3 / pip / venv（base 里没有），少 ca-certificates xz-utils（node:22-slim 已自带）
+  # x11-xserver-utils → xrandr (resize Xvfb framebuffer at runtime)
+  # wmctrl            → fit chromium window to the new framebuffer
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates python3 python3-pip python3-venv fontconfig fonts-noto-cjk fonts-noto-color-emoji libreoffice-writer libreoffice-calc libreoffice-impress xvfb x11vnc fluxbox supervisor x11-xserver-utils wmctrl libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libxss1 libasound2 libxshmfence1 libxkbcommon0 libpango-1.0-0 libxcomposite1 libxdamage1 libxrandr2
   - rm -rf /var/lib/apt/lists/*
 
   # npm 镜像（pip 镜像如果需要也可以加：pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple）
   - npm config set registry https://registry.npmmirror.com
 
-  # === Verify ===========================================================
-  - bash -c "node --version && npm --version && python3 --version && pip3 --version"
-  - echo OK
+  # CloakBrowser 200MB - ghproxy + retry + 落盘解压
+  # Tarball is FLAT (no top-level dir); entry binary is `chrome`.
+  - bash -c "mkdir -p /opt/cloakbrowser && curl -fsSL --retry 8 --retry-delay 8 --retry-all-errors --connect-timeout 30 -o /tmp/cb.tar.gz https://gh-proxy.com/https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.159.7/cloakbrowser-linux-arm64.tar.gz"
+  - bash -c "test $(stat -c %s /tmp/cb.tar.gz) -gt 100000000"
+  - tar -xzf /tmp/cb.tar.gz -C /opt/cloakbrowser
+  - rm -f /tmp/cb.tar.gz
 
-# 想再加包？反注释下面任意一段：
-#
-# apt:
-#   - git
-#   - jq
-# pip:
-#   - pandas
-#   - requests
-# npm:
-#   - tsx
-#   - typescript
+  # noVNC + websockify
+  - bash -c "mkdir -p /opt/novnc && curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors https://gh-proxy.com/https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz | tar -xz -C /opt/novnc --strip-components=1"
+  - bash -c "mkdir -p /opt/websockify && curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors https://gh-proxy.com/https://github.com/novnc/websockify/archive/refs/tags/v0.13.0.tar.gz | tar -xz -C /opt/websockify --strip-components=1"
+  - ln -sf /opt/novnc/vnc_lite.html /opt/novnc/index.html
+
+  # Playwright MCP - 提前把 npm 包拉到 npx 缓存，runtime 启动不再下载
+  - npx -y @playwright/mcp@latest --help > /dev/null 2>&1
+
+  # 字体缓存（首次 LibreOffice / chromium CJK 渲染）
+  - fc-cache -fv
+
+  # supervisord 配置（base64 - 多行 conf 通过 v0 sandboxfile parser 的唯一办法）
+  - mkdir -p /etc/supervisor/conf.d
+  - bash -c "echo W3VuaXhfaHR0cF9zZXJ2ZXJdCmZpbGU9L3Zhci9ydW4vc3VwZXJ2aXNvci5zb2NrCmNobW9kPTA3MDAKCltzdXBlcnZpc29yZF0KbG9nZmlsZT0vdmFyL2xvZy9zdXBlcnZpc29yZC5sb2cKcGlkZmlsZT0vdmFyL3J1bi9zdXBlcnZpc29yZC5waWQKCltycGNpbnRlcmZhY2U6c3VwZXJ2aXNvcl0Kc3VwZXJ2aXNvci5ycGNpbnRlcmZhY2VfZmFjdG9yeT1zdXBlcnZpc29yLnJwY2ludGVyZmFjZTptYWtlX21haW5fcnBjaW50ZXJmYWNlCgpbc3VwZXJ2aXNvcmN0bF0Kc2VydmVydXJsPXVuaXg6Ly8vdmFyL3J1bi9zdXBlcnZpc29yLnNvY2sKCltwcm9ncmFtOnh2ZmJdCmNvbW1hbmQ9L3Vzci9iaW4vWHZmYiA6OTkgLXNjcmVlbiAwIDI0MDB4MTgwMHgyNCAtYWMgLW5vbGlzdGVuIHRjcAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTEwCgpbcHJvZ3JhbTpmbHV4Ym94XQpjb21tYW5kPS91c3IvYmluL2ZsdXhib3gKZW52aXJvbm1lbnQ9RElTUExBWT0iOjk5IgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTIwCgpbcHJvZ3JhbTpjaHJvbWl1bV0KY29tbWFuZD0vb3B0L2Nsb2FrYnJvd3Nlci9jaHJvbWUgLS1yZW1vdGUtZGVidWdnaW5nLXBvcnQ9OTIyMiAtLXJlbW90ZS1kZWJ1Z2dpbmctYWRkcmVzcz0wLjAuMC4wIC0tbm8tc2FuZGJveCAtLWRpc2FibGUtZGV2LXNobS11c2FnZSAtLXVzZXItZGF0YS1kaXI9L3RtcC9jaHJvbWUtcHJvZmlsZSAtLXdpbmRvdy1zaXplPTEyODAsODAwCmVudmlyb25tZW50PURJU1BMQVk9Ijo5OSIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0zMApzdGFydHNlY3M9OAoKW3Byb2dyYW06cGxheXdyaWdodC1tY3BdCmNvbW1hbmQ9L3Vzci9sb2NhbC9iaW4vbnB4IEBwbGF5d3JpZ2h0L21jcEBsYXRlc3QgLS1ob3N0IDAuMC4wLjAgLS1wb3J0IDMyMDAgLS1hbGxvd2VkLWhvc3RzPSogLS1icm93c2VyIGNocm9taXVtIC0tY2RwLWVuZHBvaW50IGh0dHA6Ly8xMjcuMC4wLjE6OTIyMgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTQwCnN0YXJ0c2Vjcz04CgpbcHJvZ3JhbTp4MTF2bmNdCmNvbW1hbmQ9L3Vzci9iaW4veDExdm5jIC1kaXNwbGF5IDo5OSAtZm9yZXZlciAtc2hhcmVkIC1ub3B3IC1yZmJwb3J0IDU5MDAKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT01MAoKW3Byb2dyYW06bm92bmNdCmNvbW1hbmQ9L29wdC93ZWJzb2NraWZ5L3J1biAtLXdlYj0vb3B0L25vdm5jIDYwODAgbG9jYWxob3N0OjU5MDAKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT02MAo= | base64 -d > /etc/supervisor/conf.d/browser.conf"
+
+  # Build 阶段启动 supervisord 一次，让 verify 步骤能 curl 到端口
+  - supervisord -c /etc/supervisor/conf.d/browser.conf
+  - sleep 18
+
+  # === Verify ============================================================
+  # 任一 fail 整个 build fail，避免 "build 成功但实际跑不起来"
+  - bash -c "node --version && npm --version && python3 --version && pip3 --version && /opt/cloakbrowser/chrome --version | head -1"
+  # supervisor 没有 FATAL/EXITED/STOPPED
+  - bash -c "supervisorctl -c /etc/supervisor/conf.d/browser.conf status; supervisorctl -c /etc/supervisor/conf.d/browser.conf status | grep -E 'FATAL|EXITED|STOPPED' && exit 1 || true"
+  # 6 个 program 都 RUNNING
+  - bash -c "test $(supervisorctl -c /etc/supervisor/conf.d/browser.conf status | grep -c RUNNING) -eq 6"
+  # CDP 9222
+  - bash -c "curl -sS --max-time 8 http://127.0.0.1:9222/json/version | grep -q Browser"
+  # noVNC 6080
+  - bash -c "curl -sS --max-time 8 http://127.0.0.1:6080/vnc_lite.html | grep -qi DOCTYPE"
+  # Playwright MCP 3200（HTTP 403/404/200 都说明服务在 listen）
+  - bash -c "code=$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:3200/); echo MCP HTTP code=$code; test \"$code\" != \"000\""
+  - echo OK
