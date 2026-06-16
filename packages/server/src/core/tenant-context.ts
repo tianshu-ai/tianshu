@@ -6,6 +6,7 @@
 import type { Database as DB } from "better-sqlite3";
 import { resolveTenantConfig, type ResolvedConfig } from "./config.js";
 import {
+  getTenantLogsDir,
   getTenantRoot,
   getTenantSecretsDir,
   getTenantSharedDir,
@@ -35,6 +36,10 @@ export class TenantContext {
 
   get secretsDir(): string {
     return getTenantSecretsDir(this.tenantId, this.home);
+  }
+
+  get logsDir(): string {
+    return getTenantLogsDir(this.tenantId, this.home);
   }
 
   userHomeDir(userId: string): string {

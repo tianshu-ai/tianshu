@@ -64,6 +64,13 @@ export function getTenantSharedDir(tenantId: string, home?: string): string {
   return path.join(getTenantWorkspaceDir(tenantId, home), "_tenant");
 }
 
+/** Per-tenant logs directory. Sibling to `db.sqlite`, not under
+ *  `workspace/`, so that tenant-visible workspace tools never see
+ *  these files. Created lazily on first write. */
+export function getTenantLogsDir(tenantId: string, home?: string): string {
+  return path.join(getTenantRoot(tenantId, home), "logs");
+}
+
 /** Per-tenant agent-config root, where SKILL.md trees, SOUL.md and
  *  related agent-facing files live. The chat handler scans this on
  *  every turn (no host restart required for new skills).
