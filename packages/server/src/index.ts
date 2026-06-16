@@ -39,6 +39,7 @@ import {
 import { appendMessage, ensureActiveSession } from "./chat/messages.js";
 import type { PluginsChangedDelta } from "./chat/ws-protocol.js";
 import { runAgentLoop } from "./chat/agent-loop.js";
+import { getLSPManager } from "./lsp/index.js";
 import type {
   AgentLoopRunner,
   AgentLoopRunnerRequest,
@@ -47,6 +48,7 @@ import type {
   ToolCatalogCapability,
   SkillCatalogCapability,
   ModelCatalogCapability,
+  LspCapability,
 } from "@tianshu/plugin-sdk";
 import {
   enqueue as inboxEnqueue,
@@ -141,6 +143,24 @@ pluginRegistry = new PluginRegistry({
     }),
     // Model catalog — lets worker-creator / model_list pick a
     // modelId without round-tripping through `/api/models`.
+    // LSP diagnostics for plugin-side tools that just wrote a
+    // file (today: plugins/files's edit_file / write_file). The
+    // manager is a host-wide singleton (lazy, see
+    // getLSPManager); tenant scoping is enforced inside
+    // diagnoseAfterEdit via the tenantId + tenantWorkspaceRoot
+    // we close over here. The plugin sees a tiny surface and
+    // never touches paths above its tenant's workspace.
+    "host.lsp": (ctx): LspCapability => ({
+      async diagnoseAfterEdit(input) {
+        const mgr = getLSPManager();
+        return mgr.diagnoseAfterEdit({
+          tenantId: ctx.tenantId,
+          tenantWorkspaceRoot: ctx.workspaceDir,
+          filePath: input.filePath,
+          contents: input.contents,
+        });
+      },
+    }),
     "host.modelCatalog": (ctx): ModelCatalogCapability => ({
       list() {
         const cfg = ctx.config;
