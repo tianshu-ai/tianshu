@@ -27,6 +27,7 @@
 import fs from "node:fs";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
+import { loadPrompt } from "./load-prompt.js";
 import {
   resolveInUserHome,
   toWorkspaceUri,
@@ -51,17 +52,7 @@ export interface EditFileToolResult {
 export function editFileSchema(): Tool {
   return {
     name: "edit_file",
-    description:
-      "Apply one or more exact-text replacements inside an existing file. " +
-      "Pass `edits: [{old_text, new_text}, ...]` for a batch — the file is " +
-      "read once, edits run in order in memory, and the result is written " +
-      "atomically only if every edit succeeds (so a partial batch never lands " +
-      "on disk). Each `old_text` must appear exactly once at the moment its " +
-      "edit runs, otherwise the whole batch fails and reports which edit " +
-      "tripped. Use `write_file` for new files or full rewrites; reach for " +
-      "edit_file when you're patching specific regions.\n\n" +
-      "Single-edit shorthand `{path, old_text, new_text}` is still accepted " +
-      "for one-shot patches.",
+    description: loadPrompt("edit-file.prompt.md"),
     parameters: Type.Object({
       path: Type.String({
         description:

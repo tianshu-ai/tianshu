@@ -19,8 +19,10 @@
   },
   "files": ["dist", "src", "skills", "manifest.json"],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-prompts.mjs",
+    "predev": "node scripts/copy-prompts.mjs",
     "dev": "tsc --watch --preserveWatchOutput",
+    "copy-prompts": "node scripts/copy-prompts.mjs",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
