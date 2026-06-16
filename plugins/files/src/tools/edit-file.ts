@@ -35,10 +35,12 @@ import {
   PathOutsideRootError,
 } from "./path-helper.js";
 import { applyShape, normaliseEnding, shapeOf } from "./text-shape.js";
+import { findMatch } from "./replacers.js";
 
 interface SingleEdit {
   old_text: string;
   new_text: string;
+  replace_all?: boolean;
 }
 
 export interface EditFileToolResult {
@@ -72,11 +74,22 @@ export function editFileSchema(): Tool {
         Type.Object({
           old_text: Type.String({
             description:
-              "Exact text to find. Must appear exactly once at edit time.",
+              "Exact text to find. Must appear exactly once at edit time " +
+              "unless `replace_all` is set. Whitespace-only and indentation-only " +
+              "differences are tolerated via fuzzy matching; if no match is " +
+              "found at all the whole batch fails atomically.",
           }),
           new_text: Type.String({
             description: "Replacement text.",
           }),
+          replace_all: Type.Optional(
+            Type.Boolean({
+              description:
+                "Replace every occurrence of `old_text`. Use for renaming " +
+                "a symbol across the file (the typical multi-occurrence case). " +
+                "Default false: requires the match to be unique.",
+            }),
+          ),
         }),
         {
           minItems: 1,
@@ -96,6 +109,7 @@ export function executeEditFile(
     edits?: SingleEdit[];
     old_text?: string;
     new_text?: string;
+    replace_all?: boolean;
   },
   sessionId?: string,
 ): EditFileToolResult {
@@ -105,7 +119,13 @@ export function executeEditFile(
   const edits: SingleEdit[] | null = args.edits
     ? args.edits
     : args.old_text !== undefined && args.new_text !== undefined
-      ? [{ old_text: args.old_text, new_text: args.new_text }]
+      ? [
+          {
+            old_text: args.old_text,
+            new_text: args.new_text,
+            replace_all: args.replace_all,
+          },
+        ]
       : null;
   if (!edits) {
     return {
@@ -177,22 +197,43 @@ export function executeEditFile(
         failedEditIndex: i + 1,
       };
     }
-    const occ = countOccurrences(working, oldText);
-    if (occ === 0) {
+    const match = findMatch(working, oldText);
+    if (!match) {
       return {
         ok: false,
-        text: `edit_file: edit #${i + 1} old_text not found in ${args.path} (after ${i} prior edit${i === 1 ? "" : "s"} applied in memory)`,
+        text: `edit_file: edit #${i + 1} old_text not found in ${args.path} (after ${i} prior edit${i === 1 ? "" : "s"} applied in memory). The match is whitespace- and indent-tolerant; if it still doesn't fit, re-read the file and pull a fresh, larger unique window.`,
         failedEditIndex: i + 1,
       };
     }
+    if (e.replace_all) {
+      // Global replace using the *matched* span, not the
+      // original `oldText`. If a fuzzy replacer rewrote
+      // whitespace, we want to keep replacing the file's
+      // shape, not the model's.
+      const before = working;
+      working = working.split(match.matched).join(newText);
+      const replaced = (before.length - working.length) / Math.max(1, match.matched.length - newText.length);
+      void replaced;
+      applied.push({
+        ok: true,
+        oldLen: oldText.length,
+        newLen: newText.length,
+      });
+      continue;
+    }
+    // Uniqueness check on the *exact match span* — if a fuzzy
+    // candidate appears more than once, we still want the agent
+    // to disambiguate.
+    const occ = countOccurrences(working, match.matched);
     if (occ > 1) {
       return {
         ok: false,
-        text: `edit_file: edit #${i + 1} old_text appears ${occ} times in ${args.path} (after ${i} prior edit${i === 1 ? "" : "s"}); pull a wider unique window`,
+        text: `edit_file: edit #${i + 1} old_text matches ${occ} places in ${args.path} (after ${i} prior edit${i === 1 ? "" : "s"}); pull a wider unique window or set replace_all=true if you really mean every occurrence`,
         failedEditIndex: i + 1,
       };
     }
-    working = working.replace(oldText, newText);
+    working =
+      working.slice(0, match.start) + newText + working.slice(match.end);
     applied.push({
       ok: true,
       oldLen: oldText.length,

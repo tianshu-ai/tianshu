@@ -108,6 +108,98 @@ describe("files plugin tools", () => {
     );
   });
 
+  // Fuzzy-match coverage — these used to fail outright before
+  // the replacer chain landed (sst/opencode-style). The unit
+  // tests in `replacers.test.ts` lock down the per-strategy
+  // behaviour; these check that edit_file actually plumbs the
+  // strategies into a successful disk write.
+
+  it("edit_file matches old_text after whitespace-only drift in the file", async () => {
+    // File has two spaces; model sent one. Pre-fuzzy this
+    // failed with "old_text not found".
+    fs.writeFileSync(
+      path.join(userHome, "ws.ts"),
+      "const  x  =  1;\n",
+    );
+    const out = (await EditFileTool.execute(
+      {
+        path: "/ws.ts",
+        edits: [{ old_text: "const x = 1;", new_text: "const x = 2;" }],
+      },
+      makeCtx(),
+    )) as { ok: boolean };
+    expect(out.ok).toBe(true);
+    expect(
+      fs.readFileSync(path.join(userHome, "ws.ts"), "utf8"),
+    ).toBe("const x = 2;\n");
+  });
+
+  it("edit_file matches old_text when the model omits trailing whitespace", async () => {
+    // File has trailing spaces on each line; model didn't
+    // bother. LineTrimmedReplacer handles this.
+    fs.writeFileSync(
+      path.join(userHome, "trail.md"),
+      "foo  \nbar  \n",
+    );
+    const out = (await EditFileTool.execute(
+      {
+        path: "/trail.md",
+        edits: [{ old_text: "foo\nbar", new_text: "BAZ\nQUX" }],
+      },
+      makeCtx(),
+    )) as { ok: boolean };
+    expect(out.ok).toBe(true);
+    // Trailing-whitespace contract: we replace the file's
+    // version (with the trailing spaces), so the result is
+    // "BAZ\nQUX" without trailing spaces — that's the model's
+    // intent.
+    expect(
+      fs.readFileSync(path.join(userHome, "trail.md"), "utf8"),
+    ).toBe("BAZ\nQUX\n");
+  });
+
+  it("edit_file with replace_all=true rewrites every occurrence", async () => {
+    // Renaming a symbol across a file is the canonical
+    // replace_all use case.
+    fs.writeFileSync(
+      path.join(userHome, "rename.ts"),
+      "const foo = 1;\nfoo + foo;\nbar(foo);\n",
+    );
+    const out = (await EditFileTool.execute(
+      {
+        path: "/rename.ts",
+        edits: [
+          { old_text: "foo", new_text: "baz", replace_all: true },
+        ],
+      },
+      makeCtx(),
+    )) as { ok: boolean };
+    expect(out.ok).toBe(true);
+    expect(
+      fs.readFileSync(path.join(userHome, "rename.ts"), "utf8"),
+    ).toBe("const baz = 1;\nbaz + baz;\nbar(baz);\n");
+  });
+
+  it("edit_file without replace_all refuses ambiguous matches", async () => {
+    // Counterpart to the replace_all test: same file, no
+    // replace_all, must fail with a uniqueness error rather
+    // than silently picking one occurrence.
+    fs.writeFileSync(
+      path.join(userHome, "ambig.ts"),
+      "const foo = 1;\nfoo + foo;\n",
+    );
+    const out = (await EditFileTool.execute(
+      {
+        path: "/ambig.ts",
+        edits: [{ old_text: "foo", new_text: "baz" }],
+      },
+      makeCtx(),
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(false);
+    expect(out.text).toMatch(/3 places/);
+    expect(out.text).toMatch(/replace_all/);
+  });
+
   it("list_dir returns the entries it created", async () => {
     fs.writeFileSync(path.join(userHome, "x.txt"), "x");
     fs.mkdirSync(path.join(userHome, "sub"));

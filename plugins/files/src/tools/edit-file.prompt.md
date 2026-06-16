@@ -27,3 +27,10 @@ Use `write_file` for new files or full rewrites; reach for
   new_text: "new\nX"}`).
 - Line endings (CRLF vs LF) and BOM are preserved automatically.
   Match by content; you don't need to know which the file uses.
+- Whitespace and indentation are tolerated: trailing-whitespace
+  drift, run-of-spaces collapse, and whole-block indent shift
+  are matched fuzzily. You still need to send the right text
+  in the right order; just stop polishing whitespace by hand.
+- For renaming a symbol that occurs many times, set
+  `replace_all: true` on that edit instead of writing one edit
+  per occurrence.
