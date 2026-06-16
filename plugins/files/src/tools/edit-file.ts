@@ -28,6 +28,7 @@ import fs from "node:fs";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
 import { loadPrompt } from "./load-prompt.js";
+import { hasRead, markRead } from "./read-tracker.js";
 import {
   resolveInUserHome,
   toWorkspaceUri,
@@ -95,6 +96,7 @@ export function executeEditFile(
     old_text?: string;
     new_text?: string;
   },
+  sessionId?: string,
 ): EditFileToolResult {
   // Normalise to a non-empty edits array. Single-edit shorthand
   // wins only if `edits` is missing — passing both is ambiguous,
@@ -128,6 +130,21 @@ export function executeEditFile(
   }
   if (fs.statSync(resolved).isDirectory()) {
     return { ok: false, text: `is a directory: ${args.path}` };
+  }
+
+  // Read-required: every edit_file call must follow a read_file
+  // on the same path in the same session. Without that the agent
+  // is matching against text it never actually saw, which is how
+  // overconfident overwrites land. The error tells the agent
+  // exactly what to do next.
+  if (!hasRead(sessionId, resolved)) {
+    return {
+      ok: false,
+      text:
+        `edit_file: you must call read_file on ${args.path} first — ` +
+        `exact-text matching needs the file's actual current contents in your context. ` +
+        `Read the whole file (offset=0, no limit) and then retry the edit.`,
+    };
   }
 
   const original = fs.readFileSync(resolved, "utf8");
@@ -177,6 +194,13 @@ export function executeEditFile(
   const tmp = `${resolved}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tmp, working);
   fs.renameSync(tmp, resolved);
+
+  // After a successful edit the agent's mental model of the file
+  // is now `working`, which is in its context (it just wrote
+  // those edits). Treat that as equivalent to having read the new
+  // bytes — otherwise a second edit_file in the same turn would
+  // need a fresh read_file in between, which is wasteful.
+  markRead(sessionId, resolved);
 
   const totalDelta = applied.reduce(
     (acc, a) => acc + (a.newLen - a.oldLen),

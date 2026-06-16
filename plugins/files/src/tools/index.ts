@@ -64,13 +64,18 @@ export const ReadFileTool: AgentTool = {
     executeReadFile(
       ctx.userHomeDir,
       args as { path: string; offset?: number; limit?: number },
+      ctx.sessionId,
     ),
 };
 
 export const WriteFileTool: AgentTool = {
   schema: writeFileSchema(),
   execute: (args, ctx: AgentToolContext) =>
-    executeWriteFile(ctx.userHomeDir, args as { path: string; content: string }),
+    executeWriteFile(
+      ctx.userHomeDir,
+      args as { path: string; content: string },
+      ctx.sessionId,
+    ),
 };
 
 export const EditFileTool: AgentTool = {
@@ -84,6 +89,7 @@ export const EditFileTool: AgentTool = {
         old_text?: string;
         new_text?: string;
       },
+      ctx.sessionId,
     ),
 };
 
