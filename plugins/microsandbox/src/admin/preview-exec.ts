@@ -113,10 +113,16 @@ export async function previewExec(opts: PreviewExecOpts): Promise<PreviewExecRes
         // does belt-and-suspenders cleanup.
         const tryKill = async () => {
           try {
-            if (typeof handle.kill === "function") {
-              await handle.kill();
-            } else {
-              await handle.stopAndWait();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const h = handle as any;
+            if (typeof h.kill === "function") {
+              await h.kill();
+            } else if (typeof h.stopWithTimeout === "function") {
+              await h.stopWithTimeout(0);
+            } else if (typeof h.stop === "function") {
+              await h.stop();
+            } else if (typeof h.stopAndWait === "function") {
+              await h.stopAndWait();
             }
           } catch {
             /* swallow */
@@ -178,16 +184,33 @@ export async function previewExec(opts: PreviewExecOpts): Promise<PreviewExecRes
     // On normal exits we can stopAndWait politely; on timeouts we
     // SIGKILL because the VM was misbehaving.
     try {
-      if (timedOut && typeof handle.kill === "function") {
-        await handle.kill();
-      } else {
-        await handle.stopAndWait();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const h = handle as any;
+      if (timedOut && typeof h.kill === "function") {
+        await h.kill();
+      } else if (typeof h.stopWithTimeout === "function") {
+        await h.stopWithTimeout(15_000);
+      } else if (typeof h.stop === "function") {
+        await h.stop();
+      } else if (typeof h.stopAndWait === "function") {
+        await h.stopAndWait();
       }
     } catch {
       /* swallow — best effort */
     }
     try {
-      await handle.removePersisted();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const h = handle as any;
+      if (typeof h.removePersisted === "function") {
+        await h.removePersisted();
+      } else {
+        const msb = await import("microsandbox");
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const SandboxAny = (msb as any).Sandbox;
+        if (h.name && SandboxAny && typeof SandboxAny.remove === "function") {
+          await SandboxAny.remove(h.name);
+        }
+      }
     } catch {
       /* swallow */
     }
