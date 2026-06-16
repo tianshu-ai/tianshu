@@ -64,6 +64,16 @@
       { "id": "browser-howto",  "path": "skills/microsandbox-browser-howto.md" },
       { "id": "libreoffice",   "path": "skills/microsandbox-libreoffice.md" }
     ],
+    "systemPromptFragments": [
+      {
+        "id": "no-foreground-servers",
+        "text": "- Don't run a foreground server with `exec` (`python -m http.server`, `npm start`, etc.). The call will hang until the host timeout. Background it: `nohup setsid <cmd> > /tmp/log 2>&1 < /dev/null &` then `curl` to verify."
+      },
+      {
+        "id": "already-installed-runtimes",
+        "text": "- The sandbox already ships chromium (CDP 9222), Playwright MCP (3200), LibreOffice, Node 22, and Python 3.12. Don't `apt install` / `pip install` / `playwright install` what's already there."
+      }
+    ],
     "apiRoutes": [
       { "method": "GET",  "path": "/status",          "handler": "status" },
       { "method": "GET",  "path": "/sandboxfile",     "handler": "getSandboxfile" },
