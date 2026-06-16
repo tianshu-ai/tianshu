@@ -37,8 +37,30 @@ exec:
   # wmctrl            → fit chromium window to the new framebuffer
   - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates xz-utils fontconfig fonts-noto-cjk fonts-noto-color-emoji libreoffice-writer libreoffice-calc libreoffice-impress xvfb x11vnc fluxbox supervisor x11-xserver-utils wmctrl libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libxss1 libasound2 libxshmfence1 libxkbcommon0 libpango-1.0-0 libxcomposite1 libxdamage1 libxrandr2
 
-  # Node 22 LTS（淘宝镜像）
-  - bash -c "curl -fsSL --retry 6 --retry-delay 5 --retry-all-errors https://npmmirror.com/mirrors/node/v22.20.0/node-v22.20.0-linux-arm64.tar.xz | tar -xJ -C /usr/local --strip-components=1"
+  # Node 22 LTS — 多源 fallback。nodejs.org 主源，失败后依次走
+  # npmmirror 镜像、cnpmjs 镜像。每个源走到身为止 (--retry 3)，
+  # 并且 --connect-timeout 30 避免 TCP 建连后被 RST 时挂死。
+  - |
+    bash -c '
+      set -eu
+      VER=v22.20.0
+      F=node-${VER}-linux-arm64.tar.xz
+      for u in \
+        https://nodejs.org/dist/${VER}/${F} \
+        https://npmmirror.com/mirrors/node/${VER}/${F} \
+        https://registry.npmmirror.com/-/binary/node/${VER}/${F}; do
+        echo "[node] trying $u"
+        if curl -fsSL --retry 3 --retry-delay 5 --retry-all-errors \
+             --connect-timeout 30 --max-time 600 "$u" \
+           | tar -xJ -C /usr/local --strip-components=1; then
+          echo "[node] installed from $u"
+          exit 0
+        fi
+        echo "[node] failed: $u"
+      done
+      echo "[node] all sources exhausted" >&2
+      exit 1
+    '
   - npm config set registry https://registry.npmmirror.com
 
   # CloakBrowser 200MB - ghproxy + retry + 落盘解压

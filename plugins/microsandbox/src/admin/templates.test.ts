@@ -2,11 +2,12 @@
 //
 // We don't snapshot the YAML bodies — those evolve with every
 // dependency rev. Instead we lock down:
-//   1. Both built-in templates load successfully against the real
+//   1. All built-in templates load successfully against the real
 //      plugin templates dir (catches missing-file regressions
 //      before activate-time).
-//   2. The catalog ordering is stable (minimal first, browser
-//      second) — UI relies on this for the dropdown's default.
+//   2. The catalog ordering is stable (minimal first, then browser,
+//      then node-python) — UI relies on this for the dropdown's
+//      default.
 //   3. Missing files raise a descriptive error pointing at the
 //      offending path so plugin authors can fix it fast.
 
@@ -21,9 +22,13 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const realTemplatesDir = path.resolve(here, "..", "..", "templates");
 
 describe("microsandbox sandboxfile templates", () => {
-  it("loads both built-in templates from the plugin templates dir", async () => {
+  it("loads all built-in templates from the plugin templates dir", async () => {
     const templates = await loadTemplates(realTemplatesDir);
-    expect(templates.map((t) => t.id)).toEqual(["minimal", "browser"]);
+    expect(templates.map((t) => t.id)).toEqual([
+      "minimal",
+      "browser",
+      "node-python",
+    ]);
     for (const t of templates) {
       expect(t.content.length).toBeGreaterThan(0);
       expect(t.displayName).toBeTruthy();
@@ -50,10 +55,20 @@ describe("microsandbox sandboxfile templates", () => {
     expect(browser!.content).toMatch(/novnc/i);
   });
 
+  it("node-python template uses node:22-slim and installs python3 + npmmirror", async () => {
+    const templates = await loadTemplates(realTemplatesDir);
+    const np = templates.find((t) => t.id === "node-python");
+    expect(np).toBeDefined();
+    expect(np!.content).toMatch(/image:\s*node:22-slim/);
+    expect(np!.content).toMatch(/python3/);
+    expect(np!.content).toMatch(/npmmirror\.com/);
+  });
+
   it("raises a descriptive error when a template file is missing", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "msb-templates-"));
-    // Empty dir → loader expects minimal.yaml + browser.yaml; both
-    // are missing.
+    // Empty dir → loader expects minimal.yaml + browser.yaml +
+    // node-python.yaml; the loader fails fast on the first missing
+    // file (minimal).
     await expect(loadTemplates(tmp)).rejects.toThrow(/minimal\.yaml/);
     fs.rmSync(tmp, { recursive: true, force: true });
   });

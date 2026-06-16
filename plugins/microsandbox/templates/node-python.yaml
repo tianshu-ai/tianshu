@@ -1,0 +1,47 @@
+# Node.js + Python combo Sandboxfile.
+#
+# Why this template exists:
+#   从 nodejs.org / NodeSource 现场装 Node.js 在国内网络下经常龟速
+#   (二进制包 30-40 MB，TCP 重置/超时常见)。本模板的解法是：
+#     1. base image 直接用官方 node:22-slim — Docker hub 镜像加速
+#        (daemon.json 里配的 docker.m.daocloud.io 之类) 拉得很快，
+#        node + npm 已经在镜像里。
+#     2. apt 走阿里云源装 python3。
+#     3. npm 顺手切到 npmmirror，后续 npm install 也快。
+#
+# 适合：需要同时跑 Node 工具链 (tsx / playwright / esbuild) 和
+#      Python 脚本 (数据清洗 / pandas) 的场景。
+#
+# 不需要 Python 时直接用 minimal.yaml 改 image: node:22-slim 即可。
+
+image: node:22-slim
+cpus: 4
+memory_mib: 4096
+
+exec:
+  # APT 国内源（其他地区可注释掉这两行走 deb.debian.org 上游）
+  - sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+  - apt-get update -qq
+
+  # Python 3 + pip + venv（node:22-slim 是 Debian bookworm，python3 = 3.11）
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3 python3-pip python3-venv ca-certificates curl
+  - rm -rf /var/lib/apt/lists/*
+
+  # npm 镜像（pip 镜像如果需要也可以加：pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple）
+  - npm config set registry https://registry.npmmirror.com
+
+  # === Verify ===========================================================
+  - bash -c "node --version && npm --version && python3 --version && pip3 --version"
+  - echo OK
+
+# 想再加包？反注释下面任意一段：
+#
+# apt:
+#   - git
+#   - jq
+# pip:
+#   - pandas
+#   - requests
+# npm:
+#   - tsx
+#   - typescript

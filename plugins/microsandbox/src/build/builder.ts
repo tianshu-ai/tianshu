@@ -197,8 +197,28 @@ export async function buildSnapshot(opts: BuildOpts): Promise<BuildResult> {
       .force()
       .create();
   } finally {
+    // Cleanup is best-effort. On the success path the sandbox is
+    // already stopped (we did that just before snapshotting), but
+    // on a failed exec step it's still running, and the modern SDK
+    // refuses to `Sandbox.remove(name)` a running sandbox
+    // ("sandbox still running: cannot remove ..."). So always try
+    // to force the sandbox down first, then remove.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const b = base as any;
+      if (typeof b.kill === "function") {
+        await b.kill();
+      } else if (typeof b.killWithTimeout === "function") {
+        await b.killWithTimeout(5_000);
+      } else if (typeof b.stopWithTimeout === "function") {
+        await b.stopWithTimeout(5_000);
+      } else if (typeof b.stop === "function") {
+        await b.stop();
+      }
+    } catch {
+      /* may have already exited */
+    }
     // SDK rename: removePersisted() -> static Sandbox.remove(name).
-    // Try both shapes, swallow errors (cleanup is best-effort).
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const SandboxAny = Sandbox as any;
