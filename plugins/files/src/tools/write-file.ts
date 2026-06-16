@@ -12,6 +12,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
+import { loadPrompt } from "./load-prompt.js";
+import { hasRead, markRead } from "./read-tracker.js";
 import {
   resolveInUserHome,
   toWorkspaceUri,
@@ -29,19 +31,7 @@ export interface WriteFileToolResult {
 export function writeFileSchema(): Tool {
   return {
     name: "write_file",
-    description:
-      "Create or overwrite a file in the workspace. Parent directories are " +
-      "created if missing.\n\nGuidelines:\n" +
-      "- Use `write_file` ONLY for new files or complete rewrites of small " +
-      "files. For changes to an existing file prefer `edit_file` (its " +
-      "`edits[]` accepts multiple disjoint replacements in one call).\n" +
-      "- For long output (HTML reports, multi-section markdown, etc.), " +
-      "write a small skeleton with `<!-- TODO: section X -->` placeholders " +
-      "FIRST, then fill each section with `edit_file`. A single " +
-      "`write_file` carrying thousands of lines of `content` will trip the " +
-      "provider's tool-call stream truncation and the call will fail with " +
-      "`content` missing entirely. The skill `large-input-large-output` " +
-      "covers the full pattern.",
+    description: loadPrompt("write-file.prompt.md"),
     parameters: Type.Object({
       path: Type.String({
         description: 'Path relative to the workspace root, e.g. "/notes/today.md".',
@@ -56,6 +46,7 @@ export function writeFileSchema(): Tool {
 export function executeWriteFile(
   userHome: string,
   args: { path: string; content: string },
+  sessionId?: string,
 ): WriteFileToolResult {
   let resolved: string;
   try {
@@ -69,8 +60,22 @@ export function executeWriteFile(
   if (resolved === path.resolve(userHome)) {
     return { ok: false, text: `cannot write to the workspace root` };
   }
-  if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+  const exists = fs.existsSync(resolved);
+  if (exists && fs.statSync(resolved).isDirectory()) {
     return { ok: false, text: `is a directory: ${args.path}` };
+  }
+
+  // Read-required for overwrites: blindly replacing a file the
+  // agent never read is how user work disappears. New files are
+  // exempt — there's nothing to read.
+  if (exists && !hasRead(sessionId, resolved)) {
+    return {
+      ok: false,
+      text:
+        `write_file: ${args.path} already exists and you haven't read it in this session. ` +
+        `Call read_file first so you can see what you're about to overwrite, ` +
+        `or use edit_file for a targeted change.`,
+    };
   }
 
   const buf = Buffer.from(args.content, "utf8");
@@ -87,6 +92,10 @@ export function executeWriteFile(
   const tmp = `${resolved}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tmp, buf);
   fs.renameSync(tmp, resolved);
+
+  // The agent now "knows" the file's contents (it just wrote them),
+  // so a follow-up edit_file in the same session is fine.
+  markRead(sessionId, resolved);
 
   return {
     ok: true,

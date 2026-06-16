@@ -54,6 +54,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Read the LLM model catalog the host can offer to the current tenant: every provider/model registered in the host's `models.providers` config, plus the default modelId. Used by the main agent and worker-creator to pick a model for new worker bundles instead of hard-coding ids.",
   },
+  "host.lsp": {
+    exclusive: true,
+    description:
+      "Diagnose a file via the host's LSP manager after a write/edit. Plugins (notably `files`) call `diagnoseAfterEdit({ filePath, contents })` and append the formatted diagnostic block to their tool result so the model sees compile errors in the same turn that introduced them. Tenant-scoped: the manager refuses files outside the calling tenant's workspace. See ADR-0005.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;

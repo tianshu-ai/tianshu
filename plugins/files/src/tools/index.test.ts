@@ -139,3 +139,150 @@ describe("files plugin tools", () => {
     expect(GlobTool.schema.name).toBe("glob");
   });
 });
+
+describe("host.lsp diagnostics integration", () => {
+  // Stub LspCapability captures inputs and returns whatever
+  // canned result the test set up. We don't run a real LS —
+  // that's covered by lsp/manager.test.ts. The wiring this
+  // test pins down is:
+  //   - plugin tool calls ctx.capabilities.get("host.lsp")
+  //   - hands it the absolute path + post-edit contents
+  //   - appends `\n\n<diag.text>` to result.text
+  //   - falls through cleanly when capability missing or empty
+  function ctxWithLsp(
+    impl: (input: {
+      filePath: string;
+      contents: string;
+    }) => Promise<{
+      text: string;
+      hasErrors: boolean;
+      unavailable?: string;
+    }>,
+  ): AgentToolContext {
+    return {
+      ...makeCtx(),
+      capabilities: {
+        get: <T>(name: string): T | undefined =>
+          name === "host.lsp"
+            ? ({ diagnoseAfterEdit: impl } as unknown as T)
+            : undefined,
+        has: (name: string) => name === "host.lsp",
+      },
+    };
+  }
+
+  it("appends LSP diagnostics to write_file result text", async () => {
+    const calls: Array<{ filePath: string; contents: string }> = [];
+    const ctx = ctxWithLsp(async ({ filePath, contents }) => {
+      calls.push({ filePath, contents });
+      return {
+        text:
+          "src/x.ts:1:14 error TS2322: Type 'string' is not assignable to type 'number'.\n" +
+          "  1 errors, 0 warnings",
+        hasErrors: true,
+      };
+    });
+    const out = (await WriteFileTool.execute(
+      {
+        path: "/src/x.ts",
+        content: "const n: number = \"oops\";\n",
+      },
+      ctx,
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(true);
+    expect(out.text).toContain("wrote");
+    expect(out.text).toContain("TS2322");
+    expect(out.text).toContain("1 errors, 0 warnings");
+    expect(calls).toHaveLength(1);
+    // Manager wants the absolute path; resolveInUserHome maps
+    // the workspace-relative arg to the real fs location.
+    expect(calls[0]!.filePath).toBe(path.join(userHome, "src/x.ts"));
+    expect(calls[0]!.contents).toBe("const n: number = \"oops\";\n");
+  });
+
+  it("appends LSP diagnostics to edit_file result text by re-reading from disk", async () => {
+    fs.writeFileSync(
+      path.join(userHome, "y.ts"),
+      "export const ok: string = \"hi\";\n",
+    );
+    const captured: Array<{ filePath: string; contents: string }> = [];
+    const ctx = ctxWithLsp(async ({ filePath, contents }) => {
+      captured.push({ filePath, contents });
+      return { text: "y.ts: clean\n  0 errors, 0 warnings", hasErrors: false };
+    });
+    const out = (await EditFileTool.execute(
+      {
+        path: "/y.ts",
+        edits: [
+          {
+            old_text: "export const ok: string",
+            new_text: "export const ok: number",
+          },
+        ],
+      },
+      ctx,
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(true);
+    expect(out.text).toContain("y.ts: clean");
+    expect(captured).toHaveLength(1);
+    // For edit_file the wrapper re-reads from disk — the contents
+    // we just wrote should round-trip exactly.
+    expect(captured[0]!.contents).toContain("ok: number");
+  });
+
+  it("surfaces capability `unavailable` as a [lsp] note instead of dropping it", async () => {
+    const ctx = ctxWithLsp(async () => ({
+      text: "",
+      hasErrors: false,
+      unavailable:
+        "typescript-language-server not on PATH; npm i -g typescript-language-server failed (offline)",
+    }));
+    const out = (await WriteFileTool.execute(
+      { path: "/foo.ts", content: "export const x = 1;\n" },
+      ctx,
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(true);
+    expect(out.text).toMatch(/\[lsp\] diagnostics unavailable:/);
+    expect(out.text).toContain("typescript-language-server");
+  });
+
+  it("omits diagnostics block entirely when capability returns clean + no unavailable", async () => {
+    const ctx = ctxWithLsp(async () => ({
+      text: "",
+      hasErrors: false,
+    }));
+    const out = (await WriteFileTool.execute(
+      { path: "/foo.txt", content: "hello" },
+      ctx,
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(true);
+    expect(out.text).not.toMatch(/\[lsp\]/);
+    expect(out.text).not.toContain("\n\n");
+  });
+
+  it("skips LSP entirely when host doesn't provide host.lsp", async () => {
+    // makeCtx() default capabilities are empty — the wrapper
+    // should still return a clean result, no LSP-related text.
+    const out = (await WriteFileTool.execute(
+      { path: "/foo.txt", content: "hello" },
+      makeCtx(),
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(true);
+    expect(out.text).not.toMatch(/\[lsp\]/);
+  });
+
+  it("never breaks the edit when the capability throws", async () => {
+    fs.writeFileSync(path.join(userHome, "z.txt"), "x");
+    const ctx = ctxWithLsp(async () => {
+      throw new Error("boom");
+    });
+    const out = (await WriteFileTool.execute(
+      { path: "/z.txt", content: "hello" },
+      ctx,
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(true);
+    expect(out.text).toContain("wrote");
+    // No LSP block; failure was swallowed.
+    expect(out.text).not.toMatch(/\[lsp\]/);
+  });
+});

@@ -11,6 +11,7 @@
 import fs from "node:fs";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
+import { markRead } from "./read-tracker.js";
 import {
   resolveInUserHome,
   toWorkspaceUri,
@@ -60,6 +61,7 @@ to text first via another tool if you need their contents.`,
 export function executeReadFile(
   userHome: string,
   args: { path: string; offset?: number; limit?: number },
+  sessionId?: string,
 ): ReadFileToolResult {
   let resolved: string;
   try {
@@ -104,6 +106,15 @@ export function executeReadFile(
     const content = slice.toString("utf8");
     const nextOffset = offset + bytesRead;
     const more = nextOffset < stat.size;
+
+    // Mark this path as read for the session, but only when we
+    // actually returned the whole file in one shot. Partial reads
+    // (offset>0 or more=true) shouldn't satisfy the "have you seen
+    // this file?" precondition for edit/write — the agent might
+    // be patching a region it never paged into.
+    if (offset === 0 && !more) {
+      markRead(sessionId, resolved);
+    }
 
     const uri = toWorkspaceUri(userHome, resolved);
     const header =

@@ -27,11 +27,14 @@
 import fs from "node:fs";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
+import { loadPrompt } from "./load-prompt.js";
+import { hasRead, markRead } from "./read-tracker.js";
 import {
   resolveInUserHome,
   toWorkspaceUri,
   PathOutsideRootError,
 } from "./path-helper.js";
+import { applyShape, normaliseEnding, shapeOf } from "./text-shape.js";
 
 interface SingleEdit {
   old_text: string;
@@ -51,17 +54,7 @@ export interface EditFileToolResult {
 export function editFileSchema(): Tool {
   return {
     name: "edit_file",
-    description:
-      "Apply one or more exact-text replacements inside an existing file. " +
-      "Pass `edits: [{old_text, new_text}, ...]` for a batch — the file is " +
-      "read once, edits run in order in memory, and the result is written " +
-      "atomically only if every edit succeeds (so a partial batch never lands " +
-      "on disk). Each `old_text` must appear exactly once at the moment its " +
-      "edit runs, otherwise the whole batch fails and reports which edit " +
-      "tripped. Use `write_file` for new files or full rewrites; reach for " +
-      "edit_file when you're patching specific regions.\n\n" +
-      "Single-edit shorthand `{path, old_text, new_text}` is still accepted " +
-      "for one-shot patches.",
+    description: loadPrompt("edit-file.prompt.md"),
     parameters: Type.Object({
       path: Type.String({
         description:
@@ -104,6 +97,7 @@ export function executeEditFile(
     old_text?: string;
     new_text?: string;
   },
+  sessionId?: string,
 ): EditFileToolResult {
   // Normalise to a non-empty edits array. Single-edit shorthand
   // wins only if `edits` is missing — passing both is ambiguous,
@@ -139,27 +133,51 @@ export function executeEditFile(
     return { ok: false, text: `is a directory: ${args.path}` };
   }
 
-  const original = fs.readFileSync(resolved, "utf8");
+  // Read-required: every edit_file call must follow a read_file
+  // on the same path in the same session. Without that the agent
+  // is matching against text it never actually saw, which is how
+  // overconfident overwrites land. The error tells the agent
+  // exactly what to do next.
+  if (!hasRead(sessionId, resolved)) {
+    return {
+      ok: false,
+      text:
+        `edit_file: you must call read_file on ${args.path} first — ` +
+        `exact-text matching needs the file's actual current contents in your context. ` +
+        `Read the whole file (offset=0, no limit) and then retry the edit.`,
+    };
+  }
+
+  // Read once, peel BOM, detect line ending. We work on the
+  // BOM-less, already-text representation throughout the batch;
+  // only re-prepend BOM at the final write step.
+  const raw = fs.readFileSync(resolved, "utf8");
+  const shape = shapeOf(raw);
   const applied: Array<{ ok: true; oldLen: number; newLen: number }> = [];
-  let working = original;
+  let working = shape.text;
 
   for (let i = 0; i < edits.length; i++) {
     const e = edits[i]!;
-    if (e.old_text.length === 0) {
+    // Normalise the model's input to the file's actual line
+    // ending so a CRLF file matches even when the model sent LF
+    // (and vice-versa).
+    const oldText = normaliseEnding(e.old_text, shape.ending);
+    const newText = normaliseEnding(e.new_text, shape.ending);
+    if (oldText.length === 0) {
       return {
         ok: false,
         text: `edit_file: edit #${i + 1} has empty old_text`,
         failedEditIndex: i + 1,
       };
     }
-    if (e.old_text === e.new_text) {
+    if (oldText === newText) {
       return {
         ok: false,
         text: `edit_file: edit #${i + 1} old_text and new_text are identical`,
         failedEditIndex: i + 1,
       };
     }
-    const occ = countOccurrences(working, e.old_text);
+    const occ = countOccurrences(working, oldText);
     if (occ === 0) {
       return {
         ok: false,
@@ -174,18 +192,28 @@ export function executeEditFile(
         failedEditIndex: i + 1,
       };
     }
-    working = working.replace(e.old_text, e.new_text);
+    working = working.replace(oldText, newText);
     applied.push({
       ok: true,
-      oldLen: e.old_text.length,
-      newLen: e.new_text.length,
+      oldLen: oldText.length,
+      newLen: newText.length,
     });
   }
 
   // Atomic write: temp sibling then rename. Only if every edit ran.
+  // Re-attach the BOM here — BOM-preservation is the contract; the
+  // batch above never saw it.
+  const finalText = applyShape(working, shape);
   const tmp = `${resolved}.tmp.${process.pid}.${Date.now()}`;
-  fs.writeFileSync(tmp, working);
+  fs.writeFileSync(tmp, finalText);
   fs.renameSync(tmp, resolved);
+
+  // After a successful edit the agent's mental model of the file
+  // is now `working`, which is in its context (it just wrote
+  // those edits). Treat that as equivalent to having read the new
+  // bytes — otherwise a second edit_file in the same turn would
+  // need a fresh read_file in between, which is wasteful.
+  markRead(sessionId, resolved);
 
   const totalDelta = applied.reduce(
     (acc, a) => acc + (a.newLen - a.oldLen),

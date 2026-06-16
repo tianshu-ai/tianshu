@@ -20,6 +20,9 @@
     "express": "^5.1.0",
     "fast-glob": "^3.3.3",
     "sharp": "^0.35.1",
+    "vscode-jsonrpc": "^9.0.0",
+    "vscode-languageserver-protocol": "^3.18.0",
+    "vscode-languageserver-types": "^3.18.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

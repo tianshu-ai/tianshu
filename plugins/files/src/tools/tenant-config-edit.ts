@@ -14,6 +14,7 @@ import {
   toTenantConfigUri,
   TenantConfigPathError,
 } from "./tenant-config-helper.js";
+import { applyShape, normaliseEnding, shapeOf } from "./text-shape.js";
 
 interface SingleEdit {
   old_text: string;
@@ -109,27 +110,33 @@ export function executeTenantConfigEdit(
     return { ok: false, text: `is a directory: ${args.path}` };
   }
 
-  const original = fs.readFileSync(resolved, "utf8");
+  // Same line-ending + BOM preservation as edit_file. Tenant
+  // config files are typically markdown / YAML / JSON; CRLF
+  // appearance is rare but the same correctness argument applies.
+  const raw = fs.readFileSync(resolved, "utf8");
+  const shape = shapeOf(raw);
   const applied: Array<{ ok: true; oldLen: number; newLen: number }> = [];
-  let working = original;
+  let working = shape.text;
 
   for (let i = 0; i < edits.length; i++) {
     const e = edits[i]!;
-    if (e.old_text.length === 0) {
+    const oldText = normaliseEnding(e.old_text, shape.ending);
+    const newText = normaliseEnding(e.new_text, shape.ending);
+    if (oldText.length === 0) {
       return {
         ok: false,
         text: `tenant_config_edit: edit #${i + 1} has empty old_text`,
         failedEditIndex: i + 1,
       };
     }
-    if (e.old_text === e.new_text) {
+    if (oldText === newText) {
       return {
         ok: false,
         text: `tenant_config_edit: edit #${i + 1} old_text and new_text are identical`,
         failedEditIndex: i + 1,
       };
     }
-    const occ = countOccurrences(working, e.old_text);
+    const occ = countOccurrences(working, oldText);
     if (occ === 0) {
       return {
         ok: false,
@@ -144,16 +151,17 @@ export function executeTenantConfigEdit(
         failedEditIndex: i + 1,
       };
     }
-    working = working.replace(e.old_text, e.new_text);
+    working = working.replace(oldText, newText);
     applied.push({
       ok: true,
-      oldLen: e.old_text.length,
-      newLen: e.new_text.length,
+      oldLen: oldText.length,
+      newLen: newText.length,
     });
   }
 
+  const finalText = applyShape(working, shape);
   const tmp = `${resolved}.tmp.${process.pid}.${Date.now()}`;
-  fs.writeFileSync(tmp, working);
+  fs.writeFileSync(tmp, finalText);
   fs.renameSync(tmp, resolved);
 
   const totalDelta = applied.reduce(
