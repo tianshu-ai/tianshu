@@ -41,6 +41,7 @@ import {
 import {
   defaultSystemPrompt,
   formatAvailableSkillsBlock,
+  formatPluginPromptFragments,
   tryAutoCompact,
 } from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
@@ -323,21 +324,48 @@ export async function runAgentLoop(
   });
   const adapted = adaptToolset(toolset);
 
+  // Plugin-contributed system prompt fragments (ADR-0006). Workers
+  // need these for the same reason main does: when a plugin ships a
+  // tool, the rules for using that tool live in the plugin manifest.
+  // Without this block, every worker re-derives "don't run a foreground
+  // server in exec", "call read_file before edit_file", etc., from its
+  // SOUL prompt — versions drift, and any plugin-update prompt fix
+  // misses workers entirely.
+  //
+  // ADR-0006 originally only wired the chat handler; the worker path
+  // here was deferred to a follow-up. ADR-0007 PR-B closes that gap.
+  // Filtering by `scope` (`main` | `worker` | `all`) is owned by the
+  // registry; this site asks for fragments and renders whatever it
+  // gets back. Workers can request a subset ("worker" only) once
+  // ADR-0006's `scope` field ships in PR-C; until then we render
+  // every contributed fragment, which matches main's behaviour.
+  const pluginFragments =
+    pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
+  const fragmentBlock = formatPluginPromptFragments(pluginFragments);
+
   // Two paths into the worker system prompt:
   //   * `req.systemPrompt` set — the worker_agent table provided a
-  //     kind-specific SOUL-style prompt; we use it verbatim and
-  //     append the available-skills block so the worker can still
-  //     discover tenant skills.
+  //     kind-specific SOUL-style prompt. Stitch:
+  //         <SOUL>
+  //         <plugin guidance fragments>
+  //         <available skills>
+  //     The order matters: SOUL is who-the-worker-is (highest
+  //     priority), fragments are how-to-use-tools (lower than
+  //     identity, higher than discoverable skills), skills are
+  //     situational reference. Same ordering as `defaultSystemPrompt`
+  //     for the main agent.
   //   * Otherwise fall back to the host default, which already
-  //     includes the block.
+  //     includes both the fragment and skill blocks via
+  //     `defaultSystemPrompt`.
   let systemPrompt: string;
   if (req.systemPrompt) {
     const skillBlock = formatAvailableSkillsBlock(skills);
-    systemPrompt = skillBlock
-      ? `${req.systemPrompt}\n\n${skillBlock}`
-      : req.systemPrompt;
+    const parts = [req.systemPrompt];
+    if (fragmentBlock) parts.push(fragmentBlock);
+    if (skillBlock) parts.push(skillBlock);
+    systemPrompt = parts.join("\n\n");
   } else {
-    systemPrompt = defaultSystemPrompt(ctx, userId, skills);
+    systemPrompt = defaultSystemPrompt(ctx, userId, skills, pluginFragments);
   }
   const firstResponseMs =
     req.timeouts?.firstResponseMs ?? DEFAULT_FIRST_RESPONSE_MS;
