@@ -172,8 +172,22 @@ export async function buildSnapshot(opts: BuildOpts): Promise<BuildResult> {
     cap(`[builder] sync`);
     await runStep(base, "sync", [], cap);
 
-    cap(`[builder] stopAndWait`);
-    await base.stopAndWait();
+    cap(`[builder] stop (graceful)`);
+    // SDK exposes stop() / stopWithTimeout(ms); the legacy stopAndWait()
+    // was renamed. stop() blocks until the sandbox is fully stopped,
+    // which is what we need before snapshotting (source must be stopped).
+    if (typeof base.stopWithTimeout === "function") {
+      await base.stopWithTimeout(30_000);
+    } else if (typeof base.stop === "function") {
+      await base.stop();
+    } else if (typeof base.stopAndWait === "function") {
+      // back-compat with older SDKs
+      await base.stopAndWait();
+    } else {
+      throw new Error(
+        "microsandbox SDK exposes neither stop() nor stopWithTimeout() — cannot snapshot",
+      );
+    }
 
     cap(`[builder] snapshotting -> "${snapshotName}"`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -183,11 +197,19 @@ export async function buildSnapshot(opts: BuildOpts): Promise<BuildResult> {
       .force()
       .create();
   } finally {
+    // SDK rename: removePersisted() -> static Sandbox.remove(name).
+    // Try both shapes, swallow errors (cleanup is best-effort).
     try {
-      await base.removePersisted();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const SandboxAny = Sandbox as any;
+      if (typeof base.removePersisted === "function") {
+        await base.removePersisted();
+      } else if (typeof SandboxAny.remove === "function") {
+        await SandboxAny.remove(builderName);
+      }
     } catch (err) {
       cap(
-        `[builder] removePersisted failed (non-fatal): ${(err as Error).message}`,
+        `[builder] cleanup remove failed (non-fatal): ${(err as Error).message}`,
       );
     }
   }

@@ -85,6 +85,8 @@ type State = "stopped" | "starting" | "ready" | "error";
  *  exposes a much richer surface; we only declare what we use so a
  *  type drift in microsandbox doesn't break our build. */
 type SandboxHandle = {
+  /** Sandbox name (for static SDK calls like Sandbox.remove). */
+  readonly name?: string;
   exec(cmd: string, args?: Iterable<string>): Promise<{
     code: number;
     stdout(): string;
@@ -100,8 +102,12 @@ type SandboxHandle = {
    *  `shell()` blocks indefinitely if the host-guest exec
    *  channel dies mid-stream. */
   shellStream(script: string): Promise<ExecHandleLike>;
-  stopAndWait(): Promise<unknown>;
-  removePersisted(): Promise<unknown>;
+  // Modern SDK shape (microsandbox >= the rename):
+  stop?(): Promise<unknown>;
+  stopWithTimeout?(timeoutMs: number): Promise<unknown>;
+  // Legacy shape kept for back-compat detection:
+  stopAndWait?(): Promise<unknown>;
+  removePersisted?(): Promise<unknown>;
 };
 
 /** Subset of microsandbox's `ExecHandle` (returned by `shellStream`)
@@ -337,13 +343,34 @@ export class MicrosandboxRunner implements SandboxRunner {
 
   async shutdown(): Promise<void> {
     if (this.handle) {
+      // SDK rename: stopAndWait → stop / stopWithTimeout. Try modern
+      // shape first, fall back to legacy. All wrapped in try/catch
+      // because shutdown is idempotent and best-effort.
       try {
-        await this.handle.stopAndWait();
+        const h = this.handle;
+        if (typeof h.stopWithTimeout === "function") {
+          await h.stopWithTimeout(15_000);
+        } else if (typeof h.stop === "function") {
+          await h.stop();
+        } else if (typeof h.stopAndWait === "function") {
+          await h.stopAndWait();
+        }
       } catch {
         /* may have already exited */
       }
       try {
-        await this.handle.removePersisted();
+        const h = this.handle;
+        if (typeof h.removePersisted === "function") {
+          await h.removePersisted();
+        } else {
+          // Modern SDK uses static Sandbox.remove(name).
+          const msb = await import("microsandbox");
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const SandboxAny = (msb as any).Sandbox;
+          if (h.name && SandboxAny && typeof SandboxAny.remove === "function") {
+            await SandboxAny.remove(h.name);
+          }
+        }
       } catch {
         /* idempotent */
       }
