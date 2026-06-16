@@ -64,40 +64,38 @@ describe("defaultSystemPrompt", () => {
     expect(out.toLowerCase()).not.toContain("kanban");
   });
 
-  // ADR-0004 N+4: tool-specific guidance now lives in skill markdown
-  // files (host-shipped or plugin-contributed), not the system prompt.
-  // Default prompt stays plugin-agnostic.
-  it("default prompt carries tool guidelines for the writer + sandbox tools", () => {
-    // The old assertion ("prompt doesn't mention any tool name")
-    // was right for the era when the prompt was meant to be
-    // tool-agnostic and every plugin contributed its own
-    // discovery block. After we observed Yu's agents looping on
-    // truncation / re-installing chromium / starting servers in
-    // the foreground, OpenClaw's pattern won out: short, named,
-    // imperative "tool guidelines" up front in the system prompt
-    // are the single most-effective behaviour nudge we have.
-    // The trade-off is the prompt now mentions specific tools by
-    // name, which is fine — these tools are part of the host
-    // contract, not arbitrary plugin contributions.
+  // ADR-0006: tool-specific guidance now lives on the contributing
+  // plugin (`manifest.contributes.systemPromptFragments`) and reaches
+  // the prompt via `formatPluginPromptFragments(pluginFragments)`.
+  // The host-side `defaultSystemPrompt` stays plugin-agnostic; with
+  // no plugins active (fakeCtx has none) it must not mention
+  // plugin-shipped tool names.
+  it("default prompt does NOT hardcode plugin-shipped tool names", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
-    expect(out).toContain("## Tool guidelines");
-    // Writer hints
-    expect(out).toContain("write_file");
-    expect(out).toContain("edit_file");
-    expect(out).toMatch(/skeleton/i);
-    expect(out).toMatch(/edits\[\]/);
-    // Sandbox hints
-    expect(out).toContain("exec");
-    expect(out).toMatch(/nohup/);
+    expect(out).not.toContain("## Tool guidelines");
+    // None of the previously-hardcoded plugin tool names should
+    // appear without the plugin contributing them.
+    expect(out).not.toContain("write_file");
+    expect(out).not.toContain("edit_file");
+    expect(out).not.toMatch(/skeleton/i);
+    expect(out).not.toMatch(/edits\[\]/);
+    expect(out).not.toMatch(/nohup/);
+    // microsandbox-specific runtime list is gone too — the
+    // microsandbox manifest re-introduces it as a fragment.
+    expect(out).not.toMatch(/playwright install/);
+    expect(out).not.toMatch(/already ships/);
   });
-  it("default prompt warns about installing duplicates of pre-shipped tools", () => {
-    const out = defaultSystemPrompt(fakeCtx(), "alice");
-    // From the same skill family Yu hit at runtime: agents
-    // reflexively reinstalling chromium / libreoffice burns
-    // sandbox time and survives no resets. Keep the warning in
-    // the prompt so it shows up to the main agent too (its
-    // worker-scope skill is invisible in main scope).
-    expect(out).toMatch(/playwright install/);
-    expect(out).toMatch(/already ships/);
+
+  it("includes plugin-contributed fragments under their displayName header", () => {
+    const out = defaultSystemPrompt(fakeCtx(), "alice", [], [
+      {
+        pluginId: "files",
+        pluginDisplayName: "Workspace Files",
+        fragmentId: "edit-rules",
+        text: "- Use `edit_file` for in-place changes; `write_file` for new files.",
+      },
+    ]);
+    expect(out).toContain("## Workspace Files");
+    expect(out).toContain("edit_file");
   });
 });
