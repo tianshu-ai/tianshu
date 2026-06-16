@@ -41,26 +41,25 @@ export function tenantConfigEditSchema(): Tool {
       path: Type.String({
         description: "Path under the tenant-config root.",
       }),
-      edits: Type.Optional(
-        Type.Array(
-          Type.Object({
-            old_text: Type.String({
-              description:
-                "Exact text to find. Must appear exactly once at edit time.",
-            }),
-            new_text: Type.String({
-              description: "Replacement text.",
-            }),
-          }),
-          {
+      // Required at schema level so truncation detector fires
+      // when the model drops `edits` mid-stream. Legacy
+      // `{old_text, new_text}` shorthand still works at runtime.
+      edits: Type.Array(
+        Type.Object({
+          old_text: Type.String({
             description:
-              "List of edits to apply in order; atomic (all or nothing). " +
-              "Skip if you're using the legacy single-edit shorthand.",
-          },
-        ),
+              "Exact text to find. Must appear exactly once at edit time.",
+          }),
+          new_text: Type.String({
+            description: "Replacement text.",
+          }),
+        }),
+        {
+          minItems: 1,
+          description:
+            "List of edits to apply in order, atomic (all or nothing).",
+        },
       ),
-      old_text: Type.Optional(Type.String()),
-      new_text: Type.Optional(Type.String()),
     }),
   };
 }
