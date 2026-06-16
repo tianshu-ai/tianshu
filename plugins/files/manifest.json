@@ -69,6 +69,20 @@
     ],
     "skills": [
       { "id": "workspace-layout", "path": "skills/files-workspace-layout.md" }
+    ],
+    "systemPromptFragments": [
+      {
+        "id": "edit-vs-write",
+        "text": "- `edit_file` is for changes to an existing file (in-place exact-text replace, atomic). `write_file` is for new files or full rewrites of the entire file. Prefer editing existing files; do not create new files unless asked."
+      },
+      {
+        "id": "edit-old-text-uniqueness",
+        "text": "- Each `edit_file` `old_text` must appear exactly once in the file. Keep `old_text` as small as possible while still being unique \u2014 don't pad with large unchanged regions to \"connect\" two distant changes; emit two separate edits in the same `edits[]` batch instead."
+      },
+      {
+        "id": "read-before-edit",
+        "text": "- Call `read_file` on a path before `edit_file` (or `write_file` overwrite) of the same path. The host refuses unseen edits to prevent blind overwrites."
+      }
     ]
   }
 }

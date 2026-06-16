@@ -11,6 +11,8 @@ way it is — not just _what_ shape it has.
 | 0002 | [Orchestrator + workers, with builtin/tenant config layering](./workers.md) | Accepted |
 | 0003 | [Plugin system (UI panels, sidebar sections, API routes)](./plugins.md) | Accepted |
 | 0004 | [Plugin capabilities & sandbox contract](./sandboxes.md) | Draft |
+| 0005 | [Language Server Protocol integration](./lsp.md) | Draft |
+| 0006 | [Plugin-contributed system-prompt fragments for tools](./tool-prompt-contributions.md) | Draft |
 
 ## How to write an ADR
 

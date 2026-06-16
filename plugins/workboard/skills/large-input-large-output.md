@@ -68,52 +68,56 @@ never wanted to keep. One file per turn lets auto-compact (which
 fires after each turn_end) trim earlier turns away once you've
 written the summary file.
 
-## Pattern 2 — Skeleton then fill (large output)
+## Pattern 2 — Long output: write iteratively, not in one shot
 
-Cardinal rule: **never emit more than ~500 lines in a single
-tool call**.
+When the deliverable is big (long HTML, multi-section markdown,
+a 1500-line generated file), the failure mode you want to avoid
+is **emitting the whole thing in one tool call.** Two reasons:
 
-Sequence:
+- The provider's tool_use input stream truncates large strings,
+  so a `write_file` carrying thousands of lines of `content`
+  often fails with `content` missing entirely.
+- Even if the call lands, the next agent / human reading the
+  task has nothing to follow until the giant blob arrives. A
+  partial run leaves nothing on disk.
 
-1. Decide the structure of the output up front. Write it down:
-   ```
-   write_file({
-     path: "<final-output-path>",
-     content: "<skeleton — title / TOC / section headings /\n
-       <!-- TODO: fill section X --> placeholders / closing tags>"
-   })
-   ```
-   The skeleton is small (50-150 lines). It pins down structure
-   so subsequent edits are local.
-2. Fill the placeholders. `edit_file` accepts a batch of edits
-   in one call — prefer that over one tool call per section
-   when the new_texts are short enough that the combined call
-   isn't itself a giant token blob:
-   ```
-   edit_file({
-     path: "<final-output-path>",
-     edits: [
-       { old_text: "<!-- TODO: section A -->", new_text: "<...>" },
-       { old_text: "<!-- TODO: section B -->", new_text: "<...>" },
-       ...
-     ]
-   })
-   ```
-   The batch is atomic: either every edit applies or the file is
-   left untouched and the result tells you which edit tripped.
-3. If a section's content is itself big (~400+ lines of HTML /
-   prose), split it across two skeletons-within-the-skeleton
-   first, then fill each in its own batch. Don't try to dump
-   one massive section in one edit.
+Do this instead:
 
-This pattern has three side benefits:
+1. Decide the structure of the output up front (TOC, section
+   list, what each section contains). Write that as a short
+   plan in the task description — you'll reference it as you go.
+2. Write the file in pieces. The shape that works depends on
+   the deliverable:
+   - **Markdown / prose / HTML report:** use `write_file` for
+     the first chunk (front matter / TOC / first section), then
+     `read_file` and `edit_file` to append each subsequent
+     section. Each `edit_file` call can target the end-of-file
+     marker (e.g. "</body>") and replace it with `new_section +
+     marker`.
+   - **Generated code:** `write_file` the file once with the
+     real content; if the result is so big the call is
+     truncating, the file is too big for one LLM run regardless
+     of tool shape — split the deliverable into separate files
+     (one module per file is the right shape anyway).
+3. After each chunk: keep the chunk size small enough that the
+   tool_use args don't get truncated. There's no fixed line
+   count — watch for the truncation hint in the tool result.
 
-- The output file exists from step 1, so a partial run still
-  leaves something on disk.
-- Atomic batches mean a typo in edit #5 doesn't leave edits 1-4
-  half-applied; you fix the typo and resubmit.
+This pattern's side benefits:
+
+- The output file exists after the first call, so a partial
+  run still leaves something on disk.
 - The agent can `read_file` what it just wrote when composing
   later sections, keeping coherence without re-loading sources.
+
+What *not* to do:
+
+- Do not write a "skeleton" full of `<!-- TODO: section X -->`
+  placeholders and then try to fill them all in one
+  `edit_file({edits: [...]})` batch. The combined batch JSON
+  ends up larger than the original write would have been and
+  trips the same truncation it was meant to avoid. (This
+  recipe used to be in this skill; it didn't work.)
 
 ## Pattern 3 — Spill to file (escape hatch)
 
@@ -150,10 +154,11 @@ workspace) both support `offset` + `limit`. Use them.
 - **One giant `write_file` for a 2000-line HTML report.** Even
   if the model can produce it without truncating, the next
   agent / human reading the work has nothing to follow until
-  the whole thing lands. Skeleton + edits is friendlier.
-- **One `edit_file` call per section** when you have many
-  small sections. The `edits` array supports a batch — use it
-  to cut tool-call round-trips.
+  the whole thing lands. Write the file in chunks (Pattern 2).
+- **One `edit_file` call per tiny edit** when you're making
+  several adjacent changes — the `edits[]` batch is atomic
+  and saves round-trips. (This is the right reason to use
+  `edits[]`; it's not a workaround for tool-arg truncation.)
 
 ## When you're stuck mid-task
 
@@ -165,9 +170,9 @@ sure how to proceed:
 2. Write `/tmp/<task-slug>/state.md` capturing what you've done
    so far and what's left.
 3. **Then** call `task_complete` with summary
-   `"partial: skeleton + section 1/4 written. See state.md for
-   remaining work."` — including the fact that it's partial in
-   the summary.
+   `"partial: section 1/4 written. See state.md for remaining
+   work."` — including the fact that it's partial in the
+   summary.
 4. The orchestrator can read state.md and either continue this
    task or split the rest into a follow-up task. That's
    recoverable; a `no_completion` stall is not.

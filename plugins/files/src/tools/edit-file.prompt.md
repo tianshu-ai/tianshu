@@ -27,6 +27,3 @@ Use `write_file` for new files or full rewrites; reach for
   new_text: "new\nX"}`).
 - Line endings (CRLF vs LF) and BOM are preserved automatically.
   Match by content; you don't need to know which the file uses.
-- Single-edit shorthand `{path, old_text, new_text}` is still
-  accepted at runtime for back-compat, but the canonical shape
-  is `edits: [...]`.
