@@ -51,6 +51,7 @@ import {
 } from "../core/index.js";
 import { buildToolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
+import { dumpSystemPrompt } from "./dump-system-prompt.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
 import {
   drainPending as drainInbox,
@@ -385,11 +386,18 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   send({ type: "stream_start" });
 
   const adapted = adaptToolset(toolset);
+  const systemPrompt = defaultSystemPrompt(
+    ctx,
+    userId,
+    skills,
+    pluginFragments,
+  );
+  dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
   const harness = new AgentHarness({
     env: makeStubExecutionEnv(ctx.userHomeDir(userId)),
     session: piSession,
     tools: adapted.tools,
-    systemPrompt: defaultSystemPrompt(ctx, userId, skills, pluginFragments),
+    systemPrompt,
     model: piModel,
     getApiKeyAndHeaders: async () => ({ apiKey }),
   });

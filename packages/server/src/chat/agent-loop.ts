@@ -34,6 +34,7 @@ import {
   resolveApiKey,
 } from "../core/index.js";
 import { buildToolset } from "../tools/index.js";
+import { dumpSystemPrompt } from "./dump-system-prompt.js";
 import {
   filterSkillsForTenant,
   type LoadedSkill,
@@ -367,6 +368,16 @@ export async function runAgentLoop(
   } else {
     systemPrompt = defaultSystemPrompt(ctx, userId, skills, pluginFragments);
   }
+  // Off-by-default debug dump (see `dump-system-prompt.ts`). Slug
+  // tag uses workerSlug when present, falling back to the role kind
+  // ("llm", etc.) and finally to a generic "worker" so callers
+  // without a slug still produce a stable filename.
+  dumpSystemPrompt({
+    ctx,
+    role: `worker:${req.workerSlug ?? req.workerRole ?? "unknown"}`,
+    userId,
+    systemPrompt,
+  });
   const firstResponseMs =
     req.timeouts?.firstResponseMs ?? DEFAULT_FIRST_RESPONSE_MS;
   const idleMs = req.timeouts?.idleMs ?? DEFAULT_IDLE_MS;

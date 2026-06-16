@@ -89,7 +89,21 @@ export interface McpServerEntry {
 /** Fields that ONLY the global config controls. Tenant config attempting these is rejected. */
 export interface GlobalOnlyConfig {
   server?: { port?: number; corsOrigin?: string; publicUrl?: string };
-  logging?: { level?: "debug" | "info" | "warn" | "error" };
+  logging?: {
+    level?: "debug" | "info" | "warn" | "error";
+    /**
+     * When true, every assembled system prompt (main chat agent +
+     * worker agents) is dumped to
+     * `<tenantHomeDir>/logs/system-prompt-<role>-<userId>.txt`,
+     * overwriting on each run. Off by default; debug-only switch
+     * for inspecting plugin fragment / SOUL / skill stitching
+     * without booting tracing infrastructure.
+     *
+     * Global-only because it writes to disk and the tenant
+     * shouldn't be able to silently turn host-side logging on.
+     */
+    dumpSystemPrompt?: boolean;
+  };
   /** Auto-create a `default` tenant if no tenants exist on first boot. */
   autoCreateDefault?: boolean;
   /** Override builtinConfig directory (handy for tests / Docker). */
