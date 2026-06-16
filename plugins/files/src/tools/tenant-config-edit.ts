@@ -1,8 +1,8 @@
 // tenant_config_edit — batch exact text replacement inside a
 // tenant config file. Same shape as `edit_file` (same uniqueness
-// contract, same atomic write semantics, same single-edit
-// shorthand) but resolves paths under `_tenant/config/...` and
-// honours the per-scope write boundary.
+// contract, same atomic write semantics) but resolves paths
+// under `_tenant/config/...` and honours the per-scope write
+// boundary.
 
 import fs from "node:fs";
 import { Type } from "typebox";
@@ -36,15 +36,13 @@ export function tenantConfigEditSchema(): Tool {
       "file in the tenant config tree. Pass `edits: [{old_text, " +
       "new_text}, ...]` for a batch (atomic — all-or-nothing). Each " +
       "`old_text` must appear EXACTLY ONCE at the moment its edit " +
-      "runs. Same scope boundary as `tenant_config_write`.\n\n" +
-      "Single-edit shorthand `{path, old_text, new_text}` still works.",
+      "runs. Same scope boundary as `tenant_config_write`.",
     parameters: Type.Object({
       path: Type.String({
         description: "Path under the tenant-config root.",
       }),
       // Required at schema level so truncation detector fires
-      // when the model drops `edits` mid-stream. Legacy
-      // `{old_text, new_text}` shorthand still works at runtime.
+      // when the model drops `edits` mid-stream.
       edits: Type.Array(
         Type.Object({
           old_text: Type.String({
