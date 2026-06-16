@@ -49,6 +49,13 @@ const BUILTIN_TEMPLATES: BuiltinTemplateMeta[] = [
       "Stealth Chromium running headed under Xvfb, with Playwright MCP on :3200 and noVNC on :6080. Lights up the agent's browser_* tools and the admin Browser viewport.",
     file: "browser.yaml",
   },
+  {
+    id: "node-python",
+    displayName: "Node.js + Python",
+    description:
+      "node:22-slim base image (skips slow Node install) plus apt-installed Python 3 and CN mirrors. Use when you need both toolchains in one sandbox.",
+    file: "node-python.yaml",
+  },
 ];
 
 /**
