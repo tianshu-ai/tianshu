@@ -40,12 +40,17 @@ export function listDirSchema(): Tool {
     name: "list_dir",
     description:
       "List the entries in a directory inside the workspace. Use this to discover " +
-      "what files exist. Paths are relative to the workspace root (\"/\" = root). " +
+      "what files exist. Paths are interpreted relative to the workspace root; " +
+      "prefer relative paths (`notes`, `src/foo`) over leading-slash forms. " +
+      "Use `.` (or omit `path`) for the workspace root itself. " +
+      "NOTE: a leading-slash path here means \"workspace root\", NOT the sandbox " +
+      "OS root \u2014 inside `exec`, the same `/foo` would resolve to the sandbox " +
+      "filesystem root. Stick to relative paths to keep both worlds aligned. " +
       "Returns at most 5000 entries; if truncated the response says so.",
     parameters: Type.Object({
       path: Type.String({
         description:
-          'Directory path relative to the workspace root, e.g. "/", "/notes", or "src". Default "/".',
+          'Directory path relative to the workspace root, e.g. ".", "notes", or "src/foo". Default "." (workspace root).',
       }),
     }),
   };

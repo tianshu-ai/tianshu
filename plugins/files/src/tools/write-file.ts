@@ -34,7 +34,10 @@ export function writeFileSchema(): Tool {
     description: loadPrompt("write-file.prompt.md"),
     parameters: Type.Object({
       path: Type.String({
-        description: 'Path relative to the workspace root, e.g. "/notes/today.md".',
+        description:
+          'Path relative to the workspace root, e.g. "notes/today.md". ' +
+          'Prefer relative paths over a leading slash \u2014 a leading slash here ' +
+          'means workspace root, NOT the sandbox OS root that `exec` sees.',
       }),
       content: Type.String({
         description: "Full file contents to write. UTF-8 encoded.",

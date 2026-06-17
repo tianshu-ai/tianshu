@@ -56,10 +56,20 @@ Outputs are truncated at ${STDOUT_LINE_CAP} lines / ${STDOUT_BYTE_CAP} bytes per
 Pipe to a file (\`> out.log\`) if you need the full output, then read it with \
 \`read_file\`.
 
-Default working dir is your user's home inside the sandbox — the same dir \
-\`write_file\`/\`read_file\` operate on. So \`write_file("/foo.py")\` followed by \
-\`exec("python3 foo.py")\` Just Works. Pass an absolute path in \`workdir\` to step outside (e.g. \
-to poke at \`/etc\` or \`/usr\`).
+Default working dir is your user's home inside the sandbox — the same dir that \
+\`write_file\`/\`read_file\` see as their root. So a file \`write_file("foo.py")\` \
+creates is reachable as \`exec("python3 foo.py")\` (relative to the default cwd).
+
+⚠️ Path semantics differ from \`write_file\`/\`read_file\`: inside this shell, \
+\`/\` is the sandbox OS root (with \`/etc\`, \`/usr\`, …), NOT the workspace root. \
+A file written via \`write_file("foo.py")\` lives at \`/workspace/users/<userId>/foo.py\` \
+inside the sandbox. To stay sane, **use relative paths in both tools** \
+(\`write_file("foo.py")\` + \`exec("python3 foo.py")\`). If you need an absolute \
+path in \`exec\`, write \`/workspace/users/<userId>/foo.py\` — a leading-slash path \
+from \`write_file\`/\`read_file\` does NOT carry over verbatim.
+
+Pass an absolute path in \`workdir\` to step outside the user home (e.g. to poke at \
+\`/etc\` or \`/usr\`).
 
 Files written under your user dir persist on the host; everything else (installs, /tmp, …) \
 is wiped when you call \`reset_sandbox\`.`,

@@ -130,7 +130,7 @@ Returns the build id, snapshot name, base image, and a tail of the build log.`,
     parameters: Type.Object({
       spec_path: Type.Optional(
         Type.String({
-          description: `Path to the Sandboxfile, relative to your user home. Default "/${DEFAULT_SANDBOXFILE_REL}".`,
+          description: `Path to the Sandboxfile, relative to your user home. Default "${DEFAULT_SANDBOXFILE_REL}".`,
         }),
       ),
     }),

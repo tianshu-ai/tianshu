@@ -60,7 +60,9 @@ export function editFileSchema(): Tool {
     parameters: Type.Object({
       path: Type.String({
         description:
-          'Path relative to the workspace root, e.g. "/notes/today.md".',
+          'Path relative to the workspace root, e.g. "notes/today.md". ' +
+          'Prefer relative paths over a leading slash \u2014 a leading slash ' +
+          'here means workspace root, NOT the sandbox OS root that `exec` sees.',
       }),
       // `edits` is REQUIRED at the schema level so the host's
       // truncation detector fires when the model emits
