@@ -70,6 +70,37 @@ describe("buildRunner facade", () => {
     expect(built.config.cpus).toBe(4);
     expect(built.config.memoryMib).toBe(8192);
     expect(built.config.sandboxName).toBe("my-vm");
+    // Task fields fall back to the Browser values when not overridden.
+    expect(built.config.taskCpus).toBe(4);
+    expect(built.config.taskMemoryMib).toBe(8192);
+    expect(built.config.taskExecTimeoutMs).toBe(built.config.execTimeoutMs);
+  });
+
+  it("task* fields override the browser-role defaults independently", async () => {
+    const built = await buildRunner({
+      pluginId: "microsandbox",
+      contributionId: "main",
+      tenantId: "acme",
+      workspaceDir,
+      rawConfig: {
+        cpus: 4,
+        memoryMib: 8192,
+        execTimeoutMs: 600_000,
+        // Task gets a different (smaller) budget.
+        taskCpus: 1,
+        taskMemoryMib: 2048,
+        taskExecTimeoutMs: 60_000,
+        taskIdleShutdownMs: 0,
+      },
+      probeSdk: async () => ({ ok: true }),
+    });
+    expect(built.config.cpus).toBe(4);
+    expect(built.config.memoryMib).toBe(8192);
+    expect(built.config.execTimeoutMs).toBe(600_000);
+    expect(built.config.taskCpus).toBe(1);
+    expect(built.config.taskMemoryMib).toBe(2048);
+    expect(built.config.taskExecTimeoutMs).toBe(60_000);
+    expect(built.config.taskIdleShutdownMs).toBe(0);
   });
 
   it("default sandbox name is tianshu-<tenantId>", async () => {

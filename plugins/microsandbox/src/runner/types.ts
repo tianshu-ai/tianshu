@@ -1,23 +1,43 @@
 // Internal types shared across the microsandbox runner.
+//
+// The runner has two roles — the long-lived Browser sandbox and
+// the per-task pool — and each role gets its own resource budget.
+// Top-level fields (cpus, memoryMib, idleShutdownMs, execTimeoutMs)
+// describe the Browser role. The matching task* fields describe
+// per-task sandboxes. When a task* field isn't supplied, it falls
+// back to the Browser-role value, so existing single-config
+// installs see no behaviour change.
 
 export interface MicroSandboxConfig {
   /** Sandbox name (becomes the microsandbox identifier). Default
    *  is `tianshu-<tenantId>` filled in by the facade. */
   sandboxName: string;
-  /** OCI image to fork from. v0 default is `python:3.12-slim`;
-   *  custom images come in N+5 (Sandboxfile editor UI). */
+  /** OCI image to fork from when no snapshot pointer is set. */
   image: string;
-  /** vCPUs allocated to the microVM. */
+
+  // ----- Browser role (long-lived sandbox) -----
+  /** vCPUs allocated to the Browser microVM. */
   cpus: number;
-  /** Memory in MiB. */
+  /** Browser microVM memory in MiB. */
   memoryMib: number;
-  /** Idle timeout in ms; 0 disables. v0 doesn't act on this yet
-   *  (we keep VMs around until plugin disable / tenant eviction)
-   *  but the value is recorded so future PRs can wire it in. */
+  /** Idle timeout in ms for the Browser sandbox; 0 disables. v0
+   *  records but doesn't act on this. */
   idleShutdownMs: number;
-  /** Default per-exec timeout in ms. v0.4.x SDK doesn't expose a
-   *  per-call timeout, so this is advisory until the SDK does. */
+  /** Default per-exec timeout in ms for the Browser sandbox. */
   execTimeoutMs: number;
+
+  // ----- Task role (per-task sandboxes; will be wired up by the
+  //       follow-up PR that introduces SandboxPool) -----
+  /** vCPUs allocated to each per-task sandbox. Defaults to `cpus`. */
+  taskCpus: number;
+  /** Memory (MiB) for each per-task sandbox. Defaults to `memoryMib`. */
+  taskMemoryMib: number;
+  /** How long a per-task sandbox stays alive after its last task
+   *  releases it before being stopped. 0 = stop immediately. */
+  taskIdleShutdownMs: number;
+  /** Per-exec timeout in ms for task-pool exec calls. Defaults to
+   *  `execTimeoutMs`. */
+  taskExecTimeoutMs: number;
 }
 
 export const DEFAULT_CONFIG: MicroSandboxConfig = {
@@ -33,10 +53,18 @@ export const DEFAULT_CONFIG: MicroSandboxConfig = {
   memoryMib: 4096,
   idleShutdownMs: 14_400_000, // 4h
   execTimeoutMs: 300_000, // 5min
+  // Task-role defaults mirror the Browser role until the operator
+  // overrides them via plugin config.
+  taskCpus: 2,
+  taskMemoryMib: 4096,
+  taskIdleShutdownMs: 600_000, // 10min after last release
+  taskExecTimeoutMs: 300_000,
 };
 
 /** Apply tenant config defaults. Unknown / wrong-typed fields are
- *  ignored and the default kicks in. */
+ *  ignored and the default kicks in. Task-role fields fall back to
+ *  the Browser-role value when not explicitly supplied, so legacy
+ *  single-config installs preserve their pre-split behaviour. */
 export function resolveConfig(raw: Record<string, unknown>): MicroSandboxConfig {
   const out: MicroSandboxConfig = { ...DEFAULT_CONFIG };
   if (typeof raw.sandboxName === "string" && raw.sandboxName.length > 0) out.sandboxName = raw.sandboxName;
@@ -50,6 +78,41 @@ export function resolveConfig(raw: Record<string, unknown>): MicroSandboxConfig 
   }
   if (typeof raw.execTimeoutMs === "number" && Number.isFinite(raw.execTimeoutMs) && raw.execTimeoutMs > 0) {
     out.execTimeoutMs = raw.execTimeoutMs;
+  }
+
+  // Task-role overrides. Each falls back to the matching
+  // Browser-role value when missing/invalid, so unconfigured
+  // installs see one shared budget across both roles.
+  out.taskCpus = out.cpus;
+  out.taskMemoryMib = out.memoryMib;
+  out.taskExecTimeoutMs = out.execTimeoutMs;
+  if (
+    typeof raw.taskCpus === "number" &&
+    Number.isFinite(raw.taskCpus) &&
+    raw.taskCpus > 0
+  ) {
+    out.taskCpus = Math.floor(raw.taskCpus);
+  }
+  if (
+    typeof raw.taskMemoryMib === "number" &&
+    Number.isFinite(raw.taskMemoryMib) &&
+    raw.taskMemoryMib > 0
+  ) {
+    out.taskMemoryMib = Math.floor(raw.taskMemoryMib);
+  }
+  if (
+    typeof raw.taskExecTimeoutMs === "number" &&
+    Number.isFinite(raw.taskExecTimeoutMs) &&
+    raw.taskExecTimeoutMs > 0
+  ) {
+    out.taskExecTimeoutMs = raw.taskExecTimeoutMs;
+  }
+  if (
+    typeof raw.taskIdleShutdownMs === "number" &&
+    Number.isFinite(raw.taskIdleShutdownMs) &&
+    raw.taskIdleShutdownMs >= 0
+  ) {
+    out.taskIdleShutdownMs = raw.taskIdleShutdownMs;
   }
   return out;
 }

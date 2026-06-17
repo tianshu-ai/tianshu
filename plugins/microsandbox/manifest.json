@@ -93,35 +93,78 @@
     "fields": [
       {
         "key": "memoryMib",
-        "label": "Sandbox memory",
+        "label": "Browser sandbox memory",
         "kind": "number",
         "unit": "MiB",
         "min": 512,
         "max": 65536,
         "step": 512,
         "default": 2048,
-        "description": "RAM allotted to the sandbox VM. Increase to 8192+ MiB for browser-heavy workloads (chromium + Playwright MCP), 12288+ for build-time pip / npm of large stacks. Restart the sandbox (Reset) for the new value to take effect."
+        "description": "RAM allotted to the long-lived Browser sandbox VM. Increase to 8192+ MiB for browser-heavy workloads (chromium + Playwright MCP), 12288+ for build-time pip / npm of large stacks. Restart the sandbox (Reset) for the new value to take effect."
       },
       {
         "key": "cpus",
-        "label": "vCPU count",
+        "label": "Browser sandbox vCPU count",
         "kind": "number",
         "min": 1,
         "max": 16,
         "step": 1,
         "default": 2,
-        "description": "Logical CPU count handed to the sandbox VM. Reset the sandbox after changing."
+        "description": "Logical CPU count handed to the long-lived Browser sandbox VM. Reset the sandbox after changing."
       },
       {
         "key": "execTimeoutMs",
-        "label": "Per-exec timeout",
+        "label": "Per-exec timeout (Browser)",
         "kind": "number",
         "unit": "ms",
         "min": 5000,
         "max": 1800000,
         "step": 5000,
         "default": 300000,
-        "description": "Max wall-clock time for one `exec` call before it's force-killed. Bump this for long-running installers; consider running them with `nohup setsid … &` instead."
+        "description": "Max wall-clock time for one Browser `exec` call before it's force-killed. Bump this for long-running installers; consider running them with `nohup setsid … &` instead."
+      },
+      {
+        "key": "taskMemoryMib",
+        "label": "Task sandbox memory",
+        "kind": "number",
+        "unit": "MiB",
+        "min": 512,
+        "max": 65536,
+        "step": 512,
+        "default": 2048,
+        "description": "RAM allotted to per-task sandbox VMs (forked from the Task snapshot). Set lower than the Browser value to fit more parallel tasks; raise it for tasks that need a heavy data-science stack. Effective on the next task acquire."
+      },
+      {
+        "key": "taskCpus",
+        "label": "Task sandbox vCPU count",
+        "kind": "number",
+        "min": 1,
+        "max": 16,
+        "step": 1,
+        "default": 2,
+        "description": "Logical CPU count handed to each per-task sandbox VM. Effective on the next task acquire."
+      },
+      {
+        "key": "taskExecTimeoutMs",
+        "label": "Per-exec timeout (Task)",
+        "kind": "number",
+        "unit": "ms",
+        "min": 5000,
+        "max": 1800000,
+        "step": 5000,
+        "default": 300000,
+        "description": "Max wall-clock time for one Task `exec` call before it's force-killed. Per-task sandboxes typically run shorter, more focused commands than the Browser sandbox."
+      },
+      {
+        "key": "taskIdleShutdownMs",
+        "label": "Task sandbox idle shutdown",
+        "kind": "number",
+        "unit": "ms",
+        "min": 0,
+        "max": 86400000,
+        "step": 60000,
+        "default": 600000,
+        "description": "How long a task sandbox stays alive after its task ends before it's stopped. 0 = stop immediately on release. Higher values trade RAM for faster reuse when the same kind of task runs again soon."
       }
     ]
   }
