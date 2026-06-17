@@ -36,11 +36,16 @@ export function readFileSchema(): Tool {
 For larger files, pass \`offset\` (byte offset to start at) and \`limit\` (max bytes); the \
 response will tell you the file's full size and the next offset to use.
 
+Paths are interpreted relative to the workspace root; prefer relative paths \
+(\`notes/today.md\`) over leading-slash forms. A leading slash here resolves \
+to the workspace root — NOT the sandbox OS root — so to avoid confusion when \
+\`exec\` is also in play, write paths without a leading slash.
+
 Binary files (image, archive, etc.) return a short stub instead of bytes — extract them \
 to text first via another tool if you need their contents.`,
     parameters: Type.Object({
       path: Type.String({
-        description: 'Path relative to the workspace root, e.g. "/notes/today.md".',
+        description: 'Path relative to the workspace root, e.g. "notes/today.md".',
       }),
       offset: Type.Optional(
         Type.Integer({

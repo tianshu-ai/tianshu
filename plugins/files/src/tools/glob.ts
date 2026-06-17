@@ -30,6 +30,8 @@ export function globSchema(): Tool {
     description:
       `Find files matching a shell-style glob pattern, rooted at the workspace.\n` +
       `Supports the usual glob syntax: \`*\`, \`**\`, \`?\`, \`{a,b}\`, character classes.\n` +
+      `Patterns are interpreted relative to the workspace root \u2014 write \`**/*.md\`, \
+not \`/**/*.md\`.\n` +
       `Returns up to ${MAX_RESULTS} matching paths, sorted alphabetically.`,
     parameters: Type.Object({
       pattern: Type.String({
