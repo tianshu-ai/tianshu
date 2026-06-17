@@ -190,12 +190,29 @@ export class MicrosandboxRunner implements SandboxRunner {
     try {
       const handle = await this.ensureStarted();
       const workdir = req.workdir ?? "/workspace";
+      // Inject a per-tenant-user shell context. microsandbox v0
+      // runs every guest process as root with an empty env, so a
+      // `$USER` / `$HOME` lookup inside agent shell snippets gives
+      // back nothing useful. The agent's mental model is `userId`
+      // = the `users/<id>/` workspace it sees from file tools, so
+      // we mirror that into the shell:
+      //   USER, LOGNAME      = the tenant user id
+      //   HOME               = /workspace/users/<id> (matches
+      //                        ExecTool's default workdir)
+      //   MSB_USER_ID        = same value, namespaced for scripts
+      //                        that want to be explicit
+      // Only set when req.userId is provided; otherwise the legacy
+      // empty-env behaviour is preserved (admin debug shell, build
+      // step verifications, etc).
+      const envPrefix = req.userId
+        ? `export USER=${shellEscape(req.userId)} LOGNAME=${shellEscape(req.userId)} HOME=${shellEscape(`/workspace/users/${req.userId}`)} MSB_USER_ID=${shellEscape(req.userId)}; `
+        : "";
       // We always run through `bash -c "cd <wd> && <cmd>"` rather
       // than `shell(...)` because we want a hard-fail when the
       // workdir doesn't exist (mirrors the closed-source behaviour).
       // The microsandbox shell() wraps with `bash -lc` and ignores
       // `cd` failures.
-      const script = `set -e; cd "${shellEscape(workdir)}"; ${req.command}`;
+      const script = `set -e; ${envPrefix}cd "${shellEscape(workdir)}"; ${req.command}`;
       // Use shellStream (which yields an ExecHandle we can kill)
       // instead of shell (which is fire-and-wait). With a handle
       // we can race `collect()` against a timeout and call
