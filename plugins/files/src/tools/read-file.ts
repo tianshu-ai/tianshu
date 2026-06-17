@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
-import { markRead } from "./read-tracker.js";
+import { markChunk } from "./read-tracker.js";
 import {
   resolveInUserHome,
   toWorkspaceUri,
@@ -112,14 +112,14 @@ export function executeReadFile(
     const nextOffset = offset + bytesRead;
     const more = nextOffset < stat.size;
 
-    // Mark this path as read for the session, but only when we
-    // actually returned the whole file in one shot. Partial reads
-    // (offset>0 or more=true) shouldn't satisfy the "have you seen
-    // this file?" precondition for edit/write — the agent might
-    // be patching a region it never paged into.
-    if (offset === 0 && !more) {
-      markRead(sessionId, resolved);
-    }
+    // Track which chunk this call covered. The session-level read
+    // tracker accumulates start/end coverage across multiple
+    // `read_file` calls so that a paged read sequence (offset=0 +
+    // ... + final !more) ends up satisfying the read-required
+    // precondition just like a single one-shot read does. A purely
+    // mid-file partial read (offset>0 AND more=true) is a no-op
+    // — the agent paged a region without seeing either endpoint.
+    markChunk(sessionId, resolved, offset === 0, !more);
 
     const uri = toWorkspaceUri(userHome, resolved);
     const header =

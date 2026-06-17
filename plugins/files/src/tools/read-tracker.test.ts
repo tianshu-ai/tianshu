@@ -43,7 +43,7 @@ describe("read-required precondition", () => {
         ctx("session-1"),
       )) as { ok: boolean; text: string };
       expect(out.ok).toBe(false);
-      expect(out.text).toMatch(/must call read_file/i);
+      expect(out.text).toMatch(/call read_file/i);
       // file untouched
       expect(fs.readFileSync(path.join(userHome, "a.txt"), "utf8")).toBe(
         "alpha beta gamma",
@@ -134,9 +134,10 @@ describe("read-required precondition", () => {
       expect(e.ok).toBe(true);
     });
 
-    it("partial reads (offset>0) do NOT mark the file as read", async () => {
-      // Make a small file, then read it with offset > 0 \u2014 the
-      // executor sees this as a partial read and won't mark.
+    it("a tail-only read (offset>0, sees end) does NOT mark the file as read", async () => {
+      // Reading offset=5 of a 10-byte file lands in the tail \u2014
+      // the agent saw the end (!more) but never the start.
+      // Tracker should refuse edit until offset=0 is also seen.
       fs.writeFileSync(path.join(userHome, "a.txt"), "abcdefghij");
       const r = (await ReadFileTool.execute(
         { path: "/a.txt", offset: 5, limit: 100 },
@@ -148,6 +149,60 @@ describe("read-required precondition", () => {
         ctx("session-1"),
       )) as { ok: boolean };
       expect(e.ok).toBe(false);
+    });
+
+    it("a head-only read (offset=0 but more=true) does NOT mark the file as read", async () => {
+      // Reading offset=0 limit=1000 of a 2 KB file sees the start
+      // but not the end. Tracker should refuse edit until the end
+      // is also observed.
+      const head = Buffer.from("START_TOKEN");
+      const tail = Buffer.from("END_TOKEN");
+      const middle = Buffer.alloc(2_000 - head.length - tail.length, 65);
+      fs.writeFileSync(
+        path.join(userHome, "big.txt"),
+        Buffer.concat([head, middle, tail]),
+      );
+      const r = (await ReadFileTool.execute(
+        { path: "/big.txt", offset: 0, limit: 1_000 },
+        ctx("session-1"),
+      )) as { ok: boolean; nextOffset?: number };
+      expect(r.ok).toBe(true);
+      expect(r.nextOffset).toBe(1_000);
+      const e = (await EditFileTool.execute(
+        { path: "/big.txt", edits: [{ old_text: "START_TOKEN", new_text: "X" }] },
+        ctx("session-1"),
+      )) as { ok: boolean };
+      expect(e.ok).toBe(false);
+    });
+
+    it("paged reads covering BOTH start and end DO mark the file as read", async () => {
+      // Realistic >500 KB case: agent reads chunk 0 ... chunk N
+      // until !more. Once both endpoints are observed the tracker
+      // grants edit rights without forcing a redundant one-shot
+      // re-read.
+      const head = Buffer.from("START_TOKEN");
+      const tail = Buffer.from("END_TOKEN");
+      const middle = Buffer.alloc(2_000 - head.length - tail.length, 65);
+      fs.writeFileSync(
+        path.join(userHome, "big.txt"),
+        Buffer.concat([head, middle, tail]),
+      );
+      const a = (await ReadFileTool.execute(
+        { path: "/big.txt", offset: 0, limit: 1_000 },
+        ctx("session-1"),
+      )) as { ok: boolean };
+      expect(a.ok).toBe(true);
+      const b = (await ReadFileTool.execute(
+        { path: "/big.txt", offset: 1_000, limit: 5_000 },
+        ctx("session-1"),
+      )) as { ok: boolean; nextOffset?: number };
+      expect(b.ok).toBe(true);
+      expect(b.nextOffset).toBeUndefined();
+      const e = (await EditFileTool.execute(
+        { path: "/big.txt", edits: [{ old_text: "START_TOKEN", new_text: "X" }] },
+        ctx("session-1"),
+      )) as { ok: boolean };
+      expect(e.ok).toBe(true);
     });
   });
 

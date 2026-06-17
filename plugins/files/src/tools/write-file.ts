@@ -76,8 +76,9 @@ export function executeWriteFile(
       ok: false,
       text:
         `write_file: ${args.path} already exists and you haven't read it in this session. ` +
-        `Call read_file first so you can see what you're about to overwrite, ` +
-        `or use edit_file for a targeted change.`,
+        `Call read_file once on this path (a single full read covers any number ` +
+        `of follow-up edits in the same session) so you can see what you're ` +
+        `about to overwrite, or use edit_file for a targeted change.`,
     };
   }
 

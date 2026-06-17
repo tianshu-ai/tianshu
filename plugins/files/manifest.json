@@ -93,7 +93,7 @@
       },
       {
         "id": "read-before-edit",
-        "text": "- Call `read_file` on a path before `edit_file` (or `write_file` overwrite) of the same path. The host refuses unseen edits to prevent blind overwrites."
+        "text": "- Before `edit_file` (or `write_file` overwrite) on a file you haven't seen yet in this session, call `read_file` once. The host tracks reads per session, so a single full-file read covers any number of follow-up `edit_file` / `write_file` calls on that same path \u2014 don't re-read between edits. Files you just created with `write_file` count as already-read; you can `edit_file` them right away without reading first."
       }
     ]
   }

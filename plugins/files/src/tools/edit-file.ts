@@ -164,9 +164,10 @@ export function executeEditFile(
     return {
       ok: false,
       text:
-        `edit_file: you must call read_file on ${args.path} first — ` +
+        `edit_file: call read_file on ${args.path} once before editing — ` +
         `exact-text matching needs the file's actual current contents in your context. ` +
-        `Read the whole file (offset=0, no limit) and then retry the edit.`,
+        `A single full read (offset=0, no limit) is enough; the host remembers it ` +
+        `for the rest of this session and any number of follow-up edits.`,
     };
   }
 
