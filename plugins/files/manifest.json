@@ -72,6 +72,18 @@
     ],
     "systemPromptFragments": [
       {
+        "id": "workspace-layout",
+        "text": "WORKSPACE LAYOUT\nYour default working directory is the user's private home in this tenant.\n\nPersonal directories (use freely):\n  ./projects/<slug>/   active work; reports, code, deliverables go here.\n  ./uploads/           files the user uploaded for you to look at.\n  ./tmp/               scratch space; clean up after yourself.\n  ./trash/             soft-delete; move things here instead of removing them.\n  ./USER.md            personal preferences (read on demand)."
+      },
+      {
+        "id": "workspace-conventions",
+        "text": "Conventions:\n  - Deliverables go to ./projects/<slug>/, never the home root.\n  - When the user uploads a file, expect it under ./uploads/.\n  - Don't leave scratch artefacts in ./projects/ or the root \u2014 use ./tmp/.\n  - Other users' homes in this tenant are off-limits; you cannot reach them."
+      },
+      {
+        "id": "workspace-references",
+        "text": "Referencing files in your reply:\n  - When you point at a workspace file in your response (e.g. an image you just wrote, a generated report, an attachment), use the workspace:// URI you got back from the fs tool, e.g. `![cover](workspace:///projects/x/cover.png)`.\n  - The chat UI knows how to render those; absolute host paths or bare \"./foo\" links won't preview."
+      },
+      {
         "id": "edit-vs-write",
         "text": "- `edit_file` is for changes to an existing file (in-place exact-text replace, atomic). `write_file` is for new files or full rewrites of the entire file. Prefer editing existing files; do not create new files unless asked."
       },

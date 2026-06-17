@@ -1097,45 +1097,22 @@ export function defaultSystemPrompt(
   const lines: string[] = [
     `You are ${brand}, an open-source AI assistant.`,
     `Tenant: "${ctx.tenantId}". User: "${userId}".`,
-    ``,
-    `WORKSPACE LAYOUT`,
-    `Your default working directory is the user's private home in this tenant.`,
   ];
 
-  // Tool segments depend on which plugins are active; the chat
-  // handler injects matching capability text via a separate hook
-  // (see runPrompt). Keep the workspace layout independent.
-  lines.push(
-    `Personal directories (use freely):`,
-    `  ./projects/<slug>/   active work; reports, code, deliverables go here.`,
-    `  ./uploads/           files the user uploaded for you to look at.`,
-    `  ./tmp/               scratch space; clean up after yourself.`,
-    `  ./trash/             soft-delete; move things here instead of removing them.`,
-    `  ./USER.md            personal preferences (read on demand).`,
-    ``,
-    `Conventions:`,
-    `  - Deliverables go to ./projects/<slug>/, never the home root.`,
-    `  - When the user uploads a file, expect it under ./uploads/.`,
-    `  - Don't leave scratch artefacts in ./projects/ or the root — use ./tmp/.`,
-    `  - Other users' homes in this tenant are off-limits; you cannot reach them.`,
-    ``,
-    `Referencing files in your reply:`,
-    `  - When you point at a workspace file in your response (e.g. an image you`,
-    `    just wrote, a generated report, an attachment), use the workspace://`,
-    `    URI you got back from the fs tool, e.g. \`![cover](workspace:///projects/x/cover.png)\`.`,
-    `  - The chat UI knows how to render those; absolute host paths or bare`,
-    `    "./foo" links won't preview.`,
-    ``,
-    `Reply concisely. When you make changes, briefly say what you changed.`,
-  );
-  // Plugin-specific tool guidelines used to live here as a
-  // hardcoded block (write_file / edit_file / exec rules). Per
-  // ADR-0006 they now live in the contributing plugin's
+  // Workspace layout / directory conventions / file-reference
+  // rules used to live here as a host-hardcoded block. Per
+  // ADR-0006 they now belong to the `files` plugin's
   // `manifest.contributes.systemPromptFragments` and reach the
   // prompt via `formatPluginPromptFragments(pluginFragments)`
-  // below. The host stays plugin-agnostic; disabling a plugin
+  // below — same path as every other plugin's guidance, and the
+  // same path workers already take. Disabling the `files` plugin
   // cleanly drops its guidance from the prompt.
   //
+  // The host stays plugin-agnostic, and main + worker prompts
+  // reach symmetric layout text without the host having to inject
+  // a separate workspace block on each side.
+
+  lines.push(``, `Reply concisely. When you make changes, briefly say what you changed.`);
 
   const fragmentBlock = formatPluginPromptFragments(pluginFragments);
   if (fragmentBlock) lines.push("", fragmentBlock);
