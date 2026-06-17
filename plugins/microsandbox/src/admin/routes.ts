@@ -31,8 +31,11 @@ import {
 import {
   pointerPath,
   readPointer,
+  readPointers,
   writePointer,
+  writePointers,
   type SandboxPointer,
+  type SandboxRole,
 } from "../build/pointer.js";
 import {
   readSandboxfile,
@@ -153,7 +156,10 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     }
   };
 
-  // GET /builds → { builds: BuildMetadata[], published: SandboxPointer | null }
+  // GET /builds → each build is annotated with `roles: { browser, task }`
+  // booleans so the UI can render the per-role pills. The legacy
+  // `published` field stays on the wire (== browser-role pointer)
+  // for backwards compat with older clients reading via that name.
   const getBuilds = async (req: Request, res: Response) => {
     const c = ctx(req);
     if (!c) {
@@ -163,12 +169,26 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     const home = userHomeDir(deps, c.userId);
     try {
       const builds = await listBuildMetadata(home);
-      const pointer = await readPointer(deps.workspaceDir);
-      const enriched = builds.map((b) => ({
-        ...b,
-        published: pointer ? pointer.snapshotName === b.snapshotName : false,
-      }));
-      res.json({ builds: enriched, published: pointer });
+      const pointers = await readPointers(deps.workspaceDir);
+      const enriched = builds.map((b) => {
+        const browserActive = pointers.browser?.snapshotName === b.snapshotName;
+        const taskActive = pointers.task?.snapshotName === b.snapshotName;
+        return {
+          ...b,
+          // Legacy field — older UIs / scripts read this.
+          published: browserActive,
+          roles: {
+            browser: browserActive,
+            task: taskActive,
+          },
+        };
+      });
+      res.json({
+        builds: enriched,
+        // Legacy field; matches the browser pointer.
+        published: pointers.browser,
+        pointers,
+      });
     } catch (err) {
       res.status(500).json({
         error: "list_failed",
@@ -361,6 +381,26 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
       req.query.reset !== "" &&
       req.query.reset !== "0" &&
       req.query.reset !== "false";
+    // Which role pointer(s) to update. Defaults to `both` to
+    // preserve pre-split behaviour where one snapshot served both
+    // the long-lived browser sandbox and (future) per-task pool.
+    const roleParam =
+      typeof req.query.role === "string" ? req.query.role : "both";
+    const targetRoles: SandboxRole[] =
+      roleParam === "browser"
+        ? ["browser"]
+        : roleParam === "task"
+          ? ["task"]
+          : roleParam === "both"
+            ? ["browser", "task"]
+            : ([] as SandboxRole[]);
+    if (targetRoles.length === 0) {
+      res.status(400).json({
+        error: "invalid_role",
+        message: `role must be one of: browser, task, both (got ${JSON.stringify(roleParam)})`,
+      });
+      return;
+    }
     const home = userHomeDir(deps, c.userId);
     let meta: BuildMetadata | null;
     try {
@@ -391,7 +431,15 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
         publishedAt: new Date().toISOString(),
         publishedBy: c.userId,
       };
-      await writePointer(deps.workspaceDir, pointer);
+      // Read current state then patch only the selected roles, so
+      // toggling "task" doesn't accidentally clobber "browser" (and
+      // vice-versa).
+      const currentPointers = await readPointers(deps.workspaceDir);
+      const nextPointers = { ...currentPointers };
+      for (const role of targetRoles) {
+        nextPointers[role] = pointer;
+      }
+      await writePointers(deps.workspaceDir, nextPointers);
 
       // Optional reset: bring the live VM down and back up so it
       // boots fromSnapshot(<just-selected>). Without this the
@@ -417,6 +465,8 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
       res.json({
         ok: true,
         pointer,
+        pointers: nextPointers,
+        roles: targetRoles,
         pointerPath: pointerPath(deps.workspaceDir),
         reset: resetResult,
       });

@@ -185,6 +185,20 @@ describe("microsandbox admin routes", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  it("POST /builds/use 400s on an unrecognised role param", async () => {
+    const res = makeRes();
+    await routes.postUseBuild(
+      makeReq({
+        userId: "uu",
+        query: { build_id: "20260101-000000", role: "bogus" },
+      }),
+      res as never,
+    );
+    expect(res.statusCode).toBe(400);
+    const body = res.body as { error: string };
+    expect(body.error).toBe("invalid_role");
+  });
+
   it("POST /reset 503s when runner not available", async () => {
     const res = makeRes();
     await routes.postReset(makeReq({}), res as never);
