@@ -35,7 +35,7 @@ exec:
   # 一行装完（无 dbus）
   # x11-xserver-utils → xrandr (resize Xvfb framebuffer at runtime)
   # wmctrl            → fit chromium window to the new framebuffer
-  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates xz-utils fontconfig fonts-noto-cjk fonts-noto-color-emoji libreoffice-writer libreoffice-calc libreoffice-impress xvfb x11vnc fluxbox supervisor x11-xserver-utils wmctrl libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libxss1 libasound2 libxshmfence1 libxkbcommon0 libpango-1.0-0 libxcomposite1 libxdamage1 libxrandr2
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates xz-utils sudo fontconfig fonts-noto-cjk fonts-noto-color-emoji libreoffice-writer libreoffice-calc libreoffice-impress xvfb x11vnc fluxbox supervisor x11-xserver-utils wmctrl libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libxss1 libasound2 libxshmfence1 libxkbcommon0 libpango-1.0-0 libxcomposite1 libxdamage1 libxrandr2
 
   # Node 22 LTS — 多源 fallback。nodejs.org 主源，失败后依次走
   # npmmirror 镜像、cnpmjs 镜像。每个源走到身为止 (--retry 3)，

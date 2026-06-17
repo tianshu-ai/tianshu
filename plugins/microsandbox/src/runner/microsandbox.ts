@@ -190,29 +190,40 @@ export class MicrosandboxRunner implements SandboxRunner {
     try {
       const handle = await this.ensureStarted();
       const workdir = req.workdir ?? "/workspace";
-      // Inject a per-tenant-user shell context. microsandbox v0
-      // runs every guest process as root with an empty env, so a
-      // `$USER` / `$HOME` lookup inside agent shell snippets gives
-      // back nothing useful. The agent's mental model is `userId`
-      // = the `users/<id>/` workspace it sees from file tools, so
-      // we mirror that into the shell:
-      //   USER, LOGNAME      = the tenant user id
-      //   HOME               = /workspace/users/<id> (matches
-      //                        ExecTool's default workdir)
-      //   MSB_USER_ID        = same value, namespaced for scripts
-      //                        that want to be explicit
-      // Only set when req.userId is provided; otherwise the legacy
-      // empty-env behaviour is preserved (admin debug shell, build
-      // step verifications, etc).
-      const envPrefix = req.userId
-        ? `export USER=${shellEscape(req.userId)} LOGNAME=${shellEscape(req.userId)} HOME=${shellEscape(`/workspace/users/${req.userId}`)} MSB_USER_ID=${shellEscape(req.userId)}; `
-        : "";
-      // We always run through `bash -c "cd <wd> && <cmd>"` rather
-      // than `shell(...)` because we want a hard-fail when the
-      // workdir doesn't exist (mirrors the closed-source behaviour).
-      // The microsandbox shell() wraps with `bash -lc` and ignores
-      // `cd` failures.
-      const script = `set -e; ${envPrefix}cd "${shellEscape(workdir)}"; ${req.command}`;
+      // Switch to the tenant user (created on demand) instead of
+      // running every command as root. microsandbox v0 has no user
+      // namespace, so the OS-level uid was always 0; the agent's
+      // `whoami` answered "root", and there was no way to express
+      // "I am tenant user dev" except via the env hack we used to
+      // ship in PR #137.
+      //
+      // New approach: each `req.userId` becomes a real Linux
+      // account inside the guest with `useradd`, gets nopasswd
+      // sudoers, and the actual command runs through
+      // `runuser -u <id> -- bash -c '...'`. So:
+      //   - `whoami` returns <id>             (real uid)
+      //   - `$USER` / `$LOGNAME` set to <id>  (runuser injects)
+      //   - `$HOME` set to /workspace/users/<id> (passwd entry)
+      //   - `~` expands to that home          (shell honours $HOME)
+      //   - `sudo apt install ...` works      (nopasswd sudoers)
+      //   - `id <id>` returns a stable uid    (cksum-derived, so
+      //                                        the same userId
+      //                                        always picks the
+      //                                        same uid)
+      //
+      // The user creation is idempotent (`id <id>` short-circuits
+      // when the account already exists). Sandboxfile build steps
+      // and admin/debug exec calls (no req.userId) keep the legacy
+      // root-with-empty-env behaviour — useful for image setup
+      // and debugging the system layer directly.
+      //
+      // We also export `MSB_USER_ID` after `runuser` so scripts
+      // that want an unambiguous "injected by microsandbox" name
+      // can read it.
+      const userBlock = req.userId
+        ? buildTenantUserBlock(req.userId, workdir, req.command)
+        : `set -e; cd "${shellEscape(workdir)}"; ${req.command}`;
+      const script = userBlock;
       // Use shellStream (which yields an ExecHandle we can kill)
       // instead of shell (which is fire-and-wait). With a handle
       // we can race `collect()` against a timeout and call
@@ -483,7 +494,18 @@ export class MicrosandboxRunner implements SandboxRunner {
         .cpus(this.opts.config.cpus)
         .memory(this.opts.config.memoryMib)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .volume("/workspace", (m: any) => m.bind(ws))
+        .volume("/workspace", (m: any) =>
+          // statVirtualization("off") makes the guest see the real
+          // host uid/gid on bind-mounted files, instead of the
+          // virtualized 0:0 view that microsandbox defaults to. This
+          // is what lets a non-root tenant user (created via
+          // `useradd -u <hostUid>` below) actually read and write
+          // its own workspace directory — chmod / chown on the
+          // virtualized view of a bind-mount has no effect on the
+          // underlying access check, which is performed against the
+          // host filesystem with the real host uid.
+          m.bind(ws).statVirtualization("off"),
+        )
         // Forward host:cdp -> guest:9222 and friends. Always wired
         // even when the active image doesn't include the browser
         // stack; the forward is a no-op until something inside the
@@ -574,4 +596,70 @@ export class MicrosandboxRunner implements SandboxRunner {
 
 function shellEscape(s: string): string {
   return s.replace(/(["\\$`])/g, "\\$1");
+}
+
+// Tenant user ids reach this code from `ctx.userId`, which the host
+// derives from the auth resolver (today: hardcoded "dev"; future:
+// JWT subject). We still validate here as a defence-in-depth check
+// because the value ends up as part of a shell script (useradd /
+// runuser arguments) inside the guest.
+const TENANT_USER_ID_RE = /^[a-zA-Z][a-zA-Z0-9_-]{0,30}$/;
+
+/**
+ * Build the bash script that
+ *   1. ensures a Linux user matching `userId` exists in the guest
+ *      (idempotent useradd + sudoers grant)
+ *   2. drops to that user via `runuser` and runs `command` in `cwd`.
+ *
+ * Why host uid: microsandbox bind-mounts enforce permissions against
+ * the host's real uid even when the guest sees a virtualised owner.
+ * Combined with `.statVirtualization("off")` on the mount (set at
+ * sandbox boot) the guest now sees the real host uid, and creating
+ * the tenant user with that same uid is the only way a non-root
+ * guest process can actually access its own workspace files. All
+ * tenant users on this host therefore share one numeric uid, which
+ * is fine because the sandbox is per-tenant and per-user role names
+ * still come from `useradd -o ${name}`.
+ */
+function hostUid(): number {
+  const fn = (process as { getuid?: () => number }).getuid;
+  return typeof fn === "function" ? fn.call(process) : 1000;
+}
+
+function buildTenantUserBlock(
+  userId: string,
+  cwd: string,
+  command: string,
+): string {
+  if (!TENANT_USER_ID_RE.test(userId)) {
+    throw new Error(
+      `invalid tenant userId for sandbox exec: ${JSON.stringify(userId)}`,
+    );
+  }
+  const safeUserId = userId; // already regex-validated above
+  const home = `/workspace/users/${safeUserId}`;
+  const uid = hostUid();
+  // Shell-safe quoting of the user-supplied command: pass it as a
+  // single argv to `bash -c`, embedded as a single-quoted string so
+  // no inner expansion happens at the outer layer (the inner
+  // `bash -c` does its own parsing).
+  const innerCmd = command.replace(/'/g, `'\\''`);
+  return [
+    `set -e`,
+    // Idempotent user creation. `id <user>` short-circuits when the
+    // account exists. The `-o` flag allows reuse of an already-taken
+    // uid (necessary because we deliberately match the host uid),
+    // and the workspace bind-mount becomes the user's $HOME so a
+    // bare `cd ~` lands where the file tools see "/".
+    `if ! id ${safeUserId} >/dev/null 2>&1; then`,
+    `  useradd -d "${home}" -s /bin/bash -u ${uid} -o ${safeUserId} >/dev/null 2>&1 || true`,
+    `  echo '${safeUserId} ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/${safeUserId}`,
+    `  chmod 440 /etc/sudoers.d/${safeUserId}`,
+    `fi`,
+    // Drop to the tenant user and run the command. `runuser`
+    // initialises HOME / USER / LOGNAME from /etc/passwd, and we
+    // additionally export MSB_USER_ID for scripts that want an
+    // unambiguous "injected by microsandbox" handle.
+    `runuser -u ${safeUserId} -- env MSB_USER_ID=${safeUserId} bash -c 'cd "${shellEscape(cwd)}" && ${innerCmd}'`,
+  ].join("\n");
 }
