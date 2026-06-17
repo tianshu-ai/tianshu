@@ -340,6 +340,14 @@ export interface ExecRequest {
   /** Override timeout in ms. Default plugin-defined; the host caps
    *  this at 30 min when wiring up the agent's `exec` tool. */
   timeoutMs?: number;
+  /** Tenant-scoped user id whose context the command should run in.
+   *  Runners use it to populate `$USER`, `$LOGNAME`, `$HOME` and an
+   *  optional `$MSB_USER_ID` so shell scripts inside the guest see a
+   *  proper user context even though the guest process itself runs
+   *  as root (microsandbox has no user namespacing in v0). When
+   *  omitted, the command runs with empty `$USER` and `$HOME=/root`,
+   *  matching the SDK's default. */
+  userId?: string;
 }
 
 export interface ExecResult {

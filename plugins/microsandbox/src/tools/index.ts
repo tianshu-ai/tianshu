@@ -121,7 +121,12 @@ is wiped when you call \`reset_sandbox\`.`,
         : defaultUserWorkdir(ctx.userId);
     const timeoutMs = clampTimeout((args as { timeout_ms?: unknown }).timeout_ms);
     try {
-      const result = await runner.exec({ command, workdir, timeoutMs });
+      const result = await runner.exec({
+        command,
+        workdir,
+        timeoutMs,
+        userId: ctx.userId,
+      });
       const stdout = truncate(result.stdout);
       const stderr = truncate(result.stderr);
       return {
