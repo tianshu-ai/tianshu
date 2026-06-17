@@ -90,7 +90,10 @@ interface BuildEntry {
   sandboxfilePath: string;
   /** Legacy field == roles.browser, kept for back-compat. */
   published: boolean;
-  roles: { browser: boolean; task: boolean };
+  /** Optional because an older server build may still respond with
+   *  the pre-roles shape; we fall back to `published` (= browser
+   *  role) below when this is missing. */
+  roles?: { browser: boolean; task: boolean };
 }
 
 interface PointerEntry {
@@ -685,12 +688,12 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                     <code className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-100">
                       {b.buildId}
                     </code>
-                    {b.roles.browser && (
+                    {(b.roles?.browser ?? b.published) && (
                       <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] uppercase text-emerald-300">
                         <CheckCircle2 size={10} /> Browser
                       </span>
                     )}
-                    {b.roles.task && (
+                    {b.roles?.task && (
                       <span className="flex items-center gap-1 rounded bg-sky-900/40 px-1.5 py-0.5 text-[10px] uppercase text-sky-300">
                         <CheckCircle2 size={10} /> Task
                       </span>
@@ -707,60 +710,70 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                     </code>
                   </p>
                 </div>
-                <div className="flex flex-shrink-0 flex-col items-stretch gap-1">
-                  {/* Browser-role row: pin + optional reset of live VM */}
-                  <div className="flex items-stretch gap-px overflow-hidden rounded-md border border-gray-800">
-                    <button
-                      type="button"
-                      onClick={() => void useBuild(b.buildId, "browser", false)}
-                      disabled={usingId === b.buildId || b.roles.browser}
-                      className="flex items-center gap-1 px-2 py-1 text-[11px] text-emerald-200 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
-                      title={
-                        b.roles.browser
-                          ? "This build is already the active Browser snapshot."
-                          : "Pin this build as the long-lived Browser sandbox snapshot. The live VM keeps running its current snapshot until you reset."
-                      }
-                    >
-                      {usingId === b.buildId ? (
-                        <Loader2 size={11} className="animate-spin" />
-                      ) : (
-                        <UploadCloud size={11} />
-                      )}
-                      {b.roles.browser ? "Browser ✓" : "Use as Browser"}
-                    </button>
-                    {!b.roles.browser && (
+                {(() => {
+                  // Defensive read: an older server (pre-roles) only
+                  // sends `b.published` for the browser role and no
+                  // task field at all. Fall back so the UI keeps
+                  // rendering during a partial deploy.
+                  const browserActive = b.roles?.browser ?? b.published;
+                  const taskActive = b.roles?.task ?? false;
+                  return (
+                    <div className="flex flex-shrink-0 flex-col items-stretch gap-1">
+                      {/* Browser-role row: pin + optional reset of live VM */}
+                      <div className="flex items-stretch gap-px overflow-hidden rounded-md border border-gray-800">
+                        <button
+                          type="button"
+                          onClick={() => void useBuild(b.buildId, "browser", false)}
+                          disabled={usingId === b.buildId || browserActive}
+                          className="flex items-center gap-1 px-2 py-1 text-[11px] text-emerald-200 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={
+                            browserActive
+                              ? "This build is already the active Browser snapshot."
+                              : "Pin this build as the long-lived Browser sandbox snapshot. The live VM keeps running its current snapshot until you reset."
+                          }
+                        >
+                          {usingId === b.buildId ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : (
+                            <UploadCloud size={11} />
+                          )}
+                          {browserActive ? "Browser \u2713" : "Use as Browser"}
+                        </button>
+                        {!browserActive && (
+                          <button
+                            type="button"
+                            onClick={() => void useBuild(b.buildId, "browser", true)}
+                            disabled={usingId === b.buildId}
+                            className="flex items-center gap-1 border-l border-gray-800 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                            title="Pin as Browser + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
+                          >
+                            <RotateCcw size={11} />
+                            &amp; Reset
+                          </button>
+                        )}
+                      </div>
+                      {/* Task-role row: separate pointer; no live VM to reset today. */}
                       <button
                         type="button"
-                        onClick={() => void useBuild(b.buildId, "browser", true)}
-                        disabled={usingId === b.buildId}
-                        className="flex items-center gap-1 border-l border-gray-800 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
-                        title="Pin as Browser + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
+                        onClick={() => void useBuild(b.buildId, "task", false)}
+                        disabled={usingId === b.buildId || taskActive}
+                        className="flex items-center justify-center gap-1 rounded-md border border-gray-800 px-2 py-1 text-[11px] text-sky-200 hover:bg-sky-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        title={
+                          taskActive
+                            ? "This build is already the active Task snapshot."
+                            : "Pin this build as the per-task sandbox snapshot. Future per-task sandboxes will boot from it; takes effect on the next task acquire."
+                        }
                       >
-                        <RotateCcw size={11} />
-                        &amp; Reset
+                        {usingId === b.buildId ? (
+                          <Loader2 size={11} className="animate-spin" />
+                        ) : (
+                          <UploadCloud size={11} />
+                        )}
+                        {taskActive ? "Task \u2713" : "Use as Task"}
                       </button>
-                    )}
-                  </div>
-                  {/* Task-role row: separate pointer; no live VM to reset today. */}
-                  <button
-                    type="button"
-                    onClick={() => void useBuild(b.buildId, "task", false)}
-                    disabled={usingId === b.buildId || b.roles.task}
-                    className="flex items-center justify-center gap-1 rounded-md border border-gray-800 px-2 py-1 text-[11px] text-sky-200 hover:bg-sky-900/30 disabled:cursor-not-allowed disabled:opacity-40"
-                    title={
-                      b.roles.task
-                        ? "This build is already the active Task snapshot."
-                        : "Pin this build as the per-task sandbox snapshot. Future per-task sandboxes will boot from it; takes effect on the next task acquire."
-                    }
-                  >
-                    {usingId === b.buildId ? (
-                      <Loader2 size={11} className="animate-spin" />
-                    ) : (
-                      <UploadCloud size={11} />
-                    )}
-                    {b.roles.task ? "Task ✓" : "Use as Task"}
-                  </button>
-                </div>
+                    </div>
+                  );
+                })()}
               </div>
               {b.logTail && (
                 <details className="mt-1.5 text-[11px]">
