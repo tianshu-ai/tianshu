@@ -88,15 +88,26 @@ interface BuildEntry {
   durationMs: number;
   logTail: string;
   sandboxfilePath: string;
+  /** Legacy field == roles.browser, kept for back-compat. */
   published: boolean;
+  roles: { browser: boolean; task: boolean };
+}
+
+interface PointerEntry {
+  snapshotName: string;
+  baseImage: string;
+  publishedAt: string;
 }
 
 interface BuildsPayload {
   builds: BuildEntry[];
-  /** Server still calls the pointer field `published` on the wire
-   *  to keep the storage format stable. UI labels it as "in use". */
-  published: { snapshotName: string; baseImage: string; publishedAt: string } | null;
+  /** Legacy single pointer (== pointers.browser). Kept on the wire
+   *  for older clients; new code reads `pointers`. */
+  published: PointerEntry | null;
+  pointers: { browser: PointerEntry | null; task: PointerEntry | null };
 }
+
+type SandboxRole = "browser" | "task";
 
 const ROUTE_BASE = "/api/p/microsandbox";
 
@@ -520,13 +531,26 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
     }
   }
 
-  async function useBuild(buildId: string, reset: boolean) {
+  /**
+   * Pin a build to a role.
+   *
+   * @param role  "browser" updates the live long-lived sandbox pointer
+   *              (resets the VM when `reset=true`); "task" updates the
+   *              per-task pool pointer (no live VM today, so reset is
+   *              ignored on the wire); "both" matches the legacy
+   *              behaviour where one snapshot served everything.
+   */
+  async function useBuild(
+    buildId: string,
+    role: SandboxRole | "both",
+    reset: boolean,
+  ) {
     setUsingId(buildId);
     setError(null);
     try {
-      const url = `${ROUTE_BASE}/builds/use?build_id=${encodeURIComponent(
-        buildId,
-      )}${reset ? "&reset=1" : ""}`;
+      const params = new URLSearchParams({ build_id: buildId, role });
+      if (reset) params.set("reset", "1");
+      const url = `${ROUTE_BASE}/builds/use?${params.toString()}`;
       const r = await fetchJson<{
         ok: true;
         reset: "skipped" | "ok" | { failed: string };
@@ -554,11 +578,20 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
     <section>
       <SectionHeader
         title="Builds"
-        description={
-          data?.published
-            ? `In use: ${data.published.snapshotName}`
-            : "No build selected — the runner uses the configured default image."
-        }
+        description={(() => {
+          const b = data?.pointers?.browser;
+          const t = data?.pointers?.task;
+          if (!b && !t) {
+            return "No build selected — the runner uses the configured default image.";
+          }
+          if (b && t && b.snapshotName === t.snapshotName) {
+            return `In use (Browser + Task): ${b.snapshotName}`;
+          }
+          const parts: string[] = [];
+          if (b) parts.push(`Browser: ${b.snapshotName}`);
+          if (t) parts.push(`Task: ${t.snapshotName}`);
+          return parts.join(" · ");
+        })()}
         actions={
           <>
             <button
@@ -652,9 +685,14 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                     <code className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-100">
                       {b.buildId}
                     </code>
-                    {b.published && (
+                    {b.roles.browser && (
                       <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] uppercase text-emerald-300">
-                        <CheckCircle2 size={10} /> in use
+                        <CheckCircle2 size={10} /> Browser
+                      </span>
+                    )}
+                    {b.roles.task && (
+                      <span className="flex items-center gap-1 rounded bg-sky-900/40 px-1.5 py-0.5 text-[10px] uppercase text-sky-300">
+                        <CheckCircle2 size={10} /> Task
                       </span>
                     )}
                     <span className="text-[11px] text-gray-400">{b.baseImage}</span>
@@ -669,16 +707,50 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                     </code>
                   </p>
                 </div>
-                <div className="flex flex-shrink-0 items-stretch gap-px overflow-hidden rounded-md border border-gray-800">
+                <div className="flex flex-shrink-0 flex-col items-stretch gap-1">
+                  {/* Browser-role row: pin + optional reset of live VM */}
+                  <div className="flex items-stretch gap-px overflow-hidden rounded-md border border-gray-800">
+                    <button
+                      type="button"
+                      onClick={() => void useBuild(b.buildId, "browser", false)}
+                      disabled={usingId === b.buildId || b.roles.browser}
+                      className="flex items-center gap-1 px-2 py-1 text-[11px] text-emerald-200 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={
+                        b.roles.browser
+                          ? "This build is already the active Browser snapshot."
+                          : "Pin this build as the long-lived Browser sandbox snapshot. The live VM keeps running its current snapshot until you reset."
+                      }
+                    >
+                      {usingId === b.buildId ? (
+                        <Loader2 size={11} className="animate-spin" />
+                      ) : (
+                        <UploadCloud size={11} />
+                      )}
+                      {b.roles.browser ? "Browser ✓" : "Use as Browser"}
+                    </button>
+                    {!b.roles.browser && (
+                      <button
+                        type="button"
+                        onClick={() => void useBuild(b.buildId, "browser", true)}
+                        disabled={usingId === b.buildId}
+                        className="flex items-center gap-1 border-l border-gray-800 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        title="Pin as Browser + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
+                      >
+                        <RotateCcw size={11} />
+                        &amp; Reset
+                      </button>
+                    )}
+                  </div>
+                  {/* Task-role row: separate pointer; no live VM to reset today. */}
                   <button
                     type="button"
-                    onClick={() => void useBuild(b.buildId, false)}
-                    disabled={usingId === b.buildId || b.published}
-                    className="flex items-center gap-1 px-2 py-1 text-[11px] text-gray-300 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => void useBuild(b.buildId, "task", false)}
+                    disabled={usingId === b.buildId || b.roles.task}
+                    className="flex items-center justify-center gap-1 rounded-md border border-gray-800 px-2 py-1 text-[11px] text-sky-200 hover:bg-sky-900/30 disabled:cursor-not-allowed disabled:opacity-40"
                     title={
-                      b.published
-                        ? "This build is already in use by the tenant"
-                        : "Mark this build as the one the tenant uses; the live VM keeps running its current snapshot until you reset."
+                      b.roles.task
+                        ? "This build is already the active Task snapshot."
+                        : "Pin this build as the per-task sandbox snapshot. Future per-task sandboxes will boot from it; takes effect on the next task acquire."
                     }
                   >
                     {usingId === b.buildId ? (
@@ -686,20 +758,8 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                     ) : (
                       <UploadCloud size={11} />
                     )}
-                    {b.published ? "In use" : "Use"}
+                    {b.roles.task ? "Task ✓" : "Use as Task"}
                   </button>
-                  {!b.published && (
-                    <button
-                      type="button"
-                      onClick={() => void useBuild(b.buildId, true)}
-                      disabled={usingId === b.buildId}
-                      className="flex items-center gap-1 border-l border-gray-800 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
-                      title="Switch tenant to this build + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
-                    >
-                      <RotateCcw size={11} />
-                      &amp; Reset
-                    </button>
-                  )}
                 </div>
               </div>
               {b.logTail && (
