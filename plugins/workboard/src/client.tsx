@@ -98,6 +98,13 @@ interface Task {
   interventionReason?: string | null;
   /** 008+: ms timestamp the row entered awaiting-intervention. */
   interventionAt?: number | null;
+  /** Sandbox VM name in microsandbox's per-task pool. The pool
+   *  names every per-task VM `tianshu-task-<tenantId>-<taskId>`,
+   *  so this string identifies the exact microVM the worker
+   *  acquired (running while in_progress, stopped after release,
+   *  removed after task_delete). Surfaced in the detail dialog
+   *  for tracing. */
+  sandboxName?: string;
   createdAt: number;
   startedAt: number | null;
   endedAt: number | null;
@@ -2108,20 +2115,51 @@ function TaskModal({
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-xl bg-gray-950 border border-gray-800 rounded-lg shadow-xl flex flex-col max-h-[80vh] overflow-hidden"
       >
-        <header className="px-4 py-3 border-b border-gray-800 flex items-center gap-2">
-          <span className="text-[10px] uppercase text-gray-500 tracking-wide">
-            Task
-          </span>
-          <span className="text-[10px] text-gray-600 font-mono truncate">
-            {task.id}
-          </span>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto p-1 rounded text-gray-400 hover:text-gray-100 hover:bg-gray-800"
-          >
-            <X className="w-4 h-4" />
-          </button>
+        <header className="px-4 py-3 border-b border-gray-800 flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase text-gray-500 tracking-wide">
+              Task
+            </span>
+            <span className="text-[10px] text-gray-600 font-mono truncate">
+              {task.id}
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="ml-auto p-1 rounded text-gray-400 hover:text-gray-100 hover:bg-gray-800"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {task.sandboxName && (
+            <div
+              className="flex items-center gap-1.5"
+              title="Microsandbox VM bound to this task. Running while the worker is active, stopped after release (disk preserved), removed when the task is deleted."
+            >
+              <span className="text-[10px] uppercase text-gray-500 tracking-wide">
+                Sandbox
+              </span>
+              <code
+                className="text-[10px] text-gray-500 font-mono truncate cursor-pointer hover:text-gray-300"
+                onClick={(e) => {
+                  if (!task.sandboxName) return;
+                  void navigator.clipboard
+                    ?.writeText(task.sandboxName)
+                    .catch(() => {});
+                  // Brief visual ack: bump opacity via title swap.
+                  const t = e.currentTarget;
+                  const orig = t.title;
+                  t.title = "copied";
+                  setTimeout(() => {
+                    t.title = orig;
+                  }, 800);
+                }}
+                title="Click to copy"
+              >
+                {task.sandboxName}
+              </code>
+            </div>
+          )}
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
