@@ -77,6 +77,11 @@ export interface AgentLoopRequest {
   workerSlug?: string | null;
   /** Parent (user) session id. */
   parentSessionId?: string | null;
+  /** Workboard task id when this run is driven by a task. Plumbed
+   *  through to `AgentToolContext.taskId` so per-task tools (most
+   *  importantly the microsandbox `exec` route) can scope their
+   *  resources to the task lifecycle. */
+  taskId?: string | null;
   /** Plugin registry for tool/skill discovery. */
   pluginRegistry?: PluginRegistry;
   /** Tenant root dir on the host. */
@@ -321,6 +326,9 @@ export async function runAgentLoop(
       // but future plugins (e.g. a sub-task spawner) will, and
       // it costs nothing to plumb through.
       sessionId: sessionMeta.id,
+      // Optional task binding: lets per-task tools (microsandbox
+      // `exec`) scope resources to the task lifecycle.
+      taskId: req.taskId ?? undefined,
     },
   });
   const adapted = adaptToolset(toolset);

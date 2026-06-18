@@ -21,12 +21,16 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
   BrowserSidecar,
+  ExecRequest,
+  ExecResult,
   PluginContext,
   PluginRouteHandler,
   PluginServerExports,
   SandboxRunner,
+  SandboxStatus,
 } from "@tianshu/plugin-sdk";
 import { buildRunner, type BuiltRunner } from "./runner/index.js";
+import { SandboxPool } from "./runner/pool.js";
 import {
   BrowserHealthCheckTool,
   BuildSandboxTool,
@@ -54,12 +58,56 @@ interface ActiveState {
   sandboxName: string;
   /** Sandboxfile templates loaded once at activate(). */
   templates: SandboxfileTemplate[];
+  /** Per-task sandbox manager. Provides `sandbox.taskPool`. */
+  pool: SandboxPool;
+  /** Routing wrapper around the long-lived runner: dispatches
+   *  exec calls into the pool when ctx.taskId / ctx.sessionId
+   *  resolves to a task; otherwise falls back to the long-lived
+   *  Browser runner. Registered under `sandbox.shell`. */
+  routedRunner: SandboxRunner;
 }
 
 let active: ActiveState | null = null;
 
 function getRunner(): SandboxRunner | null {
   return active?.built.runner ?? null;
+}
+
+/**
+ * Build the SandboxRunner facade exposed under `sandbox.shell`.
+ * Almost every method delegates to the long-lived Browser runner
+ * unchanged. The exception is `exec()`: when the call carries a
+ * taskId (explicit or resolved via session binding), we dispatch
+ * to the pool's per-task sandbox.
+ */
+function buildRoutedRunner(
+  browserRunner: SandboxRunner,
+  pool: SandboxPool,
+): SandboxRunner {
+  // Build a lightweight proxy that forwards every field except
+  // exec to the underlying browser runner. Plain `Proxy` keeps
+  // the prototype + future SDK additions auto-forwarded without a
+  // version-bump churn here.
+  return new Proxy(browserRunner, {
+    get(target, prop, receiver) {
+      if (prop === "exec") {
+        return async (req: ExecRequest): Promise<ExecResult> => {
+          const taskId =
+            req.taskId ??
+            (req.sessionId
+              ? pool.resolveBySession(req.sessionId)?.taskId
+              : undefined);
+          if (taskId && pool.get(taskId)) {
+            return pool.execForTask(taskId, req);
+          }
+          return target.exec(req);
+        };
+      }
+      const value = Reflect.get(target, prop, receiver);
+      // Bind functions so `this` stays the underlying runner.
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
 }
 
 const templatesRoute: PluginRouteHandler = async (_req, res) => {
@@ -170,6 +218,14 @@ export default {
       );
     }
 
+    const pool = new SandboxPool({
+      tenantId: ctx.tenantId,
+      workspaceDir: ctx.workspaceDir,
+      config: built.config,
+      log: ctx.log,
+    });
+    const routedRunner = buildRoutedRunner(built.runner, pool);
+
     active = {
       built,
       log: ctx.log,
@@ -178,6 +234,8 @@ export default {
       workspaceDir: ctx.workspaceDir,
       sandboxName: `tianshu-${ctx.tenantId}`,
       templates,
+      pool,
+      routedRunner,
     };
     if (built.ready) {
       ctx.log.info(built.selectedReason);
@@ -220,8 +278,9 @@ export default {
 
     return {
       sandboxes: {
-        MicroSandboxRunner: built.runner,
+        MicroSandboxRunner: routedRunner,
       },
+      taskSandboxPool: pool,
       tools: {
         ExecTool,
         ResetSandboxTool,
@@ -253,6 +312,15 @@ export default {
   },
   async deactivate() {
     if (!active) return;
+    // Stop every running task sandbox first; they hold per-task
+    // microVMs that the long-lived runner doesn't know about.
+    try {
+      await active.pool.dispose();
+    } catch (err) {
+      active.log.warn(
+        `task pool dispose during deactivate failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     try {
       await active.built.runner.shutdown();
     } catch {

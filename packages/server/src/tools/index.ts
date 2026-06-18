@@ -74,6 +74,13 @@ export interface BuildToolContext {
    * context (e.g. unit tests) may skip it.
    */
   sessionId?: string;
+  /**
+   * Workboard task id this toolset is bound to. Forwarded into
+   * every tool's `AgentToolContext.taskId` so per-task tools
+   * (microsandbox `exec`) can scope resources to the task
+   * lifecycle. Absent for chat sessions.
+   */
+  taskId?: string;
 }
 
 /**
@@ -109,6 +116,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       agentScope,
       log: toolContext.log,
       sessionId: toolContext.sessionId,
+      taskId: toolContext.taskId,
     };
     let available = true;
     if (tool.available) {

@@ -6,7 +6,7 @@
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["workspace.read", "workspace.write", "process.spawn"],
-  "provides": ["sandbox.shell", "browser.cdp"],
+  "provides": ["sandbox.shell", "sandbox.taskPool", "browser.cdp"],
   "client": { "entry": "@tianshu-builtin/plugin-microsandbox/client" },
   "server": { "entry": "@tianshu-builtin/plugin-microsandbox/server" },
   "contributes": {

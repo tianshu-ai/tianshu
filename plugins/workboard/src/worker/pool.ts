@@ -30,6 +30,7 @@ import type {
   AgentLoopRunner,
   AgentLoopRunnerRequest,
   PluginLogger,
+  TaskSandboxPool,
   TenantDbHandle,
 } from "@tianshu/plugin-sdk";
 import {
@@ -133,6 +134,16 @@ export interface WorkerPoolDeps {
    *  triggered outside the workboard plugin (direct DB writes,
    *  cron jobs). 0 disables. Default 15_000. */
   pollIntervalMs?: number;
+  /**
+   * Per-task sandbox manager. Resolved from the
+   * `sandbox.taskPool` capability at activate time. When defined,
+   * runOne acquires a per-task sandbox before the worker run and
+   * releases it (stop-without-remove) on terminal update so disk
+   * state survives across attempts. When undefined (microsandbox
+   * not loaded), runs go through the long-lived sandbox.shell
+   * runner instead and there's nothing to clean up.
+   */
+  taskPool?: TaskSandboxPool;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 15_000;
@@ -382,6 +393,24 @@ export class WorkerPool {
     // reference.
     const ctl = new AbortController();
     this.runControllers.set(task.id, ctl);
+    // Acquire a per-task sandbox before the agent loop starts so
+    // the very first ExecTool call lands in a ready VM (the
+    // worker's onSessionStart hook later binds the session id to
+    // this task). When the microsandbox plugin isn't loaded the
+    // capability is undefined and we skip silently — ExecTool
+    // falls back to the long-lived runner.
+    if (this.deps.taskPool) {
+      try {
+        await this.deps.taskPool.acquireTask(task.id);
+      } catch (err) {
+        this.deps.log.warn("workboard: taskPool.acquireTask failed", {
+          taskId: task.id,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        // Fall through; the run can still proceed against the
+        // long-lived runner.
+      }
+    }
     let update: TerminalUpdate;
     try {
       update = await worker.run(task, ctl.signal);
@@ -398,6 +427,20 @@ export class WorkerPool {
       };
     } finally {
       this.runControllers.delete(task.id);
+      // Release the sandbox: stop without removing so disk state
+      // (installed packages, generated files) survives for the
+      // next attempt. Fire-and-forget — we don't block the next
+      // pickup on graceful VM shutdown.
+      if (this.deps.taskPool) {
+        try {
+          this.deps.taskPool.releaseTask(task.id);
+        } catch (err) {
+          this.deps.log.warn("workboard: taskPool.releaseTask failed", {
+            taskId: task.id,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
     }
 
     if (this.stopped) return;
@@ -732,6 +775,12 @@ export interface LLMWorkerConfig {
   /** DB handle for stamping `tasks.session_id` early so the
    *  Execution tab can tail an in-progress conversation. */
   db: TenantDbHandle;
+  /** Optional per-task sandbox manager. Plumbed through so the
+   *  worker can `bindSession(sessionId, taskId)` as soon as the
+   *  agent-loop creates the session row — lets exec tool calls
+   *  in the worker's session resolve back to its task sandbox
+   *  even if the agent loop didn't propagate `taskId` explicitly. */
+  taskPool?: TaskSandboxPool;
 }
 
 // Deny / required sets live in `./tool-policy.ts` so server seeds,
@@ -815,6 +864,10 @@ export class LLMWorker implements WorkerHandle {
       // transcript across attempts instead of N independent
       // session windows.
       resumeSessionId: shouldResume ? task.sessionId ?? undefined : undefined,
+      // Per-task sandbox: the host pipes this through to
+      // `AgentToolContext.taskId`; microsandbox routes `exec`
+      // calls under this task to its dedicated sandbox.
+      taskId: task.id,
       // Stamp the session id on the task row as soon as the host
       // creates the session, not when the run terminates. The
       // kanban Execution tab tails this in-progress conversation
@@ -828,6 +881,21 @@ export class LLMWorker implements WorkerHandle {
             taskId: task.id,
             err: err instanceof Error ? err.message : String(err),
           });
+        }
+        // Bind the freshly-created worker session to this task
+        // so per-task sandbox tooling (microsandbox `exec`) can
+        // resolve `ctx.sessionId → taskId → sandbox` in addition to
+        // the explicit `ctx.taskId` path.
+        if (this.cfg.taskPool) {
+          try {
+            this.cfg.taskPool.bindSession(sessionId, task.id);
+          } catch (err) {
+            this.cfg.log.warn("workboard: taskPool.bindSession failed", {
+              taskId: task.id,
+              sessionId,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          }
         }
       },
     });

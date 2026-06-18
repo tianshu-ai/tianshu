@@ -39,6 +39,13 @@ export interface AgentLoopRunnerRequest {
    *  inside its own bundle. When omitted, the tools fall back to
    *  scoping by `workerRole`. */
   workerSlug?: string | null;
+  /** Task id when this run is driven by a workboard task. Plumbed
+   *  through to `AgentToolContext.taskId` so per-task tools (most
+   *  importantly the microsandbox `exec` route) can scope their
+   *  resources to a single task lifecycle: the task pool boots one
+   *  sandbox per `taskId` and stops it once the task terminates.
+   *  Absent for chat sessions and ad-hoc agent loops. */
+  taskId?: string | null;
   /** Parent session id (the user's main session that requested
    *  the worker). Lets the UI render worker sessions as children. */
   parentSessionId?: string | null;

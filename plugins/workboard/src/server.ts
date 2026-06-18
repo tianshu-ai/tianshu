@@ -33,6 +33,7 @@ import type {
   SessionInboxCapability,
   ToolCatalogCapability,
   SkillCatalogCapability,
+  TaskSandboxPool,
 } from "@tianshu/plugin-sdk";
 import {
   EchoWorker,
@@ -188,6 +189,15 @@ const plugin: PluginServerModule = {
       agentRowsById.set(a.id, a);
     }
 
+    // Per-task sandbox lifecycle. Resolved up front so the
+    // factory closure (below) and the WorkerPool constructor
+    // (further down) both see the same value. When microsandbox
+    // isn't loaded this is undefined; everything falls back to
+    // the long-lived sandbox.shell runner.
+    const taskPool = ctx.capabilities.get<TaskSandboxPool>(
+      "sandbox.taskPool",
+    );
+
     const factory = (a: AgentSpec): WorkerHandle | null => {
       if (a.kind === "echo") {
         if (!echoEnabled) return null;
@@ -210,6 +220,7 @@ const plugin: PluginServerModule = {
           runner: agentLoopRunner,
           log: ctx.log,
           db: ctx.db,
+          taskPool,
         });
       }
       return null;
@@ -235,6 +246,7 @@ const plugin: PluginServerModule = {
       broadcast: (type, payload) => ctx.broadcast(type, payload),
       agents: initialAgents,
       factory,
+      taskPool,
       notifyParentSession: sessionInbox
         ? (sessionId, message) => {
             void sessionInbox.enqueue(sessionId, message).catch((err) => {
@@ -313,6 +325,19 @@ const plugin: PluginServerModule = {
       // the task isn't actively running, which is fine — the
       // status update from the abort tool is what counts.
       onTaskCancel: (taskId) => pool.cancelTaskRun(taskId),
+      // task_delete reclaims any per-task sandbox lying around.
+      // Best-effort: errors are logged but never block the
+      // database delete.
+      onTaskDelete: taskPool
+        ? (taskId) => {
+            void taskPool.destroyTask(taskId).catch((err) => {
+              ctx.log.warn("workboard: taskPool.destroyTask failed", {
+                taskId,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            });
+          }
+        : undefined,
     };
 
     // Pool refresh hook. The legacy worker_agent_* REST surface

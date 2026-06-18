@@ -78,6 +78,14 @@ export interface ToolDeps {
    * skip wiring it.
    */
   onTaskCancel?(taskId: string): boolean;
+  /**
+   * Reclaim per-task sandbox resources when a task is permanently
+   * deleted. Wired through to the microsandbox `sandbox.taskPool`
+   * capability when present. Optional: tenants without per-task
+   * sandboxes (no microsandbox plugin, or fallback runners) skip
+   * the call — deletion still succeeds.
+   */
+  onTaskDelete?(taskId: string): void;
 }
 
 interface ToolReturn {
@@ -642,6 +650,17 @@ export function buildTaskDeleteTool(deps: ToolDeps): AgentTool {
           return { ok: false, id, text: `task ${id} is not yours` };
         }
         deleteTask(deps.db, id);
+        // Best-effort sandbox teardown. Errors are logged inside
+        // the pool implementation; we don't want a stop / remove
+        // glitch to surface as a deleted-task failure.
+        try {
+          deps.onTaskDelete?.(id);
+        } catch (err) {
+          deps.log.warn("workboard: task sandbox cleanup failed", {
+            taskId: id,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
         return { ok: true, id };
       });
       const okCount = results.filter((r) => r.ok).length;

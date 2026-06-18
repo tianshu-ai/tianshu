@@ -1244,6 +1244,28 @@ function registerProvidedCapabilities(
   // Convention: exports.sandboxes is keyed by manifest.module string.
 
   for (const cap of declared) {
+    if (cap === "sandbox.taskPool") {
+      // Per-task sandbox manager: backed by
+      // exports.taskSandboxPool, not by a sandboxes[] contribution
+      // entry. (A taskPool is a *manager* of per-task runners, not
+      // a single SandboxRunner, so it doesn't fit the
+      // sandboxes[].kind == cap.slice("sandbox.") convention.)
+      const pool = entry.exports?.taskSandboxPool;
+      if (!pool || typeof pool !== "object") {
+        return {
+          ok: false,
+          reason: `provides["sandbox.taskPool"] declared but exports.taskSandboxPool missing in plugin ${entry.manifest.id}`,
+        };
+      }
+      byCapability.set(cap, {
+        capability: cap,
+        pluginId: entry.manifest.id,
+        exclusive: KNOWN_CAPABILITIES[cap].exclusive,
+        value: pool,
+      });
+      entry.capabilityInfo.provided.push(cap);
+      continue;
+    }
     if (cap.startsWith("sandbox.")) {
       const kind = cap.slice("sandbox.".length);
       const matching = sandboxes.find((s) => s.kind === kind);

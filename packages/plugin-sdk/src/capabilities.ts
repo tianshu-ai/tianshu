@@ -24,6 +24,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Run shell commands and read/write files in an isolated per-tenant workspace.",
   },
+  "sandbox.taskPool": {
+    exclusive: true,
+    description:
+      "Manage per-task sandbox lifecycle: acquire a dedicated sandbox at worker pickup time, release it (stop without removing) when the task terminates, and destroy it on task delete. Workboard binds task ids to agent sessions through this capability so per-task `exec` calls land in the right sandbox.",
+  },
   "browser.cdp": {
     exclusive: true,
     description:
