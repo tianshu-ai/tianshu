@@ -42,7 +42,9 @@ import {
 import {
   defaultSystemPrompt,
   formatAvailableSkillsBlock,
+  formatExecutionBiasBlock,
   formatPluginPromptFragments,
+  formatWorkerAgentContextBlock,
   tryAutoCompact,
 } from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
@@ -368,8 +370,36 @@ export async function runAgentLoop(
   //     `defaultSystemPrompt`.
   let systemPrompt: string;
   if (req.systemPrompt) {
+    // Worker SOUL path. Order:
+    //   <SOUL>                  identity / who-the-worker-is
+    //   <Execution Bias>         host-level behaviour rules — same
+    //                            text the main agent gets, so a
+    //                            stalled-on-no-completion failure
+    //                            mode hits both paths uniformly.
+    //   <Workspace Context>      AGENTS.md / USER.md from the
+    //                            worker's user home (SOUL.md is
+    //                            already covered by req.systemPrompt;
+    //                            inject the rest so user prefs reach
+    //                            workers too).
+    //   <plugin fragments>       how-to-use-tools (lower than
+    //                            identity, higher than discoverable
+    //                            skills).
+    //   <available skills>       situational reference.
     const skillBlock = formatAvailableSkillsBlock(skills);
-    const parts = [req.systemPrompt];
+    const parts = [req.systemPrompt, formatExecutionBiasBlock()];
+    // Worker context: only the worker's own AGENTS.md / MEMORY.md
+    // bundle plus the caller's USER.md. SOUL.md is already in
+    // req.systemPrompt above; tenant-shared AGENTS/SOUL/MEMORY are
+    // explicitly NOT injected for workers — each worker has its
+    // own scoped working notes.
+    if (req.workerSlug) {
+      const ctxBlock = formatWorkerAgentContextBlock(
+        ctx.workspaceDir,
+        ctx.userHomeDir(userId),
+        req.workerSlug,
+      );
+      if (ctxBlock) parts.push(ctxBlock);
+    }
     if (fragmentBlock) parts.push(fragmentBlock);
     if (skillBlock) parts.push(skillBlock);
     systemPrompt = parts.join("\n\n");

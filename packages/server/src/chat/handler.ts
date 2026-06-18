@@ -1112,6 +1112,46 @@ export function defaultSystemPrompt(
   // reach symmetric layout text without the host having to inject
   // a separate workspace block on each side.
 
+  // Execution Bias — host-level behaviour rules that shape every
+  // turn, regardless of which plugins are loaded. Borrowed from
+  // OpenClaw's main prompt because the failure modes it prevents
+  // ("finish with a plan/promise instead of doing the work",
+  // "weak tool result → give up rather than vary the query")
+  // matched real stalls we saw on long task runs (PR #141
+  // workboard tasks ending without task_complete being a typical
+  // case). Phrasing kept tight on purpose: the LLM only needs the
+  // rule, not a long argument for it.
+  lines.push(``, formatExecutionBiasBlock());
+
+  // Workspace context files. Each is optional; missing files emit
+  // nothing. We inject content (not paths) so the agent has them
+  // in context without having to read_file first.
+  //
+  // Layout:
+  //   _tenant/AGENTS.md   — tenant working agreements (main agent)
+  //   _tenant/SOUL.md     — main agent persona
+  //   _tenant/MEMORY.md   — tenant long-term memory
+  //   users/<userId>/USER.md — per-user preferences
+  //
+  // Files larger than the per-file cap get a head + tail snippet
+  // with a [… truncated …] marker so a runaway log can't blow the
+  // prompt budget.
+  const userHomeDir = ctx.userHomeDir(userId);
+  const ctxBlock = formatMainAgentContextBlock(
+    ctx.workspaceDir,
+    userHomeDir,
+  );
+  if (ctxBlock) lines.push("", ctxBlock);
+
+  // User onboarding rules: ask main agent to actively maintain
+  // USER.md so future runs start with concrete preferences
+  // instead of cold-asking every time. Branches on whether the
+  // file exists today — the wording shifts from "propose to
+  // start one" to "keep it accurate" so a populated file doesn't
+  // get re-prompted at users who already filled it in.
+  const hasUserFile = userMdExists(userHomeDir);
+  lines.push(``, formatUserOnboardingBlock(hasUserFile));
+
   lines.push(``, `Reply concisely. When you make changes, briefly say what you changed.`);
 
   const fragmentBlock = formatPluginPromptFragments(pluginFragments);
@@ -1121,6 +1161,214 @@ export function defaultSystemPrompt(
   if (skillBlock) lines.push("", skillBlock);
 
   return lines.join("\n");
+}
+
+/**
+ * Whether `users/<self>/USER.md` already exists for the caller.
+ * Wraps the same fs check the context block uses, but exported
+ * separately so the onboarding prompt can branch its wording
+ * without re-reading the file content.
+ */
+function userMdExists(userHomeDir: string): boolean {
+  try {
+    const p = path.join(userHomeDir, "USER.md");
+    return fs.existsSync(p) && fs.statSync(p).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * User onboarding block. Tells main agents to actively curate the
+ * per-user USER.md — ask before going off-script, then write what
+ * was learnt back so future runs start with concrete preferences.
+ *
+ * Branches on whether USER.md exists today. The cold-start wording
+ * is more proactive ("propose to start one"); the populated
+ * wording skips the proposal step and only nudges on missing /
+ * stale facts. Both versions are short — the LLM doesn't need a
+ * lecture, just the rule + the file path to write to.
+ */
+function formatUserOnboardingBlock(userMdPresent: boolean): string {
+  if (userMdPresent) {
+    return [
+      `## User Profile (USER.md)`,
+      `- Your per-user profile lives at \`USER.md\` in your workspace home (already injected above as Workspace Context). Treat it as ground truth for who the user is and how they like to work.`,
+      `- When the user reveals a new durable fact (preferred name, time zone, current projects, tool preferences, communication style, do-not-ping windows, etc.), update USER.md with \`edit_file\` (or \`write_file\` for a full rewrite) so it survives across sessions.`,
+      `- When existing entries become stale or contradicted, fix them rather than letting the file accumulate cruft.`,
+      `- Don't announce USER.md edits to the user unless they're material; small additions are routine bookkeeping.`,
+    ].join("\n");
+  }
+  return [
+    `## User Profile (USER.md)`,
+    `- There is no \`USER.md\` for this user yet. Early in the conversation, briefly propose creating one and offer to fill it from a few short questions (name to use, time zone, current projects, tool preferences, communication style, anything that should never be forgotten).`,
+    `- If they accept, create it with \`write_file({ path: "USER.md", content: ... })\` (relative path resolves to the user's workspace home) and confirm with a one-liner. If they decline, drop it for this run — don't re-ask the same session.`,
+    `- After it's created, keep it accurate over time: append new facts you learn during normal work, fix stale entries when they're contradicted.`,
+    `- Don't announce USER.md edits to the user unless they're material.`,
+  ].join("\n");
+}
+
+/**
+ * Host-level Execution Bias block. Exported so the worker
+ * agent-loop path (which builds its own systemPrompt by
+ * concatenating SOUL + fragments + skills, bypassing
+ * defaultSystemPrompt) can include the same rules without copying
+ * the strings.
+ */
+export function formatExecutionBiasBlock(): string {
+  return [
+    `## Execution Bias`,
+    `- Actionable request: act in this turn.`,
+    `- Non-final turn: use tools to advance, or ask for the one missing decision that blocks safe progress.`,
+    `- Continue until done or genuinely blocked; do not finish with a plan/promise when tools can move it forward.`,
+    `- Weak/empty tool result: vary query, path, command, or source before concluding.`,
+    `- Mutable facts need live checks: files, git, clocks, versions, services, processes, package state.`,
+    `- Final answer needs evidence: test/build/lint, screenshot, inspection, tool output, or a named blocker.`,
+    `- Longer work: brief progress update, then keep going; use background work or sub-agents when they fit.`,
+  ].join("\n");
+}
+
+// Per-file cap (in bytes). Files bigger than this get truncated
+// with a head + tail snippet so the prompt stays bounded even
+// when AGENTS.md / SOUL.md / MEMORY.md grow into multi-page docs.
+const WORKSPACE_FILE_HEAD_BYTES = 4_000;
+const WORKSPACE_FILE_TAIL_BYTES = 1_000;
+const WORKSPACE_FILE_FULL_CAP_BYTES = 6_000;
+
+/** Each entry inside the Workspace Context section. */
+interface ContextFileSpec {
+  /** Absolute path on disk. */
+  absPath: string;
+  /** Label rendered as the section title (e.g. `_tenant/AGENTS.md`). */
+  label: string;
+}
+
+/**
+ * Read a workspace file from `userHome`, returning its (possibly
+ * truncated) content or null when the file doesn't exist or is
+ * unreadable. We swallow read errors deliberately — missing files
+ * are the steady state and an unreadable file should never break
+ * prompt assembly.
+ */
+function readWorkspaceFile(filePath: string): string | null {
+  try {
+    if (!fs.existsSync(filePath)) return null;
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size === 0) return null;
+    if (stat.size <= WORKSPACE_FILE_FULL_CAP_BYTES) {
+      return fs.readFileSync(filePath, "utf8");
+    }
+    // Big file: head + tail.
+    const fd = fs.openSync(filePath, "r");
+    try {
+      const headBuf = Buffer.alloc(WORKSPACE_FILE_HEAD_BYTES);
+      fs.readSync(fd, headBuf, 0, headBuf.length, 0);
+      const tailBuf = Buffer.alloc(WORKSPACE_FILE_TAIL_BYTES);
+      fs.readSync(
+        fd,
+        tailBuf,
+        0,
+        tailBuf.length,
+        Math.max(0, stat.size - tailBuf.length),
+      );
+      const omitted = stat.size - headBuf.length - tailBuf.length;
+      return [
+        headBuf.toString("utf8"),
+        ``,
+        `[… ${omitted} bytes truncated …]`,
+        ``,
+        tailBuf.toString("utf8"),
+      ].join("\n");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Render a Workspace Context section from a list of files. Each
+ * present file becomes a `### <label>` block so the agent can
+ * attribute statements ("per `_tenant/AGENTS.md` the team
+ * prefers X"). Returns an empty string when none of the files
+ * exist on disk.
+ */
+function renderContextBlock(specs: readonly ContextFileSpec[]): string {
+  const sections: string[] = [];
+  for (const spec of specs) {
+    const content = readWorkspaceFile(spec.absPath);
+    if (content === null) continue;
+    sections.push(`### ${spec.label}`, content.trimEnd());
+  }
+  if (sections.length === 0) return "";
+  return [`## Workspace Context`, ``, ...sections].join("\n");
+}
+
+/**
+ * Main-agent context: tenant-shared working files plus the
+ * caller's per-user USER.md. SOUL / MEMORY / AGENTS live at the
+ * tenant root because they're team-wide; USER.md is the only
+ * per-user file because it captures preferences that don't
+ * generalise.
+ */
+export function formatMainAgentContextBlock(
+  workspaceDir: string,
+  userHome: string,
+): string {
+  const tenantRoot = path.join(workspaceDir, "_tenant");
+  return renderContextBlock([
+    { absPath: path.join(tenantRoot, "AGENTS.md"), label: "_tenant/AGENTS.md" },
+    { absPath: path.join(tenantRoot, "SOUL.md"), label: "_tenant/SOUL.md" },
+    { absPath: path.join(tenantRoot, "MEMORY.md"), label: "_tenant/MEMORY.md" },
+    { absPath: path.join(userHome, "USER.md"), label: "users/<self>/USER.md" },
+  ]);
+}
+
+/**
+ * Worker-agent context: the worker's own bundle (AGENTS.md /
+ * MEMORY.md — SOUL.md is already injected upstream via
+ * req.systemPrompt) plus the caller's USER.md. Workers don't
+ * read the tenant-shared SOUL/AGENTS/MEMORY because each worker
+ * has its own personality + own long-term notes scoped to its
+ * specialisation.
+ */
+export function formatWorkerAgentContextBlock(
+  workspaceDir: string,
+  userHome: string,
+  workerSlug: string,
+): string {
+  const bundleRoot = path.join(
+    workspaceDir,
+    "_tenant",
+    "config",
+    "workers",
+    workerSlug,
+  );
+  return renderContextBlock([
+    {
+      absPath: path.join(bundleRoot, "AGENTS.md"),
+      label: `_tenant/config/workers/${workerSlug}/AGENTS.md`,
+    },
+    {
+      absPath: path.join(bundleRoot, "MEMORY.md"),
+      label: `_tenant/config/workers/${workerSlug}/MEMORY.md`,
+    },
+    { absPath: path.join(userHome, "USER.md"), label: "users/<self>/USER.md" },
+  ]);
+}
+
+/**
+ * Backwards-compatible thin wrapper. The previous shape pointed
+ * to user home only; kept as an alias for tests / external
+ * callers but new code should use formatMainAgentContextBlock.
+ */
+export function formatWorkspaceContextBlock(userHome: string): string {
+  return renderContextBlock([
+    { absPath: path.join(userHome, "AGENTS.md"), label: "AGENTS.md" },
+    { absPath: path.join(userHome, "SOUL.md"), label: "SOUL.md" },
+    { absPath: path.join(userHome, "USER.md"), label: "USER.md" },
+  ]);
 }
 
 /** Render plugin-contributed system-prompt fragments. Grouped by

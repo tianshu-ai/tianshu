@@ -14,6 +14,13 @@ function fakeCtx(over: Partial<TenantContext> = {}): TenantContext {
   return {
     tenantId: "acme",
     config: { branding: { name: "Tianshu" } },
+    // defaultSystemPrompt now consults two paths to inject context
+    // files: workspaceDir/_tenant for tenant-shared SOUL/AGENTS/
+    // MEMORY, and userHomeDir for per-user USER.md. Tests don't
+    // exercise that path by default (obviously-fake paths) —
+    // readWorkspaceFile catches ENOENT and emits nothing.
+    workspaceDir: "/nonexistent-test-workspace",
+    userHomeDir: () => "/nonexistent-test-home",
     ...over,
   } as unknown as TenantContext;
 }
@@ -90,13 +97,14 @@ describe("defaultSystemPrompt", () => {
   // The host-side `defaultSystemPrompt` stays plugin-agnostic; with
   // no plugins active (fakeCtx has none) it must not mention
   // plugin-shipped tool names.
-  it("default prompt does NOT hardcode plugin-shipped tool names", () => {
+  it("default prompt does NOT hardcode plugin-shipped tool guidance (skeleton, edits[], nohup, ...)", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     expect(out).not.toContain("## Tool guidelines");
-    // None of the previously-hardcoded plugin tool names should
-    // appear without the plugin contributing them.
-    expect(out).not.toContain("write_file");
-    expect(out).not.toContain("edit_file");
+    // The previously-hardcoded plugin guidance language must not
+    // come back as host text. write_file / edit_file are tolerated
+    // here because the User Profile block names them as the canonical
+    // way to persist USER.md (the file is per-user identity, not a
+    // plugin convention) — but no other tool guidance should leak.
     expect(out).not.toMatch(/skeleton/i);
     expect(out).not.toMatch(/edits\[\]/);
     expect(out).not.toMatch(/nohup/);
@@ -117,5 +125,110 @@ describe("defaultSystemPrompt", () => {
     ]);
     expect(out).toContain("## Workspace Files");
     expect(out).toContain("edit_file");
+  });
+
+  // Execution Bias is host-hardcoded behaviour guidance — it must
+  // appear regardless of which plugins are loaded so the rules
+  // ("act in this turn", "don't finish with a plan", etc) shape
+  // every agent run, not just ones with a particular plugin set.
+  it("includes the host-level Execution Bias block", () => {
+    const out = defaultSystemPrompt(fakeCtx(), "alice");
+    expect(out).toContain("## Execution Bias");
+    expect(out).toContain("act in this turn");
+    expect(out).toContain("do not finish with a plan/promise");
+  });
+
+  it("injects tenant context files (_tenant/AGENTS, SOUL, MEMORY) plus per-user USER.md", () => {
+    // Real fs round-trip: write the files under a temp workspace
+    // matching the real layout and check the rendered prompt
+    // picks them up.
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const os = require("node:os") as typeof import("node:os");
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-ws-"));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-home-"));
+    fs.mkdirSync(path.join(ws, "_tenant"), { recursive: true });
+    fs.writeFileSync(
+      path.join(ws, "_tenant", "AGENTS.md"),
+      "team agreement: only commit on weekdays",
+    );
+    fs.writeFileSync(
+      path.join(ws, "_tenant", "MEMORY.md"),
+      "long-term note about project alpha",
+    );
+    fs.writeFileSync(path.join(home, "USER.md"), "prefers terse replies");
+    // SOUL.md missing on purpose: every file is independently optional.
+    const out = defaultSystemPrompt(
+      fakeCtx({
+        workspaceDir: ws,
+        userHomeDir: () => home,
+      } as never),
+      "alice",
+    );
+    expect(out).toContain("## Workspace Context");
+    expect(out).toContain("### _tenant/AGENTS.md");
+    expect(out).toContain("only commit on weekdays");
+    expect(out).toContain("### _tenant/MEMORY.md");
+    expect(out).toContain("long-term note about project alpha");
+    expect(out).toContain("### users/<self>/USER.md");
+    expect(out).toContain("prefers terse replies");
+    // Missing SOUL.md never appears as an empty section.
+    expect(out).not.toContain("### _tenant/SOUL.md");
+    fs.rmSync(ws, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("omits the workspace context block when none of the files exist", () => {
+    const out = defaultSystemPrompt(fakeCtx(), "alice");
+    expect(out).not.toContain("## Workspace Context");
+  });
+
+  it("prompts the agent to propose USER.md creation when none exists", () => {
+    const out = defaultSystemPrompt(fakeCtx(), "alice");
+    expect(out).toContain("## User Profile (USER.md)");
+    expect(out).toContain("There is no `USER.md` for this user yet");
+    // The cold-start branch should mention the write call so the
+    // LLM knows how to act on acceptance.
+    expect(out).toContain("write_file");
+  });
+
+  it("shifts USER.md prompt to maintenance mode when the file already exists", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const os = require("node:os") as typeof import("node:os");
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-userprof-"));
+    fs.writeFileSync(
+      path.join(home, "USER.md"),
+      "# About me\nName: Alice\nTimezone: UTC+8\n",
+    );
+    const out = defaultSystemPrompt(
+      fakeCtx({ userHomeDir: () => home } as never),
+      "alice",
+    );
+    expect(out).toContain("## User Profile (USER.md)");
+    // No proposal-to-create copy when the file's already there.
+    expect(out).not.toContain("There is no `USER.md` for this user yet");
+    // Maintenance copy mentions edit_file as the canonical path.
+    expect(out).toContain("edit_file");
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("truncates very large workspace files with a head + tail snippet", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const os = require("node:os") as typeof import("node:os");
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-ws-big-"));
+    fs.mkdirSync(path.join(ws, "_tenant"), { recursive: true });
+    // 20 KB — well over the 6 KB full-cap, triggers head/tail.
+    const big = "HEAD-MARK\n" + "x".repeat(20_000) + "\nTAIL-MARK";
+    fs.writeFileSync(path.join(ws, "_tenant", "AGENTS.md"), big);
+    const out = defaultSystemPrompt(
+      fakeCtx({ workspaceDir: ws } as never),
+      "alice",
+    );
+    expect(out).toContain("HEAD-MARK");
+    expect(out).toContain("TAIL-MARK");
+    expect(out).toContain("truncated");
+    fs.rmSync(ws, { recursive: true, force: true });
   });
 });
