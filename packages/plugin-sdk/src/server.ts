@@ -103,6 +103,18 @@ export interface PluginServerExports {
    */
   sandboxes?: Record<string, SandboxRunner>;
   /**
+   * Per-task sandbox lifecycle manager (`sandbox.taskPool`
+   * capability). The host registers it under that capability so
+   * other plugins (today: workboard) can drive task acquire/
+   * release/destroy.
+   *
+   * Distinct from `sandboxes[]` because a task pool is not a
+   * single SandboxRunner; it is a manager that creates per-task
+   * runners on demand. Plugins that don't manage per-task
+   * sandboxes (the common case) leave this undefined.
+   */
+  taskSandboxPool?: TaskSandboxPool;
+  /**
    * Agent tools the plugin contributes. Keys must match the
    * `module` strings declared in `manifest.contributes.tools[]`.
    * The host collects every active plugin's tools each agent turn
@@ -214,6 +226,16 @@ export interface AgentToolContext {
    * scheduled jobs) won't have one.
    */
   sessionId?: string;
+  /**
+   * Workboard task id when this tool call is driven by a worker
+   * pool run. Lets per-task tools scope their resources to a
+   * single task lifecycle — e.g. microsandbox routes `exec` calls
+   * for a worker session into a dedicated per-task sandbox that
+   * gets stopped when the task terminates.
+   *
+   * Absent for chat sessions and ad-hoc tool invocations.
+   */
+  taskId?: string;
 }
 
 /** Lookup-only subset of CapabilityHandle (no `on()`). */
@@ -348,6 +370,15 @@ export interface ExecRequest {
    *  omitted, the command runs with empty `$USER` and `$HOME=/root`,
    *  matching the SDK's default. */
   userId?: string;
+  /** Workboard task id when this exec belongs to a per-task run.
+   *  Routers (e.g. microsandbox) dispatch the call into the task's
+   *  dedicated sandbox; absent calls go to the long-lived runner. */
+  taskId?: string;
+  /** Chat / worker session id. Routers fall back to this when
+   *  `taskId` is absent so chat sessions linked to a task via
+   *  `TaskSandboxPool.bindSession` still land in the right
+   *  per-task sandbox. */
+  sessionId?: string;
 }
 
 export interface ExecResult {
@@ -369,6 +400,50 @@ export interface SandboxStatus {
   lastError?: string;
   /** Plugin-specific extras (image, idle countdown, sidecar status, …). */
   meta?: Record<string, unknown>;
+}
+
+/**
+ * Per-task sandbox lifecycle manager. Registered by the
+ * microsandbox plugin under the `sandbox.taskPool` capability;
+ * workboard's worker pool calls into it at task pickup / end /
+ * delete to drive the per-task microVM lifecycle.
+ *
+ * The actual `exec` routing happens transparently inside the
+ * SandboxRunner registered under `sandbox.shell`: when a tool
+ * call carries `ctx.taskId`, the runner forwards it to the pool
+ * which dispatches into the right per-task sandbox.
+ */
+export interface TaskSandboxPool {
+  /**
+   * Block until a sandbox exists for `taskId` and is ready to
+   * receive `exec` calls. Idempotent — a no-op when the sandbox
+   * is already running. When the sandbox was previously stopped
+   * (e.g. an earlier attempt terminated), this resumes it so the
+   * filesystem state from the prior run is preserved.
+   */
+  acquireTask(taskId: string, sessionId?: string): Promise<void>;
+  /**
+   * Stop (but do not remove) the sandbox bound to `taskId`. The
+   * disk image is preserved so a follow-up `acquireTask` resumes
+   * the same environment. Safe to call when the sandbox is
+   * already stopped or doesn't exist.
+   *
+   * Implementations SHOULD return promptly; do the actual stop
+   * out-of-band so the worker pool isn't blocked on next pickup.
+   */
+  releaseTask(taskId: string): Promise<void> | void;
+  /**
+   * Stop AND remove the sandbox bound to `taskId`. Called when a
+   * task is permanently deleted; reclaims disk. Safe to call when
+   * no such sandbox exists.
+   */
+  destroyTask(taskId: string): Promise<void>;
+  /**
+   * Bind a chat / worker session id to a `taskId` so the runner
+   * can route `exec` calls keyed by `ctx.sessionId` back to the
+   * task sandbox. Called from the worker's `onSessionStart` hook.
+   */
+  bindSession(sessionId: string, taskId: string): void;
 }
 
 export interface BrowserSidecar {

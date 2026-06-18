@@ -126,6 +126,8 @@ is wiped when you call \`reset_sandbox\`.`,
         workdir,
         timeoutMs,
         userId: ctx.userId,
+        taskId: ctx.taskId,
+        sessionId: ctx.sessionId,
       });
       const stdout = truncate(result.stdout);
       const stderr = truncate(result.stderr);

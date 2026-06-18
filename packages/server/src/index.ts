@@ -196,6 +196,7 @@ pluginRegistry = new PluginRegistry({
             workerRole: req.workerRole,
             workerSlug: req.workerSlug,
             parentSessionId: req.parentSessionId,
+            taskId: req.taskId,
             timeouts: req.timeouts,
             signal: req.signal,
             onSessionStart: req.onSessionStart,
