@@ -199,7 +199,7 @@ function stringParam(req: Request, name: string): string {
   return "";
 }
 
-function taskJson(t: Task): Record<string, unknown> {
+function taskJson(t: Task, tenantId: string): Record<string, unknown> {
   return {
     id: t.id,
     title: t.title,
@@ -224,6 +224,14 @@ function taskJson(t: Task): Record<string, unknown> {
     interventionReason: t.interventionReason,
     interventionAt: t.interventionAt,
     timeoutMs: t.timeoutMs,
+    // Sandbox name in microsandbox's lifecycle: the per-task pool
+    // names the VM `tianshu-task-<tenantId>-<taskId>`. Surfaced
+    // here so the UI's task detail dialog can show it for
+    // tracing during a run, after a release (stopped) or after a
+    // delete (gone). When microsandbox isn't loaded for this
+    // tenant the name is informational only — nothing is using
+    // it.
+    sandboxName: `tianshu-task-${tenantId}-${t.id}`,
   };
 }
 
@@ -295,7 +303,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       projectSlug: project ?? null,
       statuses,
     });
-    res.json({ tasks: rows.map(taskJson) });
+    res.json({ tasks: rows.map((t) => taskJson(t, deps.tenantId)) });
   };
 
   /**
@@ -386,7 +394,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
       const after = updateTask(deps.db, task.id, patch);
       if (after) task = after;
     }
-    return { ok: true, task: taskJson(task) };
+    return { ok: true, task: taskJson(task, deps.tenantId) };
   };
 
   /**
@@ -614,7 +622,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
         deps.onTaskWrite();
       }
     }
-    res.json({ task: after ? taskJson(after) : null });
+    res.json({ task: after ? taskJson(after, deps.tenantId) : null });
   };
 
   /**
