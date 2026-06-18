@@ -84,6 +84,8 @@
       { "method": "POST", "path": "/builds/use",      "handler": "postUseBuild" },
       { "method": "POST", "path": "/reset",           "handler": "postReset" },
       { "method": "POST", "path": "/exec",            "handler": "postExec" },
+      { "method": "GET",  "path": "/task-pool",       "handler": "getTaskPool" },
+      { "method": "POST", "path": "/task-pool/destroy", "handler": "postTaskPoolDestroy" },
       { "method": "GET",  "path": "/browser/status",   "handler": "getBrowserStatus" },
       { "method": "POST", "path": "/browser/restart",  "handler": "postBrowserRestart" },
       { "method": "POST", "path": "/browser/resize",   "handler": "postBrowserResize" }

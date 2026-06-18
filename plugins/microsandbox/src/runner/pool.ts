@@ -174,6 +174,34 @@ export class SandboxPool implements TaskSandboxPool {
     return this.entries.get(taskId);
   }
 
+  /**
+   * Snapshot every task entry the pool currently tracks. Used by
+   * the admin UI's pool monitor. Mutations to the returned array
+   * don't affect the pool.
+   */
+  list(): ReadonlyArray<{
+    taskId: string;
+    sandboxName: string;
+    state: TaskEntry["state"];
+    startError: string | null;
+  }> {
+    const out: Array<{
+      taskId: string;
+      sandboxName: string;
+      state: TaskEntry["state"];
+      startError: string | null;
+    }> = [];
+    for (const e of this.entries.values()) {
+      out.push({
+        taskId: e.taskId,
+        sandboxName: e.sandboxName,
+        state: e.state,
+        startError: e.startError,
+      });
+    }
+    return out;
+  }
+
   bindSession(sessionId: string, taskId: string): void {
     this.sessionToTask.set(sessionId, taskId);
   }

@@ -31,6 +31,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  Settings,
   Terminal,
   Trash2,
   UploadCloud,
@@ -205,6 +206,8 @@ function MicroSandboxAdminPage(_props: AdminPageProps) {
       <SandboxfileSection />
       <div className="my-6 border-t border-gray-800" />
       <BuildsSection onMutate={bumpRefresh} />
+      <div className="my-6 border-t border-gray-800" />
+      <TaskPoolSection refreshTick={refreshTick} />
       <div className="my-6 border-t border-gray-800" />
       <ShellSection />
       <div className="my-6 border-t border-gray-800" />
@@ -1186,6 +1189,7 @@ function ResetSection({
   const [resetting, setResetting] = useState(false);
   const [status, setStatus] = useState<SandboxStatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [configOpen, setConfigOpen] = useState(false);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -1256,6 +1260,15 @@ function ResetSection({
             >
               <RefreshCw size={12} />
               Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfigOpen(true)}
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-300"
+              title="Edit cpu / memory / timeout for both Browser and Task sandboxes"
+            >
+              <Settings size={12} />
+              Configure
             </button>
             <button
               type="button"
@@ -1332,24 +1345,274 @@ function ResetSection({
           )}
         </dl>
         )}
-        {/* Runtime parameters live in the SAME panel as the
-            status grid above so the user reads them as one
-            "Live sandbox" surface (state at the top, knobs at
-            the bottom). The thin border-top is the only visual
-            separator between read state and editable state. */}
-        <div className="border-t border-gray-800 px-3 py-3">
-          <div className="mb-2 flex items-baseline justify-between gap-2 text-[11px]">
-            <span className="font-medium uppercase tracking-wide text-gray-500">
-              Runtime parameters
-            </span>
-            <span className="text-gray-600">
-              applies on next reset
-            </span>
+        {/* Runtime parameters used to live inline here; with the
+            split into Browser-role and Task-role budgets the form
+            grew to seven fields, which made the surface feel busy
+            even when the operator just wants to glance at
+            sandbox state. Moved into a modal dialog reachable
+            from the section header ("Configure" button). */}
+      </div>
+      <ConfigureSandboxDialog
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+      />
+    </section>
+  );
+}
+
+// Wire shape returned by GET /api/p/microsandbox/task-pool. Mirrors
+// the merged-entry type the admin route builds out of the in-memory
+// SandboxPool plus microsandbox SDK's persistent sandbox index.
+interface TaskPoolEntry {
+  taskId: string;
+  sandboxName: string;
+  /** "running" | "stopped" | "starting" | "error" | "orphan".
+   *  "orphan" means the SDK still has the VM on disk but the
+   *  pool's in-memory map doesn't know about it (typical after a
+   *  process restart — we left the VMs around so disk state
+   *  survives). The "Forget" button reclaims them. */
+  poolState: string;
+  sdkStatus: string | null;
+  createdAt: string | null;
+  startError: string | null;
+}
+
+function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
+  const [entries, setEntries] = useState<TaskPoolEntry[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [destroying, setDestroying] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetchJson<{ entries: TaskPoolEntry[] }>(
+        `${ROUTE_BASE}/task-pool`,
+      );
+      setEntries(r.entries);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load, refreshTick]);
+
+  // Cheap auto-refresh: poll every 5s while the page is open.
+  // Sandbox state changes off-channel (a worker pickup spawns a
+  // VM, a finally hook stops it) and there's no event we can
+  // subscribe to, so the polling loop keeps the panel honest.
+  useEffect(() => {
+    const t = window.setInterval(() => void load(), 5_000);
+    return () => window.clearInterval(t);
+  }, [load]);
+
+  async function destroy(name: string) {
+    setDestroying(name);
+    setError(null);
+    try {
+      const url = `${ROUTE_BASE}/task-pool/destroy?sandbox_name=${encodeURIComponent(name)}`;
+      await fetchJson<{ ok: true }>(url, { method: "POST" });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDestroying(null);
+    }
+  }
+
+  const running =
+    entries?.filter((e) => e.poolState === "running").length ?? 0;
+  const total = entries?.length ?? 0;
+
+  return (
+    <section>
+      <SectionHeader
+        title="Per-task sandbox pool"
+        description={
+          total === 0
+            ? "No per-task sandboxes yet. The pool spawns one when a workboard task is picked up by a worker."
+            : `${total} sandbox${total === 1 ? "" : "es"} (${running} running)`
+        }
+        actions={
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={loading}
+            className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+          >
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+            Refresh
+          </button>
+        }
+      />
+
+      {error && <Banner kind="error" text={error} />}
+
+      {entries !== null && entries.length > 0 && (
+        <div className="overflow-hidden rounded-md border border-gray-800">
+          <table className="w-full text-[11px]">
+            <thead className="bg-gray-900/60 text-[10px] uppercase tracking-wide text-gray-500">
+              <tr>
+                <th className="px-3 py-1.5 text-left">State</th>
+                <th className="px-3 py-1.5 text-left">Sandbox</th>
+                <th className="px-3 py-1.5 text-left">Task</th>
+                <th className="px-3 py-1.5 text-left">Created</th>
+                <th className="px-3 py-1.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-800">
+              {entries.map((e) => (
+                <tr key={e.sandboxName} className="text-gray-300">
+                  <td className="px-3 py-1.5">
+                    <PoolStateChip state={e.poolState} />
+                  </td>
+                  <td className="px-3 py-1.5 font-mono text-[10px] text-gray-400">
+                    <code
+                      className="cursor-pointer hover:text-gray-100"
+                      title="Click to copy"
+                      onClick={() => {
+                        void navigator.clipboard
+                          ?.writeText(e.sandboxName)
+                          .catch(() => {});
+                      }}
+                    >
+                      {e.sandboxName}
+                    </code>
+                  </td>
+                  <td className="px-3 py-1.5 font-mono text-[10px] text-gray-500">
+                    {e.taskId.slice(0, 8)}…
+                  </td>
+                  <td className="px-3 py-1.5 text-[10px] text-gray-500">
+                    {e.createdAt
+                      ? formatRelative(e.createdAt)
+                      : "—"}
+                  </td>
+                  <td className="px-3 py-1.5 text-right">
+                    <button
+                      type="button"
+                      onClick={() => void destroy(e.sandboxName)}
+                      disabled={destroying === e.sandboxName}
+                      className="flex items-center gap-1 rounded border border-gray-800 px-2 py-0.5 text-[10px] text-rose-300 hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={
+                        e.poolState === "running"
+                          ? "Stop and remove this sandbox (also kills the running task)"
+                          : "Remove the sandbox image from disk"
+                      }
+                    >
+                      {destroying === e.sandboxName ? (
+                        <Loader2 size={10} className="animate-spin" />
+                      ) : (
+                        <Trash2 size={10} />
+                      )}
+                      {e.poolState === "orphan" ? "Forget" : "Destroy"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PoolStateChip({ state }: { state: string }) {
+  const className =
+    state === "running"
+      ? "bg-emerald-900/40 text-emerald-200 border-emerald-700/50"
+      : state === "starting"
+        ? "bg-amber-900/40 text-amber-200 border-amber-700/50"
+        : state === "error"
+          ? "bg-rose-900/40 text-rose-200 border-rose-700/50"
+          : state === "orphan"
+            ? "bg-gray-900/40 text-gray-400 border-gray-700/50"
+            : "bg-gray-900/30 text-gray-300 border-gray-800";
+  return (
+    <span
+      className={`inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide ${className}`}
+    >
+      {state}
+    </span>
+  );
+}
+
+/**
+ * Modal wrapper around the auto-generated PluginConfigForm. The
+ * form surface is large (7 numeric fields after the role split),
+ * so we keep it out of the always-visible Live sandbox card and
+ * surface it on demand.
+ */
+function ConfigureSandboxDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6"
+      onClick={onClose}
+    >
+      {/* Dialog is a flex column. Header is shrink-0 so it always
+          shows. The form body scrolls inside a flex-1 area, BUT
+          we use a CSS arbitrary-selector trick to grab the form's
+          own action row (the last direct child div with the
+          Reset/Save buttons — see PluginConfigForm.tsx:176, marked
+          with `border-t border-gray-800 pt-3`) and pin it to the
+          bottom via `position: sticky`. Keeps Save reachable
+          without scrolling for any reasonable schema length, and
+          breaks gracefully (becomes scrolled-to-end) if the form
+          shape changes. */}
+      <div
+        className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-950 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-800 px-4 py-3">
+          <div>
+            <div className="text-sm font-medium text-gray-100">
+              Sandbox runtime parameters
+            </div>
+            <div className="mt-0.5 text-[11px] text-gray-500">
+              Browser sandbox changes take effect on the next
+              Reset; Task sandbox changes take effect on the next
+              task acquire.
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+            aria-label="Close configure dialog"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        {/* DOM is: scroll-div > PluginConfigFormById-wrapper >
+            PluginConfigForm-root (.space-y-5) > [fields, error?,
+            actions (.border-t pt-3)]. Pin the actions row via the
+            4-deep last-child position so Save stays in view while
+            the fields scroll.
+
+            The scroll container deliberately has NO bottom padding
+            (px-4 pt-3 only). If it had py-3, sticky bottom-0 would
+            stop at the content edge with the padding-bottom strip
+            still visible — fields scrolling up would peek through
+            below the sticky row. By moving the bottom "breathing
+            room" into the sticky row itself (pb-3) we get an opaque
+            background that fully covers the scroll viewport. */}
+        <div className="flex-1 overflow-y-auto px-4 pt-3 [&>div>div>div:last-child]:sticky [&>div>div>div:last-child]:bottom-0 [&>div>div>div:last-child]:bg-gray-950 [&>div>div>div:last-child]:pt-3 [&>div>div>div:last-child]:pb-3">
           <PluginConfigForm pluginId="microsandbox" />
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
