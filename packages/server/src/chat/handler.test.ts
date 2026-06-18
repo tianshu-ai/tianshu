@@ -97,13 +97,14 @@ describe("defaultSystemPrompt", () => {
   // The host-side `defaultSystemPrompt` stays plugin-agnostic; with
   // no plugins active (fakeCtx has none) it must not mention
   // plugin-shipped tool names.
-  it("default prompt does NOT hardcode plugin-shipped tool names", () => {
+  it("default prompt does NOT hardcode plugin-shipped tool guidance (skeleton, edits[], nohup, ...)", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     expect(out).not.toContain("## Tool guidelines");
-    // None of the previously-hardcoded plugin tool names should
-    // appear without the plugin contributing them.
-    expect(out).not.toContain("write_file");
-    expect(out).not.toContain("edit_file");
+    // The previously-hardcoded plugin guidance language must not
+    // come back as host text. write_file / edit_file are tolerated
+    // here because the User Profile block names them as the canonical
+    // way to persist USER.md (the file is per-user identity, not a
+    // plugin convention) — but no other tool guidance should leak.
     expect(out).not.toMatch(/skeleton/i);
     expect(out).not.toMatch(/edits\[\]/);
     expect(out).not.toMatch(/nohup/);
@@ -180,6 +181,36 @@ describe("defaultSystemPrompt", () => {
   it("omits the workspace context block when none of the files exist", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     expect(out).not.toContain("## Workspace Context");
+  });
+
+  it("prompts the agent to propose USER.md creation when none exists", () => {
+    const out = defaultSystemPrompt(fakeCtx(), "alice");
+    expect(out).toContain("## User Profile (USER.md)");
+    expect(out).toContain("There is no `USER.md` for this user yet");
+    // The cold-start branch should mention the write call so the
+    // LLM knows how to act on acceptance.
+    expect(out).toContain("write_file");
+  });
+
+  it("shifts USER.md prompt to maintenance mode when the file already exists", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const os = require("node:os") as typeof import("node:os");
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-userprof-"));
+    fs.writeFileSync(
+      path.join(home, "USER.md"),
+      "# About me\nName: Alice\nTimezone: UTC+8\n",
+    );
+    const out = defaultSystemPrompt(
+      fakeCtx({ userHomeDir: () => home } as never),
+      "alice",
+    );
+    expect(out).toContain("## User Profile (USER.md)");
+    // No proposal-to-create copy when the file's already there.
+    expect(out).not.toContain("There is no `USER.md` for this user yet");
+    // Maintenance copy mentions edit_file as the canonical path.
+    expect(out).toContain("edit_file");
+    fs.rmSync(home, { recursive: true, force: true });
   });
 
   it("truncates very large workspace files with a head + tail snippet", () => {

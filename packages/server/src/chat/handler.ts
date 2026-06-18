@@ -1136,11 +1136,21 @@ export function defaultSystemPrompt(
   // Files larger than the per-file cap get a head + tail snippet
   // with a [… truncated …] marker so a runaway log can't blow the
   // prompt budget.
+  const userHomeDir = ctx.userHomeDir(userId);
   const ctxBlock = formatMainAgentContextBlock(
     ctx.workspaceDir,
-    ctx.userHomeDir(userId),
+    userHomeDir,
   );
   if (ctxBlock) lines.push("", ctxBlock);
+
+  // User onboarding rules: ask main agent to actively maintain
+  // USER.md so future runs start with concrete preferences
+  // instead of cold-asking every time. Branches on whether the
+  // file exists today — the wording shifts from "propose to
+  // start one" to "keep it accurate" so a populated file doesn't
+  // get re-prompted at users who already filled it in.
+  const hasUserFile = userMdExists(userHomeDir);
+  lines.push(``, formatUserOnboardingBlock(hasUserFile));
 
   lines.push(``, `Reply concisely. When you make changes, briefly say what you changed.`);
 
@@ -1151,6 +1161,51 @@ export function defaultSystemPrompt(
   if (skillBlock) lines.push("", skillBlock);
 
   return lines.join("\n");
+}
+
+/**
+ * Whether `users/<self>/USER.md` already exists for the caller.
+ * Wraps the same fs check the context block uses, but exported
+ * separately so the onboarding prompt can branch its wording
+ * without re-reading the file content.
+ */
+function userMdExists(userHomeDir: string): boolean {
+  try {
+    const p = path.join(userHomeDir, "USER.md");
+    return fs.existsSync(p) && fs.statSync(p).size > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * User onboarding block. Tells main agents to actively curate the
+ * per-user USER.md — ask before going off-script, then write what
+ * was learnt back so future runs start with concrete preferences.
+ *
+ * Branches on whether USER.md exists today. The cold-start wording
+ * is more proactive ("propose to start one"); the populated
+ * wording skips the proposal step and only nudges on missing /
+ * stale facts. Both versions are short — the LLM doesn't need a
+ * lecture, just the rule + the file path to write to.
+ */
+function formatUserOnboardingBlock(userMdPresent: boolean): string {
+  if (userMdPresent) {
+    return [
+      `## User Profile (USER.md)`,
+      `- Your per-user profile lives at \`USER.md\` in your workspace home (already injected above as Workspace Context). Treat it as ground truth for who the user is and how they like to work.`,
+      `- When the user reveals a new durable fact (preferred name, time zone, current projects, tool preferences, communication style, do-not-ping windows, etc.), update USER.md with \`edit_file\` (or \`write_file\` for a full rewrite) so it survives across sessions.`,
+      `- When existing entries become stale or contradicted, fix them rather than letting the file accumulate cruft.`,
+      `- Don't announce USER.md edits to the user unless they're material; small additions are routine bookkeeping.`,
+    ].join("\n");
+  }
+  return [
+    `## User Profile (USER.md)`,
+    `- There is no \`USER.md\` for this user yet. Early in the conversation, briefly propose creating one and offer to fill it from a few short questions (name to use, time zone, current projects, tool preferences, communication style, anything that should never be forgotten).`,
+    `- If they accept, create it with \`write_file({ path: "USER.md", content: ... })\` (relative path resolves to the user's workspace home) and confirm with a one-liner. If they decline, drop it for this run — don't re-ask the same session.`,
+    `- After it's created, keep it accurate over time: append new facts you learn during normal work, fix stale entries when they're contradicted.`,
+    `- Don't announce USER.md edits to the user unless they're material.`,
+  ].join("\n");
 }
 
 /**
