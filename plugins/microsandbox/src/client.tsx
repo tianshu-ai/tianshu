@@ -1597,10 +1597,13 @@ function ConfigureSandboxDialog({
         </div>
         {/* DOM is: scroll-div > PluginConfigFormById-wrapper >
             PluginConfigForm-root (.space-y-5) > [fields, error?,
-            actions (.border-t pt-3)]. We pin the actions div via
-            its 4-deep last-child position so Save stays in view
-            while the fields scroll. */}
-        <div className="flex-1 overflow-y-auto px-4 py-3 [&>div>div>div:last-child]:sticky [&>div>div>div:last-child]:bottom-0 [&>div>div>div:last-child]:-mx-4 [&>div>div>div:last-child]:-mb-3 [&>div>div>div:last-child]:bg-gray-950 [&>div>div>div:last-child]:px-4 [&>div>div>div:last-child]:py-3">
+            actions (.border-t pt-3)]. Pin the actions row via the
+            4-deep last-child position so Save stays in view while
+            the fields scroll. The opaque background hides the
+            field rows scrolling behind it; we don't use negative
+            margins (those break out of the scroll container's
+            width and the dialog visually shifts). */}
+        <div className="flex-1 overflow-y-auto px-4 py-3 [&>div>div>div:last-child]:sticky [&>div>div>div:last-child]:bottom-0 [&>div>div>div:last-child]:bg-gray-950 [&>div>div>div:last-child]:py-2">
           <PluginConfigForm pluginId="microsandbox" />
         </div>
       </div>
