@@ -90,6 +90,11 @@ export function parseManifest(raw: unknown): PluginManifest {
       (contributes?.sandboxes ?? []).map((s) => s.kind),
     );
     for (const cap of provides) {
+      // sandbox.taskPool is satisfied by exports.taskSandboxPool,
+      // not by a contributes.sandboxes[].kind entry. The registry
+      // checks the export at activation time; here we only need
+      // to skip the contributes-based validation.
+      if (cap === "sandbox.taskPool") continue;
       if (cap.startsWith("sandbox.")) {
         const kind = cap.slice("sandbox.".length);
         if (!sandboxKinds.has(kind as SandboxContribution["kind"])) {
