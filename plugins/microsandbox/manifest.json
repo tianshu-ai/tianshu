@@ -72,6 +72,10 @@
       {
         "id": "already-installed-runtimes",
         "text": "- The sandbox already ships chromium (CDP 9222), Playwright MCP (3200), LibreOffice, Node 22, and Python 3.12. Don't `apt install` / `pip install` / `playwright install` what's already there."
+      },
+      {
+        "id": "task-sandbox-is-ephemeral",
+        "text": "- If you are running as a workboard task worker (you have a workboard task id and your run will end with `task_complete`), the sandbox you `exec` in is per-task and gets stopped the moment the task terminates. Anything you nohup / setsid / disown into the background dies with the sandbox \u2014 don't try to leave servers / queues / cron jobs / file watchers running for someone else to consume. Run the work inline, capture its output to a file under your home, then `task_complete` with the file path. Long-lived background services belong in a chat session (the long-lived sandbox there survives between turns), not in a task. Installed packages, files you wrote, and other on-disk state DO survive across attempts of the same task \u2014 only running processes don't."
       }
     ],
     "apiRoutes": [
