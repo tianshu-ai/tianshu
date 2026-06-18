@@ -60,6 +60,76 @@ export function loadWorkerAgents(args: {
   return { agents, fsErrors };
 }
 
+/**
+ * Locate the workers root that scanFsWorkers would use. Returns
+ * null when no workers dir exists yet.
+ */
+function findWorkersRoot(tenantHomeDir: string): string | null {
+  const candidates = [
+    path.join(tenantHomeDir, "workspace", "_tenant", "config", "workers"),
+    path.join(tenantHomeDir, "_tenant", "config", "workers"),
+  ];
+  return candidates.find((p) => fs.existsSync(p)) ?? null;
+}
+
+/**
+ * Toggle `enabled` on a worker's agent.json. Used by the admin
+ * route that backs the enable/disable button on the worker-agents
+ * page. Returns the new enabled state on success, or null when the
+ * slug doesn't exist on disk.
+ *
+ * The fs watcher in workboard's server.ts picks up the write and
+ * triggers a pool rebuild, so the change takes effect on the next
+ * task pickup without a process restart.
+ */
+export function setAgentEnabled(args: {
+  tenantHomeDir: string;
+  slug: string;
+  enabled: boolean;
+}): { ok: true; enabled: boolean } | { ok: false; error: string } {
+  if (!/^[a-zA-Z0-9_-]+$/.test(args.slug)) {
+    return { ok: false, error: "invalid slug" };
+  }
+  const root = findWorkersRoot(args.tenantHomeDir);
+  if (!root) return { ok: false, error: "workers dir does not exist" };
+  const dir = path.join(root, args.slug);
+  const file = path.join(dir, "agent.json");
+  if (!fs.existsSync(file)) {
+    return { ok: false, error: `agent.json not found for slug ${args.slug}` };
+  }
+  let raw: string;
+  try {
+    raw = fs.readFileSync(file, "utf8");
+  } catch (err) {
+    return {
+      ok: false,
+      error: `read agent.json failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  let spec: Record<string, unknown>;
+  try {
+    spec = JSON.parse(raw);
+    if (typeof spec !== "object" || spec === null || Array.isArray(spec)) {
+      return { ok: false, error: "agent.json must be an object" };
+    }
+  } catch (err) {
+    return {
+      ok: false,
+      error: `agent.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  spec.enabled = args.enabled;
+  try {
+    fs.writeFileSync(file, JSON.stringify(spec, null, 2) + "\n", "utf8");
+  } catch (err) {
+    return {
+      ok: false,
+      error: `write agent.json failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+  return { ok: true, enabled: args.enabled };
+}
+
 function scanFsWorkers(tenantHomeDir: string): FsRecord[] {
   // Caller passes either the tenant root (`<...>/tenants/<id>`) or
   // its workspace dir (`<...>/tenants/<id>/workspace`). Both shapes

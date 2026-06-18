@@ -35,6 +35,7 @@ import type {
   SkillCatalogCapability,
   TaskSandboxPool,
 } from "@tianshu/plugin-sdk";
+import { setAgentEnabled } from "./fs-worker-agents.js";
 import {
   EchoWorker,
   LLMWorker,
@@ -392,6 +393,16 @@ const plugin: PluginServerModule = {
           agent,
           hostSkillCatalog: skillCatalog,
           tenantConfigDir,
+        }),
+      // PATCH /agents/:slug/enabled writes the bundle's agent.json.
+      // The fs watcher already in place catches the write and
+      // rebuilds the pool, so the toggle takes effect on the next
+      // task pickup without a server restart.
+      setAgentEnabled: ({ slug, enabled }) =>
+        setAgentEnabled({
+          tenantHomeDir: ctx.workspaceDir,
+          slug,
+          enabled,
         }),
     });
 
