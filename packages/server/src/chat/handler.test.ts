@@ -14,6 +14,12 @@ function fakeCtx(over: Partial<TenantContext> = {}): TenantContext {
   return {
     tenantId: "acme",
     config: { branding: { name: "Tianshu" } },
+    // defaultSystemPrompt now consults the user home dir to inject
+    // AGENTS.md / SOUL.md / USER.md when present. Tests don't
+    // exercise that path (no real files) so an obviously-fake path
+    // is enough — readWorkspaceFile catches ENOENT and emits
+    // nothing.
+    userHomeDir: () => "/nonexistent-test-home",
     ...over,
   } as unknown as TenantContext;
 }
@@ -117,5 +123,69 @@ describe("defaultSystemPrompt", () => {
     ]);
     expect(out).toContain("## Workspace Files");
     expect(out).toContain("edit_file");
+  });
+
+  // Execution Bias is host-hardcoded behaviour guidance — it must
+  // appear regardless of which plugins are loaded so the rules
+  // ("act in this turn", "don't finish with a plan", etc) shape
+  // every agent run, not just ones with a particular plugin set.
+  it("includes the host-level Execution Bias block", () => {
+    const out = defaultSystemPrompt(fakeCtx(), "alice");
+    expect(out).toContain("## Execution Bias");
+    expect(out).toContain("act in this turn");
+    expect(out).toContain("do not finish with a plan/promise");
+  });
+
+  it("injects per-user workspace context files when present", () => {
+    // Real fs round-trip: write AGENTS.md / SOUL.md / USER.md
+    // under a temp home and check the rendered prompt picks them
+    // up. Easier than mocking node:fs given how thin the read
+    // wrapper is.
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const os = require("node:os") as typeof import("node:os");
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-prompt-"));
+    fs.writeFileSync(
+      path.join(home, "AGENTS.md"),
+      "workspace agreement: only commit on weekdays",
+    );
+    fs.writeFileSync(path.join(home, "USER.md"), "prefers terse replies");
+    // SOUL.md missing on purpose: every file is independently
+    // optional.
+    const out = defaultSystemPrompt(
+      fakeCtx({ userHomeDir: () => home } as never),
+      "alice",
+    );
+    expect(out).toContain("## Workspace Context");
+    expect(out).toContain("### AGENTS.md");
+    expect(out).toContain("only commit on weekdays");
+    expect(out).toContain("### USER.md");
+    expect(out).toContain("prefers terse replies");
+    // Missing SOUL.md never appears as an empty section.
+    expect(out).not.toContain("### SOUL.md");
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("omits the workspace context block when none of the files exist", () => {
+    const out = defaultSystemPrompt(fakeCtx(), "alice");
+    expect(out).not.toContain("## Workspace Context");
+  });
+
+  it("truncates very large workspace files with a head + tail snippet", () => {
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+    const os = require("node:os") as typeof import("node:os");
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-prompt-big-"));
+    // 20 KB — well over the 6 KB full-cap, triggers head/tail.
+    const big = "HEAD-MARK\n" + "x".repeat(20_000) + "\nTAIL-MARK";
+    fs.writeFileSync(path.join(home, "AGENTS.md"), big);
+    const out = defaultSystemPrompt(
+      fakeCtx({ userHomeDir: () => home } as never),
+      "alice",
+    );
+    expect(out).toContain("HEAD-MARK");
+    expect(out).toContain("TAIL-MARK");
+    expect(out).toContain("truncated");
+    fs.rmSync(home, { recursive: true, force: true });
   });
 });

@@ -42,7 +42,9 @@ import {
 import {
   defaultSystemPrompt,
   formatAvailableSkillsBlock,
+  formatExecutionBiasBlock,
   formatPluginPromptFragments,
+  formatWorkspaceContextBlock,
   tryAutoCompact,
 } from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
@@ -368,8 +370,25 @@ export async function runAgentLoop(
   //     `defaultSystemPrompt`.
   let systemPrompt: string;
   if (req.systemPrompt) {
+    // Worker SOUL path. Order:
+    //   <SOUL>                  identity / who-the-worker-is
+    //   <Execution Bias>         host-level behaviour rules — same
+    //                            text the main agent gets, so a
+    //                            stalled-on-no-completion failure
+    //                            mode hits both paths uniformly.
+    //   <Workspace Context>      AGENTS.md / USER.md from the
+    //                            worker's user home (SOUL.md is
+    //                            already covered by req.systemPrompt;
+    //                            inject the rest so user prefs reach
+    //                            workers too).
+    //   <plugin fragments>       how-to-use-tools (lower than
+    //                            identity, higher than discoverable
+    //                            skills).
+    //   <available skills>       situational reference.
     const skillBlock = formatAvailableSkillsBlock(skills);
-    const parts = [req.systemPrompt];
+    const parts = [req.systemPrompt, formatExecutionBiasBlock()];
+    const ctxBlock = formatWorkspaceContextBlock(ctx.userHomeDir(userId));
+    if (ctxBlock) parts.push(ctxBlock);
     if (fragmentBlock) parts.push(fragmentBlock);
     if (skillBlock) parts.push(skillBlock);
     systemPrompt = parts.join("\n\n");
