@@ -14,11 +14,12 @@ function fakeCtx(over: Partial<TenantContext> = {}): TenantContext {
   return {
     tenantId: "acme",
     config: { branding: { name: "Tianshu" } },
-    // defaultSystemPrompt now consults the user home dir to inject
-    // AGENTS.md / SOUL.md / USER.md when present. Tests don't
-    // exercise that path (no real files) so an obviously-fake path
-    // is enough — readWorkspaceFile catches ENOENT and emits
-    // nothing.
+    // defaultSystemPrompt now consults two paths to inject context
+    // files: workspaceDir/_tenant for tenant-shared SOUL/AGENTS/
+    // MEMORY, and userHomeDir for per-user USER.md. Tests don't
+    // exercise that path by default (obviously-fake paths) —
+    // readWorkspaceFile catches ENOENT and emits nothing.
+    workspaceDir: "/nonexistent-test-workspace",
     userHomeDir: () => "/nonexistent-test-home",
     ...over,
   } as unknown as TenantContext;
@@ -136,33 +137,43 @@ describe("defaultSystemPrompt", () => {
     expect(out).toContain("do not finish with a plan/promise");
   });
 
-  it("injects per-user workspace context files when present", () => {
-    // Real fs round-trip: write AGENTS.md / SOUL.md / USER.md
-    // under a temp home and check the rendered prompt picks them
-    // up. Easier than mocking node:fs given how thin the read
-    // wrapper is.
+  it("injects tenant context files (_tenant/AGENTS, SOUL, MEMORY) plus per-user USER.md", () => {
+    // Real fs round-trip: write the files under a temp workspace
+    // matching the real layout and check the rendered prompt
+    // picks them up.
     const fs = require("node:fs") as typeof import("node:fs");
     const path = require("node:path") as typeof import("node:path");
     const os = require("node:os") as typeof import("node:os");
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-prompt-"));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-ws-"));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-home-"));
+    fs.mkdirSync(path.join(ws, "_tenant"), { recursive: true });
     fs.writeFileSync(
-      path.join(home, "AGENTS.md"),
-      "workspace agreement: only commit on weekdays",
+      path.join(ws, "_tenant", "AGENTS.md"),
+      "team agreement: only commit on weekdays",
+    );
+    fs.writeFileSync(
+      path.join(ws, "_tenant", "MEMORY.md"),
+      "long-term note about project alpha",
     );
     fs.writeFileSync(path.join(home, "USER.md"), "prefers terse replies");
-    // SOUL.md missing on purpose: every file is independently
-    // optional.
+    // SOUL.md missing on purpose: every file is independently optional.
     const out = defaultSystemPrompt(
-      fakeCtx({ userHomeDir: () => home } as never),
+      fakeCtx({
+        workspaceDir: ws,
+        userHomeDir: () => home,
+      } as never),
       "alice",
     );
     expect(out).toContain("## Workspace Context");
-    expect(out).toContain("### AGENTS.md");
+    expect(out).toContain("### _tenant/AGENTS.md");
     expect(out).toContain("only commit on weekdays");
-    expect(out).toContain("### USER.md");
+    expect(out).toContain("### _tenant/MEMORY.md");
+    expect(out).toContain("long-term note about project alpha");
+    expect(out).toContain("### users/<self>/USER.md");
     expect(out).toContain("prefers terse replies");
     // Missing SOUL.md never appears as an empty section.
-    expect(out).not.toContain("### SOUL.md");
+    expect(out).not.toContain("### _tenant/SOUL.md");
+    fs.rmSync(ws, { recursive: true, force: true });
     fs.rmSync(home, { recursive: true, force: true });
   });
 
@@ -175,17 +186,18 @@ describe("defaultSystemPrompt", () => {
     const fs = require("node:fs") as typeof import("node:fs");
     const path = require("node:path") as typeof import("node:path");
     const os = require("node:os") as typeof import("node:os");
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-prompt-big-"));
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-ws-big-"));
+    fs.mkdirSync(path.join(ws, "_tenant"), { recursive: true });
     // 20 KB — well over the 6 KB full-cap, triggers head/tail.
     const big = "HEAD-MARK\n" + "x".repeat(20_000) + "\nTAIL-MARK";
-    fs.writeFileSync(path.join(home, "AGENTS.md"), big);
+    fs.writeFileSync(path.join(ws, "_tenant", "AGENTS.md"), big);
     const out = defaultSystemPrompt(
-      fakeCtx({ userHomeDir: () => home } as never),
+      fakeCtx({ workspaceDir: ws } as never),
       "alice",
     );
     expect(out).toContain("HEAD-MARK");
     expect(out).toContain("TAIL-MARK");
     expect(out).toContain("truncated");
-    fs.rmSync(home, { recursive: true, force: true });
+    fs.rmSync(ws, { recursive: true, force: true });
   });
 });

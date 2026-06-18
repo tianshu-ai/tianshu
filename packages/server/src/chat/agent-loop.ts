@@ -44,7 +44,7 @@ import {
   formatAvailableSkillsBlock,
   formatExecutionBiasBlock,
   formatPluginPromptFragments,
-  formatWorkspaceContextBlock,
+  formatWorkerAgentContextBlock,
   tryAutoCompact,
 } from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
@@ -387,8 +387,19 @@ export async function runAgentLoop(
     //   <available skills>       situational reference.
     const skillBlock = formatAvailableSkillsBlock(skills);
     const parts = [req.systemPrompt, formatExecutionBiasBlock()];
-    const ctxBlock = formatWorkspaceContextBlock(ctx.userHomeDir(userId));
-    if (ctxBlock) parts.push(ctxBlock);
+    // Worker context: only the worker's own AGENTS.md / MEMORY.md
+    // bundle plus the caller's USER.md. SOUL.md is already in
+    // req.systemPrompt above; tenant-shared AGENTS/SOUL/MEMORY are
+    // explicitly NOT injected for workers — each worker has its
+    // own scoped working notes.
+    if (req.workerSlug) {
+      const ctxBlock = formatWorkerAgentContextBlock(
+        ctx.workspaceDir,
+        ctx.userHomeDir(userId),
+        req.workerSlug,
+      );
+      if (ctxBlock) parts.push(ctxBlock);
+    }
     if (fragmentBlock) parts.push(fragmentBlock);
     if (skillBlock) parts.push(skillBlock);
     systemPrompt = parts.join("\n\n");

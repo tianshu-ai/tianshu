@@ -1123,23 +1123,23 @@ export function defaultSystemPrompt(
   // rule, not a long argument for it.
   lines.push(``, formatExecutionBiasBlock());
 
-  // Workspace context files — free-form markdown the user (and,
-  // for SOUL.md, the operator) keeps under their per-user home.
-  // Each file is optional; missing files emit nothing. We inject
-  // the content (not the path) so the agent always has them in
-  // context without having to read_file before reasoning.
+  // Workspace context files. Each is optional; missing files emit
+  // nothing. We inject content (not paths) so the agent has them
+  // in context without having to read_file first.
   //
-  //   AGENTS.md  — per-workspace working agreements
-  //   SOUL.md    — main agent persona / preferences (worker SOUL
-  //                comes from req.systemPrompt, not from here)
-  //   USER.md    — facts about the user the agent should remember
+  // Layout:
+  //   _tenant/AGENTS.md   — tenant working agreements (main agent)
+  //   _tenant/SOUL.md     — main agent persona
+  //   _tenant/MEMORY.md   — tenant long-term memory
+  //   users/<userId>/USER.md — per-user preferences
   //
-  // Total inject is capped at WORKSPACE_FILE_BUDGET_BYTES across
-  // all three so a runaway file (think MEMORY-style log) can't
-  // blow the prompt budget. Files larger than their per-file cap
-  // get a head + tail with a [… truncated …] marker.
-  const userHome = ctx.userHomeDir(userId);
-  const ctxBlock = formatWorkspaceContextBlock(userHome);
+  // Files larger than the per-file cap get a head + tail snippet
+  // with a [… truncated …] marker so a runaway log can't blow the
+  // prompt budget.
+  const ctxBlock = formatMainAgentContextBlock(
+    ctx.workspaceDir,
+    ctx.userHomeDir(userId),
+  );
   if (ctxBlock) lines.push("", ctxBlock);
 
   lines.push(``, `Reply concisely. When you make changes, briefly say what you changed.`);
@@ -1175,15 +1175,18 @@ export function formatExecutionBiasBlock(): string {
 
 // Per-file cap (in bytes). Files bigger than this get truncated
 // with a head + tail snippet so the prompt stays bounded even
-// when AGENTS.md / SOUL.md / USER.md grow into multi-page docs.
+// when AGENTS.md / SOUL.md / MEMORY.md grow into multi-page docs.
 const WORKSPACE_FILE_HEAD_BYTES = 4_000;
 const WORKSPACE_FILE_TAIL_BYTES = 1_000;
 const WORKSPACE_FILE_FULL_CAP_BYTES = 6_000;
-const WORKSPACE_FILES = [
-  "AGENTS.md",
-  "SOUL.md",
-  "USER.md",
-] as const;
+
+/** Each entry inside the Workspace Context section. */
+interface ContextFileSpec {
+  /** Absolute path on disk. */
+  absPath: string;
+  /** Label rendered as the section title (e.g. `_tenant/AGENTS.md`). */
+  label: string;
+}
 
 /**
  * Read a workspace file from `userHome`, returning its (possibly
@@ -1230,28 +1233,87 @@ function readWorkspaceFile(filePath: string): string | null {
 }
 
 /**
- * Build the per-user workspace context block. Each present file
- * becomes a fenced section labelled with its path so the agent
- * can attribute statements ("per AGENTS.md you prefer X"). Returns
- * an empty string when no file exists.
+ * Render a Workspace Context section from a list of files. Each
+ * present file becomes a `### <label>` block so the agent can
+ * attribute statements ("per `_tenant/AGENTS.md` the team
+ * prefers X"). Returns an empty string when none of the files
+ * exist on disk.
  */
-export function formatWorkspaceContextBlock(userHome: string): string {
+function renderContextBlock(specs: readonly ContextFileSpec[]): string {
   const sections: string[] = [];
-  for (const name of WORKSPACE_FILES) {
-    const content = readWorkspaceFile(path.join(userHome, name));
+  for (const spec of specs) {
+    const content = readWorkspaceFile(spec.absPath);
     if (content === null) continue;
-    sections.push(
-      `### ${name}`,
-      content.trimEnd(),
-    );
+    sections.push(`### ${spec.label}`, content.trimEnd());
   }
   if (sections.length === 0) return "";
-  return [
-    `## Workspace Context`,
-    `The following user-editable files are loaded from ${userHome}.`,
-    ``,
-    ...sections,
-  ].join("\n");
+  return [`## Workspace Context`, ``, ...sections].join("\n");
+}
+
+/**
+ * Main-agent context: tenant-shared working files plus the
+ * caller's per-user USER.md. SOUL / MEMORY / AGENTS live at the
+ * tenant root because they're team-wide; USER.md is the only
+ * per-user file because it captures preferences that don't
+ * generalise.
+ */
+export function formatMainAgentContextBlock(
+  workspaceDir: string,
+  userHome: string,
+): string {
+  const tenantRoot = path.join(workspaceDir, "_tenant");
+  return renderContextBlock([
+    { absPath: path.join(tenantRoot, "AGENTS.md"), label: "_tenant/AGENTS.md" },
+    { absPath: path.join(tenantRoot, "SOUL.md"), label: "_tenant/SOUL.md" },
+    { absPath: path.join(tenantRoot, "MEMORY.md"), label: "_tenant/MEMORY.md" },
+    { absPath: path.join(userHome, "USER.md"), label: "users/<self>/USER.md" },
+  ]);
+}
+
+/**
+ * Worker-agent context: the worker's own bundle (AGENTS.md /
+ * MEMORY.md — SOUL.md is already injected upstream via
+ * req.systemPrompt) plus the caller's USER.md. Workers don't
+ * read the tenant-shared SOUL/AGENTS/MEMORY because each worker
+ * has its own personality + own long-term notes scoped to its
+ * specialisation.
+ */
+export function formatWorkerAgentContextBlock(
+  workspaceDir: string,
+  userHome: string,
+  workerSlug: string,
+): string {
+  const bundleRoot = path.join(
+    workspaceDir,
+    "_tenant",
+    "config",
+    "workers",
+    workerSlug,
+  );
+  return renderContextBlock([
+    {
+      absPath: path.join(bundleRoot, "AGENTS.md"),
+      label: `_tenant/config/workers/${workerSlug}/AGENTS.md`,
+    },
+    {
+      absPath: path.join(bundleRoot, "MEMORY.md"),
+      label: `_tenant/config/workers/${workerSlug}/MEMORY.md`,
+    },
+    { absPath: path.join(userHome, "USER.md"), label: "users/<self>/USER.md" },
+  ]);
+}
+
+/**
+ * Backwards-compatible thin wrapper. The previous shape pointed
+ * to user home only; kept as an alias for tests / external
+ * callers but new code should use formatMainAgentContextBlock.
+ */
+export function formatWorkspaceContextBlock(userHome: string): string {
+  return renderContextBlock([
+    { absPath: path.join(userHome, "AGENTS.md"), label: "AGENTS.md" },
+    { absPath: path.join(userHome, "SOUL.md"), label: "SOUL.md" },
+    { absPath: path.join(userHome, "USER.md"), label: "USER.md" },
+  ]);
 }
 
 /** Render plugin-contributed system-prompt fragments. Grouped by
