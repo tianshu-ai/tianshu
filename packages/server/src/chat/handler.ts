@@ -1190,21 +1190,21 @@ function userMdExists(userHomeDir: string): boolean {
  * lecture, just the rule + the file path to write to.
  */
 function formatUserOnboardingBlock(userMdPresent: boolean): string {
-  if (userMdPresent) {
-    return [
-      `## User Profile (USER.md)`,
-      `- Your per-user profile lives at \`USER.md\` in your workspace home (already injected above as Workspace Context). Treat it as ground truth for who the user is and how they like to work.`,
-      `- When the user reveals a new durable fact (preferred name, time zone, current projects, tool preferences, communication style, do-not-ping windows, etc.), update USER.md with \`edit_file\` (or \`write_file\` for a full rewrite) so it survives across sessions.`,
-      `- When existing entries become stale or contradicted, fix them rather than letting the file accumulate cruft.`,
-      `- Don't announce USER.md edits to the user unless they're material; small additions are routine bookkeeping.`,
-    ].join("\n");
-  }
+  // Same prompt regardless of whether the file exists — the LLM
+  // makes the call by inspecting the Workspace Context block above.
+  // (We tried branching on `userMdExists` but a USER.md that's
+  // just the empty template scaffolding got treated as "populated"
+  // and the cold-start questions never fired. Pushing the
+  // "populated vs scaffold" judgement into the LLM is more robust
+  // than parsing markdown templates here.)
+  void userMdPresent;
   return [
     `## User Profile (USER.md)`,
-    `- There is no \`USER.md\` for this user yet. Early in the conversation, briefly propose creating one and offer to fill it from a few short questions (name to use, time zone, current projects, tool preferences, communication style, anything that should never be forgotten).`,
-    `- If they accept, create it with \`write_file({ path: "USER.md", content: ... })\` (relative path resolves to the user's workspace home) and confirm with a one-liner. If they decline, drop it for this run — don't re-ask the same session.`,
-    `- After it's created, keep it accurate over time: append new facts you learn during normal work, fix stale entries when they're contradicted.`,
-    `- Don't announce USER.md edits to the user unless they're material.`,
+    `- The user's personal profile lives at \`USER.md\` in their workspace home. Look for it in the Workspace Context block above. Treat real entries as ground truth for who the user is and how they like to work.`,
+    `- Distinguish a *populated* USER.md (concrete entries: a real name, time zone, projects, preferences) from an *empty template / scaffold* (only headings, hints in italics, or empty form fields like \`**Name:**\`).`,
+    `- If the file is missing OR is just an empty scaffold: early in the conversation, briefly offer to fill it from a few short questions (name to use, time zone, current projects, tool preferences, communication style, anything that should never be forgotten). If the user accepts, write the file with \`write_file({ path: "USER.md", content: ... })\` (relative path resolves to their workspace home) and confirm with one line. If the user declines, drop it for this run — don't re-ask the same session.`,
+    `- If the file is populated: don't ask intro questions again. Just keep it accurate: when the user reveals a new durable fact during normal work, update USER.md with \`edit_file\` (or \`write_file\` for a full rewrite). Fix stale entries when contradicted.`,
+    `- Don't announce USER.md edits to the user unless they're material; small additions are routine bookkeeping.`,
   ].join("\n");
 }
 

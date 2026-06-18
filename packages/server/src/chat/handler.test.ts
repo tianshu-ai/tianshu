@@ -183,16 +183,21 @@ describe("defaultSystemPrompt", () => {
     expect(out).not.toContain("## Workspace Context");
   });
 
-  it("prompts the agent to propose USER.md creation when none exists", () => {
+  it("includes the User Profile prompt with both populated and scaffold guidance", () => {
+    // The prompt is uniform regardless of whether USER.md exists —
+    // the LLM judges populated-vs-scaffold from the Workspace
+    // Context block. So the host text always carries both branches.
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     expect(out).toContain("## User Profile (USER.md)");
-    expect(out).toContain("There is no `USER.md` for this user yet");
-    // The cold-start branch should mention the write call so the
-    // LLM knows how to act on acceptance.
+    // Cold-start / scaffold branch language present.
+    expect(out).toMatch(/empty (template|scaffold)/i);
     expect(out).toContain("write_file");
+    // Maintenance branch language present.
+    expect(out).toContain("edit_file");
+    expect(out).toMatch(/keep it accurate/i);
   });
 
-  it("shifts USER.md prompt to maintenance mode when the file already exists", () => {
+  it("surfaces an existing USER.md via the Workspace Context block (LLM judges populated-vs-scaffold)", () => {
     const fs = require("node:fs") as typeof import("node:fs");
     const path = require("node:path") as typeof import("node:path");
     const os = require("node:os") as typeof import("node:os");
@@ -205,11 +210,10 @@ describe("defaultSystemPrompt", () => {
       fakeCtx({ userHomeDir: () => home } as never),
       "alice",
     );
+    expect(out).toContain("## Workspace Context");
+    expect(out).toContain("### users/<self>/USER.md");
+    expect(out).toContain("Name: Alice");
     expect(out).toContain("## User Profile (USER.md)");
-    // No proposal-to-create copy when the file's already there.
-    expect(out).not.toContain("There is no `USER.md` for this user yet");
-    // Maintenance copy mentions edit_file as the canonical path.
-    expect(out).toContain("edit_file");
     fs.rmSync(home, { recursive: true, force: true });
   });
 
