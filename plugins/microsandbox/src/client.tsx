@@ -1561,11 +1561,21 @@ function ConfigureSandboxDialog({
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6"
       onClick={onClose}
     >
+      {/* Dialog is a flex column. Header is shrink-0 so it always
+          shows. The form body scrolls inside a flex-1 area, BUT
+          we use a CSS arbitrary-selector trick to grab the form's
+          own action row (the last direct child div with the
+          Reset/Save buttons — see PluginConfigForm.tsx:176, marked
+          with `border-t border-gray-800 pt-3`) and pin it to the
+          bottom via `position: sticky`. Keeps Save reachable
+          without scrolling for any reasonable schema length, and
+          breaks gracefully (becomes scrolled-to-end) if the form
+          shape changes. */}
       <div
-        className="w-full max-w-lg rounded-lg border border-gray-800 bg-gray-950 shadow-2xl"
+        className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-950 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-gray-800 px-4 py-3">
           <div>
             <div className="text-sm font-medium text-gray-100">
               Sandbox runtime parameters
@@ -1585,7 +1595,7 @@ function ConfigureSandboxDialog({
             <X size={14} />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto px-4 py-3">
+        <div className="flex-1 overflow-y-auto px-4 py-3 [&>div>div:last-child]:sticky [&>div>div:last-child]:bottom-0 [&>div>div:last-child]:-mx-4 [&>div>div:last-child]:-mb-3 [&>div>div:last-child]:bg-gray-950 [&>div>div:last-child]:px-4 [&>div>div:last-child]:py-3">
           <PluginConfigForm pluginId="microsandbox" />
         </div>
       </div>
