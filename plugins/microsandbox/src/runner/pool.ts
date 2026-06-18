@@ -369,22 +369,30 @@ export class SandboxPool implements TaskSandboxPool {
    */
   async destroyTask(taskId: string): Promise<void> {
     const entry = this.entries.get(taskId);
-    if (!entry) return;
-    // Wait for any in-flight startup so we don't race the SDK.
-    if (entry.startPromise) {
-      try {
-        await entry.startPromise;
-      } catch {
-        /* startup may have failed; we can still attempt remove */
+    // Sandbox name is deterministic (tianshu-task-<tenantId>-<taskId>),
+    // so we can reclaim the on-disk image even when the in-memory
+    // pool entry is missing — the typical case for orphan VMs left
+    // behind by a previous process incarnation. Synthesise an entry
+    // so the regular stop-and-remove path runs uniformly.
+    const sandboxName =
+      entry?.sandboxName ?? `tianshu-task-${this.opts.tenantId}-${taskId}`;
+    if (entry) {
+      // Wait for any in-flight startup so we don't race the SDK.
+      if (entry.startPromise) {
+        try {
+          await entry.startPromise;
+        } catch {
+          /* startup may have failed; we can still attempt remove */
+        }
       }
-    }
-    if (entry.state === "running") {
-      await this.stopEntry(entry);
-    }
-    this.entries.delete(taskId);
-    // Drop session bindings pointing at this taskId.
-    for (const [sid, tid] of this.sessionToTask) {
-      if (tid === taskId) this.sessionToTask.delete(sid);
+      if (entry.state === "running") {
+        await this.stopEntry(entry);
+      }
+      this.entries.delete(taskId);
+      // Drop session bindings pointing at this taskId.
+      for (const [sid, tid] of this.sessionToTask) {
+        if (tid === taskId) this.sessionToTask.delete(sid);
+      }
     }
     try {
       const { Sandbox } = await loadMsb();
@@ -392,16 +400,23 @@ export class SandboxPool implements TaskSandboxPool {
         Sandbox as unknown as {
           get(name: string): Promise<{
             remove(): Promise<void>;
+            stopWithTimeout?(ms: number): Promise<void>;
           }>;
         }
       ).get;
       if (typeof SbGet === "function") {
-        const handle = await SbGet.call(Sandbox, entry.sandboxName);
+        const handle = await SbGet.call(Sandbox, sandboxName);
+        // Orphan VMs may still be 'running' (e.g. a previous process
+        // crashed before stop). Attempt a best-effort stop before
+        // remove; the SDK's remove rejects on a still-running VM.
+        if (typeof handle.stopWithTimeout === "function") {
+          await handle.stopWithTimeout(10_000).catch(() => {});
+        }
         await handle.remove();
       }
     } catch (err) {
       this.opts.log.warn(`task sandbox remove failed`, {
-        taskId: entry.taskId,
+        taskId,
         err: err instanceof Error ? err.message : String(err),
       });
     }
