@@ -181,6 +181,15 @@ export interface RoutesDeps {
    *  Returns names only; the UI doesn't need bodies.
    */
   computeEffectiveSkills(agent: WorkerAgent): string[];
+  /**
+   * Flip the `enabled` field on a worker bundle's agent.json. The
+   * route layer wraps this; the deps callback exists so tests can
+   * stub the filesystem write.
+   */
+  setAgentEnabled(args: {
+    slug: string;
+    enabled: boolean;
+  }): { ok: true; enabled: boolean } | { ok: false; error: string };
 }
 
 function userIdFromReq(req: Request): string | null {
@@ -774,6 +783,45 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     });
   };
 
+  // PATCH /agents/:slug/enabled — flip the enabled flag on the
+  // worker's agent.json. Used by the worker-agents page's enable /
+  // disable toggle. The fs watcher in server.ts picks up the file
+  // write and triggers a pool rebuild, so the change takes effect
+  // on the next task pickup without a process restart.
+  const setAgentEnabledHandler: PluginRouteHandler = async (req, res) => {
+    const slug =
+      typeof req.params?.slug === "string"
+        ? req.params.slug
+        : typeof (req.query as { slug?: string }).slug === "string"
+          ? (req.query as { slug: string }).slug
+          : "";
+    if (!slug) {
+      res.status(400).json({ error: "slug_required" });
+      return;
+    }
+    const body =
+      (req.body as { enabled?: unknown } | undefined) ?? {};
+    if (typeof body.enabled !== "boolean") {
+      res.status(400).json({
+        error: "enabled_required",
+        message: "PATCH body must be { enabled: true | false }",
+      });
+      return;
+    }
+    const result = deps.setAgentEnabled({ slug, enabled: body.enabled });
+    if (!result.ok) {
+      // Map common errors to the right HTTP code.
+      const status =
+        result.error.includes("not found") || result.error.includes("invalid")
+          ? 404
+          : 500;
+      res.status(status).json({ error: "update_failed", message: result.error });
+      return;
+    }
+    deps.onTaskWrite();
+    res.json({ ok: true, slug, enabled: result.enabled });
+  };
+
   return {
     listTasks: listTasksHandler,
     createTask: createTaskHandler,
@@ -784,5 +832,6 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     workerStatus: workerStatusHandler,
     workerRestart: workerRestartHandler,
     listAgents: listAgentsHandler,
+    setAgentEnabled: setAgentEnabledHandler,
   };
 }

@@ -92,6 +92,44 @@ export function WorkerAgentsPage(): ReactElement {
     });
   }, []);
 
+  // While a PATCH is in flight we disable the dot so the operator
+  // can't queue overlapping toggles. State stays per-slug instead
+  // of global because two operators (or two tabs) might toggle
+  // different agents at the same time.
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const toggleEnabled = useCallback(
+    async (slug: string, currentEnabled: boolean) => {
+      setTogglingId(slug);
+      setError(null);
+      try {
+        const r = await fetch(
+          `/api/p/workboard/agents/${encodeURIComponent(slug)}/enabled`,
+          {
+            method: "PATCH",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled: !currentEnabled }),
+          },
+        );
+        if (!r.ok) {
+          const text = await r.text().catch(() => "");
+          setError(`PATCH /agents/${slug}/enabled → HTTP ${r.status}${text ? ": " + text : ""}`);
+          return;
+        }
+        // Optimistic local update + a refresh to pick up any
+        // server-side reconciliation (timestamps, etc.).
+        setAgents((prev) =>
+          prev.map((a) => (a.id === slug ? { ...a, enabled: !currentEnabled } : a)),
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setTogglingId(null);
+      }
+    },
+    [],
+  );
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -229,10 +267,24 @@ export function WorkerAgentsPage(): ReactElement {
                         ) : (
                           <ChevronRight size={12} className="text-gray-500" />
                         )}
-                        <span
-                          className={`inline-flex h-2 w-2 rounded-full ${a.enabled ? "bg-emerald-500" : "bg-gray-600"}`}
-                          title={a.enabled ? "enabled" : "disabled"}
-                        />
+                        <button
+                          type="button"
+                          disabled={togglingId === a.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void toggleEnabled(a.id, a.enabled);
+                          }}
+                          className={`relative inline-flex h-2.5 w-2.5 items-center justify-center rounded-full transition-colors ${a.enabled ? "bg-emerald-500 hover:bg-emerald-400" : "bg-gray-600 hover:bg-gray-500"} disabled:opacity-50`}
+                          title={
+                            a.enabled
+                              ? "Click to disable: pool will stop claiming new tasks for this agent"
+                              : "Click to enable: pool will start claiming tasks again"
+                          }
+                        >
+                          <span className="sr-only">
+                            {a.enabled ? "Disable" : "Enable"} {a.name}
+                          </span>
+                        </button>
                       </div>
                     </td>
                     <td className="px-3 py-2">

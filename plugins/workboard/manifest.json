@@ -83,7 +83,8 @@
       { "method": "GET",    "path": "/projects",           "handler": "listProjects"  },
       { "method": "GET",    "path": "/workers/status",     "handler": "workerStatus"  },
       { "method": "POST",   "path": "/workers/restart",    "handler": "workerRestart" },
-      { "method": "GET",    "path": "/agents",             "handler": "listAgents"    }
+      { "method": "GET",    "path": "/agents",             "handler": "listAgents"    },
+      { "method": "PATCH",  "path": "/agents/:slug/enabled", "handler": "setAgentEnabled" }
     ]
   },
   "configSchema": {
