@@ -261,29 +261,45 @@ export function WorkerAgentsPage(): ReactElement {
                     onClick={() => toggle(a.id)}
                   >
                     <td className="px-3 py-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-3">
                         {isOpen ? (
                           <ChevronDown size={12} className="text-gray-500" />
                         ) : (
                           <ChevronRight size={12} className="text-gray-500" />
                         )}
+                        {/* iOS-style toggle: clearly affords "this
+                            is a switch you can flip". Replaces the
+                            old static green/grey dot, which was a
+                            common point of confusion (operators
+                            didn't realise it was clickable). */}
                         <button
                           type="button"
+                          role="switch"
+                          aria-checked={a.enabled}
                           disabled={togglingId === a.id}
                           onClick={(e) => {
                             e.stopPropagation();
                             void toggleEnabled(a.id, a.enabled);
                           }}
-                          className={`relative inline-flex h-2.5 w-2.5 items-center justify-center rounded-full transition-colors ${a.enabled ? "bg-emerald-500 hover:bg-emerald-400" : "bg-gray-600 hover:bg-gray-500"} disabled:opacity-50`}
+                          className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border transition-colors ${
+                            a.enabled
+                              ? "border-emerald-500/60 bg-emerald-500/80 hover:bg-emerald-500"
+                              : "border-gray-700 bg-gray-700 hover:bg-gray-600"
+                          } disabled:cursor-not-allowed disabled:opacity-50`}
                           title={
                             a.enabled
-                              ? "Click to disable: pool will stop claiming new tasks for this agent"
-                              : "Click to enable: pool will start claiming tasks again"
+                              ? "Enabled — click to disable. The pool will stop claiming new tasks for this agent."
+                              : "Disabled — click to enable. The pool will resume claiming tasks."
                           }
                         >
                           <span className="sr-only">
                             {a.enabled ? "Disable" : "Enable"} {a.name}
                           </span>
+                          <span
+                            className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                              a.enabled ? "translate-x-3" : "translate-x-0.5"
+                            }`}
+                          />
                         </button>
                       </div>
                     </td>
