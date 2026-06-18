@@ -260,6 +260,11 @@ export default {
 
     const adminRoutes = buildAdminRoutes({
       getRunner,
+      // The pool is owned by the activate closure (no module
+      // global), so we expose it via a closure rather than a
+      // module-level getter. Returns null only if a future
+      // refactor decouples pool creation from activate.
+      getPool: () => active?.pool ?? null,
       tenantId: active.tenantId,
       workspaceDir: active.workspaceDir,
       tenantHomeDir: active.tenantHomeDir,
@@ -304,6 +309,8 @@ export default {
         postUseBuild: adminRoutes.postUseBuild,
         postReset: adminRoutes.postReset,
         postExec: adminRoutes.postExec,
+        getTaskPool: adminRoutes.getTaskPool,
+        postTaskPoolDestroy: adminRoutes.postTaskPoolDestroy,
         getBrowserStatus: browserRoutes.getBrowserStatus,
         postBrowserRestart: browserRoutes.postBrowserRestart,
         postBrowserResize: browserRoutes.postBrowserResize,

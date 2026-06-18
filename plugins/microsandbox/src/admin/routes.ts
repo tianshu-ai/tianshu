@@ -48,6 +48,10 @@ export interface AdminRoutesDeps {
    *  for /reset and for status snapshots. May be the nullable
    *  runner if the SDK isn't available. */
   getRunner(): SandboxRunner | null;
+  /** Active per-task SandboxPool. The route layer uses it for the
+   *  task-pool monitoring page. May be null when microsandbox
+   *  hasn't activated yet. */
+  getPool?(): import("../runner/pool.js").SandboxPool | null;
   /** Tenant id, captured from the activation context. */
   tenantId: string;
   /** Tenant workspace dir (host fs). Builders bind-mount this. */
@@ -637,6 +641,155 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     }
   };
 
+  // GET /task-pool — list every per-task microVM tracked by the
+  // pool plus any orphan tianshu-task-* VMs still on disk. Useful
+  // when an operator wants to see what sandboxes are around
+  // (running, stopped, or zombie from a prior process incarnation).
+  const getTaskPool = async (req: Request, res: Response) => {
+    const c = ctx(req);
+    if (!c) {
+      res.status(401).json({ error: "no_user" });
+      return;
+    }
+    const pool = deps.getPool?.();
+    const inMemory = pool ? pool.list() : [];
+    const inMemoryByName = new Map(
+      inMemory.map((e) => [e.sandboxName, e]),
+    );
+    // Merge with the SDK's view: there can be sandboxes on disk
+    // (named `tianshu-task-<tenantId>-*`) that aren't in our
+    // in-memory pool yet — e.g. residual VMs from the previous
+    // process run that we haven't acquireTask'd this incarnation.
+    type Entry = {
+      taskId: string;
+      sandboxName: string;
+      // pool's view ("running"/"stopped"/"starting"/"error" or
+      // "orphan" when the SDK knows about it but the pool doesn't)
+      poolState: string;
+      // SDK's stored status string ("started"/"stopped"/…)
+      sdkStatus: string | null;
+      createdAt: string | null;
+      startError: string | null;
+    };
+    const merged: Entry[] = [];
+    const taskPrefix = `tianshu-task-${deps.tenantId}-`;
+    try {
+      const sdkMod = await import("microsandbox").catch(() => null);
+      const Sandbox: { list?: () => Promise<unknown[]> } | undefined = (
+        sdkMod as { Sandbox?: { list?: () => Promise<unknown[]> } } | null
+      )?.Sandbox;
+      if (Sandbox?.list) {
+        const handles = (await Sandbox.list()) as Array<{
+          name: string;
+          status?: string;
+          createdAt?: Date | string | null;
+        }>;
+        for (const h of handles) {
+          if (!h.name.startsWith(taskPrefix)) continue;
+          const taskId = h.name.slice(taskPrefix.length);
+          const inMem = inMemoryByName.get(h.name);
+          merged.push({
+            taskId,
+            sandboxName: h.name,
+            poolState: inMem ? inMem.state : "orphan",
+            sdkStatus: typeof h.status === "string" ? h.status : null,
+            createdAt:
+              h.createdAt instanceof Date
+                ? h.createdAt.toISOString()
+                : typeof h.createdAt === "string"
+                  ? h.createdAt
+                  : null,
+            startError: inMem?.startError ?? null,
+          });
+        }
+      }
+    } catch (err) {
+      // SDK unavailable (probe failed or not installed) — fall
+      // back to whatever we have in memory.
+    }
+    // Also fold in pool entries that the SDK didn't return (rare;
+    // can happen when the VM was created out-of-band and the SDK
+    // index is stale). Avoids hiding state from the operator.
+    for (const inMem of inMemory) {
+      if (merged.some((e) => e.sandboxName === inMem.sandboxName)) continue;
+      merged.push({
+        taskId: inMem.taskId,
+        sandboxName: inMem.sandboxName,
+        poolState: inMem.state,
+        sdkStatus: null,
+        createdAt: null,
+        startError: inMem.startError,
+      });
+    }
+    // Sort newest-first by createdAt (nulls last).
+    merged.sort((a, b) => {
+      if (a.createdAt && b.createdAt) {
+        return a.createdAt < b.createdAt ? 1 : -1;
+      }
+      if (a.createdAt) return -1;
+      if (b.createdAt) return 1;
+      return a.sandboxName.localeCompare(b.sandboxName);
+    });
+    res.json({ entries: merged });
+  };
+
+  // POST /task-pool/destroy?sandbox_name=<name> — stop + remove
+  // a per-task microVM. Used by the admin UI's "Forget" button on
+  // orphan / stopped task sandboxes.
+  const postTaskPoolDestroy = async (req: Request, res: Response) => {
+    const c = ctx(req);
+    if (!c) {
+      res.status(401).json({ error: "no_user" });
+      return;
+    }
+    const sandboxName =
+      typeof req.query.sandbox_name === "string"
+        ? req.query.sandbox_name
+        : "";
+    if (!sandboxName) {
+      res.status(400).json({ error: "missing_sandbox_name" });
+      return;
+    }
+    const taskPrefix = `tianshu-task-${deps.tenantId}-`;
+    if (!sandboxName.startsWith(taskPrefix)) {
+      res.status(400).json({
+        error: "unsupported_sandbox",
+        message: `only ${taskPrefix}* sandboxes can be destroyed via this route`,
+      });
+      return;
+    }
+    const taskId = sandboxName.slice(taskPrefix.length);
+    const pool = deps.getPool?.();
+    try {
+      if (pool) {
+        // The pool path stops + removes; if the entry isn't in
+        // memory it falls through to a direct Sandbox.remove.
+        await pool.destroyTask(taskId);
+      } else {
+        // Pool not active — best-effort SDK remove so an orphan
+        // VM can still be reclaimed.
+        const sdkMod = await import("microsandbox").catch(() => null);
+        const Sandbox = (
+          sdkMod as {
+            Sandbox?: {
+              get?: (name: string) => Promise<{ remove(): Promise<void> }>;
+            };
+          } | null
+        )?.Sandbox;
+        if (Sandbox?.get) {
+          const handle = await Sandbox.get(sandboxName);
+          await handle.remove();
+        }
+      }
+      res.json({ ok: true, sandboxName });
+    } catch (err) {
+      res.status(500).json({
+        error: "destroy_failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
   return {
     getSandboxfile,
     putSandboxfile,
@@ -645,6 +798,8 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
     postUseBuild,
     postReset,
     postExec,
+    getTaskPool,
+    postTaskPoolDestroy,
   };
 }
 
