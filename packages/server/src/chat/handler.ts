@@ -1143,15 +1143,10 @@ export function defaultSystemPrompt(
   );
   if (ctxBlock) lines.push("", ctxBlock);
 
-  // User onboarding rules: ask main agent to actively maintain
-  // USER.md so future runs start with concrete preferences
-  // instead of cold-asking every time. Branches on whether the
-  // file exists today — the wording shifts from "propose to
-  // start one" to "keep it accurate" so a populated file doesn't
-  // get re-prompted at users who already filled it in.
-  const hasUserFile = userMdExists(userHomeDir);
-  lines.push(``, formatUserOnboardingBlock(hasUserFile));
-
+  // Plugin guidance + skills first; the User Profile rule lands
+  // last on purpose because it overrides the "reply concisely"
+  // / "delegate to a worker" defaults on the very first turn
+  // when USER.md is still scaffold.
   lines.push(``, `Reply concisely. When you make changes, briefly say what you changed.`);
 
   const fragmentBlock = formatPluginPromptFragments(pluginFragments);
@@ -1159,6 +1154,13 @@ export function defaultSystemPrompt(
 
   const skillBlock = formatAvailableSkillsBlock(skills);
   if (skillBlock) lines.push("", skillBlock);
+
+  // User onboarding rule — placed last so it wins recency-bias
+  // over the brevity / delegate-to-worker rules above. Without
+  // this position the LLM responds to a one-word "hi" by replying
+  // "hi" back instead of capturing the user's profile.
+  const hasUserFile = userMdExists(userHomeDir);
+  lines.push(``, formatUserOnboardingBlock(hasUserFile));
 
   return lines.join("\n");
 }
@@ -1199,12 +1201,16 @@ function formatUserOnboardingBlock(userMdPresent: boolean): string {
   // than parsing markdown templates here.)
   void userMdPresent;
   return [
-    `## User Profile (USER.md)`,
-    `- The user's personal profile lives at \`USER.md\` in their workspace home. Look for it in the Workspace Context block above. Treat real entries as ground truth for who the user is and how they like to work.`,
-    `- Distinguish a *populated* USER.md (concrete entries: a real name, time zone, projects, preferences) from an *empty template / scaffold* (only headings, hints in italics, or empty form fields like \`**Name:**\`).`,
-    `- If the file is missing OR is just an empty scaffold: early in the conversation, briefly offer to fill it from a few short questions (name to use, time zone, current projects, tool preferences, communication style, anything that should never be forgotten). If the user accepts, write the file with \`write_file({ path: "USER.md", content: ... })\` (relative path resolves to their workspace home) and confirm with one line. If the user declines, drop it for this run — don't re-ask the same session.`,
-    `- If the file is populated: don't ask intro questions again. Just keep it accurate: when the user reveals a new durable fact during normal work, update USER.md with \`edit_file\` (or \`write_file\` for a full rewrite). Fix stale entries when contradicted.`,
-    `- Don't announce USER.md edits to the user unless they're material; small additions are routine bookkeeping.`,
+    `## User Profile (USER.md) — read this first`,
+    `Look at \`### users/<self>/USER.md\` in the Workspace Context block above and decide right now whether it's POPULATED or a SCAFFOLD.`,
+    `- POPULATED = real concrete entries (real name, the user's actual projects, communication preferences they've stated, etc.)`,
+    `- SCAFFOLD = mostly headings + italics hints + empty form fields like \`**Name:**\` / \`**Pronouns:**\` / a single seeded value (e.g. a default time zone) with everything else blank.`,
+    `On a fresh conversation where USER.md is missing OR a scaffold:`,
+    `1. Even if the user just says "hi", do NOT just reply hi back. First proactively ask 3-5 short questions to fill USER.md (preferred name, current projects, communication style, anything that should never be forgotten). Keep it conversational, not a form.`,
+    `2. When they answer, immediately \`write_file({ path: "USER.md", content: ... })\` (relative path resolves to their workspace home) with what you learnt, plus a one-line ack like "saved that to your profile".`,
+    `3. If they explicitly decline, drop it for this run — don't re-ask the same session.`,
+    `On a populated USER.md: don't ask the intro questions again. Just keep it accurate during normal work — when a durable new fact surfaces, \`edit_file\` it in. Fix stale entries when contradicted. Don't announce these edits unless they're material.`,
+    `This rule wins over any "reply concisely" or "delegate first" guidance above — first-time profile capture is more valuable than a short hi.`,
   ].join("\n");
 }
 

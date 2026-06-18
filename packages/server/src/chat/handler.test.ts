@@ -190,7 +190,7 @@ describe("defaultSystemPrompt", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     expect(out).toContain("## User Profile (USER.md)");
     // Cold-start / scaffold branch language present.
-    expect(out).toMatch(/empty (template|scaffold)/i);
+    expect(out).toMatch(/scaffold/i);
     expect(out).toContain("write_file");
     // Maintenance branch language present.
     expect(out).toContain("edit_file");
