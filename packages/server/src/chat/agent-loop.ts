@@ -235,6 +235,27 @@ export async function runAgentLoop(
   // allow-list says — worker pools use it to scrub e.g. task_create
   // out of an LLM worker so it can't accidentally manage other
   // tasks while running its own.
+  //
+  // Refresh stale dynamic toolsets (Playwright MCP, user MCP
+  // servers) before snapshotting them. Without this, a worker
+  // session that starts before the plugin's initial refresh
+  // succeeds (sidecar still booting, or sandbox just reset)
+  // sees an empty MCP tool list for the entire run — the chat
+  // handler refreshes per turn but workers don't, so they were
+  // simply never seeing browser_* tools.
+  if (pluginRegistry) {
+    try {
+      await pluginRegistry.refreshStaleToolsets(ctx.tenantId, 1500);
+    } catch (err) {
+      // refreshStaleToolsets swallows per-toolset errors itself;
+      // an outer throw is unexpected but shouldn't block the run.
+      console.warn(
+        `[agent-loop] refreshStaleToolsets failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
   const allPluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
   const allowSet = req.toolsAllow ? new Set(req.toolsAllow) : null;
   const denySet = req.toolsDeny ? new Set(req.toolsDeny) : null;

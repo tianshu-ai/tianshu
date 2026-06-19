@@ -265,12 +265,57 @@ describe("runAgentLoop (worker)", () => {
       systemPromptFragmentsForTenant: () => fragments,
       toolsForTenant: () => [],
       mirroredSkillsForTenant: () => [],
+      refreshStaleToolsets: async () => 0,
       hostCapabilities: () => ({
         get: () => undefined,
         has: () => false,
       }),
     } as unknown as Parameters<typeof runAgentLoop>[0]["pluginRegistry"];
   }
+
+  it("worker run refreshes stale dynamic toolsets before snapshotting tools", async () => {
+    __script = { events: [] };
+    let refreshCalls = 0;
+    let toolsListCalls = 0;
+    const order: string[] = [];
+    const registry = {
+      systemPromptFragmentsForTenant: () => [],
+      toolsForTenant: () => {
+        toolsListCalls += 1;
+        order.push("toolsForTenant");
+        return [];
+      },
+      mirroredSkillsForTenant: () => [],
+      refreshStaleToolsets: async () => {
+        refreshCalls += 1;
+        order.push("refreshStaleToolsets");
+        return 0;
+      },
+      hostCapabilities: () => ({
+        get: () => undefined,
+        has: () => false,
+      }),
+    } as unknown as Parameters<typeof runAgentLoop>[0]["pluginRegistry"];
+
+    await runAgentLoop({
+      ctx,
+      userId: "u1",
+      initialUserMessage: "do the thing",
+      systemPrompt: "You are W.",
+      pluginRegistry: registry,
+    });
+
+    expect(refreshCalls).toBe(1);
+    expect(toolsListCalls).toBeGreaterThanOrEqual(1);
+    // refresh must run BEFORE we snapshot the tool list, otherwise
+    // the worker session locks in a stale snapshot for its whole
+    // lifetime (e.g. empty Playwright MCP entries because the
+    // sidecar hadn't refreshed yet).
+    const refreshIdx = order.indexOf("refreshStaleToolsets");
+    const listIdx = order.indexOf("toolsForTenant");
+    expect(refreshIdx).toBeGreaterThanOrEqual(0);
+    expect(listIdx).toBeGreaterThan(refreshIdx);
+  });
 
   it("worker with SOUL prompt: fragments are stitched in after SOUL", async () => {
     __script = { events: [] };
