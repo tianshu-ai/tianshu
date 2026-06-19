@@ -7,7 +7,10 @@
 // every future PR will lean on.
 
 import { describe, it, expect } from "vitest";
-import { defaultSystemPrompt } from "./handler.js";
+import {
+  defaultSystemPrompt,
+  substituteUserIdPlaceholders,
+} from "./handler.js";
 import type { TenantContext } from "../core/index.js";
 
 function fakeCtx(over: Partial<TenantContext> = {}): TenantContext {
@@ -170,7 +173,9 @@ describe("defaultSystemPrompt", () => {
     expect(out).toContain("only commit on weekdays");
     expect(out).toContain("### _tenant/MEMORY.md");
     expect(out).toContain("long-term note about project alpha");
-    expect(out).toContain("### users/<self>/USER.md");
+    // <self> placeholder is substituted with the caller's userId.
+    expect(out).toContain("### users/alice/USER.md");
+    expect(out).not.toContain("<self>");
     expect(out).toContain("prefers terse replies");
     // Missing SOUL.md never appears as an empty section.
     expect(out).not.toContain("### _tenant/SOUL.md");
@@ -181,6 +186,19 @@ describe("defaultSystemPrompt", () => {
   it("omits the workspace context block when none of the files exist", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     expect(out).not.toContain("## Workspace Context");
+  });
+
+  it("substitutes <self> and <userId> placeholders with the caller's actual userId", () => {
+    // We don't materialise any context files, but the prompt
+    // body itself contains `users/<self>/USER.md` references
+    // (User Profile block, etc). The substitution pass at the
+    // end of defaultSystemPrompt should turn those into
+    // `users/dev/USER.md` so the LLM never has to guess what
+    // the placeholder resolves to.
+    const out = defaultSystemPrompt(fakeCtx(), "dev");
+    expect(out).not.toContain("<self>");
+    expect(out).not.toContain("<userId>");
+    expect(out).toContain("users/dev/USER.md");
   });
 
   it("includes the User Profile prompt with both populated and scaffold guidance", () => {
@@ -211,7 +229,9 @@ describe("defaultSystemPrompt", () => {
       "alice",
     );
     expect(out).toContain("## Workspace Context");
-    expect(out).toContain("### users/<self>/USER.md");
+    // <self> placeholder is substituted with the caller's userId.
+    expect(out).toContain("### users/alice/USER.md");
+    expect(out).not.toContain("<self>");
     expect(out).toContain("Name: Alice");
     expect(out).toContain("## User Profile (USER.md)");
     fs.rmSync(home, { recursive: true, force: true });
@@ -234,5 +254,34 @@ describe("defaultSystemPrompt", () => {
     expect(out).toContain("TAIL-MARK");
     expect(out).toContain("truncated");
     fs.rmSync(ws, { recursive: true, force: true });
+  });
+});
+
+describe("substituteUserIdPlaceholders", () => {
+  it("replaces <self> and <userId> globally with the userId", () => {
+    const before =
+      "see /workspace/users/<self>/foo.py and users/<userId>/USER.md";
+    const after = substituteUserIdPlaceholders(before, "dev");
+    expect(after).toBe(
+      "see /workspace/users/dev/foo.py and users/dev/USER.md",
+    );
+  });
+
+  it("is a no-op on prompts without placeholders", () => {
+    const text = "plain prompt without templates";
+    expect(substituteUserIdPlaceholders(text, "dev")).toBe(text);
+  });
+
+  it("is idempotent", () => {
+    const before = "users/<self>/USER.md";
+    const once = substituteUserIdPlaceholders(before, "dev");
+    const twice = substituteUserIdPlaceholders(once, "dev");
+    expect(twice).toBe(once);
+    expect(twice).toBe("users/dev/USER.md");
+  });
+
+  it("returns the prompt unchanged when userId is empty", () => {
+    const text = "users/<self>/USER.md";
+    expect(substituteUserIdPlaceholders(text, "")).toBe(text);
   });
 });
