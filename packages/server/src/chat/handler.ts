@@ -1162,7 +1162,15 @@ export function defaultSystemPrompt(
   const hasUserFile = userMdExists(userHomeDir);
   lines.push(``, formatUserOnboardingBlock(hasUserFile));
 
-  return lines.join("\n");
+  // Final pass: bind `<self>` / `<userId>` placeholders that
+  // appear anywhere in the assembled prompt (manifest fragments,
+  // tool descriptions, context-block labels, our own onboarding
+  // text) to the caller's actual userId. Plugin authors can't
+  // know the runtime value, so they ship the placeholder; we
+  // substitute here. Without this the LLM has been observed to
+  // hallucinate a userId (`user1`, `user3`, `user_x`) and burn a
+  // run on a path that doesn't exist.
+  return substituteUserIdPlaceholders(lines.join("\n"), userId);
 }
 
 /**
@@ -1375,6 +1383,34 @@ export function formatWorkspaceContextBlock(userHome: string): string {
     { absPath: path.join(userHome, "SOUL.md"), label: "SOUL.md" },
     { absPath: path.join(userHome, "USER.md"), label: "USER.md" },
   ]);
+}
+
+/**
+ * Replace `<self>` and `<userId>` placeholders with the caller's
+ * concrete userId throughout an assembled system prompt.
+ *
+ * Plugin manifests + tool descriptions write paths like
+ * `/workspace/users/<self>/...` because the plugin author can't
+ * know the runtime userId. Without substitution the LLM sees a
+ * literal `<self>` and either invents a userId (we caught
+ * `user1` / `user3` / `user_x` in production) or just guesses
+ * wrong. Substituting at the very end of prompt assembly — after
+ * SOUL, plugin fragments, context block, skills are all stitched
+ * together — means every appearance of these placeholders
+ * resolves to the right value, regardless of which layer wrote
+ * it.
+ *
+ * Idempotent and safe to call on prompts that don't contain
+ * either placeholder.
+ */
+export function substituteUserIdPlaceholders(
+  prompt: string,
+  userId: string,
+): string {
+  if (!userId) return prompt;
+  return prompt
+    .replace(/<self>/g, userId)
+    .replace(/<userId>/g, userId);
 }
 
 /** Render plugin-contributed system-prompt fragments. Grouped by

@@ -45,6 +45,7 @@ import {
   formatExecutionBiasBlock,
   formatPluginPromptFragments,
   formatWorkerAgentContextBlock,
+  substituteUserIdPlaceholders,
   tryAutoCompact,
 } from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
@@ -444,6 +445,13 @@ export async function runAgentLoop(
   } else {
     systemPrompt = defaultSystemPrompt(ctx, userId, skills, pluginFragments);
   }
+  // Bind `<self>` / `<userId>` placeholders in the assembled
+  // prompt to the worker's concrete userId. `defaultSystemPrompt`
+  // applies the same pass internally; we repeat it here for the
+  // worker-SOUL path because that branch builds the prompt
+  // manually rather than going through defaultSystemPrompt.
+  // Idempotent and cheap, so double-application is harmless.
+  systemPrompt = substituteUserIdPlaceholders(systemPrompt, userId);
   // Off-by-default debug dump (see `dump-system-prompt.ts`). Slug
   // tag uses workerSlug when present, falling back to the role kind
   // ("llm", etc.) and finally to a generic "worker" so callers
