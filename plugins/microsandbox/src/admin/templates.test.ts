@@ -6,9 +6,8 @@
 //      plugin templates dir (catches missing-file regressions
 //      before activate-time).
 //   2. The catalog ordering is stable (task-runner first because
-//      it's the recommended Task snapshot, then browser, then
-//      node-python, then minimal) — UI relies on this for the
-//      dropdown's default.
+//      it's the recommended Task snapshot; browser second) — UI
+//      relies on this for the dropdown's default.
 //   3. Missing files raise a descriptive error pointing at the
 //      offending path so plugin authors can fix it fast.
 
@@ -28,8 +27,6 @@ describe("microsandbox sandboxfile templates", () => {
     expect(templates.map((t) => t.id)).toEqual([
       "task-runner",
       "browser",
-      "node-python",
-      "minimal",
     ]);
     for (const t of templates) {
       expect(t.content.length).toBeGreaterThan(0);
@@ -54,13 +51,6 @@ describe("microsandbox sandboxfile templates", () => {
     expect(tr!.content).toMatch(/aliyun\.com|tsinghua\.edu\.cn|npmmirror\.com/);
   });
 
-  it("minimal template starts with the python:3.12-slim image header (placeholder)", async () => {
-    const templates = await loadTemplates(realTemplatesDir);
-    const minimal = templates.find((t) => t.id === "minimal");
-    expect(minimal).toBeDefined();
-    expect(minimal!.content).toMatch(/image:\s*python:3\.12-slim/);
-  });
-
   it("browser template includes CloakBrowser + Playwright MCP + noVNC", async () => {
     // We don't lock down the precise URL — that bumps with chromium
     // releases — but the three logical layers should all be present
@@ -73,20 +63,10 @@ describe("microsandbox sandboxfile templates", () => {
     expect(browser!.content).toMatch(/novnc/i);
   });
 
-  it("node-python template uses node:22-slim and installs python3 + npmmirror", async () => {
-    const templates = await loadTemplates(realTemplatesDir);
-    const np = templates.find((t) => t.id === "node-python");
-    expect(np).toBeDefined();
-    expect(np!.content).toMatch(/image:\s*node:22-slim/);
-    expect(np!.content).toMatch(/python3/);
-    expect(np!.content).toMatch(/npmmirror\.com/);
-  });
-
   it("raises a descriptive error when a template file is missing", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "msb-templates-"));
-    // Empty dir → loader expects task-runner.yaml + browser.yaml +
-    // node-python.yaml + minimal.yaml; the loader fails fast on
-    // the first missing file (task-runner, since it's first).
+    // Empty dir → loader expects task-runner.yaml + browser.yaml;
+    // fails fast on the first (task-runner).
     await expect(loadTemplates(tmp)).rejects.toThrow(/task-runner\.yaml/);
     fs.rmSync(tmp, { recursive: true, force: true });
   });

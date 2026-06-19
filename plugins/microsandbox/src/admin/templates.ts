@@ -37,7 +37,7 @@ interface BuiltinTemplateMeta {
 const BUILTIN_TEMPLATES: BuiltinTemplateMeta[] = [
   {
     id: "task-runner",
-    displayName: "Task runner (Node + Python + common libs)",
+    displayName: "Task runner (Node + Python + Office libs)",
     description:
       "Recommended Task snapshot. node:22-slim with Python 3.12, git, jq, build-essential, pre-installed data libs (pandas/numpy/matplotlib/openpyxl) + web libs (requests/beautifulsoup4) + office libs (python-docx/python-pptx/pypdf/reportlab/markitdown), libreoffice, CJK + emoji fonts, and CN mirrors for apt/npm/pip. ~700 MB compressed; fast enough for code generation, data analysis, document processing, and shell scripting tasks that don't need a chromium.",
     file: "task-runner.yaml",
@@ -46,22 +46,8 @@ const BUILTIN_TEMPLATES: BuiltinTemplateMeta[] = [
     id: "browser",
     displayName: "Browser (CloakBrowser + Playwright MCP + noVNC)",
     description:
-      "Stealth Chromium running headed under Xvfb, with Playwright MCP on :3200 and noVNC on :6080. Lights up the agent's browser_* tools and the admin Browser viewport.",
+      "Stealth Chromium running headed under Xvfb, with Playwright MCP on :3200 and noVNC on :6080. Lights up the agent's browser_* tools and the admin Browser viewport. ~3.2 GB compressed; pick this when the workload genuinely needs to pilot a chromium.",
     file: "browser.yaml",
-  },
-  {
-    id: "node-python",
-    displayName: "Node.js + Python + Browser",
-    description:
-      "node:22-slim base image (skips slow Node install) plus apt-installed Python 3 and the full browser stack (chromium + Playwright MCP + noVNC). Use when you need both toolchains AND a browser in one sandbox.",
-    file: "node-python.yaml",
-  },
-  {
-    id: "minimal",
-    displayName: "Minimal (placeholder for custom builds)",
-    description:
-      "python:3.12-slim with only sudo installed. Use this as a starting point when you want to author your own image from scratch; pick `task-runner` instead if you just want a working agent-task environment out of the box.",
-    file: "minimal.yaml",
   },
 ];
 
