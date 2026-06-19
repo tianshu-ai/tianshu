@@ -26,6 +26,31 @@ This skill is for when it doesn't. Three signals say "fleet":
 If none of those apply, **don't build a fleet** — overhead
 without payoff.
 
+## Default phase pipeline: plan → design → build → verify
+
+For non-trivial deliverables, decompose into phases BEFORE
+creating any task. The default pipeline:
+
+| Phase | What it produces |
+|---|---|
+| **PLAN** | Clarified requirements, sketched approach, listed assumptions, open questions answered. Output is usually a short markdown brief at `./projects/<slug>/PLAN.md`. |
+| **DESIGN** | Concrete data shapes, file layout, interfaces, technology choices with rationale. Output is `DESIGN.md` plus any scaffolding files. |
+| **BUILD** | The actual implementation. May be one task or several (see Sizing below). Output is the artefact at its final path. |
+| **VERIFY** | Runs the artefact end-to-end against the acceptance criteria from PLAN. Captures evidence (test output, screenshot, file size, etc). Stamps a one-line verdict on the task. |
+
+Each phase is **one task** (or BUILD may split into BUILD-1/2/3 —
+see Sizing). Wire `dependsOn` so phase N+1 doesn't start until
+phase N is done.
+
+Skip phases only when the work genuinely doesn't need them: a
+one-off bug fix can go straight to BUILD + VERIFY; a research
+request may collapse to PLAN + BUILD where BUILD is the report
+itself.
+
+The phase pipeline is what makes the kanban useful for the user
+— they see PLAN done, can review the approach, then watch BUILD
+turn over without you holding their hand on every commit.
+
 ## Reuse over create (read this twice)
 
 Before creating any new worker, run:
@@ -75,6 +100,32 @@ commit.
   doing different *steps* (e.g. "first research, then write the
   same report"). Use one worker with a clearer SOUL instead.
 - Throwaway / prototype work the user will rewrite anyway.
+
+## Sizing (and the max_tokens stall trap)
+
+Keep each task small enough that one worker can finish it in one
+focused run — a few tool calls, a few files, one chunk of
+reasoning. The worst failure mode in this system is a task that
+generates so much content the LLM hits its `max_tokens` cap
+mid-flight, runs out of room to call `task_complete`, and the
+worker pool marks it stalled. The output you produced before the
+cutoff is usually wasted, because the next attempt restarts from
+the original task description.
+
+Concrete signals that a task is too big and should split:
+
+- generates 1000+ lines of code in one go
+- needs 10+ separate tool calls in one task
+- the user-visible deliverable has clear sub-features that ship
+  independently (\"the editor\" + \"the preview\" + \"the save/load\")
+- you'd struggle to write a one-paragraph spec for it without
+  resorting to bullet lists with many items
+
+When any of those apply, split: BUILD-1 (scaffolding + first
+feature), BUILD-2 (next feature, depends on BUILD-1), and so on.
+Many small tasks compose, retry better when one fails, surface
+progress on the kanban, and let you intervene per-step instead
+of per-monolith.
 
 ## Sizing
 
