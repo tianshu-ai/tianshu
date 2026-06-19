@@ -95,6 +95,10 @@ interface BuildEntry {
    *  the pre-roles shape; we fall back to `published` (= browser
    *  role) below when this is missing. */
   roles?: { browser: boolean; task: boolean };
+  /** When set, this build layered on top of an existing snapshot
+   *  rather than pulling its Sandboxfile's image: from the
+   *  registry. UI uses it to render a parent-build chain. */
+  basedOnSnapshot?: string;
 }
 
 interface PointerEntry {
@@ -407,6 +411,10 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
   const [loading, setLoading] = useState(true);
   const [building, setBuilding] = useState(false);
   const [usingId, setUsingId] = useState<string | null>(null);
+  /** When set, the next build will layer on top of this snapshot
+   *  instead of pulling the Sandboxfile's `image:`. UI surfaces
+   *  the picker as a dropdown next to the Build button. */
+  const [basedOnSnapshot, setBasedOnSnapshot] = useState<string>("");
   /** Live log lines for the in-progress build (or the most recent
    *  one if it just finished). Cleared when a new build starts. */
   const [buildLog, setBuildLog] = useState<string[]>([]);
@@ -457,7 +465,9 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
     setBuildStartedAt(Date.now());
     setElapsedMs(0);
     try {
-      const r = await fetch(`${ROUTE_BASE}/builds?stream=1`, {
+      const params = new URLSearchParams({ stream: "1" });
+      if (basedOnSnapshot) params.set("from_snapshot", basedOnSnapshot);
+      const r = await fetch(`${ROUTE_BASE}/builds?${params.toString()}`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -609,12 +619,30 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
               Refresh
             </button>
+            <select
+              value={basedOnSnapshot}
+              onChange={(e) => setBasedOnSnapshot(e.target.value)}
+              disabled={building}
+              className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-[11px] text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Optional: layer this build on top of an existing snapshot. Leave as 'fresh image' to use the Sandboxfile's image: line."
+            >
+              <option value="">based on: fresh image</option>
+              {(data?.builds ?? []).map((b) => (
+                <option key={b.snapshotName} value={b.snapshotName}>
+                  based on: {b.buildId}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
               onClick={() => void build()}
               disabled={building}
               className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
-              title="Run apt/pip/npm/exec from your saved Sandboxfile and capture a snapshot"
+              title={
+                basedOnSnapshot
+                  ? `Build on top of ${basedOnSnapshot}`
+                  : "Run apt/pip/npm/exec from your saved Sandboxfile and capture a snapshot"
+              }
             >
               {building ? (
                 <Loader2 size={12} className="animate-spin" />
@@ -701,7 +729,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                         <CheckCircle2 size={10} /> Task
                       </span>
                     )}
-                    <span className="text-[11px] text-gray-400">{b.baseImage}</span>
+                    <span className="text-[11px] text-gray-400" title={b.basedOnSnapshot ? `layered on snapshot ${b.basedOnSnapshot}` : `image: ${b.baseImage}`}>{b.basedOnSnapshot ? `↳ ${b.basedOnSnapshot.split('-build-').pop() ?? b.basedOnSnapshot}` : b.baseImage}</span>
                     <span className="text-[10px] text-gray-600">
                       {(b.durationMs / 1000).toFixed(1)}s · {formatRelative(b.builtAt)}
                     </span>

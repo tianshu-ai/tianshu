@@ -53,6 +53,19 @@ export interface BuildOpts {
   defaultMemoryMib?: number;
   /** Optional progress sink so callers can stream build logs. */
   onLog?: (line: string) => void;
+  /**
+   * When set, boot the builder VM from this existing snapshot
+   * instead of pulling the spec's `image:` from the registry.
+   * Lets the operator stack new layers on top of a previous
+   * build (e.g. task-runner snapshot + extra apt packages).
+   *
+   * The snapshot must already exist in the local microsandbox
+   * registry (built via this same plugin); we don't validate
+   * that here — fromSnapshot() will fail loudly if it doesn't.
+   *
+   * When omitted, the builder uses `image(spec.image)` as before.
+   */
+  fromSnapshot?: string;
 }
 
 export interface BuildResult {
@@ -99,23 +112,36 @@ export async function buildSnapshot(opts: BuildOpts): Promise<BuildResult> {
     log(line);
   };
 
-  cap(
-    `[builder] starting: image=${opts.spec.image} cpus=${cpus} memMib=${memoryMib}`,
-  );
+  if (opts.fromSnapshot) {
+    cap(
+      `[builder] starting: from_snapshot=${opts.fromSnapshot} cpus=${cpus} memMib=${memoryMib}`,
+    );
+  } else {
+    cap(
+      `[builder] starting: image=${opts.spec.image} cpus=${cpus} memMib=${memoryMib}`,
+    );
+  }
 
   await fs.mkdir(opts.workspaceDir, { recursive: true });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const base: any = await (Sandbox as any)
+  let builder: any = (Sandbox as any)
     .builder(builderName)
-    .image(opts.spec.image)
     .cpus(cpus)
     .memory(memoryMib)
     .volume("/workspace", (m: { bind(host: string): unknown }) =>
       m.bind(opts.workspaceDir),
     )
-    .replace(true)
-    .create();
+    .replace(true);
+  if (opts.fromSnapshot) {
+    // Layer this build on top of an existing snapshot. The Sandboxfile's
+    // `image:` field is ignored — the snapshot already pins it.
+    builder = builder.fromSnapshot(opts.fromSnapshot);
+  } else {
+    builder = builder.image(opts.spec.image);
+  }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const base: any = await builder.create();
 
   try {
     if (opts.spec.apt && opts.spec.apt.length > 0) {
@@ -238,7 +264,7 @@ export async function buildSnapshot(opts: BuildOpts): Promise<BuildResult> {
   cap(`[builder] done in ${(durationMs / 1000).toFixed(1)}s`);
   return {
     snapshotName,
-    baseImage: opts.spec.image,
+    baseImage: opts.fromSnapshot ?? opts.spec.image,
     durationMs,
     logTail: tailJoin(captured),
   };
