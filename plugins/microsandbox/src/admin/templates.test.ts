@@ -5,9 +5,10 @@
 //   1. All built-in templates load successfully against the real
 //      plugin templates dir (catches missing-file regressions
 //      before activate-time).
-//   2. The catalog ordering is stable (minimal first, then browser,
-//      then node-python) — UI relies on this for the dropdown's
-//      default.
+//   2. The catalog ordering is stable (task-runner first because
+//      it's the recommended Task snapshot, then browser, then
+//      node-python, then minimal) — UI relies on this for the
+//      dropdown's default.
 //   3. Missing files raise a descriptive error pointing at the
 //      offending path so plugin authors can fix it fast.
 
@@ -25,9 +26,10 @@ describe("microsandbox sandboxfile templates", () => {
   it("loads all built-in templates from the plugin templates dir", async () => {
     const templates = await loadTemplates(realTemplatesDir);
     expect(templates.map((t) => t.id)).toEqual([
-      "minimal",
+      "task-runner",
       "browser",
       "node-python",
+      "minimal",
     ]);
     for (const t of templates) {
       expect(t.content.length).toBeGreaterThan(0);
@@ -36,7 +38,18 @@ describe("microsandbox sandboxfile templates", () => {
     }
   });
 
-  it("minimal template starts with the python:3.12-slim image header", async () => {
+  it("task-runner template uses node:22-slim and pre-installs common pip libs", async () => {
+    const templates = await loadTemplates(realTemplatesDir);
+    const tr = templates.find((t) => t.id === "task-runner");
+    expect(tr).toBeDefined();
+    expect(tr!.content).toMatch(/image:\s*node:22-slim/);
+    expect(tr!.content).toMatch(/pandas/);
+    expect(tr!.content).toMatch(/matplotlib/);
+    // CN mirror config wired up
+    expect(tr!.content).toMatch(/aliyun\.com|tsinghua\.edu\.cn|npmmirror\.com/);
+  });
+
+  it("minimal template starts with the python:3.12-slim image header (placeholder)", async () => {
     const templates = await loadTemplates(realTemplatesDir);
     const minimal = templates.find((t) => t.id === "minimal");
     expect(minimal).toBeDefined();
@@ -66,10 +79,10 @@ describe("microsandbox sandboxfile templates", () => {
 
   it("raises a descriptive error when a template file is missing", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "msb-templates-"));
-    // Empty dir → loader expects minimal.yaml + browser.yaml +
-    // node-python.yaml; the loader fails fast on the first missing
-    // file (minimal).
-    await expect(loadTemplates(tmp)).rejects.toThrow(/minimal\.yaml/);
+    // Empty dir → loader expects task-runner.yaml + browser.yaml +
+    // node-python.yaml + minimal.yaml; the loader fails fast on
+    // the first missing file (task-runner, since it's first).
+    await expect(loadTemplates(tmp)).rejects.toThrow(/task-runner\.yaml/);
     fs.rmSync(tmp, { recursive: true, force: true });
   });
 });

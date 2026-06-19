@@ -36,11 +36,11 @@ interface BuiltinTemplateMeta {
 
 const BUILTIN_TEMPLATES: BuiltinTemplateMeta[] = [
   {
-    id: "minimal",
-    displayName: "Minimal",
+    id: "task-runner",
+    displayName: "Task runner (Node + Python + common libs)",
     description:
-      "python:3.12-slim with no extra layers. Same as the new-Sandboxfile placeholder.",
-    file: "minimal.yaml",
+      "Recommended Task snapshot. node:22-slim with Python 3.12, git, jq, build-essential, pre-installed pandas/numpy/matplotlib/requests, libreoffice, CJK + emoji fonts, and CN mirrors for apt/npm/pip. ~600 MB compressed; fast enough for code generation, data analysis, and shell scripting tasks that don't need a chromium.",
+    file: "task-runner.yaml",
   },
   {
     id: "browser",
@@ -51,10 +51,17 @@ const BUILTIN_TEMPLATES: BuiltinTemplateMeta[] = [
   },
   {
     id: "node-python",
-    displayName: "Node.js + Python",
+    displayName: "Node.js + Python + Browser",
     description:
-      "node:22-slim base image (skips slow Node install) plus apt-installed Python 3 and CN mirrors. Use when you need both toolchains in one sandbox.",
+      "node:22-slim base image (skips slow Node install) plus apt-installed Python 3 and the full browser stack (chromium + Playwright MCP + noVNC). Use when you need both toolchains AND a browser in one sandbox.",
     file: "node-python.yaml",
+  },
+  {
+    id: "minimal",
+    displayName: "Minimal (placeholder for custom builds)",
+    description:
+      "python:3.12-slim with only sudo installed. Use this as a starting point when you want to author your own image from scratch; pick `task-runner` instead if you just want a working agent-task environment out of the box.",
+    file: "minimal.yaml",
   },
 ];
 
