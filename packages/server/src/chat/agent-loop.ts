@@ -299,6 +299,17 @@ export async function runAgentLoop(
     if (s.source.pluginId.startsWith("tenant-")) return true;
     return skillsAllowed.has(s.name);
   });
+  // Create the inner abort controller before the toolset so we
+  // can pipe its signal into AgentToolContext. The signal lets
+  // long-running tools (microsandbox `exec`, MCP fetches) bail
+  // out the moment a watchdog timeout / external `task_abort`
+  // fires, instead of waiting for their own internal timeout.
+  // Without this, an aborted run still has to wait for the
+  // current tool call to drain, and the worker session shows
+  // 'busy' for up to that tool's timeout budget.
+  const innerCtl = new AbortController();
+  const onExternalAbort = () => innerCtl.abort();
+  externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {
@@ -331,6 +342,12 @@ export async function runAgentLoop(
       // Optional task binding: lets per-task tools (microsandbox
       // `exec`) scope resources to the task lifecycle.
       taskId: req.taskId ?? undefined,
+      // Cancellation signal piped from the agent loop's inner
+      // abort controller. Tools that do long-running work
+      // (microsandbox `exec`, MCP) read this and bail when the
+      // run is aborted from the outside (`task_abort`, watchdog
+      // timeout, idle timeout).
+      signal: innerCtl.signal,
     },
   });
   const adapted = adaptToolset(toolset);
@@ -428,9 +445,8 @@ export async function runAgentLoop(
   let timedOutReason: AgentLoopResult["reason"] | null = null;
   const completionSink: { summary?: string; files?: string[] } = {};
 
-  const innerCtl = new AbortController();
-  const onExternalAbort = () => innerCtl.abort();
-  externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
+  // (innerCtl created earlier so AgentToolContext.signal can
+  //  reference it; the watchdog below still drives it.)
 
   const TICK_MS = 100;
   const watchdog = setInterval(() => {

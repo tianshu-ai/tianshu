@@ -236,6 +236,19 @@ export interface AgentToolContext {
    * Absent for chat sessions and ad-hoc tool invocations.
    */
   taskId?: string;
+  /**
+   * Cancellation signal for the current run. The host wires this
+   * from the agent loop's inner abort controller, so a watchdog
+   * timeout, an external `task_abort`, or any other reason the
+   * loop unwinds will fire this signal. Tools that do long-running
+   * work (`exec`, MCP calls, network fetches) SHOULD listen and
+   * bail early; tools that are inherently quick can ignore it.
+   *
+   * Optional for backwards compatibility — plugins built against
+   * older SDK versions never see this field, and the host
+   * tolerates that.
+   */
+  signal?: AbortSignal;
 }
 
 /** Lookup-only subset of CapabilityHandle (no `on()`). */
@@ -379,6 +392,14 @@ export interface ExecRequest {
    *  `TaskSandboxPool.bindSession` still land in the right
    *  per-task sandbox. */
   sessionId?: string;
+  /** Optional cancellation signal. Runners SHOULD watch this and
+   *  abort the in-flight exec (best-effort SIGKILL of the guest
+   *  process) so callers can interrupt a runaway command without
+   *  waiting for the timeout. The host wires this from the agent
+   *  loop's inner abort controller, so a `task_abort` (or any
+   *  other source that aborts the run) propagates straight down
+   *  to the guest. */
+  signal?: AbortSignal;
 }
 
 export interface ExecResult {
@@ -389,6 +410,10 @@ export interface ExecResult {
   durationMs: number;
   /** True iff the command was killed by timeout. */
   timedOut: boolean;
+  /** True iff the command was killed by the caller's abort signal
+   *  rather than running to completion or hitting the timeout.
+   *  Optional for backwards compatibility. */
+  aborted?: boolean;
 }
 
 export type SandboxState = "starting" | "ready" | "running" | "error" | "stopped";

@@ -21,12 +21,14 @@ class FakeRunner implements SandboxRunner {
     command: string;
     workdir?: string;
     timeoutMs?: number;
+    signal?: AbortSignal;
   }) => Promise<{
     exitCode: number;
     stdout: string;
     stderr: string;
     durationMs: number;
     timedOut: boolean;
+    aborted?: boolean;
   }> = async () => ({
     exitCode: 0,
     stdout: "ok",
@@ -34,7 +36,12 @@ class FakeRunner implements SandboxRunner {
     durationMs: 1,
     timedOut: false,
   });
-  async exec(req: { command: string; workdir?: string; timeoutMs?: number }) {
+  async exec(req: {
+    command: string;
+    workdir?: string;
+    timeoutMs?: number;
+    signal?: AbortSignal;
+  }) {
     this.execCalls.push(req);
     return this.fakeExec(req);
   }
@@ -59,6 +66,7 @@ class FakeRunner implements SandboxRunner {
 function makeCtx(opts: {
   runner?: FakeRunner;
   tenantHomeDir?: string;
+  signal?: AbortSignal;
 }): AgentToolContext {
   const runner = opts.runner;
   return {
@@ -77,6 +85,7 @@ function makeCtx(opts: {
       warn: () => {},
       error: () => {},
     },
+    signal: opts.signal,
   };
 }
 
@@ -162,6 +171,54 @@ describe("ExecTool.execute()", () => {
     )) as { ok: boolean; stderr: string };
     expect(out.ok).toBe(false);
     expect(out.stderr).toContain("VM gone");
+  });
+
+  it("forwards ctx.signal into runner.exec so the runner can bail early", async () => {
+    const r = new FakeRunner();
+    const ctl = new AbortController();
+    await ExecTool.execute(
+      { command: "echo x" },
+      makeCtx({ runner: r, signal: ctl.signal }),
+    );
+    // The runner saw the same signal instance the ctx carried.
+    expect(r.execCalls[0]!.signal).toBe(ctl.signal);
+  });
+
+  it("surfaces aborted=true when the runner reports the call was aborted", async () => {
+    const r = new FakeRunner();
+    r.fakeExec = async (req) => {
+      // Simulate a runner that listened to req.signal and bailed.
+      // Wait until the signal fires, then return an aborted result.
+      await new Promise<void>((resolve) => {
+        if (req.signal?.aborted) return resolve();
+        req.signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: "[microsandbox] exec aborted by caller; SIGKILL sent.",
+        durationMs: 12,
+        timedOut: false,
+        aborted: true,
+      };
+    };
+    const ctl = new AbortController();
+    const p = ExecTool.execute(
+      { command: "sleep 9999", timeout_ms: 60_000 },
+      makeCtx({ runner: r, signal: ctl.signal }),
+    ) as Promise<{
+      ok: boolean;
+      timed_out: boolean;
+      aborted: boolean;
+      stderr: string;
+    }>;
+    // Fire the abort, runner returns immediately, no watchdog needed.
+    setImmediate(() => ctl.abort());
+    const out = await p;
+    expect(out.ok).toBe(false);
+    expect(out.aborted).toBe(true);
+    expect(out.timed_out).toBe(false);
+    expect(out.stderr).toContain("aborted");
   });
 
   it("outer watchdog fires when runner.exec never resolves", async () => {
