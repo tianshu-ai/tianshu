@@ -43,8 +43,13 @@ describe("microsandbox sandboxfile templates", () => {
     const tr = templates.find((t) => t.id === "task-runner");
     expect(tr).toBeDefined();
     expect(tr!.content).toMatch(/image:\s*node:22-slim/);
+    // Data libs
     expect(tr!.content).toMatch(/pandas/);
     expect(tr!.content).toMatch(/matplotlib/);
+    // Office libs (the original missing piece)
+    expect(tr!.content).toMatch(/python-docx/);
+    expect(tr!.content).toMatch(/python-pptx/);
+    expect(tr!.content).toMatch(/markitdown/);
     // CN mirror config wired up
     expect(tr!.content).toMatch(/aliyun\.com|tsinghua\.edu\.cn|npmmirror\.com/);
   });

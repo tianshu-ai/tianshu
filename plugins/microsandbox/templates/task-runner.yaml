@@ -17,9 +17,12 @@
 #           libreoffice (so docx/xlsx/pptx round-trips work),
 #           Node 22 (base image), Python 3.12 + pip + venv
 #   added : git, jq, build-essential, less, vim-tiny, zip/unzip
-#   added : pip pre-installs (pandas, numpy, matplotlib, requests,
-#           pyyaml, lxml, beautifulsoup4) so common one-shot tasks
-#           don't pay the install latency on every cold start
+#   added : pip pre-installs so common one-shot tasks don't pay
+#           the install latency on every cold start:
+#           - data:    pandas, numpy, matplotlib, openpyxl
+#           - web:     requests, beautifulsoup4, lxml, pyyaml
+#           - office:  python-docx, python-pptx, pypdf, reportlab,
+#                      markitdown (universal-converter)
 #   omitted: chromium, xvfb, x11vnc, fluxbox, supervisor, noVNC,
 #           wmctrl, x11-xserver-utils, all the X11/GUI client libs
 #           (libnss3, libatk*, libcups2, libgbm1, libxss1,
@@ -53,9 +56,16 @@ exec:
   - pip3 config --global set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
   # Pre-install common pip libs so one-shot data tasks don't pay
-  # cold-start install latency. ~120 MB combined; reasonable for
-  # the value vs always installing on demand.
-  - pip3 install --no-cache-dir --break-system-packages pandas numpy matplotlib requests pyyaml lxml beautifulsoup4
+  # cold-start install latency. Three groups:
+  #   data:    pandas, numpy, matplotlib, openpyxl  (xlsx via pandas)
+  #   web:     requests, beautifulsoup4, lxml, pyyaml
+  #   office:  python-docx (docx), python-pptx (pptx), pypdf
+  #            (PDF read), reportlab (PDF write), markitdown
+  #            (universal converter — docx/xlsx/pptx/pdf/html/csv
+  #            → markdown)
+  # ~250 MB combined; reasonable for the value vs always installing
+  # on demand.
+  - pip3 install --no-cache-dir --break-system-packages pandas numpy matplotlib requests pyyaml lxml beautifulsoup4 openpyxl python-docx python-pptx pypdf reportlab markitdown
 
   # Refresh font cache so matplotlib/PIL render CJK on first call.
   - fc-cache -fv
@@ -63,6 +73,6 @@ exec:
   # === Verify ============================================================
   - bash -c "node --version && npm --version && python3 --version && pip3 --version"
   - bash -c "git --version && jq --version | head -1"
-  - bash -c "python3 -c 'import pandas, numpy, matplotlib, requests; print(\"py-libs ok\")'"
+  - bash -c "python3 -c 'import pandas, numpy, matplotlib, requests, openpyxl, docx, pptx, pypdf, reportlab; import markitdown; print(\"py-libs ok\")'"
   - bash -c "soffice --version | head -1"
   - echo OK

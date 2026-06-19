@@ -39,7 +39,7 @@ const BUILTIN_TEMPLATES: BuiltinTemplateMeta[] = [
     id: "task-runner",
     displayName: "Task runner (Node + Python + common libs)",
     description:
-      "Recommended Task snapshot. node:22-slim with Python 3.12, git, jq, build-essential, pre-installed pandas/numpy/matplotlib/requests, libreoffice, CJK + emoji fonts, and CN mirrors for apt/npm/pip. ~600 MB compressed; fast enough for code generation, data analysis, and shell scripting tasks that don't need a chromium.",
+      "Recommended Task snapshot. node:22-slim with Python 3.12, git, jq, build-essential, pre-installed data libs (pandas/numpy/matplotlib/openpyxl) + web libs (requests/beautifulsoup4) + office libs (python-docx/python-pptx/pypdf/reportlab/markitdown), libreoffice, CJK + emoji fonts, and CN mirrors for apt/npm/pip. ~700 MB compressed; fast enough for code generation, data analysis, document processing, and shell scripting tasks that don't need a chromium.",
     file: "task-runner.yaml",
   },
   {
