@@ -1,0 +1,80 @@
+# Task runner + Browser (incremental layer).
+#
+# Designed to be built ON TOP OF the `task-runner` snapshot via the
+# admin UI's "based on" dropdown:
+#
+#   1. Build the task-runner template first → snapshot
+#      `tianshu-<tenant>-build-<id>`
+#   2. Switch the editor to this template
+#   3. Click Build, pick "based on: task-runner build-<id>" in the
+#      dropdown
+#   4. The Sandboxfile's `image:` line below is IGNORED in that
+#      mode — the snapshot already pins it. Only the apt / curl /
+#      supervisord steps below run, layering chromium + Playwright
+#      MCP + noVNC on top of the existing task-runner image.
+#
+# Result: a snapshot that has everything task-runner ships
+# (Node + Python + office libs + libreoffice + CN mirrors)
+# AND the browser stack from `browser.yaml`. Bigger than
+# task-runner (~2.5 GB extra for the chromium/CloakBrowser
+# binaries) but you skip re-running the slow apt + pip + libreoffice
+# layers from scratch.
+#
+# If you boot this WITHOUT picking a "based on" snapshot the build
+# will fail at the very first `apt install` step (the base image
+# below is bare python:3.12-slim — it doesn't have any of
+# task-runner's tools yet). That failure is the intended signal
+# that you skipped step 3.
+
+# Image is a deliberate placeholder. It only matters when this
+# template is built without a "based on" snapshot, and that's
+# explicitly not how this template is meant to be used.
+image: python:3.12-slim
+cpus: 2
+memory_mib: 8192
+
+exec:
+  # APT mirrors (no-op outside CN; harmless inside).
+  - sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+  - apt-get update -qq
+
+  # The browser stack on top of task-runner. We DON'T re-install
+  # python3 / sudo / git / fonts / libreoffice — those came from
+  # the task-runner snapshot we layered on. xz-utils gets pulled
+  # in for the CloakBrowser tarball; everything else is new.
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xz-utils xvfb x11vnc fluxbox supervisor x11-xserver-utils wmctrl libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libgbm1 libxss1 libasound2 libxshmfence1 libxkbcommon0 libpango-1.0-0 libxcomposite1 libxdamage1 libxrandr2
+  - rm -rf /var/lib/apt/lists/*
+
+  # CloakBrowser binary + noVNC + websockify.
+  - bash -c "mkdir -p /opt/cloakbrowser && curl -fsSL --retry 8 --retry-delay 8 --retry-all-errors --connect-timeout 30 -o /tmp/cb.tar.gz https://gh-proxy.com/https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v145.0.7632.159.7/cloakbrowser-linux-arm64.tar.gz"
+  - bash -c "test $(stat -c %s /tmp/cb.tar.gz) -gt 100000000"
+  - tar -xzf /tmp/cb.tar.gz -C /opt/cloakbrowser
+  - rm -f /tmp/cb.tar.gz
+  - bash -c "mkdir -p /opt/novnc && curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors https://gh-proxy.com/https://github.com/novnc/noVNC/archive/refs/tags/v1.5.0.tar.gz | tar -xz -C /opt/novnc --strip-components=1"
+  - bash -c "mkdir -p /opt/websockify && curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors https://gh-proxy.com/https://github.com/novnc/websockify/archive/refs/tags/v0.13.0.tar.gz | tar -xz -C /opt/websockify --strip-components=1"
+  - ln -sf /opt/novnc/vnc_lite.html /opt/novnc/index.html
+
+  # Pre-warm the Playwright MCP npx cache.
+  - npx -y @playwright/mcp@latest --help > /dev/null 2>&1
+
+  # supervisord conf (base64'd same as browser.yaml; the parser is
+  # single-line only, so multi-line conf round-trips through
+  # base64).
+  - mkdir -p /etc/supervisor/conf.d
+  - bash -c "echo W3VuaXhfaHR0cF9zZXJ2ZXJdCmZpbGU9L3Zhci9ydW4vc3VwZXJ2aXNvci5zb2NrCmNobW9kPTA3MDAKCltzdXBlcnZpc29yZF0KbG9nZmlsZT0vdmFyL2xvZy9zdXBlcnZpc29yZC5sb2cKcGlkZmlsZT0vdmFyL3J1bi9zdXBlcnZpc29yZC5waWQKCltycGNpbnRlcmZhY2U6c3VwZXJ2aXNvcl0Kc3VwZXJ2aXNvci5ycGNpbnRlcmZhY2VfZmFjdG9yeT1zdXBlcnZpc29yLnJwY2ludGVyZmFjZTptYWtlX21haW5fcnBjaW50ZXJmYWNlCgpbc3VwZXJ2aXNvcmN0bF0Kc2VydmVydXJsPXVuaXg6Ly8vdmFyL3J1bi9zdXBlcnZpc29yLnNvY2sKCltwcm9ncmFtOnh2ZmJdCmNvbW1hbmQ9L3Vzci9iaW4vWHZmYiA6OTkgLXNjcmVlbiAwIDI0MDB4MTgwMHgyNCAtYWMgLW5vbGlzdGVuIHRjcAphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTEwCgpbcHJvZ3JhbTpmbHV4Ym94XQpjb21tYW5kPS91c3IvYmluL2ZsdXhib3gKZW52aXJvbm1lbnQ9RElTUExBWT0iOjk5IgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTIwCgpbcHJvZ3JhbTpjaHJvbWl1bV0KY29tbWFuZD0vb3B0L2Nsb2FrYnJvd3Nlci9jaHJvbWUgLS1yZW1vdGUtZGVidWdnaW5nLXBvcnQ9OTIyMiAtLXJlbW90ZS1kZWJ1Z2dpbmctYWRkcmVzcz0wLjAuMC4wIC0tbm8tc2FuZGJveCAtLWRpc2FibGUtZGV2LXNobS11c2FnZSAtLXVzZXItZGF0YS1kaXI9L3RtcC9jaHJvbWUtcHJvZmlsZSAtLXdpbmRvdy1zaXplPTEyODAsODAwCmVudmlyb25tZW50PURJU1BMQVk9Ijo5OSIKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT0zMApzdGFydHNlY3M9OAoKW3Byb2dyYW06cGxheXdyaWdodC1tY3BdCmNvbW1hbmQ9L3Vzci9sb2NhbC9iaW4vbnB4IEBwbGF5d3JpZ2h0L21jcEBsYXRlc3QgLS1ob3N0IDAuMC4wLjAgLS1wb3J0IDMyMDAgLS1hbGxvd2VkLWhvc3RzPSogLS1hbGxvdy11bnJlc3RyaWN0ZWQtZmlsZS1hY2Nlc3MgLS1jYXBzPXBkZix2aXNpb24gLS1icm93c2VyIGNocm9taXVtIC0tY2RwLWVuZHBvaW50IGh0dHA6Ly8xMjcuMC4wLjE6OTIyMgphdXRvcmVzdGFydD10cnVlCnByaW9yaXR5PTQwCnN0YXJ0c2Vjcz04CgpbcHJvZ3JhbTp4MTF2bmNdCmNvbW1hbmQ9L3Vzci9iaW4veDExdm5jIC1kaXNwbGF5IDo5OSAtZm9yZXZlciAtc2hhcmVkIC1ub3B3IC1yZmJwb3J0IDU5MDAKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT01MAoKW3Byb2dyYW06bm92bmNdCmNvbW1hbmQ9L29wdC93ZWJzb2NraWZ5L3J1biAtLXdlYj0vb3B0L25vdm5jIDYwODAgbG9jYWxob3N0OjU5MDAKYXV0b3Jlc3RhcnQ9dHJ1ZQpwcmlvcml0eT02MAo= | base64 -d > /etc/supervisor/conf.d/browser.conf"
+
+  # Boot supervisord once during build so verify can hit the ports.
+  - supervisord -c /etc/supervisor/conf.d/browser.conf
+  - sleep 18
+
+  # === Verify ============================================================
+  # Carry-over from task-runner: those tools must still work.
+  - bash -c "node --version && python3 --version && pip3 --version && python3 -c 'import pandas, docx, pptx; print(\"py-libs ok\")'"
+  # New layer: browser stack alive.
+  - bash -c "/opt/cloakbrowser/chrome --version | head -1"
+  - bash -c "supervisorctl -c /etc/supervisor/conf.d/browser.conf status; supervisorctl -c /etc/supervisor/conf.d/browser.conf status | grep -E 'FATAL|EXITED|STOPPED' && exit 1 || true"
+  - bash -c "test $(supervisorctl -c /etc/supervisor/conf.d/browser.conf status | grep -c RUNNING) -eq 6"
+  - bash -c "curl -sS --max-time 8 http://127.0.0.1:9222/json/version | grep -q Browser"
+  - bash -c "curl -sS --max-time 8 http://127.0.0.1:6080/vnc_lite.html | grep -qi DOCTYPE"
+  - bash -c "code=$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' http://127.0.0.1:3200/); echo MCP HTTP code=$code; test \"$code\" != \"000\""
+  - echo OK

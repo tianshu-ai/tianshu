@@ -49,6 +49,13 @@ const BUILTIN_TEMPLATES: BuiltinTemplateMeta[] = [
       "Stealth Chromium running headed under Xvfb, with Playwright MCP on :3200 and noVNC on :6080. Lights up the agent's browser_* tools and the admin Browser viewport. ~3.2 GB compressed; pick this when the workload genuinely needs to pilot a chromium.",
     file: "browser.yaml",
   },
+  {
+    id: "task-runner-with-browser",
+    displayName: "Task runner + Browser (incremental layer)",
+    description:
+      "Layered build: take an existing task-runner snapshot and add the browser stack (chromium + Playwright MCP + noVNC) on top. Skips re-installing python/office/libreoffice. MUST be built with the 'based on' dropdown set to a task-runner snapshot \u2014 building this from scratch will fail at the first apt step. Result image is roughly task-runner + 2.5 GB for the chromium binaries.",
+    file: "task-runner-with-browser.yaml",
+  },
 ];
 
 /**

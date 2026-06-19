@@ -6,8 +6,9 @@
 //      plugin templates dir (catches missing-file regressions
 //      before activate-time).
 //   2. The catalog ordering is stable (task-runner first because
-//      it's the recommended Task snapshot; browser second) — UI
-//      relies on this for the dropdown's default.
+//      it's the recommended Task snapshot; browser second;
+//      task-runner-with-browser last as the incremental option)
+//      — UI relies on this for the dropdown's default.
 //   3. Missing files raise a descriptive error pointing at the
 //      offending path so plugin authors can fix it fast.
 
@@ -27,6 +28,7 @@ describe("microsandbox sandboxfile templates", () => {
     expect(templates.map((t) => t.id)).toEqual([
       "task-runner",
       "browser",
+      "task-runner-with-browser",
     ]);
     for (const t of templates) {
       expect(t.content.length).toBeGreaterThan(0);
@@ -63,10 +65,24 @@ describe("microsandbox sandboxfile templates", () => {
     expect(browser!.content).toMatch(/novnc/i);
   });
 
+  it("task-runner-with-browser template ships the browser stack but not the task-runner pip layer", async () => {
+    const templates = await loadTemplates(realTemplatesDir);
+    const layered = templates.find((t) => t.id === "task-runner-with-browser");
+    expect(layered).toBeDefined();
+    // Browser bits present
+    expect(layered!.content).toMatch(/cloakbrowser/i);
+    expect(layered!.content).toMatch(/@playwright\/mcp/);
+    expect(layered!.content).toMatch(/novnc/i);
+    // Office / data layer NOT re-installed (it lives in the
+    // base snapshot we layer on top of)
+    expect(layered!.content).not.toMatch(/pip3 install.*pandas/);
+    expect(layered!.content).not.toMatch(/libreoffice-writer/);
+  });
+
   it("raises a descriptive error when a template file is missing", async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "msb-templates-"));
-    // Empty dir → loader expects task-runner.yaml + browser.yaml;
-    // fails fast on the first (task-runner).
+    // Empty dir → loader expects task-runner.yaml first; fails
+    // fast on the first missing file.
     await expect(loadTemplates(tmp)).rejects.toThrow(/task-runner\.yaml/);
     fs.rmSync(tmp, { recursive: true, force: true });
   });
