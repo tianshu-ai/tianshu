@@ -252,6 +252,26 @@ export class McpToolset implements ToolsetProvider {
     args: Record<string, unknown>,
     ctx: AgentToolContext,
   ): Promise<ToolResult> {
+    // Re-resolve the endpoint on every call. Long-lived consumers
+    // (worker sessions that run for tens of minutes) build the
+    // toolset once and reuse the same executor closure for every
+    // tool call. If the upstream sandbox restarted between calls
+    // — microsandbox picks a new free host port on each boot —
+    // the cached `this.endpoint` becomes stale and we hit
+    // ECONNREFUSED on the dead port. The resolver is cheap (a
+    // sync read against the live sidecar in the microsandbox
+    // case), so calling it per-tool-call is fine.
+    try {
+      const fresh = await this.resolve();
+      if (fresh && fresh !== this.endpoint) {
+        this.endpoint = fresh;
+      } else if (!fresh) {
+        this.endpoint = undefined;
+      }
+    } catch {
+      // resolver threw — fall back to whatever we had cached;
+      // if there's nothing, the next branch surfaces the error.
+    }
     if (!this.endpoint) {
       return errorResult(
         `MCP server "${this.name}" has no endpoint (sandbox booting?). lastError=${
