@@ -259,6 +259,18 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
       req.query.stream !== "" &&
       req.query.stream !== "0" &&
       req.query.stream !== "false";
+    // Optional: layer this build on top of an existing snapshot
+    // instead of pulling Sandboxfile's `image:` from the
+    // registry. Accepts the snapshot name, not the build id, so
+    // the UI sends e.g. `tianshu-default-build-20260619-abc123`.
+    const fromSnapshotParam =
+      typeof req.query.from_snapshot === "string"
+        ? req.query.from_snapshot.trim()
+        : typeof (req.body as { from_snapshot?: unknown })?.from_snapshot ===
+            "string"
+          ? ((req.body as { from_snapshot: string }).from_snapshot).trim()
+          : "";
+    const fromSnapshot: string | undefined = fromSnapshotParam || undefined;
 
     if (stream) {
       // NDJSON stream. Set headers up front so the browser starts
@@ -286,7 +298,12 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
         }
       };
 
-      send({ type: "start", buildId, image: spec.image });
+      send({
+        type: "start",
+        buildId,
+        image: spec.image,
+        ...(fromSnapshot ? { fromSnapshot } : {}),
+      });
 
       try {
         const result = await buildSnapshot({
@@ -296,6 +313,7 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
           tenantId: deps.tenantId,
           workspaceDir: deps.workspaceDir,
           onLog: (line) => send({ type: "log", line }),
+          fromSnapshot,
         });
         const meta: BuildMetadata = {
           buildId,
@@ -305,6 +323,7 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
           durationMs: result.durationMs,
           logTail: result.logTail,
           sandboxfilePath,
+          ...(fromSnapshot ? { basedOnSnapshot: fromSnapshot } : {}),
         };
         await writeBuildMetadata(home, meta);
         send({ type: "done", build: meta });
@@ -331,6 +350,7 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
         buildId,
         tenantId: deps.tenantId,
         workspaceDir: deps.workspaceDir,
+        fromSnapshot,
       });
       const meta: BuildMetadata = {
         buildId,
@@ -340,6 +360,7 @@ export function buildAdminRoutes(deps: AdminRoutesDeps) {
         durationMs: result.durationMs,
         logTail: result.logTail,
         sandboxfilePath,
+        ...(fromSnapshot ? { basedOnSnapshot: fromSnapshot } : {}),
       };
       await writeBuildMetadata(home, meta);
       res.json({ ok: true, build: meta });

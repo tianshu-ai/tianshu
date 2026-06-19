@@ -1,0 +1,80 @@
+# Task runner Sandboxfile.
+#
+# Recommended snapshot for the per-task sandbox pool (PR #141): a
+# Node 22 + Python 3.12 environment with the tools agent tasks
+# typically reach for, but WITHOUT the GUI / browser stack from
+# `browser.yaml`. Faster to boot, smaller RAM footprint, plenty
+# fast for code generation / data analysis / shell scripting
+# tasks that don't need a chromium of their own.
+#
+# Use this as the default Task snapshot in the admin UI; pick
+# `browser.yaml` instead when the workload needs to pilot a
+# chromium (visual scraping, JS-heavy SPAs, screenshots, etc).
+# Anything beyond those two cases — a custom base image, an
+# air-gapped install, etc — means writing your own Sandboxfile
+# and uploading it through the admin UI.
+#
+# Includes vs `browser.yaml`:
+#   shared: sudo, curl, ca-certs, fontconfig + CJK + emoji fonts,
+#           libreoffice (so docx/xlsx/pptx round-trips work),
+#           Node 22 (base image), Python 3.12 + pip + venv
+#   added : git, jq, build-essential, less, vim-tiny, zip/unzip
+#   added : pip pre-installs so common one-shot tasks don't pay
+#           the install latency on every cold start:
+#           - data:    pandas, numpy, matplotlib, openpyxl
+#           - web:     requests, beautifulsoup4, lxml, pyyaml
+#           - office:  python-docx, python-pptx, pypdf, reportlab,
+#                      markitdown (universal-converter)
+#   omitted: chromium, xvfb, x11vnc, fluxbox, supervisor, noVNC,
+#           wmctrl, x11-xserver-utils, all the X11/GUI client libs
+#           (libnss3, libatk*, libcups2, libgbm1, libxss1,
+#           libasound2, libxshmfence1, libxkbcommon0, libpango,
+#           libxcomposite1, libxdamage1, libxrandr2)
+#
+# Total image is ~600 MB compressed vs `browser.yaml`'s ~3.2 GB.
+# Use `browser.yaml` instead when the workload genuinely needs to
+# pilot a browser (visual scraping, JS-heavy SPA rendering, etc).
+
+image: node:22-slim
+cpus: 4
+memory_mib: 4096
+
+exec:
+  # APT mirror (China-mainland speed-up; harmless elsewhere — the
+  # debian.sources file replacement is a no-op when the original
+  # entries are already mirrored at the alibaba endpoint).
+  - sed -i 's|deb.debian.org|mirrors.aliyun.com|g; s|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+  - apt-get update -qq
+
+  # One apt install. node:22-slim already ships ca-certificates +
+  # xz-utils, so we don't repeat them here. Order roughly: shell
+  # essentials, dev tools, fonts, libreoffice, python.
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl sudo git jq build-essential less vim-tiny zip unzip fontconfig fonts-noto-cjk fonts-noto-color-emoji libreoffice-writer libreoffice-calc libreoffice-impress python3 python3-pip python3-venv
+  - rm -rf /var/lib/apt/lists/*
+
+  # Mirror npm + pip to local CDNs. Same rationale as the apt
+  # mirror — no-op outside CN, big speed-up inside.
+  - npm config set registry https://registry.npmmirror.com
+  - pip3 config --global set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
+  # Pre-install common pip libs so one-shot data tasks don't pay
+  # cold-start install latency. Three groups:
+  #   data:    pandas, numpy, matplotlib, openpyxl  (xlsx via pandas)
+  #   web:     requests, beautifulsoup4, lxml, pyyaml
+  #   office:  python-docx (docx), python-pptx (pptx), pypdf
+  #            (PDF read), reportlab (PDF write), markitdown
+  #            (universal converter — docx/xlsx/pptx/pdf/html/csv
+  #            → markdown)
+  # ~250 MB combined; reasonable for the value vs always installing
+  # on demand.
+  - pip3 install --no-cache-dir --break-system-packages pandas numpy matplotlib requests pyyaml lxml beautifulsoup4 openpyxl python-docx python-pptx pypdf reportlab markitdown
+
+  # Refresh font cache so matplotlib/PIL render CJK on first call.
+  - fc-cache -fv
+
+  # === Verify ============================================================
+  - bash -c "node --version && npm --version && python3 --version && pip3 --version"
+  - bash -c "git --version && jq --version | head -1"
+  - bash -c "python3 -c 'import pandas, numpy, matplotlib, requests, openpyxl, docx, pptx, pypdf, reportlab; import markitdown; print(\"py-libs ok\")'"
+  - bash -c "soffice --version | head -1"
+  - echo OK

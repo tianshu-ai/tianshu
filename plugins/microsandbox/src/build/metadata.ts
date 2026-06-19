@@ -23,6 +23,13 @@ export interface BuildMetadata {
   logTail: string;
   /** Path (under user home) to the Sandboxfile that produced this. */
   sandboxfilePath: string;
+  /**
+   * If this build layered on top of an existing snapshot rather
+   * than booting from a docker image, the source snapshot name.
+   * Lets the UI render a parent chain ("based on: build-X") so the
+   * operator can trace the lineage. Absent for image-rooted builds.
+   */
+  basedOnSnapshot?: string;
 }
 
 export const USER_BUILDS_REL = "sandbox/builds";

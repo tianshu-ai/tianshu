@@ -36,25 +36,25 @@ interface BuiltinTemplateMeta {
 
 const BUILTIN_TEMPLATES: BuiltinTemplateMeta[] = [
   {
-    id: "minimal",
-    displayName: "Minimal",
+    id: "task-runner",
+    displayName: "Task runner (Node + Python + Office libs)",
     description:
-      "python:3.12-slim with no extra layers. Same as the new-Sandboxfile placeholder.",
-    file: "minimal.yaml",
+      "Recommended Task snapshot. node:22-slim with Python 3.12, git, jq, build-essential, pre-installed data libs (pandas/numpy/matplotlib/openpyxl) + web libs (requests/beautifulsoup4) + office libs (python-docx/python-pptx/pypdf/reportlab/markitdown), libreoffice, CJK + emoji fonts, and CN mirrors for apt/npm/pip. ~700 MB compressed; fast enough for code generation, data analysis, document processing, and shell scripting tasks that don't need a chromium.",
+    file: "task-runner.yaml",
   },
   {
     id: "browser",
     displayName: "Browser (CloakBrowser + Playwright MCP + noVNC)",
     description:
-      "Stealth Chromium running headed under Xvfb, with Playwright MCP on :3200 and noVNC on :6080. Lights up the agent's browser_* tools and the admin Browser viewport.",
+      "Stealth Chromium running headed under Xvfb, with Playwright MCP on :3200 and noVNC on :6080. Lights up the agent's browser_* tools and the admin Browser viewport. ~3.2 GB compressed; pick this when the workload genuinely needs to pilot a chromium.",
     file: "browser.yaml",
   },
   {
-    id: "node-python",
-    displayName: "Node.js + Python",
+    id: "task-runner-with-browser",
+    displayName: "Task runner + Browser (incremental layer)",
     description:
-      "node:22-slim base image (skips slow Node install) plus apt-installed Python 3 and CN mirrors. Use when you need both toolchains in one sandbox.",
-    file: "node-python.yaml",
+      "Layered build: take an existing task-runner snapshot and add the browser stack (chromium + Playwright MCP + noVNC) on top. Skips re-installing python/office/libreoffice. MUST be built with the 'based on' dropdown set to a task-runner snapshot \u2014 building this from scratch will fail at the first apt step. Result image is roughly task-runner + 2.5 GB for the chromium binaries.",
+    file: "task-runner-with-browser.yaml",
   },
 ];
 
