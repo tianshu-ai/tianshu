@@ -237,6 +237,20 @@ export class MicrosandboxRunner implements SandboxRunner {
       // the union cleanly without us casting the ExecOutput shape.
       const TIMEOUT = Symbol("exec-timeout");
       const HANDSHAKE = Symbol("exec-handshake-timeout");
+      const ABORTED = Symbol("exec-aborted");
+      // Shared abort race used by both the handshake and the
+      // collect step below. If the caller already aborted before
+      // we got here, fast-path back; otherwise listen once.
+      const buildAbortP = (): Promise<typeof ABORTED> => {
+        const sig = req.signal;
+        if (!sig) return new Promise(() => {});
+        if (sig.aborted) return Promise.resolve(ABORTED);
+        return new Promise((resolve) => {
+          sig.addEventListener("abort", () => resolve(ABORTED), {
+            once: true,
+          });
+        });
+      };
       // `shellStream(script)` itself can hang if the host-guest
       // agent socket is dead — the SDK is waiting on a
       // start-of-stream ack that will never come. Without this
@@ -253,6 +267,7 @@ export class MicrosandboxRunner implements SandboxRunner {
       const startedExec = await Promise.race([
         handle.shellStream(script),
         handshakeP,
+        buildAbortP(),
       ]);
       if (startedExec === HANDSHAKE) {
         const durationMs = Date.now() - start;
@@ -273,6 +288,26 @@ export class MicrosandboxRunner implements SandboxRunner {
           timedOut: true,
         };
       }
+      if (startedExec === ABORTED) {
+        // Abort fired before shellStream even returned. Nothing to
+        // kill on the guest side; just surface the cancellation.
+        const durationMs = Date.now() - start;
+        this.lastExec = {
+          at: Date.now(),
+          ok: false,
+          durationMs,
+          exitCode: -1,
+        };
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr:
+            `[microsandbox] exec aborted by caller before shellStream returned.`,
+          durationMs,
+          timedOut: false,
+          aborted: true,
+        };
+      }
       const exec = startedExec;
       let timer: NodeJS.Timeout | null = null;
       const collectP = exec.collect();
@@ -290,8 +325,48 @@ export class MicrosandboxRunner implements SandboxRunner {
               }, timeoutMs);
             })
           : new Promise<never>(() => {});
-      const winner = await Promise.race([collectP, timeoutP]);
+      // Abort race for the collect step: when the agent loop's
+      // signal fires, SIGKILL the guest process and surface a
+      // structured `aborted` result. Mirror of the timeout path
+      // but distinguishable to the caller (`aborted: true`,
+      // `timedOut: false`).
+      const collectAbortP = buildAbortP();
+      const winner = await Promise.race([collectP, timeoutP, collectAbortP]);
       if (timer) clearTimeout(timer);
+      if (winner === ABORTED) {
+        exec.kill().catch(() => {});
+        // Best-effort drain so the agent sees whatever stdout
+        // the killed command produced before it died.
+        let partial = { stdout: "", stderr: "" };
+        try {
+          const drained = await Promise.race([
+            collectP,
+            new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+          ]);
+          if (drained) {
+            partial = { stdout: drained.stdout(), stderr: drained.stderr() };
+          }
+        } catch {
+          // best-effort
+        }
+        const durationMs = Date.now() - start;
+        this.lastExec = {
+          at: Date.now(),
+          ok: false,
+          durationMs,
+          exitCode: -1,
+        };
+        return {
+          exitCode: -1,
+          stdout: partial.stdout,
+          stderr:
+            (partial.stderr ? partial.stderr + "\n" : "") +
+            `[microsandbox] exec aborted by caller; SIGKILL sent.`,
+          durationMs,
+          timedOut: false,
+          aborted: true,
+        };
+      }
       if (winner === TIMEOUT) {
         // Try to drain whatever stdout/stderr the kill produced;
         // collect() resolves shortly after kill on a healthy channel.

@@ -466,6 +466,15 @@ export class SandboxPool implements TaskSandboxPool {
     const script = buildScript(req.userId, workdir, req.command);
     const TIMEOUT = Symbol("exec-timeout");
     const HANDSHAKE = Symbol("exec-handshake-timeout");
+    const ABORTED = Symbol("exec-aborted");
+    const buildAbortP = (): Promise<typeof ABORTED> => {
+      const sig = req.signal;
+      if (!sig) return new Promise(() => {});
+      if (sig.aborted) return Promise.resolve(ABORTED);
+      return new Promise((resolve) => {
+        sig.addEventListener("abort", () => resolve(ABORTED), { once: true });
+      });
+    };
     // Mirror MicrosandboxRunner.exec: race shellStream() itself,
     // not just collect(). If the host-guest agent socket is dead
     // the SDK blocks on the start-of-stream ack and the inner
@@ -479,6 +488,7 @@ export class SandboxPool implements TaskSandboxPool {
     const startedExec = await Promise.race([
       entry.sandbox.shellStream(script),
       handshakeP,
+      buildAbortP(),
     ]);
     if (startedExec === HANDSHAKE) {
       // Mark the entry errored so the next acquireTask path can
@@ -496,6 +506,17 @@ export class SandboxPool implements TaskSandboxPool {
         timedOut: true,
       };
     }
+    if (startedExec === ABORTED) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr:
+          `[microsandbox] task exec aborted by caller before shellStream returned.`,
+        durationMs: Date.now() - start,
+        timedOut: false,
+        aborted: true,
+      };
+    }
     const exec = startedExec;
     let timer: NodeJS.Timeout | null = null;
     const collectP = exec.collect();
@@ -508,8 +529,34 @@ export class SandboxPool implements TaskSandboxPool {
             }, timeoutMs);
           })
         : new Promise<never>(() => {});
-    const winner = await Promise.race([collectP, timeoutP]);
+    const collectAbortP = buildAbortP();
+    const winner = await Promise.race([collectP, timeoutP, collectAbortP]);
     if (timer) clearTimeout(timer);
+    if (winner === ABORTED) {
+      exec.kill().catch(() => {});
+      let partial = { stdout: "", stderr: "" };
+      try {
+        const drained = await Promise.race([
+          collectP,
+          new Promise<null>((r) => setTimeout(() => r(null), 1500)),
+        ]);
+        if (drained) {
+          partial = { stdout: drained.stdout(), stderr: drained.stderr() };
+        }
+      } catch {
+        /* ignore */
+      }
+      return {
+        exitCode: -1,
+        stdout: partial.stdout,
+        stderr:
+          (partial.stderr ? partial.stderr + "\n" : "") +
+          `[microsandbox] task exec aborted by caller; SIGKILL sent.`,
+        durationMs: Date.now() - start,
+        timedOut: false,
+        aborted: true,
+      };
+    }
     if (winner === TIMEOUT) {
       let partial = { stdout: "", stderr: "" };
       try {

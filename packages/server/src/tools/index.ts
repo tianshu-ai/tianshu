@@ -81,6 +81,14 @@ export interface BuildToolContext {
    * lifecycle. Absent for chat sessions.
    */
   taskId?: string;
+  /**
+   * Cancellation signal piped from the agent loop's inner abort
+   * controller. Forwarded into every tool's
+   * `AgentToolContext.signal` so long-running tools can bail
+   * early on watchdog timeout / external `task_abort`. Optional
+   * because unit tests instantiating a toolset don't need it.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -117,6 +125,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       log: toolContext.log,
       sessionId: toolContext.sessionId,
       taskId: toolContext.taskId,
+      signal: toolContext.signal,
     };
     let available = true;
     if (tool.available) {

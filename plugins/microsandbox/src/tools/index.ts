@@ -139,6 +139,14 @@ is wiped when you call \`reset_sandbox\`.`,
         userId: ctx.userId,
         taskId: ctx.taskId,
         sessionId: ctx.sessionId,
+        // Pipe the agent loop's abort signal through so the
+        // runner can SIGKILL the guest process the moment a
+        // `task_abort` (or watchdog) fires, instead of waiting
+        // for the per-call timeout. Without this, an aborted
+        // worker run still has to drain the current exec
+        // before the harness can settle and the worker shows
+        // 'busy' for up to timeoutMs.
+        signal: ctx.signal,
       });
       const WATCHDOG = Symbol("exec-watchdog");
       const watchdogP =
@@ -149,6 +157,11 @@ is wiped when you call \`reset_sandbox\`.`,
           : new Promise<never>(() => {});
       const winner = await Promise.race([execP, watchdogP]);
       if (winner === WATCHDOG) {
+        // If the outer signal already fired, the runner *should*
+        // have aborted on its own; the watchdog is just a
+        // belt-and-braces guard. Either way the agent gets a
+        // structured timeout.
+        void ctx.signal; // (no-op; documents the relationship)
         return {
           ok: false,
           exit_code: -1,
@@ -166,13 +179,14 @@ is wiped when you call \`reset_sandbox\`.`,
       const stdout = truncate(result.stdout);
       const stderr = truncate(result.stderr);
       return {
-        ok: result.exitCode === 0 && !result.timedOut,
+        ok: result.exitCode === 0 && !result.timedOut && !result.aborted,
         exit_code: result.exitCode,
         stdout: stdout.text,
         stderr: stderr.text,
         truncated: stdout.truncated || stderr.truncated,
         duration_ms: result.durationMs,
         timed_out: result.timedOut,
+        aborted: result.aborted ?? false,
       };
     } catch (err) {
       return errorResult(
