@@ -465,7 +465,38 @@ export class SandboxPool implements TaskSandboxPool {
     const workdir = req.workdir ?? "/workspace";
     const script = buildScript(req.userId, workdir, req.command);
     const TIMEOUT = Symbol("exec-timeout");
-    const exec = await entry.sandbox.shellStream(script);
+    const HANDSHAKE = Symbol("exec-handshake-timeout");
+    // Mirror MicrosandboxRunner.exec: race shellStream() itself,
+    // not just collect(). If the host-guest agent socket is dead
+    // the SDK blocks on the start-of-stream ack and the inner
+    // timeout never arms.
+    const handshakeP: Promise<typeof HANDSHAKE> =
+      timeoutMs > 0
+        ? new Promise((resolve) =>
+            setTimeout(() => resolve(HANDSHAKE), timeoutMs),
+          )
+        : new Promise(() => {});
+    const startedExec = await Promise.race([
+      entry.sandbox.shellStream(script),
+      handshakeP,
+    ]);
+    if (startedExec === HANDSHAKE) {
+      // Mark the entry errored so the next acquireTask path can
+      // re-fork instead of handing back the same wedged sandbox.
+      entry.state = "error";
+      entry.startError = `shellStream handshake timeout after ${timeoutMs}ms`;
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr:
+          `[microsandbox] task sandbox shellStream() did not return ` +
+          `within ${timeoutMs}ms — marking sandbox errored so the next ` +
+          `task pickup re-forks from the snapshot.`,
+        durationMs: Date.now() - start,
+        timedOut: true,
+      };
+    }
+    const exec = startedExec;
     let timer: NodeJS.Timeout | null = null;
     const collectP = exec.collect();
     const timeoutP =

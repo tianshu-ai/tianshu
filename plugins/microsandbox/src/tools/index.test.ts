@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -162,6 +162,37 @@ describe("ExecTool.execute()", () => {
     )) as { ok: boolean; stderr: string };
     expect(out.ok).toBe(false);
     expect(out.stderr).toContain("VM gone");
+  });
+
+  it("outer watchdog fires when runner.exec never resolves", async () => {
+    vi.useFakeTimers();
+    try {
+      const r = new FakeRunner();
+      // Simulate the failure mode we hit in practice: the SDK
+      // hangs *before* the runner's own timeout race is wired up
+      // (e.g. shellStream(script) blocks on a dead host-guest
+      // socket). Without the outer watchdog the tool call hangs
+      // forever, taking the worker turn down with it.
+      r.fakeExec = () => new Promise(() => {});
+      const p = ExecTool.execute(
+        { command: "echo x", timeout_ms: 1_000 },
+        makeCtx({ runner: r }),
+      ) as Promise<{
+        ok: boolean;
+        timed_out: boolean;
+        stderr: string;
+        duration_ms: number;
+      }>;
+      // Inner timeout (1s) + 5s slack = 6s before watchdog fires.
+      await vi.advanceTimersByTimeAsync(6_000);
+      const out = await p;
+      expect(out.ok).toBe(false);
+      expect(out.timed_out).toBe(true);
+      expect(out.stderr).toContain("watchdog");
+      expect(out.duration_ms).toBe(6_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

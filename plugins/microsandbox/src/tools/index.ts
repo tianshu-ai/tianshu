@@ -120,8 +120,19 @@ is wiped when you call \`reset_sandbox\`.`,
         ? ((args as { workdir: string }).workdir as string)
         : defaultUserWorkdir(ctx.userId);
     const timeoutMs = clampTimeout((args as { timeout_ms?: unknown }).timeout_ms);
+    // Outer watchdog: belt-and-braces guard against `runner.exec`
+    // never resolving. The runner already has its own timeout +
+    // SIGKILL race, but if the SDK hangs *before* that race is
+    // wired up (e.g. `shellStream(script)` itself blocks because
+    // the host-guest agent socket is dead), the inner timeout is
+    // never armed and the tool call hangs forever — taking the
+    // whole worker turn down with it. We give the runner its own
+    // budget plus 5s slack, then fail the tool call with a
+    // structured timeout so the agent can move on (or the worker
+    // pool can decide to retry the task).
+    const watchdogMs = timeoutMs > 0 ? timeoutMs + 5_000 : 0;
     try {
-      const result = await runner.exec({
+      const execP = runner.exec({
         command,
         workdir,
         timeoutMs,
@@ -129,6 +140,29 @@ is wiped when you call \`reset_sandbox\`.`,
         taskId: ctx.taskId,
         sessionId: ctx.sessionId,
       });
+      const WATCHDOG = Symbol("exec-watchdog");
+      const watchdogP =
+        watchdogMs > 0
+          ? new Promise<typeof WATCHDOG>((resolve) =>
+              setTimeout(() => resolve(WATCHDOG), watchdogMs),
+            )
+          : new Promise<never>(() => {});
+      const winner = await Promise.race([execP, watchdogP]);
+      if (winner === WATCHDOG) {
+        return {
+          ok: false,
+          exit_code: -1,
+          stdout: "",
+          stderr:
+            `[microsandbox] exec watchdog fired after ${watchdogMs}ms — ` +
+            `the sandbox runner did not return in time. The host-guest ` +
+            `channel may be wedged; try \`reset_sandbox\` if this repeats.`,
+          truncated: false,
+          duration_ms: watchdogMs,
+          timed_out: true,
+        };
+      }
+      const result = winner;
       const stdout = truncate(result.stdout);
       const stderr = truncate(result.stderr);
       return {
