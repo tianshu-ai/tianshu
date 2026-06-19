@@ -224,6 +224,50 @@ pluginRegistry = new PluginRegistry({
 // TIANSHU_CATALOG_URL for self-hosted catalogs.
 const catalogClient = new CatalogClient();
 
+// Refuse to start when the user-visible config is plainly broken
+// (no LLM provider, missing or unparseable config.json, Node
+// older than the SDK requires). The check is fast and IO-only;
+// it deliberately does NOT hit the network so dev / docker boots
+// stay fast. Operators with intentionally-empty configs (smoke
+// tests, image bake) can pass --ignore-setup or set
+// TIANSHU_IGNORE_SETUP=1 to bypass.
+const ignoreSetupArg = process.argv.includes("--ignore-setup");
+const ignoreSetupEnv = (process.env.TIANSHU_IGNORE_SETUP ?? "").trim() !== "";
+if (!(ignoreSetupArg || ignoreSetupEnv)) {
+  const { runQuickReadinessCheck } = await import("./setup/doctor.js");
+  const readiness = await runQuickReadinessCheck();
+  if (!readiness.ok) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "\n[tianshu] cannot start \u2014 setup is incomplete:\n",
+    );
+    for (const group of readiness.blockers) {
+      // eslint-disable-next-line no-console
+      console.error(`  ${group.title}:`);
+      for (const line of group.lines) {
+        // eslint-disable-next-line no-console
+        console.error(`    \u2717 ${line.text}`);
+        if (line.detail) {
+          // eslint-disable-next-line no-console
+          console.error(`      ${line.detail}`);
+        }
+      }
+    }
+    // eslint-disable-next-line no-console
+    console.error(
+      [
+        "",
+        "Fix it with:",
+        "  tianshu setup --wizard      (interactive)",
+        "  tianshu doctor              (full diagnostic)",
+        "",
+        "Or pass --ignore-setup / TIANSHU_IGNORE_SETUP=1 to start anyway.",
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+}
+
 // Create the dev tenant + dev user on first boot if global config allows.
 const bootstrap = bootstrapDevTenantIfNeeded(globalOps, loadGlobalConfig());
 if (bootstrap.created) {

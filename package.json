@@ -1,7 +1,6 @@
 {
-  "name": "tianshu",
+  "name": "@tianshu-ai/tianshu",
   "version": "0.2.0",
-  "private": true,
   "description": "An open AI agent platform with a sidecar browser. Built in public.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/tianshu-ai/tianshu",
@@ -15,6 +14,26 @@
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "tianshu": "./bin/tianshu.mjs"
+  },
+  "files": [
+    "bin/",
+    "packages/server/dist/",
+    "packages/server/package.json",
+    "packages/server/builtinConfig/",
+    "packages/web/dist/",
+    "packages/web/package.json",
+    "packages/plugin-sdk/dist/",
+    "packages/plugin-sdk/package.json",
+    "plugins/**/dist/**",
+    "plugins/**/package.json",
+    "plugins/**/manifest.json",
+    "plugins/**/skills/**",
+    "plugins/**/agent-seeds/**",
+    "README.md",
+    "LICENSE"
+  ],
   "workspaces": [
     "packages/plugin-sdk",
     "packages/server",
@@ -29,7 +48,10 @@
     "test:plugins": "node scripts/run-builtin-script.mjs test",
     "typecheck": "tsc -p packages/plugin-sdk/tsconfig.json --noEmit && node scripts/typecheck-plugins.mjs && tsc -p packages/server/tsconfig.json --noEmit && tsc -p packages/web/tsconfig.json --noEmit",
     "typecheck:plugins": "node scripts/typecheck-plugins.mjs",
-    "sync:plugins": "node scripts/sync-builtin-plugins.mjs"
+    "sync:plugins": "node scripts/sync-builtin-plugins.mjs",
+    "doctor": "node bin/tianshu.mjs doctor",
+    "setup": "node bin/tianshu.mjs setup",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "concurrently": "^10.0.3",
