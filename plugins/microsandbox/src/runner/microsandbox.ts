@@ -236,7 +236,44 @@ export class MicrosandboxRunner implements SandboxRunner {
       // Sentinel object identity — not a string — so TS narrows
       // the union cleanly without us casting the ExecOutput shape.
       const TIMEOUT = Symbol("exec-timeout");
-      const exec = await handle.shellStream(script);
+      const HANDSHAKE = Symbol("exec-handshake-timeout");
+      // `shellStream(script)` itself can hang if the host-guest
+      // agent socket is dead — the SDK is waiting on a
+      // start-of-stream ack that will never come. Without this
+      // race, the timeout below is *never armed* and the call
+      // blocks forever. We give the handshake the same budget as
+      // the exec itself; whichever fires first surfaces a
+      // structured timeout instead of an unbounded hang.
+      const handshakeP: Promise<typeof HANDSHAKE> =
+        timeoutMs > 0
+          ? new Promise((resolve) =>
+              setTimeout(() => resolve(HANDSHAKE), timeoutMs),
+            )
+          : new Promise(() => {});
+      const startedExec = await Promise.race([
+        handle.shellStream(script),
+        handshakeP,
+      ]);
+      if (startedExec === HANDSHAKE) {
+        const durationMs = Date.now() - start;
+        this.lastExec = {
+          at: Date.now(),
+          ok: false,
+          durationMs,
+          exitCode: -1,
+        };
+        return {
+          exitCode: -1,
+          stdout: "",
+          stderr:
+            `[microsandbox] shellStream() did not return within ${timeoutMs}ms — ` +
+            `the host-guest agent socket may be wedged. Try \`reset_sandbox\`; ` +
+            `if it repeats across resets, the VM itself is stuck.`,
+          durationMs,
+          timedOut: true,
+        };
+      }
+      const exec = startedExec;
       let timer: NodeJS.Timeout | null = null;
       const collectP = exec.collect();
       const timeoutP =
