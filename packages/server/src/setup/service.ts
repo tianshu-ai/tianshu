@@ -22,6 +22,8 @@
 // agent — if the plist doesn't exist, we tell the user to run
 // the wizard.
 
+import { spawn } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import * as launchd from "./launchd.js";
 import { findRepoRoot } from "./repo-root.js";
@@ -38,6 +40,16 @@ interface ServiceCmdOpts {
   waitMs?: number;
   /** When set, emit machine-readable JSON instead of human text. */
   json?: boolean;
+}
+
+export interface LogsCmdOpts extends ServiceCmdOpts {
+  /** stream: follow new lines (`tail -f`) until Ctrl-C. */
+  follow?: boolean;
+  /** how many trailing lines to print up front. Default 50. */
+  lines?: number;
+  /** which stream(s) to read. Default "both" (interleaved by
+   *  modification — we just print err then out). */
+  stream?: "out" | "err" | "both";
 }
 
 const HEALTH_DEADLINE_MS = 60_000;
@@ -232,6 +244,100 @@ export async function runStop(opts: ServiceCmdOpts = {}): Promise<number> {
  * `tianshu restart` — `launchctl kickstart -k`. Faster than
  * stop-then-start because it doesn't rebootstrap the plist.
  */
+/**
+ * `tianshu logs` — print the launchd agent's stdout / stderr
+ * logs. Default: last 50 lines from both streams. With
+ * `--follow`, we exec `tail -f` so the user gets streaming
+ * output (and Ctrl-C falls through naturally).
+ *
+ * Why this command exists: when `tianshu start` says "Server
+ * didn't respond within 120s", the next thing both the user
+ * and a debugging agent want is the actual error from the
+ * failed boot. Without `tianshu logs`, you have to know the
+ * label *and* the convention that logs live in $TMPDIR. Now
+ * it's just `tianshu logs` (or `tianshu logs --follow`).
+ */
+export async function runLogs(opts: LogsCmdOpts = {}): Promise<number> {
+  if (os.platform() !== "darwin") {
+    console.log(
+      "tianshu logs: not implemented on this OS yet. Read the dev server's stdout directly.",
+    );
+    return 1;
+  }
+  const repoRoot = opts.repoRoot ?? findRepoRoot();
+  const label = launchd.resolveLabel(repoRoot);
+  const { out, err } = launchd.logPathsFor(label);
+  const stream = opts.stream ?? "both";
+  const lines = opts.lines ?? 50;
+
+  // Pick which files we care about, in print order.
+  const files: string[] = [];
+  if (stream === "both" || stream === "err") files.push(err);
+  if (stream === "both" || stream === "out") files.push(out);
+
+  // Friendly preflight — if neither file exists, give the user
+  // an actionable message rather than letting `tail` print
+  // "No such file". Most common reason: service was never
+  // installed on this machine.
+  const present = files.filter((f) => fs.existsSync(f));
+  if (present.length === 0) {
+    console.error(`No log files found for service '${label}'.`);
+    console.error(`  expected: ${err}`);
+    console.error(`            ${out}`);
+    const status = launchd.readStatus(label);
+    if (!status.installed) {
+      console.error(
+        "\nService isn't installed. Run `tianshu setup --wizard` first.",
+      );
+    } else if (!status.loaded) {
+      console.error(
+        "\nService is installed but never started. Try `tianshu start`.",
+      );
+    } else {
+      console.error(
+        "\nService is loaded but hasn't written any logs yet. Wait a few seconds and retry.",
+      );
+    }
+    return 1;
+  }
+
+  if (opts.follow) {
+    // Hand off to `tail -f`. We use spawn (not exec) so the
+    // user's Ctrl-C kills tail directly; `tail` then exits and
+    // we propagate its code. -F (capital) re-opens on rotation,
+    // which matters when KeepAlive bounces the agent and
+    // launchd truncates / replaces the log file.
+    return new Promise<number>((resolve) => {
+      const args = ["-n", String(lines), "-F", ...present];
+      const child = spawn("tail", args, { stdio: "inherit" });
+      child.on("error", (e) => {
+        console.error(`tail failed: ${e.message}`);
+        resolve(1);
+      });
+      child.on("exit", (code) => resolve(code ?? 0));
+    });
+  }
+
+  // Non-follow: print the last N lines from each file with a
+  // header so the user can tell which stream they're reading.
+  for (const f of present) {
+    const label = f === err ? "stderr" : "stdout";
+    console.log(`==> ${label} (${f}) <==`);
+    console.log(tailFile(f, lines));
+    console.log("");
+  }
+  return 0;
+}
+
+function tailFile(filepath: string, n: number): string {
+  try {
+    const body = fs.readFileSync(filepath, "utf8");
+    return body.split(/\r?\n/).slice(-n).join("\n");
+  } catch (e) {
+    return `(unreadable: ${(e as Error).message})`;
+  }
+}
+
 export async function runRestart(
   opts: ServiceCmdOpts = {},
 ): Promise<number> {

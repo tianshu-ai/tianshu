@@ -25,10 +25,14 @@ describe("launchd.plistPathFor", () => {
 });
 
 describe("launchd.logPathsFor", () => {
-  it("derives stdout / stderr paths from the label", () => {
+  it("derives stdout / stderr paths under ~/Library/Logs/tianshu (NOT os.tmpdir)", () => {
     const r = logPathsFor("ai.tianshu.dev");
-    expect(r.out).toBe(path.join(os.tmpdir(), "ai.tianshu.dev.out.log"));
-    expect(r.err).toBe(path.join(os.tmpdir(), "ai.tianshu.dev.err.log"));
+    const expectedDir = path.join(os.homedir(), "Library", "Logs", "tianshu");
+    expect(r.out).toBe(path.join(expectedDir, "ai.tianshu.dev.out.log"));
+    expect(r.err).toBe(path.join(expectedDir, "ai.tianshu.dev.err.log"));
+    // Critical: tmpdir is process-local, so launchd-rendered paths
+    // must not depend on it.
+    expect(r.out).not.toContain(os.tmpdir());
   });
 });
 

@@ -117,10 +117,31 @@ export function plistPathFor(label: string): string {
   return path.join(os.homedir(), "Library", "LaunchAgents", `${label}.plist`);
 }
 
+/**
+ * Stable, user-scoped log directory. We deliberately do *not*
+ * use os.tmpdir() here:
+ *   - macOS gives each process its own per-user tmp
+ *     (`/var/folders/...`), but launchd renders the plist
+ *     literally and the *running* process needs the same
+ *     path the *agent* (running outside any sandbox) uses
+ *     when redirecting stdio.
+ *   - Worse, sandboxed runtimes (e.g. OpenClaw) override
+ *     `os.tmpdir()` to point inside the sandbox, so the
+ *     wizard would write a plist with `~/.openclaw/tmp/...`
+ *     that the user can't read from a normal shell.
+ * `~/Library/Logs/tianshu/` is the macOS-conventional spot
+ * (Console.app surfaces it under "User Reports"), is stable
+ * across processes, and survives reboots.
+ */
+function tianshuLogDir(): string {
+  return path.join(os.homedir(), "Library", "Logs", "tianshu");
+}
+
 export function logPathsFor(label: string): { out: string; err: string } {
+  const dir = tianshuLogDir();
   return {
-    out: path.join(os.tmpdir(), `${label}.out.log`),
-    err: path.join(os.tmpdir(), `${label}.err.log`),
+    out: path.join(dir, `${label}.out.log`),
+    err: path.join(dir, `${label}.err.log`),
   };
 }
 
@@ -212,13 +233,18 @@ export function renderPlist(
 }
 
 /**
- * Write the plist (creating ~/Library/LaunchAgents if needed).
- * Idempotent.
+ * Write the plist (creating ~/Library/LaunchAgents and the
+ * shared log dir if needed). Idempotent.
  */
 export function writePlist(label: string, body: string): string {
   const plistPath = plistPathFor(label);
   fs.mkdirSync(path.dirname(plistPath), { recursive: true });
   fs.writeFileSync(plistPath, body, { mode: 0o644 });
+  // Pre-create the log directory so launchd doesn't fail to
+  // open StandardOutPath / StandardErrorPath on the very first
+  // boot. (launchd will happily create the file, but not the
+  // parent directory.)
+  fs.mkdirSync(tianshuLogDir(), { recursive: true });
   return plistPath;
 }
 
