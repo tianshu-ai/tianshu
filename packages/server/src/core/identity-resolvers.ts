@@ -124,6 +124,42 @@ export const defaultDevResolver: IdentityResolver = {
 };
 
 /**
+ * Run a resolver chain against an incoming request and return
+ * the first non-null resolution. Returns null if every resolver
+ * defers (the chain ran out without claiming) — callers must
+ * decide whether that's a 401 or a fallback.
+ *
+ * Shared between the HTTP middleware (Express request) and the
+ * WS upgrade handler (raw IncomingMessage cast to Request) so
+ * cookie / env / future strategies behave identically across
+ * both surfaces. WS used to skip the chain entirely and pin
+ * every connection to default/dev — a real isolation hole when
+ * the user had switched identity via cookie.
+ */
+export function runIdentityChain(
+  req: { headers: Record<string, string | string[] | undefined> },
+  chain: readonly IdentityResolver[],
+): { resolution: IdentityResolution | null; error?: { resolver: string; message: string } } {
+  for (const resolver of chain) {
+    let r: IdentityResolution | null;
+    try {
+      r = resolver.resolve(req as never);
+    } catch (err) {
+      return {
+        resolution: null,
+        error: {
+          resolver: resolver.name,
+          message: err instanceof Error ? err.message : String(err),
+        },
+      };
+    }
+    if (r === null) continue;
+    return { resolution: r };
+  }
+  return { resolution: null };
+}
+
+/**
  * Default chain shipped with `npm run dev`. Cookie wins, then
  * env, then everyone-is-dev.
  *
