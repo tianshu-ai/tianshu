@@ -25,135 +25,85 @@ crash, run it under `launchd` (the macOS-native init system).
 **Don't use `nohup` / `&` / `screen`** — they don't survive logout
 and don't auto-restart.
 
-### 1. Drop a plist
+The `tianshu` CLI takes care of the launchd plist for you. You
+shouldn't need to write XML or run `launchctl` directly.
 
-Create `~/Library/LaunchAgents/ai.tianshu.dev.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>ai.tianshu.dev</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <!-- Adjust to your nvm / homebrew npm path; `which npm`
-             tells you what to put here. -->
-        <string>/Users/YOU/.nvm/versions/node/v22.0.0/bin/npm</string>
-        <string>run</string>
-        <string>dev</string>
-    </array>
-
-    <key>WorkingDirectory</key>
-    <string>/path/to/your/tianshu/checkout</string>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <!-- Restart on crash, but don't loop on a deliberate Ctrl-C. -->
-    <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
-
-    <!-- Wait at least 30s between restarts so we don't hammer the
-         provider key when something's permanently broken. -->
-    <key>ThrottleInterval</key>
-    <integer>30</integer>
-
-    <key>StandardOutPath</key>
-    <string>/tmp/tianshu-dev.out.log</string>
-    <key>StandardErrorPath</key>
-    <string>/tmp/tianshu-dev.err.log</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <!-- launchd does NOT inherit your shell PATH. Set it
-             explicitly to whatever `which node` / `which npm`
-             resolves to. -->
-        <key>PATH</key>
-        <string>/Users/YOU/.nvm/versions/node/v22.0.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-        <key>HOME</key>
-        <string>/Users/YOU</string>
-        <key>NODE_OPTIONS</key>
-        <string>--no-warnings</string>
-    </dict>
-
-    <key>ProcessType</key>
-    <string>Background</string>
-</dict>
-</plist>
-```
-
-Replace `YOU`, the nvm version, and `/path/to/your/tianshu/checkout`
-to match your setup. `which npm` and `pwd` (from inside the
-checkout) are your friends.
-
-### 2. Load it
+### Install + start
 
 ```bash
-UID=$(id -u)
-launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.tianshu.dev.plist
+tianshu setup --wizard
 ```
 
-### 3. Verify
-
-```bash
-# Wait ~30s on first boot — npm has to build plugin-sdk + 4 plugins
-# + sync builtinConfig before the server can listen.
-curl http://localhost:3110/api/health
-# → {"status":"ok","name":"tianshu","tenants":1}
-
-UID=$(id -u)
-launchctl print gui/$UID/ai.tianshu.dev | grep -E "state|pid"
-# → state = running
-#   pid = 12345
-```
+The wizard picks ports, writes `.env`, drops a plist into
+`~/Library/LaunchAgents/`, bootstraps it, and waits for
+`/api/health` to respond. On a multi-checkout machine the
+plist label is derived from your checkout path (the first
+checkout claims `ai.tianshu.dev`; later ones get
+`ai.tianshu.dev.<sha8>`) so they coexist instead of
+overwriting each other.
 
 ### Day-to-day
 
 ```bash
-UID=$(id -u)
-
-# Restart cleanly (e.g. after pulling new code)
-launchctl kickstart -k gui/$UID/ai.tianshu.dev
-
-# Stop without unloading (will restart on next login)
-launchctl kill SIGTERM gui/$UID/ai.tianshu.dev
-
-# Unload completely (won't restart on login)
-launchctl bootout gui/$UID/ai.tianshu.dev
-
-# Tail logs
-tail -f /tmp/tianshu-dev.out.log
-tail -f /tmp/tianshu-dev.err.log
+tianshu status      # installed / loaded / pid / health
+tianshu start       # bootstrap if not loaded
+tianshu stop        # bootout (idempotent)
+tianshu restart     # kickstart -k, wait for /api/health
+tianshu logs        # last 50 lines of stderr + stdout
+tianshu logs --follow                  # tail -f
+tianshu logs --lines=200 --stream=err  # bigger window, errors only
 ```
+
+Logs live at `~/Library/Logs/tianshu/<label>.{out,err}.log`
+(macOS-conventional; Console.app surfaces them under "User
+Reports"). The `tianshu logs` command is the fast path — it
+resolves the label automatically.
 
 ### Troubleshooting
 
-**Service starts and immediately dies (KeepAlive keeps relaunching)**
-- Check `/tmp/tianshu-dev.err.log` for the actual error.
-- Most common: PATH wrong → `npm: command not found`. Fix the
-  `EnvironmentVariables.PATH` in the plist.
-- Next most common: setup blocker → `tianshu doctor` will tell you.
-  Either fix the config or set `TIANSHU_IGNORE_SETUP=1` in the plist's
-  `EnvironmentVariables`.
+Boot failure? Run **`tianshu logs`** first, before anything else:
 
-**Service starts but `/api/health` 404s**
-- First boot needs ~30s to build plugins. Tail
-  `/tmp/tianshu-dev.out.log` and watch for
-  `[tianshu] server listening on http://localhost:3110`.
+```bash
+tianshu logs --lines=100
+```
 
-**Port conflict (`EADDRINUSE`)**
-- Probably a stray `npm run dev` in another terminal. Kill it:
-  `pkill -f "tianshu_opensource.*concurrently"`.
-- Or you have the closed-source predecessor running on 3100.
-  Make sure the open-source repo's `.env` is `PORT=3110` (the
-  open-source default), not 3100.
+This is also what the setup agent does — if `tianshu setup --wizard`
+reports the server didn't come up, it will read the same log
+files via the `read_service_logs` tool and propose a specific
+fix instead of guessing.
+
+Common failure patterns:
+
+| stderr says | Cause | Fix |
+| --- | --- | --- |
+| `command not found: npm` | launchd's PATH doesn't have npm. Common with volta / fnm / asdf installs that put npm under `~/.local/share/...` | Re-run `tianshu setup --wizard` from a shell where `which npm` returns the right path. The wizard captures it into the plist. |
+| `EADDRINUSE: 3110` | Another `npm run dev` (or stale launchd agent) on the same port | `tianshu doctor` confirms it. Stop the other process, or pick a different `PORT` in `.env` and `tianshu restart`. |
+| `Cannot find module` / `ENOENT package.json` | Wrong `WorkingDirectory` in the plist | Re-run wizard from inside the correct checkout. |
+| (empty) + `lastExitStatus != 0` | Killed by signal pre-stdio (OOM → 137, SIGTERM → 143) | Check Activity Monitor / system logs. OOM means bump available memory or trim plugins. |
+
+Health endpoint not responding (but launchd thinks it's up)? First
+boot needs ~30s to build plugin-sdk + 4 plugins + sync
+builtinConfig. Watch the log:
+
+```bash
+tianshu logs --follow
+# wait for: [tianshu] server listening on http://localhost:3110
+```
+
+### Manual launchctl (advanced / when the CLI itself is broken)
+
+If the CLI binary itself fails to run (missing dist build, broken
+Node install), drop down to launchctl:
+
+```bash
+UID=$(id -u)
+launchctl print gui/$UID/ai.tianshu.dev | grep -E "state|pid"
+launchctl bootout gui/$UID/ai.tianshu.dev
+launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.tianshu.dev.plist
+```
+
+If you have a hashed label (multi-checkout machine), find it via
+`tianshu status` first.
 
 ## Linux — systemd (TODO)
 
