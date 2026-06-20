@@ -7,6 +7,7 @@ import { checkRuntime } from "./runtime.js";
 import { checkConfig } from "./config.js";
 import { checkProviders } from "./providers.js";
 import { checkNetwork } from "./network.js";
+import { checkPlugins } from "./plugins.js";
 import type { GlobalConfig } from "../../core/config.js";
 
 describe("checkRuntime", () => {
@@ -27,6 +28,93 @@ describe("checkRuntime", () => {
       expect(line.severity).not.toBe("blocker"); // Node line could
       // unless ancient — but in CI we test on >=22.
       void line;
+    }
+  });
+});
+
+describe("checkPlugins (per-tenant enablement)", () => {
+  // Spin a fake builtinConfig dir + ~/.tianshu home, so the
+  // check runs against a controllable layout. The point of these
+  // tests is to nail down the *user-facing* line text — doctor's
+  // "✓ files" vs Plugin Manager UI's "DISABLED" mismatch was
+  // a paper cut shipped previously, regression test against it.
+  let builtinConfigDir: string;
+  let home: string;
+
+  beforeEach(() => {
+    builtinConfigDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "tianshu-check-plugins-bc-"),
+    );
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-check-plugins-home-"));
+    // Two fake builtin plugins.
+    for (const id of ["files", "workboard"]) {
+      const dir = path.join(builtinConfigDir, "plugins", id);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "manifest.json"),
+        JSON.stringify({ id, name: id }),
+      );
+    }
+  });
+
+  afterEach(() => {
+    fs.rmSync(builtinConfigDir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("says 'no tenants yet' when ~/.tianshu/tenants is empty", () => {
+    const r = checkPlugins({ builtinConfigDir, home });
+    for (const l of r.lines) {
+      expect(l.text).toMatch(/installed, no tenants yet/);
+    }
+  });
+
+  it("says 'enabled in all tenants' when one tenant has the plugin on", () => {
+    fs.mkdirSync(path.join(home, "tenants", "default"), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, "tenants", "default", "config.json"),
+      JSON.stringify({ plugins: { files: { enabled: true } } }),
+    );
+    const r = checkPlugins({ builtinConfigDir, home });
+    const filesLine = r.lines.find((l) => l.text.startsWith("files "));
+    expect(filesLine?.text).toMatch(/enabled in all tenants/);
+  });
+
+  it("says 'disabled in all tenants' when no tenant lists the plugin", () => {
+    fs.mkdirSync(path.join(home, "tenants", "default"), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, "tenants", "default", "config.json"),
+      "{}",
+    );
+    const r = checkPlugins({ builtinConfigDir, home });
+    const filesLine = r.lines.find((l) => l.text.startsWith("files "));
+    expect(filesLine?.text).toMatch(/disabled in all tenants/);
+  });
+
+  it("reports a partial split across tenants explicitly", () => {
+    fs.mkdirSync(path.join(home, "tenants", "default"), { recursive: true });
+    fs.mkdirSync(path.join(home, "tenants", "alpha"), { recursive: true });
+    fs.writeFileSync(
+      path.join(home, "tenants", "default", "config.json"),
+      JSON.stringify({ plugins: { files: { enabled: true } } }),
+    );
+    fs.writeFileSync(
+      path.join(home, "tenants", "alpha", "config.json"),
+      JSON.stringify({ plugins: { files: { enabled: false } } }),
+    );
+    const r = checkPlugins({ builtinConfigDir, home });
+    const filesLine = r.lines.find((l) => l.text.startsWith("files "));
+    expect(filesLine?.text).toMatch(/enabled: default/);
+    expect(filesLine?.text).toMatch(/disabled: alpha/);
+  });
+
+  it("ignores soft-deleted tenants (named '<id>.deleted.<ts>')", () => {
+    fs.mkdirSync(path.join(home, "tenants", "default.deleted.123"), {
+      recursive: true,
+    });
+    const r = checkPlugins({ builtinConfigDir, home });
+    for (const l of r.lines) {
+      expect(l.text).toMatch(/installed, no tenants yet/);
     }
   });
 });
