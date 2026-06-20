@@ -28,6 +28,7 @@ import type { TenantContext } from "./tenant-context.js";
 import { DEV_TENANT_ID, DEV_USER_ID } from "./dev-mode.js";
 import {
   DEV_RESOLVER_CHAIN,
+  runIdentityChain,
   type IdentityResolver,
   type IdentityResolution,
 } from "./identity-resolvers.js";
@@ -40,6 +41,7 @@ export {
   envResolver,
   defaultDevResolver,
   DEV_RESOLVER_CHAIN,
+  runIdentityChain,
 } from "./identity-resolvers.js";
 export type {
   IdentityResolver,
@@ -79,25 +81,16 @@ export function tenantMiddleware(opts: TenantMiddlewareOpts) {
     res: Response,
     next: NextFunction,
   ): void {
-    let resolution: IdentityResolution | null = null;
-    for (const resolver of chain) {
-      let r: IdentityResolution | null;
-      try {
-        r = resolver.resolve(req);
-      } catch (err) {
-        // Resolver crash is treated as deny — never silently fall
-        // through to a more permissive resolver downstream. Surface
-        // for debugging.
-        res.status(500).json({
-          error: "identity_resolver_threw",
-          resolver: resolver.name,
-          message: err instanceof Error ? err.message : String(err),
-        });
-        return;
-      }
-      if (r === null) continue;
-      resolution = r;
-      break;
+    const { resolution, error } = runIdentityChain(req, chain);
+    if (error) {
+      // Resolver crash is treated as a hard 500 — never silently
+      // fall through to a more permissive resolver downstream.
+      res.status(500).json({
+        error: "identity_resolver_threw",
+        resolver: error.resolver,
+        message: error.message,
+      });
+      return;
     }
 
     if (!resolution) {

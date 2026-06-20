@@ -5,6 +5,7 @@ import {
   defaultDevResolver,
   envResolver,
   parseIdentityCookie,
+  runIdentityChain,
   type IdentityResolver,
   type IdentityResolution,
 } from "./identity-resolvers.js";
@@ -151,6 +152,71 @@ describe("defaultDevResolver", () => {
       tenantId: DEV_TENANT_ID,
       userId: DEV_USER_ID,
       source: "default-dev",
+    });
+  });
+});
+
+describe("runIdentityChain (shared between HTTP middleware + WS upgrade)", () => {
+  it("returns null resolution when every resolver defers", () => {
+    const r = runIdentityChain(reqWithCookie(undefined), [
+      cookieResolver,
+      envResolver,
+    ]);
+    // No cookie, no env vars set — chain runs out.
+    delete process.env.TIANSHU_DEV_TENANT;
+    delete process.env.TIANSHU_DEV_USER;
+    expect(r.resolution).toBeNull();
+    expect(r.error).toBeUndefined();
+  });
+
+  it("returns first non-null resolution", () => {
+    const r = runIdentityChain(
+      reqWithCookie(`${DEV_IDENTITY_COOKIE}=alpha/alice`),
+      [cookieResolver, defaultDevResolver],
+    );
+    expect(r.resolution).toMatchObject({
+      kind: "ok",
+      tenantId: "alpha",
+      userId: "alice",
+      source: "cookie",
+    });
+  });
+
+  it("surfaces resolver throws as error rather than masking them", () => {
+    const angryResolver: IdentityResolver = {
+      name: "angry",
+      resolve() {
+        throw new Error("sky is falling");
+      },
+    };
+    const r = runIdentityChain(reqWithCookie(undefined), [
+      angryResolver,
+      defaultDevResolver, // never reached: throw aborts the chain
+    ]);
+    expect(r.resolution).toBeNull();
+    expect(r.error).toEqual({
+      resolver: "angry",
+      message: "sky is falling",
+    });
+  });
+
+  it("WS upgrade scenario: parses cookie out of an IncomingMessage-shaped headers bag", () => {
+    // The WS upgrade handler passes `request as { headers }` rather
+    // than a real Express Request. Make sure the chain still works
+    // against just the headers shape.
+    const wsRequest = {
+      headers: {
+        cookie: `${DEV_IDENTITY_COOKIE}=alpha/alice`,
+      },
+    };
+    const r = runIdentityChain(wsRequest, [
+      cookieResolver,
+      defaultDevResolver,
+    ]);
+    expect(r.resolution).toMatchObject({
+      tenantId: "alpha",
+      userId: "alice",
+      source: "cookie",
     });
   });
 });

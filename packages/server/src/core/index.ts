@@ -86,8 +86,15 @@ export {
 
 export {
   tenantMiddleware,
+  DEV_RESOLVER_CHAIN,
+  runIdentityChain,
+  cookieResolver,
+  envResolver,
+  defaultDevResolver,
   type RequestCtx,
   type TenantMiddlewareOpts,
+  type IdentityResolver,
+  type IdentityResolution,
 } from "./middleware.js";
 
 export {

@@ -21,12 +21,15 @@ import {
   bootstrapDevTenantIfNeeded,
   DEV_TENANT_ID,
   DEV_USER_ID,
+  DEV_RESOLVER_CHAIN,
   GlobalOps,
   McpManager,
+  TenantNotFoundError,
   ensureTenantConfigDefaults,
   getDefaultModel,
   listModels,
   loadGlobalConfig,
+  runIdentityChain,
   tenantMiddleware,
 } from "./core/index.js";
 import { buildReloadingBuiltinResolver, PluginRegistry } from "./core/plugins/index.js";
@@ -518,7 +521,7 @@ app.use(
     catalog: catalogClient,
     mcpManager,
     reloadResolver: () => reloadingResolver.reload(),
-    onPluginsChanged: (tenantId, delta, direction) => {
+    onPluginsChanged: (tenantId, userId, delta, direction) => {
       // (a) tell every open chat shell so the UI can redraw
       //     plugin manager state + show a transient banner.
       const wsPayload = JSON.stringify({
@@ -544,7 +547,11 @@ app.use(
       //     just got removed).
       try {
         const ctx = globalOps.open(tenantId);
-        const session = ensureActiveSession(ctx, DEV_USER_ID);
+        // Use the userId from the plugin-toggle request — not
+        // DEV_USER_ID. The plugin manager UI runs scoped to whoever
+        // is logged in (alice@alpha, dev@default, ...) and the
+        // synthetic session note belongs in *their* active chat.
+        const session = ensureActiveSession(ctx, userId);
         const text = renderPluginsChangedNote(delta, direction);
         // Use role="user" so re-hydration treats it as part of the
         // turn log (the "user" path is the only one that survives
@@ -562,22 +569,83 @@ app.use(
     },
   }),
 );
-wss.on("connection", async (socket) => {
-  // Resolve identity. Today: dev tenant + dev user.
-  const tenantId = DEV_TENANT_ID;
-  const userId = DEV_USER_ID;
-  let ctx;
-  try {
-    ctx = globalOps.open(tenantId);
-  } catch (err) {
+wss.on("connection", async (socket, request) => {
+  // Resolve identity for the WS upgrade request. We run the same
+  // resolver chain the HTTP middleware uses so a browser opened
+  // with `?tenant=alpha&user=alice` (cookie set, see
+  // dev-identity-switch PR) gets a WS connection scoped to that
+  // identity — not the default dev user. The Express middleware
+  // can't run on WS upgrades because it expects res.setHeader /
+  // next(); we re-implement the lookup here against the same
+  // chain export.
+  const { resolution, error: chainError } = runIdentityChain(
+    request as unknown as Parameters<typeof runIdentityChain>[0],
+    DEV_RESOLVER_CHAIN,
+  );
+  if (chainError) {
     socket.send(
       JSON.stringify({
         type: "stream_error",
-        reason: `tenant ${tenantId} unavailable: ${err instanceof Error ? err.message : String(err)}`,
+        reason: `identity resolver "${chainError.resolver}" threw: ${chainError.message}`,
       }),
     );
     socket.close();
     return;
+  }
+  if (!resolution || resolution.kind === "deny") {
+    socket.send(
+      JSON.stringify({
+        type: "stream_error",
+        reason:
+          resolution?.kind === "deny"
+            ? `identity denied by ${resolution.source}: ${resolution.reason}`
+            : "no identity resolver claimed this WS upgrade",
+      }),
+    );
+    socket.close();
+    return;
+  }
+  const tenantId = resolution.tenantId;
+  const userId = resolution.userId;
+  let ctx;
+  try {
+    ctx = globalOps.open(tenantId);
+  } catch (err) {
+    // tenant_not_found from a stale cookie — fall back to default
+    // so the user lands somewhere usable instead of a closed
+    // socket. Mirror of the HTTP middleware's tenant-not-found
+    // fallback path.
+    if (err instanceof TenantNotFoundError) {
+      try {
+        ctx = globalOps.open(DEV_TENANT_ID);
+        socket.send(
+          JSON.stringify({
+            type: "identity_fallback",
+            requested: tenantId,
+            reason: "tenant_not_found",
+            source: resolution.source,
+          }),
+        );
+      } catch {
+        socket.send(
+          JSON.stringify({
+            type: "stream_error",
+            reason: `tenant ${tenantId} unavailable and default tenant missing`,
+          }),
+        );
+        socket.close();
+        return;
+      }
+    } else {
+      socket.send(
+        JSON.stringify({
+          type: "stream_error",
+          reason: `tenant ${tenantId} unavailable: ${err instanceof Error ? err.message : String(err)}`,
+        }),
+      );
+      socket.close();
+      return;
+    }
   }
   // Ensure plugins are activated so the agent can see
   // sandbox.shell etc. without waiting for a GET /api/plugins.

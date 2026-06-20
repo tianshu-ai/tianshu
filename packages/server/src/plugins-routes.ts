@@ -108,6 +108,7 @@ export interface PluginsRouterOpts {
    */
   onPluginsChanged?: (
     tenantId: string,
+    userId: string,
     delta: import("./chat/ws-protocol.js").PluginsChangedDelta,
     direction: "enabled" | "disabled",
   ) => void;
@@ -573,6 +574,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
         try {
           opts.onPluginsChanged(
             tenantId,
+            req.ctx.userId,
             delta,
             willEnabled ? "enabled" : "disabled",
           );
