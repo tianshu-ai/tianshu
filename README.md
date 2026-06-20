@@ -148,6 +148,18 @@ npm run doctor -- --probe-sandbox
 > so this repo can run alongside its closed-source predecessor on the
 > same dev machine. Override via `PORT=` / vite config if you want.
 
+### Running as a background service
+
+`npm run dev` is foreground — Ctrl-C kills it and it doesn't survive
+reboots. For a permanent dev box use the platform's native service
+manager:
+
+- **macOS**: drop a [`launchd` plist](./docs/running.md#macos--launchd-recommended-for-a-permanent-dev-box) under `~/Library/LaunchAgents/` (template + commands in [docs/running.md](./docs/running.md)).
+- **Linux**: TODO; same shape as launchd via systemd user service.
+- **Docker**: TODO; lands when `tianshu start` (single-port production server) does.
+
+**Don't** use `nohup`, `&`, or `screen` — they don't survive logout
+and don't auto-restart on crash.
 
 ### Useful commands
 
