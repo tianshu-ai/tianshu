@@ -364,30 +364,47 @@ export async function runSetupWizard(
   }
 
   if (!opts.nonInteractive) {
-    p.log.success(
-      ["Setup complete.", ...notes, ""].join("\n"),
+    p.log.info(
+      [
+        `Files written:`,
+        ...notes.map((n) => `  \u00b7 ${n}`),
+      ].join("\n"),
     );
 
+    // The wizard just wrote (or appended to) .env. dotenv was
+    // already loaded once at process start — the new key isn't
+    // in process.env yet. Force-reload so the probe + agent see
+    // it without requiring the user to restart the CLI.
+    if (wroteEnv) {
+      const { loadEnv } = await import("./load-env.js");
+      loadEnv({ force: true });
+    }
+
     // Verify the LLM works before handing off to the agent. If
-    // ping fails, the agent has no model to talk through, so we
-    // bail out here and let the user re-run the wizard.
+    // ping fails the agent has nothing to talk through, so we
+    // surface the failure loudly and bail. Users were getting
+    // 'Setup complete' messages with a silently-broken model;
+    // structured failure messages tell them which knob to turn.
     const probeS = p.spinner();
-    probeS.start("Pinging your default model...");
+    probeS.start("Pinging your default model to verify it works...");
     const probe = await probeDefaultModel({ home });
     if (!probe.ok) {
       probeS.stop(
-        `Could not reach ${probe.modelId ?? "the default model"}: ${probe.error?.kind ?? "unknown"}.`,
+        `\u2717 Default model is NOT working (${probe.error?.kind ?? "unknown"}).`,
       );
-      p.log.warn(
-        "Wrote config / .env, but the model isn't reachable yet. Inspect the keys & baseUrl, then re-run `tianshu setup --wizard`.",
+      p.log.error(
+        renderProbeFailureMessage(probe, configPath, envPath),
       );
       p.outro(
-        "Run `tianshu doctor` for diagnostics, or fix and re-run setup.",
+        "\u26a0\ufe0f  Setup is INCOMPLETE \u2014 fix the issue above and re-run `tianshu setup --wizard`.",
       );
       return { configPath, envPath, wroteConfig, wroteEnv, notes };
     }
     probeS.stop(
-      `\u2713 ${probe.modelId} reachable (${probe.durationMs}ms via ${probe.baseUrl ?? "vendor default"})`,
+      `\u2713 ${probe.modelId} responded in ${probe.durationMs}ms (via ${probe.baseUrl ?? "vendor default"}).`,
+    );
+    p.log.success(
+      "Default model verified. LLM provider is working.",
     );
 
     // Hand off to the in-CLI agent for the rest of setup.
@@ -457,6 +474,103 @@ function writeJsonAtomic(filepath: string, payload: unknown): void {
     mode: 0o600,
   });
   fs.renameSync(tmp, filepath);
+}
+
+/**
+ * Render a clear, actionable failure message for a probe error.
+ * Each error kind gets a hand-written block that names the
+ * specific file / env var / setting the user has to touch — not
+ * the raw provider error string.
+ */
+function renderProbeFailureMessage(
+  probe: { modelId?: string; baseUrl?: string; error?: { kind: string; message: string } },
+  configPath: string,
+  envPath: string,
+): string {
+  const kind = probe.error?.kind ?? "unknown";
+  const lines: string[] = [];
+  lines.push(
+    `Wrote ${configPath} and ${envPath}, but the LLM didn't respond when pinged.`,
+  );
+  lines.push("");
+  lines.push(`Model: ${probe.modelId ?? "(unknown)"}`);
+  if (probe.baseUrl) lines.push(`Endpoint: ${probe.baseUrl}`);
+  lines.push("");
+  lines.push("What's likely wrong:");
+  switch (kind) {
+    case "no-config":
+      lines.push("  \u00b7 Config file is malformed or missing. Re-run the wizard.");
+      break;
+    case "no-default-model":
+      lines.push(
+        "  \u00b7 No model picked, or `defaultModel` doesn't match a configured provider.",
+      );
+      lines.push("  \u00b7 Re-run the wizard and pick a model.");
+      break;
+    case "no-api-key":
+      lines.push(
+        `  \u00b7 The API key reference (\${VAR}) in config.json resolves to empty.`,
+      );
+      lines.push(
+        `  \u00b7 Check ${envPath} actually has the key set, with no quotes / spaces.`,
+      );
+      lines.push(
+        `  \u00b7 Or export the variable in your shell before re-running.`,
+      );
+      break;
+    case "bad-key":
+      lines.push(
+        "  \u00b7 The API key was rejected (401 / unauthorized).",
+      );
+      lines.push(
+        `  \u00b7 Open ${envPath}, fix the key, re-run \`tianshu setup --wizard\`.`,
+      );
+      break;
+    case "model-not-found":
+      lines.push(
+        "  \u00b7 The provider says the model id doesn't exist (404 / not found).",
+      );
+      lines.push(
+        `  \u00b7 Edit ${configPath}'s \`defaultModel\` to a model your endpoint actually serves.`,
+      );
+      if (probe.baseUrl && !probe.baseUrl.includes("anthropic.com")) {
+        lines.push(
+          `  \u00b7 You're hitting a custom baseUrl (${probe.baseUrl}); proxies often expose different model ids than the vendor.`,
+        );
+      }
+      break;
+    case "network":
+      lines.push(
+        `  \u00b7 Could not reach ${probe.baseUrl ?? "the endpoint"}: connection refused / DNS failed.`,
+      );
+      lines.push(
+        "  \u00b7 If you're behind a corporate proxy / VPN: make sure it's connected.",
+      );
+      lines.push(
+        "  \u00b7 If you set a custom baseUrl: confirm the URL is reachable (curl it).",
+      );
+      break;
+    case "timeout":
+      lines.push(
+        "  \u00b7 The endpoint accepted the request but didn't respond within 6s.",
+      );
+      lines.push(
+        "  \u00b7 Slow corporate gateway? Re-run later, or increase the wizard timeout.",
+      );
+      break;
+    default:
+      lines.push(
+        `  \u00b7 Unrecognised failure: ${probe.error?.message ?? "(no detail)"}`,
+      );
+      lines.push(
+        "  \u00b7 Run \`tianshu doctor --probe-providers\` for a fuller diagnostic.",
+      );
+  }
+  if (probe.error?.message) {
+    lines.push("");
+    lines.push(`Raw error: ${probe.error.message.slice(0, 200)}`);
+  }
+  return lines.join("\n");
 }
 
 /** Append (or replace) one KEY=value line in a .env file, preserving

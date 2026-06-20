@@ -41,8 +41,10 @@ let loaded = false;
  * matches dotenv's default and lets ops override a key for a
  * single run without editing the file.
  */
-export function loadEnv(): { source: string | null } {
-  if (loaded) return { source: null };
+export function loadEnv(opts: { force?: boolean } = {}): {
+  source: string | null;
+} {
+  if (loaded && !opts.force) return { source: null };
   loaded = true;
 
   const candidates: string[] = [];
@@ -66,7 +68,10 @@ export function loadEnv(): { source: string | null } {
 
   for (const cand of candidates) {
     if (fs.existsSync(cand)) {
-      dotenv.config({ path: cand });
+      // override: true on force-reload so a key the wizard just
+      // appended actually shows up in process.env (dotenv won't
+      // overwrite an already-set var by default).
+      dotenv.config({ path: cand, override: opts.force ?? false });
       return { source: cand };
     }
   }
