@@ -56,40 +56,43 @@ export interface CliAgentOpts {
   maxTurns?: number;
 }
 
-const SETUP_SYSTEM_PROMPT = `You are the tianshu setup auto-fixer.
+const SETUP_SYSTEM_PROMPT = `You are the tianshu setup assistant.
 
-The user just finished configuring an LLM provider. Their job is
-done — they shouldn't have to keep typing. Your job is to detect
-and fix the remaining setup gaps automatically, then hand them a
-working system.
+The user just finished configuring an LLM provider. Your job is
+to walk them through the remaining setup decisions — not to
+silently auto-configure things behind their back. Every state-
+changing tool call (tenant_create, user_create, plugin_enable,
+plugin_disable, config_write) is intercepted by the CLI and the
+user is asked to confirm before it runs. Plan accordingly: don't
+batch 10 actions in one turn; propose a small, named change,
+call the tool, then continue based on what the user accepts.
 
-Workflow you must follow on the FIRST turn:
+Workflow on the FIRST turn:
 
   1. Call run_doctor to see what's set up.
-  2. Read the report. Auto-fix every gap that is fixable without
-     asking the user (a 'safe auto-fix' is enabling the standard
-     plugins for the default tenant: files, workboard,
-     microsandbox, web-search). Call plugin_enable / config_write
-     etc. as needed. Don't ask permission for safe fixes — just
-     do them.
-  3. After fixing, call run_doctor a second time and verify the
-     warnings cleared.
-  4. Send ONE summary message to the user listing:
-     - What you auto-fixed (with checkmarks)
-     - What remains that needs THEIR input (e.g. web-search needs
-       a Tavily/Brave API key; microsandbox runtime might be
-       missing and needs \`npx microsandbox install\`)
-     - One concrete next step (or 'All done, run tianshu dev').
+  2. Look at the report and write ONE message to the user:
+     - In plain language, summarise what's already working.
+     - List what looks like it should be set up next (e.g.
+       'workboard plugin is disabled', 'microsandbox runtime
+       binary not found', 'no Tavily API key for web-search').
+     - For each item, propose the action you'd like to take and
+       which tool call you'd run. Don't run them yet.
+     - End by asking the user which they want to do first, or
+       whether to skip ahead.
 
-When the user replies, help them with whatever they ask:
-- Enable / disable plugins
-- Create a new tenant or user
-- Edit config (e.g. add a Tavily key for web-search)
-- Re-run run_doctor on demand
+From turn 2 onward:
+  - Run one tool at a time, narrate why before each one (the CLI
+    will pop a confirmation — the user already sees the
+    one-liner you described, but your message gives the reason).
+  - After a tool runs, narrate what happened (one short line)
+    and propose the next step.
+  - If the user declines a confirmation, drop that idea and
+    move on — don't retry the same tool with the same args.
 
-Style: brief, direct, no fluff. Run tools rather than asking the
-user to copy-paste commands. Confirm destructive actions (e.g.
-never delete a tenant without confirmation).
+Style: brief, direct, no fluff. Don't ask the user to copy-paste
+shell commands; either run a tool, or tell them clearly what
+they need to do outside this CLI (e.g. 'run \`npx microsandbox
+install\` in another terminal then re-run setup').
 
 When the user says they're done / satisfied / wants to exit, run
 run_doctor one last time, summarise, then end with:
@@ -99,6 +102,14 @@ to start the server."`;
 interface ToolHandler {
   schema: Tool;
   execute: (args: Record<string, unknown>) => Promise<string>;
+  /** Tools that mutate state (write to disk, create resources)
+   *  must say so. The CLI agent prompts the user for explicit
+   *  confirmation before running a mutating tool, summarising
+   *  the args in plain language. Read-only tools run silently. */
+  mutating?: boolean;
+  /** Optional human description used in the confirmation prompt.
+   *  Receives the raw args and returns a single-line summary. */
+  describe?: (args: Record<string, unknown>) => string;
 }
 
 function buildTools(home: string): Record<string, ToolHandler> {
@@ -121,6 +132,8 @@ function buildTools(home: string): Record<string, ToolHandler> {
       },
     },
     tenant_create: {
+      mutating: true,
+      describe: (args) => `Create new tenant '${String(args.id ?? "?")}'`,
       schema: {
         name: "tenant_create",
         description:
@@ -148,6 +161,9 @@ function buildTools(home: string): Record<string, ToolHandler> {
       },
     },
     user_create: {
+      mutating: true,
+      describe: (args) =>
+        `Create user '${String(args.userId ?? "?")}' in tenant '${String(args.tenantId ?? "?")}'`,
       schema: {
         name: "user_create",
         description:
@@ -182,6 +198,9 @@ function buildTools(home: string): Record<string, ToolHandler> {
       },
     },
     plugin_enable: {
+      mutating: true,
+      describe: (args) =>
+        `Enable plugin '${String(args.pluginId ?? "?")}' in tenant '${String(args.tenantId ?? "?")}'`,
       schema: {
         name: "plugin_enable",
         description:
@@ -218,6 +237,9 @@ function buildTools(home: string): Record<string, ToolHandler> {
       },
     },
     plugin_disable: {
+      mutating: true,
+      describe: (args) =>
+        `Disable plugin '${String(args.pluginId ?? "?")}' in tenant '${String(args.tenantId ?? "?")}'`,
       schema: {
         name: "plugin_disable",
         description:
@@ -279,6 +301,12 @@ function buildTools(home: string): Record<string, ToolHandler> {
       },
     },
     config_write: {
+      mutating: true,
+      describe: (args) => {
+        const patch = (args.patch as Record<string, unknown>) ?? {};
+        const keys = Object.keys(patch).join(", ") || "(empty patch)";
+        return `Patch tenant '${String(args.tenantId ?? "?")}' config (keys: ${keys})`;
+      },
       schema: {
         name: "config_write",
         description:
@@ -394,18 +422,19 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
   const messages: Message[] = [];
 
   p.log.info(
-    `Setup auto-fix running on ${info.id}. The agent will diagnose, fix what it can, and report. Type 'exit' / Ctrl-C any time.`,
+    `Setup assistant running on ${info.id}. Every state-changing action will ask for your confirmation. Type 'exit' / Ctrl-C any time.`,
   );
 
-  // Kick the agent off with the auto-fix workflow described in
-  // the system prompt. The user shouldn't have to type the first
-  // word; the agent diagnoses + fixes + reports.
+  // Kick the agent off with the diagnose-and-propose workflow
+  // described in the system prompt. Agent runs run_doctor and
+  // proposes next actions; nothing state-changing happens until
+  // the user explicitly confirms each one.
   messages.push({
     role: "user",
     content: [
       {
         type: "text",
-        text: "Begin: run the setup auto-fix workflow now (run_doctor → enable standard plugins for the default tenant if missing → run_doctor again → summarise what you fixed and what still needs input).",
+        text: "Begin: run run_doctor, then summarise what's working and propose the next setup decisions for me to choose from. Don't run any state-changing tools yet — wait for me to pick.",
       },
     ],
     timestamp: Date.now(),
@@ -502,6 +531,37 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
           timestamp: Date.now(),
         };
       } else {
+        // For mutating tools, surface the intent and ask the user
+        // for explicit confirmation before running. Read-only
+        // tools (run_doctor, tenant_list, config_read) execute
+        // silently — they don't change state.
+        if (handler.mutating) {
+          const summary = handler.describe
+            ? handler.describe(call.arguments)
+            : `${call.name}(${shortArgs(call.arguments)})`;
+          const ok = await p.confirm({
+            message: `\ud83d\udd11 Agent wants to: ${summary}`,
+            initialValue: true,
+          });
+          if (p.isCancel(ok) || ok === false) {
+            result = {
+              role: "toolResult",
+              toolCallId: call.id,
+              toolName: call.name,
+              content: [
+                {
+                  type: "text",
+                  text: `User declined this action. Do not retry without asking. Move on or ask the user what to do instead.`,
+                },
+              ],
+              isError: false,
+              timestamp: Date.now(),
+            };
+            p.log.warn(`declined: ${summary}`);
+            messages.push(result);
+            continue;
+          }
+        }
         try {
           const out = await handler.execute(call.arguments);
           result = {
@@ -512,7 +572,20 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
             isError: false,
             timestamp: Date.now(),
           };
-          p.log.step(`${call.name}(${shortArgs(call.arguments)}) → ok`);
+          // Surface what the agent did with enough context that
+          // the user can audit it. Read-only tools just show
+          // name + args; mutating tools were already confirmed
+          // above, so we just confirm completion.
+          if (handler.mutating) {
+            const summary = handler.describe
+              ? handler.describe(call.arguments)
+              : `${call.name}(${shortArgs(call.arguments)})`;
+            p.log.success(`done: ${summary}`);
+          } else {
+            p.log.step(
+              `${call.name}(${shortArgs(call.arguments)})`,
+            );
+          }
         } catch (err) {
           result = {
             role: "toolResult",
