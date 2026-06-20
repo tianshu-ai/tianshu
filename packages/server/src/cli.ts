@@ -21,6 +21,12 @@ import {
 import { loadEnv } from "./setup/load-env.js";
 import { runDoctor } from "./setup/doctor.js";
 import { runSetupWizard } from "./setup/wizard.js";
+import {
+  runStart,
+  runStop,
+  runRestart,
+  runStatus,
+} from "./setup/service.js";
 
 // Load .env up front, same as the server boot path. Without this,
 // `tianshu doctor` would diagnose the user's setup using whatever
@@ -61,6 +67,7 @@ function topLevelUsage(): string {
     "Usage:",
     "  tianshu doctor [--probe-providers] [--probe-sandbox] [--json]",
     "  tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]]",
+    "  tianshu start | stop | restart | status [--json] [--no-wait]",
     "  tianshu tenant list|create <id>|delete <id>",
     "  tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]",
     "  tianshu version",
@@ -137,6 +144,21 @@ export async function main(argv: string[]): Promise<number> {
         return 1;
       }
     }
+
+    case "start":
+      return runStart({
+        wait: !parsed.flags.has("no-wait"),
+        json: parsed.flags.has("json"),
+      });
+    case "stop":
+      return runStop({ json: parsed.flags.has("json") });
+    case "restart":
+      return runRestart({
+        wait: !parsed.flags.has("no-wait"),
+        json: parsed.flags.has("json"),
+      });
+    case "status":
+      return runStatus({ json: parsed.flags.has("json") });
   }
 
   // Tenant / user commands keep their original semantics.

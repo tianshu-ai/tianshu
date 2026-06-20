@@ -19,12 +19,12 @@
 //     when 0.x publishes to npm)
 
 import * as p from "@clack/prompts";
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import * as launchd from "./launchd.js";
+import { findRepoRoot, isTianshuCheckout } from "./repo-root.js";
 
 interface StartServerOpts {
   /** Repo root (used as cwd for `npm run dev`). Defaults to process.cwd(). */
@@ -36,7 +36,6 @@ interface StartServerOpts {
 const DEFAULT_SERVER_PORT = 3110;
 const DEFAULT_WEB_PORT = 5183;
 const HEALTH_CHECK_DEADLINE_MS = 120_000;
-const LAUNCHD_LABEL = "ai.tianshu.dev";
 
 /**
  * Run the start-server step. Idempotent: bails out cleanly if
@@ -67,7 +66,7 @@ export async function runStartServer(
   // process.cwd() won't be the repo. Walk up from this module's
   // location until we hit a package.json named
   // '@tianshu-ai/tianshu' (or run out of parents).
-  const repoRoot = opts.repoRoot ?? findCheckoutRoot();
+  const repoRoot = opts.repoRoot ?? findRepoRoot();
   const envPath = opts.envPath ?? path.join(repoRoot, ".env");
 
   if (!isTianshuCheckout(repoRoot)) {
@@ -152,14 +151,13 @@ interface LaunchdStartOpts {
 async function startViaLaunchd(
   opts: LaunchdStartOpts,
 ): Promise<StartServerResult> {
-  const plistPath = path.join(
-    os.homedir(),
-    "Library",
-    "LaunchAgents",
-    `${LAUNCHD_LABEL}.plist`,
-  );
-  const logFile = path.join(os.tmpdir(), `${LAUNCHD_LABEL}.out.log`);
-  const errFile = path.join(os.tmpdir(), `${LAUNCHD_LABEL}.err.log`);
+  // Resolve a stable label for this checkout. First checkout to
+  // run the wizard claims the canonical `ai.tianshu.dev`; later
+  // checkouts get a hashed suffix so they coexist instead of
+  // stomping the original plist. See launchd.resolveLabel.
+  const label = launchd.resolveLabel(opts.repoRoot);
+  const plistPath = launchd.plistPathFor(label);
+  const { out: logFile, err: errFile } = launchd.logPathsFor(label);
 
   // If a plist already exists from a previous wizard run / manual
   // install, ask before clobbering it. Most users will say yes
@@ -172,119 +170,51 @@ async function startViaLaunchd(
     if (p.isCancel(replace) || replace === false) {
       p.log.info(
         [
-          "Keeping the existing plist. To start the existing service:",
-          `  launchctl kickstart -k gui/$(id -u)/${LAUNCHD_LABEL}`,
-          "",
-          "Or to inspect:",
-          `  launchctl print gui/$(id -u)/${LAUNCHD_LABEL}`,
+          "Keeping the existing plist. To control the existing service:",
+          `  tianshu start    # bootstrap if not loaded`,
+          `  tianshu restart  # kickstart -k`,
+          `  tianshu status   # full health view`,
         ].join("\n"),
       );
       return SKIPPED;
     }
     // Boot out the existing service before we overwrite the plist.
-    try {
-      execSync(`launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL}`, {
-        stdio: "ignore",
-      });
-    } catch {
-      // already booted out / never loaded — that's fine
-    }
+    launchd.bootout(label); // best-effort; not-loaded is fine
   }
 
-  // Resolve npm path. launchd doesn't inherit shell PATH, so we
-  // need an absolute path. `which npm` from the user's shell is
-  // the most reliable way; we fall back to `npm` if which fails.
-  let npmPath: string;
-  try {
-    npmPath = execSync("which npm", { encoding: "utf8" }).trim();
-  } catch {
-    npmPath = "/usr/bin/env npm"; // last-ditch
-  }
-
-  // Render the plist. The PATH env entry derives from `which npm`
-  // (its dirname) plus standard system paths so child npm scripts
-  // can find node, tsx, etc.
-  const npmBinDir = path.dirname(npmPath);
-  const plistBody = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>${LAUNCHD_LABEL}</string>
-
-    <key>ProgramArguments</key>
-    <array>
-        <string>${npmPath}</string>
-        <string>run</string>
-        <string>dev</string>
-    </array>
-
-    <key>WorkingDirectory</key>
-    <string>${opts.repoRoot}</string>
-
-    <key>RunAtLoad</key>
-    <true/>
-
-    <key>KeepAlive</key>
-    <dict>
-        <key>SuccessfulExit</key>
-        <false/>
-    </dict>
-
-    <key>ThrottleInterval</key>
-    <integer>30</integer>
-
-    <key>StandardOutPath</key>
-    <string>${logFile}</string>
-    <key>StandardErrorPath</key>
-    <string>${errFile}</string>
-
-    <key>EnvironmentVariables</key>
-    <dict>
-        <key>PATH</key>
-        <string>${npmBinDir}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/sbin:/usr/sbin</string>
-        <key>HOME</key>
-        <string>${os.homedir()}</string>
-        <key>NODE_OPTIONS</key>
-        <string>--no-warnings</string>
-    </dict>
-
-    <key>ProcessType</key>
-    <string>Background</string>
-</dict>
-</plist>
-`;
-
-  fs.mkdirSync(path.dirname(plistPath), { recursive: true });
-  fs.writeFileSync(plistPath, plistBody, { mode: 0o644 });
+  const npmPath = launchd.resolveNpmPath();
+  const plistBody = launchd.renderPlist(label, {
+    repoRoot: opts.repoRoot,
+    serverPort: opts.serverPort,
+    webPort: opts.webPort,
+    npmPath,
+  });
+  launchd.writePlist(label, plistBody);
   p.log.success(`Wrote launchd plist → ${plistPath}`);
 
   // Bootstrap into launchd. RunAtLoad=true means it starts now;
   // KeepAlive on non-zero exit means it auto-restarts on crash.
-  try {
-    execSync(`launchctl bootstrap gui/$(id -u) ${plistPath}`, {
-      stdio: "ignore",
-    });
-    p.log.success(`Loaded launchd agent ${LAUNCHD_LABEL}.`);
-  } catch (err) {
+  const bootRes = launchd.bootstrap(plistPath);
+  if (!bootRes.ok) {
     p.log.error(
       [
-        `launchctl bootstrap failed: ${err instanceof Error ? err.message : String(err)}`,
+        `launchctl bootstrap failed: ${bootRes.stderr ?? "(unknown)"}`,
         "",
-        "You can try loading it manually:",
-        `  launchctl bootstrap gui/$(id -u) ${plistPath}`,
+        "You can retry with:",
+        `  tianshu start`,
       ].join("\n"),
     );
     return SKIPPED;
   }
+  p.log.success(`Loaded launchd agent ${label}.`);
 
   // Wait for /api/health.
   const healthSpinner = p.spinner();
   healthSpinner.start(
     `Waiting for the server to come up on http://localhost:${opts.serverPort}...`,
   );
-  const ok = await waitForHealth(
-    `http://localhost:${opts.serverPort}/api/health`,
+  const ok = await launchd.waitForHealth(
+    opts.serverPort,
     HEALTH_CHECK_DEADLINE_MS,
   );
   if (!ok) {
@@ -298,9 +228,9 @@ async function startViaLaunchd(
         tailFile(errFile, 30) || "(empty)",
         "",
         "The launchd agent is still loaded; you can:",
-        `  · check status:  launchctl print gui/$(id -u)/${LAUNCHD_LABEL}`,
+        `  · check status:  tianshu status`,
         `  · tail logs:     tail -f ${logFile}`,
-        `  · stop it:       launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL}`,
+        `  · stop it:       tianshu stop`,
         "  · debug:         tianshu doctor",
       ].join("\n"),
     );
@@ -311,10 +241,12 @@ async function startViaLaunchd(
   );
   p.log.info(
     [
-      `Tianshu is running under launchd.`,
+      `Tianshu is running under launchd as '${label}'.`,
       `  Web UI:  http://localhost:${opts.webPort}`,
       `  API:     http://localhost:${opts.serverPort}/api`,
       `  Logs:    ${logFile} / ${errFile}`,
+      ``,
+      `Manage with: tianshu start | stop | restart | status`,
     ].join("\n"),
   );
   return {
@@ -325,34 +257,6 @@ async function startViaLaunchd(
 }
 
 // ─── helpers ───────────────────────────────────────────────────────
-
-/** Walk up from this module's directory until we find the
- *  tianshu package.json. Returns the original CWD as a fallback
- *  if nothing matches; isTianshuCheckout will then surface the
- *  'not a checkout' message and skip. */
-function findCheckoutRoot(): string {
-  let dir = path.dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 12; i++) {
-    if (isTianshuCheckout(dir)) return dir;
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return process.cwd();
-}
-
-function isTianshuCheckout(repoRoot: string): boolean {
-  const pkgPath = path.join(repoRoot, "package.json");
-  if (!fs.existsSync(pkgPath)) return false;
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
-      name?: string;
-    };
-    return pkg.name === "@tianshu-ai/tianshu";
-  } catch {
-    return false;
-  }
-}
 
 async function pickPort(
   message: string,
@@ -391,12 +295,47 @@ async function pickPort(
   }
 }
 
-function isPortInUse(port: number): Promise<boolean> {
+/**
+ * Decide whether `port` is taken by *anyone* the new server
+ * would conflict with. We probe both IPv4 (127.0.0.1) and IPv6
+ * (::1) so a tianshu instance on the dual-stack catch-all
+ * doesn't slip through.
+ */
+async function isPortInUse(port: number): Promise<boolean> {
+  // First: try to actively connect. If something answers,
+  // there's definitely a listener.
+  if (await canConnect("127.0.0.1", port)) return true;
+  if (await canConnect("::1", port)) return true;
+  // Second: try to bind exclusively. If we can't, somebody else
+  // owns the port even if they didn't answer our connect.
+  if (!(await canBind(port))) return true;
+  return false;
+}
+
+function canConnect(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const sock = new net.Socket();
+    let done = false;
+    const finish = (ok: boolean) => {
+      if (done) return;
+      done = true;
+      sock.destroy();
+      resolve(ok);
+    };
+    sock.setTimeout(800);
+    sock.once("connect", () => finish(true));
+    sock.once("timeout", () => finish(false));
+    sock.once("error", () => finish(false));
+    sock.connect(port, host);
+  });
+}
+
+function canBind(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = net.createServer();
-    server.once("error", () => resolve(true));
-    server.listen(port, "127.0.0.1", () => {
-      server.close(() => resolve(false));
+    server.once("error", () => resolve(false));
+    server.listen({ port, exclusive: true }, () => {
+      server.close(() => resolve(true));
     });
   });
 }
@@ -420,23 +359,6 @@ function writeEnvVar(envPath: string, key: string, value: string): void {
     body += line + os.EOL;
   }
   fs.writeFileSync(envPath, body, { mode: 0o600 });
-}
-
-async function waitForHealth(url: string, deadlineMs: number): Promise<boolean> {
-  const start = Date.now();
-  while (Date.now() - start < deadlineMs) {
-    try {
-      const ac = new AbortController();
-      const timeout = setTimeout(() => ac.abort(), 2_000);
-      const res = await fetch(url, { signal: ac.signal });
-      clearTimeout(timeout);
-      if (res.ok) return true;
-    } catch {
-      // server not up yet
-    }
-    await new Promise((r) => setTimeout(r, 1_000));
-  }
-  return false;
 }
 
 function tailFile(filepath: string, lines: number): string {
