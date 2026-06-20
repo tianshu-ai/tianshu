@@ -17,9 +17,10 @@
 //   needs `npx microsandbox install`, the agent just tells them)
 // - workboard (worker spawn is overkill for setup)
 //
-// Tools shipped (8): tenant_list, tenant_create, user_create,
+// Tools shipped (9): tenant_list, tenant_create, user_create,
 //   plugin_enable, plugin_disable, config_read, config_write,
-//   run_doctor. Plus the implicit "done" sentinel.
+//   run_doctor, read_service_logs. Plus the implicit "done"
+//   sentinel.
 
 import * as p from "@clack/prompts";
 import fs from "node:fs";
@@ -52,6 +53,8 @@ import {
   loadPluginSecrets,
 } from "../core/plugins/index.js";
 import { collectDoctorReport } from "./doctor.js";
+import * as launchd from "./launchd.js";
+import { findRepoRoot } from "./repo-root.js";
 
 export interface CliAgentOpts {
   home?: string;
@@ -78,7 +81,7 @@ call the tool, then continue based on what the user accepts.
 
 Workflow on the FIRST turn:
 
-  1. Call run_doctor to see what's set up.
+  1. Call run_doctor to see what's set up. If doctor reports the server isn't running or isn't responding, call read_service_logs to see *why* before suggesting fixes.
   2. Look at the report and write ONE message to the user:
      - In plain language, summarise what's already working.
      - List what looks like it should be set up next (e.g.
@@ -132,6 +135,27 @@ MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
   terminal, then start the server with \`tianshu dev\` and ask
   the chat agent to build sandboxes for both task and browser
   roles.'
+- If the wizard installed a launchd agent but the server isn't
+  responding (run_doctor reports "Server port free" or "port in
+  use, no HTTP response", or the user says "server didn't come
+  up"), call \`read_service_logs\` *first*. The actual error
+  message from npm/node will be in there. Don't guess; don't
+  ask the user to run \`tail\`. Common patterns to look for:
+  * "command not found: npm" → launchd's PATH doesn't have npm.
+    Check whether \`which npm\` from the user's shell points
+    somewhere unusual (volta, fnm, asdf). The fix is to bump
+    PATH in the plist's EnvironmentVariables and reinstall via
+    \`tianshu setup --wizard\`.
+  * "EADDRINUSE" → port collision. Run \`run_doctor\` to confirm
+    and ask the user to pick a different PORT/WEB_PORT in .env.
+  * "Cannot find module" / "ENOENT package.json" → wizard
+    captured the wrong WorkingDirectory. Check
+    \`~/Library/LaunchAgents/ai.tianshu.dev*.plist\`.
+  * Empty logs but lastExitStatus \!= 0 → the process was
+    killed pre-stdio (signal). The hint field in
+    read_service_logs's result will spell this out.
+  Then propose the *specific* fix to the user before mutating
+  anything.
 
 When the user says they're done / satisfied / wants to exit, run
 run_doctor one last time, summarise, then end with:
@@ -600,6 +624,113 @@ function buildTools(
             })),
           })),
         });
+      },
+    },
+    read_service_logs: {
+      schema: {
+        name: "read_service_logs",
+        description:
+          "Read the launchd-managed dev server's stdout/stderr logs. " +
+            "Use this when the wizard installed a launchd agent but the server " +
+            "didn't pass the health check, or when `run_doctor` reports the " +
+            "server isn't responding. Returns the most recent log lines along " +
+            "with the agent's installed/loaded/pid status so you can correlate. " +
+            "This is your *primary diagnostic tool* for boot failures — call it " +
+            "before guessing what went wrong.",
+        parameters: {
+          type: "object",
+          properties: {
+            lines: {
+              type: "number",
+              description:
+                "How many trailing lines to return per stream. Default 80. Bump to 200+ if you don't see the error in 80.",
+            },
+            stream: {
+              type: "string",
+              enum: ["err", "out", "both"],
+              description:
+                "Which stream(s) to read. Boot errors usually land in 'err' first; 'out' carries normal startup messages. Default 'both'.",
+            },
+          },
+          required: [],
+        } as never,
+      },
+      execute: async (args) => {
+        const repoRoot = findRepoRoot();
+        const label = launchd.resolveLabel(repoRoot);
+        const status = launchd.readStatus(label);
+        const { out, err } = launchd.logPathsFor(label);
+        const linesArg = Number(args.lines);
+        const lines = Number.isFinite(linesArg) && linesArg > 0 ? Math.min(linesArg, 1000) : 80;
+        const streamArg = String(args.stream ?? "both");
+        const stream =
+          streamArg === "out" || streamArg === "err" || streamArg === "both"
+            ? streamArg
+            : "both";
+
+        const result: {
+          label: string;
+          installed: boolean;
+          loaded: boolean;
+          pid: number | null;
+          lastExitStatus: number | null;
+          stdout?: { path: string; lines: string[] };
+          stderr?: { path: string; lines: string[] };
+          hint?: string;
+        } = {
+          label,
+          installed: status.installed,
+          loaded: status.loaded,
+          pid: status.pid,
+          lastExitStatus: status.lastExitStatus,
+        };
+
+        const tail = (file: string): string[] => {
+          if (!fs.existsSync(file)) return [];
+          try {
+            const body = fs.readFileSync(file, "utf8");
+            return body.split(/\r?\n/).slice(-lines).filter((l) => l.length > 0);
+          } catch {
+            return [];
+          }
+        };
+
+        if (stream === "err" || stream === "both") {
+          result.stderr = { path: err, lines: tail(err) };
+        }
+        if (stream === "out" || stream === "both") {
+          result.stdout = { path: out, lines: tail(out) };
+        }
+
+        // If both streams are empty, give the agent an explicit
+        // hint about what that means — saves it from guessing.
+        const stdoutEmpty = !result.stdout || result.stdout.lines.length === 0;
+        const stderrEmpty = !result.stderr || result.stderr.lines.length === 0;
+        if (stdoutEmpty && stderrEmpty) {
+          if (!status.installed) {
+            result.hint =
+              "Service isn't installed (no plist on disk). Tell the user to run `tianshu setup --wizard` and walk them through it.";
+          } else if (!status.loaded) {
+            result.hint =
+              "Plist exists but launchd hasn't loaded it. Run `tianshu start` (or have the user run it). If start fails, the launchctl error is itself the diagnostic.";
+          } else if (status.pid !== null) {
+            result.hint =
+              "Service is running (loaded + pid present) but logs are empty. Most likely the service just started and hasn't flushed yet — wait 10s and call read_service_logs again. If logs stay empty for a minute, the process may be wedged on something pre-stdio (e.g. waiting for stdin).";
+          } else {
+            result.hint =
+              "Service is loaded but no pid — it crashed and launchd is between restarts (ThrottleInterval=30s). Wait, then read again, and look for the actual exit reason in lastExitStatus.";
+          }
+        } else if (
+          stderrEmpty &&
+          status.loaded &&
+          status.pid === null &&
+          status.lastExitStatus !== null &&
+          status.lastExitStatus !== 0
+        ) {
+          result.hint = `Service exited (lastExitStatus=${status.lastExitStatus}) and stderr is empty. Look in stdout for the last messages before the exit; if those don't explain it, the process may have been killed by a signal (e.g. OOM → 137; SIGTERM → 143) rather than crashing with output.`;
+        }
+
+        return JSON.stringify(result);
       },
     },
   };
