@@ -5,7 +5,7 @@
       "anthropic": {
         "api": "anthropic-messages",
         "baseUrl": "https://api.anthropic.com",
-        "apiKey": "${ANTH…_KEY}",
+        "apiKey": "${ANTHROPIC_API_KEY}",
         "group": "Cloud",
         "models": [
           {

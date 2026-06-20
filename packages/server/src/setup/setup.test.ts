@@ -113,16 +113,18 @@ describe("runSetupWizard non-interactive", () => {
     );
     expect(cfg.defaultModel).toBe("anthropic/claude-sonnet-4-6");
     expect(cfg.models.providers.anthropic).toBeDefined();
-    expect(cfg.models.providers.anthropic.apiKey).toContain("ANTH…_KEY");
+    expect(cfg.models.providers.anthropic.apiKey).toContain(
+      "ANTHROPIC_API_KEY",
+    );
     const env = fs.readFileSync(path.join(cwd, ".env"), "utf8");
-    expect(env).toMatch(/ANTH…_KEY=sk-test-key-1234567890/);
+    expect(env).toMatch(/ANTHROPIC_API_KEY=sk-test-key-1234567890/);
   });
 
   it("writes a custom baseUrl when --base-url is supplied", async () => {
     await runSetupWizard({
       nonInteractive: true,
       provider: "anthropic",
-      apiKey: "sk-tes…vy-1234567890",
+      apiKey: "sk-test-key-1234567890",
       baseUrl: "https://my-corp-gateway.example.com/anthropic",
       home,
       cwd,
@@ -141,7 +143,7 @@ describe("runSetupWizard non-interactive", () => {
     await runSetupWizard({
       nonInteractive: true,
       provider: "openai",
-      apiKey: "sk-tes…vy-1234567890",
+      apiKey: "sk-test-key-1234567890",
       defaultModel: "openai/llama-3.1-8b-on-vllm",
       home,
       cwd,
@@ -209,13 +211,13 @@ describe("runSetupWizard non-interactive", () => {
     });
     const env = fs.readFileSync(path.join(cwd, ".env"), "utf8");
     expect(env).toMatch(/EXISTING_VAR=hello/);
-    expect(env).toMatch(/ANTH…_KEY=sk-new-key/);
+    expect(env).toMatch(/ANTHROPIC_API_KEY=sk-new-key/);
   });
 
   it("replaces an existing key line rather than appending a duplicate", async () => {
     fs.writeFileSync(
       path.join(cwd, ".env"),
-      "ANTH…_KEY=old-value\nOTHER=keep\n",
+      "ANTHROPIC_API_KEY=old-value\nOTHER=keep\n",
     );
     await runSetupWizard({
       nonInteractive: true,
@@ -225,9 +227,9 @@ describe("runSetupWizard non-interactive", () => {
       cwd,
     });
     const env = fs.readFileSync(path.join(cwd, ".env"), "utf8");
-    const matches = env.match(/^ANTH…_KEY=/gm) ?? [];
+    const matches = env.match(/^ANTHROPIC_API_KEY=/gm) ?? [];
     expect(matches.length).toBe(1);
-    expect(env).toMatch(/ANTH…_KEY=new-value/);
+    expect(env).toMatch(/ANTHROPIC_API_KEY=new-value/);
     expect(env).toMatch(/OTHER=keep/);
   });
 });

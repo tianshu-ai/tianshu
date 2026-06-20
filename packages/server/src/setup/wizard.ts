@@ -53,7 +53,7 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
   {
     id: "anthropic",
     name: "Anthropic (Claude)",
-    envVar: "ANTH…_KEY",
+    envVar: "ANTHROPIC_API_KEY",
     api: "anthropic-messages",
     baseUrl: "https://api.anthropic.com",
     models: [
