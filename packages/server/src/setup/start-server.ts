@@ -82,6 +82,118 @@ export async function runStartServer(
     return SKIPPED;
   }
 
+  // Detect existing service before asking. The original wizard
+  // always asked "Start the dev server now?" even when launchd
+  // already had one running and /api/health was returning 200.
+  // Three buckets:
+  //
+  //   A. plist installed + loaded + /api/health ok
+  //      → do nothing, tell the user where it is, return started=true
+  //   B. plist installed + not loaded (or unhealthy)
+  //      → offer `tianshu start` / `tianshu restart`, don't reinstall
+  //   C. nothing installed
+  //      → the original flow: pick ports, install plist, bootstrap
+  //
+  // Only bucket C is the "new install" path; A and B should not
+  // pretend the user is starting fresh.
+  const existing = await detectExistingService(repoRoot);
+  if (existing.kind === "healthy") {
+    const linesOut: string[] = [
+      `Tianshu is already running under launchd as '${existing.label}'.`,
+    ];
+    if (existing.webPort !== undefined) {
+      linesOut.push(`  Web UI:  http://localhost:${existing.webPort}`);
+    }
+    linesOut.push(`  API:     ${existing.serverUrl}`);
+    linesOut.push(
+      ``,
+      `Manage with: tianshu start | stop | restart | status | logs`,
+    );
+    p.log.success(linesOut.join("\n"));
+    return {
+      serverUrl: existing.serverUrl,
+      webUrl:
+        existing.webPort !== undefined
+          ? `http://localhost:${existing.webPort}`
+          : null,
+      started: true,
+    };
+  }
+
+  if (existing.kind === "installed-not-running") {
+    p.log.info(
+      [
+        `A launchd plist already exists at ${existing.plistPath}, but the service isn't responding.`,
+        existing.statusDetail ? `  status: ${existing.statusDetail}` : null,
+        ``,
+        `Likely your existing install just needs a (re)start, not a fresh setup.`,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    const action = await p.select({
+      message: "What do you want to do?",
+      options: [
+        {
+          value: "restart",
+          label: "Restart the existing service (recommended)",
+        },
+        {
+          value: "reinstall",
+          label: "Reinstall (pick new ports + overwrite plist)",
+        },
+        { value: "skip", label: "Skip — I'll manage it myself" },
+      ],
+      initialValue: "restart",
+    });
+    if (p.isCancel(action) || action === "skip") {
+      p.log.info(
+        [
+          "Leaving the existing plist in place. Useful commands:",
+          `  tianshu status   # what does launchd think?`,
+          `  tianshu logs     # why isn't it responding?`,
+          `  tianshu restart  # bounce it`,
+        ].join("\n"),
+      );
+      return SKIPPED;
+    }
+    if (action === "restart") {
+      const r = launchd.kickstart(existing.label);
+      if (!r.ok) {
+        p.log.error(
+          `launchctl kickstart failed: ${r.stderr ?? "(unknown)"}`,
+        );
+        return SKIPPED;
+      }
+      const port = existing.serverPort ?? DEFAULT_SERVER_PORT;
+      const spinner = p.spinner();
+      spinner.start(`Waiting for /api/health on :${port}...`);
+      const ok = await launchd.waitForHealth(
+        port,
+        HEALTH_CHECK_DEADLINE_MS,
+      );
+      if (!ok) {
+        spinner.stop(`\u2717 Server didn't come up after restart.`);
+        p.log.info(`Run \`tianshu logs\` to see why.`);
+        return SKIPPED;
+      }
+      spinner.stop(`\u2713 Server is up on http://localhost:${port}.`);
+      return {
+        serverUrl: `http://localhost:${port}`,
+        webUrl: existing.webPort
+          ? `http://localhost:${existing.webPort}`
+          : null,
+        started: true,
+      };
+    }
+    // action === "reinstall" — fall through to the install flow.
+    // Boot out the old service so the install path can rewrite
+    // the plist cleanly.
+    launchd.bootout(existing.label);
+    p.log.info(`Stopped existing '${existing.label}' to make way for reinstall.`);
+  }
+
+  // Bucket C: nothing installed (or user picked reinstall above).
   const wantStart = await p.confirm({
     message: "Start the dev server now?",
     initialValue: true,
@@ -368,5 +480,110 @@ function tailFile(filepath: string, lines: number): string {
     return split.slice(-lines).join("\n");
   } catch {
     return "";
+  }
+}
+
+// ─── existing-service detection ─────────────────────────────
+//
+// runStartServer used to ask "Start the dev server now?" every
+// time, including the (very common) case where launchd already
+// had the service up and /api/health was returning 200. Users
+// re-run `tianshu setup` for many reasons that have nothing to
+// do with restarting the server (rotate keys, enable plugins,
+// add a tenant), and forcing them to either say no or accept a
+// pointless restart was a paper cut.
+//
+// We classify the current state into one of three buckets and
+// let the wizard's flow branch on it.
+
+type ExistingService =
+  | {
+      kind: "healthy";
+      label: string;
+      serverUrl: string;
+      serverPort: number;
+      webPort?: number;
+    }
+  | {
+      kind: "installed-not-running";
+      label: string;
+      plistPath: string;
+      serverPort?: number;
+      webPort?: number;
+      statusDetail?: string;
+    }
+  | { kind: "not-installed" };
+
+async function detectExistingService(
+  repoRoot: string,
+): Promise<ExistingService> {
+  const label = launchd.resolveLabel(repoRoot);
+  const status = launchd.readStatus(label);
+
+  // Read the previously-chosen ports from the repo's .env. The
+  // wizard always writes PORT/WEB_PORT there, so on a re-run
+  // these tell us where to probe. Falls back to defaults so a
+  // weird half-installed state still gets a useful answer.
+  const envPorts = readEnvPorts(path.join(repoRoot, ".env"));
+  const serverPort = envPorts.serverPort ?? DEFAULT_SERVER_PORT;
+  const webPort = envPorts.webPort;
+
+  if (!status.installed) return { kind: "not-installed" };
+
+  // Plist exists. Find out if it's actually serving traffic.
+  // launchctl loaded != server up: launchd may have just spawned
+  // npm and we're 30s into a cold build.
+  if (status.loaded) {
+    const health = await launchd.probeHealth(serverPort, 1500);
+    if (health.ok) {
+      return {
+        kind: "healthy",
+        label,
+        serverUrl: `http://localhost:${serverPort}`,
+        serverPort,
+        webPort,
+      };
+    }
+    return {
+      kind: "installed-not-running",
+      label,
+      plistPath: status.plistPath,
+      serverPort,
+      webPort,
+      statusDetail: `launchd loaded (pid ${status.pid ?? "?"}) but /api/health: ${health.reason ?? "(no response)"}`,
+    };
+  }
+
+  // Plist on disk but launchd hasn't loaded it (user ran
+  // `tianshu stop`, or the service crashed past KeepAlive's
+  // throttle).
+  return {
+    kind: "installed-not-running",
+    label,
+    plistPath: status.plistPath,
+    serverPort,
+    webPort,
+    statusDetail: `launchd hasn't loaded the agent. Last exit: ${status.lastExitStatus ?? "unknown"}`,
+  };
+}
+
+function readEnvPorts(
+  envPath: string,
+): { serverPort?: number; webPort?: number } {
+  if (!fs.existsSync(envPath)) return {};
+  try {
+    const body = fs.readFileSync(envPath, "utf8");
+    const out: { serverPort?: number; webPort?: number } = {};
+    for (const rawLine of body.split(/\r?\n/)) {
+      const m = rawLine.match(/^(PORT|WEB_PORT)\s*=\s*(.+)$/);
+      if (!m) continue;
+      const v = Number.parseInt(m[2].trim(), 10);
+      if (!Number.isFinite(v)) continue;
+      if (m[1] === "PORT") out.serverPort = v;
+      else out.webPort = v;
+    }
+    return out;
+  } catch {
+    return {};
   }
 }
