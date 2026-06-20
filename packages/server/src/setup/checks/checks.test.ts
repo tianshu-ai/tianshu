@@ -7,6 +7,7 @@ import { checkRuntime } from "./runtime.js";
 import { checkConfig } from "./config.js";
 import { checkProviders } from "./providers.js";
 import { checkNetwork } from "./network.js";
+import { checkTenants } from "./tenants.js";
 import type { GlobalConfig } from "../../core/config.js";
 
 describe("checkRuntime", () => {
@@ -28,6 +29,123 @@ describe("checkRuntime", () => {
       // unless ancient — but in CI we test on >=22.
       void line;
     }
+  });
+});
+
+describe("checkTenants (tenant + user + plugin topology)", () => {
+  // Spin a fake builtinConfig dir + ~/.tianshu home, so the
+  // check runs against a controllable layout. These tests pin
+  // the user-facing line text — the original doctor mis-rendered
+  // "✓ files" while Plugin Manager UI showed it disabled, and we
+  // want a regression guard against drifting back.
+  let builtinConfigDir: string;
+  let home: string;
+
+  beforeEach(() => {
+    builtinConfigDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), "tianshu-check-tenants-bc-"),
+    );
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-check-tenants-home-"));
+    for (const id of ["files", "workboard", "microsandbox"]) {
+      const dir = path.join(builtinConfigDir, "plugins", id);
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(dir, "manifest.json"),
+        JSON.stringify({ id, name: id }),
+      );
+    }
+  });
+
+  afterEach(() => {
+    fs.rmSync(builtinConfigDir, { recursive: true, force: true });
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  function seedTenant(
+    tenantId: string,
+    config: Record<string, unknown>,
+    users: string[] = [],
+  ): void {
+    const tdir = path.join(home, "tenants", tenantId);
+    fs.mkdirSync(tdir, { recursive: true });
+    fs.writeFileSync(path.join(tdir, "config.json"), JSON.stringify(config));
+    for (const u of users) {
+      fs.mkdirSync(path.join(tdir, "workspace", "users", u), {
+        recursive: true,
+      });
+    }
+  }
+
+  it("warns when no tenants on disk", () => {
+    const r = checkTenants({ builtinConfigDir, home });
+    expect(r.lines[0]!.severity).toBe("warning");
+    expect(r.lines[0]!.text).toMatch(/no tenants on disk/);
+  });
+
+  it("renders one block per tenant with users + enabled plugins", () => {
+    seedTenant(
+      "default",
+      { plugins: { files: { enabled: true }, workboard: { enabled: true } } },
+      ["dev"],
+    );
+    seedTenant(
+      "alpha",
+      { plugins: { files: { enabled: true } } },
+      ["alice", "bob"],
+    );
+    const r = checkTenants({ builtinConfigDir, home });
+    const text = r.lines.map((l) => l.text).join("\n");
+    // Tenants in sorted order.
+    expect(text).toMatch(/tenant 'alpha'[\s\S]*tenant 'default'/);
+    expect(text).toMatch(/users \(2\): alice, bob/);
+    expect(text).toMatch(/users \(1\): dev/);
+    // Enabled plugin lists are sorted, no microsandbox in either.
+    expect(text).toMatch(/enabled plugins \(2\): files, workboard/);
+    expect(text).toMatch(/enabled plugins \(1\): files/);
+  });
+
+  it("includes installed-but-not-listed plugins in the disabled bucket", () => {
+    // Tenant config doesn't even mention microsandbox; we want
+    // doctor to surface it as disabled rather than silently drop
+    // it (the original bug pattern).
+    seedTenant("default", { plugins: { files: { enabled: true } } }, ["dev"]);
+    const r = checkTenants({ builtinConfigDir, home });
+    const text = r.lines.map((l) => l.text).join("\n");
+    expect(text).toMatch(/disabled plugins \(2\): microsandbox, workboard/);
+  });
+
+  it("flags unknown plugins (config references id that has no manifest)", () => {
+    seedTenant(
+      "default",
+      { plugins: { ghost: { enabled: true } } },
+      ["dev"],
+    );
+    const r = checkTenants({ builtinConfigDir, home });
+    const unknownLine = r.lines.find((l) =>
+      l.text.includes("unknown plugins in config"),
+    );
+    expect(unknownLine).toBeDefined();
+    expect(unknownLine!.severity).toBe("warning");
+    expect(unknownLine!.text).toMatch(/ghost/);
+  });
+
+  it("ignores soft-deleted tenants", () => {
+    fs.mkdirSync(path.join(home, "tenants", "default.deleted.999"), {
+      recursive: true,
+    });
+    const r = checkTenants({ builtinConfigDir, home });
+    expect(r.lines[0]!.text).toMatch(/no tenants on disk/);
+  });
+
+  it("surfaces tenant defaultModel override in the header detail", () => {
+    seedTenant(
+      "default",
+      { defaultModel: "openai/gpt-4o", plugins: {} },
+      ["dev"],
+    );
+    const r = checkTenants({ builtinConfigDir, home });
+    const header = r.lines.find((l) => l.text === "tenant 'default'");
+    expect(header?.detail).toMatch(/openai\/gpt-4o/);
   });
 });
 
@@ -155,9 +273,19 @@ describe("checkProviders", () => {
 });
 
 describe("checkNetwork", () => {
-  it("free port reports ok", async () => {
-    // Pick an unlikely-to-be-bound high port.
+  it("free server port reports warning (server not running)", async () => {
+    // Pick an unlikely-to-be-bound high port. The server port is
+    // expected to be owned by us when the service is running, so
+    // 'free' is a soft warning telling the user to start it.
     const r = await checkNetwork({ serverPort: 39101, webPort: 39102 });
-    expect(r.lines.every((l) => l.severity === "ok")).toBe(true);
+    const serverLine = r.lines.find((l) => l.text.includes("Server port"));
+    expect(serverLine?.severity).toBe("warning");
+    expect(serverLine?.text).toContain("39101");
+  });
+
+  it("free web port reports ok (will be bound by vite later)", async () => {
+    const r = await checkNetwork({ serverPort: 39101, webPort: 39102 });
+    const webLine = r.lines.find((l) => l.text.includes("Web port"));
+    expect(webLine?.severity).toBe("ok");
   });
 });

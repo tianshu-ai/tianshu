@@ -2,14 +2,19 @@
 //
 // Commands:
 //   tianshu doctor [--probe-providers] [--probe-sandbox] [--json]
-//   tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--force] [--dry-run]
+//   tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--force] [--dry-run] [--use-env]
+//   tianshu start | stop | restart | status [--json] [--no-wait]
+//   tianshu logs [--follow] [--lines=N] [--stream=out|err|both]
 //   tianshu tenant list|create <id>|delete <id>
 //   tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]
 //   tianshu version
 //   tianshu help [<command>]
 //
-// `tianshu start` and `tianshu dev` will land in PR #2 once the
-// server's static-file path is wired up.
+// Service lifecycle commands wrap launchctl so users (and
+// debugging agents) don't need to know launchd plist paths
+// and `bootstrap gui/$(id -u) ~/Library/LaunchAgents/...`
+// invocations. `tianshu logs` reads the same files the wizard
+// configured the agent to write into.
 
 import {
   GlobalOps,
@@ -21,6 +26,13 @@ import {
 import { loadEnv } from "./setup/load-env.js";
 import { runDoctor } from "./setup/doctor.js";
 import { runSetupWizard } from "./setup/wizard.js";
+import {
+  runStart,
+  runStop,
+  runRestart,
+  runStatus,
+  runLogs,
+} from "./setup/service.js";
 
 // Load .env up front, same as the server boot path. Without this,
 // `tianshu doctor` would diagnose the user's setup using whatever
@@ -60,7 +72,9 @@ function topLevelUsage(): string {
   return [
     "Usage:",
     "  tianshu doctor [--probe-providers] [--probe-sandbox] [--json]",
-    "  tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]]",
+    "  tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--use-env]",
+    "  tianshu start | stop | restart | status [--json] [--no-wait]",
+    "  tianshu logs [--follow] [--lines=N] [--stream=out|err|both]",
     "  tianshu tenant list|create <id>|delete <id>",
     "  tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]",
     "  tianshu version",
@@ -125,6 +139,7 @@ export async function main(argv: string[]): Promise<number> {
           defaultModel: parsed.options["default-model"],
           force: parsed.flags.has("force"),
           dryRun: parsed.flags.has("dry-run"),
+          useEnv: parsed.flags.has("use-env"),
         });
         if (parsed.flags.has("non-interactive")) {
           for (const note of res.notes) console.log(note);
@@ -136,6 +151,34 @@ export async function main(argv: string[]): Promise<number> {
         );
         return 1;
       }
+    }
+
+    case "start":
+      return runStart({
+        wait: !parsed.flags.has("no-wait"),
+        json: parsed.flags.has("json"),
+      });
+    case "stop":
+      return runStop({ json: parsed.flags.has("json") });
+    case "restart":
+      return runRestart({
+        wait: !parsed.flags.has("no-wait"),
+        json: parsed.flags.has("json"),
+      });
+    case "status":
+      return runStatus({ json: parsed.flags.has("json") });
+    case "logs": {
+      const linesOpt = parsed.options.lines;
+      const streamOpt = parsed.options.stream;
+      const stream =
+        streamOpt === "out" || streamOpt === "err" || streamOpt === "both"
+          ? streamOpt
+          : undefined;
+      return runLogs({
+        follow: parsed.flags.has("follow") || parsed.flags.has("f"),
+        lines: linesOpt ? Number.parseInt(linesOpt, 10) : undefined,
+        stream,
+      });
     }
   }
 

@@ -618,7 +618,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
  *     the secret from secrets/. (The form's "clear" button sends
  *     this.)
  */
-function splitSecrets(
+export function splitSecrets(
   body: Record<string, unknown>,
   secretKeys: Set<string>,
 ): {

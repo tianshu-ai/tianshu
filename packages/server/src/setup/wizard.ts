@@ -12,9 +12,39 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as p from "@clack/prompts";
 import { getGlobalConfigPath, getTianshuHome } from "../core/paths.js";
 import { probeDefaultModel } from "./probe-default-model.js";
+
+/**
+ * Walk up from this module's directory until we find the
+ * tianshu checkout root (package.json with name='@tianshu-ai/tianshu').
+ * Used to anchor `.env` writes regardless of where the user
+ * ran the CLI from. Returns null when we hit the filesystem
+ * root without finding a match (e.g. CLI installed standalone
+ * outside a checkout).
+ */
+function findCheckoutForEnv(): string | null {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 12; i++) {
+    const pkgPath = path.join(dir, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
+          name?: string;
+        };
+        if (pkg.name === "@tianshu-ai/tianshu") return dir;
+      } catch {
+        // continue walking
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
 
 export interface WizardOpts {
   /** Skip the prompts and apply the supplied params directly. */
@@ -37,6 +67,33 @@ export interface WizardOpts {
   dryRun?: boolean;
   /** Allow overwriting an existing config.json (default: skip). */
   force?: boolean;
+  /**
+   * Store the API key as a `${VAR}` placeholder in config.json
+   * and append the value to .env, instead of writing it
+   * literally. Off by default — see the design note below.
+   *
+   * Why default-off:
+   * Pre-2026-06, every wizard run wrote `apiKey: "${ANTHROPIC_API_KEY}"`
+   * into config.json and dropped the actual key into
+   * `<repo>/.env`. That decoupling is great for ops
+   * (key never lands in a git-friendly file, easy to swap
+   * via shell export) but terrible for the common solo dev:
+   *   - `.env` lookup depends on CWD and dotenv search rules,
+   *     so the key silently disappears when launchd starts
+   *     the server with a different working dir, when the user
+   *     copies `~/.env` instead of `<repo>/.env`, etc.
+   *   - When something breaks, `config_read` shows a literal
+   *     placeholder string and the user has to chase the
+   *     env-var resolution to find out *whether the key is
+   *     even present*. We watched this happen on a real user
+   *     machine (i070219, 2026-06-20).
+   * Default to literal-in-config because that's debuggable
+   * (`config_read` shows it), atomic (one file), and
+   * permissioned (chmod 600 — see writeJsonAtomic). Users
+   * who actually want env indirection ask for it with
+   * `--use-env`.
+   */
+  useEnv?: boolean;
 }
 
 interface ProviderProfile {
@@ -53,7 +110,7 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
   {
     id: "anthropic",
     name: "Anthropic (Claude)",
-    envVar: "ANTH…_KEY",
+    envVar: "ANTHROPIC_API_KEY",
     api: "anthropic-messages",
     baseUrl: "https://api.anthropic.com",
     models: [
@@ -101,7 +158,11 @@ export async function runSetupWizard(
   opts: WizardOpts = {},
 ): Promise<WizardResult> {
   const home = opts.home ?? getTianshuHome();
-  const cwd = opts.cwd ?? process.cwd();
+  // For the .env path we prefer the tianshu checkout (where
+  // `npm run dev` will load it from), not whatever CWD the user
+  // happened to launch the CLI from. Falls back to CWD when we
+  // can't find a checkout (CI / detached install / weird layout).
+  const cwd = opts.cwd ?? findCheckoutForEnv() ?? process.cwd();
   const configPath = getGlobalConfigPath(home);
   const envPath = path.join(cwd, ".env");
 
@@ -123,9 +184,26 @@ export async function runSetupWizard(
         `\u2713 ${probe.modelId} reachable (${probe.durationMs}ms via ${probe.baseUrl ?? "vendor default"})`,
       );
       if (!opts.dryRun) {
+        // Start the server FIRST so the CLI agent has a real
+        // /api to talk to. Plugin enable, secret writes, sandbox
+        // builds all go through the server's HTTP routes —
+        // single source of truth for plugin state.
+        let serverUrl: string | null = null;
+        const { runStartServer } = await import("./start-server.js");
+        try {
+          const r = await runStartServer({ envPath });
+          serverUrl = r.serverUrl;
+        } catch (err) {
+          p.log.error(
+            `start-server step failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
         const { runCliAgent } = await import("./cli-agent.js");
         try {
-          await runCliAgent({ home });
+          await runCliAgent({
+            home,
+            serverUrl: serverUrl ?? undefined,
+          });
         } catch (err) {
           p.log.error(
             `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
@@ -328,10 +406,13 @@ export async function runSetupWizard(
   } else {
     const profile = PROVIDER_PROFILES.find((p) => p.id === providerId);
     if (!profile) throw new Error(`unknown provider id: ${providerId}`);
+    const useEnvPlaceholder = opts.useEnv === true;
     const cfg = buildConfig(
       profile,
       defaultModel ?? profile.defaultModel,
       baseUrl,
+      apiKey,
+      useEnvPlaceholder,
     );
 
     const verb = opts.dryRun ? "would write" : "wrote";
@@ -345,21 +426,39 @@ export async function runSetupWizard(
       wroteConfig = true;
     }
 
-    if (apiKey) {
-      const envVerb = opts.dryRun ? "would set" : "set";
-      if (!opts.dryRun) appendEnvKey(envPath, profile.envVar, apiKey);
-      notes.push(
-        `${envVerb} ${profile.envVar} in ${envPath}${
-          !opts.dryRun && fs.existsSync(envPath) ? "" : " (created)"
-        }`,
-      );
-      wroteEnv = true;
-    } else if (!opts.nonInteractive) {
-      // Shouldn't reach here in interactive mode — we'd have
-      // bailed on cancel — but defensively note the omission.
-      notes.push(
-        `no API key supplied; set ${profile.envVar} in .env or your shell before starting.`,
-      );
+    if (useEnvPlaceholder) {
+      // --use-env mode: the user explicitly asked for env
+      // indirection. Append the value to .env so the
+      // placeholder in config.json actually resolves at runtime.
+      if (apiKey) {
+        const envVerb = opts.dryRun ? "would set" : "set";
+        if (!opts.dryRun) appendEnvKey(envPath, profile.envVar, apiKey);
+        notes.push(
+          `${envVerb} ${profile.envVar} in ${envPath}${
+            !opts.dryRun && fs.existsSync(envPath) ? "" : " (created)"
+          }`,
+        );
+        wroteEnv = true;
+      } else if (!opts.nonInteractive) {
+        notes.push(
+          `no API key supplied; set ${profile.envVar} in .env or your shell before starting.`,
+        );
+      }
+    } else {
+      // Default mode: key was written into config.json by
+      // buildConfig above. Tell the user where it landed so
+      // there's no ambiguity (this was the failure mode on
+      // i070219: user couldn't tell where the key was supposed
+      // to live).
+      if (apiKey) {
+        notes.push(
+          `stored ${profile.envVar} value in ${configPath} (chmod 600). Use --use-env if you'd rather keep keys in .env / shell env.`,
+        );
+      } else if (!opts.nonInteractive) {
+        notes.push(
+          `no API key supplied; edit ${configPath} ("models.providers.${profile.id}.apiKey") before starting.`,
+        );
+      }
     }
   }
 
@@ -407,11 +506,27 @@ export async function runSetupWizard(
       "Default model verified. LLM provider is working.",
     );
 
-    // Hand off to the in-CLI agent for the rest of setup.
+    // Start the server first so the CLI agent has a real /api
+    // to talk to (plugin enable / secret writes / sandbox builds
+    // all go through the server's HTTP routes — single source
+    // of truth for plugin state).
     if (!opts.dryRun) {
+      let serverUrl: string | null = null;
+      const { runStartServer } = await import("./start-server.js");
+      try {
+        const r = await runStartServer({ envPath });
+        serverUrl = r.serverUrl;
+      } catch (err) {
+        p.log.error(
+          `start-server step failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
       const { runCliAgent } = await import("./cli-agent.js");
       try {
-        await runCliAgent({ home });
+        await runCliAgent({
+          home,
+          serverUrl: serverUrl ?? undefined,
+        });
       } catch (err) {
         p.log.error(
           `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
@@ -426,7 +541,9 @@ export async function runSetupWizard(
 function buildConfig(
   profile: ProviderProfile,
   defaultModel: string,
-  baseUrlOverride?: string,
+  baseUrlOverride: string | undefined,
+  apiKey: string | undefined,
+  useEnvPlaceholder: boolean,
 ) {
   // If the user picked a custom model id ("__custom__" branch in
   // the wizard), it won't appear in profile.models. Add a stub
@@ -451,6 +568,21 @@ function buildConfig(
       maxTokens: 8192,
     });
   }
+  // Default: write the literal API key into config.json so
+  // `config_read` and the user can both see whether a key is
+  // configured. config.json is chmod 600 (writeJsonAtomic) so
+  // it's not world-readable.
+  // Override: --use-env keeps the legacy placeholder so users
+  // who prefer .env / shell env can still get there.
+  const resolvedKey = useEnvPlaceholder
+    ? `\${${profile.envVar}}`
+    : apiKey ?? `\${${profile.envVar}}`; // no key + no env-mode
+                                          // → leave a placeholder
+                                          // so the file is at
+                                          // least syntactically
+                                          // valid; doctor /
+                                          // probe will surface
+                                          // "key not set".
   return {
     defaultModel,
     models: {
@@ -458,7 +590,7 @@ function buildConfig(
         [profile.id]: {
           api: profile.api,
           baseUrl: baseUrlOverride ?? profile.baseUrl,
-          apiKey: `\${${profile.envVar}}`,
+          apiKey: resolvedKey,
           group: "Cloud",
           models,
         },
