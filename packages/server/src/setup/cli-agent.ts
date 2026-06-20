@@ -382,13 +382,26 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
   );
 
   // Kick the agent off with a self-introduction request so the
-  // first turn is always the agent speaking.
+  // first turn is always the agent speaking. Phrased as multiple
+  // explicit asks so the model returns BOTH a tool call AND text
+  // — some providers will otherwise return only a tool call and
+  // nothing for the user to read.
   messages.push({
     role: "user",
     content: [
       {
         type: "text",
-        text: "Run run_doctor, then briefly say what's already set up and what you can help me finish.",
+        text: [
+          "Hello. You're my setup assistant.",
+          "",
+          "Please do these in this order, all in one reply:",
+          "  1. Briefly say hi (1 short sentence).",
+          "  2. Call the run_doctor tool to check what's set up.",
+          "  3. After the tool result comes back, summarise (a) what's already working and (b) what you can help me configure next (plugins, additional tenants, web-search keys, etc.).",
+          "  4. Ask me which one I'd like to start with.",
+          "",
+          "Be brief. Don't quote tool output verbatim \u2014 just summarise.",
+        ].join("\n"),
       },
     ],
     timestamp: Date.now(),
@@ -421,6 +434,27 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
       p.log.message(textParts.map((c) => c.text).join("\n"), {
         symbol: "🌱",
       });
+    } else {
+      // Agent returned no text. Either the model short-circuited
+      // the turn or it only emitted tool calls. Surface a
+      // breadcrumb so the operator knows the turn happened.
+      const toolNames = assistant.content
+        .filter((c) => c.type === "toolCall")
+        .map((c) => (c as { name: string }).name);
+      if (toolNames.length === 0) {
+        const debug =
+          `stopReason=${assistant.stopReason}` +
+          (assistant.errorMessage ? `, errorMessage=${assistant.errorMessage}` : "") +
+          `, content=${JSON.stringify(assistant.content)}`;
+        p.log.warn(`(model returned an empty turn; ${debug})`);
+        // No useful response. Bail rather than spinning silently.
+        p.outro(
+          "The model didn't respond \u2014 it returned an empty message. " +
+            "This usually means the proxy / endpoint stripped the response. " +
+            "Try a different default model, or check the proxy logs.",
+        );
+        return;
+      }
     }
 
     // Resolve any tool calls.
