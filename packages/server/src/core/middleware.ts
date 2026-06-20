@@ -1,34 +1,58 @@
-// Express middleware that attaches a TenantContext (and optional userId)
+// Express middleware that attaches a TenantContext (and userId)
 // to every request as `req.ctx`.
 //
-// Identity story (today, dev-only):
+// Identity resolution is delegated to a chain of `IdentityResolver`
+// strategies (see ./identity-resolvers.ts). Each resolver inspects
+// the request and either claims it, defers, or rejects. The
+// middleware itself is dumb — it just runs the chain in order, hands
+// the winner's tenant/user to ops.open(), and exposes the source
+// via `X-Tianshu-Identity-Source` for debugging.
 //
-// Default → `tenantId=default, userId=dev` (the dev tenant + dev
-//           user that bootstrapDevTenantIfNeeded creates on first
-//           boot).
+// Today's chain (DEV_RESOLVER_CHAIN):
+//   cookie → env → default-dev
 //
-// Override → set the `tianshu_identity` cookie to `<tenantId>/<userId>`
-//            and that request is served as the named identity. The
-//            web UI sets the cookie when you load
-//            `http://localhost:5183/?tenant=<id>&user=<id>` (see
-//            packages/web/src/dev-identity.ts) and re-uses it for
-//            subsequent requests automatically (cookies are
-//            same-origin by default).
+// To add a new source (subdomain, JWT, x-api-key, OAuth callback)
+// you write a resolver and prepend / append it. The middleware
+// contract — `req.ctx = { tenant, userId }` — never changes; that
+// stability is what lets us swap dev mode for real auth without
+// rippling through every route.
 //
-//            The cookie is **dev-mode-only**: anyone with network
-//            access to a tianshu instance can forge it and
-//            impersonate any tenant/user. Real JWT auth lands
-//            later; the {tenantId, userId} → req.ctx contract
-//            stays the same when it does.
+// SECURITY: the *default* chain is dev-only — cookie + env + always-
+// fallback-to-dev. Production deployments must build their own
+// chain (e.g. `[jwtResolver, apiKeyResolver]`, no fallback) and
+// pass it via `TenantMiddlewareOpts.resolvers`.
 
 import type { NextFunction, Request, Response } from "express";
 import { GlobalOps, TenantNotFoundError } from "./global-ops.js";
 import type { TenantContext } from "./tenant-context.js";
 import { DEV_TENANT_ID, DEV_USER_ID } from "./dev-mode.js";
+import {
+  DEV_RESOLVER_CHAIN,
+  type IdentityResolver,
+  type IdentityResolution,
+} from "./identity-resolvers.js";
+
+// Re-export so existing call sites (and tests) keep working.
+export {
+  DEV_IDENTITY_COOKIE,
+  parseIdentityCookie,
+  cookieResolver,
+  envResolver,
+  defaultDevResolver,
+  DEV_RESOLVER_CHAIN,
+} from "./identity-resolvers.js";
+export type {
+  IdentityResolver,
+  IdentityResolution,
+} from "./identity-resolvers.js";
 
 export interface RequestCtx {
   tenant: TenantContext;
   userId: string;
+  /** Which resolver in the chain produced this identity. Set so
+   *  routes / plugins that care (audit logs, rate limiting) can
+   *  branch on the source without re-running the chain. */
+  identitySource: string;
 }
 
 declare module "express-serve-static-core" {
@@ -40,119 +64,101 @@ declare module "express-serve-static-core" {
 export interface TenantMiddlewareOpts {
   ops: GlobalOps;
   /**
-   * Resolve {tenantId, userId} for an incoming request. Default returns
-   * the dev tenant + dev user. Replace this in JWT mode.
+   * Ordered list of identity resolvers. Defaults to the dev chain
+   * (cookie → env → always-fall-back-to-dev). Production setups
+   * should pass an explicit chain that ends with a resolver
+   * returning `deny` rather than the default-dev resolver.
    */
-  resolveIdentity?: (req: Request) => { tenantId: string; userId: string };
+  resolvers?: readonly IdentityResolver[];
 }
 
 export function tenantMiddleware(opts: TenantMiddlewareOpts) {
-  const resolve = opts.resolveIdentity ?? defaultDevResolver;
+  const chain = opts.resolvers ?? DEV_RESOLVER_CHAIN;
   return function tenantMiddlewareHandler(
     req: Request,
     res: Response,
     next: NextFunction,
   ): void {
-    let id: { tenantId: string; userId: string };
-    try {
-      id = resolve(req);
-    } catch (err) {
-      next(err);
+    let resolution: IdentityResolution | null = null;
+    for (const resolver of chain) {
+      let r: IdentityResolution | null;
+      try {
+        r = resolver.resolve(req);
+      } catch (err) {
+        // Resolver crash is treated as deny — never silently fall
+        // through to a more permissive resolver downstream. Surface
+        // for debugging.
+        res.status(500).json({
+          error: "identity_resolver_threw",
+          resolver: resolver.name,
+          message: err instanceof Error ? err.message : String(err),
+        });
+        return;
+      }
+      if (r === null) continue;
+      resolution = r;
+      break;
+    }
+
+    if (!resolution) {
+      res.status(401).json({
+        error: "no_identity",
+        detail:
+          "no resolver in the chain claimed this request; in dev mode the default chain ends with default-dev so this means the chain was misconfigured",
+      });
       return;
     }
+    if (resolution.kind === "deny") {
+      res.status(401).json({
+        error: "identity_denied",
+        resolver: resolution.source,
+        reason: resolution.reason,
+      });
+      return;
+    }
+
     let tenant: TenantContext;
     try {
-      tenant = opts.ops.open(id.tenantId);
+      tenant = opts.ops.open(resolution.tenantId);
     } catch (err) {
       if (err instanceof TenantNotFoundError) {
-        // Fall back to the default dev tenant when the cookie /
-        // env points at a tenant that doesn't exist yet (very
-        // common: user typo'd ?tenant=foo, or removed the tenant
-        // dir without clearing the cookie). Surface the original
-        // request via a response header so the UI can show a
-        // "reset identity" hint instead of leaving the user stuck.
+        // Fall back to default tenant when a resolver claims a
+        // tenant that doesn't exist on disk yet. Common in dev:
+        // user typo'd ?tenant=foo, or `tianshu tenant delete foo`
+        // ran but the cookie is still set. Surface the original
+        // request via a response header so the UI / curl caller
+        // can show a "reset identity" hint instead of leaving
+        // them with a 404.
         try {
           tenant = opts.ops.open(DEV_TENANT_ID);
           res.setHeader(
             "X-Tianshu-Identity-Fallback",
-            `requested=${id.tenantId};reason=tenant_not_found`,
+            `requested=${resolution.tenantId};reason=tenant_not_found;source=${resolution.source}`,
           );
-          req.ctx = { tenant, userId: DEV_USER_ID };
+          req.ctx = {
+            tenant,
+            userId: DEV_USER_ID,
+            identitySource: `${resolution.source}+fallback-default`,
+          };
+          res.setHeader("X-Tianshu-Identity-Source", req.ctx.identitySource);
           next();
           return;
         } catch {
-          // Default tenant doesn't exist either — stay 404.
           res
             .status(404)
-            .json({ error: "tenant_not_found", tenantId: id.tenantId });
+            .json({ error: "tenant_not_found", tenantId: resolution.tenantId });
           return;
         }
       }
       next(err);
       return;
     }
-    req.ctx = { tenant, userId: id.userId };
+    req.ctx = {
+      tenant,
+      userId: resolution.userId,
+      identitySource: resolution.source,
+    };
+    res.setHeader("X-Tianshu-Identity-Source", resolution.source);
     next();
   };
-}
-
-/**
- * Cookie-based dev identity. Read `tianshu_identity=<tenant>/<user>`;
- * fall back to env vars (TIANSHU_DEV_TENANT / TIANSHU_DEV_USER) for
- * server-side / curl scenarios; finally fall back to default/dev.
- *
- * The cookie format is intentionally one string (`tenant/user`) so the
- * web app can write it as a single document.cookie statement and the
- * server can parse without a `cookie-parser` dep.
- */
-export const DEV_IDENTITY_COOKIE = "tianshu_identity";
-
-export function defaultDevResolver(req: Request): {
-  tenantId: string;
-  userId: string;
-} {
-  const fromCookie = parseIdentityCookie(req.headers.cookie ?? "");
-  if (fromCookie) return fromCookie;
-  const envTenant = process.env.TIANSHU_DEV_TENANT?.trim();
-  const envUser = process.env.TIANSHU_DEV_USER?.trim();
-  if (envTenant || envUser) {
-    return {
-      tenantId: envTenant || DEV_TENANT_ID,
-      userId: envUser || DEV_USER_ID,
-    };
-  }
-  return { tenantId: DEV_TENANT_ID, userId: DEV_USER_ID };
-}
-
-/**
- * Parse a tenantId/userId pair out of a `Cookie:` header.
- * Returns `null` when the cookie is absent / malformed; the caller
- * falls back to env / default.
- */
-export function parseIdentityCookie(
-  cookieHeader: string,
-): { tenantId: string; userId: string } | null {
-  if (!cookieHeader) return null;
-  for (const part of cookieHeader.split(/;\s*/)) {
-    const eq = part.indexOf("=");
-    if (eq <= 0) continue;
-    const name = part.slice(0, eq).trim();
-    if (name !== DEV_IDENTITY_COOKIE) continue;
-    const value = decodeURIComponent(part.slice(eq + 1).trim());
-    const slash = value.indexOf("/");
-    if (slash <= 0 || slash === value.length - 1) continue;
-    const tenantId = value.slice(0, slash);
-    const userId = value.slice(slash + 1);
-    if (!isSafeId(tenantId) || !isSafeId(userId)) continue;
-    return { tenantId, userId };
-  }
-  return null;
-}
-
-/** Reject anything that's not a-z A-Z 0-9 _ - . The middleware
- *  later runs `ops.open(tenantId)` which validates the id
- *  shape too; this is a belt-and-braces parse-time guard so a
- *  garbled cookie never reaches the open path. */
-function isSafeId(s: string): boolean {
-  return /^[A-Za-z0-9._-]+$/.test(s) && s.length <= 64;
 }
