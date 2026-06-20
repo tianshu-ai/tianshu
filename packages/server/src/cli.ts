@@ -2,7 +2,7 @@
 //
 // Commands:
 //   tianshu doctor [--probe-providers] [--probe-sandbox] [--json]
-//   tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--default-model Z]] [--force] [--dry-run]
+//   tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--force] [--dry-run]
 //   tianshu tenant list|create <id>|delete <id>
 //   tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]
 //   tianshu version
@@ -60,7 +60,7 @@ function topLevelUsage(): string {
   return [
     "Usage:",
     "  tianshu doctor [--probe-providers] [--probe-sandbox] [--json]",
-    "  tianshu setup [--wizard] [--non-interactive --provider X --api-key Y]",
+    "  tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]]",
     "  tianshu tenant list|create <id>|delete <id>",
     "  tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]",
     "  tianshu version",
@@ -121,6 +121,7 @@ export async function main(argv: string[]): Promise<number> {
           nonInteractive: parsed.flags.has("non-interactive"),
           provider: parsed.options.provider,
           apiKey: parsed.options["api-key"],
+          baseUrl: parsed.options["base-url"],
           defaultModel: parsed.options["default-model"],
           force: parsed.flags.has("force"),
           dryRun: parsed.flags.has("dry-run"),

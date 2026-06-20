@@ -118,6 +118,47 @@ describe("runSetupWizard non-interactive", () => {
     expect(env).toMatch(/ANTH…_KEY=sk-test-key-1234567890/);
   });
 
+  it("writes a custom baseUrl when --base-url is supplied", async () => {
+    await runSetupWizard({
+      nonInteractive: true,
+      provider: "anthropic",
+      apiKey: "sk-tes…vy-1234567890",
+      baseUrl: "https://my-corp-gateway.example.com/anthropic",
+      home,
+      cwd,
+    });
+    const cfg = JSON.parse(
+      fs.readFileSync(path.join(home, "config.json"), "utf8"),
+    );
+    expect(cfg.models.providers.anthropic.baseUrl).toBe(
+      "https://my-corp-gateway.example.com/anthropic",
+    );
+    // Vendor default unaffected for unrelated providers.
+    expect(cfg.models.providers.anthropic.api).toBe("anthropic-messages");
+  });
+
+  it("adds a custom default model id to the models list when not in profile", async () => {
+    await runSetupWizard({
+      nonInteractive: true,
+      provider: "openai",
+      apiKey: "sk-tes…vy-1234567890",
+      defaultModel: "openai/llama-3.1-8b-on-vllm",
+      home,
+      cwd,
+    });
+    const cfg = JSON.parse(
+      fs.readFileSync(path.join(home, "config.json"), "utf8"),
+    );
+    expect(cfg.defaultModel).toBe("openai/llama-3.1-8b-on-vllm");
+    const ids = cfg.models.providers.openai.models.map(
+      (m: { id: string }) => m.id,
+    );
+    expect(ids).toContain("llama-3.1-8b-on-vllm");
+    // Original profile models still present so the picker UI can
+    // offer them later.
+    expect(ids).toContain("gpt-5");
+  });
+
   it("respects --dry-run by not writing files", async () => {
     const res = await runSetupWizard({
       nonInteractive: true,

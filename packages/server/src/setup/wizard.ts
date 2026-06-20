@@ -24,6 +24,10 @@ export interface WizardOpts {
   apiKey?: string;
   /** Override defaultModel (e.g. "anthropic/claude-opus-4-7"). */
   defaultModel?: string;
+  /** Override the provider baseUrl. Useful when the user is hitting
+   *  a corporate gateway / cloudflare proxy / a local llama-server
+   *  rather than the vendor's public API. */
+  baseUrl?: string;
   /** Override TIANSHU_HOME. */
   home?: string;
   /** Override CWD for the .env path. */
@@ -100,9 +104,11 @@ export async function runSetupWizard(
   const configPath = getGlobalConfigPath(home);
   const envPath = path.join(cwd, ".env");
 
-  // Resolve which provider, key, model we're going to write.
+  // Resolve which provider, key, baseUrl, model we're going to
+  // write.
   let providerId: string;
   let apiKey: string | undefined;
+  let baseUrl: string | undefined;
   let defaultModel: string | undefined;
 
   if (opts.nonInteractive) {
@@ -113,6 +119,7 @@ export async function runSetupWizard(
     }
     providerId = opts.provider;
     apiKey = opts.apiKey;
+    baseUrl = opts.baseUrl;
     defaultModel = opts.defaultModel;
   } else {
     p.intro("Tianshu setup");
@@ -148,6 +155,7 @@ export async function runSetupWizard(
       const profile = PROVIDER_PROFILES.find((p) => p.id === providerId);
       if (!profile) throw new Error(`unknown provider id: ${providerId}`);
 
+      // Step 2: API key.
       const k = await p.password({
         message: `Paste your ${profile.envVar} (input is hidden, written to .env):`,
         validate: (v) =>
@@ -167,15 +175,26 @@ export async function runSetupWizard(
       }
       apiKey = k as string;
 
-      const m = await p.select({
-        message: "Default model? (you can change later):",
-        options: profile.models.map((m, idx) => ({
-          value: `${profile.id}/${m.id}`,
-          label: m.name,
-          hint: idx === 0 ? "recommended" : m.reasoning ? "thinking-mode" : undefined,
-        })),
+      // Step 3: endpoint. Default offered first, but a corporate
+      // gateway / cloudflare proxy / local llama-server is common
+      // enough we ask. Empty input keeps the default.
+      const url = await p.text({
+        message: `API endpoint:`,
+        placeholder: profile.baseUrl,
+        defaultValue: profile.baseUrl,
+        validate: (v) => {
+          if (!v) return undefined; // accept empty → default
+          try {
+            const u = new URL(v);
+            if (!/^https?:$/.test(u.protocol))
+              return "URL must be http:// or https://";
+            return undefined;
+          } catch {
+            return "Not a valid URL.";
+          }
+        },
       });
-      if (p.isCancel(m)) {
+      if (p.isCancel(url)) {
         p.cancel("Setup cancelled.");
         return {
           configPath,
@@ -185,7 +204,68 @@ export async function runSetupWizard(
           notes: ["cancelled"],
         };
       }
-      defaultModel = m as string;
+      // Treat empty / unchanged input as 'use default'.
+      baseUrl =
+        url && (url as string).trim() && (url as string).trim() !== profile.baseUrl
+          ? (url as string).trim()
+          : undefined;
+
+      // Step 4: default model. If the user supplied a custom
+      // baseUrl, the canonical model ids may not exist on the
+      // proxy — give them a free-text option.
+      const modelChoice = await p.select({
+        message: "Default model? (you can change later):",
+        options: [
+          ...profile.models.map((m, idx) => ({
+            value: `${profile.id}/${m.id}`,
+            label: m.name,
+            hint:
+              idx === 0
+                ? "recommended"
+                : m.reasoning
+                  ? "thinking-mode"
+                  : undefined,
+          })),
+          {
+            value: "__custom__",
+            label: "custom — type a model id",
+            hint: "e.g. for proxies / local servers",
+          },
+        ],
+      });
+      if (p.isCancel(modelChoice)) {
+        p.cancel("Setup cancelled.");
+        return {
+          configPath,
+          envPath,
+          wroteConfig: false,
+          wroteEnv: false,
+          notes: ["cancelled"],
+        };
+      }
+      if (modelChoice === "__custom__") {
+        const custom = await p.text({
+          message: `Custom model id (without the "${profile.id}/" prefix):`,
+          placeholder: profile.models[0]?.id ?? "my-model",
+          validate: (v) =>
+            !v || !(v as string).trim()
+              ? "Model id can't be empty."
+              : undefined,
+        });
+        if (p.isCancel(custom)) {
+          p.cancel("Setup cancelled.");
+          return {
+            configPath,
+            envPath,
+            wroteConfig: false,
+            wroteEnv: false,
+            notes: ["cancelled"],
+          };
+        }
+        defaultModel = `${profile.id}/${(custom as string).trim()}`;
+      } else {
+        defaultModel = modelChoice as string;
+      }
     }
   }
 
@@ -200,7 +280,11 @@ export async function runSetupWizard(
   } else {
     const profile = PROVIDER_PROFILES.find((p) => p.id === providerId);
     if (!profile) throw new Error(`unknown provider id: ${providerId}`);
-    const cfg = buildConfig(profile, defaultModel ?? profile.defaultModel);
+    const cfg = buildConfig(
+      profile,
+      defaultModel ?? profile.defaultModel,
+      baseUrl,
+    );
 
     const verb = opts.dryRun ? "would write" : "wrote";
     if (fs.existsSync(configPath) && !opts.force) {
@@ -245,23 +329,44 @@ export async function runSetupWizard(
   return { configPath, envPath, wroteConfig, wroteEnv, notes };
 }
 
-function buildConfig(profile: ProviderProfile, defaultModel: string) {
+function buildConfig(
+  profile: ProviderProfile,
+  defaultModel: string,
+  baseUrlOverride?: string,
+) {
+  // If the user picked a custom model id ("__custom__" branch in
+  // the wizard), it won't appear in profile.models. Add a stub
+  // entry so config.json's `models` array reflects what the user
+  // actually intends to call — otherwise the model picker UI
+  // shows a model that's defaultModel but not in the list.
+  const slash = defaultModel.indexOf("/");
+  const defaultModelId = slash > 0 ? defaultModel.slice(slash + 1) : defaultModel;
+  const knownIds = new Set(profile.models.map((m) => m.id));
+  const models = profile.models.map((m) => ({
+    id: m.id,
+    name: m.name,
+    ...(m.reasoning ? { reasoning: true } : {}),
+    contextWindow: 200000,
+    maxTokens: 8192,
+  }));
+  if (!knownIds.has(defaultModelId)) {
+    models.unshift({
+      id: defaultModelId,
+      name: defaultModelId,
+      contextWindow: 200000,
+      maxTokens: 8192,
+    });
+  }
   return {
     defaultModel,
     models: {
       providers: {
         [profile.id]: {
           api: profile.api,
-          baseUrl: profile.baseUrl,
+          baseUrl: baseUrlOverride ?? profile.baseUrl,
           apiKey: `\${${profile.envVar}}`,
           group: "Cloud",
-          models: profile.models.map((m) => ({
-            id: m.id,
-            name: m.name,
-            ...(m.reasoning ? { reasoning: true } : {}),
-            contextWindow: 200000,
-            maxTokens: 8192,
-          })),
+          models,
         },
       },
     },
