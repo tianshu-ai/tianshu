@@ -123,20 +123,29 @@ export async function runSetupWizard(
         `\u2713 ${probe.modelId} reachable (${probe.durationMs}ms via ${probe.baseUrl ?? "vendor default"})`,
       );
       if (!opts.dryRun) {
-        const { runCliAgent } = await import("./cli-agent.js");
-        try {
-          await runCliAgent({ home });
-        } catch (err) {
-          p.log.error(
-            `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
+        // Start the server FIRST so the CLI agent has a real
+        // /api to talk to. Plugin enable, secret writes, sandbox
+        // builds all go through the server's HTTP routes —
+        // single source of truth for plugin state.
+        let serverUrl: string | null = null;
         const { runStartServer } = await import("./start-server.js");
         try {
-          await runStartServer({ envPath });
+          const r = await runStartServer({ envPath });
+          serverUrl = r.serverUrl;
         } catch (err) {
           p.log.error(
             `start-server step failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        const { runCliAgent } = await import("./cli-agent.js");
+        try {
+          await runCliAgent({
+            home,
+            serverUrl: serverUrl ?? undefined,
+          });
+        } catch (err) {
+          p.log.error(
+            `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
@@ -415,23 +424,30 @@ export async function runSetupWizard(
       "Default model verified. LLM provider is working.",
     );
 
-    // Hand off to the in-CLI agent for the rest of setup, then
-    // spawn the dev server and wait for /api/health.
+    // Start the server first so the CLI agent has a real /api
+    // to talk to (plugin enable / secret writes / sandbox builds
+    // all go through the server's HTTP routes — single source
+    // of truth for plugin state).
     if (!opts.dryRun) {
-      const { runCliAgent } = await import("./cli-agent.js");
-      try {
-        await runCliAgent({ home });
-      } catch (err) {
-        p.log.error(
-          `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
+      let serverUrl: string | null = null;
       const { runStartServer } = await import("./start-server.js");
       try {
-        await runStartServer({ envPath });
+        const r = await runStartServer({ envPath });
+        serverUrl = r.serverUrl;
       } catch (err) {
         p.log.error(
           `start-server step failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      const { runCliAgent } = await import("./cli-agent.js");
+      try {
+        await runCliAgent({
+          home,
+          serverUrl: serverUrl ?? undefined,
+        });
+      } catch (err) {
+        p.log.error(
+          `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }

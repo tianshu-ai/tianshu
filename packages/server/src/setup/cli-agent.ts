@@ -58,6 +58,11 @@ export interface CliAgentOpts {
   /** Stop after this many user/assistant turns (defaults to 25). Hard cap to
    *  prevent runaway loops; not surfaced to the user. */
   maxTurns?: number;
+  /** Base URL of a running tianshu server (e.g. http://localhost:3110).
+   *  When set, the agent gets HTTP-based tools (plugin_patch,
+   *  build_sandbox, etc.) that route through the server's plugin
+   *  runtime instead of editing files directly. */
+  serverUrl?: string;
 }
 
 const SETUP_SYSTEM_PROMPT = `You are the tianshu setup assistant.
@@ -146,7 +151,65 @@ interface ToolHandler {
   describe?: (args: Record<string, unknown>) => string;
 }
 
-function buildTools(home: string): Record<string, ToolHandler> {
+/**
+ * The user's identity for HTTP calls. The server-side dev
+ * resolver chain accepts a `tianshu_identity=<tenant>/<user>`
+ * cookie, so we forge one matching whatever tenant the agent is
+ * targeting in each call. We always go in as the tenant's `dev`
+ * user (the bootstrap user) since the wizard hasn't created
+ * anyone else yet.
+ */
+function identityCookie(tenantId: string): string {
+  return `tianshu_identity=${encodeURIComponent(`${tenantId}/dev`)}`;
+}
+
+/**
+ * Make an HTTP request against the running server, returning the
+ * parsed JSON body or throwing an Error with the response text.
+ * Used by the HTTP-backed tools when the wizard has spun up a
+ * server already.
+ */
+async function serverFetch(
+  serverUrl: string,
+  method: string,
+  pathSegment: string,
+  tenantId: string,
+  body?: unknown,
+): Promise<unknown> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 30_000);
+  try {
+    const res = await fetch(`${serverUrl}${pathSegment}`, {
+      method,
+      headers: {
+        "content-type": "application/json",
+        cookie: identityCookie(tenantId),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: ac.signal,
+    });
+    const text = await res.text();
+    let parsed: unknown;
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      parsed = { raw: text };
+    }
+    if (!res.ok) {
+      throw new Error(
+        `${method} ${pathSegment} → HTTP ${res.status}: ${text.slice(0, 400)}`,
+      );
+    }
+    return parsed;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function buildTools(
+  home: string,
+  serverUrl: string | undefined,
+): Record<string, ToolHandler> {
   const ops = new GlobalOps({ home });
   return {
     tenant_list: {
@@ -238,7 +301,7 @@ function buildTools(home: string): Record<string, ToolHandler> {
       schema: {
         name: "plugin_enable",
         description:
-          "Enable a built-in plugin (files | workboard | microsandbox | web-search) inside a tenant. Persists to that tenant's config.json.",
+          "Enable a built-in plugin (files | workboard | microsandbox | web-search) inside a tenant. When the wizard has a running server, this routes through PATCH /api/plugins/:id so plugin lifecycle hooks fire (activation, registry refresh, plugins_changed broadcast) — the same path the admin UI uses. Without a server we fall back to editing the config.json directly; the plugin will activate next time the server boots.",
         parameters: {
           type: "object",
           properties: {
@@ -254,6 +317,22 @@ function buildTools(home: string): Record<string, ToolHandler> {
       execute: async (args) => {
         const tenantId = String(args.tenantId);
         const pluginId = String(args.pluginId);
+        if (serverUrl) {
+          const r = await serverFetch(
+            serverUrl,
+            "PATCH",
+            `/api/plugins/${encodeURIComponent(pluginId)}`,
+            tenantId,
+            { enabled: true },
+          );
+          return JSON.stringify({
+            tenantId,
+            pluginId,
+            enabled: true,
+            via: "http",
+            response: r,
+          });
+        }
         const cfgPath = path.join(getTenantsRoot(home), tenantId, "config.json");
         const cfg = readJsonOrEmpty(cfgPath);
         cfg.plugins = (cfg.plugins as Record<string, unknown>) ?? {};
@@ -267,7 +346,12 @@ function buildTools(home: string): Record<string, ToolHandler> {
           enabled: true,
         };
         writeJsonAtomic(cfgPath, cfg);
-        return JSON.stringify({ tenantId, pluginId, enabled: true });
+        return JSON.stringify({
+          tenantId,
+          pluginId,
+          enabled: true,
+          via: "file",
+        });
       },
     },
     plugin_disable: {
@@ -277,7 +361,7 @@ function buildTools(home: string): Record<string, ToolHandler> {
       schema: {
         name: "plugin_disable",
         description:
-          "Disable a plugin in the given tenant. The plugin entry is kept (so config like API keys aren't lost) but `enabled` flips to false.",
+          "Disable a plugin in the given tenant. Routes through PATCH /api/plugins/:id when a server is running so the plugin's deactivate hook fires; otherwise edits config.json directly.",
         parameters: {
           type: "object",
           properties: {
@@ -290,6 +374,22 @@ function buildTools(home: string): Record<string, ToolHandler> {
       execute: async (args) => {
         const tenantId = String(args.tenantId);
         const pluginId = String(args.pluginId);
+        if (serverUrl) {
+          const r = await serverFetch(
+            serverUrl,
+            "PATCH",
+            `/api/plugins/${encodeURIComponent(pluginId)}`,
+            tenantId,
+            { enabled: false },
+          );
+          return JSON.stringify({
+            tenantId,
+            pluginId,
+            enabled: false,
+            via: "http",
+            response: r,
+          });
+        }
         const cfgPath = path.join(getTenantsRoot(home), tenantId, "config.json");
         const cfg = readJsonOrEmpty(cfgPath);
         cfg.plugins = (cfg.plugins as Record<string, unknown>) ?? {};
@@ -303,7 +403,12 @@ function buildTools(home: string): Record<string, ToolHandler> {
           enabled: false,
         };
         writeJsonAtomic(cfgPath, cfg);
-        return JSON.stringify({ tenantId, pluginId, enabled: false });
+        return JSON.stringify({
+          tenantId,
+          pluginId,
+          enabled: false,
+          via: "file",
+        });
       },
     },
     config_read: {
@@ -434,6 +539,27 @@ function buildTools(home: string): Record<string, ToolHandler> {
         const pluginId = String(args.pluginId);
         const key = String(args.key);
         const value = String(args.value);
+        if (serverUrl) {
+          // PATCH /api/plugins/:id with { config: { <key>: <value> } }.
+          // The route checks the plugin's manifest configSchema and
+          // routes secret-typed fields to <tenant>/secrets/...
+          // automatically. We send a patch with just our key; other
+          // existing secrets / cleartext config are preserved.
+          const r = await serverFetch(
+            serverUrl,
+            "PATCH",
+            `/api/plugins/${encodeURIComponent(pluginId)}`,
+            tenantId,
+            { config: { [key]: value } },
+          );
+          return JSON.stringify({
+            tenantId,
+            pluginId,
+            key,
+            via: "http",
+            response: r,
+          });
+        }
         const ctx = ops.exists(tenantId)
           ? ops.open(tenantId)
           : ops.create(tenantId);
@@ -445,6 +571,7 @@ function buildTools(home: string): Record<string, ToolHandler> {
           pluginId,
           keysAfter: Object.keys(result.secrets),
           changed: result.changed,
+          via: "file",
         });
       },
     },
@@ -527,7 +654,7 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
     return;
   }
 
-  const tools = buildTools(home);
+  const tools = buildTools(home, opts.serverUrl);
   const toolSchemas = Object.values(tools).map((t) => t.schema);
   const messages: Message[] = [];
 

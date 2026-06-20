@@ -43,9 +43,24 @@ const LAUNCHD_LABEL = "ai.tianshu.dev";
  * existing launchd agent so re-running the wizard doesn't
  * create duplicates.
  */
+export interface StartServerResult {
+  /** http://localhost:<port> when the server is up, null when skipped. */
+  serverUrl: string | null;
+  /** Web UI URL (vite). null when skipped. */
+  webUrl: string | null;
+  /** True when the user accepted auto-start AND health-check passed. */
+  started: boolean;
+}
+
+const SKIPPED: StartServerResult = {
+  serverUrl: null,
+  webUrl: null,
+  started: false,
+};
+
 export async function runStartServer(
   opts: StartServerOpts = {},
-): Promise<void> {
+): Promise<StartServerResult> {
   const repoRoot = opts.repoRoot ?? process.cwd();
   const envPath = opts.envPath ?? path.join(repoRoot, ".env");
 
@@ -59,7 +74,7 @@ export async function runStartServer(
         "directly. For now, clone the repo and run `npm run dev` there.",
       ].join("\n"),
     );
-    return;
+    return SKIPPED;
   }
 
   const wantStart = await p.confirm({
@@ -74,7 +89,7 @@ export async function runStartServer(
         "  npm run dev",
       ].join("\n"),
     );
-    return;
+    return SKIPPED;
   }
 
   // Pick ports.
@@ -84,7 +99,7 @@ export async function runStartServer(
   );
   if (serverPort === null) {
     p.log.warn("Aborted port selection. Skipping start.");
-    return;
+    return SKIPPED;
   }
   const webPort = await pickPort(
     "Web port (the dev UI you'll open in a browser):",
@@ -92,7 +107,7 @@ export async function runStartServer(
   );
   if (webPort === null) {
     p.log.warn("Aborted port selection. Skipping start.");
-    return;
+    return SKIPPED;
   }
 
   // Persist the ports.
@@ -105,21 +120,21 @@ export async function runStartServer(
   // Cross-platform branch.
   const platform = os.platform();
   if (platform === "darwin") {
-    await startViaLaunchd({ repoRoot, serverPort, webPort });
-  } else {
-    p.log.info(
-      [
-        `Auto-start via service manager isn't implemented yet on ${platform}.`,
-        "",
-        "On Linux the recommended path is a systemd --user unit; the template",
-        "is in docs/running.md (TODO section).",
-        "",
-        "For now, run the dev server in a separate terminal:",
-        `  cd ${repoRoot}`,
-        "  npm run dev",
-      ].join("\n"),
-    );
+    return startViaLaunchd({ repoRoot, serverPort, webPort });
   }
+  p.log.info(
+    [
+      `Auto-start via service manager isn't implemented yet on ${platform}.`,
+      "",
+      "On Linux the recommended path is a systemd --user unit; the template",
+      "is in docs/running.md (TODO section).",
+      "",
+      "For now, run the dev server in a separate terminal:",
+      `  cd ${repoRoot}`,
+      "  npm run dev",
+    ].join("\n"),
+  );
+  return SKIPPED;
 }
 
 interface LaunchdStartOpts {
@@ -128,7 +143,9 @@ interface LaunchdStartOpts {
   webPort: number;
 }
 
-async function startViaLaunchd(opts: LaunchdStartOpts): Promise<void> {
+async function startViaLaunchd(
+  opts: LaunchdStartOpts,
+): Promise<StartServerResult> {
   const plistPath = path.join(
     os.homedir(),
     "Library",
@@ -156,7 +173,7 @@ async function startViaLaunchd(opts: LaunchdStartOpts): Promise<void> {
           `  launchctl print gui/$(id -u)/${LAUNCHD_LABEL}`,
         ].join("\n"),
       );
-      return;
+      return SKIPPED;
     }
     // Boot out the existing service before we overwrite the plist.
     try {
@@ -252,7 +269,7 @@ async function startViaLaunchd(opts: LaunchdStartOpts): Promise<void> {
         `  launchctl bootstrap gui/$(id -u) ${plistPath}`,
       ].join("\n"),
     );
-    return;
+    return SKIPPED;
   }
 
   // Wait for /api/health.
@@ -281,29 +298,24 @@ async function startViaLaunchd(opts: LaunchdStartOpts): Promise<void> {
         "  · debug:         tianshu doctor",
       ].join("\n"),
     );
-    return;
+    return SKIPPED;
   }
   healthSpinner.stop(
     `\u2713 Server is up on http://localhost:${opts.serverPort}.`,
   );
-
-  p.outro(
+  p.log.info(
     [
-      "All set. Tianshu is running under launchd.",
-      "",
-      `  Web UI:     http://localhost:${opts.webPort}`,
-      `  API:        http://localhost:${opts.serverPort}/api`,
-      `  Out log:    ${logFile}`,
-      `  Err log:    ${errFile}`,
-      "",
-      "The service auto-starts at login and restarts on crash.",
-      "",
-      "Useful commands:",
-      `  Restart:    launchctl kickstart -k gui/$(id -u)/${LAUNCHD_LABEL}`,
-      `  Stop:       launchctl kill SIGTERM gui/$(id -u)/${LAUNCHD_LABEL}`,
-      `  Uninstall:  launchctl bootout gui/$(id -u)/${LAUNCHD_LABEL}`,
+      `Tianshu is running under launchd.`,
+      `  Web UI:  http://localhost:${opts.webPort}`,
+      `  API:     http://localhost:${opts.serverPort}/api`,
+      `  Logs:    ${logFile} / ${errFile}`,
     ].join("\n"),
   );
+  return {
+    serverUrl: `http://localhost:${opts.serverPort}`,
+    webUrl: `http://localhost:${opts.webPort}`,
+    started: true,
+  };
 }
 
 // ─── helpers ───────────────────────────────────────────────────────
