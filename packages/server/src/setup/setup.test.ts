@@ -98,7 +98,7 @@ describe("runSetupWizard non-interactive", () => {
     fs.rmSync(cwd, { recursive: true, force: true });
   });
 
-  it("writes config.json and .env when given a known provider", async () => {
+  it("writes the literal API key into config.json by default (no .env)", async () => {
     const res = await runSetupWizard({
       nonInteractive: true,
       provider: "anthropic",
@@ -107,14 +107,43 @@ describe("runSetupWizard non-interactive", () => {
       cwd,
     });
     expect(res.wroteConfig).toBe(true);
-    expect(res.wroteEnv).toBe(true);
+    // Default mode no longer touches .env — the key lands in
+    // config.json directly. wroteEnv must be false to surface
+    // that distinction in the wizard's notes.
+    expect(res.wroteEnv).toBe(false);
     const cfg = JSON.parse(
       fs.readFileSync(path.join(home, "config.json"), "utf8"),
     );
     expect(cfg.defaultModel).toBe("anthropic/claude-sonnet-4-6");
     expect(cfg.models.providers.anthropic).toBeDefined();
-    expect(cfg.models.providers.anthropic.apiKey).toContain(
-      "ANTHROPIC_API_KEY",
+    // Literal key, not a placeholder.
+    expect(cfg.models.providers.anthropic.apiKey).toBe(
+      "sk-test-key-1234567890",
+    );
+    // .env should not have been created.
+    expect(fs.existsSync(path.join(cwd, ".env"))).toBe(false);
+    // Confirm chmod 600 on the config file (key in plaintext).
+    const stat = fs.statSync(path.join(home, "config.json"));
+    expect(stat.mode & 0o777).toBe(0o600);
+  });
+
+  it("--use-env keeps the legacy placeholder + .env path", async () => {
+    const res = await runSetupWizard({
+      nonInteractive: true,
+      provider: "anthropic",
+      apiKey: "sk-test-key-1234567890",
+      useEnv: true,
+      home,
+      cwd,
+    });
+    expect(res.wroteConfig).toBe(true);
+    expect(res.wroteEnv).toBe(true);
+    const cfg = JSON.parse(
+      fs.readFileSync(path.join(home, "config.json"), "utf8"),
+    );
+    // Placeholder, not literal.
+    expect(cfg.models.providers.anthropic.apiKey).toBe(
+      "${ANTHROPIC_API_KEY}",
     );
     const env = fs.readFileSync(path.join(cwd, ".env"), "utf8");
     expect(env).toMatch(/ANTHROPIC_API_KEY=sk-test-key-1234567890/);
@@ -200,12 +229,13 @@ describe("runSetupWizard non-interactive", () => {
     ).rejects.toThrow(/--provider/);
   });
 
-  it("preserves other lines in an existing .env when adding a new key", async () => {
+  it("--use-env preserves other lines in an existing .env when adding a new key", async () => {
     fs.writeFileSync(path.join(cwd, ".env"), "EXISTING_VAR=hello\n");
     await runSetupWizard({
       nonInteractive: true,
       provider: "anthropic",
       apiKey: "sk-new-key",
+      useEnv: true,
       home,
       cwd,
     });
@@ -214,7 +244,7 @@ describe("runSetupWizard non-interactive", () => {
     expect(env).toMatch(/ANTHROPIC_API_KEY=sk-new-key/);
   });
 
-  it("replaces an existing key line rather than appending a duplicate", async () => {
+  it("--use-env replaces an existing key line rather than appending a duplicate", async () => {
     fs.writeFileSync(
       path.join(cwd, ".env"),
       "ANTHROPIC_API_KEY=old-value\nOTHER=keep\n",
@@ -223,6 +253,7 @@ describe("runSetupWizard non-interactive", () => {
       nonInteractive: true,
       provider: "anthropic",
       apiKey: "new-value",
+      useEnv: true,
       home,
       cwd,
     });
@@ -231,5 +262,26 @@ describe("runSetupWizard non-interactive", () => {
     expect(matches.length).toBe(1);
     expect(env).toMatch(/ANTHROPIC_API_KEY=new-value/);
     expect(env).toMatch(/OTHER=keep/);
+  });
+
+  it("default mode does not write .env even if one already exists", async () => {
+    // Pre-existing .env should be left untouched in default mode.
+    // (Users with existing .env files shouldn't be silently
+    // mixed into the new config-only flow.)
+    fs.writeFileSync(path.join(cwd, ".env"), "EXISTING_VAR=hello\n");
+    const res = await runSetupWizard({
+      nonInteractive: true,
+      provider: "anthropic",
+      apiKey: "sk-default-mode",
+      home,
+      cwd,
+    });
+    expect(res.wroteEnv).toBe(false);
+    const env = fs.readFileSync(path.join(cwd, ".env"), "utf8");
+    expect(env).toBe("EXISTING_VAR=hello\n"); // unchanged
+    const cfg = JSON.parse(
+      fs.readFileSync(path.join(home, "config.json"), "utf8"),
+    );
+    expect(cfg.models.providers.anthropic.apiKey).toBe("sk-default-mode");
   });
 });

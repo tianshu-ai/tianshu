@@ -67,6 +67,33 @@ export interface WizardOpts {
   dryRun?: boolean;
   /** Allow overwriting an existing config.json (default: skip). */
   force?: boolean;
+  /**
+   * Store the API key as a `${VAR}` placeholder in config.json
+   * and append the value to .env, instead of writing it
+   * literally. Off by default — see the design note below.
+   *
+   * Why default-off:
+   * Pre-2026-06, every wizard run wrote `apiKey: "${ANTHROPIC_API_KEY}"`
+   * into config.json and dropped the actual key into
+   * `<repo>/.env`. That decoupling is great for ops
+   * (key never lands in a git-friendly file, easy to swap
+   * via shell export) but terrible for the common solo dev:
+   *   - `.env` lookup depends on CWD and dotenv search rules,
+   *     so the key silently disappears when launchd starts
+   *     the server with a different working dir, when the user
+   *     copies `~/.env` instead of `<repo>/.env`, etc.
+   *   - When something breaks, `config_read` shows a literal
+   *     placeholder string and the user has to chase the
+   *     env-var resolution to find out *whether the key is
+   *     even present*. We watched this happen on a real user
+   *     machine (i070219, 2026-06-20).
+   * Default to literal-in-config because that's debuggable
+   * (`config_read` shows it), atomic (one file), and
+   * permissioned (chmod 600 — see writeJsonAtomic). Users
+   * who actually want env indirection ask for it with
+   * `--use-env`.
+   */
+  useEnv?: boolean;
 }
 
 interface ProviderProfile {
@@ -379,10 +406,13 @@ export async function runSetupWizard(
   } else {
     const profile = PROVIDER_PROFILES.find((p) => p.id === providerId);
     if (!profile) throw new Error(`unknown provider id: ${providerId}`);
+    const useEnvPlaceholder = opts.useEnv === true;
     const cfg = buildConfig(
       profile,
       defaultModel ?? profile.defaultModel,
       baseUrl,
+      apiKey,
+      useEnvPlaceholder,
     );
 
     const verb = opts.dryRun ? "would write" : "wrote";
@@ -396,21 +426,39 @@ export async function runSetupWizard(
       wroteConfig = true;
     }
 
-    if (apiKey) {
-      const envVerb = opts.dryRun ? "would set" : "set";
-      if (!opts.dryRun) appendEnvKey(envPath, profile.envVar, apiKey);
-      notes.push(
-        `${envVerb} ${profile.envVar} in ${envPath}${
-          !opts.dryRun && fs.existsSync(envPath) ? "" : " (created)"
-        }`,
-      );
-      wroteEnv = true;
-    } else if (!opts.nonInteractive) {
-      // Shouldn't reach here in interactive mode — we'd have
-      // bailed on cancel — but defensively note the omission.
-      notes.push(
-        `no API key supplied; set ${profile.envVar} in .env or your shell before starting.`,
-      );
+    if (useEnvPlaceholder) {
+      // --use-env mode: the user explicitly asked for env
+      // indirection. Append the value to .env so the
+      // placeholder in config.json actually resolves at runtime.
+      if (apiKey) {
+        const envVerb = opts.dryRun ? "would set" : "set";
+        if (!opts.dryRun) appendEnvKey(envPath, profile.envVar, apiKey);
+        notes.push(
+          `${envVerb} ${profile.envVar} in ${envPath}${
+            !opts.dryRun && fs.existsSync(envPath) ? "" : " (created)"
+          }`,
+        );
+        wroteEnv = true;
+      } else if (!opts.nonInteractive) {
+        notes.push(
+          `no API key supplied; set ${profile.envVar} in .env or your shell before starting.`,
+        );
+      }
+    } else {
+      // Default mode: key was written into config.json by
+      // buildConfig above. Tell the user where it landed so
+      // there's no ambiguity (this was the failure mode on
+      // i070219: user couldn't tell where the key was supposed
+      // to live).
+      if (apiKey) {
+        notes.push(
+          `stored ${profile.envVar} value in ${configPath} (chmod 600). Use --use-env if you'd rather keep keys in .env / shell env.`,
+        );
+      } else if (!opts.nonInteractive) {
+        notes.push(
+          `no API key supplied; edit ${configPath} ("models.providers.${profile.id}.apiKey") before starting.`,
+        );
+      }
     }
   }
 
@@ -493,7 +541,9 @@ export async function runSetupWizard(
 function buildConfig(
   profile: ProviderProfile,
   defaultModel: string,
-  baseUrlOverride?: string,
+  baseUrlOverride: string | undefined,
+  apiKey: string | undefined,
+  useEnvPlaceholder: boolean,
 ) {
   // If the user picked a custom model id ("__custom__" branch in
   // the wizard), it won't appear in profile.models. Add a stub
@@ -518,6 +568,21 @@ function buildConfig(
       maxTokens: 8192,
     });
   }
+  // Default: write the literal API key into config.json so
+  // `config_read` and the user can both see whether a key is
+  // configured. config.json is chmod 600 (writeJsonAtomic) so
+  // it's not world-readable.
+  // Override: --use-env keeps the legacy placeholder so users
+  // who prefer .env / shell env can still get there.
+  const resolvedKey = useEnvPlaceholder
+    ? `\${${profile.envVar}}`
+    : apiKey ?? `\${${profile.envVar}}`; // no key + no env-mode
+                                          // → leave a placeholder
+                                          // so the file is at
+                                          // least syntactically
+                                          // valid; doctor /
+                                          // probe will surface
+                                          // "key not set".
   return {
     defaultModel,
     models: {
@@ -525,7 +590,7 @@ function buildConfig(
         [profile.id]: {
           api: profile.api,
           baseUrl: baseUrlOverride ?? profile.baseUrl,
-          apiKey: `\${${profile.envVar}}`,
+          apiKey: resolvedKey,
           group: "Cloud",
           models,
         },

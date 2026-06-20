@@ -153,10 +153,18 @@ MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
     captured the wrong WorkingDirectory. Check
     \`~/Library/LaunchAgents/ai.tianshu.dev*.plist\`.
   * "API key not set" / "references env var but it's empty"
-    → call \`read_env_file\` to see exactly which keys are in
-    the .env the server reads, and whether the user put the
-    key in \`~/.env\` by mistake. Don't ask the user to grep
-    their own files.
+    → first call \`config_read\` and check the providers'
+    apiKey field. As of 2026-06 the wizard's default is to
+    write the literal key into config.json (chmod 600), NOT
+    into .env. So if config.json shows a placeholder like
+    \`"\${ANTHROPIC_API_KEY}"\` and the user expected the key
+    to just work, propose the fix: edit config.json directly
+    (use the \`config_write\` tool) with the actual key. Only
+    fall back to \`read_env_file\` if the user explicitly
+    chose --use-env mode (apiKey is a placeholder by design)
+    or the config shows a literal key but doctor still says
+    it's empty (config.json malformed).
+    Don't ask the user to grep their own files.
   * Empty logs but lastExitStatus \!= 0 → the process was
     killed pre-stdio (signal). The hint field in
     read_service_logs's result will spell this out.
