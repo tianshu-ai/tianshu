@@ -1,16 +1,15 @@
-// `tianshu` CLI — tenant lifecycle management.
+// `tianshu` CLI — top-level dispatch.
 //
-// Usage:
-//   tianshu tenant list
-//   tianshu tenant create <id>
-//   tianshu tenant delete <id>      (soft delete: rename to <id>.deleted.<ts>)
-//   tianshu user create  <tenantId> <userId> [--provider=dev] [--external-id=<x>]
+// Commands:
+//   tianshu doctor [--probe-providers] [--probe-sandbox] [--json]
+//   tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--default-model Z]] [--force] [--dry-run]
+//   tianshu tenant list|create <id>|delete <id>
+//   tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]
+//   tianshu version
+//   tianshu help [<command>]
 //
-// Run from a checkout via:
-//   npx tsx packages/server/src/cli.ts tenant list
-//
-// After build / publish, the bin entry in package.json will expose this
-// as `tianshu`.
+// `tianshu start` and `tianshu dev` will land in PR #2 once the
+// server's static-file path is wired up.
 
 import {
   GlobalOps,
@@ -19,44 +18,128 @@ import {
   TenantNotFoundError,
   getTianshuHome,
 } from "./core/index.js";
+import { loadEnv } from "./setup/load-env.js";
+import { runDoctor } from "./setup/doctor.js";
+import { runSetupWizard } from "./setup/wizard.js";
 
-interface ParsedArgs {
+// Load .env up front, same as the server boot path. Without this,
+// `tianshu doctor` would diagnose the user's setup using whatever
+// the shell happens to export — typically nothing — and report
+// every provider as 'API key not set' even though the keys are
+// sitting in .env right next to the config it just validated.
+loadEnv();
+
+export interface ParsedArgs {
   command: string;
   positional: string[];
   options: Record<string, string>;
+  flags: Set<string>;
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
+export function parseArgs(argv: string[]): ParsedArgs {
   const positional: string[] = [];
   const options: Record<string, string> = {};
+  const flags = new Set<string>();
   for (const arg of argv) {
     if (arg.startsWith("--")) {
-      const [k, v] = arg.slice(2).split("=", 2);
-      options[k!] = v ?? "true";
+      const eq = arg.indexOf("=");
+      if (eq > 0) {
+        options[arg.slice(2, eq)] = arg.slice(eq + 1);
+      } else {
+        flags.add(arg.slice(2));
+      }
     } else {
       positional.push(arg);
     }
   }
   const [command, ...rest] = positional;
-  return { command: command ?? "", positional: rest, options };
+  return { command: command ?? "", positional: rest, options, flags };
 }
 
-function usage(): string {
+function topLevelUsage(): string {
   return [
     "Usage:",
-    "  tianshu tenant list",
-    "  tianshu tenant create <id>",
-    "  tianshu tenant delete <id>",
-    "  tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>] [--display-name=<n>]",
+    "  tianshu doctor [--probe-providers] [--probe-sandbox] [--json]",
+    "  tianshu setup [--wizard] [--non-interactive --provider X --api-key Y]",
+    "  tianshu tenant list|create <id>|delete <id>",
+    "  tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]",
+    "  tianshu version",
+    "  tianshu help [<command>]",
     "",
     `TIANSHU_HOME currently resolves to: ${getTianshuHome()}`,
   ].join("\n");
 }
 
-async function main(argv: string[]): Promise<number> {
-  const parsed = parseArgs(argv);
-  const ops = new GlobalOps();
+async function getPackageVersion(): Promise<string> {
+  // Single source of truth: the root package.json. The CLI is
+  // short-lived so reading from disk per invocation is fine.
+  try {
+    const fs = await import("node:fs");
+    const url = new URL("../../../package.json", import.meta.url);
+    const json = JSON.parse(fs.readFileSync(url, "utf8")) as {
+      version?: string;
+    };
+    return json.version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
 
+export async function main(argv: string[]): Promise<number> {
+  const parsed = parseArgs(argv);
+
+  // Top-level lifecycle commands first.
+  switch (parsed.command) {
+    case "":
+    case "help": {
+      const target = parsed.positional[0];
+      if (!target) {
+        console.log(topLevelUsage());
+        return 0;
+      }
+      // For now help <cmd> just prints the same top-level usage —
+      // sub-commands' own help is implicit. Easy to expand later.
+      console.log(topLevelUsage());
+      return 0;
+    }
+    case "version":
+    case "--version":
+    case "-v":
+      console.log(await getPackageVersion());
+      return 0;
+
+    case "doctor":
+      return runDoctor({
+        probeProviders: parsed.flags.has("probe-providers"),
+        probeSandbox: parsed.flags.has("probe-sandbox"),
+        json: parsed.flags.has("json"),
+      });
+
+    case "setup": {
+      try {
+        const res = await runSetupWizard({
+          nonInteractive: parsed.flags.has("non-interactive"),
+          provider: parsed.options.provider,
+          apiKey: parsed.options["api-key"],
+          defaultModel: parsed.options["default-model"],
+          force: parsed.flags.has("force"),
+          dryRun: parsed.flags.has("dry-run"),
+        });
+        if (parsed.flags.has("non-interactive")) {
+          for (const note of res.notes) console.log(note);
+        }
+        return 0;
+      } catch (err) {
+        console.error(
+          `setup failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return 1;
+      }
+    }
+  }
+
+  // Tenant / user commands keep their original semantics.
+  const ops = new GlobalOps();
   try {
     if (parsed.command === "tenant" && parsed.positional[0] === "list") {
       const ids = ops.list();
@@ -67,7 +150,7 @@ async function main(argv: string[]): Promise<number> {
     if (parsed.command === "tenant" && parsed.positional[0] === "create") {
       const id = parsed.positional[1];
       if (!id) {
-        console.error("missing <id>\n" + usage());
+        console.error("missing <id>\n" + topLevelUsage());
         return 2;
       }
       const ctx = ops.create(id);
@@ -77,7 +160,7 @@ async function main(argv: string[]): Promise<number> {
     if (parsed.command === "tenant" && parsed.positional[0] === "delete") {
       const id = parsed.positional[1];
       if (!id) {
-        console.error("missing <id>\n" + usage());
+        console.error("missing <id>\n" + topLevelUsage());
         return 2;
       }
       ops.softDelete(id);
@@ -87,7 +170,7 @@ async function main(argv: string[]): Promise<number> {
     if (parsed.command === "user" && parsed.positional[0] === "create") {
       const [, tenantId, userId] = parsed.positional;
       if (!tenantId || !userId) {
-        console.error("missing <tenantId> or <userId>\n" + usage());
+        console.error("missing <tenantId> or <userId>\n" + topLevelUsage());
         return 2;
       }
       const ctx = ops.open(tenantId);
@@ -100,14 +183,17 @@ async function main(argv: string[]): Promise<number> {
       console.log(`ensured user ${userId} in tenant ${ctx.tenantId}`);
       return 0;
     }
-    console.error(usage());
-    return parsed.command === "" ? 0 : 2;
+    console.error(topLevelUsage());
+    return 2;
   } catch (err) {
     if (err instanceof InvalidTenantIdError) {
       console.error(`error: ${err.message}`);
       return 2;
     }
-    if (err instanceof TenantAlreadyExistsError || err instanceof TenantNotFoundError) {
+    if (
+      err instanceof TenantAlreadyExistsError ||
+      err instanceof TenantNotFoundError
+    ) {
       console.error(`error: ${err.message}`);
       return 1;
     }
@@ -118,5 +204,10 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-const code = await main(process.argv.slice(2));
-process.exit(code);
+// Direct invocation: `node dist/cli.js …`. The `bin/tianshu.mjs`
+// shim also calls `main()` after dynamic-importing this module,
+// so we only auto-run when the module *is* the entry point.
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const code = await main(process.argv.slice(2));
+  process.exit(code);
+}

@@ -17,15 +17,16 @@
 
 ---
 
-## 🚧 Status: Day 0
+## Status: 0.x preview
 
-This repository was created on **2026-06-03** and we're shipping it before
-it's ready on purpose. The plan is to grow it in public — every meaningful
-change will go out as a [DEV_LOG](./docs/DEV_LOG.md) entry, and follow-up
-videos / threads on the channels listed below.
+The core loop — chat, sandbox `exec`, sidecar browser, multi-tenant
+filesystem, background workers — all works end-to-end. Build-in-public
+stays the same: every meaningful change ships as a [DEV_LOG](./docs/DEV_LOG.md)
+entry plus follow-up content on the channels below.
 
-If you starred this on day 0, thank you. Come back in a week and there
-should be something to actually run.
+**Hardware needed**: macOS Apple Silicon, or Linux + KVM. The sandbox
+layer (microsandbox) won't boot anywhere else; the chat surface still
+works but `exec` / browser tools will be unavailable.
 
 ## What it will be
 
@@ -68,32 +69,85 @@ For the long version of the motivation, see the launch post:
 
 ## Quick start
 
-> ⚠️ Day 0 — you get a health endpoint and a hello-world UI. The fun
-> stuff (agent runtime, browser sidecar, task board) lands as PRs over
-> the coming weeks.
-
 ```bash
 git clone https://github.com/tianshu-ai/tianshu.git
 cd tianshu
 
-cp .env.example .env
-
 npm install
-npm run dev
+npm run setup        # interactive: pick provider, paste key, write config
+npm run doctor       # verify everything is wired up
+npm run dev          # starts server (3110) + web (5183) + plugins
 ```
 
-This starts:
+Open <http://localhost:5183> and start chatting.
 
-- **Server** at <http://localhost:3110> (Express + WebSocket, hot reload)
-- **Web** at <http://localhost:5183> (Vite dev server, HMR)
+### What `npm run setup` does
 
-The web app proxies `/api` and `/ws` to the server. Visit
-<http://localhost:5183> and you should see green health JSON.
+It's an interactive wizard (built on `@clack/prompts`, same family as
+[OpenClaw](https://docs.openclaw.ai)) that:
 
-> Note: defaults are `3110 / 5183` (and not the more common `3100 / 5173`)
+- Asks which LLM provider to use (Anthropic / OpenAI / Google).
+- Reads your API key with a hidden input.
+- Writes `~/.tianshu/config.json` (provider settings, models, default).
+- Writes `<repo>/.env` (your key, references via `${VAR}` from the config).
+
+Non-interactive mode is supported for Docker / CI:
+
+```bash
+npx tianshu setup --non-interactive \
+  --provider=anthropic --api-key=sk-***
+```
+
+### What `npm run doctor` checks
+
+```
+┌  Tianshu doctor
+│
+◇  Runtime         → Node ≥ 22, OS supported
+◇  Config files    → ~/.tianshu/config.json + .env present + parseable
+◇  LLM providers   → at least one provider has a non-empty API key,
+│                    defaultModel resolves
+◇  Network         → ports 3110 / 5183 free
+◇  Sandbox         → microsandbox binary present (--probe-sandbox
+│                    boots an alpine VM as a smoke test)
+◇  Builtin plugins → manifests parse, ids unique
+◇  Tenant DBs      → each tenant's sqlite opens cleanly
+└  Setup looks healthy
+```
+
+Use it whenever something doesn't feel right — it's read-only.
+
+### Installing globally
+
+When 0.x stabilises this will be on npm:
+
+```bash
+npm install -g @tianshu-ai/tianshu
+tianshu setup --wizard
+tianshu doctor
+tianshu start
+```
+
+For now, run from a checkout. Commands are the same, you just invoke
+them via `npm run` or `node bin/tianshu.mjs`.
+
+### Useful flags
+
+```bash
+# Skip the readiness check on startup (useful for empty-shell deploys)
+TIANSHU_IGNORE_SETUP=1 npm run dev
+
+# Probe each provider's /v1/models endpoint to test reachability
+npm run doctor -- --probe-providers
+
+# Boot a real microsandbox VM as a smoke test (~30s, pulls image)
+npm run doctor -- --probe-sandbox
+```
+
+> Default ports are `3110 / 5183` (not the more common `3100 / 5173`)
 > so this repo can run alongside its closed-source predecessor on the
-> same dev machine. Override via `PORT=` / vite config if you'd rather
-> use the legacy ports.
+> same dev machine. Override via `PORT=` / vite config if you want.
+
 
 ### Useful commands
 
@@ -164,13 +218,21 @@ giants.
 
 ## Roadmap
 
-The five things most likely to land first:
+### Done (0.2.x)
 
-- [ ] **Tenant model** — `tenantId` everywhere, dev-mode JWT
-- [ ] **Agent runtime wired up** — `pi-agent-core` streaming over WS
-- [ ] **Browser sidecar** — Playwright + noVNC inside Docker
-- [ ] **Microsandbox** — per-tenant Linux box for `exec` / file I/O
-- [ ] **Task board** — background workers as Kanban cards
+- [x] **Tenant model** — `tenantId` everywhere, dev-mode JWT
+- [x] **Agent runtime wired up** — `pi-agent-core` streaming over WS
+- [x] **Browser sidecar** — Playwright + noVNC via microsandbox
+- [x] **Microsandbox** — per-tenant + per-task Linux VMs for `exec` / file I/O
+- [x] **Task board** — background workers as Kanban cards
+- [x] **Doctor + setup wizard** — `tianshu doctor` / `tianshu setup --wizard`
+
+### Next (0.3.x)
+
+- [ ] `npm install -g @tianshu-ai/tianshu` published to npm
+- [ ] `tianshu start` single-port server (web + API together for prod)
+- [ ] Docker image with sandbox layer baked in
+- [ ] Hosted demo at `demo.tianshu-ai.com`
 
 Tracked in [GitHub Issues](https://github.com/tianshu-ai/tianshu/issues).
 

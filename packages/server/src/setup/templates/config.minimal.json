@@ -1,0 +1,28 @@
+{
+  "defaultModel": "anthropic/claude-sonnet-4-6",
+  "models": {
+    "providers": {
+      "anthropic": {
+        "api": "anthropic-messages",
+        "baseUrl": "https://api.anthropic.com",
+        "apiKey": "${ANTH…_KEY}",
+        "group": "Cloud",
+        "models": [
+          {
+            "id": "claude-sonnet-4-6",
+            "name": "Claude Sonnet 4.6",
+            "contextWindow": 200000,
+            "maxTokens": 8192
+          },
+          {
+            "id": "claude-opus-4-7",
+            "name": "Claude Opus 4.7",
+            "reasoning": true,
+            "contextWindow": 200000,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  }
+}
