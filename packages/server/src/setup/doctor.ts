@@ -23,7 +23,7 @@ import { checkConfig } from "./checks/config.js";
 import { checkProviders } from "./checks/providers.js";
 import { checkNetwork } from "./checks/network.js";
 import { checkSandbox } from "./checks/sandbox.js";
-import { checkPlugins } from "./checks/plugins.js";
+import { checkTenants } from "./checks/tenants.js";
 import { checkDb } from "./checks/db.js";
 
 export interface DoctorOpts {
@@ -57,7 +57,7 @@ export async function collectDoctorReport(
   );
   groups.push(await checkNetwork());
   groups.push(await checkSandbox({ full: opts.probeSandbox }));
-  groups.push(checkPlugins());
+  groups.push(checkTenants());
   groups.push(checkDb());
   const tally = tallyGroups(groups);
   return { groups, ...tally };
