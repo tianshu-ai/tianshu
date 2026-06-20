@@ -2,6 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { applyDevIdentityFromUrl } from "./dev-identity";
+
+// Apply ?tenant=...&user=... before anything else loads. If the
+// URL carries identity hints, this writes the cookie and reloads
+// (so the new cookie is in effect on the second pass). On a
+// no-hints load it returns immediately.
+applyDevIdentityFromUrl();
 
 // Install the host-side `useComposer()` accessor exactly once at boot.
 // Plugin client components import `useComposer` from the SDK; the SDK
