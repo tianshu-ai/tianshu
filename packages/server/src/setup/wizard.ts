@@ -14,6 +14,7 @@ import os from "node:os";
 import path from "node:path";
 import * as p from "@clack/prompts";
 import { getGlobalConfigPath, getTianshuHome } from "../core/paths.js";
+import { probeDefaultModel } from "./probe-default-model.js";
 
 export interface WizardOpts {
   /** Skip the prompts and apply the supplied params directly. */
@@ -103,6 +104,60 @@ export async function runSetupWizard(
   const cwd = opts.cwd ?? process.cwd();
   const configPath = getGlobalConfigPath(home);
   const envPath = path.join(cwd, ".env");
+
+  // Smart-skip: if the user already has a working config, the
+  // wizard's job is done. We probe the default model with a
+  // 1-token round-trip; success short-circuits to a clean exit
+  // pointing at `tianshu doctor` for the rest of setup.
+  //
+  // Only meaningful in interactive mode — non-interactive callers
+  // (--non-interactive --provider X --api-key ***) want the
+  // wizard to *write* config, not check existing config.
+  if (!opts.nonInteractive) {
+    const s = p.spinner();
+    s.start("Checking your default model...");
+    const probe = await probeDefaultModel({ home });
+    if (probe.ok) {
+      s.stop(
+        `\u2713 ${probe.modelId} reachable (${probe.durationMs}ms via ${probe.baseUrl ?? "vendor default"})`,
+      );
+      p.outro(
+        [
+          "Your default model already works. Setup is complete.",
+          "",
+          "Next:",
+          "  tianshu doctor          \u2014 verify everything is wired up",
+          "  tianshu dev              \u2014 start the dev server",
+          "  open http://localhost:5183",
+          "",
+          "Then ask the agent things like:",
+          '  \u00b7 "Enable the workboard and microsandbox plugins"',
+          '  \u00b7 "Set up a web search plugin with my Tavily key"',
+          '  \u00b7 "Create a new tenant called \'work\'"',
+          "",
+          "The agent has tenant-config / exec / sandbox tools.",
+          "Anything you'd reach for the CLI for, you can ask the agent.",
+        ].join("\n"),
+      );
+      return {
+        configPath,
+        envPath,
+        wroteConfig: false,
+        wroteEnv: false,
+        notes: [
+          `default model ${probe.modelId} reachable; skipped wizard`,
+        ],
+      };
+    }
+    s.stop(
+      probe.error?.kind === "no-config"
+        ? "No config yet \u2014 let's set one up."
+        : `Default model didn't respond: ${probe.error?.kind ?? "unknown"}.`,
+    );
+    if (probe.error?.message) {
+      p.log.info(probe.error.message);
+    }
+  }
 
   // Resolve which provider, key, baseUrl, model we're going to
   // write.
@@ -321,7 +376,18 @@ export async function runSetupWizard(
         "Setup complete.",
         ...notes,
         "",
-        "Next: run `tianshu doctor` to verify, then `tianshu start` (or `npm run dev` in a checkout).",
+        "Next:",
+        "  tianshu doctor          \u2014 verify everything is wired up",
+        "  tianshu dev              \u2014 start the dev server",
+        "  open http://localhost:5183",
+        "",
+        "Then ask the agent things like:",
+        '  \u00b7 "Enable the workboard and microsandbox plugins"',
+        '  \u00b7 "Set up a web search plugin with my Tavily key"',
+        '  \u00b7 "Create a new tenant called \'work\'"',
+        "",
+        "The agent has tenant-config / exec / sandbox tools.",
+        "Anything you'd reach for the CLI for, you can ask the agent.",
       ].join("\n"),
     );
   }
