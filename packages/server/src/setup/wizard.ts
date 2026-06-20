@@ -105,10 +105,11 @@ export async function runSetupWizard(
   const configPath = getGlobalConfigPath(home);
   const envPath = path.join(cwd, ".env");
 
-  // Smart-skip: if the user already has a working config, the
-  // wizard's job is done. We probe the default model with a
-  // 1-token round-trip; success short-circuits to a clean exit
-  // pointing at `tianshu doctor` for the rest of setup.
+  // Smart-skip: if the user already has a working config, skip
+  // the provider/key/model questions and hand straight off to the
+  // in-CLI agent for the rest of setup. The agent runs run_doctor
+  // immediately and walks the user through plugins / tenants /
+  // search keys conversationally.
   //
   // Only meaningful in interactive mode — non-interactive callers
   // (--non-interactive --provider X --api-key ***) want the
@@ -121,31 +122,23 @@ export async function runSetupWizard(
       s.stop(
         `\u2713 ${probe.modelId} reachable (${probe.durationMs}ms via ${probe.baseUrl ?? "vendor default"})`,
       );
-      p.outro(
-        [
-          "Your default model already works. Setup is complete.",
-          "",
-          "Next:",
-          "  tianshu doctor          \u2014 verify everything is wired up",
-          "  tianshu dev              \u2014 start the dev server",
-          "  open http://localhost:5183",
-          "",
-          "Then ask the agent things like:",
-          '  \u00b7 "Enable the workboard and microsandbox plugins"',
-          '  \u00b7 "Set up a web search plugin with my Tavily key"',
-          '  \u00b7 "Create a new tenant called \'work\'"',
-          "",
-          "The agent has tenant-config / exec / sandbox tools.",
-          "Anything you'd reach for the CLI for, you can ask the agent.",
-        ].join("\n"),
-      );
+      if (!opts.dryRun) {
+        const { runCliAgent } = await import("./cli-agent.js");
+        try {
+          await runCliAgent({ home });
+        } catch (err) {
+          p.log.error(
+            `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
       return {
         configPath,
         envPath,
         wroteConfig: false,
         wroteEnv: false,
         notes: [
-          `default model ${probe.modelId} reachable; skipped wizard`,
+          `default model ${probe.modelId} reachable; handed off to CLI agent`,
         ],
       };
     }
@@ -371,25 +364,43 @@ export async function runSetupWizard(
   }
 
   if (!opts.nonInteractive) {
-    p.outro(
-      [
-        "Setup complete.",
-        ...notes,
-        "",
-        "Next:",
-        "  tianshu doctor          \u2014 verify everything is wired up",
-        "  tianshu dev              \u2014 start the dev server",
-        "  open http://localhost:5183",
-        "",
-        "Then ask the agent things like:",
-        '  \u00b7 "Enable the workboard and microsandbox plugins"',
-        '  \u00b7 "Set up a web search plugin with my Tavily key"',
-        '  \u00b7 "Create a new tenant called \'work\'"',
-        "",
-        "The agent has tenant-config / exec / sandbox tools.",
-        "Anything you'd reach for the CLI for, you can ask the agent.",
-      ].join("\n"),
+    p.log.success(
+      ["Setup complete.", ...notes, ""].join("\n"),
     );
+
+    // Verify the LLM works before handing off to the agent. If
+    // ping fails, the agent has no model to talk through, so we
+    // bail out here and let the user re-run the wizard.
+    const probeS = p.spinner();
+    probeS.start("Pinging your default model...");
+    const probe = await probeDefaultModel({ home });
+    if (!probe.ok) {
+      probeS.stop(
+        `Could not reach ${probe.modelId ?? "the default model"}: ${probe.error?.kind ?? "unknown"}.`,
+      );
+      p.log.warn(
+        "Wrote config / .env, but the model isn't reachable yet. Inspect the keys & baseUrl, then re-run `tianshu setup --wizard`.",
+      );
+      p.outro(
+        "Run `tianshu doctor` for diagnostics, or fix and re-run setup.",
+      );
+      return { configPath, envPath, wroteConfig, wroteEnv, notes };
+    }
+    probeS.stop(
+      `\u2713 ${probe.modelId} reachable (${probe.durationMs}ms via ${probe.baseUrl ?? "vendor default"})`,
+    );
+
+    // Hand off to the in-CLI agent for the rest of setup.
+    if (!opts.dryRun) {
+      const { runCliAgent } = await import("./cli-agent.js");
+      try {
+        await runCliAgent({ home });
+      } catch (err) {
+        p.log.error(
+          `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
 
   return { configPath, envPath, wroteConfig, wroteEnv, notes };
