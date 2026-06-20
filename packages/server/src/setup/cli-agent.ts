@@ -17,13 +17,14 @@
 //   needs `npx microsandbox install`, the agent just tells them)
 // - workboard (worker spawn is overkill for setup)
 //
-// Tools shipped (9): tenant_list, tenant_create, user_create,
+// Tools shipped (10): tenant_list, tenant_create, user_create,
 //   plugin_enable, plugin_disable, config_read, config_write,
-//   run_doctor, read_service_logs. Plus the implicit "done"
-//   sentinel.
+//   run_doctor, read_service_logs, read_env_file. Plus the
+//   implicit "done" sentinel.
 
 import * as p from "@clack/prompts";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { complete } from "@earendil-works/pi-ai";
 import type {
@@ -151,6 +152,11 @@ MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
   * "Cannot find module" / "ENOENT package.json" → wizard
     captured the wrong WorkingDirectory. Check
     \`~/Library/LaunchAgents/ai.tianshu.dev*.plist\`.
+  * "API key not set" / "references env var but it's empty"
+    → call \`read_env_file\` to see exactly which keys are in
+    the .env the server reads, and whether the user put the
+    key in \`~/.env\` by mistake. Don't ask the user to grep
+    their own files.
   * Empty logs but lastExitStatus \!= 0 → the process was
     killed pre-stdio (signal). The hint field in
     read_service_logs's result will spell this out.
@@ -730,6 +736,90 @@ function buildTools(
           result.hint = `Service exited (lastExitStatus=${status.lastExitStatus}) and stderr is empty. Look in stdout for the last messages before the exit; if those don't explain it, the process may have been killed by a signal (e.g. OOM → 137; SIGTERM → 143) rather than crashing with output.`;
         }
 
+        return JSON.stringify(result);
+      },
+    },
+    read_env_file: {
+      schema: {
+        name: "read_env_file",
+        description:
+          "List the keys (and value lengths, NOT values) in the .env file the dev server actually loads. Use this when run_doctor or read_service_logs reports a missing env var (e.g. 'ANTHROPIC_API_KEY references env var but it's empty') — you can see directly whether the key is present, whether the user accidentally put it in `~/.env` instead of the repo's `.env`, and whether the value is suspiciously short (<8 chars) or empty.\n\nReturns ONLY key names + length + a 4-char prefix for sanity, NEVER the full value, so it's safe to print to the user. The file path returned is the canonical path the server reads from (resolved by the same logic loadEnv() uses, so what you see matches what the running server sees).",
+        parameters: {
+          type: "object",
+          properties: {
+            keyFilter: {
+              type: "string",
+              description:
+                "Optional substring — only return keys containing this string (case-insensitive). Example: 'API_KEY' to filter to provider keys.",
+            },
+          },
+          required: [],
+        } as never,
+      },
+      execute: async (args) => {
+        const repoRoot = findRepoRoot();
+        const envPath = path.join(repoRoot, ".env");
+        const homeEnvPath = path.join(os.homedir(), ".env");
+        const filter = args.keyFilter
+          ? String(args.keyFilter).toLowerCase()
+          : null;
+
+        const summarize = (filepath: string) => {
+          if (!fs.existsSync(filepath)) {
+            return { path: filepath, exists: false, keys: [] as Array<Record<string, unknown>> };
+          }
+          let body: string;
+          try {
+            body = fs.readFileSync(filepath, "utf8");
+          } catch (e) {
+            return {
+              path: filepath,
+              exists: true,
+              error: (e as Error).message,
+              keys: [] as Array<Record<string, unknown>>,
+            };
+          }
+          const keys: Array<Record<string, unknown>> = [];
+          for (const rawLine of body.split(/\r?\n/)) {
+            const line = rawLine.trim();
+            if (!line || line.startsWith("#")) continue;
+            const eq = line.indexOf("=");
+            if (eq < 1) continue;
+            const key = line.slice(0, eq).trim();
+            // Strip surrounding quotes (single, double) so length
+            // reflects what dotenv actually parses.
+            let raw = line.slice(eq + 1).trim();
+            if (
+              (raw.startsWith('"') && raw.endsWith('"')) ||
+              (raw.startsWith("'") && raw.endsWith("'"))
+            ) {
+              raw = raw.slice(1, -1);
+            }
+            if (filter && !key.toLowerCase().includes(filter)) continue;
+            keys.push({
+              key,
+              length: raw.length,
+              prefix: raw.slice(0, 4),
+              empty: raw.length === 0,
+              suspicious: raw.length > 0 && raw.length < 8,
+            });
+          }
+          return { path: filepath, exists: true, keys };
+        };
+
+        const result = {
+          // The canonical path the server *should* be reading.
+          // This matches the wizard's writePath, which matches
+          // load-env.ts's repo-root walk.
+          serverEnv: summarize(envPath),
+          // Common user mistake: put keys in ~/.env. We surface
+          // it so the agent can spot it and tell the user to
+          // move/copy the line.
+          homeEnv:
+            envPath === homeEnvPath ? null : summarize(homeEnvPath),
+          note:
+            "Values are NEVER returned. `length` and `prefix` are for diagnostic sanity only. If `serverEnv.keys` doesn't include the key the user expects but `homeEnv.keys` does, the user put it in the wrong file — tell them to move/copy the line into serverEnv.path.",
+        };
         return JSON.stringify(result);
       },
     },
