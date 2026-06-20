@@ -94,6 +94,36 @@ shell commands; either run a tool, or tell them clearly what
 they need to do outside this CLI (e.g. 'run \`npx microsandbox
 install\` in another terminal then re-run setup').
 
+Domain knowledge you must apply when relevant:
+
+WEB SEARCH (web-search plugin):
+- API keys go to SECRETS, not regular config. Use \`secret_write\`
+  with pluginId='web-search' and key='tavilyApiKey' (Tavily) or
+  'braveApiKey' (Brave). DO NOT use \`config_write\` for these.
+  config.json is committable, secrets/ is not.
+- Check \`secret_list\` first to see what's already configured
+  before asking the user for a key.
+
+MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
+- microsandbox uses TWO sandbox roles, both built from snapshot
+  templates: 'task' (per-task ephemeral sandboxes for the
+  workboard's exec/coding work) and 'browser' (the long-lived
+  sandbox hosting the headless Chromium + playwright-mcp
+  sidecar).
+- Both must be built and pointed at separately. The build flow is:
+  1. \`build_sandbox role=task ...\` to bake a task snapshot.
+  2. \`build_sandbox role=browser ...\` to bake a browser snapshot.
+  3. \`use_sandbox_build buildId=... role=task\` to publish.
+  4. \`use_sandbox_build buildId=... role=browser\` to publish.
+- These tools are NOT exposed in the setup wizard — only
+  available once \`tianshu dev\` is running and the user is in
+  the chat shell. Tell the user this; don't try to call them.
+- If \`run_doctor\` says microsandbox runtime binary is missing,
+  tell the user: 'run \`npx microsandbox install\` in another
+  terminal, then start the server with \`tianshu dev\` and ask
+  the chat agent to build sandboxes for both task and browser
+  roles.'
+
 When the user says they're done / satisfied / wants to exit, run
 run_doctor one last time, summarise, then end with:
 "All set. Run 'tianshu dev' (or 'npm run dev' in a checkout)
@@ -336,6 +366,112 @@ function buildTools(home: string): Record<string, ToolHandler> {
         const merged = { ...cfg, ...patch };
         writeJsonAtomic(cfgPath, merged);
         return JSON.stringify({ tenantId, patched: Object.keys(patch) });
+      },
+    },
+    secret_list: {
+      schema: {
+        name: "secret_list",
+        description:
+          "List which secret keys are configured for a plugin in a tenant. Returns an array of key names — NEVER the values. Use this to check whether the user already has a Tavily / Brave key set up before prompting them.",
+        parameters: {
+          type: "object",
+          properties: {
+            tenantId: { type: "string" },
+            pluginId: { type: "string" },
+          },
+          required: ["tenantId", "pluginId"],
+        } as never,
+      },
+      execute: async (args) => {
+        const tenantId = String(args.tenantId);
+        const pluginId = String(args.pluginId);
+        const secretsDir = path.join(
+          getTenantsRoot(home),
+          tenantId,
+          "secrets",
+        );
+        const file = path.join(secretsDir, `plugin-${pluginId}.json`);
+        if (!fs.existsSync(file)) {
+          return JSON.stringify({ tenantId, pluginId, keys: [] });
+        }
+        try {
+          const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+          const keys =
+            parsed && typeof parsed === "object"
+              ? Object.keys(parsed as Record<string, unknown>)
+              : [];
+          return JSON.stringify({ tenantId, pluginId, keys });
+        } catch {
+          return JSON.stringify({
+            tenantId,
+            pluginId,
+            keys: [],
+            error: "secret file unreadable",
+          });
+        }
+      },
+    },
+    secret_write: {
+      mutating: true,
+      describe: (args) =>
+        `Set secret '${String(args.key ?? "?")}' for plugin '${String(args.pluginId ?? "?")}' in tenant '${String(args.tenantId ?? "?")}'`,
+      schema: {
+        name: "secret_write",
+        description:
+          "Set a plugin secret (API key, token) for a tenant. Writes to ~/.tianshu/tenants/<id>/secrets/plugin-<pluginId>.json with mode 0600. This is the CORRECT path for sensitive values — do NOT use config_write for API keys; that file is committable and the plugin runtime won't merge it as a secret.\n\nWeb-search keys go here:\n  pluginId='web-search', key='tavilyApiKey' or 'braveApiKey'.\n\nNew secrets are added to the existing file; pre-existing keys for the same plugin are preserved.",
+        parameters: {
+          type: "object",
+          properties: {
+            tenantId: { type: "string" },
+            pluginId: { type: "string" },
+            key: {
+              type: "string",
+              description:
+                "Dotted secret name. For web-search use 'tavilyApiKey' or 'braveApiKey'.",
+            },
+            value: { type: "string" },
+          },
+          required: ["tenantId", "pluginId", "key", "value"],
+        } as never,
+      },
+      execute: async (args) => {
+        const tenantId = String(args.tenantId);
+        const pluginId = String(args.pluginId);
+        const key = String(args.key);
+        const value = String(args.value);
+        const secretsDir = path.join(
+          getTenantsRoot(home),
+          tenantId,
+          "secrets",
+        );
+        const file = path.join(secretsDir, `plugin-${pluginId}.json`);
+        let existing: Record<string, string> = {};
+        if (fs.existsSync(file)) {
+          try {
+            const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
+            if (parsed && typeof parsed === "object") {
+              for (const [k, v] of Object.entries(
+                parsed as Record<string, unknown>,
+              )) {
+                if (typeof v === "string") existing[k] = v;
+              }
+            }
+          } catch {
+            // Malformed — start fresh rather than refuse.
+          }
+        }
+        existing[key] = value;
+        fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
+        const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
+        fs.writeFileSync(tmp, JSON.stringify(existing, null, 2) + "\n", {
+          mode: 0o600,
+        });
+        fs.renameSync(tmp, file);
+        return JSON.stringify({
+          tenantId,
+          pluginId,
+          keysAfter: Object.keys(existing),
+        });
       },
     },
     run_doctor: {
