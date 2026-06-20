@@ -47,6 +47,10 @@ import {
   getTianshuHome,
   getGlobalConfigPath,
 } from "../core/paths.js";
+import {
+  applyPluginSecretPatch,
+  loadPluginSecrets,
+} from "../core/plugins/index.js";
 import { collectDoctorReport } from "./doctor.js";
 
 export interface CliAgentOpts {
@@ -372,7 +376,7 @@ function buildTools(home: string): Record<string, ToolHandler> {
       schema: {
         name: "secret_list",
         description:
-          "List which secret keys are configured for a plugin in a tenant. Returns an array of key names — NEVER the values. Use this to check whether the user already has a Tavily / Brave key set up before prompting them.",
+          "List secret keys configured for a plugin in a tenant. Returns key names only — NEVER values. Reads via the same plugin-secrets module the plugin runtime uses at activation time, so what you see matches what the plugin will see.",
         parameters: {
           type: "object",
           properties: {
@@ -385,30 +389,21 @@ function buildTools(home: string): Record<string, ToolHandler> {
       execute: async (args) => {
         const tenantId = String(args.tenantId);
         const pluginId = String(args.pluginId);
-        const secretsDir = path.join(
-          getTenantsRoot(home),
-          tenantId,
-          "secrets",
-        );
-        const file = path.join(secretsDir, `plugin-${pluginId}.json`);
-        if (!fs.existsSync(file)) {
-          return JSON.stringify({ tenantId, pluginId, keys: [] });
-        }
-        try {
-          const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-          const keys =
-            parsed && typeof parsed === "object"
-              ? Object.keys(parsed as Record<string, unknown>)
-              : [];
-          return JSON.stringify({ tenantId, pluginId, keys });
-        } catch {
+        if (!ops.exists(tenantId)) {
           return JSON.stringify({
             tenantId,
             pluginId,
             keys: [],
-            error: "secret file unreadable",
+            error: `tenant ${tenantId} does not exist`,
           });
         }
+        const ctx = ops.open(tenantId);
+        const secrets = loadPluginSecrets(ctx.secretsDir, pluginId);
+        return JSON.stringify({
+          tenantId,
+          pluginId,
+          keys: Object.keys(secrets),
+        });
       },
     },
     secret_write: {
@@ -418,7 +413,7 @@ function buildTools(home: string): Record<string, ToolHandler> {
       schema: {
         name: "secret_write",
         description:
-          "Set a plugin secret (API key, token) for a tenant. Writes to ~/.tianshu/tenants/<id>/secrets/plugin-<pluginId>.json with mode 0600. This is the CORRECT path for sensitive values — do NOT use config_write for API keys; that file is committable and the plugin runtime won't merge it as a secret.\n\nWeb-search keys go here:\n  pluginId='web-search', key='tavilyApiKey' or 'braveApiKey'.\n\nNew secrets are added to the existing file; pre-existing keys for the same plugin are preserved.",
+          "Set a plugin secret (API key, token) for a tenant. Goes through the same applyPluginSecretPatch the PATCH /api/plugins/:id route uses, so the file format, mode 0600, and atomic write semantics all match what the plugin runtime expects. Do NOT use config_write for API keys.\n\nWeb-search keys go here:\n  pluginId='web-search', key='tavilyApiKey' or 'braveApiKey'.\n\nNew secrets merge with existing ones; other keys for the same plugin are preserved.",
         parameters: {
           type: "object",
           properties: {
@@ -439,38 +434,17 @@ function buildTools(home: string): Record<string, ToolHandler> {
         const pluginId = String(args.pluginId);
         const key = String(args.key);
         const value = String(args.value);
-        const secretsDir = path.join(
-          getTenantsRoot(home),
-          tenantId,
-          "secrets",
-        );
-        const file = path.join(secretsDir, `plugin-${pluginId}.json`);
-        let existing: Record<string, string> = {};
-        if (fs.existsSync(file)) {
-          try {
-            const parsed = JSON.parse(fs.readFileSync(file, "utf8"));
-            if (parsed && typeof parsed === "object") {
-              for (const [k, v] of Object.entries(
-                parsed as Record<string, unknown>,
-              )) {
-                if (typeof v === "string") existing[k] = v;
-              }
-            }
-          } catch {
-            // Malformed — start fresh rather than refuse.
-          }
-        }
-        existing[key] = value;
-        fs.mkdirSync(secretsDir, { recursive: true, mode: 0o700 });
-        const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
-        fs.writeFileSync(tmp, JSON.stringify(existing, null, 2) + "\n", {
-          mode: 0o600,
+        const ctx = ops.exists(tenantId)
+          ? ops.open(tenantId)
+          : ops.create(tenantId);
+        const result = applyPluginSecretPatch(ctx.secretsDir, pluginId, {
+          [key]: value,
         });
-        fs.renameSync(tmp, file);
         return JSON.stringify({
           tenantId,
           pluginId,
-          keysAfter: Object.keys(existing),
+          keysAfter: Object.keys(result.secrets),
+          changed: result.changed,
         });
       },
     },
