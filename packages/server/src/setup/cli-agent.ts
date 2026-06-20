@@ -56,28 +56,44 @@ export interface CliAgentOpts {
   maxTurns?: number;
 }
 
-const SETUP_SYSTEM_PROMPT = `You are the tianshu setup assistant. You're talking to a user who
-just finished the LLM-provider wizard. Their LLM is configured and
-working — your job is to help them finish the rest of setup
-through conversation.
+const SETUP_SYSTEM_PROMPT = `You are the tianshu setup auto-fixer.
 
-Capabilities you should mention proactively when relevant:
-- Tenants: isolated workspaces with their own config + DB. The
-  default tenant ('default') exists; the user can create more.
-- Users inside a tenant: each tenant has at least one user; the
-  default tenant has 'dev'. Create more for multi-user testing.
-- Plugins: tianshu ships four built-in plugins (files, workboard,
-  microsandbox, web-search). Only 'files' is on by default; the
-  others must be enabled explicitly per tenant.
-- Web search: needs a Tavily or Brave key, configured by editing
-  the tenant config.
+The user just finished configuring an LLM provider. Their job is
+done — they shouldn't have to keep typing. Your job is to detect
+and fix the remaining setup gaps automatically, then hand them a
+working system.
+
+Workflow you must follow on the FIRST turn:
+
+  1. Call run_doctor to see what's set up.
+  2. Read the report. Auto-fix every gap that is fixable without
+     asking the user (a 'safe auto-fix' is enabling the standard
+     plugins for the default tenant: files, workboard,
+     microsandbox, web-search). Call plugin_enable / config_write
+     etc. as needed. Don't ask permission for safe fixes — just
+     do them.
+  3. After fixing, call run_doctor a second time and verify the
+     warnings cleared.
+  4. Send ONE summary message to the user listing:
+     - What you auto-fixed (with checkmarks)
+     - What remains that needs THEIR input (e.g. web-search needs
+       a Tavily/Brave API key; microsandbox runtime might be
+       missing and needs \`npx microsandbox install\`)
+     - One concrete next step (or 'All done, run tianshu dev').
+
+When the user replies, help them with whatever they ask:
+- Enable / disable plugins
+- Create a new tenant or user
+- Edit config (e.g. add a Tavily key for web-search)
+- Re-run run_doctor on demand
 
 Style: brief, direct, no fluff. Run tools rather than asking the
-user to copy-paste commands. Confirm destructive actions.
+user to copy-paste commands. Confirm destructive actions (e.g.
+never delete a tenant without confirmation).
 
-When the user says they're done / satisfied / wants to exit, call
-the run_doctor tool one last time, summarise the result, then say
-"You're all set. Run 'tianshu dev' (or 'npm run dev' in a checkout)
+When the user says they're done / satisfied / wants to exit, run
+run_doctor one last time, summarise, then end with:
+"All set. Run 'tianshu dev' (or 'npm run dev' in a checkout)
 to start the server."`;
 
 interface ToolHandler {
@@ -378,30 +394,18 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
   const messages: Message[] = [];
 
   p.log.info(
-    `Now talking to ${info.id} as your setup assistant. Type 'exit' or Ctrl-C to leave.`,
+    `Setup auto-fix running on ${info.id}. The agent will diagnose, fix what it can, and report. Type 'exit' / Ctrl-C any time.`,
   );
 
-  // Kick the agent off with a self-introduction request so the
-  // first turn is always the agent speaking. Phrased as multiple
-  // explicit asks so the model returns BOTH a tool call AND text
-  // — some providers will otherwise return only a tool call and
-  // nothing for the user to read.
+  // Kick the agent off with the auto-fix workflow described in
+  // the system prompt. The user shouldn't have to type the first
+  // word; the agent diagnoses + fixes + reports.
   messages.push({
     role: "user",
     content: [
       {
         type: "text",
-        text: [
-          "Hello. You're my setup assistant.",
-          "",
-          "Please do these in this order, all in one reply:",
-          "  1. Briefly say hi (1 short sentence).",
-          "  2. Call the run_doctor tool to check what's set up.",
-          "  3. After the tool result comes back, summarise (a) what's already working and (b) what you can help me configure next (plugins, additional tenants, web-search keys, etc.).",
-          "  4. Ask me which one I'd like to start with.",
-          "",
-          "Be brief. Don't quote tool output verbatim \u2014 just summarise.",
-        ].join("\n"),
+        text: "Begin: run the setup auto-fix workflow now (run_doctor → enable standard plugins for the default tenant if missing → run_doctor again → summarise what you fixed and what still needs input).",
       },
     ],
     timestamp: Date.now(),
