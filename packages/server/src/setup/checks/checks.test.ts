@@ -155,9 +155,19 @@ describe("checkProviders", () => {
 });
 
 describe("checkNetwork", () => {
-  it("free port reports ok", async () => {
-    // Pick an unlikely-to-be-bound high port.
+  it("free server port reports warning (server not running)", async () => {
+    // Pick an unlikely-to-be-bound high port. The server port is
+    // expected to be owned by us when the service is running, so
+    // 'free' is a soft warning telling the user to start it.
     const r = await checkNetwork({ serverPort: 39101, webPort: 39102 });
-    expect(r.lines.every((l) => l.severity === "ok")).toBe(true);
+    const serverLine = r.lines.find((l) => l.text.includes("Server port"));
+    expect(serverLine?.severity).toBe("warning");
+    expect(serverLine?.text).toContain("39101");
+  });
+
+  it("free web port reports ok (will be bound by vite later)", async () => {
+    const r = await checkNetwork({ serverPort: 39101, webPort: 39102 });
+    const webLine = r.lines.find((l) => l.text.includes("Web port"));
+    expect(webLine?.severity).toBe("ok");
   });
 });
