@@ -85,7 +85,17 @@ function buildApp(
     "/api",
     tenantMiddleware({
       ops,
-      resolveIdentity: () => ({ tenantId: TENANT, userId: "user_test" }),
+      resolvers: [
+        {
+          name: "test-stub",
+          resolve: () => ({
+            kind: "ok",
+            tenantId: TENANT,
+            userId: "user_test",
+            source: "test-stub",
+          }),
+        },
+      ],
     }),
   );
   app.use(
