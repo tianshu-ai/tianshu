@@ -24,6 +24,7 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface StartServerOpts {
   /** Repo root (used as cwd for `npm run dev`). Defaults to process.cwd(). */
@@ -61,7 +62,12 @@ const SKIPPED: StartServerResult = {
 export async function runStartServer(
   opts: StartServerOpts = {},
 ): Promise<StartServerResult> {
-  const repoRoot = opts.repoRoot ?? process.cwd();
+  // Find the tianshu checkout the CLI is running from. Users
+  // typically run `tianshu setup` from their home dir, so
+  // process.cwd() won't be the repo. Walk up from this module's
+  // location until we hit a package.json named
+  // '@tianshu-ai/tianshu' (or run out of parents).
+  const repoRoot = opts.repoRoot ?? findCheckoutRoot();
   const envPath = opts.envPath ?? path.join(repoRoot, ".env");
 
   if (!isTianshuCheckout(repoRoot)) {
@@ -319,6 +325,21 @@ async function startViaLaunchd(
 }
 
 // ─── helpers ───────────────────────────────────────────────────────
+
+/** Walk up from this module's directory until we find the
+ *  tianshu package.json. Returns the original CWD as a fallback
+ *  if nothing matches; isTianshuCheckout will then surface the
+ *  'not a checkout' message and skip. */
+function findCheckoutRoot(): string {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 12; i++) {
+    if (isTianshuCheckout(dir)) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return process.cwd();
+}
 
 function isTianshuCheckout(repoRoot: string): boolean {
   const pkgPath = path.join(repoRoot, "package.json");

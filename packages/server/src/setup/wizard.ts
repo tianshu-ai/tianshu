@@ -12,9 +12,39 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import * as p from "@clack/prompts";
 import { getGlobalConfigPath, getTianshuHome } from "../core/paths.js";
 import { probeDefaultModel } from "./probe-default-model.js";
+
+/**
+ * Walk up from this module's directory until we find the
+ * tianshu checkout root (package.json with name='@tianshu-ai/tianshu').
+ * Used to anchor `.env` writes regardless of where the user
+ * ran the CLI from. Returns null when we hit the filesystem
+ * root without finding a match (e.g. CLI installed standalone
+ * outside a checkout).
+ */
+function findCheckoutForEnv(): string | null {
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 12; i++) {
+    const pkgPath = path.join(dir, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as {
+          name?: string;
+        };
+        if (pkg.name === "@tianshu-ai/tianshu") return dir;
+      } catch {
+        // continue walking
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
 
 export interface WizardOpts {
   /** Skip the prompts and apply the supplied params directly. */
@@ -101,7 +131,11 @@ export async function runSetupWizard(
   opts: WizardOpts = {},
 ): Promise<WizardResult> {
   const home = opts.home ?? getTianshuHome();
-  const cwd = opts.cwd ?? process.cwd();
+  // For the .env path we prefer the tianshu checkout (where
+  // `npm run dev` will load it from), not whatever CWD the user
+  // happened to launch the CLI from. Falls back to CWD when we
+  // can't find a checkout (CI / detached install / weird layout).
+  const cwd = opts.cwd ?? findCheckoutForEnv() ?? process.cwd();
   const configPath = getGlobalConfigPath(home);
   const envPath = path.join(cwd, ".env");
 
