@@ -17,10 +17,11 @@
 //   needs `npx microsandbox install`, the agent just tells them)
 // - workboard (worker spawn is overkill for setup)
 //
-// Tools shipped (10): tenant_list, tenant_create, user_create,
+// Tools shipped (12): tenant_list, tenant_create, user_create,
 //   plugin_enable, plugin_disable, config_read, config_write,
-//   run_doctor, read_service_logs, read_env_file. Plus the
-//   implicit "done" sentinel.
+//   run_doctor, read_service_logs, read_env_file,
+//   build_sandbox, use_sandbox_build. Plus the implicit "done"
+//   sentinel.
 
 import * as p from "@clack/prompts";
 import fs from "node:fs";
@@ -118,24 +119,37 @@ WEB SEARCH (web-search plugin):
   before asking the user for a key.
 
 MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
-- microsandbox uses TWO sandbox roles, both built from snapshot
-  templates: 'task' (per-task ephemeral sandboxes for the
-  workboard's exec/coding work) and 'browser' (the long-lived
-  sandbox hosting the headless Chromium + playwright-mcp
-  sidecar).
-- Both must be built and pointed at separately. The build flow is:
-  1. \`build_sandbox role=task ...\` to bake a task snapshot.
-  2. \`build_sandbox role=browser ...\` to bake a browser snapshot.
-  3. \`use_sandbox_build buildId=... role=task\` to publish.
-  4. \`use_sandbox_build buildId=... role=browser\` to publish.
-- These tools are NOT exposed in the setup wizard — only
-  available once \`tianshu dev\` is running and the user is in
-  the chat shell. Tell the user this; don't try to call them.
-- If \`run_doctor\` says microsandbox runtime binary is missing,
-  tell the user: 'run \`npx microsandbox install\` in another
-  terminal, then start the server with \`tianshu dev\` and ask
-  the chat agent to build sandboxes for both task and browser
-  roles.'
+- microsandbox uses TWO sandbox role pointers: 'task' (per-task
+  ephemeral sandboxes for the workboard's exec/coding work) and
+  'browser' (the long-lived sandbox hosting the headless Chromium
+  + playwright-mcp sidecar). They share an underlying snapshot —
+  one snapshot can serve both roles.
+- The two relevant tools — build_sandbox and use_sandbox_build —
+  ARE available here in the setup wizard. Use them when the user
+  asks to set up / rebuild / refresh sandboxes. Don't tell them
+  they have to go to the chat shell.
+- Standard one-time setup flow when a user has just finished
+  the wizard and wants sandboxes ready:
+    1. build_sandbox(template='browser') → buildId. WARN THE
+       USER FIRST that this takes 5-10 min; the wizard's UI
+       hangs on a single spinner the whole time. The 'browser'
+       template is a superset of 'task-runner', so one build
+       serves both roles.
+    2. use_sandbox_build(buildId, role='both') → publishes the
+       new snapshot to both pointers and resets the live VM.
+  After step 2 the user can immediately use the chat / workboard.
+- If \`run_doctor\` says the microsandbox runtime binary is
+  missing, you can NOT build sandboxes yet. Tell the user:
+  'run \`npx microsandbox install\` in another terminal first.'
+  Don't try to call build_sandbox before the binary is present;
+  the server will return runner_not_ready (503).
+- Template choice cheat-sheet:
+  * browser → default for setup. Full stack, covers both roles.
+  * task-runner → only when the user explicitly says "no browser".
+  * task-runner-with-browser is intentionally NOT exposed here —
+    it requires a layered base snapshot which the wizard's
+    one-shot build doesn't set up. Refer such users to the chat
+    shell's sandbox admin UI.
 - If the wizard installed a launchd agent but the server isn't
   responding (run_doctor reports "Server port free" or "port in
   use, no HTTP response", or the user says "server didn't come
@@ -213,9 +227,10 @@ async function serverFetch(
   pathSegment: string,
   tenantId: string,
   body?: unknown,
+  timeoutMs = 30_000,
 ): Promise<unknown> {
   const ac = new AbortController();
-  const timer = setTimeout(() => ac.abort(), 30_000);
+  const timer = setTimeout(() => ac.abort(), timeoutMs);
   try {
     const res = await fetch(`${serverUrl}${pathSegment}`, {
       method,
@@ -831,7 +846,225 @@ function buildTools(
         return JSON.stringify(result);
       },
     },
+    build_sandbox: {
+      mutating: true,
+      describe: (args) => {
+        const tpl = String(args.template ?? "task-runner-with-browser");
+        const tenantId = String(args.tenantId ?? "default");
+        return `Build a microsandbox snapshot from the '${tpl}' template (tenant '${tenantId}'). This downloads the base image, installs Chromium / LibreOffice / Node / Python inside the VM, and saves a snapshot. Cold builds take 5-10 min, cache hits 3-5 min. The wizard will block on this call until done.`;
+      },
+      schema: {
+        name: "build_sandbox",
+        description:
+          "Build a microsandbox snapshot from a packaged template ('browser' or 'task-runner') and return its build id. This is the one-shot equivalent of the chat-shell `build_sandbox` tool: it (1) writes the chosen template into the user's Sandboxfile via PUT /api/p/microsandbox/sandboxfile, then (2) calls POST /api/p/microsandbox/builds to actually build the snapshot.\n\nUse this when the user asks to set up sandboxes during initial install. Cold build = 5-10 min (apt + Chromium + Playwright + LibreOffice tarball pulls); the wizard's whole UI will hang on the spinner. Tell the user that up front.\n\nAfter build, call use_sandbox_build with the returned buildId to publish the snapshot to a role pointer (browser / task / both).",
+
+        parameters: {
+          type: "object",
+          properties: {
+            tenantId: {
+              type: "string",
+              description:
+                "Tenant whose Sandboxfile to write. Defaults to 'default'. The build runs against this tenant's user-home Sandboxfile.",
+            },
+            template: {
+              type: "string",
+              enum: ["task-runner", "browser"],
+              description:
+                "Which packaged template to write into the Sandboxfile before building. 'browser' = full stack (Node + Python + LibreOffice + Chromium + Playwright MCP + noVNC, ~3.2 GB compressed); pick this when the user just wants everything to work, the resulting snapshot covers both 'browser' and 'task' roles. 'task-runner' = lighter (no Chromium), ~700 MB; pick only if the user explicitly wants a no-browser footprint.\n\nNOTE: this tool deliberately does NOT expose 'task-runner-with-browser' — that template requires layering on top of an existing task-runner snapshot (from_snapshot=...) and the wizard's one-shot build path doesn't support that. Users who want the layered build should rebuild via the chat shell's admin UI.",
+            },
+          },
+          required: ["template"],
+        } as never,
+      },
+      execute: async (args) => {
+        if (!serverUrl) {
+          return JSON.stringify({
+            error: "server_not_running",
+            message:
+              "build_sandbox needs a running server (the wizard's HTTP plugin API). The wizard normally starts the server before running the agent; if you got here without a server, run `tianshu start` first.",
+          });
+        }
+        const tenantId = String(args.tenantId ?? "default");
+        const template = String(args.template);
+
+        // Step 1: read the requested template body, write it into
+        // the tenant's Sandboxfile. The plugin's PUT /sandboxfile
+        // accepts the raw text and validates it. We resolve the
+        // template path relative to the plugin's installed
+        // location, which the server has already loaded.
+        const templateBody = await fetchSandboxfileTemplate(
+          serverUrl,
+          tenantId,
+          template,
+        );
+        if (typeof templateBody !== "string") {
+          return JSON.stringify({
+            error: "template_not_found",
+            template,
+            available:
+              templateBody as { available: string[] } extends infer X ? X : never,
+          });
+        }
+        await serverFetch(
+          serverUrl,
+          "PUT",
+          "/api/p/microsandbox/sandboxfile",
+          tenantId,
+          { content: templateBody },
+        );
+
+        // Step 2: kick the build. We DON'T use the streaming
+        // (?stream=1) endpoint here — the agent runs in a CLI
+        // wizard and reading NDJSON line-by-line through fetch
+        // doesn't buy anything; we just wait for the final
+        // {type:"done"} or HTTP 500. Timeout is 20 min, well
+        // above the worst observed cold build.
+        const buildResp = await serverFetch(
+          serverUrl,
+          "POST",
+          "/api/p/microsandbox/builds",
+          tenantId,
+          {},
+          20 * 60_000,
+        );
+        // Non-streaming response shape: { build: { buildId, snapshotName, ... } }
+        // (or { error, message } on failure, which serverFetch turns into a thrown Error)
+        const build = (buildResp as { build?: BuildMetadataLite })?.build;
+        if (!build || !build.buildId) {
+          return JSON.stringify({
+            error: "build_response_unexpected",
+            response: buildResp,
+          });
+        }
+        return JSON.stringify({
+          ok: true,
+          buildId: build.buildId,
+          snapshotName: build.snapshotName,
+          baseImage: build.baseImage,
+          durationMs: build.durationMs,
+          template,
+          tenantId,
+          nextStep:
+            "Call use_sandbox_build with this buildId and role='both' to publish the snapshot to both the browser and task pointers (recommended).",
+        });
+      },
+    },
+    use_sandbox_build: {
+      mutating: true,
+      describe: (args) =>
+        `Publish snapshot from build '${String(args.buildId ?? "?")}' to role '${String(args.role ?? "both")}' (tenant '${String(args.tenantId ?? "default")}')`,
+      schema: {
+        name: "use_sandbox_build",
+        description:
+          "Publish a built snapshot to a sandbox role pointer. Roles: 'browser' (long-lived chat sandbox with the Chromium sidecar), 'task' (per-task workboard runner pool), or 'both' (recommended when the user just wants everything to work).\n\nUnder the hood: POST /api/p/microsandbox/builds/use?build_id=...&role=...&reset=1. The reset flag bounces the live VM so it boots from the new snapshot — without it the pointer is durable but the running browser sandbox stays on the old snapshot until the next manual restart.\n\nCall this *after* build_sandbox returns a buildId. If the user asked you to 'set up sandboxes' or similar, the natural sequence is build_sandbox → use_sandbox_build with role='both'.",
+        parameters: {
+          type: "object",
+          properties: {
+            tenantId: {
+              type: "string",
+              description: "Tenant whose pointers to update. Defaults to 'default'.",
+            },
+            buildId: {
+              type: "string",
+              description:
+                "Build id returned by build_sandbox. Looks like 'build-20260620-abc123'.",
+            },
+            role: {
+              type: "string",
+              enum: ["browser", "task", "both"],
+              description:
+                "Which role pointer(s) to update. 'browser' = the long-lived browser sandbox. 'task' = the per-task runner pool. 'both' = both, recommended unless the user is doing something specific.",
+            },
+            reset: {
+              type: "boolean",
+              description:
+                "If true (default), bounce the live VM so it boots from the new snapshot immediately. Set false only if you want the pointer change without disrupting an in-flight session.",
+            },
+          },
+          required: ["buildId", "role"],
+        } as never,
+      },
+      execute: async (args) => {
+        if (!serverUrl) {
+          return JSON.stringify({
+            error: "server_not_running",
+            message: "use_sandbox_build needs a running server.",
+          });
+        }
+        const tenantId = String(args.tenantId ?? "default");
+        const buildId = String(args.buildId);
+        const role = String(args.role);
+        const reset = args.reset !== false; // default true
+        if (!buildId) {
+          return JSON.stringify({
+            error: "missing_build_id",
+            message: "buildId is required.",
+          });
+        }
+        const qs = new URLSearchParams({
+          build_id: buildId,
+          role,
+          ...(reset ? { reset: "1" } : {}),
+        });
+        const resp = await serverFetch(
+          serverUrl,
+          "POST",
+          `/api/p/microsandbox/builds/use?${qs.toString()}`,
+          tenantId,
+          {},
+          // VM bounce can take 20-40s; give it 90s for safety.
+          90_000,
+        );
+        return JSON.stringify({
+          ok: true,
+          buildId,
+          role,
+          reset,
+          tenantId,
+          response: resp,
+        });
+      },
+    },
   };
+}
+
+interface BuildMetadataLite {
+  buildId: string;
+  snapshotName?: string;
+  baseImage?: string;
+  durationMs?: number;
+}
+
+/**
+ * Fetch a packaged Sandboxfile template body from the running
+ * server. The microsandbox plugin exposes this via
+ * GET /sandboxfile/templates, returning a record of
+ * { name → content }. We look up the requested name and return
+ * its content (or, on miss, the list of available names so the
+ * agent can correct itself).
+ */
+async function fetchSandboxfileTemplate(
+  serverUrl: string,
+  tenantId: string,
+  name: string,
+): Promise<string | { available: string[] }> {
+  const resp = (await serverFetch(
+    serverUrl,
+    "GET",
+    "/api/p/microsandbox/sandboxfile/templates",
+    tenantId,
+  )) as {
+    templates?: Array<{
+      id: string;
+      displayName?: string;
+      description?: string;
+      content: string;
+    }>;
+  };
+  const list = resp.templates ?? [];
+  const hit = list.find((t) => t.id === name);
+  if (hit) return hit.content;
+  return { available: list.map((t) => t.id) };
 }
 
 function readJsonOrEmpty(filepath: string): Record<string, unknown> {
