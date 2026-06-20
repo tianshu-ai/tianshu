@@ -131,6 +131,14 @@ export async function runSetupWizard(
             `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
           );
         }
+        const { runStartServer } = await import("./start-server.js");
+        try {
+          await runStartServer({ envPath });
+        } catch (err) {
+          p.log.error(
+            `start-server step failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
       }
       return {
         configPath,
@@ -407,7 +415,8 @@ export async function runSetupWizard(
       "Default model verified. LLM provider is working.",
     );
 
-    // Hand off to the in-CLI agent for the rest of setup.
+    // Hand off to the in-CLI agent for the rest of setup, then
+    // spawn the dev server and wait for /api/health.
     if (!opts.dryRun) {
       const { runCliAgent } = await import("./cli-agent.js");
       try {
@@ -415,6 +424,14 @@ export async function runSetupWizard(
       } catch (err) {
         p.log.error(
           `setup agent crashed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      const { runStartServer } = await import("./start-server.js");
+      try {
+        await runStartServer({ envPath });
+      } catch (err) {
+        p.log.error(
+          `start-server step failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
