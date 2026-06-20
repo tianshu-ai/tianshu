@@ -18,8 +18,16 @@ import {
   TenantNotFoundError,
   getTianshuHome,
 } from "./core/index.js";
+import { loadEnv } from "./setup/load-env.js";
 import { runDoctor } from "./setup/doctor.js";
 import { runSetupWizard } from "./setup/wizard.js";
+
+// Load .env up front, same as the server boot path. Without this,
+// `tianshu doctor` would diagnose the user's setup using whatever
+// the shell happens to export — typically nothing — and report
+// every provider as 'API key not set' even though the keys are
+// sitting in .env right next to the config it just validated.
+loadEnv();
 
 export interface ParsedArgs {
   command: string;

@@ -7,7 +7,10 @@
 //
 // Agent runtime, sandbox, and channels are still out of scope.
 
-import "dotenv/config";
+// Load .env from the repo / install root, not CWD. See
+// setup/load-env.ts for why a plain `dotenv/config` is wrong here.
+import { loadEnv } from "./setup/load-env.js";
+loadEnv();
 
 import express from "express";
 import cors from "cors";
