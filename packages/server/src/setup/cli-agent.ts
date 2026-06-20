@@ -14,7 +14,8 @@
 // Out of scope:
 // - full chat history (this is a one-shot setup conversation)
 // - sandbox exec (microsandbox lives in plugin-land; if the user
-//   needs `npx microsandbox install`, the agent just tells them)
+//   needs the microsandbox npm dep installed, the agent tells
+//   them which `npm install` step likely failed)
 // - workboard (worker spawn is overkill for setup)
 //
 // Tools shipped (12): tenant_list, tenant_create, user_create,
@@ -149,11 +150,18 @@ MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
   After step 4 the user can immediately use the chat / workboard.
   If the user explicitly wants a no-browser setup, stop after
   step 2 and tell them they can build the browser layer later.
-- If \`run_doctor\` says the microsandbox runtime binary is
-  missing, you can NOT build sandboxes yet. Tell the user:
-  'run \`npx microsandbox install\` in another terminal first.'
-  Don't try to call build_sandbox before the binary is present;
-  the server will return runner_not_ready (503).
+- If \`run_doctor\` reports "microsandbox SDK not available" or
+  "Sandbox class missing", the platform-specific NAPI binding
+  didn't install. You can NOT build sandboxes yet. Tell the user:
+  'run \`npm install\` from the tianshu checkout root and watch
+  for any error in the output — the binding ships as an optional
+  dependency (\`@superradcompany/microsandbox-<triple>\`), and
+  optional dep failures are silent by default.' Do NOT recommend
+  \`npx microsandbox install\` — in current msb versions that's
+  \`msb install <image>\` (a different command, different purpose)
+  and will fail with a missing-argument error. Don't try to call
+  build_sandbox before the SDK is present; the server will return
+  runner_not_ready (503).
 - Template choice cheat-sheet:
   * task-runner → first build in the standard layered flow.
     Also the only build needed if the user wants no browser.
