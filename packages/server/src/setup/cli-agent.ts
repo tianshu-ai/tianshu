@@ -128,28 +128,42 @@ MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
   ARE available here in the setup wizard. Use them when the user
   asks to set up / rebuild / refresh sandboxes. Don't tell them
   they have to go to the chat shell.
-- Standard one-time setup flow when a user has just finished
-  the wizard and wants sandboxes ready:
-    1. build_sandbox(template='browser') → buildId. WARN THE
-       USER FIRST that this takes 5-10 min; the wizard's UI
-       hangs on a single spinner the whole time. The 'browser'
-       template is a superset of 'task-runner', so one build
-       serves both roles.
-    2. use_sandbox_build(buildId, role='both') → publishes the
-       new snapshot to both pointers and resets the live VM.
-  After step 2 the user can immediately use the chat / workboard.
+- Standard setup flow when a user wants sandboxes ready. This
+  is a TWO-snapshot layered build, NOT one big monolith. Why:
+  the task pool runs lots of short-lived sandboxes and shouldn't
+  carry Chromium's ~2.5 GB; the browser sandbox is long-lived
+  and DOES need Chromium. Layering also reuses apt cache between
+  the two builds, saving the second pull.
+    1. build_sandbox(template='task-runner') → returns
+       {buildId: B1, snapshotName: S1}. WARN THE USER FIRST: this
+       takes 5-7 min; the wizard's UI hangs on a single spinner.
+    2. use_sandbox_build(buildId=B1, role='task') → publishes
+       S1 as the task-pool snapshot.
+    3. build_sandbox(template='task-runner-with-browser',
+       fromSnapshot=S1) → returns {buildId: B2, snapshotName: S2}.
+       Another 3-5 min spinner. Skipping fromSnapshot here is a
+       hard error; the build_sandbox tool guards against it but
+       you should know.
+    4. use_sandbox_build(buildId=B2, role='browser') → publishes
+       S2 as the long-lived browser sandbox.
+  After step 4 the user can immediately use the chat / workboard.
+  If the user explicitly wants a no-browser setup, stop after
+  step 2 and tell them they can build the browser layer later.
 - If \`run_doctor\` says the microsandbox runtime binary is
   missing, you can NOT build sandboxes yet. Tell the user:
   'run \`npx microsandbox install\` in another terminal first.'
   Don't try to call build_sandbox before the binary is present;
   the server will return runner_not_ready (503).
 - Template choice cheat-sheet:
-  * browser → default for setup. Full stack, covers both roles.
-  * task-runner → only when the user explicitly says "no browser".
-  * task-runner-with-browser is intentionally NOT exposed here —
-    it requires a layered base snapshot which the wizard's
-    one-shot build doesn't set up. Refer such users to the chat
-    shell's sandbox admin UI.
+  * task-runner → first build in the standard layered flow.
+    Also the only build needed if the user wants no browser.
+  * task-runner-with-browser → second build, layered on top of
+    the task-runner snapshot via fromSnapshot=<S1's snapshotName>.
+    Without fromSnapshot it errors out (build_sandbox catches
+    that and returns missing_from_snapshot).
+  * browser → the monolithic alternative (full stack, ~3.2 GB,
+    no layering). Use only if the user specifically wants a
+    single-snapshot setup; the layered flow is preferred.
 - If the wizard installed a launchd agent but the server isn't
   responding (run_doctor reports "Server port free" or "port in
   use, no HTTP response", or the user says "server didn't come
@@ -868,9 +882,14 @@ function buildTools(
             },
             template: {
               type: "string",
-              enum: ["task-runner", "browser"],
+              enum: ["task-runner", "browser", "task-runner-with-browser"],
               description:
-                "Which packaged template to write into the Sandboxfile before building. 'browser' = full stack (Node + Python + LibreOffice + Chromium + Playwright MCP + noVNC, ~3.2 GB compressed); pick this when the user just wants everything to work, the resulting snapshot covers both 'browser' and 'task' roles. 'task-runner' = lighter (no Chromium), ~700 MB; pick only if the user explicitly wants a no-browser footprint.\n\nNOTE: this tool deliberately does NOT expose 'task-runner-with-browser' — that template requires layering on top of an existing task-runner snapshot (from_snapshot=...) and the wizard's one-shot build path doesn't support that. Users who want the layered build should rebuild via the chat shell's admin UI.",
+                "Which packaged template to write into the Sandboxfile before building.\n\n* 'task-runner' — Node + Python + LibreOffice + office libs, no browser. ~700 MB. Foundation for the layered approach below; also the right choice for users who explicitly don't need a browser.\n* 'task-runner-with-browser' — *layered* template that adds Chromium + Playwright MCP + noVNC on top of an existing task-runner snapshot. MUST be built with `fromSnapshot` set to the snapshotName of a previously-built 'task-runner' (otherwise the build fails at the first apt step). This is the recommended browser-role snapshot for the standard two-step setup flow.\n* 'browser' — monolithic full-stack template (task-runner contents + browser stack from scratch). ~3.2 GB. Builds standalone with no fromSnapshot, but you pay the apt + LibreOffice install twice across builds. Generally avoid in setup; prefer the layered task-runner → task-runner-with-browser sequence.",
+            },
+            fromSnapshot: {
+              type: "string",
+              description:
+                "Snapshot name (NOT buildId) to layer this build on top of. Required for template='task-runner-with-browser'; ignored otherwise. Get this from the `snapshotName` field of a previous build_sandbox(template='task-runner') response.",
             },
           },
           required: ["template"],
@@ -886,6 +905,22 @@ function buildTools(
         }
         const tenantId = String(args.tenantId ?? "default");
         const template = String(args.template);
+        const fromSnapshot =
+          typeof args.fromSnapshot === "string" && args.fromSnapshot.length > 0
+            ? args.fromSnapshot
+            : undefined;
+
+        // Guardrail: task-runner-with-browser is layered. Without
+        // fromSnapshot it will fail at the first apt step. Catch
+        // that here so the agent gets an actionable error instead
+        // of a generic BuildFailedError after 30 seconds of pulling.
+        if (template === "task-runner-with-browser" && !fromSnapshot) {
+          return JSON.stringify({
+            error: "missing_from_snapshot",
+            message:
+              "template 'task-runner-with-browser' is layered — it must be built on top of an existing task-runner snapshot. First call build_sandbox(template='task-runner'), then call build_sandbox(template='task-runner-with-browser', fromSnapshot=<snapshotName from step 1>).",
+          });
+        }
 
         // Step 1: read the requested template body, write it into
         // the tenant's Sandboxfile. The plugin's PUT /sandboxfile
@@ -924,7 +959,7 @@ function buildTools(
           "POST",
           "/api/p/microsandbox/builds",
           tenantId,
-          {},
+          fromSnapshot ? { from_snapshot: fromSnapshot } : {},
           20 * 60_000,
         );
         // Non-streaming response shape: { build: { buildId, snapshotName, ... } }
@@ -936,6 +971,20 @@ function buildTools(
             response: buildResp,
           });
         }
+        // Suggest the right next step based on which template
+        // we just built. The standard layered flow is:
+        //   task-runner  → publish to role='task',  then build
+        //   task-runner-with-browser fromSnapshot=<task snapshot>
+        //   → publish to role='browser'.
+        let nextStep: string;
+        if (template === "task-runner") {
+          nextStep = `Call use_sandbox_build with buildId='${build.buildId}' and role='task' to publish this as the task-pool snapshot. Then call build_sandbox again with template='task-runner-with-browser' and fromSnapshot='${build.snapshotName}' to layer the browser stack on top.`;
+        } else if (template === "task-runner-with-browser") {
+          nextStep = `Call use_sandbox_build with buildId='${build.buildId}' and role='browser' to publish this as the long-lived browser sandbox snapshot. The task pointer should already be set from the task-runner step.`;
+        } else {
+          // monolithic 'browser'
+          nextStep = `Call use_sandbox_build with buildId='${build.buildId}' and role='both' to publish this snapshot to both pointers.`;
+        }
         return JSON.stringify({
           ok: true,
           buildId: build.buildId,
@@ -943,9 +992,9 @@ function buildTools(
           baseImage: build.baseImage,
           durationMs: build.durationMs,
           template,
+          fromSnapshot: fromSnapshot ?? null,
           tenantId,
-          nextStep:
-            "Call use_sandbox_build with this buildId and role='both' to publish the snapshot to both the browser and task pointers (recommended).",
+          nextStep,
         });
       },
     },
