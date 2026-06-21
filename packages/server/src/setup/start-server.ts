@@ -71,7 +71,22 @@ export async function runStartServer(
   // location until we hit a package.json named
   // '@tianshu-ai/tianshu' (or run out of parents).
   const repoRoot = opts.repoRoot ?? findRepoRoot();
-  const envPath = opts.envPath ?? path.join(repoRoot, ".env");
+  // Where to write PORT / WEB_PORT (and any --use-env API key).
+  // Dev checkout: repoRoot/.env keeps existing developer
+  //   workflows intact (everyone who runs `npm run dev` from
+  //   the repo finds the .env in their working tree).
+  // Production / global install: TIANSHU_HOME/.env. The
+  //   install root itself is in node_modules and gets blown
+  //   away on `npm install -g` upgrades; TIANSHU_HOME survives.
+  const envPath =
+    opts.envPath ??
+    (isDevelopmentCheckout(repoRoot)
+      ? path.join(repoRoot, ".env")
+      : path.join(
+          process.env.TIANSHU_HOME ??
+            path.join(process.env.HOME ?? "", ".tianshu"),
+          ".env",
+        ));
 
   if (!isTianshuCheckout(repoRoot)) {
     p.log.info(
@@ -496,6 +511,11 @@ function writeEnvVar(envPath: string, key: string, value: string): void {
     if (body.length > 0 && !body.endsWith(os.EOL)) body += os.EOL;
     body += line + os.EOL;
   }
+  // Ensure parent dir exists. Matters when envPath is
+  // TIANSHU_HOME/.env on first install — ~/.tianshu/ may not
+  // exist yet, especially when the user hasn't run any tenant
+  // command before the wizard.
+  fs.mkdirSync(path.dirname(envPath), { recursive: true });
   fs.writeFileSync(envPath, body, { mode: 0o600 });
 }
 
