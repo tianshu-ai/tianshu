@@ -5,6 +5,7 @@
 //   tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--force] [--dry-run] [--use-env]
 //   tianshu start | stop | restart | status [--json] [--no-wait]
 //   tianshu logs [--follow] [--lines=N] [--stream=out|err|both]
+//   tianshu update [--check] [--tag <name>] [--dry-run]
 //   tianshu tenant list [--json] [--plain] | create <id> | delete <id>
 //   tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]
 //   tianshu version
@@ -36,6 +37,7 @@ import {
   runStatus,
   runLogs,
 } from "./setup/service.js";
+import { runUpdate } from "./setup/update.js";
 
 // Load .env up front, same as the server boot path. Without this,
 // `tianshu doctor` would diagnose the user's setup using whatever
@@ -78,6 +80,7 @@ function topLevelUsage(): string {
     "  tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--use-env]",
     "  tianshu start | stop | restart | status [--json] [--no-wait]",
     "  tianshu logs [--follow] [--lines=N] [--stream=out|err|both]",
+    "  tianshu update [--check] [--tag <name>] [--dry-run]",
     "  tianshu tenant list [--json] [--plain] | create <id> | delete <id>",
     "  tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]",
     "  tianshu version",
@@ -170,6 +173,12 @@ export async function main(argv: string[]): Promise<number> {
       });
     case "status":
       return runStatus({ json: parsed.flags.has("json") });
+    case "update":
+      return runUpdate({
+        check: parsed.flags.has("check"),
+        tag: parsed.options.tag,
+        dryRun: parsed.flags.has("dry-run"),
+      });
     case "logs": {
       const linesOpt = parsed.options.lines;
       const streamOpt = parsed.options.stream;

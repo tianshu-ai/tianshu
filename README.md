@@ -119,17 +119,37 @@ Use it whenever something doesn't feel right — it's read-only.
 
 ### Installing globally
 
-When 0.x stabilises this will be on npm:
+Published to npm under `@tianshu-ai/tianshu`:
 
 ```bash
 npm install -g @tianshu-ai/tianshu
-tianshu setup --wizard
-tianshu doctor
-tianshu start
+tianshu setup --wizard       # interactive: pick provider, key, ports
+tianshu doctor               # verify config + reachability
+tianshu start                # bootstrap the launchd service (macOS)
 ```
 
-For now, run from a checkout. Commands are the same, you just invoke
-them via `npm run` or `node bin/tianshu.mjs`.
+Day-2 control:
+
+```bash
+tianshu status               # what's loaded? port? health?
+tianshu logs --follow        # tail server stdout + stderr
+tianshu restart              # bounce the dev server
+tianshu stop                 # bootout from launchd
+tianshu tenant list          # tenants + users + open-in-browser URLs
+```
+
+Updating:
+
+```bash
+tianshu update --check       # peek at what `latest` is on npm
+tianshu update               # npm install -g the latest, prints next steps
+tianshu update --tag next    # install pre-release channel (if available)
+```
+
+Developing from a checkout: clone the repo, `npm install`, then
+`npm run dev` to get the live server + UI. `bin/tianshu.mjs` works
+the same from the checkout, but `tianshu update` will detect the
+checkout and refuse — use `git pull` instead.
 
 ### Useful flags
 
@@ -241,7 +261,7 @@ giants.
 
 ### Next (0.3.x)
 
-- [ ] `npm install -g @tianshu-ai/tianshu` published to npm
+- [x] `npm install -g @tianshu-ai/tianshu` published to npm
 - [ ] `tianshu start` single-port server (web + API together for prod)
 - [ ] Docker image with sandbox layer baked in
 - [ ] Hosted demo at `demo.tianshu-ai.com`
