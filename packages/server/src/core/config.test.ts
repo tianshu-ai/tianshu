@@ -84,4 +84,78 @@ describe("config", () => {
     expect(merged.server).toEqual({ port: 4000 });
     expect(merged.defaultModel).toBe("x");
   });
+
+  it("mergeConfigs picks a tenant defaultModel from tenant catalog when missing", () => {
+    // The bug this guards against (2026-06-21): tenant brings its
+    // own `models` catalog (qwen only) but doesn't set
+    // defaultModel. Pre-fix, defaultModel inherited from global as
+    // "anthropic/claude-sonnet-4-6" — a provider that no longer
+    // existed in the resolved catalog — and every chat request
+    // 500'd with "unknown provider".
+    const merged = mergeConfigs(
+      {
+        defaultModel: "anthropic/claude-sonnet-4-6",
+        models: {
+          providers: {
+            anthropic: {
+              api: "anthropic-messages",
+              baseUrl: "https://api.anthropic.com",
+              apiKey: "sk-anthropic",
+              models: [{ id: "claude-sonnet-4-6", name: "Sonnet" }],
+            },
+          },
+        },
+      },
+      {
+        models: {
+          providers: {
+            qwen: {
+              api: "openai-chat",
+              baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+              apiKey: "sk-qwen",
+              models: [{ id: "qwen3-max-preview", name: "Qwen3 Max" }],
+            },
+          },
+        },
+      },
+    );
+    expect(merged.defaultModel).toBe("qwen/qwen3-max-preview");
+    expect(Object.keys(merged.models!.providers)).toEqual(["qwen"]);
+  });
+
+  it("mergeConfigs preserves explicit tenant defaultModel even with tenant catalog", () => {
+    // Tenant author has full control: explicit defaultModel wins
+    // over the auto-pick "first provider's first model".
+    const merged = mergeConfigs(
+      { defaultModel: "global/x" },
+      {
+        defaultModel: "qwen/qwen3-coder",
+        models: {
+          providers: {
+            qwen: {
+              api: "openai-chat",
+              baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+              apiKey: "sk-qwen",
+              models: [
+                { id: "qwen3-max-preview", name: "Max" },
+                { id: "qwen3-coder", name: "Coder" },
+              ],
+            },
+          },
+        },
+      },
+    );
+    expect(merged.defaultModel).toBe("qwen/qwen3-coder");
+  });
+
+  it("mergeConfigs falls back to global defaultModel when tenant has no models override", () => {
+    // The original behaviour for tenants that just enable plugins
+    // without redefining the model catalog — they should still
+    // inherit global's defaultModel.
+    const merged = mergeConfigs(
+      { defaultModel: "anthropic/claude-sonnet-4-6" },
+      { plugins: { files: { enabled: true } } },
+    );
+    expect(merged.defaultModel).toBe("anthropic/claude-sonnet-4-6");
+  });
 });
