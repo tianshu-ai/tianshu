@@ -24,7 +24,11 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import * as launchd from "./launchd.js";
-import { findRepoRoot, isTianshuCheckout } from "./repo-root.js";
+import {
+  findRepoRoot,
+  isTianshuCheckout,
+  isDevelopmentCheckout,
+} from "./repo-root.js";
 
 interface StartServerOpts {
   /** Repo root (used as cwd for `npm run dev`). Defaults to process.cwd(). */
@@ -295,11 +299,20 @@ async function startViaLaunchd(
   }
 
   const npmPath = launchd.resolveNpmPath();
+  // Pick the npm script based on where we're installed from.
+  // Git checkout (devDependencies on disk) → `dev` runs the
+  // full watch + rebuild pipeline. Global npm install (no
+  // devDeps) → `serve` runs the pre-built dist instead. See
+  // isDevelopmentCheckout's docstring for the heuristic.
+  const npmScript: "dev" | "serve" = isDevelopmentCheckout(opts.repoRoot)
+    ? "dev"
+    : "serve";
   const plistBody = launchd.renderPlist(label, {
     repoRoot: opts.repoRoot,
     serverPort: opts.serverPort,
     webPort: opts.webPort,
     npmPath,
+    npmScript,
   });
   launchd.writePlist(label, plistBody);
   p.log.success(`Wrote launchd plist → ${plistPath}`);

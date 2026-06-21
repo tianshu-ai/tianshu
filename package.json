@@ -51,7 +51,8 @@
     "sync:plugins": "node scripts/sync-builtin-plugins.mjs",
     "doctor": "node bin/tianshu.mjs doctor",
     "setup": "node bin/tianshu.mjs setup",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "serve": "TIANSHU_WEB_DIST=\"$PWD/packages/web/dist\" node packages/server/dist/index.js"
   },
   "publishConfig": {
     "access": "public",
