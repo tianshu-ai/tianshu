@@ -297,7 +297,7 @@ Follow-up (not in this revision):
 ## References
 
 - `memory/2026-06-03.md` and `memory/2026-06-05.md`
-  (workspace-internal — Yu's session logs).
-- Old closed-source repo (`/Users/yuyu/git/tianshu`) — the
-  `workspace-template/` shape and tool docstrings
-  (`/workspace/project/<slug>/` etc.) informed both conventions.
+  (workspace-internal session logs).
+- Predecessor closed-source repo — the `workspace-template/`
+  shape and tool docstrings (`/workspace/project/<slug>/` etc.)
+  informed both conventions.
