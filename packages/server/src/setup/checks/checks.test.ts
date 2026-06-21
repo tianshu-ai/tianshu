@@ -540,6 +540,39 @@ describe("checkProviders", () => {
     delete process.env.TIANSHU_TEST_KEY_OK;
   });
 
+  it("skips ctx/max checks for image-gen models (different semantics)", async () => {
+    // image-gen models legitimately have max > ctx: ctx is the
+    // text-prompt window (often 32k), max bounds the per-image
+    // generation token budget (can exceed text ctx). Caught when
+    // doctor's invariant rejected google/gemini-3-pro-image-preview
+    // at server startup — documented values, not a bug.
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          google: {
+            api: "google-generative-ai",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [
+              {
+                id: "gemini-3-pro-image-preview",
+                mode: "image-gen",
+                contextWindow: 32_768,
+                maxTokens: 65_536, // would normally trip the blocker
+              },
+            ],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const blocker = r.lines.find((l) =>
+      l.text.includes("gemini-3-pro-image-preview"),
+    );
+    expect(blocker).toBeUndefined();
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
   it("blocker when maxTokens > contextWindow (logically impossible)", async () => {
     // Caught real values in yuyu's config (gemini image-preview
     // entries had ctx=32768, max=65536 — either a swap or stale
