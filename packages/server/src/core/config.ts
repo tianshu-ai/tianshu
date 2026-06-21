@@ -103,7 +103,31 @@ export interface McpServerEntry {
 
 /** Fields that ONLY the global config controls. Tenant config attempting these is rejected. */
 export interface GlobalOnlyConfig {
-  server?: { port?: number; corsOrigin?: string; publicUrl?: string };
+  /**
+   * `publicUrl` is the operator-declared URL users open in a
+   * browser — e.g. a Cloudflare tunnel hostname. Write this
+   * by hand (or via wizard) when you want a stable public
+   * URL; nothing inside the server overrides it.
+   *
+   * `effectivePublicUrl` is auto-written by the running
+   * server on each boot to record "this is the localhost
+   * URL I'm actually serving the SPA from" (server port in
+   * prod / TIANSHU_WEB_DIST mode, web port in dev / vite
+   * mode). CLI commands like `tianshu tenant list` read it
+   * when the operator hasn't set publicUrl, so they print a
+   * URL that actually opens regardless of which install
+   * shape is active.
+   *
+   * Order of preference for "what URL do I print to a human?"
+   *   TIANSHU_WEB_URL env  >  server.publicUrl  >
+   *   server.effectivePublicUrl  >  hard fallback to localhost:port.
+   */
+  server?: {
+    port?: number;
+    corsOrigin?: string;
+    publicUrl?: string;
+    effectivePublicUrl?: string;
+  };
   logging?: {
     level?: "debug" | "info" | "warn" | "error";
     /**
