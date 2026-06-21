@@ -490,7 +490,7 @@ describe("checkProviders", () => {
   });
 
   it("warning + 'did you mean' for the most common typo (openai-chat)", async () => {
-    // The actual i070219 paper-cut: cli-agent guessed "openai-chat".
+    // The actual paper-cut from field testing: cli-agent guessed "openai-chat".
     // pi-ai then threw "No API provider registered for api: openai-chat"
     // at first chat send. Doctor should catch it pre-flight with an
     // actionable hint.
@@ -574,7 +574,7 @@ describe("checkProviders", () => {
   });
 
   it("blocker when maxTokens > contextWindow (logically impossible)", async () => {
-    // Caught real values in yuyu's config (gemini image-preview
+    // Caught real values in a local config (gemini image-preview
     // entries had ctx=32768, max=65536 — either a swap or stale
     // copy). Output cap can't exceed the whole window.
     process.env.TIANSHU_TEST_KEY_OK = "***";
@@ -626,7 +626,7 @@ describe("checkProviders", () => {
 
   it("warns 'below known ceiling' when catalog value is lower than known-models.md", async () => {
     // Catalog says 8192, table says 32768 — soft warning, not
-    // blocker. Reproduces the i070219 / yuyu paper-cut where
+    // blocker. Reproduces the paper-cut surfaced in testing where
     // qwen3-max-preview shipped with maxTokens=8192 even though
     // dashscope supports 32k.
     process.env.TIANSHU_TEST_KEY_OK = "***";

@@ -18,7 +18,7 @@
 //     for everything else). This lets a developer with multiple
 //     clones run them side by side without label collisions —
 //     which is exactly the situation that motivated this whole
-//     refactor (yuyu had a `tianshu` clone and a
+//     refactor (a developer with both a `tianshu` clone and a
 //     `tianshu_opensource` clone, both wanted the dev label).
 //   - Functions return structured results, never throw on
 //     "service isn't loaded" / "plist doesn't exist" type

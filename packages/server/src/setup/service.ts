@@ -56,7 +56,7 @@ export interface LogsCmdOpts extends ServiceCmdOpts {
 // plugin-sdk, build 4 plugins, sync builtin configs, run
 // dev-builtins migration, tsx watch + compile server src,
 // then plugins activate. Observed: 90-110s on M3 Ultra (faster)
-// and 60-90s on i070219 Intel mac. The previous 60s deadline
+// and 60-90s on slower Intel macs. The previous 60s deadline
 // hit `timed out` regularly even though the server came up
 // 30s later. Match the wizard's deadline (start-server.ts) to
 // stay consistent.
