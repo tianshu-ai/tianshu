@@ -5,7 +5,7 @@
 //   tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--force] [--dry-run] [--use-env]
 //   tianshu start | stop | restart | status [--json] [--no-wait]
 //   tianshu logs [--follow] [--lines=N] [--stream=out|err|both]
-//   tianshu tenant list|create <id>|delete <id>
+//   tianshu tenant list [--json] [--plain] | create <id> | delete <id>
 //   tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]
 //   tianshu version
 //   tianshu help [<command>]
@@ -16,12 +16,15 @@
 // invocations. `tianshu logs` reads the same files the wizard
 // configured the agent to write into.
 
+import fs from "node:fs";
+import path from "node:path";
 import {
   GlobalOps,
   InvalidTenantIdError,
   TenantAlreadyExistsError,
   TenantNotFoundError,
   getTianshuHome,
+  loadGlobalConfig,
 } from "./core/index.js";
 import { loadEnv } from "./setup/load-env.js";
 import { runDoctor } from "./setup/doctor.js";
@@ -75,7 +78,7 @@ function topLevelUsage(): string {
     "  tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--use-env]",
     "  tianshu start | stop | restart | status [--json] [--no-wait]",
     "  tianshu logs [--follow] [--lines=N] [--stream=out|err|both]",
-    "  tianshu tenant list|create <id>|delete <id>",
+    "  tianshu tenant list [--json] [--plain] | create <id> | delete <id>",
     "  tianshu user create <tenantId> <userId> [--provider=dev] [--external-id=<x>]",
     "  tianshu version",
     "  tianshu help [<command>]",
@@ -186,9 +189,63 @@ export async function main(argv: string[]): Promise<number> {
   const ops = new GlobalOps();
   try {
     if (parsed.command === "tenant" && parsed.positional[0] === "list") {
+      // Default output is a tree of tenants → users → dev URLs,
+      // because the bare list of tenant ids isn't useful by
+      // itself — the typical follow-up question is "and who's
+      // in each", and the typical follow-up action is "copy a
+      // URL to share with that user". --plain restores the
+      // legacy one-id-per-line format for shell scripting.
+      // --json emits the same data structurally for consumers
+      // who can parse it.
       const ids = ops.list();
-      if (ids.length === 0) console.log("(no tenants)");
-      else for (const id of ids) console.log(id);
+      const wantJson = parsed.flags.has("json");
+      const wantPlain = parsed.flags.has("plain");
+      if (ids.length === 0) {
+        if (wantJson) console.log("[]");
+        else console.log("(no tenants)");
+        return 0;
+      }
+      if (wantPlain) {
+        for (const id of ids) console.log(id);
+        return 0;
+      }
+      const webBase = resolveWebBaseUrl();
+      const tree = ids.map((tenantId) => ({
+        tenantId,
+        users: listTenantUsers(tenantId),
+      }));
+      if (wantJson) {
+        console.log(
+          JSON.stringify(
+            tree.map((t) => ({
+              tenantId: t.tenantId,
+              users: t.users,
+              urls: t.users.map((u) => ({
+                userId: u,
+                url: `${webBase}/tenants/${t.tenantId}/users/${u}/`,
+              })),
+            })),
+            null,
+            2,
+          ),
+        );
+        return 0;
+      }
+      // Human-readable tree. Indent + URL per (tenant, user)
+      // makes it copyable straight from the terminal into a
+      // browser or share message.
+      for (const t of tree) {
+        if (t.users.length === 0) {
+          console.log(`${t.tenantId}  (no users)`);
+          continue;
+        }
+        console.log(t.tenantId);
+        for (const u of t.users) {
+          console.log(
+            `  ${u.padEnd(16)} ${webBase}/tenants/${t.tenantId}/users/${u}/`,
+          );
+        }
+      }
       return 0;
     }
     if (parsed.command === "tenant" && parsed.positional[0] === "create") {
@@ -246,6 +303,60 @@ export async function main(argv: string[]): Promise<number> {
   } finally {
     ops.closePool();
   }
+}
+
+/**
+ * List user ids under a tenant by reading
+ * `<TIANSHU_HOME>/tenants/<id>/workspace/users/`. We don't go
+ * through a higher-level API because GlobalOps doesn't expose
+ * users; this surface is the same one
+ * checks/tenants.ts uses and the two should not drift. If a
+ * proper UsersOps lands in core, swap to it.
+ */
+function listTenantUsers(tenantId: string): string[] {
+  const usersDir = path.join(
+    getTianshuHome(),
+    "tenants",
+    tenantId,
+    "workspace",
+    "users",
+  );
+  if (!fs.existsSync(usersDir)) return [];
+  try {
+    return fs
+      .readdirSync(usersDir, { withFileTypes: true })
+      .filter((d) => d.isDirectory())
+      .map((d) => d.name)
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Best-effort "where does the user open this in a browser?".
+ * Resolution order:
+ *   1. TIANSHU_WEB_URL env       (explicit override, e.g.
+ *                                 cloudflare tunnel hostname)
+ *   2. global config server.publicUrl
+ *   3. http://localhost:<webPort>  where webPort comes from
+ *      .env's WEB_PORT or the default 5183
+ * The fallback uses the *web* port (vite dev server), not the
+ * server port — the URL we print is what the user opens, not
+ * what fetch hits.
+ */
+function resolveWebBaseUrl(): string {
+  const envUrl = process.env.TIANSHU_WEB_URL;
+  if (envUrl) return envUrl.replace(/\/+$/, "");
+  try {
+    const cfg = loadGlobalConfig();
+    const pub = cfg.server?.publicUrl;
+    if (pub) return pub.replace(/\/+$/, "");
+  } catch {
+    /* no global config yet — fall through */
+  }
+  const webPort = process.env.WEB_PORT ?? "5183";
+  return `http://localhost:${webPort}`;
 }
 
 // Direct invocation: `node dist/cli.js …`. The `bin/tianshu.mjs`
