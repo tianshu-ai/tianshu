@@ -117,6 +117,29 @@ install\` in another terminal then re-run setup').
 
 Domain knowledge you must apply when relevant:
 
+DEV MODE vs PRODUCTION MODE:
+- Two install shapes, very different runtime topology:
+  * **Dev mode** — the user cloned the repo and is running
+    \`npm run dev\` (or its launchd-installed equivalent). Two
+    processes: vite serves the SPA on the web port (default
+    5183); the API server is on the API port (3110). Two URLs
+    to know: http://localhost:5183 for the chat UI,
+    http://localhost:3110 for raw API.
+  * **Production mode** — the user installed via
+    \`npm install -g @tianshu-ai/tianshu\`. One process: the
+    server hosts the SPA on the API port via TIANSHU_WEB_DIST.
+    Single URL: http://localhost:3110 serves everything (HTML
+    at /, API at /api/*, WebSocket at /ws). No web port.
+- The wizard's launchd plist picks the right startup script
+  automatically via isDevelopmentCheckout(). Doctor knows the
+  mode too — in prod it shows "Web UI on http://localhost:3110"
+  instead of probing port 5183.
+- When the user asks "where do I open the chat?", check the
+  output of run_doctor first. In dev you'll see two "port X
+  free / in use" lines; in prod you'll see one "Web UI on
+  http://localhost:3110" line. Always report the URL the
+  doctor surfaces, not a hardcoded one.
+
 GLOBAL VS TENANT CONFIG (config_read / config_write):
 - Two scopes live side by side:
   * GLOBAL = ~/.tianshu/config.json. System-wide. Controls server port,
