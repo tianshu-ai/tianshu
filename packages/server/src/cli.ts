@@ -20,12 +20,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  buildTenantUserUrl,
   GlobalOps,
   InvalidTenantIdError,
+  resolvePublicBaseUrl,
   TenantAlreadyExistsError,
   TenantNotFoundError,
   getTianshuHome,
-  loadGlobalConfig,
 } from "./core/index.js";
 import { loadEnv } from "./setup/load-env.js";
 import { runDoctor } from "./setup/doctor.js";
@@ -218,7 +219,7 @@ export async function main(argv: string[]): Promise<number> {
         for (const id of ids) console.log(id);
         return 0;
       }
-      const webBase = resolveWebBaseUrl();
+      const webBase = resolvePublicBaseUrl();
       const tree = ids.map((tenantId) => ({
         tenantId,
         users: listTenantUsers(tenantId),
@@ -231,7 +232,7 @@ export async function main(argv: string[]): Promise<number> {
               users: t.users,
               urls: t.users.map((u) => ({
                 userId: u,
-                url: `${webBase}/tenants/${t.tenantId}/users/${u}/`,
+                url: buildTenantUserUrl(webBase, t.tenantId, u),
               })),
             })),
             null,
@@ -251,7 +252,7 @@ export async function main(argv: string[]): Promise<number> {
         console.log(t.tenantId);
         for (const u of t.users) {
           console.log(
-            `  ${u.padEnd(16)} ${webBase}/tenants/${t.tenantId}/users/${u}/`,
+            `  ${u.padEnd(16)} ${buildTenantUserUrl(webBase, t.tenantId, u)}`,
           );
         }
       }
@@ -342,31 +343,11 @@ function listTenantUsers(tenantId: string): string[] {
   }
 }
 
-/**
- * Best-effort "where does the user open this in a browser?".
- * Resolution order:
- *   1. TIANSHU_WEB_URL env       (explicit override, e.g.
- *                                 cloudflare tunnel hostname)
- *   2. global config server.publicUrl
- *   3. http://localhost:<webPort>  where webPort comes from
- *      .env's WEB_PORT or the default 5183
- * The fallback uses the *web* port (vite dev server), not the
- * server port — the URL we print is what the user opens, not
- * what fetch hits.
- */
-function resolveWebBaseUrl(): string {
-  const envUrl = process.env.TIANSHU_WEB_URL;
-  if (envUrl) return envUrl.replace(/\/+$/, "");
-  try {
-    const cfg = loadGlobalConfig();
-    const pub = cfg.server?.publicUrl;
-    if (pub) return pub.replace(/\/+$/, "");
-  } catch {
-    /* no global config yet — fall through */
-  }
-  const webPort = process.env.WEB_PORT ?? "5183";
-  return `http://localhost:${webPort}`;
-}
+// URL/port resolution lives in core/urls.ts — the CLI imports
+// `resolvePublicBaseUrl` / `buildTenantUserUrl` and lets that
+// module own dev/prod detection, env overrides, and publicUrl.
+// (Earlier this file had its own resolver that drifted from
+// doctor's and the wizard's. Don't reintroduce one.)
 
 // Direct invocation: `node dist/cli.js …`. The `bin/tianshu.mjs`
 // shim also calls `main()` after dynamic-importing this module,

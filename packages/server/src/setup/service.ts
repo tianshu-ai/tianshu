@@ -27,9 +27,7 @@ import fs from "node:fs";
 import os from "node:os";
 import * as launchd from "./launchd.js";
 import { findRepoRoot } from "./repo-root.js";
-import { loadGlobalConfig } from "../core/config.js";
-
-const DEFAULT_SERVER_PORT = 3110;
+import { resolveServerPort as coreResolveServerPort } from "../core/urls.js";
 
 interface ServiceCmdOpts {
   /** Override repo root (used by tests). */
@@ -62,27 +60,11 @@ export interface LogsCmdOpts extends ServiceCmdOpts {
 // stay consistent.
 const HEALTH_DEADLINE_MS = 120_000;
 
-/**
- * Resolve the server port the same way the wizard / network
- * doctor does — env first, then global config, then default.
- * Used by `tianshu status` to know where to probe health.
- */
-function resolveServerPort(repoRoot?: string): number {
-  const env = Number.parseInt(process.env.PORT ?? "", 10);
-  if (Number.isFinite(env) && env > 0) return env;
-  try {
-    const cfg = loadGlobalConfig();
-    if (cfg.server?.port) return cfg.server.port;
-  } catch {
-    // no global config yet
-  }
-  // We don't read .env here — the doctor's checkNetwork is the
-  // authoritative source for that, and it runs in a different
-  // process. For the CLI, env + global config + default is
-  // good enough.
-  void repoRoot;
-  return DEFAULT_SERVER_PORT;
-}
+// Server port resolution lives in core/urls.ts so doctor, the
+// wizard, the CLI, and the user-URL printer all agree. (Earlier
+// `service.ts` had a private copy that quietly drifted from
+// the wizard's. Don't reintroduce one here.)
+const resolveServerPort = coreResolveServerPort;
 
 /**
  * `tianshu status` — print whether the service is installed,
@@ -105,7 +87,7 @@ export async function runStatus(
   const repoRoot = opts.repoRoot ?? findRepoRoot();
   const label = launchd.resolveLabel(repoRoot);
   const status = launchd.readStatus(label);
-  const port = resolveServerPort(repoRoot);
+  const port = resolveServerPort();
   const health = status.loaded
     ? await launchd.probeHealth(port)
     : { ok: false, reason: "service not loaded" };
@@ -201,7 +183,7 @@ export async function runStart(
   }
   console.log(`Loaded ${label}.`);
   if (opts.wait !== false) {
-    const port = resolveServerPort(repoRoot);
+    const port = resolveServerPort();
     const deadlineMs = opts.waitMs ?? HEALTH_DEADLINE_MS;
     const ok = await waitWithProgress(port, deadlineMs);
     if (!ok) {
@@ -396,7 +378,7 @@ export async function runRestart(
   }
   console.log(`Restarted ${label}.`);
   if (opts.wait !== false) {
-    const port = resolveServerPort(repoRoot);
+    const port = resolveServerPort();
     const deadlineMs = opts.waitMs ?? HEALTH_DEADLINE_MS;
     const ok = await waitWithProgress(port, deadlineMs);
     if (!ok) {
