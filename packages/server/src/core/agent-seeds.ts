@@ -21,7 +21,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { AgentSeedContribution } from "@tianshu/plugin-sdk";
+import type { AgentSeedContribution } from "@tianshu-ai/plugin-sdk";
 import { getTenantConfigDir } from "./paths.js";
 
 export interface SeedAgentDirsArgs {

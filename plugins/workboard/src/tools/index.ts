@@ -28,7 +28,7 @@ import type {
   ModelCatalogCapability,
   TenantDbHandle,
   PluginLogger,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import {
   createTask,
   deleteTask,

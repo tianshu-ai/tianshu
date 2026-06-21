@@ -9,7 +9,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { PluginManifest } from "@tianshu/plugin-sdk";
+import type { PluginManifest } from "@tianshu-ai/plugin-sdk";
 import { getTenantSharedDir } from "../paths.js";
 import { parseManifest, PluginManifestError } from "./manifest.js";
 

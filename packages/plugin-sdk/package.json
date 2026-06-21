@@ -1,5 +1,5 @@
 {
-  "name": "@tianshu/plugin-sdk",
+  "name": "@tianshu-ai/plugin-sdk",
   "version": "0.1.0",
   "private": true,
   "description": "Plugin authoring SDK for Tianshu (server + client types).",
@@ -30,7 +30,7 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.6"
   },
-  "dependencies": {
+  "peerDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"
   }
 }

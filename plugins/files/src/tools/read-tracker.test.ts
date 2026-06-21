@@ -6,7 +6,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { AgentToolContext } from "@tianshu/plugin-sdk";
+import type { AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import { EditFileTool, ReadFileTool, WriteFileTool } from "./index.js";
 import { _resetForTests } from "./read-tracker.js";
 

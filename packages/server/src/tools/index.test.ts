@@ -8,7 +8,7 @@
 // the assembler stays focused on plugin-tool wiring.
 
 import { describe, expect, it } from "vitest";
-import type { AgentTool } from "@tianshu/plugin-sdk";
+import type { AgentTool } from "@tianshu-ai/plugin-sdk";
 import { Type } from "typebox";
 import { buildToolset, type BuildToolContext } from "./index.js";
 

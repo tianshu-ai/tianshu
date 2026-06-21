@@ -17,7 +17,7 @@ import {
   __installOpenFileApi,
   __installPluginConfigForm,
   __installUseComposer,
-} from "@tianshu/plugin-sdk/client";
+} from "@tianshu-ai/plugin-sdk/client";
 import { getComposerApi } from "./stores/composer-store";
 import { PluginConfigFormById } from "./components/PluginConfigForm";
 __installUseComposer(getComposerApi);

@@ -20,7 +20,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { SkillCatalogCapability } from "@tianshu/plugin-sdk";
+import type { SkillCatalogCapability } from "@tianshu-ai/plugin-sdk";
 import type { WorkerAgent } from "./types.js";
 
 export interface ComputeEffectiveSkillsArgs {

@@ -11,7 +11,7 @@
 // the activator passes it in. That keeps tests easy: just spin up an
 // in-memory better-sqlite3, run the migration, point this code at it.
 
-import type { TenantDbHandle } from "@tianshu/plugin-sdk";
+import type { TenantDbHandle } from "@tianshu-ai/plugin-sdk";
 
 /**
  * Task lifecycle — only three states.

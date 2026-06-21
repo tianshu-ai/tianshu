@@ -35,7 +35,7 @@
 import {
   McpToolset,
   type ToolsetProvider,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import { loadTenantConfig, type McpServerEntry } from "./config.js";
 import { getTianshuHome } from "./paths.js";
 

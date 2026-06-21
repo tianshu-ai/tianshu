@@ -49,7 +49,7 @@ and are out of scope for this directory.
 ## Authoring rules (in short)
 
 - Plugin id: `^[a-z0-9][a-z0-9-]{1,30}$`. Globally unique.
-- Manifest schema: see `@tianshu/plugin-sdk` types.
+- Manifest schema: see `@tianshu-ai/plugin-sdk` types.
 - Server module exports `activate(ctx) -> { routes?, wsHandlers? }`
   and optional `deactivate()`. Throws inside `activate()` mark the
   plugin `state: "failed"` without taking down siblings.

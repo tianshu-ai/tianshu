@@ -11,7 +11,7 @@
 
 import * as path from "node:path";
 import type { Request, Response } from "express";
-import type { SandboxRunner } from "@tianshu/plugin-sdk";
+import type { SandboxRunner } from "@tianshu-ai/plugin-sdk";
 import {
   buildSnapshot,
   BuildFailedError,

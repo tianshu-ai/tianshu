@@ -55,7 +55,7 @@ import type {
   SkillCatalogCapability,
   ModelCatalogCapability,
   LspCapability,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import {
   enqueue as inboxEnqueue,
   bindIdleRunner,

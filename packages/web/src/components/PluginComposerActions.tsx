@@ -5,7 +5,7 @@
 // user / plugin identity. Plugins decide what their button does
 // (open file picker, paste, etc.) — we only do the layout.
 
-import type { ComposerActionProps } from "@tianshu/plugin-sdk/client";
+import type { ComposerActionProps } from "@tianshu-ai/plugin-sdk/client";
 import { useChatStore } from "../stores/chat-store";
 import { usePluginStore } from "../stores/plugin-store";
 import { getComposerApi } from "../stores/composer-store";

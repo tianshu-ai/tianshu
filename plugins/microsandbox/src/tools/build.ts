@@ -24,7 +24,7 @@ import {
   okResult,
   type AgentTool,
   type AgentToolContext,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import {
   buildSnapshot,
   BuildFailedError,

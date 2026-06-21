@@ -13,7 +13,7 @@
 // every tenant we care about has either fs-side rows or had them
 // reconstructable from agent-seeds.
 
-import type { TenantDbHandle } from "@tianshu/plugin-sdk";
+import type { TenantDbHandle } from "@tianshu-ai/plugin-sdk";
 
 export function ensureSchema(db: TenantDbHandle): void {
   // Drop the legacy worker_agents table if it still exists. Source

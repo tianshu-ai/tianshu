@@ -10,7 +10,7 @@
 // admin UI / agent gating can rely on, not chromium specifics.
 
 import { describe, it, expect } from "vitest";
-import type { SandboxRunner } from "@tianshu/plugin-sdk";
+import type { SandboxRunner } from "@tianshu-ai/plugin-sdk";
 import { buildBrowserRoutes } from "./browser-routes.js";
 import { MicrosandboxBrowserSidecar } from "../runner/browser.js";
 

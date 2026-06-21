@@ -13,7 +13,7 @@
 //    string. The capability is still registered so dependents
 //    don't trip over a missing provider.
 
-import type { SandboxRunner } from "@tianshu/plugin-sdk";
+import type { SandboxRunner } from "@tianshu-ai/plugin-sdk";
 import { resolveConfig, type MicroSandboxConfig } from "./types.js";
 import { NullableRunner } from "./nullable.js";
 import { MicrosandboxRunner } from "./microsandbox.js";

@@ -17,8 +17,8 @@
 //   instead of bolting onto the existing sandbox status response.
 
 import type { Request, Response } from "express";
-import type { BrowserSidecar, SandboxRunner } from "@tianshu/plugin-sdk";
-import { McpToolset } from "@tianshu/plugin-sdk";
+import type { BrowserSidecar, SandboxRunner } from "@tianshu-ai/plugin-sdk";
+import { McpToolset } from "@tianshu-ai/plugin-sdk";
 
 export interface BrowserRoutesDeps {
   /** Same accessor pattern as the sandbox routes — lets the routes

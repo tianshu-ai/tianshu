@@ -1,5 +1,5 @@
 // Client-side plugin authoring types. Imported as
-// `@tianshu/plugin-sdk/client`.
+// `@tianshu-ai/plugin-sdk/client`.
 //
 // The chat shell's PluginRegistry expects a plugin's client module to
 // export a `components` map keyed by the strings used in the manifest's
@@ -83,7 +83,7 @@ export type DraftTransform = (
  * Composer API surface exposed to plugin client components.
  *
  * Implementation note: the host wires this into a React context. Use
- * `useComposer()` from `@tianshu/plugin-sdk/client` from inside a
+ * `useComposer()` from `@tianshu-ai/plugin-sdk/client` from inside a
  * plugin component to get the live instance.
  */
 export interface ComposerApi {
@@ -157,13 +157,13 @@ export interface PluginClientExports {
 
 // `useComposer` is implemented by the host (web bundle) and re-exported
 // here as a typed declaration so plugin authors `import { useComposer }
-// from "@tianshu/plugin-sdk/client"`. The host swaps the implementation
+// from "@tianshu-ai/plugin-sdk/client"`. The host swaps the implementation
 // in via __installUseComposer().
 //
 // The accessor lives on `globalThis` instead of a module-local
 // `let` so that plugin packages with a transitively-duplicated SDK
 // copy still see the host's installed implementation. If the host
-// installed first into globalThis, *any* import of @tianshu/plugin-sdk/client
+// installed first into globalThis, *any* import of @tianshu-ai/plugin-sdk/client
 // resolves to the same accessor.
 //
 // Runtime contract: host calls `__installUseComposer` exactly once

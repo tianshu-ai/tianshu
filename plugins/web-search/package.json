@@ -20,7 +20,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@tianshu/plugin-sdk": "*"
+    "@tianshu-ai/plugin-sdk": "*"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",

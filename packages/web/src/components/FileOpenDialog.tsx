@@ -2,7 +2,7 @@
 //
 // Anyone in the host UI (workboard task cards, plugin renderers,
 // future surfaces) can ask to open a workspace file by calling
-// `useOpenFile()` from @tianshu/plugin-sdk/client. The Files plugin
+// `useOpenFile()` from @tianshu-ai/plugin-sdk/client. The Files plugin
 // implements that hook by emitting a `tianshu:files:open` window
 // event; THIS component listens for it, fetches the file via the
 // host API (/api/p/files/read for text, /raw for binaries), and

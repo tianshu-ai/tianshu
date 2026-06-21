@@ -49,9 +49,9 @@ import type {
   PluginServerModule,
   PluginWsHandler,
   SandboxRunner,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import path from "node:path";
-import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu/plugin-sdk";
+import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu-ai/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
 import {
@@ -130,7 +130,7 @@ export interface ToolsetSummary {
   /** McpToolset.snapshot() output when the provider exposes
    *  snapshot(); null otherwise. */
   snapshot:
-    | import("@tianshu/plugin-sdk").McpToolsetSnapshot
+    | import("@tianshu-ai/plugin-sdk").McpToolsetSnapshot
     | null;
   /** Reflected tool count (snapshot.tools.length when known, else
    *  derived via listTools()). */
@@ -152,11 +152,11 @@ function summariseToolset(args: {
   id: string;
   displayName: string;
   enabled: boolean;
-  provider: import("@tianshu/plugin-sdk").ToolsetProvider;
+  provider: import("@tianshu-ai/plugin-sdk").ToolsetProvider;
   logTag: string;
 }): ToolsetSummary {
   let snapshot:
-    | import("@tianshu/plugin-sdk").McpToolsetSnapshot
+    | import("@tianshu-ai/plugin-sdk").McpToolsetSnapshot
     | null = null;
   try {
     snapshot = args.provider.snapshot ? args.provider.snapshot() : null;
@@ -675,7 +675,7 @@ export class PluginRegistry {
   toolsetProviderFor(
     summary: { source: "plugin" | "user"; sourceId: string; id: string },
     tenantId: string,
-  ): import("@tianshu/plugin-sdk").ToolsetProvider | null {
+  ): import("@tianshu-ai/plugin-sdk").ToolsetProvider | null {
     if (summary.source === "user") {
       if (!this.opts.mcpManager) return null;
       const snaps = this.opts.mcpManager.snapshotsForTenant(tenantId);

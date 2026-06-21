@@ -18,7 +18,7 @@ import type {
   PluginContext,
   PluginServerExports,
   PluginServerModule,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import { buildWebSearchTool, readWebSearchConfig } from "./tools/index.js";
 import { ProviderHealth } from "./tools/health.js";
 

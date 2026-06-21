@@ -52,7 +52,7 @@ import {
   type PanelProps,
   type PluginClientExports,
   type SidebarSectionProps,
-} from "@tianshu/plugin-sdk/client";
+} from "@tianshu-ai/plugin-sdk/client";
 import WorkerAgentsPage from "./worker-agents-page.js";
 
 const API_BASE = "/api/p/workboard";

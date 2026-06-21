@@ -12,7 +12,7 @@
 import type {
   AttachmentRendererProps,
   AttachmentDescriptor,
-} from "@tianshu/plugin-sdk/client";
+} from "@tianshu-ai/plugin-sdk/client";
 import { File as FileIcon } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { usePluginStore } from "../stores/plugin-store";

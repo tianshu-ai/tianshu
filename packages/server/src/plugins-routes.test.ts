@@ -13,7 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import request from "supertest";
-import type { PluginServerModule } from "@tianshu/plugin-sdk";
+import type { PluginServerModule } from "@tianshu-ai/plugin-sdk";
 
 import { DbPool } from "./core/db-pool.js";
 import { GlobalOps } from "./core/global-ops.js";

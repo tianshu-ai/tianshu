@@ -31,7 +31,7 @@ import { ArrowLeft, ShieldCheck, Settings as SettingsIcon } from "lucide-react";
 import { useChatStore } from "../../stores/chat-store";
 import { usePluginStore } from "../../stores/plugin-store";
 import { resolveComponent } from "../../lib/plugin-registry";
-import type { AdminPageProps } from "@tianshu/plugin-sdk/client";
+import type { AdminPageProps } from "@tianshu-ai/plugin-sdk/client";
 import type { PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
 import { buildIdentityPath } from "../../dev-identity";

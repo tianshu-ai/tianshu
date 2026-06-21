@@ -27,7 +27,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { SkillContribution } from "@tianshu/plugin-sdk";
+import type { SkillContribution } from "@tianshu-ai/plugin-sdk";
 
 export interface LoadedSkill {
   /** `<plugin-id>.<contribution-id>` for logs/registry; the

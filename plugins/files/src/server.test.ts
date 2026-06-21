@@ -8,7 +8,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
-import type { PluginContext, PluginServerExports } from "@tianshu/plugin-sdk";
+import type { PluginContext, PluginServerExports } from "@tianshu-ai/plugin-sdk";
 import filesPlugin, { sanitiseFilename, stampWithTimestamp } from "./server.js";
 
 interface MockRes {

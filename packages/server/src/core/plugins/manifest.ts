@@ -1,6 +1,6 @@
 // Plugin manifest validation. Hand-written validator over plain JSON
 // to keep dependencies small. Mirrors the types declared in
-// `@tianshu/plugin-sdk/manifest.ts`.
+// `@tianshu-ai/plugin-sdk/manifest.ts`.
 //
 // Throws PluginManifestError with a `pluginId` (when discoverable)
 // and a list of accumulated issues so the discovery step can mark
@@ -25,8 +25,8 @@ import type {
   SidebarSectionContribution,
   TopBarButtonContribution,
   WsMessageContribution,
-} from "@tianshu/plugin-sdk";
-import { isCapabilityName } from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
+import { isCapabilityName } from "@tianshu-ai/plugin-sdk";
 
 export class PluginManifestError extends Error {
   readonly code = "PLUGIN_MANIFEST_INVALID" as const;
@@ -288,7 +288,7 @@ function optionalCapabilityArray(
     }
     if (!isCapabilityName(item)) {
       acc.issues.push(
-        `${key}[${i}] "${item}" is not a known capability (see KNOWN_CAPABILITIES in @tianshu/plugin-sdk)`,
+        `${key}[${i}] "${item}" is not a known capability (see KNOWN_CAPABILITIES in @tianshu-ai/plugin-sdk)`,
       );
       continue;
     }
@@ -379,7 +379,7 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
     out.wsMessages = parseArray(raw.wsMessages, "wsMessages", acc, parseWsMessage);
   }
   // `commands` slot was declared in ADR-0003 §5 but never wired
-  // through to a UI; chore/plugin-sdk-cleanup removed it. If a
+  // through to a UI; chore-ai/plugin-sdk-cleanup removed it. If a
   // manifest still carries `commands`, ignore it silently — we
   // don't want to fail-load existing plugins for an obsolete slot.
 
@@ -444,7 +444,7 @@ function parseToolset(
   raw: unknown,
   ctx: string,
   acc: Acc,
-): import("@tianshu/plugin-sdk").ToolsetContribution | null {
+): import("@tianshu-ai/plugin-sdk").ToolsetContribution | null {
   if (!isPlainObject(raw)) {
     acc.issues.push(`${ctx} entry must be an object`);
     return null;

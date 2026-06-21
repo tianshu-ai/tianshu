@@ -27,7 +27,7 @@ import type {
   PluginRouteHandler,
   PluginServerExports,
   PluginServerModule,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import {
   ListDirTool,
   ReadFileTool,
