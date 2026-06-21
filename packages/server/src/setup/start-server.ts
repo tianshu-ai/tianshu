@@ -102,13 +102,20 @@ export async function runStartServer(
   // pretend the user is starting fresh.
   const existing = await detectExistingService(repoRoot);
   if (existing.kind === "healthy") {
+    // Same logic as the install path below: production mode
+    // (global install) hosts web on the server port; dev mode
+    // keeps the two-port shape and `webPort` is meaningful.
+    const isDev = isDevelopmentCheckout(repoRoot);
+    const webUrl = isDev
+      ? existing.webPort !== undefined
+        ? `http://localhost:${existing.webPort}`
+        : null
+      : existing.serverUrl;
     const linesOut: string[] = [
       `Tianshu is already running under launchd as '${existing.label}'.`,
     ];
-    if (existing.webPort !== undefined) {
-      linesOut.push(`  Web UI:  http://localhost:${existing.webPort}`);
-    }
-    linesOut.push(`  API:     ${existing.serverUrl}`);
+    if (webUrl) linesOut.push(`  Web UI:  ${webUrl}`);
+    linesOut.push(`  API:     ${existing.serverUrl}/api`);
     linesOut.push(
       ``,
       `Manage with: tianshu start | stop | restart | status | logs`,
@@ -116,10 +123,7 @@ export async function runStartServer(
     p.log.success(linesOut.join("\n"));
     return {
       serverUrl: existing.serverUrl,
-      webUrl:
-        existing.webPort !== undefined
-          ? `http://localhost:${existing.webPort}`
-          : null,
+      webUrl,
       started: true,
     };
   }
@@ -364,10 +368,19 @@ async function startViaLaunchd(
   healthSpinner.stop(
     `\u2713 Server is up on http://localhost:${opts.serverPort}.`,
   );
+  // Production mode (npm script = `serve`) hosts the web UI on
+  // the server port via TIANSHU_WEB_DIST; the separate vite
+  // dev server (`:webPort`) doesn't get launched. Dev mode
+  // (`npm script = dev`) keeps the two-port shape: vite serves
+  // the web on :webPort, the server is on :serverPort.
+  const webUrl =
+    npmScript === "serve"
+      ? `http://localhost:${opts.serverPort}`
+      : `http://localhost:${opts.webPort}`;
   p.log.info(
     [
       `Tianshu is running under launchd as '${label}'.`,
-      `  Web UI:  http://localhost:${opts.webPort}`,
+      `  Web UI:  ${webUrl}`,
       `  API:     http://localhost:${opts.serverPort}/api`,
       `  Logs:    ${logFile} / ${errFile}`,
       ``,
@@ -376,7 +389,7 @@ async function startViaLaunchd(
   );
   return {
     serverUrl: `http://localhost:${opts.serverPort}`,
-    webUrl: `http://localhost:${opts.webPort}`,
+    webUrl,
     started: true,
   };
 }

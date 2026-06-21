@@ -705,16 +705,35 @@ if (webDistRaw && webDistRaw.length > 0) {
           "skipping static UI mount.`,
       );
     } else {
+      // Two-layer handler:
+      // 1. express.static handles `/index.html`, `/assets/*`, etc.
+      //    fallthrough: true so requests it doesn't recognize
+      //    cascade to the next middleware.
+      // 2. SPA fallback: any GET request that wasn't /api or /ws
+      //    and wasn't a static asset → serve the pre-read
+      //    index.html bytes. The React router on the client
+      //    decides what to render.
+      //
+      // Why we read index.html into a buffer rather than using
+      // `res.sendFile()`: under Express 5 + Node 22+'s send
+      // module, sendFile() with an absolute path consistently
+      // 404'd on our setup even though `existsSync(file)`
+      // returned true. We don't fully understand the
+      // resolution path send takes; bypassing it with a
+      // direct buffer write is simple and works the same on
+      // every Node version we test.
       app.use(express.static(webDist, { index: false, fallthrough: true }));
-      // SPA fallback: every non-/api, non-/ws request that didn't
-      // match a static file falls through to index.html so the
-      // React router takes over (/tenants/foo/users/bar/...).
+      const indexHtml = fs.readFileSync(
+        path.join(webDist, "index.html"),
+      );
       app.use((req, res, next) => {
         if (req.path.startsWith("/api/")) return next();
+        if (req.path === "/api") return next();
         if (req.path.startsWith("/ws")) return next();
-        // Anything else: serve index.html. The router on the
-        // client decides what to render.
-        res.sendFile(path.join(webDist, "index.html"));
+        if (req.method !== "GET" && req.method !== "HEAD") return next();
+        // Anything else — / , /tenants/x/users/y/, /admin/foo —
+        // gets index.html. The SPA's router handles it.
+        res.type("html").send(indexHtml);
       });
       // eslint-disable-next-line no-console
       console.log(`[tianshu] serving web UI from ${webDist}`);
