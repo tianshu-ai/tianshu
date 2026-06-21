@@ -163,6 +163,53 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
       severity: "ok",
       text: `  enabled plugins (${enabled.length}): ${enabled.length > 0 ? enabled.sort().join(", ") : "(none)"}`,
     });
+
+    // Workboard cross-checks. When workboard is enabled, every LLM
+    // worker that doesn't pin its own `modelId` in its agent.json
+    // falls back to the resolved tenant defaultModel. So:
+    //   - workboard enabled + no defaultModel resolvable
+    //     → warning (workers will fail to start LLM runs)
+    //   - workboard enabled + tenant overrides `models` (replace)
+    //     but doesn't set defaultModel → the auto-pick from
+    //     mergeConfigs takes over (first provider's first model);
+    //     surface it so the user knows.
+    // Doctor's earlier sections cover the global-tenant defaultModel
+    // wiring; this block is the *workboard-specific* angle ("why
+    // does this matter? because workers depend on it.").
+    if (enabled.includes("workboard")) {
+      // We don't have the merged ResolvedConfig handy here —
+      // mergeConfigs lives in core/config but doctor sections are
+      // intentionally lightweight — so we replicate the relevant
+      // bit: tenant.defaultModel ?? auto-pick(tenant.models) ??
+      // global.defaultModel.
+      const resolvedDefault =
+        tenantCfg.defaultModel ??
+        autoPickFromModels(tenantCfg.models) ??
+        globalCfg.defaultModel;
+      if (!resolvedDefault) {
+        lines.push({
+          severity: "warning",
+          text: `  workboard: no defaultModel resolvable for this tenant`,
+          detail:
+            "LLM worker agents without a per-worker `modelId` in their agent.json will fail to start. Set tenant.defaultModel, or set global.defaultModel and let this tenant inherit it.",
+        });
+      }
+    }
+
+    // Flag the deprecated `worker:` config block. The schema kept it
+    // around for backwards compat but the field has no runtime
+    // consumers; warn so users don't think they're configuring
+    // anything by setting it.
+    if (tenantCfg.worker !== undefined) {
+      const keys = Object.keys(tenantCfg.worker).join(", ") || "(empty)";
+      lines.push({
+        severity: "warning",
+        text: `  deprecated 'worker' field set (keys: ${keys})`,
+        detail:
+          "The `worker.{count,pollMs,model}` field has no runtime effect. Workboard sizes the pool from agent-seeds and reads each worker's modelId from its agent.json (falling back to tenant defaultModel). Safe to delete from this tenant config.",
+      });
+    }
+
     if (disabled.length > 0) {
       lines.push({
         severity: "ok",
@@ -288,6 +335,23 @@ function mergePlugins(
  * checks/providers.ts; intentionally duplicated to keep the two
  * checks independently testable.
  */
+/**
+ * Mirror of mergeConfigs's tenant-models-override auto-pick rule.
+ * Kept inline here (rather than importing the whole merge) so
+ * doctor's section stays a thin read-only inspection.
+ */
+function autoPickFromModels(
+  models: { providers?: Record<string, { models?: { id: string }[] }> } | undefined,
+): string | undefined {
+  if (!models?.providers) return undefined;
+  const firstProvId = Object.keys(models.providers)[0];
+  if (!firstProvId) return undefined;
+  const firstProv = models.providers[firstProvId];
+  const firstModelId = firstProv?.models?.[0]?.id;
+  if (!firstModelId) return undefined;
+  return `${firstProvId}/${firstModelId}`;
+}
+
 function suggestApiType(bad: string): string | null {
   const map: Record<string, string> = {
     "openai-chat": "openai-completions",

@@ -45,6 +45,21 @@ export interface OverridableConfig {
    * never sit in memory longer than necessary).
    */
   models?: ModelsCatalog;
+  /**
+   * @deprecated 2026-06-21 — never wired up in the open-source
+   *   repo. The three sub-keys (count / pollMs / model) had no
+   *   runtime consumers: workboard sizes its pool from the
+   *   agent-seeds bundle (one worker per enabled agent.json),
+   *   there is no polling (task ready queue is SQLite-driven),
+   *   and model selection is per-worker via agent.json's
+   *   `modelId` (falling back to the resolved tenant
+   *   defaultModel). Field kept in the type for backwards
+   *   compat (so config files that already set it don't fail to
+   *   parse), but doctor flags it as ignored and cli-agent
+   *   refuses to write it. If/when an actual cross-cutting
+   *   worker config is needed, wire the consumers first and
+   *   then resurrect with a real shape.
+   */
   worker?: WorkerSettings;
   oauth?: OAuthProviderConfig[];
   branding?: BrandingConfig;

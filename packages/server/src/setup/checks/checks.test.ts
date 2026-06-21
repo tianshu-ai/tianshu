@@ -147,6 +147,47 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
     const header = r.lines.find((l) => l.text === "tenant 'default'");
     expect(header?.detail).toMatch(/openai\/gpt-4o/);
   });
+
+  it("warns 'workboard: no defaultModel resolvable' when workboard on + no model", () => {
+    // Tenant enables workboard but has no defaultModel and the
+    // (fake) global config also lacks one. Workers without a
+    // per-agent modelId would fail to start LLM runs.
+    seedTenant(
+      "default",
+      { plugins: { workboard: { enabled: true } } },
+      ["dev"],
+    );
+    const r = checkTenants({ builtinConfigDir, home });
+    const w = r.lines.find((l) => l.text.includes("workboard: no defaultModel"));
+    expect(w?.severity).toBe("warning");
+  });
+
+  it("does NOT warn when workboard on + tenant supplies defaultModel", () => {
+    seedTenant(
+      "default",
+      {
+        defaultModel: "qwen/qwen3-max",
+        plugins: { workboard: { enabled: true } },
+      },
+      ["dev"],
+    );
+    const r = checkTenants({ builtinConfigDir, home });
+    expect(r.lines.find((l) => l.text.includes("workboard: no defaultModel"))).toBeUndefined();
+  });
+
+  it("warns when deprecated `worker:` block is set on tenant config", () => {
+    seedTenant(
+      "default",
+      {
+        worker: { count: 2, pollMs: 5000, model: "anthropic/x" },
+        plugins: {},
+      },
+      ["dev"],
+    );
+    const r = checkTenants({ builtinConfigDir, home });
+    const w = r.lines.find((l) => l.text.includes("deprecated 'worker'"));
+    expect(w?.severity).toBe("warning");
+  });
 });
 
 describe("checkConfig", () => {
@@ -338,6 +379,34 @@ describe("checkProviders", () => {
         (l.text.includes("unknown") || l.text.includes("api` field missing")),
     );
     expect(apiWarn).toBeUndefined();
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warns when deprecated `worker:` block is set on global config", async () => {
+    // worker.{count,pollMs,model} was kept for backwards-compat but
+    // has no runtime consumers (see core/config.ts deprecation
+    // comment). Doctor must surface it so the user / cli-agent
+    // don't think they're actually configuring anything when they
+    // set those keys.
+    process.env.TIANSHU_TEST_KEY_OK = "sk-test-12345678";
+    const cfg: GlobalConfig = {
+      defaultModel: "qwen/qwen3-max",
+      models: {
+        providers: {
+          qwen: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            baseUrl: "https://x.example/v1",
+            models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+          },
+        },
+      },
+      worker: { count: 2, pollMs: 5000, model: "anthropic/x" },
+    };
+    const r = await checkProviders({ config: cfg });
+    const w = r.lines.find((l) => l.text.includes("deprecated 'worker'"));
+    expect(w?.severity).toBe("warning");
+    expect(w?.detail).toMatch(/no runtime effect/);
     delete process.env.TIANSHU_TEST_KEY_OK;
   });
 });

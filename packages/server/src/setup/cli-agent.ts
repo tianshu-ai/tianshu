@@ -199,6 +199,31 @@ PROVIDERS / MODELS (config.json's \`models.providers\` map):
   in config.json which is chmod 600) or a \`\${ENV_VAR}\`
   placeholder if the user opted into --use-env mode.
 
+WORKBOARD WORKERS (workboard plugin):
+- When the user enables workboard, the LLM worker pool starts up
+  with one worker per enabled \`agent.json\` in the tenant's
+  agent-seeds bundle. There is no "worker count" setting at the
+  config level — if the user wants more workers, they add more
+  agent.json files. The cli-agent doesn't manage agent files
+  directly; that's the user / chat agent's job.
+- Each LLM worker picks its model in this order:
+    1. \`modelId\` field in the worker's own agent.json (per-worker
+       override; rare)
+    2. resolved tenant defaultModel (\`tenant.defaultModel\` else
+       auto-pick from tenant.models else global.defaultModel)
+- If \`run_doctor\` says "workboard: no defaultModel resolvable",
+  set tenant.defaultModel (via \`config_write\` which='tenant')
+  or global.defaultModel (which='global'). Don't try to find a
+  worker-specific setting; there isn't one.
+- The schema still carries a \`worker: { count, pollMs, model }\`
+  field for backwards compat. It has NO runtime effect; doctor
+  flags it as deprecated. Do not write to it. If a user asks to
+  "configure worker count / polling / model", explain that those
+  are not real settings in this build, and steer them toward
+  what actually matters: tenant.defaultModel for which model the
+  workers use, and the agent-seeds bundle for how many workers
+  there are.
+
 MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
 - microsandbox uses TWO sandbox role pointers: 'task' (per-task
   ephemeral sandboxes for the workboard's exec/coding work) and
