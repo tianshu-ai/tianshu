@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.1](https://github.com/tianshu-ai/tianshu/compare/v0.3.0...v0.3.1) (2026-06-21)
+
+Out-of-band hotfix shipping `tianshu update` to users on 0.3.0 so
+they can self-upgrade without remembering the package name + pin
+syntax. Cut via the manual `hotfix.yml` workflow rather than
+waiting for release-please to roll a regular release PR.
+
+### Features
+
+* **cli:** `tianshu update [--check] [--tag <name>] [--dry-run]` self-updater with checkout-safety refusal, dist-tag awareness, and exit codes for scripting ([#170](https://github.com/tianshu-ai/tianshu/issues/170)) ([979fb31](https://github.com/tianshu-ai/tianshu/commit/979fb31))
+
+### CI
+
+* `release.yml` now publishes to npm with provenance attestation when a release-please PR is merged ([#169](https://github.com/tianshu-ai/tianshu/issues/169)) ([34bade2](https://github.com/tianshu-ai/tianshu/commit/34bade2))
+* New `hotfix.yml` workflow for out-of-band patch publishes ([#169](https://github.com/tianshu-ai/tianshu/issues/169)) ([34bade2](https://github.com/tianshu-ai/tianshu/commit/34bade2))
+
 ## [0.3.0](https://github.com/tianshu-ai/tianshu/compare/v0.2.0...v0.3.0) (2026-06-21)
 
 
