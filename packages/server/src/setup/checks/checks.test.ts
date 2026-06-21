@@ -76,6 +76,25 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
     }
   }
 
+  function seedWorker(
+    tenantId: string,
+    slug: string,
+    spec: Record<string, unknown>,
+  ): void {
+    const wdir = path.join(
+      home,
+      "tenants",
+      tenantId,
+      "workspace",
+      "_tenant",
+      "config",
+      "workers",
+      slug,
+    );
+    fs.mkdirSync(wdir, { recursive: true });
+    fs.writeFileSync(path.join(wdir, "agent.json"), JSON.stringify(spec));
+  }
+
   it("warns when no tenants on disk", () => {
     const r = checkTenants({ builtinConfigDir, home });
     expect(r.lines[0]!.severity).toBe("warning");
@@ -173,6 +192,145 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
     );
     const r = checkTenants({ builtinConfigDir, home });
     expect(r.lines.find((l) => l.text.includes("workboard: no defaultModel"))).toBeUndefined();
+  });
+
+  it("lists each LLM worker with the model it'll resolve", () => {
+    // workboard enabled + multiple workers, one with a per-worker
+    // modelId pin and one inheriting tenant defaultModel.
+    seedTenant(
+      "default",
+      {
+        defaultModel: "qwen/qwen3-max",
+        plugins: { workboard: { enabled: true } },
+        models: {
+          providers: {
+            qwen: {
+              api: "openai-completions",
+              apiKey: "sk-x",
+              baseUrl: "https://x.example/v1",
+              models: [
+                { id: "qwen3-max", contextWindow: 200_000 },
+                { id: "qwen3-coder", contextWindow: 200_000 },
+              ],
+            },
+          },
+        },
+      },
+      ["dev"],
+    );
+    seedWorker("default", "coder", {
+      kind: "llm",
+      enabled: true,
+      modelId: "qwen/qwen3-coder",
+      description: "Implementation worker.",
+    });
+    seedWorker("default", "researcher", {
+      kind: "llm",
+      enabled: true,
+      description: "Research worker.",
+      // no modelId → inherits tenant defaultModel
+    });
+    const r = checkTenants({ builtinConfigDir, home });
+    const lines = r.lines;
+    const coderLine = lines.find((l) => l.text.includes("worker 'coder'"));
+    expect(coderLine?.severity).toBe("ok");
+    expect(coderLine?.text).toMatch(/pinned model qwen\/qwen3-coder/);
+    const researcherLine = lines.find((l) =>
+      l.text.includes("worker 'researcher'"),
+    );
+    expect(researcherLine?.severity).toBe("ok");
+    expect(researcherLine?.text).toMatch(/inherits qwen\/qwen3-max/);
+  });
+
+  it("blocker when a worker pins a modelId not in the catalog", () => {
+    seedTenant(
+      "default",
+      {
+        defaultModel: "qwen/qwen3-max",
+        plugins: { workboard: { enabled: true } },
+        models: {
+          providers: {
+            qwen: {
+              api: "openai-completions",
+              apiKey: "sk-x",
+              baseUrl: "https://x.example/v1",
+              models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+            },
+          },
+        },
+      },
+      ["dev"],
+    );
+    seedWorker("default", "ghost", {
+      kind: "llm",
+      enabled: true,
+      modelId: "ghosthouse/claude-9999",
+      description: "Pins a model that doesn't exist.",
+    });
+    const r = checkTenants({ builtinConfigDir, home });
+    const ghostLine = r.lines.find((l) => l.text.includes("worker 'ghost'"));
+    expect(ghostLine?.severity).toBe("blocker");
+    expect(ghostLine?.text).toMatch(/not in catalog/);
+    expect(ghostLine?.detail).toMatch(/ghosthouse\/claude-9999/);
+  });
+
+  it("skips non-llm workers (e.g. echo demo) from model checks", () => {
+    seedTenant(
+      "default",
+      {
+        defaultModel: "anthropic/claude-x",
+        plugins: { workboard: { enabled: true } },
+        models: {
+          providers: {
+            anthropic: {
+              api: "anthropic-messages",
+              apiKey: "sk-x",
+              models: [{ id: "claude-x", contextWindow: 200_000 }],
+            },
+          },
+        },
+      },
+      ["dev"],
+    );
+    seedWorker("default", "echo-demo", {
+      kind: "echo",
+      enabled: true,
+      description: "Echo doesn't use an LLM.",
+    });
+    const r = checkTenants({ builtinConfigDir, home });
+    expect(
+      r.lines.find((l) => l.text.includes("worker 'echo-demo'")),
+    ).toBeUndefined();
+  });
+
+  it("skips disabled workers from model checks", () => {
+    seedTenant(
+      "default",
+      {
+        defaultModel: "anthropic/claude-x",
+        plugins: { workboard: { enabled: true } },
+        models: {
+          providers: {
+            anthropic: {
+              api: "anthropic-messages",
+              apiKey: "sk-x",
+              models: [{ id: "claude-x", contextWindow: 200_000 }],
+            },
+          },
+        },
+      },
+      ["dev"],
+    );
+    seedWorker("default", "disabled-one", {
+      kind: "llm",
+      enabled: false,
+      modelId: "ghosthouse/whatever", // would normally blocker
+      description: "Pinned to bad model but disabled.",
+    });
+    const r = checkTenants({ builtinConfigDir, home });
+    expect(
+      r.lines.find((l) => l.text.includes("worker 'disabled-one'")),
+    ).toBeUndefined();
   });
 
   it("warns when deprecated `worker:` block is set on tenant config", () => {
