@@ -53,6 +53,10 @@
     "setup": "node bin/tianshu.mjs setup",
     "prepublishOnly": "npm run build"
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "devDependencies": {
     "concurrently": "^10.0.3",
     "typescript": "^6.0.3"
