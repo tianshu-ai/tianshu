@@ -29,6 +29,10 @@ import {
   isTianshuCheckout,
   isDevelopmentCheckout,
 } from "./repo-root.js";
+import {
+  DEFAULT_SERVER_PORT,
+  DEFAULT_WEB_PORT,
+} from "../core/urls.js";
 
 interface StartServerOpts {
   /** Repo root (used as cwd for `npm run dev`). Defaults to process.cwd(). */
@@ -37,8 +41,6 @@ interface StartServerOpts {
   envPath?: string;
 }
 
-const DEFAULT_SERVER_PORT = 3110;
-const DEFAULT_WEB_PORT = 5183;
 const HEALTH_CHECK_DEADLINE_MS = 120_000;
 
 /**

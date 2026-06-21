@@ -14,12 +14,14 @@
 // This module is sync-safe (no boot-time side effects); the
 // HTTP probe has a 2s timeout so doctor stays fast.
 
-import fs from "node:fs";
 import net from "node:net";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { CheckGroup } from "../render.js";
 import { loadGlobalConfig } from "../../core/config.js";
+import {
+  detectInstallMode,
+  resolveServerPort,
+  resolveWebPort,
+} from "../../core/urls.js";
 
 export interface NetworkCheckOpts {
   home?: string;
@@ -30,21 +32,21 @@ export interface NetworkCheckOpts {
   healthTimeoutMs?: number;
 }
 
-const DEFAULT_SERVER_PORT = 3110;
-const DEFAULT_WEB_PORT = 5183;
-
 export async function checkNetwork(
   opts: NetworkCheckOpts = {},
 ): Promise<CheckGroup> {
   const lines: CheckGroup["lines"] = [];
-  let serverPort = opts.serverPort ?? envPort("PORT") ?? DEFAULT_SERVER_PORT;
-  let webPort = opts.webPort ?? envPort("WEB_PORT") ?? DEFAULT_WEB_PORT;
+  // Port + mode resolution is centralised in core/urls.ts.
+  // The only thing doctor-specific here is the test-override
+  // hooks (opts.serverPort / opts.webPort).
+  let cfg: ReturnType<typeof loadGlobalConfig> | undefined;
   try {
-    const cfg = loadGlobalConfig(opts.home);
-    serverPort = opts.serverPort ?? cfg.server?.port ?? serverPort;
+    cfg = loadGlobalConfig(opts.home);
   } catch {
     // config might not exist yet — that's fine for this check
   }
+  const serverPort = opts.serverPort ?? resolveServerPort({ config: cfg });
+  const webPort = opts.webPort ?? resolveWebPort();
 
   // Server port: free → server isn't running. Owned → probe
   // /api/health to find out who's there.
@@ -99,11 +101,12 @@ export async function checkNetwork(
   //   TIANSHU_WEB_DIST. The web port is irrelevant and showing
   //   "web port 5183 free" only confuses users.
   //
-  // detectMode below returns "dev" when this CLI is itself
-  // running from a git checkout; the wizard's launchd plist
-  // applies the same heuristic via isDevelopmentCheckout, so
-  // doctor's view matches the actual service.
-  const mode = detectMode();
+  // detectInstallMode (core/urls.ts) returns "dev" when this
+  // CLI is itself running from a git checkout; the wizard's
+  // launchd plist applies the same heuristic via
+  // isDevelopmentCheckout, so doctor's view matches the actual
+  // service.
+  const mode = detectInstallMode();
   if (mode === "dev") {
     const webState = await probePort(webPort);
     if (webState === "free") {
@@ -131,39 +134,6 @@ export async function checkNetwork(
   }
 
   return { title: "Network & service", lines };
-}
-
-/**
- * Whether the running `tianshu` binary is itself a development
- * checkout (with watch/rebuild devDeps) or a published global
- * install. Mirrors `isDevelopmentCheckout` in setup/repo-root.ts
- * but inline here so this module stays free of cross-imports.
- * If the check fails for any reason, fall back to "prod" — we'd
- * rather under-warn (skipping a port check in dev) than
- * over-warn (false alerts on a working prod install).
- */
-function detectMode(): "dev" | "prod" {
-  try {
-    const here = path.dirname(fileURLToPath(import.meta.url));
-    let dir = here;
-    for (let i = 0; i < 12; i++) {
-      if (fs.existsSync(path.join(dir, ".git"))) return "dev";
-      const parent = path.dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-    if (here.includes(`${path.sep}node_modules${path.sep}`)) return "prod";
-    return "prod";
-  } catch {
-    return "prod";
-  }
-}
-
-function envPort(name: string): number | undefined {
-  const raw = process.env[name];
-  if (!raw) return undefined;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) ? n : undefined;
 }
 
 /**
