@@ -28,8 +28,27 @@ import {
   loadGlobalConfig,
   loadTenantConfig,
   type PluginsConfig,
+  type ProviderEntry,
 } from "../../core/config.js";
 import { getTianshuHome } from "../../core/paths.js";
+
+// Mirror of pi-ai's register-builtins set. Used to validate the
+// `api` field on per-tenant provider overrides; the global-level
+// check lives in checks/providers.ts and uses the same set
+// (intentionally duplicated rather than imported — the two
+// checks have different surrounding context and we want them to
+// fail / pass independently).
+const KNOWN_API_TYPES = new Set([
+  "anthropic-messages",
+  "openai-completions",
+  "openai-responses",
+  "azure-openai-responses",
+  "openai-codex-responses",
+  "mistral-conversations",
+  "google-generative-ai",
+  "google-vertex",
+  "bedrock-converse-stream",
+]);
 
 export interface TenantsCheckOpts {
   /** Override builtinConfig dir (test seam / monorepo dev override). */
@@ -103,6 +122,39 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
         ? `defaultModel override: ${tenantCfg.defaultModel}`
         : undefined,
     });
+
+    // Tenant-level provider catalog validation. Only fires when the
+    // tenant actually overrides `models` — default tenants that
+    // inherit global don't need their own check (the global pass in
+    // checks/providers.ts handles that). We surface bad `api` values
+    // here because that's the field cli-agent / hand-edits get wrong
+    // most often (e.g. "openai-chat" instead of "openai-completions");
+    // pi-ai's runtime error "No API provider registered for api: <bad>"
+    // used to land silently (see fix(chat): surface LLM errors) — even
+    // now that it surfaces, doctor catching it pre-flight lets the
+    // setup agent propose a fix before the user even tries chatting.
+    if (tenantCfg.models?.providers) {
+      for (const [provId, prov] of Object.entries(tenantCfg.models.providers)) {
+        const p = prov as ProviderEntry;
+        if (!p.api) {
+          lines.push({
+            severity: "warning",
+            text: `  ${provId}: \`api\` field missing`,
+            detail: `Add "api": "openai-completions" (or the right one) under tenant '${tenantId}' models.providers.${provId}.`,
+          });
+        } else if (!KNOWN_API_TYPES.has(p.api)) {
+          const suggestion = suggestApiType(p.api);
+          lines.push({
+            severity: "warning",
+            text: `  ${provId}: unknown \`api\` value "${p.api}"`,
+            detail:
+              (suggestion ? `Did you mean "${suggestion}"? ` : "") +
+              `pi-ai accepts: ${[...KNOWN_API_TYPES].sort().join(", ")}. ` +
+              `Edit tenant '${tenantId}' config: models.providers.${provId}.api.`,
+          });
+        }
+      }
+    }
     lines.push({
       severity: "ok",
       text: `  users (${users.length}): ${users.length > 0 ? users.join(", ") : "(none)"}`,
@@ -228,4 +280,26 @@ function mergePlugins(
   tenantPlugins: PluginsConfig | undefined,
 ): PluginsConfig {
   return { ...(globalPlugins ?? {}), ...(tenantPlugins ?? {}) };
+}
+
+/**
+ * Common typos / wrong guesses we've seen real users (and the
+ * cli-agent before it learned the schema) emit. Same map as in
+ * checks/providers.ts; intentionally duplicated to keep the two
+ * checks independently testable.
+ */
+function suggestApiType(bad: string): string | null {
+  const map: Record<string, string> = {
+    "openai-chat": "openai-completions",
+    "chat-completions": "openai-completions",
+    "openai": "openai-completions",
+    "openai-chat-completions": "openai-completions",
+    "anthropic": "anthropic-messages",
+    "claude": "anthropic-messages",
+    "messages": "anthropic-messages",
+    "google": "google-generative-ai",
+    "gemini": "google-generative-ai",
+    "bedrock": "bedrock-converse-stream",
+  };
+  return map[bad.toLowerCase()] ?? null;
 }
