@@ -52,7 +52,15 @@ export interface LogsCmdOpts extends ServiceCmdOpts {
   stream?: "out" | "err" | "both";
 }
 
-const HEALTH_DEADLINE_MS = 60_000;
+// 120 seconds. Cold-start the dev server has to: npm-build
+// plugin-sdk, build 4 plugins, sync builtin configs, run
+// dev-builtins migration, tsx watch + compile server src,
+// then plugins activate. Observed: 90-110s on M3 Ultra (faster)
+// and 60-90s on slower Intel macs. The previous 60s deadline
+// hit `timed out` regularly even though the server came up
+// 30s later. Match the wizard's deadline (start-server.ts) to
+// stay consistent.
+const HEALTH_DEADLINE_MS = 120_000;
 
 /**
  * Resolve the server port the same way the wizard / network
@@ -194,23 +202,46 @@ export async function runStart(
   console.log(`Loaded ${label}.`);
   if (opts.wait !== false) {
     const port = resolveServerPort(repoRoot);
-    process.stdout.write(`Waiting for /api/health on :${port}...`);
-    const ok = await launchd.waitForHealth(
-      port,
-      opts.waitMs ?? HEALTH_DEADLINE_MS,
-    );
-    process.stdout.write(ok ? " up.\n" : " timed out.\n");
+    const deadlineMs = opts.waitMs ?? HEALTH_DEADLINE_MS;
+    const ok = await waitWithProgress(port, deadlineMs);
     if (!ok) {
       console.error(
-        `Server didn't respond within ${
-          (opts.waitMs ?? HEALTH_DEADLINE_MS) / 1000
-        }s. Check logs:`,
+        `\nServer didn't respond within ${deadlineMs / 1000}s. Check logs:`,
       );
+      console.error(`  tianshu logs --stream=err`);
       console.error(`  tail -f ${launchd.logPathsFor(label).err}`);
       return 1;
     }
   }
   return 0;
+}
+
+/**
+ * Render "Waiting for /api/health on :3110... [12s elapsed]"
+ * with the elapsed counter overwriting itself each second.
+ * Users / agents watching the wait can see we're alive and how
+ * long they've waited — first-time installs commonly take
+ * 90+s, easy to think things wedged otherwise.
+ */
+async function waitWithProgress(
+  port: number,
+  deadlineMs: number,
+): Promise<boolean> {
+  const prefix = `Waiting for /api/health on :${port}...`;
+  process.stdout.write(prefix);
+  let lastLine = prefix.length;
+  const ok = await launchd.waitForHealth(port, deadlineMs, (elapsedMs) => {
+    const elapsedSec = Math.floor(elapsedMs / 1000);
+    const totalSec = Math.floor(deadlineMs / 1000);
+    const next = ` ${elapsedSec}s / ${totalSec}s`;
+    // Carriage return + overwrite. Pad to last width to clear
+    // older digits if the new line is shorter.
+    process.stdout.write(`\r${prefix}${next}`);
+    lastLine = prefix.length + next.length;
+    void lastLine;
+  });
+  process.stdout.write(ok ? " up.\n" : " timed out.\n");
+  return ok;
 }
 
 /**
@@ -366,13 +397,13 @@ export async function runRestart(
   console.log(`Restarted ${label}.`);
   if (opts.wait !== false) {
     const port = resolveServerPort(repoRoot);
-    process.stdout.write(`Waiting for /api/health on :${port}...`);
-    const ok = await launchd.waitForHealth(
-      port,
-      opts.waitMs ?? HEALTH_DEADLINE_MS,
-    );
-    process.stdout.write(ok ? " up.\n" : " timed out.\n");
-    if (!ok) return 1;
+    const deadlineMs = opts.waitMs ?? HEALTH_DEADLINE_MS;
+    const ok = await waitWithProgress(port, deadlineMs);
+    if (!ok) {
+      console.error(`\nIf this is a fresh build the cold start can exceed ${deadlineMs / 1000}s.`);
+      console.error(`Check logs:  tianshu logs --stream=err`);
+      return 1;
+    }
   }
   return 0;
 }

@@ -76,6 +76,25 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
     }
   }
 
+  function seedWorker(
+    tenantId: string,
+    slug: string,
+    spec: Record<string, unknown>,
+  ): void {
+    const wdir = path.join(
+      home,
+      "tenants",
+      tenantId,
+      "workspace",
+      "_tenant",
+      "config",
+      "workers",
+      slug,
+    );
+    fs.mkdirSync(wdir, { recursive: true });
+    fs.writeFileSync(path.join(wdir, "agent.json"), JSON.stringify(spec));
+  }
+
   it("warns when no tenants on disk", () => {
     const r = checkTenants({ builtinConfigDir, home });
     expect(r.lines[0]!.severity).toBe("warning");
@@ -146,6 +165,186 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
     const r = checkTenants({ builtinConfigDir, home });
     const header = r.lines.find((l) => l.text === "tenant 'default'");
     expect(header?.detail).toMatch(/openai\/gpt-4o/);
+  });
+
+  it("warns 'workboard: no defaultModel resolvable' when workboard on + no model", () => {
+    // Tenant enables workboard but has no defaultModel and the
+    // (fake) global config also lacks one. Workers without a
+    // per-agent modelId would fail to start LLM runs.
+    seedTenant(
+      "default",
+      { plugins: { workboard: { enabled: true } } },
+      ["dev"],
+    );
+    const r = checkTenants({ builtinConfigDir, home });
+    const w = r.lines.find((l) => l.text.includes("workboard: no defaultModel"));
+    expect(w?.severity).toBe("warning");
+  });
+
+  it("does NOT warn when workboard on + tenant supplies defaultModel", () => {
+    seedTenant(
+      "default",
+      {
+        defaultModel: "qwen/qwen3-max",
+        plugins: { workboard: { enabled: true } },
+      },
+      ["dev"],
+    );
+    const r = checkTenants({ builtinConfigDir, home });
+    expect(r.lines.find((l) => l.text.includes("workboard: no defaultModel"))).toBeUndefined();
+  });
+
+  it("lists each LLM worker with the model it'll resolve", () => {
+    // workboard enabled + multiple workers, one with a per-worker
+    // modelId pin and one inheriting tenant defaultModel.
+    seedTenant(
+      "default",
+      {
+        defaultModel: "qwen/qwen3-max",
+        plugins: { workboard: { enabled: true } },
+        models: {
+          providers: {
+            qwen: {
+              api: "openai-completions",
+              apiKey: "sk-x",
+              baseUrl: "https://x.example/v1",
+              models: [
+                { id: "qwen3-max", contextWindow: 200_000 },
+                { id: "qwen3-coder", contextWindow: 200_000 },
+              ],
+            },
+          },
+        },
+      },
+      ["dev"],
+    );
+    seedWorker("default", "coder", {
+      kind: "llm",
+      enabled: true,
+      modelId: "qwen/qwen3-coder",
+      description: "Implementation worker.",
+    });
+    seedWorker("default", "researcher", {
+      kind: "llm",
+      enabled: true,
+      description: "Research worker.",
+      // no modelId → inherits tenant defaultModel
+    });
+    const r = checkTenants({ builtinConfigDir, home });
+    const lines = r.lines;
+    const coderLine = lines.find((l) => l.text.includes("worker 'coder'"));
+    expect(coderLine?.severity).toBe("ok");
+    expect(coderLine?.text).toMatch(/pinned model qwen\/qwen3-coder/);
+    const researcherLine = lines.find((l) =>
+      l.text.includes("worker 'researcher'"),
+    );
+    expect(researcherLine?.severity).toBe("ok");
+    expect(researcherLine?.text).toMatch(/inherits qwen\/qwen3-max/);
+  });
+
+  it("blocker when a worker pins a modelId not in the catalog", () => {
+    seedTenant(
+      "default",
+      {
+        defaultModel: "qwen/qwen3-max",
+        plugins: { workboard: { enabled: true } },
+        models: {
+          providers: {
+            qwen: {
+              api: "openai-completions",
+              apiKey: "sk-x",
+              baseUrl: "https://x.example/v1",
+              models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+            },
+          },
+        },
+      },
+      ["dev"],
+    );
+    seedWorker("default", "ghost", {
+      kind: "llm",
+      enabled: true,
+      modelId: "ghosthouse/claude-9999",
+      description: "Pins a model that doesn't exist.",
+    });
+    const r = checkTenants({ builtinConfigDir, home });
+    const ghostLine = r.lines.find((l) => l.text.includes("worker 'ghost'"));
+    expect(ghostLine?.severity).toBe("blocker");
+    expect(ghostLine?.text).toMatch(/not in catalog/);
+    expect(ghostLine?.detail).toMatch(/ghosthouse\/claude-9999/);
+  });
+
+  it("skips non-llm workers (e.g. echo demo) from model checks", () => {
+    seedTenant(
+      "default",
+      {
+        defaultModel: "anthropic/claude-x",
+        plugins: { workboard: { enabled: true } },
+        models: {
+          providers: {
+            anthropic: {
+              api: "anthropic-messages",
+              apiKey: "sk-x",
+              models: [{ id: "claude-x", contextWindow: 200_000 }],
+            },
+          },
+        },
+      },
+      ["dev"],
+    );
+    seedWorker("default", "echo-demo", {
+      kind: "echo",
+      enabled: true,
+      description: "Echo doesn't use an LLM.",
+    });
+    const r = checkTenants({ builtinConfigDir, home });
+    expect(
+      r.lines.find((l) => l.text.includes("worker 'echo-demo'")),
+    ).toBeUndefined();
+  });
+
+  it("skips disabled workers from model checks", () => {
+    seedTenant(
+      "default",
+      {
+        defaultModel: "anthropic/claude-x",
+        plugins: { workboard: { enabled: true } },
+        models: {
+          providers: {
+            anthropic: {
+              api: "anthropic-messages",
+              apiKey: "sk-x",
+              models: [{ id: "claude-x", contextWindow: 200_000 }],
+            },
+          },
+        },
+      },
+      ["dev"],
+    );
+    seedWorker("default", "disabled-one", {
+      kind: "llm",
+      enabled: false,
+      modelId: "ghosthouse/whatever", // would normally blocker
+      description: "Pinned to bad model but disabled.",
+    });
+    const r = checkTenants({ builtinConfigDir, home });
+    expect(
+      r.lines.find((l) => l.text.includes("worker 'disabled-one'")),
+    ).toBeUndefined();
+  });
+
+  it("warns when deprecated `worker:` block is set on tenant config", () => {
+    seedTenant(
+      "default",
+      {
+        worker: { count: 2, pollMs: 5000, model: "anthropic/x" },
+        plugins: {},
+      },
+      ["dev"],
+    );
+    const r = checkTenants({ builtinConfigDir, home });
+    const w = r.lines.find((l) => l.text.includes("deprecated 'worker'"));
+    expect(w?.severity).toBe("warning");
   });
 });
 
@@ -268,6 +467,247 @@ describe("checkProviders", () => {
     const r = await checkProviders({ config: cfg });
     const defLine = r.lines.find((l) => l.text.includes("defaultModel"));
     expect(defLine?.severity).toBe("blocker");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warning when provider's `api` field is missing", async () => {
+    process.env.TIANSHU_TEST_KEY_OK = "sk-test-12345678";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          qwen: {
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            baseUrl: "https://x.example/v1",
+            models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const apiLine = r.lines.find((l) => l.text.includes("api` field missing"));
+    expect(apiLine?.severity).toBe("warning");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warning + 'did you mean' for the most common typo (openai-chat)", async () => {
+    // The actual paper-cut from field testing: cli-agent guessed "openai-chat".
+    // pi-ai then threw "No API provider registered for api: openai-chat"
+    // at first chat send. Doctor should catch it pre-flight with an
+    // actionable hint.
+    process.env.TIANSHU_TEST_KEY_OK = "sk-test-12345678";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          qwen: {
+            api: "openai-chat",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const apiLine = r.lines.find((l) => l.text.includes("unknown"));
+    expect(apiLine?.severity).toBe("warning");
+    expect(apiLine?.text).toContain("openai-chat");
+    expect(apiLine?.detail).toContain("openai-completions");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("ok line for a valid pi-ai api value (openai-completions)", async () => {
+    process.env.TIANSHU_TEST_KEY_OK = "sk-test-12345678";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          qwen: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    // No warning about api or unknown.
+    const apiWarn = r.lines.find(
+      (l) =>
+        l.severity === "warning" &&
+        (l.text.includes("unknown") || l.text.includes("api` field missing")),
+    );
+    expect(apiWarn).toBeUndefined();
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("skips ctx/max checks for image-gen models (different semantics)", async () => {
+    // image-gen models legitimately have max > ctx: ctx is the
+    // text-prompt window (often 32k), max bounds the per-image
+    // generation token budget (can exceed text ctx). Caught when
+    // doctor's invariant rejected google/gemini-3-pro-image-preview
+    // at server startup — documented values, not a bug.
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          google: {
+            api: "google-generative-ai",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [
+              {
+                id: "gemini-3-pro-image-preview",
+                mode: "image-gen",
+                contextWindow: 32_768,
+                maxTokens: 65_536, // would normally trip the blocker
+              },
+            ],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const blocker = r.lines.find((l) =>
+      l.text.includes("gemini-3-pro-image-preview"),
+    );
+    expect(blocker).toBeUndefined();
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("blocker when maxTokens > contextWindow (logically impossible)", async () => {
+    // Caught real values in a local config (gemini image-preview
+    // entries had ctx=32768, max=65536 — either a swap or stale
+    // copy). Output cap can't exceed the whole window.
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          openai: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [
+              { id: "weird-model", contextWindow: 32_768, maxTokens: 65_536 },
+            ],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const inv = r.lines.find((l) =>
+      l.text.includes("maxTokens (65536) > contextWindow (32768)"),
+    );
+    expect(inv?.severity).toBe("blocker");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warns when contextWindow or maxTokens is missing", async () => {
+    // Server falls back to 128_000 / 4_096; surface so user
+    // doesn't silently leave capability on the floor.
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          openai: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [{ id: "model-without-limits" } as never],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const ctxWarn = r.lines.find((l) =>
+      l.text.includes("contextWindow not set"),
+    );
+    const mxWarn = r.lines.find((l) => l.text.includes("maxTokens not set"));
+    expect(ctxWarn?.severity).toBe("warning");
+    expect(mxWarn?.severity).toBe("warning");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warns 'below known ceiling' when catalog value is lower than known-models.md", async () => {
+    // Catalog says 8192, table says 32768 — soft warning, not
+    // blocker. Reproduces the paper-cut surfaced in testing where
+    // qwen3-max-preview shipped with maxTokens=8192 even though
+    // dashscope supports 32k.
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          dashscope: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [
+              {
+                id: "qwen3-max-preview", // matches the table row
+                contextWindow: 256_000,
+                maxTokens: 8_192, // table records 32_768
+              },
+            ],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const w = r.lines.find((l) =>
+      l.text.includes("maxTokens=8192 below known ceiling"),
+    );
+    expect(w?.severity).toBe("warning");
+    expect(w?.detail).toContain("32768");
+    expect(w?.detail).toContain("docs/known-models.md");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warns when maxTokens is suspiciously low (<4096)", async () => {
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          dashscope: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [
+              {
+                id: "stale-model",
+                contextWindow: 256_000,
+                maxTokens: 2_048, // stale; real provider supports more
+              },
+            ],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const lowWarn = r.lines.find((l) => l.text.includes("looks low"));
+    expect(lowWarn?.severity).toBe("warning");
+    expect(lowWarn?.text).toContain("2048");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warns when deprecated `worker:` block is set on global config", async () => {
+    // worker.{count,pollMs,model} was kept for backwards-compat but
+    // has no runtime consumers (see core/config.ts deprecation
+    // comment). Doctor must surface it so the user / cli-agent
+    // don't think they're actually configuring anything when they
+    // set those keys.
+    process.env.TIANSHU_TEST_KEY_OK = "sk-test-12345678";
+    const cfg: GlobalConfig = {
+      defaultModel: "qwen/qwen3-max",
+      models: {
+        providers: {
+          qwen: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            baseUrl: "https://x.example/v1",
+            models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+          },
+        },
+      },
+      worker: { count: 2, pollMs: 5000, model: "anthropic/x" },
+    };
+    const r = await checkProviders({ config: cfg });
+    const w = r.lines.find((l) => l.text.includes("deprecated 'worker'"));
+    expect(w?.severity).toBe("warning");
+    expect(w?.detail).toMatch(/no runtime effect/);
     delete process.env.TIANSHU_TEST_KEY_OK;
   });
 });

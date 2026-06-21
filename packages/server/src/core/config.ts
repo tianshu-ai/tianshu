@@ -45,6 +45,21 @@ export interface OverridableConfig {
    * never sit in memory longer than necessary).
    */
   models?: ModelsCatalog;
+  /**
+   * @deprecated 2026-06-21 — never wired up in the open-source
+   *   repo. The three sub-keys (count / pollMs / model) had no
+   *   runtime consumers: workboard sizes its pool from the
+   *   agent-seeds bundle (one worker per enabled agent.json),
+   *   there is no polling (task ready queue is SQLite-driven),
+   *   and model selection is per-worker via agent.json's
+   *   `modelId` (falling back to the resolved tenant
+   *   defaultModel). Field kept in the type for backwards
+   *   compat (so config files that already set it don't fail to
+   *   parse), but doctor flags it as ignored and cli-agent
+   *   refuses to write it. If/when an actual cross-cutting
+   *   worker config is needed, wire the consumers first and
+   *   then resurrect with a real shape.
+   */
   worker?: WorkerSettings;
   oauth?: OAuthProviderConfig[];
   branding?: BrandingConfig;
@@ -249,6 +264,40 @@ export function resolveTenantConfig(tenantId: string, home: string = getTianshuH
  *   single keys without restating the whole object.
  */
 export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): ResolvedConfig {
+  // models is wholesale-replace, not deep-merge: tenants typically
+  // bring their own provider catalog (different SAP gateway, qwen
+  // dashscope, etc.) and don't want to inherit global's anthropic /
+  // openai entries that almost certainly use a different key. So
+  // when tenant.models is set, it replaces global.models entirely.
+  const models = tenant.models ?? global.models;
+
+  // defaultModel needs to follow models. If the tenant supplies its
+  // own catalog and DOESN'T set defaultModel, falling back to
+  // global.defaultModel points at a provider that no longer exists
+  // in the resolved catalog — every chat request then 500s with
+  // "unknown provider". Mismatch caught 2026-06-21 on a tenant
+  // that defined `qwen` only; defaultModel inherited as
+  // 'anthropic/claude-sonnet-4-6' from global.
+  //
+  // Resolution rule:
+  //   1. tenant.defaultModel wins outright if set
+  //   2. else, if tenant brought its own models, pick the first
+  //      provider/model in that catalog (deterministic: tenant
+  //      author has full control by ordering)
+  //   3. else, inherit global.defaultModel (the original behaviour
+  //      for tenants that don't override models)
+  let defaultModel = tenant.defaultModel ?? global.defaultModel;
+  if (!tenant.defaultModel && tenant.models && models?.providers) {
+    const firstProviderId = Object.keys(models.providers)[0];
+    const firstProvider = firstProviderId
+      ? models.providers[firstProviderId]
+      : undefined;
+    const firstModelId = firstProvider?.models?.[0]?.id;
+    if (firstProviderId && firstModelId) {
+      defaultModel = `${firstProviderId}/${firstModelId}`;
+    }
+  }
+
   return {
     // global-only — never touched by tenant
     server: global.server,
@@ -257,8 +306,8 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     builtinConfigDir: global.builtinConfigDir,
 
     // overridable — tenant wins
-    defaultModel: tenant.defaultModel ?? global.defaultModel,
-    models: tenant.models ?? global.models,
+    defaultModel,
+    models,
     worker: { ...global.worker, ...tenant.worker },
     oauth: tenant.oauth ?? global.oauth,
     branding: { ...global.branding, ...tenant.branding },

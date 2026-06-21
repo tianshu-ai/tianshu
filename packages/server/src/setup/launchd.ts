@@ -18,7 +18,7 @@
 //     for everything else). This lets a developer with multiple
 //     clones run them side by side without label collisions —
 //     which is exactly the situation that motivated this whole
-//     refactor (yuyu had a `tianshu` clone and a
+//     refactor (a developer with both a `tianshu` clone and a
 //     `tianshu_opensource` clone, both wanted the dev label).
 //   - Functions return structured results, never throw on
 //     "service isn't loaded" / "plist doesn't exist" type
@@ -360,15 +360,22 @@ export async function probeHealth(
  * Block until /api/health responds OK (or deadline hits).
  * Returns true on success. Used by `tianshu start --wait` and
  * the wizard.
+ *
+ * Optional `onProgress` fires once a second with the elapsed
+ * deadline. The CLI uses it to update its spinner so users
+ * watching the wait know we're still alive (cold builds take
+ * ~90s, agent / user otherwise panics around 30-40s).
  */
 export async function waitForHealth(
   serverPort: number,
   deadlineMs: number,
+  onProgress?: (elapsedMs: number, deadlineMs: number) => void,
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < deadlineMs) {
     const r = await probeHealth(serverPort);
     if (r.ok) return true;
+    onProgress?.(Date.now() - start, deadlineMs);
     await new Promise((r) => setTimeout(r, 1000));
   }
   return false;

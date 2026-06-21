@@ -782,7 +782,34 @@ function bridgeHarnessEventToWs(
 
   // Surface stream-level errors as the legacy stream_error so the
   // UI handles them the same way it always has.
-  if (lowType === "agent_end" || lowType === "settled") {
+  //
+  // pi-agent-core encodes LLM failures (401, rate limit, network,
+  // anything thrown by the streamFn) by setting stopReason="error"
+  // + errorMessage on the final AssistantMessage — then it emits
+  // a normal `agent_end`. If we don't introspect agent_end, the
+  // server happily reports stream_end with an empty assistant body,
+  // the UI re-enables the send button, and the user can't tell
+  // why nothing came back. Caught 2026-06-21 on a tenant whose
+  // qwen apiKey was placeholder text (`sk-4e8…581e`); dashscope
+  // 401'd, pi flagged the assistant with stopReason="error", server
+  // returned a silent empty bubble.
+  if (lowType === "agent_end") {
+    const messages = (event as { messages: AgentMessage[] }).messages;
+    const last = messages[messages.length - 1];
+    if (
+      last &&
+      last.role === "assistant" &&
+      (last.stopReason === "error" || last.stopReason === "aborted")
+    ) {
+      const reason =
+        last.errorMessage ??
+        `assistant turn ended with stopReason=${last.stopReason}`;
+      send({ type: "stream_error", reason });
+      onStreamError();
+    }
+    return;
+  }
+  if (lowType === "settled") {
     return;
   }
 }

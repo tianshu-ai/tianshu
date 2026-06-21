@@ -86,7 +86,7 @@ export interface WizardOpts {
    *     placeholder string and the user has to chase the
    *     env-var resolution to find out *whether the key is
    *     even present*. We watched this happen on a real user
-   *     machine (i070219, 2026-06-20).
+   *     (encountered during field testing, 2026-06-20).
    * Default to literal-in-config because that's debuggable
    * (`config_read` shows it), atomic (one file), and
    * permissioned (chmod 600 — see writeJsonAtomic). Users
@@ -448,7 +448,7 @@ export async function runSetupWizard(
       // Default mode: key was written into config.json by
       // buildConfig above. Tell the user where it landed so
       // there's no ambiguity (this was the failure mode on
-      // i070219: user couldn't tell where the key was supposed
+      // Field testing: user couldn't tell where the key was supposed
       // to live).
       if (apiKey) {
         notes.push(

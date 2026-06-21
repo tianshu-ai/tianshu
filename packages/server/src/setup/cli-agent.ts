@@ -45,7 +45,13 @@ import {
   getDefaultModel,
   resolveApiKey,
 } from "../core/llm.js";
-import { loadGlobalConfig, type GlobalConfig } from "../core/config.js";
+import {
+  loadGlobalConfig,
+  writeGlobalConfig,
+  writeTenantConfig,
+  TenantConfigForbiddenFieldError,
+  type GlobalConfig,
+} from "../core/config.js";
 import {
   getTenantsRoot,
   getTianshuHome,
@@ -111,6 +117,39 @@ install\` in another terminal then re-run setup').
 
 Domain knowledge you must apply when relevant:
 
+GLOBAL VS TENANT CONFIG (config_read / config_write):
+- Two scopes live side by side:
+  * GLOBAL = ~/.tianshu/config.json. System-wide. Controls server port,
+    logging, the *baseline* provider catalog (models.providers), the
+    baseline default model, autoCreateDefault. New tenants inherit
+    everything in here unless they override.
+  * TENANT = ~/.tianshu/tenants/<id>/config.json. Per-tenant. Can
+    override the overridable subset: plugins (enable/disable per
+    tenant), models (a tenant-specific catalog that wholesale-
+    replaces global's), defaultModel, branding, apiKeys, mcp.
+    Tenants CAN'T set server.port / logging / autoCreateDefault —
+    those are GlobalOnlyConfig; writeTenantConfig rejects them.
+- Which one to write to when a user asks for something:
+  * "add a provider" / "set the default model" / "server settings"
+    → GLOBAL, unless the user explicitly says "for tenant X".
+    GLOBAL is the right default for first-time setup and most
+    config changes; new tenants will inherit from there.
+  * "enable / disable a plugin for me" or "for my tenant"
+    → TENANT. Plugin enablement is per-tenant.
+  * "my tenant should use a different model than everyone else"
+    → TENANT. Set defaultModel on the tenant; also set
+    models.providers on the tenant if the model isn't in global.
+  * Bad \`api\` value flagged by run_doctor: the doctor output
+    tells you which scope ('LLM providers' section = global,
+    'Tenants & plugins' section = tenant) — fix it at the same
+    scope it was reported.
+- Both scopes use shallow top-level merge: \`config_write\` reads the
+  existing file, spreads it, overlays your patch, writes back. So
+  a patch like \`{"defaultModel": "x"}\` only touches that one key.
+- Trying to set a global-only field on a tenant returns
+  \`error: tenant_forbidden_field\` with a hint. Switch to
+  which='global' and retry.
+
 WEB SEARCH (web-search plugin):
 - API keys go to SECRETS, not regular config. Use \`secret_write\`
   with pluginId='web-search' and key='tavilyApiKey' (Tavily) or
@@ -118,6 +157,108 @@ WEB SEARCH (web-search plugin):
   config.json is committable, secrets/ is not.
 - Check \`secret_list\` first to see what's already configured
   before asking the user for a key.
+
+PROVIDERS / MODELS (config.json's \`models.providers\` map):
+- The \`api\` field MUST be a value pi-ai recognises. The only
+  ones in current use are:
+  * \`openai-completions\` — use for OpenAI itself AND for any
+    OpenAI-compatible vendor: dashscope, deepseek, moonshot,
+    siliconflow, together, groq, llama-server, ollama, anything
+    that exposes \`/v1/chat/completions\`. The name is
+    confusingly historical — it points at \`/v1/chat/completions\`
+    not the legacy \`/v1/completions\`. Use this whenever the
+    upstream advertises "OpenAI-compatible".
+  * \`anthropic-messages\` — Anthropic native API (\`/v1/messages\`).
+  * \`google-generative-ai\` — Google Gemini native API.
+  * \`openai-responses\` — OpenAI's newer Responses API. Only
+    use when the user explicitly wants it; the default for
+    OpenAI itself is still \`openai-completions\`.
+  Common typos to NEVER write: "openai-chat" (does not exist),
+  "chat-completions" (does not exist), "openai" (no api type).
+- A typical OpenAI-compatible provider entry looks like:
+    "qwen": {
+      "api": "openai-completions",
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "apiKey": "sk-...",
+      "group": "Cloud",
+      "models": [
+        { "id": "qwen3-max-preview", "name": "Qwen3 Max Preview",
+          "contextWindow": 256000, "maxTokens": 8192 }
+      ]
+    }
+  baseUrl is the *prefix* before /chat/completions — NOT the full
+  endpoint URL. pi-ai appends the path itself.
+- defaultModel must point at a model that exists in the catalog:
+  "defaultModel": "qwen/qwen3-max-preview" matches
+  models.providers.qwen.models[].id = "qwen3-max-preview".
+  If the tenant overrides \`models\` but doesn't set defaultModel,
+  the server auto-picks the first provider's first model, but
+  setting defaultModel explicitly is clearer and survives catalog
+  edits.
+- apiKey can be a literal string (default since 2026-06; lands
+  in config.json which is chmod 600) or a \`\${ENV_VAR}\`
+  placeholder if the user opted into --use-env mode.
+- Each model entry SHOULD carry \`contextWindow\` and \`maxTokens\`
+  (both in tokens). Meaning:
+  * \`contextWindow\` = total token budget for the request
+    (system prompt + history + tools + the new response). The
+    server uses this for context-overflow detection.
+  * \`maxTokens\` = the per-response output cap sent to the
+    provider as max_tokens / generation_config.max_output_tokens.
+    Truncates generation at this many tokens.
+  Rules:
+  * maxTokens MUST be ≤ contextWindow (doctor flags inversion
+    as a blocker).
+  * If either field is missing the server falls back to 128_000 /
+    4_096 (see core/llm.ts buildModelInfoFromEntry). Modern
+    models support much more on both axes — leaving them blank
+    silently caps real capability.
+  * When the user asks to "set them to the max" or when doctor
+    flags either field as missing / suspiciously low / below the
+    known ceiling: FIRST look at \`docs/known-models.md\` in the
+    tianshu repo. That file is a curated reference with source
+    URLs and lastVerified dates; if it has the model id, use
+    those values. If the model id isn't in the table, fall back
+    to fetching the provider's docs (web_fetch / web_search
+    when available) and PR the new row into known-models.md
+    along with the catalog update so the next setup gets the
+    benefit.
+  * Do NOT guess from memory — these limits drift release-over-
+    release (we've seen qwen3-max-preview ship at maxTokens=8192
+    in catalogs while the provider already supported 32k).
+  * If you can't reach the docs in this session, ask the user
+    to paste them, or fill in conservative round numbers and
+    note in the response that these are placeholders to verify
+    against the provider's docs.
+  * Doctor's "below known ceiling" warning is a *suggestion*,
+    not a blocker. If the user picked a lower cap deliberately
+    (cost control, slow models, etc.), respect their choice —
+    don't auto-bump on their behalf, just confirm they meant it.
+
+WORKBOARD WORKERS (workboard plugin):
+- When the user enables workboard, the LLM worker pool starts up
+  with one worker per enabled \`agent.json\` in the tenant's
+  agent-seeds bundle. There is no "worker count" setting at the
+  config level — if the user wants more workers, they add more
+  agent.json files. The cli-agent doesn't manage agent files
+  directly; that's the user / chat agent's job.
+- Each LLM worker picks its model in this order:
+    1. \`modelId\` field in the worker's own agent.json (per-worker
+       override; rare)
+    2. resolved tenant defaultModel (\`tenant.defaultModel\` else
+       auto-pick from tenant.models else global.defaultModel)
+- If \`run_doctor\` says "workboard: no defaultModel resolvable",
+  set tenant.defaultModel (via \`config_write\` which='tenant')
+  or global.defaultModel (which='global'). Don't try to find a
+  worker-specific setting; there isn't one.
+- The schema still carries a \`worker: { count, pollMs, model }\`
+  field for backwards compat. It has NO runtime effect; doctor
+  flags it as deprecated. Do not write to it. If a user asks to
+  "configure worker count / polling / model", explain that those
+  are not real settings in this build, and steer them toward
+  what actually matters: tenant.defaultModel for which model the
+  workers use, and the agent-seeds bundle for how many workers
+  there are.
 
 MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
 - microsandbox uses TWO sandbox role pointers: 'task' (per-task
@@ -281,7 +422,13 @@ async function serverFetch(
   }
 }
 
-function buildTools(
+/**
+ * Exported for tests only — production callers go through
+ * runSetupAgent, which constructs tools and the system prompt
+ * together. Tests can grab a single tool's `execute` to verify
+ * its behaviour in isolation.
+ */
+export function buildTools(
   home: string,
   serverUrl: string | undefined,
 ): Record<string, ToolHandler> {
@@ -517,30 +664,65 @@ function buildTools(
     config_write: {
       mutating: true,
       describe: (args) => {
+        const which = String(args.which ?? "tenant");
         const patch = (args.patch as Record<string, unknown>) ?? {};
         const keys = Object.keys(patch).join(", ") || "(empty patch)";
+        if (which === "global") {
+          return `Patch ~/.tianshu/config.json (keys: ${keys})`;
+        }
         return `Patch tenant '${String(args.tenantId ?? "?")}' config (keys: ${keys})`;
       },
       schema: {
         name: "config_write",
         description:
-          "Write a tenant config (~/.tianshu/tenants/<id>/config.json) by merging the supplied object into the existing file. Top-level keys in the patch overwrite the existing values; non-mentioned keys are preserved. Use this to set web-search API keys, change defaultModel, etc.",
+          "Write a config file by merging the supplied object into the existing file. Top-level keys in the patch overwrite existing values; non-mentioned keys are preserved (shallow merge).\n\n  which='global' → ~/.tianshu/config.json. Use this for cross-tenant settings: the server-wide provider catalog (models.providers), the default model, server-only fields (server.port, logging.level, autoCreateDefault), or to fix a bad `api` value doctor flagged on the global pass.\n  which='tenant' → ~/.tianshu/tenants/<id>/config.json. Use for per-tenant overrides: enabling/disabling plugins for one tenant, giving one tenant a different defaultModel, swapping in a tenant-specific provider catalog. Requires `tenantId`.\n\nGoes through the same write path the server uses (writeGlobalConfig / writeTenantConfig), so the tenant write enforces the OverridableConfig whitelist: trying to set server.port / logging on a tenant returns a TenantConfigForbiddenFieldError and the patch is rejected.",
         parameters: {
           type: "object",
           properties: {
-            tenantId: { type: "string" },
+            which: {
+              type: "string",
+              enum: ["global", "tenant"],
+              description:
+                "'global' = ~/.tianshu/config.json (system-wide). 'tenant' = ~/.tianshu/tenants/<id>/config.json (per-tenant). Defaults to 'tenant' for backward compatibility, but be explicit — the agent's earlier behaviour silently assumed tenant which was wrong when the user wanted a global change.",
+            },
+            tenantId: {
+              type: "string",
+              description: "Required when which='tenant'.",
+            },
             patch: {
               type: "object",
               description:
                 "Object to merge into the existing config (top-level shallow merge).",
             },
           },
-          required: ["tenantId", "patch"],
+          required: ["patch"],
         } as never,
       },
       execute: async (args) => {
-        const tenantId = String(args.tenantId);
+        const which = String(args.which ?? "tenant");
         const patch = (args.patch as Record<string, unknown>) ?? {};
+        if (which === "global") {
+          // Read-merge-write so partial patches don't drop
+          // existing keys (preserves the documented shallow-
+          // merge semantics).
+          const cfg = readJsonOrEmpty(getGlobalConfigPath(home)) as GlobalConfig;
+          const merged = { ...cfg, ...patch } as GlobalConfig;
+          writeGlobalConfig(merged, home);
+          return JSON.stringify({
+            which: "global",
+            path: getGlobalConfigPath(home),
+            patched: Object.keys(patch),
+          });
+        }
+        // tenant
+        const tenantId = String(args.tenantId ?? "");
+        if (!tenantId) {
+          return JSON.stringify({
+            error: "missing_tenant_id",
+            message:
+              "which='tenant' requires tenantId. Pass which='global' if you meant the global config.",
+          });
+        }
         const cfgPath = path.join(
           getTenantsRoot(home),
           tenantId,
@@ -548,8 +730,23 @@ function buildTools(
         );
         const cfg = readJsonOrEmpty(cfgPath);
         const merged = { ...cfg, ...patch };
-        writeJsonAtomic(cfgPath, merged);
-        return JSON.stringify({ tenantId, patched: Object.keys(patch) });
+        try {
+          writeTenantConfig(tenantId, merged, home);
+        } catch (err) {
+          if (err instanceof TenantConfigForbiddenFieldError) {
+            return JSON.stringify({
+              error: "tenant_forbidden_field",
+              message: err.message,
+              hint: "That field can only be set on the global config (which='global'). Tenants override the catalog of models / plugins / branding only.",
+            });
+          }
+          throw err;
+        }
+        return JSON.stringify({
+          which: "tenant",
+          tenantId,
+          patched: Object.keys(patch),
+        });
       },
     },
     secret_list: {

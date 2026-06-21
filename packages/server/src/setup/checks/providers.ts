@@ -12,6 +12,7 @@ import {
   type ProviderEntry,
 } from "../../core/config.js";
 import { CheckGroup } from "../render.js";
+import { loadKnownModels } from "./known-models.js";
 
 export interface ProvidersCheckOpts {
   home?: string;
@@ -23,6 +24,46 @@ export interface ProvidersCheckOpts {
 }
 
 const PLACEHOLDER_PATTERN = /^\$\{([A-Z_][A-Z0-9_]*)(?::-(.*))?\}$/;
+
+/**
+ * The `api` values pi-ai's register-builtins.ts knows. Anything
+ * outside this set throws "No API provider registered" at first
+ * use. Mirrored manually rather than imported because pi-ai
+ * doesn't export the list — if pi adds a new api, refresh this
+ * set + the suggestion map below.
+ */
+const KNOWN_API_TYPES = new Set([
+  "anthropic-messages",
+  "openai-completions",
+  "openai-responses",
+  "azure-openai-responses",
+  "openai-codex-responses",
+  "mistral-conversations",
+  "google-generative-ai",
+  "google-vertex",
+  "bedrock-converse-stream",
+]);
+
+/**
+ * Common typos / wrong guesses we've seen real users (and the
+ * cli-agent before it learned the schema) emit, mapped to the
+ * actual value. Returned as a one-line "did you mean" hint.
+ */
+function suggestApiType(bad: string): string | null {
+  const map: Record<string, string> = {
+    "openai-chat": "openai-completions",
+    "chat-completions": "openai-completions",
+    "openai": "openai-completions",
+    "openai-chat-completions": "openai-completions",
+    "anthropic": "anthropic-messages",
+    "claude": "anthropic-messages",
+    "messages": "anthropic-messages",
+    "google": "google-generative-ai",
+    "gemini": "google-generative-ai",
+    "bedrock": "bedrock-converse-stream",
+  };
+  return map[bad.toLowerCase()] ?? null;
+}
 
 interface ResolvedKey {
   literal: string | null;
@@ -81,6 +122,33 @@ export async function checkProviders(
 
   for (const id of ids) {
     const entry = providers[id] as ProviderEntry;
+
+    // The `api` field MUST be one of the values pi-ai's
+    // register-builtins.ts hard-codes. A typo here (most often
+    // `openai-chat` from agent-generated configs, but also seen:
+    // `chat-completions`, `openai`, bare `gpt`) makes pi throw
+    // "No API provider registered for api: <bad>" at first
+    // chat send. The error surfaces via stream_error now, but
+    // doctor should catch it pre-flight so the user / setup
+    // agent doesn't have to discover it the painful way.
+    if (!entry.api) {
+      lines.push({
+        severity: "warning",
+        text: `${id}: \`api\` field missing`,
+        detail: `Add "api": "openai-completions" (or the right one for this provider) under \`models.providers.${id}\` in config.json.`,
+      });
+    } else if (!KNOWN_API_TYPES.has(entry.api)) {
+      const suggestion = suggestApiType(entry.api);
+      lines.push({
+        severity: "warning",
+        text: `${id}: unknown \`api\` value "${entry.api}"`,
+        detail:
+          (suggestion ? `Did you mean "${suggestion}"? ` : "") +
+          `pi-ai accepts: ${[...KNOWN_API_TYPES].sort().join(", ")}. ` +
+          `Edit \`models.providers.${id}.api\` in config.json.`,
+      });
+    }
+
     const resolved = resolveKey(entry.apiKey);
     if (!resolved.literal) {
       lines.push({
@@ -96,6 +164,101 @@ export async function checkProviders(
     const baseDetail = resolved.envVar
       ? `${modelCount} model(s); key from \${${resolved.envVar}}`
       : `${modelCount} model(s)`;
+
+    // Per-model contextWindow / maxTokens sanity. We don't try
+    // to maintain a "known correct" table here — provider docs
+    // change weekly and a stale curated list would mislead users
+    // who know better. Three checks instead, all internal:
+    //
+    //   1. logically-impossible: maxTokens > contextWindow.
+    //      Output can't be bigger than the whole window; this is
+    //      always a copy-paste error.
+    //   2. missing fields: server falls back to 128_000 / 4_096
+    //      (see core/llm.ts buildModelInfoFromEntry). Caught
+    //      this 2026-06-21 on dashscope/qwen3-max-preview which
+    //      had maxTokens=8192 in catalog; pi-ai would have
+    //      capped at that even though dashscope itself allows
+    //      32768. Tell the user the field is missing so they
+    //      can fill in the real upper bound from provider docs.
+    //   3. suspiciously small: maxTokens < 4096. Modern models
+    //      are all far above this; if you wrote 1024 / 2048 /
+    //      4096 it's almost certainly stale and you're leaving
+    //      capability on the floor. Soft hint, not a block.
+    //
+    // Each line scoped under the provider so the cli-agent's
+    // doctor JSON keeps provider → model nesting via section
+    // adjacency.
+    const known = loadKnownModels();
+    for (const m of entry.models ?? []) {
+      const fullId = `${id}/${m.id}`;
+      // image-gen models have a fundamentally different
+      // ctx/max semantics: ctx is text-prompt context (often
+      // small, e.g. 32k), and `maxTokens` is the per-image
+      // generation budget (counts internal image tokens, can
+      // legitimately exceed ctx). Skip the consistency check
+      // for these; doctor still surfaces the model in the
+      // listing but doesn't enforce ctx>=max. Caught when our
+      // own startup-time invariant rejected
+      // google/gemini-3-pro-image-preview which has
+      // ctx=32768, max=65536 — documented values, not a bug.
+      if (m.mode === "image-gen") {
+        continue;
+      }
+      const ctx = m.contextWindow;
+      const mx = m.maxTokens;
+      const ref = known.get(m.id);
+      if (typeof ctx === "number" && typeof mx === "number" && mx > ctx) {
+        lines.push({
+          severity: "blocker",
+          text: `  ${fullId}: maxTokens (${mx}) > contextWindow (${ctx})`,
+          detail:
+            "maxTokens is the *output* cap; contextWindow is the entire window (input + output). Output can't exceed the window. Check the provider's docs for both values — this is almost always a swap or stale copy.",
+        });
+      } else {
+        if (typeof ctx !== "number") {
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: contextWindow not set`,
+            detail:
+              "Server falls back to 128_000 tokens. Most current models support 200k–1M+; check the provider's docs and set the real value to avoid silent truncation on long inputs." +
+              (ref ? ` docs/known-models.md records ${ref.contextWindow} for this model id (verified ${ref.lastVerified}).` : ""),
+          });
+        } else if (ref && ctx < ref.contextWindow) {
+          // Soft suggestion: catalog set a smaller window than
+          // the table records. We don't push above the table
+          // (user might know something we don't); we only suggest
+          // bumping up.
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: contextWindow=${ctx} below known ceiling`,
+            detail: `docs/known-models.md records ${ref.contextWindow} for ${m.id} (verified ${ref.lastVerified}; source ${ref.source}). Bump if you want full window.`,
+          });
+        }
+        if (typeof mx !== "number") {
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: maxTokens not set`,
+            detail:
+              "Server falls back to 4_096 output tokens — modern models support far more (8k–64k+ depending on the model). Check the provider's docs and set the real upper bound so long responses don't get truncated." +
+              (ref ? ` docs/known-models.md records ${ref.maxTokens} for this model id (verified ${ref.lastVerified}).` : ""),
+          });
+        } else if (mx < 4096) {
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: maxTokens=${mx} looks low`,
+            detail:
+              "Most modern models support ≥8192 output tokens (many 32k+). If this isn't a deliberate per-model cap, check the provider's docs and bump it." +
+              (ref ? ` docs/known-models.md records ${ref.maxTokens} (verified ${ref.lastVerified}).` : ""),
+          });
+        } else if (ref && mx < ref.maxTokens) {
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: maxTokens=${mx} below known ceiling`,
+            detail: `docs/known-models.md records ${ref.maxTokens} for ${m.id} (verified ${ref.lastVerified}; source ${ref.source}). Bump if you want full output capacity.`,
+          });
+        }
+      }
+    }
 
     if (opts.probe) {
       const probeRes = await probeProvider(id, entry, opts.probeTimeoutMs ?? 5000);
@@ -145,6 +308,20 @@ export async function checkProviders(
         detail: `\`${def}\` — provider id is "${provId ?? "(missing /)"}"; known: ${ids.join(", ")}`,
       });
     }
+  }
+
+  // Deprecated `worker:` block on global config — same fate as on
+  // tenant configs; flag so users / cli-agent don't think they're
+  // configuring anything real.
+  if ((config as { worker?: unknown }).worker !== undefined) {
+    const w = (config as { worker?: Record<string, unknown> }).worker ?? {};
+    const keys = Object.keys(w).join(", ") || "(empty)";
+    lines.push({
+      severity: "warning",
+      text: `deprecated 'worker' field set (keys: ${keys})`,
+      detail:
+        "The `worker.{count,pollMs,model}` field has no runtime effect in the open-source repo. Workboard sizes the pool from agent-seeds (one worker per enabled agent.json) and selects model per-worker via agent.json's modelId, falling back to the resolved defaultModel. Safe to delete from config.json.",
+    });
   }
 
   return { title: "LLM providers", lines };
