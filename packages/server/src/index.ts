@@ -25,12 +25,14 @@ import {
   GlobalOps,
   McpManager,
   TenantNotFoundError,
+  computeServerEffectivePublicUrl,
   ensureTenantConfigDefaults,
   getDefaultModel,
   listModels,
   loadGlobalConfig,
   runIdentityChain,
   tenantMiddleware,
+  writeGlobalConfig,
 } from "./core/index.js";
 import { buildReloadingBuiltinResolver, PluginRegistry } from "./core/plugins/index.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
@@ -746,12 +748,61 @@ if (webDistRaw && webDistRaw.length > 0) {
   }
 }
 
+// Whether this process is the one hosting the SPA. Set by
+// `bin/serve.mjs` (prod / global install) to the path of the
+// bundled web dist; left unset in dev where vite hosts the
+// SPA on its own port. We compute this once at boot and
+// publish the resulting URL into global config (see below) so
+// out-of-process CLI commands can print the right URL.
+const spaHosted = Boolean(
+  process.env.TIANSHU_WEB_DIST && process.env.TIANSHU_WEB_DIST.length > 0,
+);
+
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`[tianshu] server listening on http://localhost:${PORT}`);
   // eslint-disable-next-line no-console
   console.log(`[tianshu] websocket at ws://localhost:${PORT}/ws`);
+  publishEffectivePublicUrl();
 });
+
+/**
+ * Write `server.effectivePublicUrl` into the global config so
+ * out-of-process CLI commands (`tianshu tenant list`, doctor,
+ * etc.) can print the URL that actually opens the SPA without
+ * having to re-derive dev/prod heuristically.
+ *
+ * Idempotent: only writes when the value changes. We never
+ * touch the operator-declared `server.publicUrl` field — that
+ * one is for stable public URLs (Cloudflare tunnel etc.) and
+ * outranks the effective URL in `resolvePublicBaseUrl`.
+ */
+function publishEffectivePublicUrl(): void {
+  try {
+    const cfg = loadGlobalConfig();
+    const url = computeServerEffectivePublicUrl({
+      port: PORT,
+      hostsSpa: spaHosted,
+    });
+    if (cfg.server?.effectivePublicUrl === url) return;
+    const next = {
+      ...cfg,
+      server: { ...(cfg.server ?? {}), effectivePublicUrl: url },
+    };
+    writeGlobalConfig(next);
+    // eslint-disable-next-line no-console
+    console.log(`[tianshu] published effectivePublicUrl=${url}`);
+  } catch (err) {
+    // Best-effort: don't crash the server just because we
+    // couldn't update a discovery hint.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[tianshu] failed to publish effectivePublicUrl: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
 
 const shutdown = (signal: string) => {
   // eslint-disable-next-line no-console
