@@ -1,0 +1,140 @@
+name: Hotfix publish
+
+# Manual one-shot publish workflow for out-of-band fixes.
+#
+# When to use:
+#   - main is on v0.3.0, you discover a serious bug, you want
+#     v0.3.1 out *now* without waiting for release-please to
+#     accumulate other commits into a regular release PR
+#   - or main has diverged with breaking changes and you need to
+#     ship a patch on the v0.3.x line off a hotfix branch
+#
+# How to use:
+#   1. Cherry-pick the fix(es) onto a branch named `hotfix/<version>`
+#      (e.g. `hotfix/0.3.1`).
+#   2. Bump version in package.json and .release-please-manifest.json
+#      to match the branch name, and add a CHANGELOG entry by hand.
+#   3. Push the branch.
+#   4. Go to Actions → Hotfix publish → Run workflow, pick the
+#      branch, choose the dist-tag (default `latest`).
+#   5. After publish, tag the commit + open a PR back into main so
+#      release-please can pick up the version when it next reconciles.
+#
+# Why manual (workflow_dispatch) rather than push-triggered: hotfix
+# branches are rare and high-risk. Forcing a human to click "Run"
+# means a typo in the version field can't accidentally clobber
+# `latest`. The publish step is otherwise identical to the regular
+# release workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      dist_tag:
+        description: "npm dist-tag to publish under"
+        required: true
+        default: "latest"
+        type: choice
+        options:
+          - latest
+          - hotfix
+          - next
+      dry_run:
+        description: "If true, run npm publish --dry-run instead of actually publishing"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the selected branch
+        uses: actions/checkout@v6
+        # No `ref:` — uses the branch chosen in the workflow_dispatch UI.
+
+      - name: Refuse to publish from main
+        # main releases go through release-please. If someone tries to
+        # use this workflow on main they're probably circumventing the
+        # PR review path — block it loudly.
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "::error::Hotfix workflow refuses to publish from main. Use the regular release flow (release-please PR)."
+          exit 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22.x"
+          registry-url: "https://registry.npmjs.org"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build
+        run: npm run build
+
+      - name: Read package.json version
+        id: pkg
+        run: |
+          version=$(node -p "require('./package.json').version")
+          name=$(node -p "require('./package.json').name")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Will publish $name@$version with dist-tag '${{ inputs.dist_tag }}'"
+
+      - name: Refuse to overwrite an existing version
+        # `npm publish` is supposed to reject re-publishing the same
+        # version, but only when the version exists. If you forget
+        # to bump and run the workflow on a branch with an old
+        # version, you'll get a 403 from npm — fine, but the error
+        # is cryptic. Surface it earlier with a cleaner message.
+        run: |
+          set +e
+          existing=$(npm view "${{ steps.pkg.outputs.name }}@${{ steps.pkg.outputs.version }}" version 2>/dev/null)
+          set -e
+          if [ -n "$existing" ]; then
+            echo "::error::Version ${{ steps.pkg.outputs.version }} of ${{ steps.pkg.outputs.name }} is already on npm. Bump package.json before re-running."
+            exit 1
+          fi
+
+      - name: Inspect the would-be tarball
+        run: |
+          npm pack --dry-run 2>&1 | tail -40
+          echo "---"
+          echo "Publish target: ${{ steps.pkg.outputs.name }}@${{ steps.pkg.outputs.version }}"
+          echo "dist-tag: ${{ inputs.dist_tag }}"
+          echo "dry_run: ${{ inputs.dry_run }}"
+
+      - name: Publish (dry run)
+        if: inputs.dry_run == true
+        run: npm publish --dry-run --access public --tag ${{ inputs.dist_tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Publish (real)
+        if: inputs.dry_run != true
+        run: npm publish --access public --tag ${{ inputs.dist_tag }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Summary
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "## :magnifying_glass_tilted_left: Hotfix dry-run for \`${{ steps.pkg.outputs.name }}@${{ steps.pkg.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "No actual publish happened. Inspect the logs above for the tarball contents, then re-run with dry_run=false." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## :hammer_and_wrench: Hotfix published \`${{ steps.pkg.outputs.name }}@${{ steps.pkg.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Branch: \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- dist-tag: \`${{ inputs.dist_tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+            echo "- Registry: https://www.npmjs.com/package/@tianshu-ai/tianshu/v/${{ steps.pkg.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Don't forget**: tag the commit (\`git tag v${{ steps.pkg.outputs.version }} && git push origin v${{ steps.pkg.outputs.version }}\`) and open a PR merging the version bump back into main so release-please stays in sync." >> "$GITHUB_STEP_SUMMARY"
+          fi
