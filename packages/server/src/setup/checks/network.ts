@@ -14,7 +14,10 @@
 // This module is sync-safe (no boot-time side effects); the
 // HTTP probe has a 2s timeout so doctor stays fast.
 
+import fs from "node:fs";
 import net from "node:net";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { CheckGroup } from "../render.js";
 import { loadGlobalConfig } from "../../core/config.js";
 
@@ -86,24 +89,74 @@ export async function checkNetwork(
     }
   }
 
-  // Web port: free is fine if the user hasn't started vite yet.
-  // Owned by something serving HTML is the happy path.
-  const webState = await probePort(webPort);
-  if (webState === "free") {
-    lines.push({
-      severity: "ok",
-      text: `Web port ${webPort} free`,
-      detail: "Will be bound by `vite` when the dev server starts.",
-    });
+  // Web port behaviour depends on which mode the user installed in:
+  //
+  // - Dev (git checkout, `npm run dev`): vite hosts the SPA on a
+  //   separate port (default 5183). Doctor should expect both
+  //   ports and warn on conflicts.
+  // - Production (global npm install, `npm run serve`): the
+  //   server hosts the SPA on the API port via
+  //   TIANSHU_WEB_DIST. The web port is irrelevant and showing
+  //   "web port 5183 free" only confuses users.
+  //
+  // detectMode below returns "dev" when this CLI is itself
+  // running from a git checkout; the wizard's launchd plist
+  // applies the same heuristic via isDevelopmentCheckout, so
+  // doctor's view matches the actual service.
+  const mode = detectMode();
+  if (mode === "dev") {
+    const webState = await probePort(webPort);
+    if (webState === "free") {
+      lines.push({
+        severity: "ok",
+        text: `Web port ${webPort} free`,
+        detail: "Will be bound by `vite` when the dev server starts.",
+      });
+    } else {
+      lines.push({
+        severity: "ok",
+        text: `Web port ${webPort} in use`,
+        detail: `Probably the dev UI; visit http://localhost:${webPort}`,
+      });
+    }
   } else {
+    // Production: web served by the API process. Just confirm
+    // the user-facing URL.
     lines.push({
       severity: "ok",
-      text: `Web port ${webPort} in use`,
-      detail: "Probably the dev UI; visit http://localhost:" + webPort,
+      text: `Web UI on http://localhost:${serverPort}`,
+      detail:
+        "Production mode — the server hosts the SPA on the API port (TIANSHU_WEB_DIST). No separate web process / port.",
     });
   }
 
   return { title: "Network & service", lines };
+}
+
+/**
+ * Whether the running `tianshu` binary is itself a development
+ * checkout (with watch/rebuild devDeps) or a published global
+ * install. Mirrors `isDevelopmentCheckout` in setup/repo-root.ts
+ * but inline here so this module stays free of cross-imports.
+ * If the check fails for any reason, fall back to "prod" — we'd
+ * rather under-warn (skipping a port check in dev) than
+ * over-warn (false alerts on a working prod install).
+ */
+function detectMode(): "dev" | "prod" {
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    let dir = here;
+    for (let i = 0; i < 12; i++) {
+      if (fs.existsSync(path.join(dir, ".git"))) return "dev";
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    if (here.includes(`${path.sep}node_modules${path.sep}`)) return "prod";
+    return "prod";
+  } catch {
+    return "prod";
+  }
 }
 
 function envPort(name: string): number | undefined {
