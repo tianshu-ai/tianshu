@@ -196,6 +196,61 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
       }
     }
 
+    // Per-worker model resolution. When workboard is enabled, list
+    // each LLM worker on disk along with the model it'll actually
+    // run (per-worker modelId pin > resolved tenant defaultModel),
+    // and flag two trouble shapes:
+    //   - pin references a model not in the catalog (worker won't
+    //     start; blocker, like the global defaultModel check)
+    //   - LLM worker with no resolvable model (no pin + no
+    //     defaultModel anywhere) — blocker for the same reason
+    // No subjective recommendations here — just facts. The setup
+    // agent can pick up the listing and offer recommendations
+    // on demand, but doctor doesn't second-guess the user's
+    // model choice.
+    if (enabled.includes("workboard")) {
+      const resolvedDefault =
+        tenantCfg.defaultModel ??
+        autoPickFromModels(tenantCfg.models) ??
+        globalCfg.defaultModel;
+      const knownModelIds = collectKnownModelIds(globalCfg, tenantCfg);
+      const workers = readWorkerAgents(home, tenantId);
+      for (const w of workers) {
+        if (w.kind !== "llm") continue;
+        if (!w.enabled) continue;
+        if (w.modelId) {
+          if (knownModelIds.has(w.modelId)) {
+            lines.push({
+              severity: "ok",
+              text: `  worker '${w.slug}': pinned model ${w.modelId}`,
+              detail: w.description ?? undefined,
+            });
+          } else {
+            lines.push({
+              severity: "blocker",
+              text: `  worker '${w.slug}': pinned model not in catalog`,
+              detail: `agent.json sets modelId="${w.modelId}" but no provider/model with that id is configured. Either fix the pin, drop modelId so the worker uses tenant defaultModel, or add the provider+model to the catalog. Known: ${[...knownModelIds].sort().slice(0, 6).join(", ")}${knownModelIds.size > 6 ? ", …" : ""}.`,
+            });
+          }
+        } else if (resolvedDefault) {
+          lines.push({
+            severity: "ok",
+            text: `  worker '${w.slug}': inherits ${resolvedDefault}`,
+            detail: w.description ?? undefined,
+          });
+        } else {
+          // No pin and no fallback. Covered by the broader
+          // "workboard: no defaultModel resolvable" warning above,
+          // but per-worker line makes the impact concrete.
+          lines.push({
+            severity: "blocker",
+            text: `  worker '${w.slug}': no model resolvable`,
+            detail: `agent.json has no modelId and no defaultModel chain resolves. Set tenant.defaultModel or global.defaultModel, or pin a modelId on this worker.`,
+          });
+        }
+      }
+    }
+
     // Flag the deprecated `worker:` config block. The schema kept it
     // around for backwards compat but the field has no runtime
     // consumers; warn so users don't think they're configuring
@@ -335,6 +390,80 @@ function mergePlugins(
  * checks/providers.ts; intentionally duplicated to keep the two
  * checks independently testable.
  */
+interface WorkerSummary {
+  slug: string;
+  kind: string;
+  enabled: boolean;
+  modelId: string | null;
+  description: string | null;
+}
+
+/**
+ * Read all worker agent.json files under a tenant's workspace.
+ * Mirrors workboard's fs-worker-agents scan path (the *both*
+ * possible roots; older installs had workspace/_tenant/ vs newer
+ * _tenant/). We don't import the workboard module — doctor stays
+ * plugin-agnostic — but we mirror its filesystem contract.
+ */
+function readWorkerAgents(home: string, tenantId: string): WorkerSummary[] {
+  const tenantHome = path.join(home, "tenants", tenantId);
+  const candidates = [
+    path.join(tenantHome, "workspace", "_tenant", "config", "workers"),
+    path.join(tenantHome, "_tenant", "config", "workers"),
+  ];
+  const root = candidates.find((p) => fs.existsSync(p));
+  if (!root) return [];
+  const out: WorkerSummary[] = [];
+  try {
+    for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const file = path.join(root, entry.name, "agent.json");
+      if (!fs.existsSync(file)) continue;
+      try {
+        const spec = JSON.parse(fs.readFileSync(file, "utf8")) as {
+          kind?: string;
+          enabled?: boolean;
+          modelId?: string | null;
+          description?: string | null;
+        };
+        out.push({
+          slug: entry.name,
+          kind: typeof spec.kind === "string" ? spec.kind : "unknown",
+          enabled: spec.enabled !== false, // default true, matches workboard
+          modelId: spec.modelId ?? null,
+          description: spec.description ?? null,
+        });
+      } catch {
+        // malformed agent.json — workboard's own loader will
+        // surface the error at activation; doctor just skips.
+      }
+    }
+  } catch {
+    // unreadable directory; treat as no workers.
+  }
+  return out;
+}
+
+/**
+ * Collect every "<providerId>/<modelId>" pair from both global
+ * and tenant model catalogs. Tenant override semantics: tenant.models
+ * wholesale-replaces global.models when set (matches mergeConfigs).
+ */
+function collectKnownModelIds(
+  globalCfg: { models?: { providers?: Record<string, { models?: { id: string }[] }> } },
+  tenantCfg: { models?: { providers?: Record<string, { models?: { id: string }[] }> } },
+): Set<string> {
+  const catalog = tenantCfg.models ?? globalCfg.models;
+  const ids = new Set<string>();
+  if (!catalog?.providers) return ids;
+  for (const [provId, prov] of Object.entries(catalog.providers)) {
+    for (const m of prov.models ?? []) {
+      ids.add(`${provId}/${m.id}`);
+    }
+  }
+  return ids;
+}
+
 /**
  * Mirror of mergeConfigs's tenant-models-override auto-pick rule.
  * Kept inline here (rather than importing the whole merge) so
