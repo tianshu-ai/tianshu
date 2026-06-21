@@ -43,6 +43,36 @@ export function isTianshuCheckout(repoRoot: string): boolean {
 }
 
 /**
+ * Read the `version` field from the top-level
+ * `@tianshu-ai/tianshu` package.json. Returns null when the
+ * package.json can't be located or parsed.
+ *
+ * Used by /api/health so clients (doctor, the CLI's update
+ * check, external monitors) see the *actual* running
+ * version. Previously /api/health hard-coded "0.2.0" which
+ * fell stale every release and was useless for diagnosing
+ * "is my install up to date?".
+ *
+ * Cached because the file doesn't change while the process
+ * is alive; reading it on every health probe would just
+ * burn syscalls.
+ */
+let cachedVersion: string | null | undefined;
+export function getPackageVersion(): string | null {
+  if (cachedVersion !== undefined) return cachedVersion;
+  try {
+    const root = findRepoRoot();
+    const pkg = JSON.parse(
+      fs.readFileSync(path.join(root, "package.json"), "utf8"),
+    ) as { version?: string };
+    cachedVersion = typeof pkg.version === "string" ? pkg.version : null;
+  } catch {
+    cachedVersion = null;
+  }
+  return cachedVersion;
+}
+
+/**
  * Whether the resolved `repoRoot` is a **development git
  * checkout** (has a .git directory and devDependencies on disk)
  * vs a **global npm install** (lives under `node_modules/`,

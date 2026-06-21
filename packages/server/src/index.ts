@@ -11,6 +11,7 @@
 // setup/load-env.ts for why a plain `dotenv/config` is wrong here.
 import { loadEnv } from "./setup/load-env.js";
 loadEnv();
+import { getPackageVersion } from "./setup/repo-root.js";
 
 import express from "express";
 import cors from "cors";
@@ -384,11 +385,18 @@ app.use(express.json({ limit: "1mb" }));
 
 // /api/health is intentionally outside the tenant middleware so that a
 // container orchestrator can liveness-check us before any tenant exists.
+//
+// `version` is read from the top-level `@tianshu-ai/tianshu`
+// package.json at module load (see setup/repo-root.ts). Don't
+// hard-code it here — it'll silently fall stale on every
+// release and break clients that diff against npm-latest to
+// suggest upgrades.
+const PACKAGE_VERSION = getPackageVersion() ?? "unknown";
 app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
     name: "tianshu",
-    version: "0.2.0",
+    version: PACKAGE_VERSION,
     uptimeSec: Math.round(process.uptime()),
     tenants: globalOps.list().length,
   });
