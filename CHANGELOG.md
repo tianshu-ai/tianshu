@@ -6,6 +6,144 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.9](https://github.com/tianshu-ai/tianshu/compare/v0.3.8...v0.3.9) (2026-06-22)
+
+### Bug Fixes
+
+* **setup:** skip the "Web port" prompt on production-mode
+  installs. In prod the server hosts the SPA on the API port
+  (TIANSHU_WEB_DIST), so there's no second port to pick.
+  Wizard now asks for just the API port and adjusts the prompt
+  copy to say so. Dev mode (git checkout) still prompts for
+  both ports.
+
+## [0.3.8](https://github.com/tianshu-ai/tianshu/compare/v0.3.7...v0.3.8) (2026-06-22)
+
+### Bug Fixes
+
+* **env:** read & write `.env` from `<TIANSHU_HOME>/.env` on
+  global installs (default `~/.tianshu/.env`). Previously the
+  wizard wrote ports to the install dir's `.env` which (a) may
+  not be user-writable on some node prefixes and (b) gets
+  blown away on `npm install -g` upgrades. Result: doctor and
+  the running server fell back to default ports even though
+  the user had picked something else in the wizard. Dev mode
+  (git checkout) keeps writing to repoRoot/.env so existing
+  developer workflows aren't disturbed.
+
+## [0.3.7](https://github.com/tianshu-ai/tianshu/compare/v0.3.6...v0.3.7) (2026-06-22)
+
+### Features
+
+* **doctor, cli-agent:** distinguish dev mode (two ports, vite
+  hosts the SPA) from production mode (one port, server hosts
+  the SPA via TIANSHU_WEB_DIST). doctor now reports the actual
+  access URL instead of a misleading "web port 5183 free" hint
+  on prod installs. cli-agent's system prompt teaches it to read
+  doctor's output for the canonical URL rather than hardcoding
+  one.
+
+## [0.3.6](https://github.com/tianshu-ai/tianshu/compare/v0.3.5...v0.3.6) (2026-06-22)
+
+0.3.5 mounted the static handler and the SPA fallback but the
+fallback used `res.sendFile()` which 404'd on global installs
+even though the file existed on disk (Express 5 send module
+behaviour we don't fully understand on absolute paths). Symptom:
+`curl localhost:3110/` returned a 1.6kB NotFoundError page;
+browser users saw a blank Express error page instead of the
+chat UI.
+
+### Bug Fixes
+
+* **serve:** read `index.html` into a buffer at mount time and
+  `res.send` it on each SPA fallback request, bypassing
+  `res.sendFile`. Faster too — no per-request syscall.
+* **setup:** wizard's "Web UI" output now shows the right URL
+  for the actual mode — single-port `http://localhost:3110` in
+  production, separate `http://localhost:5183` only in dev.
+
+## [0.3.5](https://github.com/tianshu-ai/tianshu/compare/v0.3.4...v0.3.5) (2026-06-22)
+
+0.3.4 added `npm run serve` for production-mode startup but
+the script used a shell variable (`TIANSHU_WEB_DIST="$PWD/..."`)
+that npm doesn't always expand. On launchd-driven invocations
+the server saw the literal string `"$PWD/packages/web/dist"`
+as the dist path, `path.resolve()` turned it into a nonsense
+relative path, the directory didn't exist, and the static
+mount fell through to the warning branch. Symptom: `curl /`
+returned 404 even though `/api/health` was healthy.
+
+### Bug Fixes
+
+* **serve:** replace the shell-variable-based `serve` script
+  with a real `bin/serve.mjs` entrypoint that resolves the
+  package root from `import.meta.url`. Works regardless of cwd
+  or shell quoting behaviour
+
+## [0.3.4](https://github.com/tianshu-ai/tianshu/compare/v0.3.3...v0.3.4) (2026-06-22)
+
+Fixes the wizard's launchd plist on global npm installs. 0.3.3
+actually started but the wizard-installed launchd agent ran
+`npm run dev`, which invokes `tsc` via the build chain —
+devDependencies aren't on disk in a global install:
+
+  sh: tsc: command not found
+  npm error code 127  (looped every 30s under KeepAlive)
+
+### Bug Fixes
+
+* **server, setup:** add `npm run serve` (production startup
+  without dev toolchain) and teach the wizard to write a plist
+  that picks `serve` over `dev` when running from a global
+  install. Server mounts the pre-built web dist on the same
+  port when `TIANSHU_WEB_DIST` is set, so one process + one
+  port is enough for the end-user case. Dev mode (running
+  from a git checkout) keeps the existing two-port watch-and-
+  rebuild shape
+
+## [0.3.3](https://github.com/tianshu-ai/tianshu/compare/v0.3.2...v0.3.3) (2026-06-22)
+
+Really-working hotfix. 0.3.2 also broke under `npm install -g`:
+the `peerDependencies` shape on `@tianshu-ai/plugin-sdk` (added
+to trim the tarball) created an empty
+`tianshu/node_modules/@modelcontextprotocol/sdk/` placeholder
+directory that Node's module resolver treated as authoritative
+but couldn't actually load files from. Symptom: same
+`ERR_MODULE_NOT_FOUND` users saw on 0.3.0/0.3.1, just one
+level deeper.
+
+### Bug Fixes
+
+* **publish:** move `@modelcontextprotocol/sdk` back to
+  plugin-sdk's `dependencies`. npm's bundleDependencies now
+  ships plugin-sdk's full transitive subtree inside the
+  tarball (tarball back to ~5MB, an acceptable cost). Module
+  resolution from plugin-sdk's code walks up and finds
+  mcp-sdk inside `tianshu/node_modules/` immediately, on both
+  local installs and global `npm install -g`. Verified by
+  simulating `-g` install via `--prefix <tmpdir>`.
+
+## [0.3.2](https://github.com/tianshu-ai/tianshu/compare/v0.3.1...v0.3.2) (2026-06-22)
+
+Out-of-band hotfix shipping a working npm tarball. Versions
+**0.3.0 and 0.3.1 are broken** — the published packages were
+missing all 14 server runtime dependencies (better-sqlite3,
+ws, hono, the mcp sdk, etc.). Hoisted-workspace install in
+dev mode masked this; the published tarball revealed it.
+Anyone on those versions will see `Cannot find package` errors
+on first invocation. Skip straight to 0.3.2.
+
+### Bug Fixes
+
+* **publish:** rename the workspace plugin SDK from
+  `@tianshu/plugin-sdk` (a scope we don't own) to
+  `@tianshu-ai/plugin-sdk`. Bundle it into the published
+  tarball via `bundleDependencies` so users get it on install
+  without needing a separate npm publish for the SDK. Aggregate
+  every sub-package's runtime `dependencies` into root so
+  `npm install -g @tianshu-ai/tianshu` actually pulls everything
+  the server needs at runtime ([#172](https://github.com/tianshu-ai/tianshu/pull/172))
+
 ## [0.3.0](https://github.com/tianshu-ai/tianshu/compare/v0.2.0...v0.3.0) (2026-06-21)
 
 
