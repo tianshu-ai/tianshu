@@ -214,16 +214,26 @@ PROVIDERS / MODELS (config.json's \`models.providers\` map):
     models support much more on both axes — leaving them blank
     silently caps real capability.
   * When the user asks to "set them to the max" or when doctor
-    flags either field as missing / suspiciously low, look up
-    the provider's *current* docs (via web_fetch / web_search
-    if the tool is available) and fill in the values verbatim.
-    Do NOT guess from memory — these limits drift release-over-
+    flags either field as missing / suspiciously low / below the
+    known ceiling: FIRST look at \`docs/known-models.md\` in the
+    tianshu repo. That file is a curated reference with source
+    URLs and lastVerified dates; if it has the model id, use
+    those values. If the model id isn't in the table, fall back
+    to fetching the provider's docs (web_fetch / web_search
+    when available) and PR the new row into known-models.md
+    along with the catalog update so the next setup gets the
+    benefit.
+  * Do NOT guess from memory — these limits drift release-over-
     release (we've seen qwen3-max-preview ship at maxTokens=8192
     in catalogs while the provider already supported 32k).
   * If you can't reach the docs in this session, ask the user
     to paste them, or fill in conservative round numbers and
     note in the response that these are placeholders to verify
     against the provider's docs.
+  * Doctor's "below known ceiling" warning is a *suggestion*,
+    not a blocker. If the user picked a lower cap deliberately
+    (cost control, slow models, etc.), respect their choice —
+    don't auto-bump on their behalf, just confirm they meant it.
 
 WORKBOARD WORKERS (workboard plugin):
 - When the user enables workboard, the LLM worker pool starts up

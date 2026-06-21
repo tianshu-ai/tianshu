@@ -12,6 +12,7 @@ import {
   type ProviderEntry,
 } from "../../core/config.js";
 import { CheckGroup } from "../render.js";
+import { loadKnownModels } from "./known-models.js";
 
 export interface ProvidersCheckOpts {
   home?: string;
@@ -187,10 +188,12 @@ export async function checkProviders(
     // Each line scoped under the provider so the cli-agent's
     // doctor JSON keeps provider → model nesting via section
     // adjacency.
+    const known = loadKnownModels();
     for (const m of entry.models ?? []) {
       const fullId = `${id}/${m.id}`;
       const ctx = m.contextWindow;
       const mx = m.maxTokens;
+      const ref = known.get(m.id);
       if (typeof ctx === "number" && typeof mx === "number" && mx > ctx) {
         lines.push({
           severity: "blocker",
@@ -204,7 +207,18 @@ export async function checkProviders(
             severity: "warning",
             text: `  ${fullId}: contextWindow not set`,
             detail:
-              "Server falls back to 128_000 tokens. Most current models support 200k–1M+; check the provider's docs and set the real value to avoid silent truncation on long inputs.",
+              "Server falls back to 128_000 tokens. Most current models support 200k–1M+; check the provider's docs and set the real value to avoid silent truncation on long inputs." +
+              (ref ? ` docs/known-models.md records ${ref.contextWindow} for this model id (verified ${ref.lastVerified}).` : ""),
+          });
+        } else if (ref && ctx < ref.contextWindow) {
+          // Soft suggestion: catalog set a smaller window than
+          // the table records. We don't push above the table
+          // (user might know something we don't); we only suggest
+          // bumping up.
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: contextWindow=${ctx} below known ceiling`,
+            detail: `docs/known-models.md records ${ref.contextWindow} for ${m.id} (verified ${ref.lastVerified}; source ${ref.source}). Bump if you want full window.`,
           });
         }
         if (typeof mx !== "number") {
@@ -212,14 +226,22 @@ export async function checkProviders(
             severity: "warning",
             text: `  ${fullId}: maxTokens not set`,
             detail:
-              "Server falls back to 4_096 output tokens — modern models support far more (8k–64k+ depending on the model). Check the provider's docs and set the real upper bound so long responses don't get truncated.",
+              "Server falls back to 4_096 output tokens — modern models support far more (8k–64k+ depending on the model). Check the provider's docs and set the real upper bound so long responses don't get truncated." +
+              (ref ? ` docs/known-models.md records ${ref.maxTokens} for this model id (verified ${ref.lastVerified}).` : ""),
           });
         } else if (mx < 4096) {
           lines.push({
             severity: "warning",
             text: `  ${fullId}: maxTokens=${mx} looks low`,
             detail:
-              "Most modern models support ≥8192 output tokens (many 32k+). If this isn't a deliberate per-model cap, check the provider's docs and bump it.",
+              "Most modern models support ≥8192 output tokens (many 32k+). If this isn't a deliberate per-model cap, check the provider's docs and bump it." +
+              (ref ? ` docs/known-models.md records ${ref.maxTokens} (verified ${ref.lastVerified}).` : ""),
+          });
+        } else if (ref && mx < ref.maxTokens) {
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: maxTokens=${mx} below known ceiling`,
+            detail: `docs/known-models.md records ${ref.maxTokens} for ${m.id} (verified ${ref.lastVerified}; source ${ref.source}). Bump if you want full output capacity.`,
           });
         }
       }

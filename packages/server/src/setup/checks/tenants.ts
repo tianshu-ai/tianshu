@@ -31,6 +31,7 @@ import {
   type ProviderEntry,
 } from "../../core/config.js";
 import { getTianshuHome } from "../../core/paths.js";
+import { loadKnownModels } from "./known-models.js";
 
 // Mirror of pi-ai's register-builtins set. Used to validate the
 // `api` field on per-tenant provider overrides; the global-level
@@ -156,10 +157,12 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
         // Same ctx/max sanity as checks/providers.ts but scoped
         // to this tenant. Mirroring rather than importing because
         // the doctor sections are intentionally independent.
+        const known = loadKnownModels();
         for (const m of p.models ?? []) {
           const fullId = `${provId}/${m.id}`;
           const ctx = m.contextWindow;
           const mx = m.maxTokens;
+          const ref = known.get(m.id);
           if (typeof ctx === "number" && typeof mx === "number" && mx > ctx) {
             lines.push({
               severity: "blocker",
@@ -173,7 +176,14 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
                 severity: "warning",
                 text: `  ${fullId}: contextWindow not set`,
                 detail:
-                  "Falls back to 128_000. Most current models support 200k–1M+; check provider docs.",
+                  "Falls back to 128_000." +
+                  (ref ? ` Known: ${ref.contextWindow} (verified ${ref.lastVerified}).` : ""),
+              });
+            } else if (ref && ctx < ref.contextWindow) {
+              lines.push({
+                severity: "warning",
+                text: `  ${fullId}: contextWindow=${ctx} below known ceiling`,
+                detail: `docs/known-models.md records ${ref.contextWindow} (verified ${ref.lastVerified}).`,
               });
             }
             if (typeof mx !== "number") {
@@ -181,13 +191,21 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
                 severity: "warning",
                 text: `  ${fullId}: maxTokens not set`,
                 detail:
-                  "Falls back to 4_096 output tokens. Modern models support far more.",
+                  "Falls back to 4_096 output tokens." +
+                  (ref ? ` Known: ${ref.maxTokens} (verified ${ref.lastVerified}).` : ""),
               });
             } else if (mx < 4096) {
               lines.push({
                 severity: "warning",
                 text: `  ${fullId}: maxTokens=${mx} looks low`,
-                detail: "Most modern models support ≥8192 output tokens; check if this is a deliberate cap.",
+                detail: "Most modern models support ≥8192 output tokens." +
+                  (ref ? ` Known: ${ref.maxTokens} (verified ${ref.lastVerified}).` : ""),
+              });
+            } else if (ref && mx < ref.maxTokens) {
+              lines.push({
+                severity: "warning",
+                text: `  ${fullId}: maxTokens=${mx} below known ceiling`,
+                detail: `docs/known-models.md records ${ref.maxTokens} (verified ${ref.lastVerified}).`,
               });
             }
           }

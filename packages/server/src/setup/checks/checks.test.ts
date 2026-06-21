@@ -591,6 +591,39 @@ describe("checkProviders", () => {
     delete process.env.TIANSHU_TEST_KEY_OK;
   });
 
+  it("warns 'below known ceiling' when catalog value is lower than known-models.md", async () => {
+    // Catalog says 8192, table says 32768 — soft warning, not
+    // blocker. Reproduces the i070219 / yuyu paper-cut where
+    // qwen3-max-preview shipped with maxTokens=8192 even though
+    // dashscope supports 32k.
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          dashscope: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [
+              {
+                id: "qwen3-max-preview", // matches the table row
+                contextWindow: 256_000,
+                maxTokens: 8_192, // table records 32_768
+              },
+            ],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const w = r.lines.find((l) =>
+      l.text.includes("maxTokens=8192 below known ceiling"),
+    );
+    expect(w?.severity).toBe("warning");
+    expect(w?.detail).toContain("32768");
+    expect(w?.detail).toContain("docs/known-models.md");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
   it("warns when maxTokens is suspiciously low (<4096)", async () => {
     process.env.TIANSHU_TEST_KEY_OK = "***";
     const cfg: GlobalConfig = {
