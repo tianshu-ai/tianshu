@@ -71,7 +71,20 @@ export function loadEnv(opts: { force?: boolean } = {}): {
       // override: true on force-reload so a key the wizard just
       // appended actually shows up in process.env (dotenv won't
       // overwrite an already-set var by default).
-      dotenv.config({ path: cand, override: opts.force ?? false });
+      //
+      // quiet: true suppresses dotenv v17's funding tip
+      // ("◇ injected env (N) from .env // tip: ..."). The tip
+      // is shown on every load by default — every
+      // `tianshu status` / `tianshu logs` / `tianshu doctor`
+      // invocation prints it, which is noisy enough to
+      // obscure the actual CLI output. We're not interested
+      // in the advertisement; the user already chose dotenv
+      // by running tianshu.
+      dotenv.config({
+        path: cand,
+        override: opts.force ?? false,
+        quiet: true,
+      });
       return { source: cand };
     }
   }
