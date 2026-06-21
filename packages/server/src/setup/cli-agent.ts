@@ -198,6 +198,32 @@ PROVIDERS / MODELS (config.json's \`models.providers\` map):
 - apiKey can be a literal string (default since 2026-06; lands
   in config.json which is chmod 600) or a \`\${ENV_VAR}\`
   placeholder if the user opted into --use-env mode.
+- Each model entry SHOULD carry \`contextWindow\` and \`maxTokens\`
+  (both in tokens). Meaning:
+  * \`contextWindow\` = total token budget for the request
+    (system prompt + history + tools + the new response). The
+    server uses this for context-overflow detection.
+  * \`maxTokens\` = the per-response output cap sent to the
+    provider as max_tokens / generation_config.max_output_tokens.
+    Truncates generation at this many tokens.
+  Rules:
+  * maxTokens MUST be ≤ contextWindow (doctor flags inversion
+    as a blocker).
+  * If either field is missing the server falls back to 128_000 /
+    4_096 (see core/llm.ts buildModelInfoFromEntry). Modern
+    models support much more on both axes — leaving them blank
+    silently caps real capability.
+  * When the user asks to "set them to the max" or when doctor
+    flags either field as missing / suspiciously low, look up
+    the provider's *current* docs (via web_fetch / web_search
+    if the tool is available) and fill in the values verbatim.
+    Do NOT guess from memory — these limits drift release-over-
+    release (we've seen qwen3-max-preview ship at maxTokens=8192
+    in catalogs while the provider already supported 32k).
+  * If you can't reach the docs in this session, ask the user
+    to paste them, or fill in conservative round numbers and
+    note in the response that these are placeholders to verify
+    against the provider's docs.
 
 WORKBOARD WORKERS (workboard plugin):
 - When the user enables workboard, the LLM worker pool starts up

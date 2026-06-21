@@ -540,6 +540,83 @@ describe("checkProviders", () => {
     delete process.env.TIANSHU_TEST_KEY_OK;
   });
 
+  it("blocker when maxTokens > contextWindow (logically impossible)", async () => {
+    // Caught real values in yuyu's config (gemini image-preview
+    // entries had ctx=32768, max=65536 — either a swap or stale
+    // copy). Output cap can't exceed the whole window.
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          openai: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [
+              { id: "weird-model", contextWindow: 32_768, maxTokens: 65_536 },
+            ],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const inv = r.lines.find((l) =>
+      l.text.includes("maxTokens (65536) > contextWindow (32768)"),
+    );
+    expect(inv?.severity).toBe("blocker");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warns when contextWindow or maxTokens is missing", async () => {
+    // Server falls back to 128_000 / 4_096; surface so user
+    // doesn't silently leave capability on the floor.
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          openai: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [{ id: "model-without-limits" } as never],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const ctxWarn = r.lines.find((l) =>
+      l.text.includes("contextWindow not set"),
+    );
+    const mxWarn = r.lines.find((l) => l.text.includes("maxTokens not set"));
+    expect(ctxWarn?.severity).toBe("warning");
+    expect(mxWarn?.severity).toBe("warning");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warns when maxTokens is suspiciously low (<4096)", async () => {
+    process.env.TIANSHU_TEST_KEY_OK = "***";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          dashscope: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            models: [
+              {
+                id: "stale-model",
+                contextWindow: 256_000,
+                maxTokens: 2_048, // stale; real provider supports more
+              },
+            ],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const lowWarn = r.lines.find((l) => l.text.includes("looks low"));
+    expect(lowWarn?.severity).toBe("warning");
+    expect(lowWarn?.text).toContain("2048");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
   it("warns when deprecated `worker:` block is set on global config", async () => {
     // worker.{count,pollMs,model} was kept for backwards-compat but
     // has no runtime consumers (see core/config.ts deprecation

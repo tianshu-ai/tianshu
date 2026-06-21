@@ -153,6 +153,45 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
               `Edit tenant '${tenantId}' config: models.providers.${provId}.api.`,
           });
         }
+        // Same ctx/max sanity as checks/providers.ts but scoped
+        // to this tenant. Mirroring rather than importing because
+        // the doctor sections are intentionally independent.
+        for (const m of p.models ?? []) {
+          const fullId = `${provId}/${m.id}`;
+          const ctx = m.contextWindow;
+          const mx = m.maxTokens;
+          if (typeof ctx === "number" && typeof mx === "number" && mx > ctx) {
+            lines.push({
+              severity: "blocker",
+              text: `  ${fullId}: maxTokens (${mx}) > contextWindow (${ctx})`,
+              detail:
+                "Output cap can't exceed the whole window. Almost certainly a swap or stale value.",
+            });
+          } else {
+            if (typeof ctx !== "number") {
+              lines.push({
+                severity: "warning",
+                text: `  ${fullId}: contextWindow not set`,
+                detail:
+                  "Falls back to 128_000. Most current models support 200k–1M+; check provider docs.",
+              });
+            }
+            if (typeof mx !== "number") {
+              lines.push({
+                severity: "warning",
+                text: `  ${fullId}: maxTokens not set`,
+                detail:
+                  "Falls back to 4_096 output tokens. Modern models support far more.",
+              });
+            } else if (mx < 4096) {
+              lines.push({
+                severity: "warning",
+                text: `  ${fullId}: maxTokens=${mx} looks low`,
+                detail: "Most modern models support ≥8192 output tokens; check if this is a deliberate cap.",
+              });
+            }
+          }
+        }
       }
     }
     lines.push({

@@ -164,6 +164,67 @@ export async function checkProviders(
       ? `${modelCount} model(s); key from \${${resolved.envVar}}`
       : `${modelCount} model(s)`;
 
+    // Per-model contextWindow / maxTokens sanity. We don't try
+    // to maintain a "known correct" table here — provider docs
+    // change weekly and a stale curated list would mislead users
+    // who know better. Three checks instead, all internal:
+    //
+    //   1. logically-impossible: maxTokens > contextWindow.
+    //      Output can't be bigger than the whole window; this is
+    //      always a copy-paste error.
+    //   2. missing fields: server falls back to 128_000 / 4_096
+    //      (see core/llm.ts buildModelInfoFromEntry). Caught
+    //      this 2026-06-21 on dashscope/qwen3-max-preview which
+    //      had maxTokens=8192 in catalog; pi-ai would have
+    //      capped at that even though dashscope itself allows
+    //      32768. Tell the user the field is missing so they
+    //      can fill in the real upper bound from provider docs.
+    //   3. suspiciously small: maxTokens < 4096. Modern models
+    //      are all far above this; if you wrote 1024 / 2048 /
+    //      4096 it's almost certainly stale and you're leaving
+    //      capability on the floor. Soft hint, not a block.
+    //
+    // Each line scoped under the provider so the cli-agent's
+    // doctor JSON keeps provider → model nesting via section
+    // adjacency.
+    for (const m of entry.models ?? []) {
+      const fullId = `${id}/${m.id}`;
+      const ctx = m.contextWindow;
+      const mx = m.maxTokens;
+      if (typeof ctx === "number" && typeof mx === "number" && mx > ctx) {
+        lines.push({
+          severity: "blocker",
+          text: `  ${fullId}: maxTokens (${mx}) > contextWindow (${ctx})`,
+          detail:
+            "maxTokens is the *output* cap; contextWindow is the entire window (input + output). Output can't exceed the window. Check the provider's docs for both values — this is almost always a swap or stale copy.",
+        });
+      } else {
+        if (typeof ctx !== "number") {
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: contextWindow not set`,
+            detail:
+              "Server falls back to 128_000 tokens. Most current models support 200k–1M+; check the provider's docs and set the real value to avoid silent truncation on long inputs.",
+          });
+        }
+        if (typeof mx !== "number") {
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: maxTokens not set`,
+            detail:
+              "Server falls back to 4_096 output tokens — modern models support far more (8k–64k+ depending on the model). Check the provider's docs and set the real upper bound so long responses don't get truncated.",
+          });
+        } else if (mx < 4096) {
+          lines.push({
+            severity: "warning",
+            text: `  ${fullId}: maxTokens=${mx} looks low`,
+            detail:
+              "Most modern models support ≥8192 output tokens (many 32k+). If this isn't a deliberate per-model cap, check the provider's docs and bump it.",
+          });
+        }
+      }
+    }
+
     if (opts.probe) {
       const probeRes = await probeProvider(id, entry, opts.probeTimeoutMs ?? 5000);
       if (probeRes.ok) {
