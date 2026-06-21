@@ -29,17 +29,25 @@ let loaded = false;
 /**
  * Load `.env` once per process. Idempotent.
  *
- * Search order:
- *   1. `DOTENV_PATH` env var (explicit override).
- *   2. `<cwd>/.env` (preserves the legacy behaviour for users
- *      who run from the repo root).
- *   3. Walking up from this file's directory until a `.env` is
- *      found or we hit the filesystem root.
+ * Search order (first hit wins):
+ *   1. `DOTENV_PATH` env var (explicit override; ops escape hatch).
+ *   2. `<TIANSHU_HOME>/.env` (~/.tianshu/.env by default). This
+ *      is the canonical location the wizard writes to on a
+ *      global install — it's user-writable, survives
+ *      `npm install -g` upgrades (which would otherwise nuke a
+ *      .env stored in the install dir), and isn't tied to any
+ *      cwd / checkout location.
+ *   3. `<cwd>/.env` (legacy: respects the developer's local
+ *      override when running from a repo).
+ *   4. Walking up from this file's directory until a `.env` is
+ *      found or we hit the filesystem root. Covers the
+ *      historical "wizard wrote .env to the checkout root" case
+ *      so existing dev setups don't break.
  *
- * Whichever is found first is loaded with `override: false`, so
- * shell-level env vars still win over file values — that
- * matches dotenv's default and lets ops override a key for a
- * single run without editing the file.
+ * Loaded with `override: false`, so shell-level env vars still
+ * win over file values — that matches dotenv's default and
+ * lets ops override a key for a single run without editing
+ * the file.
  */
 export function loadEnv(opts: { force?: boolean } = {}): {
   source: string | null;
@@ -50,6 +58,20 @@ export function loadEnv(opts: { force?: boolean } = {}): {
   const candidates: string[] = [];
   const explicit = process.env.DOTENV_PATH;
   if (explicit) candidates.push(explicit);
+
+  // TIANSHU_HOME/.env: the canonical location. Resolved the
+  // same way getTianshuHome() does (TIANSHU_HOME env > ~/.tianshu).
+  // We inline the resolution rather than importing
+  // `getTianshuHome` from core/paths to keep load-env free of
+  // cross-package deps — this module runs before everything
+  // else and shouldn't pull in chunks of core.
+  const tianshuHome =
+    process.env.TIANSHU_HOME ??
+    path.join(process.env.HOME ?? "", ".tianshu");
+  if (tianshuHome && tianshuHome !== ".tianshu") {
+    candidates.push(path.join(tianshuHome, ".env"));
+  }
+
   candidates.push(path.resolve(process.cwd(), ".env"));
 
   // Walk up from this file. In dev that's
@@ -57,7 +79,9 @@ export function loadEnv(opts: { force?: boolean } = {}): {
   // In a published install it's
   //   <install>/packages/server/dist/setup/load-env.js
   // Either way, walking up will reach the repo / install root
-  // before the filesystem root.
+  // before the filesystem root. This covers the historical
+  // "wizard wrote .env to the checkout root" case so existing
+  // dev setups keep working without migration.
   let dir = path.dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 12; i++) {
     candidates.push(path.join(dir, ".env"));
