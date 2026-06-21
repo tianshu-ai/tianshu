@@ -28,7 +28,7 @@ import type {
   PluginServerExports,
   SandboxRunner,
   SandboxStatus,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import { buildRunner, type BuiltRunner } from "./runner/index.js";
 import { SandboxPool } from "./runner/pool.js";
 import {

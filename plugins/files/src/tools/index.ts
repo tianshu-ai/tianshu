@@ -20,7 +20,7 @@ import type {
   AgentToolContext,
   LspCapability,
   LspDiagnoseResult,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import { resolveInUserHome } from "./path-helper.js";
 import { listDirSchema, executeListDir } from "./list-dir.js";
 import { readFileSchema, executeReadFile } from "./read-file.js";

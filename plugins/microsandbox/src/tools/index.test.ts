@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { AgentToolContext, SandboxRunner, SandboxStatus } from "@tianshu/plugin-sdk";
+import type { AgentToolContext, SandboxRunner, SandboxStatus } from "@tianshu-ai/plugin-sdk";
 import {
   ExecTool,
   GetSandboxStatusTool,

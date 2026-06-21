@@ -75,3 +75,9 @@ packages/server/builtinConfig/plugins/*/manifest.json
 packages/server/builtinConfig/plugins/*/skills/
 packages/server/builtinConfig/plugins/*/templates/
 packages/server/builtinConfig/plugins/*/agent-seeds/
+
+# Local debugging / spike scripts — not tracked
+probe-*.mjs
+spike-*.mjs
+test-*.mjs
+/scripts/diagnose-*.mjs

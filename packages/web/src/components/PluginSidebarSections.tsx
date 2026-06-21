@@ -11,7 +11,7 @@
 // Future plugins can claim other anchors as we add them.
 
 import type { ComponentType } from "react";
-import type { SidebarSectionProps } from "@tianshu/plugin-sdk/client";
+import type { SidebarSectionProps } from "@tianshu-ai/plugin-sdk/client";
 import { resolveComponent } from "../lib/plugin-registry";
 import { usePluginStore } from "../stores/plugin-store";
 

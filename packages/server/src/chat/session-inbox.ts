@@ -23,7 +23,7 @@ import type { TenantContext } from "../core/index.js";
 import type {
   InboxMessage,
   InboxMessageKind,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import { getActiveHarness } from "./active-harnesses.js";
 
 /**

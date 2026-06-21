@@ -29,8 +29,8 @@ import type {
   AgentToolContext,
   BrowserSidecar,
   PluginLogger,
-} from "@tianshu/plugin-sdk";
-import { McpToolset } from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
+import { McpToolset } from "@tianshu-ai/plugin-sdk";
 
 /**
  * Build the Playwright-MCP toolset for one active plugin tenant.

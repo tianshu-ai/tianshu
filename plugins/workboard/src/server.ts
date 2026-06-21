@@ -34,7 +34,7 @@ import type {
   ToolCatalogCapability,
   SkillCatalogCapability,
   TaskSandboxPool,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import { setAgentEnabled } from "./fs-worker-agents.js";
 import {
   EchoWorker,

@@ -26,7 +26,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { PluginServerModule } from "@tianshu/plugin-sdk";
+import type { PluginServerModule } from "@tianshu-ai/plugin-sdk";
 import { moduleMapResolver, type ServerPluginModuleResolver } from "./registry.js";
 
 /**
@@ -41,7 +41,7 @@ import { moduleMapResolver, type ServerPluginModuleResolver } from "./registry.j
  * a directory + run sync:plugins + click Refresh.
  */
 export interface ReloadingResolver {
-  resolve(entry: string): Promise<import("@tianshu/plugin-sdk").PluginServerModule | null>;
+  resolve(entry: string): Promise<import("@tianshu-ai/plugin-sdk").PluginServerModule | null>;
   reload(): Promise<void>;
 }
 

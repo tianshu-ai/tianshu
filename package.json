@@ -60,5 +60,26 @@
   "devDependencies": {
     "concurrently": "^10.0.3",
     "typescript": "^6.0.3"
-  }
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.5.1",
+    "@earendil-works/pi-agent-core": "^0.79.3",
+    "@earendil-works/pi-ai": "^0.79.3",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@tianshu-ai/plugin-sdk": "*",
+    "better-sqlite3": "^12.10.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "fast-glob": "^3.3.3",
+    "microsandbox": "^0.5.7",
+    "sharp": "^0.35.1",
+    "vscode-jsonrpc": "^9.0.0",
+    "vscode-languageserver-protocol": "^3.18.0",
+    "vscode-languageserver-types": "^3.18.0",
+    "ws": "^8.18.0"
+  },
+  "bundleDependencies": [
+    "@tianshu-ai/plugin-sdk"
+  ]
 }

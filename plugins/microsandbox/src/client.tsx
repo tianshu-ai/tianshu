@@ -41,8 +41,8 @@ import type {
   AdminPageProps,
   PanelProps,
   PluginClientExports,
-} from "@tianshu/plugin-sdk/client";
-import { PluginConfigForm } from "@tianshu/plugin-sdk/client";
+} from "@tianshu-ai/plugin-sdk/client";
+import { PluginConfigForm } from "@tianshu-ai/plugin-sdk/client";
 
 // ─── shared types + helpers ────────────────────────────────────
 

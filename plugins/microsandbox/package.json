@@ -24,7 +24,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@tianshu/plugin-sdk": "*",
+    "@tianshu-ai/plugin-sdk": "*",
     "microsandbox": "^0.5.7"
   },
   "devDependencies": {

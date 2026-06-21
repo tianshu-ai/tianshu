@@ -1607,7 +1607,7 @@ function makeLogger(
   tenantId: string,
   userId: string,
   _send: (msg: ServerMsg) => void,
-): import("@tianshu/plugin-sdk").PluginLogger {
+): import("@tianshu-ai/plugin-sdk").PluginLogger {
   // Tools log to the server console for now; future PR can route
   // structured tool logs to the chat UI as separate events.
   const prefix = `[tenant:${tenantId}][user:${userId}][tool]`;

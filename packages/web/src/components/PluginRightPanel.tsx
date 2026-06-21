@@ -16,7 +16,7 @@ import { useChatStore } from "../stores/chat-store";
 import { usePluginStore } from "../stores/plugin-store";
 import { resolveComponent } from "../lib/plugin-registry";
 import PluginPanelTabBar from "./PluginPanelTabBar";
-import type { PanelProps } from "@tianshu/plugin-sdk/client";
+import type { PanelProps } from "@tianshu-ai/plugin-sdk/client";
 
 interface ContributesPanel {
   id: string;

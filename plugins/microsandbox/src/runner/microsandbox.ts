@@ -29,7 +29,7 @@ import type {
   ExecResult,
   SandboxRunner,
   SandboxStatus,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import * as path from "node:path";
 import { promises as fs } from "node:fs";
 import type { MicroSandboxConfig } from "./types.js";

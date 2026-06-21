@@ -20,7 +20,7 @@
 import type {
   BrowserSidecar,
   BrowserSidecarHealth,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 
 /**
  * Sidecar that reports "browser stack not present" while still

@@ -35,8 +35,8 @@ import type {
   ComposerActionProps,
   PanelProps,
   PluginClientExports,
-} from "@tianshu/plugin-sdk/client";
-import { __installOpenFileApi } from "@tianshu/plugin-sdk/client";
+} from "@tianshu-ai/plugin-sdk/client";
+import { __installOpenFileApi } from "@tianshu-ai/plugin-sdk/client";
 import { Paperclip } from "lucide-react";
 
 interface DirEntry {

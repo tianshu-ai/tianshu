@@ -26,7 +26,7 @@ import type {
   PanelProps,
   PluginClientExports,
   SidebarSectionProps,
-} from "@tianshu/plugin-sdk/client";
+} from "@tianshu-ai/plugin-sdk/client";
 
 type AnyComponent = ComponentType<
   | PanelProps

@@ -28,7 +28,7 @@
 // the user needs to fix, not a runtime hiccup.
 
 import { Type } from "typebox";
-import type { AgentTool, AgentToolContext } from "@tianshu/plugin-sdk";
+import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import {
   braveProvider,
   tavilyProvider,

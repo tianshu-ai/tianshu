@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { PluginServerModule } from "@tianshu/plugin-sdk";
+import type { PluginServerModule } from "@tianshu-ai/plugin-sdk";
 import { DbPool } from "../db-pool.js";
 import { GlobalOps } from "../global-ops.js";
 import { writeTenantConfig } from "../config.js";
@@ -497,7 +497,7 @@ describe("PluginRegistry", () => {
     expect(entries[0]!.failedReason).toMatch(/tools\["NotExported"\] missing/);
   });
 
-  // chore/plugin-sdk-cleanup: invalidate() must call each active
+  // chore-ai/plugin-sdk-cleanup: invalidate() must call each active
   // plugin's deactivate() so resources (sandbox VMs, child procs,
   // watchers) get released before the next ensureForTenant().
   it("invalidate calls deactivate() on active plugins (reverse order)", async () => {
@@ -606,7 +606,7 @@ describe("PluginRegistry", () => {
       name: string;
       stale: boolean;
       onRefresh: () => void;
-    }): import("@tianshu/plugin-sdk").ToolsetProvider {
+    }): import("@tianshu-ai/plugin-sdk").ToolsetProvider {
       const snapshotState = opts.stale
         ? {
             name: opts.name,
@@ -631,10 +631,10 @@ describe("PluginRegistry", () => {
         refresh: async () => {
           opts.onRefresh();
         },
-      } as unknown as import("@tianshu/plugin-sdk").ToolsetProvider;
+      } as unknown as import("@tianshu-ai/plugin-sdk").ToolsetProvider;
     }
 
-    async function setupTenantWithToolsets(providers: Record<string, import("@tianshu/plugin-sdk").ToolsetProvider>) {
+    async function setupTenantWithToolsets(providers: Record<string, import("@tianshu-ai/plugin-sdk").ToolsetProvider>) {
       writeBuiltinManifest("toolsetshost", {
         id: "toolsetshost",
         version: "1.0.0",
@@ -660,7 +660,7 @@ describe("PluginRegistry", () => {
         activate: () => ({
           toolsetProviders: providers as unknown as Record<
             string,
-            import("@tianshu/plugin-sdk").ToolsetProvider
+            import("@tianshu-ai/plugin-sdk").ToolsetProvider
           >,
         }),
       };
@@ -708,7 +708,7 @@ describe("PluginRegistry", () => {
           refresh: async () => {
             throw new Error("upstream-down");
           },
-        } as unknown as import("@tianshu/plugin-sdk").ToolsetProvider,
+        } as unknown as import("@tianshu-ai/plugin-sdk").ToolsetProvider,
       });
       // Doesn't throw; counts the call regardless of outcome.
       await expect(
@@ -728,7 +728,7 @@ describe("PluginRegistry", () => {
 
     it("caps total wait at deadlineMs even when refresh hangs", async () => {
       let resolved = false;
-      const slow: import("@tianshu/plugin-sdk").ToolsetProvider = {
+      const slow: import("@tianshu-ai/plugin-sdk").ToolsetProvider = {
         name: "slow",
         snapshot: () => ({
           name: "slow",
@@ -746,7 +746,7 @@ describe("PluginRegistry", () => {
               r();
             }, 10_000);
           }),
-      } as unknown as import("@tianshu/plugin-sdk").ToolsetProvider;
+      } as unknown as import("@tianshu-ai/plugin-sdk").ToolsetProvider;
       const { reg, ctx } = await setupTenantWithToolsets({ slow });
       const t0 = Date.now();
       const count = await reg.refreshStaleToolsets(ctx.tenantId, 100);

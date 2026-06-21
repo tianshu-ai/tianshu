@@ -18,7 +18,7 @@
 
 import type { Tool } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import type { AgentTool, AgentToolContext, PluginLogger } from "@tianshu/plugin-sdk";
+import type { AgentTool, AgentToolContext, PluginLogger } from "@tianshu-ai/plugin-sdk";
 import type { HostCapabilityHandle } from "../core/plugins/registry.js";
 import type { LoadedSkill } from "../core/plugins/skills.js";
 

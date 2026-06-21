@@ -40,7 +40,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import type { PluginConfigField } from "@tianshu/plugin-sdk";
+import type { PluginConfigField } from "@tianshu-ai/plugin-sdk";
 
 export interface SecretMap {
   [dottedKey: string]: string;

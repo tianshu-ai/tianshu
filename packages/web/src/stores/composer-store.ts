@@ -17,7 +17,7 @@ import type {
   Attachment,
   ComposerApi,
   DraftTransform,
-} from "@tianshu/plugin-sdk/client";
+} from "@tianshu-ai/plugin-sdk/client";
 
 interface ComposerState {
   attachments: Attachment[];

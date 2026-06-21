@@ -17,7 +17,7 @@ import type {
   BrowserSidecar,
   SandboxRunner,
   SandboxStatus,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 export {
   BuildSandboxTool,
   ListSandboxBuildsTool,

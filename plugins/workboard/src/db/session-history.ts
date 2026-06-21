@@ -17,7 +17,7 @@
 //     tab, agent task_get_history) — not a verbatim re-export of
 //     pi-ai's wire format.
 
-import type { TenantDbHandle } from "@tianshu/plugin-sdk";
+import type { TenantDbHandle } from "@tianshu-ai/plugin-sdk";
 
 export type HistoryEntryRole = "user" | "assistant" | "tool" | "system";
 

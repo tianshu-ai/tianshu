@@ -17,7 +17,7 @@ import type {
   PluginRouteHandler,
   TenantDbHandle,
   PluginLogger,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import {
   createTask,
   deleteTask,
@@ -267,7 +267,7 @@ function filterOwnedDeps(
 
 /** Compile-time-only marker so we can reuse the deps.db type without
  *  importing the SDK type into a free function above. */
-const deps_unused_marker: { db: import("@tianshu/plugin-sdk").TenantDbHandle } = null as never;
+const deps_unused_marker: { db: import("@tianshu-ai/plugin-sdk").TenantDbHandle } = null as never;
 
 function projectsJson(rows: ProjectSummary[]): Record<string, unknown>[] {
   return rows.map((p) => ({

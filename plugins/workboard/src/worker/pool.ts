@@ -32,7 +32,7 @@ import type {
   PluginLogger,
   TaskSandboxPool,
   TenantDbHandle,
-} from "@tianshu/plugin-sdk";
+} from "@tianshu-ai/plugin-sdk";
 import {
   claimNextTask,
   getTask,
