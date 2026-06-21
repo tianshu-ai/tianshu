@@ -41,3 +41,32 @@ export function isTianshuCheckout(repoRoot: string): boolean {
     return false;
   }
 }
+
+/**
+ * Whether the resolved `repoRoot` is a **development git
+ * checkout** (has a .git directory and devDependencies on disk)
+ * vs a **global npm install** (lives under `node_modules/`,
+ * has only the published file set).
+ *
+ * The distinction matters at launchd-plist-render time: the
+ * dev path runs `npm run dev` (watch + rebuild via tsc / vite),
+ * which needs devDependencies on disk; the global-install path
+ * doesn't have them and has to run `npm run serve` against the
+ * pre-built dist instead. Mis-detecting is the difference
+ * between a working service and a launchd crash loop with
+ * `tsc: command not found` repeating every 30 seconds.
+ *
+ * Heuristic:
+ *   - If `<repoRoot>/.git` exists → development checkout.
+ *   - If `repoRoot` path contains `/node_modules/` → global
+ *     install (npm puts global packages under
+ *     `<prefix>/lib/node_modules/@tianshu-ai/tianshu/`).
+ *   - Otherwise default to development (more permissive; a
+ *     missing .git in a checkout is unusual but possible, e.g.
+ *     someone unpacked a source tarball).
+ */
+export function isDevelopmentCheckout(repoRoot: string): boolean {
+  if (fs.existsSync(path.join(repoRoot, ".git"))) return true;
+  if (repoRoot.includes(`${path.sep}node_modules${path.sep}`)) return false;
+  return true;
+}
