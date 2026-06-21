@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.9](https://github.com/tianshu-ai/tianshu/compare/v0.3.8...v0.3.9) (2026-06-22)
+
+### Bug Fixes
+
+* **setup:** skip the "Web port" prompt on production-mode
+  installs. In prod the server hosts the SPA on the API port
+  (TIANSHU_WEB_DIST), so there's no second port to pick.
+  Wizard now asks for just the API port and adjusts the prompt
+  copy to say so. Dev mode (git checkout) still prompts for
+  both ports.
+
 ## [0.3.8](https://github.com/tianshu-ai/tianshu/compare/v0.3.7...v0.3.8) (2026-06-22)
 
 ### Bug Fixes
