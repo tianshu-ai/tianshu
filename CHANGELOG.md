@@ -6,6 +6,30 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.10](https://github.com/tianshu-ai/tianshu/compare/v0.3.9...v0.3.10) (2026-06-22)
+
+### Features
+
+* **core/urls:** centralise port and URL resolution in a single
+  `core/urls.ts` module. Replaces four drifting inline copies
+  in cli.ts, setup/service.ts, setup/checks/network.ts, and
+  setup/start-server.ts.
+* **server:** publish `server.effectivePublicUrl` to global
+  config on each boot. Out-of-process CLI commands
+  (`tianshu tenant list`, doctor) read it and print a URL that
+  actually opens, regardless of whether the install is dev or
+  prod shape. Detection is runtime-accurate (looks at
+  `TIANSHU_WEB_DIST`), not a filesystem heuristic.
+
+### Bug Fixes
+
+* **cli:** `tianshu tenant list` no longer prints the vite dev
+  port on production installs where vite never runs. Reads the
+  operator-declared `server.publicUrl` or the
+  server-published `server.effectivePublicUrl` first; only
+  falls back to dev/prod filesystem heuristic when neither is
+  set.
+
 ## [0.3.9](https://github.com/tianshu-ai/tianshu/compare/v0.3.8...v0.3.9) (2026-06-22)
 
 ### Bug Fixes
