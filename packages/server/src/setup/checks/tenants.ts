@@ -159,6 +159,12 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
         // the doctor sections are intentionally independent.
         const known = loadKnownModels();
         for (const m of p.models ?? []) {
+          // Skip image-gen models — their ctx/max semantics
+          // differ from chat models (see checks/providers.ts
+          // for the full rationale).
+          if (m.mode === "image-gen") {
+            continue;
+          }
           const fullId = `${provId}/${m.id}`;
           const ctx = m.contextWindow;
           const mx = m.maxTokens;

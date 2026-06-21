@@ -191,6 +191,19 @@ export async function checkProviders(
     const known = loadKnownModels();
     for (const m of entry.models ?? []) {
       const fullId = `${id}/${m.id}`;
+      // image-gen models have a fundamentally different
+      // ctx/max semantics: ctx is text-prompt context (often
+      // small, e.g. 32k), and `maxTokens` is the per-image
+      // generation budget (counts internal image tokens, can
+      // legitimately exceed ctx). Skip the consistency check
+      // for these; doctor still surfaces the model in the
+      // listing but doesn't enforce ctx>=max. Caught when our
+      // own startup-time invariant rejected
+      // google/gemini-3-pro-image-preview which has
+      // ctx=32768, max=65536 — documented values, not a bug.
+      if (m.mode === "image-gen") {
+        continue;
+      }
       const ctx = m.contextWindow;
       const mx = m.maxTokens;
       const ref = known.get(m.id);
