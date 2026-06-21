@@ -6,6 +6,28 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.3](https://github.com/tianshu-ai/tianshu/compare/v0.3.2...v0.3.3) (2026-06-22)
+
+Really-working hotfix. 0.3.2 also broke under `npm install -g`:
+the `peerDependencies` shape on `@tianshu-ai/plugin-sdk` (added
+to trim the tarball) created an empty
+`tianshu/node_modules/@modelcontextprotocol/sdk/` placeholder
+directory that Node's module resolver treated as authoritative
+but couldn't actually load files from. Symptom: same
+`ERR_MODULE_NOT_FOUND` users saw on 0.3.0/0.3.1, just one
+level deeper.
+
+### Bug Fixes
+
+* **publish:** move `@modelcontextprotocol/sdk` back to
+  plugin-sdk's `dependencies`. npm's bundleDependencies now
+  ships plugin-sdk's full transitive subtree inside the
+  tarball (tarball back to ~5MB, an acceptable cost). Module
+  resolution from plugin-sdk's code walks up and finds
+  mcp-sdk inside `tianshu/node_modules/` immediately, on both
+  local installs and global `npm install -g`. Verified by
+  simulating `-g` install via `--prefix <tmpdir>`.
+
 ## [0.3.2](https://github.com/tianshu-ai/tianshu/compare/v0.3.1...v0.3.2) (2026-06-22)
 
 Out-of-band hotfix shipping a working npm tarball. Versions
