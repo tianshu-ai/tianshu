@@ -360,15 +360,22 @@ export async function probeHealth(
  * Block until /api/health responds OK (or deadline hits).
  * Returns true on success. Used by `tianshu start --wait` and
  * the wizard.
+ *
+ * Optional `onProgress` fires once a second with the elapsed
+ * deadline. The CLI uses it to update its spinner so users
+ * watching the wait know we're still alive (cold builds take
+ * ~90s, agent / user otherwise panics around 30-40s).
  */
 export async function waitForHealth(
   serverPort: number,
   deadlineMs: number,
+  onProgress?: (elapsedMs: number, deadlineMs: number) => void,
 ): Promise<boolean> {
   const start = Date.now();
   while (Date.now() - start < deadlineMs) {
     const r = await probeHealth(serverPort);
     if (r.ok) return true;
+    onProgress?.(Date.now() - start, deadlineMs);
     await new Promise((r) => setTimeout(r, 1000));
   }
   return false;
