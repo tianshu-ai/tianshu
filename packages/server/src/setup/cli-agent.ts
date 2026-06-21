@@ -119,6 +119,47 @@ WEB SEARCH (web-search plugin):
 - Check \`secret_list\` first to see what's already configured
   before asking the user for a key.
 
+PROVIDERS / MODELS (config.json's \`models.providers\` map):
+- The \`api\` field MUST be a value pi-ai recognises. The only
+  ones in current use are:
+  * \`openai-completions\` — use for OpenAI itself AND for any
+    OpenAI-compatible vendor: dashscope, deepseek, moonshot,
+    siliconflow, together, groq, llama-server, ollama, anything
+    that exposes \`/v1/chat/completions\`. The name is
+    confusingly historical — it points at \`/v1/chat/completions\`
+    not the legacy \`/v1/completions\`. Use this whenever the
+    upstream advertises "OpenAI-compatible".
+  * \`anthropic-messages\` — Anthropic native API (\`/v1/messages\`).
+  * \`google-generative-ai\` — Google Gemini native API.
+  * \`openai-responses\` — OpenAI's newer Responses API. Only
+    use when the user explicitly wants it; the default for
+    OpenAI itself is still \`openai-completions\`.
+  Common typos to NEVER write: "openai-chat" (does not exist),
+  "chat-completions" (does not exist), "openai" (no api type).
+- A typical OpenAI-compatible provider entry looks like:
+    "qwen": {
+      "api": "openai-completions",
+      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "apiKey": "sk-...",
+      "group": "Cloud",
+      "models": [
+        { "id": "qwen3-max-preview", "name": "Qwen3 Max Preview",
+          "contextWindow": 256000, "maxTokens": 8192 }
+      ]
+    }
+  baseUrl is the *prefix* before /chat/completions — NOT the full
+  endpoint URL. pi-ai appends the path itself.
+- defaultModel must point at a model that exists in the catalog:
+  "defaultModel": "qwen/qwen3-max-preview" matches
+  models.providers.qwen.models[].id = "qwen3-max-preview".
+  If the tenant overrides \`models\` but doesn't set defaultModel,
+  the server auto-picks the first provider's first model, but
+  setting defaultModel explicitly is clearer and survives catalog
+  edits.
+- apiKey can be a literal string (default since 2026-06; lands
+  in config.json which is chmod 600) or a \`\${ENV_VAR}\`
+  placeholder if the user opted into --use-env mode.
+
 MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
 - microsandbox uses TWO sandbox role pointers: 'task' (per-task
   ephemeral sandboxes for the workboard's exec/coding work) and

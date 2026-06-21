@@ -110,7 +110,7 @@ describe("config", () => {
         models: {
           providers: {
             qwen: {
-              api: "openai-chat",
+              api: "openai-completions",
               baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
               apiKey: "sk-qwen",
               models: [{ id: "qwen3-max-preview", name: "Qwen3 Max" }],
@@ -133,7 +133,7 @@ describe("config", () => {
         models: {
           providers: {
             qwen: {
-              api: "openai-chat",
+              api: "openai-completions",
               baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
               apiKey: "sk-qwen",
               models: [
