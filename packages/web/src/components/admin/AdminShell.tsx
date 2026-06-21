@@ -34,6 +34,7 @@ import { resolveComponent } from "../../lib/plugin-registry";
 import type { AdminPageProps } from "@tianshu/plugin-sdk/client";
 import type { PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
+import { buildIdentityPath } from "../../dev-identity";
 import McpServersPage from "./McpServersPage";
 import { PluginConfigForm } from "../PluginConfigForm";
 
@@ -192,8 +193,14 @@ export default function AdminShell() {
             index
             element={
               pages.length > 0 ? (
+                // Absolute so the redirect lands at
+                // `/tenants/:t/users/:u/admin/<plugin>/<page>`
+                // regardless of how we got here (cookie /
+                // direct link / sidebar click).
                 <Navigate
-                  to={`/admin/${pages[0]!.pluginId}/${pages[0]!.pageId}`}
+                  to={buildIdentityPath(
+                    `/admin/${pages[0]!.pluginId}/${pages[0]!.pageId}`,
+                  )}
                   replace
                 />
               ) : (
@@ -265,8 +272,14 @@ function AdminSidebar({
 
       <div className="border-t border-gray-800 p-2">
         <NavLink
-          to="/"
+          // Up two levels: out of `/admin/<plugin>/<page>` (or
+          // `/admin/`) back to the identity root which renders
+          // the chat shell. Using `..` keeps us under the
+          // current identity prefix without having to import
+          // buildIdentityPath here.
+          to=".."
           className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-gray-500 hover:bg-gray-800/50 hover:text-gray-300"
+          end
         >
           <ArrowLeft size={12} />
           Back to chat
@@ -289,9 +302,18 @@ function AdminSidebar({
 
 function AdminNavLink({ page }: { page: FlatAdminPage }) {
   const Icon = resolveLucideIcon(page.icon);
+  // Build an absolute path so the link doesn't resolve relative
+  // to the current URL. With nested admin pages (`/admin/foo/bar`)
+  // a relative `to="foo/bar"` would append to whatever's already
+  // there — producing `/admin/foo/bar/foo/bar` on click of the
+  // active row's link. Absolute via buildIdentityPath stays
+  // consistent regardless of where you click from.
+  const href = buildIdentityPath(
+    `/admin/${page.pluginId}/${page.pageId}`,
+  );
   return (
     <NavLink
-      to={`/admin/${page.pluginId}/${page.pageId}`}
+      to={href}
       className={({ isActive }) =>
         `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
           isActive
@@ -320,7 +342,9 @@ function AdminPageHost({ pages }: { pages: FlatAdminPage[] }) {
     // bounce back to the shell index. We can't redirect during render
     // so do it in an effect.
     if (!page && pages.length > 0) {
-      navigate("/admin", { replace: true });
+      // Absolute path to the admin index of the current identity.
+      // The index route then redirects to the first plugin page.
+      navigate(buildIdentityPath("/admin"), { replace: true });
     }
   }, [page, pages, navigate]);
 

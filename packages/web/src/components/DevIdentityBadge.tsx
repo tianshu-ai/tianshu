@@ -1,17 +1,22 @@
 // Small fixed-position badge that shows the current dev identity
-// (cookie-based, see packages/web/src/dev-identity.ts) and offers
-// a one-click reset back to default/dev.
+// (cookie + URL path, see packages/web/src/dev-identity.ts) and
+// offers a one-click reset back to default/dev.
 //
 // Hidden when no override is active — i.e. when the user is the
 // default `default/dev` identity, the badge would just be noise.
-// Shows up the moment you load `?tenant=foo&user=bar`.
+// Shows up the moment you visit /tenants/<other>/users/<other>/
+// or paste a ?tenant=foo&user=bar URL.
 //
 // Click the badge → adds `?reset-identity` to the URL, which the
 // boot-time hook in main.tsx consumes (clears the cookie and
-// reloads).
+// reloads to /tenants/default/users/dev/).
 
 import { useEffect, useState } from "react";
-import { readIdentityFromCookie } from "../dev-identity";
+import {
+  FALLBACK_TENANT,
+  FALLBACK_USER,
+  readIdentityFromCookie,
+} from "../dev-identity";
 
 interface Identity {
   tenantId: string;
@@ -37,8 +42,17 @@ export default function DevIdentityBadge() {
     };
   }, []);
 
-  // Hide when there's no override (default identity).
+  // Hide when there's no override (default identity). With
+  // path-shape identity every load has a cookie, so we have to
+  // compare against the fallback rather than just checking
+  // `!identity`.
   if (!identity) return null;
+  if (
+    identity.tenantId === FALLBACK_TENANT &&
+    identity.userId === FALLBACK_USER
+  ) {
+    return null;
+  }
 
   const reset = () => {
     const url = new URL(window.location.href);

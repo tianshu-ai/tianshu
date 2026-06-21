@@ -178,7 +178,12 @@ function SidebarFooter() {
           {/* Admin entry. v0 shows it for everyone (no JWT yet);
            *  when auth lands we'll gate on me.role === 'admin'. */}
           <Link
-            to="/admin"
+            // Relative to the current identity-scoped route.
+            // The sidebar lives inside ChatLayout which renders
+            // under `/tenants/:t/users/:u`, so "admin" resolves
+            // to `/tenants/:t/users/:u/admin` without us having
+            // to know who's signed in.
+            to="admin"
             role="menuitem"
             onClick={() => setMenuOpen(false)}
             className="flex items-center gap-2 px-3 py-1.5 text-gray-200 hover:bg-gray-800"
