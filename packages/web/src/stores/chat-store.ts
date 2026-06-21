@@ -117,7 +117,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       );
     api
       .models()
-      .then(({ models }) => set({ models }))
+      .then(({ models }) => {
+        set({ models });
+        // Reconcile preferredModel against the freshly loaded
+        // catalog. localStorage may hold an id from a previous
+        // session against a different tenant; that id won't be
+        // in the current catalog and would otherwise cause
+        // ModelSelector to show a name nobody can pick, plus the
+        // first prompt would go out with a dangling modelId
+        // (server then quietly picks its own fallback — user
+        // thinks they were chatting with X but were actually on
+        // Y). Caught 2026-06-21 on a tenant with only qwen but a
+        // preferredModel still pointing at the global default.
+        const current = get().preferredModel;
+        if (current && !models.some((m) => m.id === current)) {
+          storePreferredModel(null);
+          set({ preferredModel: null });
+        }
+      })
       .catch(() => {
         /* best-effort; UI degrades to "—" */
       });

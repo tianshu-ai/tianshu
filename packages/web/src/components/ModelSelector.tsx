@@ -52,7 +52,25 @@ export default function ModelSelector() {
 
   if (models.length === 0) return null;
 
-  const activeId = preferred ?? fallbackId ?? models[0]!.id;
+  // Pick an activeId that's actually in the catalog. The naive
+  // `preferred ?? fallbackId ?? models[0]` fails when:
+  //   - preferredModel was saved in localStorage during a session
+  //     against a different tenant whose catalog had that model;
+  //     after a tenant switch the id is dangling, but the ??
+  //     chain still hands it to us
+  //   - server returned a tenant-scoped fallbackId that's stale
+  //     for similar reasons (config drift)
+  // Either way the button renders a model name that isn't in the
+  // dropdown — user can't see what's actually selected and the
+  // dropdown's highlight points at nothing. Caught 2026-06-21 on
+  // a tenant with only qwen but a preferredModel from before.
+  const inCatalog = (id: string | null | undefined): id is string =>
+    !!id && models.some((m) => m.id === id);
+  const activeId = inCatalog(preferred)
+    ? preferred
+    : inCatalog(fallbackId)
+      ? fallbackId
+      : models[0]!.id;
   const active = models.find((m) => m.id === activeId);
   const displayName = active?.name ?? activeId.split("/").pop() ?? "Model";
 
