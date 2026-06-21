@@ -81,3 +81,6 @@ probe-*.mjs
 spike-*.mjs
 test-*.mjs
 /scripts/diagnose-*.mjs
+
+# npm pack tarballs
+*.tgz

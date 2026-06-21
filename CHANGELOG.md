@@ -6,6 +6,27 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.4](https://github.com/tianshu-ai/tianshu/compare/v0.3.3...v0.3.4) (2026-06-22)
+
+Fixes the wizard's launchd plist on global npm installs. 0.3.3
+actually started but the wizard-installed launchd agent ran
+`npm run dev`, which invokes `tsc` via the build chain —
+devDependencies aren't on disk in a global install:
+
+  sh: tsc: command not found
+  npm error code 127  (looped every 30s under KeepAlive)
+
+### Bug Fixes
+
+* **server, setup:** add `npm run serve` (production startup
+  without dev toolchain) and teach the wizard to write a plist
+  that picks `serve` over `dev` when running from a global
+  install. Server mounts the pre-built web dist on the same
+  port when `TIANSHU_WEB_DIST` is set, so one process + one
+  port is enough for the end-user case. Dev mode (running
+  from a git checkout) keeps the existing two-port watch-and-
+  rebuild shape
+
 ## [0.3.3](https://github.com/tianshu-ai/tianshu/compare/v0.3.2...v0.3.3) (2026-06-22)
 
 Really-working hotfix. 0.3.2 also broke under `npm install -g`:
