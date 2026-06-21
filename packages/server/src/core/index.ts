@@ -55,6 +55,20 @@ export {
 export { McpManager, type McpUserToolsetSnapshot } from "./mcp-manager.js";
 
 export { DbPool, getDefaultPool } from "./db-pool.js";
+
+export {
+  buildTenantUserUrl,
+  computeServerEffectivePublicUrl,
+  DEFAULT_SERVER_PORT,
+  DEFAULT_WEB_PORT,
+  detectInstallMode,
+  resolveLocalServerBaseUrl,
+  resolvePublicBaseUrl,
+  resolveServerPort,
+  resolveWebPort,
+  type InstallMode,
+  type UrlContext,
+} from "./urls.js";
 export { runMigrations, MIGRATIONS } from "./migrations/index.js";
 
 export { TenantContext, buildTenantContext } from "./tenant-context.js";
