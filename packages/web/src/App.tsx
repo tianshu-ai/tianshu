@@ -24,7 +24,6 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import ChatLayout from "./components/ChatLayout";
 import AdminShell from "./components/admin/AdminShell";
 import FileOpenDialog from "./components/FileOpenDialog";
-import DevIdentityBadge from "./components/DevIdentityBadge";
 import { buildIdentityPath } from "./dev-identity";
 
 export default function App() {
@@ -55,10 +54,6 @@ export default function App() {
        *  cards, attachment renderers, ...). Lives outside the
        *  router so the dialog persists across route changes. */}
       <FileOpenDialog />
-      {/* Tiny corner badge shown only when a non-default dev
-       *  identity cookie is set. Click to reset back to
-       *  default/dev. Hidden in production (no cookie = no badge). */}
-      <DevIdentityBadge />
     </BrowserRouter>
   );
 }
