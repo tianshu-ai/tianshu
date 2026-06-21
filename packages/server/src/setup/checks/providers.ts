@@ -24,6 +24,46 @@ export interface ProvidersCheckOpts {
 
 const PLACEHOLDER_PATTERN = /^\$\{([A-Z_][A-Z0-9_]*)(?::-(.*))?\}$/;
 
+/**
+ * The `api` values pi-ai's register-builtins.ts knows. Anything
+ * outside this set throws "No API provider registered" at first
+ * use. Mirrored manually rather than imported because pi-ai
+ * doesn't export the list — if pi adds a new api, refresh this
+ * set + the suggestion map below.
+ */
+const KNOWN_API_TYPES = new Set([
+  "anthropic-messages",
+  "openai-completions",
+  "openai-responses",
+  "azure-openai-responses",
+  "openai-codex-responses",
+  "mistral-conversations",
+  "google-generative-ai",
+  "google-vertex",
+  "bedrock-converse-stream",
+]);
+
+/**
+ * Common typos / wrong guesses we've seen real users (and the
+ * cli-agent before it learned the schema) emit, mapped to the
+ * actual value. Returned as a one-line "did you mean" hint.
+ */
+function suggestApiType(bad: string): string | null {
+  const map: Record<string, string> = {
+    "openai-chat": "openai-completions",
+    "chat-completions": "openai-completions",
+    "openai": "openai-completions",
+    "openai-chat-completions": "openai-completions",
+    "anthropic": "anthropic-messages",
+    "claude": "anthropic-messages",
+    "messages": "anthropic-messages",
+    "google": "google-generative-ai",
+    "gemini": "google-generative-ai",
+    "bedrock": "bedrock-converse-stream",
+  };
+  return map[bad.toLowerCase()] ?? null;
+}
+
 interface ResolvedKey {
   literal: string | null;
   envVar: string | null;
@@ -81,6 +121,33 @@ export async function checkProviders(
 
   for (const id of ids) {
     const entry = providers[id] as ProviderEntry;
+
+    // The `api` field MUST be one of the values pi-ai's
+    // register-builtins.ts hard-codes. A typo here (most often
+    // `openai-chat` from agent-generated configs, but also seen:
+    // `chat-completions`, `openai`, bare `gpt`) makes pi throw
+    // "No API provider registered for api: <bad>" at first
+    // chat send. The error surfaces via stream_error now, but
+    // doctor should catch it pre-flight so the user / setup
+    // agent doesn't have to discover it the painful way.
+    if (!entry.api) {
+      lines.push({
+        severity: "warning",
+        text: `${id}: \`api\` field missing`,
+        detail: `Add "api": "openai-completions" (or the right one for this provider) under \`models.providers.${id}\` in config.json.`,
+      });
+    } else if (!KNOWN_API_TYPES.has(entry.api)) {
+      const suggestion = suggestApiType(entry.api);
+      lines.push({
+        severity: "warning",
+        text: `${id}: unknown \`api\` value "${entry.api}"`,
+        detail:
+          (suggestion ? `Did you mean "${suggestion}"? ` : "") +
+          `pi-ai accepts: ${[...KNOWN_API_TYPES].sort().join(", ")}. ` +
+          `Edit \`models.providers.${id}.api\` in config.json.`,
+      });
+    }
+
     const resolved = resolveKey(entry.apiKey);
     if (!resolved.literal) {
       lines.push({

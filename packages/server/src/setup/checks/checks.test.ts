@@ -270,6 +270,76 @@ describe("checkProviders", () => {
     expect(defLine?.severity).toBe("blocker");
     delete process.env.TIANSHU_TEST_KEY_OK;
   });
+
+  it("warning when provider's `api` field is missing", async () => {
+    process.env.TIANSHU_TEST_KEY_OK = "sk-test-12345678";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          qwen: {
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            baseUrl: "https://x.example/v1",
+            models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const apiLine = r.lines.find((l) => l.text.includes("api` field missing"));
+    expect(apiLine?.severity).toBe("warning");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("warning + 'did you mean' for the most common typo (openai-chat)", async () => {
+    // The actual i070219 paper-cut: cli-agent guessed "openai-chat".
+    // pi-ai then threw "No API provider registered for api: openai-chat"
+    // at first chat send. Doctor should catch it pre-flight with an
+    // actionable hint.
+    process.env.TIANSHU_TEST_KEY_OK = "sk-test-12345678";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          qwen: {
+            api: "openai-chat",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    const apiLine = r.lines.find((l) => l.text.includes("unknown"));
+    expect(apiLine?.severity).toBe("warning");
+    expect(apiLine?.text).toContain("openai-chat");
+    expect(apiLine?.detail).toContain("openai-completions");
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
+
+  it("ok line for a valid pi-ai api value (openai-completions)", async () => {
+    process.env.TIANSHU_TEST_KEY_OK = "sk-test-12345678";
+    const cfg: GlobalConfig = {
+      models: {
+        providers: {
+          qwen: {
+            api: "openai-completions",
+            apiKey: "${TIANSHU_TEST_KEY_OK}",
+            baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            models: [{ id: "qwen3-max", contextWindow: 200_000 }],
+          },
+        },
+      },
+    };
+    const r = await checkProviders({ config: cfg });
+    // No warning about api or unknown.
+    const apiWarn = r.lines.find(
+      (l) =>
+        l.severity === "warning" &&
+        (l.text.includes("unknown") || l.text.includes("api` field missing")),
+    );
+    expect(apiWarn).toBeUndefined();
+    delete process.env.TIANSHU_TEST_KEY_OK;
+  });
 });
 
 describe("checkNetwork", () => {
