@@ -6,6 +6,25 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.6](https://github.com/tianshu-ai/tianshu/compare/v0.3.5...v0.3.6) (2026-06-22)
+
+0.3.5 mounted the static handler and the SPA fallback but the
+fallback used `res.sendFile()` which 404'd on global installs
+even though the file existed on disk (Express 5 send module
+behaviour we don't fully understand on absolute paths). Symptom:
+`curl localhost:3110/` returned a 1.6kB NotFoundError page;
+browser users saw a blank Express error page instead of the
+chat UI.
+
+### Bug Fixes
+
+* **serve:** read `index.html` into a buffer at mount time and
+  `res.send` it on each SPA fallback request, bypassing
+  `res.sendFile`. Faster too — no per-request syscall.
+* **setup:** wizard's "Web UI" output now shows the right URL
+  for the actual mode — single-port `http://localhost:3110` in
+  production, separate `http://localhost:5183` only in dev.
+
 ## [0.3.5](https://github.com/tianshu-ai/tianshu/compare/v0.3.4...v0.3.5) (2026-06-22)
 
 0.3.4 added `npm run serve` for production-mode startup but
