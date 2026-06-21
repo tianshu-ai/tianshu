@@ -676,6 +676,57 @@ wss.on("connection", async (socket, request) => {
   });
 });
 
+// Optionally serve the pre-built web UI in the same process.
+//
+// Dev mode (`npm run dev` from a checkout): vite handles the web
+// side on its own port (5183 by default); this block is dormant
+// because TIANSHU_WEB_DIST is unset.
+//
+// Production / global install: the wizard's launchd plist sets
+// TIANSHU_WEB_DIST to the bundled web dist directory and the
+// server hosts the static files itself, so the user only needs
+// one port (3110) instead of two processes.
+//
+// We mount this AFTER every `/api/*` and `/ws` handler so the
+// catch-all only fires for non-API requests. The SPA fallback
+// (any unknown path → index.html) is what makes
+// `/tenants/foo/users/bar/` work without a real route on the
+// filesystem.
+const webDistRaw = process.env.TIANSHU_WEB_DIST;
+if (webDistRaw && webDistRaw.length > 0) {
+  try {
+    const path = await import("node:path");
+    const fs = await import("node:fs");
+    const webDist = path.resolve(webDistRaw);
+    if (!fs.existsSync(path.join(webDist, "index.html"))) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[tianshu] TIANSHU_WEB_DIST=${webDist} but no index.html there; " +
+          "skipping static UI mount.`,
+      );
+    } else {
+      app.use(express.static(webDist, { index: false, fallthrough: true }));
+      // SPA fallback: every non-/api, non-/ws request that didn't
+      // match a static file falls through to index.html so the
+      // React router takes over (/tenants/foo/users/bar/...).
+      app.use((req, res, next) => {
+        if (req.path.startsWith("/api/")) return next();
+        if (req.path.startsWith("/ws")) return next();
+        // Anything else: serve index.html. The router on the
+        // client decides what to render.
+        res.sendFile(path.join(webDist, "index.html"));
+      });
+      // eslint-disable-next-line no-console
+      console.log(`[tianshu] serving web UI from ${webDist}`);
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[tianshu] failed to mount static web dist: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
   console.log(`[tianshu] server listening on http://localhost:${PORT}`);

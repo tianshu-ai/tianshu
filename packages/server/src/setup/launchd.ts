@@ -55,6 +55,18 @@ export interface LaunchdInstallOpts {
   repoRoot: string;
   serverPort: number;
   webPort: number;
+  /**
+   * Which npm script to invoke from the launchd plist.
+   * - `dev` (default): full watch + rebuild pipeline. Only works
+   *   from a git checkout with devDependencies installed (tsc,
+   *   vite, etc.).
+   * - `serve`: pre-built dist + static-host the web UI in the
+   *   server process. The right choice when running from a
+   *   global npm install where devDependencies aren't on disk.
+   * Resolve at the wizard layer (we have isTianshuCheckout()
+   *   there) and pass through here.
+   */
+  npmScript?: "dev" | "serve";
   /** Resolved npm path (output of `which npm`). Caller resolves
    *  this rather than us so wizard / service code can share the
    *  same fallback strategy and surface the same errors. */
@@ -192,7 +204,7 @@ export function renderPlist(
     <array>
         <string>${opts.npmPath}</string>
         <string>run</string>
-        <string>dev</string>
+        <string>${opts.npmScript ?? "dev"}</string>
     </array>
 
     <key>WorkingDirectory</key>
