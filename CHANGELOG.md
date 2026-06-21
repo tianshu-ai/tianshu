@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.11](https://github.com/tianshu-ai/tianshu/compare/v0.3.10...v0.3.11) (2026-06-22)
+
+### Bug Fixes
+
+* **server:** `/api/health` now reads `version` from the
+  top-level package.json instead of hard-coding it. Previously
+  every release shipped with `version: "0.2.0"` baked into the
+  endpoint, so doctor and the CLI update check couldn't
+  distinguish running versions and would suggest upgrades that
+  were already installed.
+
 ## [0.3.10](https://github.com/tianshu-ai/tianshu/compare/v0.3.9...v0.3.10) (2026-06-22)
 
 ### Features
