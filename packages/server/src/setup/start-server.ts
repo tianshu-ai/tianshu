@@ -232,30 +232,49 @@ export async function runStartServer(
     return SKIPPED;
   }
 
-  // Pick ports.
+  // Pick ports. In production mode the server hosts the SPA on
+  // the API port (TIANSHU_WEB_DIST), so there's no second port
+  // to pick and asking would just be noise. We still write
+  // WEB_PORT to .env in prod — the value isn't *used* by the
+  // running server, but `tianshu doctor`'s dev-mode check looks
+  // it up, and developers who later clone the repo and want to
+  // run `npm run dev` get a sensible default already in place.
+  const isDev = isDevelopmentCheckout(repoRoot);
   const serverPort = await pickPort(
-    "Server port (the API + WebSocket):",
+    isDev
+      ? "Server port (the API + WebSocket):"
+      : "Server port (the server hosts the UI + API on this one port):",
     DEFAULT_SERVER_PORT,
   );
   if (serverPort === null) {
     p.log.warn("Aborted port selection. Skipping start.");
     return SKIPPED;
   }
-  const webPort = await pickPort(
-    "Web port (the dev UI you'll open in a browser):",
-    DEFAULT_WEB_PORT,
-  );
-  if (webPort === null) {
-    p.log.warn("Aborted port selection. Skipping start.");
-    return SKIPPED;
+  let webPort: number;
+  if (isDev) {
+    const picked = await pickPort(
+      "Web port (the dev UI you'll open in a browser):",
+      DEFAULT_WEB_PORT,
+    );
+    if (picked === null) {
+      p.log.warn("Aborted port selection. Skipping start.");
+      return SKIPPED;
+    }
+    webPort = picked;
+  } else {
+    webPort = DEFAULT_WEB_PORT;
   }
 
   // Persist the ports.
   writeEnvVar(envPath, "PORT", String(serverPort));
   writeEnvVar(envPath, "WEB_PORT", String(webPort));
-  p.log.success(
-    `Wrote PORT=${serverPort}, WEB_PORT=${webPort} to ${envPath}`,
-  );
+  if (isDev) {
+    p.log.success(
+      `Wrote PORT=${serverPort}, WEB_PORT=${webPort} to ${envPath}`,
+    );
+  } else {
+    p.log.success(`Wrote PORT=${serverPort} to ${envPath}`);
+  }
 
   // Cross-platform branch.
   const platform = os.platform();
