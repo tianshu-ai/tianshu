@@ -6,6 +6,24 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.5](https://github.com/tianshu-ai/tianshu/compare/v0.3.4...v0.3.5) (2026-06-22)
+
+0.3.4 added `npm run serve` for production-mode startup but
+the script used a shell variable (`TIANSHU_WEB_DIST="$PWD/..."`)
+that npm doesn't always expand. On launchd-driven invocations
+the server saw the literal string `"$PWD/packages/web/dist"`
+as the dist path, `path.resolve()` turned it into a nonsense
+relative path, the directory didn't exist, and the static
+mount fell through to the warning branch. Symptom: `curl /`
+returned 404 even though `/api/health` was healthy.
+
+### Bug Fixes
+
+* **serve:** replace the shell-variable-based `serve` script
+  with a real `bin/serve.mjs` entrypoint that resolves the
+  package root from `import.meta.url`. Works regardless of cwd
+  or shell quoting behaviour
+
 ## [0.3.4](https://github.com/tianshu-ai/tianshu/compare/v0.3.3...v0.3.4) (2026-06-22)
 
 Fixes the wizard's launchd plist on global npm installs. 0.3.3
