@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.8](https://github.com/tianshu-ai/tianshu/compare/v0.3.7...v0.3.8) (2026-06-22)
+
+### Bug Fixes
+
+* **env:** read & write `.env` from `<TIANSHU_HOME>/.env` on
+  global installs (default `~/.tianshu/.env`). Previously the
+  wizard wrote ports to the install dir's `.env` which (a) may
+  not be user-writable on some node prefixes and (b) gets
+  blown away on `npm install -g` upgrades. Result: doctor and
+  the running server fell back to default ports even though
+  the user had picked something else in the wizard. Dev mode
+  (git checkout) keeps writing to repoRoot/.env so existing
+  developer workflows aren't disturbed.
+
 ## [0.3.7](https://github.com/tianshu-ai/tianshu/compare/v0.3.6...v0.3.7) (2026-06-22)
 
 ### Features
