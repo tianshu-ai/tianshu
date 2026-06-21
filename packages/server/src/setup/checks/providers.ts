@@ -214,6 +214,20 @@ export async function checkProviders(
     }
   }
 
+  // Deprecated `worker:` block on global config — same fate as on
+  // tenant configs; flag so users / cli-agent don't think they're
+  // configuring anything real.
+  if ((config as { worker?: unknown }).worker !== undefined) {
+    const w = (config as { worker?: Record<string, unknown> }).worker ?? {};
+    const keys = Object.keys(w).join(", ") || "(empty)";
+    lines.push({
+      severity: "warning",
+      text: `deprecated 'worker' field set (keys: ${keys})`,
+      detail:
+        "The `worker.{count,pollMs,model}` field has no runtime effect in the open-source repo. Workboard sizes the pool from agent-seeds (one worker per enabled agent.json) and selects model per-worker via agent.json's modelId, falling back to the resolved defaultModel. Safe to delete from config.json.",
+    });
+  }
+
   return { title: "LLM providers", lines };
 }
 
