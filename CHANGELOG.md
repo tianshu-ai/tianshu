@@ -6,6 +6,27 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.2](https://github.com/tianshu-ai/tianshu/compare/v0.3.1...v0.3.2) (2026-06-22)
+
+Out-of-band hotfix shipping a working npm tarball. Versions
+**0.3.0 and 0.3.1 are broken** — the published packages were
+missing all 14 server runtime dependencies (better-sqlite3,
+ws, hono, the mcp sdk, etc.). Hoisted-workspace install in
+dev mode masked this; the published tarball revealed it.
+Anyone on those versions will see `Cannot find package` errors
+on first invocation. Skip straight to 0.3.2.
+
+### Bug Fixes
+
+* **publish:** rename the workspace plugin SDK from
+  `@tianshu/plugin-sdk` (a scope we don't own) to
+  `@tianshu-ai/plugin-sdk`. Bundle it into the published
+  tarball via `bundleDependencies` so users get it on install
+  without needing a separate npm publish for the SDK. Aggregate
+  every sub-package's runtime `dependencies` into root so
+  `npm install -g @tianshu-ai/tianshu` actually pulls everything
+  the server needs at runtime ([#172](https://github.com/tianshu-ai/tianshu/pull/172))
+
 ## [0.3.0](https://github.com/tianshu-ai/tianshu/compare/v0.2.0...v0.3.0) (2026-06-21)
 
 
