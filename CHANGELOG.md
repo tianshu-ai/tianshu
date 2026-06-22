@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.15](https://github.com/tianshu-ai/tianshu/compare/v0.3.14...v0.3.15) (2026-06-22)
+
+### Features
+
+* **cli-agent:** new `check_build_progress` read-only tool +
+  system-prompt guidance. When `build_sandbox` appears stuck,
+  the agent now checks whether the build is still actively
+  making progress (recent `[builder]` activity in the launchd
+  logs) or has actually errored, instead of blindly retrying.
+  Errors → retry. Still-progressing → quote the latest log
+  line to the user ("still pulling apt packages, last activity
+  22s ago") and wait. Avoids the 10-15 min double-build that
+  happened when the agent's request timed out while the build
+  itself was still fine.
+
 ## [0.3.14](https://github.com/tianshu-ai/tianshu/compare/v0.3.13...v0.3.14) (2026-06-22)
 
 ### Features
