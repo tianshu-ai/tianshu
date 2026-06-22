@@ -31,6 +31,7 @@
     "plugins/**/manifest.json",
     "plugins/**/skills/**",
     "plugins/**/agent-seeds/**",
+    "plugins/**/templates/**",
     "README.md",
     "LICENSE"
   ],
