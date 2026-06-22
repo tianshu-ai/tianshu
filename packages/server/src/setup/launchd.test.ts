@@ -9,7 +9,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  CANONICAL_DEV_LABEL,
   CANONICAL_LABEL,
+  findOrphanedLabels,
+  PROD_LABEL,
   logPathsFor,
   plistPathFor,
   renderPlist,
@@ -37,84 +40,145 @@ describe("launchd.logPathsFor", () => {
 });
 
 describe("launchd.resolveLabel", () => {
-  // We need a controllable HOME so we can create / delete a fake
-  // canonical plist without touching the developer's real one.
+  // Tests need a controllable HOME (for the fake LaunchAgents
+  // dir) AND need to materialise real `.git/` directories so
+  // isDevelopmentCheckout can recognise dev vs prod paths. The
+  // old test suite skipped this by passing string paths and
+  // letting the resolver hash them; the new label rules
+  // require the resolver to know what kind of install it is
+  // before picking a label.
   let fakeHome: string;
   let savedHome: string | undefined;
+  let tmpRoot: string;
+
+  function makeDevCheckout(name: string): string {
+    const dir = path.join(tmpRoot, name);
+    fs.mkdirSync(path.join(dir, ".git"), { recursive: true });
+    return dir;
+  }
+  function makeProdInstall(name: string): string {
+    // npm-global installs live under `.../lib/node_modules/...`,
+    // which is the signal `isDevelopmentCheckout` uses (alongside
+    // "no .git ancestor") to classify as production. Test fixture
+    // mirrors that exact shape so the resolver picks PROD_LABEL.
+    const dir = path.join(tmpRoot, "npm-prefix", "lib", "node_modules", name);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
 
   beforeEach(() => {
     fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-launchd-"));
+    tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-launchd-checkouts-"));
     fs.mkdirSync(path.join(fakeHome, "Library", "LaunchAgents"), {
       recursive: true,
     });
     savedHome = process.env.HOME;
     process.env.HOME = fakeHome;
-    // os.homedir() reads HOME on POSIX; on macOS test runner this works.
   });
 
   afterEach(() => {
     if (savedHome === undefined) delete process.env.HOME;
     else process.env.HOME = savedHome;
     fs.rmSync(fakeHome, { recursive: true, force: true });
+    fs.rmSync(tmpRoot, { recursive: true, force: true });
   });
 
-  it("returns canonical label when no plist exists", () => {
-    expect(resolveLabel("/Users/dev/git/tianshu")).toBe(CANONICAL_LABEL);
+  it("returns ai.tianshu.prod for an npm-global-style install (no .git ancestor)", () => {
+    // The motivating fix: npm-global installs used to get a
+    // hash-suffixed label (ai.tianshu.dev.f71469f0) that
+    // rotated whenever the install path changed (e.g. an nvm
+    // version bump). Now they get the stable bare prod label.
+    const install = makeProdInstall("@tianshu-ai/tianshu");
+    expect(resolveLabel(install)).toBe(PROD_LABEL);
+    expect(PROD_LABEL).toBe("ai.tianshu.prod");
   });
 
-  it("returns canonical label when existing plist's WorkingDirectory matches", () => {
+  it("prod label is stable for the same install path", () => {
+    // Re-running tianshu start / restart / status from a prod
+    // install must always converge on the same plist file.
+    const install = makeProdInstall("@tianshu-ai/tianshu");
+    expect(resolveLabel(install)).toBe(resolveLabel(install));
+  });
+
+  it("returns ai.tianshu.dev for a git checkout when no plist exists", () => {
+    const checkout = makeDevCheckout("tianshu");
+    expect(resolveLabel(checkout)).toBe(CANONICAL_DEV_LABEL);
+  });
+
+  it("returns the dev label when the existing plist already points at this checkout", () => {
+    const checkout = makeDevCheckout("tianshu");
     const plistPath = path.join(
       fakeHome,
       "Library",
       "LaunchAgents",
-      `${CANONICAL_LABEL}.plist`,
+      `${CANONICAL_DEV_LABEL}.plist`,
     );
     fs.writeFileSync(
       plistPath,
-      `<plist><dict><key>WorkingDirectory</key><string>/Users/dev/git/tianshu</string></dict></plist>`,
+      `<plist><dict><key>WorkingDirectory</key><string>${checkout}</string></dict></plist>`,
     );
-    expect(resolveLabel("/Users/dev/git/tianshu")).toBe(CANONICAL_LABEL);
+    expect(resolveLabel(checkout)).toBe(CANONICAL_DEV_LABEL);
   });
 
-  it("returns hashed label when canonical plist is owned by another checkout", () => {
+  it("falls back to ai.tianshu.dev.<hash> when another checkout already owns the bare dev label", () => {
+    // Edge case kept for backwards compat: two dev checkouts
+    // on the same machine. The first one occupies ai.tianshu.dev;
+    // the second has to coexist via a hash suffix.
+    const owner = makeDevCheckout("tianshu");
+    const secondary = makeDevCheckout("tianshu_clone");
     const plistPath = path.join(
       fakeHome,
       "Library",
       "LaunchAgents",
-      `${CANONICAL_LABEL}.plist`,
+      `${CANONICAL_DEV_LABEL}.plist`,
     );
     fs.writeFileSync(
       plistPath,
-      `<plist><dict><key>WorkingDirectory</key><string>/Users/dev/git/other-clone</string></dict></plist>`,
+      `<plist><dict><key>WorkingDirectory</key><string>${owner}</string></dict></plist>`,
     );
-    const label = resolveLabel("/Users/dev/git/tianshu");
-    expect(label).toMatch(new RegExp(`^${CANONICAL_LABEL.replace(/\./g, "\\.")}\\.[a-f0-9]{8}$`));
+    const label = resolveLabel(secondary);
+    expect(label).toMatch(
+      new RegExp(
+        `^${CANONICAL_DEV_LABEL.replace(/\./g, "\\.")}\\.[a-f0-9]{8}$`,
+      ),
+    );
   });
 
-  it("hashed label is stable for the same checkout path", () => {
+  it("the hashed dev fallback is stable for the same checkout path", () => {
+    const owner = makeDevCheckout("tianshu");
+    const secondary = makeDevCheckout("tianshu_clone");
     const plistPath = path.join(
       fakeHome,
       "Library",
       "LaunchAgents",
-      `${CANONICAL_LABEL}.plist`,
+      `${CANONICAL_DEV_LABEL}.plist`,
     );
-    fs.writeFileSync(plistPath, "<plist></plist>"); // unparseable → fall through to hash
-    const a = resolveLabel("/Users/dev/git/tianshu");
-    const b = resolveLabel("/Users/dev/git/tianshu");
-    expect(a).toBe(b);
+    fs.writeFileSync(
+      plistPath,
+      `<plist><dict><key>WorkingDirectory</key><string>${owner}</string></dict></plist>`,
+    );
+    expect(resolveLabel(secondary)).toBe(resolveLabel(secondary));
   });
 
-  it("different checkouts get different hashed labels", () => {
+  it("two different dev checkouts colliding on the dev label get different hashed fallbacks", () => {
+    const owner = makeDevCheckout("tianshu");
+    const cloneA = makeDevCheckout("tianshu_a");
+    const cloneB = makeDevCheckout("tianshu_b");
     const plistPath = path.join(
       fakeHome,
       "Library",
       "LaunchAgents",
-      `${CANONICAL_LABEL}.plist`,
+      `${CANONICAL_DEV_LABEL}.plist`,
     );
-    fs.writeFileSync(plistPath, "<plist></plist>");
-    const a = resolveLabel("/Users/dev/git/tianshu_a");
-    const b = resolveLabel("/Users/dev/git/tianshu_b");
-    expect(a).not.toBe(b);
+    fs.writeFileSync(
+      plistPath,
+      `<plist><dict><key>WorkingDirectory</key><string>${owner}</string></dict></plist>`,
+    );
+    expect(resolveLabel(cloneA)).not.toBe(resolveLabel(cloneB));
+  });
+
+  it("back-compat: CANONICAL_LABEL alias still resolves to the dev label", () => {
+    expect(CANONICAL_LABEL).toBe(CANONICAL_DEV_LABEL);
   });
 });
 
@@ -147,5 +211,103 @@ describe("launchd.renderPlist", () => {
     const { out, err } = logPathsFor(label);
     expect(body).toContain(`<string>${out}</string>`);
     expect(body).toContain(`<string>${err}</string>`);
+  });
+});
+
+describe("launchd.findOrphanedLabels", () => {
+  // Mirrors the resolveLabel suite's HOME-isolation approach so
+  // we can plant fake plists without touching the real
+  // ~/Library/LaunchAgents.
+  let fakeHome: string;
+  let savedHome: string | undefined;
+  let tmpInstalls: string;
+
+  beforeEach(() => {
+    fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-orphans-"));
+    tmpInstalls = fs.mkdtempSync(
+      path.join(os.tmpdir(), "tianshu-orphans-installs-"),
+    );
+    fs.mkdirSync(path.join(fakeHome, "Library", "LaunchAgents"), {
+      recursive: true,
+    });
+    savedHome = process.env.HOME;
+    process.env.HOME = fakeHome;
+  });
+  afterEach(() => {
+    if (savedHome === undefined) delete process.env.HOME;
+    else process.env.HOME = savedHome;
+    fs.rmSync(fakeHome, { recursive: true, force: true });
+    fs.rmSync(tmpInstalls, { recursive: true, force: true });
+  });
+
+  function writePlist(label: string, workingDir: string): void {
+    fs.writeFileSync(
+      path.join(
+        fakeHome,
+        "Library",
+        "LaunchAgents",
+        `${label}.plist`,
+      ),
+      `<plist><dict><key>WorkingDirectory</key><string>${workingDir}</string></dict></plist>`,
+    );
+  }
+
+  it("returns empty list when no plists exist", () => {
+    const installPath = path.join(tmpInstalls, "a");
+    fs.mkdirSync(installPath, { recursive: true });
+    expect(findOrphanedLabels("ai.tianshu.prod", installPath)).toEqual([]);
+  });
+
+  it("finds legacy hash-labelled plists pointing at the same install path", () => {
+    // Real-world scenario this fix solves: an `npm install -g`
+    // install used to get a label like ai.tianshu.dev.f71469f0,
+    // hash-derived from the install path. After upgrading to
+    // the version that returns ai.tianshu.prod for the same
+    // install, the old plist is an orphan.
+    const installPath = path.join(tmpInstalls, "prefix", "lib", "node_modules", "tianshu");
+    fs.mkdirSync(installPath, { recursive: true });
+    writePlist("ai.tianshu.dev.f71469f0", installPath);
+    const orphans = findOrphanedLabels("ai.tianshu.prod", installPath);
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0].label).toBe("ai.tianshu.dev.f71469f0");
+    expect(orphans[0].workingDir).toBe(installPath);
+  });
+
+  it("excludes the current label even when the WorkingDirectory matches", () => {
+    // The current label's plist is NOT an orphan; we'd just be
+    // about to overwrite it. Belt-and-suspenders against the
+    // resolver and the cleanup pass disagreeing.
+    const installPath = path.join(tmpInstalls, "a");
+    fs.mkdirSync(installPath, { recursive: true });
+    writePlist("ai.tianshu.prod", installPath);
+    expect(findOrphanedLabels("ai.tianshu.prod", installPath)).toEqual([]);
+  });
+
+  it("ignores plists pointing at a different install path", () => {
+    // Two dev clones on the same machine, both managed by
+    // tianshu. Each one's start command must touch only its
+    // own plist — not its neighbour's.
+    const installA = path.join(tmpInstalls, "a");
+    const installB = path.join(tmpInstalls, "b");
+    fs.mkdirSync(installA);
+    fs.mkdirSync(installB);
+    writePlist("ai.tianshu.dev", installA);
+    writePlist("ai.tianshu.dev.deadbeef", installB);
+    expect(
+      findOrphanedLabels("ai.tianshu.prod", installA).map((o) => o.label),
+    ).toEqual(["ai.tianshu.dev"]);
+    expect(
+      findOrphanedLabels("ai.tianshu.prod", installB).map((o) => o.label),
+    ).toEqual(["ai.tianshu.dev.deadbeef"]);
+  });
+
+  it("ignores non-tianshu plists", () => {
+    // Anything that isn't ai.tianshu.* is none of our business.
+    // Test prevents the cleanup loop ever growing teeth that
+    // could chew on unrelated launchd agents.
+    const installPath = path.join(tmpInstalls, "a");
+    fs.mkdirSync(installPath);
+    writePlist("com.example.something", installPath);
+    expect(findOrphanedLabels("ai.tianshu.prod", installPath)).toEqual([]);
   });
 });
