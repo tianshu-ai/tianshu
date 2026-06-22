@@ -36,7 +36,7 @@ import { fileURLToPath } from "node:url";
 
 const exec = promisify(execFile);
 
-const PACKAGE_NAME = "@tianshu-ai/tianshu";
+export const PACKAGE_NAME = "@tianshu-ai/tianshu";
 const REGISTRY_BASE = "https://registry.npmjs.org";
 
 export interface UpdateCmdOpts {
@@ -162,7 +162,7 @@ export async function runUpdate(opts: UpdateCmdOpts = {}): Promise<number> {
 
 // ─── helpers ───────────────────────────────────────────────────────
 
-type InstallSource = "npm-global" | "checkout" | "unknown";
+export type InstallSource = "npm-global" | "checkout" | "unknown";
 
 /**
  * Best-effort: are we running out of a global npm install or a
@@ -176,7 +176,7 @@ type InstallSource = "npm-global" | "checkout" | "unknown";
  *     `~/.nvm/versions/node/v22.x.x/lib/node_modules/`) → npm-global
  *   - Otherwise → unknown (treated like npm-global; conservative)
  */
-function detectInstallSource(): InstallSource {
+export function detectInstallSource(): InstallSource {
   const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 
   // Walk up looking for a sibling `.git` dir — that's the
@@ -197,7 +197,7 @@ function detectInstallSource(): InstallSource {
   return "unknown";
 }
 
-function readLocalVersion(): string {
+export function readLocalVersion(): string {
   try {
     const url = new URL("../../../../package.json", import.meta.url);
     const json = JSON.parse(fs.readFileSync(url, "utf8")) as {
@@ -209,11 +209,11 @@ function readLocalVersion(): string {
   }
 }
 
-interface RemoteResult {
+export interface RemoteResult {
   ok: true;
   version: string;
 }
-interface RemoteError {
+export interface RemoteError {
   ok: false;
   error: string;
 }
@@ -226,7 +226,7 @@ interface RemoteError {
  * is ~50 bytes and serves the same purpose for "what's the latest
  * version under this tag".
  */
-async function fetchDistTag(
+export async function fetchDistTag(
   tag: string,
   timeoutMs: number,
 ): Promise<RemoteResult | RemoteError> {

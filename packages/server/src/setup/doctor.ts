@@ -19,6 +19,7 @@ import {
   tallyGroups,
 } from "./render.js";
 import { checkRuntime } from "./checks/runtime.js";
+import { checkVersion } from "./checks/version.js";
 import { checkConfig } from "./checks/config.js";
 import { checkProviders } from "./checks/providers.js";
 import { checkNetwork } from "./checks/network.js";
@@ -33,6 +34,9 @@ export interface DoctorOpts {
   /** When true, boot a real microsandbox VM as a smoke test.
    *  Pulls the alpine image on first run; ~30s. Default false. */
   probeSandbox?: boolean;
+  /** Skip the npm-registry probe for new versions. Default
+   *  false (do check). Useful for offline / CI runs. */
+  skipVersionCheck?: boolean;
   /** Emit JSON instead of the clack ASCII report. */
   json?: boolean;
 }
@@ -49,6 +53,7 @@ export async function collectDoctorReport(
 ): Promise<DoctorReport> {
   const groups: CheckGroup[] = [];
   groups.push(checkRuntime());
+  groups.push(await checkVersion({ skipRemote: opts.skipVersionCheck }));
   groups.push(checkConfig());
   groups.push(
     await checkProviders({

@@ -1,7 +1,7 @@
 // `tianshu` CLI — top-level dispatch.
 //
 // Commands:
-//   tianshu doctor [--probe-providers] [--probe-sandbox] [--json]
+//   tianshu doctor [--probe-providers] [--probe-sandbox] [--skip-version-check] [--json]
 //   tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--force] [--dry-run] [--use-env]
 //   tianshu start | stop | restart | status [--json] [--no-wait]
 //   tianshu logs [--follow] [--lines=N] [--stream=out|err|both]
@@ -77,7 +77,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
 function topLevelUsage(): string {
   return [
     "Usage:",
-    "  tianshu doctor [--probe-providers] [--probe-sandbox] [--json]",
+    "  tianshu doctor [--probe-providers] [--probe-sandbox] [--skip-version-check] [--json]",
     "  tianshu setup [--wizard] [--non-interactive --provider X --api-key Y [--base-url URL] [--default-model Z]] [--use-env]",
     "  tianshu start | stop | restart | status [--json] [--no-wait]",
     "  tianshu logs [--follow] [--lines=N] [--stream=out|err|both]",
@@ -133,6 +133,7 @@ export async function main(argv: string[]): Promise<number> {
       return runDoctor({
         probeProviders: parsed.flags.has("probe-providers"),
         probeSandbox: parsed.flags.has("probe-sandbox"),
+        skipVersionCheck: parsed.flags.has("skip-version-check"),
         json: parsed.flags.has("json"),
       });
 
