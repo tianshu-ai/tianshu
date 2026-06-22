@@ -18,12 +18,12 @@
 //   them which `npm install` step likely failed)
 // - workboard (worker spawn is overkill for setup)
 //
-// Tools shipped (17): tenant_list, tenant_create, user_create,
+// Tools shipped (18): tenant_list, tenant_create, user_create,
 //   plugin_enable, plugin_disable, config_read, config_write,
 //   secret_list, secret_write, run_doctor, read_service_logs,
-//   read_env_file, sandbox_inventory, build_sandbox,
-//   use_sandbox_build, check_for_update, apply_update. Plus the
-//   implicit "done" sentinel.
+//   read_env_file, sandbox_inventory, check_build_progress,
+//   build_sandbox, use_sandbox_build, check_for_update,
+//   apply_update. Plus the implicit "done" sentinel.
 
 import * as p from "@clack/prompts";
 import fs from "node:fs";
@@ -317,6 +317,22 @@ MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
   "You already have 2 snapshots built; the task one is published
   but the browser one isn't — want me to publish it?" beats
   "I'll start building...".
+- If build_sandbox appears stuck, times out from your end, or
+  the user says "is the build still going?" / "it's been a
+  while, should I retry?" — CALL check_build_progress FIRST.
+  Do NOT call build_sandbox a second time without checking,
+  because microsandbox builds run inside the server process:
+    * if the original is still progressing, a second
+      build_sandbox wastes another 10+ minutes (or collides);
+    * if the original errored, you SHOULD retry, but knowing
+      that requires reading the logs check_build_progress
+      surfaces.
+  Quote check_build_progress's hint verbatim to the user when
+  status is in_progress or stalled — a visible "still pulling
+  apt packages, last log line was 22s ago" beats a silent
+  spinner every time. Only after status='errored' or
+  status='stalled' + sandbox_inventory confirms no snapshot
+  landed should you propose retrying build_sandbox.
 - Standard setup flow when sandbox_inventory shows NOTHING is
   built yet. This is a TWO-snapshot layered build, NOT one big
   monolith. Why:
@@ -1159,6 +1175,210 @@ export function buildTools(
         return JSON.stringify(result);
       },
     },
+    check_build_progress: {
+      schema: {
+        name: "check_build_progress",
+        description:
+          "Read-only: figure out whether an in-flight microsandbox build is still making progress, has finished, or has stalled / errored.\n\nCALL THIS WHEN build_sandbox appears to be stuck, when a previous build_sandbox call timed out, or when the user says 'is the build still going?'. DO NOT call build_sandbox a second time without checking this first \u2014 microsandbox builds run inside the server process; a fresh build_sandbox call while another is in flight may collide with the running one OR (more commonly) the original build is still progressing fine and a retry would just waste another 10 minutes.\n\nHow it decides:\n  1. Polls /api/p/microsandbox/builds: if a build with `buildId` matching `expectBuildId` (or, when absent, ANY build newer than `sinceMs`) is now in the completed list \u2192 returns status='completed' + the build metadata.\n  2. Otherwise reads the launchd service logs and greps for builder activity (lines containing '[builder]', '[microsandbox]', or the active buildId if known). Computes `lastActivityAgoMs` as the gap between now and the most recent such line.\n     * gap \u2264 60s and last line doesn't contain 'error'/'failed' \u2192 status='in_progress', tell the user it's still working\n     * gap > 90s with no completion AND no error line yet \u2192 status='stalled', suggest read_service_logs for the full context before deciding to retry\n     * any line matches /failed|error|panic|exit code/ near the tail \u2192 status='errored' with the offending line\n\nResult shape:\n{\n  status: 'completed' | 'in_progress' | 'stalled' | 'errored' | 'no_recent_activity',\n  expectBuildId?: string,\n  matchedBuildId?: string,        // when status==='completed'\n  matchedBuild?: { snapshotName, baseImage, durationMs, ... },\n  lastActivityAgoMs?: number,\n  recentLogLines: string[],       // up to 30 builder-tagged lines\n  hint: string,                   // what the agent should do next\n}\n\nThe hint phrasing is meant to be quoted verbatim to the user (\"Still pulling apt packages, gave it 22s ago...\") so they have visibility into a process that otherwise looks like a hanging spinner.",
+        parameters: {
+          type: "object",
+          properties: {
+            tenantId: {
+              type: "string",
+              description:
+                "Tenant whose builds list to check. Defaults to 'default'.",
+            },
+            expectBuildId: {
+              type: "string",
+              description:
+                "The buildId you're waiting on, if you know it. When provided, log scanning is anchored on this id (looks for '[builder] buildId=<x>' style lines) and the completed-list check matches exactly. Without it we infer from timestamps which is less precise but still useful for the 'I lost track of the buildId' case.",
+            },
+            sinceMs: {
+              type: "number",
+              description:
+                "Epoch ms threshold for 'recent' completions when expectBuildId is absent. Builds with builtAt newer than this count as 'matched'. Default: 30 minutes ago, which covers the worst-case cold build.",
+            },
+            logLines: {
+              type: "number",
+              description:
+                "How many trailing log lines to consider when computing lastActivityAgoMs. Default 200. Bump if a particularly verbose build phase is masking the latest entries.",
+            },
+          },
+          required: [],
+        } as never,
+      },
+      execute: async (args) => {
+        const tenantId = String(args.tenantId ?? "default");
+        const expectBuildId =
+          typeof args.expectBuildId === "string" && args.expectBuildId.length > 0
+            ? args.expectBuildId
+            : undefined;
+        const sinceMs =
+          typeof args.sinceMs === "number"
+            ? args.sinceMs
+            : Date.now() - 30 * 60_000;
+        const requestedLogLines = Number(args.logLines);
+        const logLines =
+          Number.isFinite(requestedLogLines) && requestedLogLines > 0
+            ? Math.min(requestedLogLines, 1000)
+            : 200;
+
+        // Step 1: did the build already land in /builds?
+        let completedHit: Record<string, unknown> | undefined;
+        if (serverUrl) {
+          try {
+            const body = (await serverFetch(
+              serverUrl,
+              "GET",
+              "/api/p/microsandbox/builds",
+              tenantId,
+              undefined,
+              10_000,
+            )) as { builds?: Array<Record<string, unknown>> };
+            const builds = body.builds ?? [];
+            if (expectBuildId) {
+              completedHit = builds.find(
+                (b) => b.buildId === expectBuildId,
+              );
+            } else {
+              // Pick the newest build whose builtAt is >= sinceMs.
+              const recent = builds.filter((b) => {
+                const builtAt = b.builtAt;
+                if (typeof builtAt !== "string") return false;
+                const ts = Date.parse(builtAt);
+                return Number.isFinite(ts) && ts >= sinceMs;
+              });
+              recent.sort((a, b) => {
+                const ta = Date.parse(String(a.builtAt));
+                const tb = Date.parse(String(b.builtAt));
+                return tb - ta;
+              });
+              completedHit = recent[0];
+            }
+          } catch {
+            // /builds unreachable just means we have to fall back
+            // to log scanning; not fatal.
+          }
+        }
+
+        if (completedHit) {
+          return JSON.stringify({
+            status: "completed",
+            expectBuildId,
+            matchedBuildId: completedHit.buildId,
+            matchedBuild: {
+              snapshotName: completedHit.snapshotName,
+              baseImage: completedHit.baseImage,
+              fromSnapshot: completedHit.fromSnapshot ?? null,
+              durationMs: completedHit.durationMs,
+              builtAt: completedHit.builtAt,
+            },
+            recentLogLines: [],
+            hint:
+              "The build finished. Proceed to use_sandbox_build to publish it (or if it's already published, surface that). Don't call build_sandbox again with the same template.",
+          });
+        }
+
+        // Step 2: scan the launchd service logs for builder activity.
+        const repoRoot = findRepoRoot();
+        const label = launchd.resolveLabel(repoRoot);
+        const { out, err } = launchd.logPathsFor(label);
+        const stdoutLines = tailLines(out, logLines);
+        const stderrLines = tailLines(err, logLines);
+        // Merge and keep only builder-tagged lines (or lines
+        // mentioning the expected buildId). Drop everything else
+        // \u2014 the rest of the server log is noise for this purpose.
+        const merged = [...stdoutLines, ...stderrLines]
+          .map((l) => l)
+          .filter((l) => {
+            if (expectBuildId && l.includes(expectBuildId)) return true;
+            return (
+              l.includes("[builder]") ||
+              l.includes("[microsandbox]") ||
+              l.includes("[sandbox-msb]") ||
+              /build (started|finished|failed|errored)/i.test(l) ||
+              /snapshot.*saved|exec\[\d+\]/i.test(l)
+            );
+          });
+        const recentBuilderLines = merged.slice(-30);
+
+        // Try to extract a timestamp from the last useful line.
+        // Several log formats coexist (launchd ISO prefix, plain
+        // text, [builder] internal timestamp). We look for an
+        // ISO-8601 prefix; if absent we fall back to the file's
+        // mtime as a lower bound.
+        const lastLine = recentBuilderLines[recentBuilderLines.length - 1];
+        const lastActivityAt = parseLogLineTimestamp(lastLine) ?? (() => {
+          try {
+            const statTime = Math.max(
+              fs.existsSync(out) ? fs.statSync(out).mtimeMs : 0,
+              fs.existsSync(err) ? fs.statSync(err).mtimeMs : 0,
+            );
+            return statTime || null;
+          } catch {
+            return null;
+          }
+        })();
+        const lastActivityAgoMs =
+          lastActivityAt !== null ? Date.now() - lastActivityAt : null;
+
+        // Status classification.
+        const errorRegex =
+          /(failed|error|panic|exit code [1-9]|fatal|cannot|refused)/i;
+        const tailContextLines = recentBuilderLines.slice(-10);
+        const errorLine = [...tailContextLines]
+          .reverse()
+          .find((l) => errorRegex.test(l));
+
+        let status: string;
+        let hint: string;
+        if (recentBuilderLines.length === 0) {
+          status = "no_recent_activity";
+          hint = !serverUrl
+            ? "No server URL configured and no builder activity in launchd logs. Run `tianshu start` and try the build flow again."
+            : "No builder activity in the last " +
+              logLines +
+              " log lines. Either the build hasn't started, or it finished before this many lines ago. Re-run sandbox_inventory to see if a snapshot already exists.";
+        } else if (errorLine) {
+          status = "errored";
+          hint =
+            "The build hit an error: " +
+            errorLine.slice(-300) +
+            "\nIt is safe to retry build_sandbox \u2014 the previous attempt failed and won't be running in the background. Use read_service_logs with stream='err' lines=300 to get full context before retrying if the cause isn't obvious.";
+        } else if (lastActivityAgoMs !== null && lastActivityAgoMs <= 60_000) {
+          status = "in_progress";
+          hint =
+            "Build is still actively running (last builder log line was " +
+            Math.round(lastActivityAgoMs / 1000) +
+            "s ago). DO NOT retry build_sandbox \u2014 a second build would either collide or duplicate work. Tell the user the build is still progressing and what the last log line said. Wait a minute and call check_build_progress again.";
+        } else if (lastActivityAgoMs !== null && lastActivityAgoMs <= 180_000) {
+          status = "in_progress";
+          hint =
+            "Build appears in progress but the last builder log line was " +
+            Math.round(lastActivityAgoMs / 1000) +
+            "s ago. apt/network steps can have minute-long gaps. Wait another minute before assuming it's stalled.";
+        } else if (lastActivityAgoMs !== null) {
+          status = "stalled";
+          hint =
+            "No builder log activity for " +
+            Math.round(lastActivityAgoMs / 1000) +
+            "s (> 3 min). Either the build finished and dropped the [builder] tag, or it's wedged. Re-check sandbox_inventory first \u2014 a successful finish writes the build metadata BEFORE the last [builder] line drops off the visible tail. If the snapshot isn't there, read_service_logs with stream='both' lines=400 to inspect; consider retrying build_sandbox if the snapshot is genuinely missing.";
+        } else {
+          status = "in_progress";
+          hint =
+            "Builder log lines exist but we couldn't extract a timestamp \u2014 can't compute idle time precisely. Assume in-progress; check again in 60s.";
+        }
+
+        return JSON.stringify({
+          status,
+          expectBuildId,
+          tenantId,
+          lastActivityAgoMs,
+          recentLogLines: recentBuilderLines,
+          hint,
+        });
+      },
+    },
     sandbox_inventory: {
       schema: {
         name: "sandbox_inventory",
@@ -1901,4 +2121,53 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
 function shortArgs(args: Record<string, unknown>): string {
   const s = JSON.stringify(args);
   return s.length > 80 ? s.slice(0, 77) + "..." : s;
+}
+
+/**
+ * Cheap O(file) tail of a text log. Used by both read_service_logs
+ * and check_build_progress — not worth the syscall complexity of a
+ * proper reverse-streaming reader for files we know are <100 MB.
+ */
+function tailLines(filePath: string, n: number): string[] {
+  if (!fs.existsSync(filePath)) return [];
+  try {
+    const body = fs.readFileSync(filePath, "utf8");
+    return body
+      .split(/\r?\n/)
+      .slice(-n)
+      .filter((l) => l.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Try to pull an ISO-8601-ish timestamp out of a log line. The two
+ * formats we care about:
+ *   - launchd default stdout/stderr captures lines verbatim from
+ *     the child process, so server lines look like
+ *     `2026-06-22T19:42:11.123Z [builder] ...` (the server's own
+ *     logger prefixes).
+ *   - [builder] internal logger uses `[2026-06-22 19:42:11]` style.
+ * Returns epoch ms or null if no timestamp is present.
+ */
+function parseLogLineTimestamp(line: string | undefined): number | null {
+  if (!line) return null;
+  // ISO-8601 with T separator.
+  const iso = line.match(
+    /(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)/,
+  );
+  if (iso) {
+    const t = Date.parse(iso[1]);
+    if (Number.isFinite(t)) return t;
+  }
+  // Plain `YYYY-MM-DD HH:MM:SS` (no T).
+  const space = line.match(
+    /(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})/,
+  );
+  if (space) {
+    const t = Date.parse(`${space[1]}T${space[2]}Z`);
+    if (Number.isFinite(t)) return t;
+  }
+  return null;
 }
