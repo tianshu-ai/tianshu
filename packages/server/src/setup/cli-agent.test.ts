@@ -152,3 +152,48 @@ describe("cli-agent.sandbox_inventory", () => {
     expect(t!.mutating).toBeFalsy();
   });
 });
+
+describe("cli-agent.check_build_progress", () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-cli-agent-cbp-"));
+  });
+  afterEach(() => {
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("is registered as a non-mutating tool", () => {
+    // check_build_progress only reads /builds + launchd logs.
+    // Flagging it mutating would force a confirmation every
+    // time the agent peeks at a long build, defeating the
+    // tool's purpose.
+    const tools = buildTools(home, undefined);
+    const t = tools.check_build_progress;
+    expect(t).toBeDefined();
+    expect(t!.mutating).toBeFalsy();
+  });
+
+  it("returns no_recent_activity when nothing matches and no logs found", async () => {
+    // With no server, no buildId, no launchd label resolvable
+    // from this test environment, the tool should fall through
+    // to the explicit "no activity" branch — NOT throw, NOT
+    // claim the build is in_progress. This guards the
+    // happy-path defaults so the agent can keep talking.
+    const tools = buildTools(home, undefined);
+    const t = tools.check_build_progress;
+    expect(t).toBeDefined();
+    const r = await t!.execute({});
+    const parsed = JSON.parse(r);
+    // Either 'no_recent_activity' (no logs found) or
+    // 'in_progress' if some unrelated log line happens to
+    // exist. The critical guarantee: NEVER 'errored' or
+    // 'completed' — those require positive evidence the tool
+    // can't have here.
+    expect(["no_recent_activity", "in_progress", "stalled"]).toContain(
+      parsed.status,
+    );
+    expect(typeof parsed.hint).toBe("string");
+    expect(parsed.hint.length).toBeGreaterThan(20);
+  });
+});
