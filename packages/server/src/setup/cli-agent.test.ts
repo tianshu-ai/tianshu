@@ -112,3 +112,43 @@ describe("cli-agent.config_write", () => {
     expect(cfg.defaultModel).toBe("qwen/x");
   });
 });
+
+describe("cli-agent.sandbox_inventory", () => {
+  let home: string;
+
+  beforeEach(() => {
+    home = fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-cli-agent-si-"));
+  });
+  afterEach(() => {
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("returns ok:false with no_server hint when serverUrl is undefined", async () => {
+    // The wizard normally provides a serverUrl; when it doesn't
+    // (server not yet started, or running in a degraded mode),
+    // the tool must fail cleanly rather than throw — the agent
+    // needs a structured signal to suggest `tianshu start`.
+    const tools = buildTools(home, undefined);
+    const t = tools.sandbox_inventory;
+    expect(t).toBeDefined();
+    const r = await t!.execute({});
+    const parsed = JSON.parse(r);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.error).toBe("no_server");
+    // The agent reads `hint` to know what to tell the user;
+    // mention `tianshu start` so the chain of reasoning lands
+    // on the right next step.
+    expect(parsed.hint).toMatch(/tianshu start/);
+  });
+
+  it("is registered as a non-mutating tool (no CLI confirmation)", () => {
+    // sandbox_inventory is read-only; if someone accidentally
+    // flagged it `mutating: true` the wizard would prompt the
+    // user every time the agent wanted to see what's installed,
+    // which is the exact friction we're trying to eliminate.
+    const tools = buildTools(home, undefined);
+    const t = tools.sandbox_inventory;
+    expect(t).toBeDefined();
+    expect(t!.mutating).toBeFalsy();
+  });
+});
