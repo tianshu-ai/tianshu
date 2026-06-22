@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.14](https://github.com/tianshu-ai/tianshu/compare/v0.3.13...v0.3.14) (2026-06-22)
+
+### Features
+
+* **cli-agent:** new `sandbox_inventory` read-only tool +
+  inventory-first system-prompt guidance. The setup agent
+  used to dive into the full 2-snapshot layered build flow
+  without first checking whether the user already had
+  snapshots built and published. It now fetches
+  `/api/p/microsandbox/{status,builds}`, surfaces what's on
+  disk and which role pointers (browser / task) are
+  currently published, and branches accordingly:
+  - already fully set up → say so, skip the 10-15 min build
+  - builds exist but unpublished → propose `use_sandbox_build`
+  - nothing built → run the standard layered flow
+
 ## [0.3.13](https://github.com/tianshu-ai/tianshu/compare/v0.3.12...v0.3.13) (2026-06-22)
 
 ### Bug Fixes
