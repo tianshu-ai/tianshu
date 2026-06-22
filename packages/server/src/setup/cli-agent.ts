@@ -18,10 +18,11 @@
 //   them which `npm install` step likely failed)
 // - workboard (worker spawn is overkill for setup)
 //
-// Tools shipped (12): tenant_list, tenant_create, user_create,
+// Tools shipped (16): tenant_list, tenant_create, user_create,
 //   plugin_enable, plugin_disable, config_read, config_write,
-//   run_doctor, read_service_logs, read_env_file,
-//   build_sandbox, use_sandbox_build. Plus the implicit "done"
+//   secret_list, secret_write, run_doctor, read_service_logs,
+//   read_env_file, build_sandbox, use_sandbox_build,
+//   check_for_update, apply_update. Plus the implicit "done"
 //   sentinel.
 
 import * as p from "@clack/prompts";
@@ -64,6 +65,12 @@ import {
 import { collectDoctorReport } from "./doctor.js";
 import * as launchd from "./launchd.js";
 import { findRepoRoot } from "./repo-root.js";
+import {
+  detectInstallSource,
+  fetchDistTag,
+  readLocalVersion,
+  runUpdate,
+} from "./update.js";
 
 export interface CliAgentOpts {
   home?: string;
@@ -371,10 +378,56 @@ MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
   Then propose the *specific* fix to the user before mutating
   anything.
 
+VERSION FRESHNESS (check_for_update / apply_update):
+- run_doctor includes a "Tianshu version" check. When it
+  flags warning with "Update available: X → Y", that's the
+  trigger: bring it up with the user before suggesting other
+  fixes if the warning is about an outdated install.
+  Stale code is a common root cause for behaviours that
+  doctor *can't* see (UI bugs in old web bundles,
+  unrecognised CLI flags, plugin manifest drift).
+- Use check_for_update for "am I up to date?" questions.
+  Read-only; safe to call anytime. The result includes
+  installSource:
+    * 'checkout' — user is on a git tree. DO NOT propose
+      apply_update; they need \`git pull\`. Say so and stop.
+    * 'npm-global' or 'unknown' — apply_update is valid.
+- Propose apply_update only AFTER check_for_update reported
+  updateAvailable=true AND the user explicitly accepts the
+  upgrade. The CLI will confirm again before running
+  \`npm install -g\`.
+- After apply_update succeeds, the user MUST run
+  \`tianshu restart\` to bounce the launchd-managed server
+  onto the new code. Tell them this; don't try to run
+  restart yourself (you don't have a tool for it and it's
+  disruptive — the user might have in-flight chat sessions).
+- If apply_update fails with EACCES on a system-Node install,
+  suggest a Node version manager (nvm / volta / asdf), NOT
+  sudo. sudo'd npm-global state is a recurring footgun.
+- If the registry is unreachable, that's not a blocker. Tell
+  the user they're offline / firewalled and the existing
+  install is unaffected; skip the update for now.
+
+FIX FLOW (the agent IS the fixer, not just an inspector):
+- run_doctor reports problems in three tiers: 'ok' / 'warning'
+  / 'blocker'. Treat each according to severity:
+    * blockers — server won't run correctly. Propose a
+      specific fix tool call (e.g. config_write to repair a
+      broken provider entry, plugin_disable to drop a plugin
+      with a missing runtime). Don't summarise without a fix.
+    * warnings — not blocking, but worth fixing. List them
+      with proposed fixes; let the user pick which to address.
+    * informational ok lines — surface only if relevant to
+      what the user asked.
+- Don't run more than ~3 mutating tools without a fresh
+  run_doctor. After each meaningful fix, re-run doctor to
+  confirm the issue is gone before moving on — silent
+  regressions are the worst failure mode.
+
 When the user says they're done / satisfied / wants to exit, run
 run_doctor one last time, summarise, then end with:
-"All set. Run 'tianshu dev' (or 'npm run dev' in a checkout)
-to start the server."`;
+"All set. Run 'tianshu start' to bring up the service, or
+'tianshu restart' if it's already running."`;
 
 interface ToolHandler {
   schema: Tool;
@@ -1299,6 +1352,126 @@ export function buildTools(
           reset,
           tenantId,
           response: resp,
+        });
+      },
+    },
+    check_for_update: {
+      schema: {
+        name: "check_for_update",
+        description:
+          "Read-only: ask the npm registry whether a newer version of `@tianshu-ai/tianshu` is published, compare to the running version, and return the result. Use this when run_doctor flags the \"Tianshu version\" group as warning, or when the user asks \"am I up to date?\". Doesn't install anything; suggest apply_update if the user wants to upgrade.\n\nResult: { installSource, currentVersion, latestVersion, updateAvailable, registryReachable }. installSource='checkout' means the user is running from a git tree — update via `git pull`, not npm; tell them so and don't propose apply_update.",
+        parameters: {
+          type: "object",
+          properties: {
+            tag: {
+              type: "string",
+              description:
+                "npm dist-tag to compare against. Defaults to 'latest'. Use 'next' / 'hotfix' only if the user explicitly tracks a pre-release channel.",
+            },
+          },
+          required: [],
+        } as never,
+      },
+      execute: async (args) => {
+        const tag = typeof args.tag === "string" ? args.tag : "latest";
+        const source = detectInstallSource();
+        const current = readLocalVersion();
+        if (source === "checkout") {
+          return JSON.stringify({
+            installSource: "checkout",
+            currentVersion: current,
+            latestVersion: null,
+            updateAvailable: false,
+            registryReachable: null,
+            advice:
+              "This binary is running from a git checkout. Use `git pull` (and `npm install` if dependencies changed) to update. npm-registry comparison skipped.",
+          });
+        }
+        const remote = await fetchDistTag(tag, 5_000);
+        if (!remote.ok) {
+          return JSON.stringify({
+            installSource: source,
+            currentVersion: current,
+            latestVersion: null,
+            updateAvailable: null,
+            registryReachable: false,
+            error: remote.error,
+            advice:
+              "Couldn't reach the npm registry. Network / proxy / firewall is the usual cause. Existing install is unaffected; skip the update for now.",
+          });
+        }
+        const updateAvailable = remote.version !== current;
+        return JSON.stringify({
+          installSource: source,
+          currentVersion: current,
+          latestVersion: remote.version,
+          tag,
+          updateAvailable,
+          registryReachable: true,
+          advice: updateAvailable
+            ? `Update available: ${current} → ${remote.version}. Run apply_update to install (will run \`npm install -g @tianshu-ai/tianshu@${remote.version}\` and the user must run \`tianshu restart\` after). Don't apply unless the user confirms.`
+            : "Up to date with the npm registry.",
+        });
+      },
+    },
+    apply_update: {
+      mutating: true,
+      describe: (args) =>
+        `Run \`npm install -g @tianshu-ai/tianshu@${String(args.tag ?? "latest")}\` to update this install`,
+      schema: {
+        name: "apply_update",
+        description:
+          "Mutating: run `npm install -g @tianshu-ai/tianshu@<tag>` to install a newer version, then prompt the user to `tianshu restart`. Use this only AFTER check_for_update reported an update is available AND the user explicitly said to proceed. Returns the npm install's exit code and a one-line next-step. Refuses on a git checkout (suggest `git pull` instead). On EACCES from system-Node installs, suggest nvm/volta/asdf in the followup, not sudo.",
+        parameters: {
+          type: "object",
+          properties: {
+            tag: {
+              type: "string",
+              description:
+                "npm dist-tag to install. Defaults to 'latest'. Match whatever the user said.",
+            },
+            dryRun: {
+              type: "boolean",
+              description:
+                "When true, print the npm command without executing it. Useful for sanity-checking before the real run.",
+            },
+          },
+          required: [],
+        } as never,
+      },
+      execute: async (args) => {
+        const tag = typeof args.tag === "string" ? args.tag : "latest";
+        const dryRun = args.dryRun === true;
+        // runUpdate prints to stdout; capture by intercepting
+        // console.log / console.error temporarily so the tool
+        // result is a single JSON blob (the model can render it
+        // back to the user).
+        const captured: string[] = [];
+        const origLog = console.log;
+        const origErr = console.error;
+        console.log = (...args: unknown[]) => {
+          captured.push(
+            args.map((a) => (typeof a === "string" ? a : String(a))).join(" "),
+          );
+        };
+        console.error = console.log;
+        let exitCode: number;
+        try {
+          exitCode = await runUpdate({ tag, dryRun });
+        } finally {
+          console.log = origLog;
+          console.error = origErr;
+        }
+        return JSON.stringify({
+          ok: exitCode === 0,
+          exitCode,
+          tag,
+          dryRun,
+          output: captured.join("\n"),
+          nextStep:
+            exitCode === 0 && !dryRun
+              ? "Run `tianshu restart` to bounce the dev server onto the new code."
+              : null,
         });
       },
     },
