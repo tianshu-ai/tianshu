@@ -6,6 +6,26 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.12](https://github.com/tianshu-ai/tianshu/compare/v0.3.11...v0.3.12) (2026-06-22)
+
+### Features
+
+* **doctor:** new "Tianshu version" check compares the running
+  version against npm's `latest` dist-tag. Reports `ok` when
+  up to date, `warning` when newer is available (with the
+  `tianshu update` command to apply), `ok` when running from
+  a git checkout (suggest `git pull`) or when the registry is
+  unreachable. Opt out with `tianshu doctor
+  --skip-version-check` for offline / CI runs.
+* **cli-agent:** two new tools, `check_for_update` (read-only
+  npm-registry probe) and `apply_update` (mutating; runs
+  `npm install -g @tianshu-ai/tianshu@<tag>`, gated by CLI
+  confirmation), plus system-prompt guidance teaching the
+  setup agent how to drive an upgrade and how to act as a
+  fixer rather than just an inspector. After a successful
+  upgrade the user is told to run `tianshu restart`; the agent
+  does not auto-bounce the service.
+
 ## [0.3.11](https://github.com/tianshu-ai/tianshu/compare/v0.3.10...v0.3.11) (2026-06-22)
 
 ### Bug Fixes
