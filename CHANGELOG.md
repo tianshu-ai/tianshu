@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.13](https://github.com/tianshu-ai/tianshu/compare/v0.3.12...v0.3.13) (2026-06-22)
+
+### Bug Fixes
+
+* **publish:** include `plugins/**/templates/**` in the npm
+  tarball. The microsandbox plugin's three Sandboxfile yaml
+  templates (task-runner / browser / task-runner-with-browser)
+  were missing from published global installs, so
+  `build_sandbox` from the cli-agent and the admin UI's
+  template dropdown both saw "no built-in templates". Root
+  package.json + plugins/microsandbox/package.json `files`
+  allowlists both needed to agree; they now do.
+
 ## [0.3.12](https://github.com/tianshu-ai/tianshu/compare/v0.3.11...v0.3.12) (2026-06-22)
 
 ### Features
