@@ -70,18 +70,32 @@ For the long version of the motivation, see the launch post:
 ## Quick start
 
 ```bash
-git clone https://github.com/tianshu-ai/tianshu.git
-cd tianshu
+npm install -g @tianshu-ai/tianshu@latest
 
-npm install
-npm run setup        # interactive: pick provider, paste key, write config
-npm run doctor       # verify everything is wired up
-npm run dev          # starts server (3110) + web (5183) + plugins
+tianshu setup        # interactive: pick provider, paste key, write config
+tianshu doctor       # verify everything is wired up
+tianshu start        # bootstrap the launchd service (macOS) and open the UI
 ```
 
-Open <http://localhost:5183> and start chatting.
+Open <http://localhost:3110> and start chatting.
 
-### What `npm run setup` does
+The server hosts the SPA on a single port — one process, one URL.
+Need a public hostname (Cloudflare tunnel, reverse proxy)? Set
+`server.publicUrl` in `~/.tianshu/config.json`; CLI commands will
+print that instead.
+
+### Day-2 control
+
+```bash
+tianshu status               # what's loaded? port? health?
+tianshu logs --follow        # tail server stdout + stderr
+tianshu restart              # bounce the server
+tianshu stop                 # bootout from launchd
+tianshu tenant list          # tenants + users + open-in-browser URLs
+tianshu update               # check for / install a newer published version
+```
+
+### What `tianshu setup` does
 
 It's an interactive wizard (built on `@clack/prompts`, same family as
 [OpenClaw](https://docs.openclaw.ai)) that:
@@ -89,16 +103,16 @@ It's an interactive wizard (built on `@clack/prompts`, same family as
 - Asks which LLM provider to use (Anthropic / OpenAI / Google).
 - Reads your API key with a hidden input.
 - Writes `~/.tianshu/config.json` (provider settings, models, default).
-- Writes `<repo>/.env` (your key, references via `${VAR}` from the config).
+- Writes `~/.tianshu/.env` (your key, referenced as `${VAR}` from the config).
 
 Non-interactive mode is supported for Docker / CI:
 
 ```bash
-npx tianshu setup --non-interactive \
+tianshu setup --non-interactive \
   --provider=anthropic --api-key=sk-***
 ```
 
-### What `npm run doctor` checks
+### What `tianshu doctor` checks
 
 ```
 ┌  Tianshu doctor
@@ -107,7 +121,7 @@ npx tianshu setup --non-interactive \
 ◇  Config files    → ~/.tianshu/config.json + .env present + parseable
 ◇  LLM providers   → at least one provider has a non-empty API key,
 │                    defaultModel resolves
-◇  Network         → ports 3110 / 5183 free
+◇  Network         → server port reachable, /api/health responding
 ◇  Sandbox         → microsandbox binary present (--probe-sandbox
 │                    boots an alpine VM as a smoke test)
 ◇  Builtin plugins → manifests parse, ids unique
@@ -117,28 +131,28 @@ npx tianshu setup --non-interactive \
 
 Use it whenever something doesn't feel right — it's read-only.
 
-### Installing globally
+### Developing from a checkout
 
-Published to npm under `@tianshu-ai/tianshu`:
-
-```bash
-npm install -g @tianshu-ai/tianshu
-tianshu setup --wizard       # interactive: pick provider, key, ports
-tianshu doctor               # verify config + reachability
-tianshu start                # bootstrap the launchd service (macOS)
-```
-
-Day-2 control:
+If you want to hack on tianshu itself (not just run it):
 
 ```bash
-tianshu status               # what's loaded? port? health?
-tianshu logs --follow        # tail server stdout + stderr
-tianshu restart              # bounce the dev server
-tianshu stop                 # bootout from launchd
-tianshu tenant list          # tenants + users + open-in-browser URLs
+git clone https://github.com/tianshu-ai/tianshu.git
+cd tianshu
+
+npm install
+npm run setup        # same wizard, writes to ~/.tianshu/
+npm run doctor
+npm run dev          # vite (5183) + server (3110) + plugin watcher
 ```
+
+In dev mode you open <http://localhost:5183>. The wizard's
+launchd plist installer (`tianshu start` from inside a checkout)
+stays in dev shape — vite hosts the SPA, server is API-only —
+because the heuristic detects `.git/` in the install root.
 
 Updating:
+
+### Updating
 
 ```bash
 tianshu update --check       # peek at what `latest` is on npm
@@ -146,42 +160,42 @@ tianshu update               # npm install -g the latest, prints next steps
 tianshu update --tag next    # install pre-release channel (if available)
 ```
 
-Developing from a checkout: clone the repo, `npm install`, then
-`npm run dev` to get the live server + UI. `bin/tianshu.mjs` works
-the same from the checkout, but `tianshu update` will detect the
-checkout and refuse — use `git pull` instead.
+`tianshu update` detects a git checkout and refuses — use
+`git pull` there instead.
 
 ### Useful flags
 
 ```bash
 # Skip the readiness check on startup (useful for empty-shell deploys)
-TIANSHU_IGNORE_SETUP=1 npm run dev
+TIANSHU_IGNORE_SETUP=1 tianshu start
 
 # Probe each provider's /v1/models endpoint to test reachability
-npm run doctor -- --probe-providers
+tianshu doctor --probe-providers
 
 # Boot a real microsandbox VM as a smoke test (~30s, pulls image)
-npm run doctor -- --probe-sandbox
+tianshu doctor --probe-sandbox
 ```
 
-> Default ports are `3110 / 5183` (not the more common `3100 / 5173`)
-> so this repo can run alongside its closed-source predecessor on the
-> same dev machine. Override via `PORT=` / vite config if you want.
+> Default ports are `3110` (server / SPA) and, in dev mode only,
+> `5183` (vite). Both are different from the closed-source
+> predecessor's `3100 / 5173` so the two projects can run
+> alongside each other on the same machine. Override via `PORT=`
+> / `WEB_PORT=` if you need to.
 
 ### Running as a background service
 
-`npm run dev` is foreground — Ctrl-C kills it and it doesn't survive
-reboots. For a permanent dev box use the platform's native service
-manager:
+`tianshu start` (from a global install) installs a launchd agent
+under `~/Library/LaunchAgents/` that auto-starts at login and
+auto-restarts on crash. `tianshu stop` / `restart` / `status` /
+`logs` manage it day to day. See
+[docs/running.md](./docs/running.md) for the plist shape and
+Linux / Docker plans (still TODO at the time of writing).
 
-- **macOS**: drop a [`launchd` plist](./docs/running.md#macos--launchd-recommended-for-a-permanent-dev-box) under `~/Library/LaunchAgents/` (template + commands in [docs/running.md](./docs/running.md)).
-- **Linux**: TODO; same shape as launchd via systemd user service.
-- **Docker**: TODO; lands when `tianshu start` (single-port production server) does.
+**Don't** use `nohup`, `&`, or `screen` for a long-running
+install — they don't survive logout and don't auto-restart on
+crash.
 
-**Don't** use `nohup`, `&`, or `screen` — they don't survive logout
-and don't auto-restart on crash.
-
-### Useful commands
+### Workspace-scoped npm scripts (dev checkouts only)
 
 ```bash
 # build everything (type-check + bundle)
