@@ -307,13 +307,35 @@ interface LaunchdStartOpts {
 async function startViaLaunchd(
   opts: LaunchdStartOpts,
 ): Promise<StartServerResult> {
-  // Resolve a stable label for this checkout. First checkout to
-  // run the wizard claims the canonical `ai.tianshu.dev`; later
-  // checkouts get a hashed suffix so they coexist instead of
-  // stomping the original plist. See launchd.resolveLabel.
+  // Resolve a stable label for this install. Prod installs
+  // (npm install -g) always get `ai.tianshu.prod`; dev
+  // checkouts get `ai.tianshu.dev` or, if another checkout
+  // already claimed that, `ai.tianshu.dev.<hash8>`. See
+  // launchd.resolveLabel.
   const label = launchd.resolveLabel(opts.repoRoot);
   const plistPath = launchd.plistPathFor(label);
   const { out: logFile, err: errFile } = launchd.logPathsFor(label);
+
+  // Clean up orphan plists left over from the previous
+  // `ai.tianshu.dev.<hash>` label scheme. We're conservative:
+  // only plists whose WorkingDirectory matches THIS install
+  // path get unloaded and removed. Plists for sibling installs
+  // (different checkout, different `npm install -g` prefix) are
+  // left alone.
+  const orphans = launchd.findOrphanedLabels(label, opts.repoRoot);
+  for (const orphan of orphans) {
+    p.log.warn(
+      `Found legacy launchd plist ${orphan.label} pointing at the same install path. Removing.`,
+    );
+    launchd.bootout(orphan.label);
+    try {
+      fs.unlinkSync(orphan.plistPath);
+    } catch (err) {
+      p.log.warn(
+        `Could not delete ${orphan.plistPath}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
   // If a plist already exists from a previous wizard run / manual
   // install, ask before clobbering it. Most users will say yes

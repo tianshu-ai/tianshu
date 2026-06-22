@@ -163,6 +163,22 @@ export async function runStart(
   const label = launchd.resolveLabel(repoRoot);
   const status = launchd.readStatus(label);
   if (!status.installed) {
+    // Migration aid: if no plist exists at the new label but
+    // an older plist (different label scheme) points at the
+    // same install path, that's a user upgrading from a
+    // version that used `ai.tianshu.dev.<hash>` for prod
+    // installs. Tell them what to do instead of refusing.
+    const orphans = launchd.findOrphanedLabels(label, repoRoot);
+    if (orphans.length > 0) {
+      console.error(
+        `Found a legacy launchd plist (${orphans[0].label}) pointing at the same install path. ` +
+          "Tianshu now uses stable label names (ai.tianshu.prod / ai.tianshu.dev) instead of hash suffixes.",
+      );
+      console.error(
+        "Run `tianshu setup --wizard` once to migrate — it will install the new plist and bootout the old one.",
+      );
+      return 2;
+    }
     console.error(
       `Service '${label}' isn't installed (no plist at ${status.plistPath}).`,
     );

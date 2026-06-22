@@ -13,13 +13,21 @@
 // in sync.
 //
 // Design choices:
-//   - Label is derived from the checkout path (`ai.tianshu.dev`
-//     for canonical-looking checkouts, `ai.tianshu.dev.<hash>`
-//     for everything else). This lets a developer with multiple
-//     clones run them side by side without label collisions —
-//     which is exactly the situation that motivated this whole
-//     refactor (a developer with both a `tianshu` clone and a
-//     `tianshu_opensource` clone, both wanted the dev label).
+//   - Label is derived from install shape, not opaque hash:
+//       * `npm install -g` install      → `ai.tianshu.prod`
+//       * git checkout (dev mode)       → `ai.tianshu.dev`
+//       * a *second* checkout colliding with the dev label →
+//         fallback `ai.tianshu.dev.<hash8>` so two clones can
+//         coexist without forcing the user to pick. This is
+//         the same hash logic we used before, just narrowed
+//         to the rare collision case rather than the default.
+//     The old behaviour stamped every install with a hash
+//     suffix (`ai.tianshu.dev.f71469f0`) which made labels
+//     unmemorable and meant every nvm version bump changed the
+//     id because the install path changed.
+//   - Operators reading `tianshu status` should see
+//     `ai.tianshu.prod` and immediately know what kind of
+//     install this is.
 //   - Functions return structured results, never throw on
 //     "service isn't loaded" / "plist doesn't exist" type
 //     conditions; callers want to render those as user-facing
@@ -32,8 +40,12 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isDevelopmentCheckout } from "./repo-root.js";
 
-export const CANONICAL_LABEL = "ai.tianshu.dev";
+export const CANONICAL_DEV_LABEL = "ai.tianshu.dev";
+export const PROD_LABEL = "ai.tianshu.prod";
+/** Back-compat alias — some callers imported the old name. */
+export const CANONICAL_LABEL = CANONICAL_DEV_LABEL;
 
 /** What we know (or don't) about a launchd agent at any moment. */
 export interface ServiceStatus {
@@ -74,46 +86,51 @@ export interface LaunchdInstallOpts {
 }
 
 /**
- * Resolve the launchd label for a given tianshu checkout.
+ * Resolve the launchd label for a given tianshu install.
  *
- * Convention:
- *   - The "primary" checkout (the one whose canonical install
- *     path is `~/git/tianshu` or whatever the user picks first)
- *     gets the bare label `ai.tianshu.dev` — readable, easy.
- *   - Any other checkout gets `ai.tianshu.dev.<hash8>`, where
- *     hash8 is the first 8 hex chars of sha256(repoRoot). This
- *     guarantees:
- *       * stable label per checkout (idempotent re-installs),
- *       * no collision with another checkout (`tianshu_opensource`
- *         vs old closed-source `tianshu`),
- *       * predictable `tianshu status` output.
+ * Rules (matches the new docstring in the module header):
+ *   1. Install path is NOT a git checkout (i.e. coming from
+ *      `npm install -g @tianshu-ai/tianshu`) → `ai.tianshu.prod`.
+ *      One install of the published package per machine; no
+ *      hash. nvm version bumps don't change this any more.
+ *   2. Install path IS a git checkout → try `ai.tianshu.dev`.
+ *      If no `.plist` with that name exists, or the existing one
+ *      already points at the same WorkingDirectory, we own it.
+ *      If another checkout already claimed it, fall through to
+ *      `ai.tianshu.dev.<hash8>` to coexist without collision.
  *
- * "Primary" is whichever checkout claimed the bare label first —
- * we detect that by reading the existing plist (if any) and
- * comparing its WorkingDirectory to ours.
+ * This is a behaviour change from earlier versions, which
+ * stamped every install with a hash (so `npm install -g`
+ * upgrades that moved the path — e.g. nvm version bumps —
+ * looked like "the id changed". After this rewrite, the prod
+ * id is constant.
  */
 export function resolveLabel(repoRoot: string): string {
   const home = os.homedir();
+  if (!isDevelopmentCheckout(repoRoot)) {
+    return PROD_LABEL;
+  }
   const canonicalPlist = path.join(
     home,
     "Library",
     "LaunchAgents",
-    `${CANONICAL_LABEL}.plist`,
+    `${CANONICAL_DEV_LABEL}.plist`,
   );
 
-  // Case 1: no canonical plist exists yet → we claim it.
-  if (!fs.existsSync(canonicalPlist)) return CANONICAL_LABEL;
+  // Case 1: no canonical dev plist exists yet → claim it.
+  if (!fs.existsSync(canonicalPlist)) return CANONICAL_DEV_LABEL;
 
-  // Case 2: a canonical plist exists. If it's ours (same
+  // Case 2: a canonical dev plist exists. If it's ours (same
   // WorkingDirectory), keep using it. Otherwise we're a
-  // secondary checkout → derive a hashed label.
+  // secondary checkout → fall back to the hashed label so two
+  // clones can coexist.
   try {
     const body = fs.readFileSync(canonicalPlist, "utf8");
     const match = body.match(
       /<key>WorkingDirectory<\/key>\s*<string>([^<]+)<\/string>/,
     );
     if (match && path.resolve(match[1]) === path.resolve(repoRoot)) {
-      return CANONICAL_LABEL;
+      return CANONICAL_DEV_LABEL;
     }
   } catch {
     // unreadable plist — treat it as someone else's, fall through
@@ -122,7 +139,67 @@ export function resolveLabel(repoRoot: string): string {
     .update(path.resolve(repoRoot))
     .digest("hex")
     .slice(0, 8);
-  return `${CANONICAL_LABEL}.${hash}`;
+  return `${CANONICAL_DEV_LABEL}.${hash}`;
+}
+
+/**
+ * Find stale plist files in ~/Library/LaunchAgents/ that
+ * point at this same install path but use an older label
+ * scheme. Returns the list of labels to clean up.
+ *
+ * Background: before this version, every install got a
+ * hash-suffixed label (ai.tianshu.dev.<8hex>). The hash was
+ * computed over the install's absolute path, so:
+ *   - nvm upgrades that changed the node version directory
+ *     produced a new hash → a new orphan plist on every node
+ *     bump.
+ *   - the new prod / dev label scheme (this version) would
+ *     leave the old hash plist behind even when nothing else
+ *     changed.
+ * The migration: when `tianshu start` resolves a new label for
+ * a given install path, scan for any other plist whose
+ * WorkingDirectory matches the SAME install path. Those are
+ * orphans by definition (one install, one plist). Bootout and
+ * unlink them so we don't leave duplicates fighting over the
+ * same port.
+ *
+ * Returns `[]` when there's nothing to clean. Best-effort: a
+ * plist we can't read is skipped, not treated as an orphan.
+ */
+export function findOrphanedLabels(
+  currentLabel: string,
+  installPath: string,
+): Array<{ label: string; plistPath: string; workingDir: string }> {
+  const dir = path.join(os.homedir(), "Library", "LaunchAgents");
+  if (!fs.existsSync(dir)) return [];
+  const normalisedInstall = path.resolve(installPath);
+  const orphans: Array<{
+    label: string;
+    plistPath: string;
+    workingDir: string;
+  }> = [];
+  for (const entry of fs.readdirSync(dir)) {
+    if (!entry.startsWith("ai.tianshu.")) continue;
+    if (!entry.endsWith(".plist")) continue;
+    const label = entry.slice(0, -".plist".length);
+    if (label === currentLabel) continue;
+    const plistPath = path.join(dir, entry);
+    let body: string;
+    try {
+      body = fs.readFileSync(plistPath, "utf8");
+    } catch {
+      continue;
+    }
+    const match = body.match(
+      /<key>WorkingDirectory<\/key>\s*<string>([^<]+)<\/string>/,
+    );
+    if (!match) continue;
+    const workingDir = path.resolve(match[1]);
+    if (workingDir === normalisedInstall) {
+      orphans.push({ label, plistPath, workingDir });
+    }
+  }
+  return orphans;
 }
 
 export function plistPathFor(label: string): string {
