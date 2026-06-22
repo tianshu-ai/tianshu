@@ -18,12 +18,12 @@
 //   them which `npm install` step likely failed)
 // - workboard (worker spawn is overkill for setup)
 //
-// Tools shipped (16): tenant_list, tenant_create, user_create,
+// Tools shipped (17): tenant_list, tenant_create, user_create,
 //   plugin_enable, plugin_disable, config_read, config_write,
 //   secret_list, secret_write, run_doctor, read_service_logs,
-//   read_env_file, build_sandbox, use_sandbox_build,
-//   check_for_update, apply_update. Plus the implicit "done"
-//   sentinel.
+//   read_env_file, sandbox_inventory, build_sandbox,
+//   use_sandbox_build, check_for_update, apply_update. Plus the
+//   implicit "done" sentinel.
 
 import * as p from "@clack/prompts";
 import fs from "node:fs";
@@ -300,8 +300,26 @@ MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
   ARE available here in the setup wizard. Use them when the user
   asks to set up / rebuild / refresh sandboxes. Don't tell them
   they have to go to the chat shell.
-- Standard setup flow when a user wants sandboxes ready. This
-  is a TWO-snapshot layered build, NOT one big monolith. Why:
+- ALWAYS call sandbox_inventory FIRST before proposing any
+  sandbox build/publish work. It's read-only and tells you:
+    * which snapshots are already built on this machine
+    * which one (if any) is currently published to role='task'
+      and which to role='browser' (these are what the runtime
+      actually uses)
+    * whether the microsandbox runner is up at all
+  If a layered task-runner snapshot is already published to
+  'task' AND a task-runner-with-browser snapshot is published to
+  'browser', the user is fully set up; say so instead of
+  re-building. If builds exist but nothing is published, propose
+  use_sandbox_build, not build_sandbox — the snapshots are
+  already on disk and \`npm install -g\` doesn't wipe them.
+  Surface what you saw to the user before proposing actions:
+  "You already have 2 snapshots built; the task one is published
+  but the browser one isn't — want me to publish it?" beats
+  "I'll start building...".
+- Standard setup flow when sandbox_inventory shows NOTHING is
+  built yet. This is a TWO-snapshot layered build, NOT one big
+  monolith. Why:
   the task pool runs lots of short-lived sandboxes and shouldn't
   carry Chromium's ~2.5 GB; the browser sandbox is long-lived
   and DOES need Chromium. Layering also reuses apt cache between
@@ -1139,6 +1157,123 @@ export function buildTools(
             "Values are NEVER returned. `length` and `prefix` are for diagnostic sanity only. If `serverEnv.keys` doesn't include the key the user expects but `homeEnv.keys` does, the user put it in the wrong file — tell them to move/copy the line into serverEnv.path.",
         };
         return JSON.stringify(result);
+      },
+    },
+    sandbox_inventory: {
+      schema: {
+        name: "sandbox_inventory",
+        description:
+          "Read-only snapshot of microsandbox state for a tenant: which builds exist on disk, which one is currently published to each role pointer (browser / task), and whether the sandbox runner is up.\n\nCALL THIS BEFORE proposing build_sandbox or use_sandbox_build — don't ask the user to remember what they've already built. The result tells you:\n  * If a task-runner snapshot is already published to role='task', you probably don't need to build another one.\n  * If a task-runner-with-browser snapshot is published to role='browser', the browser stack is good to go.\n  * If builds exist but none are published, suggest use_sandbox_build instead of building from scratch.\n  * If runner.state is 'not_started' / 'error', the user may need to fix microsandbox itself before any builds can run — explain that before suggesting fixes.\n\nResult shape (subset of /api/p/microsandbox/{status,builds}):\n{\n  runner: { state, ready, runner, liveMemory? } | { error: 'not_started' },\n  builds: [\n    {\n      buildId, snapshotName, baseImage, durationMs,\n      roles: { browser: boolean, task: boolean }, // 'true' = currently published to that role\n      createdAt\n    }, ...\n  ],\n  pointers: { browser: { snapshotName, buildId, role } | null, task: same },\n}\n\nReturns ok:false with a hint if the server isn't running.",
+        parameters: {
+          type: "object",
+          properties: {
+            tenantId: {
+              type: "string",
+              description:
+                "Tenant whose sandbox inventory to read. Defaults to 'default' — same as build_sandbox / use_sandbox_build, so the three tools form a coherent set when no tenantId is specified.",
+            },
+          },
+          required: [],
+        } as never,
+      },
+      execute: async (args) => {
+        const tenantId = String(args.tenantId ?? "default");
+        if (!serverUrl) {
+          return JSON.stringify({
+            ok: false,
+            error: "no_server",
+            hint:
+              "sandbox_inventory needs a running server (the wizard's HTTP plugin API). Run `tianshu start` first, then retry.",
+          });
+        }
+        // Probe both endpoints in parallel — they're independent
+        // reads and the agent benefits from a coherent snapshot
+        // (running state + builds list in one shot rather than
+        // two separate tool calls).
+        const [statusRes, buildsRes] = await Promise.allSettled([
+          serverFetch(
+            serverUrl,
+            "GET",
+            "/api/p/microsandbox/status",
+            tenantId,
+            undefined,
+            5_000,
+          ),
+          serverFetch(
+            serverUrl,
+            "GET",
+            "/api/p/microsandbox/builds",
+            tenantId,
+            undefined,
+            10_000,
+          ),
+        ]);
+
+        // Status can legitimately return 503 not_started — surface
+        // it as a structured field rather than a thrown error so
+        // the agent can keep going. (e.g. builds may still exist
+        // even when the runner is parked.)
+        const runner =
+          statusRes.status === "fulfilled"
+            ? statusRes.value
+            : {
+                error: "unreachable",
+                message:
+                  statusRes.reason instanceof Error
+                    ? statusRes.reason.message
+                    : String(statusRes.reason),
+              };
+
+        if (buildsRes.status !== "fulfilled") {
+          return JSON.stringify({
+            ok: false,
+            error: "builds_unreachable",
+            message:
+              buildsRes.reason instanceof Error
+                ? buildsRes.reason.message
+                : String(buildsRes.reason),
+            runner,
+            hint:
+              "Couldn't list builds. Common causes: server is up but the microsandbox plugin is disabled for this tenant, or the tenant doesn't exist. Check plugin status via run_doctor or enable it with plugin_enable.",
+          });
+        }
+        const buildsBody = buildsRes.value as {
+          builds?: Array<Record<string, unknown>>;
+          pointers?: { browser?: unknown; task?: unknown };
+        };
+        // Trim each build to the fields the agent needs — the wire
+        // form has snapshotMetadata fields (image digest, layer
+        // sizes) that aren't useful for setup decisions and just
+        // bloat the tool result.
+        const trimmed = (buildsBody.builds ?? []).map((b) => ({
+          buildId: b.buildId,
+          snapshotName: b.snapshotName,
+          baseImage: b.baseImage,
+          fromSnapshot: b.fromSnapshot ?? null,
+          durationMs: b.durationMs,
+          createdAt: b.createdAt,
+          roles: (b as { roles?: unknown }).roles ?? {
+            browser: false,
+            task: false,
+          },
+        }));
+        return JSON.stringify({
+          ok: true,
+          tenantId,
+          runner,
+          builds: trimmed,
+          pointers: buildsBody.pointers ?? { browser: null, task: null },
+          summary: {
+            buildCount: trimmed.length,
+            browserPublished: Boolean(
+              (buildsBody.pointers as { browser?: unknown } | undefined)
+                ?.browser,
+            ),
+            taskPublished: Boolean(
+              (buildsBody.pointers as { task?: unknown } | undefined)?.task,
+            ),
+          },
+        });
       },
     },
     build_sandbox: {
