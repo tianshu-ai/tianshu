@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.16](https://github.com/tianshu-ai/tianshu/compare/v0.3.15...v0.3.16) (2026-06-22)
+
+### Features
+
+* **launchd:** use stable `ai.tianshu.prod` / `ai.tianshu.dev`
+  labels instead of hash-suffixed ones. npm-global installs
+  used to get an unreadable id like `ai.tianshu.dev.f71469f0`,
+  and the hash rotated whenever the install path changed
+  (e.g. an nvm version bump), leaving stale plists behind on
+  every upgrade. Now: one stable label per install shape, and
+  `tianshu start` / wizard auto-cleans orphan plists pointing
+  at the same install path. `tianshu start` when run against
+  the new label without an existing plist prints a one-line
+  “run the wizard to migrate” hint instead of refusing.
+
 ## [0.3.15](https://github.com/tianshu-ai/tianshu/compare/v0.3.14...v0.3.15) (2026-06-22)
 
 ### Features
