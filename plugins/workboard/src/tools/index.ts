@@ -566,6 +566,24 @@ export function buildTaskMoveTool(deps: ToolDeps): AgentTool {
       if (args.result_summary !== undefined) {
         patch.resultSummary = args.result_summary;
       }
+      // If the task is being moved OUT of in_progress, any
+      // worker currently running it must be cancelled first —
+      // otherwise the worker keeps consuming LLM tokens and
+      // (worse) will write status / labels back when it
+      // finishes, racing with the move we're about to apply.
+      // The pool's cancelTaskRun is a best-effort signal; a
+      // worker that's mid-tool-call gets the abort on its next
+      // chunk boundary.
+      if (before.status === "in_progress" && status !== "in_progress") {
+        const cancelled = deps.onTaskCancel?.(args.id) ?? false;
+        if (cancelled) {
+          deps.log.info("workboard: task_move cancelled live worker", {
+            taskId: args.id,
+            from: before.status,
+            to: status,
+          });
+        }
+      }
       // Handy timestamp accounting so the UI doesn't have to guess.
       if (status === "in_progress" && !before.startedAt) patch.startedAt = now;
       if (status === "done") {
@@ -648,6 +666,26 @@ export function buildTaskDeleteTool(deps: ToolDeps): AgentTool {
         if (!before) return { ok: false, id, text: `task not found: ${id}` };
         if (before.ownerUserId !== ctx.userId) {
           return { ok: false, id, text: `task ${id} is not yours` };
+        }
+        // Cancel any live worker BEFORE deleting the row. If
+        // the worker is mid-LLM-call, it will keep going past
+        // the row being gone — burning tokens and tripping
+        // foreign-key / not-found errors when it tries to
+        // updateTask on the way out. The pool tolerates a
+        // missing controller (no-op), so this is safe for
+        // tasks that weren't in_progress.
+        try {
+          const cancelled = deps.onTaskCancel?.(id) ?? false;
+          if (cancelled) {
+            deps.log.info("workboard: task_delete cancelled live worker", {
+              taskId: id,
+            });
+          }
+        } catch (err) {
+          deps.log.warn("workboard: task cancel before delete failed", {
+            taskId: id,
+            err: err instanceof Error ? err.message : String(err),
+          });
         }
         deleteTask(deps.db, id);
         // Best-effort sandbox teardown. Errors are logged inside
