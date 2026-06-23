@@ -56,6 +56,11 @@ export const WORKER_DENY_TOOLS: readonly string[] = [
   "worker_agent_update",
   "worker_agent_delete",
   "worker_agent_reset",
+  // Orchestrator-only analytics (ADR-0002 §12). A worker has no
+  // legitimate reason to introspect its peers' aggregate run
+  // history, and letting it would loop the pool into
+  // self-monitoring.
+  "worker_analytics",
 ] as const;
 
 export const WORKER_DENY_TOOLS_SET: ReadonlySet<string> = new Set(
