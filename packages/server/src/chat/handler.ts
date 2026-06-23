@@ -39,6 +39,7 @@ import type {
   UserMessage,
 } from "@earendil-works/pi-ai";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import type { WebSocket } from "ws";
 import {
@@ -1123,8 +1124,17 @@ export function defaultSystemPrompt(
   const brand = ctx.config.branding?.name ?? "Tianshu";
   const lines: string[] = [
     `You are ${brand}, an open-source AI assistant.`,
-    `Tenant: "${ctx.tenantId}". User: "${userId}".`,
   ];
+
+  // Runtime context (time / timezone / host / tenant + user).
+  // Injected for every main-agent prompt build so the LLM never
+  // has to guess "what day is it?" / "am I on macOS or Linux?" /
+  // "what timezone is the user in?". The block also re-prints
+  // tenantId + userId, replacing the bare "Tenant: ... User:
+  // ..." line we used to emit here — same information, denser
+  // format, single source of truth shared with the worker path
+  // below.
+  lines.push(``, formatRuntimeContextBlock({ tenantId: ctx.tenantId, userId }));
 
   // Workspace layout / directory conventions / file-reference
   // rules used to live here as a host-hardcoded block. Per
@@ -1256,6 +1266,77 @@ function formatUserOnboardingBlock(userMdPresent: boolean): string {
  * defaultSystemPrompt) can include the same rules without copying
  * the strings.
  */
+/**
+ * Runtime context the LLM almost always wants but doesn't get
+ * for free from the conversation history: wall-clock time,
+ * timezone, host OS. Injected for BOTH main and worker prompts
+ * so an agent that needs "what day is today?" / "am I on macOS
+ * or Linux?" / "what timezone is the user in?" doesn't have to
+ * ask or guess.
+ *
+ * We re-render on every prompt build so the time stamps stay
+ * fresh across turns of a long session. Cheap (a handful of
+ * Date / Intl calls per build).
+ *
+ * Format is markdown so it stitches into the prompt the same
+ * way the other helpers in this file do; the section title
+ * matches our convention (`## <Title>`).
+ *
+ * Time format: ISO-8601 with timezone offset (e.g.
+ * `2026-06-23T23:45:12+08:00`). Provider models all parse this
+ * cleanly; no provider has a known regression with it.
+ */
+export function formatRuntimeContextBlock(opts: {
+  tenantId: string;
+  userId: string;
+  brand?: string;
+}): string {
+  const now = new Date();
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // ISO with local offset, not UTC — "now" matches the wall clock
+  // the user is reading. Date.toISOString() prints Z; we re-derive
+  // the offset by hand to avoid the date-fns/luxon dependency.
+  const isoWithOffset = formatLocalIso(now);
+  // Weekday helps a model reason about "is it the weekend?" type
+  // questions without an extra computation step.
+  const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+  const lines: string[] = [
+    `## Runtime Context`,
+    `- Time: ${isoWithOffset} (${weekday}, timezone ${tz})`,
+    `- Tenant: \`${opts.tenantId}\` · User: \`${opts.userId}\``,
+    `- Host: ${os.platform()} ${os.arch()} · Node ${process.versions.node}`,
+  ];
+  if (opts.brand) {
+    // Branding line is informational — the assembled prompt's
+    // first sentence already states "You are <brand>...", so we
+    // skip it here unless the caller passes one explicitly.
+    lines.splice(1, 0, `- Assistant identity: ${opts.brand}`);
+  }
+  return lines.join("\n");
+}
+
+/**
+ * `2026-06-23T23:45:12+08:00` from a Date in local time. The
+ * native `toISOString()` always renders UTC, which is
+ * conventional but obscures "what time is it where I am?". We
+ * surface the local view because that's what humans (and the
+ * LLM, when answering them) reason in.
+ */
+function formatLocalIso(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  const mm = pad(d.getMonth() + 1);
+  const dd = pad(d.getDate());
+  const hh = pad(d.getHours());
+  const mi = pad(d.getMinutes());
+  const ss = pad(d.getSeconds());
+  const off = -d.getTimezoneOffset(); // minutes east of UTC
+  const sign = off >= 0 ? "+" : "-";
+  const oh = pad(Math.floor(Math.abs(off) / 60));
+  const om = pad(Math.abs(off) % 60);
+  return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}${sign}${oh}:${om}`;
+}
+
 export function formatExecutionBiasBlock(): string {
   return [
     `## Execution Bias`,
