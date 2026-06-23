@@ -158,6 +158,17 @@ export interface RoutesDeps {
   pool: WorkerPool;
   /** Notify the worker pool that a task changed. */
   onTaskWrite(): void;
+  /**
+   * Optional per-task sandbox teardown. Called by DELETE
+   * handlers so a UI-driven delete reclaims the per-task
+   * sandbox the worker was using; without it the sandbox
+   * sticks around forever, leaking microsandbox VM slots.
+   * The chat-side `task_delete` tool already wires this in
+   * `server.ts` — routes need the same hook.
+   * Best-effort: errors are logged inside the callback,
+   * never block the database delete.
+   */
+  onTaskDelete?(taskId: string): void;
   /** Workboard-internal kind catalogue. Surfaced to the admin UI
    *  so the picker only offers kinds the runtime can staff. */
   workerKinds: WorkerKindDef[];
@@ -549,6 +560,27 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
         patch.endedAt = null;
         patch.resultSummary = null;
       }
+      // If the patch moves a task OUT of in_progress, the live
+      // worker must be cancelled — otherwise the worker keeps
+      // burning tokens and (worse) writes status / labels back
+      // when it terminates, racing with the patch we're about
+      // to apply. Same fix as `task_move` in tools/index.ts;
+      // both code paths can update status, both need to cancel.
+      // The UI hits this every time a user drags a card off
+      // the In-Progress column.
+      if (
+        before.status === "in_progress" &&
+        body.status !== "in_progress"
+      ) {
+        const cancelled = deps.pool.cancelTaskRun(id);
+        if (cancelled) {
+          deps.log.info("workboard: patchTask cancelled live worker", {
+            taskId: id,
+            from: before.status,
+            to: body.status,
+          });
+        }
+      }
     }
     if (
       typeof body.resultSummary === "string" ||
@@ -700,7 +732,39 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     if (!before) return { ok: false, id, error: "not_found" };
     if (before.ownerUserId !== userId)
       return { ok: false, id, error: "not_yours" };
+    // Cancel any live worker BEFORE removing the row. Without
+    // this, a worker mid-tool-call keeps burning tokens after
+    // its task is gone, then crashes when it tries to write
+    // status back (foreign-key / not-found errors). The pool
+    // tolerates a missing controller (no-op) so this is safe
+    // for tasks that aren't currently running. Same fix as
+    // `task_delete` in tools/index.ts.
+    try {
+      const cancelled = deps.pool.cancelTaskRun(id);
+      if (cancelled) {
+        deps.log.info("workboard: deleteTask cancelled live worker", {
+          taskId: id,
+        });
+      }
+    } catch (err) {
+      deps.log.warn("workboard: deleteTask cancel before delete failed", {
+        taskId: id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     deleteTask(deps.db, id);
+    // Best-effort sandbox teardown for tasks that ran (or
+    // were on their way to running) on a per-task sandbox.
+    // The chat-side `task_delete` tool does this via the
+    // same hook in tools/index.ts.
+    try {
+      deps.onTaskDelete?.(id);
+    } catch (err) {
+      deps.log.warn("workboard: deleteTask sandbox cleanup failed", {
+        taskId: id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
     return { ok: true, id };
   };
 
