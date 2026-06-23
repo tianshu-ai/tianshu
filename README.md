@@ -70,14 +70,43 @@ folder.
 tianshu setup
 ```
 
-A 30-second interactive wizard. It:
+A short interactive wizard. It:
 
 1. Asks which provider to use (Anthropic / OpenAI / Google).
 2. Reads your API key with a hidden prompt.
 3. Writes `~/.tianshu/config.json` (settings) and `~/.tianshu/.env`
    (secret).
 
-Non-interactive flavour for Docker / CI:
+Once a model is configured, the wizard hands you over to the
+**setup agent** — an LLM-driven assistant running in the same
+terminal that can finish the rest of the configuration for
+you. It has 18 tools (`run_doctor`, `sandbox_inventory`,
+`config_write`, `plugin_enable`, `build_sandbox`,
+`use_sandbox_build`, `secret_write`, `apply_update`, ...) and
+asks for your confirmation before every state-changing call.
+Things you can ask it right now:
+
+- *"Set me up a search API key for the web-search plugin."* —
+  it'll ask which provider (Tavily / Brave / SerpAPI / ...),
+  prompt for the key, and write it via `secret_write` into
+  the right tenant's plugin config. No editing JSON by hand.
+- *"Build my sandboxes so I can use the browser."* — it
+  calls `sandbox_inventory` first to see what's already on
+  disk, then `build_sandbox` and `use_sandbox_build` to fill
+  in whatever's missing. Browser tools work the moment the
+  layered `task-runner-with-browser` snapshot is published.
+- *"Doctor's complaining about my provider — fix it."* — it
+  reads `run_doctor`, finds the offending line, and proposes
+  the specific `config_write` or `secret_write` call to fix
+  it before running anything.
+- *"Am I on the latest version?"* — it runs
+  `check_for_update` and, if you say yes, `apply_update`.
+
+You can exit anytime (type *done* / Ctrl-C) and come back
+later — the agent re-reads state from disk on each invocation.
+
+Non-interactive flavour for Docker / CI (skips the
+interactive agent, only writes the provider config):
 
 ```bash
 tianshu setup --non-interactive --provider=anthropic --api-key=sk-***
@@ -165,17 +194,15 @@ The wizard already verified network / config. `tianshu start`
 installs the launchd agent and waits for the server to answer
 `/api/health`.
 
-### Step 3 · Open the SPA, ask the setup agent for help
+### Step 3 · Ask the setup agent to finish the configuration
 
-```bash
-open http://localhost:3110
-```
-
-In the chat, type:
+After `tianshu setup` writes the provider config it drops you
+straight into the **setup agent** (still in the same terminal).
+This is where you finish wiring things up. Type plain English:
 
 > **You:** Set up sandboxes so I can use the browser tool.
 
-The in-chat setup agent has 18 tools. It will:
+The agent will:
 
 1. Run `sandbox_inventory` to see what's already built.
 2. If a snapshot is missing, propose `build_sandbox
@@ -192,7 +219,21 @@ first — it reads the launchd logs, classifies the build state
 to wait or retry. It will NOT silently retry a 10-minute build
 that's still pulling apt packages.
 
-### Step 4 · Try the browser tool
+While you're here, you can keep talking to the agent about
+other setup work — say *"add a Tavily API key for web search"*
+or *"check for tianshu updates"* and it'll handle them with the
+same confirm-before-mutating loop. When you're done, type
+*done* or Ctrl-C; the agent saves state to disk and you can
+come back later with another `tianshu setup`.
+
+### Step 4 · Open the SPA and use it
+
+```bash
+open http://localhost:3110
+```
+
+This is the actual product UI — the chat surface your agent
+runs under. Try:
 
 > **You:** Open hacker news and tell me the top story right now.
 
@@ -200,12 +241,6 @@ Watch the side panel: a real Chromium tab navigates. The agent
 can click, type, scroll. You can take the mouse back any time.
 
 Done. You've got a working agent.
-
-### What if I don't have an API key?
-
-A hosted demo is on the roadmap at
-[demo.tianshu-ai.com](https://demo.tianshu-ai.com) *(coming soon)*
-— same image, shared sandbox pool.
 
 ### What if something goes wrong?
 
@@ -318,7 +353,6 @@ the full picture.
 
 - [ ] Docker image with sandbox layer baked in
 - [ ] Linux systemd user service (matches macOS launchd UX)
-- [ ] Hosted demo at `demo.tianshu-ai.com`
 - [ ] Skills marketplace (registry + install command)
 
 Tracked in [GitHub Issues](https://github.com/tianshu-ai/tianshu/issues).
