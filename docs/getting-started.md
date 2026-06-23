@@ -50,7 +50,53 @@ through:
 - Writing `~/.tianshu/.env` (your key; the config references
   it as `${VAR}` so the actual secret never ends up in JSON).
 
+### After the provider is configured: the setup agent
+
+Once your provider is in place, the wizard launches the
+**setup agent** — a Claude / Codex-driven assistant running
+in the same terminal. It's the recommended path to finish
+the rest of the configuration, instead of editing config
+files by hand.
+
+The agent has 18 tools and asks for your confirmation before
+every state-changing call. Common things to ask it on day 0:
+
+- **"Set me up a search API key for the web-search plugin."**
+  It'll prompt for the provider (Tavily / Brave / SerpAPI /
+  ...) and the key, then call `secret_write` against the
+  right tenant. No JSON editing.
+
+- **"Build my sandboxes so I can use the browser tool."**
+  It calls `sandbox_inventory` first to see what's already on
+  disk; on a fresh machine it'll propose the standard
+  two-snapshot layered flow:
+  1. `build_sandbox(template='task-runner')`           (~10 min cold)
+  2. `use_sandbox_build(role='task', buildId=...)`
+  3. `build_sandbox(template='task-runner-with-browser',
+      fromSnapshot=<task snapshot from step 1>)`        (~3 min)
+  4. `use_sandbox_build(role='browser', buildId=...)`
+  If a build looks stuck the agent uses
+  `check_build_progress` to decide between waiting and
+  retrying — it won't silently restart a build that's just
+  slow.
+
+- **"Doctor's complaining about my provider — fix it."** It
+  reads `run_doctor`, locates the line, and proposes the
+  specific `config_write` or `secret_write` call before
+  running anything.
+
+- **"Am I on the latest version?"** Runs `check_for_update`;
+  if you say yes, `apply_update` (which is just `npm install
+  -g @tianshu-ai/tianshu@latest` under the hood).
+
+Type *done* or hit Ctrl-C to exit the agent. State is on
+disk, so a follow-up `tianshu setup` later picks up where
+you left off.
+
 ### Non-interactive setup (Docker / CI)
+
+Skips the agent step. Only writes the provider config and
+exits.
 
 ```bash
 tianshu setup --non-interactive \
