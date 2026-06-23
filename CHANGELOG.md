@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.17](https://github.com/tianshu-ai/tianshu/compare/v0.3.16...v0.3.17) (2026-06-23)
+
+### Bug Fixes
+
+* **workboard:** cancel the live worker when a task is deleted
+  or moved out of `in_progress`. Without this fix, an
+  abandoned worker kept burning LLM tokens after its task was
+  gone / moved, and (worse) wrote status / labels back when
+  it finished — clobbering a status move or crashing on a
+  foreign-key error for a deleted row. Covers both the
+  chat-side `task_move` / `task_delete` tools and the REST
+  `PATCH /tasks/:id` / `DELETE /tasks` handlers (the UI's
+  drag-card path). The REST delete handler now also wires the
+  per-task sandbox teardown the chat tool already had.
+
 ## [0.3.16](https://github.com/tianshu-ai/tianshu/compare/v0.3.15...v0.3.16) (2026-06-22)
 
 ### Features
