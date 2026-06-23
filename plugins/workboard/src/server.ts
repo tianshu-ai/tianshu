@@ -381,6 +381,21 @@ const plugin: PluginServerModule = {
       log: ctx.log,
       pool,
       onTaskWrite: () => pool.nudge(),
+      // Mirror the chat-side `task_delete` tool's per-task
+      // sandbox teardown for the REST `DELETE /tasks` path,
+      // so a UI-driven delete reclaims the sandbox too.
+      // Best-effort: errors logged but never block the
+      // database delete.
+      onTaskDelete: taskPool
+        ? (taskId) => {
+            void taskPool.destroyTask(taskId).catch((err) => {
+              ctx.log.warn("workboard: taskPool.destroyTask (route) failed", {
+                taskId,
+                err: err instanceof Error ? err.message : String(err),
+              });
+            });
+          }
+        : undefined,
       workerKinds: WORKER_KINDS,
       // GET /agents reads through the same fs-first merge the
       // pool uses, so the admin UI sees identical inventory.
