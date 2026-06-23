@@ -28,7 +28,7 @@
     "@types/node": "^26.0.0",
     "@types/react": "^19.2.17",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.9"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0"

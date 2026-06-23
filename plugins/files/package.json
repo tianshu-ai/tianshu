@@ -17,7 +17,12 @@
     },
     "./manifest.json": "./manifest.json"
   },
-  "files": ["dist", "src", "skills", "manifest.json"],
+  "files": [
+    "dist",
+    "src",
+    "skills",
+    "manifest.json"
+  ],
   "scripts": {
     "build": "tsc && node scripts/copy-prompts.mjs",
     "predev": "node scripts/copy-prompts.mjs",
@@ -34,6 +39,6 @@
     "lucide-react": "^1.17.0",
     "react": "^19.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.9"
   }
 }
