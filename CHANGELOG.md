@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.19](https://github.com/tianshu-ai/tianshu/compare/v0.3.18...v0.3.19) (2026-06-24)
+
+### Features
+
+* **workboard:** add `worker_analytics` orchestrator-only tool.
+  ADR-0002 §12 — the main agent (天枢) can now read across
+  recent worker runs and report per-agent + per-role stats
+  (total / succeeded / intervened / watchdog-timeout counts,
+  avg / p50 / p95 duration, total attempts, top-N failure
+  reasons). Windowed by `windowDays` (default 7) or
+  `allTime`. Owner-scoped — cross-tenant analytics stays
+  out of scope. Read-only: this is a recommendation surface
+  the orchestrator turns into prose tuning suggestions for
+  the user, not a control loop. Workers are denied the tool.
+
 ## [0.3.18](https://github.com/tianshu-ai/tianshu/compare/v0.3.17...v0.3.18) (2026-06-24)
 
 ### Features
