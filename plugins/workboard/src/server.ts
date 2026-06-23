@@ -57,6 +57,7 @@ import {
   buildTaskListTool,
   buildTaskMoveTool,
   buildTaskUpdateTool,
+  buildWorkerAnalyticsTool,
   type ToolDeps,
 } from "./tools/index.js";
 import { buildRoutes, type WorkerKindDef } from "./routes/handlers.js";
@@ -439,6 +440,12 @@ const plugin: PluginServerModule = {
         // Model catalog (main agent only — the available() guard
         // and the worker deny-list both block worker access).
         ModelListTool: buildModelListTool(),
+        // ADR-0002 §12 — orchestrator-side analytics. Read-only
+        // aggregations across `tasks` so the main agent can spot
+        // duration drift, intervention hot spots, and recurring
+        // failure reasons, and propose tuning to the user.
+        // Workers are denied via WORKER_DENY_TOOLS.
+        WorkerAnalyticsTool: buildWorkerAnalyticsTool(toolDeps),
       },
       routes,
     };

@@ -742,3 +742,292 @@ function sanitiseDependsOn(
   }
   return out;
 }
+
+// ---------------------------------------------------------------
+// Analytics — read-only aggregations the orchestrator uses to
+// notice patterns across worker runs (ADR-0002 §12).
+//
+// Everything here is a thin SELECT on the same `tasks` table the
+// kanban uses; no new storage layer, no extra writes. The shape
+// is meant to be consumed by `worker_analytics` (a chat-side
+// tool) and rendered into prose like "the web-research worker
+// hits the watchdog 1 in 5 runs."
+// ---------------------------------------------------------------
+
+export interface WorkerAnalyticsOpts {
+  /** Owner scope. Always required — analytics never crosses
+   *  users, mirroring the rest of the workboard. */
+  ownerUserId: string;
+  /** Lower-bound (inclusive) on `ended_at`. Pass null/undefined
+   *  to include all rows ever. */
+  sinceMs?: number | null;
+  /** Upper-bound (exclusive) on `ended_at`. Pass null/undefined
+   *  to mean "up to now". */
+  untilMs?: number | null;
+  /** Hard cap on rows scanned. Default 5000. Analytics windows
+   *  longer than this on a busy tenant are unusual; the cap
+   *  protects pathological queries. */
+  limit?: number;
+  /** How many distinct failure-reason strings to surface in the
+   *  per-agent breakdown. Default 3. */
+  topFailureCount?: number;
+}
+
+export interface FailureReasonCount {
+  /** Verbatim `failure_reason` string from `tasks`. NULL rows
+   *  are dropped before counting. */
+  reason: string;
+  count: number;
+}
+
+export interface WorkerGroupStats {
+  /** Aggregation key — either a `worker_agent_id` slug or a
+   *  `worker_role` string. `null` is reported as the literal
+   *  string "(unassigned)" so the consumer doesn't have to
+   *  special-case it. */
+  key: string;
+  /** How many rows entered this bucket. */
+  total: number;
+  /** Rows where `status='done'` and no intervention label was
+   *  left behind. */
+  succeeded: number;
+  /** Rows where `intervention_reason` is set (any value). */
+  intervened: number;
+  /** Rows where the worker pool stamped `awaiting-intervention`
+   *  AND the reason looked like a watchdog timeout — caller
+   *  decides if that's a useful breakdown. We just count
+   *  reasons starting with the literal prefix `watchdog`,
+   *  matching the string the pool writes (see worker/pool.ts). */
+  timeoutHits: number;
+  /** Average run time in ms across rows with both timestamps.
+   *  null when the bucket has no completed runs. */
+  avgDurationMs: number | null;
+  /** p50 / p95 run time across the same population. null on
+   *  empty buckets. */
+  p50DurationMs: number | null;
+  p95DurationMs: number | null;
+  /** Sum of `attempts` across the bucket — a coarse signal of
+   *  retry pressure. */
+  totalAttempts: number;
+  /** Top failure reasons, sorted by count descending. Empty
+   *  when the bucket has no failures. */
+  topFailures: FailureReasonCount[];
+}
+
+export interface WorkerAnalyticsResult {
+  /** The actual window used (after clamping / defaulting). */
+  window: { sinceMs: number | null; untilMs: number | null };
+  /** Rows considered. */
+  sampleSize: number;
+  /** Per-agent stats — keyed on `worker_agent_id`. Agents that
+   *  ran zero tasks in the window are not represented. */
+  perAgent: WorkerGroupStats[];
+  /** Per-role stats — keyed on `worker_role`. Same emptiness
+   *  rule as `perAgent`. */
+  perRole: WorkerGroupStats[];
+}
+
+/** Compute p50 / p95 on a sorted ascending number array. Returns
+ *  `null` when the input is empty. Used only by
+ *  `computeWorkerAnalytics`. */
+function percentile(sorted: number[], p: number): number | null {
+  if (sorted.length === 0) return null;
+  if (sorted.length === 1) return sorted[0];
+  const rank = (p / 100) * (sorted.length - 1);
+  const lo = Math.floor(rank);
+  const hi = Math.ceil(rank);
+  if (lo === hi) return sorted[lo];
+  const weight = rank - lo;
+  return sorted[lo] * (1 - weight) + sorted[hi] * weight;
+}
+
+interface AnalyticsRow {
+  worker_agent_id: string | null;
+  worker_role: string | null;
+  status: string;
+  attempts: number;
+  failure_reason: string | null;
+  intervention_reason: string | null;
+  started_at: number | null;
+  ended_at: number | null;
+  labels: string | null;
+}
+
+/** Bucket helper used twice (once per dimension). Mutates `out`
+ *  in-place so the two passes can share the same accumulator
+ *  shape. */
+function bucketRow(
+  out: Map<string, {
+    total: number;
+    succeeded: number;
+    intervened: number;
+    timeoutHits: number;
+    durations: number[];
+    attempts: number;
+    failures: Map<string, number>;
+  }>,
+  key: string | null,
+  row: AnalyticsRow,
+): void {
+  const bucket = key ?? "(unassigned)";
+  let agg = out.get(bucket);
+  if (!agg) {
+    agg = {
+      total: 0,
+      succeeded: 0,
+      intervened: 0,
+      timeoutHits: 0,
+      durations: [],
+      attempts: 0,
+      failures: new Map(),
+    };
+    out.set(bucket, agg);
+  }
+  agg.total += 1;
+  agg.attempts += Number(row.attempts) || 0;
+  const labels = parseStringArray(row.labels);
+  const hasIntervention = labels.includes("awaiting-intervention") ||
+    !!row.intervention_reason;
+  if (hasIntervention) agg.intervened += 1;
+  // "Succeeded" = terminal-done and not flagged for intervention.
+  if (row.status === "done" && !hasIntervention) agg.succeeded += 1;
+  // Watchdog timeouts: the pool writes intervention_reason like
+  // "watchdog: ...". Match the prefix verbatim so this stat is
+  // robust to formatting tweaks in the pool's reason builder.
+  const reasonProbe = row.intervention_reason ?? row.failure_reason ?? "";
+  if (reasonProbe.toLowerCase().startsWith("watchdog")) {
+    agg.timeoutHits += 1;
+  }
+  if (row.started_at != null && row.ended_at != null && row.ended_at >= row.started_at) {
+    agg.durations.push(row.ended_at - row.started_at);
+  }
+  // Count distinct failure_reason strings (case-preserving — we
+  // don't want to fold "Watchdog: 10m" into "watchdog: 10m").
+  if (row.failure_reason) {
+    const k = row.failure_reason.trim();
+    if (k) {
+      agg.failures.set(k, (agg.failures.get(k) ?? 0) + 1);
+    }
+  }
+}
+
+function finaliseGroup(
+  raw: Map<string, {
+    total: number;
+    succeeded: number;
+    intervened: number;
+    timeoutHits: number;
+    durations: number[];
+    attempts: number;
+    failures: Map<string, number>;
+  }>,
+  topFailureCount: number,
+): WorkerGroupStats[] {
+  const out: WorkerGroupStats[] = [];
+  for (const [key, agg] of raw) {
+    const sorted = agg.durations.slice().sort((a, b) => a - b);
+    const avg = sorted.length === 0
+      ? null
+      : sorted.reduce((s, v) => s + v, 0) / sorted.length;
+    const topFailures = Array.from(agg.failures.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, Math.max(0, topFailureCount))
+      .map(([reason, count]) => ({ reason, count }));
+    out.push({
+      key,
+      total: agg.total,
+      succeeded: agg.succeeded,
+      intervened: agg.intervened,
+      timeoutHits: agg.timeoutHits,
+      avgDurationMs: avg,
+      p50DurationMs: percentile(sorted, 50),
+      p95DurationMs: percentile(sorted, 95),
+      totalAttempts: agg.attempts,
+      topFailures,
+    });
+  }
+  // Stable sort: highest-volume buckets first; ties broken by key.
+  out.sort((a, b) => {
+    if (b.total !== a.total) return b.total - a.total;
+    return a.key.localeCompare(b.key);
+  });
+  return out;
+}
+
+/** Pull the analytics window from `tasks` and aggregate twice —
+ *  once per agent slug, once per role string. Both views share
+ *  the same row set so the totals match up. */
+export function computeWorkerAnalytics(
+  db: TenantDbHandle,
+  opts: WorkerAnalyticsOpts,
+): WorkerAnalyticsResult {
+  const where: string[] = ["owner_user_id = ?"];
+  const params: unknown[] = [opts.ownerUserId];
+
+  // Window is `ended_at`-based — a task that never ended is
+  // skipped, on purpose: analytics is about completed runs,
+  // not in-flight work.
+  const sinceMs = opts.sinceMs != null ? Number(opts.sinceMs) : null;
+  const untilMs = opts.untilMs != null ? Number(opts.untilMs) : null;
+  if (sinceMs != null) {
+    where.push("ended_at IS NOT NULL AND ended_at >= ?");
+    params.push(sinceMs);
+  } else {
+    where.push("ended_at IS NOT NULL");
+  }
+  if (untilMs != null) {
+    where.push("ended_at < ?");
+    params.push(untilMs);
+  }
+
+  const limit = Math.max(1, Math.min(opts.limit ?? 5000, 20_000));
+  const sql = `
+    SELECT worker_agent_id, worker_role, status, attempts,
+           failure_reason, intervention_reason,
+           started_at, ended_at, labels
+    FROM tasks
+    WHERE ${where.join(" AND ")}
+    ORDER BY ended_at DESC
+    LIMIT ?
+  `;
+  params.push(limit);
+  const rows = db.prepare<unknown[], AnalyticsRow>(sql).all(...params);
+
+  const perAgentRaw = new Map<string, ReturnType<typeof emptyAgg>>();
+  const perRoleRaw = new Map<string, ReturnType<typeof emptyAgg>>();
+  for (const row of rows) {
+    bucketRow(perAgentRaw, row.worker_agent_id, row);
+    bucketRow(perRoleRaw, row.worker_role, row);
+  }
+
+  const topFailureCount = Math.max(0, Math.min(opts.topFailureCount ?? 3, 20));
+  return {
+    window: { sinceMs, untilMs },
+    sampleSize: rows.length,
+    perAgent: finaliseGroup(perAgentRaw, topFailureCount),
+    perRole: finaliseGroup(perRoleRaw, topFailureCount),
+  };
+}
+
+/** Builder for the bucket-row shape — kept as a separate helper
+ *  only so `Map<string, ReturnType<typeof emptyAgg>>` reads
+ *  cleanly above. */
+function emptyAgg(): {
+  total: number;
+  succeeded: number;
+  intervened: number;
+  timeoutHits: number;
+  durations: number[];
+  attempts: number;
+  failures: Map<string, number>;
+} {
+  return {
+    total: 0,
+    succeeded: 0,
+    intervened: 0,
+    timeoutHits: 0,
+    durations: [],
+    attempts: 0,
+    failures: new Map(),
+  };
+}
