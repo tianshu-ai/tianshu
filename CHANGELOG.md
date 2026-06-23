@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.18](https://github.com/tianshu-ai/tianshu/compare/v0.3.17...v0.3.18) (2026-06-24)
+
+### Features
+
+* **prompt:** inject a Runtime Context block (local time +
+  timezone + host + tenant/user) into every agent's system
+  prompt. Covers the main agent, worker agents, and the
+  setup wizard's CLI agent. The LLM no longer has to guess
+  "what day is it?" / "am I on macOS or Linux?" / "what
+  timezone is the user in?" — the answers are in the prompt
+  from the first turn. Re-rendered on every prompt build so
+  the clock stays fresh across multi-minute sessions. Time
+  format is ISO-8601 with explicit local offset (parses
+  cleanly on Anthropic / OpenAI / Google).
+
 ## [0.3.17](https://github.com/tianshu-ai/tianshu/compare/v0.3.16...v0.3.17) (2026-06-23)
 
 ### Bug Fixes
