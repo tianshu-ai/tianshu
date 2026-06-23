@@ -59,13 +59,36 @@ asdf），让全局装路径落在你的用户目录下。
 tianshu setup
 ```
 
-30 秒交互式向导：
+交互式向导：
 
 1. 问你用哪个 provider（Anthropic / OpenAI / Google）。
 2. 隐藏输入读你的 API key。
 3. 写 `~/.tianshu/config.json`（配置）和 `~/.tianshu/.env`（秘钥）。
 
-Docker / CI 场景：
+模型配置好后，向导会把你交给 **setup agent** —— 一个跑在同
+一个终端里、能帮你把后续配置走完的 LLM 驱动助手。它有 18 个
+工具（`run_doctor`、`sandbox_inventory`、`config_write`、
+`plugin_enable`、`build_sandbox`、`use_sandbox_build`、
+`secret_write`、`apply_update` …），每个会改状态的调用都会先让
+你确认。现在能让它帮你做的事：
+
+- *“帮我配一个 web-search 插件的 API key。”* —— 它会问你用哪家
+  （Tavily / Brave / SerpAPI / …）、读你的 key、用
+  `secret_write` 写到对应租户的插件配置里。不用手改 JSON。
+- *“帮我 build 沙箱，我要用浏览器。”* —— 它先调 `sandbox_inventory`
+  看看磁盘上已经有什么，再调 `build_sandbox` 和
+  `use_sandbox_build` 填上缺的。分层 `task-runner-with-browser`
+  snapshot 发布的那一刻起，浏览器工具就能用。
+- *“doctor 报 provider 有问题 —— 帮我修。”* —— 它读
+  `run_doctor`，找到警告的那行，提议具体该调哪个
+  `config_write` / `secret_write` 去修，然后才执行。
+- *“我是最新版本么？”* —— 它跑 `check_for_update`，你同意了
+  再跑 `apply_update`。
+
+随时能退出（输 *done* / Ctrl-C）再来 —— agent 每次启动从磁盘
+重读状态。
+
+Docker / CI 场景（跳过交互式 agent，只写 provider 配置）：
 
 ```bash
 tianshu setup --non-interactive --provider=anthropic --api-key=sk-***
@@ -145,17 +168,15 @@ tianshu start
 向导已经验证过网络 / 配置。`tianshu start` 装 launchd agent，
 等 server 响应 `/api/health`。
 
-### 第 3 步 · 打开 SPA，让 setup agent 帮你
+### 第 3 步 · 让 setup agent 把后续配置走完
 
-```bash
-open http://localhost:3110
-```
-
-在对话里说：
+`tianshu setup` 写完 provider 配置后会直接把你交给 **setup agent**
+（还在同一个终端里）。这是你把剩下的东西接上的地方。用
+平常话讲：
 
 > **你：** 帮我把沙箱准备好，我要用浏览器。
 
-对话中的 setup agent 有 18 个工具。它会：
+Agent 会：
 
 1. 先调 `sandbox_inventory` 看看已经 build 了什么。
 2. 如果软件包 snapshot 缺了，它会提议 `build_sandbox
@@ -170,7 +191,19 @@ open http://localhost:3110
 `stalled` / `errored`），告诉你是该等还是该重试。它不会
 默默地从头重启一个还在拉 apt 包的 10 分钟 build。
 
-### 第 4 步 · 试试浏览器工具
+这时你也可以跟它提别的配置 —— 比如说 *“加个 Tavily
+API key 给 web search”* 或 *“检查 tianshu 是不是最新版”*，
+它会用同样的 confirm-before-mutating 流程处理。走完了输
+*done* 或 Ctrl-C，agent 会将状态存盘，下次 `tianshu setup` 进来
+能接着走。
+
+### 第 4 步 · 打开 SPA 开始用
+
+```bash
+open http://localhost:3110
+```
+
+这才是真正的产品界面 —— 你的 agent 跑在下面的对话表面。试试：
 
 > **你：** 打开 hacker news 告诉我现在头条是什么。
 
@@ -178,12 +211,6 @@ open http://localhost:3110
 输入、滚动。你随时可以接管鼠标。
 
 完成。你有一个可用的 agent 了。
-
-### 没 API key 怎么办？
-
-托管 demo 在 roadmap 上 ——
-[demo.tianshu-ai.com](https://demo.tianshu-ai.com) *（即将上线）* ——
-同一个镜像，共享沙箱池。
 
 ### 出了问题怎么办？
 
@@ -296,7 +323,6 @@ Agent 运行时基于
 
 - [ ] Docker 镜像（带沙箱层）
 - [ ] Linux systemd 用户服务（跟 macOS launchd 体验对齐）
-- [ ] 托管 demo `demo.tianshu-ai.com`
 - [ ] Skills 市场（registry + 安装命令）
 
 进度跟踪：[GitHub Issues](https://github.com/tianshu-ai/tianshu/issues)。
