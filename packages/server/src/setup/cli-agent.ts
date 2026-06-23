@@ -1948,8 +1948,16 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
   while (turns < maxTurns) {
     turns += 1;
     let assistant: AssistantMessage;
+    // Prepend a runtime-context block so the setup agent can
+    // answer "what's today's date?" / "am I on macOS?" without
+    // calling a tool. Setup runs before a tenant / user exist
+    // (the whole point of the wizard is to create them), so the
+    // block is intentionally lighter than the main / worker
+    // injection in chat/handler.ts — just time + host.
+    // Re-rendered every turn so multi-minute setup sessions get
+    // a fresh clock on each LLM call.
     const ctx: Context = {
-      systemPrompt: SETUP_SYSTEM_PROMPT,
+      systemPrompt: setupRuntimeContext() + "\n\n" + SETUP_SYSTEM_PROMPT,
       messages,
       tools: toolSchemas,
     };
@@ -2121,6 +2129,36 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
 function shortArgs(args: Record<string, unknown>): string {
   const s = JSON.stringify(args);
   return s.length > 80 ? s.slice(0, 77) + "..." : s;
+}
+
+/**
+ * Light-weight runtime context for the setup agent. Mirrors
+ * `chat/handler.ts:formatRuntimeContextBlock` in intent but
+ * drops the tenant / user lines because the wizard runs
+ * before either exists. Re-rendered on every turn so the
+ * timestamp is fresh.
+ *
+ * Kept inline here (instead of importing from chat/handler)
+ * because the setup binary should not pull in the full chat
+ * module — bundle size + initialisation cost matters for the
+ * one-shot `tianshu setup` path.
+ */
+function setupRuntimeContext(): string {
+  const now = new Date();
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const off = -now.getTimezoneOffset();
+  const sign = off >= 0 ? "+" : "-";
+  const isoLocal =
+    `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}` +
+    `T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}` +
+    `${sign}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}`;
+  const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+  return [
+    `## Runtime Context`,
+    `- Time: ${isoLocal} (${weekday}, timezone ${tz})`,
+    `- Host: ${os.platform()} ${os.arch()} · Node ${process.versions.node}`,
+  ].join("\n");
 }
 
 /**
