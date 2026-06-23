@@ -158,6 +158,16 @@ Plus:
 - 🤖 **Background workers, not "tools."** Dispatch parallel agents
   onto a Kanban board; watch elapsed time per task; intervene when
   one stalls.
+- 🔍 **The orchestrator is a supervisor.** The main agent (天枢,
+  literally "the pivot") doesn't just dispatch — it reads across
+  every worker run on the board (duration, intervention rate,
+  failure-reason clusters, token cost) and proposes tuning back
+  to you: *“Your `web-research` worker hits the 10-min watchdog
+  on 1 in 5 runs — want me to raise its `timeoutMs` to 15 min?”*
+  Analytics is a recommendation surface, never an auto-tuning
+  control loop — every change still needs your confirm. See
+  [ADR-0002 §12](docs/architecture/workers.md#12-orchestrator-side-analytics--continuous-improvement)
+  for the full story.
 - 🏢 **Multi-tenant from row 1.** Every record carries `tenantId`.
   Sidecars, workspaces, and worker pools are tenant-isolated.
 - 🧠 **A setup assistant that fixes things.** `tianshu setup` runs a
@@ -354,6 +364,11 @@ the full picture.
 - [ ] Docker image with sandbox layer baked in
 - [ ] Linux systemd user service (matches macOS launchd UX)
 - [ ] Skills marketplace (registry + install command)
+- [ ] **Orchestrator analytics**: `worker_analytics` /
+      `worker_task_timeline` /
+      `worker_propose_tuning` tools so the main agent
+      can read across worker runs and propose concrete
+      tuning (see ADR-0002 §12)
 
 Tracked in [GitHub Issues](https://github.com/tianshu-ai/tianshu/issues).
 

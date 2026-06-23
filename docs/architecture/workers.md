@@ -3,7 +3,7 @@
 | Status | Accepted |
 | --- | --- |
 | Date | 2026-06-03 |
-| Updated | 2026-06-05 — worker default cwd moved under `users/<owner>/projects/...` (see Revision 2026-06-05) |
+| Updated | 2026-06-23 — added §12 "Orchestrator-side analytics & continuous improvement". The orchestrator is the supervisor of the worker fleet; it reads across runs and proposes tuning. |
 | Author | Yu Yu |
 | Supersedes | — |
 | Depends on | [ADR-0001 — Multi-tenancy from row 1](./multi-tenant.md) |
@@ -424,6 +424,65 @@ has admin role). Cross-user worker spying inside a tenant **is**
 allowed because the tenant is a single trust domain — UI defaults to
 "only mine", but APIs do not enforce single-user scoping.
 
+### 12. Orchestrator-side analytics & continuous improvement
+
+The orchestrator (天枢) is not just a dispatcher — it is the
+**supervisor of the worker fleet**. Every worker run leaves a trail in
+the database (`attempts`, `failureReason`, `startedAt`, `endedAt`,
+`timeoutMs`, `interventionReason`, session-id-linked message stream).
+The orchestrator can read across this corpus to detect patterns the
+user shouldn't have to spot themselves, and to propose concrete
+tuning back to the user.
+
+What the orchestrator is expected to notice and report:
+
+- **Duration drift.** "Your `web-research` worker averages 12 min
+  per task; the configured `timeoutMs` is 10 min, so every fifth
+  run hits the watchdog. Consider raising the role default to 15
+  min."
+- **Intervention-rate hot spots.** "Tasks routed to the `codex`
+  worker for React work are interrupted 50% of the time; for
+  Python the same worker is at 5%. The system prompt is probably
+  too thin on JSX conventions."
+- **Setup-cost amortisation.** "The `task-runner` sandbox spends
+  ~90s on `npm install` for every task. Building that into the
+  base snapshot would reclaim ~15 min/day at current volume."
+- **Worker-mix recommendations.** "You ran 30 tasks last week; 28
+  were 1-shot LLM calls and 2 were full code edits. The general
+  `codex` worker is overkill for the 28 — the lighter `echo`
+  worker would have done them and saved 70% of tokens."
+- **Failure mode clustering.** Group `failureReason` strings by
+  approximate cosine similarity and surface the top-3 recurring
+  reasons, with the linked task ids so the user can drill in.
+
+The orchestrator is **not** allowed to apply these changes on its
+own — the policy boundary is the same as everywhere else: read
+through analytics tools, propose specific `config_write` /
+`task_update` / `agent_update` calls, ask for confirmation, then
+act. Auto-tuning is explicitly out of scope; analytics is a
+**recommendation surface**, not a control loop. (See ADR-0001's
+"Multi-tenant from row 1" — cross-tenant heuristics would leak
+behaviour; analytics stays scoped to a single tenant's data.)
+
+Tooling baseline (lands incrementally as the data warrants):
+
+- `worker_analytics(window)` — read-only summary across tasks in a
+  time window: per-role and per-agent run count, average / p50 /
+  p95 duration, intervention rate, top failure-reason clusters,
+  token cost proxy where billing data is available.
+- `worker_task_timeline(agentId)` — chronological list of one
+  agent's recent runs with timestamps + terminal status, so the
+  orchestrator can spot "this used to work, broke last Tuesday".
+- Future: `worker_propose_tuning(agentId)` — the orchestrator's
+  structured output of its analysis, written into the chat as a
+  confirmable patch the user can accept or reject.
+
+The analytics path does NOT add a new storage layer. All signals
+are already on disk in `tasks` + `messages`; analytics tools are
+thin aggregations. This keeps the architecture honest: any
+insight the orchestrator surfaces is something the user could
+have derived themselves from the same data.
+
 ## Consequences
 
 ### Good
@@ -437,6 +496,12 @@ allowed because the tenant is a single trust domain — UI defaults to
 - **Tenants have a clean extensibility path.** Add a worker by
   dropping `_tenant/config/workers/<role>/SOUL.md`. No code changes,
   no service restart needed beyond a workspace reload.
+- **The orchestrator is a fleet supervisor, not just a dispatcher.**
+  Every worker run is grist for analytics; the orchestrator reads
+  the corpus and surfaces tuning recommendations (duration drift,
+  intervention hot spots, setup-cost amortisation, worker-mix
+  fit) instead of waiting for the user to find them. See
+  Section 12.
 
 ### Trade-offs accepted
 
@@ -448,6 +513,12 @@ allowed because the tenant is a single trust domain — UI defaults to
 - **`role=maker` rename to `luban` is a breaking change vs. the old
   closed-source repo.** Our open-source repo has no users yet, so
   there is no migration cost.
+- **Analytics is a recommendation surface, not a control loop.**
+  The orchestrator reports patterns but doesn't auto-apply
+  changes (no auto-bumping `timeoutMs`, no auto-swapping worker
+  roles). Auto-tuning is out of scope until the recommendation
+  surface has proven itself; getting wrong auto-changes back is
+  worse than missing optimisations.
 
 ## Implementation order
 
