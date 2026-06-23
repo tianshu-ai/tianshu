@@ -30,6 +30,7 @@ import type {
   PluginLogger,
 } from "@tianshu-ai/plugin-sdk";
 import {
+  computeWorkerAnalytics,
   createTask,
   deleteTask,
   getTask,
@@ -42,6 +43,7 @@ import {
   VISIBLE_STATUSES,
   type Task,
   type TaskStatus,
+  type WorkerGroupStats,
 } from "../db/tasks.js";
 import {
   appendContinuationHint,
@@ -1208,5 +1210,131 @@ export function buildTaskCompleteTool(): AgentTool {
       };
     },
   };
+}
+
+/**
+ * `worker_analytics` — read-only summary across recent task runs
+ * (ADR-0002 §12). Intended for the orchestrator (天枢) to spot
+ * patterns and propose tuning to the user. Workers are denied
+ * this tool via WORKER_DENY_TOOLS.
+ *
+ * Returns per-agent and per-role aggregates: total runs,
+ * success / intervention counts, watchdog-timeout hits,
+ * avg / p50 / p95 duration, and the top-N failure_reason strings.
+ * The orchestrator turns these numbers into prose recommendations
+ * ("raise web-research's timeoutMs to 15 min", etc.).
+ *
+ * Scope is single-tenant single-owner. Cross-tenant analytics is
+ * explicitly out of scope (ADR-0001).
+ */
+export function buildWorkerAnalyticsTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "worker_analytics",
+      description:
+        "Read-only summary of recent worker task runs for the current user. " +
+        "Use this to notice patterns across runs (duration drift, intervention-rate " +
+        "hot spots, repeated failure reasons) and turn them into concrete tuning " +
+        "suggestions you propose back to the user. Never auto-apply changes — " +
+        "analytics is a recommendation surface, not a control loop. Pass a " +
+        "`windowDays` to scope to a recent slice (default 7 days). Each call " +
+        "returns per-agent and per-role aggregates plus top failure reasons.",
+      parameters: Type.Object({
+        windowDays: Type.Optional(
+          Type.Number({
+            description:
+              "How many days back from now to include. Default 7. Pass 0 (or omit `windowDays` AND set `allTime=true`) to look at every completed task on record.",
+          }),
+        ),
+        allTime: Type.Optional(
+          Type.Boolean({
+            description:
+              "Override `windowDays` and look at every completed task on record. Default false.",
+          }),
+        ),
+        topFailures: Type.Optional(
+          Type.Number({
+            description:
+              "How many distinct failure_reason strings to surface per bucket. Default 3.",
+          }),
+        ),
+        limit: Type.Optional(
+          Type.Number({
+            description:
+              "Hard cap on rows scanned (most recent first). Default 5000.",
+          }),
+        ),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as {
+        windowDays?: number;
+        allTime?: boolean;
+        topFailures?: number;
+        limit?: number;
+      };
+      const now = Date.now();
+      const allTime = args.allTime === true;
+      // Coerce windowDays: clamp negatives, treat 0 as "all time"
+      // so callers don't need to learn the `allTime` flag.
+      const daysRaw = typeof args.windowDays === "number" && Number.isFinite(args.windowDays)
+        ? args.windowDays
+        : 7;
+      const days = Math.max(0, daysRaw);
+      const sinceMs = allTime || days === 0 ? null : now - days * 24 * 60 * 60 * 1000;
+
+      const result = computeWorkerAnalytics(deps.db, {
+        ownerUserId: ctx.userId,
+        sinceMs,
+        untilMs: null,
+        limit: args.limit,
+        topFailureCount: args.topFailures,
+      });
+
+      const windowLabel = sinceMs == null ? "all time" : `last ${days}d`;
+      const lines: string[] = [];
+      lines.push(`worker_analytics (${windowLabel}): ${result.sampleSize} completed task run(s).`);
+      if (result.sampleSize === 0) {
+        lines.push("(no completed runs in window — nothing to analyse)");
+        return { ok: true, text: lines.join("\n"), data: result };
+      }
+      lines.push("");
+      lines.push("Per agent:");
+      lines.push(formatGroup(result.perAgent));
+      lines.push("");
+      lines.push("Per role:");
+      lines.push(formatGroup(result.perRole));
+      return { ok: true, text: lines.join("\n"), data: result };
+    },
+  };
+}
+
+/** Render a Group view as a fixed-column block: easier on the
+ *  orchestrator than a raw JSON dump when it's deciding what to
+ *  flag for the user. */
+function formatGroup(groups: WorkerGroupStats[]): string {
+  if (groups.length === 0) return "  (none)";
+  const lines: string[] = [];
+  for (const g of groups) {
+    const successRate = g.total > 0 ? Math.round((g.succeeded / g.total) * 100) : 0;
+    const intervRate = g.total > 0 ? Math.round((g.intervened / g.total) * 100) : 0;
+    const avg = g.avgDurationMs != null ? `${Math.round(g.avgDurationMs / 1000)}s` : "—";
+    const p50 = g.p50DurationMs != null ? `${Math.round(g.p50DurationMs / 1000)}s` : "—";
+    const p95 = g.p95DurationMs != null ? `${Math.round(g.p95DurationMs / 1000)}s` : "—";
+    lines.push(
+      `  ${g.key}: total=${g.total} ` +
+        `succeeded=${g.succeeded}(${successRate}%) ` +
+        `intervened=${g.intervened}(${intervRate}%) ` +
+        `watchdog=${g.timeoutHits} ` +
+        `avg=${avg} p50=${p50} p95=${p95} attempts=${g.totalAttempts}`,
+    );
+    if (g.topFailures.length > 0) {
+      for (const f of g.topFailures) {
+        const trimmed = f.reason.length > 80 ? f.reason.slice(0, 77) + "…" : f.reason;
+        lines.push(`      ×${f.count}  ${trimmed}`);
+      }
+    }
+  }
+  return lines.join("\n");
 }
 
