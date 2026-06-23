@@ -32,8 +32,33 @@ describe("defaultSystemPrompt", () => {
   it("identifies the brand, tenant, and user", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     expect(out).toContain("You are Tianshu");
-    expect(out).toContain('Tenant: "acme"');
-    expect(out).toContain('User: "alice"');
+    // Tenant + user now live in the Runtime Context block,
+    // wrapped in backticks instead of the legacy quoted form.
+    // The block also carries time + host so the LLM can answer
+    // "what day is it?" / "am I on macOS?" without a tool call.
+    expect(out).toContain("Runtime Context");
+    expect(out).toMatch(/Tenant:\s*`acme`/);
+    expect(out).toMatch(/User:\s*`alice`/);
+  });
+
+  it("runtime-context block carries an ISO timestamp + timezone", () => {
+    // Specific format guarantees the LLM can parse without
+    // ambiguity: YYYY-MM-DDTHH:MM:SS±HH:MM. Don't pin the
+    // exact instant — just the shape.
+    const out = defaultSystemPrompt(fakeCtx(), "alice");
+    expect(out).toMatch(
+      /Time:\s*\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}/,
+    );
+    expect(out).toMatch(/timezone\s+\S+/);
+  });
+
+  it("runtime-context block carries host platform + Node version", () => {
+    // Lets the model branch on macOS-vs-Linux shell flags etc.
+    // without a probe. The line shape is
+    //   Host: <platform> <arch> · Node <version>
+    const out = defaultSystemPrompt(fakeCtx(), "alice");
+    expect(out).toMatch(/Host:\s+\S+\s+\S+/);
+    expect(out).toMatch(/Node\s+\d+\.\d+/);
   });
 
   it("respects branding.name override", () => {

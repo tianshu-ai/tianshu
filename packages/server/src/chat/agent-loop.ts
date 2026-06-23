@@ -44,6 +44,7 @@ import {
   formatAvailableSkillsBlock,
   formatExecutionBiasBlock,
   formatPluginPromptFragments,
+  formatRuntimeContextBlock,
   formatWorkerAgentContextBlock,
   substituteUserIdPlaceholders,
   tryAutoCompact,
@@ -425,7 +426,16 @@ export async function runAgentLoop(
     //                            skills).
     //   <available skills>       situational reference.
     const skillBlock = formatAvailableSkillsBlock(skills);
-    const parts = [req.systemPrompt, formatExecutionBiasBlock()];
+    // Worker prompts get the same runtime-context injection the
+    // main agent gets — time / timezone / host / identity. A
+    // long-running worker that needs "what's today's date?" or
+    // "am I on Linux for these shell flags?" should not have to
+    // call a tool to find out.
+    const parts = [
+      req.systemPrompt,
+      formatRuntimeContextBlock({ tenantId: ctx.tenantId, userId }),
+      formatExecutionBiasBlock(),
+    ];
     // Worker context: only the worker's own AGENTS.md / MEMORY.md
     // bundle plus the caller's USER.md. SOUL.md is already in
     // req.systemPrompt above; tenant-shared AGENTS/SOUL/MEMORY are
