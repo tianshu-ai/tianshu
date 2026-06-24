@@ -56,7 +56,8 @@
       { "id": "task_retry_fresh",         "module": "TaskRetryFreshTool"         },
       { "id": "task_extend_timeout",      "module": "TaskExtendTimeoutTool"      },
       { "id": "task_abort",               "module": "TaskAbortTool"              },
-      { "id": "model_list",               "module": "ModelListTool"              }
+      { "id": "model_list",               "module": "ModelListTool"              },
+      { "id": "worker_analytics",         "module": "WorkerAnalyticsTool"        }
     ],
     "skills": [
       { "id": "workboard-howto",          "path": "skills/workboard-howto.md"          },
