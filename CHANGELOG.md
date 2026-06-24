@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.21](https://github.com/tianshu-ai/tianshu/compare/v0.3.20...v0.3.21) (2026-06-24)
+
+### Features
+
+* **agent:** per-prompt tool-delta detector for cross-upgrade
+  sessions. When a chat session has been open across a server
+  upgrade and a builtin tool's `manifest.since` post-dates the
+  session's stamped version, the next user prompt's turn opens
+  with a synthetic system note listing the newly-available
+  tools. Stops the model from "staying in its lane" on
+  historical conversations after a release adds tools. Schema:
+  `manifest.contributes.tools[].since` (semver) on the plugin
+  side; `sessions.created_under_app_version` on the host side
+  (migration 009). Workers are skipped; NULL-stamp sessions are
+  claimed without notification.
+
 ## [0.3.20](https://github.com/tianshu-ai/tianshu/compare/v0.3.19...v0.3.20) (2026-06-24)
 
 ### Bug Fixes
