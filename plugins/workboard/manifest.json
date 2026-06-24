@@ -45,19 +45,19 @@
       }
     ],
     "tools": [
-      { "id": "task_list",                "module": "TaskListTool"               },
-      { "id": "task_create",              "module": "TaskCreateTool"             },
-      { "id": "task_update",              "module": "TaskUpdateTool"             },
-      { "id": "task_move",                "module": "TaskMoveTool"               },
-      { "id": "task_delete",              "module": "TaskDeleteTool"             },
-      { "id": "task_get_history",         "module": "TaskGetHistoryTool"         },
-      { "id": "task_complete",            "module": "TaskCompleteTool"           },
-      { "id": "task_continue",            "module": "TaskContinueTool"           },
-      { "id": "task_retry_fresh",         "module": "TaskRetryFreshTool"         },
-      { "id": "task_extend_timeout",      "module": "TaskExtendTimeoutTool"      },
-      { "id": "task_abort",               "module": "TaskAbortTool"              },
-      { "id": "model_list",               "module": "ModelListTool"              },
-      { "id": "worker_analytics",         "module": "WorkerAnalyticsTool"        }
+      { "id": "task_list",                "module": "TaskListTool", "since": "0.1.0" },
+      { "id": "task_create",              "module": "TaskCreateTool", "since": "0.1.0" },
+      { "id": "task_update",              "module": "TaskUpdateTool", "since": "0.1.0" },
+      { "id": "task_move",                "module": "TaskMoveTool", "since": "0.1.0" },
+      { "id": "task_delete",              "module": "TaskDeleteTool", "since": "0.1.0" },
+      { "id": "task_get_history",         "module": "TaskGetHistoryTool", "since": "0.1.0" },
+      { "id": "task_complete",            "module": "TaskCompleteTool", "since": "0.1.0" },
+      { "id": "task_continue",            "module": "TaskContinueTool", "since": "0.1.0" },
+      { "id": "task_retry_fresh",         "module": "TaskRetryFreshTool", "since": "0.1.0" },
+      { "id": "task_extend_timeout",      "module": "TaskExtendTimeoutTool", "since": "0.1.0" },
+      { "id": "task_abort",               "module": "TaskAbortTool", "since": "0.1.0" },
+      { "id": "model_list",               "module": "ModelListTool", "since": "0.1.0" },
+      { "id": "worker_analytics",         "module": "WorkerAnalyticsTool", "since": "0.3.20" }
     ],
     "skills": [
       { "id": "workboard-howto",          "path": "skills/workboard-howto.md"          },

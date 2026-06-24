@@ -20,9 +20,16 @@ import { resolve } from "node:path";
 
 interface Manifest {
   contributes?: {
-    tools?: Array<{ id: string; module: string }>;
+    tools?: Array<{ id: string; module: string; since?: string }>;
   };
 }
+
+// Semver-ish guard: we don't need full semver compliance, just
+// `X.Y.Z` with optional `-prerelease` so the boot-time delta
+// detector's lexicographic-ish compare works predictably. We
+// reject things like `~0.1`, `>=0.2.0`, `latest`, etc. — they
+// would silently break the comparison without anyone noticing.
+const VERSION_RE = /^\d+\.\d+\.\d+(-[A-Za-z0-9.-]+)?$/;
 
 function loadManifest(): Manifest {
   // src/ runs out of __dirname; manifest.json is one level up at the
@@ -83,5 +90,35 @@ describe("workboard manifest hygiene", () => {
     }
     const dupes = Array.from(seen.entries()).filter(([, n]) => n > 1).map(([id]) => id);
     expect(dupes).toEqual([]);
+  });
+
+  // Boot-time tool-delta detection relies on every builtin tool
+  // having a `since` version. The detector treats missing `since`
+  // as "existed forever" to be friendly to third-party plugins
+  // during the v0 transition — but for builtin plugins, missing
+  // a `since` means a session that just upgraded won't be notified.
+  // Pin it.
+  it("every manifest contributes.tools entry has a since field", () => {
+    const manifest = loadManifest();
+    const tools = manifest.contributes?.tools ?? [];
+    expect(tools.length).toBeGreaterThan(0);
+    const missing = tools.filter((t) => !t.since).map((t) => t.id);
+    expect(
+      missing,
+      `tools without since (required for builtin plugins so the boot-time ` +
+        `tool-delta detector can notify live sessions): ${missing.join(", ")}`,
+    ).toEqual([]);
+  });
+
+  it("every since value is a valid X.Y.Z semver string", () => {
+    const manifest = loadManifest();
+    const tools = manifest.contributes?.tools ?? [];
+    const bad = tools
+      .filter((t) => t.since && !VERSION_RE.test(t.since))
+      .map((t) => `${t.id}=${t.since}`);
+    expect(
+      bad,
+      `since fields must be X.Y.Z[-prerelease] strings (no ranges, no aliases): ${bad.join(", ")}`,
+    ).toEqual([]);
   });
 });

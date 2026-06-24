@@ -45,14 +45,14 @@
       }
     ],
     "tools": [
-      { "id": "exec",                  "module": "ExecTool" },
-      { "id": "reset_sandbox",         "module": "ResetSandboxTool" },
-      { "id": "get_sandbox_status",    "module": "GetSandboxStatusTool" },
-      { "id": "update_sandbox_config", "module": "UpdateSandboxConfigTool" },
-      { "id": "build_sandbox",         "module": "BuildSandboxTool" },
-      { "id": "list_sandbox_builds",   "module": "ListSandboxBuildsTool" },
-      { "id": "use_sandbox_build",     "module": "UseSandboxBuildTool" },
-      { "id": "browser_health_check", "module": "BrowserHealthCheckTool" }
+      { "id": "exec",                  "module": "ExecTool", "since": "0.1.0" },
+      { "id": "reset_sandbox",         "module": "ResetSandboxTool", "since": "0.1.0" },
+      { "id": "get_sandbox_status",    "module": "GetSandboxStatusTool", "since": "0.1.0" },
+      { "id": "update_sandbox_config", "module": "UpdateSandboxConfigTool", "since": "0.1.0" },
+      { "id": "build_sandbox",         "module": "BuildSandboxTool", "since": "0.1.0" },
+      { "id": "list_sandbox_builds",   "module": "ListSandboxBuildsTool", "since": "0.1.0" },
+      { "id": "use_sandbox_build",     "module": "UseSandboxBuildTool", "since": "0.1.0" },
+      { "id": "browser_health_check", "module": "BrowserHealthCheckTool", "since": "0.1.0" }
     ],
     "toolsets": [
       { "id": "browser", "module": "BrowserToolset", "displayName": "Playwright (Browser)" }
