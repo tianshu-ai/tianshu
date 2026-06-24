@@ -80,6 +80,7 @@ import {
   type ChatMessage,
   type ChatSession,
 } from "./messages.js";
+import { flushToolDeltaForSession } from "./flush-tool-delta.js";
 import { CompactSkippedError, compactSession } from "./compact.js";
 import {
   toWire,
@@ -242,6 +243,21 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const repo = new SqliteSessionRepo(ctx);
 
   let session = ensureActiveSession(ctx, userId);
+
+  // Per-prompt tool-delta flush: if the host upgraded since this
+  // session was opened and there are new builtin tools, drop a
+  // synthetic system note into the session before we build the
+  // model's history. See chat/flush-tool-delta.ts. Errors there
+  // are best-effort — a failure here must never block the prompt.
+  try {
+    flushToolDeltaForSession({ ctx, session, pluginRegistry });
+  } catch (err) {
+    console.warn(
+      `[flush-tool-delta] unexpected throw: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 
   // Resolve the model up front — we need imageMaxBytes / context
   // window for both auto-compact and the LLM call below.

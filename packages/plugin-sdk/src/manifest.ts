@@ -299,6 +299,25 @@ export interface ToolContribution {
    *  pi-ai schema, not here — we don't enforce a 1:1 between this
    *  contribution id and the schema name. */
   module: string;
+  /**
+   * Semver string marking the release this tool first appeared in.
+   *
+   * Currently interpreted as a **tianshu app version** (the host's
+   * `package.json/version`). The boot-time tool-delta detector
+   * uses this to push a synthetic system message into any session
+   * whose `created_under_app_version` predates a tool's `since`,
+   * so the agent learns about newly-available tools across
+   * server restarts.
+   *
+   * v1 marketplace target: re-interpret as the plugin's own
+   * `manifest.version` (per-plugin granularity). The field name
+   * stays; only the comparison reference changes.
+   *
+   * Required for builtin plugins (manifest-hygiene tests pin
+   * this). Optional for third-party plugins during the v0
+   * transition — absent means "assume it has existed forever".
+   */
+  since?: string;
 }
 
 export interface ToolsetContribution {

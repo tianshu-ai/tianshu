@@ -55,17 +55,17 @@
       { "method": "POST", "path": "/upload", "handler": "upload" }
     ],
     "tools": [
-      { "id": "list_dir",              "module": "ListDirTool"            },
-      { "id": "read_file",             "module": "ReadFileTool"           },
-      { "id": "write_file",            "module": "WriteFileTool"          },
-      { "id": "edit_file",             "module": "EditFileTool"           },
-      { "id": "glob",                  "module": "GlobTool"               },
-      { "id": "tenant_config_list",    "module": "TenantConfigListTool"   },
-      { "id": "tenant_config_read",    "module": "TenantConfigReadTool"   },
-      { "id": "tenant_config_write",   "module": "TenantConfigWriteTool"  },
-      { "id": "tenant_config_edit",    "module": "TenantConfigEditTool"   },
-      { "id": "tenant_config_delete",  "module": "TenantConfigDeleteTool" },
-      { "id": "tenant_config_glob",    "module": "TenantConfigGlobTool"   }
+      { "id": "list_dir",              "module": "ListDirTool", "since": "0.1.0" },
+      { "id": "read_file",             "module": "ReadFileTool", "since": "0.1.0" },
+      { "id": "write_file",            "module": "WriteFileTool", "since": "0.1.0" },
+      { "id": "edit_file",             "module": "EditFileTool", "since": "0.1.0" },
+      { "id": "glob",                  "module": "GlobTool", "since": "0.1.0" },
+      { "id": "tenant_config_list",    "module": "TenantConfigListTool", "since": "0.1.0" },
+      { "id": "tenant_config_read",    "module": "TenantConfigReadTool", "since": "0.1.0" },
+      { "id": "tenant_config_write",   "module": "TenantConfigWriteTool", "since": "0.1.0" },
+      { "id": "tenant_config_edit",    "module": "TenantConfigEditTool", "since": "0.1.0" },
+      { "id": "tenant_config_delete",  "module": "TenantConfigDeleteTool", "since": "0.1.0" },
+      { "id": "tenant_config_glob",    "module": "TenantConfigGlobTool", "since": "0.1.0" }
     ],
     "skills": [
       { "id": "workspace-layout", "path": "skills/files-workspace-layout.md" }
