@@ -36,6 +36,10 @@ import {
   writeGlobalConfig,
 } from "./core/index.js";
 import { buildReloadingBuiltinResolver, PluginRegistry } from "./core/plugins/index.js";
+import {
+  buildToolCatalogRefreshTool,
+  TOOL_CATALOG_REFRESH_NAME,
+} from "./chat/host-tools/tool-catalog-refresh.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
 import path from "node:path";
@@ -103,6 +107,25 @@ pluginRegistry = new PluginRegistry({
   // shape. The loader is plumbed through so the registry can
   // collect them at activate-time.
   hostSkillsLoader: () => loadHostSkills(),
+  // Host-owned tools surfaced under pluginId="core" in every
+  // tenant's toolset. Today: `tool_catalog_refresh` (lets the
+  // main agent force-replay the tool-delta detector on demand
+  // when the user asks "what tools do I have" or after a
+  // suspected silent upgrade). See chat/host-tools/.
+  hostTools: [
+    {
+      name: TOOL_CATALOG_REFRESH_NAME,
+      since: "0.3.22",
+      tool: buildToolCatalogRefreshTool({
+        openTenant: (tenantId) => globalOps.open(tenantId),
+        // Late binding: pluginRegistry isn't fully assigned
+        // until this `new PluginRegistry(...)` call returns.
+        // The tool only resolves the registry at execute-time,
+        // so the lazy getter is safe.
+        registry: () => pluginRegistry,
+      }),
+    },
+  ],
   hostCapabilities: {
     "host.sessionInbox": (ctx): SessionInboxCapability => ({
       enqueue: (targetSessionId, message) =>

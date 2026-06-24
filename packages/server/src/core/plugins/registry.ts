@@ -240,6 +240,38 @@ export interface RegistryOpts {
    * dependency-free.
    */
   hostSkillsLoader?: () => readonly LoadedSkill[];
+  /**
+   * Optional list of host-owned AgentTools to inject into every
+   * tenant's tool list. Surfaced under a synthetic plugin id of
+   * `"core"` (same convention as user-configured MCP toolsets) so
+   * the Plugin Manager UI + agent logs can tell host tools from
+   * plugin-contributed ones.
+   *
+   * Tools listed here are NOT manifest-declared and therefore
+   * skip the manifest-hygiene path. The host is expected to vet
+   * them at registration time — they're code the host literally
+   * imports + closes over its own dependencies.
+   *
+   * Today the only entry is `tool_catalog_refresh` (an admin
+   * tool the main agent calls when the user asks "what tools do
+   * I have" or "refresh tools"); it manipulates session stamps
+   * + replays the tool-delta detector so the model is reminded
+   * of the current tool catalog.
+   *
+   * Tools in this list run through the same WORKER_DENY_TOOLS
+   * filter the regular plugin tools do, so a worker can't call
+   * them even if a plugin tries to forge a host-owned entry.
+   */
+  hostTools?: ReadonlyArray<{
+    /** Stable name advertised to the agent + matched in deny
+     *  lists. Must be unique across plugins + hosts. */
+    name: string;
+    /** Manifest-style "appeared in" version. Used by the
+     *  tool-delta detector — same semantics as a plugin's
+     *  contributes.tools[].since. */
+    since?: string;
+    tool: AgentTool;
+  }>;
 }
 
 interface CachedTenantRegistry {
@@ -623,6 +655,20 @@ export class PluginRegistry {
         });
       }
     }
+    // Host-owned tools (see RegistryOpts.hostTools). Surfaced
+    // under pluginId="core" so analytics + UI distinguish them
+    // from plugin contributions.
+    for (const ht of this.opts.hostTools ?? []) {
+      out.push({
+        toolName: ht.tool.schema.name,
+        pluginId: "core",
+        since: ht.since ?? null,
+        description:
+          typeof ht.tool.schema.description === "string"
+            ? ht.tool.schema.description
+            : undefined,
+      });
+    }
     return out;
   }
 
@@ -699,6 +745,12 @@ export class PluginRegistry {
           out.push({ pluginId: e.manifest.id, tool });
         }
       }
+    }
+    // (3) Host-owned tools. See RegistryOpts.hostTools. Worker
+    // deny-list filtering happens further downstream in the agent
+    // loop, same path as plugin tools.
+    for (const ht of this.opts.hostTools ?? []) {
+      out.push({ pluginId: "core", tool: ht.tool });
     }
     return out;
   }

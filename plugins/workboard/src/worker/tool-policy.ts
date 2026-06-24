@@ -61,6 +61,10 @@ export const WORKER_DENY_TOOLS: readonly string[] = [
   // history, and letting it would loop the pool into
   // self-monitoring.
   "worker_analytics",
+  // Host-owned admin tools. tool_catalog_refresh broadcasts the
+  // current tool catalog into the chat session; workers should
+  // not be poking the orchestrator's view of the world.
+  "tool_catalog_refresh",
 ] as const;
 
 export const WORKER_DENY_TOOLS_SET: ReadonlySet<string> = new Set(
