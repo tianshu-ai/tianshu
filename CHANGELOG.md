@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.22](https://github.com/tianshu-ai/tianshu/compare/v0.3.21...v0.3.22) (2026-06-24)
+
+### Features
+
+* **agent:** `tool_catalog_refresh` admin tool. The main agent
+  can force-replay the tool catalog into the current chat
+  session on demand — e.g. when the user asks 'what tools do I
+  have' or after a silent upgrade where the auto-detector
+  didn't fire (session stamp == new tool's since version).
+  Two modes: `full` (default; lists every tool with a parseable
+  since) and `since` (lists tools newer than a given
+  since_version). Workers cannot call it. New host-tool plumbing
+  in `PluginRegistry` (`opts.hostTools`) means future host-owned
+  tools no longer have to forge a fake plugin.
+
 ## [0.3.21](https://github.com/tianshu-ai/tianshu/compare/v0.3.20...v0.3.21) (2026-06-24)
 
 ### Features
