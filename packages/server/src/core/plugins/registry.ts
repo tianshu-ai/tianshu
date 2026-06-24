@@ -582,6 +582,50 @@ export class PluginRegistry {
    * loop further filters by each tool's `available()` gate before
    * registering with pi-ai.
    */
+  /**
+   * Catalog view: tool name + `since` + plugin id + one-line
+   * description. Used by the boot-time tool-delta detector to
+   * decide which tools to advertise to live sessions after a
+   * server upgrade. Only emits builtin (static) tool
+   * contributions — dynamic toolsets (MCP) don't have stable
+   * `since` semantics yet.
+   */
+  toolCatalogForTenant(
+    tenantId: string,
+  ): Array<{
+    toolName: string;
+    pluginId: string;
+    since?: string | null;
+    description?: string;
+  }> {
+    const out: Array<{
+      toolName: string;
+      pluginId: string;
+      since?: string | null;
+      description?: string;
+    }> = [];
+    const cached = this.cache.get(tenantId);
+    if (!cached) return out;
+    for (const e of cached.entries) {
+      if (e.state !== "active") continue;
+      const toolModules = e.exports?.tools ?? {};
+      for (const t of e.manifest.contributes?.tools ?? []) {
+        const tool = toolModules[t.module];
+        if (!tool) continue;
+        out.push({
+          toolName: tool.schema.name,
+          pluginId: e.manifest.id,
+          since: (t as { since?: string }).since ?? null,
+          description:
+            typeof tool.schema.description === "string"
+              ? tool.schema.description
+              : undefined,
+        });
+      }
+    }
+    return out;
+  }
+
   toolsForTenant(tenantId: string): Array<{ pluginId: string; tool: AgentTool }> {
     const out: Array<{ pluginId: string; tool: AgentTool }> = [];
     const cached = this.cache.get(tenantId);

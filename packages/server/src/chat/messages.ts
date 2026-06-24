@@ -11,6 +11,7 @@
 // keep the hot paths fast.
 
 import { randomUUID } from "node:crypto";
+import { getPackageVersion } from "../setup/repo-root.js";
 import type {
   AssistantMessage,
   Message,
@@ -131,12 +132,23 @@ export function ensureActiveSession(ctx: TenantContext, userId: string): ChatSes
   }
   const id = `session_${randomUUID()}`;
   const now = Date.now();
+  // Stamp the host's `package.json/version` onto fresh sessions so
+  // the boot-time tool-delta detector knows what tool catalog the
+  // user started this conversation under. Missing version (dev
+  // checkout with a corrupt package.json, packaging glitch) is
+  // logged-and-swallowed at getPackageVersion's call site — we
+  // store NULL and the detector treats that as "don't know, skip".
+  const appVersion = getPackageVersion();
   ctx.db
-    .prepare<[string, string, string, string, number], unknown>(
-      `INSERT INTO sessions (id, user_id, status, kind, created_at)
-       VALUES (?, ?, ?, ?, ?)`,
+    .prepare<
+      [string, string, string, string, number, string | null],
+      unknown
+    >(
+      `INSERT INTO sessions
+         (id, user_id, status, kind, created_at, created_under_app_version)
+       VALUES (?, ?, ?, ?, ?, ?)`,
     )
-    .run(id, userId, "active", "user", now);
+    .run(id, userId, "active", "user", now, appVersion);
   return {
     id,
     userId,

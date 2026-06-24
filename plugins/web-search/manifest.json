@@ -9,7 +9,7 @@
   "server": { "entry": "@tianshu-builtin/plugin-web-search/server" },
   "contributes": {
     "tools": [
-      { "id": "web_search", "module": "WebSearchTool" }
+      { "id": "web_search", "module": "WebSearchTool", "since": "0.1.0" }
     ],
     "skills": [
       {
