@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.20](https://github.com/tianshu-ai/tianshu/compare/v0.3.19...v0.3.20) (2026-06-24)
+
+### Bug Fixes
+
+* **workboard:** surface `worker_analytics` via `manifest.json`.
+  0.3.19 shipped `buildWorkerAnalyticsTool` in `server.ts`'s
+  exports but never listed it in `contributes.tools[]`, so the
+  plugin registry skipped it and the agent couldn't see the tool.
+  Adds the missing entry plus three manifest-hygiene tests that
+  pin the symmetry between server.ts's exports.tools keys and
+  manifest.json's contributes.tools[].module values — the bug
+  cannot reappear without a test failing.
+
 ## [0.3.19](https://github.com/tianshu-ai/tianshu/compare/v0.3.18...v0.3.19) (2026-06-24)
 
 ### Features
