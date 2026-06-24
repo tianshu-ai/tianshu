@@ -756,4 +756,100 @@ describe("PluginRegistry", () => {
       expect(resolved).toBe(false);
     });
   });
+
+  // -------- host-owned tools (opts.hostTools) -----------------------------
+
+  describe("hostTools", () => {
+    const fakeTool = {
+      schema: {
+        name: "host_owned_tool",
+        description: "Demo host-owned.",
+        parameters: { type: "object" },
+      },
+      execute: async () => ({ ok: true }),
+    };
+
+    it("toolsForTenant() includes host-owned tools under pluginId 'core'", async () => {
+      ops.create("acme");
+      writeTenantConfig("acme", { plugins: {} }, home);
+      ops.poolRef.close("acme");
+      const ctx = ops.open("acme");
+      const reg = new PluginRegistry({
+        resolver: moduleMapResolver({}),
+        discoveryDirs: { builtinConfigDir: builtinDir, home },
+        hostTools: [
+          { name: "host_owned_tool", since: "0.3.22", tool: fakeTool },
+        ],
+      });
+      await reg.ensureForTenant(ctx);
+      const tools = reg.toolsForTenant(ctx.tenantId);
+      expect(tools).toHaveLength(1);
+      expect(tools[0]!.pluginId).toBe("core");
+      expect(tools[0]!.tool.schema.name).toBe("host_owned_tool");
+    });
+
+    it("toolCatalogForTenant() reports host-owned tools with their since", async () => {
+      ops.create("acme");
+      writeTenantConfig("acme", { plugins: {} }, home);
+      ops.poolRef.close("acme");
+      const ctx = ops.open("acme");
+      const reg = new PluginRegistry({
+        resolver: moduleMapResolver({}),
+        discoveryDirs: { builtinConfigDir: builtinDir, home },
+        hostTools: [
+          { name: "host_owned_tool", since: "0.3.22", tool: fakeTool },
+        ],
+      });
+      await reg.ensureForTenant(ctx);
+      const cat = reg.toolCatalogForTenant(ctx.tenantId);
+      const entry = cat.find((c) => c.toolName === "host_owned_tool");
+      expect(entry).toBeTruthy();
+      expect(entry!.pluginId).toBe("core");
+      expect(entry!.since).toBe("0.3.22");
+      expect(entry!.description).toBe("Demo host-owned.");
+    });
+
+    it("hostTools coexist with plugin-contributed tools", async () => {
+      writeBuiltinManifest("toolsy", {
+        id: "toolsy",
+        version: "1.0.0",
+        displayName: "Toolsy",
+        server: { entry: "@toolsy/server" },
+        contributes: {
+          tools: [{ id: "plug_tool", module: "PlugTool", since: "0.1.0" }],
+        },
+      });
+      const PlugTool = {
+        schema: {
+          name: "plug_tool",
+          description: "plug",
+          parameters: { type: "object" },
+        },
+        execute: async () => ({ ok: true }),
+      };
+      ops.create("acme");
+      writeTenantConfig("acme", { plugins: { toolsy: { enabled: true } } }, home);
+      ops.poolRef.close("acme");
+      const ctx = ops.open("acme");
+      const reg = new PluginRegistry({
+        resolver: moduleMapResolver({
+          "@toolsy/server": {
+            activate: () => ({ tools: { PlugTool } }),
+          },
+        }),
+        discoveryDirs: { builtinConfigDir: builtinDir, home },
+        hostTools: [
+          { name: "host_owned_tool", since: "0.3.22", tool: fakeTool },
+        ],
+      });
+      await reg.ensureForTenant(ctx);
+      const tools = reg.toolsForTenant(ctx.tenantId);
+      const names = tools.map((t) => t.tool.schema.name).sort();
+      expect(names).toEqual(["host_owned_tool", "plug_tool"]);
+      const cat = reg.toolCatalogForTenant(ctx.tenantId);
+      const byPlugin = Object.fromEntries(cat.map((c) => [c.toolName, c.pluginId]));
+      expect(byPlugin.plug_tool).toBe("toolsy");
+      expect(byPlugin.host_owned_tool).toBe("core");
+    });
+  });
 });
