@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.26](https://github.com/tianshu-ai/tianshu/compare/v0.3.25...v0.3.26) (2026-06-25)
+
+### Bug Fixes
+
+* **ui:** Modal height chain now propagates cleanly through flex.
+  After 0.3.25 the body wrapper was block-level `min-h-0 flex-1`
+  and every caller wrapped its content in `flex h-full flex-col`.
+  CSS `height: 100%` inside a flex parent with no explicit pixel
+  height anywhere up the tree behaves inconsistently across
+  browsers — some collapse it to 0, some size to content. Result:
+  files preview lost its scrollbar (content collapsed), and
+  FileOpenDialog scrolled but didn't reach the last few lines.
+  Fix: Modal body becomes `flex flex-col`, callers switch from
+  `h-full` to `flex-1 min-h-0`. The whole chain is now flex-based
+  with explicit space distribution.
+
 ## [0.3.25](https://github.com/tianshu-ai/tianshu/compare/v0.3.24...v0.3.25) (2026-06-25)
 
 ### Bug Fixes
