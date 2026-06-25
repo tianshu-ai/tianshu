@@ -1308,7 +1308,7 @@ function ExecutionDialog({
       className="h-[80vh] bg-gray-950"
     >
       <div
-        className="flex h-full flex-col"
+        className="flex min-h-0 flex-1 flex-col"
         // Belt + braces: even portalled, if a dragstart somehow
         // bubbles up from inside the dialog we suppress it so text
         // selection wins.
@@ -2104,7 +2104,7 @@ function TaskModal({
       hideHeader
       className="bg-gray-950"
     >
-      <div className="flex h-full flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <header className="px-4 py-3 border-b border-gray-800 flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase text-gray-500 tracking-wide">

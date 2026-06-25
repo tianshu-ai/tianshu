@@ -180,9 +180,14 @@ export function Modal({
                 scroll container, and a wrapping one here would
                 produce two stacked scrollbars and let the inner
                 content scroll out from under the top header.
-            We keep min-h-0 + flex-1 so the body still gets a
-            bounded height inside the panel's flex column. */}
-        <div className="min-h-0 flex-1">{children}</div>
+            We do make the body itself a flex column with bounded
+            height (min-h-0 + flex-1). Callers whose first child
+            is `flex flex-col` then nest cleanly: their `flex-1`
+            children get the body's height directly without
+            needing an explicit `h-full` (which doesn't propagate
+            reliably through flex when there's no explicit pixel
+            height anywhere up the tree). */}
+        <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </div>
     </div>,
     document.body,

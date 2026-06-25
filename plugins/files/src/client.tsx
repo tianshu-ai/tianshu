@@ -411,7 +411,7 @@ function FilePreviewModal({
 
   return (
     <Modal isOpen onClose={onClose} title={entry.name} size="lg">
-      <div className="flex h-full flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         {/* Sub-header with file metadata + icon. Modal already
             owns the close button + name in its own header. */}
         <div className="flex items-center gap-2 border-b border-gray-800 px-4 py-2 text-[11px] text-gray-500">

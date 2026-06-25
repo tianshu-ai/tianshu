@@ -536,7 +536,7 @@ function EditDialog({
     <Modal isOpen onClose={onClose} size="sm" title={dialogTitle}>
       <form
         onSubmit={onSubmit}
-        className="h-full space-y-3 overflow-y-auto p-5"
+        className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5"
       >
 
         <Field label="ID" hint="Lowercase letters / digits / dashes; used in URLs and tool prefixes.">
