@@ -6,6 +6,25 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.23](https://github.com/tianshu-ai/tianshu/compare/v0.3.22...v0.3.23) (2026-06-25)
+
+### Features
+
+* **ui:** host-shared UI primitives (Modal / MarkdownBlock /
+  DocumentViewer) plugins reuse through plugin-sdk's
+  `__installUiPrimitives` + `useUiPrimitives()` hook. Replaces
+  five hand-rolled `fixed inset-0 z-50 bg-black/...` modals
+  scattered across files plugin, workboard plugin
+  (ExecutionDialog + TaskModal), FileOpenDialog, and McpServers
+  EditDialog with one canonical chrome. Replaces three different
+  text rendering paths (chat ReactMarkdown vs. files `<pre>`
+  vs. workboard `<pre>`) with one DocumentViewer that dispatches
+  on filename / mime. Markdown dispatch is conservative—only
+  `.md / .markdown` files get the Markdown renderer so source
+  code with stray `# heading` lines doesn't render giant H1s.
+  Net: a `.md` file viewed in the files plugin now renders
+  pixel-identically to the same content rendered in chat.
+
 ## [0.3.22](https://github.com/tianshu-ai/tianshu/compare/v0.3.21...v0.3.22) (2026-06-24)
 
 ### Features
