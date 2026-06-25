@@ -120,7 +120,7 @@ export default function FileOpenDialog(): ReactElement | null {
   // `hideHeader` because this dialog has its own bespoke header
   // (filename + path + open-in-new-tab link + close button) that
   // we want to keep intact.
-  const { Modal } = useUiPrimitives();
+  const { Modal, DocumentViewer } = useUiPrimitives();
   const [intent, setIntent] = useState<OpenIntent | null>(null);
   const [view, setView] = useState<ViewState>({ kind: "loading" });
 
@@ -285,9 +285,17 @@ export default function FileOpenDialog(): ReactElement | null {
                   in a new tab via the ↗ button to see the full file.
                 </div>
               )}
-              <pre className="whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed text-gray-200">
-                {view.content}
-              </pre>
+              {/* Shared DocumentViewer dispatches on filename:
+                  .md / .markdown render through MarkdownBlock,
+                  everything else falls through to a <pre>. Same
+                  surface the files-plugin preview uses, so a .md
+                  opened here looks identical to one opened from
+                  the Files panel. */}
+              <DocumentViewer
+                content={view.content}
+                filename={name}
+                className="!p-0"
+              />
             </>
           )}
           {view.kind === "image" && (
