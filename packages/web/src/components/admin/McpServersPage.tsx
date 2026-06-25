@@ -15,6 +15,7 @@
 //          user side. POST /api/mcp/servers/:id/refresh → re-probe.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -525,20 +526,18 @@ function EditDialog({
     }
   };
 
+  const { Modal } = useUiPrimitives();
+  // Title is rendered by Modal; we drop the inline <h2> the inner
+  // form used to carry. Body uses a <form> so submitting still
+  // works on Enter inside any input.
+  const dialogTitle =
+    mode === "create" ? "Add MCP server" : `Edit ${initial?.displayName ?? id}`;
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={onClose}
-      role="presentation"
-    >
+    <Modal isOpen onClose={onClose} size="sm" title={dialogTitle}>
       <form
-        onClick={(e) => e.stopPropagation()}
         onSubmit={onSubmit}
-        className="w-full max-w-md space-y-3 rounded-md border border-gray-800 bg-gray-900 p-5 shadow-xl"
+        className="space-y-3 p-5"
       >
-        <h2 className="text-base font-semibold text-gray-100">
-          {mode === "create" ? "Add MCP server" : `Edit ${initial?.displayName ?? id}`}
-        </h2>
 
         <Field label="ID" hint="Lowercase letters / digits / dashes; used in URLs and tool prefixes.">
           <input
@@ -632,7 +631,7 @@ function EditDialog({
           </button>
         </div>
       </form>
-    </div>
+    </Modal>
   );
 }
 

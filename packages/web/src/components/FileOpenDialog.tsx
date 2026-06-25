@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { File as FileIcon, Loader2, X } from "lucide-react";
+import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 
 interface OpenIntent {
   /** Workspace path (URI / leading-slash / relative — same shapes
@@ -115,6 +116,11 @@ function rawUrl(path: string): string {
 }
 
 export default function FileOpenDialog(): ReactElement | null {
+  // Modal chrome comes from the host's shared primitive. We pass
+  // `hideHeader` because this dialog has its own bespoke header
+  // (filename + path + open-in-new-tab link + close button) that
+  // we want to keep intact.
+  const { Modal } = useUiPrimitives();
   const [intent, setIntent] = useState<OpenIntent | null>(null);
   const [view, setView] = useState<ViewState>({ kind: "loading" });
 
@@ -230,14 +236,8 @@ export default function FileOpenDialog(): ReactElement | null {
   const url = rawUrl(cleanedPath);
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-      onClick={close}
-    >
-      <div
-        className="flex max-h-[90vh] w-full max-w-4xl flex-col rounded-lg border border-gray-700 bg-gray-900 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal isOpen onClose={close} size="xl" hideHeader className="bg-gray-900">
+      <div className="flex h-full max-h-[90vh] flex-col">
         <header className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2 text-sm">
             <FileIcon size={14} className="shrink-0 text-gray-400" />
@@ -337,6 +337,6 @@ export default function FileOpenDialog(): ReactElement | null {
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
