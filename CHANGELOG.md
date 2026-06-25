@@ -6,6 +6,38 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.28](https://github.com/tianshu-ai/tianshu/compare/v0.3.27...v0.3.28) (2026-06-26)
+
+### Features
+
+* **ui:** rich file previews across the host through a single
+  unified DocumentViewer. The chain that started in 0.3.23 with
+  the host-shared Modal / MarkdownBlock / DocumentViewer now
+  covers every common file kind a user might open from the
+  files panel, workboard task delivery, or any `OpenFileApi`
+  consumer:
+  * **HTML**: live `<iframe>` preview running as a null origin
+    (sandbox=allow-scripts/popups/forms/modals, no
+    same-origin) so even hostile markup can't read tianshu
+    cookies. Render / Source toggle.
+  * **Code (~30 languages)**: shiki-highlighted with line
+    numbers and a copy button. Lazy-imported via
+    `shiki/bundle/web` — the ~600KB wasm and per-language
+    grammars stay out of the initial bundle and download only
+    when a user opens a code file.
+  * **PDF**: browser-native PDF viewer via `<iframe>` (no
+    pdf.js dependency).
+  * **Video / Audio**: `<video controls>` / `<audio controls>`
+    against the /raw stream.
+  * **Image**: `<img>` against /raw; SVG also gets a
+    Render / Source toggle (since SVG is itself markup).
+  * **CSV / TSV**: parsed by papaparse (lazy-loaded), rendered
+    as a real HTML `<table>` with sticky header and a 1000-row
+    cap with an inline notice.
+  * **Office (docx/xlsx/pptx + ODF + rtf)**: friendly
+    placeholder pointing the user at the Download button.
+    In-browser Office rendering needs a server-side LibreOffice
+    pass which is a separate follow-up PR.
 ## [0.3.27](https://github.com/tianshu-ai/tianshu/compare/v0.3.26...v0.3.27) (2026-06-25)
 
 ### Features
