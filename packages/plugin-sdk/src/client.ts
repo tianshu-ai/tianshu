@@ -366,6 +366,11 @@ export interface ModalProps {
    *  (NOT the backdrop). Lets callers tune background, padding,
    *  or override the default min-height. */
   className?: string;
+  /** Hide the default header (title + X). Use when the caller
+   *  renders its own header / chrome inside `children` and doesn't
+   *  want a doubled-up close affordance. The Modal still closes
+   *  on ESC and backdrop click. */
+  hideHeader?: boolean;
 }
 
 export interface DocumentViewerProps {
@@ -403,6 +408,11 @@ export interface MarkdownBlockProps {
   children: string;
   /** Optional className merged onto the prose container. */
   className?: string;
+  /** Skip the default prose typography classes. Useful when the
+   *  caller wraps MarkdownBlock in its own prose container
+   *  (chat-bubble style) and a double-wrap would compound the
+   *  styles. Default false — standalone use gets prose for free. */
+  noProse?: boolean;
 }
 
 export interface UiPrimitives {

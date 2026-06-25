@@ -15,8 +15,7 @@
 // monospace pre block.
 
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 import {
   Bot,
   CheckCircle2,
@@ -33,10 +32,14 @@ import type {
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
 
-import { MARKDOWN_COMPONENTS, urlTransform } from "../lib/markdown-components.js";
+
 
 export default function MessageBubble({ m }: { m: MergedMessage }) {
   const isUser = m.role === "user";
+  // MarkdownBlock comes through the plugin-sdk UiPrimitives slot so
+  // the chat bubble + the files preview + every other surface
+  // render markdown identically.
+  const { MarkdownBlock } = useUiPrimitives();
 
   // Prefer ordered `resolvedBlocks` (new wire shape, see
   // ws-protocol.ts). Fall back to flattened `text + resolvedToolCalls`
@@ -60,7 +63,7 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
 
         {blocks ? (
           <div className={`flex flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
-            {blocks.map((b, i) => renderAssistantBlock(b, i, isUser))}
+            {blocks.map((b, i) => renderAssistantBlock(b, i, isUser, MarkdownBlock))}
           </div>
         ) : (
           <>
@@ -73,13 +76,7 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
                     : "border-gray-800 bg-gray-900/60 text-gray-100")
                 }
               >
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  urlTransform={urlTransform}
-                  components={MARKDOWN_COMPONENTS}
-                >
-                  {m.text}
-                </ReactMarkdown>
+                <MarkdownBlock noProse>{m.text}</MarkdownBlock>
               </div>
             ) : showStreamingPlaceholder ? (
               <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3.5 py-2.5">
@@ -117,6 +114,7 @@ function renderAssistantBlock(
   block: MergedAssistantBlock,
   i: number,
   isUser: boolean,
+  MarkdownBlock: React.ComponentType<{ children: string; noProse?: boolean }>,
 ): React.ReactNode {
   if (block.kind === "text") {
     if (block.text.length === 0) return null;
@@ -130,13 +128,7 @@ function renderAssistantBlock(
             : "border-gray-800 bg-gray-900/60 text-gray-100")
         }
       >
-        <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          urlTransform={urlTransform}
-          components={MARKDOWN_COMPONENTS}
-        >
-          {block.text}
-        </ReactMarkdown>
+        <MarkdownBlock noProse>{block.text}</MarkdownBlock>
       </div>
     );
   }
