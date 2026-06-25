@@ -21,7 +21,7 @@
 //     intent gets a consistent UX.
 
 import { useCallback, useEffect, useState, type ReactElement } from "react";
-import { File as FileIcon, Loader2, X } from "lucide-react";
+import { Download, File as FileIcon, Loader2 } from "lucide-react";
 import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 
 interface OpenIntent {
@@ -236,40 +236,34 @@ export default function FileOpenDialog(): ReactElement | null {
   const url = rawUrl(cleanedPath);
 
   return (
-    <Modal isOpen onClose={close} size="xl" hideHeader className="bg-gray-900">
+    <Modal
+      isOpen
+      onClose={close}
+      size="xl"
+      title={name}
+      className="bg-gray-900"
+      headerActions={
+        <a
+          href={url}
+          download={name}
+          className="btn-ghost p-1.5"
+          title="Download"
+          aria-label="Download"
+        >
+          <Download size={16} />
+        </a>
+      }
+    >
       <div className="flex min-h-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-2 text-sm">
-            <FileIcon size={14} className="shrink-0 text-gray-400" />
-            <div className="min-w-0">
-              <div className="truncate font-medium text-gray-100" title={cleanedPath}>
-                {name}
-              </div>
-              <div className="truncate font-mono text-[10px] text-gray-500">
-                {cleanedPath}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded px-2 py-1 text-[11px] text-gray-400 hover:bg-gray-800 hover:text-gray-200"
-              title="Open in new tab / download"
-            >
-              ↗ raw
-            </a>
-            <button
-              type="button"
-              onClick={close}
-              className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
-              aria-label="Close"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        </header>
+        {/* Sub-header keeps the file icon + full path under the
+            modal's own title bar so users can see where the file
+            lives, not just its basename. */}
+        <div className="flex items-center gap-2 border-b border-gray-800 px-4 py-1.5 text-[10px] text-gray-500">
+          <FileIcon size={12} className="shrink-0 text-gray-500" />
+          <span className="truncate font-mono" title={cleanedPath}>
+            {cleanedPath}
+          </span>
+        </div>
         <div className="flex-1 overflow-auto bg-gray-950 p-3">
           {view.kind === "loading" && (
             <div className="flex h-32 items-center justify-center text-gray-500">

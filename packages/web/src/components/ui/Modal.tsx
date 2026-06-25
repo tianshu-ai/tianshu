@@ -49,6 +49,7 @@ export function Modal({
   size = "md",
   className = "",
   hideHeader = false,
+  headerActions,
   children,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -156,16 +157,21 @@ export function Modal({
         {/* Header. Rendered by default so the close button has a
             consistent location. Callers with their own bespoke
             header (e.g. workboard's TaskModal) pass `hideHeader`
-            so the chrome doesn't double up. */}
+            so the chrome doesn't double up. `headerActions` slots
+            extra controls (typically a download link) just to the
+            left of the close button. */}
         {!hideHeader && (
-          <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5">
+          <div className="flex items-center gap-2 border-b border-gray-800 px-4 py-2.5">
             <div className="min-w-0 flex-1 truncate text-sm font-medium text-gray-100">
               {title}
             </div>
+            {headerActions && (
+              <div className="flex shrink-0 items-center gap-1">{headerActions}</div>
+            )}
             <button
               type="button"
               onClick={onClose}
-              className="btn-ghost p-1.5"
+              className="btn-ghost shrink-0 p-1.5"
               aria-label="Close"
             >
               <X size={16} />
