@@ -73,8 +73,12 @@ const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".
 // File types we stream through the /raw route instead of going
 // through the JSON read endpoint. The shared <DocumentViewer>
 // renders all of these against rawUrl directly.
+// Extensions whose preview comes from streaming /raw bytes, not
+// from the JSON read endpoint. SVG is intentionally excluded —
+// it IS text (XML markup), so it's worth pulling through `read`
+// so DocumentViewer can offer a View source toggle.
 const STREAMED_EXTS = new Set<string>([
-  ...[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg"],
+  ...[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico"],
   ".pdf",
   ".mp4", ".webm", ".ogv", ".mov", ".m4v", ".mkv",
   ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".opus",

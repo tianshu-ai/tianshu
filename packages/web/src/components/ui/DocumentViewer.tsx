@@ -29,6 +29,8 @@ import { CodeBlock, resolveCodeLang } from "./CodeBlock.js";
 import { HtmlPreview } from "./HtmlPreview.js";
 import { PdfPreview } from "./PdfPreview.js";
 import { AudioPreview, VideoPreview } from "./MediaPreview.js";
+import { ImagePreview } from "./ImagePreview.js";
+import { TablePreview } from "./TablePreview.js";
 
 const MARKDOWN_EXTS = new Set(["md", "markdown"]);
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]);
@@ -93,16 +95,18 @@ export function DocumentViewer({
   // a broken <img>/<iframe>/<video>.
   if ((isImage || isPdf || isVideo || isAudio) && rawUrl) {
     if (isImage) {
+      // SVG is special: pass the raw source through so the
+      // preview can offer a View source toggle. For other image
+      // types content is null and the preview falls back to a
+      // plain <img>.
+      const isSvg = ext === "svg" || mimeType === "image/svg+xml";
       return (
-        <div
-          className={`flex min-h-0 flex-1 items-center justify-center bg-gray-950 ${className}`}
-        >
-          <img
-            src={rawUrl}
-            alt={filename ?? "image"}
-            className="max-h-full max-w-full object-contain"
-          />
-        </div>
+        <ImagePreview
+          src={rawUrl}
+          filename={filename}
+          svgSource={isSvg && content ? content : undefined}
+          className={className}
+        />
       );
     }
     if (isPdf) {
@@ -131,6 +135,14 @@ export function DocumentViewer({
         No content.
       </div>
     );
+  }
+
+  // Tabular surfaces.
+  if (ext === "csv" || mimeType === "text/csv") {
+    return <TablePreview content={content} delimiter="," className={className} />;
+  }
+  if (ext === "tsv" || mimeType === "text/tab-separated-values") {
+    return <TablePreview content={content} delimiter="\t" className={className} />;
   }
 
   // Markdown surface.
