@@ -70,6 +70,15 @@ type SortDir = "asc" | "desc";
 type ViewMode = "list" | "grid";
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg"]);
+// File types we stream through the /raw route instead of going
+// through the JSON read endpoint. The shared <DocumentViewer>
+// renders all of these against rawUrl directly.
+const STREAMED_EXTS = new Set<string>([
+  ...[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".svg"],
+  ".pdf",
+  ".mp4", ".webm", ".ogv", ".mov", ".m4v", ".mkv",
+  ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".opus",
+]);
 const CODE_EXTS = new Set([
   ".js", ".cjs", ".mjs", ".ts", ".jsx", ".tsx",
   ".py", ".rb", ".go", ".rs", ".c", ".cpp", ".h", ".java", ".kt", ".swift",
@@ -365,11 +374,14 @@ function FilePreviewModal({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const ext = (entry.extension ?? "").toLowerCase();
-  const isImage = IMAGE_EXTS.has(ext);
+  const isStreamed = STREAMED_EXTS.has(ext);
+  const rawUrl = `${API_BASE}/raw?path=${encodeURIComponent(entry.path)}`;
 
   useEffect(() => {
-    if (isImage) {
-      // Skip the JSON read path; we'll <img src=/raw> below.
+    if (isStreamed) {
+      // Skip the JSON read path entirely; DocumentViewer renders
+      // these formats directly against `rawUrl` (image / pdf /
+      // video / audio).
       setData({
         path: entry.path,
         size: entry.size,
@@ -408,7 +420,7 @@ function FilePreviewModal({
     return () => {
       cancelled = true;
     };
-  }, [entry.path, entry.size, entry.modifiedMs, isImage]);
+  }, [entry.path, entry.size, entry.modifiedMs, isStreamed]);
 
   return (
     <Modal
@@ -441,22 +453,15 @@ function FilePreviewModal({
           </span>
         </div>
         <div className="min-h-0 flex-1 overflow-auto bg-gray-950">
-          {isImage ? (
-            <img
-              src={`${API_BASE}/raw?path=${encodeURIComponent(entry.path)}`}
-              alt={entry.name}
-              className="mx-auto max-h-full max-w-full"
-            />
-          ) : (
-            <DocumentViewer
-              content={data && !data.binary ? data.content ?? "" : null}
-              filename={entry.name}
-              binary={data?.binary === true && !isImage}
-              loading={loading}
-              error={error}
-              sizeBytes={data?.size ?? entry.size}
-            />
-          )}
+          <DocumentViewer
+            content={data && !data.binary ? data.content ?? "" : null}
+            filename={entry.name}
+            binary={data?.binary === true && !isStreamed}
+            loading={loading}
+            error={error}
+            sizeBytes={data?.size ?? entry.size}
+            rawUrl={rawUrl}
+          />
         </div>
       </div>
     </Modal>

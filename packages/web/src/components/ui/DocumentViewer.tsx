@@ -27,9 +27,13 @@ import type { DocumentViewerProps } from "@tianshu-ai/plugin-sdk/client";
 import { MarkdownBlock } from "./MarkdownBlock.js";
 import { CodeBlock, resolveCodeLang } from "./CodeBlock.js";
 import { HtmlPreview } from "./HtmlPreview.js";
+import { PdfPreview } from "./PdfPreview.js";
+import { AudioPreview, VideoPreview } from "./MediaPreview.js";
 
 const MARKDOWN_EXTS = new Set(["md", "markdown"]);
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]);
+const VIDEO_EXTS = new Set(["mp4", "webm", "ogv", "mov", "m4v", "mkv"]);
+const AUDIO_EXTS = new Set(["mp3", "wav", "ogg", "flac", "m4a", "aac", "opus"]);
 
 function extOf(name?: string): string {
   if (!name) return "";
@@ -53,6 +57,7 @@ export function DocumentViewer({
   loading,
   error,
   sizeBytes,
+  rawUrl,
   className = "",
 }: DocumentViewerProps) {
   if (loading) {
@@ -71,14 +76,46 @@ export function DocumentViewer({
   }
 
   const ext = extOf(filename);
-  // Image: caller is expected to set `binary=true` for non-image
-  // binaries and supply the image bytes through a URL elsewhere
-  // (we don't load images here \u2014 the files plugin renders <img>
-  // against its own /raw endpoint). When sniffing detects an image
-  // extension but no content is provided, fall through to the
-  // binary placeholder.
   const isImage =
     (mimeType && mimeType.startsWith("image/")) || IMAGE_EXTS.has(ext);
+  const isPdf = ext === "pdf" || mimeType === "application/pdf";
+  const isVideo =
+    (mimeType && mimeType.startsWith("video/")) || VIDEO_EXTS.has(ext);
+  const isAudio =
+    (mimeType && mimeType.startsWith("audio/")) || AUDIO_EXTS.has(ext);
+
+  // Binary surfaces that we KNOW how to render (image / pdf /
+  // video / audio) all need a `rawUrl` to stream bytes from —
+  // the host's read endpoint returns text content and a `binary`
+  // marker, but the bytes themselves come from a separate stream
+  // route (typically /api/p/files/raw). If the caller didn't
+  // pass rawUrl we degrade to the binary placeholder rather than
+  // a broken <img>/<iframe>/<video>.
+  if ((isImage || isPdf || isVideo || isAudio) && rawUrl) {
+    if (isImage) {
+      return (
+        <div
+          className={`flex min-h-0 flex-1 items-center justify-center bg-gray-950 ${className}`}
+        >
+          <img
+            src={rawUrl}
+            alt={filename ?? "image"}
+            className="max-h-full max-w-full object-contain"
+          />
+        </div>
+      );
+    }
+    if (isPdf) {
+      return <PdfPreview src={rawUrl} title={filename} className={className} />;
+    }
+    if (isVideo) {
+      return <VideoPreview src={rawUrl} className={className} />;
+    }
+    if (isAudio) {
+      return <AudioPreview src={rawUrl} className={className} />;
+    }
+  }
+
   if (binary && !isImage) {
     return (
       <div className={`p-6 text-center text-sm text-gray-500 ${className}`}>
@@ -87,13 +124,6 @@ export function DocumentViewer({
       </div>
     );
   }
-
-  // Image: caller passes a data URL or remote URL through
-  // `content` (string). We don't have a separate src field today;
-  // if you need image support, lift content into a data:image/png
-  // URL or render the <img> yourself outside DocumentViewer.
-  // (The files plugin will continue to render its own <img>
-  // because it has a dedicated /raw route; we don't change that.)
 
   if (content == null) {
     return (

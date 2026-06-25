@@ -264,78 +264,35 @@ export default function FileOpenDialog(): ReactElement | null {
             {cleanedPath}
           </span>
         </div>
-        <div className="flex-1 overflow-auto bg-gray-950 p-3">
-          {view.kind === "loading" && (
-            <div className="flex h-32 items-center justify-center text-gray-500">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Loading…
+        <div className="min-h-0 flex-1 overflow-auto bg-gray-950">
+          {view.kind === "text" && view.truncated && (
+            <div className="mx-3 mt-3 rounded border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-200">
+              Truncated at {MAX_TEXT_BYTES.toLocaleString()} bytes — use the
+              Download button to fetch the full file.
             </div>
           )}
-          {view.kind === "text" && (
-            <>
-              {view.truncated && (
-                <div className="mb-2 rounded border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-200">
-                  Truncated at {MAX_TEXT_BYTES.toLocaleString()} bytes — open
-                  in a new tab via the ↗ button to see the full file.
-                </div>
-              )}
-              {/* Shared DocumentViewer dispatches on filename:
-                  .md / .markdown render through MarkdownBlock,
-                  everything else falls through to a <pre>. Same
-                  surface the files-plugin preview uses, so a .md
-                  opened here looks identical to one opened from
-                  the Files panel. */}
-              <DocumentViewer
-                content={view.content}
-                filename={name}
-                className="!p-0"
-              />
-            </>
-          )}
-          {view.kind === "image" && (
-            <img
-              src={url}
-              alt={name}
-              className="mx-auto max-h-[75vh] object-contain"
-            />
-          )}
-          {view.kind === "pdf" && (
-            <iframe
-              src={url}
-              title={name}
-              className="h-[75vh] w-full rounded border border-gray-800 bg-white"
-            />
-          )}
-          {view.kind === "video" && (
-            <video
-              src={url}
-              controls
-              className="mx-auto max-h-[75vh] w-full"
-            >
-              <track kind="captions" />
-            </video>
-          )}
-          {view.kind === "audio" && (
-            <audio src={url} controls className="mx-auto w-full">
-              <track kind="captions" />
-            </audio>
-          )}
-          {view.kind === "binary" && (
-            <div className="space-y-2 text-center text-sm text-gray-300">
-              <div className="text-gray-200">
-                {view.mime} · {view.size.toLocaleString()} bytes
-              </div>
-              <div className="text-[12px] text-gray-500">
-                Binary file — preview not available. Use the{" "}
-                <span className="text-gray-300">↗ raw</span> button to
-                download.
-              </div>
-            </div>
-          )}
-          {view.kind === "error" && (
-            <div className="rounded border border-red-900/50 bg-red-950/40 px-3 py-2 text-[12px] text-red-300">
+          {view.kind === "error" ? (
+            <div className="m-3 rounded border border-red-900/50 bg-red-950/40 px-3 py-2 text-[12px] text-red-300">
               {view.message}
             </div>
+          ) : (
+            <DocumentViewer
+              content={view.kind === "text" ? view.content : null}
+              filename={name}
+              mimeType={
+                view.kind === "loading"
+                  ? undefined
+                  : (view as { mime?: string }).mime
+              }
+              binary={view.kind === "binary"}
+              loading={view.kind === "loading"}
+              sizeBytes={
+                view.kind === "text" || view.kind === "binary"
+                  ? view.size
+                  : undefined
+              }
+              rawUrl={url}
+            />
           )}
         </div>
       </div>
