@@ -23,7 +23,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
-import { createPortal } from "react-dom";
 import {
   AlertTriangle,
   Bot,
@@ -48,6 +47,7 @@ import {
 } from "lucide-react";
 import {
   useOpenFile,
+  useUiPrimitives,
   type AdminPageProps,
   type PanelProps,
   type PluginClientExports,
@@ -1235,6 +1235,7 @@ function ExecutionDialog({
   task: Task;
   onClose: () => void;
 }) {
+  const { Modal } = useUiPrimitives();
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1294,68 +1295,57 @@ function ExecutionDialog({
   // INSIDE it inherits the drag intent — selecting text would
   // grab the whole card. Portal the dialog to document.body so
   // it sits next to the kanban column, not under it.
-  return createPortal(
-    <div
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClose();
-      }}
-      // Belt + braces: even portalled, an ancestor draggable
-      // boundary on document body wouldn't apply, but if a
-      // dragstart somehow bubbles up from inside the dialog we
-      // suppress it so text selection wins.
-      onDragStart={(e) => e.stopPropagation()}
+  // The card itself is `<li draggable>`, so anything we render
+  // INSIDE it inherits the drag intent — selecting text would
+  // grab the whole card. Modal portals to document.body so it
+  // sits next to the kanban column, not under it.
+  return (
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={task.title}
+      size="lg"
+      className="h-[80vh] bg-gray-950"
     >
       <div
-        onClick={(e) => e.stopPropagation()}
-        draggable={false}
-        className="flex h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-950 shadow-xl"
+        className="flex h-full flex-col"
+        // Belt + braces: even portalled, if a dragstart somehow
+        // bubbles up from inside the dialog we suppress it so text
+        // selection wins.
+        onDragStart={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center gap-2 border-b border-gray-800 px-4 py-2.5">
-          <ScrollText className="h-4 w-4 text-gray-500" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-gray-100">
-              {task.title}
-            </div>
-            <div className="flex items-center gap-2 text-[10px] text-gray-500">
-              <span>worker transcript</span>
-              {sessionId && (
-                <span className="font-mono text-gray-600">· {sessionId}</span>
-              )}
-              {task.status === "in_progress" && (
-                <span className="flex items-center gap-1 text-amber-300">
-                  ·
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-                  tailing
-                </span>
-              )}
-            </div>
+        <header className="flex items-center gap-2 border-b border-gray-800 px-4 py-2 text-[10px] text-gray-500">
+          <ScrollText className="h-3.5 w-3.5 text-gray-500" />
+          <span>worker transcript</span>
+          {sessionId && (
+            <span className="font-mono text-gray-600">· {sessionId}</span>
+          )}
+          {task.status === "in_progress" && (
+            <span className="flex items-center gap-1 text-amber-300">
+              ·
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
+              tailing
+            </span>
+          )}
+          <div className="ml-auto">
+            <button
+              type="button"
+              onClick={() => void fetchHistory()}
+              disabled={loading}
+              className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200 disabled:opacity-50"
+              title="Refresh"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+              />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={() => void fetchHistory()}
-            disabled={loading}
-            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200 disabled:opacity-50"
-            title="Refresh"
-          >
-            <RefreshCw
-              className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
-            />
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-          >
-            <X className="h-4 w-4" />
-          </button>
         </header>
 
         <div
           ref={scrollRef}
           onScroll={onScroll}
-          className="flex-1 overflow-y-auto p-4 space-y-3"
+          className="flex-1 space-y-3 overflow-y-auto p-4"
         >
           {error && (
             <div className="rounded border border-rose-700/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">
@@ -1377,8 +1367,7 @@ function ExecutionDialog({
           ))}
         </div>
       </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }
 
@@ -2068,6 +2057,7 @@ function TaskModal({
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
+  const { Modal } = useUiPrimitives();
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || "");
   const [project, setProject] = useState(task.project || "");
@@ -2107,14 +2097,14 @@ function TaskModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4"
-      onClick={onClose}
+    <Modal
+      isOpen
+      onClose={onClose}
+      size="md"
+      hideHeader
+      className="bg-gray-950"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl bg-gray-950 border border-gray-800 rounded-lg shadow-xl flex flex-col max-h-[80vh] overflow-hidden"
-      >
+      <div className="flex h-full flex-col">
         <header className="px-4 py-3 border-b border-gray-800 flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase text-gray-500 tracking-wide">
@@ -2323,7 +2313,7 @@ function TaskModal({
           </button>
         </footer>
       </div>
-    </div>
+    </Modal>
   );
 }
 
