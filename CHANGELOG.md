@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.24](https://github.com/tianshu-ai/tianshu/compare/v0.3.23...v0.3.24) (2026-06-25)
+
+### Bug Fixes
+
+* **ui:** FileOpenDialog now renders Markdown through the shared
+  DocumentViewer instead of a bare <pre>. PR #195 (0.3.23)
+  swapped the dialog's outer chrome to Modal but missed the
+  inner text-rendering path, so opening a .md file from the
+  workboard task delivery list (or any other surface routed
+  through OpenFileApi) showed raw markdown source. Files-plugin
+  preview was unaffected because it already used DocumentViewer
+  directly. Both routes now converge on the same host primitive.
+
 ## [0.3.23](https://github.com/tianshu-ai/tianshu/compare/v0.3.22...v0.3.23) (2026-06-25)
 
 ### Features
