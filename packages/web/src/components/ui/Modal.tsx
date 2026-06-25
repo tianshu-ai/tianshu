@@ -48,6 +48,7 @@ export function Modal({
   title,
   size = "md",
   className = "",
+  hideHeader = false,
   children,
 }: ModalProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -152,21 +153,25 @@ export function Modal({
         className={`flex max-h-[85vh] w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl ${className}`}
         onKeyDown={handleKeyDown}
       >
-        {/* Header. Always rendered so the close button has a
-            consistent location even when no title is supplied. */}
-        <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5">
-          <div className="min-w-0 flex-1 truncate text-sm font-medium text-gray-100">
-            {title}
+        {/* Header. Rendered by default so the close button has a
+            consistent location. Callers with their own bespoke
+            header (e.g. workboard's TaskModal) pass `hideHeader`
+            so the chrome doesn't double up. */}
+        {!hideHeader && (
+          <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5">
+            <div className="min-w-0 flex-1 truncate text-sm font-medium text-gray-100">
+              {title}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-ghost p-1.5"
+              aria-label="Close"
+            >
+              <X size={16} />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-ghost p-1.5"
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
-        </div>
+        )}
         {/* Body. We do NOT add padding here — callers control their
             own layout (some want a full-bleed image preview, some
             want padded prose). */}

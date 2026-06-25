@@ -23,9 +23,19 @@ import {
 const DEFAULT_PROSE =
   "prose prose-invert prose-sm max-w-none text-[14px] leading-relaxed";
 
-export function MarkdownBlock({ children, className = "" }: MarkdownBlockProps) {
+export function MarkdownBlock({
+  children,
+  className = "",
+  noProse = false,
+}: MarkdownBlockProps) {
+  // noProse callers get a bare <div> wrapper. That's the chat
+  // bubble path: the bubble already owns the prose container +
+  // border + padding, and double-wrapping in prose would compound
+  // the typography settings (margins on first/last child, list
+  // indents, etc.).
+  const wrapperClass = noProse ? className : `${DEFAULT_PROSE} ${className}`.trim();
   return (
-    <div className={`${DEFAULT_PROSE} ${className}`.trim()}>
+    <div className={wrapperClass}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         urlTransform={urlTransform}
