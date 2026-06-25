@@ -50,26 +50,30 @@ export function HtmlPreview({
       <div className="flex items-center justify-end gap-1 border-b border-gray-800 bg-gray-950/50 px-3 py-1.5">
         <ModeToggle mode={mode} onChange={setMode} />
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        {mode === "render" ? (
-          <iframe
-            // Each remount on `html` change creates a fresh isolated
-            // browsing context; the previous page's JS dies.
-            key={html.slice(0, 64) + html.length}
-            srcDoc={html}
-            // No `allow-same-origin` on purpose; iframe runs as a
-            // null origin so it can't reach tianshu cookies.
-            sandbox="allow-scripts allow-popups allow-forms allow-modals"
-            // Some HTML files won't set `<html style="height:100%">`
-            // and would collapse to content height inside our flex.
-            // 100% works because the parent is `flex-1 overflow-auto`.
-            className="h-full w-full border-0 bg-white"
-            title="HTML preview"
-          />
-        ) : (
+      {mode === "render" ? (
+        // Iframe gets the full body without an overflow wrapper.
+        // An outer overflow-auto would NOT propagate height to
+        // its child (it becomes a scroll container instead), so
+        // the iframe would collapse to content height. With a
+        // plain flex-1 parent the iframe inherits the bounded
+        // height from Modal and the iframe itself scrolls its
+        // content via the browser's native PDF/page scroll.
+        <iframe
+          // Each remount on `html` change creates a fresh isolated
+          // browsing context; the previous page's JS dies.
+          key={html.slice(0, 64) + html.length}
+          srcDoc={html}
+          // No `allow-same-origin` on purpose; iframe runs as a
+          // null origin so it can't reach tianshu cookies.
+          sandbox="allow-scripts allow-popups allow-forms allow-modals"
+          className="min-h-0 w-full flex-1 border-0 bg-white"
+          title="HTML preview"
+        />
+      ) : (
+        <div className="min-h-0 flex-1 overflow-auto">
           <CodeBlock code={html} lang="html" />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

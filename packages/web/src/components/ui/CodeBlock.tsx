@@ -170,28 +170,42 @@ export function CodeBlock({ code, lang, className = "" }: CodeBlockProps) {
   return (
     <div className={`group relative ${className}`}>
       <CopyButton text={code} />
+      {/* Two-column layout: gutter on the left, code body on the
+          right. Both columns MUST use identical font-size +
+          line-height (12px / 1.6) so line numbers stay aligned
+          with their corresponding source line. Previously the
+          gutter used 11px which slowly drifted out of sync — by
+          line 50 the gutter was ≈80px short, so the last 3–4
+          lines of a long file had no line number. */}
       <div className="flex">
-        {/* Gutter: line numbers in monospace dim grey. Width auto-
-            fits up to 4 digits; longer files just push the body
-            right a bit more. */}
+        {/* Gutter: line numbers in monospace dim grey. */}
         <pre
           aria-hidden
-          className="select-none border-r border-gray-800 bg-gray-950 px-3 py-3 text-right font-mono text-[11px] leading-[1.6] text-gray-600"
+          className="select-none border-r border-gray-800 bg-gray-950 px-3 py-3 text-right font-mono text-[12px] leading-[1.6] text-gray-600"
         >
           {Array.from({ length: lineCount }, (_, i) => i + 1).join("\n")}
         </pre>
-        {/* Body: either the highlighted HTML or a plain <pre> if
-            shiki hasn't resolved yet / has crashed. The shiki
-            output is a <pre><code>...spans... so we don't add
-            our own <pre>. */}
+        {/* Body: either the highlighted HTML or a plain <pre>
+            while shiki resolves. We do NOT add our own padding
+            here because shiki's <pre> output already carries one
+            via `theme.colors.bg` styling — a wrapper `p-3` would
+            double-pad and push the first source line ~12px down
+            relative to line number "1" in the gutter. Instead we
+            wrap shiki's output in a container that resets its
+            built-in padding so both columns share the same baseline. */}
         <div className="min-w-0 flex-1 overflow-auto">
           {html ? (
             // shiki output is sanitized (only span/pre/code with
             // class attrs). It can be dangerously set. The
             // `code` content is from the file, never from a user
             // network input.
+            // shiki injects `padding: 1rem` (and a background
+            // color) directly onto its outer <pre>. We override
+            // that via a CSS rule on `.shiki-host > pre` in
+            // index.css so the body's first source line aligns
+            // with the gutter's "1".
             <div
-              className="shiki-host px-3 py-3 font-mono text-[12px] leading-[1.6]"
+              className="shiki-host font-mono text-[12px] leading-[1.6]"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           ) : (

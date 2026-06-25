@@ -107,3 +107,23 @@ body,
     transform: translateY(-2px);
   }
 }
+
+/*
+ * CodeBlock + shiki — alignment fix.
+ *
+ * shiki's `codeToHtml()` outputs a `<pre>` with inline
+ * `padding: 1rem` and an opaque background color. Our CodeBlock
+ * lays out two columns (line-number gutter + body) and adds its
+ * own `px-3 py-3` to the body wrapper. Without resetting shiki's
+ * built-in padding, the body's first source line ends up offset
+ * ~16px below the gutter's "1" — line numbers stop matching
+ * source lines after the first.
+ *
+ * We reset shiki's <pre> padding + margin and let the wrapper
+ * own the spacing. The background color stays so future theme
+ * switches still take effect through shiki.
+ */
+.shiki-host > pre {
+  padding: 0.75rem !important;   /* matches Tailwind p-3 on the wrapper */
+  margin: 0 !important;
+}
