@@ -25,6 +25,8 @@
 import { Loader2 } from "lucide-react";
 import type { DocumentViewerProps } from "@tianshu-ai/plugin-sdk/client";
 import { MarkdownBlock } from "./MarkdownBlock.js";
+import { CodeBlock, resolveCodeLang } from "./CodeBlock.js";
+import { HtmlPreview } from "./HtmlPreview.js";
 
 const MARKDOWN_EXTS = new Set(["md", "markdown"]);
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]);
@@ -114,7 +116,32 @@ export function DocumentViewer({
     );
   }
 
-  // Plain text / code: preserve every byte. `whitespace-pre-wrap`
+  // HTML surface: live iframe preview with a source-view toggle.
+  // We sniff via extension since the read endpoint already returns
+  // text/plain for HTML files.
+  const isHtml = ext === "html" || ext === "htm";
+  if (isHtml) {
+    return (
+      <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
+        <HtmlPreview html={content} />
+      </div>
+    );
+  }
+
+  // Code surface: shiki-highlighted with line numbers + copy button.
+  // resolveCodeLang() returns null for unknown extensions — those
+  // fall through to the plain-text branch below so we don't lie
+  // about what we can highlight.
+  const codeLang = filename ? resolveCodeLang(filename) : null;
+  if (codeLang) {
+    return (
+      <div className={`min-h-0 flex-1 ${className}`}>
+        <CodeBlock code={content} lang={codeLang} />
+      </div>
+    );
+  }
+
+  // Plain text fallback: preserve every byte. `whitespace-pre-wrap`
   // wraps lines that would overflow horizontally; `break-all` keeps
   // long URL-ish tokens from blowing out the column. Mono font +
   // tight leading so it reads like source.
