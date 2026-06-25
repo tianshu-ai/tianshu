@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.27](https://github.com/tianshu-ai/tianshu/compare/v0.3.26...v0.3.27) (2026-06-25)
+
+### Features
+
+* **ui:** Modal gains a `headerActions` slot (ReactNode rendered
+  to the left of the close X). File-preview modals now use it
+  to expose a Download button: files-plugin `FilePreviewModal`
+  and the host `FileOpenDialog`. The download `<a>` points at
+  the existing `/api/p/files/raw` route with a `download=<name>`
+  attribute, so the browser saves instead of navigating even on
+  viewable MIME types. FileOpenDialog also drops its bespoke
+  inline header in favour of Modal's default header + the new
+  slot, with the full path relegated to a small sub-header.
+
 ## [0.3.26](https://github.com/tianshu-ai/tianshu/compare/v0.3.25...v0.3.26) (2026-06-25)
 
 ### Bug Fixes
