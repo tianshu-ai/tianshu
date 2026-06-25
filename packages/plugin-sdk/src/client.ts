@@ -371,6 +371,11 @@ export interface ModalProps {
    *  want a doubled-up close affordance. The Modal still closes
    *  on ESC and backdrop click. */
   hideHeader?: boolean;
+  /** Optional extra controls rendered in the header to the LEFT
+   *  of the close button. Typical use: a download <a> for file
+   *  previews. Ignored when `hideHeader` is true (caller is
+   *  expected to render its own header in that case). */
+  headerActions?: React.ReactNode;
 }
 
 export interface DocumentViewerProps {

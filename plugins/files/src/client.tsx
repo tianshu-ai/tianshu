@@ -16,6 +16,7 @@ import {
   Archive,
   ChevronRight,
   Code,
+  Download,
   File,
   FileSpreadsheet,
   FileText,
@@ -410,7 +411,26 @@ function FilePreviewModal({
   }, [entry.path, entry.size, entry.modifiedMs, isImage]);
 
   return (
-    <Modal isOpen onClose={onClose} title={entry.name} size="lg">
+    <Modal
+      isOpen
+      onClose={onClose}
+      title={entry.name}
+      size="lg"
+      headerActions={
+        // Download via the same /raw route the <img> preview uses.
+        // `download=<name>` hints the browser to save rather than
+        // navigate, even when the response has a viewable MIME.
+        <a
+          href={`${API_BASE}/raw?path=${encodeURIComponent(entry.path)}`}
+          download={entry.name}
+          className="btn-ghost p-1.5"
+          title="Download"
+          aria-label="Download"
+        >
+          <Download size={16} />
+        </a>
+      }
+    >
       <div className="flex min-h-0 flex-1 flex-col">
         {/* Sub-header with file metadata + icon. Modal already
             owns the close button + name in its own header. */}
