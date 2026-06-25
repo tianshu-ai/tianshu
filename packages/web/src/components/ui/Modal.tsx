@@ -172,10 +172,17 @@ export function Modal({
             </button>
           </div>
         )}
-        {/* Body. We do NOT add padding here — callers control their
-            own layout (some want a full-bleed image preview, some
-            want padded prose). */}
-        <div className="min-h-0 flex-1 overflow-auto">{children}</div>
+        {/* Body. We do NOT add padding or a scroll container here.
+            Callers control both:
+              - some want a full-bleed image preview (no padding)
+              - some want padded prose
+              - some already include their own `overflow-auto`
+                scroll container, and a wrapping one here would
+                produce two stacked scrollbars and let the inner
+                content scroll out from under the top header.
+            We keep min-h-0 + flex-1 so the body still gets a
+            bounded height inside the panel's flex column. */}
+        <div className="min-h-0 flex-1">{children}</div>
       </div>
     </div>,
     document.body,
