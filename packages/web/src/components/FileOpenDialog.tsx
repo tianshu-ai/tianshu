@@ -237,7 +237,7 @@ export default function FileOpenDialog(): ReactElement | null {
 
   return (
     <Modal isOpen onClose={close} size="xl" hideHeader className="bg-gray-900">
-      <div className="flex h-full max-h-[90vh] flex-col">
+      <div className="flex min-h-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2 text-sm">
             <FileIcon size={14} className="shrink-0 text-gray-400" />
