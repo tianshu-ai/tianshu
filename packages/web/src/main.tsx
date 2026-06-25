@@ -16,15 +16,23 @@ applyDevIdentityFromUrl();
 import {
   __installOpenFileApi,
   __installPluginConfigForm,
+  __installUiPrimitives,
   __installUseComposer,
 } from "@tianshu-ai/plugin-sdk/client";
 import { getComposerApi } from "./stores/composer-store";
 import { PluginConfigFormById } from "./components/PluginConfigForm";
+import { Modal } from "./components/ui/Modal";
+import { MarkdownBlock } from "./components/ui/MarkdownBlock";
+import { DocumentViewer } from "./components/ui/DocumentViewer";
 __installUseComposer(getComposerApi);
 // Plugins import `PluginConfigForm` from the SDK to fold the
 // host's auto-generated config form into their own admin pages.
 // Same install-once trick as useComposer / OpenFileApi.
 __installPluginConfigForm(PluginConfigFormById);
+// Shared UI primitives (Modal / MarkdownBlock / DocumentViewer)
+// every plugin and the chat shell render through. Install before
+// App mounts so the first render already has a live registry.
+__installUiPrimitives({ Modal, MarkdownBlock, DocumentViewer });
 
 // Bootstrap fallback for OpenFileApi.
 //

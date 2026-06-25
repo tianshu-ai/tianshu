@@ -28,7 +28,6 @@ import {
   Music,
   RefreshCw,
   Search,
-  X,
 } from "lucide-react";
 import type {
   AttachmentRendererProps,
@@ -36,7 +35,7 @@ import type {
   PanelProps,
   PluginClientExports,
 } from "@tianshu-ai/plugin-sdk/client";
-import { __installOpenFileApi } from "@tianshu-ai/plugin-sdk/client";
+import { __installOpenFileApi, useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 import { Paperclip } from "lucide-react";
 
 interface DirEntry {
@@ -356,13 +355,20 @@ function FilePreviewModal({
   entry: DirEntry;
   onClose: () => void;
 }) {
+  // Modal chrome + body dispatch come from the host's shared UI
+  // primitives. We keep an image short-circuit because the plugin
+  // streams binary bytes through /raw rather than inlining into
+  // the JSON `read` response.
+  const { Modal, DocumentViewer } = useUiPrimitives();
   const [data, setData] = useState<ReadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const ext = (entry.extension ?? "").toLowerCase();
   const isImage = IMAGE_EXTS.has(ext);
 
   useEffect(() => {
     if (isImage) {
+      // Skip the JSON read path; we'll <img src=/raw> below.
       setData({
         path: entry.path,
         size: entry.size,
@@ -373,6 +379,7 @@ function FilePreviewModal({
     }
     let cancelled = false;
     setError(null);
+    setLoading(true);
     fetch(`${API_BASE}/read?path=${encodeURIComponent(entry.path)}`, {
       credentials: "include",
     })
@@ -393,79 +400,46 @@ function FilePreviewModal({
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [entry.path, entry.size, entry.modifiedMs, isImage]);
 
-  // ESC closes
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div
-      ref={ref}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="flex h-full max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl"
-        onClick={(ev) => ev.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2.5">
-          <div className="flex min-w-0 items-center gap-2">
-            {fileIcon(entry)}
-            <span className="truncate text-sm font-medium text-gray-100">
-              {entry.name}
-            </span>
-            <span className="flex-shrink-0 text-[11px] text-gray-500">
-              {formatSize(entry.size)} · {formatModified(entry.modifiedMs)}
-            </span>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="btn-ghost p-1.5"
-            aria-label="Close"
-          >
-            <X size={16} />
-          </button>
+    <Modal isOpen onClose={onClose} title={entry.name} size="lg">
+      <div className="flex h-full flex-col">
+        {/* Sub-header with file metadata + icon. Modal already
+            owns the close button + name in its own header. */}
+        <div className="flex items-center gap-2 border-b border-gray-800 px-4 py-2 text-[11px] text-gray-500">
+          {fileIcon(entry)}
+          <span>
+            {formatSize(entry.size)} · {formatModified(entry.modifiedMs)}
+          </span>
         </div>
-
-        {/* Body */}
-        <div className="flex-1 overflow-auto bg-gray-950">
-          {error ? (
-            <div className="p-6 text-center text-sm text-rose-300">{error}</div>
-          ) : !data ? (
-            <div className="flex h-32 items-center justify-center">
-              <Loader2 size={20} className="animate-spin text-gray-500" />
-            </div>
-          ) : isImage ? (
+        <div className="min-h-0 flex-1 overflow-auto bg-gray-950">
+          {isImage ? (
             <img
               src={`${API_BASE}/raw?path=${encodeURIComponent(entry.path)}`}
               alt={entry.name}
               className="mx-auto max-h-full max-w-full"
             />
-          ) : data.binary ? (
-            <div className="p-6 text-center text-sm text-gray-500">
-              Binary file ({formatSize(data.size)}). No preview available.
-            </div>
           ) : (
-            <pre className="whitespace-pre-wrap break-all p-4 font-mono text-xs text-gray-200">
-              {data.content}
-            </pre>
+            <DocumentViewer
+              content={data && !data.binary ? data.content ?? "" : null}
+              filename={entry.name}
+              binary={data?.binary === true && !isImage}
+              loading={loading}
+              error={error}
+              sizeBytes={data?.size ?? entry.size}
+            />
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 

@@ -319,3 +319,128 @@ export function useOpenFile(): OpenFileApi["open"] {
     api.open(path);
   };
 }
+
+// ─── UiPrimitives — host-provided React components plugins reuse
+//
+// Every plugin that needs a modal / a document viewer / a markdown
+// rendering surface used to roll its own copy. The result was
+// five subtly-different `fixed inset-0 z-50 bg-black/...` modals,
+// two different markdown renderers, and zero consistency between
+// what the user sees in chat vs. the files preview vs. the
+// workboard task history.
+//
+// This module exposes a single hook — `useUiPrimitives()` — that
+// returns the host's canonical React components. The host
+// installs them once at bootstrap via __installUiPrimitives. The
+// hook is safe to call from any plugin's React tree and stable
+// across re-renders.
+//
+// Why a hook rather than a direct import:
+//   plugins are loaded as separate ESM modules at runtime. They
+//   share the *types* in @tianshu-ai/plugin-sdk but not the
+//   compiled React component bundle — the host's bundle owns
+//   that. Same install-once + globalSlot pattern as useComposer
+//   and PluginConfigForm.
+
+export interface ModalProps {
+  /** Whether the modal is rendered. Caller controls visibility;
+   *  the modal does not animate or remember anything when this
+   *  flips. */
+  isOpen: boolean;
+  /** Fired when the user dismisses the modal (ESC, backdrop
+   *  click, or the X button). The host does NOT auto-close on
+   *  this — the caller must flip `isOpen` to false themselves. */
+  onClose: () => void;
+  /** Optional title rendered in the header. When omitted the
+   *  modal still renders a close button in the top-right. */
+  title?: string;
+  /** Size preset. Defaults to "md".
+   *    sm   : narrow, content-driven (e.g. confirmations)
+   *    md   : comfortable reading width (default)
+   *    lg   : wide content (file previews, code)
+   *    xl   : near full-screen (transcripts, long history) */
+  size?: "sm" | "md" | "lg" | "xl";
+  /** Modal body. Caller fully controls layout inside. */
+  children: React.ReactNode;
+  /** Optional className merged onto the inner content panel
+   *  (NOT the backdrop). Lets callers tune background, padding,
+   *  or override the default min-height. */
+  className?: string;
+}
+
+export interface DocumentViewerProps {
+  /** The file content. String for text/markdown/code; null while
+   *  loading or for binary files the host already determined are
+   *  unviewable. */
+  content: string | null;
+  /** Optional MIME type hint. When absent the viewer falls back
+   *  to extension sniffing via `filename`. */
+  mimeType?: string;
+  /** Optional filename hint, used for extension sniffing when
+   *  `mimeType` is absent and for the markdown vs. plain-text
+   *  dispatch (only `.md` / `.markdown` get rendered as
+   *  Markdown; everything else falls through to plain text). */
+  filename?: string;
+  /** Set to true when the host already knows the content is
+   *  binary and unrenderable (e.g. images served through a
+   *  different surface). The viewer shows a placeholder. */
+  binary?: boolean;
+  /** Set to true while the host is fetching content. Viewer
+   *  shows a spinner. */
+  loading?: boolean;
+  /** Error message from the loader, if any. Viewer renders it
+   *  in place of the content. */
+  error?: string | null;
+  /** Optional total bytes; surfaced in the binary placeholder
+   *  and the "too large" error path. */
+  sizeBytes?: number;
+  /** Optional className merged onto the viewer root. */
+  className?: string;
+}
+
+export interface MarkdownBlockProps {
+  /** Markdown source. */
+  children: string;
+  /** Optional className merged onto the prose container. */
+  className?: string;
+}
+
+export interface UiPrimitives {
+  Modal: React.ComponentType<ModalProps>;
+  DocumentViewer: React.ComponentType<DocumentViewerProps>;
+  MarkdownBlock: React.ComponentType<MarkdownBlockProps>;
+}
+
+interface UiPrimitivesGlobalSlot {
+  __tianshuPluginSdkUiPrimitives__?: UiPrimitives;
+}
+
+function uiPrimitivesSlot(): UiPrimitivesGlobalSlot {
+  return globalThis as unknown as UiPrimitivesGlobalSlot;
+}
+
+/** Host-only: install the canonical UiPrimitives. Called by the
+ *  web bundle at boot. Last writer wins. */
+export function __installUiPrimitives(api: UiPrimitives): void {
+  uiPrimitivesSlot().__tianshuPluginSdkUiPrimitives__ = api;
+}
+
+/** Test helper. */
+export function __resetUiPrimitivesForTest(): void {
+  delete uiPrimitivesSlot().__tianshuPluginSdkUiPrimitives__;
+}
+
+/** Hook returning the live primitives. Throws if the host has
+ *  not installed any — in production this is impossible because
+ *  the web bundle installs them at bootstrap; in tests, callers
+ *  install a stub via `__installUiPrimitives`. */
+export function useUiPrimitives(): UiPrimitives {
+  const api = uiPrimitivesSlot().__tianshuPluginSdkUiPrimitives__;
+  if (!api) {
+    throw new Error(
+      "useUiPrimitives() called without a host: plugin SDK has no live UiPrimitives. " +
+        "If you are seeing this in a test, install a stub with __installUiPrimitives({ Modal, DocumentViewer, MarkdownBlock }).",
+    );
+  }
+  return api;
+}
