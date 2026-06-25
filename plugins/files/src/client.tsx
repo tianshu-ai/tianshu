@@ -73,15 +73,28 @@ const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".
 // File types we stream through the /raw route instead of going
 // through the JSON read endpoint. The shared <DocumentViewer>
 // renders all of these against rawUrl directly.
-// Extensions whose preview comes from streaming /raw bytes, not
-// from the JSON read endpoint. SVG is intentionally excluded —
-// it IS text (XML markup), so it's worth pulling through `read`
-// so DocumentViewer can offer a View source toggle.
+// Extensions we don't try to text-read through the JSON read
+// endpoint. SVG is intentionally excluded — it IS text (XML
+// markup), so it's worth pulling through `read` so DocumentViewer
+// can offer a View source toggle.
+//
+// Two groups here:
+//   - true binary streams (image / pdf / video / audio): rendered
+//     against rawUrl by the host's <DocumentViewer>.
+//   - office (docx / xlsx / ...): we don't have a renderer yet,
+//     so reading the bytes would be pointless work. DocumentViewer
+//     shows a placeholder + Download.
 const STREAMED_EXTS = new Set<string>([
   ...[".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico"],
   ".pdf",
   ".mp4", ".webm", ".ogv", ".mov", ".m4v", ".mkv",
   ".mp3", ".wav", ".ogg", ".flac", ".m4a", ".aac", ".opus",
+  // Office (placeholder for now; LibreOffice pass is follow-up).
+  ".doc", ".docx", ".dot", ".dotx",
+  ".xls", ".xlsx", ".xlsm", ".xlsb",
+  ".ppt", ".pptx", ".pps", ".ppsx",
+  ".odt", ".ods", ".odp", ".odg",
+  ".rtf",
 ]);
 const CODE_EXTS = new Set([
   ".js", ".cjs", ".mjs", ".ts", ".jsx", ".tsx",

@@ -120,6 +120,42 @@ export function DocumentViewer({
     }
   }
 
+  // Office surfaces: docx / xlsx / pptx (+ legacy doc/xls/ppt and
+  // OpenDocument odt/ods/odp). We don't render these yet — doing it
+  // right requires a server-side LibreOffice path, which is its own
+  // PR. For now we show a friendly placeholder so users aren't left
+  // with a generic "Binary file". The Download button (Modal
+  // headerAction) is still right above.
+  const OFFICE_EXTS = new Set([
+    "doc", "docx", "dot", "dotx",
+    "xls", "xlsx", "xlsm", "xlsb",
+    "ppt", "pptx", "pps", "ppsx",
+    "odt", "ods", "odp", "odg",
+    "rtf",
+  ]);
+  const isOffice = OFFICE_EXTS.has(ext);
+  if (isOffice) {
+    return (
+      <div
+        className={`flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-8 text-center ${className}`}
+      >
+        <div className="text-sm font-medium text-gray-200">
+          Office preview is coming soon
+        </div>
+        <div className="max-w-md text-[12px] leading-relaxed text-gray-500">
+          In-browser rendering for{" "}
+          <code className="font-mono text-gray-400">.{ext}</code> files needs a
+          server-side LibreOffice pass that hasn't shipped yet. Use the{" "}
+          <span className="text-gray-300">Download</span> button above to open
+          this file in your local Office / LibreOffice / Pages.
+        </div>
+        {sizeBytes != null && (
+          <div className="text-[11px] text-gray-600">{formatSize(sizeBytes)}</div>
+        )}
+      </div>
+    );
+  }
+
   if (binary && !isImage) {
     return (
       <div className={`p-6 text-center text-sm text-gray-500 ${className}`}>
