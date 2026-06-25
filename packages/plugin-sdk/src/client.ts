@@ -404,6 +404,12 @@ export interface DocumentViewerProps {
   /** Optional total bytes; surfaced in the binary placeholder
    *  and the "too large" error path. */
   sizeBytes?: number;
+  /** Optional URL the host can stream the raw file bytes from.
+   *  Required for image / pdf / video / audio surfaces (the
+   *  viewer renders <img> / <iframe> / <video> / <audio>
+   *  against this URL). When the file is text and `content` is
+   *  provided, `rawUrl` is unused. */
+  rawUrl?: string;
   /** Optional className merged onto the viewer root. */
   className?: string;
 }
