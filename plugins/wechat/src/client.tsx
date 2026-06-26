@@ -18,9 +18,11 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
+import QRCode from "qrcode";
 import {
   CheckCircle2,
   Loader2,
@@ -196,11 +198,7 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
         {phase === "qr" && qr && (
           <>
             <div className="text-sm text-fg-muted">Scan with WeChat to authorise</div>
-            <img
-              src={qr.qrCodeImageUrl}
-              alt="WeChat login QR"
-              className="h-56 w-56 rounded-md border border-border-default bg-white p-2"
-            />
+            <QrCanvas value={qr.qrCodeImageUrl} />
             <div className="text-[11px] text-fg-faint">Open WeChat → Scan → Confirm</div>
             <div className="flex items-center gap-2 text-[11px] text-fg-fainter">
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -231,6 +229,50 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// Tencent's iLink `qrcode_img_content` is the URL the WeChat app
+// should fetch (e.g. `https://liteapp.weixin.qq.com/q/<id>?qrcode=...`).
+// It's NOT a pre-rendered image — dropping it into `<img src=>`
+// shows a broken-image icon. We render the URL ourselves through
+// the `qrcode` lib so the user gets an actual scannable QR.
+function QrCanvas({ value }: { value: string }) {
+  const id = useId();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setErr(null);
+    QRCode.toCanvas(canvas, value, {
+      width: 224,
+      margin: 2,
+      color: { dark: "#000000", light: "#ffffff" },
+      errorCorrectionLevel: "M",
+    }).catch((e: unknown) => {
+      if (cancelled) return;
+      setErr(e instanceof Error ? e.message : String(e));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [value]);
+  if (err) {
+    return (
+      <div className="flex h-56 w-56 items-center justify-center rounded-md border border-danger/30 bg-danger/10 p-3 text-center text-xs text-danger">
+        QR render failed: {err}
+      </div>
+    );
+  }
+  return (
+    <canvas
+      ref={canvasRef}
+      aria-label="WeChat login QR"
+      id={`wechat-qr-${id}`}
+      className="h-56 w-56 rounded-md border border-border-default bg-white p-2"
+    />
+  );
 }
 
 // ─── admin page ─────────────────────────────────────────────────

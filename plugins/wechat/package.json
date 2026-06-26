@@ -17,14 +17,21 @@
     },
     "./manifest.json": "./manifest.json"
   },
-  "files": ["dist", "src", "skills", "manifest.json"],
+  "files": [
+    "dist",
+    "src",
+    "skills",
+    "manifest.json"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch --preserveWatchOutput",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@tianshu-ai/plugin-sdk": "*"
+    "@tianshu-ai/plugin-sdk": "*",
+    "@types/qrcode": "^1.5.6",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
