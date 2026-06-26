@@ -137,12 +137,12 @@ export default function ModelSelector() {
                   >
                     <span className="flex-1 truncate">{m.name}</span>
                     {m.reasoning && (
-                      <span className="shrink-0 rounded bg-amber-500/15 px-1 py-px text-[9px] text-amber-300">
+                      <span className="shrink-0 rounded bg-amber-500/15 px-1 py-px text-[9px] text-warning">
                         reasoning
                       </span>
                     )}
                     {m.id === activeId && (
-                      <Check size={14} className="shrink-0 text-blue-400" />
+                      <Check size={14} className="shrink-0 text-link" />
                     )}
                   </button>
                 ))}

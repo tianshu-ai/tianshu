@@ -169,13 +169,13 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
         })}
       </div>
       {error && (
-        <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[12px] text-rose-300">
+        <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[12px] text-danger">
           {error}
         </div>
       )}
       <div className="flex items-center gap-2 border-t border-border-subtle pt-3">
         {savedAt && !dirty && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
+          <span className="inline-flex items-center gap-1 text-[11px] text-success">
             <CheckCircle2 size={12} /> Saved
           </span>
         )}
@@ -425,7 +425,7 @@ function ConfigFieldRow({
         <label className="mb-1 block font-medium text-fg-default">
           {field.label}
           {isSet ? (
-            <span className="ml-2 rounded bg-emerald-700/40 px-1.5 py-0.5 text-[10px] uppercase text-emerald-300">
+            <span className="ml-2 rounded bg-emerald-700/40 px-1.5 py-0.5 text-[10px] uppercase text-success">
               set
             </span>
           ) : null}
@@ -447,7 +447,7 @@ function ConfigFieldRow({
           {isSet && stringValue === "" && (
             <button
               type="button"
-              className="shrink-0 rounded border border-border-default bg-bg-elevated px-2 py-1 text-[11px] text-fg-muted hover:border-rose-700 hover:text-rose-300"
+              className="shrink-0 rounded border border-border-default bg-bg-elevated px-2 py-1 text-[11px] text-fg-muted hover:border-rose-700 hover:text-danger"
               onClick={() => onChange({ __secret: true, clear: true })}
             >
               Clear

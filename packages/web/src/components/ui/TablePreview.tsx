@@ -117,7 +117,7 @@ export function TablePreview({
 
   if (parsed.error && parsed.rows.length === 0) {
     return (
-      <div className={`p-4 text-sm text-rose-300 ${className}`}>
+      <div className={`p-4 text-sm text-danger ${className}`}>
         Failed to parse table: {parsed.error}
       </div>
     );

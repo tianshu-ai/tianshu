@@ -32,7 +32,7 @@ export default function ComposerAttachments() {
             className={
               "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs " +
               (isError
-                ? "border-rose-700/60 bg-rose-950/40 text-rose-200"
+                ? "border-rose-700/60 bg-rose-950/40 text-danger"
                 : "border-border-default bg-bg-raised text-fg-default")
             }
             title={isError ? (a.error ?? "upload failed") : a.path ?? a.name}
@@ -41,7 +41,7 @@ export default function ComposerAttachments() {
             {isUploading ? (
               <Loader2 size={12} className="animate-spin text-brand-400" />
             ) : isError ? (
-              <AlertTriangle size={12} className="text-rose-400" />
+              <AlertTriangle size={12} className="text-danger" />
             ) : (
               <FileIcon size={12} className="text-fg-muted" />
             )}

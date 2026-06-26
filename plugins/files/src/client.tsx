@@ -113,7 +113,7 @@ function fileIcon(e: DirEntry) {
     return <FolderOpen size={16} className="text-yellow-500" />;
   const ext = (e.extension ?? "").toLowerCase();
   if (IMAGE_EXTS.has(ext)) return <ImageIcon size={16} className="text-green-400" />;
-  if (CODE_EXTS.has(ext)) return <Code size={16} className="text-blue-400" />;
+  if (CODE_EXTS.has(ext)) return <Code size={16} className="text-link" />;
   if (STRUCT_EXTS.has(ext)) return <FileSpreadsheet size={16} className="text-orange-400" />;
   if (VIDEO_EXTS.has(ext)) return <Film size={16} className="text-purple-400" />;
   if (AUDIO_EXTS.has(ext)) return <Music size={16} className="text-pink-400" />;
@@ -313,7 +313,7 @@ function FilesPanel({ plugin }: PanelProps) {
             <Loader2 size={20} className="animate-spin text-fg-faint" />
           </div>
         ) : error ? (
-          <div className="p-4 text-center text-sm text-rose-400">{error}</div>
+          <div className="p-4 text-center text-sm text-danger">{error}</div>
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-fg-fainter">
             {filter ? "No matching files" : "Empty directory"}
@@ -362,7 +362,7 @@ function FilesPanel({ plugin }: PanelProps) {
         )}
 
         {list?.truncated && (
-          <div className="px-3 py-2 text-[10px] text-amber-400">
+          <div className="px-3 py-2 text-[10px] text-warning">
             Listing truncated at 5000 entries.
           </div>
         )}
