@@ -76,6 +76,47 @@ interface RawPostOpts {
   abortSignal?: AbortSignal;
 }
 
+/** GET an iLink endpoint. QR-status polling uses GET (not POST)
+ *  with the qr id as a query-string param; mirror Tencent's own
+ *  client. Returns raw response body. */
+async function apiGet(opts: {
+  baseUrl: string;
+  endpoint: string;
+  timeoutMs?: number;
+  abortSignal?: AbortSignal;
+}): Promise<string> {
+  const url = `${trimTrailingSlash(opts.baseUrl)}/${opts.endpoint}`;
+  const controller = new AbortController();
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+  const onCallerAbort = () => controller.abort();
+  if (opts.abortSignal) {
+    if (opts.abortSignal.aborted) controller.abort();
+    else opts.abortSignal.addEventListener("abort", onCallerAbort);
+  }
+  try {
+    const res = await fetch(url, { method: "GET", signal: controller.signal });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw classifyAndThrow({ type: "non200", status: res.status, body });
+    }
+    return await res.text();
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      if (opts.abortSignal?.aborted) throw classifyAndThrow({ type: "abort" });
+      throw classifyAndThrow({ type: "timeout" });
+    }
+    if (isClassifiedApiError(err)) throw err;
+    throw classifyAndThrow({
+      type: "network",
+      description: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    clearTimeout(timeoutHandle);
+    if (opts.abortSignal) opts.abortSignal.removeEventListener("abort", onCallerAbort);
+  }
+}
+
 /** POST a JSON body to an iLink endpoint. Throws a typed ApiError
  *  on transport-level failures; the caller checks `resp.ret` /
  *  `resp.errcode` for API-level failures from the response body. */
@@ -171,30 +212,53 @@ export async function getBotQrCode(opts: {
   return JSON.parse(raw) as QrCodeResponse;
 }
 
+/**
+ * Status response from `/ilink/bot/get_qrcode_status`. The wire
+ * shape is verbose; we surface the fields the plugin actually
+ * needs and leave the rest under `raw` for debugging.
+ *
+ * `status` is a string enum:
+ *   - "wait"            : not scanned yet, keep polling
+ *   - "scaned"          : user opened the QR but hasn't tapped
+ *                         Confirm. Keep polling. (Tencent typo.)
+ *   - "need_verifycode" : new bot account; user must enter a
+ *                         numeric pairing code. We don't support
+ *                         this path yet — the admin UI surfaces
+ *                         it as an error.
+ *   - "scaned_but_redirect" : Tencent wants us to retry against
+ *                         a different api host. Tracks redirect
+ *                         from `redirect_host`. Not supported v0.
+ *   - "confirmed"       : terminal success; token in bot_token,
+ *                         user id in ilink_user_id.
+ *   - "expired"         : QR died; restart the login flow.
+ *   - "verify_code_blocked" : too many bad pairing attempts.
+ */
 export interface QrCodeStatusResponse {
-  /** 0 = pending, 1 = scanned, 2 = confirmed (token issued),
-   *  -1 = expired. Subject to Tencent's API evolution. */
-  status?: number;
-  token?: string;
+  status?: string;
+  bot_token?: string;
+  ilink_user_id?: string;
+  ilink_bot_id?: string;
   username?: string;
+  baseurl?: string;
+  redirect_host?: string;
   ret?: number;
   errcode?: number;
   errmsg?: string;
 }
 
-/** Step 2 of QR login: long-poll the scan status. Resolves once
- *  the user confirms (status=2 with token) or the QR expires. */
+/** Step 2 of QR login: long-poll the scan status via **GET** (not
+ *  POST). Mirrors Tencent's own client: qrcode in the query
+ *  string, no body. Resolves once the user confirms (status =
+ *  "confirmed" + bot_token) or the QR expires. */
 export async function getQrCodeStatus(opts: {
   baseUrl?: string;
   qrcode: string;
   abortSignal?: AbortSignal;
   timeoutMs?: number;
 }): Promise<QrCodeStatusResponse> {
-  const body = JSON.stringify({ qrcode: opts.qrcode });
-  const raw = await apiPost({
+  const raw = await apiGet({
     baseUrl: opts.baseUrl ?? ILINK_BASE_URL,
-    endpoint: "ilink/bot/get_qrcode_status",
-    body,
+    endpoint: `ilink/bot/get_qrcode_status?qrcode=${encodeURIComponent(opts.qrcode)}`,
     timeoutMs: opts.timeoutMs ?? DEFAULT_LONG_POLL_TIMEOUT_MS,
     abortSignal: opts.abortSignal,
   });
