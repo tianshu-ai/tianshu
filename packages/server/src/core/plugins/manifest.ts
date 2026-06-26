@@ -375,6 +375,9 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
   if ("apiRoutes" in raw) {
     out.apiRoutes = parseArray(raw.apiRoutes, "apiRoutes", acc, parseApiRoute);
   }
+  if ("channels" in raw) {
+    out.channels = parseArray(raw.channels, "channels", acc, parseChannel);
+  }
   if ("wsMessages" in raw) {
     out.wsMessages = parseArray(raw.wsMessages, "wsMessages", acc, parseWsMessage);
   }
@@ -438,6 +441,23 @@ function parseTool(raw: unknown, ctx: string, acc: Acc): ToolContribution | null
   const moduleKey = expectString(raw, "module", acc, ctx);
   if (id == null || moduleKey == null) return null;
   return { id, module: moduleKey };
+}
+
+function parseChannel(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): import("@tianshu-ai/plugin-sdk").ChannelContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const displayName = expectString(raw, "displayName", acc, ctx);
+  const moduleKey = expectString(raw, "module", acc, ctx);
+  if (id == null || displayName == null || moduleKey == null) return null;
+  const since = optionalString(raw, "since", acc, ctx);
+  return { id, displayName, module: moduleKey, since: since ?? undefined };
 }
 
 function parseToolset(
