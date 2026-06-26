@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.31](https://github.com/tianshu-ai/tianshu/compare/v0.3.30...v0.3.31) (2026-06-26)
+
+### Bug Fixes
+
+* **ui:** Modal panel itself collapsed to ~400px tall for file
+  previews (HTML / PDF / image). Earlier 0.3.29 / 0.3.30 fixes
+  unblocked the inner iframe + outer wrapper but the panel
+  itself was still `max-h-[85vh]` (a *cap*, not a height). With
+  an iframe child that has minimal content at first paint, the
+  flex column collapsed around it and the panel ended up only
+  big enough for its header + a sliver of preview body. Fix:
+  size-aware presets — `sm`/`md` keep `max-h-[85vh]` (forms,
+  confirmations), `lg`/`xl` get `h-[85vh]` (file previews;
+  fixed height regardless of inner content). File-preview
+  callers already use lg/xl so the fix lands automatically.
+
 ## [0.3.30](https://github.com/tianshu-ai/tianshu/compare/v0.3.29...v0.3.30) (2026-06-26)
 
 ### Bug Fixes
