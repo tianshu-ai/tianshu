@@ -16,6 +16,7 @@ export * from "./agent-loop.js";
 export * from "./session-inbox.js";
 export * from "./catalog.js";
 export * from "./lsp.js";
+export * from "./channel-bindings.js";
 export {
   McpToolset,
   textOfMcpContent,

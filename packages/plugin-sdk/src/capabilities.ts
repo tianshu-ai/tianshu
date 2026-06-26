@@ -64,6 +64,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Diagnose a file via the host's LSP manager after a write/edit. Plugins (notably `files`) call `diagnoseAfterEdit({ filePath, contents })` and append the formatted diagnostic block to their tool result so the model sees compile errors in the same turn that introduced them. Tenant-scoped: the manager refuses files outside the calling tenant's workspace. See ADR-0005.",
   },
+  "host.channelBindings": {
+    exclusive: true,
+    description:
+      "Manage channel adapter bindings (chat-platform integrations). Plugins contributing a channel (Feishu / Telegram / WeChat / ...) call create/start/stop/delete here so the host's adapter manager actually wires the inbound stream to the agent. The DB row + adapter lifecycle live together behind this capability.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;

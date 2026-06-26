@@ -11,6 +11,10 @@
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
     "./manifest.json": "./manifest.json"
   },
   "files": ["dist", "src", "skills", "manifest.json"],
@@ -24,6 +28,8 @@
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
+    "@types/react": "^19.2.6",
+    "react": "^19.2.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.9"
   }

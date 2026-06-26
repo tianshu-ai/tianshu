@@ -40,6 +40,17 @@ export const STALE_TOKEN_ERRCODE = 50000201;
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
 
+/** Production iLink API host. Hard-coded because it's a platform
+ *  constant of the integration, not a tunable. If Tencent ever
+ *  moves the host, that's a plugin update, not a user config
+ *  change. */
+export const ILINK_BASE_URL = "https://ilinkai.weixin.qq.com";
+
+/** Tag we send in `base_info.bot_agent` so Tencent's analytics
+ *  knows our traffic came from tianshu. Equivalent to an HTTP
+ *  User-Agent. */
+export const TIANSHU_BOT_AGENT = "tianshu";
+
 /** Build the `base_info` block every authenticated request carries.
  *  Identifies the calling bot to Tencent's analytics. */
 function buildBaseInfo(opts: { botAgent: string; channelVersion: string }) {
@@ -146,14 +157,14 @@ export interface QrCodeResponse {
 /** Step 1 of QR login. Returns a unique qr id (`qrcode`) and an
  *  image URL the user displays + scans. */
 export async function getBotQrCode(opts: {
-  baseUrl: string;
+  baseUrl?: string;
   botType?: string;
   localTokenList?: string[];
 }): Promise<QrCodeResponse> {
   const botType = opts.botType ?? "3";
   const body = JSON.stringify({ local_token_list: opts.localTokenList ?? [] });
   const raw = await apiPost({
-    baseUrl: opts.baseUrl,
+    baseUrl: opts.baseUrl ?? ILINK_BASE_URL,
     endpoint: `ilink/bot/get_bot_qrcode?bot_type=${encodeURIComponent(botType)}`,
     body,
   });
@@ -174,14 +185,14 @@ export interface QrCodeStatusResponse {
 /** Step 2 of QR login: long-poll the scan status. Resolves once
  *  the user confirms (status=2 with token) or the QR expires. */
 export async function getQrCodeStatus(opts: {
-  baseUrl: string;
+  baseUrl?: string;
   qrcode: string;
   abortSignal?: AbortSignal;
   timeoutMs?: number;
 }): Promise<QrCodeStatusResponse> {
   const body = JSON.stringify({ qrcode: opts.qrcode });
   const raw = await apiPost({
-    baseUrl: opts.baseUrl,
+    baseUrl: opts.baseUrl ?? ILINK_BASE_URL,
     endpoint: "ilink/bot/get_qrcode_status",
     body,
     timeoutMs: opts.timeoutMs ?? DEFAULT_LONG_POLL_TIMEOUT_MS,
