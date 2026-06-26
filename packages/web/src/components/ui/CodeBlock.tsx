@@ -17,12 +17,13 @@
 // then a one-line CSS variable swap, not a re-render of every
 // CodeBlock.
 //
-// Layout: line numbers in a narrow left gutter (Tailwind `text-gray-600`
+// Layout: line numbers in a narrow left gutter (Tailwind `text-fg-fainter`
 // monospace), copy button hovers in the top-right and slides in on
 // row hover. Overflow handled by the wrapper's `overflow-auto`.
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy } from "lucide-react";
+import { useThemeStore } from "../../stores/theme-store";
 
 // shiki's web bundle entry. Types live here too. Lazy via dynamic
 // import so the parse-tables (~hundreds of KB total across all
@@ -46,9 +47,10 @@ async function getHighlighter(): Promise<HighlighterCore> {
     highlighterPromise = (async () => {
       const { createHighlighter } = await import("shiki/bundle/web");
       const hi = await createHighlighter({
-        themes: ["github-dark"],
-        // Seed with a tiny common set. Anything else loads lazily
-        // via loadLanguage() in `highlight()` below.
+        // Load both light + dark up front so toggling the user
+        // theme doesn't await another wasm round trip. The total
+        // theme weight is tiny next to the per-language grammars.
+        themes: ["github-dark", "github-light"],
         langs: ["plaintext"],
       });
       return hi as unknown as HighlighterCore;
@@ -129,6 +131,13 @@ export function CodeBlock({ code, lang, className = "" }: CodeBlockProps) {
   // try/catch below logs and stays on the <pre>).
   const [html, setHtml] = useState<string | null>(null);
   const cancelRef = useRef(false);
+  // Subscribe to the resolved theme so a light/dark flip
+  // re-runs codeToHtml against the matching shiki theme. The
+  // user sees highlight colors track the chrome instantly
+  // without reload.
+  const themeName = useThemeStore((s) =>
+    s.resolved === "light" ? "github-light" : "github-dark",
+  );
 
   useEffect(() => {
     cancelRef.current = false;
@@ -140,7 +149,7 @@ export function CodeBlock({ code, lang, className = "" }: CodeBlockProps) {
         }
         const rendered = hi.codeToHtml(code, {
           lang,
-          theme: "github-dark",
+          theme: themeName,
         });
         if (!cancelRef.current) setHtml(rendered);
       } catch (err) {
@@ -154,7 +163,7 @@ export function CodeBlock({ code, lang, className = "" }: CodeBlockProps) {
     return () => {
       cancelRef.current = true;
     };
-  }, [code, lang]);
+  }, [code, lang, themeName]);
 
   // Pre-compute line count for the gutter. We do this against the
   // RAW code, not the highlighted HTML, because they share the
@@ -181,7 +190,7 @@ export function CodeBlock({ code, lang, className = "" }: CodeBlockProps) {
         {/* Gutter: line numbers in monospace dim grey. */}
         <pre
           aria-hidden
-          className="select-none border-r border-gray-800 bg-gray-950 px-3 py-3 text-right font-mono text-[12px] leading-[1.6] text-gray-600"
+          className="select-none border-r border-border-subtle bg-bg-base px-3 py-3 text-right font-mono text-[12px] leading-[1.6] text-fg-fainter"
         >
           {Array.from({ length: lineCount }, (_, i) => i + 1).join("\n")}
         </pre>
@@ -209,7 +218,7 @@ export function CodeBlock({ code, lang, className = "" }: CodeBlockProps) {
               dangerouslySetInnerHTML={{ __html: html }}
             />
           ) : (
-            <pre className="whitespace-pre px-3 py-3 font-mono text-[12px] leading-[1.6] text-gray-200">
+            <pre className="whitespace-pre px-3 py-3 font-mono text-[12px] leading-[1.6] text-fg-default">
               {code}
             </pre>
           )}
@@ -224,7 +233,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       type="button"
-      className="absolute right-2 top-2 z-10 rounded-md border border-gray-800/80 bg-gray-900/80 p-1.5 text-gray-300 opacity-0 backdrop-blur transition-opacity hover:bg-gray-800 group-hover:opacity-100"
+      className="absolute right-2 top-2 z-10 rounded-md border border-gray-800/80 bg-gray-900/80 p-1.5 text-fg-muted opacity-0 backdrop-blur transition-opacity hover:bg-bg-raised group-hover:opacity-100"
       title={copied ? "Copied" : "Copy"}
       onClick={() => {
         navigator.clipboard

@@ -22,7 +22,7 @@ export default function ChatLayout() {
   }, [init, loadPlugins]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-950 text-gray-100">
+    <div className="flex h-screen overflow-hidden bg-bg-base text-fg-default">
       {sidebarOpen && <Sidebar />}
       <ChatArea />
       <PluginRightPanel />

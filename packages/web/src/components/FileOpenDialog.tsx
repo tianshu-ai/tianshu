@@ -241,7 +241,7 @@ export default function FileOpenDialog(): ReactElement | null {
       onClose={close}
       size="xl"
       title={name}
-      className="bg-gray-900"
+      className="bg-bg-elevated"
       headerActions={
         <a
           href={url}
@@ -258,8 +258,8 @@ export default function FileOpenDialog(): ReactElement | null {
         {/* Sub-header keeps the file icon + full path under the
             modal's own title bar so users can see where the file
             lives, not just its basename. */}
-        <div className="flex items-center gap-2 border-b border-gray-800 px-4 py-1.5 text-[10px] text-gray-500">
-          <FileIcon size={12} className="shrink-0 text-gray-500" />
+        <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-1.5 text-[10px] text-fg-faint">
+          <FileIcon size={12} className="shrink-0 text-fg-faint" />
           <span className="truncate font-mono" title={cleanedPath}>
             {cleanedPath}
           </span>
@@ -269,7 +269,7 @@ export default function FileOpenDialog(): ReactElement | null {
             DocumentViewer and collapse them to content height.
             Each surface inside DocumentViewer brings its own
             scroll container when it needs one. */}
-        <div className="flex min-h-0 flex-1 flex-col bg-gray-950">
+        <div className="flex min-h-0 flex-1 flex-col bg-bg-base">
           {view.kind === "text" && view.truncated && (
             <div className="mx-3 mt-3 rounded border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-200">
               Truncated at {MAX_TEXT_BYTES.toLocaleString()} bytes — use the

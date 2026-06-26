@@ -56,7 +56,7 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}>
-        <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-gray-500">
+        <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-faint">
           {isUser ? <User size={11} /> : <Bot size={11} className="text-blue-400" />}
           <span>{isUser ? "you" : "tianshu"}</span>
         </div>
@@ -72,14 +72,14 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
                 className={
                   "prose prose-invert prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed " +
                   (isUser
-                    ? "border-brand-400/30 bg-brand-500/10 text-gray-100"
-                    : "border-gray-800 bg-gray-900/60 text-gray-100")
+                    ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
+                    : "border-border-subtle bg-gray-900/60 text-fg-default")
                 }
               >
                 <MarkdownBlock noProse>{m.text}</MarkdownBlock>
               </div>
             ) : showStreamingPlaceholder ? (
-              <div className="rounded-lg border border-gray-800 bg-gray-900/60 px-3.5 py-2.5">
+              <div className="rounded-lg border border-border-subtle bg-gray-900/60 px-3.5 py-2.5">
                 <TypingDots />
               </div>
             ) : null}
@@ -124,8 +124,8 @@ function renderAssistantBlock(
         className={
           "prose prose-invert prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed " +
           (isUser
-            ? "border-brand-400/30 bg-brand-500/10 text-gray-100"
-            : "border-gray-800 bg-gray-900/60 text-gray-100")
+            ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
+            : "border-border-subtle bg-gray-900/60 text-fg-default")
         }
       >
         <MarkdownBlock noProse>{block.text}</MarkdownBlock>
@@ -162,7 +162,7 @@ function MessageMeta({
   const justify = align === "end" ? "justify-end" : "justify-start";
   return (
     <div
-      className={`mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-gray-600 ${justify}`}
+      className={`mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-fg-fainter ${justify}`}
     >
       {parts.map((p, i) => (
         <span key={i} className="flex items-center gap-1.5">
@@ -200,7 +200,7 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
         onClick={() => !running && setExpanded((v) => !v)}
         className={
           "flex select-none items-center gap-1.5 py-0.5 text-xs transition-colors " +
-          (running ? "cursor-default text-gray-500" : "cursor-pointer text-gray-500 hover:text-gray-300")
+          (running ? "cursor-default text-fg-faint" : "cursor-pointer text-fg-faint hover:text-fg-muted")
         }
       >
         {running ? (
@@ -211,13 +211,13 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
           <CheckCircle2 size={11} className="text-emerald-500/60" />
         )}
         <code className="font-mono text-[12px] text-blue-300">{call.name}</code>
-        <span className="font-mono text-[11px] text-gray-600">{summariseArgs(call.arguments)}</span>
+        <span className="font-mono text-[11px] text-fg-fainter">{summariseArgs(call.arguments)}</span>
         {running ? (
-          <span className="text-[11px] text-gray-600">running…</span>
+          <span className="text-[11px] text-fg-fainter">running…</span>
         ) : expanded ? (
-          <ChevronDown size={11} className="text-gray-600" />
+          <ChevronDown size={11} className="text-fg-fainter" />
         ) : (
-          <ChevronRight size={11} className="text-gray-600" />
+          <ChevronRight size={11} className="text-fg-fainter" />
         )}
       </button>
 
@@ -227,7 +227,7 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
             "mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] " +
             (isError
               ? "border-rose-700/40 bg-rose-950/30 text-rose-200"
-              : "border-gray-800/60 bg-gray-900/60 text-gray-300")
+              : "border-gray-800/60 bg-gray-900/60 text-fg-muted")
           }
         >
           {truncate(result.text, 4000)}

@@ -139,7 +139,7 @@ export default function PluginRightPanel() {
 
   return (
     <aside
-      className="relative flex h-full flex-shrink-0 flex-col border-l border-gray-800 bg-gray-950"
+      className="relative flex h-full flex-shrink-0 flex-col border-l border-border-subtle bg-bg-base"
       style={{ width }}
     >
       {/* Drag handle: 6 px hit area, 1 px visible line on hover/active. */}

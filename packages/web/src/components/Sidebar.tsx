@@ -9,6 +9,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import PluginSidebarSections from "./PluginSidebarSections";
+import { ThemeToggle } from "./ui/ThemeToggle";
 import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
 import {
@@ -50,16 +51,16 @@ export default function Sidebar() {
   const brandName = me?.config.branding?.name ?? "Tianshu";
 
   return (
-    <aside className="flex h-full w-64 flex-shrink-0 flex-col border-r border-gray-800 bg-gray-900">
+    <aside className="flex h-full w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
       {/* Header */}
-      <div className="flex h-12 items-center border-b border-gray-800 px-4">
+      <div className="flex h-12 items-center border-b border-border-subtle px-4">
         <span className="text-lg font-semibold text-white">{brandName}</span>
       </div>
 
       {/* Agents + Workers */}
       <div className="space-y-1 px-2 pt-2">
         {/* Main agent row — currently always selected */}
-        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-gray-800 px-3 py-2 text-white">
+        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-2 text-white">
           <Bot size={14} className="flex-shrink-0 text-blue-400" />
           <span className="text-sm font-medium">{brandName}</span>
         </div>
@@ -77,15 +78,15 @@ export default function Sidebar() {
 
       {/* Channels — webchat is always present; integrations land later. */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
-        <div className="px-1 pb-1 pt-2 text-[10px] uppercase tracking-wider text-gray-600">
+        <div className="px-1 pb-1 pt-2 text-[10px] uppercase tracking-wider text-fg-fainter">
           Channels
         </div>
-        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-gray-800 px-3 py-1.5 text-white">
+        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-1.5 text-white">
           <Hash size={12} className="flex-shrink-0" />
           <span className="flex-1 truncate text-xs">webchat</span>
-          <span className="text-[9px] uppercase tracking-wider text-gray-500">active</span>
+          <span className="text-[9px] uppercase tracking-wider text-fg-faint">active</span>
         </div>
-        <p className="px-2 pt-2 text-[10px] leading-relaxed text-gray-600">
+        <p className="px-2 pt-2 text-[10px] leading-relaxed text-fg-fainter">
           Sessions are managed by the agent, not the user (ADR-0001 §5).
           Additional messaging channels (Lark / Slack / …) land later.
         </p>
@@ -142,7 +143,7 @@ function SidebarFooter() {
   }, [menuOpen]);
 
   return (
-    <div className="relative border-t border-gray-800" ref={wrapRef}>
+    <div className="relative border-t border-border-subtle" ref={wrapRef}>
       <button
         type="button"
         onClick={() => setMenuOpen((v) => !v)}
@@ -155,24 +156,24 @@ function SidebarFooter() {
           {initial}
         </div>
         <div className="min-w-0 flex-1 text-left">
-          <div className="truncate text-[11px] text-gray-300">{userId}</div>
-          <div className="truncate text-[10px] text-gray-600">{subline}</div>
+          <div className="truncate text-[11px] text-fg-muted">{userId}</div>
+          <div className="truncate text-[10px] text-fg-fainter">{subline}</div>
         </div>
         <ChevronDown
           size={12}
-          className={`text-gray-500 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+          className={`text-fg-faint transition-transform ${menuOpen ? "rotate-180" : ""}`}
         />
       </button>
 
       {menuOpen && (
         <div
           role="menu"
-          className="absolute bottom-full left-2 right-2 z-50 mb-1 rounded-md border border-gray-700 bg-gray-900 py-1 text-[12px] shadow-xl"
+          className="absolute bottom-full left-2 right-2 z-50 mb-1 rounded-md border border-border-default bg-bg-elevated py-1 text-[12px] shadow-xl"
         >
           {/* Identity header inside menu, mirrors Linear/Discord style. */}
-          <div className="border-b border-gray-800 px-3 py-2">
-            <div className="truncate text-gray-200">{userId}</div>
-            <div className="truncate text-[10px] text-gray-600">{subline}</div>
+          <div className="border-b border-border-subtle px-3 py-2">
+            <div className="truncate text-fg-default">{userId}</div>
+            <div className="truncate text-[10px] text-fg-fainter">{subline}</div>
           </div>
 
           {/* Admin entry. v0 shows it for everyone (no JWT yet);
@@ -186,9 +187,9 @@ function SidebarFooter() {
             to="admin"
             role="menuitem"
             onClick={() => setMenuOpen(false)}
-            className="flex items-center gap-2 px-3 py-1.5 text-gray-200 hover:bg-gray-800"
+            className="flex items-center gap-2 px-3 py-1.5 text-fg-default hover:bg-bg-raised"
           >
-            <ShieldCheck size={14} className="text-gray-500" />
+            <ShieldCheck size={14} className="text-fg-faint" />
             <span>{t("admin.title")}</span>
           </Link>
 
@@ -202,18 +203,18 @@ function SidebarFooter() {
             aria-haspopup="menu"
             aria-expanded={langOpen}
             onClick={() => setLangOpen((v) => !v)}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-gray-200 hover:bg-gray-800"
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-fg-default hover:bg-bg-raised"
           >
-            <Globe size={14} className="text-gray-500" />
+            <Globe size={14} className="text-fg-faint" />
             <span className="flex-1 text-left">{t("lang.label")}</span>
-            <span className="text-[10px] text-gray-500">{LOCALE_LABELS[locale]}</span>
+            <span className="text-[10px] text-fg-faint">{LOCALE_LABELS[locale]}</span>
             <ChevronRight
               size={12}
-              className={`text-gray-500 transition-transform ${langOpen ? "rotate-90" : ""}`}
+              className={`text-fg-faint transition-transform ${langOpen ? "rotate-90" : ""}`}
             />
           </button>
           {langOpen && (
-            <ul role="menu" className="border-y border-gray-800 bg-gray-950/60">
+            <ul role="menu" className="border-y border-border-subtle bg-gray-950/60">
               {locales.map((l: Locale) => {
                 const active = l === locale;
                 return (
@@ -234,7 +235,7 @@ function SidebarFooter() {
                       }
                     }}
                     className={`flex cursor-pointer items-center gap-2 py-1.5 pl-9 pr-3 outline-none ${
-                      active ? "text-blue-300" : "text-gray-300 hover:bg-gray-800"
+                      active ? "text-blue-300" : "text-fg-muted hover:bg-bg-raised"
                     }`}
                   >
                     <span className="flex-1">{LOCALE_LABELS[l]}</span>
@@ -244,6 +245,15 @@ function SidebarFooter() {
               })}
             </ul>
           )}
+
+          {/* Theme picker. Lives at the menu's bottom — frequently
+           *  toggled the first time someone sets up the app, then
+           *  ignored. Keeps it out of the way of more common
+           *  actions like Admin / Language. */}
+          <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-3 py-2 text-[12px] text-fg-muted">
+            <span>{t("user.theme")}</span>
+            <ThemeToggle compact />
+          </div>
 
           {/* Sign-out is intentionally absent until JWT auth ports
            *  over — there's nothing to sign out of yet. The menu's

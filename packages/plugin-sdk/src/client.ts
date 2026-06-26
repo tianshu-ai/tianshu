@@ -471,3 +471,90 @@ export function useUiPrimitives(): UiPrimitives {
   }
   return api;
 }
+
+// ─── Theme ─ host-managed light/dark switch surfaced to plugins
+//
+// The host writes `data-theme="dark" | "light"` to <html>; CSS
+// variables in index.css switch as a side effect. Plugins that
+// want to react in JS (e.g. shiki-highlighted code blocks that
+// re-render with a different highlight theme) read the resolved
+// value here through useTheme().
+//
+// **Plugin authoring rule**: do NOT hardcode `bg-gray-900` /
+// `text-gray-100` / etc. Use the semantic token utilities
+// (`bg-bg-base`, `bg-bg-elevated`, `text-fg-default`,
+// `text-fg-muted`, `border-border-default`, `bg-accent`, etc.).
+// They're declared via Tailwind 4 `@theme` in the host's CSS,
+// pull values from CSS vars per theme, and follow the user's
+// theme choice automatically.
+//
+// The complete semantic token list (host-side):
+//
+//   Backgrounds         Foregrounds        Borders
+//   bg-bg-base          text-fg-default    border-border-default
+//   bg-bg-elevated      text-fg-muted      border-border-strong
+//   bg-bg-raised        text-fg-faint      border-border-subtle
+//   bg-bg-hover         text-fg-fainter
+//   bg-bg-overlay       text-fg-on-accent
+//
+//   Accent              State              Misc
+//   bg-accent           text-success       text-link
+//   bg-accent-hover     text-warning
+//   bg-accent-faint     text-danger
+//
+// The `brand-50..900` ramp is still available as utilities
+// (`bg-brand-600`) for places that need a fixed accent ramp
+// across themes (rare); prefer `bg-accent` for new code.
+
+export type ThemeMode = "light" | "dark" | "system";
+export type ResolvedTheme = "light" | "dark";
+
+export interface ThemeApi {
+  /** What's actively painted. Always "light" or "dark"; the
+   *  "system" mode resolves to one of these via the OS
+   *  preference. */
+  resolved: ResolvedTheme;
+  /** What the user picked. Three values: "light", "dark",
+   *  "system". When "system", `resolved` follows the OS. */
+  mode: ThemeMode;
+  /** Programmatic switch. Persists to localStorage host-side. */
+  setMode: (mode: ThemeMode) => void;
+}
+
+interface ThemeGlobalSlot {
+  __tianshuPluginSdkThemeHook__?: () => ThemeApi;
+}
+
+function themeSlot(): ThemeGlobalSlot {
+  return globalThis as unknown as ThemeGlobalSlot;
+}
+
+/** Host installs this once at bootstrap. The function it provides
+ *  is itself a React hook (zustand selector under the hood), so
+ *  plugin code can call `useTheme()` from inside their components
+ *  and re-render when the theme flips. */
+export function __installUseTheme(fn: () => ThemeApi): void {
+  themeSlot().__tianshuPluginSdkThemeHook__ = fn;
+}
+
+/** Test helper. */
+export function __resetUseThemeForTest(): void {
+  delete themeSlot().__tianshuPluginSdkThemeHook__;
+}
+
+/** Hook plugins call. Returns the live theme state; re-renders
+ *  the consuming component on theme change. */
+export function useTheme(): ThemeApi {
+  const fn = themeSlot().__tianshuPluginSdkThemeHook__;
+  if (!fn) {
+    // No-op fallback for tests / pre-install boot. Plugins
+    // calling useTheme before the host installs see "dark" —
+    // matches our installed-default behaviour.
+    return {
+      resolved: "dark",
+      mode: "system",
+      setMode: () => {},
+    };
+  }
+  return fn();
+}

@@ -480,15 +480,15 @@ function WorkboardPanel(_props: PanelProps) {
   const drag = ctrl.bindDrag();
 
   return (
-    <div className="flex flex-col h-full bg-gray-950 text-gray-100">
-      <header className="flex items-center justify-between px-3 py-2 border-b border-gray-800 flex-shrink-0">
+    <div className="flex flex-col h-full bg-bg-base text-fg-default">
+      <header className="flex items-center justify-between px-3 py-2 border-b border-border-subtle flex-shrink-0">
         <h2 className="flex items-center gap-1.5 font-semibold text-sm">
           <Kanban className="w-4 h-4" /> Tasks
         </h2>
         <button
           type="button"
           onClick={() => void ctrl.reload()}
-          className="text-[10px] uppercase tracking-wide text-gray-400 hover:text-gray-100"
+          className="text-[10px] uppercase tracking-wide text-fg-muted hover:text-fg-default"
         >
           Refresh
         </button>
@@ -510,7 +510,7 @@ function WorkboardPanel(_props: PanelProps) {
 
       <div className="flex-1 overflow-x-auto overflow-y-hidden">
         {ctrl.tasks === null ? (
-          <div className="flex items-center justify-center text-gray-500 py-8 h-full">
+          <div className="flex items-center justify-center text-fg-faint py-8 h-full">
             <Loader2 className="w-4 h-4 animate-spin" />
           </div>
         ) : (
@@ -592,16 +592,16 @@ function WorkboardAdminPage(_props: AdminPageProps) {
   const drag = ctrl.bindDrag();
 
   return (
-    <div className="flex flex-col h-full bg-gray-950 text-gray-100">
-      <header className="px-6 py-4 border-b border-gray-800 flex-shrink-0">
+    <div className="flex flex-col h-full bg-bg-base text-fg-default">
+      <header className="px-6 py-4 border-b border-border-subtle flex-shrink-0">
         <h1 className="text-xl font-semibold flex items-center gap-2">
           <Kanban className="w-5 h-5" /> Workboard
         </h1>
-        <p className="text-xs text-gray-500 mt-1 max-w-3xl">
+        <p className="text-xs text-fg-faint mt-1 max-w-3xl">
           Drag cards across columns. Click <Plus className="inline w-3 h-3 align-text-bottom" />{" "}
           on a column to add a task in place. Workers in the pool claim
           ready tasks and report back with a result summary.
-          <span className="text-gray-600">
+          <span className="text-fg-fainter">
             {" "}
             v0.2 ships an echo worker (30s sleep + reflect title) so the loop is
             visible end-to-end; real worker roles land in follow-up PRs.
@@ -631,7 +631,7 @@ function WorkboardAdminPage(_props: AdminPageProps) {
 
       <div className="flex-1 overflow-x-auto overflow-y-hidden">
         {ctrl.tasks === null ? (
-          <div className="flex items-center text-gray-500 py-12 justify-center h-full">
+          <div className="flex items-center text-fg-faint py-12 justify-center h-full">
             <Loader2 className="w-5 h-5 animate-spin" />
           </div>
         ) : (
@@ -748,7 +748,7 @@ function KanbanColumn({
           {column.label}
         </span>
         <span
-          className={`ml-auto ${compact ? "text-[10px]" : "text-[11px]"} text-gray-500`}
+          className={`ml-auto ${compact ? "text-[10px]" : "text-[11px]"} text-fg-faint`}
         >
           {tasks.length}
         </span>
@@ -757,7 +757,7 @@ function KanbanColumn({
             type="button"
             title="Add task"
             onClick={() => setShowAdd(true)}
-            className="p-0.5 text-gray-600 hover:text-gray-200 rounded"
+            className="p-0.5 text-fg-fainter hover:text-fg-default rounded"
           >
             <Plus className="w-3 h-3" />
           </button>
@@ -794,9 +794,9 @@ function KanbanColumn({
 
         {!showAdd && tasks.length === 0 && (
           <li
-            className={`text-center text-[10px] text-gray-600 py-3 ${
+            className={`text-center text-[10px] text-fg-fainter py-3 ${
               column.status === "ready"
-                ? "cursor-pointer hover:text-gray-400"
+                ? "cursor-pointer hover:text-fg-muted"
                 : ""
             }`}
             onClick={
@@ -883,17 +883,17 @@ function BoardCard({
         e.stopPropagation();
         if (hasMore) setExpanded((v) => !v);
       }}
-      className={`rounded border bg-gray-900/60 hover:border-gray-700 ${
+      className={`rounded border bg-gray-900/60 hover:border-border-default ${
         meta.blocked
           ? "border-indigo-500/40"
-          : "border-gray-800"
+          : "border-border-subtle"
       } ${hasMore ? "cursor-pointer" : "cursor-grab"} ${busy ? "opacity-60" : ""}`}
     >
       <div className="px-2 py-1.5 flex items-start gap-1.5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1 flex-wrap">
             <span
-              className={`${compact ? "text-[11.5px]" : "text-xs"} font-medium text-gray-100 break-words`}
+              className={`${compact ? "text-[11.5px]" : "text-xs"} font-medium text-fg-default break-words`}
             >
               {task.title}
             </span>
@@ -915,14 +915,14 @@ function BoardCard({
               // (kind id) without a workerAgentId. Show it so old
               // records aren't blank.
               <span
-                className="text-[9px] px-1 rounded bg-gray-800 text-gray-400"
+                className="text-[9px] px-1 rounded bg-bg-raised text-fg-muted"
                 title="Legacy: dispatched by kind, not pinned to a slug"
               >
                 {task.workerRole}
               </span>
             )}
             {task.project && task.project !== PROJECT_INBOX_KEY && (
-              <span className="text-[9px] px-1 rounded bg-gray-800 text-gray-400">
+              <span className="text-[9px] px-1 rounded bg-bg-raised text-fg-muted">
                 #{task.project}
               </span>
             )}
@@ -931,7 +931,7 @@ function BoardCard({
                 className={`inline-flex items-center gap-0.5 text-[9px] px-1 rounded border ${
                   meta.blocked
                     ? "text-indigo-200 bg-indigo-500/15 border-indigo-500/40"
-                    : "text-gray-400 bg-gray-700/30 border-gray-700"
+                    : "text-fg-muted bg-gray-700/30 border-border-default"
                 }`}
                 title={
                   meta.blocked
@@ -1057,7 +1057,7 @@ function BoardCard({
             </div>
           )}
           {task.description && !expanded && (
-            <div className="text-[10.5px] text-gray-400 mt-0.5 line-clamp-2 whitespace-pre-line">
+            <div className="text-[10.5px] text-fg-muted mt-0.5 line-clamp-2 whitespace-pre-line">
               {task.description}
             </div>
           )}
@@ -1068,19 +1068,19 @@ function BoardCard({
               → {task.resultSummary}
             </div>
           )}
-          <div className="text-[9.5px] text-gray-500 mt-0.5 flex items-center gap-1">
+          <div className="text-[9.5px] text-fg-faint mt-0.5 flex items-center gap-1">
             <Clock className="w-2.5 h-2.5" />
             {fmtRelative(task.endedAt ?? task.startedAt ?? task.createdAt)}
           </div>
         </div>
         {hasMore && (
           <ChevronDown
-            className={`w-3 h-3 mt-0.5 text-gray-500 shrink-0 transition-transform ${
+            className={`w-3 h-3 mt-0.5 text-fg-faint shrink-0 transition-transform ${
               expanded ? "rotate-180" : ""
             }`}
           />
         )}
-        {busy && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+        {busy && <Loader2 className="w-3 h-3 animate-spin text-fg-muted" />}
       </div>
       {expanded && (
         <div
@@ -1089,7 +1089,7 @@ function BoardCard({
         >
           {task.description && (
             <Section label="Description">
-              <div className="text-[10.5px] text-gray-300 whitespace-pre-line break-words max-h-48 overflow-y-auto">
+              <div className="text-[10.5px] text-fg-muted whitespace-pre-line break-words max-h-48 overflow-y-auto">
                 {task.description}
               </div>
             </Section>
@@ -1128,13 +1128,13 @@ function BoardCard({
                     <span
                       className={`truncate ${
                         d.status === "done"
-                          ? "text-gray-400 line-through"
+                          ? "text-fg-muted line-through"
                           : "text-indigo-200"
                       }`}
                     >
                       {d.title}
                     </span>
-                    <span className="ml-auto text-[9px] text-gray-600 shrink-0">
+                    <span className="ml-auto text-[9px] text-fg-fainter shrink-0">
                       {d.status.replace("_", " ")}
                     </span>
                   </li>
@@ -1142,17 +1142,17 @@ function BoardCard({
               </ul>
             </Section>
           )}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0 text-[9.5px] text-gray-500 pt-1">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0 text-[9.5px] text-fg-faint pt-1">
             <div>
               Created 
-              <span className="text-gray-300">
+              <span className="text-fg-muted">
                 {new Date(task.createdAt).toLocaleString()}
               </span>
             </div>
             {task.startedAt && (
               <div>
                 Started 
-                <span className="text-gray-300">
+                <span className="text-fg-muted">
                   {new Date(task.startedAt).toLocaleString()}
                 </span>
               </div>
@@ -1160,7 +1160,7 @@ function BoardCard({
             {task.endedAt && (
               <div>
                 Ended 
-                <span className="text-gray-300">
+                <span className="text-fg-muted">
                   {new Date(task.endedAt).toLocaleString()}
                 </span>
               </div>
@@ -1194,7 +1194,7 @@ function ExecutionSection({ task }: { task: Task }) {
             e.stopPropagation();
             setOpen(true);
           }}
-          className="inline-flex items-center gap-1.5 rounded border border-gray-700 px-1.5 py-0.5 text-[10px] text-gray-300 hover:border-gray-500 hover:bg-gray-800"
+          className="inline-flex items-center gap-1.5 rounded border border-border-default px-1.5 py-0.5 text-[10px] text-fg-muted hover:border-gray-500 hover:bg-bg-raised"
         >
           <ScrollText className="w-3 h-3" />
           View transcript
@@ -1305,7 +1305,7 @@ function ExecutionDialog({
       onClose={onClose}
       title={task.title}
       size="lg"
-      className="bg-gray-950"
+      className="bg-bg-base"
     >
       <div
         className="flex min-h-0 flex-1 flex-col"
@@ -1314,11 +1314,11 @@ function ExecutionDialog({
         // selection wins.
         onDragStart={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center gap-2 border-b border-gray-800 px-4 py-2 text-[10px] text-gray-500">
-          <ScrollText className="h-3.5 w-3.5 text-gray-500" />
+        <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-[10px] text-fg-faint">
+          <ScrollText className="h-3.5 w-3.5 text-fg-faint" />
           <span>worker transcript</span>
           {sessionId && (
-            <span className="font-mono text-gray-600">· {sessionId}</span>
+            <span className="font-mono text-fg-fainter">· {sessionId}</span>
           )}
           {task.status === "in_progress" && (
             <span className="flex items-center gap-1 text-amber-300">
@@ -1332,7 +1332,7 @@ function ExecutionDialog({
               type="button"
               onClick={() => void fetchHistory()}
               disabled={loading}
-              className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-200 disabled:opacity-50"
+              className="rounded p-1 text-fg-muted hover:bg-bg-raised hover:text-fg-default disabled:opacity-50"
               title="Refresh"
             >
               <RefreshCw
@@ -1353,10 +1353,10 @@ function ExecutionDialog({
             </div>
           )}
           {entries === null && loading && (
-            <div className="text-xs italic text-gray-500">Loading…</div>
+            <div className="text-xs italic text-fg-faint">Loading…</div>
           )}
           {entries !== null && merged.length === 0 && !loading && (
-            <div className="text-xs italic text-gray-500">
+            <div className="text-xs italic text-fg-faint">
               {task.sessionId
                 ? "No messages yet."
                 : "Worker hasn't started yet."}
@@ -1427,7 +1427,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
       <div
         className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}
       >
-        <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-gray-500">
+        <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-faint">
           {isUser ? (
             <User className="h-3 w-3" />
           ) : (
@@ -1435,7 +1435,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
           )}
           <span>{isUser ? "you" : row.role}</span>
           <span className="text-gray-700">·</span>
-          <span className="text-gray-600">
+          <span className="text-fg-fainter">
             {new Date(row.createdAt).toLocaleTimeString()}
           </span>
         </div>
@@ -1443,8 +1443,8 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
           <div
             className={`whitespace-pre-line break-words rounded-lg border px-3 py-2 text-[13px] leading-relaxed ${
               isUser
-                ? "border-brand-400/30 bg-brand-500/10 text-gray-100"
-                : "border-gray-800 bg-gray-900/60 text-gray-100"
+                ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
+                : "border-border-subtle bg-gray-900/60 text-fg-default"
             }`}
           >
             {row.text}
@@ -1482,8 +1482,8 @@ function ToolCallChip({
         onClick={() => !running && setExpanded((v) => !v)}
         className={`flex select-none items-center gap-1.5 py-0.5 text-xs ${
           running
-            ? "cursor-default text-gray-500"
-            : "cursor-pointer text-gray-500 hover:text-gray-300"
+            ? "cursor-default text-fg-faint"
+            : "cursor-pointer text-fg-faint hover:text-fg-muted"
         }`}
       >
         {running ? (
@@ -1496,15 +1496,15 @@ function ToolCallChip({
         <code className="font-mono text-[12px] text-blue-300">
           {call.toolName}
         </code>
-        <span className="font-mono text-[11px] text-gray-600">
+        <span className="font-mono text-[11px] text-fg-fainter">
           {summariseArgsJson(call.argsJson)}
         </span>
         {running ? (
-          <span className="text-[11px] text-gray-600">running…</span>
+          <span className="text-[11px] text-fg-fainter">running…</span>
         ) : expanded ? (
-          <ChevronDown className="h-3 w-3 text-gray-600" />
+          <ChevronDown className="h-3 w-3 text-fg-fainter" />
         ) : (
-          <ChevronRight className="h-3 w-3 text-gray-600" />
+          <ChevronRight className="h-3 w-3 text-fg-fainter" />
         )}
       </button>
       {expanded && result && (
@@ -1512,7 +1512,7 @@ function ToolCallChip({
           className={`mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] ${
             isError
               ? "border-rose-700/40 bg-rose-950/30 text-rose-200"
-              : "border-gray-800/60 bg-gray-900/60 text-gray-300"
+              : "border-gray-800/60 bg-gray-900/60 text-fg-muted"
           }`}
         >
           {truncateText(result.text || "(empty)", 4000)}
@@ -1563,7 +1563,7 @@ function Section({
 }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-wide text-gray-500 mb-0.5">
+      <div className="text-[9px] uppercase tracking-wide text-fg-faint mb-0.5">
         {label}
       </div>
       {children}
@@ -1689,13 +1689,13 @@ function AddTaskRow({
             }
           }}
           placeholder="Task title..."
-          className="flex-1 min-w-0 bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[11.5px] text-gray-100 outline-none focus:border-blue-500"
+          className="flex-1 min-w-0 bg-bg-raised border border-border-default rounded px-2 py-1 text-[11.5px] text-fg-default outline-none focus:border-blue-500"
         />
         <button
           type="button"
           title={showMore ? "Less" : "More fields"}
           onClick={() => setShowMore((v) => !v)}
-          className="p-0.5 text-gray-500 hover:text-gray-200"
+          className="p-0.5 text-fg-faint hover:text-fg-default"
         >
           <ChevronDown
             className={`w-3 h-3 transition-transform ${showMore ? "rotate-180" : ""}`}
@@ -1704,7 +1704,7 @@ function AddTaskRow({
         <button
           type="button"
           onClick={onCancel}
-          className="p-0.5 text-gray-500 hover:text-gray-200"
+          className="p-0.5 text-fg-faint hover:text-fg-default"
           title="Cancel"
         >
           <X className="w-3 h-3" />
@@ -1719,7 +1719,7 @@ function AddTaskRow({
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional notes for the worker..."
               rows={2}
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100 outline-none focus:border-blue-500 resize-y"
+              className="w-full bg-bg-raised border border-border-default rounded px-2 py-1 text-[11px] text-fg-default outline-none focus:border-blue-500 resize-y"
             />
           </FieldRow>
           <FieldRow label="Project">
@@ -1728,7 +1728,7 @@ function AddTaskRow({
               value={project}
               onChange={(e) => setProject(e.target.value)}
               placeholder="inbox"
-              className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100 outline-none focus:border-blue-500"
+              className="w-full bg-bg-raised border border-border-default rounded px-2 py-1 text-[11px] text-fg-default outline-none focus:border-blue-500"
             />
           </FieldRow>
           <div className="grid grid-cols-[1fr_72px] gap-2">
@@ -1738,7 +1738,7 @@ function AddTaskRow({
                 value={workerRole}
                 onChange={(e) => setWorkerRole(e.target.value)}
                 placeholder="any"
-                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100 outline-none focus:border-blue-500"
+                className="w-full bg-bg-raised border border-border-default rounded px-2 py-1 text-[11px] text-fg-default outline-none focus:border-blue-500"
               />
             </FieldRow>
             <FieldRow label="Priority">
@@ -1746,7 +1746,7 @@ function AddTaskRow({
                 type="number"
                 value={priority}
                 onChange={(e) => setPriority(Number(e.target.value) || 0)}
-                className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100 outline-none focus:border-blue-500"
+                className="w-full bg-bg-raised border border-border-default rounded px-2 py-1 text-[11px] text-fg-default outline-none focus:border-blue-500"
               />
             </FieldRow>
           </div>
@@ -1772,7 +1772,7 @@ function AddTaskRow({
       )}
 
       <div className="flex items-center gap-1 pt-1">
-        <span className="text-[9.5px] text-gray-600 truncate">
+        <span className="text-[9.5px] text-fg-fainter truncate">
           {showMore ? "Enter saves" : "Enter · Esc cancel"}
         </span>
         <button
@@ -1797,7 +1797,7 @@ function FieldRow({
 }) {
   return (
     <label className="block">
-      <span className="block text-[9px] uppercase tracking-wide text-gray-500 mb-0.5">
+      <span className="block text-[9px] uppercase tracking-wide text-fg-faint mb-0.5">
         {label}
       </span>
       {children}
@@ -1880,7 +1880,7 @@ function DependencyPicker({
                 <button
                   type="button"
                   onClick={() => remove(id)}
-                  className="text-gray-400 hover:text-gray-100"
+                  className="text-fg-muted hover:text-fg-default"
                   title="Remove"
                 >
                   <X className="w-2.5 h-2.5" />
@@ -1900,7 +1900,7 @@ function DependencyPicker({
             e.target.value = "";
           }
         }}
-        className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-[11px] text-gray-100 outline-none focus:border-blue-500"
+        className="w-full bg-bg-raised border border-border-default rounded px-2 py-1 text-[11px] text-fg-default outline-none focus:border-blue-500"
       >
         <option value="">
           {filtered.length === 0
@@ -1935,7 +1935,7 @@ function ProjectChips({
   rightExtras?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-800 bg-gray-950/40 overflow-x-auto scrollbar-none flex-shrink-0">
+    <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border-subtle bg-gray-950/40 overflow-x-auto scrollbar-none flex-shrink-0">
       {showAll && (
         <Chip
           active={!active}
@@ -1976,11 +1976,11 @@ function Chip({
         "shrink-0 inline-flex items-center gap-1 rounded-full text-[11px] transition-colors px-2.5 py-0.5",
         active
           ? "bg-blue-500/20 border border-blue-400/50 text-blue-200"
-          : "text-gray-400 hover:text-gray-200 hover:bg-gray-800/60 border border-transparent",
+          : "text-fg-muted hover:text-fg-default hover:bg-gray-800/60 border border-transparent",
       ].join(" ")}
     >
       <span>{label}</span>
-      <span className={active ? "text-blue-300/80" : "text-gray-600"}>
+      <span className={active ? "text-blue-300/80" : "text-fg-fainter"}>
         {count}
       </span>
     </button>
@@ -1996,15 +1996,15 @@ function WorkerStatusRow({
 }) {
   if (!snapshot) {
     return (
-      <div className="px-6 py-1.5 border-b border-gray-800 text-[11px] text-gray-500 flex-shrink-0">
+      <div className="px-6 py-1.5 border-b border-border-subtle text-[11px] text-fg-faint flex-shrink-0">
         Workers: loading...
       </div>
     );
   }
   return (
-    <div className="px-6 py-1.5 border-b border-gray-800 text-[11px] flex items-center gap-2 text-gray-300 flex-wrap flex-shrink-0">
-      <Hammer className="w-3 h-3 text-gray-500" />
-      <span className="text-gray-500">Worker types:</span>
+    <div className="px-6 py-1.5 border-b border-border-subtle text-[11px] flex items-center gap-2 text-fg-muted flex-wrap flex-shrink-0">
+      <Hammer className="w-3 h-3 text-fg-faint" />
+      <span className="text-fg-faint">Worker types:</span>
       {snapshot.workers.map((w) => (
         <span
           key={w.agentId}
@@ -2012,7 +2012,7 @@ function WorkerStatusRow({
           className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border font-mono uppercase tracking-wide ${
             w.busy
               ? "bg-blue-900/40 border-blue-700 text-blue-100"
-              : "bg-gray-900 border-gray-700 text-gray-400"
+              : "bg-bg-elevated border-border-default text-fg-muted"
           }`}
         >
           {w.busy ? (
@@ -2024,7 +2024,7 @@ function WorkerStatusRow({
         </span>
       ))}
       {snapshot.running.length > 0 && (
-        <span className="text-gray-500">
+        <span className="text-fg-faint">
           running {snapshot.running.length} task
           {snapshot.running.length === 1 ? "" : "s"}
         </span>
@@ -2032,7 +2032,7 @@ function WorkerStatusRow({
       <button
         type="button"
         onClick={onNudge}
-        className="ml-auto text-[10px] uppercase tracking-wide text-gray-400 hover:text-gray-100"
+        className="ml-auto text-[10px] uppercase tracking-wide text-fg-muted hover:text-fg-default"
       >
         Nudge pool
       </button>
@@ -2102,21 +2102,21 @@ function TaskModal({
       onClose={onClose}
       size="md"
       hideHeader
-      className="bg-gray-950"
+      className="bg-bg-base"
     >
       <div className="flex min-h-0 flex-1 flex-col">
-        <header className="px-4 py-3 border-b border-gray-800 flex flex-col gap-1">
+        <header className="px-4 py-3 border-b border-border-subtle flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase text-gray-500 tracking-wide">
+            <span className="text-[10px] uppercase text-fg-faint tracking-wide">
               Task
             </span>
-            <span className="text-[10px] text-gray-600 font-mono truncate">
+            <span className="text-[10px] text-fg-fainter font-mono truncate">
               {task.id}
             </span>
             <button
               type="button"
               onClick={onClose}
-              className="ml-auto p-1 rounded text-gray-400 hover:text-gray-100 hover:bg-gray-800"
+              className="ml-auto p-1 rounded text-fg-muted hover:text-fg-default hover:bg-bg-raised"
             >
               <X className="w-4 h-4" />
             </button>
@@ -2126,11 +2126,11 @@ function TaskModal({
               className="flex items-center gap-1.5"
               title="Microsandbox VM bound to this task. Running while the worker is active, stopped after release (disk preserved), removed when the task is deleted."
             >
-              <span className="text-[10px] uppercase text-gray-500 tracking-wide">
+              <span className="text-[10px] uppercase text-fg-faint tracking-wide">
                 Sandbox
               </span>
               <code
-                className="text-[10px] text-gray-500 font-mono truncate cursor-pointer hover:text-gray-300"
+                className="text-[10px] text-fg-faint font-mono truncate cursor-pointer hover:text-fg-muted"
                 onClick={(e) => {
                   if (!task.sandboxName) return;
                   void navigator.clipboard
@@ -2154,63 +2154,63 @@ function TaskModal({
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
               Title
             </label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-2 py-1.5 bg-gray-900 border border-gray-700 rounded outline-none focus:border-blue-600"
+              className="w-full px-2 py-1.5 bg-bg-elevated border border-border-default rounded outline-none focus:border-blue-600"
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
               Description
             </label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={4}
-              className="w-full px-2 py-1.5 bg-gray-900 border border-gray-700 rounded outline-none focus:border-blue-600 resize-y"
+              className="w-full px-2 py-1.5 bg-bg-elevated border border-border-default rounded outline-none focus:border-blue-600 resize-y"
             />
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+              <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
                 Project
               </label>
               <input
                 value={project}
                 onChange={(e) => setProject(e.target.value)}
                 placeholder={PROJECT_INBOX_KEY}
-                className="w-full px-2 py-1.5 bg-gray-900 border border-gray-700 rounded outline-none focus:border-blue-600"
+                className="w-full px-2 py-1.5 bg-bg-elevated border border-border-default rounded outline-none focus:border-blue-600"
               />
             </div>
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+              <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
                 Priority
               </label>
               <input
                 type="number"
                 value={priority}
                 onChange={(e) => setPriority(Number(e.target.value) || 0)}
-                className="w-full px-2 py-1.5 bg-gray-900 border border-gray-700 rounded outline-none focus:border-blue-600"
+                className="w-full px-2 py-1.5 bg-bg-elevated border border-border-default rounded outline-none focus:border-blue-600"
               />
             </div>
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+              <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
                 Worker role
               </label>
               <input
                 value={workerRole}
                 onChange={(e) => setWorkerRole(e.target.value)}
                 placeholder="any"
-                className="w-full px-2 py-1.5 bg-gray-900 border border-gray-700 rounded outline-none focus:border-blue-600"
+                className="w-full px-2 py-1.5 bg-bg-elevated border border-border-default rounded outline-none focus:border-blue-600"
               />
             </div>
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
               Status
             </label>
             <div className="flex flex-wrap gap-1">
@@ -2223,7 +2223,7 @@ function TaskModal({
                   className={`text-[10px] px-2 py-1 rounded border ${
                     s === task.status
                       ? "bg-blue-700/40 border-blue-600 text-blue-100 cursor-default"
-                      : "border-gray-700 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                      : "border-border-default text-fg-muted hover:bg-bg-raised hover:text-fg-default"
                   } disabled:cursor-not-allowed`}
                 >
                   {s.replace("_", " ")}
@@ -2232,7 +2232,7 @@ function TaskModal({
             </div>
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+            <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
               Depends on
             </label>
             <DependencyPicker
@@ -2245,25 +2245,25 @@ function TaskModal({
           </div>
           {task.resultSummary && (
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+              <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
                 Result
               </label>
-              <div className="bg-gray-900 border border-gray-800 rounded px-2 py-1.5 text-emerald-200 italic whitespace-pre-line">
+              <div className="bg-bg-elevated border border-border-subtle rounded px-2 py-1.5 text-emerald-200 italic whitespace-pre-line">
                 {task.resultSummary}
               </div>
             </div>
           )}
-          <div className="grid grid-cols-3 gap-2 text-[10px] text-gray-500 border-t border-gray-800 pt-2">
+          <div className="grid grid-cols-3 gap-2 text-[10px] text-fg-faint border-t border-border-subtle pt-2">
             <div>
               Created
-              <div className="text-gray-300">
+              <div className="text-fg-muted">
                 {new Date(task.createdAt).toLocaleString()}
               </div>
             </div>
             {task.startedAt && (
               <div>
                 Started
-                <div className="text-gray-300">
+                <div className="text-fg-muted">
                   {new Date(task.startedAt).toLocaleString()}
                 </div>
               </div>
@@ -2271,7 +2271,7 @@ function TaskModal({
             {task.endedAt && (
               <div>
                 Ended
-                <div className="text-gray-300">
+                <div className="text-fg-muted">
                   {new Date(task.endedAt).toLocaleString()}
                 </div>
               </div>
@@ -2279,7 +2279,7 @@ function TaskModal({
           </div>
         </div>
 
-        <footer className="px-4 py-3 border-t border-gray-800 flex items-center gap-2">
+        <footer className="px-4 py-3 border-t border-border-subtle flex items-center gap-2">
           <button
             type="button"
             disabled={busy}
@@ -2299,7 +2299,7 @@ function TaskModal({
           <button
             type="button"
             onClick={onClose}
-            className="ml-auto px-3 py-1 text-[11px] rounded border border-gray-700 text-gray-300 hover:bg-gray-800"
+            className="ml-auto px-3 py-1 text-[11px] rounded border border-border-default text-fg-muted hover:bg-bg-raised"
           >
             Cancel
           </button>
@@ -2360,17 +2360,17 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
   return (
     <div className="px-3 py-2">
       <div className="mb-2 flex items-center gap-2">
-        <Zap size={14} className="flex-shrink-0 text-gray-600" />
-        <span className="flex-1 text-sm font-medium text-gray-300">
+        <Zap size={14} className="flex-shrink-0 text-fg-fainter" />
+        <span className="flex-1 text-sm font-medium text-fg-muted">
           Workers
         </span>
-        <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[9px] text-gray-600">
+        <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[9px] text-fg-fainter">
           {busyCount}/{realWorkers.length} busy
         </span>
       </div>
       <div className="space-y-1.5">
         {realWorkers.length === 0 ? (
-          <div className="text-[10px] text-gray-600 px-1">
+          <div className="text-[10px] text-fg-fainter px-1">
             No workers running. Toggle echo on under Settings → Plugins →
             Workboard.
           </div>
@@ -2412,18 +2412,18 @@ function SidebarWorkerRow({
     >
       <span className="w-5 flex-shrink-0 text-center text-base">{emoji}</span>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-xs font-medium text-gray-200">
+        <div className="truncate text-xs font-medium text-fg-default">
           {name}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="truncate rounded bg-gray-800/80 px-1 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-gray-400">
+          <span className="truncate rounded bg-gray-800/80 px-1 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-fg-muted">
             {kind}
           </span>
           <span
             className={`rounded px-1 py-px text-[9px] ${
               busy
                 ? "bg-blue-900/40 text-blue-100 border border-blue-700"
-                : "bg-gray-800/60 text-gray-600"
+                : "bg-gray-800/60 text-fg-fainter"
             }`}
           >
             {busy ? "busy" : "idle"}

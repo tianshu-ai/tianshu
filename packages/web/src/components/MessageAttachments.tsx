@@ -91,12 +91,12 @@ export default function MessageAttachments({
         return (
           <div
             key={a.path}
-            className="flex items-center gap-1.5 rounded-md border border-gray-800 bg-gray-900/60 px-2 py-1 text-xs text-gray-200"
+            className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-gray-900/60 px-2 py-1 text-xs text-fg-default"
             title={a.path}
           >
-            <FileIcon size={12} className="text-gray-400" />
+            <FileIcon size={12} className="text-fg-muted" />
             <span className="max-w-[12rem] truncate">{a.name ?? a.path}</span>
-            <span className="text-[10px] text-gray-500">{formatSize(a.size)}</span>
+            <span className="text-[10px] text-fg-faint">{formatSize(a.size)}</span>
           </div>
         );
       })}

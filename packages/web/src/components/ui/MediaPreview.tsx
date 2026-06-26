@@ -42,7 +42,7 @@ export interface AudioPreviewProps {
 
 export function AudioPreview({ src, className = "" }: AudioPreviewProps) {
   return (
-    <div className={`flex min-h-0 flex-1 items-center justify-center bg-gray-950 p-6 ${className}`}>
+    <div className={`flex min-h-0 flex-1 items-center justify-center bg-bg-base p-6 ${className}`}>
       <audio src={src} controls className="w-full max-w-2xl">
         <track kind="captions" />
       </audio>

@@ -117,9 +117,9 @@ function fileIcon(e: DirEntry) {
   if (STRUCT_EXTS.has(ext)) return <FileSpreadsheet size={16} className="text-orange-400" />;
   if (VIDEO_EXTS.has(ext)) return <Film size={16} className="text-purple-400" />;
   if (AUDIO_EXTS.has(ext)) return <Music size={16} className="text-pink-400" />;
-  if (ARCHIVE_EXTS.has(ext)) return <Archive size={16} className="text-gray-400" />;
-  if (TEXT_EXTS.has(ext)) return <FileText size={16} className="text-gray-300" />;
-  return <File size={16} className="text-gray-500" />;
+  if (ARCHIVE_EXTS.has(ext)) return <Archive size={16} className="text-fg-muted" />;
+  if (TEXT_EXTS.has(ext)) return <FileText size={16} className="text-fg-muted" />;
+  return <File size={16} className="text-fg-faint" />;
 }
 
 function formatSize(bytes: number): string {
@@ -210,15 +210,15 @@ function FilesPanel({ plugin }: PanelProps) {
   const breadcrumbs = dir === "/" ? ["/"] : ["/", ...dir.split("/").filter(Boolean)];
 
   return (
-    <div className="flex h-full flex-col bg-gray-950 text-gray-300">
+    <div className="flex h-full flex-col bg-bg-base text-fg-muted">
       {/* Toolbar — breadcrumbs */}
-      <div className="space-y-2 border-b border-gray-800 px-3 py-2">
+      <div className="space-y-2 border-b border-border-subtle px-3 py-2">
         <div className="flex items-center gap-1 overflow-x-auto text-sm">
           {dir !== "/" && (
             <button
               type="button"
               onClick={() => navigate(dir.substring(0, dir.lastIndexOf("/")) || "/")}
-              className="mr-1 shrink-0 text-gray-500 hover:text-gray-300"
+              className="mr-1 shrink-0 text-fg-faint hover:text-fg-muted"
               title="Up one level"
             >
               <ArrowLeft size={14} />
@@ -229,13 +229,13 @@ function FilesPanel({ plugin }: PanelProps) {
             const isLast = i === breadcrumbs.length - 1;
             return (
               <span key={i} className="flex shrink-0 items-center">
-                {i > 0 && <ChevronRight size={12} className="mx-0.5 text-gray-600" />}
+                {i > 0 && <ChevronRight size={12} className="mx-0.5 text-fg-fainter" />}
                 <button
                   type="button"
                   onClick={() => navigate(path)}
                   className={[
                     "rounded px-1 hover:text-white",
-                    isLast ? "font-medium text-white" : "text-gray-500",
+                    isLast ? "font-medium text-white" : "text-fg-faint",
                   ].join(" ")}
                 >
                   {i === 0 ? "~" : part}
@@ -250,20 +250,20 @@ function FilesPanel({ plugin }: PanelProps) {
           <div className="relative flex-1">
             <Search
               size={14}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-500"
+              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint"
             />
             <input
               type="text"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter files..."
-              className="w-full rounded border border-gray-800 bg-gray-900 py-1 pl-8 pr-2 text-sm text-gray-300 placeholder-gray-600 focus:border-gray-600 focus:outline-none"
+              className="w-full rounded border border-border-subtle bg-bg-elevated py-1 pl-8 pr-2 text-sm text-fg-muted placeholder-gray-600 focus:border-border-strong focus:outline-none"
             />
           </div>
           <button
             type="button"
             onClick={() => fetchList(dir)}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+            className="rounded p-1.5 text-fg-muted hover:bg-bg-raised hover:text-fg-default"
             title="Refresh"
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
@@ -271,7 +271,7 @@ function FilesPanel({ plugin }: PanelProps) {
           <button
             type="button"
             onClick={() => setView(view === "list" ? "grid" : "list")}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-800 hover:text-gray-200"
+            className="rounded p-1.5 text-fg-muted hover:bg-bg-raised hover:text-fg-default"
             title="Toggle view"
           >
             {view === "list" ? <LayoutGrid size={14} /> : <LayoutList size={14} />}
@@ -281,25 +281,25 @@ function FilesPanel({ plugin }: PanelProps) {
 
       {/* Sort header (list view only) */}
       {view === "list" && (
-        <div className="flex select-none items-center border-b border-gray-800/50 px-3 py-1 text-xs text-gray-500">
+        <div className="flex select-none items-center border-b border-gray-800/50 px-3 py-1 text-xs text-fg-faint">
           <button
             type="button"
             onClick={() => toggleSort("name")}
-            className="flex flex-1 items-center gap-1 text-left hover:text-gray-300"
+            className="flex flex-1 items-center gap-1 text-left hover:text-fg-muted"
           >
             Name {sortKey === "name" && <ArrowUpDown size={10} />}
           </button>
           <button
             type="button"
             onClick={() => toggleSort("size")}
-            className="flex w-20 items-center justify-end gap-1 text-right hover:text-gray-300"
+            className="flex w-20 items-center justify-end gap-1 text-right hover:text-fg-muted"
           >
             Size {sortKey === "size" && <ArrowUpDown size={10} />}
           </button>
           <button
             type="button"
             onClick={() => toggleSort("modified")}
-            className="flex w-24 items-center justify-end gap-1 text-right hover:text-gray-300"
+            className="flex w-24 items-center justify-end gap-1 text-right hover:text-fg-muted"
           >
             Modified {sortKey === "modified" && <ArrowUpDown size={10} />}
           </button>
@@ -310,12 +310,12 @@ function FilesPanel({ plugin }: PanelProps) {
       <div className="flex-1 overflow-auto">
         {loading && !list ? (
           <div className="flex h-32 items-center justify-center">
-            <Loader2 size={20} className="animate-spin text-gray-500" />
+            <Loader2 size={20} className="animate-spin text-fg-faint" />
           </div>
         ) : error ? (
           <div className="p-4 text-center text-sm text-rose-400">{error}</div>
         ) : filtered.length === 0 ? (
-          <div className="p-8 text-center text-sm text-gray-600">
+          <div className="p-8 text-center text-sm text-fg-fainter">
             {filter ? "No matching files" : "Empty directory"}
           </div>
         ) : view === "list" ? (
@@ -333,10 +333,10 @@ function FilesPanel({ plugin }: PanelProps) {
                   {fileIcon(e)}
                   <span className="truncate text-sm">{e.name}</span>
                 </div>
-                <span className="w-20 text-right text-xs text-gray-500">
+                <span className="w-20 text-right text-xs text-fg-faint">
                   {e.type === "file" ? formatSize(e.size) : "—"}
                 </span>
-                <span className="w-24 text-right text-xs text-gray-500">
+                <span className="w-24 text-right text-xs text-fg-faint">
                   {formatModified(e.modifiedMs)}
                 </span>
               </li>
@@ -463,7 +463,7 @@ function FilePreviewModal({
       <div className="flex min-h-0 flex-1 flex-col">
         {/* Sub-header with file metadata + icon. Modal already
             owns the close button + name in its own header. */}
-        <div className="flex items-center gap-2 border-b border-gray-800 px-4 py-2 text-[11px] text-gray-500">
+        <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-[11px] text-fg-faint">
           {fileIcon(entry)}
           <span>
             {formatSize(entry.size)} · {formatModified(entry.modifiedMs)}
@@ -476,7 +476,7 @@ function FilePreviewModal({
             outer overflow-auto would steal the bounded height
             from inline iframes (PDF / HTML) and collapse them
             to content height. */}
-        <div className="flex min-h-0 flex-1 flex-col bg-gray-950">
+        <div className="flex min-h-0 flex-1 flex-col bg-bg-base">
           <DocumentViewer
             content={data && !data.binary ? data.content ?? "" : null}
             filename={entry.name}
@@ -553,7 +553,7 @@ function UploadButton(props: ComposerActionProps) {
         onClick={click}
         title="Attach file"
         aria-label="Attach file"
-        className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-gray-200"
+        className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-gray-700 hover:text-fg-default"
       >
         <Paperclip size={16} />
       </button>
@@ -633,7 +633,7 @@ function ImageAttachment({ attachment, rawUrl }: AttachmentRendererProps) {
       target="_blank"
       rel="noreferrer"
       title={label}
-      className="overflow-hidden rounded-md border border-gray-800 bg-gray-900/60"
+      className="overflow-hidden rounded-md border border-border-subtle bg-gray-900/60"
     >
       <img
         src={url}
@@ -649,12 +649,12 @@ function FileAttachment({ attachment }: AttachmentRendererProps) {
   const label = attachment.name ?? attachment.path;
   return (
     <div
-      className="flex items-center gap-1.5 rounded-md border border-gray-800 bg-gray-900/60 px-2 py-1 text-xs text-gray-200"
+      className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-gray-900/60 px-2 py-1 text-xs text-fg-default"
       title={attachment.path}
     >
-      <File size={12} className="text-gray-400" />
+      <File size={12} className="text-fg-muted" />
       <span className="max-w-[12rem] truncate">{label}</span>
-      <span className="text-[10px] text-gray-500">
+      <span className="text-[10px] text-fg-faint">
         {formatSize(attachment.size ?? 0)}
       </span>
     </div>
