@@ -112,32 +112,60 @@ const plugin: PluginServerModule = {
           }
           try {
             const resp = await getQrCodeStatus({ qrcode: body.qrcode });
-            if (!resp.token) {
-              // Not yet confirmed; admin UI keeps polling.
-              res.json({ ok: true, scanned: false });
+            const status = resp.status ?? "wait";
+
+            // Terminal success: token issued. Persist a binding
+            // + start its adapter in one capability call.
+            if (status === "confirmed" && resp.bot_token) {
+              const display =
+                body.displayName?.trim() ||
+                resp.username?.trim() ||
+                resp.ilink_user_id ||
+                "WeChat";
+              const binding = await bindings.create({
+                channelId: "wechat",
+                pluginId: "wechat",
+                displayName: display,
+                config: {
+                  token: resp.bot_token,
+                  ilinkUserId: resp.ilink_user_id,
+                  username: resp.username ?? resp.ilink_user_id,
+                },
+                enabled: true,
+              });
+              res.json({ ok: true, scanned: true, status: "confirmed", binding });
               return;
             }
-            // Got a token. Persist a binding + start its adapter
-            // in one capability call. The host writes the row,
-            // updates status to "running" if start() succeeds,
-            // or "error" + status_detail if it doesn't. Either
-            // way the row sticks around for admin visibility.
-            const display =
-              body.displayName?.trim() ||
-              resp.username?.trim() ||
-              "WeChat";
-            const binding = await bindings.create({
-              channelId: "wechat",
-              pluginId: "wechat",
-              displayName: display,
-              config: {
-                token: resp.token,
-                ilinkUserId: resp.username,
-                username: resp.username,
-              },
-              enabled: true,
-            });
-            res.json({ ok: true, scanned: true, binding });
+
+            // Terminal failure: QR expired or pairing blocked.
+            if (status === "expired" || status === "verify_code_blocked") {
+              res.status(410).json({
+                ok: false,
+                scanned: false,
+                status,
+                error:
+                  status === "expired"
+                    ? "QR code expired; refresh and try again."
+                    : "Too many failed pairing attempts; try again later.",
+              });
+              return;
+            }
+
+            // Unsupported v0 paths: pairing-code prompt + host
+            // redirect. Surface as errors for now; UI tells admin
+            // to retry.
+            if (status === "need_verifycode" || status === "scaned_but_redirect") {
+              res.json({
+                ok: false,
+                scanned: false,
+                status,
+                error: `wechat login path not implemented yet: ${status}`,
+              });
+              return;
+            }
+
+            // Intermediate states ("wait", "scaned") — admin UI keeps polling.
+            res.json({ ok: true, scanned: false, status });
           } catch (err) {
             res.status(502).json({
               ok: false,
