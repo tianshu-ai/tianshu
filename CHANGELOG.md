@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.35](https://github.com/tianshu-ai/tianshu/compare/v0.3.34...v0.3.35) (2026-06-26)
+
+### Bug Fixes
+
+* **workboard:** task result summary italic block was using
+  `text-emerald-300/200` (dark theme designed). On light theme
+  the card is white and pale green text was barely visible.
+  Switched to the `text-success` token so contrast is correct
+  on both themes. Same fix applied to delivery-file links and
+  agent-selection pills that used the same emerald palette.
+
 ## [0.3.34](https://github.com/tianshu-ai/tianshu/compare/v0.3.33...v0.3.34) (2026-06-26)
 
 ### Bug Fixes
