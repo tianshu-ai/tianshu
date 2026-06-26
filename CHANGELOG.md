@@ -6,6 +6,28 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.36](https://github.com/tianshu-ai/tianshu/compare/v0.3.35...v0.3.36) (2026-06-26)
+
+### Features
+
+* **channels:** chat-platform channel system. Plugins can now
+  contribute a `ChannelAdapter` through plugin-sdk's new
+  `contributes.channels[]` + `exports.channels` surface. Host
+  wires hub + router + adapter manager + bindings CRUD.
+* **channels:** WeChat (微信) channel plugin via Tencent's iLink
+  bot API. Two admin routes drive QR login; adapter does
+  long-poll inbound with per-user context_token caching.
+* **chat:** `runPrompt` accepts an optional `session` so non-WS
+  callers (channel router) can drive the agent loop against a
+  caller-supplied session row.
+
+## [0.3.35](https://github.com/tianshu-ai/tianshu/compare/v0.3.34...v0.3.35) (2026-06-26)
+
+### Bug Fixes
+
+* **workboard:** task result summary italic block uses the
+  text-success token so it reads on both themes.
+
 ## [0.3.34](https://github.com/tianshu-ai/tianshu/compare/v0.3.33...v0.3.34) (2026-06-26)
 
 ### Bug Fixes
