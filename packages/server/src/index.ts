@@ -44,8 +44,13 @@ import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
 import {
   ChannelAdapterManager,
+  createBinding,
+  deleteBinding,
+  getBinding,
+  listBindingsForTenant,
   startChannelRouter,
 } from "./channels/index.js";
+import type { ChannelBindingsCapability } from "@tianshu-ai/plugin-sdk";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -102,6 +107,13 @@ const mcpManager = new McpManager();
 // Forward-declared so the host.agentLoop factory can close over it
 // before construction; assigned right below.
 let pluginRegistry: PluginRegistry;
+// Same forward-decl trick for the channel adapter manager: host
+// capability factories (host.channelBindings) close over it before
+// it's constructed below. Assigning later is safe because the
+// closures only resolve `channelManager` at call time — after
+// `pluginRegistry` has been built and the adapter manager has been
+// instantiated.
+let channelManager: ChannelAdapterManager;
 pluginRegistry = new PluginRegistry({
   resolver: reloadingResolver,
   mcpManager,
@@ -252,8 +264,68 @@ pluginRegistry = new PluginRegistry({
       };
       return runner;
     },
+    // Channel-binding admin surface for channel plugins. Plugins
+    // contribute an adapter through `contributes.channels[]`;
+    // when their login flow succeeds they call .create() here so
+    // the host both persists the binding row AND starts the
+    // adapter in one step. No "register row then somehow nudge
+    // the manager" two-step.
+    "host.channelBindings": (ctx): ChannelBindingsCapability => ({
+      async create(input) {
+        const row = createBinding(ctx.db, {
+          tenantId: ctx.tenantId,
+          channelId: input.channelId,
+          pluginId: input.pluginId,
+          displayName: input.displayName,
+          config: input.config,
+          enabled: input.enabled,
+        });
+        if (row.enabled) {
+          // Best-effort start; if the adapter throws, the row
+          // remains so the admin can retry / debug. setBindingStatus
+          // inside startBinding records the error.
+          await channelManager.startBinding(row.id).catch((err) => {
+            console.warn(
+              `[host.channelBindings] startBinding(${row.id}) failed: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          });
+        }
+        return toView(row);
+      },
+      list(opts) {
+        const rows = listBindingsForTenant(ctx.db, ctx.tenantId).filter(
+          (r) => (opts?.channelId ? r.channelId === opts.channelId : true),
+        );
+        return rows.map(toView);
+      },
+      async delete(bindingId) {
+        const row = getBinding(ctx.db, bindingId);
+        if (!row || row.tenantId !== ctx.tenantId) return false;
+        await channelManager.stopBinding(bindingId).catch(() => {});
+        deleteBinding(ctx.db, bindingId);
+        return true;
+      },
+    }),
   },
 });
+
+function toView(row: import("./channels/index.js").ChannelBinding): import("@tianshu-ai/plugin-sdk").ChannelBindingView {
+  return {
+    id: row.id,
+    tenantId: row.tenantId,
+    channelId: row.channelId,
+    pluginId: row.pluginId,
+    displayName: row.displayName,
+    enabled: row.enabled,
+    status: row.status,
+    statusDetail: row.statusDetail,
+    config: row.config,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
 
 // Catalog client — fetches the list of installable plugins from the
 // `tianshu-ai/plugin-registry` repo. Override URL via
@@ -800,7 +872,7 @@ const spaHosted = Boolean(
 // We boot the manager AFTER server.listen() so it can use the
 // already-up plugin registry, but BEFORE accepting traffic, all
 // existing-binding adapters are at least attempted.
-const channelManager = new ChannelAdapterManager({
+channelManager = new ChannelAdapterManager({
   globalOps,
   resolveFactory: (pluginId, channelId) => {
     const found = pluginRegistry.channelFactoryFor(pluginId, channelId);

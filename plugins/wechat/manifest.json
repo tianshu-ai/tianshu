@@ -7,6 +7,7 @@
   "license": "MIT",
   "permissions": ["network.external"],
   "server": { "entry": "@tianshu-builtin/plugin-wechat/server" },
+  "client": { "entry": "@tianshu-builtin/plugin-wechat/client" },
   "contributes": {
     "channels": [
       {
@@ -16,28 +17,21 @@
         "since": "0.3.36"
       }
     ],
+    "adminPages": [
+      {
+        "id": "main",
+        "displayName": "WeChat",
+        "icon": "MessageSquare",
+        "component": "WeChatAdminPage",
+        "group": "Channels",
+        "order": 100
+      }
+    ],
     "apiRoutes": [
       { "method": "POST", "path": "/login/start", "handler": "loginStart" },
       { "method": "POST", "path": "/login/poll", "handler": "loginPoll" },
-      { "method": "GET", "path": "/status", "handler": "getStatus" }
-    ]
-  },
-  "configSchema": {
-    "fields": [
-      {
-        "key": "baseUrl",
-        "label": "iLink API base URL",
-        "kind": "string",
-        "default": "https://ilinkai.weixin.qq.com",
-        "description": "Override only when Tencent changes the API host. Leave default in production."
-      },
-      {
-        "key": "botAgent",
-        "label": "Bot agent (analytics tag)",
-        "kind": "string",
-        "default": "tianshu",
-        "description": "Identifies your bot in Tencent's iLink logs (analogous to HTTP User-Agent)."
-      }
+      { "method": "GET", "path": "/bindings", "handler": "listBindings" },
+      { "method": "DELETE", "path": "/bindings/:id", "handler": "deleteBinding" }
     ]
   }
 }

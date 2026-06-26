@@ -1,29 +1,42 @@
-// Server-side entrypoint for the WeChat channel plugin.
+// WeChat channel plugin — server entry.
 //
-// What this file does:
-//   1. Exports a ChannelAdapterFactory under `channels.WeChatChannel`.
-//      The host's adapter manager instantiates it once per binding
-//      row (each binding == one logged-in WeChat account).
-//   2. Exposes three admin routes for the login flow:
-//        POST /api/p/wechat/login/start { tenantId? }
-//          → returns { qrcode, qrCodeImageUrl }
-//        POST /api/p/wechat/login/poll  { qrcode, bindingId?, tenantId? }
-//          → long-polls Tencent's QR-status endpoint, persists the
-//            resulting token onto the binding's state-dir, and
-//            updates the binding row (creating one if missing).
-//        GET  /api/p/wechat/status
-//          → diagnostic snapshot for the admin UI.
+// User-facing surface is a single admin page (contributed via
+// manifest as `WeChatAdminPage`). The page calls these four
+// routes:
 //
-// The plugin assumes channel system support (channels: section in
-// manifest, channelFactoryFor on PluginRegistry, adapter manager
-// running) is already wired by the host. It does NOT activate the
-// adapter itself — admin does that via the channel bindings CRUD
-// once a token exists.
+//   POST /api/p/wechat/login/start
+//     → { ok, qrcode, qrCodeImageUrl }
+//     Calls Tencent's iLink `get_bot_qrcode`. The QR id (`qrcode`)
+//     is the cursor for the subsequent long-poll.
+//
+//   POST /api/p/wechat/login/poll  { qrcode, displayName? }
+//     → { ok, scanned: true, binding } | { ok, scanned: false }
+//     Long-polls `get_qrcode_status`. On scan success, creates a
+//     channel_bindings row through host.channelBindings AND
+//     starts the WeChatChannel adapter against it. From this
+//     point the bot is live: inbound DMs route to the agent,
+//     replies flow back through `adapter.send`.
+//
+//   GET /api/p/wechat/bindings
+//     → { ok, bindings: ChannelBindingView[] }
+//     Lists existing wechat bindings for the tenant. The admin
+//     UI uses this to render the "logged-in accounts" list.
+//
+//   DELETE /api/p/wechat/bindings/:id
+//     → { ok }
+//     Stops the adapter and deletes the row. Token is forgotten.
+//
+// The iLink API base URL and bot_agent string are intentionally
+// hard-coded in src/ilink-api.ts + src/channel.ts. They're
+// platform constants of the iLink integration, not user-tunable
+// dials. Exposing them as plugin config would have invited
+// "what URL should I put here?" support questions for zero
+// upside.
 
 import type { Request, Response } from "express";
-import path from "node:path";
 import type {
   ChannelAdapterFactory,
+  ChannelBindingsCapability,
   PluginContext,
   PluginServerExports,
   PluginServerModule,
@@ -32,53 +45,38 @@ import {
   getBotQrCode,
   getQrCodeStatus,
 } from "./ilink-api.js";
-import { WeChatChannel, type WeChatChannelConfig } from "./channel.js";
-import { WeChatState } from "./state.js";
-
-interface WeChatPluginConfig extends WeChatChannelConfig {}
-
-function readPluginConfig(raw: unknown): WeChatPluginConfig {
-  const cfg = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  return {
-    baseUrl: typeof cfg.baseUrl === "string" ? cfg.baseUrl : undefined,
-    botAgent: typeof cfg.botAgent === "string" ? cfg.botAgent : undefined,
-  };
-}
+import { WeChatChannel } from "./channel.js";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
-    const pluginCfg = readPluginConfig(ctx.pluginConfig);
-    const defaultBaseUrl = pluginCfg.baseUrl ?? "https://ilinkai.weixin.qq.com";
+    // Channel factory — the host's adapter manager calls this
+    // once per channel_bindings row. The adapter reads token +
+    // identity from adapterCtx.config (set by /login/poll's
+    // host.channelBindings.create() call below).
+    const factory: ChannelAdapterFactory = (adapterCtx) =>
+      new WeChatChannel(adapterCtx);
 
-    // Channel factory — the host calls this once per binding.
-    // We pass per-binding state directly via the adapter context,
-    // so the same factory function serves every binding without
-    // global mutable state.
-    const factory: ChannelAdapterFactory = (adapterCtx) => {
-      return new WeChatChannel({
-        ...adapterCtx,
-        config: {
-          // Plugin-level defaults flow through; per-binding config
-          // overrides if present.
-          ...pluginCfg,
-          ...(adapterCtx.config ?? {}),
-        },
-      });
-    };
+    // Pull the binding capability once at activate time. It's
+    // a typed handle into host-side CRUD; we just relay route
+    // requests through it.
+    const bindings = ctx.capabilities.get<ChannelBindingsCapability>(
+      "host.channelBindings",
+    );
+    if (!bindings) {
+      throw new Error(
+        "wechat plugin requires host.channelBindings capability; the host is too old or misconfigured.",
+      );
+    }
 
     return {
       channels: {
         WeChatChannel: factory,
       },
       routes: {
-        // POST /api/p/wechat/login/start
-        // Body (optional): { baseUrl?: string }
-        // Returns: { qrcode, qrCodeImageUrl, baseUrl }
-        loginStart: async (req: Request, res: Response) => {
-          const body = (req.body ?? {}) as { baseUrl?: string };
-          const baseUrl = body.baseUrl?.trim() || defaultBaseUrl;
+        // POST /login/start → { qrcode, qrCodeImageUrl }
+        loginStart: async (_req: Request, res: Response) => {
           try {
-            const resp = await getBotQrCode({ baseUrl });
+            const resp = await getBotQrCode({});
             if (!resp.qrcode || !resp.qrcode_img_content) {
               res.status(502).json({
                 ok: false,
@@ -91,7 +89,6 @@ const plugin: PluginServerModule = {
               ok: true,
               qrcode: resp.qrcode,
               qrCodeImageUrl: resp.qrcode_img_content,
-              baseUrl,
             });
           } catch (err) {
             res.status(502).json({
@@ -101,53 +98,46 @@ const plugin: PluginServerModule = {
           }
         },
 
-        // POST /api/p/wechat/login/poll
-        // Body: { qrcode, baseUrl?, bindingId?, displayName? }
-        // - If bindingId is given AND exists, that binding's stateDir
-        //   receives the token (admin-driven flow).
-        // - If bindingId is missing, we synth one and write the
-        //   token to its dir; the admin should then create a
-        //   channel_bindings row pointing at it.
+        // POST /login/poll { qrcode, displayName? }
+        //   → { ok, scanned: false }   while pending
+        //   → { ok, scanned: true, binding } after confirm
         loginPoll: async (req: Request, res: Response) => {
           const body = (req.body ?? {}) as {
             qrcode?: string;
-            baseUrl?: string;
-            bindingId?: string;
             displayName?: string;
           };
           if (!body.qrcode) {
             res.status(400).json({ ok: false, error: "missing qrcode" });
             return;
           }
-          const baseUrl = body.baseUrl?.trim() || defaultBaseUrl;
-
           try {
-            const resp = await getQrCodeStatus({ baseUrl, qrcode: body.qrcode });
+            const resp = await getQrCodeStatus({ qrcode: body.qrcode });
             if (!resp.token) {
-              // Not yet authorised; long-poll returned without a
-              // token. Caller is expected to poll again.
-              res.json({ ok: true, scanned: false, upstream: resp });
+              // Not yet confirmed; admin UI keeps polling.
+              res.json({ ok: true, scanned: false });
               return;
             }
-
-            // Token in hand. We DO NOT persist here — the caller
-            // is expected to mint a channel_bindings row carrying
-            // this token in its `config.token` field, after which
-            // the channel adapter manager can start a fresh
-            // adapter against it. Two reasons:
-            //   1. Plugin login routes are stateless on disk; the
-            //      binding row IS the persistent source of truth.
-            //   2. The host already owns the binding write path
-            //      (POST /api/admin/channels/bindings, future PR).
-            //      Coupling persistence into the plugin would
-            //      duplicate that contract.
-            res.json({
-              ok: true,
-              scanned: true,
-              token: resp.token,
-              username: resp.username,
-              ilinkUserId: resp.username,
+            // Got a token. Persist a binding + start its adapter
+            // in one capability call. The host writes the row,
+            // updates status to "running" if start() succeeds,
+            // or "error" + status_detail if it doesn't. Either
+            // way the row sticks around for admin visibility.
+            const display =
+              body.displayName?.trim() ||
+              resp.username?.trim() ||
+              "WeChat";
+            const binding = await bindings.create({
+              channelId: "wechat",
+              pluginId: "wechat",
+              displayName: display,
+              config: {
+                token: resp.token,
+                ilinkUserId: resp.username,
+                username: resp.username,
+              },
+              enabled: true,
             });
+            res.json({ ok: true, scanned: true, binding });
           } catch (err) {
             res.status(502).json({
               ok: false,
@@ -156,16 +146,33 @@ const plugin: PluginServerModule = {
           }
         },
 
-        // GET /api/p/wechat/status
-        getStatus: (_req: Request, res: Response) => {
-          res.json({
-            ok: true,
-            channel: "wechat",
-            apiBaseUrl: defaultBaseUrl,
-            botAgent: pluginCfg.botAgent ?? "tianshu",
-            // The admin UI can pair this with /admin/channels for
-            // binding-level status.
-          });
+        // GET /bindings
+        listBindings: (_req: Request, res: Response) => {
+          const list = bindings.list({ channelId: "wechat" });
+          // Strip the token before serialising \u2014 the admin UI
+          // doesn't need to see it and we don't want it floating
+          // around browser dev tools / log streams.
+          const sanitised = list.map((b) => ({
+            ...b,
+            config: redactConfig(b.config),
+          }));
+          res.json({ ok: true, bindings: sanitised });
+        },
+
+        // DELETE /bindings/:id
+        deleteBinding: async (req: Request, res: Response) => {
+          const raw = req.params.id;
+          const id = Array.isArray(raw) ? raw[0] : raw;
+          if (!id) {
+            res.status(400).json({ ok: false, error: "missing binding id" });
+            return;
+          }
+          const removed = await bindings.delete(id);
+          if (!removed) {
+            res.status(404).json({ ok: false, error: "binding not found" });
+            return;
+          }
+          res.json({ ok: true });
         },
       },
     };
@@ -174,8 +181,23 @@ const plugin: PluginServerModule = {
   async deactivate() {
     // Channel adapters are stopped by the host's adapter manager
     // (it owns the lifecycle once a binding is registered).
-    // Nothing else to clean up here.
   },
 };
+
+/** Replace anything that looks like a secret in `config` with
+ *  a redaction marker before sending it across the wire. The
+ *  admin UI uses display_name + status; nothing else from the
+ *  config row is needed client-side. */
+function redactConfig(config: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(config)) {
+    if (k === "token" && typeof v === "string" && v.length > 0) {
+      out[k] = "***";
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+}
 
 export default plugin;

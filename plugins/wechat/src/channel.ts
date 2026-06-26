@@ -30,7 +30,9 @@ import type {
 import {
   getUpdates,
   sendTextMessage,
+  ILINK_BASE_URL,
   STALE_TOKEN_ERRCODE,
+  TIANSHU_BOT_AGENT,
   type IncomingMessage,
 } from "./ilink-api.js";
 import { WeChatState } from "./state.js";
@@ -42,20 +44,13 @@ const RETRY_DELAY_MS = 2_000;
 const CHANNEL_VERSION = "0.1.0";
 
 export interface WeChatChannelConfig {
-  /** Override only if Tencent moves the API. */
-  baseUrl?: string;
-  /** Analytics tag — like a User-Agent. */
-  botAgent?: string;
   /** Bearer token issued by iLink after QR scan. Persisted on the
    *  channel_bindings row's config JSON; the admin login flow
-   *  obtains it then writes it via createBinding/updateBinding. */
+   *  writes it via host.channelBindings.create(). */
   token?: string;
-  /** Optional self iLink user id (the bot's own id). Currently
-   *  used only for display — we don't filter self-echo through
-   *  it because Tencent doesn't include the bot's own messages
-   *  in getupdates. */
+  /** Self iLink user id (the bot's own id). Stored for display. */
   ilinkUserId?: string;
-  /** Display name resolved at login time, for the admin UI. */
+  /** Display name resolved at login time. */
   username?: string;
 }
 
@@ -68,22 +63,23 @@ export class WeChatChannel implements ChannelAdapter {
   private state: WeChatState;
   private abortController: AbortController | null = null;
   private loopPromise: Promise<void> | null = null;
-  private baseUrl: string;
-  private botAgent: string;
   private token: string | null = null;
   private contextTokens: Record<string, string>;
   private displayNames: Record<string, string> = {};
 
+  // iLink host + bot_agent are platform constants of the
+  // integration, hard-coded for every binding. Not user-tunable.
+  private readonly baseUrl = ILINK_BASE_URL;
+  private readonly botAgent = TIANSHU_BOT_AGENT;
+
   constructor(private ctx: ChannelAdapterContext) {
     this.state = new WeChatState(ctx.stateDir);
     const cfg = (ctx.config ?? {}) as WeChatChannelConfig;
-    this.baseUrl = cfg.baseUrl?.trim() || "https://ilinkai.weixin.qq.com";
-    this.botAgent = cfg.botAgent?.trim() || "tianshu";
     this.contextTokens = this.state.loadContextTokens();
     // Token + identity come from the binding's config (the admin
-    // wrote them after the QR-login flow). sync-buf and per-user
-    // context tokens stay in stateDir because they're large and
-    // change every poll.
+    // login flow wrote them via host.channelBindings.create()).
+    // sync-buf and per-user context tokens stay in stateDir because
+    // they're large and change every poll.
     if (typeof cfg.token === "string" && cfg.token) {
       this.token = cfg.token;
     }
