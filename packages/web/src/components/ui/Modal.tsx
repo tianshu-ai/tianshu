@@ -24,9 +24,10 @@ import {
   type MouseEvent as ReactMouseEvent,
   useEffect,
   useRef,
+  useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { Maximize2, Minimize2, X } from "lucide-react";
 import type { ModalProps } from "@tianshu-ai/plugin-sdk/client";
 
 // Width and height presets per size.
@@ -64,8 +65,18 @@ export function Modal({
   className = "",
   hideHeader = false,
   headerActions,
+  allowMaximize = true,
   children,
 }: ModalProps) {
+  // Local maximize state. Re-mounts (closing + reopening the
+  // modal) reset to default-size, which is the right UX for our
+  // file-preview use case: every fresh open starts at the
+  // size=preset, the user opts into full-screen per session.
+  const [maximized, setMaximized] = useState(false);
+  // Reset when the modal closes so the next open starts default.
+  useEffect(() => {
+    if (!isOpen) setMaximized(false);
+  }, [isOpen]);
   const panelRef = useRef<HTMLDivElement | null>(null);
   // Stash the element that was focused before we opened, so we can
   // restore it on close. Without this, hitting ESC inside a modal
@@ -165,7 +176,11 @@ export function Modal({
     >
       <div
         ref={panelRef}
-        className={`flex w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl ${className}`}
+        className={`flex flex-col overflow-hidden border border-gray-700 bg-gray-900 shadow-2xl ${
+          maximized
+            ? "h-screen w-screen rounded-none"
+            : `w-full rounded-xl ${SIZE_CLASS[size]}`
+        } ${className}`}
         onKeyDown={handleKeyDown}
       >
         {/* Header. Rendered by default so the close button has a
@@ -175,12 +190,35 @@ export function Modal({
             extra controls (typically a download link) just to the
             left of the close button. */}
         {!hideHeader && (
-          <div className="flex items-center gap-2 border-b border-gray-800 px-4 py-2.5">
+          <div
+            // Double-click on header toggles maximize too — a
+            // power-user shortcut on top of the explicit button.
+            // Skip when the click landed inside a button so we
+            // don't toggle from double-tapping headerActions.
+            onDoubleClick={(e) => {
+              if (!allowMaximize) return;
+              const target = e.target as HTMLElement;
+              if (target.closest("button, a")) return;
+              setMaximized((m: boolean) => !m);
+            }}
+            className="flex items-center gap-2 border-b border-gray-800 px-4 py-2.5"
+          >
             <div className="min-w-0 flex-1 truncate text-sm font-medium text-gray-100">
               {title}
             </div>
             {headerActions && (
               <div className="flex shrink-0 items-center gap-1">{headerActions}</div>
+            )}
+            {allowMaximize && (
+              <button
+                type="button"
+                onClick={() => setMaximized((m: boolean) => !m)}
+                className="btn-ghost shrink-0 p-1.5"
+                aria-label={maximized ? "Restore" : "Maximize"}
+                title={maximized ? "Restore" : "Maximize"}
+              >
+                {maximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
             )}
             <button
               type="button"

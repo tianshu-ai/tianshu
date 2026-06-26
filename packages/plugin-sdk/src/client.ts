@@ -376,6 +376,12 @@ export interface ModalProps {
    *  previews. Ignored when `hideHeader` is true (caller is
    *  expected to render its own header in that case). */
   headerActions?: React.ReactNode;
+  /** When true (default), the Modal shows a maximize / restore
+   *  toggle in the header so the user can expand it to fill the
+   *  viewport. Set to false to suppress the button for modals
+   *  that should stay at a fixed size (e.g. tiny confirmations).
+   *  Ignored when `hideHeader` is true. */
+  allowMaximize?: boolean;
 }
 
 export interface DocumentViewerProps {
