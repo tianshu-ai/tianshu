@@ -75,6 +75,9 @@ export function startChannelRouter(deps: ChannelRouterDeps): () => void {
       );
       return;
     }
+    console.info(
+      `[channel-router] admit ${envelope.channelId}/${envelope.chatId} (${envelope.tenantId}): "${envelope.text.slice(0, 60)}"`,
+    );
     void dispatch(envelope, deps).catch((err) => {
       console.error(
         `[channel-router] dispatch failed (${envelope.channelId}/${envelope.chatId}): ${
