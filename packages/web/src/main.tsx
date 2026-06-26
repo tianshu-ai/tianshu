@@ -3,12 +3,18 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import { applyDevIdentityFromUrl } from "./dev-identity";
+import { bootstrapTheme, useThemeStore } from "./stores/theme-store";
 
 // Apply ?tenant=...&user=... before anything else loads. If the
 // URL carries identity hints, this writes the cookie and reloads
 // (so the new cookie is in effect on the second pass). On a
 // no-hints load it returns immediately.
 applyDevIdentityFromUrl();
+
+// Read the persisted theme preference and paint the html
+// data-theme attribute BEFORE React mounts so the first frame
+// is already in the right colors (no flash-of-wrong-theme).
+bootstrapTheme();
 
 // Install the host-side `useComposer()` accessor exactly once at boot.
 // Plugin client components import `useComposer` from the SDK; the SDK
@@ -18,6 +24,8 @@ import {
   __installPluginConfigForm,
   __installUiPrimitives,
   __installUseComposer,
+  __installUseTheme,
+  type ThemeApi,
 } from "@tianshu-ai/plugin-sdk/client";
 import { getComposerApi } from "./stores/composer-store";
 import { PluginConfigFormById } from "./components/PluginConfigForm";
@@ -33,6 +41,16 @@ __installPluginConfigForm(PluginConfigFormById);
 // every plugin and the chat shell render through. Install before
 // App mounts so the first render already has a live registry.
 __installUiPrimitives({ Modal, MarkdownBlock, DocumentViewer });
+// Theme hook for plugins. The closure runs every render of a
+// component that calls `useTheme()`, so the zustand selector
+// inside subscribes to mode + resolved changes and re-renders the
+// consumer when the user flips the theme.
+__installUseTheme((): ThemeApi => {
+  const mode = useThemeStore((s) => s.mode);
+  const resolved = useThemeStore((s) => s.resolved);
+  const setMode = useThemeStore((s) => s.setMode);
+  return { mode, resolved, setMode };
+});
 
 // Bootstrap fallback for OpenFileApi.
 //

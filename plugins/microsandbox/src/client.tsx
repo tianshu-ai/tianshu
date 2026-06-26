@@ -196,10 +196,10 @@ function MicroSandboxAdminPage(_props: AdminPageProps) {
   const bumpRefresh = useCallback(() => setRefreshTick((n) => n + 1), []);
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-6 text-gray-200">
-      <header className="mb-6 border-b border-gray-800 pb-4">
-        <h1 className="text-lg font-semibold text-gray-100">MicroSandbox</h1>
-        <p className="mt-1 text-[12px] leading-relaxed text-gray-500">
+    <div className="mx-auto max-w-4xl px-6 py-6 text-fg-default">
+      <header className="mb-6 border-b border-border-subtle pb-4">
+        <h1 className="text-lg font-semibold text-fg-default">MicroSandbox</h1>
+        <p className="mt-1 text-[12px] leading-relaxed text-fg-faint">
           Edit your Sandboxfile, build a new image, and switch this
           tenant to use it. Sanity-check a fresh build via the shell's
           preview target (“does my apt package show up on PATH?”)
@@ -208,13 +208,13 @@ function MicroSandboxAdminPage(_props: AdminPageProps) {
       </header>
 
       <SandboxfileSection />
-      <div className="my-6 border-t border-gray-800" />
+      <div className="my-6 border-t border-border-subtle" />
       <BuildsSection onMutate={bumpRefresh} />
-      <div className="my-6 border-t border-gray-800" />
+      <div className="my-6 border-t border-border-subtle" />
       <TaskPoolSection refreshTick={refreshTick} />
-      <div className="my-6 border-t border-gray-800" />
+      <div className="my-6 border-t border-border-subtle" />
       <ShellSection />
-      <div className="my-6 border-t border-gray-800" />
+      <div className="my-6 border-t border-border-subtle" />
       <ResetSection refreshTick={refreshTick} onMutate={bumpRefresh} />
     </div>
   );
@@ -335,7 +335,7 @@ function SandboxfileSection() {
                   loadTemplate(e.target.value);
                   e.target.value = "";
                 }}
-                className="rounded-md border border-gray-800 bg-gray-900 px-2 py-1 text-[11px] text-gray-300 hover:border-gray-700 focus:border-blue-700 focus:outline-none"
+                className="rounded-md border border-border-subtle bg-bg-elevated px-2 py-1 text-[11px] text-fg-muted hover:border-border-default focus:border-blue-700 focus:outline-none"
                 title="Replace the editor contents with a starting template"
               >
                 <option value="">Load template…</option>
@@ -350,7 +350,7 @@ function SandboxfileSection() {
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
               title="Reload from disk"
             >
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
@@ -360,7 +360,7 @@ function SandboxfileSection() {
               type="button"
               onClick={() => void save()}
               disabled={!dirty || saving}
-              className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
+              className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
             >
               {saving ? (
                 <Loader2 size={12} className="animate-spin" />
@@ -388,18 +388,18 @@ function SandboxfileSection() {
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         spellCheck={false}
-        className="mt-2 h-64 w-full resize-y rounded-md border border-gray-800 bg-gray-950 px-3 py-2 font-mono text-[12px] leading-relaxed text-gray-200 outline-none focus:border-blue-700"
+        className="mt-2 h-64 w-full resize-y rounded-md border border-border-subtle bg-bg-base px-3 py-2 font-mono text-[12px] leading-relaxed text-fg-default outline-none focus:border-blue-700"
         placeholder="image: python:3.12-slim&#10;cpus: 4&#10;memory_mib: 4096"
       />
-      <p className="mt-2 text-[11px] leading-relaxed text-gray-500">
-        Path: <code className="rounded bg-gray-800 px-1">{payload?.path ?? "…"}</code>.
-        v0 grammar: <code className="rounded bg-gray-800 px-1">image:</code>,{" "}
-        <code className="rounded bg-gray-800 px-1">cpus:</code>,{" "}
-        <code className="rounded bg-gray-800 px-1">memory_mib:</code>, and the lists{" "}
-        <code className="rounded bg-gray-800 px-1">apt</code>,{" "}
-        <code className="rounded bg-gray-800 px-1">pip</code>,{" "}
-        <code className="rounded bg-gray-800 px-1">npm</code>,{" "}
-        <code className="rounded bg-gray-800 px-1">exec</code>.
+      <p className="mt-2 text-[11px] leading-relaxed text-fg-faint">
+        Path: <code className="rounded bg-bg-raised px-1">{payload?.path ?? "…"}</code>.
+        v0 grammar: <code className="rounded bg-bg-raised px-1">image:</code>,{" "}
+        <code className="rounded bg-bg-raised px-1">cpus:</code>,{" "}
+        <code className="rounded bg-bg-raised px-1">memory_mib:</code>, and the lists{" "}
+        <code className="rounded bg-bg-raised px-1">apt</code>,{" "}
+        <code className="rounded bg-bg-raised px-1">pip</code>,{" "}
+        <code className="rounded bg-bg-raised px-1">npm</code>,{" "}
+        <code className="rounded bg-bg-raised px-1">exec</code>.
       </p>
     </section>
   );
@@ -614,7 +614,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
             >
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
               Refresh
@@ -623,7 +623,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               value={basedOnSnapshot}
               onChange={(e) => setBasedOnSnapshot(e.target.value)}
               disabled={building}
-              className="rounded border border-gray-700 bg-gray-900 px-2 py-1 text-[11px] text-gray-200 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded border border-border-default bg-bg-elevated px-2 py-1 text-[11px] text-fg-default disabled:cursor-not-allowed disabled:opacity-50"
               title="Optional: layer this build on top of an existing snapshot. Leave as 'fresh image' to use the Sandboxfile's image: line."
             >
               <option value="">based on: fresh image</option>
@@ -637,7 +637,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               type="button"
               onClick={() => void build()}
               disabled={building}
-              className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
+              className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
               title={
                 basedOnSnapshot
                   ? `Build on top of ${basedOnSnapshot}`
@@ -668,9 +668,9 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
         />
       )}
       {(building || buildLog.length > 0) && (
-        <div className="mb-3 overflow-hidden rounded-md border border-gray-800 bg-gray-950">
-          <div className="flex items-center justify-between border-b border-gray-800 px-3 py-1.5">
-            <div className="flex items-center gap-2 text-[11px] text-gray-300">
+        <div className="mb-3 overflow-hidden rounded-md border border-border-subtle bg-bg-base">
+          <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5">
+            <div className="flex items-center gap-2 text-[11px] text-fg-muted">
               {building ? (
                 <Loader2 size={11} className="animate-spin text-emerald-400" />
               ) : (
@@ -680,18 +680,18 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                 {building ? "Build in progress" : "Last build log"}
               </span>
               {building && elapsedMs > 0 && (
-                <span className="text-[10px] text-gray-500">
+                <span className="text-[10px] text-fg-faint">
                   {(elapsedMs / 1000).toFixed(0)}s
                 </span>
               )}
-              <span className="text-[10px] text-gray-600">
+              <span className="text-[10px] text-fg-fainter">
                 {buildLog.length} line{buildLog.length === 1 ? "" : "s"}
               </span>
             </div>
           </div>
           <pre
             ref={logRef}
-            className="max-h-72 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed text-gray-300"
+            className="max-h-72 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed text-fg-muted"
           >
             {buildLog.length > 0
               ? buildLog.join("\n")
@@ -701,7 +701,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
       )}
 
       {data && data.builds.length === 0 && !building && (
-        <p className="rounded-md border border-dashed border-gray-800 px-3 py-6 text-center text-[12px] text-gray-500">
+        <p className="rounded-md border border-dashed border-border-subtle px-3 py-6 text-center text-[12px] text-fg-faint">
           No builds yet. Click <strong>Build</strong> to create one from your saved Sandboxfile.
         </p>
       )}
@@ -711,12 +711,12 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
           {data.builds.map((b) => (
             <li
               key={b.buildId}
-              className="rounded-md border border-gray-800 bg-gray-900/50 px-3 py-2"
+              className="rounded-md border border-border-subtle bg-gray-900/50 px-3 py-2"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <code className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-100">
+                    <code className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-default">
                       {b.buildId}
                     </code>
                     {(b.roles?.browser ?? b.published) && (
@@ -729,14 +729,14 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                         <CheckCircle2 size={10} /> Task
                       </span>
                     )}
-                    <span className="text-[11px] text-gray-400" title={b.basedOnSnapshot ? `layered on snapshot ${b.basedOnSnapshot}` : `image: ${b.baseImage}`}>{b.basedOnSnapshot ? `↳ ${b.basedOnSnapshot.split('-build-').pop() ?? b.basedOnSnapshot}` : b.baseImage}</span>
-                    <span className="text-[10px] text-gray-600">
+                    <span className="text-[11px] text-fg-muted" title={b.basedOnSnapshot ? `layered on snapshot ${b.basedOnSnapshot}` : `image: ${b.baseImage}`}>{b.basedOnSnapshot ? `↳ ${b.basedOnSnapshot.split('-build-').pop() ?? b.basedOnSnapshot}` : b.baseImage}</span>
+                    <span className="text-[10px] text-fg-fainter">
                       {(b.durationMs / 1000).toFixed(1)}s · {formatRelative(b.builtAt)}
                     </span>
                   </div>
-                  <p className="mt-1 truncate text-[11px] text-gray-500">
+                  <p className="mt-1 truncate text-[11px] text-fg-faint">
                     snapshot:{" "}
-                    <code className="rounded bg-gray-800 px-1 text-gray-400">
+                    <code className="rounded bg-bg-raised px-1 text-fg-muted">
                       {b.snapshotName}
                     </code>
                   </p>
@@ -751,7 +751,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                   return (
                     <div className="flex flex-shrink-0 flex-col items-stretch gap-1">
                       {/* Browser-role row: pin + optional reset of live VM */}
-                      <div className="flex items-stretch gap-px overflow-hidden rounded-md border border-gray-800">
+                      <div className="flex items-stretch gap-px overflow-hidden rounded-md border border-border-subtle">
                         <button
                           type="button"
                           onClick={() => void useBuild(b.buildId, "browser", false)}
@@ -775,7 +775,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                             type="button"
                             onClick={() => void useBuild(b.buildId, "browser", true)}
                             disabled={usingId === b.buildId}
-                            className="flex items-center gap-1 border-l border-gray-800 px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="flex items-center gap-1 border-l border-border-subtle px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
                             title="Pin as Browser + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
                           >
                             <RotateCcw size={11} />
@@ -788,7 +788,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                         type="button"
                         onClick={() => void useBuild(b.buildId, "task", false)}
                         disabled={usingId === b.buildId || taskActive}
-                        className="flex items-center justify-center gap-1 rounded-md border border-gray-800 px-2 py-1 text-[11px] text-sky-200 hover:bg-sky-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="flex items-center justify-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-[11px] text-sky-200 hover:bg-sky-900/30 disabled:cursor-not-allowed disabled:opacity-40"
                         title={
                           taskActive
                             ? "This build is already the active Task snapshot."
@@ -808,10 +808,10 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               </div>
               {b.logTail && (
                 <details className="mt-1.5 text-[11px]">
-                  <summary className="cursor-pointer text-gray-500 hover:text-gray-400">
+                  <summary className="cursor-pointer text-fg-faint hover:text-fg-muted">
                     Log tail
                   </summary>
-                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-gray-950 px-2 py-1 text-[11px] leading-relaxed text-gray-400">
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-bg-base px-2 py-1 text-[11px] leading-relaxed text-fg-muted">
                     {b.logTail}
                   </pre>
                 </details>
@@ -1013,7 +1013,7 @@ function ShellSection() {
             <button
               type="button"
               onClick={() => void loadBuilds()}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
               title="Refresh build list"
             >
               <RefreshCw size={11} />
@@ -1023,7 +1023,7 @@ function ShellSection() {
               type="button"
               onClick={clear}
               disabled={history.length === 0}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400 disabled:opacity-50"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted disabled:opacity-50"
               title="Clear command history (does not affect the sandbox)"
             >
               <Trash2 size={12} />
@@ -1034,13 +1034,13 @@ function ShellSection() {
       />
 
       {history.length === 0 && (
-        <p className="mb-2 rounded-md border border-dashed border-gray-800 px-3 py-3 text-center text-[11px] text-gray-500">
+        <p className="mb-2 rounded-md border border-dashed border-border-subtle px-3 py-3 text-center text-[11px] text-fg-faint">
           Try{" "}
-          <code className="rounded bg-gray-800 px-1 text-gray-300">ls /workspace</code>
+          <code className="rounded bg-bg-raised px-1 text-fg-muted">ls /workspace</code>
           {" · "}
-          <code className="rounded bg-gray-800 px-1 text-gray-300">python3 --version</code>
+          <code className="rounded bg-bg-raised px-1 text-fg-muted">python3 --version</code>
           {" · "}
-          <code className="rounded bg-gray-800 px-1 text-gray-300">which libreoffice</code>
+          <code className="rounded bg-bg-raised px-1 text-fg-muted">which libreoffice</code>
           {"."}
         </p>
       )}
@@ -1051,15 +1051,15 @@ function ShellSection() {
         ))}
       </div>
 
-      <div className="rounded-md border border-gray-800 bg-gray-950 p-2">
-        <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[10px] text-gray-500">
+      <div className="rounded-md border border-border-subtle bg-bg-base p-2">
+        <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[10px] text-fg-faint">
           <span>target:</span>
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            className={`rounded border px-2 py-0.5 font-mono text-[11px] text-gray-200 outline-none focus:border-blue-700 ${
+            className={`rounded border px-2 py-0.5 font-mono text-[11px] text-fg-default outline-none focus:border-blue-700 ${
               target === "live"
-                ? "border-emerald-700/40 bg-gray-900"
+                ? "border-emerald-700/40 bg-bg-elevated"
                 : "border-amber-700/40 bg-amber-950/30"
             }`}
             title="Run against the live sandbox or boot a throwaway preview VM from a build"
@@ -1076,14 +1076,14 @@ function ShellSection() {
               </optgroup>
             )}
           </select>
-          <span className="text-gray-600">·</span>
+          <span className="text-fg-fainter">·</span>
           <span>workdir:</span>
           <input
             type="text"
             value={workdir}
             onChange={(e) => setWorkdir(e.target.value)}
             spellCheck={false}
-            className="flex-1 rounded border border-gray-800 bg-gray-900 px-2 py-0.5 font-mono text-[11px] text-gray-200 outline-none focus:border-blue-700"
+            className="flex-1 rounded border border-border-subtle bg-bg-elevated px-2 py-0.5 font-mono text-[11px] text-fg-default outline-none focus:border-blue-700"
           />
         </div>
         <div className="flex items-end gap-2">
@@ -1099,7 +1099,7 @@ function ShellSection() {
             spellCheck={false}
             placeholder="echo hello"
             rows={2}
-            className="flex-1 resize-y rounded border border-gray-800 bg-gray-900 px-2 py-1 font-mono text-[12px] leading-relaxed text-gray-100 outline-none placeholder:text-gray-600 focus:border-blue-700 disabled:opacity-60"
+            className="flex-1 resize-y rounded border border-border-subtle bg-bg-elevated px-2 py-1 font-mono text-[12px] leading-relaxed text-fg-default outline-none placeholder:text-fg-fainter focus:border-blue-700 disabled:opacity-60"
           />
           {running ? (
             <button
@@ -1116,15 +1116,15 @@ function ShellSection() {
               type="button"
               onClick={() => void run()}
               disabled={command.trim().length === 0}
-              className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500"
+              className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
             >
               <Terminal size={12} />
               Run
             </button>
           )}
         </div>
-        <p className="mt-1 text-[10px] text-gray-600">
-          Target: <strong className="text-gray-400">{targetLabel}</strong>{" · "}
+        <p className="mt-1 text-[10px] text-fg-fainter">
+          Target: <strong className="text-fg-muted">{targetLabel}</strong>{" · "}
           Enter to run · Shift+Enter for a newline · ↑/↓ to walk
           history. Per-call timeout 60s (max 5 min). Preview boots add
           ~5-10s on top of the command time.
@@ -1141,16 +1141,16 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
   const failed = (result && !result.ok) || transportError != null;
 
   return (
-    <div className="rounded-md border border-gray-800 bg-gray-900/50 px-3 py-2 font-mono text-[11px] leading-relaxed">
+    <div className="rounded-md border border-border-subtle bg-gray-900/50 px-3 py-2 font-mono text-[11px] leading-relaxed">
       <div className="mb-1 flex items-center gap-2">
         {running ? (
-          <Loader2 size={11} className="animate-spin text-gray-400" />
+          <Loader2 size={11} className="animate-spin text-fg-muted" />
         ) : ok ? (
           <CheckCircle2 size={11} className="text-emerald-400" />
         ) : (
           <AlertTriangle size={11} className="text-rose-400" />
         )}
-        <code className="flex-1 break-all text-gray-200">{entry.command}</code>
+        <code className="flex-1 break-all text-fg-default">{entry.command}</code>
         <span
           className={`rounded px-1 py-0.5 text-[9px] uppercase tracking-wide ${
             entry.target === "live"
@@ -1165,7 +1165,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         >
           {entry.target === "live" ? "live" : `preview ${entry.target}`}
         </span>
-        <span className="text-[9px] text-gray-600">cwd:{entry.workdir}</span>
+        <span className="text-[9px] text-fg-fainter">cwd:{entry.workdir}</span>
         {result && (
           <span
             className={
@@ -1189,7 +1189,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
       {result && (result.stdout || result.stderr) && (
         <div className="space-y-1">
           {result.stdout && (
-            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-gray-950 px-2 py-1 text-[11px] text-gray-200">
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-bg-base px-2 py-1 text-[11px] text-fg-default">
               {result.stdout}
             </pre>
           )}
@@ -1201,7 +1201,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         </div>
       )}
       {result && !result.stdout && !result.stderr && !failed && (
-        <p className="text-[10px] italic text-gray-500">(no output)</p>
+        <p className="text-[10px] italic text-fg-faint">(no output)</p>
       )}
     </div>
   );
@@ -1284,7 +1284,7 @@ function ResetSection({
             <button
               type="button"
               onClick={() => void loadStatus()}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
             >
               <RefreshCw size={12} />
               Refresh
@@ -1292,7 +1292,7 @@ function ResetSection({
             <button
               type="button"
               onClick={() => setConfigOpen(true)}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-300"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
               title="Edit cpu / memory / timeout for both Browser and Task sandboxes"
             >
               <Settings size={12} />
@@ -1317,7 +1317,7 @@ function ResetSection({
       />
 
       {error && <Banner kind="error" text={error} />}
-      <div className="rounded-md border border-gray-800 bg-gray-900/40">
+      <div className="rounded-md border border-border-subtle bg-gray-900/40">
         {status && (
         <dl className="grid grid-cols-3 gap-x-4 gap-y-1.5 p-3 text-[11px]">
           <Field label="State">
@@ -1327,7 +1327,7 @@ function ResetSection({
           <Field label="Uptime">{formatUptime(status.uptimeMs)}</Field>
           {extractMetaString(status.meta, "sandboxName") && (
             <Field label="Sandbox">
-              <code className="rounded bg-gray-800 px-1">
+              <code className="rounded bg-bg-raised px-1">
                 {extractMetaString(status.meta, "sandboxName")}
               </code>
             </Field>
@@ -1340,7 +1340,7 @@ function ResetSection({
             </Field>
           ) : extractMetaString(status.meta, "image") ? (
             <Field label="Booted from">
-              <code className="rounded bg-gray-800 px-1">
+              <code className="rounded bg-bg-raised px-1">
                 image · {extractMetaString(status.meta, "image")}
               </code>
             </Field>
@@ -1348,7 +1348,7 @@ function ResetSection({
           {extractMetaString(status.meta, "image") &&
             extractMetaString(status.meta, "activeSnapshot") && (
               <Field label="Default image">
-                <code className="rounded bg-gray-800 px-1 text-gray-400">
+                <code className="rounded bg-bg-raised px-1 text-fg-muted">
                   {extractMetaString(status.meta, "image")}
                 </code>
               </Field>
@@ -1357,7 +1357,7 @@ function ResetSection({
             <Field label="Memory">
               <span title={`${formatKb(status.liveMemory.usedKb)} used · ${formatKb(status.liveMemory.availableKb)} available · ${formatKb(status.liveMemory.totalKb)} total`}>
                 {formatKb(status.liveMemory.usedKb)}
-                <span className="text-gray-500">
+                <span className="text-fg-faint">
                   {" / "}
                   {formatKb(status.liveMemory.totalKb)} ({" "}
                   {Math.round((status.liveMemory.usedKb / status.liveMemory.totalKb) * 100)}
@@ -1471,7 +1471,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+            className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
             Refresh
@@ -1482,9 +1482,9 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
       {error && <Banner kind="error" text={error} />}
 
       {entries !== null && entries.length > 0 && (
-        <div className="overflow-hidden rounded-md border border-gray-800">
+        <div className="overflow-hidden rounded-md border border-border-subtle">
           <table className="w-full text-[11px]">
-            <thead className="bg-gray-900/60 text-[10px] uppercase tracking-wide text-gray-500">
+            <thead className="bg-gray-900/60 text-[10px] uppercase tracking-wide text-fg-faint">
               <tr>
                 <th className="px-3 py-1.5 text-left">State</th>
                 <th className="px-3 py-1.5 text-left">Sandbox</th>
@@ -1495,13 +1495,13 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
             </thead>
             <tbody className="divide-y divide-gray-800">
               {entries.map((e) => (
-                <tr key={e.sandboxName} className="text-gray-300">
+                <tr key={e.sandboxName} className="text-fg-muted">
                   <td className="px-3 py-1.5">
                     <PoolStateChip state={e.poolState} />
                   </td>
-                  <td className="px-3 py-1.5 font-mono text-[10px] text-gray-400">
+                  <td className="px-3 py-1.5 font-mono text-[10px] text-fg-muted">
                     <code
-                      className="cursor-pointer hover:text-gray-100"
+                      className="cursor-pointer hover:text-fg-default"
                       title="Click to copy"
                       onClick={() => {
                         void navigator.clipboard
@@ -1512,10 +1512,10 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                       {e.sandboxName}
                     </code>
                   </td>
-                  <td className="px-3 py-1.5 font-mono text-[10px] text-gray-500">
+                  <td className="px-3 py-1.5 font-mono text-[10px] text-fg-faint">
                     {e.taskId.slice(0, 8)}…
                   </td>
-                  <td className="px-3 py-1.5 text-[10px] text-gray-500">
+                  <td className="px-3 py-1.5 text-[10px] text-fg-faint">
                     {e.createdAt
                       ? formatRelative(e.createdAt)
                       : "—"}
@@ -1525,7 +1525,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                       type="button"
                       onClick={() => void destroy(e.sandboxName)}
                       disabled={destroying === e.sandboxName}
-                      className="flex items-center gap-1 rounded border border-gray-800 px-2 py-0.5 text-[10px] text-rose-300 hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex items-center gap-1 rounded border border-border-subtle px-2 py-0.5 text-[10px] text-rose-300 hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
                       title={
                         e.poolState === "running"
                           ? "Stop and remove this sandbox (also kills the running task)"
@@ -1559,8 +1559,8 @@ function PoolStateChip({ state }: { state: string }) {
         : state === "error"
           ? "bg-rose-900/40 text-rose-200 border-rose-700/50"
           : state === "orphan"
-            ? "bg-gray-900/40 text-gray-400 border-gray-700/50"
-            : "bg-gray-900/30 text-gray-300 border-gray-800";
+            ? "bg-gray-900/40 text-fg-muted border-gray-700/50"
+            : "bg-gray-900/30 text-fg-muted border-border-subtle";
   return (
     <span
       className={`inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide ${className}`}
@@ -1594,21 +1594,21 @@ function ConfigureSandboxDialog({
           we use a CSS arbitrary-selector trick to grab the form's
           own action row (the last direct child div with the
           Reset/Save buttons — see PluginConfigForm.tsx:176, marked
-          with `border-t border-gray-800 pt-3`) and pin it to the
+          with `border-t border-border-subtle pt-3`) and pin it to the
           bottom via `position: sticky`. Keeps Save reachable
           without scrolling for any reasonable schema length, and
           breaks gracefully (becomes scrolled-to-end) if the form
           shape changes. */}
       <div
-        className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-gray-800 bg-gray-950 shadow-2xl"
+        className="flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-base shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-gray-800 px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
           <div>
-            <div className="text-sm font-medium text-gray-100">
+            <div className="text-sm font-medium text-fg-default">
               Sandbox runtime parameters
             </div>
-            <div className="mt-0.5 text-[11px] text-gray-500">
+            <div className="mt-0.5 text-[11px] text-fg-faint">
               Browser sandbox changes take effect on the next
               Reset; Task sandbox changes take effect on the next
               task acquire.
@@ -1617,7 +1617,7 @@ function ConfigureSandboxDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+            className="rounded p-1 text-fg-muted hover:bg-bg-raised hover:text-fg-default"
             aria-label="Close configure dialog"
           >
             <X size={14} />
@@ -1636,7 +1636,7 @@ function ConfigureSandboxDialog({
             below the sticky row. By moving the bottom "breathing
             room" into the sticky row itself (pb-3) we get an opaque
             background that fully covers the scroll viewport. */}
-        <div className="flex-1 overflow-y-auto px-4 pt-3 [&>div>div>div:last-child]:sticky [&>div>div>div:last-child]:bottom-0 [&>div>div>div:last-child]:bg-gray-950 [&>div>div>div:last-child]:pt-3 [&>div>div>div:last-child]:pb-3">
+        <div className="flex-1 overflow-y-auto px-4 pt-3 [&>div>div>div:last-child]:sticky [&>div>div>div:last-child]:bottom-0 [&>div>div>div:last-child]:bg-bg-base [&>div>div>div:last-child]:pt-3 [&>div>div>div:last-child]:pb-3">
           <PluginConfigForm pluginId="microsandbox" />
         </div>
       </div>
@@ -1649,8 +1649,8 @@ function ConfigureSandboxDialog({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <>
-      <dt className="col-span-1 text-gray-500">{label}</dt>
-      <dd className="col-span-2 text-gray-300">{children}</dd>
+      <dt className="col-span-1 text-fg-faint">{label}</dt>
+      <dd className="col-span-2 text-fg-muted">{children}</dd>
     </>
   );
 }
@@ -1667,9 +1667,9 @@ function SectionHeader({
   return (
     <div className="mb-2 flex items-end justify-between gap-3">
       <div>
-        <h2 className="text-sm font-semibold text-gray-100">{title}</h2>
+        <h2 className="text-sm font-semibold text-fg-default">{title}</h2>
         {description && (
-          <p className="mt-0.5 text-[11px] text-gray-500">{description}</p>
+          <p className="mt-0.5 text-[11px] text-fg-faint">{description}</p>
         )}
       </div>
       {actions && <div className="flex items-center gap-1.5">{actions}</div>}
@@ -1798,8 +1798,8 @@ function BrowserViewportPanel(_props: PanelProps) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-gray-800 px-4 py-2">
-        <div className="flex items-center gap-2 text-sm font-medium text-gray-200">
+      <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-fg-default">
           <Globe size={14} className="text-brand-400" />
           Browser
         </div>
@@ -1814,7 +1814,7 @@ function BrowserViewportPanel(_props: PanelProps) {
 
       <div
         ref={containerRef}
-        className="relative min-h-0 flex-1 bg-gray-950"
+        className="relative min-h-0 flex-1 bg-bg-base"
       >
         {data?.ready && data.ports.vnc ? (
           <iframe
@@ -1824,10 +1824,10 @@ function BrowserViewportPanel(_props: PanelProps) {
             // the chat-shell panel divider — otherwise noVNC swallows
             // the cursor and the resize feels stuck.
             style={{ pointerEvents: dragging ? "none" : undefined }}
-            className="absolute inset-0 h-full w-full bg-gray-950"
+            className="absolute inset-0 h-full w-full bg-bg-base"
           />
         ) : (
-          <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-gray-500">
+          <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-faint">
             {data
               ? data.hint ?? "Browser stack not running."
               : "Loading…"}

@@ -185,7 +185,7 @@ export default function AdminShell() {
   const pages = useMemo(() => flattenAdminPages(plugins), [plugins]);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-950 text-gray-200">
+    <div className="flex h-screen overflow-hidden bg-bg-base text-fg-default">
       <AdminSidebar pages={pages} userLabel={me?.userId ?? null} />
       <main className="min-w-0 flex-1 overflow-y-auto">
         <Routes>
@@ -240,15 +240,15 @@ function AdminSidebar({
   }
 
   return (
-    <aside className="flex w-56 flex-shrink-0 flex-col border-r border-gray-800 bg-gray-900">
-      <div className="flex h-14 items-center gap-2 border-b border-gray-800 px-4">
+    <aside className="flex w-56 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
+      <div className="flex h-14 items-center gap-2 border-b border-border-subtle px-4">
         <ShieldCheck size={16} className="text-blue-400" />
-        <span className="text-sm font-semibold text-gray-100">{shellTitle}</span>
+        <span className="text-sm font-semibold text-fg-default">{shellTitle}</span>
       </div>
 
       <nav className="flex-1 space-y-3 overflow-y-auto p-2">
         {grouped.length === 0 && (
-          <p className="px-3 py-2 text-[11px] leading-relaxed text-gray-500">
+          <p className="px-3 py-2 text-[11px] leading-relaxed text-fg-faint">
             No admin pages contributed yet. Enable a plugin that
             ships <code>contributes.adminPages</code> to see entries
             here.
@@ -257,7 +257,7 @@ function AdminSidebar({
         {grouped.map((bucket, i) => (
           <div key={i}>
             {bucket.group && (
-              <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">
                 {bucket.group}
               </div>
             )}
@@ -270,7 +270,7 @@ function AdminSidebar({
         ))}
       </nav>
 
-      <div className="border-t border-gray-800 p-2">
+      <div className="border-t border-border-subtle p-2">
         <NavLink
           // Up two levels: out of `/admin/<plugin>/<page>` (or
           // `/admin/`) back to the identity root which renders
@@ -278,7 +278,7 @@ function AdminSidebar({
           // current identity prefix without having to import
           // buildIdentityPath here.
           to=".."
-          className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-gray-500 hover:bg-gray-800/50 hover:text-gray-300"
+          className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-fg-faint hover:bg-gray-800/50 hover:text-fg-muted"
           end
         >
           <ArrowLeft size={12} />
@@ -286,13 +286,13 @@ function AdminSidebar({
         </NavLink>
       </div>
       {userLabel && (
-        <div className="flex items-center gap-2 border-t border-gray-800 px-3 py-2">
+        <div className="flex items-center gap-2 border-t border-border-subtle px-3 py-2">
           <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-[10px] font-semibold text-white">
             {userLabel.slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[11px] text-gray-300">{userLabel}</div>
-            <div className="text-[10px] text-gray-600">admin</div>
+            <div className="truncate text-[11px] text-fg-muted">{userLabel}</div>
+            <div className="text-[10px] text-fg-fainter">admin</div>
           </div>
         </div>
       )}
@@ -317,8 +317,8 @@ function AdminNavLink({ page }: { page: FlatAdminPage }) {
       className={({ isActive }) =>
         `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
           isActive
-            ? "bg-gray-800 text-white"
-            : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"
+            ? "bg-bg-raised text-white"
+            : "text-fg-muted hover:bg-gray-800/50 hover:text-fg-default"
         }`
       }
     >
@@ -382,12 +382,12 @@ function AdminPageHost({ pages }: { pages: FlatAdminPage[] }) {
 
 function EmptyState() {
   return (
-    <div className="mx-auto flex max-w-xl flex-col items-center justify-center px-6 py-24 text-center text-gray-400">
-      <SettingsIcon size={32} className="mb-3 text-gray-600" />
-      <h2 className="mb-2 text-base font-semibold text-gray-200">
+    <div className="mx-auto flex max-w-xl flex-col items-center justify-center px-6 py-24 text-center text-fg-muted">
+      <SettingsIcon size={32} className="mb-3 text-fg-fainter" />
+      <h2 className="mb-2 text-base font-semibold text-fg-default">
         Nothing to manage yet
       </h2>
-      <p className="text-sm leading-relaxed text-gray-500">
+      <p className="text-sm leading-relaxed text-fg-faint">
         The admin shell is empty until a plugin contributes an admin
         page. Open the Plugin Manager from the chat shell to enable
         a plugin that ships one (e.g. MicroSandbox).
@@ -430,32 +430,32 @@ function PluginConfigSettingsPage({
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-6">
-        <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-100">
+        <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
           <SettingsIcon size={18} className="text-brand-400" />
           {plugin ? plugin.displayName : pluginId}
         </h1>
         {plugin?.description && (
-          <p className="mt-1 max-w-3xl text-[12px] text-gray-500">
+          <p className="mt-1 max-w-3xl text-[12px] text-fg-faint">
             {plugin.description}
           </p>
         )}
       </div>
       {!plugin ? (
-        <div className="rounded-md border border-dashed border-gray-800 px-4 py-6 text-center text-[12px] text-gray-500">
+        <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-faint">
           Plugin <code>{pluginId}</code> is not active.
         </div>
       ) : (
         <section>
           <div className="mb-2">
-            <h2 className="text-[13px] font-semibold uppercase tracking-wide text-gray-400">
+            <h2 className="text-[13px] font-semibold uppercase tracking-wide text-fg-muted">
               Configuration
             </h2>
-            <p className="text-[11px] text-gray-500">
+            <p className="text-[11px] text-fg-faint">
               Saving re-activates the plugin so changes take effect on the
               next request.
             </p>
           </div>
-          <div className="rounded-md border border-gray-800 bg-gray-900/30 p-4">
+          <div className="rounded-md border border-border-subtle bg-gray-900/30 p-4">
             <PluginConfigForm plugin={plugin} />
           </div>
         </section>

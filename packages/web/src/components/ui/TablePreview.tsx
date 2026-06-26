@@ -109,7 +109,7 @@ export function TablePreview({
 
   if (!parsed) {
     return (
-      <div className={`p-4 text-sm text-gray-500 ${className}`}>
+      <div className={`p-4 text-sm text-fg-faint ${className}`}>
         Parsing table…
       </div>
     );
@@ -125,7 +125,7 @@ export function TablePreview({
 
   if (parsed.headers.length === 0 && parsed.rows.length === 0) {
     return (
-      <div className={`p-4 text-sm text-gray-500 ${className}`}>No rows.</div>
+      <div className={`p-4 text-sm text-fg-faint ${className}`}>No rows.</div>
     );
   }
 
@@ -143,11 +143,11 @@ export function TablePreview({
       <div className="min-h-0 flex-1 overflow-auto p-3">
         <table className="border-collapse text-[12px]">
           <thead>
-            <tr className="bg-gray-900 text-gray-300">
+            <tr className="bg-bg-elevated text-fg-muted">
               {parsed.headers.map((h, i) => (
                 <th
                   key={i}
-                  className="sticky top-0 z-10 border-b border-gray-700 bg-gray-900 px-2 py-1.5 text-left font-medium"
+                  className="sticky top-0 z-10 border-b border-border-default bg-bg-elevated px-2 py-1.5 text-left font-medium"
                 >
                   {h || `Col ${i + 1}`}
                 </th>
@@ -160,7 +160,7 @@ export function TablePreview({
                 {row.map((cell, ci) => (
                   <td
                     key={ci}
-                    className="max-w-[28rem] truncate border-r border-gray-900 px-2 py-1 text-gray-300"
+                    className="max-w-[28rem] truncate border-r border-gray-900 px-2 py-1 text-fg-muted"
                     title={cell}
                   >
                     {cell}

@@ -10,12 +10,33 @@
 @source "../../../plugins/*/dist/**/*.{js,jsx,ts,tsx}";
 @source "../../../plugins/*/src/**/*.{ts,tsx}";
 
-/*
- * Tailwind v4 prefers in-CSS theming via @theme. We replicate the
- * closed-source repo's `brand` palette here so `bg-brand-500` etc.
- * resolve consistently.
- */
+/* ──────────────────────────────────────────────────────────────
+ * Theme tokens.
+ *
+ * Two themes ship in v0: `dark` (default, matching the legacy
+ * gray-950 chrome) and `light` (Default Light Modern-ish). The
+ * theme store on the client flips a `data-theme` attribute on
+ * <html>; the variables below switch as a side effect.
+ *
+ * Token naming is semantic, not palette-replicating: callers ask
+ * for `--color-bg-elevated`, not `--color-gray-900`. Two reasons:
+ *   1. plugins can theme themselves against the same token set
+ *      without learning tianshu's internal palette;
+ *   2. a future theme variant (high-contrast, sepia, brand swap)
+ *      lands by adding one [data-theme="<name>"] block and editing
+ *      zero markup.
+ *
+ * The brand palette (--color-brand-N) stays as a fixed color ramp
+ * because UI uses individual stops (brand-500 vs brand-600) for
+ * hover/focus contrast, not as a single accent. The semantic
+ * `--color-accent-*` tokens point INTO this ramp per theme.
+ *
+ * Tokens with a Tailwind 4 `--color-*` namespace become utility
+ * classes automatically: `bg-bg-base`, `text-fg-default`,
+ * `border-border-default`. Plugins use these utilities directly.
+ * ────────────────────────────────────────────────────────────── */
 @theme {
+  /* Brand palette — used by both themes as the accent ramp. */
   --color-brand-50:  #f0f4ff;
   --color-brand-100: #dbe4ff;
   --color-brand-200: #bac8ff;
@@ -26,10 +47,119 @@
   --color-brand-700: #4263eb;
   --color-brand-800: #3b5bdb;
   --color-brand-900: #364fc7;
+
+  /* Semantic tokens — DARK defaults (the original chrome).
+   * Same values reappear under `:root` below so the cascade
+   * keeps working even when @theme tokens get inlined into
+   * Tailwind utilities. */
+  --color-bg-base:        #030712;          /* gray-950 */
+  --color-bg-elevated:    #111827;          /* gray-900 */
+  --color-bg-raised:      #1f2937;          /* gray-800 */
+  --color-bg-hover:       #1f2937;
+  --color-bg-overlay:     rgba(0 0 0 / 0.7);
+
+  --color-fg-default:     #f3f4f6;          /* gray-100 */
+  --color-fg-muted:       #d1d5db;          /* gray-300 */
+  --color-fg-faint:       #6b7280;          /* gray-500 */
+  --color-fg-fainter:     #4b5563;          /* gray-600 */
+  --color-fg-on-accent:   #ffffff;
+
+  --color-border-default: #374151;          /* gray-700 */
+  --color-border-strong:  #4b5563;          /* gray-600 */
+  --color-border-subtle:  #1f2937;          /* gray-800 */
+
+  --color-accent:         #4c6ef5;          /* brand-600 */
+  --color-accent-hover:   #4263eb;          /* brand-700 */
+  --color-accent-faint:   rgba(76 110 245 / 0.1);
+
+  --color-link:           #91a7ff;          /* brand-300 */
+  --color-success:        #10b981;
+  --color-warning:        #f59e0b;
+  --color-danger:         #f43f5e;
+
+  /* Scrollbar tones. */
+  --color-scrollbar:        #374151;
+  --color-scrollbar-hover:  #4b5563;
 }
 
-:root {
+/* Dark theme is the implicit default; the @theme block above
+ * already paints the right values. We still spell it out under
+ * [data-theme="dark"] so toggling between themes is a clean
+ * attribute swap (rather than "no attribute" vs "attribute"). */
+:root,
+[data-theme="dark"] {
   color-scheme: dark;
+
+  --color-bg-base:        #030712;
+  --color-bg-elevated:    #111827;
+  --color-bg-raised:      #1f2937;
+  --color-bg-hover:       #1f2937;
+  --color-bg-overlay:     rgba(0 0 0 / 0.7);
+
+  --color-fg-default:     #f3f4f6;
+  --color-fg-muted:       #d1d5db;
+  --color-fg-faint:       #6b7280;
+  --color-fg-fainter:     #4b5563;
+  --color-fg-on-accent:   #ffffff;
+
+  --color-border-default: #374151;
+  --color-border-strong:  #4b5563;
+  --color-border-subtle:  #1f2937;
+
+  --color-accent:         #4c6ef5;
+  --color-accent-hover:   #4263eb;
+  --color-accent-faint:   rgba(76 110 245 / 0.1);
+
+  --color-link:           #91a7ff;
+  --color-success:        #10b981;
+  --color-warning:        #f59e0b;
+  --color-danger:         #f43f5e;
+
+  --color-scrollbar:        #374151;
+  --color-scrollbar-hover:  #4b5563;
+
+  /* shiki theme name surfaced to JS via getComputedStyle.
+   * CodeBlock reads this and passes it to shiki on render so
+   * highlight colors track the active theme. */
+  --shiki-theme-name: "github-dark";
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* Light values follow VSCode Default Light Modern (slate +
+   * cool grays). brand stops below shift up to the darker end
+   * (brand-700/800) so accent contrast against the white bg
+   * stays AA-or-better. */
+  --color-bg-base:        #ffffff;
+  --color-bg-elevated:    #f8fafc;          /* slate-50 */
+  --color-bg-raised:      #f1f5f9;          /* slate-100 */
+  --color-bg-hover:       #e2e8f0;          /* slate-200 */
+  --color-bg-overlay:     rgba(15 23 42 / 0.6);
+
+  --color-fg-default:     #0f172a;          /* slate-900 */
+  --color-fg-muted:       #334155;          /* slate-700 */
+  --color-fg-faint:       #64748b;          /* slate-500 */
+  --color-fg-fainter:     #94a3b8;          /* slate-400 */
+  --color-fg-on-accent:   #ffffff;
+
+  --color-border-default: #cbd5e1;          /* slate-300 */
+  --color-border-strong:  #94a3b8;          /* slate-400 */
+  --color-border-subtle:  #e2e8f0;          /* slate-200 */
+
+  --color-accent:         #4263eb;          /* brand-700 */
+  --color-accent-hover:   #3b5bdb;          /* brand-800 */
+  --color-accent-faint:   rgba(66 99 235 / 0.08);
+
+  --color-link:           #4263eb;          /* brand-700 */
+  --color-success:        #059669;
+  --color-warning:        #b45309;
+  --color-danger:         #be123c;
+
+  --color-scrollbar:        #cbd5e1;
+  --color-scrollbar-hover:  #94a3b8;
+
+  --shiki-theme-name: "github-light";
 }
 
 html,
@@ -40,10 +170,12 @@ body,
 
 @layer base {
   body {
-    @apply bg-gray-950 text-gray-100 antialiased;
+    background: var(--color-bg-base);
+    color: var(--color-fg-default);
+    -webkit-font-smoothing: antialiased;
   }
 
-  /* Scrollbar styling */
+  /* Scrollbar styling now tracks theme tokens. */
   ::-webkit-scrollbar {
     width: 6px;
   }
@@ -51,26 +183,32 @@ body,
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-gray-700 rounded-full;
+    background: var(--color-scrollbar);
+    border-radius: 9999px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-gray-600;
+    background: var(--color-scrollbar-hover);
   }
 }
 
 @layer components {
-  /* Markdown table styles in chat */
+  /* Markdown table styles in chat — switched to theme tokens. */
   .prose table {
     @apply border-collapse text-sm w-full;
   }
   .prose th {
-    @apply bg-gray-800 border border-gray-700 px-3 py-1.5 text-left font-medium text-gray-200;
+    background: var(--color-bg-raised);
+    border: 1px solid var(--color-border-default);
+    color: var(--color-fg-muted);
+    @apply px-3 py-1.5 text-left font-medium;
   }
   .prose td {
-    @apply border border-gray-700 px-3 py-1.5 text-gray-300;
+    border: 1px solid var(--color-border-default);
+    color: var(--color-fg-muted);
+    @apply px-3 py-1.5;
   }
   .prose tr:hover td {
-    @apply bg-gray-800/50;
+    background: color-mix(in srgb, var(--color-bg-raised) 50%, transparent);
   }
   .prose pre {
     @apply overflow-x-auto;
@@ -84,13 +222,27 @@ body,
   }
 
   .btn-primary {
-    @apply bg-brand-600 hover:bg-brand-700 text-white px-4 py-2 rounded-lg font-medium transition-colors;
+    background: var(--color-accent);
+    color: var(--color-fg-on-accent);
+    @apply px-4 py-2 rounded-lg font-medium transition-colors;
+  }
+  .btn-primary:hover {
+    background: var(--color-accent-hover);
   }
   .btn-ghost {
-    @apply hover:bg-gray-800 text-gray-300 hover:text-white px-3 py-2 rounded-lg transition-colors;
+    color: var(--color-fg-muted);
+    @apply px-3 py-2 rounded-lg transition-colors;
+  }
+  .btn-ghost:hover {
+    background: var(--color-bg-hover);
+    color: var(--color-fg-default);
   }
   .input-base {
-    @apply bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent;
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-default);
+    color: var(--color-fg-default);
+    @apply rounded-lg px-3 py-2 placeholder:text-[color:var(--color-fg-faint)];
+    @apply focus:outline-none focus:ring-2 focus:ring-[color:var(--color-accent)] focus:border-transparent;
   }
 }
 
@@ -120,8 +272,8 @@ body,
  * source lines after the first.
  *
  * We reset shiki's <pre> padding + margin and let the wrapper
- * own the spacing. The background color stays so future theme
- * switches still take effect through shiki.
+ * own the spacing. The background color stays so theme switches
+ * still take effect through shiki.
  */
 .shiki-host > pre {
   padding: 0.75rem !important;   /* matches Tailwind p-3 on the wrapper */

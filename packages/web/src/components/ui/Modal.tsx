@@ -168,7 +168,7 @@ export function Modal({
   // ancestors clipping the modal.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--color-bg-overlay)] p-4 backdrop-blur-sm"
       onMouseDown={handleBackdropClick}
       role="dialog"
       aria-modal="true"
@@ -176,7 +176,7 @@ export function Modal({
     >
       <div
         ref={panelRef}
-        className={`flex flex-col overflow-hidden border border-gray-700 bg-gray-900 shadow-2xl ${
+        className={`flex flex-col overflow-hidden border border-border-default bg-bg-elevated shadow-2xl ${
           maximized
             ? "h-screen w-screen rounded-none"
             : `w-full rounded-xl ${SIZE_CLASS[size]}`
@@ -201,9 +201,9 @@ export function Modal({
               if (target.closest("button, a")) return;
               setMaximized((m: boolean) => !m);
             }}
-            className="flex items-center gap-2 border-b border-gray-800 px-4 py-2.5"
+            className="flex items-center gap-2 border-b border-border-subtle px-4 py-2.5"
           >
-            <div className="min-w-0 flex-1 truncate text-sm font-medium text-gray-100">
+            <div className="min-w-0 flex-1 truncate text-sm font-medium text-fg-default">
               {title}
             </div>
             {headerActions && (

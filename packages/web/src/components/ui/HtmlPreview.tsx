@@ -47,7 +47,7 @@ export function HtmlPreview({
 
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
-      <div className="flex items-center justify-end gap-1 border-b border-gray-800 bg-gray-950/50 px-3 py-1.5">
+      <div className="flex items-center justify-end gap-1 border-b border-border-subtle bg-gray-950/50 px-3 py-1.5">
         <ModeToggle mode={mode} onChange={setMode} />
       </div>
       {mode === "render" ? (
@@ -86,14 +86,14 @@ function ModeToggle({
   onChange: (m: "render" | "source") => void;
 }) {
   return (
-    <div className="inline-flex rounded-md border border-gray-800 bg-gray-900/60 p-0.5 text-[11px] text-gray-400">
+    <div className="inline-flex rounded-md border border-border-subtle bg-gray-900/60 p-0.5 text-[11px] text-fg-muted">
       <button
         type="button"
         onClick={() => onChange("render")}
         className={`flex items-center gap-1 rounded px-2 py-0.5 transition-colors ${
           mode === "render"
-            ? "bg-gray-800 text-gray-100"
-            : "hover:bg-gray-800/60 hover:text-gray-200"
+            ? "bg-bg-raised text-fg-default"
+            : "hover:bg-gray-800/60 hover:text-fg-default"
         }`}
         title="Live preview"
       >
@@ -105,8 +105,8 @@ function ModeToggle({
         onClick={() => onChange("source")}
         className={`flex items-center gap-1 rounded px-2 py-0.5 transition-colors ${
           mode === "source"
-            ? "bg-gray-800 text-gray-100"
-            : "hover:bg-gray-800/60 hover:text-gray-200"
+            ? "bg-bg-raised text-fg-default"
+            : "hover:bg-gray-800/60 hover:text-fg-default"
         }`}
         title="View source"
       >

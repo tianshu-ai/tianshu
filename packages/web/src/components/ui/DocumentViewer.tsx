@@ -65,7 +65,7 @@ export function DocumentViewer({
   if (loading) {
     return (
       <div className={`flex h-32 items-center justify-center ${className}`}>
-        <Loader2 size={20} className="animate-spin text-gray-500" />
+        <Loader2 size={20} className="animate-spin text-fg-faint" />
       </div>
     );
   }
@@ -139,18 +139,18 @@ export function DocumentViewer({
       <div
         className={`flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-8 text-center ${className}`}
       >
-        <div className="text-sm font-medium text-gray-200">
+        <div className="text-sm font-medium text-fg-default">
           Office preview is coming soon
         </div>
-        <div className="max-w-md text-[12px] leading-relaxed text-gray-500">
+        <div className="max-w-md text-[12px] leading-relaxed text-fg-faint">
           In-browser rendering for{" "}
-          <code className="font-mono text-gray-400">.{ext}</code> files needs a
+          <code className="font-mono text-fg-muted">.{ext}</code> files needs a
           server-side LibreOffice pass that hasn't shipped yet. Use the{" "}
-          <span className="text-gray-300">Download</span> button above to open
+          <span className="text-fg-muted">Download</span> button above to open
           this file in your local Office / LibreOffice / Pages.
         </div>
         {sizeBytes != null && (
-          <div className="text-[11px] text-gray-600">{formatSize(sizeBytes)}</div>
+          <div className="text-[11px] text-fg-fainter">{formatSize(sizeBytes)}</div>
         )}
       </div>
     );
@@ -158,7 +158,7 @@ export function DocumentViewer({
 
   if (binary && !isImage) {
     return (
-      <div className={`p-6 text-center text-sm text-gray-500 ${className}`}>
+      <div className={`p-6 text-center text-sm text-fg-faint ${className}`}>
         Binary file{sizeBytes != null ? ` (${formatSize(sizeBytes)})` : ""}. No
         preview available.
       </div>
@@ -167,7 +167,7 @@ export function DocumentViewer({
 
   if (content == null) {
     return (
-      <div className={`p-6 text-center text-sm text-gray-500 ${className}`}>
+      <div className={`p-6 text-center text-sm text-fg-faint ${className}`}>
         No content.
       </div>
     );
@@ -226,7 +226,7 @@ export function DocumentViewer({
   // instead of breaking the modal layout.
   return (
     <pre
-      className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all p-4 font-mono text-xs text-gray-200 ${className}`}
+      className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all p-4 font-mono text-xs text-fg-default ${className}`}
     >
       {content}
     </pre>

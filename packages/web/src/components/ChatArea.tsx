@@ -59,20 +59,20 @@ export default function ChatArea() {
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       {/* Top bar */}
-      <header className="flex h-12 items-center justify-between border-b border-gray-800 bg-gray-900/50 px-4 backdrop-blur">
+      <header className="flex h-12 items-center justify-between border-b border-border-subtle bg-gray-900/50 px-4 backdrop-blur">
         <div className="flex items-center">
           <button
             type="button"
             onClick={toggleSidebar}
-            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
             title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
           >
             {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
           </button>
-          <h1 className="ml-3 text-sm font-medium text-gray-300">main</h1>
-          <span className="ml-3 text-[11px] text-gray-500">
-            tenant <span className="text-gray-300">{me?.tenantId ?? "…"}</span> · user{" "}
-            <span className="text-gray-300">{me?.userId ?? "…"}</span>
+          <h1 className="ml-3 text-sm font-medium text-fg-muted">main</h1>
+          <span className="ml-3 text-[11px] text-fg-faint">
+            tenant <span className="text-fg-muted">{me?.tenantId ?? "…"}</span> · user{" "}
+            <span className="text-fg-muted">{me?.userId ?? "…"}</span>
           </span>
         </div>
         <div className="flex items-center gap-2">
@@ -80,7 +80,7 @@ export default function ChatArea() {
           <button
             type="button"
             onClick={() => setPluginManagerOpen(true)}
-            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
             title="Plugin Manager"
             aria-label="Open Plugin Manager"
           >
@@ -108,7 +108,7 @@ export default function ChatArea() {
                 type="button"
                 onClick={loadEarlier}
                 disabled={loadingMore}
-                className="w-full rounded-lg bg-gray-800/50 py-2 text-xs text-gray-500 hover:text-gray-300 disabled:cursor-default disabled:opacity-60"
+                className="w-full rounded-lg bg-gray-800/50 py-2 text-xs text-fg-faint hover:text-fg-muted disabled:cursor-default disabled:opacity-60"
               >
                 {loadingMore ? "Loading…" : "Load earlier messages"}
               </button>
@@ -179,13 +179,13 @@ function EmptyState({
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-600/20">
         <span className="text-2xl">{brandEmoji}</span>
       </div>
-      <h2 className="mb-2 text-xl font-semibold text-gray-200">
+      <h2 className="mb-2 text-xl font-semibold text-fg-default">
         Welcome to {brandName}
       </h2>
-      <p className="max-w-md text-sm text-gray-500">
+      <p className="max-w-md text-sm text-fg-faint">
         An open AI agent platform with a sidecar browser. Day 0: messages
         persist per-tenant in{" "}
-        <code className="mx-0.5 rounded bg-gray-800 px-1 py-0.5 text-xs text-gray-400">
+        <code className="mx-0.5 rounded bg-bg-raised px-1 py-0.5 text-xs text-fg-muted">
           ~/.tianshu/tenants/{tenantId}/db.sqlite
         </code>
         . Tools, workspace files, browser, and worker dispatch arrive in
