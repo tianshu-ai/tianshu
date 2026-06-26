@@ -147,7 +147,7 @@
   --color-bg-elevated:    #ffffff;          /* white — sidebar / header / composer (PRIMARY surfaces) */
   --color-bg-raised:      #ffffff;          /* white — message bubbles, modals */
   --color-bg-hover:       #e2e8f0;          /* slate-200 — row hover */
-  --color-bg-overlay:     rgba(15 23 42 / 0.5);
+  --color-bg-overlay:     rgba(15 23 42 / 0.4);
 
   --color-fg-default:     #0f172a;          /* slate-900 */
   --color-fg-muted:       #475569;          /* slate-600 — secondary text, icons */
