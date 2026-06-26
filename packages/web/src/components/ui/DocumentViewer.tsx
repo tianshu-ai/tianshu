@@ -181,51 +181,52 @@ export function DocumentViewer({
     return <TablePreview content={content} delimiter="\t" className={className} />;
   }
 
-  // Markdown surface.
+  // Markdown surface. Markdown content can be tall; wrap it in
+  // a flex column with overflow-auto so long files scroll inside
+  // the modal instead of pushing the modal body past its bound.
   const isMarkdown =
     MARKDOWN_EXTS.has(ext) ||
     mimeType === "text/markdown" ||
     mimeType === "text/x-markdown";
   if (isMarkdown) {
     return (
-      <div className={`p-4 ${className}`}>
+      <div
+        className={`min-h-0 flex-1 overflow-auto p-4 ${className}`}
+      >
         <MarkdownBlock>{content}</MarkdownBlock>
       </div>
     );
   }
 
   // HTML surface: live iframe preview with a source-view toggle.
-  // We sniff via extension since the read endpoint already returns
-  // text/plain for HTML files.
+  // HtmlPreview is already a `flex min-h-0 flex-1 flex-col`, so
+  // we pass through `className` and let it own the layout.
   const isHtml = ext === "html" || ext === "htm";
   if (isHtml) {
-    return (
-      <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
-        <HtmlPreview html={content} />
-      </div>
-    );
+    return <HtmlPreview html={content} className={className} />;
   }
 
   // Code surface: shiki-highlighted with line numbers + copy button.
-  // resolveCodeLang() returns null for unknown extensions — those
-  // fall through to the plain-text branch below so we don't lie
-  // about what we can highlight.
+  // Wrap CodeBlock in a flex column with overflow-auto. CodeBlock
+  // itself is laid out side-by-side (gutter + body) and doesn't
+  // own bounded height; the wrapper provides it.
   const codeLang = filename ? resolveCodeLang(filename) : null;
   if (codeLang) {
     return (
-      <div className={`min-h-0 flex-1 ${className}`}>
+      <div
+        className={`min-h-0 flex-1 overflow-auto ${className}`}
+      >
         <CodeBlock code={content} lang={codeLang} />
       </div>
     );
   }
 
-  // Plain text fallback: preserve every byte. `whitespace-pre-wrap`
-  // wraps lines that would overflow horizontally; `break-all` keeps
-  // long URL-ish tokens from blowing out the column. Mono font +
-  // tight leading so it reads like source.
+  // Plain text fallback: preserve every byte. Same overflow
+  // treatment as the other text branches so long files scroll
+  // instead of breaking the modal layout.
   return (
     <pre
-      className={`whitespace-pre-wrap break-all p-4 font-mono text-xs text-gray-200 ${className}`}
+      className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-all p-4 font-mono text-xs text-gray-200 ${className}`}
     >
       {content}
     </pre>
