@@ -204,11 +204,29 @@ export class WeChatChannel implements ChannelAdapter {
           getUpdatesBuf = resp.get_updates_buf;
           this.state.saveSyncBuf(getUpdatesBuf);
         }
+        // Debug: long-poll round-trip outcome. msgs.length is
+        // usually 0 (empty long-poll cycle) but every received
+        // message we want to surface in logs while we're still
+        // wiring up the inbound path.
+        this.ctx.log.info(
+          `wechat getupdates: msgs=${resp.msgs?.length ?? 0} buf_changed=${
+            resp.get_updates_buf && resp.get_updates_buf !== getUpdatesBuf ? "yes" : "no"
+          }`,
+        );
         if (resp.msgs && resp.msgs.length > 0) {
           for (const m of resp.msgs) {
             try {
               const normalised = this.normaliseInbound(m);
-              if (normalised) this.emit(normalised);
+              if (normalised) {
+                this.ctx.log.info(
+                  `wechat inbound: from=${normalised.senderId} text="${normalised.text.slice(0, 60)}"`,
+                );
+                this.emit(normalised);
+              } else {
+                this.ctx.log.info(
+                  `wechat inbound skipped: ${JSON.stringify(m).slice(0, 200)}`,
+                );
+              }
             } catch (err) {
               this.ctx.log.warn(
                 `wechat normalise failed: ${err instanceof Error ? err.message : String(err)}`,
