@@ -35,6 +35,15 @@ export type ApiError =
   | { type: "non200"; status: number; body: string }
   | { type: "abort" };
 
+/** Errcode values iLink uses for "token went stale, stop polling".
+ *  Includes the documented "stale token" code AND -14 "session
+ *  timeout" which fires when a previously-valid token is
+ *  invalidated server-side (e.g. user revoked the bot, account
+ *  rotation, parallel login from another instance). Both end in
+ *  the same admin remediation: re-run QR login. */
+export const STALE_TOKEN_ERRCODES = new Set<number>([50000201, -14]);
+/** Legacy single-code export. Prefer the set above; this stays
+ *  to avoid breaking any caller already importing it. */
 export const STALE_TOKEN_ERRCODE = 50000201;
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 15_000;
@@ -91,7 +100,10 @@ function buildIlinkHeaders(opts: { token?: string }): Record<string, string> {
     "X-WECHAT-UIN": randomWechatUin(),
   };
   if (opts.token) {
-    headers.Authorization = opts.token;
+    // Authorization MUST carry the Bearer prefix. iLink also
+    // requires AuthorizationType=ilink_bot_token to disambiguate
+    // the credential kind.
+    headers.Authorization = `Bearer ${opts.token}`;
     headers.AuthorizationType = "ilink_bot_token";
   }
   return headers;
@@ -113,12 +125,11 @@ function randomWechatUin(): string {
  *  Identifies the calling bot to Tencent's analytics. */
 function buildBaseInfo(opts: { botAgent: string; channelVersion: string }) {
   return {
-    // Field names match OpenClaw's reference (channel_version is a
-    // packed int; bot_agent is the User-Agent-equivalent tag).
-    // The previous spelling (bot_agent_version) was wrong and
-    // explains why getupdates returned 0 msgs even with a valid
-    // token.
-    channel_version: packVersion(opts.channelVersion),
+    // channel_version is a string (e.g. "0.3.36"). OpenClaw's
+    // reference packed it into a uint32 in the iLink-App-ClientVersion
+    // header but kept the body field as the raw semver string. I
+    // misread the JS earlier; the int variant gives -14.
+    channel_version: opts.channelVersion,
     bot_agent: opts.botAgent,
   };
 }
@@ -294,6 +305,14 @@ export interface QrCodeStatusResponse {
   ilink_user_id?: string;
   ilink_bot_id?: string;
   username?: string;
+  /**
+   * Per-binding API host Tencent assigns at confirm time. Often
+   * differs from the QR-login host (e.g. ilinkai.weixin.qq.com
+   * for login, sometimes-shard for actual messaging). MUST be
+   * used by every subsequent call (getupdates, sendmessage),
+   * else iLink answers -14 "session timeout" because the token
+   * is registered on a different shard.
+   */
   baseurl?: string;
   redirect_host?: string;
   ret?: number;
