@@ -65,16 +65,13 @@ interface ChatState {
   // ui chrome
   sidebarOpen: boolean;
 
-  // ── channel sessions ──────────────────────────────────────────────
-  /** Sessions backed by an external channel (wechat / telegram /
-   *  etc.). Loaded on init from /api/channel-sessions and re-pulled
-   *  every 30s while the sidebar's mounted so newly-arrived threads
-   *  appear without a full reload. */
-  channelSessions: import("../lib/api").ChannelSessionEntry[];
+  // ── channel session selection ─────────────────────────────────────
   /** When non-null, `messages` shows the history of this session
-   *  rather than the main webchat thread. The composer disables
-   *  itself in this mode because channel sessions are driven by
-   *  inbound platform messages, not user-typed prompts. */
+   *  rather than the main webchat thread. Channel plugins
+   *  (wechat / telegram / ...) flip this via the plugin-sdk
+   *  useChatNav hook from their sidebar sections. The composer
+   *  disables itself in this mode because channel sessions are
+   *  driven by inbound platform messages, not user-typed prompts. */
   viewingSessionId: string | null;
 
   // ── internal ──
@@ -98,10 +95,10 @@ interface ChatState {
   clearStreamError: () => void;
   clearCompactNotice: () => void;
   setPreferredModel: (id: string | null) => void;
-  /** Fetch the latest channel sessions list from the server. */
-  refreshChannelSessions: () => Promise<void>;
   /** Pin the chat area to a specific session id. Pass `null` to
-   *  return to the main webchat thread. */
+   *  return to the main webchat thread. Channel plugins drive
+   *  this from their sidebar sections via the plugin-sdk
+   *  useChatNav hook; nothing in the host UI calls it directly. */
   selectSession: (sessionId: string | null) => void;
 }
 
@@ -121,7 +118,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   sidebarOpen: true,
 
-  channelSessions: [],
   viewingSessionId: null,
 
   _initialized: false,
@@ -158,12 +154,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       .catch(() => {
         /* best-effort; UI degrades to "—" */
       });
-
-    // Pull channel sessions list in parallel with /me + /models so
-    // the sidebar can paint as soon as the rest of the chrome
-    // appears. Channels are an additive surface; failing to load
-    // them shouldn't break the main webchat path.
-    void get().refreshChannelSessions();
 
     tianshuWs.connect();
     // History fetch as soon as we're connected. We pin to
@@ -326,15 +316,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-
-  refreshChannelSessions: async () => {
-    try {
-      const list = await api.channelSessions();
-      set({ channelSessions: list });
-    } catch {
-      // Best-effort; sidebar quietly shows nothing.
-    }
-  },
 
   selectSession: (sessionId) => {
     set({

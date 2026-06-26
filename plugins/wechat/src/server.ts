@@ -208,6 +208,43 @@ const plugin: PluginServerModule = {
         // Useful when debugging "why aren't my inbound messages
         // showing up". Returns null fields for any binding the
         // adapter hasn't started yet.
+        // GET /sessions — list wechat channel sessions for the
+        // current tenant. The sidebar section in client.tsx polls
+        // this so plugin authors don't have to reach into host
+        // session storage; the host's /api/channel-sessions is
+        // still around but channel-agnostic. Per-channel rendering
+        // (icon, pill, label) belongs to the plugin.
+        listSessions: (_req: Request, res: Response) => {
+          const rows = ctx.db
+            .prepare<
+              [],
+              {
+                id: string;
+                channel_chat_id: string;
+                channel_binding_id: string | null;
+                title: string | null;
+                created_at: number;
+              }
+            >(
+              `SELECT id, channel_chat_id, channel_binding_id, title, created_at
+                 FROM sessions
+                WHERE channel_id = 'wechat'
+                  AND kind = 'user'
+                ORDER BY created_at DESC`,
+            )
+            .all();
+          res.json({
+            ok: true,
+            sessions: rows.map((r) => ({
+              id: r.id,
+              channelChatId: r.channel_chat_id,
+              bindingId: r.channel_binding_id,
+              title: r.title,
+              createdAt: r.created_at,
+            })),
+          });
+        },
+
         getStats: (_req: Request, res: Response) => {
           const entries: Array<{ bindingId: string; stats: unknown }> = [];
           for (const [id, adapter] of liveAdapters) {
