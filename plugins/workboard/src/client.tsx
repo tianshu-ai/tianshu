@@ -1063,7 +1063,7 @@ function BoardCard({
           )}
           {task.resultSummary && !expanded && (
             <div
-              className={`${compact ? "text-[10px]" : "text-[10.5px]"} text-emerald-300/80 mt-0.5 italic line-clamp-2 whitespace-pre-line`}
+              className={`${compact ? "text-[10px]" : "text-[10.5px]"} text-success/90 mt-0.5 italic line-clamp-2 whitespace-pre-line`}
             >
               → {task.resultSummary}
             </div>
@@ -1096,7 +1096,7 @@ function BoardCard({
           )}
           {task.resultSummary && (
             <Section label="Result">
-              <div className="text-[10.5px] text-emerald-300/90 italic whitespace-pre-line break-words max-h-48 overflow-y-auto">
+              <div className="text-[10.5px] text-success italic whitespace-pre-line break-words max-h-48 overflow-y-auto">
                 → {task.resultSummary}
               </div>
             </Section>
@@ -1592,7 +1592,7 @@ function DeliveryFile({ path }: { path: string }): React.ReactElement {
         e.stopPropagation();
         open(stripped);
       }}
-      className="inline-flex items-center gap-1 max-w-full text-[10.5px] font-mono text-success hover:text-emerald-200 hover:underline truncate"
+      className="inline-flex items-center gap-1 max-w-full text-[10.5px] font-mono text-success hover:underline truncate"
       title={stripped}
     >
       <FileText className="w-3 h-3 shrink-0 opacity-70" />
@@ -1866,7 +1866,7 @@ function DependencyPicker({
                 key={id}
                 className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
                   done
-                    ? "text-emerald-200 bg-emerald-500/10 border-emerald-500/30"
+                    ? "text-success bg-success/10 border-success/30"
                     : "text-indigo-200 bg-indigo-500/15 border-indigo-500/40"
                 }`}
                 title={t ? `${t.status} · ${t.id}` : id}
@@ -2248,7 +2248,7 @@ function TaskModal({
               <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
                 Result
               </label>
-              <div className="bg-bg-elevated border border-border-subtle rounded px-2 py-1.5 text-emerald-200 italic whitespace-pre-line">
+              <div className="bg-bg-elevated border border-border-subtle rounded px-2 py-1.5 text-success italic whitespace-pre-line">
                 {task.resultSummary}
               </div>
             </div>
