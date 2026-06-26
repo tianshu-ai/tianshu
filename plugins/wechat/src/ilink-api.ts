@@ -51,20 +51,76 @@ export const ILINK_BASE_URL = "https://ilinkai.weixin.qq.com";
  *  User-Agent. */
 export const TIANSHU_BOT_AGENT = "tianshu";
 
-/** Build the `base_info` block every authenticated request carries.
- *  Identifies the calling bot to Tencent's analytics. */
-function buildBaseInfo(opts: { botAgent: string; channelVersion: string }) {
-  return {
-    bot_agent: opts.botAgent,
-    // Pack semver as 0x00MMNNPP — matches Tencent's reference impl.
-    bot_agent_version: packVersion(opts.channelVersion),
-  };
-}
+/**
+ * `iLink-App-Id` header. Tencent's published wechat plugin pulls
+ * this from its own package.json ("ilink_appid": "bot"), so we
+ * pin the same string verbatim. Tencent's gateway uses it as a
+ * routing tag.
+ */
+const ILINK_APP_ID = "bot";
+
+/**
+ * `iLink-App-ClientVersion` header. Tencent's plugin encodes its
+ * package version as 0x00MMmmpp (major/minor/patch packed). We
+ * publish 0.3.x = 0x000300xx; pin a stable value matching the
+ * tianshu app version at first ship so Tencent doesn't see a
+ * bare zero. The exact integer doesn't gate auth; Tencent reads
+ * this for analytics + soft-version routing only.
+ */
+const ILINK_APP_CLIENT_VERSION = packVersion("0.3.36");
 
 function packVersion(semver: string): number {
   const parts = semver.split(".").map((p) => parseInt(p, 10) || 0);
   const [major = 0, minor = 0, patch = 0] = parts;
   return ((major & 0xff) << 16) | ((minor & 0xff) << 8) | (patch & 0xff);
+}
+
+/**
+ * Build the common headers Tencent's gateway expects on every
+ * iLink call. This is the auth shape that OpenClaw's reference
+ * plugin uses; the API silently drops requests that use the
+ * wrong scheme (e.g. plain `Authorization: Bearer <token>`),
+ * which is why my initial implementation never got any inbound
+ * messages even with a valid token.
+ */
+function buildIlinkHeaders(opts: { token?: string }): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "iLink-App-Id": ILINK_APP_ID,
+    "iLink-App-ClientVersion": String(ILINK_APP_CLIENT_VERSION),
+    "X-WECHAT-UIN": randomWechatUin(),
+  };
+  if (opts.token) {
+    headers.Authorization = opts.token;
+    headers.AuthorizationType = "ilink_bot_token";
+  }
+  return headers;
+}
+
+/** X-WECHAT-UIN: random 32-bit unsigned int decimal string,
+ *  base64-encoded. Tencent's gateway uses it as a per-request
+ *  nonce; the value itself isn't validated. */
+function randomWechatUin(): string {
+  const bytes = new Uint8Array(4);
+  globalThis.crypto.getRandomValues(bytes);
+  const u32 =
+    (bytes[0]! << 24) | (bytes[1]! << 16) | (bytes[2]! << 8) | bytes[3]!;
+  const decimal = (u32 >>> 0).toString();
+  return btoa(decimal);
+}
+
+/** Build the `base_info` block every authenticated request carries.
+ *  Identifies the calling bot to Tencent's analytics. */
+function buildBaseInfo(opts: { botAgent: string; channelVersion: string }) {
+  return {
+    // Field names match OpenClaw's reference (channel_version is a
+    // packed int; bot_agent is the User-Agent-equivalent tag).
+    // The previous spelling (bot_agent_version) was wrong and
+    // explains why getupdates returned 0 msgs even with a valid
+    // token.
+    channel_version: packVersion(opts.channelVersion),
+    bot_agent: opts.botAgent,
+  };
 }
 
 interface RawPostOpts {
@@ -95,7 +151,11 @@ async function apiGet(opts: {
     else opts.abortSignal.addEventListener("abort", onCallerAbort);
   }
   try {
-    const res = await fetch(url, { method: "GET", signal: controller.signal });
+    const res = await fetch(url, {
+      method: "GET",
+      headers: buildIlinkHeaders({}),
+      signal: controller.signal,
+    });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw classifyAndThrow({ type: "non200", status: res.status, body });
@@ -122,12 +182,7 @@ async function apiGet(opts: {
  *  `resp.errcode` for API-level failures from the response body. */
 async function apiPost(opts: RawPostOpts): Promise<string> {
   const url = `${trimTrailingSlash(opts.baseUrl)}/${opts.endpoint}`;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (opts.token) {
-    headers.Authorization = `Bearer ${opts.token}`;
-  }
+  const headers = buildIlinkHeaders({ token: opts.token });
 
   // Compose the request abort signal: caller-provided + per-call
   // timeout. The timeout always wins eventually; the caller signal
