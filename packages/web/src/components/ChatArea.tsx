@@ -59,7 +59,7 @@ export default function ChatArea() {
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       {/* Top bar */}
-      <header className="flex h-12 items-center justify-between border-b border-border-subtle bg-gray-900/50 px-4 backdrop-blur">
+      <header className="flex h-12 items-center justify-between border-b border-border-subtle bg-bg-elevated/50 px-4 backdrop-blur">
         <div className="flex items-center">
           <button
             type="button"
@@ -108,7 +108,7 @@ export default function ChatArea() {
                 type="button"
                 onClick={loadEarlier}
                 disabled={loadingMore}
-                className="w-full rounded-lg bg-gray-800/50 py-2 text-xs text-fg-faint hover:text-fg-muted disabled:cursor-default disabled:opacity-60"
+                className="w-full rounded-lg bg-bg-raised/50 py-2 text-xs text-fg-faint hover:text-fg-muted disabled:cursor-default disabled:opacity-60"
               >
                 {loadingMore ? "Loading…" : "Load earlier messages"}
               </button>

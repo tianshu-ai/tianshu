@@ -257,7 +257,7 @@ function FilesPanel({ plugin }: PanelProps) {
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter files..."
-              className="w-full rounded border border-border-subtle bg-bg-elevated py-1 pl-8 pr-2 text-sm text-fg-muted placeholder-gray-600 focus:border-border-strong focus:outline-none"
+              className="w-full rounded border border-border-subtle bg-bg-elevated py-1 pl-8 pr-2 text-sm text-fg-muted placeholder:text-fg-fainter focus:border-border-strong focus:outline-none"
             />
           </div>
           <button
@@ -281,7 +281,7 @@ function FilesPanel({ plugin }: PanelProps) {
 
       {/* Sort header (list view only) */}
       {view === "list" && (
-        <div className="flex select-none items-center border-b border-gray-800/50 px-3 py-1 text-xs text-fg-faint">
+        <div className="flex select-none items-center border-b border-border-subtle/50 px-3 py-1 text-xs text-fg-faint">
           <button
             type="button"
             onClick={() => toggleSort("name")}
@@ -323,7 +323,7 @@ function FilesPanel({ plugin }: PanelProps) {
             {filtered.map((e) => (
               <li
                 key={e.path}
-                className="group flex cursor-pointer items-center px-3 py-1.5 hover:bg-gray-800/50"
+                className="group flex cursor-pointer items-center px-3 py-1.5 hover:bg-bg-raised/50"
                 onClick={() => {
                   if (e.type === "directory") navigate(e.path);
                   else setPreview(e);
@@ -352,7 +352,7 @@ function FilesPanel({ plugin }: PanelProps) {
                   if (e.type === "directory") navigate(e.path);
                   else setPreview(e);
                 }}
-                className="flex cursor-pointer flex-col items-center rounded-lg p-3 hover:bg-gray-800/50"
+                className="flex cursor-pointer flex-col items-center rounded-lg p-3 hover:bg-bg-raised/50"
               >
                 <div className="mb-1">{fileIcon(e)}</div>
                 <span className="w-full truncate text-center text-xs">{e.name}</span>
@@ -553,7 +553,7 @@ function UploadButton(props: ComposerActionProps) {
         onClick={click}
         title="Attach file"
         aria-label="Attach file"
-        className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-gray-700 hover:text-fg-default"
+        className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
       >
         <Paperclip size={16} />
       </button>
@@ -633,7 +633,7 @@ function ImageAttachment({ attachment, rawUrl }: AttachmentRendererProps) {
       target="_blank"
       rel="noreferrer"
       title={label}
-      className="overflow-hidden rounded-md border border-border-subtle bg-gray-900/60"
+      className="overflow-hidden rounded-md border border-border-subtle bg-bg-elevated/60"
     >
       <img
         src={url}
@@ -649,7 +649,7 @@ function FileAttachment({ attachment }: AttachmentRendererProps) {
   const label = attachment.name ?? attachment.path;
   return (
     <div
-      className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-gray-900/60 px-2 py-1 text-xs text-fg-default"
+      className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-elevated/60 px-2 py-1 text-xs text-fg-default"
       title={attachment.path}
     >
       <File size={12} className="text-fg-muted" />

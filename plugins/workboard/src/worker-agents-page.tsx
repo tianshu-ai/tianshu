@@ -201,11 +201,11 @@ export function WorkerAgentsPage(): ReactElement {
 
       <div className="mb-6 flex items-start justify-between gap-3">
         <div>
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-100">
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
             <Bot size={18} className="text-brand-400" />
             Worker agents
           </h1>
-          <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-gray-500">
+          <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-fg-faint">
             Inventory the workboard pool currently sees. Filesystem rows
             shadow same-slug DB rows; legacy DB rows still present here
             haven't been edited or aren't yet picked up by the merger.
@@ -215,7 +215,7 @@ export function WorkerAgentsPage(): ReactElement {
           type="button"
           onClick={() => void refresh()}
           disabled={loading}
-          className="flex items-center gap-1 rounded-md border border-gray-700 px-2.5 py-1.5 text-[12px] text-gray-300 hover:bg-gray-800 disabled:opacity-50"
+          className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised disabled:opacity-50"
           title="Reload"
         >
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
@@ -229,9 +229,9 @@ export function WorkerAgentsPage(): ReactElement {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-md border border-gray-800">
+      <div className="overflow-x-auto rounded-md border border-border-subtle">
         <table className="min-w-full divide-y divide-gray-800 text-[12px]">
-          <thead className="bg-gray-900/60 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+          <thead className="bg-bg-elevated/60 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
             <tr>
               <th className="px-3 py-2 text-left">State</th>
               <th className="px-3 py-2 text-left">Name</th>
@@ -246,7 +246,7 @@ export function WorkerAgentsPage(): ReactElement {
               <tr>
                 <td
                   colSpan={6}
-                  className="px-3 py-8 text-center text-gray-500"
+                  className="px-3 py-8 text-center text-fg-faint"
                 >
                   {loading ? "Loading…" : "No worker agents."}
                 </td>
@@ -257,15 +257,15 @@ export function WorkerAgentsPage(): ReactElement {
                 return [
                   <tr
                     key={`${a.id}-row`}
-                    className="cursor-pointer hover:bg-gray-900/40"
+                    className="cursor-pointer hover:bg-bg-elevated/40"
                     onClick={() => toggle(a.id)}
                   >
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-3">
                         {isOpen ? (
-                          <ChevronDown size={12} className="text-gray-500" />
+                          <ChevronDown size={12} className="text-fg-faint" />
                         ) : (
-                          <ChevronRight size={12} className="text-gray-500" />
+                          <ChevronRight size={12} className="text-fg-faint" />
                         )}
                         {/* iOS-style toggle: clearly affords "this
                             is a switch you can flip". Replaces the
@@ -284,7 +284,7 @@ export function WorkerAgentsPage(): ReactElement {
                           className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border transition-colors ${
                             a.enabled
                               ? "border-emerald-500/60 bg-emerald-500/80 hover:bg-emerald-500"
-                              : "border-gray-700 bg-gray-700 hover:bg-gray-600"
+                              : "border-border-default bg-bg-hover hover:bg-border-strong"
                           } disabled:cursor-not-allowed disabled:opacity-50`}
                           title={
                             a.enabled
@@ -304,15 +304,15 @@ export function WorkerAgentsPage(): ReactElement {
                       </div>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="font-medium text-gray-100">{a.name}</div>
+                      <div className="font-medium text-fg-default">{a.name}</div>
                       {a.description && (
-                        <div className="text-[11px] text-gray-500">
+                        <div className="text-[11px] text-fg-faint">
                           {a.description}
                         </div>
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <code className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-300">
+                      <code className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted">
                         {kindLabel(a.kind)}
                       </code>
                     </td>
@@ -322,20 +322,20 @@ export function WorkerAgentsPage(): ReactElement {
                           builtin
                         </span>
                       ) : (
-                        <span className="rounded bg-gray-800 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                        <span className="rounded bg-bg-raised px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
                           user
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-gray-400">
+                    <td className="px-3 py-2 font-mono text-[11px] text-fg-muted">
                       {a.modelId ?? "—"}
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-gray-500">
+                    <td className="px-3 py-2 font-mono text-[11px] text-fg-faint">
                       {a.builtinKey ?? a.id}
                     </td>
                   </tr>,
                   isOpen ? (
-                    <tr key={`${a.id}-detail`} className="bg-gray-950">
+                    <tr key={`${a.id}-detail`} className="bg-bg-base">
                       <td colSpan={6} className="px-3 pb-4 pt-1">
                         <AgentDetail
                           agent={a}
@@ -428,18 +428,18 @@ function AgentDetail({
     return effective(agent.skills, skillCatalog, /* applyDeny */ false);
   }, [agent.effectiveSkills, agent.skills, skillCatalog]);
   return (
-    <div className="mt-1 space-y-3 rounded-md border border-gray-800 bg-gray-900/40 p-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">
+    <div className="mt-1 space-y-3 rounded-md border border-border-subtle bg-bg-elevated/40 p-3">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-fg-faint">
         <span>
           slot:{" "}
-          <code className="rounded bg-gray-800 px-1.5 py-0.5 text-gray-300">
+          <code className="rounded bg-bg-raised px-1.5 py-0.5 text-fg-muted">
             {slotUri}
           </code>
         </span>
         {agent.modelId && (
           <span>
             model:{" "}
-            <code className="rounded bg-gray-800 px-1.5 py-0.5 text-gray-300">
+            <code className="rounded bg-bg-raised px-1.5 py-0.5 text-fg-muted">
               {agent.modelId}
             </code>
           </span>
@@ -450,15 +450,15 @@ function AgentDetail({
       <DetailSection title="Allowed skills" data={skills} />
 
       <div>
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
           System prompt (SOUL.md)
         </div>
         {agent.systemPrompt ? (
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-gray-950 p-2 text-[11px] leading-relaxed text-gray-300">
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-bg-base p-2 text-[11px] leading-relaxed text-fg-muted">
             {agent.systemPrompt}
           </pre>
         ) : (
-          <div className="text-[11px] italic text-gray-500">
+          <div className="text-[11px] italic text-fg-faint">
             (none — worker uses the kind default)
           </div>
         )}
@@ -497,22 +497,22 @@ function DetailSection({
   return (
     <div>
       <div className="mb-1 flex items-center gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
           {title}
         </span>
         {data.kind !== "unknown" && (
-          <span className="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-400">
+          <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-muted">
             {data.items.length}
           </span>
         )}
         {badge}
       </div>
       {data.kind === "unknown" ? (
-        <div className="text-[11px] italic text-gray-500">
+        <div className="text-[11px] italic text-fg-faint">
           (catalog not loaded — reload the page)
         </div>
       ) : data.items.length === 0 ? (
-        <div className="text-[11px] italic text-gray-500">
+        <div className="text-[11px] italic text-fg-faint">
           (empty list — worker can call nothing)
         </div>
       ) : (
@@ -520,7 +520,7 @@ function DetailSection({
           {data.items.map((name) => (
             <code
               key={name}
-              className="rounded bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-300"
+              className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted"
             >
               {name}
             </code>

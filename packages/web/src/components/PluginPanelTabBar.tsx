@@ -51,7 +51,7 @@ export default function PluginPanelTabBar() {
   tabs.sort((a, b) => (a.order ?? 100) - (b.order ?? 100));
 
   return (
-    <div className="flex h-12 items-center gap-1 border-b border-gray-800 bg-gray-950/40 px-2">
+    <div className="flex h-12 items-center gap-1 border-b border-border-subtle bg-bg-base/40 px-2">
       <div className="flex flex-1 items-center gap-0.5 overflow-x-auto">
         {tabs.map((tab) => {
           const Icon = ICONS_BY_NAME[tab.icon] ?? Puzzle;
@@ -71,8 +71,8 @@ export default function PluginPanelTabBar() {
               className={[
                 "group relative flex shrink-0 items-center gap-1.5 rounded-md text-xs transition-all",
                 active
-                  ? "bg-gray-700/70 px-2.5 py-1 font-medium text-gray-100"
-                  : "px-2 py-1 text-gray-500 hover:bg-gray-800/60 hover:text-gray-200",
+                  ? "bg-bg-hover/70 px-2.5 py-1 font-medium text-fg-default"
+                  : "px-2 py-1 text-fg-faint hover:bg-bg-raised/60 hover:text-fg-default",
               ].join(" ")}
             >
               <Icon size={14} />
@@ -87,7 +87,7 @@ export default function PluginPanelTabBar() {
         onClick={() => setOpenPanel(null)}
         title="Close panel"
         aria-label="Close panel"
-        className="ml-1 rounded-md p-1 text-gray-500 hover:bg-gray-800/60 hover:text-gray-300"
+        className="ml-1 rounded-md p-1 text-fg-faint hover:bg-bg-raised/60 hover:text-fg-muted"
       >
         <X size={16} />
       </button>

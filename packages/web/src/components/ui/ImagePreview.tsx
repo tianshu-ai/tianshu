@@ -59,7 +59,7 @@ export function ImagePreview({
   // SVG path: sub-header with Render / Source toggle.
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
-      <div className="flex items-center justify-end gap-1 border-b border-border-subtle bg-gray-950/50 px-3 py-1.5">
+      <div className="flex items-center justify-end gap-1 border-b border-border-subtle bg-bg-base/50 px-3 py-1.5">
         <ModeToggle mode={mode} onChange={setMode} />
       </div>
       <div className="min-h-0 flex-1 overflow-auto">
@@ -87,14 +87,14 @@ function ModeToggle({
   onChange: (m: "render" | "source") => void;
 }) {
   return (
-    <div className="inline-flex rounded-md border border-border-subtle bg-gray-900/60 p-0.5 text-[11px] text-fg-muted">
+    <div className="inline-flex rounded-md border border-border-subtle bg-bg-elevated/60 p-0.5 text-[11px] text-fg-muted">
       <button
         type="button"
         onClick={() => onChange("render")}
         className={`flex items-center gap-1 rounded px-2 py-0.5 transition-colors ${
           mode === "render"
             ? "bg-bg-raised text-fg-default"
-            : "hover:bg-gray-800/60 hover:text-fg-default"
+            : "hover:bg-bg-raised/60 hover:text-fg-default"
         }`}
         title="Render"
       >
@@ -107,7 +107,7 @@ function ModeToggle({
         className={`flex items-center gap-1 rounded px-2 py-0.5 transition-colors ${
           mode === "source"
             ? "bg-bg-raised text-fg-default"
-            : "hover:bg-gray-800/60 hover:text-fg-default"
+            : "hover:bg-bg-raised/60 hover:text-fg-default"
         }`}
         title="View source"
       >

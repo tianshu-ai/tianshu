@@ -728,7 +728,7 @@ function KanbanColumn({
     <div
       className={`flex flex-col flex-1 min-w-[160px] rounded-lg border transition-colors ${
         isDragOver
-          ? "border-blue-500/60 bg-gray-900/80"
+          ? "border-blue-500/60 bg-bg-elevated/80"
           : column.color
       }`}
       onDragOver={(e) => {
@@ -742,7 +742,7 @@ function KanbanColumn({
         onDrop(e, column.status);
       }}
     >
-      <header className="px-2 py-1.5 border-b border-gray-800/60 flex items-center gap-1.5 sticky top-0">
+      <header className="px-2 py-1.5 border-b border-border-subtle/60 flex items-center gap-1.5 sticky top-0">
         <span className={`w-2 h-2 rounded-full ${column.dot}`} />
         <span className={`${compact ? "text-[11px]" : "text-xs"} font-medium`}>
           {column.label}
@@ -883,7 +883,7 @@ function BoardCard({
         e.stopPropagation();
         if (hasMore) setExpanded((v) => !v);
       }}
-      className={`rounded border bg-gray-900/60 hover:border-border-default ${
+      className={`rounded border bg-bg-elevated/60 hover:border-border-default ${
         meta.blocked
           ? "border-indigo-500/40"
           : "border-border-subtle"
@@ -931,7 +931,7 @@ function BoardCard({
                 className={`inline-flex items-center gap-0.5 text-[9px] px-1 rounded border ${
                   meta.blocked
                     ? "text-indigo-200 bg-indigo-500/15 border-indigo-500/40"
-                    : "text-fg-muted bg-gray-700/30 border-border-default"
+                    : "text-fg-muted bg-bg-hover/30 border-border-default"
                 }`}
                 title={
                   meta.blocked
@@ -1084,7 +1084,7 @@ function BoardCard({
       </div>
       {expanded && (
         <div
-          className="px-2 pb-2 pt-0 border-t border-gray-800/60 space-y-1.5"
+          className="px-2 pb-2 pt-0 border-t border-border-subtle/60 space-y-1.5"
           onClick={(e) => e.stopPropagation()}
         >
           {task.description && (
@@ -1194,7 +1194,7 @@ function ExecutionSection({ task }: { task: Task }) {
             e.stopPropagation();
             setOpen(true);
           }}
-          className="inline-flex items-center gap-1.5 rounded border border-border-default px-1.5 py-0.5 text-[10px] text-fg-muted hover:border-gray-500 hover:bg-bg-raised"
+          className="inline-flex items-center gap-1.5 rounded border border-border-default px-1.5 py-0.5 text-[10px] text-fg-muted hover:border-border-strong hover:bg-bg-raised"
         >
           <ScrollText className="w-3 h-3" />
           View transcript
@@ -1434,7 +1434,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
             <Bot className="h-3 w-3 text-blue-400" />
           )}
           <span>{isUser ? "you" : row.role}</span>
-          <span className="text-gray-700">·</span>
+          <span className="text-fg-fainter">·</span>
           <span className="text-fg-fainter">
             {new Date(row.createdAt).toLocaleTimeString()}
           </span>
@@ -1444,7 +1444,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
             className={`whitespace-pre-line break-words rounded-lg border px-3 py-2 text-[13px] leading-relaxed ${
               isUser
                 ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
-                : "border-border-subtle bg-gray-900/60 text-fg-default"
+                : "border-border-subtle bg-bg-elevated/60 text-fg-default"
             }`}
           >
             {row.text}
@@ -1512,7 +1512,7 @@ function ToolCallChip({
           className={`mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] ${
             isError
               ? "border-rose-700/40 bg-rose-950/30 text-rose-200"
-              : "border-gray-800/60 bg-gray-900/60 text-fg-muted"
+              : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted"
           }`}
         >
           {truncateText(result.text || "(empty)", 4000)}
@@ -1673,7 +1673,7 @@ function AddTaskRow({
   };
 
   return (
-    <li className="rounded border border-blue-500/50 bg-gray-900/70 p-1.5 space-y-1">
+    <li className="rounded border border-blue-500/50 bg-bg-elevated/70 p-1.5 space-y-1">
       <div className="flex items-center gap-1">
         <input
           ref={inputRef}
@@ -1935,7 +1935,7 @@ function ProjectChips({
   rightExtras?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border-subtle bg-gray-950/40 overflow-x-auto scrollbar-none flex-shrink-0">
+    <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border-subtle bg-bg-base/40 overflow-x-auto scrollbar-none flex-shrink-0">
       {showAll && (
         <Chip
           active={!active}
@@ -1976,7 +1976,7 @@ function Chip({
         "shrink-0 inline-flex items-center gap-1 rounded-full text-[11px] transition-colors px-2.5 py-0.5",
         active
           ? "bg-blue-500/20 border border-blue-400/50 text-blue-200"
-          : "text-fg-muted hover:text-fg-default hover:bg-gray-800/60 border border-transparent",
+          : "text-fg-muted hover:text-fg-default hover:bg-bg-raised/60 border border-transparent",
       ].join(" ")}
     >
       <span>{label}</span>
@@ -2407,7 +2407,7 @@ function SidebarWorkerRow({
   const emoji = kindEmoji(kind);
   return (
     <div
-      className="flex cursor-default items-center gap-2 rounded py-0.5 pl-1 hover:bg-gray-700/30"
+      className="flex cursor-default items-center gap-2 rounded py-0.5 pl-1 hover:bg-bg-hover/30"
       title={`Agent: ${name}\nWorker type: ${kind}`}
     >
       <span className="w-5 flex-shrink-0 text-center text-base">{emoji}</span>
@@ -2416,14 +2416,14 @@ function SidebarWorkerRow({
           {name}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="truncate rounded bg-gray-800/80 px-1 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-fg-muted">
+          <span className="truncate rounded bg-bg-raised/80 px-1 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-fg-muted">
             {kind}
           </span>
           <span
             className={`rounded px-1 py-px text-[9px] ${
               busy
                 ? "bg-blue-900/40 text-blue-100 border border-blue-700"
-                : "bg-gray-800/60 text-fg-fainter"
+                : "bg-bg-raised/60 text-fg-fainter"
             }`}
           >
             {busy ? "busy" : "idle"}

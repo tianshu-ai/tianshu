@@ -97,13 +97,13 @@ export default function ModelSelector() {
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 rounded-full bg-gray-700/60 py-1 pl-2.5 pr-2 text-xs font-medium text-gray-300 transition-colors hover:bg-gray-700"
+        className="inline-flex items-center gap-1 rounded-full bg-bg-hover/60 py-1 pl-2.5 pr-2 text-xs font-medium text-fg-muted transition-colors hover:bg-bg-hover"
         title={activeId}
       >
         <span className="max-w-[160px] truncate">{displayName}</span>
         <ChevronDown
           size={12}
-          className={`text-gray-400 transition-transform ${open ? "rotate-180" : ""}`}
+          className={`text-fg-muted transition-transform ${open ? "rotate-180" : ""}`}
         />
       </button>
 
@@ -111,7 +111,7 @@ export default function ModelSelector() {
         createPortal(
           <div
             ref={dropdownRef}
-            className="fixed z-[9999] max-h-80 w-64 overflow-y-auto rounded-xl border border-gray-700 bg-gray-800 py-1 shadow-2xl"
+            className="fixed z-[9999] max-h-80 w-64 overflow-y-auto rounded-xl border border-border-default bg-bg-raised py-1 shadow-2xl"
             style={{
               bottom: `calc(100vh - ${pos.top}px + 8px)`,
               right: `${pos.right}px`,
@@ -119,7 +119,7 @@ export default function ModelSelector() {
           >
             {groups.map((g) => (
               <div key={g.label}>
-                <div className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+                <div className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
                   {g.label}
                 </div>
                 {g.items.map((m) => (
@@ -130,8 +130,8 @@ export default function ModelSelector() {
                     className={
                       "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors " +
                       (m.id === activeId
-                        ? "bg-gray-700/60 text-white"
-                        : "text-gray-300 hover:bg-gray-700/40")
+                        ? "bg-bg-hover/60 text-white"
+                        : "text-fg-muted hover:bg-bg-hover/40")
                     }
                     title={m.id}
                   >

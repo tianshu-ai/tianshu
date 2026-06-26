@@ -278,7 +278,7 @@ function AdminSidebar({
           // current identity prefix without having to import
           // buildIdentityPath here.
           to=".."
-          className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-fg-faint hover:bg-gray-800/50 hover:text-fg-muted"
+          className="flex items-center gap-2 rounded-md px-3 py-2 text-xs text-fg-faint hover:bg-bg-raised/50 hover:text-fg-muted"
           end
         >
           <ArrowLeft size={12} />
@@ -318,7 +318,7 @@ function AdminNavLink({ page }: { page: FlatAdminPage }) {
         `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
           isActive
             ? "bg-bg-raised text-white"
-            : "text-fg-muted hover:bg-gray-800/50 hover:text-fg-default"
+            : "text-fg-muted hover:bg-bg-raised/50 hover:text-fg-default"
         }`
       }
     >
@@ -455,7 +455,7 @@ function PluginConfigSettingsPage({
               next request.
             </p>
           </div>
-          <div className="rounded-md border border-border-subtle bg-gray-900/30 p-4">
+          <div className="rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
             <PluginConfigForm plugin={plugin} />
           </div>
         </section>

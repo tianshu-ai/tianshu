@@ -58,7 +58,7 @@ export default function PluginTopBarButtons() {
               if (!panelTarget) return;
               setOpenPanel(panelTarget);
             }}
-            className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-800 hover:text-gray-200"
+            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
           >
             <Icon size={16} />
           </button>
