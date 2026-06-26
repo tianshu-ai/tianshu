@@ -6,6 +6,33 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.33](https://github.com/tianshu-ai/tianshu/compare/v0.3.32...v0.3.33) (2026-06-26)
+
+### Features
+
+* **ui:** light / dark theme switch with semantic CSS variable
+  tokens. Three modes (light / dark / system; system follows
+  the OS preference live). Picker lives in the sidebar footer
+  profile popover. Two themes ship: dark (default, matches the
+  legacy chrome exactly) and light (Default Light Modern-ish
+  slate palette with a darker brand accent for AA contrast).
+  Theme persisted to localStorage; bootstrap paint runs before
+  React mounts so the first frame is already in the right
+  colors.
+* **plugins:** `useTheme()` hook in `@tianshu-ai/plugin-sdk`
+  returns `{ mode, resolved, setMode }` and re-renders on
+  flip. Semantic token utilities (`bg-bg-base`, `text-fg-default`,
+  `border-border-default`, `bg-accent`, etc.) documented inline
+  so plugin authors write theme-aware UI without learning the
+  host's palette internals.
+* **shiki:** CodeBlock follows the active theme by switching
+  between `github-light` and `github-dark` highlight themes
+  on flip.
+* **migration:** 153 host + 326 plugin hardcoded color classes
+  mapped to semantic tokens. Plugin admin pages and second-tier
+  UI not yet migrated; they render fine in dark but won't flip
+  yet (tracked as follow-up).
+
 ## [0.3.32](https://github.com/tianshu-ai/tianshu/compare/v0.3.31...v0.3.32) (2026-06-26)
 
 ### Features
