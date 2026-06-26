@@ -127,35 +127,37 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  /* Light values tuned for chat-shell readability rather than
-   * faithful VSCode Light Modern reproduction. Three goals:
-   *   1. Base canvas (chat scroll area) is a slight off-white so
-   *      message bubbles can use pure white as the elevated
-   *      surface and stand out by contrast (not by border).
-   *   2. Sidebar / chat header use slate-100 — readable layering
-   *      between sidebar (slate-100), header (slate-100), and
-   *      main canvas (slate-50).
-   *   3. Borders use slate-300 (not slate-200) so message bubbles
-   *      and modals have visible chrome edges; slate-200 in
-   *      previous iteration was too thin to register.
-   *   4. Muted foreground (slate-600) hits AAA 7.0:1 against
-   *      slate-50, faint (slate-500) hits AA 4.5:1, fainter
-   *      (slate-400) is decorative only. */
-  --color-bg-base:        #f8fafc;          /* slate-50  — canvas */
-  --color-bg-elevated:    #f1f5f9;          /* slate-100 — sidebar / header */
-  --color-bg-raised:      #ffffff;          /* white     — message bubbles, modals */
+  /* Light values tuned for chat-shell readability with strong
+   * visual layering. Four design goals:
+   *   1. Three surface tiers visibly differ:
+   *        canvas (slate-100) < bubble/sidebar (white) <
+   *        elevated content (white + shadow)
+   *      The chat scroll area is the SECONDARY surface; message
+   *      bubbles and the sidebar are PRIMARY (white). This
+   *      mirrors GitHub / Linear / Notion light themes — your
+   *      eye lands on the content, not the canvas.
+   *   2. Sidebar uses white not slate-50 — maximum legibility
+   *      for nav, models, workers list.
+   *   3. Borders use slate-300 (visible) and slate-400 (strong);
+   *      slate-200 in the previous iteration was too faint.
+   *   4. Muted foreground (slate-600) hits AAA 7:1 against
+   *      white; faint (slate-500) AA 4.5:1; fainter (slate-400)
+   *      decorative only. */
+  --color-bg-base:        #f1f5f9;          /* slate-100 — chat canvas (the "floor") */
+  --color-bg-elevated:    #ffffff;          /* white — sidebar / header / composer (PRIMARY surfaces) */
+  --color-bg-raised:      #ffffff;          /* white — message bubbles, modals */
   --color-bg-hover:       #e2e8f0;          /* slate-200 — row hover */
   --color-bg-overlay:     rgba(15 23 42 / 0.5);
 
   --color-fg-default:     #0f172a;          /* slate-900 */
-  --color-fg-muted:       #334155;          /* slate-700 — secondary text, icons */
+  --color-fg-muted:       #475569;          /* slate-600 — secondary text, icons */
   --color-fg-faint:       #64748b;          /* slate-500 — tertiary */
   --color-fg-fainter:     #94a3b8;          /* slate-400 — decorative */
   --color-fg-on-accent:   #ffffff;
 
-  --color-border-default: #cbd5e1;          /* slate-300 — visible border */
-  --color-border-strong:  #94a3b8;          /* slate-400 */
-  --color-border-subtle:  #cbd5e1;          /* slate-300 — was slate-200 (invisible) */
+  --color-border-default: #cbd5e1;          /* slate-300 — standard borders */
+  --color-border-strong:  #94a3b8;          /* slate-400 — hover / focus rings */
+  --color-border-subtle:  #e2e8f0;          /* slate-200 — inside white surfaces (rows, dividers) */
 
   --color-accent:         #4263eb;          /* brand-700 */
   --color-accent-hover:   #3b5bdb;          /* brand-800 */
