@@ -1305,7 +1305,7 @@ function ExecutionDialog({
       onClose={onClose}
       title={task.title}
       size="lg"
-      className="h-[80vh] bg-gray-950"
+      className="bg-gray-950"
     >
       <div
         className="flex min-h-0 flex-1 flex-col"
