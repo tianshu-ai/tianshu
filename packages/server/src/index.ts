@@ -42,6 +42,10 @@ import {
 } from "./chat/host-tools/tool-catalog-refresh.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
+import {
+  ChannelAdapterManager,
+  startChannelRouter,
+} from "./channels/index.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -788,6 +792,38 @@ if (webDistRaw && webDistRaw.length > 0) {
 const spaHosted = Boolean(
   process.env.TIANSHU_WEB_DIST && process.env.TIANSHU_WEB_DIST.length > 0,
 );
+
+// Channel system wiring (PR #220 + #221). The router subscribes
+// to the hub so inbound platform messages from any plugin
+// (wechat / telegram / future) route into the agent; the adapter
+// manager owns the binding-row -> adapter-instance lifecycle.
+// We boot the manager AFTER server.listen() so it can use the
+// already-up plugin registry, but BEFORE accepting traffic, all
+// existing-binding adapters are at least attempted.
+const channelManager = new ChannelAdapterManager({
+  globalOps,
+  resolveFactory: (pluginId, channelId) => {
+    const found = pluginRegistry.channelFactoryFor(pluginId, channelId);
+    if (!found) return null;
+    return { factory: found.factory, channelId, displayName: found.displayName };
+  },
+  stateRoot: globalOps.homeDir,
+});
+const stopChannelRouter = startChannelRouter({
+  globalOps,
+  pluginRegistry,
+});
+// Boot enabled bindings async; never block server.listen.
+void channelManager.bootAll().catch((err) => {
+  console.warn(
+    `[channels] bootAll failed: ${err instanceof Error ? err.message : String(err)}`,
+  );
+});
+// Surface stop hook so future graceful-shutdown work has
+// something to call. Today nothing wires this up beyond test
+// harnesses.
+(globalThis as unknown as { __tianshuStopChannelRouter?: () => void }).__tianshuStopChannelRouter =
+  stopChannelRouter;
 
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
