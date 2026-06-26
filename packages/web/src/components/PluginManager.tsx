@@ -199,7 +199,7 @@ export default function PluginManager({ open, onClose }: Props) {
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {error && (
-            <div className="mb-3 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-xs text-rose-300">
+            <div className="mb-3 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-xs text-danger">
               {error}
             </div>
           )}
@@ -322,7 +322,7 @@ function InstalledList({
             )}
             <CapabilityBadges entry={p} />
             {p.failedReason && (
-              <div className="mt-1 flex items-start gap-1 text-[11px] text-rose-300">
+              <div className="mt-1 flex items-start gap-1 text-[11px] text-danger">
                 <AlertTriangle size={11} className="mt-px flex-shrink-0" />
                 <span className="break-all">{p.failedReason}</span>
               </div>
@@ -350,7 +350,7 @@ function CapabilityBadges({ entry }: { entry: PluginListEntry }) {
       {provided.map((c) => (
         <span
           key={`p-${c}`}
-          className="rounded bg-emerald-900/40 px-1.5 py-0.5 text-emerald-300"
+          className="rounded bg-emerald-900/40 px-1.5 py-0.5 text-success"
           title={`This plugin provides ${c}`}
         >
           provides {c}
@@ -370,7 +370,7 @@ function CapabilityBadges({ entry }: { entry: PluginListEntry }) {
       {missing.map((c) => (
         <span
           key={`m-${c}`}
-          className="rounded bg-rose-900/40 px-1.5 py-0.5 text-rose-300"
+          className="rounded bg-rose-900/40 px-1.5 py-0.5 text-danger"
           title={`This plugin requires ${c}, but no provider is enabled`}
         >
           missing {c}
@@ -417,7 +417,7 @@ function CatalogList({
   return (
     <>
       {catalog.entriesDropped > 0 && (
-        <div className="mb-3 rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-[11px] text-amber-300">
+        <div className="mb-3 rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-[11px] text-warning">
           {catalog.entriesDropped} catalog{" "}
           {catalog.entriesDropped === 1 ? "entry was" : "entries were"} dropped because{" "}
           {catalog.entriesDropped === 1 ? "it failed" : "they failed"} schema validation.
@@ -453,7 +453,7 @@ function CatalogRow({
           </code>
           <span className="text-[10px] text-fg-fainter">v{entry.latestVersion}</span>
           {entry.verified && (
-            <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] uppercase text-emerald-300">
+            <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] uppercase text-success">
               <ShieldCheck size={10} /> verified
             </span>
           )}
@@ -504,7 +504,7 @@ function StateBadge({ state }: { state: PluginState }) {
   switch (state) {
     case "active":
       return (
-        <span className="flex items-center gap-1 rounded bg-emerald-900/50 px-1.5 py-0.5 text-[9px] uppercase text-emerald-300">
+        <span className="flex items-center gap-1 rounded bg-emerald-900/50 px-1.5 py-0.5 text-[9px] uppercase text-success">
           <CheckCircle2 size={10} /> active
         </span>
       );
@@ -516,13 +516,13 @@ function StateBadge({ state }: { state: PluginState }) {
       );
     case "failed":
       return (
-        <span className="flex items-center gap-1 rounded bg-rose-900/50 px-1.5 py-0.5 text-[9px] uppercase text-rose-300">
+        <span className="flex items-center gap-1 rounded bg-rose-900/50 px-1.5 py-0.5 text-[9px] uppercase text-danger">
           <AlertTriangle size={10} /> failed
         </span>
       );
     case "client-bundle-missing":
       return (
-        <span className="rounded bg-amber-900/50 px-1.5 py-0.5 text-[9px] uppercase text-amber-300">
+        <span className="rounded bg-amber-900/50 px-1.5 py-0.5 text-[9px] uppercase text-warning">
           no client bundle
         </span>
       );

@@ -57,7 +57,7 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}>
         <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-faint">
-          {isUser ? <User size={11} /> : <Bot size={11} className="text-blue-400" />}
+          {isUser ? <User size={11} /> : <Bot size={11} className="text-link" />}
           <span>{isUser ? "you" : "tianshu"}</span>
         </div>
 
@@ -204,13 +204,13 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
         }
       >
         {running ? (
-          <Loader2 size={11} className="animate-spin text-amber-400" />
+          <Loader2 size={11} className="animate-spin text-warning" />
         ) : isError ? (
           <XCircle size={11} className="text-rose-400/70" />
         ) : (
           <CheckCircle2 size={11} className="text-emerald-500/60" />
         )}
-        <code className="font-mono text-[12px] text-blue-300">{call.name}</code>
+        <code className="font-mono text-[12px] text-link">{call.name}</code>
         <span className="font-mono text-[11px] text-fg-fainter">{summariseArgs(call.arguments)}</span>
         {running ? (
           <span className="text-[11px] text-fg-fainter">running…</span>
@@ -226,7 +226,7 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
           className={
             "mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] " +
             (isError
-              ? "border-rose-700/40 bg-rose-950/30 text-rose-200"
+              ? "border-rose-700/40 bg-rose-950/30 text-danger"
               : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted")
           }
         >

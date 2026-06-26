@@ -71,7 +71,7 @@ export function DocumentViewer({
   }
   if (error) {
     return (
-      <div className={`p-6 text-center text-sm text-rose-300 ${className}`}>
+      <div className={`p-6 text-center text-sm text-danger ${className}`}>
         {error}
       </div>
     );

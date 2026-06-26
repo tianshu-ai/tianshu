@@ -242,7 +242,7 @@ function AdminSidebar({
   return (
     <aside className="flex w-56 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
       <div className="flex h-14 items-center gap-2 border-b border-border-subtle px-4">
-        <ShieldCheck size={16} className="text-blue-400" />
+        <ShieldCheck size={16} className="text-link" />
         <span className="text-sm font-semibold text-fg-default">{shellTitle}</span>
       </div>
 
@@ -399,9 +399,9 @@ function EmptyState() {
 function PageError({ title, message }: { title: string; message: string }) {
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">
-      <div className="rounded-md border border-rose-700/50 bg-rose-950/40 p-4 text-sm text-rose-200">
+      <div className="rounded-md border border-rose-700/50 bg-rose-950/40 p-4 text-sm text-danger">
         <strong className="mb-1 block">{title}</strong>
-        <p className="leading-relaxed text-rose-300">{message}</p>
+        <p className="leading-relaxed text-danger">{message}</p>
       </div>
     </div>
   );

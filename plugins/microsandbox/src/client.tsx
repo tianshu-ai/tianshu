@@ -672,9 +672,9 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
           <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5">
             <div className="flex items-center gap-2 text-[11px] text-fg-muted">
               {building ? (
-                <Loader2 size={11} className="animate-spin text-emerald-400" />
+                <Loader2 size={11} className="animate-spin text-success" />
               ) : (
-                <CheckCircle2 size={11} className="text-emerald-400" />
+                <CheckCircle2 size={11} className="text-success" />
               )}
               <span>
                 {building ? "Build in progress" : "Last build log"}
@@ -720,7 +720,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                       {b.buildId}
                     </code>
                     {(b.roles?.browser ?? b.published) && (
-                      <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] uppercase text-emerald-300">
+                      <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] uppercase text-success">
                         <CheckCircle2 size={10} /> Browser
                       </span>
                     )}
@@ -775,7 +775,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                             type="button"
                             onClick={() => void useBuild(b.buildId, "browser", true)}
                             disabled={usingId === b.buildId}
-                            className="flex items-center gap-1 border-l border-border-subtle px-2 py-1 text-[11px] text-emerald-300 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="flex items-center gap-1 border-l border-border-subtle px-2 py-1 text-[11px] text-success hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
                             title="Pin as Browser + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
                           >
                             <RotateCcw size={11} />
@@ -1146,16 +1146,16 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         {running ? (
           <Loader2 size={11} className="animate-spin text-fg-muted" />
         ) : ok ? (
-          <CheckCircle2 size={11} className="text-emerald-400" />
+          <CheckCircle2 size={11} className="text-success" />
         ) : (
-          <AlertTriangle size={11} className="text-rose-400" />
+          <AlertTriangle size={11} className="text-danger" />
         )}
         <code className="flex-1 break-all text-fg-default">{entry.command}</code>
         <span
           className={`rounded px-1 py-0.5 text-[9px] uppercase tracking-wide ${
             entry.target === "live"
-              ? "bg-emerald-900/40 text-emerald-300"
-              : "bg-amber-900/40 text-amber-300"
+              ? "bg-emerald-900/40 text-success"
+              : "bg-amber-900/40 text-warning"
           }`}
           title={
             entry.target === "live"
@@ -1170,8 +1170,8 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
           <span
             className={
               ok
-                ? "rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] text-emerald-300"
-                : "rounded bg-rose-900/40 px-1.5 py-0.5 text-[9px] text-rose-300"
+                ? "rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] text-success"
+                : "rounded bg-rose-900/40 px-1.5 py-0.5 text-[9px] text-danger"
             }
           >
             exit {result.exitCode}
@@ -1182,7 +1182,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         )}
       </div>
       {transportError && (
-        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-rose-950/40 px-2 py-1 text-[11px] text-rose-200">
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-rose-950/40 px-2 py-1 text-[11px] text-danger">
           {transportError}
         </pre>
       )}
@@ -1302,7 +1302,7 @@ function ResetSection({
               type="button"
               onClick={() => void reset()}
               disabled={resetting}
-              className="flex items-center gap-1.5 rounded-md border border-rose-700/60 bg-rose-950/40 px-3 py-1.5 text-[11px] font-medium text-rose-200 hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-md border border-rose-700/60 bg-rose-950/40 px-3 py-1.5 text-[11px] font-medium text-danger hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-50"
               title="Stop and rebuild the VM from the published snapshot (or default image)"
             >
               {resetting ? (
@@ -1368,7 +1368,7 @@ function ResetSection({
           )}
           {status.lastError && (
             <Field label="Last error">
-              <span className="text-rose-300">{status.lastError}</span>
+              <span className="text-danger">{status.lastError}</span>
             </Field>
           )}
         </dl>
@@ -1525,7 +1525,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                       type="button"
                       onClick={() => void destroy(e.sandboxName)}
                       disabled={destroying === e.sandboxName}
-                      className="flex items-center gap-1 rounded border border-border-subtle px-2 py-0.5 text-[10px] text-rose-300 hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex items-center gap-1 rounded border border-border-subtle px-2 py-0.5 text-[10px] text-danger hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
                       title={
                         e.poolState === "running"
                           ? "Stop and remove this sandbox (also kills the running task)"
@@ -1557,7 +1557,7 @@ function PoolStateChip({ state }: { state: string }) {
       : state === "starting"
         ? "bg-amber-900/40 text-amber-200 border-amber-700/50"
         : state === "error"
-          ? "bg-rose-900/40 text-rose-200 border-rose-700/50"
+          ? "bg-rose-900/40 text-danger border-rose-700/50"
           : state === "orphan"
             ? "bg-bg-elevated/40 text-fg-muted border-border-default/50"
             : "bg-bg-elevated/30 text-fg-muted border-border-subtle";
@@ -1686,11 +1686,11 @@ function Banner({
 }) {
   const cls =
     kind === "ok"
-      ? "border-emerald-700/40 bg-emerald-950/40 text-emerald-300"
+      ? "border-emerald-700/40 bg-emerald-950/40 text-success"
       : kind === "warn"
         ? "border-amber-700/40 bg-amber-950/40 text-amber-200"
         : kind === "error"
-          ? "border-rose-700/50 bg-rose-950/40 text-rose-300"
+          ? "border-rose-700/50 bg-rose-950/40 text-danger"
           : "border-blue-700/40 bg-blue-950/40 text-blue-200";
   const Icon =
     kind === "ok"
@@ -1806,7 +1806,7 @@ function BrowserViewportPanel(_props: PanelProps) {
       </div>
 
       {error && (
-        <div className="m-3 flex items-start gap-1.5 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[11px] text-rose-300">
+        <div className="m-3 flex items-start gap-1.5 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[11px] text-danger">
           <AlertTriangle size={12} className="mt-px flex-shrink-0" />
           <span className="break-all">{error}</span>
         </div>

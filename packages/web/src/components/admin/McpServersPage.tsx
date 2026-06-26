@@ -141,7 +141,7 @@ export default function McpServersPage() {
       </div>
 
       {error && (
-        <div className="mb-4 flex items-start gap-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[12px] text-rose-300">
+        <div className="mb-4 flex items-start gap-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[12px] text-danger">
           <AlertTriangle size={14} className="mt-px flex-shrink-0" />
           <span className="break-all">{error}</span>
         </div>
@@ -339,16 +339,16 @@ function ServerCard({
             {!server.enabled ? (
               <span className="h-2 w-2 rounded-full bg-fg-fainter" title="disabled" />
             ) : healthy ? (
-              <CheckCircle2 size={14} className="text-emerald-400" />
+              <CheckCircle2 size={14} className="text-success" />
             ) : (
-              <XCircle size={14} className="text-rose-400" />
+              <XCircle size={14} className="text-danger" />
             )}
             <span className="truncate text-[13px] font-medium text-fg-default">
               {server.displayName}
             </span>
             <span
               className={`rounded-sm px-1.5 py-0.5 text-[10px] ${
-                isUser ? "bg-blue-950 text-blue-300" : "bg-bg-raised text-fg-muted"
+                isUser ? "bg-blue-950 text-link" : "bg-bg-raised text-fg-muted"
               }`}
             >
               {isUser ? "user" : `plugin: ${server.sourceId}`}
@@ -411,7 +411,7 @@ function ServerCard({
                 onClick={onDelete}
                 disabled={busy}
                 title="Delete"
-                className="rounded p-1.5 text-rose-400 hover:bg-rose-950/40 disabled:opacity-50"
+                className="rounded p-1.5 text-danger hover:bg-rose-950/40 disabled:opacity-50"
               >
                 <Trash2 size={12} />
               </button>
@@ -421,7 +421,7 @@ function ServerCard({
       </div>
 
       {lastErr && (
-        <div className="border-b border-border-subtle bg-rose-950/30 px-4 py-2 text-[11px] text-rose-300">
+        <div className="border-b border-border-subtle bg-rose-950/30 px-4 py-2 text-[11px] text-danger">
           <AlertTriangle size={12} className="mr-1 inline-block" />
           {lastErr}
         </div>
@@ -609,7 +609,7 @@ function EditDialog({
         </label>
 
         {validationError && (
-          <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[11px] text-rose-300">
+          <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[11px] text-danger">
             {validationError}
           </div>
         )}

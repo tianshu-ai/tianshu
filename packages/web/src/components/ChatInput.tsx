@@ -130,7 +130,7 @@ export default function ChatInput() {
               <button
                 type="button"
                 onClick={abort}
-                className="rounded-lg p-1.5 text-rose-400 transition-colors hover:bg-bg-hover hover:text-rose-300"
+                className="rounded-lg p-1.5 text-danger transition-colors hover:bg-bg-hover hover:text-danger"
                 title="Stop"
               >
                 <Square size={18} />

@@ -61,7 +61,7 @@ export default function Sidebar() {
       <div className="space-y-1 px-2 pt-2">
         {/* Main agent row — currently always selected */}
         <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-2 text-white">
-          <Bot size={14} className="flex-shrink-0 text-blue-400" />
+          <Bot size={14} className="flex-shrink-0 text-link" />
           <span className="text-sm font-medium">{brandName}</span>
         </div>
 
@@ -235,11 +235,11 @@ function SidebarFooter() {
                       }
                     }}
                     className={`flex cursor-pointer items-center gap-2 py-1.5 pl-9 pr-3 outline-none ${
-                      active ? "text-blue-300" : "text-fg-muted hover:bg-bg-raised"
+                      active ? "text-link" : "text-fg-muted hover:bg-bg-raised"
                     }`}
                   >
                     <span className="flex-1">{LOCALE_LABELS[l]}</span>
-                    {active && <Check size={13} className="text-blue-400" />}
+                    {active && <Check size={13} className="text-link" />}
                   </li>
                 );
               })}

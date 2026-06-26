@@ -952,7 +952,7 @@ function BoardCard({
           </div>
           {(task.labels ?? []).includes("awaiting-intervention") && (
             <div
-              className="mt-1 flex items-start gap-1 rounded border border-rose-500/50 bg-rose-500/10 px-1.5 py-1 text-[10px] text-rose-200"
+              className="mt-1 flex items-start gap-1 rounded border border-rose-500/50 bg-rose-500/10 px-1.5 py-1 text-[10px] text-danger"
               title={task.interventionReason ?? task.failureReason ?? ""}
               onClick={(e) => e.stopPropagation()}
             >
@@ -1121,7 +1121,7 @@ function BoardCard({
                     className="text-[10px] flex items-center gap-1"
                   >
                     {d.status === "done" ? (
-                      <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 shrink-0" />
+                      <CheckCircle2 className="w-2.5 h-2.5 text-success shrink-0" />
                     ) : (
                       <Lock className="w-2.5 h-2.5 text-indigo-400 shrink-0" />
                     )}
@@ -1199,7 +1199,7 @@ function ExecutionSection({ task }: { task: Task }) {
           <ScrollText className="w-3 h-3" />
           View transcript
           {task.status === "in_progress" && (
-            <span className="flex items-center gap-1 text-amber-300">
+            <span className="flex items-center gap-1 text-warning">
               <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
               live
             </span>
@@ -1321,7 +1321,7 @@ function ExecutionDialog({
             <span className="font-mono text-fg-fainter">· {sessionId}</span>
           )}
           {task.status === "in_progress" && (
-            <span className="flex items-center gap-1 text-amber-300">
+            <span className="flex items-center gap-1 text-warning">
               ·
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
               tailing
@@ -1348,7 +1348,7 @@ function ExecutionDialog({
           className="flex-1 space-y-3 overflow-y-auto p-4"
         >
           {error && (
-            <div className="rounded border border-rose-700/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">
+            <div className="rounded border border-rose-700/40 bg-rose-950/30 px-3 py-2 text-xs text-danger">
               {error}
             </div>
           )}
@@ -1431,7 +1431,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
           {isUser ? (
             <User className="h-3 w-3" />
           ) : (
-            <Bot className="h-3 w-3 text-blue-400" />
+            <Bot className="h-3 w-3 text-link" />
           )}
           <span>{isUser ? "you" : row.role}</span>
           <span className="text-fg-fainter">·</span>
@@ -1487,13 +1487,13 @@ function ToolCallChip({
         }`}
       >
         {running ? (
-          <Loader2 className="h-3 w-3 animate-spin text-amber-400" />
+          <Loader2 className="h-3 w-3 animate-spin text-warning" />
         ) : isError ? (
           <XCircle className="h-3 w-3 text-rose-400/70" />
         ) : (
           <CheckCircle2 className="h-3 w-3 text-emerald-500/60" />
         )}
-        <code className="font-mono text-[12px] text-blue-300">
+        <code className="font-mono text-[12px] text-link">
           {call.toolName}
         </code>
         <span className="font-mono text-[11px] text-fg-fainter">
@@ -1511,7 +1511,7 @@ function ToolCallChip({
         <pre
           className={`mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] ${
             isError
-              ? "border-rose-700/40 bg-rose-950/30 text-rose-200"
+              ? "border-rose-700/40 bg-rose-950/30 text-danger"
               : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted"
           }`}
         >
@@ -1592,7 +1592,7 @@ function DeliveryFile({ path }: { path: string }): React.ReactElement {
         e.stopPropagation();
         open(stripped);
       }}
-      className="inline-flex items-center gap-1 max-w-full text-[10.5px] font-mono text-emerald-300 hover:text-emerald-200 hover:underline truncate"
+      className="inline-flex items-center gap-1 max-w-full text-[10.5px] font-mono text-success hover:text-emerald-200 hover:underline truncate"
       title={stripped}
     >
       <FileText className="w-3 h-3 shrink-0 opacity-70" />

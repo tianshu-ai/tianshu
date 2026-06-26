@@ -122,7 +122,7 @@ export default function ChatArea() {
              *  itself shows incoming text or a typing indicator,
              *  which is visual enough. */}
             {streamError && (
-              <div className="flex items-center justify-between rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-rose-300">
+              <div className="flex items-center justify-between rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-danger">
                 <span className="truncate">{streamError}</span>
                 <button
                   type="button"

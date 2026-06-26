@@ -27,7 +27,7 @@ export default function ChatLayout() {
       <ChatArea />
       <PluginRightPanel />
       {meError && (
-        <div className="fixed right-4 top-4 max-w-sm rounded-md border border-rose-700/50 bg-rose-950/90 px-3 py-2 text-sm text-rose-200 shadow-lg">
+        <div className="fixed right-4 top-4 max-w-sm rounded-md border border-rose-700/50 bg-rose-950/90 px-3 py-2 text-sm text-danger shadow-lg">
           <strong className="mr-1">/api/me failed:</strong>
           {meError}
         </div>

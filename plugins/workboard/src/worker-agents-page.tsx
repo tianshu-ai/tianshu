@@ -478,7 +478,7 @@ function DetailSection({
   if (data.kind === "explicit") {
     badge = (
       <span
-        className="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-300"
+        className="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success"
         title="agent.json declared this list explicitly"
       >
         explicit
@@ -487,7 +487,7 @@ function DetailSection({
   } else if (data.kind === "effective") {
     badge = (
       <span
-        className="rounded bg-amber-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300"
+        className="rounded bg-amber-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
         title="agent.json has no allow-list — worker sees every entry below"
       >
         effective (no restriction)
