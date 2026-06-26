@@ -123,6 +123,7 @@ export function ensureActiveSession(ctx: TenantContext, userId: string): ChatSes
       `SELECT id, user_id, parent_id, status, kind, title, created_at
        FROM sessions
        WHERE user_id = ? AND status = 'active' AND kind = 'user'
+         AND channel_id IS NULL
        ORDER BY created_at DESC
        LIMIT 1`,
     )
@@ -473,6 +474,8 @@ export function listMessagesForUser(ctx: TenantContext, userId: string): ChatMes
        FROM messages m
        JOIN sessions s ON m.session_id = s.id
        WHERE s.user_id = ?
+         AND s.kind = 'user'
+         AND s.channel_id IS NULL
        ORDER BY m.created_at ASC`,
     )
     .all(userId)
@@ -539,7 +542,8 @@ export function listMessagesForUserPage(
       .prepare<[string, string], { id: string; created_at: number }>(
         `SELECT m.id, m.created_at FROM messages m
          JOIN sessions s ON m.session_id = s.id
-         WHERE m.id = ? AND s.user_id = ? AND s.kind = 'user'`,
+         WHERE m.id = ? AND s.user_id = ? AND s.kind = 'user'
+              AND s.channel_id IS NULL`,
       )
       .get(opts.before, userId);
     if (row) cursor = { ts: row.created_at, id: row.id };
@@ -561,6 +565,7 @@ export function listMessagesForUserPage(
            FROM messages m
            JOIN sessions s ON m.session_id = s.id
            WHERE s.user_id = ? AND s.kind = 'user'
+             AND s.channel_id IS NULL
              AND (m.created_at < ?
                   OR (m.created_at = ? AND m.id < ?))
            ORDER BY m.created_at DESC, m.id DESC
@@ -582,6 +587,7 @@ export function listMessagesForUserPage(
            FROM messages m
            JOIN sessions s ON m.session_id = s.id
            WHERE s.user_id = ? AND s.kind = 'user'
+             AND s.channel_id IS NULL
            ORDER BY m.created_at DESC, m.id DESC
            LIMIT ?`,
         )
