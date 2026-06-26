@@ -31,7 +31,8 @@
       { "method": "POST", "path": "/login/start", "handler": "loginStart" },
       { "method": "POST", "path": "/login/poll", "handler": "loginPoll" },
       { "method": "GET", "path": "/bindings", "handler": "listBindings" },
-      { "method": "DELETE", "path": "/bindings/:id", "handler": "deleteBinding" }
+      { "method": "DELETE", "path": "/bindings/:id", "handler": "deleteBinding" },
+      { "method": "GET", "path": "/stats", "handler": "getStats" }
     ]
   }
 }
