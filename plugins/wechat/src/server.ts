@@ -133,6 +133,11 @@ const plugin: PluginServerModule = {
                 resp.username?.trim() ||
                 resp.ilink_user_id ||
                 "WeChat";
+              // baseurl is Tencent's binding-specific host. When
+              // non-empty we MUST use it for every subsequent
+              // call; the QR-login host doesn't necessarily know
+              // about this token after confirm.
+              const bindingBaseUrl = resp.baseurl?.trim();
               const binding = await bindings.create({
                 channelId: "wechat",
                 pluginId: "wechat",
@@ -141,6 +146,7 @@ const plugin: PluginServerModule = {
                   token: resp.bot_token,
                   ilinkUserId: resp.ilink_user_id,
                   username: resp.username ?? resp.ilink_user_id,
+                  baseUrl: bindingBaseUrl || undefined,
                 },
                 enabled: true,
               });

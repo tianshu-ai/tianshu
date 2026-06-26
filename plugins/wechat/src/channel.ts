@@ -31,7 +31,7 @@ import {
   getUpdates,
   sendTextMessage,
   ILINK_BASE_URL,
-  STALE_TOKEN_ERRCODE,
+  STALE_TOKEN_ERRCODES,
   TIANSHU_BOT_AGENT,
   type IncomingMessage,
 } from "./ilink-api.js";
@@ -52,6 +52,13 @@ export interface WeChatChannelConfig {
   ilinkUserId?: string;
   /** Display name resolved at login time. */
   username?: string;
+  /**
+   * Per-binding API base URL. Tencent returns this in the
+   * QR-confirm payload (`baseurl`); when present every
+   * subsequent call (getupdates, sendmessage) MUST go to this
+   * host. When absent we fall back to ILINK_BASE_URL.
+   */
+  baseUrl?: string;
 }
 
 export class WeChatChannel implements ChannelAdapter {
@@ -84,19 +91,18 @@ export class WeChatChannel implements ChannelAdapter {
   private contextTokens: Record<string, string>;
   private displayNames: Record<string, string> = {};
 
-  // iLink host + bot_agent are platform constants of the
-  // integration, hard-coded for every binding. Not user-tunable.
-  private readonly baseUrl = ILINK_BASE_URL;
+  // bot_agent is a platform constant of the integration. baseUrl
+  // varies per binding because Tencent shards bots across hosts
+  // and returns the assigned host in the QR-confirm payload; we
+  // store it on the binding's config and read it here.
+  private readonly baseUrl: string;
   private readonly botAgent = TIANSHU_BOT_AGENT;
 
   constructor(private ctx: ChannelAdapterContext) {
     this.state = new WeChatState(ctx.stateDir);
     const cfg = (ctx.config ?? {}) as WeChatChannelConfig;
     this.contextTokens = this.state.loadContextTokens();
-    // Token + identity come from the binding's config (the admin
-    // login flow wrote them via host.channelBindings.create()).
-    // sync-buf and per-user context tokens stay in stateDir because
-    // they're large and change every poll.
+    this.baseUrl = cfg.baseUrl?.trim() || ILINK_BASE_URL;
     if (typeof cfg.token === "string" && cfg.token) {
       this.token = cfg.token;
     }
@@ -195,22 +201,25 @@ export class WeChatChannel implements ChannelAdapter {
         const ret = resp.ret ?? 0;
         const errcode = resp.errcode ?? 0;
         if (ret !== 0 || errcode !== 0) {
+          // Stale-token path: pause indefinitely so a re-bind can
+          // reset us. Captures both the documented STALE token
+          // code and -14 "session timeout" which fires when a
+          // previously-valid token is invalidated server-side.
           if (
-            errcode === STALE_TOKEN_ERRCODE ||
-            ret === STALE_TOKEN_ERRCODE
+            STALE_TOKEN_ERRCODES.has(errcode) ||
+            STALE_TOKEN_ERRCODES.has(ret)
           ) {
-            const msg =
-              "wechat: token went stale; long-poll paused. Re-run QR login to recover.";
+            const msg = `wechat: token rejected (errcode=${errcode} ret=${ret}); long-poll paused. Re-run QR login to recover.`;
+            this.stats.lastError = msg;
             this.ctx.log.error(msg);
             this.emitError(new Error(msg));
-            // Pause indefinitely; admin needs to re-login.
             await waitForever(signal);
             continue;
           }
           consecutiveFailures += 1;
-          this.ctx.log.warn(
-            `wechat getUpdates failed: ret=${ret} errcode=${errcode} errmsg=${resp.errmsg ?? ""} (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})`,
-          );
+          const failMsg = `wechat getUpdates failed: ret=${ret} errcode=${errcode} errmsg=${resp.errmsg ?? ""} (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})`;
+          this.stats.lastError = failMsg;
+          this.ctx.log.warn(failMsg);
           if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
             consecutiveFailures = 0;
             await sleep(BACKOFF_DELAY_MS, signal);
