@@ -227,6 +227,33 @@ body,
   }
   .prose code {
     @apply break-all;
+    /* Inline code chip. `prose-invert` assumes a dark background
+     * and styles code as near-white; that breaks on light theme
+     * where the bubble is white. Force our own visible chip:
+     * tinted background + token foreground, works on both
+     * themes. */
+    background: var(--color-bg-hover);
+    color: var(--color-fg-default);
+    border: 1px solid var(--color-border-subtle);
+    padding: 0.1em 0.35em;
+    border-radius: 0.25rem;
+    font-size: 0.9em;
+  }
+  .prose code::before,
+  .prose code::after {
+    /* Strip prose's default backtick pseudo-elements; we render
+     * a chip instead so the backticks would just clutter. */
+    content: none;
+  }
+  .prose pre code {
+    /* Inside a code block (<pre>), kill the chip styling so the
+     * pre's own background shows through and the code reads as
+     * a single block. */
+    background: transparent;
+    border: 0;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
   }
   .prose {
     word-break: break-word;
