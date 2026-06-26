@@ -288,34 +288,41 @@ export class WeChatChannel implements ChannelAdapter {
   }
 
   private normaliseInbound(m: IncomingMessage): InboundChannelMessage | null {
-    if (!m.ilink_user_id) return null;
-    const text =
-      (m.msg_items ?? [])
-        .map((it) => (typeof it.text === "string" ? it.text : ""))
-        .filter(Boolean)
-        .join("\n")
-        .trim() ?? "";
+    // Real iLink wire shape uses `from_user_id` / `item_list` /
+    // `message_id` / `create_time_ms`. My earlier draft was
+    // based on Tencent's docs which mis-described the field
+    // names; the live response shape comes from a sniffed packet.
+    const senderId = m.from_user_id;
+    if (!senderId) return null;
+
+    // Item list: text bodies live under item_list[].text_item.text.
+    // Non-text items (images / files etc.) drop through to an
+    // empty body; we don't render those yet so the router's
+    // admit filter will skip them as "empty text".
+    const text = (m.item_list ?? [])
+      .map((it) => (typeof it.text_item?.text === "string" ? it.text_item.text : ""))
+      .filter(Boolean)
+      .join("\n")
+      .trim();
     if (!text) return null;
 
     if (m.context_token) {
-      // Refresh cached token for this user.
-      this.contextTokens[m.ilink_user_id] = m.context_token;
+      this.contextTokens[senderId] = m.context_token;
       this.state.saveContextTokens(this.contextTokens);
-    }
-    if (m.username) {
-      this.displayNames[m.ilink_user_id] = m.username;
     }
 
     return {
       channelId: this.id,
-      // For DMs we use the sender's ilink user id as chat handle.
-      chatId: m.ilink_user_id,
-      isDirect: true,
-      senderId: m.ilink_user_id,
-      senderName: m.username,
+      chatId: senderId,
+      isDirect: !m.group_id || m.group_id.length === 0,
+      senderId,
+      senderName: this.displayNames[senderId],
       text,
-      messageId: m.msg_id ?? `wx_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      timestamp: m.msg_create_time ? m.msg_create_time * 1000 : Date.now(),
+      messageId:
+        m.message_id != null
+          ? String(m.message_id)
+          : `wx_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      timestamp: m.create_time_ms ?? Date.now(),
       raw: m,
     };
   }

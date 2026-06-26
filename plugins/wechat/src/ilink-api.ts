@@ -341,28 +341,36 @@ export async function getQrCodeStatus(opts: {
 
 // ─── Long-poll inbound ─────────────────────────────────────────
 
+/**
+ * Inbound message as iLink actually delivers it. The wire shape
+ * doesn't match Tencent's published reference docs in a few
+ * places — we sniffed it from a live response and tracked here:
+ *
+ *   from_user_id  : sender's opaque iLink id ("...@im.wechat")
+ *   to_user_id    : the bot's own id ("...@im.bot")
+ *   message_id    : numeric id used for replies + dedup
+ *   create_time_ms / update_time_ms / delete_time_ms : ms
+ *   item_list[]   : message body parts. Each item carries a
+ *                   `type` field (1 = text, others = image/file
+ *                   we don't render yet) and the actual text
+ *                   under `text_item.text`.
+ *   context_token : per-user opaque cursor for outbound replies
+ *   session_id / group_id : empty string for DMs
+ */
 export interface IncomingMessage {
-  /** Per-message context token: must be echoed in every outbound
-   *  reply targeting the same user. */
   context_token?: string;
-  /** Sender's iLink user id (opaque). */
-  ilink_user_id?: string;
-  /** Username (display name) if Tencent surfaces one. */
-  username?: string;
-  /** Message content payload. Tencent's `MsgItem` shape: text /
-   *  image / video / file etc. We extract `.text` opportunistically;
-   *  unsupported types route through with empty body and the agent
-   *  decides. */
-  msg_items?: Array<{
-    msg_item_type?: number;
-    text?: string;
-    image_url?: string;
-    image_md5?: string;
+  from_user_id?: string;
+  to_user_id?: string;
+  message_id?: number | string;
+  create_time_ms?: number;
+  session_id?: string;
+  group_id?: string;
+  message_type?: number;
+  item_list?: Array<{
+    type?: number;
+    text_item?: { text?: string };
+    image_item?: { image_url?: string; image_md5?: string };
   }>;
-  /** Native message id, used for replies + dedup. */
-  msg_id?: string;
-  /** Timestamp from the server (seconds since epoch in Tencent's API). */
-  msg_create_time?: number;
 }
 
 export interface GetUpdatesResponse {
