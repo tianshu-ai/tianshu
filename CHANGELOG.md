@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.30](https://github.com/tianshu-ai/tianshu/compare/v0.3.29...v0.3.30) (2026-06-26)
+
+### Bug Fixes
+
+* **ui:** PDF / HTML / image previews collapsed to a thin strip
+  at the top of the modal because FilePreviewModal and
+  FileOpenDialog wrapped DocumentViewer in `min-h-0 flex-1
+  overflow-auto`. An `overflow-auto` parent does not propagate
+  bounded height to a `h-full` iframe / img child — it becomes
+  a scroll container, and the inner element falls back to
+  content height (effectively zero for a remote PDF loading
+  asynchronously). Outer body wrappers now use a plain
+  `flex min-h-0 flex-1 flex-col` and each DocumentViewer branch
+  owns its own overflow when it needs one.
+
 ## [0.3.29](https://github.com/tianshu-ai/tianshu/compare/v0.3.28...v0.3.29) (2026-06-26)
 
 ### Bug Fixes
