@@ -332,8 +332,8 @@ function ChannelsList() {
         onClick={() => selectSession(null)}
         className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors ${
           viewingSessionId === null
-            ? "bg-bg-raised text-fg-default"
-            : "text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+            ? "bg-bg-hover text-fg-default border border-border-default"
+            : "text-fg-muted hover:bg-bg-hover hover:text-fg-default border border-transparent"
         }`}
       >
         <Hash size={12} className="flex-shrink-0" />
@@ -356,8 +356,8 @@ function ChannelsList() {
             onClick={() => selectSession(s.id)}
             className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors ${
               active
-                ? "bg-bg-raised text-fg-default"
-                : "text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+                ? "bg-bg-hover text-fg-default border border-border-default"
+                : "text-fg-muted hover:bg-bg-hover hover:text-fg-default border border-transparent"
             }`}
             title={s.title ?? s.channelChatId}
           >
