@@ -6,6 +6,41 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.34](https://github.com/tianshu-ai/tianshu/compare/v0.3.33...v0.3.34) (2026-06-26)
+
+### Bug Fixes
+
+* **ui:** light theme coverage + visual contrast rework. 0.3.33
+  shipped the theme machinery and migrated host chrome, but
+  several classes of regressions only became visible once Yu
+  actually tested light:
+  * Opacity-variant + hover-prefixed classes (`bg-gray-900/50`,
+    `hover:bg-gray-800`, `placeholder-gray-500`) escaped the
+    first migration pass — 292 additional sites mapped.
+  * Original light palette had base=white, elevated=slate-50;
+    sidebar / header / bubbles blended together. Inverted to
+    base=slate-100 (canvas), elevated=white (sidebar/header/
+    composer/bubbles). Eye now lands on content.
+  * `prose-invert` was applied unconditionally; on light theme
+    that meant white text on white background. Now toggled by
+    resolved theme.
+  * Inline code chips had no background of their own and
+    inherited prose-invert's near-white. Added a token-driven
+    chip (bg-bg-hover + fg-default + border-border-subtle).
+    Stripped Tailwind Typography's backtick pseudo-elements.
+  * 72 sites using `text-blue-300/400` / `text-emerald-*` /
+    `text-amber-*` / `text-rose-*` for tool names and status
+    cues moved to `text-link`, `text-success`, `text-warning`,
+    `text-danger`. Each token resolves per theme.
+  * Modal backdrop alpha 0.5 → 0.4 — dialogs no longer look
+    like they're rendering behind tinted glass.
+  * Sidebar header brand title, main agent row, AdminShell
+    active tab, ModelSelector active row, ChatInput submit
+    hover, files breadcrumb — 6 sites with hardcoded
+    `text-white` on token-driven surfaces fixed. Buttons with
+    their own colored bg (brand-600 etc) keep text-white
+    correctly.
+
 ## [0.3.33](https://github.com/tianshu-ai/tianshu/compare/v0.3.32...v0.3.33) (2026-06-26)
 
 ### Features
