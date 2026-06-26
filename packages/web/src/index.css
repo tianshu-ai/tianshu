@@ -127,25 +127,35 @@
 [data-theme="light"] {
   color-scheme: light;
 
-  /* Light values follow VSCode Default Light Modern (slate +
-   * cool grays). brand stops below shift up to the darker end
-   * (brand-700/800) so accent contrast against the white bg
-   * stays AA-or-better. */
-  --color-bg-base:        #ffffff;
-  --color-bg-elevated:    #f8fafc;          /* slate-50 */
-  --color-bg-raised:      #f1f5f9;          /* slate-100 */
-  --color-bg-hover:       #e2e8f0;          /* slate-200 */
-  --color-bg-overlay:     rgba(15 23 42 / 0.6);
+  /* Light values tuned for chat-shell readability rather than
+   * faithful VSCode Light Modern reproduction. Three goals:
+   *   1. Base canvas (chat scroll area) is a slight off-white so
+   *      message bubbles can use pure white as the elevated
+   *      surface and stand out by contrast (not by border).
+   *   2. Sidebar / chat header use slate-100 — readable layering
+   *      between sidebar (slate-100), header (slate-100), and
+   *      main canvas (slate-50).
+   *   3. Borders use slate-300 (not slate-200) so message bubbles
+   *      and modals have visible chrome edges; slate-200 in
+   *      previous iteration was too thin to register.
+   *   4. Muted foreground (slate-600) hits AAA 7.0:1 against
+   *      slate-50, faint (slate-500) hits AA 4.5:1, fainter
+   *      (slate-400) is decorative only. */
+  --color-bg-base:        #f8fafc;          /* slate-50  — canvas */
+  --color-bg-elevated:    #f1f5f9;          /* slate-100 — sidebar / header */
+  --color-bg-raised:      #ffffff;          /* white     — message bubbles, modals */
+  --color-bg-hover:       #e2e8f0;          /* slate-200 — row hover */
+  --color-bg-overlay:     rgba(15 23 42 / 0.5);
 
   --color-fg-default:     #0f172a;          /* slate-900 */
-  --color-fg-muted:       #334155;          /* slate-700 */
-  --color-fg-faint:       #64748b;          /* slate-500 */
-  --color-fg-fainter:     #94a3b8;          /* slate-400 */
+  --color-fg-muted:       #334155;          /* slate-700 — secondary text, icons */
+  --color-fg-faint:       #64748b;          /* slate-500 — tertiary */
+  --color-fg-fainter:     #94a3b8;          /* slate-400 — decorative */
   --color-fg-on-accent:   #ffffff;
 
-  --color-border-default: #cbd5e1;          /* slate-300 */
+  --color-border-default: #cbd5e1;          /* slate-300 — visible border */
   --color-border-strong:  #94a3b8;          /* slate-400 */
-  --color-border-subtle:  #e2e8f0;          /* slate-200 */
+  --color-border-subtle:  #cbd5e1;          /* slate-300 — was slate-200 (invisible) */
 
   --color-accent:         #4263eb;          /* brand-700 */
   --color-accent-hover:   #3b5bdb;          /* brand-800 */

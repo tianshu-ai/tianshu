@@ -233,7 +233,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <button
       type="button"
-      className="absolute right-2 top-2 z-10 rounded-md border border-gray-800/80 bg-gray-900/80 p-1.5 text-fg-muted opacity-0 backdrop-blur transition-opacity hover:bg-bg-raised group-hover:opacity-100"
+      className="absolute right-2 top-2 z-10 rounded-md border border-border-subtle/80 bg-bg-elevated/80 p-1.5 text-fg-muted opacity-0 backdrop-blur transition-opacity hover:bg-bg-raised group-hover:opacity-100"
       title={copied ? "Copied" : "Copy"}
       onClick={() => {
         navigator.clipboard

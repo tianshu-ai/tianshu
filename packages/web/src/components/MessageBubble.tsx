@@ -73,13 +73,13 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
                   "prose prose-invert prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed " +
                   (isUser
                     ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
-                    : "border-border-subtle bg-gray-900/60 text-fg-default")
+                    : "border-border-subtle bg-bg-elevated/60 text-fg-default")
                 }
               >
                 <MarkdownBlock noProse>{m.text}</MarkdownBlock>
               </div>
             ) : showStreamingPlaceholder ? (
-              <div className="rounded-lg border border-border-subtle bg-gray-900/60 px-3.5 py-2.5">
+              <div className="rounded-lg border border-border-subtle bg-bg-elevated/60 px-3.5 py-2.5">
                 <TypingDots />
               </div>
             ) : null}
@@ -125,7 +125,7 @@ function renderAssistantBlock(
           "prose prose-invert prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed " +
           (isUser
             ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
-            : "border-border-subtle bg-gray-900/60 text-fg-default")
+            : "border-border-subtle bg-bg-elevated/60 text-fg-default")
         }
       >
         <MarkdownBlock noProse>{block.text}</MarkdownBlock>
@@ -166,7 +166,7 @@ function MessageMeta({
     >
       {parts.map((p, i) => (
         <span key={i} className="flex items-center gap-1.5">
-          {i > 0 && <span className="text-gray-700">·</span>}
+          {i > 0 && <span className="text-fg-fainter">·</span>}
           {p}
         </span>
       ))}
@@ -227,7 +227,7 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
             "mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] " +
             (isError
               ? "border-rose-700/40 bg-rose-950/30 text-rose-200"
-              : "border-gray-800/60 bg-gray-900/60 text-fg-muted")
+              : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted")
           }
         >
           {truncate(result.text, 4000)}
@@ -278,7 +278,7 @@ function TypingDots() {
 function Dot({ delay }: { delay: string }) {
   return (
     <span
-      className="inline-block h-1.5 w-1.5 rounded-full bg-gray-500"
+      className="inline-block h-1.5 w-1.5 rounded-full bg-fg-fainter"
       style={{
         animation: "tianshuTypingDot 1.2s ease-in-out infinite",
         animationDelay: delay,

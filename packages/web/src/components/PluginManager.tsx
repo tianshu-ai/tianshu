@@ -132,14 +132,14 @@ export default function PluginManager({ open, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl"
+        className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border-default bg-bg-elevated shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-800 px-5 py-3">
+        <div className="flex items-center justify-between border-b border-border-subtle px-5 py-3">
           <div className="flex items-center gap-2">
             <Puzzle size={16} className="text-brand-400" />
-            <h2 id="plugin-manager-title" className="text-sm font-semibold text-gray-100">
+            <h2 id="plugin-manager-title" className="text-sm font-semibold text-fg-default">
               Plugin Manager
             </h2>
           </div>
@@ -149,11 +149,11 @@ export default function PluginManager({ open, onClose }: Props) {
         </div>
 
         {/* Tabs */}
-        <div className="flex items-center gap-1 border-b border-gray-800 px-3 pt-2">
+        <div className="flex items-center gap-1 border-b border-border-subtle px-3 pt-2">
           <TabButton active={tab === "installed"} onClick={() => setTab("installed")}>
             Installed
             {plugins && (
-              <span className="ml-1.5 rounded bg-gray-800 px-1.5 py-0.5 text-[9px] text-gray-400">
+              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[9px] text-fg-muted">
                 {plugins.length}
               </span>
             )}
@@ -161,7 +161,7 @@ export default function PluginManager({ open, onClose }: Props) {
           <TabButton active={tab === "catalog"} onClick={() => setTab("catalog")}>
             Catalog
             {catalog && (
-              <span className="ml-1.5 rounded bg-gray-800 px-1.5 py-0.5 text-[9px] text-gray-400">
+              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[9px] text-fg-muted">
                 {catalog.entries.length}
               </span>
             )}
@@ -172,7 +172,7 @@ export default function PluginManager({ open, onClose }: Props) {
               type="button"
               onClick={() => void refreshPlugins()}
               disabled={refreshingPlugins}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
               title="Re-discover plugins on disk (after a manual install or git pull)"
             >
               <RefreshCw
@@ -187,7 +187,7 @@ export default function PluginManager({ open, onClose }: Props) {
               type="button"
               onClick={refreshCatalog}
               disabled={refreshing}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-gray-400"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
               title="Re-fetch the catalog from the registry"
             >
               <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
@@ -216,11 +216,11 @@ export default function PluginManager({ open, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-gray-800 px-5 py-3 text-[11px] leading-relaxed text-gray-500">
+        <div className="border-t border-border-subtle px-5 py-3 text-[11px] leading-relaxed text-fg-faint">
           {tab === "installed" ? (
             <>
               Changes persist to{" "}
-              <code className="rounded bg-gray-800 px-1 text-gray-400">
+              <code className="rounded bg-bg-raised px-1 text-fg-muted">
                 &lt;tenant&gt;/config.json
               </code>{" "}
               and take effect immediately for new requests.
@@ -228,7 +228,7 @@ export default function PluginManager({ open, onClose }: Props) {
           ) : (
             <>
               Catalog hosted at{" "}
-              <code className="rounded bg-gray-800 px-1 text-gray-400">
+              <code className="rounded bg-bg-raised px-1 text-fg-muted">
                 tianshu-ai/plugin-registry
               </code>
               . Install button lands in P2.
@@ -256,8 +256,8 @@ function TabButton({
       className={[
         "flex items-center rounded-t-md border-b-2 px-3 py-2 text-xs font-medium",
         active
-          ? "border-brand-500 text-gray-100"
-          : "border-transparent text-gray-500 hover:text-gray-300",
+          ? "border-brand-500 text-fg-default"
+          : "border-transparent text-fg-faint hover:text-fg-muted",
       ].join(" ")}
     >
       {children}
@@ -276,7 +276,7 @@ function InstalledList({
 }) {
   if (plugins === null) {
     return (
-      <div className="flex items-center justify-center py-10 text-sm text-gray-500">
+      <div className="flex items-center justify-center py-10 text-sm text-fg-faint">
         <Loader2 size={14} className="mr-2 animate-spin" />
         Loading…
       </div>
@@ -284,15 +284,15 @@ function InstalledList({
   }
   if (plugins.length === 0) {
     return (
-      <div className="py-10 text-center text-sm text-gray-500">
+      <div className="py-10 text-center text-sm text-fg-faint">
         No plugins discovered for this tenant.
-        <p className="mt-2 text-xs text-gray-600">
+        <p className="mt-2 text-xs text-fg-fainter">
           Builtin plugins ship under{" "}
-          <code className="rounded bg-gray-800 px-1 text-gray-400">
+          <code className="rounded bg-bg-raised px-1 text-fg-muted">
             packages/server/builtinConfig/plugins/
           </code>
           . Tenant plugins live at{" "}
-          <code className="rounded bg-gray-800 px-1 text-gray-400">
+          <code className="rounded bg-bg-raised px-1 text-fg-muted">
             &lt;tenant&gt;/_tenant/config/plugins/
           </code>
           . Browse the Catalog tab to find more.
@@ -305,20 +305,20 @@ function InstalledList({
       {plugins.map((p) => (
         <li
           key={p.id}
-          className="flex items-start justify-between gap-3 rounded-lg border border-gray-800 bg-gray-900/50 p-3"
+          className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated/50 p-3"
         >
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-gray-100">{p.displayName}</span>
-              <code className="rounded bg-gray-800 px-1 py-0.5 text-[10px] text-gray-400">
+              <span className="text-sm font-medium text-fg-default">{p.displayName}</span>
+              <code className="rounded bg-bg-raised px-1 py-0.5 text-[10px] text-fg-muted">
                 {p.id}
               </code>
-              <span className="text-[10px] text-gray-600">v{p.version}</span>
+              <span className="text-[10px] text-fg-fainter">v{p.version}</span>
               <SourceBadge source={p.source} />
               <StateBadge state={p.state} />
             </div>
             {p.description && (
-              <p className="mt-1 text-xs text-gray-400">{p.description}</p>
+              <p className="mt-1 text-xs text-fg-muted">{p.description}</p>
             )}
             <CapabilityBadges entry={p} />
             {p.failedReason && (
@@ -389,7 +389,7 @@ function CatalogList({
 }) {
   if (catalog === null) {
     return (
-      <div className="flex items-center justify-center py-10 text-sm text-gray-500">
+      <div className="flex items-center justify-center py-10 text-sm text-fg-faint">
         <Loader2 size={14} className="mr-2 animate-spin" />
         Fetching catalog…
       </div>
@@ -397,9 +397,9 @@ function CatalogList({
   }
   if (catalog.entries.length === 0) {
     return (
-      <div className="py-10 text-center text-sm text-gray-500">
+      <div className="py-10 text-center text-sm text-fg-faint">
         Catalog is empty.
-        <p className="mt-2 text-xs text-gray-600">
+        <p className="mt-2 text-xs text-fg-fainter">
           The registry is at{" "}
           <a
             href="https://github.com/tianshu-ai/plugin-registry"
@@ -444,14 +444,14 @@ function CatalogRow({
   alreadyInstalled: boolean;
 }) {
   return (
-    <li className="flex items-start justify-between gap-3 rounded-lg border border-gray-800 bg-gray-900/50 p-3">
+    <li className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated/50 p-3">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-gray-100">{entry.displayName}</span>
-          <code className="rounded bg-gray-800 px-1 py-0.5 text-[10px] text-gray-400">
+          <span className="text-sm font-medium text-fg-default">{entry.displayName}</span>
+          <code className="rounded bg-bg-raised px-1 py-0.5 text-[10px] text-fg-muted">
             {entry.id}
           </code>
-          <span className="text-[10px] text-gray-600">v{entry.latestVersion}</span>
+          <span className="text-[10px] text-fg-fainter">v{entry.latestVersion}</span>
           {entry.verified && (
             <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] uppercase text-emerald-300">
               <ShieldCheck size={10} /> verified
@@ -461,18 +461,18 @@ function CatalogRow({
             href={entry.repository}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-[10px] text-gray-500 hover:text-brand-400"
+            className="inline-flex items-center gap-1 text-[10px] text-fg-faint hover:text-brand-400"
           >
             {entry.author} <ExternalLink size={9} />
           </a>
         </div>
-        <p className="mt-1 text-xs text-gray-400">{entry.description}</p>
+        <p className="mt-1 text-xs text-fg-muted">{entry.description}</p>
         {entry.tags.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {entry.tags.map((t) => (
               <span
                 key={t}
-                className="rounded bg-gray-800 px-1.5 py-px text-[9px] text-gray-500"
+                className="rounded bg-bg-raised px-1.5 py-px text-[9px] text-fg-faint"
               >
                 {t}
               </span>
@@ -484,7 +484,7 @@ function CatalogRow({
         type="button"
         disabled
         title="Install lands in P2"
-        className="flex-shrink-0 cursor-not-allowed rounded-md bg-gray-800 px-3 py-1.5 text-[11px] font-medium text-gray-500"
+        className="flex-shrink-0 cursor-not-allowed rounded-md bg-bg-raised px-3 py-1.5 text-[11px] font-medium text-fg-faint"
       >
         {alreadyInstalled ? "Installed" : "Install"}
       </button>
@@ -495,7 +495,7 @@ function CatalogRow({
 function SourceBadge({ source }: { source: PluginListEntry["source"] }) {
   const cls =
     source === "builtin"
-      ? "bg-gray-800 text-gray-400"
+      ? "bg-bg-raised text-fg-muted"
       : "bg-violet-900/50 text-violet-300";
   return <span className={`rounded px-1.5 py-0.5 text-[9px] uppercase ${cls}`}>{source}</span>;
 }
@@ -510,7 +510,7 @@ function StateBadge({ state }: { state: PluginState }) {
       );
     case "disabled":
       return (
-        <span className="flex items-center gap-1 rounded bg-gray-800 px-1.5 py-0.5 text-[9px] uppercase text-gray-400">
+        <span className="flex items-center gap-1 rounded bg-bg-raised px-1.5 py-0.5 text-[9px] uppercase text-fg-muted">
           <Pause size={10} /> disabled
         </span>
       );
@@ -549,7 +549,7 @@ function Toggle({
       onClick={onClick}
       className={[
         "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center rounded-full transition-colors",
-        active ? "bg-brand-600" : "bg-gray-700",
+        active ? "bg-brand-600" : "bg-bg-hover",
         (pending || disabled) && "cursor-not-allowed opacity-50",
       ]
         .filter(Boolean)
@@ -571,7 +571,7 @@ function Toggle({
       {pending && (
         <Loader2
           size={10}
-          className="absolute -right-4 top-1/2 -translate-y-1/2 animate-spin text-gray-400"
+          className="absolute -right-4 top-1/2 -translate-y-1/2 animate-spin text-fg-muted"
         />
       )}
     </button>

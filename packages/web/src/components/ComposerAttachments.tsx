@@ -33,7 +33,7 @@ export default function ComposerAttachments() {
               "flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs " +
               (isError
                 ? "border-rose-700/60 bg-rose-950/40 text-rose-200"
-                : "border-gray-700 bg-gray-800 text-gray-200")
+                : "border-border-default bg-bg-raised text-fg-default")
             }
             title={isError ? (a.error ?? "upload failed") : a.path ?? a.name}
             aria-label={`attachment ${a.name}`}
@@ -43,16 +43,16 @@ export default function ComposerAttachments() {
             ) : isError ? (
               <AlertTriangle size={12} className="text-rose-400" />
             ) : (
-              <FileIcon size={12} className="text-gray-400" />
+              <FileIcon size={12} className="text-fg-muted" />
             )}
             <span className="max-w-[12rem] truncate">{a.name}</span>
-            <span className="text-[10px] text-gray-500">
+            <span className="text-[10px] text-fg-faint">
               {formatSize(a.size)}
             </span>
             <button
               type="button"
               onClick={() => remove(a.id)}
-              className="ml-0.5 rounded p-0.5 text-gray-500 hover:bg-gray-700 hover:text-gray-200"
+              className="ml-0.5 rounded p-0.5 text-fg-faint hover:bg-bg-hover hover:text-fg-default"
               aria-label="remove attachment"
             >
               <X size={11} />

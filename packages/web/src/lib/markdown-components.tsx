@@ -36,7 +36,7 @@ function MarkdownImg(props: ComponentProps<"img">) {
       src={src}
       alt={alt ?? ""}
       loading="lazy"
-      className="my-2 max-h-96 max-w-full rounded-lg border border-gray-700/50"
+      className="my-2 max-h-96 max-w-full rounded-lg border border-border-default/50"
       {...rest}
     />
   );

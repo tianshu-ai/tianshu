@@ -156,11 +156,11 @@ export function TablePreview({
           </thead>
           <tbody>
             {paddedRows.map((row, ri) => (
-              <tr key={ri} className="border-b border-gray-900 hover:bg-gray-900/40">
+              <tr key={ri} className="border-b border-border-subtle hover:bg-bg-elevated/40">
                 {row.map((cell, ci) => (
                   <td
                     key={ci}
-                    className="max-w-[28rem] truncate border-r border-gray-900 px-2 py-1 text-fg-muted"
+                    className="max-w-[28rem] truncate border-r border-border-subtle px-2 py-1 text-fg-muted"
                     title={cell}
                   >
                     {cell}

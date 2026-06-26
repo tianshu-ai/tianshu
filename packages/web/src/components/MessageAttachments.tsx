@@ -91,7 +91,7 @@ export default function MessageAttachments({
         return (
           <div
             key={a.path}
-            className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-gray-900/60 px-2 py-1 text-xs text-fg-default"
+            className="flex items-center gap-1.5 rounded-md border border-border-subtle bg-bg-elevated/60 px-2 py-1 text-xs text-fg-default"
             title={a.path}
           >
             <FileIcon size={12} className="text-fg-muted" />

@@ -74,7 +74,7 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <div className="mx-3 my-2 border-b border-gray-800/50" />
+      <div className="mx-3 my-2 border-b border-border-subtle/50" />
 
       {/* Channels — webchat is always present; integrations land later. */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
@@ -150,7 +150,7 @@ function SidebarFooter() {
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         title={userId}
-        className="flex w-full items-center gap-2 px-3 py-2 hover:bg-gray-800/60 transition-colors"
+        className="flex w-full items-center gap-2 px-3 py-2 hover:bg-bg-raised/60 transition-colors"
       >
         <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-[10px] font-semibold text-white">
           {initial}
@@ -214,7 +214,7 @@ function SidebarFooter() {
             />
           </button>
           {langOpen && (
-            <ul role="menu" className="border-y border-border-subtle bg-gray-950/60">
+            <ul role="menu" className="border-y border-border-subtle bg-bg-base/60">
               {locales.map((l: Locale) => {
                 const active = l === locale;
                 return (

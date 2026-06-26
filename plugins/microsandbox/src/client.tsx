@@ -711,7 +711,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
           {data.builds.map((b) => (
             <li
               key={b.buildId}
-              className="rounded-md border border-border-subtle bg-gray-900/50 px-3 py-2"
+              className="rounded-md border border-border-subtle bg-bg-elevated/50 px-3 py-2"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
@@ -1141,7 +1141,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
   const failed = (result && !result.ok) || transportError != null;
 
   return (
-    <div className="rounded-md border border-border-subtle bg-gray-900/50 px-3 py-2 font-mono text-[11px] leading-relaxed">
+    <div className="rounded-md border border-border-subtle bg-bg-elevated/50 px-3 py-2 font-mono text-[11px] leading-relaxed">
       <div className="mb-1 flex items-center gap-2">
         {running ? (
           <Loader2 size={11} className="animate-spin text-fg-muted" />
@@ -1317,7 +1317,7 @@ function ResetSection({
       />
 
       {error && <Banner kind="error" text={error} />}
-      <div className="rounded-md border border-border-subtle bg-gray-900/40">
+      <div className="rounded-md border border-border-subtle bg-bg-elevated/40">
         {status && (
         <dl className="grid grid-cols-3 gap-x-4 gap-y-1.5 p-3 text-[11px]">
           <Field label="State">
@@ -1484,7 +1484,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
       {entries !== null && entries.length > 0 && (
         <div className="overflow-hidden rounded-md border border-border-subtle">
           <table className="w-full text-[11px]">
-            <thead className="bg-gray-900/60 text-[10px] uppercase tracking-wide text-fg-faint">
+            <thead className="bg-bg-elevated/60 text-[10px] uppercase tracking-wide text-fg-faint">
               <tr>
                 <th className="px-3 py-1.5 text-left">State</th>
                 <th className="px-3 py-1.5 text-left">Sandbox</th>
@@ -1559,8 +1559,8 @@ function PoolStateChip({ state }: { state: string }) {
         : state === "error"
           ? "bg-rose-900/40 text-rose-200 border-rose-700/50"
           : state === "orphan"
-            ? "bg-gray-900/40 text-fg-muted border-gray-700/50"
-            : "bg-gray-900/30 text-fg-muted border-border-subtle";
+            ? "bg-bg-elevated/40 text-fg-muted border-border-default/50"
+            : "bg-bg-elevated/30 text-fg-muted border-border-subtle";
   return (
     <span
       className={`inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide ${className}`}

@@ -106,11 +106,11 @@ export default function McpServersPage() {
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="flex items-center gap-2 text-xl font-semibold text-gray-100">
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
             <Server size={18} className="text-brand-400" />
             MCP Servers
           </h1>
-          <p className="mt-1 text-[12px] text-gray-500">
+          <p className="mt-1 text-[12px] text-fg-faint">
             Model Context Protocol servers visible to this agent. Plugin-contributed
             servers come from active plugins (read-only here — toggle the plugin to
             enable/disable). User-configured servers are managed directly below.
@@ -124,7 +124,7 @@ export default function McpServersPage() {
             type="button"
             onClick={fetchServers}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-700 px-3 py-1.5 text-[12px] text-gray-300 hover:bg-gray-800/50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : undefined} />
             Refresh
@@ -200,10 +200,10 @@ function SourceGroup({
     <section>
       <div className="mb-2 flex items-end justify-between">
         <div>
-          <h2 className="text-[13px] font-semibold uppercase tracking-wide text-gray-400">
+          <h2 className="text-[13px] font-semibold uppercase tracking-wide text-fg-muted">
             {title}
           </h2>
-          <p className="text-[11px] text-gray-500">{subtitle}</p>
+          <p className="text-[11px] text-fg-faint">{subtitle}</p>
         </div>
       </div>
       {items.length === 0 ? (
@@ -228,14 +228,14 @@ function SourceGroup({
 function EmptyGroup({ source }: { source: "plugin" | "user" }) {
   if (source === "plugin") {
     return (
-      <div className="rounded-md border border-dashed border-gray-800 px-4 py-6 text-center text-[12px] text-gray-500">
+      <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-faint">
         No plugin currently contributes an MCP server.
       </div>
     );
   }
   return (
-    <div className="rounded-md border border-dashed border-gray-800 px-4 py-6 text-center text-[12px] text-gray-500">
-      No user-configured MCP servers. Click <span className="text-gray-300">Add server</span>{" "}
+    <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-faint">
+      No user-configured MCP servers. Click <span className="text-fg-muted">Add server</span>{" "}
       to point the agent at one (e.g. an MCP server you run locally or remotely).
     </div>
   );
@@ -324,12 +324,12 @@ function ServerCard({
   }, [isUser, server.displayName, server.id, onChanged, onError]);
 
   return (
-    <div className="overflow-hidden rounded-md border border-gray-800 bg-gray-900/60">
-      <div className="flex items-start justify-between gap-3 border-b border-gray-800 px-4 py-3">
+    <div className="overflow-hidden rounded-md border border-border-subtle bg-bg-elevated/60">
+      <div className="flex items-start justify-between gap-3 border-b border-border-subtle px-4 py-3">
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="-my-1 -ml-1 mr-2 rounded p-1 text-gray-500 hover:bg-gray-800/60 hover:text-gray-300"
+          className="-my-1 -ml-1 mr-2 rounded p-1 text-fg-faint hover:bg-bg-raised/60 hover:text-fg-muted"
           aria-label={open ? "Collapse" : "Expand"}
         >
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -337,45 +337,45 @@ function ServerCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {!server.enabled ? (
-              <span className="h-2 w-2 rounded-full bg-gray-500" title="disabled" />
+              <span className="h-2 w-2 rounded-full bg-fg-fainter" title="disabled" />
             ) : healthy ? (
               <CheckCircle2 size={14} className="text-emerald-400" />
             ) : (
               <XCircle size={14} className="text-rose-400" />
             )}
-            <span className="truncate text-[13px] font-medium text-gray-100">
+            <span className="truncate text-[13px] font-medium text-fg-default">
               {server.displayName}
             </span>
             <span
               className={`rounded-sm px-1.5 py-0.5 text-[10px] ${
-                isUser ? "bg-blue-950 text-blue-300" : "bg-gray-800 text-gray-400"
+                isUser ? "bg-blue-950 text-blue-300" : "bg-bg-raised text-fg-muted"
               }`}
             >
               {isUser ? "user" : `plugin: ${server.sourceId}`}
             </span>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-gray-500">
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-fg-faint">
             <span>
-              id <code className="text-gray-400">{server.id}</code>
+              id <code className="text-fg-muted">{server.id}</code>
             </span>
             {endpoint && (
               <span>
-                endpoint <code className="text-gray-400">{endpoint}</code>
+                endpoint <code className="text-fg-muted">{endpoint}</code>
               </span>
             )}
             {snap?.prefix && snap.prefix !== "" && (
               <span>
-                prefix <code className="text-gray-400">{snap.prefix}</code>
+                prefix <code className="text-fg-muted">{snap.prefix}</code>
               </span>
             )}
             {lastRefreshAgo && <span>refreshed {lastRefreshAgo}</span>}
             {!server.enabled && (
-              <span className="text-gray-500">(disabled)</span>
+              <span className="text-fg-faint">(disabled)</span>
             )}
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
-          <span className="rounded-md border border-gray-700 bg-gray-950 px-2 py-1 text-[11px] text-gray-300">
+          <span className="rounded-md border border-border-default bg-bg-base px-2 py-1 text-[11px] text-fg-muted">
             {server.toolCount} tools
           </span>
           <button
@@ -383,7 +383,7 @@ function ServerCard({
             onClick={onRefresh}
             disabled={busy}
             title="Refresh"
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-800/60 hover:text-gray-200 disabled:opacity-50"
+            className="rounded p-1.5 text-fg-muted hover:bg-bg-raised/60 hover:text-fg-default disabled:opacity-50"
           >
             <RefreshCw size={12} className={busy ? "animate-spin" : undefined} />
           </button>
@@ -394,7 +394,7 @@ function ServerCard({
                 onClick={() => onEdit(server.userEntry!)}
                 disabled={busy}
                 title="Edit"
-                className="rounded p-1.5 text-gray-400 hover:bg-gray-800/60 hover:text-gray-200 disabled:opacity-50"
+                className="rounded p-1.5 text-fg-muted hover:bg-bg-raised/60 hover:text-fg-default disabled:opacity-50"
               >
                 <Pencil size={12} />
               </button>
@@ -402,7 +402,7 @@ function ServerCard({
                 type="button"
                 onClick={onToggle}
                 disabled={busy}
-                className="rounded-md border border-gray-700 px-2 py-1 text-[11px] text-gray-300 hover:bg-gray-800/50 disabled:opacity-50"
+                className="rounded-md border border-border-default px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
               >
                 {server.enabled ? "Disable" : "Enable"}
               </button>
@@ -421,7 +421,7 @@ function ServerCard({
       </div>
 
       {lastErr && (
-        <div className="border-b border-gray-800 bg-rose-950/30 px-4 py-2 text-[11px] text-rose-300">
+        <div className="border-b border-border-subtle bg-rose-950/30 px-4 py-2 text-[11px] text-rose-300">
           <AlertTriangle size={12} className="mr-1 inline-block" />
           {lastErr}
         </div>
@@ -429,7 +429,7 @@ function ServerCard({
 
       {open &&
         (tools.length === 0 ? (
-          <div className="px-4 py-6 text-center text-[12px] text-gray-500">
+          <div className="px-4 py-6 text-center text-[12px] text-fg-faint">
             {endpoint
               ? "Server is reachable but advertised no tools."
               : !server.enabled
@@ -440,7 +440,7 @@ function ServerCard({
           </div>
         ) : (
           <table className="w-full text-[12px]">
-            <thead className="border-b border-gray-800 text-left text-[11px] uppercase tracking-wide text-gray-500">
+            <thead className="border-b border-border-subtle text-left text-[11px] uppercase tracking-wide text-fg-faint">
               <tr>
                 <th className="px-4 py-2 font-medium">Tool name</th>
                 <th className="px-4 py-2 font-medium">Upstream</th>
@@ -449,14 +449,14 @@ function ServerCard({
             </thead>
             <tbody>
               {tools.map((t) => (
-                <tr key={t.toolName} className="border-b border-gray-900 last:border-b-0">
-                  <td className="px-4 py-2 align-top font-mono text-[11.5px] text-gray-200">
+                <tr key={t.toolName} className="border-b border-border-subtle last:border-b-0">
+                  <td className="px-4 py-2 align-top font-mono text-[11.5px] text-fg-default">
                     {t.toolName}
                   </td>
-                  <td className="px-4 py-2 align-top font-mono text-[11.5px] text-gray-500">
+                  <td className="px-4 py-2 align-top font-mono text-[11.5px] text-fg-faint">
                     {t.upstream.name}
                   </td>
-                  <td className="px-4 py-2 align-top text-gray-400">
+                  <td className="px-4 py-2 align-top text-fg-muted">
                     {t.upstream.description ?? "—"}
                   </td>
                 </tr>
@@ -546,7 +546,7 @@ function EditDialog({
             onChange={(e) => setId(e.target.value)}
             disabled={mode === "edit"}
             placeholder="my-mcp"
-            className="w-full rounded-md border border-gray-700 bg-gray-950 px-2 py-1.5 text-[13px] text-gray-100 outline-none focus:border-brand-500 disabled:opacity-60"
+            className="w-full rounded-md border border-border-default bg-bg-base px-2 py-1.5 text-[13px] text-fg-default outline-none focus:border-brand-500 disabled:opacity-60"
             required
           />
         </Field>
@@ -557,7 +557,7 @@ function EditDialog({
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="My MCP server"
-            className="w-full rounded-md border border-gray-700 bg-gray-950 px-2 py-1.5 text-[13px] text-gray-100 outline-none focus:border-brand-500"
+            className="w-full rounded-md border border-border-default bg-bg-base px-2 py-1.5 text-[13px] text-fg-default outline-none focus:border-brand-500"
           />
         </Field>
 
@@ -567,7 +567,7 @@ function EditDialog({
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://example.com/mcp"
-            className="w-full rounded-md border border-gray-700 bg-gray-950 px-2 py-1.5 text-[13px] text-gray-100 outline-none focus:border-brand-500"
+            className="w-full rounded-md border border-border-default bg-bg-base px-2 py-1.5 text-[13px] text-fg-default outline-none focus:border-brand-500"
             required
           />
         </Field>
@@ -581,7 +581,7 @@ function EditDialog({
             value={prefix}
             onChange={(e) => setPrefix(e.target.value)}
             placeholder={`${id}_`}
-            className="w-full rounded-md border border-gray-700 bg-gray-950 px-2 py-1.5 text-[13px] text-gray-100 outline-none focus:border-brand-500"
+            className="w-full rounded-md border border-border-default bg-bg-base px-2 py-1.5 text-[13px] text-fg-default outline-none focus:border-brand-500"
           />
         </Field>
 
@@ -594,16 +594,16 @@ function EditDialog({
             value={upstreamHost}
             onChange={(e) => setUpstreamHost(e.target.value)}
             placeholder="localhost:3200"
-            className="w-full rounded-md border border-gray-700 bg-gray-950 px-2 py-1.5 text-[13px] text-gray-100 outline-none focus:border-brand-500"
+            className="w-full rounded-md border border-border-default bg-bg-base px-2 py-1.5 text-[13px] text-fg-default outline-none focus:border-brand-500"
           />
         </Field>
 
-        <label className="flex items-center gap-2 text-[12px] text-gray-300">
+        <label className="flex items-center gap-2 text-[12px] text-fg-muted">
           <input
             type="checkbox"
             checked={enabled}
             onChange={(e) => setEnabled(e.target.checked)}
-            className="rounded border-gray-700 bg-gray-950"
+            className="rounded border-border-default bg-bg-base"
           />
           Enabled
         </label>
@@ -618,7 +618,7 @@ function EditDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-gray-700 px-3 py-1.5 text-[12px] text-gray-300 hover:bg-gray-800/50"
+            className="rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50"
           >
             Cancel
           </button>
@@ -646,11 +646,11 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-[11px] font-medium text-gray-300">
+      <label className="mb-1 block text-[11px] font-medium text-fg-muted">
         {label}
       </label>
       {children}
-      {hint && <p className="mt-1 text-[11px] text-gray-500">{hint}</p>}
+      {hint && <p className="mt-1 text-[11px] text-fg-faint">{hint}</p>}
     </div>
   );
 }

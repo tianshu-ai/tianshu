@@ -103,7 +103,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
 
   if (fields.length === 0) {
     return (
-      <p className="text-[12px] text-gray-500">
+      <p className="text-[12px] text-fg-faint">
         This plugin has no user-editable configuration.
       </p>
     );
@@ -173,7 +173,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
           {error}
         </div>
       )}
-      <div className="flex items-center gap-2 border-t border-gray-800 pt-3">
+      <div className="flex items-center gap-2 border-t border-border-subtle pt-3">
         {savedAt && !dirty && (
           <span className="inline-flex items-center gap-1 text-[11px] text-emerald-400">
             <CheckCircle2 size={12} /> Saved
@@ -183,7 +183,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
           type="button"
           onClick={reset}
           disabled={!dirty || busy}
-          className="ml-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-gray-700 px-3 py-1.5 text-[12px] text-gray-300 hover:bg-gray-800/50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           Reset
         </button>
@@ -201,7 +201,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
 }
 
 const INPUT_BASE =
-  "w-full rounded-md border border-gray-700 bg-gray-900 px-3 py-1.5 text-[12px] text-gray-100 outline-none placeholder:text-gray-600 focus:border-brand-500";
+  "w-full rounded-md border border-border-default bg-bg-elevated px-3 py-1.5 text-[12px] text-fg-default outline-none placeholder:text-fg-fainter focus:border-brand-500";
 
 /** Pill-style toggle, visually identical to the one in PluginManager
  *  so enable/disable and individual config booleans share the same
@@ -224,7 +224,7 @@ function ConfigToggle({
       onClick={onClick}
       className={[
         "relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer items-center rounded-full transition-colors",
-        active ? "bg-brand-600" : "bg-gray-700",
+        active ? "bg-brand-600" : "bg-bg-hover",
       ].join(" ")}
     >
       <span
@@ -285,14 +285,14 @@ function ConfigGroupCard({
     !children ||
     (Array.isArray(children) && children.every((c) => c == null || c === false));
   return (
-    <section className="rounded-md border border-gray-800 bg-gray-900/30 p-4">
+    <section className="rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
       <header className="flex flex-wrap items-center gap-2">
         {group.badge && (
-          <span className="rounded border border-gray-700 bg-gray-800/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+          <span className="rounded border border-border-default bg-bg-raised/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
             {group.badge}
           </span>
         )}
-        <h3 className="text-[13px] font-semibold text-gray-100">
+        <h3 className="text-[13px] font-semibold text-fg-default">
           {group.label}
         </h3>
         {headerToggle && (
@@ -304,7 +304,7 @@ function ConfigGroupCard({
         )}
       </header>
       {group.description && (
-        <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+        <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
           {group.description}
         </p>
       )}
@@ -327,9 +327,9 @@ function ConfigFieldRow({
     return (
       <div className="flex items-start justify-between gap-3 text-[12px]">
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-gray-200">{field.label}</div>
+          <div className="font-medium text-fg-default">{field.label}</div>
           {field.description && (
-            <p className="mt-0.5 text-[11px] leading-relaxed text-gray-500">
+            <p className="mt-0.5 text-[11px] leading-relaxed text-fg-faint">
               {field.description}
             </p>
           )}
@@ -351,7 +351,7 @@ function ConfigFieldRow({
           : (field.default ?? 0);
     return (
       <div className="text-[12px]">
-        <label className="mb-1 block font-medium text-gray-200">
+        <label className="mb-1 block font-medium text-fg-default">
           {field.label}
         </label>
         <div className="flex items-center gap-2">
@@ -365,11 +365,11 @@ function ConfigFieldRow({
             className={`${INPUT_BASE} w-40`}
           />
           {field.unit && (
-            <span className="text-[11px] text-gray-500">{field.unit}</span>
+            <span className="text-[11px] text-fg-faint">{field.unit}</span>
           )}
         </div>
         {field.description && (
-          <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+          <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
             {field.description}
           </p>
         )}
@@ -383,7 +383,7 @@ function ConfigFieldRow({
         : (field.default ?? field.options[0]?.value ?? "");
     return (
       <div className="text-[12px]">
-        <label className="mb-1 block font-medium text-gray-200">
+        <label className="mb-1 block font-medium text-fg-default">
           {field.label}
         </label>
         <select
@@ -398,7 +398,7 @@ function ConfigFieldRow({
           ))}
         </select>
         {field.description && (
-          <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+          <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
             {field.description}
           </p>
         )}
@@ -422,7 +422,7 @@ function ConfigFieldRow({
     const stringValue = typeof value === "string" ? value : "";
     return (
       <div className="text-[12px]">
-        <label className="mb-1 block font-medium text-gray-200">
+        <label className="mb-1 block font-medium text-fg-default">
           {field.label}
           {isSet ? (
             <span className="ml-2 rounded bg-emerald-700/40 px-1.5 py-0.5 text-[10px] uppercase text-emerald-300">
@@ -447,7 +447,7 @@ function ConfigFieldRow({
           {isSet && stringValue === "" && (
             <button
               type="button"
-              className="shrink-0 rounded border border-gray-700 bg-gray-900 px-2 py-1 text-[11px] text-gray-300 hover:border-rose-700 hover:text-rose-300"
+              className="shrink-0 rounded border border-border-default bg-bg-elevated px-2 py-1 text-[11px] text-fg-muted hover:border-rose-700 hover:text-rose-300"
               onClick={() => onChange({ __secret: true, clear: true })}
             >
               Clear
@@ -455,7 +455,7 @@ function ConfigFieldRow({
           )}
         </div>
         {field.description && (
-          <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+          <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
             {field.description}
           </p>
         )}
@@ -466,7 +466,7 @@ function ConfigFieldRow({
   const s = typeof value === "string" ? value : (field.default ?? "");
   return (
     <div className="text-[12px]">
-      <label className="mb-1 block font-medium text-gray-200">
+      <label className="mb-1 block font-medium text-fg-default">
         {field.label}
       </label>
       {field.multiline ? (
@@ -487,7 +487,7 @@ function ConfigFieldRow({
         />
       )}
       {field.description && (
-        <p className="mt-1 text-[11px] leading-relaxed text-gray-500">
+        <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
           {field.description}
         </p>
       )}

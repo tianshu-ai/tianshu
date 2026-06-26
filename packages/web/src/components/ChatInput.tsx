@@ -103,8 +103,8 @@ export default function ChatInput() {
   };
 
   return (
-    <div className="border-t border-gray-800 bg-gray-950 px-4 py-3">
-      <div className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-gray-800 bg-gray-900 p-3 focus-within:border-gray-700">
+    <div className="border-t border-border-subtle bg-bg-base px-4 py-3">
+      <div className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-3 focus-within:border-border-default">
         <ComposerAttachments />
         <textarea
           ref={ref}
@@ -118,7 +118,7 @@ export default function ChatInput() {
           }}
           rows={1}
           placeholder="Message Tianshu — Enter to send, Shift+Enter for newline"
-          className="resize-none bg-transparent text-[14px] leading-relaxed text-gray-100 placeholder:text-gray-500 focus:outline-none"
+          className="resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
         />
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
@@ -130,7 +130,7 @@ export default function ChatInput() {
               <button
                 type="button"
                 onClick={abort}
-                className="rounded-lg p-1.5 text-rose-400 transition-colors hover:bg-gray-700 hover:text-rose-300"
+                className="rounded-lg p-1.5 text-rose-400 transition-colors hover:bg-bg-hover hover:text-rose-300"
                 title="Stop"
               >
                 <Square size={18} />
@@ -140,7 +140,7 @@ export default function ChatInput() {
                 type="button"
                 onClick={() => void submit()}
                 disabled={!sendAllowed}
-                className="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
                 title={
                   hasPending
                     ? "Waiting for uploads to finish…"
