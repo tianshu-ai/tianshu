@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.32](https://github.com/tianshu-ai/tianshu/compare/v0.3.31...v0.3.32) (2026-06-26)
+
+### Features
+
+* **ui:** Modal gains a maximize/restore toggle in the default
+  header (left of the close button). When maximized, the panel
+  fills the viewport (`h-screen w-screen rounded-none`),
+  overriding the size preset; restoring goes back to the size
+  default. Double-clicking the header background also toggles
+  (clicks on headerActions / Close are ignored). State resets
+  each time the modal closes — fresh opens always start at
+  preset size. Default-on; callers can opt out via
+  `allowMaximize={false}` for tiny confirmation modals.
+
 ## [0.3.31](https://github.com/tianshu-ai/tianshu/compare/v0.3.30...v0.3.31) (2026-06-26)
 
 ### Bug Fixes
