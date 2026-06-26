@@ -159,8 +159,25 @@ async function mutateJson<T>(
   return JSON.parse(text) as T;
 }
 
+/** A session row that lives on the chat shell's sidebar because
+ *  it's the persistent thread for a channel (wechat / telegram /
+ *  etc.). The chat-store fetches these on init + on /admin/wechat
+ *  changes (handled by refreshChannelSessions). */
+export interface ChannelSessionEntry {
+  id: string;
+  channelId: string;
+  channelChatId: string;
+  channelBindingId: string | null;
+  title: string | null;
+  createdAt: number;
+}
+
 export const api = {
   me: () => getJson<Me>("/api/me"),
+  channelSessions: () =>
+    getJson<{ sessions: ChannelSessionEntry[] }>("/api/channel-sessions").then(
+      (r) => r.sessions,
+    ),
   models: () => getJson<{ models: ModelListEntry[]; defaultModel: string | null }>("/api/models"),
   plugins: () => getJson<{ plugins: PluginListEntry[] }>("/api/plugins"),
   setPluginEnabled: (id: string, enabled: boolean) =>

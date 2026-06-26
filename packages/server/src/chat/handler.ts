@@ -74,6 +74,7 @@ import { loadTenantSkills } from "../core/tenant-skills.js";
 import { fileURLToPath } from "node:url";
 import {
   ensureActiveSession,
+  listMessagesForSessionPage,
   listMessagesForUser,
   listMessagesForUserPage,
   loadAgentHistoryForSession,
@@ -145,9 +146,16 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       case "history": {
         const opts = makeWireOpts(ctx);
-        const page = listMessagesForUserPage(ctx, userId, {
-          limit: parsed.limit,
-        });
+        // Caller can pin to a specific session (e.g. a channel
+        // session in the sidebar). Default keeps the legacy
+        // "all this user's main-session messages" behaviour.
+        const page = parsed.sessionId
+          ? listMessagesForSessionPage(ctx, parsed.sessionId, {
+              limit: parsed.limit,
+            })
+          : listMessagesForUserPage(ctx, userId, {
+              limit: parsed.limit,
+            });
         send({
           type: "history",
           messages: page.messages.map((m) => toWire(m, opts)),
@@ -157,10 +165,15 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       }
       case "history_more": {
         const opts = makeWireOpts(ctx);
-        const page = listMessagesForUserPage(ctx, userId, {
-          limit: parsed.limit,
-          before: parsed.before,
-        });
+        const page = parsed.sessionId
+          ? listMessagesForSessionPage(ctx, parsed.sessionId, {
+              limit: parsed.limit,
+              before: parsed.before,
+            })
+          : listMessagesForUserPage(ctx, userId, {
+              limit: parsed.limit,
+              before: parsed.before,
+            });
         send({
           type: "history_page",
           messages: page.messages.map((m) => toWire(m, opts)),

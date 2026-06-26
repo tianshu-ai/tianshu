@@ -24,6 +24,7 @@ import PluginTopBarButtons from "./PluginTopBarButtons";
 export default function ChatArea() {
   const messages = useChatStore((s) => s.messages);
   const me = useChatStore((s) => s.me);
+  const viewingSessionId = useChatStore((s) => s.viewingSessionId);
   const sidebarOpen = useChatStore((s) => s.sidebarOpen);
   const toggleSidebar = useChatStore((s) => s.toggleSidebar);
   const isStreaming = useChatStore((s) => s.isStreaming);
@@ -155,7 +156,18 @@ export default function ChatArea() {
         )}
       </div>
 
-      <ChatInput />
+      {viewingSessionId === null ? (
+        <ChatInput />
+      ) : (
+        // Channel sessions are driven by inbound platform messages
+        // + agent replies; the user can't type into them from the
+        // chat shell. Surface that explicitly so the missing
+        // composer doesn't look like a bug.
+        <div className="border-t border-border-subtle bg-bg-elevated px-4 py-3 text-center text-xs text-fg-muted">
+          Read-only view. Send messages from the channel itself; the
+          agent's replies appear here automatically.
+        </div>
+      )}
 
       <PluginManager
         open={pluginManagerOpen}
