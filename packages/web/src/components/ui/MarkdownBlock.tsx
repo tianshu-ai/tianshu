@@ -19,21 +19,28 @@ import {
   MARKDOWN_COMPONENTS,
   urlTransform,
 } from "../../lib/markdown-components.js";
+import { useThemeStore } from "../../stores/theme-store";
 
-const DEFAULT_PROSE =
-  "prose prose-invert prose-sm max-w-none text-[14px] leading-relaxed";
+// `prose-invert` is Tailwind Typography's "white text on dark
+// background" variant; only apply it when we're actually in
+// dark mode. On light theme we want regular `prose` (dark text
+// on light) — otherwise rendered markdown is white-on-white
+// and invisible.
+const PROSE_BASE = "prose prose-sm max-w-none text-[14px] leading-relaxed";
 
 export function MarkdownBlock({
   children,
   className = "",
   noProse = false,
 }: MarkdownBlockProps) {
+  const isDark = useThemeStore((s) => s.resolved === "dark");
   // noProse callers get a bare <div> wrapper. That's the chat
   // bubble path: the bubble already owns the prose container +
   // border + padding, and double-wrapping in prose would compound
   // the typography settings (margins on first/last child, list
   // indents, etc.).
-  const wrapperClass = noProse ? className : `${DEFAULT_PROSE} ${className}`.trim();
+  const proseClass = `${PROSE_BASE}${isDark ? " prose-invert" : ""}`;
+  const wrapperClass = noProse ? className : `${proseClass} ${className}`.trim();
   return (
     <div className={wrapperClass}>
       <ReactMarkdown

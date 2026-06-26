@@ -16,6 +16,7 @@
 
 import { useState } from "react";
 import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
+import { useThemeStore } from "../stores/theme-store";
 import {
   Bot,
   CheckCircle2,
@@ -40,6 +41,11 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
   // the chat bubble + the files preview + every other surface
   // render markdown identically.
   const { MarkdownBlock } = useUiPrimitives();
+  // `prose-invert` flips Typography colors for dark backgrounds.
+  // On light theme we DON'T want it: bubbles are white, text
+  // needs to read dark. Switch class on theme.
+  const isDark = useThemeStore((s) => s.resolved === "dark");
+  const proseInvert = isDark ? " prose-invert" : "";
 
   // Prefer ordered `resolvedBlocks` (new wire shape, see
   // ws-protocol.ts). Fall back to flattened `text + resolvedToolCalls`
@@ -63,14 +69,14 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
 
         {blocks ? (
           <div className={`flex flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
-            {blocks.map((b, i) => renderAssistantBlock(b, i, isUser, MarkdownBlock))}
+            {blocks.map((b, i) => renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert))}
           </div>
         ) : (
           <>
             {hasText ? (
               <div
                 className={
-                  "prose prose-invert prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed " +
+                  `prose${proseInvert} prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed ` +
                   (isUser
                     ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
                     : "border-border-subtle bg-bg-elevated/60 text-fg-default")
@@ -115,6 +121,7 @@ function renderAssistantBlock(
   i: number,
   isUser: boolean,
   MarkdownBlock: React.ComponentType<{ children: string; noProse?: boolean }>,
+  proseInvert: string,
 ): React.ReactNode {
   if (block.kind === "text") {
     if (block.text.length === 0) return null;
@@ -122,7 +129,7 @@ function renderAssistantBlock(
       <div
         key={`t${i}`}
         className={
-          "prose prose-invert prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed " +
+          `prose${proseInvert} prose-sm max-w-none rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed ` +
           (isUser
             ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
             : "border-border-subtle bg-bg-elevated/60 text-fg-default")
