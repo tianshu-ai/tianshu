@@ -343,6 +343,90 @@ function zeroUsage(): AssistantMessage["usage"] {
 /** Return the user's full conversation, chronological. PR #21 keeps it simple. */
 /** Per-session, chronological. Used by the chat hot path (which
  *  must not pull in messages from compacted parent sessions). */
+/**
+ * Paged variant of listMessagesForSession. Used by the WebSocket
+ * history handler when the client pins to a specific session
+ * (channel sessions in the sidebar, for instance). Same paging
+ * semantics as listMessagesForUserPage — (created_at, id) cursor,
+ * configurable limit, hasMore probe — just filtered to one
+ * session id.
+ */
+export function listMessagesForSessionPage(
+  ctx: TenantContext,
+  sessionId: string,
+  opts: { limit?: number; before?: string } = {},
+): MessagePage {
+  const requested = Number.isFinite(opts.limit)
+    ? Math.max(1, Math.min(HISTORY_PAGE_MAX, Number(opts.limit)))
+    : HISTORY_PAGE_DEFAULT;
+  const probe = requested + 1;
+
+  let cursor: { ts: number; id: string } | null = null;
+  if (opts.before) {
+    const row = ctx.db
+      .prepare<[string, string], { id: string; created_at: number }>(
+        `SELECT id, created_at FROM messages WHERE id = ? AND session_id = ?`,
+      )
+      .get(opts.before, sessionId);
+    if (row) cursor = { ts: row.created_at, id: row.id };
+  }
+
+  const rows = cursor
+    ? ctx.db
+        .prepare<
+          [string, number, number, string, number],
+          {
+            id: string;
+            session_id: string;
+            role: string;
+            content: string;
+            created_at: number;
+          }
+        >(
+          `SELECT id, session_id, role, content, created_at
+             FROM messages
+            WHERE session_id = ?
+              AND (created_at < ? OR (created_at = ? AND id < ?))
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?`,
+        )
+        .all(sessionId, cursor.ts, cursor.ts, cursor.id, probe)
+    : ctx.db
+        .prepare<
+          [string, number],
+          {
+            id: string;
+            session_id: string;
+            role: string;
+            content: string;
+            created_at: number;
+          }
+        >(
+          `SELECT id, session_id, role, content, created_at
+             FROM messages
+            WHERE session_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?`,
+        )
+        .all(sessionId, probe);
+
+  const hasMore = rows.length > requested;
+  const trimmed = hasMore ? rows.slice(0, requested) : rows;
+  // SELECTed in DESC order so the cursor logic works; flip to ASC
+  // for the wire reply since the chat shell reads oldest-first.
+  trimmed.reverse();
+  return {
+    messages: trimmed.map((r) => ({
+      id: r.id,
+      sessionId: r.session_id,
+      role: r.role as ChatMessage["role"],
+      content: r.content,
+      createdAt: r.created_at,
+    })),
+    hasMore,
+  };
+}
+
 export function listMessagesForSession(
   ctx: TenantContext,
   sessionId: string,

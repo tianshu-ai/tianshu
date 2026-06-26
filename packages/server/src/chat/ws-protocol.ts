@@ -25,7 +25,7 @@ export type ClientMsg =
    * usual fast-path stays fast and only users who scroll up pay
    * the cost of older history.
    */
-  | { type: "history"; limit?: number }
+  | { type: "history"; limit?: number; sessionId?: string }
   /**
    * Page in older history, exclusive of `before`. Cursor is the
    * oldest message id currently in the client's store; server
@@ -35,6 +35,7 @@ export type ClientMsg =
       type: "history_more";
       before: string;
       limit?: number;
+      sessionId?: string;
     }
   | {
       type: "prompt";

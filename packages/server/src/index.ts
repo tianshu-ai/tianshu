@@ -509,6 +509,51 @@ app.use(
   tenantMiddleware({ ops: globalOps }),
 );
 
+/**
+ * List channel sessions visible to the current tenant. Chat-shell
+ * sidebar reads this so users can see (and re-enter) channel
+ * conversations alongside their webchat session. Sessions are
+ * the same row schema as everywhere else; the channel_ tagging
+ * (`channel_id` / `channel_chat_id` / `channel_binding_id`)
+ * lives on the row itself.
+ */
+app.get("/api/channel-sessions", (req, res) => {
+  if (!req.ctx) {
+    res.status(500).json({ error: "no_ctx" });
+    return;
+  }
+  const rows = req.ctx.tenant.db
+    .prepare<
+      [],
+      {
+        id: string;
+        channel_id: string;
+        channel_chat_id: string;
+        channel_binding_id: string | null;
+        title: string | null;
+        created_at: number;
+      }
+    >(
+      `SELECT id, channel_id, channel_chat_id, channel_binding_id,
+              title, created_at
+         FROM sessions
+        WHERE channel_id IS NOT NULL
+          AND kind = 'user'
+        ORDER BY created_at DESC`,
+    )
+    .all();
+  res.json({
+    sessions: rows.map((r) => ({
+      id: r.id,
+      channelId: r.channel_id,
+      channelChatId: r.channel_chat_id,
+      channelBindingId: r.channel_binding_id,
+      title: r.title,
+      createdAt: r.created_at,
+    })),
+  });
+});
+
 app.get("/api/me", (req, res) => {
   if (!req.ctx) {
     res.status(500).json({ error: "no_ctx" });

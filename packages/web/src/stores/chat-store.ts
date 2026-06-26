@@ -65,6 +65,18 @@ interface ChatState {
   // ui chrome
   sidebarOpen: boolean;
 
+  // ── channel sessions ──────────────────────────────────────────────
+  /** Sessions backed by an external channel (wechat / telegram /
+   *  etc.). Loaded on init from /api/channel-sessions and re-pulled
+   *  every 30s while the sidebar's mounted so newly-arrived threads
+   *  appear without a full reload. */
+  channelSessions: import("../lib/api").ChannelSessionEntry[];
+  /** When non-null, `messages` shows the history of this session
+   *  rather than the main webchat thread. The composer disables
+   *  itself in this mode because channel sessions are driven by
+   *  inbound platform messages, not user-typed prompts. */
+  viewingSessionId: string | null;
+
   // ── internal ──
   /**
    * Tracks whether init() has registered its singleton WS handlers /
@@ -86,6 +98,11 @@ interface ChatState {
   clearStreamError: () => void;
   clearCompactNotice: () => void;
   setPreferredModel: (id: string | null) => void;
+  /** Fetch the latest channel sessions list from the server. */
+  refreshChannelSessions: () => Promise<void>;
+  /** Pin the chat area to a specific session id. Pass `null` to
+   *  return to the main webchat thread. */
+  selectSession: (sessionId: string | null) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -103,6 +120,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
   preferredModel: loadPreferredModel(),
 
   sidebarOpen: true,
+
+  channelSessions: [],
+  viewingSessionId: null,
 
   _initialized: false,
 
@@ -139,9 +159,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
         /* best-effort; UI degrades to "—" */
       });
 
+    // Pull channel sessions list in parallel with /me + /models so
+    // the sidebar can paint as soon as the rest of the chrome
+    // appears. Channels are an additive surface; failing to load
+    // them shouldn't break the main webchat path.
+    void get().refreshChannelSessions();
+
     tianshuWs.connect();
-    // History fetch as soon as we're connected.
-    tianshuWs.on("connected", () => tianshuWs.send({ type: "history" }));
+    // History fetch as soon as we're connected. We pin to
+    // `viewingSessionId` when set so a deep-link to a channel
+    // session paints the right thread on first paint.
+    tianshuWs.on("connected", () => {
+      const sid = get().viewingSessionId;
+      tianshuWs.send(
+        sid ? { type: "history", sessionId: sid } : { type: "history" },
+      );
+    });
     tianshuWs.on("history", (m) =>
       set({ messages: m.messages, hasMoreHistory: m.hasMore, loadingMore: false }),
     );
@@ -294,6 +327,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
 
+  refreshChannelSessions: async () => {
+    try {
+      const list = await api.channelSessions();
+      set({ channelSessions: list });
+    } catch {
+      // Best-effort; sidebar quietly shows nothing.
+    }
+  },
+
+  selectSession: (sessionId) => {
+    set({
+      viewingSessionId: sessionId,
+      messages: [],
+      hasMoreHistory: false,
+      loadingMore: false,
+      streamError: null,
+      compactNotice: null,
+    });
+    // Re-pull history for the new target. Server returns oldest
+    // page by default; client paginates back via history_more.
+    tianshuWs.send(
+      sessionId
+        ? { type: "history", sessionId }
+        : { type: "history" },
+    );
+  },
+
   sendPrompt: (content: string, attachments?: WireAttachment[]) => {
     const trimmed = content.trim();
     const hasAttachments = attachments && attachments.length > 0;
@@ -320,7 +380,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const before = s.messages[0]?.id;
     if (!before) return;
     set({ loadingMore: true });
-    tianshuWs.send({ type: "history_more", before });
+    tianshuWs.send(
+      s.viewingSessionId
+        ? { type: "history_more", before, sessionId: s.viewingSessionId }
+        : { type: "history_more", before },
+    );
   },
 
   clearStreamError: () => set({ streamError: null }),
