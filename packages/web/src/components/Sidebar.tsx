@@ -54,13 +54,13 @@ export default function Sidebar() {
     <aside className="flex h-full w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
       {/* Header */}
       <div className="flex h-12 items-center border-b border-border-subtle px-4">
-        <span className="text-lg font-semibold text-white">{brandName}</span>
+        <span className="text-lg font-semibold text-fg-default">{brandName}</span>
       </div>
 
       {/* Agents + Workers */}
       <div className="space-y-1 px-2 pt-2">
         {/* Main agent row — currently always selected */}
-        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-2 text-white">
+        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-2 text-fg-default">
           <Bot size={14} className="flex-shrink-0 text-link" />
           <span className="text-sm font-medium">{brandName}</span>
         </div>
@@ -81,7 +81,7 @@ export default function Sidebar() {
         <div className="px-1 pb-1 pt-2 text-[10px] uppercase tracking-wider text-fg-fainter">
           Channels
         </div>
-        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-1.5 text-white">
+        <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-1.5 text-fg-default">
           <Hash size={12} className="flex-shrink-0" />
           <span className="flex-1 truncate text-xs">webchat</span>
           <span className="text-[9px] uppercase tracking-wider text-fg-faint">active</span>

@@ -234,8 +234,8 @@ function FilesPanel({ plugin }: PanelProps) {
                   type="button"
                   onClick={() => navigate(path)}
                   className={[
-                    "rounded px-1 hover:text-white",
-                    isLast ? "font-medium text-white" : "text-fg-faint",
+                    "rounded px-1 hover:text-fg-default",
+                    isLast ? "font-medium text-fg-default" : "text-fg-faint",
                   ].join(" ")}
                 >
                   {i === 0 ? "~" : part}

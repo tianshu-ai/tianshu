@@ -317,7 +317,7 @@ function AdminNavLink({ page }: { page: FlatAdminPage }) {
       className={({ isActive }) =>
         `flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
           isActive
-            ? "bg-bg-raised text-white"
+            ? "bg-bg-raised text-fg-default"
             : "text-fg-muted hover:bg-bg-raised/50 hover:text-fg-default"
         }`
       }

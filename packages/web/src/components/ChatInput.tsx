@@ -140,7 +140,7 @@ export default function ChatInput() {
                 type="button"
                 onClick={() => void submit()}
                 disabled={!sendAllowed}
-                className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default disabled:cursor-not-allowed disabled:opacity-30"
                 title={
                   hasPending
                     ? "Waiting for uploads to finish…"
