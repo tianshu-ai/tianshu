@@ -18,6 +18,7 @@ import * as taskLabels from "./006-task-labels.js";
 import * as sessionInbox from "./007-session-inbox.js";
 import * as taskIntervention from "./008-task-intervention.js";
 import * as sessionAppVersion from "./009-session-app-version.js";
+import * as channels from "./010-channels.js";
 
 export interface Migration {
   id: string;
@@ -35,6 +36,7 @@ export const MIGRATIONS: Migration[] = [
   { id: sessionInbox.ID, up: sessionInbox.up },
   { id: taskIntervention.ID, up: taskIntervention.up },
   { id: sessionAppVersion.ID, up: sessionAppVersion.up },
+  { id: channels.ID, up: channels.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `

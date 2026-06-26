@@ -245,6 +245,20 @@ export interface ContributesV1 {
    */
   agentSeeds?: AgentSeedContribution[];
   /**
+   * Chat-platform channel adapters the plugin contributes.
+   * Each entry registers a `ChannelAdapter` factory (keyed in
+   * the plugin's server-exports `channels` map). The host's
+   * channel hub picks adapters up by `id`, instantiates one per
+   * configured account binding, fans inbound messages into the
+   * router, and routes outbound replies back.
+   *
+   * Examples: feishu / telegram / discord / wechat / slack. The
+   * built-in `webchat` channel is not contributed via this
+   * mechanism — it sits inside the host directly because it
+   * shares the agent's WebSocket transport.
+   */
+  channels?: ChannelContribution[];
+  /**
    * Static system-prompt fragments injected into the main chat
    * agent's prompt when this plugin is active for the current
    * tenant. Use sparingly — each fragment costs context budget
@@ -471,6 +485,39 @@ export interface WsMessageContribution {
   type: string;
   /** Key in the plugin's server-exports `wsHandlers` map. */
   handler: string;
+}
+
+/**
+ * Channel contribution — register a chat-platform adapter
+ * (Feishu / Telegram / WeChat / Discord / Slack / ...) the host's
+ * channel hub can instantiate per-binding.
+ *
+ * The plugin's `server.ts` exports a `channels` map keyed by
+ * `module`; each entry is a `ChannelAdapterFactory` (see
+ * `server.ts: ChannelAdapterFactory`). The host calls the factory
+ * once per binding (an account configured for this tenant), wires
+ * the resulting `ChannelAdapter` into the hub, then drives it via
+ * `start()` / `stop()` / `send()` / `onMessage()`.
+ */
+export interface ChannelContribution {
+  /**
+   * Stable channel id. MUST be globally unique across plugins
+   * because the router uses it as the dispatch key (the
+   * "feishu" / "telegram" / "wechat" prefix on session titles
+   * and binding rows). Lowercase, no spaces, no version suffix.
+   */
+  id: string;
+  /** Human-readable name for admin / log UIs. */
+  displayName: string;
+  /** Key in the plugin's server-exports `channels` map. */
+  module: string;
+  /**
+   * Semver string marking the release this channel first
+   * appeared in. Same role as ToolContribution.since — the
+   * boot-time tool-delta detector treats new channels as a
+   * new capability surface worth telling the agent about.
+   */
+  since?: string;
 }
 
 

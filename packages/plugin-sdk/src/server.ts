@@ -103,6 +103,19 @@ export interface PluginServerExports {
    */
   sandboxes?: Record<string, SandboxRunner>;
   /**
+   * Chat-platform channel adapters (Feishu / Telegram / WeChat /
+   * ...). Keys match the `module` strings declared in
+   * `manifest.contributes.channels[]`. Each entry is a *factory*
+   * — the host calls it once per configured binding (account
+   * pair) so multiple instances of the same plugin can coexist
+   * (e.g. two Feishu apps for two tenants). The factory returns
+   * a `ChannelAdapter` the host wires into its channel hub.
+   *
+   * Plugins that don't contribute any channel adapter leave this
+   * undefined.
+   */
+  channels?: Record<string, ChannelAdapterFactory>;
+  /**
    * Per-task sandbox lifecycle manager (`sandbox.taskPool`
    * capability). The host registers it under that capability so
    * other plugins (today: workboard) can drive task acquire/
@@ -528,4 +541,154 @@ export interface BrowserSidecarHealth {
 export interface PluginServerModule {
   activate(ctx: PluginContext): Promise<PluginServerExports> | PluginServerExports;
   deactivate?(): Promise<void> | void;
+}
+
+// ─── Channel adapters ─────────────────────────────────────────────────
+//
+// A `ChannelAdapter` translates between an external chat platform
+// (Feishu, Telegram, WeChat, Discord, Slack, ...) and tianshu's
+// internal message bus. Plugins implement adapters and surface them
+// through `manifest.contributes.channels[]` + `exports.channels`.
+//
+// Lifecycle:
+//   1. The host loads each binding row from `channel_bindings`
+//      (tenant + channel + account credentials).
+//   2. For each binding, the host calls the plugin's channel
+//      factory with a `ChannelAdapterContext`. The factory
+//      returns an adapter instance.
+//   3. Host calls `adapter.start()` to open the underlying
+//      transport.
+//   4. Inbound platform messages flow through
+//      `adapter.onMessage(handler)` → host hub → agent router.
+//   5. Agent replies route back via `adapter.send(outbound)`.
+//   6. On binding removal / plugin deactivation the host calls
+//      `adapter.stop()`.
+//
+// Adapters MUST be idempotent on start/stop and MUST drop the
+// bot's own echo messages (the router double-checks senderId, but
+// each platform has its own loopback semantics the adapter knows
+// best). They SHOULD NOT crash on transient transport errors;
+// surface them via `onError` so the hub can mark the binding as
+// degraded without taking down the whole channel system.
+
+/** Identifier of a chat platform. "webchat" is reserved for the
+ *  host's built-in WebSocket transport; other plugins pick
+ *  lowercase identifiers like "feishu" / "telegram" / "wechat". */
+export type ChannelId = string;
+
+/** A normalised inbound message. Adapters convert their native
+ *  event shapes into this. Everything downstream operates on it. */
+export interface InboundChannelMessage {
+  /** Channel that produced this message (e.g. "feishu"). */
+  channelId: ChannelId;
+  /** Per-channel chat handle. For Feishu this is `chat_id` (group)
+   *  or the sender's `open_id` (DM). Treat as opaque outside the
+   *  adapter. */
+  chatId: string;
+  /** True when the chat is 1:1 with the bot. */
+  isDirect: boolean;
+  /** Stable identifier for the human/bot that sent the message,
+   *  in the channel's native ID space. */
+  senderId: string;
+  /** Display name if the adapter could resolve one. */
+  senderName?: string;
+  /** Plain-text content. Adapters strip mentions / markup. */
+  text: string;
+  /** Native message id, used for replies + dedup. */
+  messageId: string;
+  /** When the channel says it was sent (ms epoch). */
+  timestamp: number;
+  /** Whether the bot itself was @-mentioned (groups only). */
+  mentionsBot?: boolean;
+  /** Original payload, for adapters that need extra context. */
+  raw?: unknown;
+}
+
+/** Outbound message handed to the adapter for delivery. The
+ *  adapter decides format (plain text vs card vs whatever the
+ *  platform supports natively). */
+export interface OutboundChannelMessage {
+  /** Target chat handle in the channel's native ID space. */
+  target: string;
+  /** Plain-text body. Adapters MAY apply minimal markdown if the
+   *  platform supports it. */
+  text: string;
+  /** Reply to a specific message id when the channel supports
+   *  threading. */
+  replyTo?: string;
+}
+
+/** Semantic reactions the host emits to signal processing state
+ *  to a remote chat ("received", "working", "done", "error").
+ *  Each adapter maps these onto the platform's native reaction
+ *  set; adapters that don't support reactions silently no-op. */
+export type ChannelReactionKind = "received" | "working" | "done" | "error";
+
+/** Context handed to a channel factory at binding instantiation. */
+export interface ChannelAdapterContext {
+  /** Binding row id — a stable key for this account's adapter
+   *  instance. */
+  bindingId: string;
+  /** Tenant the binding belongs to. */
+  tenantId: string;
+  /** Per-binding configuration (account credentials, optional
+   *  display name, etc.). Schema is plugin-defined and validated
+   *  by the plugin before mapping to its internal config. */
+  config: Record<string, unknown>;
+  /** Plugin-scoped logger, same shape as the rest of the SDK. */
+  log: {
+    info: (msg: string, meta?: Record<string, unknown>) => void;
+    warn: (msg: string, meta?: Record<string, unknown>) => void;
+    error: (msg: string, meta?: Record<string, unknown>) => void;
+  };
+  /** State directory the adapter can persist tokens / sync
+   *  buffers / etc. Created by the host before the factory runs. */
+  stateDir: string;
+}
+
+/** Factory the plugin exports per channel module. The host calls
+ *  it once per binding. The factory MAY do async work (loading
+ *  cached tokens etc.); the host awaits it before `start()`. */
+export type ChannelAdapterFactory = (
+  ctx: ChannelAdapterContext,
+) => Promise<ChannelAdapter> | ChannelAdapter;
+
+/** The runtime interface every channel adapter implements. */
+export interface ChannelAdapter {
+  /** Channel identifier; must match `InboundChannelMessage.channelId`. */
+  readonly id: ChannelId;
+  /** Human-readable name for logs / UI. */
+  readonly displayName: string;
+  /** Establish whatever connection the channel needs.
+   *  Idempotent. Resolves when messages can flow. */
+  start(): Promise<void>;
+  /** Tear down gracefully. Idempotent. */
+  stop(): Promise<void>;
+  /** Send a message to the channel. */
+  send(message: OutboundChannelMessage): Promise<void>;
+  /** Add a reaction to a remote message. Returns an opaque id
+   *  the host can pass back to remove the reaction later, or
+   *  `null` if the platform doesn't expose one. Adapters that
+   *  don't support reactions return `null` and no-op. */
+  addReaction?(
+    messageId: string,
+    kind: ChannelReactionKind,
+  ): Promise<string | null>;
+  /** Remove a reaction previously added via `addReaction`. */
+  removeReaction?(messageId: string, reactionId: string): Promise<void>;
+  /** Resolve a human-readable display name for a chat handle.
+   *  Used by the host to label channel sessions in the sidebar
+   *  so users see "张三" / "产品群" instead of opaque ids. */
+  resolveDisplayName?(
+    handle: string,
+    kind: "user" | "chat",
+  ): Promise<string | null>;
+  /** Register the inbound-message listener. The hub calls this
+   *  exactly once at startup; adapters MAY reject duplicates. */
+  onMessage(handler: (msg: InboundChannelMessage) => void): void;
+  /** Register an error listener. Hub logs into the binding row
+   *  so admins can see auth failures / reconnect storms / etc.
+   *  Adapters MUST NOT throw from these handlers — errors that
+   *  reach the hub are best-effort signals, not transactions. */
+  onError(handler: (err: Error) => void): void;
 }

@@ -792,6 +792,43 @@ export class PluginRegistry {
   }
 
   /**
+   * Resolve a channel adapter factory for a (plugin, channel)
+   * pair. The channel manager calls this during boot and on
+   * admin add-binding flows to instantiate adapters per binding
+   * row. Returns null when the plugin is inactive, the channel
+   * isn't declared in `manifest.contributes.channels[]`, or the
+   * server exports don't carry the matching `channels[module]`.
+   *
+   * Channel resolution is process-global (not per-tenant): every
+   * tenant sees the same factory; per-tenant config lives on the
+   * `channel_bindings` row instead. We still pick *some* tenant
+   * to read the cache from so the plugin's `activate()` has run;
+   * any tenant the plugin is active for works.
+   */
+  channelFactoryFor(
+    pluginId: string,
+    channelId: string,
+  ): {
+    factory: import("@tianshu-ai/plugin-sdk").ChannelAdapterFactory;
+    displayName: string;
+  } | null {
+    for (const [, cached] of this.cache) {
+      const entry = cached.entries.find(
+        (e) => e.manifest.id === pluginId,
+      );
+      if (!entry || entry.state !== "active") continue;
+      const ch = entry.manifest.contributes?.channels?.find(
+        (c) => c.id === channelId,
+      );
+      if (!ch) continue;
+      const factory = entry.exports?.channels?.[ch.module];
+      if (!factory) continue;
+      return { factory, displayName: ch.displayName };
+    }
+    return null;
+  }
+
+  /**
    * Re-probe every toolset whose snapshot looks stale (no
    * endpoint, errored last attempt, or empty after a never-yet
    * refresh). Used by both the chat handler (per-turn warmup so
