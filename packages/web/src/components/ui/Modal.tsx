@@ -29,11 +29,25 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import type { ModalProps } from "@tianshu-ai/plugin-sdk/client";
 
+// Width and height presets per size.
+//
+// Convention:
+//   sm / md — short content (forms, confirmations). max-h-[85vh]
+//             so the panel hugs the content; if the form fits in
+//             300px, the modal is 300px tall and floats centered.
+//   lg / xl — file / document previews. h-[85vh] so the panel
+//             occupies a fixed fraction of the viewport, giving
+//             the inner iframe / image / code view a meaningful
+//             bounded height to render against. Without this an
+//             iframe in a `flex flex-col max-h-X` panel collapses
+//             to its content height (~0 for a freshly-loaded
+//             remote PDF), so previews looked tiny even after
+//             the inner-overflow fixes in 0.3.29 / 0.3.30.
 const SIZE_CLASS: Record<NonNullable<ModalProps["size"]>, string> = {
-  sm: "max-w-md",
-  md: "max-w-2xl",
-  lg: "max-w-3xl",
-  xl: "max-w-5xl",
+  sm: "max-w-md max-h-[85vh]",
+  md: "max-w-2xl max-h-[85vh]",
+  lg: "max-w-3xl h-[85vh]",
+  xl: "max-w-5xl h-[85vh]",
 };
 
 // Selector list cribbed from focus-trap / Radix. Any element a user
@@ -151,7 +165,7 @@ export function Modal({
     >
       <div
         ref={panelRef}
-        className={`flex max-h-[85vh] w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl ${className}`}
+        className={`flex w-full ${SIZE_CLASS[size]} flex-col overflow-hidden rounded-xl border border-gray-700 bg-gray-900 shadow-2xl ${className}`}
         onKeyDown={handleKeyDown}
       >
         {/* Header. Rendered by default so the close button has a
