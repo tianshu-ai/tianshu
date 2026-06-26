@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.29](https://github.com/tianshu-ai/tianshu/compare/v0.3.28...v0.3.29) (2026-06-26)
+
+### Bug Fixes
+
+* **ui:** three layout regressions in 0.3.28's file previews:
+  * HTML preview height collapsed because the iframe sat inside
+    an `overflow-auto` parent (an overflow container does not
+    propagate height to a `h-full` child). Iframe now gets the
+    full body directly.
+  * CodeBlock first source line offset ~16px below the gutter's
+    "1" because shiki's `<pre>` carries inline `padding: 1rem`
+    on top of our wrapper's `p-3`. Added a CSS rule on
+    `.shiki-host > pre` that resets shiki's padding to match.
+  * CodeBlock last few lines had no line number because the
+    gutter used `text-[11px]` and the body used `text-[12px]`,
+    drifting ~80px short by line 50. Gutter bumped to 12px.
+
 ## [0.3.28](https://github.com/tianshu-ai/tianshu/compare/v0.3.27...v0.3.28) (2026-06-26)
 
 ### Features
