@@ -420,6 +420,30 @@ export interface SendMessageResponse {
  *  the `context_token` from a recent inbound message; we look up
  *  the most recent token per `ilink_user_id` in the channel
  *  adapter. */
+/**
+ * Send a plain-text message downstream. Wire shape matches
+ * Tencent's `SendMessageReq` proto + the `msg` envelope OpenClaw's
+ * reference uses:
+ *
+ *   {
+ *     msg: {
+ *       from_user_id: "",            // empty; gateway fills in
+ *       to_user_id: <recipient>,
+ *       client_id: <random per-send>,
+ *       message_type: 2,             // BOT
+ *       message_state: 2,            // FINISH
+ *       context_token: <opaque>,     // from last inbound msg
+ *       item_list: [{ type: 1, text_item: { text } }]
+ *     },
+ *     base_info: { channel_version, bot_agent }
+ *   }
+ *
+ * My first draft used `ilink_user_id` + `msg_items` (note the
+ * underscore variant) which got accepted but the message never
+ * arrived on the user side. The right names are `to_user_id` +
+ * `item_list` + `text_item` and the whole thing has to live
+ * under a `msg` wrapper.
+ */
 export async function sendTextMessage(opts: {
   baseUrl: string;
   token: string;
@@ -430,15 +454,22 @@ export async function sendTextMessage(opts: {
   channelVersion: string;
   timeoutMs?: number;
 }): Promise<SendMessageResponse> {
+  const clientId = `tianshu-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
   const body = JSON.stringify({
-    ilink_user_id: opts.ilinkUserId,
-    context_token: opts.contextToken,
-    msg_items: [
-      {
-        msg_item_type: 1, // text
-        text: opts.text,
-      },
-    ],
+    msg: {
+      from_user_id: "",
+      to_user_id: opts.ilinkUserId,
+      client_id: clientId,
+      message_type: 2, // BOT
+      message_state: 2, // FINISH
+      context_token: opts.contextToken,
+      item_list: [
+        {
+          type: 1, // TEXT
+          text_item: { text: opts.text },
+        },
+      ],
+    },
     base_info: buildBaseInfo(opts),
   });
   const raw = await apiPost({
