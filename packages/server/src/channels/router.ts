@@ -9,28 +9,32 @@
 //        - group messages without a bot mention
 //   2. Finds or creates a channel session keyed on
 //      (binding_id, channel_id, channel_chat_id).
-//   3. Appends the inbound text to that session.
-//   4. Runs the agent against the session.
-//   5. Routes the agent's reply back through the adapter via
-//      `channelHub.send(bindingId, ...)`.
+//   3. Runs the agent against the session (via runPrompt). The
+//      router builds its own `send` callback so the WebSocket-
+//      shaped ServerMsg stream is funnelled into a single final
+//      reply string.
+//   4. Routes the final reply back through the binding's adapter
+//      via `channelHub.send(bindingId, ...)`.
 //
-// This file is deliberately lean. It does NOT own:
-//   - session model / persistence (sessions.ts + messages.ts)
-//   - agent orchestration (runPrompt, in chat/handler.ts)
-//   - adapter lifecycle (adapter-manager.ts)
+// Why this file does NOT skip runPrompt and reach the agent loop
+// directly: runPrompt also handles tool execution, model selection,
+// auto-compact, plugin tool injection, system-prompt assembly,
+// flush-tool-delta, MAX_TURNS enforcement, etc. Re-implementing
+// any of that is a recipe for divergence. Hooking a non-WS sink
+// in via the existing `send` callback gets us the whole pipeline
+// for free.
 //
-// Filtering rules mirror what the closed-source predecessor did:
-// DM → agent for every message; group → only when @-mentioned.
-// Adapters that don't reliably detect mentions can set
-// `mentionsBot=true` on every group message and rely on the user
-// to invoke the bot via `/cmd` prefixes; the router does not enforce
-// any other policy.
+// Filtering rules: DM → agent for every message; group → only
+// when @-mentioned. Adapters that can't detect mentions reliably
+// set mentionsBot=true on every group message and rely on user-
+// side conventions ("@bot ..."); the router doesn't enforce more.
 
 import { channelHub } from "./hub.js";
 import type { InboundEnvelope } from "./types.js";
 import type { GlobalOps } from "../core/global-ops.js";
 import { ensureChannelSession } from "./sessions.js";
-import { appendMessage } from "../chat/messages.js";
+import { runPrompt } from "../chat/handler.js";
+import type { ServerMsg } from "../chat/ws-protocol.js";
 
 /** Decision the router makes about whether a message should reach
  *  the agent at all. */
@@ -39,33 +43,31 @@ type AdmitDecision =
   | { kind: "drop"; reason: string };
 
 function admit(envelope: InboundEnvelope): AdmitDecision {
-  // Empty text — adapter SHOULD have filtered system-only events
-  // (typing indicators, read receipts, sticker-only payloads it
-  // can't render) but we belt-and-brace.
   if (!envelope.text || !envelope.text.trim()) {
     return { kind: "drop", reason: "empty text" };
   }
-  // Bot self-echo. Channel adapters are responsible for not
-  // forwarding their own outbound messages; if a buggy adapter
-  // does anyway, we'd otherwise loop. The senderId == botId check
-  // would belong here once we track each binding's bot identity;
-  // for v0 we trust adapters and only enforce the empty / mention
-  // gates.
   if (!envelope.isDirect && !envelope.mentionsBot) {
     return { kind: "drop", reason: "group without mention" };
   }
   return { kind: "admit" };
 }
 
-interface RouterDeps {
+export interface ChannelRouterDeps {
   globalOps: GlobalOps;
+  /** Plugin registry, passed through to runPrompt so plugin tools
+   *  + skills get wired in. Same instance the WebSocket handler
+   *  uses; channels share the surface. */
+  pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
+  /** Host's $HOME equivalent — currently only consumed by
+   *  runPrompt's homeDir param, which a few tools need for path
+   *  resolution. */
+  homeDir?: string;
 }
 
 /** Wire the router into the hub. Returns an unsubscribe function
- *  the caller can invoke at shutdown. */
-export function startChannelRouter(deps: RouterDeps): () => void {
+ *  the caller invokes at shutdown. */
+export function startChannelRouter(deps: ChannelRouterDeps): () => void {
   return channelHub.onMessage((envelope) => {
-    // Best-effort: log + drop bad messages, don't propagate errors.
     const decision = admit(envelope);
     if (decision.kind === "drop") {
       console.info(
@@ -85,7 +87,7 @@ export function startChannelRouter(deps: RouterDeps): () => void {
 
 async function dispatch(
   envelope: InboundEnvelope,
-  deps: RouterDeps,
+  deps: ChannelRouterDeps,
 ): Promise<void> {
   const ctx = deps.globalOps.open(envelope.tenantId);
   const session = ensureChannelSession(ctx, {
@@ -95,16 +97,68 @@ async function dispatch(
     isDirect: envelope.isDirect,
     senderName: envelope.senderName,
   });
-  appendMessage(ctx, session, { role: "user", content: envelope.text });
 
-  // v0: the channel reply path doesn't yet wire into runPrompt /
-  // the agent loop. We persist the message so it shows up in the
-  // session inbox the chat shell renders, but the actual agent
-  // run lands in the follow-up PR that plumbs runPrompt for
-  // non-WebSocket callers. See ADR/channel docs.
-  //
-  // Adapter authors testing the round trip can build their own
-  // echo: subscribe to the hub manually and call `channelHub.send`.
-  // The host-side automatic agent reply will turn on once the
-  // refactor of runPrompt lands.
+  // Collect runPrompt's stream output into a final reply text.
+  // We prefer stream_end's `message.text` (the canonical rendered
+  // body) but fall back to the concatenated stream_delta deltas
+  // when the agent finished with an unusual shape (tool-only turn,
+  // streaming aborted, etc.).
+  const deltaChunks: string[] = [];
+  let finalText = "";
+  let errorReason = "";
+  const sink = (msg: ServerMsg) => {
+    if (msg.type === "stream_delta") {
+      deltaChunks.push(msg.delta);
+    } else if (msg.type === "stream_end") {
+      // Use the final rendered text if non-empty; otherwise the
+      // concatenated deltas, otherwise an empty string. Tool-only
+      // turns have all three empty and we ship nothing.
+      const wireText = msg.message?.text?.trim() ?? "";
+      finalText = wireText || deltaChunks.join("").trim();
+    } else if (msg.type === "stream_error") {
+      errorReason = msg.reason || "unknown";
+    }
+  };
+
+  const aborter = new AbortController();
+  try {
+    await runPrompt({
+      ctx,
+      userId: session.userId,
+      send: sink,
+      content: envelope.text,
+      signal: aborter.signal,
+      pluginRegistry: deps.pluginRegistry,
+      homeDir: deps.homeDir,
+      session,
+    });
+  } catch (err) {
+    errorReason = err instanceof Error ? err.message : String(err);
+  }
+
+  if (errorReason.length > 0) {
+    // Surface an error to the user so the chat doesn't stay silent.
+    // We deliberately keep this terse — channel platforms have
+    // small message budgets and exposing internal failure detail
+    // would be noisy.
+    await safeSend(envelope.bindingId, envelope.chatId, `⚠️ agent error: ${errorReason}`);
+    return;
+  }
+  if (finalText.length > 0) {
+    await safeSend(envelope.bindingId, envelope.chatId, finalText);
+  }
+  // Tool-only turn: agent did real work but no user-facing text.
+  // We stay silent; the next user message reopens the loop.
+}
+
+async function safeSend(bindingId: string, target: string, text: string): Promise<void> {
+  try {
+    await channelHub.send(bindingId, { target, text });
+  } catch (err) {
+    console.error(
+      `[channel-router] adapter send failed (${bindingId} → ${target}): ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
 }

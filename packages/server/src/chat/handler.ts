@@ -235,6 +235,16 @@ interface RunPromptArgs {
   signal: AbortSignal;
   pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
   homeDir?: string;
+  /**
+   * Optional explicit session. When provided, runPrompt skips the
+   *  `ensureActiveSession(userId)` lookup and uses this session
+   *  directly. The channel router uses this so inbound platform
+   *  messages land in a channel-scoped session instead of the
+   *  user's webchat session. Caller is responsible for creating
+   *  the row (see `channels/sessions.ts: ensureChannelSession`)
+   *  before runPrompt picks it up.
+   */
+  session?: import("./messages.js").ChatSession;
 }
 
 export async function runPrompt(args: RunPromptArgs): Promise<void> {
@@ -242,7 +252,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const wireOpts = makeWireOpts(ctx);
   const repo = new SqliteSessionRepo(ctx);
 
-  let session = ensureActiveSession(ctx, userId);
+  // Caller-provided session wins; for the chat shell this stays
+  // undefined and we fall back to the per-user active session.
+  // The channel router uses this hook to feed inbound platform
+  // messages into a channel-scoped session.
+  let session = args.session ?? ensureActiveSession(ctx, userId);
 
   // Per-prompt tool-delta flush: if the host upgraded since this
   // session was opened and there are new builtin tools, drop a
