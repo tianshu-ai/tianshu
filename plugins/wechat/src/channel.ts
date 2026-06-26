@@ -60,6 +60,21 @@ export class WeChatChannel implements ChannelAdapter {
 
   private msgHandlers: Array<(msg: InboundChannelMessage) => void> = [];
   private errHandlers: Array<(err: Error) => void> = [];
+
+  // Debug stats surfaced via /api/p/wechat/stats so we can see
+  // what's happening inside the long-poll loop without tail-ing
+  // server stdout. Reset on each start().
+  public stats = {
+    pollCount: 0,
+    msgsTotal: 0,
+    msgsEmitted: 0,
+    msgsSkipped: 0,
+    lastPollAt: 0 as number,
+    lastInboundAt: 0 as number,
+    lastError: null as string | null,
+    syncBuf: "",
+    rawMsgsLast: [] as unknown[],
+  };
   private state: WeChatState;
   private abortController: AbortController | null = null;
   private loopPromise: Promise<void> | null = null;
@@ -204,25 +219,30 @@ export class WeChatChannel implements ChannelAdapter {
           getUpdatesBuf = resp.get_updates_buf;
           this.state.saveSyncBuf(getUpdatesBuf);
         }
-        // Debug: long-poll round-trip outcome. msgs.length is
-        // usually 0 (empty long-poll cycle) but every received
-        // message we want to surface in logs while we're still
-        // wiring up the inbound path.
+        this.stats.pollCount += 1;
+        this.stats.lastPollAt = Date.now();
+        this.stats.syncBuf = getUpdatesBuf;
+        this.stats.msgsTotal += resp.msgs?.length ?? 0;
+        if (resp.msgs && resp.msgs.length > 0) {
+          this.stats.rawMsgsLast = resp.msgs.slice(0, 3);
+        }
+        // Debug: long-poll round-trip outcome.
         this.ctx.log.info(
-          `wechat getupdates: msgs=${resp.msgs?.length ?? 0} buf_changed=${
-            resp.get_updates_buf && resp.get_updates_buf !== getUpdatesBuf ? "yes" : "no"
-          }`,
+          `wechat getupdates: msgs=${resp.msgs?.length ?? 0}`,
         );
         if (resp.msgs && resp.msgs.length > 0) {
           for (const m of resp.msgs) {
             try {
               const normalised = this.normaliseInbound(m);
               if (normalised) {
+                this.stats.msgsEmitted += 1;
+                this.stats.lastInboundAt = Date.now();
                 this.ctx.log.info(
                   `wechat inbound: from=${normalised.senderId} text="${normalised.text.slice(0, 60)}"`,
                 );
                 this.emit(normalised);
               } else {
+                this.stats.msgsSkipped += 1;
                 this.ctx.log.info(
                   `wechat inbound skipped: ${JSON.stringify(m).slice(0, 200)}`,
                 );
@@ -237,8 +257,10 @@ export class WeChatChannel implements ChannelAdapter {
       } catch (err) {
         if (signal.aborted) return;
         consecutiveFailures += 1;
+        const msg = err instanceof Error ? err.message : String(err);
+        this.stats.lastError = msg;
         this.ctx.log.warn(
-          `wechat getUpdates threw: ${err instanceof Error ? err.message : String(err)} (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})`,
+          `wechat getUpdates threw: ${msg} (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})`,
         );
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
           consecutiveFailures = 0;

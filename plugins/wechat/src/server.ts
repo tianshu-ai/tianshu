@@ -47,14 +47,25 @@ import {
 } from "./ilink-api.js";
 import { WeChatChannel } from "./channel.js";
 
+// Map of bindingId -> WeChatChannel instance, kept so the
+// /stats admin route can read live adapter counters. The
+// factory adds an entry every time the host instantiates an
+// adapter; we don't get a destroy callback today, so entries
+// for removed bindings stay until the plugin re-activates.
+// Acceptable since the map is small + only used for debug.
+const liveAdapters = new Map<string, WeChatChannel>();
+
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     // Channel factory — the host's adapter manager calls this
     // once per channel_bindings row. The adapter reads token +
     // identity from adapterCtx.config (set by /login/poll's
     // host.channelBindings.create() call below).
-    const factory: ChannelAdapterFactory = (adapterCtx) =>
-      new WeChatChannel(adapterCtx);
+    const factory: ChannelAdapterFactory = (adapterCtx) => {
+      const adapter = new WeChatChannel(adapterCtx);
+      liveAdapters.set(adapterCtx.bindingId, adapter);
+      return adapter;
+    };
 
     // Pull the binding capability once at activate time. It's
     // a typed handle into host-side CRUD; we just relay route
@@ -185,6 +196,18 @@ const plugin: PluginServerModule = {
             config: redactConfig(b.config),
           }));
           res.json({ ok: true, bindings: sanitised });
+        },
+
+        // GET /stats — diagnostic: per-binding long-poll counters.
+        // Useful when debugging "why aren't my inbound messages
+        // showing up". Returns null fields for any binding the
+        // adapter hasn't started yet.
+        getStats: (_req: Request, res: Response) => {
+          const entries: Array<{ bindingId: string; stats: unknown }> = [];
+          for (const [id, adapter] of liveAdapters) {
+            entries.push({ bindingId: id, stats: adapter.stats });
+          }
+          res.json({ ok: true, adapters: entries });
         },
 
         // DELETE /bindings/:id
