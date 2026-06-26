@@ -1,0 +1,43 @@
+{
+  "id": "wechat",
+  "version": "0.1.0",
+  "displayName": "WeChat (微信)",
+  "description": "WeChat channel backed by Tencent's iLink bot API. Scan a QR code with the WeChat app to authorise; inbound DMs from authorised users route to the agent through the channel system.",
+  "author": "tianshu-ai",
+  "license": "MIT",
+  "permissions": ["network.external"],
+  "server": { "entry": "@tianshu-builtin/plugin-wechat/server" },
+  "contributes": {
+    "channels": [
+      {
+        "id": "wechat",
+        "displayName": "WeChat",
+        "module": "WeChatChannel",
+        "since": "0.3.36"
+      }
+    ],
+    "apiRoutes": [
+      { "method": "POST", "path": "/login/start", "handler": "loginStart" },
+      { "method": "POST", "path": "/login/poll", "handler": "loginPoll" },
+      { "method": "GET", "path": "/status", "handler": "getStatus" }
+    ]
+  },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "baseUrl",
+        "label": "iLink API base URL",
+        "kind": "string",
+        "default": "https://ilinkai.weixin.qq.com",
+        "description": "Override only when Tencent changes the API host. Leave default in production."
+      },
+      {
+        "key": "botAgent",
+        "label": "Bot agent (analytics tag)",
+        "kind": "string",
+        "default": "tianshu",
+        "description": "Identifies your bot in Tencent's iLink logs (analogous to HTTP User-Agent)."
+      }
+    ]
+  }
+}
