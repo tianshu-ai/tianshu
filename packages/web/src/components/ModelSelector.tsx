@@ -130,7 +130,7 @@ export default function ModelSelector() {
                     className={
                       "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors " +
                       (m.id === activeId
-                        ? "bg-bg-hover/60 text-white"
+                        ? "bg-bg-hover/60 text-fg-default"
                         : "text-fg-muted hover:bg-bg-hover/40")
                     }
                     title={m.id}
