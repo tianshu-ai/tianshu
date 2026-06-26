@@ -76,13 +76,17 @@ export default function Sidebar() {
 
       <div className="mx-3 my-2 border-b border-border-subtle/50" />
 
-      {/* Channels — webchat is the default thread; channel
-          sessions appear here as inbound platform messages arrive. */}
+      {/* Channels — webchat is the always-on default thread.
+          Channel plugins (wechat / telegram / ...) each contribute
+          their own sidebarSections via the plugin SDK, rendered
+          by <PluginSidebarSections /> below; the host doesn't
+          enumerate channel sessions here. */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
         <div className="px-1 pb-1 pt-2 text-[10px] uppercase tracking-wider text-fg-fainter">
           Channels
         </div>
-        <ChannelsList />
+        <WebchatRow />
+        <PluginSidebarSections anchor="channels" />
         <p className="px-2 pt-2 text-[10px] leading-relaxed text-fg-fainter">
           Sessions are managed by the agent, not the user (ADR-0001 §5).
         </p>
@@ -263,120 +267,32 @@ function SidebarFooter() {
 
 
 /**
- * Lists chat threads under the Channels heading: the always-on
- * webchat thread + every channel session the server knows about
- * (loaded into chat-store.channelSessions on init). Clicking a
- * row flips `viewingSessionId`, which re-pulls history and the
- * ChatArea re-renders.
- *
- * Channel sessions are read-only in v0: messages flow from the
- * platform (wechat / telegram / ...) into the agent, the agent
- * replies back through the channel adapter. The composer in
- * ChatArea hides itself when viewingSessionId !== null so the
- * user can't accidentally post via the wrong surface.
+ * Always-on chat thread row. Clicking returns the chat area to the
+ * user's webchat session (viewingSessionId=null). Channel plugins
+ * register their own sidebar sections — see
+ * `manifest.contributes.sidebarSections` with `after: "channels"`.
  */
-function ChannelsList() {
-  const channelSessions = useChatStore((s) => s.channelSessions);
+function WebchatRow() {
   const viewingSessionId = useChatStore((s) => s.viewingSessionId);
   const selectSession = useChatStore((s) => s.selectSession);
-  const refresh = useChatStore((s) => s.refreshChannelSessions);
-
-  // Light auto-refresh: re-pull every 30s while the sidebar's
-  // mounted so newly-arrived sessions appear without a full reload.
-  // 30s is conservative; tighten once we have a push-based update.
-  useEffect(() => {
-    const t = setInterval(() => {
-      void refresh();
-    }, 30_000);
-    return () => clearInterval(t);
-  }, [refresh]);
-
-  // Decode the server's title scheme `<channelId>:dm|group:<peer>`
-  // into something nicer. Falls back to the raw title for older
-  // rows that don't follow it.
-  function formatLabel(title: string | null): string {
-    if (!title) return "(untitled)";
-    const m = title.match(/^([^:]+):(dm|group):(.+)$/);
-    if (!m) return title;
-    const [, , kind, peer] = m;
-    const trimmedPeer = peer.length > 18 ? `${peer.slice(0, 16)}…` : peer;
-    return `${kind === "dm" ? "DM" : "群"} · ${trimmedPeer}`;
-  }
-
-  function channelPillClass(channelId: string): string {
-    // Tiny accent so two channels are visually distinguishable in
-    // the sidebar even before display names resolve. Tones picked
-    // to be readable in both light + dark themes.
-    switch (channelId) {
-      case "wechat":
-        return "bg-success/15 text-success";
-      case "feishu":
-        return "bg-success/15 text-success";
-      case "telegram":
-        return "bg-link/15 text-link";
-      case "discord":
-        return "bg-link/15 text-link";
-      case "slack":
-        return "bg-danger/15 text-danger";
-      default:
-        return "bg-bg-hover text-fg-muted";
-    }
-  }
-
+  const active = viewingSessionId === null;
   return (
-    <>
-      {/* Always-on webchat row. Clicking it returns to the user's
-          own webchat thread (server side: viewingSessionId=null). */}
-      <button
-        type="button"
-        onClick={() => selectSession(null)}
-        className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors ${
-          viewingSessionId === null
-            ? "bg-bg-hover text-fg-default border border-border-default"
-            : "text-fg-muted hover:bg-bg-hover hover:text-fg-default border border-transparent"
-        }`}
-      >
-        <Hash size={12} className="flex-shrink-0" />
-        <span className="flex-1 truncate text-xs">webchat</span>
-        {viewingSessionId === null && (
-          <span className="text-[9px] uppercase tracking-wider text-fg-faint">
-            active
-          </span>
-        )}
-      </button>
-
-      {/* Channel sessions (wechat / telegram / ...). Sorted server-
-          side by created_at DESC so freshest threads sit on top. */}
-      {channelSessions.map((s) => {
-        const active = s.id === viewingSessionId;
-        return (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => selectSession(s.id)}
-            className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors ${
-              active
-                ? "bg-bg-hover text-fg-default border border-border-default"
-                : "text-fg-muted hover:bg-bg-hover hover:text-fg-default border border-transparent"
-            }`}
-            title={s.title ?? s.channelChatId}
-          >
-            <span
-              className={`flex-shrink-0 rounded px-1 py-px text-[9px] uppercase tracking-wider ${channelPillClass(s.channelId)}`}
-            >
-              {s.channelId}
-            </span>
-            <span className="flex-1 truncate text-xs">
-              {formatLabel(s.title)}
-            </span>
-            {active && (
-              <span className="text-[9px] uppercase tracking-wider text-fg-faint">
-                active
-              </span>
-            )}
-          </button>
-        );
-      })}
-    </>
+    <button
+      type="button"
+      onClick={() => selectSession(null)}
+      className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors ${
+        active
+          ? "bg-bg-hover text-fg-default border border-border-default"
+          : "text-fg-muted hover:bg-bg-hover hover:text-fg-default border border-transparent"
+      }`}
+    >
+      <Hash size={12} className="flex-shrink-0" />
+      <span className="flex-1 truncate text-xs">webchat</span>
+      {active && (
+        <span className="text-[9px] uppercase tracking-wider text-fg-faint">
+          active
+        </span>
+      )}
+    </button>
   );
 }

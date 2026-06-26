@@ -35,8 +35,9 @@ import {
 import type {
   AdminPageProps,
   PluginClientExports,
+  SidebarSectionProps,
 } from "@tianshu-ai/plugin-sdk/client";
-import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
+import { useChatNav, useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 
 // ─── wire shapes ────────────────────────────────────────────────
 
@@ -411,9 +412,108 @@ function WeChatAdminPage(_props: AdminPageProps) {
   );
 }
 
+// ─── Sidebar section ──────────────────────────────────────
+//
+// Lists active wechat chat sessions under the Channels section of
+// the host sidebar. The plugin pulls its own session list from
+// `/api/p/wechat/sessions` (server-side endpoint added alongside
+// this component) so the host doesn't have to know what "a wechat
+// session" looks like beyond the generic channel_id row in the
+// sessions table.
+//
+// Clicking a row hands the chat area off to that session through
+// the plugin-sdk's chat-nav hook; the agent's per-session history
+// drives the main pane and the composer drops to read-only.
+
+interface WeChatSession {
+  id: string;
+  channelChatId: string;
+  title: string | null;
+  bindingId: string | null;
+  createdAt: number;
+}
+
+function WeChatSidebarSection(_props: SidebarSectionProps) {
+  const [sessions, setSessions] = useState<WeChatSession[] | null>(null);
+  const { viewingSessionId, setViewingSession } = useChatNav();
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await api("/sessions");
+      const body = (await r.json()) as { ok: boolean; sessions?: WeChatSession[] };
+      if (body.ok) setSessions(body.sessions ?? []);
+    } catch {
+      // best-effort; keep showing whatever we had
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    // Light auto-refresh while the sidebar's mounted. 30s mirrors
+    // the host's old global poll; tighten once the channel hub
+    // pushes notifications.
+    const t = setInterval(() => void refresh(), 30_000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  if (sessions === null) {
+    // Quiet during first load; the section appears once data lands.
+    return null;
+  }
+  if (sessions.length === 0) {
+    // No bound accounts yet — hint where to start. We deliberately
+    // skip the heading here to keep the sidebar quiet for users
+    // who haven't enabled wechat.
+    return null;
+  }
+
+  // Decode `<channel>:dm|group:<peer>` into something nicer; same
+  // format the server stamps via ensureChannelSession.
+  function formatLabel(title: string | null): string {
+    if (!title) return "(untitled)";
+    const m = title.match(/^([^:]+):(dm|group):(.+)$/);
+    if (!m) return title;
+    const peer = m[3].length > 18 ? `${m[3].slice(0, 16)}…` : m[3];
+    return `${m[2] === "dm" ? "DM" : "群"} · ${peer}`;
+  }
+
+  return (
+    <>
+      {sessions.map((s) => {
+        const active = s.id === viewingSessionId;
+        return (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => setViewingSession(s.id)}
+            className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition-colors ${
+              active
+                ? "bg-bg-hover text-fg-default border border-border-default"
+                : "text-fg-muted hover:bg-bg-hover hover:text-fg-default border border-transparent"
+            }`}
+            title={s.title ?? s.channelChatId}
+          >
+            <span className="flex-shrink-0 rounded bg-success/15 px-1 py-px text-[9px] uppercase tracking-wider text-success">
+              wechat
+            </span>
+            <span className="flex-1 truncate text-xs">{formatLabel(s.title)}</span>
+            {active && (
+              <span className="text-[9px] uppercase tracking-wider text-fg-faint">
+                active
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </>
+  );
+}
+
 const clientExports: PluginClientExports = {
   components: {
     WeChatAdminPage: WeChatAdminPage as PluginClientExports["components"][string],
+    WeChatSidebarSection:
+      WeChatSidebarSection as PluginClientExports["components"][string],
   },
 };
 

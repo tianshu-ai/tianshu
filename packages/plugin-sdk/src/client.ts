@@ -558,3 +558,52 @@ export function useTheme(): ThemeApi {
   }
   return fn();
 }
+
+// ─── ChatNav — host-managed selection of which session the chat
+// area is currently viewing.
+//
+// Channel plugins call `setViewingSession(sessionId)` from their
+// sidebar sections so clicking a row pins the chat area to that
+// session. `viewingSessionId === null` means the user's webchat
+// thread.
+//
+// Same install-once + globalSlot pattern as useTheme / useComposer.
+// Host installs a real implementation at boot via
+// `__installChatNav`; tests can install a stub through the same
+// hook.
+
+export interface ChatNavApi {
+  /** What the chat area is currently showing. null = webchat. */
+  viewingSessionId: string | null;
+  /** Pin the chat area to a given session. Pass null to return
+   *  to the user's webchat thread. */
+  setViewingSession: (sessionId: string | null) => void;
+}
+
+interface ChatNavGlobalSlot {
+  __tianshuPluginSdkChatNavHook__?: () => ChatNavApi;
+}
+
+function chatNavSlot(): ChatNavGlobalSlot {
+  return globalThis as unknown as ChatNavGlobalSlot;
+}
+
+export function __installChatNav(fn: () => ChatNavApi): void {
+  chatNavSlot().__tianshuPluginSdkChatNavHook__ = fn;
+}
+
+export function __resetChatNavForTest(): void {
+  delete chatNavSlot().__tianshuPluginSdkChatNavHook__;
+}
+
+/** Hook returning the host's current chat-navigation state. */
+export function useChatNav(): ChatNavApi {
+  const fn = chatNavSlot().__tianshuPluginSdkChatNavHook__;
+  if (!fn) {
+    return {
+      viewingSessionId: null,
+      setViewingSession: () => {},
+    };
+  }
+  return fn();
+}

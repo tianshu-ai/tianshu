@@ -20,13 +20,16 @@ bootstrapTheme();
 // Plugin client components import `useComposer` from the SDK; the SDK
 // keeps a single accessor slot and we plug ours in here.
 import {
+  __installChatNav,
   __installOpenFileApi,
   __installPluginConfigForm,
   __installUiPrimitives,
   __installUseComposer,
   __installUseTheme,
+  type ChatNavApi,
   type ThemeApi,
 } from "@tianshu-ai/plugin-sdk/client";
+import { useChatStore } from "./stores/chat-store";
 import { getComposerApi } from "./stores/composer-store";
 import { PluginConfigFormById } from "./components/PluginConfigForm";
 import { Modal } from "./components/ui/Modal";
@@ -50,6 +53,14 @@ __installUseTheme((): ThemeApi => {
   const resolved = useThemeStore((s) => s.resolved);
   const setMode = useThemeStore((s) => s.setMode);
   return { mode, resolved, setMode };
+});
+// Chat navigation hook for plugins (e.g. channel plugins' sidebar
+// sections). Subscribes to viewingSessionId so consumers re-render
+// when selection changes.
+__installChatNav((): ChatNavApi => {
+  const viewingSessionId = useChatStore((s) => s.viewingSessionId);
+  const setViewingSession = useChatStore((s) => s.selectSession);
+  return { viewingSessionId, setViewingSession };
 });
 
 // Bootstrap fallback for OpenFileApi.
