@@ -469,7 +469,14 @@ function FilePreviewModal({
             {formatSize(entry.size)} · {formatModified(entry.modifiedMs)}
           </span>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-gray-950">
+        {/* No `overflow-auto` on this wrapper. DocumentViewer
+            decides what to render (markdown text scrolls inside
+            its own div, iframe / video / image fill the area,
+            <pre> for code has its own scroll container). An
+            outer overflow-auto would steal the bounded height
+            from inline iframes (PDF / HTML) and collapse them
+            to content height. */}
+        <div className="flex min-h-0 flex-1 flex-col bg-gray-950">
           <DocumentViewer
             content={data && !data.binary ? data.content ?? "" : null}
             filename={entry.name}

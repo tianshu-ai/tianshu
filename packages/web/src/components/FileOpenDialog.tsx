@@ -264,7 +264,12 @@ export default function FileOpenDialog(): ReactElement | null {
             {cleanedPath}
           </span>
         </div>
-        <div className="min-h-0 flex-1 overflow-auto bg-gray-950">
+        {/* No outer overflow-auto: that would steal bounded
+            height from inline iframes (PDF / HTML) inside
+            DocumentViewer and collapse them to content height.
+            Each surface inside DocumentViewer brings its own
+            scroll container when it needs one. */}
+        <div className="flex min-h-0 flex-1 flex-col bg-gray-950">
           {view.kind === "text" && view.truncated && (
             <div className="mx-3 mt-3 rounded border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-200">
               Truncated at {MAX_TEXT_BYTES.toLocaleString()} bytes — use the
