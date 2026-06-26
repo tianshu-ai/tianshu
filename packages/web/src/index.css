@@ -241,9 +241,11 @@ body,
   }
   .prose code::before,
   .prose code::after {
-    /* Strip prose's default backtick pseudo-elements; we render
-     * a chip instead so the backticks would just clutter. */
-    content: none;
+    /* Strip Tailwind Typography's default backtick pseudo-elements.
+     * We render a chip background instead so the backticks are
+     * pure noise. The Typography plugin defines its own `content`
+     * rule with higher specificity, so we use `!important` to win. */
+    content: "" !important;
   }
   .prose pre code {
     /* Inside a code block (<pre>), kill the chip styling so the
