@@ -42,6 +42,10 @@ export interface AdapterManagerDeps {
   resolveFactory: (pluginId: string, module: string) =>
     | { factory: ChannelAdapterFactory; channelId: string; displayName: string }
     | null;
+  /** Activate every plugin for the given tenant. The manager calls
+   *  this before resolving channel factories so the host's lazy
+   *  per-tenant plugin loading doesn't return null on first boot. */
+  ensurePluginsActivated: (tenantId: string) => Promise<void>;
   /** State-dir root the manager creates per-binding subdirs under.
    *  Channel adapters that need to persist tokens / sync buffers
    *  receive the per-binding path through `ChannelAdapterContext.stateDir`. */
@@ -63,6 +67,20 @@ export class ChannelAdapterManager {
     const tenantIds = this.deps.globalOps.list();
     for (const tenantId of tenantIds) {
       const ctx = this.deps.globalOps.open(tenantId);
+      // Ensure the tenant's plugins are activated before we look up
+      // channel factories — the registry's lazy-activate path only
+      // fires on websocket open, but bootAll runs before any client
+      // connects.
+      try {
+        await this.deps.ensurePluginsActivated(tenantId);
+      } catch (err) {
+        console.warn(
+          `[channel-mgr] ensurePluginsActivated(${tenantId}) failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        continue;
+      }
       const enabled = listEnabledBindings(ctx.db).filter(
         (b) => b.tenantId === tenantId,
       );
@@ -91,6 +109,11 @@ export class ChannelAdapterManager {
     }
     const ctx = this.deps.globalOps.open(binding.tenantId);
     setBindingStatus(ctx.db, bindingId, "starting", null);
+
+    // Same precondition the bootAll loop ensures: plugins must be
+    // activated before we look up the factory. Idempotent if the
+    // tenant has already had a WS client connect.
+    await this.deps.ensurePluginsActivated(binding.tenantId);
 
     // Resolve factory through the registry. We use plugin id +
     // module from the binding row so two plugins can both expose a

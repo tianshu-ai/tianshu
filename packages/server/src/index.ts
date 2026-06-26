@@ -879,6 +879,10 @@ channelManager = new ChannelAdapterManager({
     if (!found) return null;
     return { factory: found.factory, channelId, displayName: found.displayName };
   },
+  ensurePluginsActivated: async (tenantId) => {
+    const ctx = globalOps.open(tenantId);
+    await pluginRegistry.ensureForTenant(ctx);
+  },
   stateRoot: globalOps.homeDir,
 });
 const stopChannelRouter = startChannelRouter({

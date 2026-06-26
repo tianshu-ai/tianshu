@@ -65,6 +65,8 @@ export class WeChatChannel implements ChannelAdapter {
   // what's happening inside the long-poll loop without tail-ing
   // server stdout. Reset on each start().
   public stats = {
+    constructedAt: Date.now(),
+    startedAt: 0 as number,
     pollCount: 0,
     msgsTotal: 0,
     msgsEmitted: 0,
@@ -121,6 +123,10 @@ export class WeChatChannel implements ChannelAdapter {
     }
     this.abortController = new AbortController();
     const signal = this.abortController.signal;
+    this.stats.startedAt = Date.now();
+    this.ctx.log.info(
+      `wechat adapter starting long-poll loop (binding ${this.ctx.bindingId})`,
+    );
     this.loopPromise = this.runLongPollLoop(signal).catch((err) => {
       this.ctx.log.error(
         `wechat long-poll loop crashed: ${err instanceof Error ? err.message : String(err)}`,
