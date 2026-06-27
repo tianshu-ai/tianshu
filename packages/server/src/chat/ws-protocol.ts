@@ -141,7 +141,18 @@ export type ServerMsg =
       type: "plugins_changed";
       enabled: PluginsChangedDelta[];
       disabled: PluginsChangedDelta[];
-    };
+    }
+  /**
+   * Channel sessions changed (created / deleted / message landed).
+   * Plugins listening on this re-poll their session lists; the
+   * host sidebar reflects new threads without waiting for the
+   * next interval.
+   *
+   * `channelId` is the channel that produced the event ("wechat"
+   * / etc.) so listeners can filter — a plugin doesn't care
+   * about another channel's churn.
+   */
+  | { type: "channel_session_changed"; channelId: string };
 
 export interface PluginsChangedDelta {
   pluginId: string;

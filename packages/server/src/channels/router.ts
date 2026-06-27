@@ -34,6 +34,7 @@ import type { InboundEnvelope } from "./types.js";
 import type { GlobalOps } from "../core/global-ops.js";
 import { ensureChannelSession } from "./sessions.js";
 import { runPrompt } from "../chat/handler.js";
+import { broadcastToUser } from "../chat/active-harnesses.js";
 import type { ServerMsg } from "../chat/ws-protocol.js";
 
 /** Decision the router makes about whether a message should reach
@@ -99,6 +100,13 @@ async function dispatch(
     chatId: envelope.chatId,
     isDirect: envelope.isDirect,
     senderName: envelope.senderName,
+  });
+  // Tell every open chat-shell socket for this user that something
+  // changed on a channel — their plugin sidebar sections re-poll
+  // and the new session row pops up without a 30s polling delay.
+  broadcastToUser(session.userId, {
+    type: "channel_session_changed",
+    channelId: envelope.channelId,
   });
 
   // Collect runPrompt's stream output into a final reply text.

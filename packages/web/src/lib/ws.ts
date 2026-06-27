@@ -35,7 +35,15 @@ export type ServerEvent =
       type: "plugins_changed";
       enabled: PluginsChangedDelta[];
       disabled: PluginsChangedDelta[];
-    };
+    }
+  /**
+   * A channel produced a new inbound message (or removed a
+   * session). Plugin sidebar sections subscribed to this event
+   * re-poll their session lists so newly-arrived threads pop
+   * in immediately rather than waiting for the 30s polling
+   * fallback.
+   */
+  | { type: "channel_session_changed"; channelId: string };
 
 export interface PluginsChangedDelta {
   pluginId: string;
