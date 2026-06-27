@@ -4,6 +4,7 @@ import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
 import { mergeToolTurns } from "../lib/merge-tool-turns";
 import ChatInput from "./ChatInput";
+import ModelSelector from "./ModelSelector";
 import PluginManager from "./PluginManager";
 import PluginTopBarButtons from "./PluginTopBarButtons";
 
@@ -159,14 +160,7 @@ export default function ChatArea() {
       {viewingSessionId === null ? (
         <ChatInput />
       ) : (
-        // Channel sessions are driven by inbound platform messages
-        // + agent replies; the user can't type into them from the
-        // chat shell. Surface that explicitly so the missing
-        // composer doesn't look like a bug.
-        <div className="border-t border-border-subtle bg-bg-elevated px-4 py-3 text-center text-xs text-fg-muted">
-          Read-only view. Send messages from the channel itself; the
-          agent's replies appear here automatically.
-        </div>
+        <ChannelSessionFooter sessionId={viewingSessionId} />
       )}
 
       <PluginManager
@@ -203,6 +197,80 @@ function EmptyState({
         . Tools, workspace files, browser, and worker dispatch arrive in
         later PRs.
       </p>
+    </div>
+  );
+}
+
+/**
+ * Footer rendered below ChatArea when the user is viewing a
+ * channel session. Two roles:
+ *   1. Surface "this thread is read-only" so the missing composer
+ *      doesn't look like a bug.
+ *   2. Let the user retarget the model the agent uses to reply to
+ *      THIS binding. The selector reads + writes the binding row
+ *      via `/api/channel-bindings/:id/model` so future inbound
+ *      messages route to the new LLM. Per-binding because two
+ *      channel accounts (personal vs work wechat, say) want
+ *      different models.
+ */
+function ChannelSessionFooter({ sessionId }: { sessionId: string }) {
+  // Lazy-load binding row keyed on the session: we need its
+  // current modelId for the dropdown highlight and its id to PATCH.
+  const [binding, setBinding] = useState<{
+    id: string;
+    modelId: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/channel-sessions/${encodeURIComponent(sessionId)}/binding`,
+          { credentials: "include" },
+        );
+        if (!r.ok) return;
+        const body = (await r.json()) as {
+          binding?: { id: string; modelId: string | null };
+        };
+        if (cancelled) return;
+        setBinding(body.binding ?? null);
+      } catch {
+        /* best-effort; selector hides if we can't load */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  const onChange = async (modelId: string) => {
+    if (!binding) return;
+    setBinding({ ...binding, modelId });
+    try {
+      await fetch(`/api/channel-bindings/${encodeURIComponent(binding.id)}/model`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId }),
+      });
+    } catch {
+      /* user feedback handled by next refresh; silent best-effort */
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle bg-bg-elevated px-4 py-3 text-xs text-fg-muted">
+      <span>
+        Read-only view. Send messages from the channel itself; the agent's
+        replies appear here automatically.
+      </span>
+      {binding && (
+        <div className="flex items-center gap-2">
+          <span className="text-fg-faint">Model:</span>
+          <ModelSelector value={binding.modelId} onChange={onChange} />
+        </div>
+      )}
     </div>
   );
 }
