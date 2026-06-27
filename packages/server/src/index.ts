@@ -44,6 +44,7 @@ import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
 import {
   ChannelAdapterManager,
+  channelHub,
   createBinding,
   deleteBinding,
   getBinding,
@@ -487,21 +488,36 @@ for (const tenantId of globalOps.list()) {
 // session row already lives in some tenant DB; tonight there's
 // only one (default), but the closure is tenant-agnostic.
 bindIdleRunner(async ({ sessionId, userId, promptText }) => {
-  // Find which tenant owns this session. If none, give up
-  // silently — the inbox row stays delivered=false and will be
-  // flushed on the next user prompt anyway.
+  // Find which tenant owns this session, and pick up the
+  // channel-tagging columns at the same time so we know whether
+  // to fan replies out to WS tabs (webchat) or push them through
+  // the channel adapter (wechat / telegram / ...). If no tenant
+  // claims this session, give up silently — the inbox row stays
+  // delivered=false and will be flushed on the next user prompt.
   let owningCtx:
     | ReturnType<typeof globalOps.open>
     | null = null;
+  let channelBindingId: string | null = null;
+  let channelChatId: string | null = null;
   for (const tenantId of globalOps.list()) {
     const ctx = globalOps.open(tenantId);
     const row = ctx.db
-      .prepare<[string], { id: string }>(
-        `SELECT id FROM sessions WHERE id = ?`,
+      .prepare<
+        [string],
+        {
+          id: string;
+          channel_binding_id: string | null;
+          channel_chat_id: string | null;
+        }
+      >(
+        `SELECT id, channel_binding_id, channel_chat_id
+           FROM sessions WHERE id = ?`,
       )
       .get(sessionId);
     if (row) {
       owningCtx = ctx;
+      channelBindingId = row.channel_binding_id;
+      channelChatId = row.channel_chat_id;
       break;
     }
   }
@@ -512,13 +528,62 @@ bindIdleRunner(async ({ sessionId, userId, promptText }) => {
     return;
   }
   const ctx = owningCtx;
+  const isChannelSession =
+    channelBindingId !== null && channelChatId !== null;
 
-  // Stream events out to every chat tab the user has open. If
-  // they have no tabs (offline), the turn still runs and its
-  // assistant message persists; next reconnect's history fetch
-  // surfaces it.
-  const send = (msg: import("./chat/ws-protocol.js").ServerMsg) =>
-    broadcastToUser(userId, msg);
+  // Sink behaviour depends on session kind:
+  //   - webchat: broadcast to every WS tab the user has open;
+  //     the chat UI paints stream events live.
+  //   - channel session (wechat / etc.): queue each assistant
+  //     message_added and ship via channelHub at the end. Without
+  //     this branch a background turn (e.g. workboard task done)
+  //     ended up only on webchat tabs — the wechat user on the
+  //     originating thread never saw the reply.
+  //
+  // Channel sinks also broadcast to WS tabs (so admin viewers of
+  // the channel session see the live stream), but the *delivery*
+  // path back to the platform user is the adapter.
+  const assistantQueue: string[] = [];
+  const sentMessageIds = new Set<string>();
+  let errorReason = "";
+  const send = (msg: import("./chat/ws-protocol.js").ServerMsg) => {
+    if (isChannelSession) {
+      // Live-rebroadcast persisted-row events scoped to this
+      // channel session so a chat shell viewing it paints them
+      // live (same as the inbound-router sink).
+      if (
+        msg.type === "message_added" ||
+        msg.type === "tool_call" ||
+        msg.type === "tool_result"
+      ) {
+        broadcastToUser(userId, {
+          ...msg,
+          sessionId,
+        } as import("./chat/ws-protocol.js").ServerMsg);
+      }
+      if (
+        msg.type === "message_added" &&
+        msg.message?.role === "assistant"
+      ) {
+        const text = msg.message.text?.trim() ?? "";
+        if (text.length > 0) {
+          sentMessageIds.add(msg.message.id);
+          assistantQueue.push(text);
+        }
+      } else if (msg.type === "stream_end") {
+        const wire = msg.message;
+        const text = wire?.text?.trim() ?? "";
+        if (wire && text.length > 0 && !sentMessageIds.has(wire.id)) {
+          sentMessageIds.add(wire.id);
+          assistantQueue.push(text);
+        }
+      } else if (msg.type === "stream_error") {
+        errorReason = msg.reason || "unknown";
+      }
+    } else {
+      broadcastToUser(userId, msg);
+    }
+  };
 
   // The runner needs an AbortController so a wedged provider
   // can't pin the inbox queue forever. We don't expose this to
@@ -539,8 +604,34 @@ bindIdleRunner(async ({ sessionId, userId, promptText }) => {
       pluginRegistry,
       homeDir: ctx.workspaceDir,
     });
+  } catch (err) {
+    if (!errorReason) {
+      errorReason = err instanceof Error ? err.message : String(err);
+    }
   } finally {
     clearTimeout(deadline);
+  }
+
+  if (isChannelSession && channelBindingId && channelChatId) {
+    for (const body of assistantQueue) {
+      try {
+        await channelHub.send(channelBindingId, {
+          target: channelChatId,
+          text: body,
+        });
+      } catch (err) {
+        console.error(
+          `[idle-runner] adapter send failed (${channelBindingId} → ${channelChatId}): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+    if (errorReason.length > 0) {
+      console.warn(
+        `[idle-runner] background turn errored on channel session ${sessionId}: ${errorReason}`,
+      );
+    }
   }
 });
 
