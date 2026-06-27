@@ -80,6 +80,35 @@ npm install         # in case dependencies changed
 `tianshu update` refuses to run inside a git checkout — git
 pull is the only correct path there.
 
+## Known install warnings
+
+Running `npm install -g @tianshu-ai/tianshu` (or `npm install` from a
+checkout) currently surfaces two deprecation lines:
+
+```
+npm warn deprecated prebuild-install@7.1.3: No longer maintained.
+npm warn deprecated node-domexception@1.0.0: Use your platform's native DOMException instead
+```
+
+Both come from transitive dependencies; both are install-time
+advisories with zero runtime impact on Tianshu:
+
+- `prebuild-install@7.1.3` is pulled in by `better-sqlite3` for
+  fetching the right native binary at install time. Upstream is
+  aware; better-sqlite3 still ships it as of 12.11.1. Replacing it
+  is a better-sqlite3 build-system change, not ours. Until then the
+  install warning is cosmetic — the native binary downloads fine.
+- `node-domexception@1.0.0` is pulled in by
+  `fetch-blob → node-fetch → gaxios → google-auth-library →
+  @google/genai → pi-ai`. It's a Node 14-era polyfill; Node 18+
+  uses the platform's native DOMException at runtime, so the
+  polyfill code never executes on supported Node versions. Will
+  drop out when the Google SDK chain rolls a fresh `fetch-blob`.
+
+No action required from operators. Leave the upstream issues
+open; revisit when bumping `better-sqlite3` or the Google SDK
+chain in `pi-ai`.
+
 ## Releasing
 
 Releases ship from the `hotfix/0.3.2` branch via
