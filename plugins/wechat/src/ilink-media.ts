@@ -296,14 +296,37 @@ async function postSingleItem(opts: {
   return resp;
 }
 
-/** Helper: build the CDN-media sub-object every media item carries. */
-function buildCdnMedia(uploaded: UploadedMedia): Record<string, unknown> {
+/** Encoding for the `aes_key` field on CDNMedia varies by item
+ *  type. Per the reference impl's inbound decoder (which parses
+ *  what bots receive in the wild):
+ *
+ *    images               → base64(raw 16 bytes)
+ *    files / video / voice → base64(ASCII hex string of 16 bytes)
+ *
+ *  Yes, it's silly. Yes, it is what the server expects. Sending
+ *  the wrong encoding for the wrong type lands a message that
+ *  shows only the filename and never resolves CDN media on the
+ *  recipient side — which is exactly what we hit on first try. */
+type AesKeyEncoding = "raw" | "hex-string";
+
+function encodeAesKey(
+  aesKeyHex: string,
+  encoding: AesKeyEncoding,
+): string {
+  if (encoding === "raw") {
+    return Buffer.from(aesKeyHex, "hex").toString("base64");
+  }
+  // hex-string: base64 of the 32-char ASCII hex string.
+  return Buffer.from(aesKeyHex, "utf8").toString("base64");
+}
+
+function buildCdnMedia(
+  uploaded: UploadedMedia,
+  encoding: AesKeyEncoding,
+): Record<string, unknown> {
   return {
     encrypt_query_param: uploaded.downloadEncryptedQueryParam,
-    // aes_key on the message item is base64-encoded bytes (the
-    // raw 16-byte key, not its hex string). Same convention the
-    // reference impl uses; verified against the inbound side.
-    aes_key: Buffer.from(uploaded.aesKeyHex, "hex").toString("base64"),
+    aes_key: encodeAesKey(uploaded.aesKeyHex, encoding),
     encrypt_type: 1,
   };
 }
@@ -321,7 +344,10 @@ export async function sendImageMessage(opts: {
   const item = {
     type: MessageItemType.IMAGE,
     image_item: {
-      media: buildCdnMedia(opts.uploaded),
+      // Reference impl uses hex-string for all three message item
+      // types (the inbound decoder accepts both raw and hex-string
+      // for images, but every observed bot-send is hex-string).
+      media: buildCdnMedia(opts.uploaded, "hex-string"),
       mid_size: opts.uploaded.fileSizeCiphertext,
     },
   };
@@ -341,7 +367,8 @@ export async function sendVideoMessage(opts: {
   const item = {
     type: MessageItemType.VIDEO,
     video_item: {
-      media: buildCdnMedia(opts.uploaded),
+      // Video bots: aes_key is base64 of the 32-char hex string.
+      media: buildCdnMedia(opts.uploaded, "hex-string"),
       video_size: opts.uploaded.fileSizeCiphertext,
     },
   };
@@ -362,7 +389,8 @@ export async function sendFileMessage(opts: {
   const item = {
     type: MessageItemType.FILE,
     file_item: {
-      media: buildCdnMedia(opts.uploaded),
+      // File bots: aes_key is base64 of the 32-char hex string.
+      media: buildCdnMedia(opts.uploaded, "hex-string"),
       file_name: opts.fileName,
       // FileItem.len in the proto is a string (int64) — plaintext bytes.
       len: String(opts.uploaded.fileSize),
