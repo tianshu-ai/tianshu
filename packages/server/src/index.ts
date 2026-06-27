@@ -49,6 +49,7 @@ import {
   getBinding,
   listBindingsForUser,
   startChannelRouter,
+  updateBinding,
 } from "./channels/index.js";
 import type { ChannelBindingsCapability } from "@tianshu-ai/plugin-sdk";
 import path from "node:path";
@@ -628,6 +629,98 @@ app.get("/api/channel-sessions", (req, res) => {
       createdAt: r.created_at,
     })),
   });
+});
+
+/**
+ * Return the binding row a channel session belongs to. Channel UIs
+ * use this to populate per-session controls (model selector, etc.)
+ * keyed off the session the user is viewing. Filters by
+ * sessions.user_id so users can't read each other's bindings.
+ */
+app.get("/api/channel-sessions/:sessionId/binding", (req, res) => {
+  if (!req.ctx) {
+    res.status(500).json({ error: "no_ctx" });
+    return;
+  }
+  const rawSid = req.params.sessionId;
+  const sessionId = Array.isArray(rawSid) ? rawSid[0] : rawSid;
+  if (!sessionId) {
+    res.status(400).json({ error: "missing session id" });
+    return;
+  }
+  const row = req.ctx.tenant.db
+    .prepare<
+      [string, string],
+      { binding_id: string | null }
+    >(
+      `SELECT channel_binding_id AS binding_id
+         FROM sessions
+        WHERE id = ? AND user_id = ?
+        LIMIT 1`,
+    )
+    .get(sessionId, req.ctx.userId);
+  if (!row?.binding_id) {
+    res.status(404).json({ error: "no binding for session" });
+    return;
+  }
+  const binding = getBinding(req.ctx.tenant.db, row.binding_id);
+  if (
+    !binding ||
+    binding.tenantId !== req.ctx.tenant.tenantId ||
+    binding.ownerUserId !== req.ctx.userId
+  ) {
+    res.status(404).json({ error: "binding not found" });
+    return;
+  }
+  res.json({
+    binding: {
+      id: binding.id,
+      channelId: binding.channelId,
+      modelId:
+        typeof binding.config.modelId === "string" &&
+        binding.config.modelId.trim().length > 0
+          ? binding.config.modelId.trim()
+          : null,
+    },
+  });
+});
+
+/**
+ * Update a binding's model. PATCH so the body is the partial we
+ * want to merge. Only `modelId` is patchable through this route
+ * today; future channel-config edits can land on the same surface.
+ */
+app.patch("/api/channel-bindings/:bindingId/model", (req, res) => {
+  if (!req.ctx) {
+    res.status(500).json({ error: "no_ctx" });
+    return;
+  }
+  const rawBid = req.params.bindingId;
+  const bindingId = Array.isArray(rawBid) ? rawBid[0] : rawBid;
+  if (!bindingId) {
+    res.status(400).json({ error: "missing binding id" });
+    return;
+  }
+  const body = (req.body ?? {}) as { modelId?: string | null };
+  const newModelId =
+    typeof body.modelId === "string" && body.modelId.trim().length > 0
+      ? body.modelId.trim()
+      : null;
+
+  const binding = getBinding(req.ctx.tenant.db, bindingId);
+  if (
+    !binding ||
+    binding.tenantId !== req.ctx.tenant.tenantId ||
+    binding.ownerUserId !== req.ctx.userId
+  ) {
+    res.status(404).json({ error: "binding not found" });
+    return;
+  }
+  const nextConfig = { ...binding.config };
+  if (newModelId) nextConfig.modelId = newModelId;
+  else delete nextConfig.modelId;
+  updateBinding(req.ctx.tenant.db, bindingId, { config: nextConfig });
+  res.json({ ok: true, modelId: newModelId });
 });
 
 app.get("/api/me", (req, res) => {

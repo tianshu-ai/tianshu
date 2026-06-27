@@ -15,7 +15,24 @@ import type { ModelListEntry } from "../lib/api";
  *  - groups entries by `group` (Cloud / Local / …) — pure UI hint from
  *    the provider catalog, no server-side meaning
  */
-export default function ModelSelector() {
+/**
+ * Props let a caller override the model source + sink. The chat
+ * shell's composer calls `<ModelSelector />` with no props and
+ * the picker drives the user's preferred-model store as before.
+ * Channel sessions render `<ModelSelector value={...} onChange={...} />`
+ * so picking a model writes back to the binding's config instead.
+ */
+export interface ModelSelectorProps {
+  /** Override active model id. When set, the component ignores
+   *  preferredModel / fallbackId for highlight + label. */
+  value?: string | null;
+  /** Override change handler. When provided the component does not
+   *  call setPreferred; the caller persists the value wherever it
+   *  belongs (binding, user pref, ...). */
+  onChange?: (id: string) => void;
+}
+
+export default function ModelSelector({ value, onChange }: ModelSelectorProps = {}) {
   const models = useChatStore((s) => s.models);
   const preferred = useChatStore((s) => s.preferredModel);
   const setPreferred = useChatStore((s) => s.setPreferredModel);
@@ -66,11 +83,15 @@ export default function ModelSelector() {
   // a tenant with only qwen but a preferredModel from before.
   const inCatalog = (id: string | null | undefined): id is string =>
     !!id && models.some((m) => m.id === id);
-  const activeId = inCatalog(preferred)
-    ? preferred
-    : inCatalog(fallbackId)
-      ? fallbackId
-      : models[0]!.id;
+  // Channel-session callers pass `value`; standalone composer
+  // callers fall back to the user's stored preferred model.
+  const activeId = inCatalog(value)
+    ? value
+    : inCatalog(preferred)
+      ? preferred
+      : inCatalog(fallbackId)
+        ? fallbackId
+        : models[0]!.id;
   const active = models.find((m) => m.id === activeId);
   const displayName = active?.name ?? activeId.split("/").pop() ?? "Model";
 
@@ -88,6 +109,10 @@ export default function ModelSelector() {
   const choose = (id: string) => {
     setOpen(false);
     if (id === activeId) return;
+    if (onChange) {
+      onChange(id);
+      return;
+    }
     setPreferred(id);
   };
 
