@@ -282,6 +282,9 @@ function WeChatAdminPage(_props: AdminPageProps) {
   const [bindings, setBindings] = useState<BindingView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  // Used after a delete to pop the chat area back to webchat in case
+  // the user was viewing one of this binding's sessions.
+  const { setViewingSession } = useChatNav();
 
   const refresh = useCallback(async () => {
     try {
@@ -304,7 +307,12 @@ function WeChatAdminPage(_props: AdminPageProps) {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!confirm("Disconnect this WeChat account from tianshu?")) return;
+      if (
+        !confirm(
+          "Disconnect this WeChat account from tianshu? Existing chat history with this account will be deleted too.",
+        )
+      )
+        return;
       try {
         const r = await api(`/bindings/${encodeURIComponent(id)}`, { method: "DELETE" });
         if (!r.ok) {
@@ -312,12 +320,17 @@ function WeChatAdminPage(_props: AdminPageProps) {
           setError(body.error ?? `HTTP ${r.status}`);
           return;
         }
+        // If the user was looking at a session belonging to this
+        // binding, the cascade just yanked it out from under
+        // them. Pop them back to the webchat thread so they
+        // don't end up staring at an empty pane.
+        setViewingSession(null);
         await refresh();
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [refresh],
+    [refresh, setViewingSession],
   );
 
   return (
