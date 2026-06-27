@@ -59,7 +59,7 @@ import type { ChannelBindingsCapability } from "@tianshu-ai/plugin-sdk";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadHostSkills, runPrompt } from "./chat/handler.js";
-import { appendMessage, ensureActiveSession } from "./chat/messages.js";
+import { appendMessage } from "./chat/messages.js";
 import type { PluginsChangedDelta } from "./chat/ws-protocol.js";
 import { runAgentLoop } from "./chat/agent-loop.js";
 import { getLSPManager } from "./lsp/index.js";
@@ -569,27 +569,78 @@ app.use(
         enabled: direction === "enabled" ? [delta] : [],
         disabled: direction === "disabled" ? [delta] : [],
       });
-      // (b) append a synthetic message to the user's active session
-      //     so the next agent turn's history reflects the new
-      //     reality (model can't keep hallucinating tools that
-      //     just got removed).
+      // (b) Append a synthetic history note to EVERY active session
+      //     in this tenant — webchat sessions, channel sessions
+      //     (wechat / telegram threads), all of them — so the
+      //     agent's next turn on any of those threads picks up the
+      //     new reality from history. Without this, the model on
+      //     alice's wechat thread would happily keep calling a
+      //     tool that bob just disabled.
+      //
+      //     Scoping:
+      //       - status = 'active'  (skip compacted/archived; their
+      //         history is frozen anyway).
+      //       - kind   = 'user'    (workers spawn ephemeral session
+      //         rows and rebuild context from scratch each task).
+      //     One row per user per channel-binding pair at any time,
+      //     so the write volume is bounded by tenant member count.
       try {
         const ctx = globalOps.open(tenantId);
-        // Use the userId from the plugin-toggle request — not
-        // DEV_USER_ID. The plugin manager UI runs scoped to whoever
-        // is logged in (alice@alpha, dev@default, ...) and the
-        // synthetic session note belongs in *their* active chat.
-        const session = ensureActiveSession(ctx, userId);
         const text = renderPluginsChangedNote(delta, direction);
-        // Use role="user" so re-hydration treats it as part of the
-        // turn log (the "user" path is the only one that survives
-        // for legacy plain-text rows). The bracketed prefix tells
-        // both the model and any future routing layer that this
-        // is a system note, not a real user message.
-        appendMessage(ctx, session, { role: "user", content: text });
+        const activeSessions = ctx.db
+          .prepare<
+            [],
+            {
+              id: string;
+              user_id: string;
+              kind: "user" | "worker" | "system";
+              status: "active" | "compacted" | "archived";
+              parent_id: string | null;
+              title: string | null;
+              created_at: number;
+            }
+          >(
+            `SELECT id, user_id, kind, status, parent_id, title, created_at
+               FROM sessions
+              WHERE status = 'active' AND kind = 'user'`,
+          )
+          .all();
+        for (const row of activeSessions) {
+          try {
+            // Use role="user" so re-hydration treats it as part of
+            // the turn log (the "user" path is the only one that
+            // survives for legacy plain-text rows). The bracketed
+            // prefix in renderPluginsChangedNote tells both the
+            // model and any future routing layer that this is a
+            // system note, not a real user message.
+            appendMessage(
+              ctx,
+              {
+                id: row.id,
+                userId: row.user_id,
+                kind: row.kind,
+                status: row.status,
+                parentId: row.parent_id,
+                title: row.title,
+                createdAt: row.created_at,
+              },
+              { role: "user", content: text },
+            );
+          } catch (err) {
+            console.warn(
+              `[onPluginsChanged] append failed for session ${row.id}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+        // If the operating user has no active session yet, the new
+        // session their next visit creates will pick up the change
+        // through flushToolDeltaForSession on the first prompt.
+        void userId;
       } catch (err) {
         console.warn(
-          `[onPluginsChanged] failed to append session note: ${
+          `[onPluginsChanged] failed to append session notes: ${
             err instanceof Error ? err.message : String(err)
           }`,
         );
