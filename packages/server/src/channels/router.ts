@@ -82,10 +82,6 @@ export interface ChannelRouterDeps {
    *  + skills get wired in. Same instance the WebSocket handler
    *  uses; channels share the surface. */
   pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
-  /** Host's $HOME equivalent — currently only consumed by
-   *  runPrompt's homeDir param, which a few tools need for path
-   *  resolution. */
-  homeDir?: string;
 }
 
 /** Wire the router into the hub. Returns an unsubscribe function
@@ -232,7 +228,14 @@ async function dispatch(
         modelId: candidateModelId,
         signal: aborter.signal,
         pluginRegistry: deps.pluginRegistry,
-        homeDir: deps.homeDir,
+        // Per-tenant workspace dir — feeds toolContext.tenantHomeDir
+        // so tenant_config_* tools resolve to
+        // `<tenant>/_tenant/config/...`. WebSocket chat passes the
+        // same value (`ctx.workspaceDir`). Without this the router
+        // sent homeDir=undefined, getTenantConfigRoot fell back to
+        // a CWD-relative "workspace/_tenant/config" phantom dir,
+        // and channel agents saw zero workers / skills.
+        homeDir: ctx.workspaceDir,
         session,
       });
     } catch (err) {
