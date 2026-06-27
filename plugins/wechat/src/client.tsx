@@ -27,7 +27,6 @@ import {
   CheckCircle2,
   Loader2,
   MessageSquare,
-  Plus,
   RefreshCw,
   Trash2,
   X,
@@ -412,28 +411,18 @@ function WeChatAdminPage(_props: AdminPageProps) {
           <div>
             <h1 className="text-lg font-semibold">WeChat</h1>
             <p className="text-sm text-fg-muted">
-              Connect WeChat accounts so direct messages route to your agent.
+              Connect your WeChat so direct messages route to your agent.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void refresh()}
-            className="rounded p-1.5 text-fg-muted hover:bg-bg-hover hover:text-fg-default"
-            title="Refresh"
-          >
-            <RefreshCw className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-fg-on-accent hover:bg-accent-hover"
-          >
-            <Plus className="h-4 w-4" />
-            Add account
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => void refresh()}
+          className="rounded p-1.5 text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+          title="Refresh"
+        >
+          <RefreshCw className="h-4 w-4" />
+        </button>
       </header>
 
       {error && (
@@ -448,15 +437,43 @@ function WeChatAdminPage(_props: AdminPageProps) {
           Loading…
         </div>
       ) : bindings.length === 0 ? (
+        // Not yet connected. Single CTA — a wechat user can only
+        // bind one account (host enforces unique (tenant, user,
+        // channel)) so there's no plural "Add" affordance.
         <div className="rounded-md border border-dashed border-border-default px-6 py-10 text-center">
           <MessageSquare className="mx-auto mb-3 h-8 w-8 text-fg-fainter" />
-          <div className="text-sm font-medium text-fg-default">No accounts connected</div>
+          <div className="text-sm font-medium text-fg-default">No WeChat connected</div>
           <div className="mt-1 text-xs text-fg-muted">
-            Click <span className="font-medium">Add account</span> to scan a QR code and start
-            routing WeChat messages here.
+            Scan a QR with the WeChat app to start routing your direct
+            messages through tianshu.
           </div>
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-fg-on-accent hover:bg-accent-hover"
+          >
+            Connect WeChat
+          </button>
         </div>
       ) : (
+        // Already bound. Show the one account + an inline "replace"
+        // affordance — re-scanning supersedes the binding via the
+        // host's cascade-replace policy.
+        <>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[11px] text-fg-faint">
+            One account connected. Re-scan to switch model or refresh
+            the token.
+          </span>
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-2.5 py-1 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+          >
+            <RefreshCw className="h-3 w-3" />
+            Re-scan
+          </button>
+        </div>
         <ul className="space-y-2">
           {bindings.map((b) => (
             <li
@@ -492,6 +509,7 @@ function WeChatAdminPage(_props: AdminPageProps) {
             </li>
           ))}
         </ul>
+        </>
       )}
 
       {adding && (
