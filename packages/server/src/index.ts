@@ -272,6 +272,41 @@ pluginRegistry = new PluginRegistry({
     // the manager" two-step.
     "host.channelBindings": (ctx): ChannelBindingsCapability => ({
       async create(input) {
+        // Each (tenant, user, channel) tuple may have at most one
+        // active binding. Channel credentials are personal *and*
+        // exclusive — binding wechat twice would mean two adapters
+        // racing for the same long-poll, two outbound sends per
+        // agent reply, etc. So a fresh create replaces any
+        // existing binding for the same (tenant, user, channel):
+        // stop its adapter, cascade-delete its sessions + messages
+        // + the binding row, then proceed with the new one. This
+        // is also the right shape for "re-scan to refresh expired
+        // token" — the new scan just supersedes the old.
+        const existing = listBindingsForUser(
+          ctx.db,
+          ctx.tenantId,
+          input.ownerUserId,
+        ).filter((b) => b.channelId === input.channelId);
+        for (const old of existing) {
+          await channelManager.stopBinding(old.id).catch(() => {});
+          const cascade = ctx.db.transaction(() => {
+            ctx.db
+              .prepare<[string], unknown>(
+                `DELETE FROM messages
+                   WHERE session_id IN (
+                     SELECT id FROM sessions WHERE channel_binding_id = ?
+                   )`,
+              )
+              .run(old.id);
+            ctx.db
+              .prepare<[string], unknown>(
+                `DELETE FROM sessions WHERE channel_binding_id = ?`,
+              )
+              .run(old.id);
+            deleteBinding(ctx.db, old.id);
+          });
+          cascade();
+        }
         const row = createBinding(ctx.db, {
           tenantId: ctx.tenantId,
           ownerUserId: input.ownerUserId,

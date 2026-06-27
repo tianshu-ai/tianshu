@@ -127,7 +127,9 @@ describe("bindings CRUD", () => {
     createBinding(ctx.db, {
       tenantId: DEV_TENANT_ID,
       ownerUserId: DEV_USER_ID,
-      channelId: "echo",
+      // Distinct channel id — unique index `(tenant, owner, channel)`
+      // (migration 012) forbids two bindings on the same triple.
+      channelId: "echo2",
       pluginId: "p1",
       config: {},
       enabled: false,
