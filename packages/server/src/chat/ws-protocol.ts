@@ -154,7 +154,27 @@ export type ServerMsg =
    * / etc.) so listeners can filter — a plugin doesn't care
    * about another channel's churn.
    */
-  | { type: "channel_session_changed"; channelId: string };
+  | { type: "channel_session_changed"; channelId: string }
+  /**
+   * Tool catalog drifted vs. what this connection's last session
+   * was stamped under — typically because the host was upgraded
+   * while the user was offline (or while their tabs were closed).
+   * The chat UI shows a small banner; the agent's next turn picks
+   * up the same delta from history via flushToolDeltaForSession.
+   *
+   * Fired once per WS connection at attach time — every member of
+   * a tenant gets one when they next connect after an upgrade,
+   * regardless of whether they themselves triggered any plugin
+   * change. New tools, removed tools, version-bump-with-no-tool-
+   * change all reuse this event so the client doesn't need to
+   * model every case.
+   */
+  | {
+      type: "tool_catalog_changed";
+      fromVersion: string | null;
+      toVersion: string;
+      newTools: ReadonlyArray<{ name: string; pluginId: string }>;
+    };
 
 export interface PluginsChangedDelta {
   pluginId: string;

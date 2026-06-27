@@ -48,6 +48,21 @@ const active = new Map<string, AgentHarness>();
 const userSendChannels = new Map<string, Set<(msg: ServerMsg) => void>>();
 
 /**
+ * tenantId → set of `send` thunks for every open chat WebSocket
+ * across every user in that tenant. Used for tenant-wide events
+ * (plugin enable/disable, tool catalog refresh after a server
+ * upgrade) that every member of the tenant should learn about
+ * regardless of who triggered the change. Webchat users see a
+ * banner / status update; channel-session users still get the
+ * synthetic note appended to their active session because that's
+ * the part the agent actually reads on the next turn.
+ *
+ * Same closure pattern as userSendChannels — the WS handler
+ * registers once per connection and unregisters on close.
+ */
+const tenantSendChannels = new Map<string, Set<(msg: ServerMsg) => void>>();
+
+/**
  * Register an active harness for a session. Returns a thunk the
  * caller MUST run when the harness is no longer reachable (turn
  * complete, abort, exception path).
@@ -78,25 +93,43 @@ export function getActiveHarness(sessionId: string): AgentHarness | undefined {
 }
 
 /**
- * Register a `send` thunk for `userId`. handler.ts calls this
- * once per inbound chat WebSocket. Returns an unregister thunk
- * the caller MUST run on socket close.
+ * Register a `send` thunk for both the user-scoped and
+ * tenant-scoped broadcast channels. handler.ts calls this once
+ * per inbound chat WebSocket. Returns an unregister thunk the
+ * caller MUST run on socket close.
+ *
+ * Registering for the tenant channel too lets tenant-wide events
+ * (plugin lifecycle, tool catalog changes) reach every member's
+ * open WS without the boot site having to enumerate users.
  */
 export function registerUserSendChannel(
+  tenantId: string,
   userId: string,
   send: (msg: ServerMsg) => void,
 ): () => void {
-  let set = userSendChannels.get(userId);
-  if (!set) {
-    set = new Set();
-    userSendChannels.set(userId, set);
+  let userSet = userSendChannels.get(userId);
+  if (!userSet) {
+    userSet = new Set();
+    userSendChannels.set(userId, userSet);
   }
-  set.add(send);
+  userSet.add(send);
+  let tenantSet = tenantSendChannels.get(tenantId);
+  if (!tenantSet) {
+    tenantSet = new Set();
+    tenantSendChannels.set(tenantId, tenantSet);
+  }
+  tenantSet.add(send);
   return () => {
-    const cur = userSendChannels.get(userId);
-    if (!cur) return;
-    cur.delete(send);
-    if (cur.size === 0) userSendChannels.delete(userId);
+    const curUser = userSendChannels.get(userId);
+    if (curUser) {
+      curUser.delete(send);
+      if (curUser.size === 0) userSendChannels.delete(userId);
+    }
+    const curTenant = tenantSendChannels.get(tenantId);
+    if (curTenant) {
+      curTenant.delete(send);
+      if (curTenant.size === 0) tenantSendChannels.delete(tenantId);
+    }
   };
 }
 
@@ -125,8 +158,38 @@ export function broadcastToUser(userId: string, msg: ServerMsg): void {
   }
 }
 
+/**
+ * Fan out a server event to every open WebSocket inside `tenantId`,
+ * across every user in that tenant. Use for tenant-wide signals —
+ * plugin enable/disable, tool catalog refresh after a host upgrade,
+ * future tenant config flips — so every member sees the change
+ * immediately without waiting for their next reconnect.
+ *
+ * Same best-effort semantics as broadcastToUser; failures on one
+ * socket are logged and don't block the rest.
+ */
+export function broadcastToTenant(
+  tenantId: string,
+  msg: ServerMsg,
+): void {
+  const set = tenantSendChannels.get(tenantId);
+  if (!set) return;
+  for (const send of set) {
+    try {
+      send(msg);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[active-harnesses] tenant broadcast send failed for ${tenantId}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+}
+
 /** Test-only: drop everything. Not exported through the package barrel. */
 export function _resetActiveHarnesses(): void {
   active.clear();
   userSendChannels.clear();
+  tenantSendChannels.clear();
 }

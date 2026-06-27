@@ -43,7 +43,19 @@ export type ServerEvent =
    * in immediately rather than waiting for the 30s polling
    * fallback.
    */
-  | { type: "channel_session_changed"; channelId: string };
+  | { type: "channel_session_changed"; channelId: string }
+  /**
+   * The host's tool catalog drifted vs. the version this user's
+   * active session was last stamped under — typically because
+   * the server was upgraded while the tab was closed. Fired once
+   * at WS connect time when there's anything to surface.
+   */
+  | {
+      type: "tool_catalog_changed";
+      fromVersion: string | null;
+      toVersion: string;
+      newTools: ReadonlyArray<{ name: string; pluginId: string }>;
+    };
 
 export interface PluginsChangedDelta {
   pluginId: string;
