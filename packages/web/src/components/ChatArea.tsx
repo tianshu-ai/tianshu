@@ -259,18 +259,21 @@ function ChannelSessionFooter({ sessionId }: { sessionId: string }) {
     }
   };
 
+  // Two-row layout: model picker centered up top, short read-only
+  // notice below. The previous flex-between layout looked sparse on
+  // wide screens (text on the far left, picker on the far right);
+  // stacking + centering both keeps them visually grouped.
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border-subtle bg-bg-elevated px-4 py-3 text-xs text-fg-muted">
-      <span>
-        Read-only view. Send messages from the channel itself; the agent's
-        replies appear here automatically.
-      </span>
+    <div className="flex flex-col items-center gap-1 border-t border-border-subtle bg-bg-elevated px-4 py-2.5">
       {binding && (
-        <div className="flex items-center gap-2">
-          <span className="text-fg-faint">Model:</span>
+        <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
+          <span>Model:</span>
           <ModelSelector value={binding.modelId} onChange={onChange} />
         </div>
       )}
+      <span className="text-[10.5px] text-fg-fainter">
+        Read-only · messages flow in from the channel
+      </span>
     </div>
   );
 }
