@@ -176,3 +176,76 @@ export function flushToolDeltaForSession(opts: FlushOpts): boolean {
   }
   return true;
 }
+
+/**
+ * Peek at the tool-catalog drift for a session WITHOUT touching the
+ * session row or appending any message. Used by the WS attach path
+ * to push a transient `tool_catalog_changed` event to the connecting
+ * client; the side-effecting flush still runs on the next prompt.
+ *
+ * Returns the delta when there's anything new to advertise, or null
+ * when the session is already up to date / there's nothing useful
+ * to surface.
+ */
+export function peekToolCatalogDelta(opts: FlushOpts): {
+  fromVersion: string | null;
+  toVersion: string;
+  newTools: ReadonlyArray<{ name: string; pluginId: string }>;
+} | null {
+  const { ctx, session, pluginRegistry } = opts;
+  if (session.kind !== "user") return null;
+  const currentVersion = getPackageVersion();
+  if (!currentVersion) return null;
+  let stamped: string | null;
+  try {
+    stamped = readSessionAppVersion(ctx, session.id);
+  } catch {
+    return null;
+  }
+  // Pre-009 sessions (NULL stamp) report as 'unknown -> current'
+  // so the UI can still flag the upgrade window. The real flush
+  // path adopts them silently on the next prompt; we just want
+  // the client banner to fire once.
+  if (stamped == null) {
+    return {
+      fromVersion: null,
+      toVersion: currentVersion,
+      newTools: [],
+    };
+  }
+  if (stamped === currentVersion) return null;
+  if (!pluginRegistry) return null;
+  let catalog: ToolCatalogEntry[] = [];
+  try {
+    catalog = pluginRegistry
+      .toolCatalogForTenant(ctx.tenantId)
+      .map((c) => ({
+        toolName: c.toolName,
+        pluginId: c.pluginId,
+        since: c.since,
+        description: c.description,
+      }));
+  } catch {
+    return null;
+  }
+  if (catalog.length === 0) return null;
+  const deltas = computeSessionToolDeltas({
+    currentVersion,
+    catalog,
+    sessions: [
+      { sessionId: session.id, createdUnderAppVersion: stamped },
+    ],
+  });
+  const delta = deltas[0];
+  if (!delta) return null;
+  // Even if newTools is empty (e.g. tools were only removed) we
+  // still surface the version delta so the banner fires once.
+  return {
+    fromVersion: stamped,
+    toVersion: currentVersion,
+    newTools: delta.newTools.map((t) => ({
+      name: t.toolName,
+      pluginId: t.pluginId,
+    })),
+  };
+}

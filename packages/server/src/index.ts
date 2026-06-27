@@ -78,7 +78,10 @@ import {
   bindIdleRunner,
 } from "./chat/session-inbox.js";
 
-import { broadcastToUser } from "./chat/active-harnesses.js";
+import {
+  broadcastToTenant,
+  broadcastToUser,
+} from "./chat/active-harnesses.js";
 
 // Default ports differ from the closed-source predecessor (3100/5173) so
 // both projects can run side-by-side on the same dev machine without
@@ -845,25 +848,18 @@ app.use(
     mcpManager,
     reloadResolver: () => reloadingResolver.reload(),
     onPluginsChanged: (tenantId, userId, delta, direction) => {
-      // (a) tell every open chat shell so the UI can redraw
-      //     plugin manager state + show a transient banner.
-      const wsPayload = JSON.stringify({
+      // (a) Broadcast to every chat WebSocket inside this tenant.
+      //     Same payload reaches every member's UI so plugin
+      //     manager state redraws + a transient banner fires for
+      //     all of them, not just the user who flipped the
+      //     switch. broadcastToTenant looks up the per-tenant
+      //     channel map built by registerUserSendChannel on each
+      //     WS connection.
+      broadcastToTenant(tenantId, {
         type: "plugins_changed",
         enabled: direction === "enabled" ? [delta] : [],
         disabled: direction === "disabled" ? [delta] : [],
       });
-      for (const client of wss.clients) {
-        // We don't yet do per-tenant socket bookkeeping (everyone
-        // is the dev tenant in v0); when JWT auth lands the
-        // wss.clients iteration grows a tenant filter.
-        if ((client as { readyState?: number }).readyState === 1) {
-          try {
-            (client as { send: (s: string) => void }).send(wsPayload);
-          } catch {
-            // best-effort
-          }
-        }
-      }
       // (b) append a synthetic message to the user's active session
       //     so the next agent turn's history reflects the new
       //     reality (model can't keep hallucinating tools that

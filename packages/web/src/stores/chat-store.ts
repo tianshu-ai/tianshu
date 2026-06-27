@@ -324,6 +324,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
         };
       }),
     );
+
+    tianshuWs.on("tool_catalog_changed", (m) =>
+      set((s) => {
+        // Fired once per WS connect when the host version drifted
+        // since this session was last stamped — typically the
+        // server got upgraded while the tab was closed. The agent
+        // gets a richer history note on the next prompt via
+        // flushToolDeltaForSession; this banner is purely a UI cue.
+        const versionPart = m.fromVersion
+          ? `${m.fromVersion} → ${m.toVersion}`
+          : `now on ${m.toVersion}`;
+        const toolsPart =
+          m.newTools.length > 0
+            ? ` · new: ${m.newTools.map((t) => t.name).join(", ")}`
+            : "";
+        return {
+          messages: [
+            ...s.messages,
+            {
+              id: `tool_catalog_${Date.now()}`,
+              sessionId: "",
+              role: "system",
+              text: `🔄 server updated (${versionPart})${toolsPart}`,
+              createdAt: Date.now(),
+            },
+          ],
+        };
+      }),
+    );
   },
 
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),

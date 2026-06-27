@@ -81,7 +81,10 @@ import {
   type ChatMessage,
   type ChatSession,
 } from "./messages.js";
-import { flushToolDeltaForSession } from "./flush-tool-delta.js";
+import {
+  flushToolDeltaForSession,
+  peekToolCatalogDelta,
+} from "./flush-tool-delta.js";
 import { CompactSkippedError, compactSession } from "./compact.js";
 import {
   toWire,
@@ -125,10 +128,47 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
   send({ type: "connected", tenantId: ctx.tenantId, userId });
 
+  // Surface any host-version drift since this user's last active
+  // session was stamped — typically the host got upgraded while
+  // they were offline. The agent loop's flushToolDeltaForSession
+  // still does the side-effecting work (append history note + bump
+  // session stamp) on the user's next prompt; the WS event here is
+  // purely for the UI banner. Skipped silently when there's no
+  // active session yet (brand-new user) or when the session is
+  // already up to date.
+  try {
+    const activeSession = ensureActiveSession(ctx, userId);
+    const drift = peekToolCatalogDelta({
+      ctx,
+      session: activeSession,
+      pluginRegistry,
+    });
+    if (drift) {
+      send({
+        type: "tool_catalog_changed",
+        fromVersion: drift.fromVersion,
+        toVersion: drift.toVersion,
+        newTools: drift.newTools,
+      });
+    }
+  } catch (err) {
+    // Best-effort — we never want a banner-probe failure to break
+    // the chat connection itself.
+    console.warn(
+      `[chat] tool-catalog peek failed for ${ctx.tenantId}/${userId}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+
   // Register this socket's send thunk so the session-inbox idle
   // runner can broadcast a background turn's stream to every
   // tab the user has open. unregister fires on `close` below.
-  const unregisterUserChannel = registerUserSendChannel(userId, send);
+  const unregisterUserChannel = registerUserSendChannel(
+    ctx.tenantId,
+    userId,
+    send,
+  );
 
   let aborter: AbortController | null = null;
 
