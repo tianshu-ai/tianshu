@@ -12,6 +12,7 @@ export {
   deleteBinding,
   getBinding,
   listBindingsForTenant,
+  listBindingsForUser,
   listEnabledBindings,
   setBindingStatus,
   updateBinding,

@@ -113,6 +113,11 @@ const plugin: PluginServerModule = {
         //   → { ok, scanned: false }   while pending
         //   → { ok, scanned: true, binding } after confirm
         loginPoll: async (req: Request, res: Response) => {
+          const userId = (req as Request & { ctx?: { userId?: string } }).ctx?.userId;
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user in request context" });
+            return;
+          }
           const body = (req.body ?? {}) as {
             qrcode?: string;
             displayName?: string;
@@ -139,6 +144,7 @@ const plugin: PluginServerModule = {
               // about this token after confirm.
               const bindingBaseUrl = resp.baseurl?.trim();
               const binding = await bindings.create({
+                ownerUserId: userId,
                 channelId: "wechat",
                 pluginId: "wechat",
                 displayName: display,
@@ -192,8 +198,13 @@ const plugin: PluginServerModule = {
         },
 
         // GET /bindings
-        listBindings: (_req: Request, res: Response) => {
-          const list = bindings.list({ channelId: "wechat" });
+        listBindings: (req: Request, res: Response) => {
+          const userId = (req as Request & { ctx?: { userId?: string } }).ctx?.userId;
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user in request context" });
+            return;
+          }
+          const list = bindings.list({ ownerUserId: userId, channelId: "wechat" });
           // Strip the token before serialising \u2014 the admin UI
           // doesn't need to see it and we don't want it floating
           // around browser dev tools / log streams.
@@ -214,10 +225,15 @@ const plugin: PluginServerModule = {
         // session storage; the host's /api/channel-sessions is
         // still around but channel-agnostic. Per-channel rendering
         // (icon, pill, label) belongs to the plugin.
-        listSessions: (_req: Request, res: Response) => {
+        listSessions: (req: Request, res: Response) => {
+          const userId = (req as Request & { ctx?: { userId?: string } }).ctx?.userId;
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user in request context" });
+            return;
+          }
           const rows = ctx.db
             .prepare<
-              [],
+              [string],
               {
                 id: string;
                 channel_chat_id: string;
@@ -230,9 +246,10 @@ const plugin: PluginServerModule = {
                  FROM sessions
                 WHERE channel_id = 'wechat'
                   AND kind = 'user'
+                  AND user_id = ?
                 ORDER BY created_at DESC`,
             )
-            .all();
+            .all(userId);
           res.json({
             ok: true,
             sessions: rows.map((r) => ({
@@ -255,13 +272,18 @@ const plugin: PluginServerModule = {
 
         // DELETE /bindings/:id
         deleteBinding: async (req: Request, res: Response) => {
+          const userId = (req as Request & { ctx?: { userId?: string } }).ctx?.userId;
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user in request context" });
+            return;
+          }
           const raw = req.params.id;
           const id = Array.isArray(raw) ? raw[0] : raw;
           if (!id) {
             res.status(400).json({ ok: false, error: "missing binding id" });
             return;
           }
-          const removed = await bindings.delete(id);
+          const removed = await bindings.delete(id, userId);
           if (!removed) {
             res.status(404).json({ ok: false, error: "binding not found" });
             return;

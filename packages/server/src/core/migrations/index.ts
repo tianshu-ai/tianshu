@@ -19,6 +19,7 @@ import * as sessionInbox from "./007-session-inbox.js";
 import * as taskIntervention from "./008-task-intervention.js";
 import * as sessionAppVersion from "./009-session-app-version.js";
 import * as channels from "./010-channels.js";
+import * as channelBindingsOwner from "./011-channel-bindings-owner.js";
 
 export interface Migration {
   id: string;
@@ -37,6 +38,7 @@ export const MIGRATIONS: Migration[] = [
   { id: taskIntervention.ID, up: taskIntervention.up },
   { id: sessionAppVersion.ID, up: sessionAppVersion.up },
   { id: channels.ID, up: channels.up },
+  { id: channelBindingsOwner.ID, up: channelBindingsOwner.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `
