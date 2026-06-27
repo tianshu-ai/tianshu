@@ -120,13 +120,25 @@ async function dispatch(
     channelId: envelope.channelId,
   });
 
-  // Collect runPrompt's stream output into a final reply text.
-  // We prefer stream_end's `message.text` (the canonical rendered
-  // body) but fall back to the concatenated stream_delta deltas
-  // when the agent finished with an unusual shape (tool-only turn,
-  // streaming aborted, etc.).
-  const deltaChunks: string[] = [];
-  let finalText = "";
+  // Forward every assistant text chunk the agent emits, not just
+  // the last one. A single agent turn can produce multiple
+  // assistant messages (tool call → result → explanation →
+  // continuation → final answer), and we want the user to see all
+  // of them on wechat the same way they would in the webchat
+  // pane.
+  //
+  // Strategy: each stream_end is a complete assistant message
+  // (delta chunks already concatenated server-side into
+  // `message.text`). We queue every non-empty body in
+  // `assistantQueue` and ship them out sequentially after
+  // runPrompt resolves. Sequential matters for two reasons:
+  //   - context_token is per-user, shared across our outbound
+  //     calls; parallel sends would race on Tencent's side
+  //   - wechat preserves message order by send time, so users see
+  //     thinking → tool result → final answer in the order the
+  //     agent produced them
+  let deltaChunks: string[] = [];
+  const assistantQueue: string[] = [];
   let errorReason = "";
   const sink = (msg: ServerMsg) => {
     // Rebroadcast persisted-row events scoped to this channel
@@ -145,7 +157,9 @@ async function dispatch(
       deltaChunks.push(msg.delta);
     } else if (msg.type === "stream_end") {
       const wireText = msg.message?.text?.trim() ?? "";
-      finalText = wireText || deltaChunks.join("").trim();
+      const text = wireText || deltaChunks.join("").trim();
+      deltaChunks = [];
+      if (text.length > 0) assistantQueue.push(text);
     } else if (msg.type === "stream_error") {
       errorReason = msg.reason || "unknown";
     }
@@ -168,19 +182,19 @@ async function dispatch(
     errorReason = err instanceof Error ? err.message : String(err);
   }
 
+  // Sequential delivery preserves order on the user's wechat
+  // thread + avoids racing the per-user context_token.
+  for (const body of assistantQueue) {
+    await safeSend(envelope.bindingId, envelope.chatId, body);
+  }
+
   if (errorReason.length > 0) {
-    // Surface an error to the user so the chat doesn't stay silent.
-    // We deliberately keep this terse — channel platforms have
-    // small message budgets and exposing internal failure detail
-    // would be noisy.
+    // Surface the error after every successful message landed.
+    // Channel platforms have small message budgets and exposing
+    // internal failure detail would be noisy; keep it terse.
     await safeSend(envelope.bindingId, envelope.chatId, `⚠️ agent error: ${errorReason}`);
-    return;
   }
-  if (finalText.length > 0) {
-    await safeSend(envelope.bindingId, envelope.chatId, finalText);
-  }
-  // Tool-only turn: agent did real work but no user-facing text.
-  // We stay silent; the next user message reopens the loop.
+  // Tool-only turn: assistantQueue is empty, nothing more to ship.
 }
 
 async function safeSend(bindingId: string, target: string, text: string): Promise<void> {
