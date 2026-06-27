@@ -304,7 +304,30 @@ pluginRegistry = new PluginRegistry({
         const row = getBinding(ctx.db, bindingId);
         if (!row || row.tenantId !== ctx.tenantId) return false;
         await channelManager.stopBinding(bindingId).catch(() => {});
-        deleteBinding(ctx.db, bindingId);
+        // Cascade: delete the binding row and every session/message
+        // tied to it. Without this, the channel sessions linger in
+        // the sidebar even after the bot is unbound. Messages are
+        // gone too because their context_token is meaningless once
+        // the binding's adapter can't reply through it anyway.
+        // The transaction keeps the four deletes atomic so a
+        // crash mid-way doesn't strand half the rows.
+        const txn = ctx.db.transaction(() => {
+          ctx.db
+            .prepare<[string], unknown>(
+              `DELETE FROM messages
+                 WHERE session_id IN (
+                   SELECT id FROM sessions WHERE channel_binding_id = ?
+                 )`,
+            )
+            .run(bindingId);
+          ctx.db
+            .prepare<[string], unknown>(
+              `DELETE FROM sessions WHERE channel_binding_id = ?`,
+            )
+            .run(bindingId);
+          deleteBinding(ctx.db, bindingId);
+        });
+        txn();
         return true;
       },
     }),
