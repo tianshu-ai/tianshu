@@ -91,7 +91,7 @@ export type ServerMsg =
       hasMore: boolean;
       before: string;
     }
-  | { type: "message_added"; message: WireMessage }
+  | { type: "message_added"; message: WireMessage; sessionId?: string }
   | { type: "stream_start" }
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
@@ -103,6 +103,7 @@ export type ServerMsg =
       callId: string;
       name: string;
       arguments: Record<string, unknown>;
+      sessionId?: string;
     }
   /** Tool finished. `text` is the human-readable summary the LLM will
    *  see; `ok` lets the UI tint failures. */
@@ -112,6 +113,7 @@ export type ServerMsg =
       name: string;
       ok: boolean;
       text: string;
+      sessionId?: string;
     }
   /** A compaction pass just landed. Sent for both auto-compact (
    *  triggered by pi's `shouldCompact()` against the model's

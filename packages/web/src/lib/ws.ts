@@ -15,13 +15,13 @@ export type ServerEvent =
       hasMore: boolean;
       before: string;
     }
-  | { type: "message_added"; message: WireMessage }
+  | { type: "message_added"; message: WireMessage; sessionId?: string }
   | { type: "stream_start" }
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
   | { type: "stream_error"; reason: string }
-  | { type: "tool_call"; callId: string; name: string; arguments: Record<string, unknown> }
-  | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string }
+  | { type: "tool_call"; callId: string; name: string; arguments: Record<string, unknown>; sessionId?: string }
+  | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string; sessionId?: string }
   | {
       type: "history_compacted";
       reason: "auto" | "manual";
