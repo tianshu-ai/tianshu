@@ -16,22 +16,20 @@ import { getPackageVersion } from "./setup/repo-root.js";
 import express from "express";
 import cors from "cors";
 import { createServer } from "node:http";
-import { WebSocketServer } from "ws";
+
 
 import {
   bootstrapDevTenantIfNeeded,
   DEV_TENANT_ID,
-  DEV_USER_ID,
   DEV_RESOLVER_CHAIN,
   GlobalOps,
   McpManager,
-  TenantNotFoundError,
+
   computeServerEffectivePublicUrl,
   ensureTenantConfigDefaults,
-  getDefaultModel,
   listModels,
   loadGlobalConfig,
-  runIdentityChain,
+
   tenantMiddleware,
   writeGlobalConfig,
 } from "./core/index.js";
@@ -47,6 +45,7 @@ import {
 import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
 import {
+  buildChannelStreamSink,
   ChannelAdapterManager,
   channelHub,
   createBinding,
@@ -59,11 +58,7 @@ import {
 import type { ChannelBindingsCapability } from "@tianshu-ai/plugin-sdk";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  attachChatHandler,
-  loadHostSkills,
-  runPrompt,
-} from "./chat/handler.js";
+import { loadHostSkills, runPrompt } from "./chat/handler.js";
 import { appendMessage, ensureActiveSession } from "./chat/messages.js";
 import type { PluginsChangedDelta } from "./chat/ws-protocol.js";
 import { runAgentLoop } from "./chat/agent-loop.js";
@@ -78,10 +73,12 @@ import type {
   ModelCatalogCapability,
   LspCapability,
 } from "@tianshu-ai/plugin-sdk";
-import {
-  enqueue as inboxEnqueue,
-  bindIdleRunner,
-} from "./chat/session-inbox.js";
+import { enqueue as inboxEnqueue } from "./chat/session-inbox.js";
+import { installIdleRunner } from "./boot/idle-runner.js";
+import { mountChannelRoutes, toView } from "./boot/routes-channels.js";
+import { mountCoreRoutes } from "./boot/routes-core.js";
+import { installChatWebSocket } from "./boot/ws-upgrade.js";
+import { mountStaticSpa, isSpaHosted } from "./boot/static-spa.js";
 
 import { broadcastToUser } from "./chat/active-harnesses.js";
 
@@ -391,22 +388,10 @@ pluginRegistry = new PluginRegistry({
   },
 });
 
-function toView(row: import("./channels/index.js").ChannelBinding): import("@tianshu-ai/plugin-sdk").ChannelBindingView {
-  return {
-    id: row.id,
-    tenantId: row.tenantId,
-    ownerUserId: row.ownerUserId,
-    channelId: row.channelId,
-    pluginId: row.pluginId,
-    displayName: row.displayName,
-    enabled: row.enabled,
-    status: row.status,
-    statusDetail: row.statusDetail,
-    config: row.config,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
-  };
-}
+// toView moved to boot/routes-channels.ts (imported above) so the
+// channel-routes module owns both the view shape and the routes that
+// render it. host.channelBindings capability factories below still
+// call toView; nothing else has changed.
 
 // Catalog client — fetches the list of installable plugins from the
 // `tianshu-ai/plugin-registry` repo. Override URL via
@@ -485,164 +470,15 @@ for (const tenantId of globalOps.list()) {
   }
 }
 
-// Wire the session-inbox idle runner. When a worker pool finishes
-// a task and the parent chat session is idle (no active harness),
-// the inbox kicks a background `runPrompt` turn so the agent
-// reacts to the notification immediately instead of waiting for
-// the user to send something.
-//
-// We bind here (one-shot, process-wide) so the inbox module
-// doesn't have to import the host registry directly. The runner
-// closure resolves the tenant from globalOps at call time — the
-// session row already lives in some tenant DB; tonight there's
-// only one (default), but the closure is tenant-agnostic.
-bindIdleRunner(async ({ sessionId, userId, promptText }) => {
-  // Find which tenant owns this session, and pick up the
-  // channel-tagging columns at the same time so we know whether
-  // to fan replies out to WS tabs (webchat) or push them through
-  // the channel adapter (wechat / telegram / ...). If no tenant
-  // claims this session, give up silently — the inbox row stays
-  // delivered=false and will be flushed on the next user prompt.
-  let owningCtx:
-    | ReturnType<typeof globalOps.open>
-    | null = null;
-  let channelBindingId: string | null = null;
-  let channelChatId: string | null = null;
-  for (const tenantId of globalOps.list()) {
-    const ctx = globalOps.open(tenantId);
-    const row = ctx.db
-      .prepare<
-        [string],
-        {
-          id: string;
-          channel_binding_id: string | null;
-          channel_chat_id: string | null;
-        }
-      >(
-        `SELECT id, channel_binding_id, channel_chat_id
-           FROM sessions WHERE id = ?`,
-      )
-      .get(sessionId);
-    if (row) {
-      owningCtx = ctx;
-      channelBindingId = row.channel_binding_id;
-      channelChatId = row.channel_chat_id;
-      break;
-    }
-  }
-  if (!owningCtx) {
-    console.warn(
-      `[idle-runner] no tenant found for session ${sessionId}; skipping`,
-    );
-    return;
-  }
-  const ctx = owningCtx;
-  const isChannelSession =
-    channelBindingId !== null && channelChatId !== null;
+// Wire the session-inbox idle runner. See boot/idle-runner.ts for
+// the body — it's the bind-once at-boot edge between the chat
+// inbox (which can't import the host registry) and the host's
+// pluginRegistry + globalOps. Lives in boot/ rather than chat/
+// because the dispatch on "is this session channel-bound" needs
+// channelHub + GlobalOps, which are host-level concerns.
+installIdleRunner({ globalOps, pluginRegistry });
 
-  // Sink behaviour depends on session kind:
-  //   - webchat: broadcast to every WS tab the user has open;
-  //     the chat UI paints stream events live.
-  //   - channel session (wechat / etc.): queue each assistant
-  //     message_added and ship via channelHub at the end. Without
-  //     this branch a background turn (e.g. workboard task done)
-  //     ended up only on webchat tabs — the wechat user on the
-  //     originating thread never saw the reply.
-  //
-  // Channel sinks also broadcast to WS tabs (so admin viewers of
-  // the channel session see the live stream), but the *delivery*
-  // path back to the platform user is the adapter.
-  const assistantQueue: string[] = [];
-  const sentMessageIds = new Set<string>();
-  let errorReason = "";
-  const send = (msg: import("./chat/ws-protocol.js").ServerMsg) => {
-    if (isChannelSession) {
-      // Live-rebroadcast persisted-row events scoped to this
-      // channel session so a chat shell viewing it paints them
-      // live (same as the inbound-router sink).
-      if (
-        msg.type === "message_added" ||
-        msg.type === "tool_call" ||
-        msg.type === "tool_result"
-      ) {
-        broadcastToUser(userId, {
-          ...msg,
-          sessionId,
-        } as import("./chat/ws-protocol.js").ServerMsg);
-      }
-      if (
-        msg.type === "message_added" &&
-        msg.message?.role === "assistant"
-      ) {
-        const text = msg.message.text?.trim() ?? "";
-        if (text.length > 0) {
-          sentMessageIds.add(msg.message.id);
-          assistantQueue.push(text);
-        }
-      } else if (msg.type === "stream_end") {
-        const wire = msg.message;
-        const text = wire?.text?.trim() ?? "";
-        if (wire && text.length > 0 && !sentMessageIds.has(wire.id)) {
-          sentMessageIds.add(wire.id);
-          assistantQueue.push(text);
-        }
-      } else if (msg.type === "stream_error") {
-        errorReason = msg.reason || "unknown";
-      }
-    } else {
-      broadcastToUser(userId, msg);
-    }
-  };
-
-  // The runner needs an AbortController so a wedged provider
-  // can't pin the inbox queue forever. We don't expose this to
-  // the user (no user-facing abort button for an inbox turn);
-  // simply give the run a generous deadline.
-  const controller = new AbortController();
-  const deadline = setTimeout(
-    () => controller.abort(),
-    5 * 60 * 1000,
-  );
-  try {
-    await runPrompt({
-      ctx,
-      userId,
-      send,
-      content: promptText,
-      signal: controller.signal,
-      pluginRegistry,
-      homeDir: ctx.workspaceDir,
-    });
-  } catch (err) {
-    if (!errorReason) {
-      errorReason = err instanceof Error ? err.message : String(err);
-    }
-  } finally {
-    clearTimeout(deadline);
-  }
-
-  if (isChannelSession && channelBindingId && channelChatId) {
-    for (const body of assistantQueue) {
-      try {
-        await channelHub.send(channelBindingId, {
-          target: channelChatId,
-          text: body,
-        });
-      } catch (err) {
-        console.error(
-          `[idle-runner] adapter send failed (${channelBindingId} → ${channelChatId}): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
-    if (errorReason.length > 0) {
-      console.warn(
-        `[idle-runner] background turn errored on channel session ${sessionId}: ${errorReason}`,
-      );
-    }
-  }
-});
+// === legacy idle-runner body removed; see boot/idle-runner.ts ===
 
 const app = express();
 app.use(
@@ -680,250 +516,23 @@ app.use(
   tenantMiddleware({ ops: globalOps }),
 );
 
-/**
- * List channel sessions visible to the current tenant. Chat-shell
- * sidebar reads this so users can see (and re-enter) channel
- * conversations alongside their webchat session. Sessions are
- * the same row schema as everywhere else; the channel_ tagging
- * (`channel_id` / `channel_chat_id` / `channel_binding_id`)
- * lives on the row itself.
- */
-app.get("/api/channel-sessions", (req, res) => {
-  if (!req.ctx) {
-    res.status(500).json({ error: "no_ctx" });
-    return;
-  }
-  const rows = req.ctx.tenant.db
-    .prepare<
-      [string],
-      {
-        id: string;
-        channel_id: string;
-        channel_chat_id: string;
-        channel_binding_id: string | null;
-        title: string | null;
-        created_at: number;
-      }
-    >(
-      // Scope to the calling user: channel sessions are personal
-      // (one user's wechat scan shouldn't surface to others on the
-      // tenant). user_id on the session row already tracks this
-      // because ensureChannelSession stamps it from the binding's
-      // owner_user_id.
-      `SELECT id, channel_id, channel_chat_id, channel_binding_id,
-              title, created_at
-         FROM sessions
-        WHERE channel_id IS NOT NULL
-          AND kind = 'user'
-          AND user_id = ?
-        ORDER BY created_at DESC`,
-    )
-    .all(req.ctx.userId);
-  res.json({
-    sessions: rows.map((r) => ({
-      id: r.id,
-      channelId: r.channel_id,
-      channelChatId: r.channel_chat_id,
-      channelBindingId: r.channel_binding_id,
-      title: r.title,
-      createdAt: r.created_at,
-    })),
-  });
-});
+// `/api/channel-sessions/*` + `/api/channel-bindings/:id/model`
+// — see boot/routes-channels.ts for the bodies.
+mountChannelRoutes(app);
 
-/**
- * Return the binding row a channel session belongs to. Channel UIs
- * use this to populate per-session controls (model selector, etc.)
- * keyed off the session the user is viewing. Filters by
- * sessions.user_id so users can't read each other's bindings.
- */
-app.get("/api/channel-sessions/:sessionId/binding", (req, res) => {
-  if (!req.ctx) {
-    res.status(500).json({ error: "no_ctx" });
-    return;
-  }
-  const rawSid = req.params.sessionId;
-  const sessionId = Array.isArray(rawSid) ? rawSid[0] : rawSid;
-  if (!sessionId) {
-    res.status(400).json({ error: "missing session id" });
-    return;
-  }
-  const row = req.ctx.tenant.db
-    .prepare<
-      [string, string],
-      { binding_id: string | null }
-    >(
-      `SELECT channel_binding_id AS binding_id
-         FROM sessions
-        WHERE id = ? AND user_id = ?
-        LIMIT 1`,
-    )
-    .get(sessionId, req.ctx.userId);
-  if (!row?.binding_id) {
-    res.status(404).json({ error: "no binding for session" });
-    return;
-  }
-  const binding = getBinding(req.ctx.tenant.db, row.binding_id);
-  if (
-    !binding ||
-    binding.tenantId !== req.ctx.tenant.tenantId ||
-    binding.ownerUserId !== req.ctx.userId
-  ) {
-    res.status(404).json({ error: "binding not found" });
-    return;
-  }
-  res.json({
-    binding: {
-      id: binding.id,
-      channelId: binding.channelId,
-      modelId:
-        typeof binding.config.modelId === "string" &&
-        binding.config.modelId.trim().length > 0
-          ? binding.config.modelId.trim()
-          : null,
-    },
-  });
-});
-
-/**
- * Update a binding's model. PATCH so the body is the partial we
- * want to merge. Only `modelId` is patchable through this route
- * today; future channel-config edits can land on the same surface.
- */
-app.patch("/api/channel-bindings/:bindingId/model", (req, res) => {
-  if (!req.ctx) {
-    res.status(500).json({ error: "no_ctx" });
-    return;
-  }
-  const rawBid = req.params.bindingId;
-  const bindingId = Array.isArray(rawBid) ? rawBid[0] : rawBid;
-  if (!bindingId) {
-    res.status(400).json({ error: "missing binding id" });
-    return;
-  }
-  const body = (req.body ?? {}) as { modelId?: string | null };
-  const newModelId =
-    typeof body.modelId === "string" && body.modelId.trim().length > 0
-      ? body.modelId.trim()
-      : null;
-
-  const binding = getBinding(req.ctx.tenant.db, bindingId);
-  if (
-    !binding ||
-    binding.tenantId !== req.ctx.tenant.tenantId ||
-    binding.ownerUserId !== req.ctx.userId
-  ) {
-    res.status(404).json({ error: "binding not found" });
-    return;
-  }
-  const nextConfig = { ...binding.config };
-  if (newModelId) nextConfig.modelId = newModelId;
-  else delete nextConfig.modelId;
-  updateBinding(req.ctx.tenant.db, bindingId, { config: nextConfig });
-  res.json({ ok: true, modelId: newModelId });
-});
-
-app.get("/api/me", (req, res) => {
-  if (!req.ctx) {
-    res.status(500).json({ error: "no_ctx" });
-    return;
-  }
-  const { tenant, userId } = req.ctx;
-  const def = getDefaultModel(tenant.config);
-  res.json({
-    tenantId: tenant.tenantId,
-    userId,
-    config: { branding: tenant.config.branding ?? null },
-    defaultModel: def ? { id: def.id, name: def.name, provider: def.providerId } : null,
-    devTenant: tenant.tenantId === DEV_TENANT_ID && userId === DEV_USER_ID,
-  });
-});
-
-app.get("/api/models", (req, res) => {
-  if (!req.ctx) {
-    res.status(500).json({ error: "no_ctx" });
-    return;
-  }
-  const list = listModels(req.ctx.tenant.config).map((m) => ({
-    id: m.id,
-    name: m.name,
-    provider: m.providerId,
-    group: m.group ?? null,
-    contextWindow: m.contextWindow,
-    reasoning: m.reasoning,
-  }));
-  res.json({ models: list, defaultModel: req.ctx.tenant.config.defaultModel ?? null });
-});
-
-/**
- * Tool catalog for the current tenant. Used by the worker-agents
- * settings page to render an allow-list picker instead of the old
- * comma-separated freetext field.
- *
- * Returns ALL tools the host registry knows about (host built-ins +
- * every active plugin's contributions). Per-agent allow-list
- * filtering happens at the worker; this endpoint is just the
- * universe to pick from.
- */
-app.get("/api/tools", (req, res) => {
-  if (!req.ctx) {
-    res.status(500).json({ error: "no_ctx" });
-    return;
-  }
-  const entries = pluginRegistry.toolsForTenant(req.ctx.tenant.tenantId);
-  // De-dupe by tool name; if two plugins shipped the same name
-  // we still only show it once. Stable sort by name for the UI.
-  const byName = new Map<
-    string,
-    { name: string; description: string; pluginId: string }
-  >();
-  for (const { pluginId, tool } of entries) {
-    if (byName.has(tool.schema.name)) continue;
-    byName.set(tool.schema.name, {
-      name: tool.schema.name,
-      description: tool.schema.description ?? "",
-      pluginId,
-    });
-  }
-  const tools = [...byName.values()].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
-  res.json({ tools });
-});
-
-/**
- * Skill catalog for the current tenant. Same role as /api/tools —
- * the universe of skills available, host-shipped + plugin-shipped,
- * for the worker-agents allow-list picker.
- */
-app.get("/api/skills", (req, res) => {
-  if (!req.ctx) {
-    res.status(500).json({ error: "no_ctx" });
-    return;
-  }
-  const skills = pluginRegistry.skillsForTenant(req.ctx.tenant.tenantId);
-  // Same shape as /api/tools — just the bits the picker UI needs.
-  // We expose the description (frontmatter) so the picker can
-  // render a tooltip; the body markdown stays server-side.
-  const out = skills
-    .map((s) => ({
-      name: s.name,
-      description: s.description,
-      pluginId: s.source.pluginId,
-      // Surface the frontmatter `scope:` field so the
-      // worker-agents-page can hide "scope: main" skills from a
-      // worker's effective list. Undefined = visible to both.
-      scope: s.scope,
-    }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  res.json({ skills: out });
-});
+// /api/me, /api/models, /api/tools, /api/skills — see
+// boot/routes-core.ts for the bodies. Identity badge / model picker /
+// worker-agents allow-list pickers consume these.
+mountCoreRoutes(app, { pluginRegistry });
 
 const server = createServer(app);
 
-// Chat over WebSocket. Dev mode pins to the bootstrap tenant + user;
-// JWT-mode auth lands in a later PR and will replace the resolver.
-const wss = new WebSocketServer({ server, path: "/ws" });
+// Chat over WebSocket. See boot/ws-upgrade.ts for the connection
+// handler body (identity resolution + tenant open + plugin
+// activation + attachChatHandler). We keep the WSS handle here so
+// other host hooks (onPluginsChanged broadcast, shutdown wss.close)
+// can still touch it.
+const wss = installChatWebSocket({ server, globalOps, pluginRegistry });
 
 // /api/plugins (GET + PATCH) — see ./plugins-routes.ts.
 //
@@ -992,192 +601,12 @@ app.use(
     },
   }),
 );
-wss.on("connection", async (socket, request) => {
-  // Resolve identity for the WS upgrade request. We run the same
-  // resolver chain the HTTP middleware uses so a browser opened
-  // with `?tenant=alpha&user=alice` (cookie set, see
-  // dev-identity-switch PR) gets a WS connection scoped to that
-  // identity — not the default dev user. The Express middleware
-  // can't run on WS upgrades because it expects res.setHeader /
-  // next(); we re-implement the lookup here against the same
-  // chain export.
-  const { resolution, error: chainError } = runIdentityChain(
-    request as unknown as Parameters<typeof runIdentityChain>[0],
-    DEV_RESOLVER_CHAIN,
-  );
-  if (chainError) {
-    socket.send(
-      JSON.stringify({
-        type: "stream_error",
-        reason: `identity resolver "${chainError.resolver}" threw: ${chainError.message}`,
-      }),
-    );
-    socket.close();
-    return;
-  }
-  if (!resolution || resolution.kind === "deny") {
-    socket.send(
-      JSON.stringify({
-        type: "stream_error",
-        reason:
-          resolution?.kind === "deny"
-            ? `identity denied by ${resolution.source}: ${resolution.reason}`
-            : "no identity resolver claimed this WS upgrade",
-      }),
-    );
-    socket.close();
-    return;
-  }
-  const tenantId = resolution.tenantId;
-  const userId = resolution.userId;
-  let ctx;
-  try {
-    ctx = globalOps.open(tenantId);
-  } catch (err) {
-    // tenant_not_found from a stale cookie — fall back to default
-    // so the user lands somewhere usable instead of a closed
-    // socket. Mirror of the HTTP middleware's tenant-not-found
-    // fallback path.
-    if (err instanceof TenantNotFoundError) {
-      try {
-        ctx = globalOps.open(DEV_TENANT_ID);
-        socket.send(
-          JSON.stringify({
-            type: "identity_fallback",
-            requested: tenantId,
-            reason: "tenant_not_found",
-            source: resolution.source,
-          }),
-        );
-      } catch {
-        socket.send(
-          JSON.stringify({
-            type: "stream_error",
-            reason: `tenant ${tenantId} unavailable and default tenant missing`,
-          }),
-        );
-        socket.close();
-        return;
-      }
-    } else {
-      socket.send(
-        JSON.stringify({
-          type: "stream_error",
-          reason: `tenant ${tenantId} unavailable: ${err instanceof Error ? err.message : String(err)}`,
-        }),
-      );
-      socket.close();
-      return;
-    }
-  }
-  // Ensure plugins are activated so the agent can see
-  // sandbox.shell etc. without waiting for a GET /api/plugins.
-  try {
-    await pluginRegistry.ensureForTenant(ctx);
-  } catch (err) {
-    // Plugin activation failures shouldn't kill the chat session;
-    // they surface in /api/plugins as `state: failed`. Log and
-    // proceed without the capability set.
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[tianshu] plugin activation failed for ${tenantId}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  attachChatHandler({
-    ctx,
-    userId,
-    socket,
-    pluginRegistry,
-    // tenantHomeDir is the **per-tenant** root, not the global
-    // tianshu home. Mirror the worker-loop call site (host.agentLoop
-    // above) which passes ctx.workspaceDir. Passing
-    // globalOps.homeDir made tenant_config_* tools land writes
-    // under `~/.tianshu/workspace/_tenant/...` instead of
-    // `~/.tianshu/tenants/<id>/workspace/_tenant/...` — a
-    // tenant-isolation hole. ADR-0001 §2.
-    homeDir: ctx.workspaceDir,
-  });
-});
 
-// Optionally serve the pre-built web UI in the same process.
-//
-// Dev mode (`npm run dev` from a checkout): vite handles the web
-// side on its own port (5183 by default); this block is dormant
-// because TIANSHU_WEB_DIST is unset.
-//
-// Production / global install: the wizard's launchd plist sets
-// TIANSHU_WEB_DIST to the bundled web dist directory and the
-// server hosts the static files itself, so the user only needs
-// one port (3110) instead of two processes.
-//
-// We mount this AFTER every `/api/*` and `/ws` handler so the
-// catch-all only fires for non-API requests. The SPA fallback
-// (any unknown path → index.html) is what makes
-// `/tenants/foo/users/bar/` work without a real route on the
-// filesystem.
-const webDistRaw = process.env.TIANSHU_WEB_DIST;
-if (webDistRaw && webDistRaw.length > 0) {
-  try {
-    const path = await import("node:path");
-    const fs = await import("node:fs");
-    const webDist = path.resolve(webDistRaw);
-    if (!fs.existsSync(path.join(webDist, "index.html"))) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[tianshu] TIANSHU_WEB_DIST=${webDist} but no index.html there; " +
-          "skipping static UI mount.`,
-      );
-    } else {
-      // Two-layer handler:
-      // 1. express.static handles `/index.html`, `/assets/*`, etc.
-      //    fallthrough: true so requests it doesn't recognize
-      //    cascade to the next middleware.
-      // 2. SPA fallback: any GET request that wasn't /api or /ws
-      //    and wasn't a static asset → serve the pre-read
-      //    index.html bytes. The React router on the client
-      //    decides what to render.
-      //
-      // Why we read index.html into a buffer rather than using
-      // `res.sendFile()`: under Express 5 + Node 22+'s send
-      // module, sendFile() with an absolute path consistently
-      // 404'd on our setup even though `existsSync(file)`
-      // returned true. We don't fully understand the
-      // resolution path send takes; bypassing it with a
-      // direct buffer write is simple and works the same on
-      // every Node version we test.
-      app.use(express.static(webDist, { index: false, fallthrough: true }));
-      const indexHtml = fs.readFileSync(
-        path.join(webDist, "index.html"),
-      );
-      app.use((req, res, next) => {
-        if (req.path.startsWith("/api/")) return next();
-        if (req.path === "/api") return next();
-        if (req.path.startsWith("/ws")) return next();
-        if (req.method !== "GET" && req.method !== "HEAD") return next();
-        // Anything else — / , /tenants/x/users/y/, /admin/foo —
-        // gets index.html. The SPA's router handles it.
-        res.type("html").send(indexHtml);
-      });
-      // eslint-disable-next-line no-console
-      console.log(`[tianshu] serving web UI from ${webDist}`);
-    }
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.warn(
-      `[tianshu] failed to mount static web dist: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-}
-
-// Whether this process is the one hosting the SPA. Set by
-// `bin/serve.mjs` (prod / global install) to the path of the
-// bundled web dist; left unset in dev where vite hosts the
-// SPA on its own port. We compute this once at boot and
-// publish the resulting URL into global config (see below) so
-// out-of-process CLI commands can print the right URL.
-const spaHosted = Boolean(
-  process.env.TIANSHU_WEB_DIST && process.env.TIANSHU_WEB_DIST.length > 0,
-);
+// Optionally serve the pre-built web UI in the same process — see
+// boot/static-spa.ts for the body. Dev mode skips this (vite hosts);
+// production / global install activates it via TIANSHU_WEB_DIST.
+await mountStaticSpa(app);
+const spaHosted = isSpaHosted();
 
 // Channel system wiring (PR #220 + #221). The router subscribes
 // to the hub so inbound platform messages from any plugin

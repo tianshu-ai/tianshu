@@ -35,6 +35,7 @@ import {
 } from "../core/index.js";
 import { buildToolset } from "../tools/index.js";
 import { dumpSystemPrompt } from "./dump-system-prompt.js";
+import { requireHomeDir } from "./require-home-dir.js";
 import {
   filterSkillsForTenant,
   type LoadedSkill,
@@ -340,7 +341,7 @@ export async function runAgentLoop(
       userId,
       capabilities: hostCaps,
       userHomeDir: ctx.userHomeDir(userId),
-      tenantHomeDir: homeDir ?? "",
+      tenantHomeDir: requireHomeDir(homeDir, ctx, "runAgentLoop"),
       // Worker scope. `workerRole` is the worker_agent kind id
       // (e.g. "llm"); `workerSlug` is the fs directory name. Drives
       // `tenant_config_write` boundary so a worker can write under

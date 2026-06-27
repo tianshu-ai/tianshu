@@ -41,6 +41,7 @@ import type {
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { requireHomeDir } from "./require-home-dir.js";
 import type { WebSocket } from "ws";
 import {
   buildModel,
@@ -408,7 +409,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       userId,
       capabilities: hostCaps,
       userHomeDir: userHome,
-      tenantHomeDir: homeDir ?? "",
+      tenantHomeDir: requireHomeDir(homeDir, ctx, "runPrompt"),
       // Main chat agent. Drives `tenant_config_write` boundary in
       // the files plugin: main may write to `main/skills/` and
       // shared `skills/`.

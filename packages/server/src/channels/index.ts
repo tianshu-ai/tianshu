@@ -35,3 +35,5 @@ export type {
 } from "./types.js";
 export { startChannelRouter } from "./router.js";
 export { ensureChannelSession } from "./sessions.js";
+export { buildChannelStreamSink } from "./stream-sink.js";
+export type { ChannelStreamSink } from "./stream-sink.js";

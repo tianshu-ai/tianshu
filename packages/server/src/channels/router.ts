@@ -36,7 +36,7 @@ import { ensureChannelSession } from "./sessions.js";
 import { getBinding, setBindingStatus } from "./bindings.js";
 import { runPrompt } from "../chat/handler.js";
 import { broadcastToUser } from "../chat/active-harnesses.js";
-import type { ServerMsg } from "../chat/ws-protocol.js";
+import { buildChannelStreamSink } from "./stream-sink.js";
 
 /** Translate raw LLM / provider errors into a short, user-facing
  *  string suitable for a chat-platform message. Specifics (401
@@ -170,60 +170,17 @@ async function dispatch(
   const runAttempt = async (
     candidateModelId: string | undefined,
   ): Promise<AttemptResult> => {
-    const assistantQueue: string[] = [];
-    const sentMessageIds = new Set<string>();
+    const sink = buildChannelStreamSink({
+      sessionId: session.id,
+      userId: session.userId,
+    });
     let errorReason = "";
-    const sink = (msg: ServerMsg) => {
-      // Rebroadcast persisted-row events scoped to this channel
-      // session so a chat shell viewing it paints them live.
-      // We tag each one with `sessionId` so the chat shell can
-      // filter (only apply when viewingSessionId matches) and
-      // the events don't leak into the unrelated webchat thread.
-      if (
-        msg.type === "message_added" ||
-        msg.type === "tool_call" ||
-        msg.type === "tool_result"
-      ) {
-        broadcastToUser(session.userId, {
-          ...msg,
-          sessionId: session.id,
-        } as ServerMsg);
-      }
-      // EVERY assistant message gets queued for adapter delivery.
-      // The agent loop emits a `message_added` event for each
-      // turn the LLM completes (text turn, post-tool-call
-      // continuation, etc.). Previously we only queued the final
-      // `stream_end` body, dropping the in-between turns; users
-      // on wechat saw only the last response. `sentMessageIds`
-      // de-dupes against `stream_end` which fires for the same
-      // last message after message_added does.
-      if (msg.type === "message_added" && msg.message?.role === "assistant") {
-        const text = msg.message.text?.trim() ?? "";
-        if (text.length > 0) {
-          sentMessageIds.add(msg.message.id);
-          assistantQueue.push(text);
-        }
-      } else if (msg.type === "stream_end") {
-        // Belt-and-braces: stream_end's `message` is the last
-        // assistant turn. If it wasn't already queued via a
-        // preceding message_added (some agent paths skip the
-        // intermediate event), queue it now.
-        const wire = msg.message;
-        const text = wire?.text?.trim() ?? "";
-        if (wire && text.length > 0 && !sentMessageIds.has(wire.id)) {
-          sentMessageIds.add(wire.id);
-          assistantQueue.push(text);
-        }
-      } else if (msg.type === "stream_error") {
-        errorReason = msg.reason || "unknown";
-      }
-    };
     const aborter = new AbortController();
     try {
       await runPrompt({
         ctx,
         userId: session.userId,
-        send: sink,
+        send: sink.push,
         content: envelope.text,
         modelId: candidateModelId,
         signal: aborter.signal,
@@ -241,7 +198,16 @@ async function dispatch(
     } catch (err) {
       errorReason = err instanceof Error ? err.message : String(err);
     }
-    return { assistantQueue, errorReason };
+    // stream_error captured by the sink wins over a thrown exception
+    // — the sink reason is the model-facing message we want to
+    // surface; the exception is usually a downstream rethrow of the
+    // same condition.
+    const sinkError = sink.getErrorReason();
+    if (sinkError) errorReason = sinkError;
+    return {
+      assistantQueue: [...sink.assistantQueue],
+      errorReason,
+    };
   };
 
   const transientRetryDelayMs = [1500, 4000] as const;
