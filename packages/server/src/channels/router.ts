@@ -118,12 +118,21 @@ async function dispatch(
   let finalText = "";
   let errorReason = "";
   const sink = (msg: ServerMsg) => {
+    // Rebroadcast persisted-row events scoped to this channel
+    // session so a chat shell viewing it paints them live. We
+    // tag each one with `sessionId` so the chat shell can filter
+    // (only apply when viewingSessionId matches) and the events
+    // don't leak into the unrelated webchat thread.
+    if (
+      msg.type === "message_added" ||
+      msg.type === "tool_call" ||
+      msg.type === "tool_result"
+    ) {
+      broadcastToUser(session.userId, { ...msg, sessionId: session.id } as ServerMsg);
+    }
     if (msg.type === "stream_delta") {
       deltaChunks.push(msg.delta);
     } else if (msg.type === "stream_end") {
-      // Use the final rendered text if non-empty; otherwise the
-      // concatenated deltas, otherwise an empty string. Tool-only
-      // turns have all three empty and we ship nothing.
       const wireText = msg.message?.text?.trim() ?? "";
       finalText = wireText || deltaChunks.join("").trim();
     } else if (msg.type === "stream_error") {

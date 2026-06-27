@@ -183,6 +183,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
     );
     tianshuWs.on("message_added", (m) =>
       set((s) => {
+        // Filter to the session the chat shell is currently
+        // viewing. The router broadcasts message_added with a
+        // `sessionId` field tagged with the channel session id
+        // so we ignore messages destined for other threads.
+        // Webchat events have no sessionId and apply when we're
+        // viewing the webchat thread.
+        if (m.sessionId) {
+          if (m.sessionId !== s.viewingSessionId) return {} as Partial<ChatState>;
+        } else {
+          if (s.viewingSessionId !== null) return {} as Partial<ChatState>;
+        }
         // Defensive de-dupe: a re-registered handler (e.g. across HMR
         // boundaries that don't re-run our cleanup) could fire twice for
         // the same message id. We never want to render the same row
