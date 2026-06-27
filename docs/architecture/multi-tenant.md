@@ -294,6 +294,47 @@ Follow-up (not in this revision):
 - Project sharing across users in a tenant. Likely a `project_acl`
   table or symlink farm under `_tenant/shared/`. Not needed for v0.
 
+## Revision 2026-06-27 — channel bindings stay user-scoped
+
+Channel bindings (a wechat QR scan, a telegram bot token, future
+channel credentials) are personal: when user Yu binds his wechat,
+the binding is stamped with `owner_user_id = yu` and the other
+users in the same tenant cannot see it, list it, or send through
+it. Channel sessions opened off that binding inherit the same
+user scoping (`sessions.user_id` is populated from
+`binding.owner_user_id` at `ensureChannelSession` time).
+
+Considered alternative — *tenant-shared bindings*: one admin in a
+tenant scans a customer-service wechat once, every member of the
+tenant can read inbound messages on it and reply through it.
+This would have been valuable for the 'enterprise CS team' shape
+but was rejected for v0:
+
+- **Privacy default.** A binding carries auth tokens (iLink
+  bearer for wechat, bot tokens for telegram) plus the inbound
+  message stream from the platform user on the other side.
+  Defaulting that to tenant-shared leaks both. Opt-in sharing
+  requires a UX + ACL story we haven't designed.
+- **Product framing.** Today tianshu is positioned as a personal
+  AI assistant first; the multi-tenant story exists so families /
+  small teams can share infrastructure, not so one user's
+  credentials get pooled.
+- **No DB schema constraint.** Switching to tenant-shared later
+  is additive: a `bindings.shared_with` JSON column or a
+  `binding_share` join table, plus relaxing the user_id check in
+  `/api/channel-sessions` and `host.channelBindings.list`. The
+  current strict path is the safer default.
+
+Follow-up (not in this revision):
+
+- Tenant-shared bindings as an explicit opt-in mode
+  (`binding.shared = "tenant"`), gated on owner action in the
+  channel admin UI. Required iff someone reports the enterprise
+  CS use case.
+- Cross-user binding handoff ("I'm OOO, please let Alice receive
+  my channel messages until Friday"). Separate feature from the
+  always-on shared mode above.
+
 ## References
 
 - `memory/2026-06-03.md` and `memory/2026-06-05.md`
