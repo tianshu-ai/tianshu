@@ -18,6 +18,7 @@ import { GlobalOps } from "../core/global-ops.js";
 import {
   bootstrapDevTenantIfNeeded,
   DEV_TENANT_ID,
+  DEV_USER_ID,
 } from "../core/dev-mode.js";
 import {
   createBinding,
@@ -97,6 +98,7 @@ describe("bindings CRUD", () => {
     const ctx = ops.open(DEV_TENANT_ID);
     const created = createBinding(ctx.db, {
       tenantId: DEV_TENANT_ID,
+      ownerUserId: DEV_USER_ID,
       channelId: "echo",
       pluginId: "plugin-echo",
       displayName: "Echo Demo",
@@ -116,6 +118,7 @@ describe("bindings CRUD", () => {
     const ctx = ops.open(DEV_TENANT_ID);
     const enabled = createBinding(ctx.db, {
       tenantId: DEV_TENANT_ID,
+      ownerUserId: DEV_USER_ID,
       channelId: "echo",
       pluginId: "p1",
       config: {},
@@ -123,6 +126,7 @@ describe("bindings CRUD", () => {
     });
     createBinding(ctx.db, {
       tenantId: DEV_TENANT_ID,
+      ownerUserId: DEV_USER_ID,
       channelId: "echo",
       pluginId: "p1",
       config: {},
@@ -139,6 +143,7 @@ describe("bindings CRUD", () => {
     const ctx = ops.open(DEV_TENANT_ID);
     const c = createBinding(ctx.db, {
       tenantId: DEV_TENANT_ID,
+      ownerUserId: DEV_USER_ID,
       channelId: "echo",
       pluginId: "p1",
       displayName: "Original",
@@ -155,6 +160,7 @@ describe("bindings CRUD", () => {
     const ctx = ops.open(DEV_TENANT_ID);
     const c = createBinding(ctx.db, {
       tenantId: DEV_TENANT_ID,
+      ownerUserId: DEV_USER_ID,
       channelId: "echo",
       pluginId: "p1",
       config: {},
@@ -169,6 +175,7 @@ describe("bindings CRUD", () => {
     const ctx = ops.open(DEV_TENANT_ID);
     const c = createBinding(ctx.db, {
       tenantId: DEV_TENANT_ID,
+      ownerUserId: DEV_USER_ID,
       channelId: "echo",
       pluginId: "p1",
       config: {},

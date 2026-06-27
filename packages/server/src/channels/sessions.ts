@@ -80,20 +80,32 @@ export function ensureChannelSession(
     };
   }
 
-  // Create new. Owner = tenant's primary user (first by created_at).
-  // Channel session rows don't correspond to a real user-typed
-  // conversation, but every session in the schema needs a user
-  // FK, so we pin them on the tenant's owner.
-  const ownerRow = ctx.db
-    .prepare<[], { id: string }>(
-      `SELECT id FROM users ORDER BY created_at ASC LIMIT 1`,
+  // Create new. Owner = the binding's `owner_user_id`. Channel
+  // bindings are personal credentials; sessions inherit that
+  // scope so they only surface in the binding-owner's sidebar.
+  // Falls back to the tenant's first user when no binding row
+  // exists (development paths that synthesise envelopes without
+  // a real binding).
+  const bindingRow = ctx.db
+    .prepare<[string], { owner_user_id: string }>(
+      `SELECT owner_user_id FROM channel_bindings WHERE id = ?`,
     )
-    .get();
-  if (!ownerRow) {
-    throw new Error(
-      `[channel-session] tenant ${ctx.tenantId} has no users; cannot create channel session`,
-    );
+    .get(input.bindingId);
+  let ownerId = bindingRow?.owner_user_id;
+  if (!ownerId) {
+    const fallback = ctx.db
+      .prepare<[], { id: string }>(
+        `SELECT id FROM users ORDER BY created_at ASC LIMIT 1`,
+      )
+      .get();
+    if (!fallback) {
+      throw new Error(
+        `[channel-session] tenant ${ctx.tenantId} has no users; cannot create channel session`,
+      );
+    }
+    ownerId = fallback.id;
   }
+  const ownerRow = { id: ownerId };
   const id = `session_${randomUUID()}`;
   const now = Date.now();
   const title = buildChannelSessionTitle(input);

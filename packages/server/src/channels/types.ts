@@ -53,6 +53,10 @@ export type BindingStatus =
 export interface ChannelBinding {
   id: string;
   tenantId: string;
+  /** User that owns this binding. Channel credentials are personal
+   *  (one user's wechat scan shouldn't expose another user's
+   *  sessions); all CRUD scopes by both tenant + this id. */
+  ownerUserId: string;
   channelId: string;
   pluginId: string;
   displayName: string | null;

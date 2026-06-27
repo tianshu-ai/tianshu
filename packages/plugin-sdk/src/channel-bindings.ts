@@ -23,6 +23,12 @@ export interface ChannelBindingView {
   id: string;
   /** Tenant this binding belongs to. */
   tenantId: string;
+  /** The user this binding belongs to. Channel accounts (a wechat
+   *  login, a telegram bot token, ...) are personal credentials —
+   *  one user binding their phone shouldn't surface that account
+   *  to other users on the same tenant. The host scopes list /
+   *  delete to this id. */
+  ownerUserId: string;
   /** Channel id ("wechat" / "telegram" / ...). */
   channelId: string;
   /** Plugin id that contributes the channel. */
@@ -42,6 +48,11 @@ export interface ChannelBindingView {
 }
 
 export interface CreateChannelBindingInput {
+  /** Per-user scope. Channel credentials are personal — the host
+   *  refuses any operation where the caller-supplied userId doesn't
+   *  own the targeted binding. Plugin admin routes get this from
+   *  `req.ctx.userId` (set by the host's tenant middleware). */
+  ownerUserId: string;
   channelId: string;
   pluginId: string;
   displayName?: string;
@@ -55,9 +66,10 @@ export interface ChannelBindingsCapability {
   /** Create + start a binding in one call. Returns the row the
    *  host persisted. */
   create(input: CreateChannelBindingInput): Promise<ChannelBindingView>;
-  /** Enumerate bindings for the calling tenant. */
-  list(opts?: { channelId?: string }): ChannelBindingView[];
-  /** Stop the adapter, delete the row. Returns true if anything
-   *  was removed. */
-  delete(bindingId: string): Promise<boolean>;
+  /** Enumerate the calling user's bindings. */
+  list(opts: { ownerUserId: string; channelId?: string }): ChannelBindingView[];
+  /** Stop the adapter, delete the row. Refuses the operation when
+   *  the binding doesn't belong to the supplied user. Returns true
+   *  if anything was removed. */
+  delete(bindingId: string, ownerUserId: string): Promise<boolean>;
 }

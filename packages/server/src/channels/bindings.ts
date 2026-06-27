@@ -19,6 +19,7 @@ import type { BindingStatus, ChannelBinding } from "./types.js";
 interface ChannelBindingRow {
   id: string;
   tenant_id: string;
+  owner_user_id: string;
   channel_id: string;
   plugin_id: string;
   display_name: string | null;
@@ -34,6 +35,7 @@ function rowToBinding(row: ChannelBindingRow): ChannelBinding {
   return {
     id: row.id,
     tenantId: row.tenant_id,
+    ownerUserId: row.owner_user_id,
     channelId: row.channel_id,
     pluginId: row.plugin_id,
     displayName: row.display_name,
@@ -58,15 +60,36 @@ function parseConfig(json: string): Record<string, unknown> {
   return {};
 }
 
-/** List every binding visible to a tenant. Disabled rows are
- *  included; callers filter as needed. */
+/** List every binding for one user within a tenant. Channel
+ *  credentials are personal; admins typically don't want one user's
+ *  scan to surface to another. */
+export function listBindingsForUser(
+  db: Database,
+  tenantId: string,
+  ownerUserId: string,
+): ChannelBinding[] {
+  const rows = db
+    .prepare<[string, string], ChannelBindingRow>(
+      `SELECT id, tenant_id, owner_user_id, channel_id, plugin_id, display_name, config,
+              enabled, status, status_detail, created_at, updated_at
+         FROM channel_bindings
+        WHERE tenant_id = ? AND owner_user_id = ?
+        ORDER BY created_at ASC`,
+    )
+    .all(tenantId, ownerUserId);
+  return rows.map(rowToBinding);
+}
+
+/** Tenant-wide listing — used by the boot path which still needs
+ *  to know every binding to start. Per-user filtering happens
+ *  inside the capability + API layer. */
 export function listBindingsForTenant(
   db: Database,
   tenantId: string,
 ): ChannelBinding[] {
   const rows = db
     .prepare<[string], ChannelBindingRow>(
-      `SELECT id, tenant_id, channel_id, plugin_id, display_name, config,
+      `SELECT id, tenant_id, owner_user_id, channel_id, plugin_id, display_name, config,
               enabled, status, status_detail, created_at, updated_at
          FROM channel_bindings
         WHERE tenant_id = ?
@@ -80,7 +103,7 @@ export function listBindingsForTenant(
 export function listEnabledBindings(db: Database): ChannelBinding[] {
   const rows = db
     .prepare<[], ChannelBindingRow>(
-      `SELECT id, tenant_id, channel_id, plugin_id, display_name, config,
+      `SELECT id, tenant_id, owner_user_id, channel_id, plugin_id, display_name, config,
               enabled, status, status_detail, created_at, updated_at
          FROM channel_bindings
         WHERE enabled = 1
@@ -97,7 +120,7 @@ export function getBinding(
 ): ChannelBinding | null {
   const row = db
     .prepare<[string], ChannelBindingRow>(
-      `SELECT id, tenant_id, channel_id, plugin_id, display_name, config,
+      `SELECT id, tenant_id, owner_user_id, channel_id, plugin_id, display_name, config,
               enabled, status, status_detail, created_at, updated_at
          FROM channel_bindings WHERE id = ?`,
     )
@@ -107,6 +130,7 @@ export function getBinding(
 
 export interface CreateBindingInput {
   tenantId: string;
+  ownerUserId: string;
   channelId: string;
   pluginId: string;
   displayName?: string;
@@ -121,14 +145,18 @@ export function createBinding(
 ): ChannelBinding {
   const id = `cb_${randomUUID()}`;
   const now = Date.now();
-  db.prepare<[string, string, string, string, string | null, string, number, number, number], unknown>(
+  db.prepare<
+    [string, string, string, string, string, string | null, string, number, number, number],
+    unknown
+  >(
     `INSERT INTO channel_bindings
-       (id, tenant_id, channel_id, plugin_id, display_name, config,
+       (id, tenant_id, owner_user_id, channel_id, plugin_id, display_name, config,
         enabled, status, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'idle', ?, ?)`,
   ).run(
     id,
     input.tenantId,
+    input.ownerUserId,
     input.channelId,
     input.pluginId,
     input.displayName ?? null,

@@ -47,7 +47,7 @@ import {
   createBinding,
   deleteBinding,
   getBinding,
-  listBindingsForTenant,
+  listBindingsForUser,
   startChannelRouter,
 } from "./channels/index.js";
 import type { ChannelBindingsCapability } from "@tianshu-ai/plugin-sdk";
@@ -274,6 +274,7 @@ pluginRegistry = new PluginRegistry({
       async create(input) {
         const row = createBinding(ctx.db, {
           tenantId: ctx.tenantId,
+          ownerUserId: input.ownerUserId,
           channelId: input.channelId,
           pluginId: input.pluginId,
           displayName: input.displayName,
@@ -295,14 +296,24 @@ pluginRegistry = new PluginRegistry({
         return toView(row);
       },
       list(opts) {
-        const rows = listBindingsForTenant(ctx.db, ctx.tenantId).filter(
-          (r) => (opts?.channelId ? r.channelId === opts.channelId : true),
+        const rows = listBindingsForUser(
+          ctx.db,
+          ctx.tenantId,
+          opts.ownerUserId,
+        ).filter(
+          (r) => (opts.channelId ? r.channelId === opts.channelId : true),
         );
         return rows.map(toView);
       },
-      async delete(bindingId) {
+      async delete(bindingId, ownerUserId) {
         const row = getBinding(ctx.db, bindingId);
-        if (!row || row.tenantId !== ctx.tenantId) return false;
+        if (
+          !row ||
+          row.tenantId !== ctx.tenantId ||
+          row.ownerUserId !== ownerUserId
+        ) {
+          return false;
+        }
         await channelManager.stopBinding(bindingId).catch(() => {});
         // Cascade: delete the binding row and every session/message
         // tied to it. Without this, the channel sessions linger in
@@ -338,6 +349,7 @@ function toView(row: import("./channels/index.js").ChannelBinding): import("@tia
   return {
     id: row.id,
     tenantId: row.tenantId,
+    ownerUserId: row.ownerUserId,
     channelId: row.channelId,
     pluginId: row.pluginId,
     displayName: row.displayName,
@@ -547,7 +559,7 @@ app.get("/api/channel-sessions", (req, res) => {
   }
   const rows = req.ctx.tenant.db
     .prepare<
-      [],
+      [string],
       {
         id: string;
         channel_id: string;
@@ -557,14 +569,20 @@ app.get("/api/channel-sessions", (req, res) => {
         created_at: number;
       }
     >(
+      // Scope to the calling user: channel sessions are personal
+      // (one user's wechat scan shouldn't surface to others on the
+      // tenant). user_id on the session row already tracks this
+      // because ensureChannelSession stamps it from the binding's
+      // owner_user_id.
       `SELECT id, channel_id, channel_chat_id, channel_binding_id,
               title, created_at
          FROM sessions
         WHERE channel_id IS NOT NULL
           AND kind = 'user'
+          AND user_id = ?
         ORDER BY created_at DESC`,
     )
-    .all();
+    .all(req.ctx.userId);
   res.json({
     sessions: rows.map((r) => ({
       id: r.id,
