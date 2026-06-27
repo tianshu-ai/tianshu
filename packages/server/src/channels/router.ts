@@ -174,13 +174,13 @@ async function dispatch(
   const runAttempt = async (
     candidateModelId: string | undefined,
   ): Promise<AttemptResult> => {
-    let deltaChunks: string[] = [];
     const assistantQueue: string[] = [];
+    const sentMessageIds = new Set<string>();
     let errorReason = "";
     const sink = (msg: ServerMsg) => {
       // Rebroadcast persisted-row events scoped to this channel
-      // session so a chat shell viewing it paints them live. We
-      // tag each one with `sessionId` so the chat shell can
+      // session so a chat shell viewing it paints them live.
+      // We tag each one with `sessionId` so the chat shell can
       // filter (only apply when viewingSessionId matches) and
       // the events don't leak into the unrelated webchat thread.
       if (
@@ -193,13 +193,31 @@ async function dispatch(
           sessionId: session.id,
         } as ServerMsg);
       }
-      if (msg.type === "stream_delta") {
-        deltaChunks.push(msg.delta);
+      // EVERY assistant message gets queued for adapter delivery.
+      // The agent loop emits a `message_added` event for each
+      // turn the LLM completes (text turn, post-tool-call
+      // continuation, etc.). Previously we only queued the final
+      // `stream_end` body, dropping the in-between turns; users
+      // on wechat saw only the last response. `sentMessageIds`
+      // de-dupes against `stream_end` which fires for the same
+      // last message after message_added does.
+      if (msg.type === "message_added" && msg.message?.role === "assistant") {
+        const text = msg.message.text?.trim() ?? "";
+        if (text.length > 0) {
+          sentMessageIds.add(msg.message.id);
+          assistantQueue.push(text);
+        }
       } else if (msg.type === "stream_end") {
-        const wireText = msg.message?.text?.trim() ?? "";
-        const text = wireText || deltaChunks.join("").trim();
-        deltaChunks = [];
-        if (text.length > 0) assistantQueue.push(text);
+        // Belt-and-braces: stream_end's `message` is the last
+        // assistant turn. If it wasn't already queued via a
+        // preceding message_added (some agent paths skip the
+        // intermediate event), queue it now.
+        const wire = msg.message;
+        const text = wire?.text?.trim() ?? "";
+        if (wire && text.length > 0 && !sentMessageIds.has(wire.id)) {
+          sentMessageIds.add(wire.id);
+          assistantQueue.push(text);
+        }
       } else if (msg.type === "stream_error") {
         errorReason = msg.reason || "unknown";
       }
