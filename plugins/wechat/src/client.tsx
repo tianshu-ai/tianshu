@@ -37,7 +37,11 @@ import type {
   PluginClientExports,
   SidebarSectionProps,
 } from "@tianshu-ai/plugin-sdk/client";
-import { useChatNav, useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
+import {
+  subscribeToWsEvent,
+  useChatNav,
+  useUiPrimitives,
+} from "@tianshu-ai/plugin-sdk/client";
 
 // ─── wire shapes ────────────────────────────────────────────────
 
@@ -462,11 +466,22 @@ function WeChatSidebarSection(_props: SidebarSectionProps) {
 
   useEffect(() => {
     void refresh();
-    // Light auto-refresh while the sidebar's mounted. 30s mirrors
-    // the host's old global poll; tighten once the channel hub
-    // pushes notifications.
+    // Live push for new sessions / messages — the router broadcasts
+    // `channel_session_changed` on every inbound + cascade delete
+    // so the sidebar stays in sync without a polling delay.
+    const offWs = subscribeToWsEvent<{
+      type: "channel_session_changed";
+      channelId: string;
+    }>("channel_session_changed", (ev) => {
+      if (ev.channelId === "wechat") void refresh();
+    });
+    // Polling fallback as a backup in case a socket hiccup
+    // dropped a push.
     const t = setInterval(() => void refresh(), 30_000);
-    return () => clearInterval(t);
+    return () => {
+      offWs();
+      clearInterval(t);
+    };
   }, [refresh]);
 
   if (sessions === null) {

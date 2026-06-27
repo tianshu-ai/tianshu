@@ -607,3 +607,60 @@ export function useChatNav(): ChatNavApi {
   }
   return fn();
 }
+
+// ─── WebSocket event hook ─────────────────────────────────────────────
+//
+// Plugins occasionally want to react to push-broadcasted events
+// the host server emits — e.g. a wechat sidebar section refreshing
+// its session list when a new inbound message lands. Subscribing
+// from a plugin's own React component without reaching into host
+// internals is what this hook provides.
+//
+// The host installs a singleton subscribe function at boot via
+// __installUseWsEvent; plugins call useWsEvent(type, handler) from
+// any component. Effect cleanup unsubscribes on unmount.
+//
+// We deliberately keep this generic over wire-message type so the
+// SDK doesn't need to know every event the server emits.
+
+export interface WsEventApi {
+  /** Subscribe to a typed server event. Returns the cleanup
+   *  function the React effect needs to unsubscribe. Caller
+   *  is responsible for stable handler identity (React-shaped). */
+  subscribe: (
+    type: string,
+    handler: (event: { type: string } & Record<string, unknown>) => void,
+  ) => () => void;
+}
+
+interface WsEventGlobalSlot {
+  __tianshuPluginSdkWsEventApi__?: WsEventApi;
+}
+
+function wsEventSlot(): WsEventGlobalSlot {
+  return globalThis as unknown as WsEventGlobalSlot;
+}
+
+export function __installWsEventApi(api: WsEventApi): void {
+  wsEventSlot().__tianshuPluginSdkWsEventApi__ = api;
+}
+
+export function __resetWsEventApiForTest(): void {
+  delete wsEventSlot().__tianshuPluginSdkWsEventApi__;
+}
+
+/** Programmatic subscribe — plugins call this from their own
+ *  useEffect to receive WebSocket events from the host. Returns the
+ *  unsubscribe function (or a no-op when the host hasn't installed
+ *  an API yet, e.g. unit tests or pre-mount probing). */
+export function subscribeToWsEvent<TEvent extends { type: string }>(
+  type: TEvent["type"],
+  handler: (event: TEvent) => void,
+): () => void {
+  const api = wsEventSlot().__tianshuPluginSdkWsEventApi__;
+  if (!api) return () => {};
+  return api.subscribe(
+    type,
+    handler as (e: { type: string } & Record<string, unknown>) => void,
+  );
+}

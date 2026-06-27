@@ -26,10 +26,12 @@ import {
   __installUiPrimitives,
   __installUseComposer,
   __installUseTheme,
+  __installWsEventApi,
   type ChatNavApi,
   type ThemeApi,
 } from "@tianshu-ai/plugin-sdk/client";
 import { useChatStore } from "./stores/chat-store";
+import { tianshuWs } from "./lib/ws";
 import { getComposerApi } from "./stores/composer-store";
 import { PluginConfigFormById } from "./components/PluginConfigForm";
 import { Modal } from "./components/ui/Modal";
@@ -61,6 +63,18 @@ __installChatNav((): ChatNavApi => {
   const viewingSessionId = useChatStore((s) => s.viewingSessionId);
   const setViewingSession = useChatStore((s) => s.selectSession);
   return { viewingSessionId, setViewingSession };
+});
+// WebSocket subscribe surface for plugins. Bridges plugin SDK's
+// subscribeToWsEvent to the host's tianshuWs.on(...) singleton so
+// plugin code never reaches into the host's app layer.
+__installWsEventApi({
+  subscribe: (type, handler) => {
+    // tianshuWs.on returns the off() function; plugins just
+    // bubble it back to React effect cleanup.
+    return (
+      tianshuWs.on(type as never, handler as never) ?? (() => {})
+    );
+  },
 });
 
 // Bootstrap fallback for OpenFileApi.
