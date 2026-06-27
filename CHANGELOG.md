@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.3.47](https://github.com/tianshu-ai/tianshu/compare/v0.3.46...v0.3.47) (2026-06-27)
+
+### Bug Fixes
+
+* **channels:** every assistant turn from a multi-turn agent run
+  is now forwarded to wechat, not just the last. The previous
+  fix queued from stream_end (which fires once per runPrompt,
+  not once per turn); now queues from each `message_added`
+  event whose role is assistant.
+
 ## [0.3.36](https://github.com/tianshu-ai/tianshu/compare/v0.3.35...v0.3.36) (2026-06-26)
 
 ### Features
