@@ -159,50 +159,101 @@ async function dispatch(
   //   - wechat preserves message order by send time, so users see
   //     thinking → tool result → final answer in the order the
   //     agent produced them
-  let deltaChunks: string[] = [];
-  const assistantQueue: string[] = [];
-  let errorReason = "";
-  const sink = (msg: ServerMsg) => {
-    // Rebroadcast persisted-row events scoped to this channel
-    // session so a chat shell viewing it paints them live. We
-    // tag each one with `sessionId` so the chat shell can filter
-    // (only apply when viewingSessionId matches) and the events
-    // don't leak into the unrelated webchat thread.
-    if (
-      msg.type === "message_added" ||
-      msg.type === "tool_call" ||
-      msg.type === "tool_result"
-    ) {
-      broadcastToUser(session.userId, { ...msg, sessionId: session.id } as ServerMsg);
-    }
-    if (msg.type === "stream_delta") {
-      deltaChunks.push(msg.delta);
-    } else if (msg.type === "stream_end") {
-      const wireText = msg.message?.text?.trim() ?? "";
-      const text = wireText || deltaChunks.join("").trim();
-      deltaChunks = [];
-      if (text.length > 0) assistantQueue.push(text);
-    } else if (msg.type === "stream_error") {
-      errorReason = msg.reason || "unknown";
-    }
+  // Try the agent up to (1 try + retries) total times. On a
+  // transient error (network, 429, 5xx, timeout) we back off and
+  // retry on the same model. On a permanent provider error
+  // (401 / 403 / model not found) we retry once with the tenant
+  // default model so a stale binding-specific key doesn't take
+  // out the user's reply. Each attempt builds a fresh sink so
+  // partial output from a failed turn doesn't leak forward.
+  type AttemptResult = {
+    assistantQueue: string[];
+    errorReason: string;
   };
 
-  const aborter = new AbortController();
-  try {
-    await runPrompt({
-      ctx,
-      userId: session.userId,
-      send: sink,
-      content: envelope.text,
-      modelId,
-      signal: aborter.signal,
-      pluginRegistry: deps.pluginRegistry,
-      homeDir: deps.homeDir,
-      session,
-    });
-  } catch (err) {
-    errorReason = err instanceof Error ? err.message : String(err);
+  const runAttempt = async (
+    candidateModelId: string | undefined,
+  ): Promise<AttemptResult> => {
+    let deltaChunks: string[] = [];
+    const assistantQueue: string[] = [];
+    let errorReason = "";
+    const sink = (msg: ServerMsg) => {
+      // Rebroadcast persisted-row events scoped to this channel
+      // session so a chat shell viewing it paints them live. We
+      // tag each one with `sessionId` so the chat shell can
+      // filter (only apply when viewingSessionId matches) and
+      // the events don't leak into the unrelated webchat thread.
+      if (
+        msg.type === "message_added" ||
+        msg.type === "tool_call" ||
+        msg.type === "tool_result"
+      ) {
+        broadcastToUser(session.userId, {
+          ...msg,
+          sessionId: session.id,
+        } as ServerMsg);
+      }
+      if (msg.type === "stream_delta") {
+        deltaChunks.push(msg.delta);
+      } else if (msg.type === "stream_end") {
+        const wireText = msg.message?.text?.trim() ?? "";
+        const text = wireText || deltaChunks.join("").trim();
+        deltaChunks = [];
+        if (text.length > 0) assistantQueue.push(text);
+      } else if (msg.type === "stream_error") {
+        errorReason = msg.reason || "unknown";
+      }
+    };
+    const aborter = new AbortController();
+    try {
+      await runPrompt({
+        ctx,
+        userId: session.userId,
+        send: sink,
+        content: envelope.text,
+        modelId: candidateModelId,
+        signal: aborter.signal,
+        pluginRegistry: deps.pluginRegistry,
+        homeDir: deps.homeDir,
+        session,
+      });
+    } catch (err) {
+      errorReason = err instanceof Error ? err.message : String(err);
+    }
+    return { assistantQueue, errorReason };
+  };
+
+  const transientRetryDelayMs = [1500, 4000] as const;
+  let result = await runAttempt(modelId);
+  let attempt = 0;
+  while (
+    result.errorReason.length > 0 &&
+    attempt < transientRetryDelayMs.length &&
+    isTransientError(result.errorReason)
+  ) {
+    const delay = transientRetryDelayMs[attempt]!;
+    attempt += 1;
+    console.info(
+      `[channel-router] transient agent error on attempt ${attempt}; retrying in ${delay}ms: ${result.errorReason}`,
+    );
+    await sleep(delay);
+    result = await runAttempt(modelId);
   }
+  // Permanent provider failures — try once with the tenant
+  // default model so a stale binding model doesn't take out
+  // the user's reply.
+  if (
+    result.errorReason.length > 0 &&
+    modelId &&
+    isPermanentProviderError(result.errorReason)
+  ) {
+    console.info(
+      `[channel-router] permanent provider error on bound model (${modelId}); retrying with tenant default: ${result.errorReason}`,
+    );
+    result = await runAttempt(undefined);
+  }
+
+  const { assistantQueue, errorReason } = result;
 
   // Sequential delivery preserves order on the user's wechat
   // thread + avoids racing the per-user context_token.
@@ -211,17 +262,19 @@ async function dispatch(
   }
 
   if (errorReason.length > 0) {
-    // The user sees a short, plain explanation — 'agent error:
-    // 401 Jwt is expired' isn't actionable for them. Detail goes
-    // into the binding row so the admin can see the original
-    // cause at /admin/<channel>.
+    // All recovery attempts failed. Persist the cause on the
+    // binding row so the admin sees the original error at
+    // /admin/<channel>, log it server-side, and surface a short
+    // friendly note to the user on wechat. Earlier the user got
+    // the raw 'agent error: 401 Jwt is expired'; that string is
+    // useless to them and embarrassing to us.
     try {
       setBindingStatus(ctx.db, envelope.bindingId, "error", errorReason);
     } catch {
       /* logging-only; do not break the user reply */
     }
     console.warn(
-      `[channel-router] agent error (${envelope.bindingId}): ${errorReason}`,
+      `[channel-router] agent error (${envelope.bindingId}) after retries: ${errorReason}`,
     );
     await safeSend(
       envelope.bindingId,
@@ -230,6 +283,45 @@ async function dispatch(
     );
   }
   // Tool-only turn: assistantQueue is empty, nothing more to ship.
+}
+
+/** Classify an error string as transient (worth a retry on the
+ *  same model) vs. permanent (needs a different model / admin
+ *  attention). The heuristics are intentionally string-based
+ *  because pi-agent-core's errors bubble up through several
+ *  layers without preserving a typed code. */
+function isTransientError(reason: string): boolean {
+  const lower = reason.toLowerCase();
+  return (
+    lower.includes("timeout") ||
+    lower.includes("timed out") ||
+    lower.includes("econnreset") ||
+    lower.includes("econnrefused") ||
+    lower.includes("socket hang up") ||
+    lower.includes("network") ||
+    lower.includes("fetch failed") ||
+    /\b5\d\d\b/.test(lower) || // 5xx
+    lower.includes("429") ||
+    lower.includes("rate limit")
+  );
+}
+
+function isPermanentProviderError(reason: string): boolean {
+  const lower = reason.toLowerCase();
+  return (
+    lower.includes("401") ||
+    lower.includes("jwt") ||
+    lower.includes("403") ||
+    lower.includes("permission") ||
+    lower.includes("unauthorized") ||
+    lower.includes("model not found") ||
+    lower.includes("no models") ||
+    lower.includes("invalid api key")
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function safeSend(bindingId: string, target: string, text: string): Promise<void> {
