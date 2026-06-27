@@ -33,10 +33,32 @@ import { channelHub } from "./hub.js";
 import type { InboundEnvelope } from "./types.js";
 import type { GlobalOps } from "../core/global-ops.js";
 import { ensureChannelSession } from "./sessions.js";
-import { getBinding } from "./bindings.js";
+import { getBinding, setBindingStatus } from "./bindings.js";
 import { runPrompt } from "../chat/handler.js";
 import { broadcastToUser } from "../chat/active-harnesses.js";
 import type { ServerMsg } from "../chat/ws-protocol.js";
+
+/** Translate raw LLM / provider errors into a short, user-facing
+ *  string suitable for a chat-platform message. Specifics (401
+ *  bodies, stack traces, provider URLs) stay in logs + binding
+ *  status; the human at the other end of wechat gets something
+ *  they can act on. */
+function friendlyErrorMessage(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes("jwt is expired") || lower.includes("401")) {
+    return "⚠️ I can't reach the model right now — the API key is expired or invalid. The admin needs to refresh it.";
+  }
+  if (lower.includes("429") || lower.includes("rate limit")) {
+    return "⚠️ Hitting rate limits. Try again in a bit.";
+  }
+  if (lower.includes("403") || lower.includes("permission")) {
+    return "⚠️ The model is denying my requests (403). The admin needs to check provider access.";
+  }
+  if (lower.includes("timeout") || lower.includes("timed out")) {
+    return "⚠️ Took too long to hear back from the model. Try again.";
+  }
+  return "⚠️ Something went wrong on my side. Try again, and ping the admin if it sticks.";
+}
 
 /** Decision the router makes about whether a message should reach
  *  the agent at all. */
@@ -189,10 +211,23 @@ async function dispatch(
   }
 
   if (errorReason.length > 0) {
-    // Surface the error after every successful message landed.
-    // Channel platforms have small message budgets and exposing
-    // internal failure detail would be noisy; keep it terse.
-    await safeSend(envelope.bindingId, envelope.chatId, `⚠️ agent error: ${errorReason}`);
+    // The user sees a short, plain explanation — 'agent error:
+    // 401 Jwt is expired' isn't actionable for them. Detail goes
+    // into the binding row so the admin can see the original
+    // cause at /admin/<channel>.
+    try {
+      setBindingStatus(ctx.db, envelope.bindingId, "error", errorReason);
+    } catch {
+      /* logging-only; do not break the user reply */
+    }
+    console.warn(
+      `[channel-router] agent error (${envelope.bindingId}): ${errorReason}`,
+    );
+    await safeSend(
+      envelope.bindingId,
+      envelope.chatId,
+      friendlyErrorMessage(errorReason),
+    );
   }
   // Tool-only turn: assistantQueue is empty, nothing more to ship.
 }
