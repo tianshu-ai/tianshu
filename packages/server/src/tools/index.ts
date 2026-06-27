@@ -75,6 +75,15 @@ export interface BuildToolContext {
    */
   sessionId?: string;
   /**
+   * Channel-session tagging (wechat / telegram / ...) when this
+   * toolset is built for a session bound to a chat platform. Used
+   * by channel-aware tools' `available()` to hide themselves on
+   * webchat sessions. Absent for plain webchat / no-session
+   * invocations — see `AgentToolContext.channelSession` for the
+   * full doc.
+   */
+  channelSession?: AgentToolContext["channelSession"];
+  /**
    * Workboard task id this toolset is bound to. Forwarded into
    * every tool's `AgentToolContext.taskId` so per-task tools
    * (microsandbox `exec`) can scope resources to the task
@@ -124,6 +133,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       agentScope,
       log: toolContext.log,
       sessionId: toolContext.sessionId,
+      channelSession: toolContext.channelSession,
       taskId: toolContext.taskId,
       signal: toolContext.signal,
     };

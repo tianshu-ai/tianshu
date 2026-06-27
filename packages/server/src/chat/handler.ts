@@ -364,30 +364,43 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const pluginFragments =
     pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
   // Channel-session awareness: if this session is bound to a chat
-  // platform (wechat / telegram / ...), nudge the agent to deliver
-  // local files through `channel_send_file` rather than dumping
-  // raw paths into the reply (which won't render natively on the
-  // user's side). Webchat sessions skip this fragment.
+  // platform (wechat / telegram / ...), feed the tagging into the
+  // toolset (so channel-only tools become visible) AND into the
+  // system prompt (so the agent knows what channel it's on). On
+  // webchat sessions both stay null and channel tools stay hidden.
   const channelTag = ctx.db
     .prepare<
       [string],
-      { channel_binding_id: string | null; channel_id: string | null }
+      {
+        channel_binding_id: string | null;
+        channel_id: string | null;
+        channel_chat_id: string | null;
+      }
     >(
-      `SELECT channel_binding_id, channel_id
+      `SELECT channel_binding_id, channel_id, channel_chat_id
          FROM sessions WHERE id = ?`,
     )
     .get(session.id);
-  const channelFragments: PluginPromptFragment[] =
-    channelTag?.channel_binding_id && channelTag.channel_id
-      ? [
-          {
-            pluginId: "core",
-            pluginDisplayName: "Channel session",
-            fragmentId: "channel-session-attachments",
-            text: `You are responding inside a ${channelTag.channel_id} conversation, not webchat. When you produce a deliverable file (image, screenshot, document, video) the user should see, call \`channel_send_file({filePath, caption})\` to ship it through the platform's native media path — do NOT just paste a local filesystem path into your reply, the user can't open it. For text-only answers, reply normally.`,
-          },
-        ]
-      : [];
+  const channelSession =
+    channelTag?.channel_binding_id &&
+    channelTag.channel_id &&
+    channelTag.channel_chat_id
+      ? {
+          bindingId: channelTag.channel_binding_id,
+          channelId: channelTag.channel_id,
+          chatId: channelTag.channel_chat_id,
+        }
+      : undefined;
+  const channelFragments: PluginPromptFragment[] = channelSession
+    ? [
+        {
+          pluginId: "core",
+          pluginDisplayName: "Channel session",
+          fragmentId: "channel-session-context",
+          text: `You are responding inside a ${channelSession.channelId} conversation, not webchat. The user receives every assistant message you produce via the ${channelSession.channelId} platform. When you produce a deliverable file (image, screenshot, document, video), call \`channel_send_file({filePath, caption})\` to ship it through the platform's native media path — do NOT just paste a local filesystem path into your reply, the user can't open it. For text-only answers, reply normally; channel-specific tools (\`channel_*\`) are visible only inside channel sessions like this one.`,
+        },
+      ]
+    : [];
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {
@@ -402,6 +415,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       agentScope: { kind: "main" },
       log: makeLogger(ctx.tenantId, userId, send),
       sessionId: session.id,
+      channelSession,
     },
   });
 

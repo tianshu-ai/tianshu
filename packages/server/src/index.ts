@@ -150,9 +150,7 @@ pluginRegistry = new PluginRegistry({
     {
       name: CHANNEL_SEND_FILE_TOOL_NAME,
       since: "0.3.50",
-      tool: buildChannelSendFileTool({
-        openTenant: (tenantId) => globalOps.open(tenantId),
-      }),
+      tool: buildChannelSendFileTool(),
     },
   ],
   hostCapabilities: {

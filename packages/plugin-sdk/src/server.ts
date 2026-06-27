@@ -240,6 +240,34 @@ export interface AgentToolContext {
    */
   sessionId?: string;
   /**
+   * Channel-session tagging when the session this tool runs inside
+   * is bound to a chat platform (wechat / telegram / ...). Tools that
+   * only make sense inside a channel session — e.g. `channel_send_file`,
+   * which delivers media through the platform's native upload path —
+   * gate their `available()` on this so webchat sessions don't see
+   * them at all.
+   *
+   * Set by the host (chat handler + worker agent-loop) by reading
+   * `sessions.channel_binding_id / channel_id / channel_chat_id` for
+   * the active session row. Absent when the session is plain webchat
+   * or there's no session at all.
+   *
+   * Adapters that consume `OutboundChannelMessage.attachments`
+   * receive the actual binding through channelHub; this field is
+   * purely a hint for tool visibility + system-prompt awareness.
+   */
+  channelSession?: {
+    /** Stable id of the channel binding (one wechat scan / telegram
+     *  bot). Useful when a tool wants to dispatch outbound messages
+     *  via channelHub.send(bindingId, ...). */
+    bindingId: string;
+    /** Channel id string ("wechat", "telegram", ...). */
+    channelId: string;
+    /** Channel-native chat id (a wechat ilink user id, a telegram
+     *  chat id, etc.). */
+    chatId: string;
+  };
+  /**
    * Workboard task id when this tool call is driven by a worker
    * pool run. Lets per-task tools scope their resources to a
    * single task lifecycle — e.g. microsandbox routes `exec` calls
