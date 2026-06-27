@@ -123,7 +123,7 @@ function randomWechatUin(): string {
 
 /** Build the `base_info` block every authenticated request carries.
  *  Identifies the calling bot to Tencent's analytics. */
-function buildBaseInfo(opts: { botAgent: string; channelVersion: string }) {
+export function buildBaseInfo(opts: { botAgent: string; channelVersion: string }) {
   return {
     // channel_version is a string (e.g. "0.3.36"). OpenClaw's
     // reference packed it into a uint32 in the iLink-App-ClientVersion
@@ -191,7 +191,7 @@ async function apiGet(opts: {
 /** POST a JSON body to an iLink endpoint. Throws a typed ApiError
  *  on transport-level failures; the caller checks `resp.ret` /
  *  `resp.errcode` for API-level failures from the response body. */
-async function apiPost(opts: RawPostOpts): Promise<string> {
+export async function apiPost(opts: RawPostOpts): Promise<string> {
   const url = `${trimTrailingSlash(opts.baseUrl)}/${opts.endpoint}`;
   const headers = buildIlinkHeaders({ token: opts.token });
 

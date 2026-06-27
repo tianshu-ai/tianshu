@@ -607,6 +607,22 @@ export interface InboundChannelMessage {
 /** Outbound message handed to the adapter for delivery. The
  *  adapter decides format (plain text vs card vs whatever the
  *  platform supports natively). */
+/** A local file the channel adapter should deliver alongside (or
+ *  instead of) the text body. The path must already exist on the
+ *  host filesystem; channels that can't natively render the
+ *  file kind (image / video / generic file) MAY fall back to a
+ *  text mention. The optional `kind` is a hint — adapters that
+ *  sniff MIME from extension themselves can ignore it. */
+export interface OutboundAttachment {
+  /** Absolute path on the host filesystem. */
+  filePath: string;
+  /** Display name for FILE-type messages (defaults to basename). */
+  fileName?: string;
+  /** Optional hint: "image" / "video" / "file". Adapter MAY use
+   *  it instead of extension sniffing. */
+  kind?: "image" | "video" | "file";
+}
+
 export interface OutboundChannelMessage {
   /** Target chat handle in the channel's native ID space. */
   target: string;
@@ -616,6 +632,11 @@ export interface OutboundChannelMessage {
   /** Reply to a specific message id when the channel supports
    *  threading. */
   replyTo?: string;
+  /** Local-file attachments. Adapters that don't support media
+   *  delivery MAY ignore this and just send `text` — callers
+   *  should not rely on attachments getting through without
+   *  checking adapter capabilities. */
+  attachments?: OutboundAttachment[];
 }
 
 /** Semantic reactions the host emits to signal processing state

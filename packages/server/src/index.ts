@@ -40,6 +40,10 @@ import {
   buildToolCatalogRefreshTool,
   TOOL_CATALOG_REFRESH_NAME,
 } from "./chat/host-tools/tool-catalog-refresh.js";
+import {
+  buildChannelSendFileTool,
+  CHANNEL_SEND_FILE_TOOL_NAME,
+} from "./chat/host-tools/channel-send-file.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
 import {
@@ -141,6 +145,13 @@ pluginRegistry = new PluginRegistry({
         // The tool only resolves the registry at execute-time,
         // so the lazy getter is safe.
         registry: () => pluginRegistry,
+      }),
+    },
+    {
+      name: CHANNEL_SEND_FILE_TOOL_NAME,
+      since: "0.3.50",
+      tool: buildChannelSendFileTool({
+        openTenant: (tenantId) => globalOps.open(tenantId),
       }),
     },
   ],

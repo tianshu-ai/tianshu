@@ -35,6 +35,7 @@ import {
   TIANSHU_BOT_AGENT,
   type IncomingMessage,
 } from "./ilink-api.js";
+import { uploadAndSendFile } from "./ilink-media.js";
 import { WeChatState } from "./state.js";
 
 const DEFAULT_LONG_POLL_TIMEOUT_MS = 35_000;
@@ -161,15 +162,42 @@ export class WeChatChannel implements ChannelAdapter {
         `wechat: no context_token for user ${message.target}; the recipient must have sent at least one message recently`,
       );
     }
-    await sendTextMessage({
+    const base = {
       baseUrl: this.baseUrl,
       token: this.token,
       ilinkUserId: message.target,
       contextToken,
-      text: message.text,
       botAgent: this.botAgent,
       channelVersion: CHANNEL_VERSION,
-    });
+    };
+    // Tencent's iLink API requires one item per sendmessage call,
+    // so text caption + each attachment ship sequentially. We
+    // send the text first so it appears above the media in the
+    // recipient's thread.
+    if (message.text && message.text.trim().length > 0) {
+      await sendTextMessage({ ...base, text: message.text });
+    }
+    for (const att of message.attachments ?? []) {
+      try {
+        await uploadAndSendFile({
+          ...base,
+          filePath: att.filePath,
+          fileName: att.fileName,
+        });
+      } catch (err) {
+        // Surface a text fallback so the user sees something
+        // rather than silent failure. Logging is done by the
+        // host's safeSend wrapper.
+        const reason = err instanceof Error ? err.message : String(err);
+        this.ctx.log.error(
+          `wechat: attachment delivery failed (${att.filePath}): ${reason}`,
+        );
+        await sendTextMessage({
+          ...base,
+          text: `⚠️ Couldn't send attachment ${att.fileName ?? att.filePath}: ${reason}`,
+        });
+      }
+    }
   }
 
   async resolveDisplayName(handle: string, _kind: "user" | "chat"): Promise<string | null> {
