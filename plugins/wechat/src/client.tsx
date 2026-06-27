@@ -112,34 +112,65 @@ interface AddModalProps {
 
 function AddAccountFlow({ onClose, onBound }: AddModalProps) {
   const { Modal } = useUiPrimitives();
-  const [phase, setPhase] = useState<"loading" | "qr" | "scanned" | "error">("loading");
+  const [phase, setPhase] = useState<
+    "model" | "loading" | "qr" | "scanned" | "error"
+  >("model");
   const [qr, setQr] = useState<LoginStartResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bound, setBound] = useState<BindingView | null>(null);
+  const [models, setModels] = useState<
+    { id: string; displayName: string }[]
+  >([]);
+  const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  const [selectedModel, setSelectedModel] = useState<string>("");
   const pollRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
-  // Step 1: fetch QR
+  // Step 0: load model catalog so the user can pick which LLM this
+  // wechat binding routes inbound DMs to. Default = tenant default.
   useEffect(() => {
-    setPhase("loading");
     void (async () => {
       try {
-        const r = await api("/login/start", { method: "POST", body: "{}" });
-        const body = (await r.json()) as LoginStartResponse;
-        if (!r.ok || !body.ok) {
-          setError(body.error ?? `HTTP ${r.status}`);
-          setPhase("error");
-          return;
-        }
-        setQr(body);
-        setPhase("qr");
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-        setPhase("error");
+        const r = await fetch("/api/models", { credentials: "include" });
+        const body = (await r.json()) as {
+          models?: { id: string; displayName?: string; label?: string }[];
+          defaultModel?: string | null;
+        };
+        const list = (body.models ?? []).map((m) => ({
+          id: m.id,
+          displayName: m.displayName ?? m.label ?? m.id,
+        }));
+        setModels(list);
+        setDefaultModel(body.defaultModel ?? null);
+        // Pre-select the default; user can override before scanning.
+        setSelectedModel(body.defaultModel ?? list[0]?.id ?? "");
+      } catch {
+        // best-effort; admin can still scan, the binding will fall
+        // back to the tenant default when no modelId is stored.
       }
     })();
     return () => {
       pollRef.current.cancelled = true;
     };
+  }, []);
+
+  // Step 1: fetch QR (triggered only after the user clicks Continue
+  // on the model picker).
+  const startQr = useCallback(async () => {
+    setPhase("loading");
+    try {
+      const r = await api("/login/start", { method: "POST", body: "{}" });
+      const body = (await r.json()) as LoginStartResponse;
+      if (!r.ok || !body.ok) {
+        setError(body.error ?? `HTTP ${r.status}`);
+        setPhase("error");
+        return;
+      }
+      setQr(body);
+      setPhase("qr");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setPhase("error");
+    }
   }, []);
 
   // Step 2: poll for scan completion
@@ -152,7 +183,10 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
         try {
           const r = await api("/login/poll", {
             method: "POST",
-            body: JSON.stringify({ qrcode: qr.qrcode }),
+            body: JSON.stringify({
+              qrcode: qr.qrcode,
+              modelId: selectedModel || undefined,
+            }),
           });
           const body = (await r.json()) as LoginPollResponse;
           if (ref.cancelled) return;
@@ -194,6 +228,39 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
   return (
     <Modal isOpen onClose={onClose} title="Add WeChat account" size="sm">
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6">
+        {phase === "model" && (
+          <>
+            <div className="text-sm text-fg-muted">
+              Choose which model this WeChat account routes to:
+            </div>
+            <select
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              className="w-full max-w-sm rounded-md border border-border-default bg-bg-elevated px-3 py-2 text-sm text-fg-default"
+            >
+              {models.length === 0 && (
+                <option value="">(no models registered)</option>
+              )}
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.displayName}
+                  {defaultModel === m.id ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => void startQr()}
+              disabled={models.length === 0 || !selectedModel}
+              className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-fg-on-accent hover:bg-accent-hover disabled:opacity-50"
+            >
+              Continue → Scan QR
+            </button>
+            <div className="text-[11px] text-fg-fainter">
+              You can change the model later by re-scanning.
+            </div>
+          </>
+        )}
         {phase === "loading" && (
           <>
             <Loader2 className="h-6 w-6 animate-spin text-fg-faint" />
@@ -403,6 +470,14 @@ function WeChatAdminPage(_props: AdminPageProps) {
                 <div className="mt-0.5 flex items-center gap-2 text-[11px] text-fg-faint">
                   <span className="font-mono">{b.id}</span>
                   <StatusPill status={b.status} detail={b.statusDetail} />
+                  {typeof b.config.modelId === "string" && b.config.modelId && (
+                    <span
+                      className="rounded bg-bg-hover px-1 py-px font-mono text-[10px] text-fg-muted"
+                      title="Model this binding routes inbound DMs to"
+                    >
+                      {String(b.config.modelId)}
+                    </span>
+                  )}
                   <span>· bound {new Date(b.createdAt).toLocaleDateString()}</span>
                 </div>
               </div>

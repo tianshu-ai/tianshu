@@ -121,6 +121,7 @@ const plugin: PluginServerModule = {
           const body = (req.body ?? {}) as {
             qrcode?: string;
             displayName?: string;
+            modelId?: string;
           };
           if (!body.qrcode) {
             res.status(400).json({ ok: false, error: "missing qrcode" });
@@ -153,6 +154,13 @@ const plugin: PluginServerModule = {
                   ilinkUserId: resp.ilink_user_id,
                   username: resp.username ?? resp.ilink_user_id,
                   baseUrl: bindingBaseUrl || undefined,
+                  // Caller-selected LLM. Falls back to tenant default
+                  // when missing so the binding still works if the
+                  // admin UI couldn't fetch the catalogue.
+                  modelId:
+                    typeof body.modelId === "string" && body.modelId.trim()
+                      ? body.modelId.trim()
+                      : undefined,
                 },
                 enabled: true,
               });

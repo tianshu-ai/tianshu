@@ -33,6 +33,7 @@ import { channelHub } from "./hub.js";
 import type { InboundEnvelope } from "./types.js";
 import type { GlobalOps } from "../core/global-ops.js";
 import { ensureChannelSession } from "./sessions.js";
+import { getBinding } from "./bindings.js";
 import { runPrompt } from "../chat/handler.js";
 import { broadcastToUser } from "../chat/active-harnesses.js";
 import type { ServerMsg } from "../chat/ws-protocol.js";
@@ -101,6 +102,16 @@ async function dispatch(
     isDirect: envelope.isDirect,
     senderName: envelope.senderName,
   });
+
+  // Pull the binding's preferred model (if any) so the channel
+  // user's choice of LLM follows their wechat / telegram / etc.
+  // thread. Falls back to the tenant default when missing.
+  const binding = getBinding(ctx.db, envelope.bindingId);
+  const modelId =
+    typeof binding?.config.modelId === "string" &&
+    binding.config.modelId.trim().length > 0
+      ? binding.config.modelId.trim()
+      : undefined;
   // Tell every open chat-shell socket for this user that something
   // changed on a channel — their plugin sidebar sections re-poll
   // and the new session row pops up without a 30s polling delay.
@@ -147,6 +158,7 @@ async function dispatch(
       userId: session.userId,
       send: sink,
       content: envelope.text,
+      modelId,
       signal: aborter.signal,
       pluginRegistry: deps.pluginRegistry,
       homeDir: deps.homeDir,
