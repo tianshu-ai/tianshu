@@ -386,14 +386,84 @@ describe("sync_down tool", () => {
       };
       expect(res.ok).toBe(true);
       expect(res.project).toBe("blog-engine");
-      // taskId + slugified title.
-      expect(res.task).toBe("42-add-login-flow");
+      // Slugified taskTitle. taskId is held in reserve for the
+      // fallback path (see next test).
+      expect(res.task).toBe("add-login-flow");
       expect(res.destBaseDir).toBe(
-        "/h/acme/workspace/users/alice/projects/blog-engine/.results/42-add-login-flow",
+        "/h/acme/workspace/users/alice/projects/blog-engine/.results/add-login-flow",
       );
     });
 
-    it("falls back to bare taskId when taskTitle is empty or slug-empty", async () => {
+    it("slugifies CJK / unicode titles by stripping non-[a-z0-9._-]", async () => {
+      // Yu's most common chat-task titles are Chinese phrases
+      // (e.g. "加登录流程"). These slug to empty under the
+      // ASCII-only rule and fall back to taskId, which is fine
+      // — we just want the fallback to be deterministic.
+      const runner = new FakeSyncRunner();
+      runner.downResult = { downloaded: [], skipped: [] };
+      const r = SyncDownTool(runner);
+      const ctx = {
+        userId: "alice",
+        tenantId: "acme",
+        tenantHomeDir: "/h/acme",
+        userHomeDir: "/h/acme/workspace/users/alice",
+        taskId: "7",
+        projectSlug: "blog-engine",
+        taskTitle: "加登录流程",
+      } as AgentToolContext;
+      const res = (await r.execute({ paths: ["out.log"] }, ctx)) as {
+        task: string;
+      };
+      expect(res.task).toBe("7");
+    });
+
+    it("slugifies mixed ascii + symbol titles, preserving hyphens", async () => {
+      const runner = new FakeSyncRunner();
+      runner.downResult = { downloaded: [], skipped: [] };
+      const r = SyncDownTool(runner);
+      const ctx = {
+        userId: "alice",
+        tenantId: "acme",
+        tenantHomeDir: "/h/acme",
+        userHomeDir: "/h/acme/workspace/users/alice",
+        taskId: "77",
+        projectSlug: "blog-engine",
+        // Title with various "hostile" characters: slashes, dots,
+        // emoji, exclamations, mixed case. Slug should collapse
+        // them all to a single sequence of [a-z0-9._-]+.
+        taskTitle: "Fix CSS / Layout: hero 🎨 .v2!",
+      } as AgentToolContext;
+      const res = (await r.execute({ paths: ["out.log"] }, ctx)) as {
+        task: string;
+      };
+      // Each run of [^a-z0-9._-]+ → single dash, leading/trailing
+      // dashes trimmed; preserves the '.v2' literal '.'.
+      expect(res.task).toBe("fix-css-layout-hero-.v2");
+    });
+
+    it("caps long slugs and keeps the path safe", async () => {
+      const runner = new FakeSyncRunner();
+      runner.downResult = { downloaded: [], skipped: [] };
+      const r = SyncDownTool(runner);
+      const longTitle = "a".repeat(120);
+      const ctx = {
+        userId: "alice",
+        tenantId: "acme",
+        tenantHomeDir: "/h/acme",
+        userHomeDir: "/h/acme/workspace/users/alice",
+        taskId: "77",
+        projectSlug: "blog-engine",
+        taskTitle: longTitle,
+      } as AgentToolContext;
+      const res = (await r.execute({ paths: ["out.log"] }, ctx)) as {
+        task: string;
+      };
+      // 64-char cap; same character repeats so the result is just
+      // 64 a's, regardless of slug rules.
+      expect(res.task).toBe("a".repeat(64));
+    });
+
+    it("falls back to bare taskId when taskTitle is empty or slug-empty (or just '.' / '..')", async () => {
       const runner = new FakeSyncRunner();
       runner.downResult = { downloaded: [], skipped: [] };
       const r = SyncDownTool(runner);
@@ -411,6 +481,16 @@ describe("sync_down tool", () => {
         task: string;
       };
       expect(res.task).toBe("42");
+
+      // Edge case: title slugs to literal '.' or '..' — also
+      // falls back so we don't end up with a destBaseDir that
+      // ascends a level or aliases the parent directory.
+      const ctxDot = { ...ctx, taskTitle: "..." } as AgentToolContext;
+      const resDot = (await r.execute(
+        { paths: ["out.log"] },
+        ctxDot,
+      )) as { task: string };
+      expect(resDot.task).toBe("42");
     });
 
     it("multiple sync_down calls with different agent task args all land in the same ctx-derived folder", async () => {
@@ -485,7 +565,9 @@ describe("sync_down tool", () => {
         ctx,
       )) as { project: string; task: string };
       expect(res.project).toBe("other-project");
-      expect(res.task).toBe("42-add-login");
+      // taskTitle='Add Login' → slug 'add-login'; taskId only
+      // serves as fallback.
+      expect(res.task).toBe("add-login");
     });
 
     it("errors helpfully when ctx.projectSlug AND project arg are both missing", async () => {
