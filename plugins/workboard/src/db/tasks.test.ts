@@ -157,20 +157,54 @@ describe("tasks db layer", () => {
     expect(c).toBeNull();
   });
 
-  it("claimNextTask refuses second claim while the worker has one in flight", () => {
-    // Source-of-truth guard: even if the in-memory busy map
-    // drifted (rebuild race, dropped stale entries, etc.), the
-    // SQL itself must reject a second claim by the same worker.
+  it("claimNextTask allows multiple in-flight tasks for the same worker", () => {
+    // Yu 2026-06-28: the original "one task per worker" SQL
+    // guard was removed so the tenant's maxConcurrentRuns cap
+    // can actually be reached. Concurrency is now enforced by
+    // WorkerPool.drain at the task level, not at the
+    // worker-agent level. This test pins that contract: a
+    // worker that already has an in-flight task can still claim
+    // the next ready row.
     createTask(db, "a", { ownerUserId: "u1", title: "a", priority: 1 });
     createTask(db, "b", { ownerUserId: "u1", title: "b", priority: 1 });
     const first = claimNextTask(db, { workerAgentId: "agent-1" });
     expect(first?.id).toBe("a");
+    // Second claim by the same agent now succeeds (used to be
+    // null). Note that `b` here is the second task created
+    // above, NOT the variable from the outer test scope.
+    const second = claimNextTask(db, { workerAgentId: "agent-1" });
+    expect(second?.id).toBe("b");
+    // Both tasks are in_progress at the same time.
+    const ra = getTask(db, "a");
+    const rb = getTask(db, "b");
+    expect(ra?.status).toBe("in_progress");
+    expect(rb?.status).toBe("in_progress");
+    // No more tasks to claim.
+    const third = claimNextTask(db, { workerAgentId: "agent-1" });
+    expect(third).toBeNull();
+  });
+
+  it("claimNextTask is still atomic across concurrent calls on the same row", () => {
+    // Even though we lifted the per-worker guard, the
+    // `status = 'ready'` predicate must still make UPDATE
+    // self-exclusive so two simultaneous claims of the same
+    // task only flip it once. better-sqlite3 is single-threaded
+    // so we simulate the race by interleaving the SELECT and
+    // the UPDATE: both readers see status='ready' before either
+    // commits. Implementation-wise this means re-running
+    // claimNextTask immediately after a successful claim must
+    // return a different row, not the same one.
+    createTask(db, "only", { ownerUserId: "u1", title: "only" });
+    const first = claimNextTask(db, { workerAgentId: "agent-1" });
+    expect(first?.id).toBe("only");
     const second = claimNextTask(db, { workerAgentId: "agent-1" });
     expect(second).toBeNull();
-    // After the first task ends, the worker can claim again.
-    updateTask(db, "a", { status: "done", endedAt: Date.now() });
-    const third = claimNextTask(db, { workerAgentId: "agent-1" });
-    expect(third?.id).toBe("b");
+    // After completing the task, a second worker can pick a
+    // brand-new row but NOT the already-done one.
+    updateTask(db, "only", { status: "done", endedAt: Date.now() });
+    createTask(db, "next", { ownerUserId: "u1", title: "next" });
+    const third = claimNextTask(db, { workerAgentId: "agent-2" });
+    expect(third?.id).toBe("next");
   });
 
   it("claimNextTask role-aware: matches own role + role-less tasks, skips foreign roles", () => {
