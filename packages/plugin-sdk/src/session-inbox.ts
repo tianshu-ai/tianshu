@@ -24,7 +24,14 @@ export type InboxMessageKind =
   | "task_done"
   | "task_intervention_required"
   | "task_stalled"
-  | "system_note";
+  | "system_note"
+  /**
+   * Recovery agent telling the broken session what happened and
+   * what to do next. Distinct from generic system_note so the
+   * chat UI / main agent can render it differently ("⚠️ recovery
+   * note" vs a plain background notification).
+   */
+  | "inbox_recovery_note";
 
 export interface InboxMessage {
   /**
