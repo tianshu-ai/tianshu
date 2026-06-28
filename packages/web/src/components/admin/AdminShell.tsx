@@ -386,22 +386,29 @@ function AdminPageHost({ pages }: { pages: FlatAdminPage[] }) {
 
 /**
  * Wraps a plugin's contributed admin page with an auto-generated
- * "Configuration" banner when the plugin's manifest declares a
- * configSchema. Implements the "the form is folded into THAT
- * page's header" promise from `flattenPages` (see
- * `PluginConfigSettingsPage`'s commentary above) so plugins with
- * BOTH adminPages and configSchema don't strand their config
- * behind a code-only edit.
+ * "Configuration" section when the plugin's manifest declares a
+ * configSchema AND the plugin contributes its own admin page(s).
+ * Implements the "the form is folded into THAT page's header"
+ * promise from `flattenPages` so plugins with BOTH adminPages
+ * and configSchema don't strand their config behind a code-only
+ * edit (workboard's `maxConcurrentRuns` / `maxConcurrentRunsPerUser`
+ * being the trigger that exposed this gap).
  *
- * Yu 2026-06-28: prior versions of this file referenced
- * `renderConfigFormBanner` in a comment but didn't actually
- * render anything — plugins like workboard ended up with their
- * config form unreachable from the UI. This frame fixes that
- * regression.
+ * Why the `hasOwnAdminPage` check (and not just `hasConfig`):
  *
- * Plugins with NO configSchema (or whose schema has zero fields)
- * render their page unchanged — we keep the banner out of the
- * way unless there's something to configure.
+ * Plugins WITHOUT their own adminPages already get the full
+ * `PluginConfigSettingsPage` auto-injected into the sidebar (see
+ * `flattenPages` above). That page renders the same form
+ * directly with its own "Configuration" header. Adding a second
+ * banner above it would be pure duplication — the user would
+ * see a collapsed "Plugin configuration" strip on top of an
+ * already-expanded form for the same plugin.
+ *
+ * So the matrix is:
+ *   - configSchema + own adminPage    → banner (this code path)
+ *   - configSchema + no adminPage     → PluginConfigSettingsPage
+ *                                       (no banner; would duplicate)
+ *   - no configSchema                  → page renders unchanged
  */
 function PluginAdminPageFrame({
   pluginId,
@@ -415,31 +422,38 @@ function PluginAdminPageFrame({
   const hasConfig =
     !!plugin?.configSchema &&
     (plugin.configSchema.fields?.length ?? 0) > 0;
-  if (!hasConfig || !plugin) {
+  // We only inject the section when the plugin contributes BOTH a
+  // configSchema and at least one admin page. flattenPages's auto-
+  // inject path already handles plugins with config-only (no admin
+  // pages); duplicating the form there would just push the real
+  // settings UI below the fold.
+  //
+  // `adminPages` lives under manifest.contributes; the wire type
+  // (`PluginListEntry`) keeps it as an unknown bag so we narrow
+  // by hand here — cheaper than threading a typed view through
+  // every plugin response.
+  const contributedAdminPages = plugin?.contributes?.["adminPages"];
+  const hasOwnAdminPage =
+    Array.isArray(contributedAdminPages) && contributedAdminPages.length > 0;
+  if (!hasConfig || !hasOwnAdminPage || !plugin) {
     return <>{children}</>;
   }
   return (
-    <div>
-      <div className="mx-auto max-w-5xl px-6 pt-6">
-        <details className="group rounded-md border border-border-subtle bg-bg-elevated/30">
-          <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-2 text-[12px] font-medium text-fg-muted hover:text-fg-default">
-            <span className="flex items-center gap-2">
-              <SettingsIcon size={14} className="text-brand-400" />
-              Plugin configuration
-            </span>
-            <span className="text-[10px] uppercase tracking-wide text-fg-fainter">
-              {plugin.displayName}
-            </span>
-          </summary>
-          <div className="border-t border-border-subtle p-4">
-            <p className="mb-3 text-[11px] text-fg-faint">
-              Saving re-activates the plugin so changes take effect on
-              the next request.
-            </p>
-            <PluginConfigForm plugin={plugin} />
-          </div>
-        </details>
-      </div>
+    <div className="mx-auto max-w-5xl p-6">
+      <section className="mb-8">
+        <div className="mb-2">
+          <h2 className="text-[13px] font-semibold uppercase tracking-wide text-fg-muted">
+            Configuration
+          </h2>
+          <p className="text-[11px] text-fg-faint">
+            Saving re-activates the plugin so changes take effect on
+            the next request.
+          </p>
+        </div>
+        <div className="rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
+          <PluginConfigForm plugin={plugin} />
+        </div>
+      </section>
       {children}
     </div>
   );
