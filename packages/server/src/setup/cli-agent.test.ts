@@ -197,3 +197,105 @@ describe("cli-agent.check_build_progress", () => {
     expect(parsed.hint.length).toBeGreaterThan(20);
   });
 });
+
+describe("cli-agent.shell_exec", () => {
+  // Setup-agent's escape hatch for install / verify steps that the
+  // structured tools don't cover. We pin the safety-critical bits
+  // here — the per-call timeout actually firing, the exit-code
+  // pass-through, the describe() summary the user sees in the
+  // confirm prompt — because if any of these regress the agent can
+  // surprise the user with surprise sudo or wedge waiting on a
+  // hung child.
+
+  function getShellExec() {
+    const tools = buildTools(
+      fs.mkdtempSync(path.join(os.tmpdir(), "tianshu-shell-")),
+      undefined,
+    );
+    const t = tools.shell_exec;
+    if (!t) throw new Error("shell_exec tool not registered");
+    return t;
+  }
+
+  it("is marked mutating and produces a short describe()", () => {
+    const t = getShellExec();
+    expect(t.mutating).toBe(true);
+    expect(
+      t.describe!({
+        command: "echo hi",
+        purpose: "Smoke test",
+      }),
+    ).toContain("Smoke test");
+    expect(
+      t.describe!({
+        command: "a".repeat(500),
+        purpose: "Long command",
+      }),
+    ).toMatch(/…/);
+  });
+
+  it("returns ok=true with stdout on success", async () => {
+    const t = getShellExec();
+    const r = JSON.parse(
+      await t.execute({
+        command: "echo hello; echo more",
+        purpose: "smoke",
+        timeoutSeconds: 5,
+      }),
+    );
+    expect(r.ok).toBe(true);
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toContain("hello");
+    expect(r.stdout).toContain("more");
+    expect(r.timedOut).toBe(false);
+  });
+
+  it("passes through nonzero exit codes (ok=false)", async () => {
+    const t = getShellExec();
+    const r = JSON.parse(
+      await t.execute({
+        command: "false",
+        purpose: "fail",
+        timeoutSeconds: 5,
+      }),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.exitCode).toBe(1);
+    expect(r.timedOut).toBe(false);
+  });
+
+  it(
+    "kills hung children promptly via process-group SIGKILL",
+    async () => {
+      // Same root-cause as the plugin-setup test: /bin/sh -c "sleep
+      // 30" forks a sleep grandchild whose stdout stays open after
+      // we SIGKILL the shell. We use detached:true + process.kill(
+      // -pid, SIGKILL) to signal the group so the close event
+      // fires.
+      const t = getShellExec();
+      const start = Date.now();
+      const r = JSON.parse(
+        await t.execute({
+          command: "sleep 30",
+          purpose: "hang",
+          timeoutSeconds: 1,
+        }),
+      );
+      const elapsed = Date.now() - start;
+      expect(r.ok).toBe(false);
+      expect(r.timedOut).toBe(true);
+      // CI runners can lag on SIGKILL + reap; 8s is generous.
+      expect(elapsed).toBeLessThan(8_000);
+    },
+    10_000,
+  );
+
+  it("rejects an empty command without spawning a shell", async () => {
+    const t = getShellExec();
+    const r = JSON.parse(
+      await t.execute({ command: "   ", purpose: "empty" }),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.error).toBe("empty_command");
+  });
+});

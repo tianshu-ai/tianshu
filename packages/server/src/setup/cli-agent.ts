@@ -150,10 +150,45 @@ PLUGIN PREREQUISITES (plugin_setup_status / plugin_setup_install_hint):
   plugin_setup_status result. Those plugins need nothing beyond
   npm; plugin_enable is safe to call directly.
 - The install commands returned by plugin_setup_install_hint are
-  CANDIDATES, not actions. NEVER auto-run them. NEVER concatenate
-  them and run as one shell line. Always show them to the user,
-  ask which path they want (homebrew vs tarball vs cargo etc.),
-  then exec the chosen path's steps individually.
+  CANDIDATES sourced from the plugin's manifest. They're a
+  starting point, not a script. Read them carefully:
+  * If a step assumes a path or tool the user doesn't have, adapt
+    it (e.g. the user installed openshell to ~/.cargo/bin instead
+    of ~/bin — substitute that path).
+  * If the user's package manager isn't covered by the manifest
+    (asdf? mise? nix?), propose an equivalent of your own.
+  * Show the user the EXACT command you intend to run, ask them
+    to confirm, then call shell_exec.
+  Use shell_exec to actually run install commands; that tool
+  routes through the standard mutating-tool confirmation surface
+  so the user sees and approves every line.
+- Patterns to follow when running install steps via shell_exec:
+  * One command per shell_exec call. Don't chain unrelated work
+    with shell operators like and-and. The user gets one yes/no
+    per command and they deserve to know what they're approving.
+  * Set the 'purpose' field to something the user can scan in a
+    confirm prompt ("Install openshell CLI via tarball", "Verify
+    docker daemon", "Re-pull base image").
+  * After every install step that should change state, RE-RUN
+    the relevant verify probe via plugin_setup_status (or a
+    direct shell_exec calling the manifest's verify command).
+    Don't assume an install worked just because exit code was 0.
+  * If a step needs 'sudo' or writes to /etc, /usr, /opt, or
+    other privileged paths, EXPLAIN that in your message before
+    the tool call. Don't surprise the user with a sudo prompt.
+  * If the user declines a confirm, drop that path and ask them
+    whether they want a different install path or to abort.
+- DO NOT use shell_exec for:
+  * Anything the structured tools cover (plugin_enable,
+    config_write, tenant_create, build_sandbox, apply_update).
+  * Reading state — use run_doctor / plugin_setup_status /
+    config_read / sandbox_inventory.
+  * Long-running services ('brew services start', 'systemctl
+    start', 'npm run dev', 'python -m http.server'). The tool
+    has a 10-minute timeout and runs synchronously. For
+    services, ask the user to start them in another terminal
+    or use a process-supervisor command that exits when the
+    service is up.
 
 DEV MODE vs PRODUCTION MODE:
 - Two install shapes, very different runtime topology:
@@ -1983,7 +2018,162 @@ export function buildTools(
         });
       },
     },
+    shell_exec: {
+      mutating: true,
+      describe: (args) => {
+        const cmd = String(args.command ?? "");
+        const cwd = typeof args.cwd === "string" && args.cwd ? args.cwd : "$PWD";
+        const purpose = typeof args.purpose === "string" ? args.purpose : "";
+        // The CLI confirm widget is single-line. We pack a compact
+        // preview here — enough to identify the command — and rely
+        // on the agent having already narrated the longer story in
+        // the natural-language message preceding the tool call.
+        const trimmed = cmd.length > 120 ? cmd.slice(0, 117) + "…" : cmd;
+        const prefix = purpose ? `${purpose}: ` : "Run shell: ";
+        return `${prefix}\`${trimmed}\` (cwd=${cwd})`;
+      },
+      schema: {
+        name: "shell_exec",
+        description:
+          "Run a shell command on the host to install missing prerequisites or otherwise mutate the system. USE WITH CARE — the user must confirm every invocation.\n\nWhen to use it:\n  * After plugin_setup_status / plugin_setup_install_hint surfaced a failing prerequisite. The hint returns CANDIDATE install commands from the plugin manifest; pick the one matching the user's chosen install path, paste it verbatim into the `command` field, and let the user confirm.\n  * Light system probing the structured tools don't cover (e.g. `brew list | grep docker`).\n  * Re-running a verify probe to confirm an install succeeded (e.g. `openshell --version`).\n\nWhen NOT to use it:\n  * Anything the structured tools already handle (plugin_enable, config_write, tenant_create, build_sandbox, apply_update, etc.). Prefer those — they integrate with the running server's state.\n  * Long-running background services. The command runs synchronously with a 10-minute hard timeout; if it blocks (a daemon waiting on stdin, a server listening on a port) it'll be killed.\n  * Privileged operations the user hasn't agreed to. Don't propose `sudo rm -rf`, `chmod -R 777`, anything destructive to system paths, or anything that drops shell config files (`~/.zshrc`, `~/.bashrc`) without asking for and receiving an explicit go-ahead.\n\nAuthoring guidance:\n  * One command per call. Don't chain unrelated work with `&&`. The user gets a single confirm; they shouldn't have to mentally unpack a six-command pipeline.\n  * Quote paths. The shell is `/bin/sh -c` on POSIX, `cmd /c` on Windows.\n  * Set `purpose` to a short noun phrase the user will see in the confirm prompt (e.g. 'Install openshell CLI via tarball', 'Verify gateway version').\n  * Set `cwd` if the command needs to run from a specific dir. Default is the calling process's CWD.\n\nReturn shape:\n{\n  ok: boolean,         // exit code === 0\n  exitCode: number,\n  stdout: string,      // capped at 8KB; ends with '\u2026 (truncated)' if longer\n  stderr: string,      // same cap\n  durationMs: number,\n  timedOut: boolean\n}\n\nAfter a successful install, RE-RUN the relevant verify probe (via plugin_setup_status or a targeted shell_exec) before suggesting plugin_enable. Trust-but-verify.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description:
+                "The exact shell command to execute. Single command; no shell tricks like `cd X && Y` unless the cd is essential to the command.",
+            },
+            purpose: {
+              type: "string",
+              description:
+                "Short label shown in the confirm prompt. E.g. 'Install openshell CLI', 'Verify Docker daemon'.",
+            },
+            cwd: {
+              type: "string",
+              description:
+                "Working directory to run the command from. Defaults to the calling process's CWD. Use absolute paths.",
+            },
+            timeoutSeconds: {
+              type: "number",
+              description:
+                "Per-call timeout. Default 600 (10 minutes). Hard ceiling 1800 (30 minutes). Use a short value for verify probes, a longer one for compile-from-source.",
+            },
+          },
+          required: ["command", "purpose"],
+        } as never,
+      },
+      execute: async (args) => {
+        const command = String(args.command ?? "").trim();
+        if (!command) {
+          return JSON.stringify({
+            ok: false,
+            error: "empty_command",
+          });
+        }
+        const rawTimeout = Number(args.timeoutSeconds);
+        const timeoutSeconds = Number.isFinite(rawTimeout) && rawTimeout > 0
+          ? Math.min(rawTimeout, 1800)
+          : 600;
+        const cwd = typeof args.cwd === "string" && args.cwd ? args.cwd : undefined;
+        const startedAt = Date.now();
+        const { spawn } = await import("node:child_process");
+        return await new Promise<string>((resolve) => {
+          const isWin = process.platform === "win32";
+          const shell = isWin ? "cmd" : "/bin/sh";
+          const shellArgs = isWin ? ["/c", command] : ["-c", command];
+          // Same detached-process-group trick as plugin-setup’s
+          // verify runner: on POSIX we spawn into a new process
+          // group so SIGKILL on timeout reaches every descendant,
+          // not just the immediate shell. Without this, a hung
+          // grandchild (a compile job that ignored SIGTERM) keeps
+          // the stdio pipes open and the 'close' event never
+          // fires.
+          const child = spawn(shell, shellArgs, {
+            stdio: ["ignore", "pipe", "pipe"],
+            cwd,
+            detached: !isWin,
+          });
+          let stdout = "";
+          let stderr = "";
+          let stdoutTruncated = false;
+          let stderrTruncated = false;
+          let timedOut = false;
+          let settled = false;
+          const CAP = 8 * 1024;
+          const settle = (payload: object) => {
+            if (settled) return;
+            settled = true;
+            resolve(JSON.stringify(payload));
+          };
+          const timer = setTimeout(() => {
+            timedOut = true;
+            try {
+              if (!isWin && child.pid) {
+                process.kill(-child.pid, "SIGKILL");
+              } else {
+                child.kill("SIGKILL");
+              }
+            } catch {
+              /* already gone */
+            }
+            settle({
+              ok: false,
+              exitCode: -1,
+              stdout: maybeAppendTruncated(stdout, stdoutTruncated),
+              stderr: maybeAppendTruncated(stderr, stderrTruncated),
+              durationMs: Date.now() - startedAt,
+              timedOut: true,
+            });
+          }, timeoutSeconds * 1000);
+          child.stdout.on("data", (c) => {
+            const s = c.toString("utf8");
+            if (stdout.length + s.length <= CAP) {
+              stdout += s;
+            } else {
+              stdout += s.slice(0, CAP - stdout.length);
+              stdoutTruncated = true;
+            }
+          });
+          child.stderr.on("data", (c) => {
+            const s = c.toString("utf8");
+            if (stderr.length + s.length <= CAP) {
+              stderr += s;
+            } else {
+              stderr += s.slice(0, CAP - stderr.length);
+              stderrTruncated = true;
+            }
+          });
+          child.on("close", (code) => {
+            clearTimeout(timer);
+            settle({
+              ok: code === 0,
+              exitCode: code ?? -1,
+              stdout: maybeAppendTruncated(stdout, stdoutTruncated),
+              stderr: maybeAppendTruncated(stderr, stderrTruncated),
+              durationMs: Date.now() - startedAt,
+              timedOut,
+            });
+          });
+          child.on("error", (err) => {
+            clearTimeout(timer);
+            settle({
+              ok: false,
+              exitCode: -1,
+              stdout,
+              stderr: stderr + `\nspawn failed: ${err.message}`,
+              durationMs: Date.now() - startedAt,
+              timedOut,
+            });
+          });
+        });
+      },
+    },
   };
+}
+
+function maybeAppendTruncated(s: string, truncated: boolean): string {
+  return truncated ? `${s}… (truncated)` : s;
 }
 
 function pluginSetupPluginsRoot(): string {
