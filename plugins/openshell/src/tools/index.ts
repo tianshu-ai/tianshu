@@ -11,6 +11,7 @@
 // agents written against microsandbox just work when the sandbox
 // backend switches.
 
+import path from "node:path";
 import { Type } from "typebox";
 import type {
   AgentTool,
@@ -245,6 +246,7 @@ interface SyncCapableRunner extends SandboxRunner {
   ): Promise<{ uploaded: string[]; skipped: { relPath: string; reason: string }[] }>;
   syncDown(
     sandboxRelPaths: string[],
+    opts?: { destBaseDir?: string },
   ): Promise<{ downloaded: string[]; skipped: { relPath: string; reason: string }[] }>;
 }
 
@@ -345,31 +347,38 @@ export function SyncDownTool(runner: SandboxRunner): AgentTool {
   return {
     schema: {
       name: "sync_down",
-      description: `Download files / directories from the OpenShell sandbox back to the host
+      description: `Pull files / directories from the OpenShell sandbox to a per-task staging
+dir on the host. Does NOT write into the tenant workspace directly — multiple
+tasks producing files with the same names would clobber each other. Tianshu's
+host layer (or the user) decides whether/where to copy from staging into the
 workspace.
 
-Paths are resolved relative to your USER HOME, both on host and inside the sandbox:
-  - guest : /sandbox/workspace/users/<userId>/<path>
-  - host  : <tenantWorkspace>/users/<userId>/<path>
-This matches sync_up's scoping, so an agent that runs 'sync_up({paths:['src/']})',
-then exec'd commands that wrote build artefacts into ./dist/, can run
-'sync_down({paths:['dist/']})' to bring them home.
+Sandbox-side paths are resolved relative to your USER HOME (
+/sandbox/workspace/users/<userId>/<path>), matching sync_up's scoping. So an
+agent that runs sync_up({paths:['src/']}) and then exec produces ./dist/output,
+can run sync_down({paths:['dist/']}) to bring it back.
 
-Directories are recursive. Idempotent: re-downloading overwrites the host-side copy.
+Host-side, files land under a staging dir derived from your run context:
+  - With a taskId    : <tenantHomeDir>/task-results/tasks/<taskId>/<path>
+  - With a sessionId : <tenantHomeDir>/task-results/sessions/<sessionId>/<path>
+  - Neither (main)   : <tenantHomeDir>/task-results/main/<runStamp>/<path>
+The response always includes 'destBaseDir' so the caller knows the absolute
+staging root, and 'downloaded' contains the absolute paths of every file/dir
+actually written. Re-running with the same context overwrites the staging copy
+in place (idempotent within one run).
 
-Use this AFTER an exec produces files you want to keep on the host (build outputs,
-logs, generated reports). For transient artefacts (intermediate builds, npm cache),
-skip this — the sandbox keeps them and the next exec sees them anyway, but the host
-workspace stays clean.
+Directories are recursive. Files inside the staging dir are intended as
+ephemeral build artefacts — the host is free to clean them up after the run
+finishes; don't treat the staging dir as durable storage.
 
-Use 'scope: "tenant"' (rare) to download from the tenant root rather than your user
-home. Use with care: paths will land at <tenantWorkspace>/<path>, possibly
-overwriting files another user / agent created.`,
+Use 'scope: "tenant"' (rare) to read from the tenant root rather than your
+user home. Sandbox-side paths then resolve to /sandbox/workspace/<path>; host
+staging path layout is unchanged.`,
       parameters: Type.Object({
         paths: Type.Array(
           Type.String({
             description:
-              "Path relative to your user home (e.g. 'dist/' or 'logs/build.log').",
+              "Path relative to your user home in the sandbox (e.g. 'dist/' or 'logs/build.log').",
           }),
           {
             minItems: 1,
@@ -381,7 +390,7 @@ overwriting files another user / agent created.`,
             [Type.Literal("user"), Type.Literal("tenant")],
             {
               description:
-                "Where to anchor the paths. 'user' (default) scopes to /sandbox/workspace/users/<userId>/. 'tenant' targets the tenant root. Use 'tenant' only when intentionally sharing files between agents in the same tenant.",
+                "Where to anchor the SANDBOX paths. 'user' (default) scopes to /sandbox/workspace/users/<userId>/. 'tenant' reads from the tenant root.",
             },
           ),
         ),
@@ -404,11 +413,13 @@ overwriting files another user / agent created.`,
         (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
       const inputPaths = raw.map((p) => String(p));
       const scopedPaths = prefixPaths(inputPaths, scope, ctx.userId);
+      const destBaseDir = taskResultsDirFor(ctx);
       try {
-        const r = await sync.syncDown(scopedPaths);
+        const r = await sync.syncDown(scopedPaths, { destBaseDir });
         return {
           ok: r.skipped.length === 0,
           scope,
+          destBaseDir,
           downloaded: r.downloaded,
           skipped: r.skipped,
         };
@@ -420,6 +431,31 @@ overwriting files another user / agent created.`,
       }
     },
   };
+}
+
+/**
+ * Compute the host-side staging directory for sync_down for this
+ * agent-tool invocation. Always under <tenantHome>/task-results/
+ * so the host layer can sweep / surface / archive it as one unit
+ * without coupling to the tenant workspace.
+ *
+ *   - taskId   present → task-results/tasks/<taskId>/
+ *   - sessionId present → task-results/sessions/<sessionId>/
+ *   - neither  present → task-results/main/<isoDay>-<pid>/
+ *
+ * The fallback uses an iso-day stamp (not a full timestamp) so
+ * repeated sync_downs within a chat session land in the same dir
+ * — the agent expects to overwrite its own staging files between
+ * exec rounds, not generate a fresh tree on every call. The PID
+ * gives just enough disambiguation across server restarts that
+ * old runs don't get clobbered.
+ */
+function taskResultsDirFor(ctx: AgentToolContext): string {
+  const root = path.join(ctx.tenantHomeDir, "task-results");
+  if (ctx.taskId) return path.join(root, "tasks", ctx.taskId);
+  if (ctx.sessionId) return path.join(root, "sessions", ctx.sessionId);
+  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  return path.join(root, "main", `${day}-${process.pid}`);
 }
 
 // ─── GetSandboxStatusTool ─────────────────────────────────

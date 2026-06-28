@@ -461,10 +461,17 @@ export class OpenShellRunner implements SandboxRunner {
    */
   async syncDown(
     sandboxRelPaths: string[],
+    opts: { destBaseDir?: string } = {},
   ): Promise<{ downloaded: string[]; skipped: { relPath: string; reason: string }[] }> {
     if (this.state !== "ready" && this.state !== "running") {
       await this.ensureSandbox();
     }
+    // Caller can opt out of the default "land back in the tenant
+    // workspace" behaviour by passing destBaseDir, e.g. a task-
+    // results staging dir. We do NOT have a separate sandbox-only
+    // download surface; downloading without a host destination is
+    // meaningless.
+    const destBase = opts.destBaseDir ?? this.opts.workspaceDir;
     const downloaded: string[] = [];
     const skipped: { relPath: string; reason: string }[] = [];
     for (const rel of sandboxRelPaths) {
@@ -479,7 +486,7 @@ export class OpenShellRunner implements SandboxRunner {
         continue;
       }
       const guestPath = `${SANDBOX_WORKSPACE_PATH}/${safe}`;
-      const hostAbs = path.join(this.opts.workspaceDir, safe);
+      const hostAbs = path.join(destBase, safe);
       await fs.mkdir(path.dirname(hostAbs), { recursive: true });
       const { exitCode, stderr } = await this.spawnCli(
         ["sandbox", "download", this.sandboxName, guestPath, hostAbs],
