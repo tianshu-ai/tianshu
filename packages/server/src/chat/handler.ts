@@ -624,6 +624,49 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       });
       streamErrorSent = true;
     }
+    // Self-recovery: spawn a recovery agent in an isolated
+    // session so it can diagnose what crashed + nudge this
+    // session back to life. Dedupe is handled inside
+    // spawnSessionRecovery so concurrent failures don't fan out.
+    //
+    // Recovery needs a pluginRegistry to instantiate its tool
+    // loop. Chat handler usually gets one wired by the host
+    // bootstrap, but it's defined as optional on the request type
+    // — if some test path doesn't provide one, skip the recovery
+    // attempt rather than crashing in the catch block.
+    if (pluginRegistry) {
+      try {
+        const { spawnSessionRecovery } = await import(
+          "./recovery-agent.js"
+        );
+        const lastRowId =
+          (lastAssistantRow as ChatMessage | null)?.id ?? undefined;
+        spawnSessionRecovery({
+          ctx,
+          userId,
+          brokenSession: session,
+          trigger: {
+            reason: "harness threw during prompt()",
+            errorMessage:
+              err instanceof Error ? err.message : String(err),
+            outstandingToolCalls: [...outstandingToolCalls.entries()].map(
+              ([id, info]) => ({ id, name: info.name }),
+            ),
+            lastAssistantRowId: lastRowId,
+          },
+          pluginRegistry,
+        });
+      } catch (spawnErr) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[handler] spawnSessionRecovery itself failed: ${
+            spawnErr instanceof Error
+              ? spawnErr.message
+              : String(spawnErr)
+          }`,
+        );
+      }
+    }
   } finally {
     // Resolve any tool-call chip the UI is still showing as
     // running. Provider termination after a `tool_call` event

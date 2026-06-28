@@ -42,6 +42,14 @@ import {
   buildChannelSendFileTool,
   CHANNEL_SEND_FILE_TOOL_NAME,
 } from "./chat/host-tools/channel-send-file.js";
+import {
+  INSPECT_SESSION_TOOL_NAME,
+  NUDGE_SESSION_TOOL_NAME,
+  READ_SESSION_LOG_TOOL_NAME,
+  buildInspectSessionTool,
+  buildNudgeSessionTool,
+  buildReadSessionLogTool,
+} from "./chat/host-tools/recovery-tools.js";
 import { buildPluginsRouter } from "./plugins-routes.js";
 import { CatalogClient } from "./catalog.js";
 import {
@@ -151,6 +159,36 @@ pluginRegistry = new PluginRegistry({
       name: CHANNEL_SEND_FILE_TOOL_NAME,
       since: "0.3.50",
       tool: buildChannelSendFileTool(),
+    },
+    // Recovery agent tool surface. These are *only* useful to the
+    // session-recovery agent (chat handler error path spawns one
+    // and gates them in via toolsAllow). Regular agents won't get
+    // them in their default allow-list, but registering here lets
+    // the recovery isolated-session pick them up through the
+    // standard plugin registry plumbing.
+    //
+    // The factories take a resolver that opens the TenantContext
+    // from the per-call AgentToolContext.tenantId; we forward to
+    // globalOps.open() so the same `tianshu open` path the rest
+    // of the host uses also serves recovery.
+    {
+      name: INSPECT_SESSION_TOOL_NAME,
+      since: "0.3.57",
+      tool: buildInspectSessionTool({
+        openTenant: (tenantId) => globalOps.open(tenantId),
+      }),
+    },
+    {
+      name: READ_SESSION_LOG_TOOL_NAME,
+      since: "0.3.57",
+      tool: buildReadSessionLogTool(),
+    },
+    {
+      name: NUDGE_SESSION_TOOL_NAME,
+      since: "0.3.57",
+      tool: buildNudgeSessionTool({
+        openTenant: (tenantId) => globalOps.open(tenantId),
+      }),
     },
   ],
   hostCapabilities: {
