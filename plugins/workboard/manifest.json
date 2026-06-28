@@ -96,8 +96,22 @@
     "fields": [
       {
         "key": "maxConcurrentRuns",
-        "label": "Max concurrent worker runs",
-        "description": "Cap on how many worker tasks the pool will run in parallel. 0 (default) means unlimited — each registered worker slot can claim a task. Lower this if you want to throttle LLM / sandbox load (e.g. set to 2 so only two tasks run at once even though 5 workers are registered).",
+        "label": "Max concurrent worker runs (tenant)",
+        "description": "Tenant-wide cap on how many worker tasks the pool will run in parallel. 0 (default) means unlimited — each registered worker slot can claim a task. Lower this if you want to throttle total LLM / sandbox load (e.g. set to 2 so only two tasks run at once even though 5 workers are registered).",
+        "kind": "number",
+        "default": 0,
+        "min": 0,
+        "step": 1,
+        "group": {
+          "id": "pool",
+          "label": "Pool",
+          "badge": "runtime"
+        }
+      },
+      {
+        "key": "maxConcurrentRunsPerUser",
+        "label": "Max concurrent worker runs per user",
+        "description": "Per-user cap on how many of THIS user's tasks can be in flight at once. 0 (default) means unlimited. Useful in shared tenants to keep one user from monopolising the pool — e.g. tenant cap 4, per-user cap 2 means two users can each run two tasks side-by-side. Whichever cap fires first stops further claims.",
         "kind": "number",
         "default": 0,
         "min": 0,

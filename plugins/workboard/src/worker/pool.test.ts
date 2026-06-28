@@ -477,6 +477,103 @@ describe("WorkerPool", () => {
     pool.stop();
   });
 
+  it("per-user cap throttles a single user without blocking other users", async () => {
+    // Two users, each owning two ready tasks. Per-user cap = 1
+    // means user A can have at most one in flight, same for B.
+    // With 4 workers available the tenant cap (unlimited) lets
+    // both users run one in parallel — so we see two concurrent
+    // tasks, one per user. The other two tasks wait.
+    db.prepare(
+      `INSERT INTO users (id, external_id, provider, display_name, created_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run("user-a", "a", "test", "A", Date.now());
+    db.prepare(
+      `INSERT INTO users (id, external_id, provider, display_name, created_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run("user-b", "b", "test", "B", Date.now());
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("a1", "inbox", "user-a", "a1", Date.now());
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("a2", "inbox", "user-a", "a2", Date.now() + 1);
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("b1", "inbox", "user-b", "b1", Date.now() + 2);
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("b2", "inbox", "user-b", "b2", Date.now() + 3);
+
+    const w1: AgentSpec = { id: "w1", kind: "echo", name: "W1" };
+    const w2: AgentSpec = { id: "w2", kind: "echo", name: "W2" };
+    const w3: AgentSpec = { id: "w3", kind: "echo", name: "W3" };
+    const w4: AgentSpec = { id: "w4", kind: "echo", name: "W4" };
+    const pool = new WorkerPool({
+      db,
+      log: noopLog,
+      broadcast: () => {},
+      agents: [w1, w2, w3, w4],
+      factory: echoFactory(25),
+      maxConcurrentRunsPerUser: 1,
+    });
+    pool.start();
+
+    await pause(10);
+    // Inspect each user's in-flight count: at most 1 per user,
+    // but both users should be making progress simultaneously.
+    const inFlightA = ["a1", "a2"].filter(
+      (id) => getTask(db, id)?.status === "in_progress",
+    ).length;
+    const inFlightB = ["b1", "b2"].filter(
+      (id) => getTask(db, id)?.status === "in_progress",
+    ).length;
+    expect(inFlightA).toBeLessThanOrEqual(1);
+    expect(inFlightB).toBeLessThanOrEqual(1);
+
+    await pause(120);
+    for (const id of ["a1", "a2", "b1", "b2"]) {
+      expect(getTask(db, id)?.status).toBe("done");
+    }
+    pool.stop();
+  });
+
+  it("per-user cap and tenant cap combine: whichever fires first stops claims", async () => {
+    // Tenant cap = 2, per-user cap = 1. With user A owning four
+    // tasks the per-user cap fires first — only one A task at a
+    // time even though the tenant has room for two.
+    db.prepare(
+      `INSERT INTO users (id, external_id, provider, display_name, created_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run("user-a", "a", "test", "A", Date.now());
+    for (let i = 1; i <= 4; i++) {
+      db.prepare(
+        `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+      ).run(`a${i}`, "inbox", "user-a", `a${i}`, Date.now() + i);
+    }
+    const w1: AgentSpec = { id: "w1", kind: "echo", name: "W1" };
+    const w2: AgentSpec = { id: "w2", kind: "echo", name: "W2" };
+    const pool = new WorkerPool({
+      db,
+      log: noopLog,
+      broadcast: () => {},
+      agents: [w1, w2],
+      factory: echoFactory(20),
+      maxConcurrentRuns: 2,
+      maxConcurrentRunsPerUser: 1,
+    });
+    pool.start();
+
+    await pause(8);
+    const inFlight = ["a1", "a2", "a3", "a4"].filter(
+      (id) => getTask(db, id)?.status === "in_progress",
+    ).length;
+    // Tenant cap would allow 2, but per-user cap of 1 wins.
+    expect(inFlight).toBeLessThanOrEqual(1);
+
+    await pause(120);
+    for (const id of ["a1", "a2", "a3", "a4"]) {
+      expect(getTask(db, id)?.status).toBe("done");
+    }
+    pool.stop();
+  });
+
   it("unlimited (cap=0) keeps legacy behaviour: every slot can run in parallel", async () => {
     db.prepare(
       `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
