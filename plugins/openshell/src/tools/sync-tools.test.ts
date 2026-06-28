@@ -75,11 +75,6 @@ const fakeCtx = {
   sessionId: "sess-1",
 } as AgentToolContext;
 
-const fakeTaskCtx = {
-  ...fakeCtx,
-  taskId: "task-42",
-} as AgentToolContext;
-
 describe("sync_up tool", () => {
   it("rejects empty paths", async () => {
     const r = SyncUpTool(new FakeSyncRunner());
@@ -196,79 +191,95 @@ describe("sync_down tool", () => {
     expect(res.ok).toBe(false);
   });
 
-  it("requires ctx.taskId", async () => {
+  function validArgs(extra: Record<string, unknown> = {}) {
+    return { paths: ["out.log"], project: "foo", task: "42-build", ...extra };
+  }
+
+  it("requires project + task slugs", async () => {
     const runner = new FakeSyncRunner();
     const r = SyncDownTool(runner);
-    const res = (await r.execute({ paths: ["out.log"] }, fakeCtx)) as {
-      ok: boolean;
-      error: string;
-    };
-    expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/task-scoped/);
+    for (const bad of [
+      { paths: ["x"] }, // both missing
+      { paths: ["x"], project: "foo" }, // task missing
+      { paths: ["x"], task: "42" }, // project missing
+      { paths: ["x"], project: "", task: "42" },
+      { paths: ["x"], project: "foo", task: "" },
+    ]) {
+      const res = (await r.execute(bad, fakeCtx)) as { ok: boolean };
+      expect(res.ok).toBe(false);
+    }
     expect(runner.downCalls).toHaveLength(0);
   });
 
-  it("prefixes paths with the user home and stages under taskId", async () => {
+  it("rejects slugs containing path separators or traversal", async () => {
     const runner = new FakeSyncRunner();
-    runner.downResult = {
-      downloaded: [
-        "/h/acme/workspace/users/alice/task-results/task-42/users/alice/build.log",
-      ],
-      skipped: [
-        {
-          relPath: "users/alice/dist/",
-          reason: "sandbox download exit 1: not found",
-        },
-      ],
-    };
     const r = SyncDownTool(runner);
-    const res = (await r.execute(
-      { paths: ["build.log", "dist/"] },
-      fakeTaskCtx,
-    )) as {
-      ok: boolean;
-      scope: string;
-      taskId: string;
-      destBaseDir: string;
-      downloaded: string[];
-      skipped: { relPath: string }[];
-      notice: string;
-    };
-    expect(runner.downCalls).toHaveLength(1);
-    expect(runner.downCalls[0]!.paths).toEqual([
-      "users/alice/build.log",
-      "users/alice/dist/",
-    ]);
-    expect(runner.downCalls[0]!.destBaseDir).toBe(
-      "/h/acme/workspace/users/alice/task-results/task-42",
-    );
-    expect(res.scope).toBe("user");
-    expect(res.taskId).toBe("task-42");
-    expect(res.destBaseDir).toBe(
-      "/h/acme/workspace/users/alice/task-results/task-42",
-    );
-    expect(res.notice).toMatch(/Staged/);
-    expect(res.ok).toBe(false);
+    for (const bad of [
+      validArgs({ project: "../etc" }),
+      validArgs({ project: "a/b" }),
+      validArgs({ task: ".." }),
+      validArgs({ task: "with spaces" }),
+      validArgs({ task: "-leading-hyphen" }),
+    ]) {
+      const res = (await r.execute(bad, fakeCtx)) as { ok: boolean };
+      expect(res.ok).toBe(false);
+    }
+    expect(runner.downCalls).toHaveLength(0);
   });
 
-  it("scope:'tenant' bypasses the sandbox-side user prefix", async () => {
+  it("stages files at users/<user>/projects/<project>/.results/<task>/...", async () => {
     const runner = new FakeSyncRunner();
+    const expectedDest =
+      "/h/acme/workspace/users/alice/projects/foo/.results/42-build";
     runner.downResult = {
       downloaded: [
-        "/h/acme/workspace/users/alice/task-results/task-42/shared.log",
+        `${expectedDest}/users/alice/build.log`,
+        `${expectedDest}/users/alice/logs/`,
       ],
       skipped: [],
     };
     const r = SyncDownTool(runner);
     const res = (await r.execute(
-      { paths: ["shared.log"], scope: "tenant" },
-      fakeTaskCtx,
+      validArgs({ paths: ["build.log", "logs/"] }),
+      fakeCtx,
+    )) as {
+      ok: boolean;
+      scope: string;
+      project: string;
+      task: string;
+      destBaseDir: string;
+      downloaded: string[];
+      notice: string;
+    };
+    expect(runner.downCalls).toHaveLength(1);
+    expect(runner.downCalls[0]!.paths).toEqual([
+      "users/alice/build.log",
+      "users/alice/logs/",
+    ]);
+    expect(runner.downCalls[0]!.destBaseDir).toBe(expectedDest);
+    expect(res.scope).toBe("user");
+    expect(res.project).toBe("foo");
+    expect(res.task).toBe("42-build");
+    expect(res.destBaseDir).toBe(expectedDest);
+    expect(res.notice).toMatch(/Staged/);
+  });
+
+  it("scope:'tenant' bypasses the sandbox-side user prefix", async () => {
+    const runner = new FakeSyncRunner();
+    const expectedDest =
+      "/h/acme/workspace/users/alice/projects/foo/.results/42-build";
+    runner.downResult = {
+      downloaded: [`${expectedDest}/shared.log`],
+      skipped: [],
+    };
+    const r = SyncDownTool(runner);
+    const res = (await r.execute(
+      validArgs({ paths: ["shared.log"], scope: "tenant" }),
+      fakeCtx,
     )) as { scope: string; destBaseDir: string };
     expect(runner.downCalls[0]!.paths).toEqual(["shared.log"]);
-    // Host staging path is unaffected by scope.
-    expect(res.destBaseDir).toBe(
-      "/h/acme/workspace/users/alice/task-results/task-42",
-    );
+    // Host result path is unaffected by sandbox-side scope.
+    expect(res.destBaseDir).toBe(expectedDest);
     expect(res.scope).toBe("tenant");
   });
 

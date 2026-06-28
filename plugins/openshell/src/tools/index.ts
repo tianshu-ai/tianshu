@@ -348,38 +348,46 @@ export function SyncDownTool(runner: SandboxRunner): AgentTool {
     schema: {
       name: "sync_down",
       description: `Pull files / directories from the OpenShell sandbox into this task's
-result staging dir on the host.
+result dir on the host.
 
-This tool is task-scoped: it ONLY works inside a workboard task run (ctx.taskId
-must be set by the host). Use it as the last step before task_complete to
-deposit anything you want tianshu to surface to the user (logs, build outputs,
-generated reports). Calling it from a chat session that isn't bound to a task
-returns an error — by design, so we don't accidentally clobber files outside a
-specific task's result tree.
+Task + project scoped. Required args:
+  - paths   : sandbox paths to pull (relative to your user home).
+  - project : the project slug this task belongs to. The host pins
+              outputs to the project so users browsing
+              users/<user>/projects/<project>/.results/ see one
+              folder per task. Workboard tasks know the project
+              slug; pass it through verbatim. For ad-hoc chat
+              sessions, pass the project the work belongs to or
+              'scratch' if there isn't one.
+  - task    : a stable, human-meaningful task name. Becomes the
+              result-folder name. Workboard tasks should pass the
+              task id (or '<id>-<slugified-title>'); ad-hoc work
+              can pass a short descriptive slug.
 
-Host path layout (NOT agent-controlled):
-  <userHomeDir>/task-results/<taskId>/<sandboxRelPath>
+Fixed host layout (NOT agent-controlled):
+  <userHomeDir>/projects/<project>/.results/<task>/<sandboxRelPath>
 
-The staging dir is a sibling of the tenant workspace tree, NOT inside the
-workspace. Tianshu (or the user) is responsible for deciding which files to
-promote into a project dir or /tmp; the agent should not assume these files
-are durable beyond the task run.
+That path is INSIDE the user's project tree so tianshu's main
+session sees task outputs alongside the project's own source
+tree, can diff them against the project, and can promote any
+useful files into the project proper or copy them to /tmp.
 
 Sandbox-side paths are resolved relative to your USER HOME
-(/sandbox/workspace/users/<userId>/<path>), matching sync_up's scoping. So an
-agent that ran sync_up({paths:['src/']}) and an exec that wrote ./dist/output,
-can run sync_down({paths:['dist/']}) and the host gets the files at
-<userHomeDir>/task-results/<taskId>/users/<userId>/dist/.
+(/sandbox/workspace/users/<userId>/<path>), matching sync_up's
+scoping. So sync_up({paths:['src/']}) → exec that writes
+./dist/output → sync_down({paths:['dist/'], project:'foo',
+task:'42-build'}) lands the dist tree at
+users/<userId>/projects/foo/.results/42-build/users/<userId>/dist/.
 
-Directories are recursive. Re-running the same paths overwrites the staging
-copy in place (idempotent within one task).
+Directories are recursive. Re-running the same paths within the
+same project+task overwrites the result copy in place.
 
-Use 'scope: "tenant"' (rare) to read from the tenant root rather than your
-user home; the host staging layout is unchanged.
+Use 'scope: "tenant"' (rare) to read from the tenant root rather
+than your user home; the host result-folder layout is unchanged.
 
-After sync_down lands a non-trivial result set, narrate what you staged in
-your next assistant message so the user / tianshu's main session knows the
-files are available and can decide what to do with them.`,
+After sync_down lands a non-trivial result set, narrate what you
+staged in your next assistant message so tianshu's main session
+knows the files are available.`,
       parameters: Type.Object({
         paths: Type.Array(
           Type.String({
@@ -391,6 +399,16 @@ files are available and can decide what to do with them.`,
             description: "Files and / or directories to download.",
           },
         ),
+        project: Type.String({
+          description:
+            "Project slug this task belongs to. Lowercase letters / digits / hyphens; required. For workboard tasks, pass task.projectSlug verbatim. For ad-hoc work, use 'scratch'.",
+          minLength: 1,
+        }),
+        task: Type.String({
+          description:
+            "Stable, human-meaningful task folder name. Workboard tasks should pass the task id (optionally suffixed with a slugified title, e.g. '42-add-login'). Ad-hoc work can pass a short descriptive slug.",
+          minLength: 1,
+        }),
         scope: Type.Optional(
           Type.Union(
             [Type.Literal("user"), Type.Literal("tenant")],
@@ -411,43 +429,40 @@ files are available and can decide what to do with them.`,
           error: "runner does not support sync_down (not an OpenShellRunner)",
         };
       }
-      const taskId = typeof ctx.taskId === "string" ? ctx.taskId.trim() : "";
-      if (!taskId) {
-        // Refuse outside a task context. Host wires ctx.taskId from
-        // the agent loop for workboard worker runs; chat sessions
-        // bound to a task via TaskSandboxPool.bindSession also get
-        // it via the sandbox-pool fallback. If neither path set it,
-        // we don't have a stable place to put the files — fail
-        // loudly so the agent doesn't think it succeeded.
-        return {
-          ok: false,
-          error:
-            "sync_down is task-scoped: ctx.taskId is required. Call this from a workboard task or a chat session bound to a task. To inspect files outside a task, exec `cat` / `ls` directly.",
-        };
-      }
       const raw = (args as { paths?: unknown }).paths;
       if (!Array.isArray(raw) || raw.length === 0) {
         return { ok: false, error: "paths must be a non-empty string array" };
       }
+      const project = typeof (args as { project?: unknown }).project === "string"
+        ? (args as { project: string }).project.trim()
+        : "";
+      const task = typeof (args as { task?: unknown }).task === "string"
+        ? (args as { task: string }).task.trim()
+        : "";
+      const projectErr = validateSlug(project, "project");
+      if (projectErr) return { ok: false, error: projectErr };
+      const taskErr = validateSlug(task, "task");
+      if (taskErr) return { ok: false, error: taskErr };
       const scope =
         (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
       const inputPaths = raw.map((p) => String(p));
       const scopedPaths = prefixPaths(inputPaths, scope, ctx.userId);
-      const destBaseDir = taskResultsDirFor(ctx, taskId);
+      const destBaseDir = projectTaskResultsDir(ctx, project, task);
       try {
         const r = await sync.syncDown(scopedPaths, { destBaseDir });
         return {
           ok: r.skipped.length === 0,
           scope,
-          taskId,
+          project,
+          task,
           destBaseDir,
           downloaded: r.downloaded,
           skipped: r.skipped,
           /** Hint surfaced verbatim to the agent. The expected next
            *  step is to narrate what got staged so tianshu's main
            *  session sees the files in the task transcript and can
-           *  decide whether to copy any of them into a project /tmp
-           *  dir before they get swept by a future task run. */
+           *  decide whether to promote any of them into the project
+           *  proper. */
           notice:
             `Staged ${r.downloaded.length} item(s) at ${destBaseDir}. Mention this in your next message so tianshu can review them.`,
         };
@@ -462,17 +477,46 @@ files are available and can decide what to do with them.`,
 }
 
 /**
- * Compute the host-side staging directory for sync_down. Always
- * <userHomeDir>/task-results/<taskId>/ — a sibling of the tenant
- * workspace tree, never inside it. Tianshu's host layer decides
- * whether to promote anything from staging into a permanent home
- * after the task transcript surfaces the files.
- *
- * Caller is responsible for verifying taskId is non-empty; this
- * helper just composes the path.
+ * Compute the host-side result directory for sync_down. Always
+ *   <userHomeDir>/projects/<project>/.results/<task>/
+ * so tianshu's main session can browse task outputs next to the
+ * project's source tree. Caller is responsible for validating
+ * `project` and `task` are non-empty slugs (validateSlug() above).
  */
-function taskResultsDirFor(ctx: AgentToolContext, taskId: string): string {
-  return path.join(ctx.userHomeDir, "task-results", taskId);
+function projectTaskResultsDir(
+  ctx: AgentToolContext,
+  project: string,
+  task: string,
+): string {
+  return path.join(
+    ctx.userHomeDir,
+    "projects",
+    project,
+    ".results",
+    task,
+  );
+}
+
+/**
+ * Reject empty / traversal / path-separator inputs for the
+ * `project` and `task` parameters. We only accept alphanumeric +
+ * dot + underscore + hyphen so an agent can't escape the result
+ * tree by passing `../../etc/passwd`. Length capped at 64.
+ */
+function validateSlug(value: string, label: string): string | null {
+  if (!value) {
+    return `${label} must be a non-empty string`;
+  }
+  if (value.length > 64) {
+    return `${label} must be ≤ 64 chars`;
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+    return `${label} must match [A-Za-z0-9._-]+ (no slashes, no spaces)`;
+  }
+  if (value === "." || value === ".." || value.startsWith("-")) {
+    return `${label} cannot be '${value}'`;
+  }
+  return null;
 }
 
 // ─── GetSandboxStatusTool ─────────────────────────────────
