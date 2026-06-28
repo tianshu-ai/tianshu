@@ -656,52 +656,45 @@ export function claimNextTask(
     const candidate = rowToTask(row);
     if (!isEligible(db, candidate)) continue;
 
-    // Claim atomically. The UPDATE has THREE jobs:
+    // Claim atomically. The UPDATE has TWO jobs:
     //   1. flip status ready → in_progress
     //   2. stamp started_at + session_id + worker_agent_id so the
     //      board surfaces "who is doing what"
-    //   3. enforce "one task in flight per worker" — the
-    //      `NOT EXISTS` subclause refuses the claim if this
-    //      worker (or, for an unpinned worker, any task this
-    //      worker would consider its own) is already running
-    //      another task. This is the source of truth; the pool's
-    //      in-memory `busy` map is just an optimisation, and
-    //      survives rebuild() / disable+enable cycles where the
-    //      memory state could otherwise drift.
     //
-    // The subquery uses the same agent-vs-role logic as the
-    // SELECT above: with `agentId` set we check rows pinned to
-    // this exact agent; without an agent we fall back to any
-    // in_progress row matching this role.
+    // Race safety: the `status = 'ready'` guard makes the UPDATE
+    // self-exclusive. Two concurrent claimNextTask() calls that
+    // pick the same candidate row see exactly one `changes=1`
+    // and one `changes=0` because SQLite's UPDATE is row-level
+    // atomic. No external lock needed.
+    //
+    // Yu 2026-06-28: prior versions of this UPDATE also carried
+    // a `NOT EXISTS (SELECT 1 FROM tasks AS busy WHERE
+    // busy.worker_agent_id = ?)` clause that hard-enforced "at
+    // most one in-flight task per worker agent". That rule
+    // capped real parallelism at min(workerCount, tenantCap)
+    // and made the pool's maxConcurrentRuns / per-user knobs
+    // unreachable in practice — a tenant with 10/5 caps and 4
+    // workers could only ever run 4 tasks at once, regardless
+    // of the user's intent. The cap is now a pure task-level
+    // ceiling enforced by the pool (see WorkerPool.drain); a
+    // single worker agent runs as many parallel sessions as
+    // the tenant + per-user caps allow.
     const claimSql = agentId
       ? `UPDATE tasks
            SET status = 'in_progress',
                started_at = ?,
                session_id = ?,
                worker_agent_id = ?
-         WHERE id = ? AND status = 'ready'
-           AND NOT EXISTS (
-             SELECT 1 FROM tasks AS busy
-             WHERE busy.status = 'in_progress'
-               AND busy.worker_agent_id = ?
-           )`
+         WHERE id = ? AND status = 'ready'`
       : `UPDATE tasks
            SET status = 'in_progress',
                started_at = ?,
                session_id = ?
-         WHERE id = ? AND status = 'ready'
-           AND NOT EXISTS (
-             SELECT 1 FROM tasks AS busy
-             WHERE busy.status = 'in_progress'
-               AND busy.worker_role = ?
-               AND busy.worker_agent_id IS NULL
-           )`;
+         WHERE id = ? AND status = 'ready'`;
     const result = (
       agentId
-        ? db
-            .prepare(claimSql)
-            .run(now, sessionId, agentId, candidate.id, agentId)
-        : db.prepare(claimSql).run(now, sessionId, candidate.id, role ?? "")
+        ? db.prepare(claimSql).run(now, sessionId, agentId, candidate.id)
+        : db.prepare(claimSql).run(now, sessionId, candidate.id)
     ) as { changes: number };
     if (!result.changes) continue;
 

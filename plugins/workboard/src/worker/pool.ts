@@ -180,7 +180,16 @@ export class WorkerPool {
   private nudgeTimer: NodeJS.Timeout | null = null;
   private pollTimer: NodeJS.Timeout | null = null;
   private watchdogTimer: NodeJS.Timeout | null = null;
-  /** agentId → "in-flight task id" (or undefined = idle). */
+  /** taskId → worker agentId that picked it up. Indexed by
+   *  taskId so we can release in O(1) when a run finishes, and
+   *  count `busy.size` for the tenant cap check.
+   *
+   *  Pre-Yu-2026-06-28 this was Map<agentId, taskId> with the
+   *  implicit "one in-flight task per worker" rule. We flipped
+   *  the index when we lifted that rule (see claimNextTask):
+   *  multiple tasks can now share a worker agent, so agentId is
+   *  no longer unique. Reverse-lookups by agentId are still
+   *  possible (status() rebuilds them on demand) but rare. */
   private busy = new Map<string, string>();
   /** userId → count of in-flight tasks owned by that user.
    *  Drives the per-user concurrency cap (Yu 2026-06-28). We
@@ -197,6 +206,13 @@ export class WorkerPool {
    *  every WorkerHandle. */
   private runControllers = new Map<string, AbortController>();
   private workers: WorkerHandle[] = [];
+  /** Round-robin index into `this.workers` used by drain(). Each
+   *  drain pass walks the worker ring starting from this cursor
+   *  and advances it as it goes, so back-to-back drain calls
+   *  don't always probe the same agent first. Persisting across
+   *  drains evens out work distribution when only one task is
+   *  eligible per pass. Wrapped modulo workers.length at use. */
+  private drainCursor = 0;
   private stopped = false;
 
   constructor(private deps: WorkerPoolDeps) {
@@ -328,11 +344,16 @@ export class WorkerPool {
   rebuild(agents: AgentSpec[]): void {
     if (this.stopped) return;
     const next = this.buildHandles(agents);
-    // Drop busy entries whose agent no longer exists, so a future
-    // resurrection of the same id starts clean.
+    // Drop busy entries whose worker agent no longer exists, so
+    // a future resurrection of the same id starts clean. The
+    // task itself stays in_progress on disk — the runOne loop
+    // either finishes naturally (its WorkerHandle reference is
+    // still alive in the closure) or the watchdog will pick it
+    // up on next sweep. Iterating values() because the map is
+    // now taskId → agentId (see comment on `this.busy`).
     const survivingIds = new Set(next.map((w) => w.agentId));
-    for (const id of [...this.busy.keys()]) {
-      if (!survivingIds.has(id)) this.busy.delete(id);
+    for (const [taskId, agentId] of [...this.busy]) {
+      if (!survivingIds.has(agentId)) this.busy.delete(taskId);
     }
     this.workers = next;
     this.deps.log.info("workboard: rebuilt pool", {
@@ -342,16 +363,39 @@ export class WorkerPool {
     this.nudge();
   }
 
-  /** Snapshot for the admin page + `GET /workers/status`. */
-  status(): { workers: { agentId: string; name: string; kind: string; busy: boolean }[]; running: string[] } {
+  /** Snapshot for the admin page + `GET /workers/status`.
+   *
+   *  `busy` (legacy boolean) stays true when the worker has at
+   *  least one in-flight task; `busyCount` is the precise
+   *  number now that a worker can run multiple tasks in
+   *  parallel. `running` is the list of in-flight task ids,
+   *  unchanged. */
+  status(): {
+    workers: {
+      agentId: string;
+      name: string;
+      kind: string;
+      busy: boolean;
+      busyCount: number;
+    }[];
+    running: string[];
+  } {
+    // Rebuild agentId → inflight count from the taskId-indexed
+    // map. O(n) over in-flight tasks; n is bounded by
+    // maxConcurrentRuns so the constant is fine.
+    const perAgent = new Map<string, number>();
+    for (const agentId of this.busy.values()) {
+      perAgent.set(agentId, (perAgent.get(agentId) ?? 0) + 1);
+    }
     return {
       workers: this.workers.map((w) => ({
         agentId: w.agentId,
         name: w.name,
         kind: w.kind,
-        busy: this.busy.has(w.agentId),
+        busyCount: perAgent.get(w.agentId) ?? 0,
+        busy: (perAgent.get(w.agentId) ?? 0) > 0,
       })),
-      running: [...this.busy.values()],
+      running: [...this.busy.keys()],
     };
   }
 
@@ -400,18 +444,45 @@ export class WorkerPool {
     // 0 / undefined means unlimited at that level. Whichever
     // fires first stops the claim; tasks not claimed stay 'ready'
     // and get a fresh look on the next nudge/poll cycle.
+    //
+    // Yu 2026-06-28: the drain used to be a single for-loop over
+    // `this.workers` because the pool also enforced "one task
+    // per worker agent" — each loop iteration could claim at
+    // most one task. Lifting that rule means a single worker
+    // can pick up multiple parallel runs, so we instead loop
+    // while the tenant cap has room and round-robin across
+    // workers to spread fresh claims. Each pass starts from a
+    // different worker index so a hot worker doesn't always
+    // win the next claim slot.
     const tenantCap = this.deps.maxConcurrentRuns ?? 0;
     const userCap = this.deps.maxConcurrentRunsPerUser ?? 0;
-    for (const worker of this.workers) {
+
+    if (this.workers.length === 0) return;
+
+    // Round-robin entry point. Stored on the instance so back-
+    // to-back drain() calls (e.g. nudge bursts on task creation)
+    // don't always probe the same agent first.
+    let cursor = this.drainCursor % this.workers.length;
+
+    // Outer loop: keep pulling work until we've checked every
+    // worker in this drain pass without success. A successful
+    // claim resets `idleStreak` so the loop continues; a full
+    // sweep of zeros means every worker either has no eligible
+    // task or the SELECT/UPDATE race lost.
+    let idleStreak = 0;
+    while (idleStreak < this.workers.length) {
       if (tenantCap > 0 && this.busy.size >= tenantCap) {
         // Tenant ceiling reached: every user has to wait.
+        this.drainCursor = cursor;
         return;
       }
-      if (this.busy.has(worker.agentId)) continue;
+
+      const worker = this.workers[cursor];
+      cursor = (cursor + 1) % this.workers.length;
 
       // Build the set of users that are already at their per-
       // user cap; claimNextTask will skip their tasks for this
-      // call. Computed lazily inside the loop so it reflects the
+      // call. Recomputed inside the loop so it reflects the
       // very latest busyByUser state — a task that completed
       // mid-drain frees its user up immediately.
       const excludeUserIds =
@@ -421,9 +492,13 @@ export class WorkerPool {
         workerRole: worker.kind,
         excludeUserIds,
       });
-      if (!claimed) continue;
+      if (!claimed) {
+        idleStreak++;
+        continue;
+      }
+      idleStreak = 0;
 
-      this.busy.set(worker.agentId, claimed.id);
+      this.busy.set(claimed.id, worker.agentId);
       this.taskOwners.set(claimed.id, claimed.ownerUserId);
       this.busyByUser.set(
         claimed.ownerUserId,
@@ -443,8 +518,13 @@ export class WorkerPool {
       });
 
       // Run the worker async so we don't block the drain loop.
+      // Multiple runOne() invocations may now be live for the
+      // same `worker` handle — LLMWorker.run() is reentrant
+      // (every call constructs its own session via
+      // cfg.runner.run, gets its own AbortController, and
+      // pipes a per-task sandbox through ctx.taskId).
       void this.runOne(worker, claimed).finally(() => {
-        this.busy.delete(worker.agentId);
+        this.busy.delete(claimed.id);
         const owner = this.taskOwners.get(claimed.id);
         if (owner) {
           const remaining = (this.busyByUser.get(owner) ?? 1) - 1;
@@ -457,6 +537,8 @@ export class WorkerPool {
         if (!this.stopped) this.nudge();
       });
     }
+
+    this.drainCursor = cursor;
   }
 
   /** Users currently at or above the per-user cap. Used by drain()
