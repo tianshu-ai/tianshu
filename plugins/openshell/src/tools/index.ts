@@ -347,33 +347,39 @@ export function SyncDownTool(runner: SandboxRunner): AgentTool {
   return {
     schema: {
       name: "sync_down",
-      description: `Pull files / directories from the OpenShell sandbox to a per-task staging
-dir on the host. Does NOT write into the tenant workspace directly — multiple
-tasks producing files with the same names would clobber each other. Tianshu's
-host layer (or the user) decides whether/where to copy from staging into the
-workspace.
+      description: `Pull files / directories from the OpenShell sandbox into this task's
+result staging dir on the host.
 
-Sandbox-side paths are resolved relative to your USER HOME (
-/sandbox/workspace/users/<userId>/<path>), matching sync_up's scoping. So an
-agent that runs sync_up({paths:['src/']}) and then exec produces ./dist/output,
-can run sync_down({paths:['dist/']}) to bring it back.
+This tool is task-scoped: it ONLY works inside a workboard task run (ctx.taskId
+must be set by the host). Use it as the last step before task_complete to
+deposit anything you want tianshu to surface to the user (logs, build outputs,
+generated reports). Calling it from a chat session that isn't bound to a task
+returns an error — by design, so we don't accidentally clobber files outside a
+specific task's result tree.
 
-Host-side, files land under a staging dir derived from your run context:
-  - With a taskId    : <tenantHomeDir>/task-results/tasks/<taskId>/<path>
-  - With a sessionId : <tenantHomeDir>/task-results/sessions/<sessionId>/<path>
-  - Neither (main)   : <tenantHomeDir>/task-results/main/<runStamp>/<path>
-The response always includes 'destBaseDir' so the caller knows the absolute
-staging root, and 'downloaded' contains the absolute paths of every file/dir
-actually written. Re-running with the same context overwrites the staging copy
-in place (idempotent within one run).
+Host path layout (NOT agent-controlled):
+  <userHomeDir>/task-results/<taskId>/<sandboxRelPath>
 
-Directories are recursive. Files inside the staging dir are intended as
-ephemeral build artefacts — the host is free to clean them up after the run
-finishes; don't treat the staging dir as durable storage.
+The staging dir is a sibling of the tenant workspace tree, NOT inside the
+workspace. Tianshu (or the user) is responsible for deciding which files to
+promote into a project dir or /tmp; the agent should not assume these files
+are durable beyond the task run.
+
+Sandbox-side paths are resolved relative to your USER HOME
+(/sandbox/workspace/users/<userId>/<path>), matching sync_up's scoping. So an
+agent that ran sync_up({paths:['src/']}) and an exec that wrote ./dist/output,
+can run sync_down({paths:['dist/']}) and the host gets the files at
+<userHomeDir>/task-results/<taskId>/users/<userId>/dist/.
+
+Directories are recursive. Re-running the same paths overwrites the staging
+copy in place (idempotent within one task).
 
 Use 'scope: "tenant"' (rare) to read from the tenant root rather than your
-user home. Sandbox-side paths then resolve to /sandbox/workspace/<path>; host
-staging path layout is unchanged.`,
+user home; the host staging layout is unchanged.
+
+After sync_down lands a non-trivial result set, narrate what you staged in
+your next assistant message so the user / tianshu's main session knows the
+files are available and can decide what to do with them.`,
       parameters: Type.Object({
         paths: Type.Array(
           Type.String({
@@ -405,6 +411,20 @@ staging path layout is unchanged.`,
           error: "runner does not support sync_down (not an OpenShellRunner)",
         };
       }
+      const taskId = typeof ctx.taskId === "string" ? ctx.taskId.trim() : "";
+      if (!taskId) {
+        // Refuse outside a task context. Host wires ctx.taskId from
+        // the agent loop for workboard worker runs; chat sessions
+        // bound to a task via TaskSandboxPool.bindSession also get
+        // it via the sandbox-pool fallback. If neither path set it,
+        // we don't have a stable place to put the files — fail
+        // loudly so the agent doesn't think it succeeded.
+        return {
+          ok: false,
+          error:
+            "sync_down is task-scoped: ctx.taskId is required. Call this from a workboard task or a chat session bound to a task. To inspect files outside a task, exec `cat` / `ls` directly.",
+        };
+      }
       const raw = (args as { paths?: unknown }).paths;
       if (!Array.isArray(raw) || raw.length === 0) {
         return { ok: false, error: "paths must be a non-empty string array" };
@@ -413,15 +433,23 @@ staging path layout is unchanged.`,
         (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
       const inputPaths = raw.map((p) => String(p));
       const scopedPaths = prefixPaths(inputPaths, scope, ctx.userId);
-      const destBaseDir = taskResultsDirFor(ctx);
+      const destBaseDir = taskResultsDirFor(ctx, taskId);
       try {
         const r = await sync.syncDown(scopedPaths, { destBaseDir });
         return {
           ok: r.skipped.length === 0,
           scope,
+          taskId,
           destBaseDir,
           downloaded: r.downloaded,
           skipped: r.skipped,
+          /** Hint surfaced verbatim to the agent. The expected next
+           *  step is to narrate what got staged so tianshu's main
+           *  session sees the files in the task transcript and can
+           *  decide whether to copy any of them into a project /tmp
+           *  dir before they get swept by a future task run. */
+          notice:
+            `Staged ${r.downloaded.length} item(s) at ${destBaseDir}. Mention this in your next message so tianshu can review them.`,
         };
       } catch (err) {
         return {
@@ -434,28 +462,17 @@ staging path layout is unchanged.`,
 }
 
 /**
- * Compute the host-side staging directory for sync_down for this
- * agent-tool invocation. Always under <tenantHome>/task-results/
- * so the host layer can sweep / surface / archive it as one unit
- * without coupling to the tenant workspace.
+ * Compute the host-side staging directory for sync_down. Always
+ * <userHomeDir>/task-results/<taskId>/ — a sibling of the tenant
+ * workspace tree, never inside it. Tianshu's host layer decides
+ * whether to promote anything from staging into a permanent home
+ * after the task transcript surfaces the files.
  *
- *   - taskId   present → task-results/tasks/<taskId>/
- *   - sessionId present → task-results/sessions/<sessionId>/
- *   - neither  present → task-results/main/<isoDay>-<pid>/
- *
- * The fallback uses an iso-day stamp (not a full timestamp) so
- * repeated sync_downs within a chat session land in the same dir
- * — the agent expects to overwrite its own staging files between
- * exec rounds, not generate a fresh tree on every call. The PID
- * gives just enough disambiguation across server restarts that
- * old runs don't get clobbered.
+ * Caller is responsible for verifying taskId is non-empty; this
+ * helper just composes the path.
  */
-function taskResultsDirFor(ctx: AgentToolContext): string {
-  const root = path.join(ctx.tenantHomeDir, "task-results");
-  if (ctx.taskId) return path.join(root, "tasks", ctx.taskId);
-  if (ctx.sessionId) return path.join(root, "sessions", ctx.sessionId);
-  const day = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-  return path.join(root, "main", `${day}-${process.pid}`);
+function taskResultsDirFor(ctx: AgentToolContext, taskId: string): string {
+  return path.join(ctx.userHomeDir, "task-results", taskId);
 }
 
 // ─── GetSandboxStatusTool ─────────────────────────────────

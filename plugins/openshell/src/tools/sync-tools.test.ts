@@ -71,6 +71,7 @@ const fakeCtx = {
   userId: "alice",
   tenantId: "acme",
   tenantHomeDir: "/h/acme",
+  userHomeDir: "/h/acme/workspace/users/alice",
   sessionId: "sess-1",
 } as AgentToolContext;
 
@@ -195,10 +196,24 @@ describe("sync_down tool", () => {
     expect(res.ok).toBe(false);
   });
 
-  it("prefixes paths with the user home before forwarding to runner.syncDown", async () => {
+  it("requires ctx.taskId", async () => {
+    const runner = new FakeSyncRunner();
+    const r = SyncDownTool(runner);
+    const res = (await r.execute({ paths: ["out.log"] }, fakeCtx)) as {
+      ok: boolean;
+      error: string;
+    };
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/task-scoped/);
+    expect(runner.downCalls).toHaveLength(0);
+  });
+
+  it("prefixes paths with the user home and stages under taskId", async () => {
     const runner = new FakeSyncRunner();
     runner.downResult = {
-      downloaded: ["/h/acme/task-results/sessions/sess-1/users/alice/build.log"],
+      downloaded: [
+        "/h/acme/workspace/users/alice/task-results/task-42/users/alice/build.log",
+      ],
       skipped: [
         {
           relPath: "users/alice/dist/",
@@ -209,73 +224,52 @@ describe("sync_down tool", () => {
     const r = SyncDownTool(runner);
     const res = (await r.execute(
       { paths: ["build.log", "dist/"] },
-      fakeCtx,
+      fakeTaskCtx,
     )) as {
       ok: boolean;
       scope: string;
+      taskId: string;
       destBaseDir: string;
       downloaded: string[];
       skipped: { relPath: string }[];
+      notice: string;
     };
     expect(runner.downCalls).toHaveLength(1);
     expect(runner.downCalls[0]!.paths).toEqual([
       "users/alice/build.log",
       "users/alice/dist/",
     ]);
+    expect(runner.downCalls[0]!.destBaseDir).toBe(
+      "/h/acme/workspace/users/alice/task-results/task-42",
+    );
     expect(res.scope).toBe("user");
+    expect(res.taskId).toBe("task-42");
+    expect(res.destBaseDir).toBe(
+      "/h/acme/workspace/users/alice/task-results/task-42",
+    );
+    expect(res.notice).toMatch(/Staged/);
     expect(res.ok).toBe(false);
   });
 
-  it("scope:'tenant' bypasses the user-home prefix on sync_down", async () => {
+  it("scope:'tenant' bypasses the sandbox-side user prefix", async () => {
     const runner = new FakeSyncRunner();
-    runner.downResult = { downloaded: ["/h/acme/task-results/sessions/sess-1/shared.log"], skipped: [] };
+    runner.downResult = {
+      downloaded: [
+        "/h/acme/workspace/users/alice/task-results/task-42/shared.log",
+      ],
+      skipped: [],
+    };
     const r = SyncDownTool(runner);
-    await r.execute({ paths: ["shared.log"], scope: "tenant" }, fakeCtx);
+    const res = (await r.execute(
+      { paths: ["shared.log"], scope: "tenant" },
+      fakeTaskCtx,
+    )) as { scope: string; destBaseDir: string };
     expect(runner.downCalls[0]!.paths).toEqual(["shared.log"]);
-  });
-
-  describe("destBaseDir scoping", () => {
-    it("uses tasks/<taskId>/ when ctx.taskId is set", async () => {
-      const runner = new FakeSyncRunner();
-      runner.downResult = { downloaded: [], skipped: [] };
-      const r = SyncDownTool(runner);
-      const res = (await r.execute(
-        { paths: ["out.log"] },
-        fakeTaskCtx,
-      )) as { destBaseDir: string };
-      expect(runner.downCalls[0]!.destBaseDir).toBe(
-        "/h/acme/task-results/tasks/task-42",
-      );
-      expect(res.destBaseDir).toBe(
-        "/h/acme/task-results/tasks/task-42",
-      );
-    });
-
-    it("uses sessions/<sessionId>/ when only sessionId is set", async () => {
-      const runner = new FakeSyncRunner();
-      runner.downResult = { downloaded: [], skipped: [] };
-      const r = SyncDownTool(runner);
-      await r.execute({ paths: ["out.log"] }, fakeCtx);
-      expect(runner.downCalls[0]!.destBaseDir).toBe(
-        "/h/acme/task-results/sessions/sess-1",
-      );
-    });
-
-    it("falls back to main/<day>-<pid>/ when neither id is set", async () => {
-      const runner = new FakeSyncRunner();
-      runner.downResult = { downloaded: [], skipped: [] };
-      const r = SyncDownTool(runner);
-      const ctx = {
-        userId: "alice",
-        tenantId: "acme",
-        tenantHomeDir: "/h/acme",
-      } as AgentToolContext;
-      await r.execute({ paths: ["out.log"] }, ctx);
-      const dest = runner.downCalls[0]!.destBaseDir!;
-      expect(dest).toMatch(
-        /^\/h\/acme\/task-results\/main\/\d{4}-\d{2}-\d{2}-\d+$/,
-      );
-    });
+    // Host staging path is unaffected by scope.
+    expect(res.destBaseDir).toBe(
+      "/h/acme/workspace/users/alice/task-results/task-42",
+    );
+    expect(res.scope).toBe("tenant");
   });
 
   it("returns a clean error when the runner doesn't support sync_down", async () => {
