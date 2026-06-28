@@ -129,6 +129,11 @@ const plugin: PluginServerModule = {
         idleSec?: number;
         maxRunSec?: number;
       };
+      /** Cap on simultaneous in-flight worker runs across the
+       *  whole tenant's pool. 0 = unlimited (legacy behaviour:
+       *  each registered worker_agent slot independently claims).
+       *  Lower this to throttle LLM / sandbox load. */
+      maxConcurrentRuns?: number;
     };
     const echoEnabled = cfg.echo?.enabled !== false;
     const echoDelayMs =
@@ -242,6 +247,16 @@ const plugin: PluginServerModule = {
     const sessionInbox = ctx.capabilities.get<SessionInboxCapability>(
       "host.sessionInbox",
     );
+    // Cap from manifest config. 0 / negative / non-number all
+    // mean "unlimited" — the pool falls back to its legacy
+    // behaviour of one in-flight task per registered worker.
+    const rawMaxRuns = cfg.maxConcurrentRuns;
+    const maxConcurrentRuns =
+      typeof rawMaxRuns === "number" &&
+      Number.isFinite(rawMaxRuns) &&
+      rawMaxRuns > 0
+        ? Math.floor(rawMaxRuns)
+        : 0;
     const pool = new WorkerPool({
       db: ctx.db,
       log: ctx.log,
@@ -249,6 +264,7 @@ const plugin: PluginServerModule = {
       agents: initialAgents,
       factory,
       taskPool,
+      maxConcurrentRuns,
       notifyParentSession: sessionInbox
         ? (sessionId, message) => {
             void sessionInbox.enqueue(sessionId, message).catch((err) => {
@@ -316,6 +332,7 @@ const plugin: PluginServerModule = {
       echoEnabled,
       echoDelayMs,
       agentCount: initialAgents.length,
+      maxConcurrentRuns: maxConcurrentRuns || "unlimited",
     });
 
     const toolDeps: ToolDeps = {
