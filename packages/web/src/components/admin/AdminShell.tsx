@@ -377,7 +377,72 @@ function AdminPageHost({ pages }: { pages: FlatAdminPage[] }) {
     },
   };
 
-  return <Component {...props} />;
+  return (
+    <PluginAdminPageFrame pluginId={page.pluginId}>
+      <Component {...props} />
+    </PluginAdminPageFrame>
+  );
+}
+
+/**
+ * Wraps a plugin's contributed admin page with an auto-generated
+ * "Configuration" banner when the plugin's manifest declares a
+ * configSchema. Implements the "the form is folded into THAT
+ * page's header" promise from `flattenPages` (see
+ * `PluginConfigSettingsPage`'s commentary above) so plugins with
+ * BOTH adminPages and configSchema don't strand their config
+ * behind a code-only edit.
+ *
+ * Yu 2026-06-28: prior versions of this file referenced
+ * `renderConfigFormBanner` in a comment but didn't actually
+ * render anything — plugins like workboard ended up with their
+ * config form unreachable from the UI. This frame fixes that
+ * regression.
+ *
+ * Plugins with NO configSchema (or whose schema has zero fields)
+ * render their page unchanged — we keep the banner out of the
+ * way unless there's something to configure.
+ */
+function PluginAdminPageFrame({
+  pluginId,
+  children,
+}: {
+  pluginId: string;
+  children: React.ReactNode;
+}) {
+  const plugins = usePluginStore((s) => s.plugins);
+  const plugin = plugins?.find((p) => p.id === pluginId);
+  const hasConfig =
+    !!plugin?.configSchema &&
+    (plugin.configSchema.fields?.length ?? 0) > 0;
+  if (!hasConfig || !plugin) {
+    return <>{children}</>;
+  }
+  return (
+    <div>
+      <div className="mx-auto max-w-5xl px-6 pt-6">
+        <details className="group rounded-md border border-border-subtle bg-bg-elevated/30">
+          <summary className="flex cursor-pointer items-center justify-between gap-2 px-4 py-2 text-[12px] font-medium text-fg-muted hover:text-fg-default">
+            <span className="flex items-center gap-2">
+              <SettingsIcon size={14} className="text-brand-400" />
+              Plugin configuration
+            </span>
+            <span className="text-[10px] uppercase tracking-wide text-fg-fainter">
+              {plugin.displayName}
+            </span>
+          </summary>
+          <div className="border-t border-border-subtle p-4">
+            <p className="mb-3 text-[11px] text-fg-faint">
+              Saving re-activates the plugin so changes take effect on
+              the next request.
+            </p>
+            <PluginConfigForm plugin={plugin} />
+          </div>
+        </details>
+      </div>
+      {children}
+    </div>
+  );
 }
 
 function EmptyState() {
