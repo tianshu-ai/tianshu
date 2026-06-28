@@ -453,48 +453,34 @@ export function SyncDownTool(runner: SandboxRunner): AgentTool {
     schema: {
       name: "sync_down",
       description: `Pull files / directories from the OpenShell sandbox into this task's
-result dir on the host.
+result dir on the host. Workboard-task only — ad-hoc chat sessions can't
+use this (no task = no stable result folder name).
 
-Task + project scoped. Args:
-  - paths   : sandbox paths to pull (relative to your user home). Required.
-  - project : the project slug this task belongs to. Optional inside a
-              workboard task — the host fills it from task.projectSlug.
-              Required for ad-hoc / chat-session calls.
-  - task    : stable, human-meaningful task folder name. Optional inside
-              a workboard task — the host fills it from
-              '<taskId>[-<slugified taskTitle>]'. Required for ad-hoc /
-              chat-session calls.
+Args:
+  - paths   : sandbox paths to pull, project-relative (e.g. 'dist/',
+              'logs/build.log'). Required.
+  - project : optional override of the project slug; host normally fills
+              it from ctx.projectSlug. Use only for the rare cross-project
+              staging case.
+  - scope   : 'user' (default) anchors sandbox paths under the user-home
+              dir; 'tenant' reads from the tenant root. Host result-folder
+              layout is unaffected by scope.
 
-Inside a workboard task you almost never need to pass project / task by
-hand; just call sync_down({paths:['dist/','out.txt']}). The host's task
-context fills the rest in. Explicit args override the defaults if you
-need to stage results under a different project (rare) or use a custom
-folder name (e.g. one task producing multiple result sets).
+The task folder name is fully HOST-CONTROLLED — the tool has no 'task' arg
+and uses '<taskId>[-<slugified taskTitle>]' from ctx. Every sync_down call
+inside the same workboard task lands in the same folder, so multiple syncs
+accumulate side-by-side rather than fragmenting into per-call directories.
 
-Fixed host layout (NOT agent-controlled):
-  <userHomeDir>/projects/<project>/.results/<task>/<sandboxRelPath>
+Host layout (fixed):
+  <userHomeDir>/projects/<project>/.results/<task>/<path>
 
-That path is INSIDE the user's project tree so tianshu's main
-session sees task outputs alongside the project's own source
-tree, can diff them against the project, and can promote any
-useful files into the project proper or copy them to /tmp.
+Use this AFTER an exec produces files you want to keep on the host. For
+transient artefacts (npm cache, intermediate builds), skip — the sandbox
+keeps them and the host workspace stays clean.
 
-Sandbox-side paths are resolved relative to your USER HOME
-(/sandbox/workspace/users/<userId>/<path>), matching sync_up's
-scoping. So sync_up({paths:['src/']}) → exec that writes
-./dist/output → sync_down({paths:['dist/'], project:'foo',
-task:'42-build'}) lands the dist tree at
-users/<userId>/projects/foo/.results/42-build/users/<userId>/dist/.
-
-Directories are recursive. Re-running the same paths within the
-same project+task overwrites the result copy in place.
-
-Use 'scope: "tenant"' (rare) to read from the tenant root rather
-than your user home; the host result-folder layout is unchanged.
-
-After sync_down lands a non-trivial result set, narrate what you
-staged in your next assistant message so tianshu's main session
-knows the files are available.`,
+After sync_down lands a non-trivial result set, narrate what you staged in
+your next assistant message so tianshu's main session knows the files are
+available.`,
       parameters: Type.Object({
         paths: Type.Array(
           Type.String({
@@ -510,13 +496,6 @@ knows the files are available.`,
           Type.String({
             description:
               "Project slug this task belongs to. Optional inside a workboard task — the host fills it from task.projectSlug. Required for ad-hoc / chat-session calls. Lowercase letters / digits / hyphens, dot, or underscore.",
-            minLength: 1,
-          }),
-        ),
-        task: Type.Optional(
-          Type.String({
-            description:
-              "Task folder name. INSIDE A WORKBOARD TASK this is host-controlled — the tool ignores whatever you pass and uses <taskId>[-<slugified taskTitle>] so every sync_down in the same task lands in the same folder. ONLY pass this for ad-hoc / chat-session calls where ctx.taskId isn't set; in that case it becomes the folder name verbatim (and is required).",
             minLength: 1,
           }),
         ),
@@ -553,22 +532,14 @@ knows the files are available.`,
           ? (args as { project: string }).project.trim()
           : "";
       const project = argProject || (ctx.projectSlug ?? "").trim();
-      // Task folder name is HOST-controlled when ctx.taskId is
-      // present (workboard task, bound chat session). We ignore
-      // any agent-supplied `task` arg in that case so multiple
-      // sync_down calls inside the same task always land in the
-      // same folder. Yu 2026-06-28: "在一个 task 里生成的文件都
-      // 应该放在一个文件夹里" — agents otherwise improvise
-      // different names per call ('probe-run-1' vs 'probe-run-
-      // single-binary') and each one gets its own .results dir.
-      const ctxTask = deriveTaskFolderFromCtx(ctx);
-      const argTask =
-        typeof (args as { task?: unknown }).task === "string"
-          ? (args as { task: string }).task.trim()
-          : "";
-      const task = ctxTask || argTask;
-      const taskWasOverridden =
-        Boolean(ctxTask) && Boolean(argTask) && argTask !== ctxTask;
+      // Task folder name is fully host-controlled and derived
+      // from ctx.taskId (+ optional slugified taskTitle). Agents
+      // can't influence it — sync_down's schema doesn't expose a
+      // task arg at all. Yu 2026-06-28: "task 就不应该让 agent 给了,
+      // 应该是程序自动转换". Means every sync_down call inside
+      // the same task lands in the same folder, no agent
+      // improvisation possible.
+      const task = deriveTaskFolderFromCtx(ctx);
       const projectErr = validateSlug(project, "project");
       if (projectErr) {
         return {
@@ -580,7 +551,7 @@ knows the files are available.`,
       if (taskErr) {
         return {
           ok: false,
-          error: `${taskErr}. Call from a workboard task so ctx.taskId is populated, or pass 'task' explicitly when running outside a task.`,
+          error: `${taskErr}. sync_down only works inside a workboard task (or a chat session bound to one) so the host can derive a stable task folder name from ctx.taskId. Ad-hoc chat sessions without a task can't stage results.`,
         };
       }
       const scope =
@@ -618,18 +589,6 @@ knows the files are available.`,
       const destBaseDir = projectTaskResultsDir(ctx, project, task);
       try {
         const r = await sync.syncDown(items, { destBaseDir });
-        const noticeLines = [
-          `Staged ${r.downloaded.length} item(s) at ${destBaseDir}.`,
-          `Mention this in your next message so tianshu can review them.`,
-        ];
-        if (taskWasOverridden) {
-          // Inform the agent we ignored its task arg — saves it
-          // wondering why subsequent calls keep landing in the
-          // same folder.
-          noticeLines.push(
-            `(Note: ignored task='${argTask}' — host-supplied taskId '${task}' wins so every call in this task lands in the same folder.)`,
-          );
-        }
         return {
           ok: r.skipped.length === 0,
           scope,
@@ -638,13 +597,12 @@ knows the files are available.`,
           destBaseDir,
           downloaded: r.downloaded,
           skipped: r.skipped,
-          taskOverridden: taskWasOverridden,
           /** Hint surfaced verbatim to the agent. The expected next
            *  step is to narrate what got staged so tianshu's main
            *  session sees the files in the task transcript and can
            *  decide whether to promote any of them into the project
            *  proper. */
-          notice: noticeLines.join(" "),
+          notice: `Staged ${r.downloaded.length} item(s) at ${destBaseDir}. Mention this in your next message so tianshu can review them.`,
         };
       } catch (err) {
         return {

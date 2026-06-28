@@ -77,12 +77,18 @@ class FakeSyncRunner extends NoSyncRunner {
   }
 }
 
+// sync_down now refuses to run without ctx.taskId (no agent-
+// controlled task arg anymore). The default fake ctx is therefore
+// task-bound; tests that need to assert the ad-hoc / chat-session
+// rejection build their own ctx with taskId omitted.
 const fakeCtx = {
   userId: "alice",
   tenantId: "acme",
   tenantHomeDir: "/h/acme",
   userHomeDir: "/h/acme/workspace/users/alice",
   sessionId: "sess-1",
+  taskId: "42-build",
+  projectSlug: "foo",
 } as AgentToolContext;
 
 describe("sync_up tool", () => {
@@ -106,13 +112,17 @@ describe("sync_up tool", () => {
     expect(res.error).toMatch(/non-empty/);
   });
 
-  it("prefixes paths with the user home before forwarding to runner.syncUp", async () => {
+  it("prefixes paths with users/<u>/projects/<p>/ before forwarding to runner.syncUp", async () => {
+    // fakeCtx now sets projectSlug='foo' (typical workboard task
+    // shape), so sandbox-side anchoring is the full per-project
+    // tree. A bare user-scope test for chat sessions without a
+    // project follows below.
     const runner = new FakeSyncRunner();
     runner.upResult = {
-      uploaded: ["/sandbox/workspace/users/alice/a.txt"],
+      uploaded: ["/sandbox/workspace/users/alice/projects/foo/a.txt"],
       skipped: [
         {
-          relPath: "users/alice/missing/",
+          relPath: "users/alice/projects/foo/missing/",
           reason: "host path does not exist",
         },
       ],
@@ -127,15 +137,12 @@ describe("sync_up tool", () => {
       uploaded: string[];
       skipped: { relPath: string }[];
     };
-    // Runner sees user-scoped paths.
     expect(runner.upCalls).toEqual([[
-      "users/alice/a.txt",
-      "users/alice/missing/",
+      "users/alice/projects/foo/a.txt",
+      "users/alice/projects/foo/missing/",
     ]]);
     expect(res.scope).toBe("user");
     expect(res.ok).toBe(false);
-    expect(res.uploaded).toEqual(["/sandbox/workspace/users/alice/a.txt"]);
-    expect(res.skipped).toHaveLength(1);
   });
 
   it("scope:'tenant' bypasses the user-home prefix", async () => {
@@ -202,34 +209,56 @@ describe("sync_down tool", () => {
   });
 
   function validArgs(extra: Record<string, unknown> = {}) {
-    return { paths: ["out.log"], project: "foo", task: "42-build", ...extra };
+    // 'task' is no longer agent-controllable; default ctx in this
+    // test file always sets ctx.taskId='42-build' for sync_down.
+    return { paths: ["out.log"], project: "foo", ...extra };
   }
 
-  it("requires project + task slugs", async () => {
+  it("requires ctx.taskId + a valid project slug", async () => {
     const runner = new FakeSyncRunner();
     const r = SyncDownTool(runner);
-    for (const bad of [
-      { paths: ["x"] }, // both missing
-      { paths: ["x"], project: "foo" }, // task missing
-      { paths: ["x"], task: "42" }, // project missing
-      { paths: ["x"], project: "", task: "42" },
-      { paths: ["x"], project: "foo", task: "" },
-    ]) {
-      const res = (await r.execute(bad, fakeCtx)) as { ok: boolean };
-      expect(res.ok).toBe(false);
-    }
+
+    // ctx.taskId missing → host can't derive a task folder name,
+    // and the agent has no way to supply one anymore.
+    const ctxNoTask = {
+      ...fakeCtx,
+      taskId: undefined,
+    } as AgentToolContext;
+    const res1 = (await r.execute(
+      { paths: ["x"], project: "foo" },
+      ctxNoTask,
+    )) as { ok: boolean; error: string };
+    expect(res1.ok).toBe(false);
+    expect(res1.error).toMatch(/sync_down only works inside a workboard task/);
+
+    // Empty paths arg — rejected regardless of ctx.
+    const res2 = (await r.execute(
+      { paths: [], project: "foo" },
+      fakeCtx,
+    )) as { ok: boolean };
+    expect(res2.ok).toBe(false);
+
+    // No project anywhere (neither arg nor ctx) — rejected.
+    const ctxNoProject = {
+      ...fakeCtx,
+      projectSlug: undefined,
+    } as AgentToolContext;
+    const res3 = (await r.execute(
+      { paths: ["x"], project: "" },
+      ctxNoProject,
+    )) as { ok: boolean };
+    expect(res3.ok).toBe(false);
+
     expect(runner.downCalls).toHaveLength(0);
   });
 
-  it("rejects slugs containing path separators or traversal", async () => {
+  it("rejects project slugs containing path separators or traversal", async () => {
     const runner = new FakeSyncRunner();
     const r = SyncDownTool(runner);
     for (const bad of [
       validArgs({ project: "../etc" }),
       validArgs({ project: "a/b" }),
-      validArgs({ task: ".." }),
-      validArgs({ task: "with spaces" }),
-      validArgs({ task: "-leading-hyphen" }),
+      validArgs({ project: "." }),
     ]) {
       const res = (await r.execute(bad, fakeCtx)) as { ok: boolean };
       expect(res.ok).toBe(false);
@@ -245,9 +274,12 @@ describe("sync_down tool", () => {
     // (and the sandbox-side lookup also nested twice). The fix
     // normalises agent input by peeling off the project prefix
     // before joining with the scope anchor.
+    // fakeCtx supplies taskId='42-build' so the host derives that
+    // folder name; we override the project arg to assert the
+    // strip behaviour against the cross-project case.
     const runner = new FakeSyncRunner();
     const expectedDest =
-      "/h/acme/workspace/users/alice/projects/sync-probe-2026/.results/run-1";
+      "/h/acme/workspace/users/alice/projects/sync-probe-2026/.results/42-build";
     runner.downResult = {
       downloaded: [`${expectedDest}/chart.png`],
       skipped: [],
@@ -257,7 +289,6 @@ describe("sync_down tool", () => {
       {
         paths: ["projects/sync-probe-2026/chart.png"],
         project: "sync-probe-2026",
-        task: "run-1",
       },
       fakeCtx,
     );
@@ -281,7 +312,6 @@ describe("sync_down tool", () => {
       {
         paths: ["users/alice/projects/foo/dist/output.txt"],
         project: "foo",
-        task: "42-build",
       },
       fakeCtx,
     );
@@ -410,8 +440,12 @@ describe("sync_down tool", () => {
       ];
       const seen = new Set<string>();
       for (const t of agentTaskGuesses) {
+        // 'task' is no longer in the schema, but typebox is
+        // tolerant of extra keys: passing it simulates a stale
+        // agent (or an older system prompt) still trying to set
+        // the folder name. It's silently ignored.
         const res = (await r.execute(
-          { paths: ["chart.png"], task: t },
+          { paths: ["chart.png"], task: t } as never,
           ctx,
         )) as { destBaseDir: string };
         seen.add(res.destBaseDir);
@@ -422,14 +456,11 @@ describe("sync_down tool", () => {
       );
     });
 
-    it("ctx.taskId wins over agent-supplied task (task folder is host-controlled in a workboard task)", async () => {
-      // Yu 2026-06-28: "在一个 task 里生成的文件都应该放在一个
-      // 文件夹里". Agents otherwise improvise different task names
-      // across calls and we end up with 5 different .results dirs
-      // for one task. ctx.taskId always wins; the agent's `task`
-      // arg is dropped with an explanatory `notice`. Project is
-      // still agent-overridable since cross-project staging is a
-      // valid (rare) use case.
+    it("task folder is fully host-derived from ctx (no agent-supplied task arg in schema)", async () => {
+      // Yu 2026-06-28: "task 就不应该让 agent 给了, 应该是程序自动转换".
+      // The schema doesn't expose a 'task' arg at all anymore;
+      // every sync_down call in the same workboard task lands in
+      // the same host-derived folder name, no exceptions.
       const runner = new FakeSyncRunner();
       runner.downResult = { downloaded: [], skipped: [] };
       const r = SyncDownTool(runner);
@@ -446,32 +477,32 @@ describe("sync_down tool", () => {
         {
           paths: ["out.log"],
           project: "other-project",
-          task: "custom-folder",
+          // 'task' isn't a valid arg anymore; if an agent passes
+          // it (e.g. via a stale system prompt), the extra key
+          // is silently dropped by typebox.
+          task: "custom-folder" as never,
         },
         ctx,
-      )) as {
-        project: string;
-        task: string;
-        taskOverridden: boolean;
-        notice: string;
-      };
+      )) as { project: string; task: string };
       expect(res.project).toBe("other-project");
-      // Agent's 'custom-folder' is ignored; ctx-derived
-      // '42-add-login' wins.
       expect(res.task).toBe("42-add-login");
-      expect(res.taskOverridden).toBe(true);
-      expect(res.notice).toMatch(/ignored task='custom-folder'/);
     });
 
-    it("errors helpfully when ctx is missing and args weren't passed", async () => {
+    it("errors helpfully when ctx.projectSlug AND project arg are both missing", async () => {
+      // ctx.taskId might be set (so the task-folder check passes)
+      // but project still has to come from somewhere.
       const runner = new FakeSyncRunner();
       const r = SyncDownTool(runner);
-      const res = (await r.execute({ paths: ["out.log"] }, fakeCtx)) as {
+      const ctxNoProject = {
+        ...fakeCtx,
+        projectSlug: undefined,
+      } as AgentToolContext;
+      const res = (await r.execute({ paths: ["out.log"] }, ctxNoProject)) as {
         ok: boolean;
         error: string;
       };
       expect(res.ok).toBe(false);
-      expect(res.error).toMatch(/ctx\.projectSlug|workboard task/);
+      expect(res.error).toMatch(/project must be|ctx\.projectSlug/);
     });
   });
 
