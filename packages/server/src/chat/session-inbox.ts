@@ -406,7 +406,25 @@ export function markDeliveredFromMessage(
 ): void {
   if (!text.includes("<inbox kind=")) return;
   const ids: string[] = [];
-  const re = /<inbox\s+kind="[^"]*"\s+id="(inbox_[^"]+)"/g;
+  // The text we get here is whatever the handler reads back from
+  // the `messages.content` column. For chat-handler callsite that
+  // column stores `JSON.stringify(AgentMessage)`, so the literal
+  // bytes are JSON-escaped: <inbox kind=\"task_done\" id=\"inbox_x\">.
+  // For tool-result / tenant-config paths the same function gets
+  // called with raw markdown, where the bytes are exactly
+  // <inbox kind="task_done" id="inbox_x">. Match BOTH forms so the
+  // bug-of-the-day in 2026-06-28 (inbox notification repeating 8
+  // times because regex only matched raw) cannot recur.
+  //
+  // Compiled pattern explained:
+  //   <inbox\s+kind=\\?"[^"\\]*\\?"\s+id=\\?"(inbox_[^"\\]+)\\?"
+  //   ^                ^^^^                ^^^^         ^^^^
+  //   literal          optional escape     optional escape
+  //   tag              before quote        before quote
+  // [^"\\]+ excludes both the quote char and the backslash so we
+  // stop at the right boundary regardless of escape level.
+  const re =
+    /<inbox\s+kind=\\?"[^"\\]*\\?"\s+id=\\?"(inbox_[^"\\]+)\\?"/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text)) !== null) {
     ids.push(m[1]);
