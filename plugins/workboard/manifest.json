@@ -95,6 +95,20 @@
   "configSchema": {
     "fields": [
       {
+        "key": "maxConcurrentRuns",
+        "label": "Max concurrent worker runs",
+        "description": "Cap on how many worker tasks the pool will run in parallel. 0 (default) means unlimited — each registered worker slot can claim a task. Lower this if you want to throttle LLM / sandbox load (e.g. set to 2 so only two tasks run at once even though 5 workers are registered).",
+        "kind": "number",
+        "default": 0,
+        "min": 0,
+        "step": 1,
+        "group": {
+          "id": "pool",
+          "label": "Pool",
+          "badge": "runtime"
+        }
+      },
+      {
         "key": "echo.enabled",
         "label": "Enabled",
         "kind": "boolean",

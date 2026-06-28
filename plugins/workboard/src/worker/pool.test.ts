@@ -418,4 +418,92 @@ describe("WorkerPool", () => {
     expect(getTask(db, "t1")?.status).toBe("done");
     pool.stop();
   });
+
+  // ─── maxConcurrentRuns ────────────────────────────────────────
+  //
+  // Yu 2026-06-28 evening: the tenant should be able to throttle
+  // how many worker tasks run in parallel even if there are more
+  // worker_agents rows registered. With cap=N, only N tasks ever
+  // sit in `busy` at the same time; surplus queued work waits.
+
+  it("respects maxConcurrentRuns cap when more workers + tasks are available", async () => {
+    // Three workers, three ready tasks. Cap = 1 → only one runs
+    // at a time; the other two are still ready while the first
+    // is in flight, and complete sequentially.
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("t1", "inbox", "u1", "task 1", Date.now());
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("t2", "inbox", "u1", "task 2", Date.now() + 1);
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("t3", "inbox", "u1", "task 3", Date.now() + 2);
+
+    const a: AgentSpec = { id: "a", kind: "echo", name: "A" };
+    const b: AgentSpec = { id: "b", kind: "echo", name: "B" };
+    const c: AgentSpec = { id: "c", kind: "echo", name: "C" };
+    // 25ms delay per worker run; with cap=1 the three tasks
+    // serialise, so total wall time is ~75ms. Without the cap
+    // they'd all run in parallel and finish in ~25ms.
+    const pool = new WorkerPool({
+      db,
+      log: noopLog,
+      broadcast: () => {},
+      agents: [a, b, c],
+      factory: echoFactory(25),
+      maxConcurrentRuns: 1,
+    });
+    pool.start();
+
+    // Halfway through the first run, only one of t1/t2/t3 should
+    // be claimed (status='running'); the others should still be
+    // 'ready'.
+    await pause(10);
+    const midStatuses = ["t1", "t2", "t3"].map(
+      (id) => getTask(db, id)?.status,
+    );
+    const runningCount = midStatuses.filter(
+      (s) => s === "in_progress",
+    ).length;
+    expect(runningCount).toBeLessThanOrEqual(1);
+
+    // All three eventually complete — the cap is a throttle, not
+    // a hard limit on total throughput.
+    await pause(120);
+    expect(getTask(db, "t1")?.status).toBe("done");
+    expect(getTask(db, "t2")?.status).toBe("done");
+    expect(getTask(db, "t3")?.status).toBe("done");
+    pool.stop();
+  });
+
+  it("unlimited (cap=0) keeps legacy behaviour: every slot can run in parallel", async () => {
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("t1", "inbox", "u1", "task 1", Date.now());
+    db.prepare(
+      `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+    ).run("t2", "inbox", "u1", "task 2", Date.now() + 1);
+    const a: AgentSpec = { id: "a", kind: "echo", name: "A" };
+    const b: AgentSpec = { id: "b", kind: "echo", name: "B" };
+    const pool = new WorkerPool({
+      db,
+      log: noopLog,
+      broadcast: () => {},
+      agents: [a, b],
+      factory: echoFactory(25),
+      // No cap.
+    });
+    pool.start();
+    await pause(10);
+    // Both should be in flight at the same time.
+    const midStatuses = ["t1", "t2"].map(
+      (id) => getTask(db, id)?.status,
+    );
+    expect(midStatuses).toEqual(["in_progress", "in_progress"]);
+    await pause(60);
+    expect(getTask(db, "t1")?.status).toBe("done");
+    expect(getTask(db, "t2")?.status).toBe("done");
+    pool.stop();
+  });
 });

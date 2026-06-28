@@ -135,6 +135,20 @@ export interface WorkerPoolDeps {
    *  cron jobs). 0 disables. Default 15_000. */
   pollIntervalMs?: number;
   /**
+   * Cap on simultaneously in-flight worker runs across the whole
+   * pool. 0 / undefined means unlimited — each registered worker
+   * slot independently claims (legacy behaviour). When set, the
+   * drain loop stops claiming new tasks once `busy.size` hits the
+   * cap, even if other worker slots are idle. Useful for tenants
+   * who want to throttle LLM / sandbox load without removing
+   * worker_agents rows.
+   *
+   * Tasks that don't get claimed sit in the queue and become
+   * eligible again on the next drain (either event-driven via
+   * nudge or via the periodic poll).
+   */
+  maxConcurrentRuns?: number;
+  /**
    * Per-task sandbox manager. Resolved from the
    * `sandbox.taskPool` capability at activate time. When defined,
    * runOne acquires a per-task sandbox before the worker run and
@@ -350,7 +364,19 @@ export class WorkerPool {
   private async drain(): Promise<void> {
     if (this.stopped) return;
 
+    // Concurrency cap: if `maxConcurrentRuns` is set and we're
+    // already at or above it, stop claiming until at least one
+    // current run finishes (the finally-hook in runOne re-nudges).
+    // 0 / undefined means unlimited — we drop straight through
+    // and let each worker slot independently claim, which is the
+    // original behaviour.
+    const cap = this.deps.maxConcurrentRuns ?? 0;
     for (const worker of this.workers) {
+      if (cap > 0 && this.busy.size >= cap) {
+        // No room. Bail out of the drain pass; the next nudge or
+        // poll will retry once a slot frees up.
+        return;
+      }
       if (this.busy.has(worker.agentId)) continue;
       const claimed = claimNextTask(this.deps.db, {
         workerAgentId: worker.agentId,
