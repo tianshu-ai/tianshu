@@ -868,6 +868,15 @@ export class LLMWorker implements WorkerHandle {
       // `AgentToolContext.taskId`; microsandbox routes `exec`
       // calls under this task to its dedicated sandbox.
       taskId: task.id,
+      // Plumb project + title so plugins that stage files on
+      // disk (openshell `sync_down`) can default to the project's
+      // result subtree without the agent having to pass them.
+      // task.projectSlug always present on workboard tasks (the
+      // DB column is NOT NULL); title can be empty for badly-
+      // created tasks, in which case the consuming plugin should
+      // fall back to taskId.
+      projectSlug: task.projectSlug,
+      taskTitle: task.title || null,
       // Stamp the session id on the task row as soon as the host
       // creates the session, not when the run terminates. The
       // kanban Execution tab tails this in-progress conversation

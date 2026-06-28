@@ -278,6 +278,33 @@ export interface AgentToolContext {
    */
   taskId?: string;
   /**
+   * Project slug this task belongs to. Workboard tasks carry one
+   * via `tasks.project_slug` (the user's per-project file tree on
+   * disk lives at `users/<userId>/projects/<projectSlug>/`); the
+   * host populates this from the same row when it builds the
+   * tool context for a worker run.
+   *
+   * Optional for backwards compatibility: chat sessions, ad-hoc
+   * tool invocations, and older host versions all set it to
+   * undefined and plugins that don't care can ignore it.
+   * Plugins that DO care (e.g. the openshell `sync_down` tool
+   * which stages results under the project tree) should treat
+   * missing as "caller must pass it explicitly".
+   */
+  projectSlug?: string;
+  /**
+   * Workboard task title at run start. Carried alongside `taskId`
+   * so tools that surface results on disk can name folders with
+   * something a human will recognise. Treat as best-effort: it's
+   * an untrusted user-supplied string. Plugins that route it into
+   * a filesystem path MUST slugify before use (e.g. via the helper
+   * used by openshell's SyncDownTool).
+   *
+   * Optional for backwards compatibility, same reasoning as
+   * `projectSlug`.
+   */
+  taskTitle?: string;
+  /**
    * Cancellation signal for the current run. The host wires this
    * from the agent loop's inner abort controller, so a watchdog
    * timeout, an external `task_abort`, or any other reason the

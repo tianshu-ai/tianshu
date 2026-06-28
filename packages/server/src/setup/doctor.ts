@@ -24,6 +24,13 @@ import { checkConfig } from "./checks/config.js";
 import { checkProviders } from "./checks/providers.js";
 import { checkNetwork } from "./checks/network.js";
 import { checkSandbox } from "./checks/sandbox.js";
+import {
+  discoverPluginSetupSpecs,
+  evaluatePluginSetup,
+  pluginSetupToCheckGroup,
+} from "./checks/plugin-setup.js";
+import { getBuiltinConfigDir } from "../core/plugins/discovery.js";
+import * as path from "node:path";
 import { checkTenants } from "./checks/tenants.js";
 import { checkDb } from "./checks/db.js";
 
@@ -64,6 +71,20 @@ export async function collectDoctorReport(
   groups.push(await checkSandbox({ full: opts.probeSandbox }));
   groups.push(checkTenants());
   groups.push(checkDb());
+  // Per-plugin host prerequisites (manifest.setup). Plugins that
+  // don't declare a setup spec contribute nothing here. Verify
+  // probes have a 5s/command timeout so a hung daemon can't wedge
+  // the doctor; see plugin-setup.ts for the kill-on-group fix.
+  const pluginsRoot = path.join(getBuiltinConfigDir(), "plugins");
+  const setupSpecs = discoverPluginSetupSpecs(pluginsRoot);
+  for (const spec of setupSpecs) {
+    const status = await evaluatePluginSetup(
+      spec.pluginId,
+      spec.displayName,
+      spec.spec,
+    );
+    groups.push(pluginSetupToCheckGroup(status));
+  }
   const tally = tallyGroups(groups);
   return { groups, ...tally };
 }

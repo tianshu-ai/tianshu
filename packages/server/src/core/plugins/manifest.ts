@@ -76,6 +76,7 @@ export function parseManifest(raw: unknown): PluginManifest {
   const server = optionalEntryRef(raw, "server", acc);
   const contributes = optionalContributes(raw.contributes, acc);
   const configSchema = optionalConfigSchema(raw.configSchema, acc);
+  const setup = optionalSetupSpec(raw.setup, acc);
 
   // ADR-0004 §3: every capability listed in `provides[]` must be
   // backed by a real contribution. Today the only derivation rule
@@ -124,7 +125,154 @@ export function parseManifest(raw: unknown): PluginManifest {
     server,
     contributes,
     configSchema,
+    setup,
   };
+}
+
+/**
+ * Parse the optional `setup` block. Light-touch validation:
+ * required structural fields are checked, but we let unknown
+ * fields through so a newer plugin can ship extra metadata without
+ * breaking older Tianshu hosts.
+ */
+function optionalSetupSpec(value: unknown, acc: Acc) {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    acc.issues.push("setup must be an object");
+    return undefined;
+  }
+  const obj = value as Record<string, unknown>;
+  if (!Array.isArray(obj.requirements)) {
+    acc.issues.push("setup.requirements must be an array");
+    return undefined;
+  }
+  const requirements: import("@tianshu-ai/plugin-sdk").PluginSetupRequirement[] = [];
+  for (let i = 0; i < obj.requirements.length; i++) {
+    const r = obj.requirements[i];
+    if (!r || typeof r !== "object" || Array.isArray(r)) {
+      acc.issues.push(`setup.requirements[${i}] must be an object`);
+      continue;
+    }
+    const rec = r as Record<string, unknown>;
+    if (typeof rec.id !== "string" || !rec.id) {
+      acc.issues.push(`setup.requirements[${i}].id must be a non-empty string`);
+      continue;
+    }
+    if (typeof rec.label !== "string" || !rec.label) {
+      acc.issues.push(`setup.requirements[${i}].label must be a non-empty string`);
+      continue;
+    }
+    if (
+      rec.severity !== "required" &&
+      rec.severity !== "recommended" &&
+      rec.severity !== "optional"
+    ) {
+      acc.issues.push(
+        `setup.requirements[${i}].severity must be "required" | "recommended" | "optional"`,
+      );
+      continue;
+    }
+    if (!Array.isArray(rec.verify) || rec.verify.length === 0) {
+      acc.issues.push(
+        `setup.requirements[${i}].verify must be a non-empty array of commands`,
+      );
+      continue;
+    }
+    const verify = parseCommands(rec.verify, `setup.requirements[${i}].verify`, acc);
+    const install = Array.isArray(rec.install)
+      ? rec.install
+          .map((inst, j) => {
+            if (!inst || typeof inst !== "object" || Array.isArray(inst)) {
+              acc.issues.push(
+                `setup.requirements[${i}].install[${j}] must be an object`,
+              );
+              return null;
+            }
+            const ir = inst as Record<string, unknown>;
+            if (typeof ir.label !== "string" || !ir.label) {
+              acc.issues.push(
+                `setup.requirements[${i}].install[${j}].label must be a non-empty string`,
+              );
+              return null;
+            }
+            if (!Array.isArray(ir.steps) || ir.steps.length === 0) {
+              acc.issues.push(
+                `setup.requirements[${i}].install[${j}].steps must be a non-empty array`,
+              );
+              return null;
+            }
+            const steps = parseCommands(
+              ir.steps,
+              `setup.requirements[${i}].install[${j}].steps`,
+              acc,
+            );
+            return {
+              label: ir.label,
+              description: typeof ir.description === "string" ? ir.description : undefined,
+              steps,
+            };
+          })
+          .filter((x): x is NonNullable<typeof x> => x !== null)
+      : undefined;
+    requirements.push({
+      id: rec.id,
+      label: rec.label,
+      description: typeof rec.description === "string" ? rec.description : undefined,
+      severity: rec.severity,
+      verify,
+      install,
+    });
+  }
+  return {
+    summary: typeof obj.summary === "string" ? obj.summary : undefined,
+    docs: typeof obj.docs === "string" ? obj.docs : undefined,
+    requirements,
+  };
+}
+
+function parseCommands(
+  raw: unknown[],
+  path: string,
+  acc: Acc,
+): import("@tianshu-ai/plugin-sdk").PluginSetupCommand[] {
+  const out: import("@tianshu-ai/plugin-sdk").PluginSetupCommand[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw[i];
+    if (!c || typeof c !== "object" || Array.isArray(c)) {
+      acc.issues.push(`${path}[${i}] must be an object`);
+      continue;
+    }
+    const cr = c as Record<string, unknown>;
+    if (typeof cr.cmd !== "string" || !cr.cmd) {
+      acc.issues.push(`${path}[${i}].cmd must be a non-empty string`);
+      continue;
+    }
+    let os:
+      | Array<"darwin" | "linux" | "win32">
+      | undefined;
+    if (cr.os !== undefined) {
+      if (!Array.isArray(cr.os)) {
+        acc.issues.push(`${path}[${i}].os must be an array if present`);
+      } else {
+        os = [];
+        for (const p of cr.os) {
+          if (p === "darwin" || p === "linux" || p === "win32") {
+            os.push(p);
+          } else {
+            acc.issues.push(
+              `${path}[${i}].os entries must be one of "darwin" | "linux" | "win32" (got ${JSON.stringify(p)})`,
+            );
+          }
+        }
+      }
+    }
+    out.push({
+      cmd: cr.cmd,
+      os,
+      note: typeof cr.note === "string" ? cr.note : undefined,
+    });
+  }
+  return out;
 }
 
 function optionalConfigSchema(
