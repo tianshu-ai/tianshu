@@ -237,6 +237,60 @@ describe("sync_down tool", () => {
     expect(runner.downCalls).toHaveLength(0);
   });
 
+  it("strips redundant projects/<project>/ prefix from agent inputs", async () => {
+    // Reproduces the 2026-06-28 bug Yu reported: the agent passed
+    // paths=["projects/sync-probe-2026/chart.png"] and the host
+    // dest ended up at
+    //   .../projects/sync-probe-2026/.results/<task>/projects/sync-probe-2026/chart.png
+    // (and the sandbox-side lookup also nested twice). The fix
+    // normalises agent input by peeling off the project prefix
+    // before joining with the scope anchor.
+    const runner = new FakeSyncRunner();
+    const expectedDest =
+      "/h/acme/workspace/users/alice/projects/sync-probe-2026/.results/run-1";
+    runner.downResult = {
+      downloaded: [`${expectedDest}/chart.png`],
+      skipped: [],
+    };
+    const r = SyncDownTool(runner);
+    await r.execute(
+      {
+        paths: ["projects/sync-probe-2026/chart.png"],
+        project: "sync-probe-2026",
+        task: "run-1",
+      },
+      fakeCtx,
+    );
+    expect(runner.downCalls).toHaveLength(1);
+    // Sandbox path: prefix added exactly once — no doubled
+    // 'projects/sync-probe-2026/'.
+    expect(runner.downCalls[0]!.paths).toEqual([
+      "users/alice/projects/sync-probe-2026/chart.png",
+    ]);
+    // Host path: bare project-relative name; the destBaseDir
+    // already anchors the .results/<task>/ tree.
+    expect(runner.downCalls[0]!.hostPaths).toEqual(["chart.png"]);
+    expect(runner.downCalls[0]!.destBaseDir).toBe(expectedDest);
+  });
+
+  it("strips users/<userId>/projects/<project>/ when an agent passes a fully-rooted path", async () => {
+    const runner = new FakeSyncRunner();
+    runner.downResult = { downloaded: [], skipped: [] };
+    const r = SyncDownTool(runner);
+    await r.execute(
+      {
+        paths: ["users/alice/projects/foo/dist/output.txt"],
+        project: "foo",
+        task: "42-build",
+      },
+      fakeCtx,
+    );
+    expect(runner.downCalls[0]!.paths).toEqual([
+      "users/alice/projects/foo/dist/output.txt",
+    ]);
+    expect(runner.downCalls[0]!.hostPaths).toEqual(["dist/output.txt"]);
+  });
+
   it("stages files at users/<user>/projects/<project>/.results/<task>/...", async () => {
     const runner = new FakeSyncRunner();
     const expectedDest =

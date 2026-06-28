@@ -85,14 +85,75 @@ function prefixPaths(
 ): string[] {
   const prefix = sandboxPathPrefix(scope, userId, projectSlug);
   if (!prefix) return paths;
-  return paths.map((p) => {
-    // Strip any leading slash and join with the scope prefix. We
-    // don't try to detect "already prefixed" cases — the agent's
-    // convention is to pass project-relative paths (or bare
-    // filenames), and the prefix resolution is deterministic.
-    const clean = p.replace(/^\/+/, "");
-    return clean === "" || clean === "." ? prefix : `${prefix}/${clean}`;
-  });
+  return paths.map((p) => stripRedundantPrefixes(p, userId, projectSlug, prefix));
+}
+
+/**
+ * Normalise the agent's path input before joining it onto the
+ * sandbox-side scope prefix. Agents sometimes "helpfully" pass
+ * already-rooted paths like 'projects/<project>/chart.png' or
+ * 'users/<user>/projects/<project>/chart.png'; without this we
+ * would double the prefix and end up looking at
+ *   /sandbox/workspace/users/dev/projects/foo/projects/foo/chart.png
+ * which doesn't exist (and even if it did, downloads stage under
+ * 'projects/<project>/' on the host side too, producing the
+ * triple-nested .results layout Yu reported in 2026-06-28).
+ *
+ * We accept and strip three redundant prefixes:
+ *   - leading slash(es)
+ *   - 'users/<userId>/' (full or trailing-slash)
+ *   - 'projects/<projectSlug>/'
+ * Stripping is idempotent and order-tolerant; the result is
+ * always a project-relative path that the prefix join can
+ * cleanly stack onto.
+ */
+function stripRedundantPrefixes(
+  raw: string,
+  userId: string,
+  projectSlug: string | undefined,
+  prefix: string,
+): string {
+  const clean = normaliseRelativeInput(raw, userId, projectSlug);
+  if (clean === "" || clean === ".") return prefix;
+  return `${prefix}/${clean}`;
+}
+
+/**
+ * Reduce an agent-supplied path to a project-relative form by
+ * peeling off redundant layout segments. Idempotent. Used by both
+ * sandbox-side scope joining and host-side staging so the two
+ * sides of a sync agree on the layout.
+ *
+ * Accepts and removes (in this order, each at most once):
+ *   - leading slash(es)
+ *   - 'users/<userId>/'
+ *   - 'projects/<projectSlug>/'
+ *
+ * The order matters because agents typically pass either bare
+ * filenames, project-relative ('src/main.py'), or user-rooted
+ * ('users/dev/projects/foo/main.py') paths. Tenant-rooted paths
+ * (starting with 'projects/') are also normalised by passing the
+ * projectSlug second; if no projectSlug is in scope (e.g. scope
+ * 'tenant') we leave 'projects/...' alone since it might be a
+ * legitimate cross-project reference.
+ */
+function normaliseRelativeInput(
+  raw: string,
+  userId: string,
+  projectSlug: string | undefined,
+): string {
+  let clean = raw.replace(/^\/+/, "");
+  const userPrefix = `users/${userId}/`;
+  if (clean.startsWith(userPrefix)) {
+    clean = clean.slice(userPrefix.length);
+  }
+  if (projectSlug) {
+    const projectPrefix = `projects/${projectSlug}/`;
+    if (clean.startsWith(projectPrefix)) {
+      clean = clean.slice(projectPrefix.length);
+    }
+  }
+  return clean;
 }
 
 function clampTimeout(raw: unknown): number {
@@ -324,7 +385,7 @@ guest, with no user-id prefix.`,
         paths: Type.Array(
           Type.String({
             description:
-              "Path relative to the project working dir (e.g. 'src/main.py' or 'data/'). When you're inside a workboard task this anchors at /sandbox/workspace/users/<userId>/projects/<project>/. For ad-hoc chat sessions with no project, the anchor falls back to /sandbox/workspace/users/<userId>/.",
+              "PROJECT-RELATIVE path. Pass just 'main.py' or 'src/main.py' or 'data/', NOT 'projects/<project>/main.py'. The tool joins your input with the in-scope project + user automatically. If you do happen to pass a rooted form like 'projects/<project>/file' or 'users/<userId>/projects/<project>/file' the tool will quietly strip those leading segments, but the canonical convention is the bare relative path.",
           }),
           {
             minItems: 1,
@@ -438,7 +499,7 @@ knows the files are available.`,
         paths: Type.Array(
           Type.String({
             description:
-              "Path relative to the project working dir in the sandbox (e.g. 'dist/' or 'logs/build.log'). Resolves to /sandbox/workspace/users/<userId>/projects/<project>/<path>; lands on the host at <userHomeDir>/projects/<project>/.results/<task>/<path>.",
+              "PROJECT-RELATIVE path inside the sandbox. Pass 'dist/' or 'logs/build.log', NOT 'projects/<project>/dist/'. The tool joins with the in-scope user + project + .results/<task>/ automatically; passing a rooted form is silently normalised but the canonical convention is the bare relative path.",
           }),
           {
             minItems: 1,
@@ -514,23 +575,32 @@ knows the files are available.`,
       const scope =
         (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
       const inputPaths = raw.map((p) => String(p));
+      // Normalise inputs: agents sometimes pass already-rooted
+      // paths like 'projects/<project>/chart.png' or
+      // 'users/<user>/projects/<project>/chart.png'. We accept
+      // those forms and strip the redundant prefix so the agent
+      // doesn't have to know our internal layout. After this both
+      // host and sandbox sides see the SAME project-relative path
+      // (e.g. 'chart.png'), and the host destBaseDir +
+      // sandbox-scope prefix do all the anchoring.
+      const projectScoped =
+        scope === "user" ? project : undefined;
+      const normalisedInputs = inputPaths.map((p) =>
+        normaliseRelativeInput(p, ctx.userId, projectScoped),
+      );
       // Sandbox paths anchor at users/<userId>/projects/<project>/
-      // because that's where the agent's cwd lives. Host
-      // destination strips both the user-scope AND project-scope
-      // prefixes — the result dir is already
-      // <userHomeDir>/projects/<project>/.results/<task>/ so
-      // re-appending them would produce e.g.
-      //   .results/<task>/users/<userId>/projects/<project>/dataset.csv
-      // which Yu rightly flagged as overcomplicated. The agent's
-      // raw input (e.g. 'dataset.csv', 'logs/') lands directly
-      // under the results dir.
+      // because that's where the agent's cwd lives.
       const sandboxPaths = prefixPaths(
-        inputPaths,
+        normalisedInputs,
         scope,
         ctx.userId,
         project,
       );
-      const items = inputPaths.map((host, i) => ({
+      // Host destination is already anchored at
+      // <userHomeDir>/projects/<project>/.results/<task>/, so the
+      // host side uses the *normalised* input verbatim — no
+      // additional user/project segments.
+      const items = normalisedInputs.map((host, i) => ({
         sandbox: sandboxPaths[i]!,
         host,
       }));
