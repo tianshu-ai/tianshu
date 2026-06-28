@@ -642,13 +642,34 @@ function projectTaskResultsDir(
  * tree by passing `../../etc/passwd`. Length capped at 64.
  */
 /**
- * Derive a deterministic task-folder name from ctx alone, used
- * when the agent didn't pass an explicit `task` arg. Workboard
- * tasks always have ctx.taskId; if taskTitle is also set we
- * suffix the id with a slugified title so the folder name is
- * recognisable on disk (e.g. "42-add-login-flow"). When the
- * title slug would collapse to empty (all-symbols title), fall
- * back to the bare id.
+ * Derive a deterministic task-folder name from ctx alone. The
+ * folder name is fully host-controlled (sync_down's schema does
+ * not expose a task arg).
+ *
+ * Selection rule (Yu 2026-06-28 evening: "我想要用 task 的 title,
+ * 但是可以 convert 一下"):
+ *
+ *   - taskTitle set + slugifies to non-empty → use the slug
+ *     verbatim. Human-readable, idempotent across renames as
+ *     long as the title stays the same.
+ *   - taskTitle absent or slugifies to empty (all-symbols /
+ *     all-whitespace / Chinese-only with no slug-safe chars) →
+ *     fall back to taskId so the folder name is always derivable.
+ *   - taskId missing entirely → return empty string; caller
+ *     refuses to run sync_down.
+ *
+ * Slug rules (mirroring kebab-case GitHub branch conventions):
+ *   - lowercase
+ *   - replace any run of non-[a-z0-9._-] chars with a single '-'
+ *   - trim leading / trailing '-' (path-traversal protection: a
+ *     leading dot becomes '_' below as a separate hardening pass)
+ *   - cap at 64 chars so the absolute path stays sane on every fs
+ *
+ * Anti-traversal: after slugification we also normalise a leading
+ * '.', '..', or any value matching the validateSlug() reject set
+ * back to taskId. Belt-and-braces because slug rules above already
+ * exclude '/', but a title of literally '.' or '..' would slug to
+ * '.' / '..' and break the result-folder layout.
  */
 function deriveTaskFolderFromCtx(ctx: AgentToolContext): string {
   const id = (ctx.taskId ?? "").trim();
@@ -659,8 +680,14 @@ function deriveTaskFolderFromCtx(ctx: AgentToolContext): string {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
-  return slug ? `${id}-${slug}` : id;
+    .slice(0, 64);
+  if (!slug) return id;
+  // Guard the post-slug edge cases that would still pass the
+  // [A-Za-z0-9._-]+ regex but break filesystem semantics.
+  if (slug === "." || slug === ".." || slug.startsWith(".")) {
+    return id;
+  }
+  return slug;
 }
 
 function validateSlug(value: string, label: string): string | null {
