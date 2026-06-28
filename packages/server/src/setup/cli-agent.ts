@@ -124,6 +124,37 @@ install\` in another terminal then re-run setup').
 
 Domain knowledge you must apply when relevant:
 
+PLUGIN PREREQUISITES (plugin_setup_status / plugin_setup_install_hint):
+- Built-in plugins can declare a 'setup' block in their manifest
+  with HOST-side prerequisites the user must satisfy before the
+  plugin will activate — native binaries on PATH, system services,
+  container runtimes, cached container images, etc.
+- The pattern when enabling such a plugin:
+  1. Call plugin_setup_status (filter by pluginId for less noise)
+     BEFORE plugin_enable. Read every requirement's 'ok' field.
+  2. If a 'severity: required' requirement is 'ok: false', do NOT
+     suggest plugin_enable yet — the activation will fail. Instead,
+     surface that requirement, call plugin_setup_install_hint to
+     get the list of install paths for the user's OS, and ask the
+     user which path they want.
+  3. After the user picks an install path, run the commands one
+     at a time. Treat each as a mutating action: narrate, run,
+     show output. Use run_doctor (or plugin_setup_status again)
+     between steps to verify progress.
+  4. Only once every 'required' requirement reports 'ok: true'
+     should you call plugin_enable for that plugin.
+- 'recommended' requirements are not blocking: mention them ("the
+  plugin will work, but you'll want X to avoid the first run
+  being slow"), but don't make the user fix them before enabling.
+- Plugins that don't declare a 'setup' block are absent from the
+  plugin_setup_status result. Those plugins need nothing beyond
+  npm; plugin_enable is safe to call directly.
+- The install commands returned by plugin_setup_install_hint are
+  CANDIDATES, not actions. NEVER auto-run them. NEVER concatenate
+  them and run as one shell line. Always show them to the user,
+  ask which path they want (homebrew vs tarball vs cargo etc.),
+  then exec the chosen path's steps individually.
+
 DEV MODE vs PRODUCTION MODE:
 - Two install shapes, very different runtime topology:
   * **Dev mode** — the user cloned the repo and is running
@@ -1830,7 +1861,147 @@ export function buildTools(
         });
       },
     },
+    plugin_setup_status: {
+      schema: {
+        name: "plugin_setup_status",
+        description:
+          "Read-only snapshot of every built-in plugin's host-side prerequisites. Each plugin can declare a `setup` block in its manifest with required external dependencies (Docker daemon, native CLIs, cached container images, etc.) plus the verify command(s) to check them. This tool runs every verify command on the host and returns the result.\n\nCALL THIS BEFORE proposing plugin_enable for any plugin the user hasn't enabled yet. If a requirement fails:\n  * severity='required' → the plugin won't activate; show the install steps and let the user pick one.\n  * severity='recommended' → the plugin will activate but slower / less safely; mention the install steps but don't block.\n  * severity='optional' → informational only.\n\nDo NOT auto-run install steps from this tool. Use plugin_setup_install_hint to render them and ask the user which path to take, then exec the chosen commands one by one (each via the normal mutating-tool confirmation path).\n\nResult shape:\n{\n  plugins: [\n    {\n      pluginId, displayName, summary?, docs?,\n      requirements: [\n        { id, label, description?, severity, ok, verifyDetail, installSteps: [{label, description?, steps:[{cmd, note?}]}, ...] },\n        ...\n      ],\n      summaryCounts: { ok, blocked, warned, total }\n    },\n    ...\n  ],\n  platform: 'darwin' | 'linux' | 'win32'\n}\n\nPlugins without a `setup` block in their manifest are omitted from the result.",
+        parameters: {
+          type: "object",
+          properties: {
+            pluginId: {
+              type: "string",
+              description:
+                "Restrict to a single plugin (e.g. 'openshell'). Omit to check every plugin that declares a setup spec.",
+            },
+          },
+          required: [],
+        } as never,
+      },
+      execute: async (args) => {
+        const filter = typeof args.pluginId === "string" ? args.pluginId : null;
+        const { discoverPluginSetupSpecs, evaluatePluginSetup } = await import(
+          "./checks/plugin-setup.js"
+        );
+        const pluginsRoot = pluginSetupPluginsRoot();
+        const specs = discoverPluginSetupSpecs(pluginsRoot).filter(
+          (s) => !filter || s.pluginId === filter,
+        );
+        const plugins = [];
+        for (const s of specs) {
+          const status = await evaluatePluginSetup(
+            s.pluginId,
+            s.displayName,
+            s.spec,
+          );
+          let okCount = 0;
+          let blockedCount = 0;
+          let warnedCount = 0;
+          for (const r of status.requirements) {
+            if (r.ok) okCount++;
+            else if (r.severity === "required") blockedCount++;
+            else warnedCount++;
+          }
+          plugins.push({
+            ...status,
+            summaryCounts: {
+              ok: okCount,
+              blocked: blockedCount,
+              warned: warnedCount,
+              total: status.requirements.length,
+            },
+          });
+        }
+        return JSON.stringify({
+          plugins,
+          platform: process.platform,
+        });
+      },
+    },
+    plugin_setup_install_hint: {
+      schema: {
+        name: "plugin_setup_install_hint",
+        description:
+          "Read-only. Returns the install-step commands for one requirement of one plugin, filtered to the current OS. Use this AFTER plugin_setup_status surfaced a failing requirement, so you can show the user the candidate install paths and let them pick one.\n\nThe agent MUST NOT execute the returned commands automatically — surface them, ask the user which path they want, and run the chosen commands through the normal mutating-tool confirmation path (one exec at a time, with `--dry-run`-style verification of side effects where possible).\n\nResult shape:\n{\n  pluginId, requirementId, label, description?, severity,\n  ok, verifyDetail,\n  installSteps: [\n    { label, description?, steps: [{cmd, note?}, ...] },\n    ...\n  ]\n}\n\nReturns ok:false with reason='unknown_plugin' / 'unknown_requirement' for typos.",
+        parameters: {
+          type: "object",
+          properties: {
+            pluginId: {
+              type: "string",
+              description: "Plugin id from plugin_setup_status (e.g. 'openshell').",
+            },
+            requirementId: {
+              type: "string",
+              description:
+                "Requirement id within that plugin (e.g. 'docker-daemon').",
+            },
+          },
+          required: ["pluginId", "requirementId"],
+        } as never,
+      },
+      execute: async (args) => {
+        const pluginId = String(args.pluginId ?? "");
+        const requirementId = String(args.requirementId ?? "");
+        const { discoverPluginSetupSpecs, evaluatePluginSetup } = await import(
+          "./checks/plugin-setup.js"
+        );
+        const pluginsRoot = pluginSetupPluginsRoot();
+        const specs = discoverPluginSetupSpecs(pluginsRoot);
+        const match = specs.find((s) => s.pluginId === pluginId);
+        if (!match) {
+          return JSON.stringify({
+            ok: false,
+            reason: "unknown_plugin",
+            pluginId,
+            knownPluginIds: specs.map((s) => s.pluginId),
+          });
+        }
+        const status = await evaluatePluginSetup(
+          match.pluginId,
+          match.displayName,
+          match.spec,
+        );
+        const r = status.requirements.find((x) => x.id === requirementId);
+        if (!r) {
+          return JSON.stringify({
+            ok: false,
+            reason: "unknown_requirement",
+            pluginId,
+            requirementId,
+            knownRequirementIds: status.requirements.map((x) => x.id),
+          });
+        }
+        return JSON.stringify({
+          pluginId,
+          requirementId,
+          label: r.label,
+          description: r.description,
+          severity: r.severity,
+          ok: r.ok,
+          verifyDetail: r.verifyDetail,
+          installSteps: r.installSteps,
+        });
+      },
+    },
   };
+}
+
+function pluginSetupPluginsRoot(): string {
+  // Setup CLI runs from a tianshu install; we need the same
+  // builtinConfig path that the running server uses. Mirror the
+  // logic from index.ts: env override wins, otherwise resolve
+  // relative to this compiled file.
+  if (process.env.TIANSHU_PLUGINS_DIR) {
+    return process.env.TIANSHU_PLUGINS_DIR;
+  }
+  // dist/setup/cli-agent.js → ../../../plugins
+  const here = new URL(".", import.meta.url);
+  // here = .../packages/server/dist/setup/
+  // Up three levels = .../packages/server, up one more = .../packages, up one more = .../<repo-root>
+  // The builtinConfig path is computed at packages/server/builtinConfig/plugins, not repo-root/plugins;
+  // mirror what index.ts does: `<here>/../../../plugins`.
+  const url = new URL("../../../plugins", here);
+  return url.pathname;
 }
 
 interface BuildMetadataLite {

@@ -40,5 +40,134 @@
         "path": "skills/openshell-exec-howto.md"
       }
     ]
+  },
+  "setup": {
+    "summary": "Needs a running Docker daemon plus the openshell + openshell-gateway binaries on PATH. macOS Apple Silicon, Linux x86_64/aarch64, and rpm/deb distros all have prebuilt artefacts from upstream.",
+    "docs": "https://github.com/tianshu-ai/tianshu/tree/main/plugins/openshell#prerequisites",
+    "requirements": [
+      {
+        "id": "docker-daemon",
+        "label": "Docker daemon",
+        "description": "Docker Desktop, Colima, Lima, OrbStack, or Rancher Desktop. Podman+libkrun on macOS is NOT supported (upstream bug NVIDIA/openshell#1519).",
+        "severity": "required",
+        "verify": [
+          { "cmd": "docker info >/dev/null 2>&1", "note": "Any running Docker-API-compatible daemon counts." }
+        ],
+        "install": [
+          {
+            "label": "Docker Desktop (macOS / Windows)",
+            "description": "Recommended on macOS — the openshell driver auto-detects its host-gateway alias.",
+            "steps": [
+              { "cmd": "open 'https://www.docker.com/products/docker-desktop/'", "os": ["darwin"] },
+              { "cmd": "xdg-open 'https://www.docker.com/products/docker-desktop/'", "os": ["linux"] }
+            ]
+          },
+          {
+            "label": "Colima (macOS, lighter than Docker Desktop)",
+            "steps": [
+              { "cmd": "brew install colima docker", "os": ["darwin"] },
+              { "cmd": "colima start", "os": ["darwin"] }
+            ]
+          },
+          {
+            "label": "docker.io (Debian/Ubuntu)",
+            "steps": [
+              { "cmd": "sudo apt-get update && sudo apt-get install -y docker.io", "os": ["linux"] },
+              { "cmd": "sudo usermod -aG docker $USER && newgrp docker", "os": ["linux"] }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "openshell-cli",
+        "label": "openshell CLI",
+        "description": "The `openshell` binary, used for sandbox create / exec / upload / download.",
+        "severity": "required",
+        "verify": [
+          { "cmd": "command -v openshell >/dev/null && openshell --version" }
+        ],
+        "install": [
+          {
+            "label": "GitHub release tarball (macOS Apple Silicon)",
+            "steps": [
+              { "cmd": "mkdir -p ~/bin && cd /tmp && curl -fsSL -o openshell.tar.gz 'https://github.com/NVIDIA/openshell/releases/latest/download/openshell-aarch64-apple-darwin.tar.gz' && tar xzf openshell.tar.gz && mv openshell ~/bin/ && xattr -dr com.apple.quarantine ~/bin/openshell && chmod +x ~/bin/openshell", "os": ["darwin"] },
+              { "cmd": "echo 'Add ~/bin to PATH if not already there: export PATH=\"$HOME/bin:$PATH\" in ~/.zshrc' ", "os": ["darwin"] }
+            ]
+          },
+          {
+            "label": "GitHub release tarball (Linux x86_64)",
+            "steps": [
+              { "cmd": "cd /tmp && curl -fsSL -o openshell.tar.gz 'https://github.com/NVIDIA/openshell/releases/latest/download/openshell-x86_64-unknown-linux-musl.tar.gz' && tar xzf openshell.tar.gz && sudo install -m 755 openshell /usr/local/bin/", "os": ["linux"] }
+            ]
+          },
+          {
+            "label": "Fedora rpm (aarch64)",
+            "steps": [
+              { "cmd": "sudo dnf install -y https://github.com/NVIDIA/openshell/releases/latest/download/openshell-0.0.71-1.fc44.aarch64.rpm", "os": ["linux"] }
+            ]
+          },
+          {
+            "label": "Build from source (cargo)",
+            "description": "Needs Rust 1.84+. Takes ~10 minutes first time.",
+            "steps": [
+              { "cmd": "git clone https://github.com/NVIDIA/openshell.git /tmp/openshell-src" },
+              { "cmd": "cd /tmp/openshell-src && cargo install --path crates/openshell-cli --root ~/.local" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "openshell-gateway",
+        "label": "openshell-gateway binary",
+        "description": "The gateway daemon the plugin spawns per tenant. Major.minor version must match `openshell` CLI.",
+        "severity": "required",
+        "verify": [
+          { "cmd": "command -v openshell-gateway >/dev/null && openshell-gateway --version" }
+        ],
+        "install": [
+          {
+            "label": "GitHub release tarball (macOS Apple Silicon)",
+            "steps": [
+              { "cmd": "mkdir -p ~/bin && cd /tmp && curl -fsSL -o gw.tar.gz 'https://github.com/NVIDIA/openshell/releases/latest/download/openshell-gateway-aarch64-apple-darwin.tar.gz' && tar xzf gw.tar.gz && mv openshell-gateway ~/bin/ && xattr -dr com.apple.quarantine ~/bin/openshell-gateway && chmod +x ~/bin/openshell-gateway", "os": ["darwin"] }
+            ]
+          },
+          {
+            "label": "GitHub release tarball (Linux x86_64)",
+            "steps": [
+              { "cmd": "cd /tmp && curl -fsSL -o gw.tar.gz 'https://github.com/NVIDIA/openshell/releases/latest/download/openshell-gateway-x86_64-unknown-linux-gnu.tar.gz' && tar xzf gw.tar.gz && sudo install -m 755 openshell-gateway /usr/local/bin/", "os": ["linux"] }
+            ]
+          },
+          {
+            "label": "Fedora rpm (aarch64)",
+            "steps": [
+              { "cmd": "sudo dnf install -y https://github.com/NVIDIA/openshell/releases/latest/download/openshell-gateway-0.0.71-1.fc44.aarch64.rpm", "os": ["linux"] }
+            ]
+          },
+          {
+            "label": "Build from source (cargo)",
+            "steps": [
+              { "cmd": "cd /tmp/openshell-src && cargo install --path crates/openshell-server --bin openshell-gateway --root ~/.local" }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "sandbox-base-image",
+        "label": "OpenShell community base image",
+        "description": "Pre-pulled so the first sandbox doesn't stall on a ~700MB download.",
+        "severity": "recommended",
+        "verify": [
+          { "cmd": "docker image inspect ghcr.io/nvidia/openshell-community/sandboxes/base:latest >/dev/null 2>&1" }
+        ],
+        "install": [
+          {
+            "label": "docker pull",
+            "steps": [
+              { "cmd": "docker pull ghcr.io/nvidia/openshell-community/sandboxes/base:latest" }
+            ]
+          }
+        ]
+      }
+    ]
   }
 }

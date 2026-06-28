@@ -62,6 +62,106 @@ export interface PluginManifest {
    * verbatim to the plugin via `PluginContext.pluginConfig`.
    */
   configSchema?: PluginConfigSchema;
+  /**
+   * Optional declarative setup spec. When present, the setup
+   * agent (`tianshu setup`) and the `run_doctor` tool surface a
+   * dedicated section for this plugin: which prerequisites it
+   * needs on the host, how to install them, and how to verify
+   * they are present.
+   *
+   * Plugins SHOULD ship a setup spec for any host-side
+   * dependency that is not bundled in the npm tarball — native
+   * binaries on $PATH, system services, container runtimes,
+   * cached images, etc. Plugins that need nothing beyond npm
+   * (`@tianshu-builtin/plugin-files`, `web-search`) can omit
+   * this entirely.
+   */
+  setup?: PluginSetupSpec;
+}
+
+/**
+ * Per-plugin setup declaration. Read by `tianshu doctor` and the
+ * `tianshu setup` agent to assemble guided installation/verification
+ * workflows without each plugin having to hand-write CLI code.
+ *
+ * Design notes:
+ *   - Spec is intentionally OS-flat: every check just gets a shell
+ *     command. The agent / doctor render the same spec on macOS,
+ *     Linux, and (eventually) Windows; the plugin author tags
+ *     OS-specific commands via `os` when needed and the runner
+ *     filters by `process.platform`.
+ *   - All commands run on the host (NOT inside any sandbox — the
+ *     point is to check whether the host is ready to run a
+ *     sandbox at all).
+ *   - The setup agent NEVER auto-executes mutating install steps;
+ *     it shows them to the user and waits for confirmation. The
+ *     read-only `verify` commands can run silently.
+ */
+export interface PluginSetupSpec {
+  /**
+   * One-paragraph summary the setup agent shows before listing
+   * prerequisites. Keep under 280 chars; longer prose belongs in
+   * the plugin README.
+   */
+  summary?: string;
+  /** Link to the plugin README / docs for the long version. */
+  docs?: string;
+  /** Ordered list of host requirements. Order matters for the
+   *  agent's rendered checklist. */
+  requirements: PluginSetupRequirement[];
+}
+
+export interface PluginSetupRequirement {
+  /** Stable id (e.g. "docker-daemon", "openshell-cli"). Used in
+   *  diagnostic output and as a stable key when the doctor caches
+   *  state. */
+  id: string;
+  /** Human-friendly label ("Docker daemon", "openshell CLI"). */
+  label: string;
+  /** One-line description shown next to the label. */
+  description?: string;
+  /** Whether the plugin will refuse to activate without this.
+   *  `recommended` means the plugin works but with reduced
+   *  functionality; `optional` is purely informational. */
+  severity: "required" | "recommended" | "optional";
+  /** Read-only shell command(s) that probe whether the
+   *  requirement is satisfied. Each entry is run in order; the
+   *  first to exit 0 marks the requirement satisfied. The
+   *  agent / doctor MUST treat these as side-effect-free —
+   *  authors should write them with that in mind (`--version`,
+   *  `command -v`, `docker info`, etc.). */
+  verify: PluginSetupCommand[];
+  /** Install instructions for when verify fails. Multiple entries
+   *  describe alternative install paths (homebrew, package
+   *  manager, manual tarball); the agent shows them all and lets
+   *  the user pick. These commands are NEVER auto-executed — the
+   *  agent renders them and waits for the user. */
+  install?: PluginSetupInstall[];
+}
+
+export interface PluginSetupCommand {
+  /** Shell command, run via `/bin/sh -c` (POSIX) or `cmd /c`
+   *  (Windows). The runner expands `${HOME}` and `${PATH}` but
+   *  does not run a full shell init — keep commands self-
+   *  contained. */
+  cmd: string;
+  /** Restrict this command to specific platforms. Matches
+   *  Node's `process.platform`: "darwin", "linux", "win32".
+   *  Omit for cross-platform commands. */
+  os?: Array<"darwin" | "linux" | "win32">;
+  /** Optional explanatory text rendered alongside the command.
+   *  E.g. "This expects Docker Desktop 4.x or newer". */
+  note?: string;
+}
+
+export interface PluginSetupInstall {
+  /** Short label for this install path ("Homebrew", "GitHub
+   *  release", "cargo install", "apt"). */
+  label: string;
+  /** Commands to run, shown to the user one per line. */
+  steps: PluginSetupCommand[];
+  /** Optional longer description shown above the steps. */
+  description?: string;
 }
 
 export interface PluginConfigSchema {

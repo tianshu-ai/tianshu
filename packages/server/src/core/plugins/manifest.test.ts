@@ -323,4 +323,111 @@ describe("parseManifest", () => {
       }),
     ).toThrow(/group/);
   });
+
+  it("setup: parses a minimal spec end-to-end", () => {
+    const m = parseManifest({
+      id: "demo",
+      version: "1.0.0",
+      displayName: "Demo",
+      setup: {
+        summary: "Needs nothing fancy.",
+        docs: "https://example.com",
+        requirements: [
+          {
+            id: "foo",
+            label: "Foo binary",
+            description: "a thing on PATH",
+            severity: "required",
+            verify: [{ cmd: "command -v foo" }],
+            install: [
+              {
+                label: "Homebrew",
+                steps: [
+                  { cmd: "brew install foo", os: ["darwin"] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+    expect(m.setup).toBeDefined();
+    expect(m.setup!.summary).toBe("Needs nothing fancy.");
+    expect(m.setup!.requirements).toHaveLength(1);
+    expect(m.setup!.requirements[0]!.id).toBe("foo");
+    expect(m.setup!.requirements[0]!.severity).toBe("required");
+    expect(m.setup!.requirements[0]!.verify[0]!.cmd).toBe("command -v foo");
+    expect(m.setup!.requirements[0]!.install![0]!.steps[0]!.os).toEqual([
+      "darwin",
+    ]);
+  });
+
+  it("setup: rejects requirement with unknown severity", () => {
+    expect(() =>
+      parseManifest({
+        id: "demo",
+        version: "1.0.0",
+        displayName: "Demo",
+        setup: {
+          requirements: [
+            {
+              id: "foo",
+              label: "Foo",
+              severity: "someday",
+              verify: [{ cmd: "true" }],
+            },
+          ],
+        },
+      }),
+    ).toThrow(/severity/);
+  });
+
+  it("setup: rejects requirement without verify commands", () => {
+    expect(() =>
+      parseManifest({
+        id: "demo",
+        version: "1.0.0",
+        displayName: "Demo",
+        setup: {
+          requirements: [
+            {
+              id: "foo",
+              label: "Foo",
+              severity: "required",
+              verify: [],
+            },
+          ],
+        },
+      }),
+    ).toThrow(/verify/);
+  });
+
+  it("setup: rejects invalid os tag in verify command", () => {
+    expect(() =>
+      parseManifest({
+        id: "demo",
+        version: "1.0.0",
+        displayName: "Demo",
+        setup: {
+          requirements: [
+            {
+              id: "foo",
+              label: "Foo",
+              severity: "required",
+              verify: [{ cmd: "true", os: ["plan9"] }],
+            },
+          ],
+        },
+      }),
+    ).toThrow(/os entries/);
+  });
+
+  it("setup: accepts manifest without a setup block (backward compat)", () => {
+    const m = parseManifest({
+      id: "demo",
+      version: "1.0.0",
+      displayName: "Demo",
+    });
+    expect(m.setup).toBeUndefined();
+  });
 });
