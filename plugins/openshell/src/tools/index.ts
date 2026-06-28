@@ -29,17 +29,42 @@ const STDOUT_BYTE_CAP = 8_000;
 // gives each user a home at /workspace/users/<userId>. OpenShell
 // has no bind mount (Landlock fights the fakeowner wrapper) — the
 // sandbox keeps its own filesystem rooted at /sandbox. Per-user
-// home dirs live under /sandbox/workspace/users/<userId> instead.
+// home dirs live under /sandbox/workspace/users/<userId>.
 //
-// The agent doesn't see this difference: it asks for files by
-// relative path through sync_up / sync_down (or sync_workspace_up
-// / sync_workspace_down), and the runner deposits / collects them
-// under /sandbox/workspace/. So the user-home shape matches
-// microsandbox's conventions; only the root path differs.
+// sync_up / sync_down also operate inside the per-user home by
+// default: the agent's `paths` are interpreted as relative to
+// /sandbox/workspace/users/<userId>/ on the sandbox side AND to
+// <hostWorkspaceDir>/users/<userId>/ on the host side. That keeps
+// concurrent agents in the same tenant from clobbering each
+// other's files (different userIds → different subtrees) without
+// the agent having to manage prefixes by hand. An optional
+// `scope: 'tenant'` arg drops the user prefix for the rare case
+// where two agents intentionally share files.
 const SANDBOX_WORKSPACE_PATH = "/sandbox/workspace";
 
 function defaultUserWorkdir(userId: string): string {
   return `${SANDBOX_WORKSPACE_PATH}/users/${userId}`;
+}
+
+function userScopePrefix(userId: string): string {
+  return `users/${userId}`;
+}
+
+function prefixPaths(
+  paths: string[],
+  scope: "user" | "tenant",
+  userId: string,
+): string[] {
+  if (scope === "tenant") return paths;
+  const prefix = userScopePrefix(userId);
+  return paths.map((p) => {
+    // Strip any leading slash and join with the user-scope prefix.
+    // We don't try to detect "already prefixed" cases (e.g. the
+    // agent passes 'users/alice/foo') — just always prepend so the
+    // resolution is deterministic.
+    const clean = p.replace(/^\/+/, "");
+    return clean === "" || clean === "." ? prefix : `${prefix}/${clean}`;
+  });
 }
 
 function clampTimeout(raw: unknown): number {
@@ -240,32 +265,49 @@ export function SyncUpTool(runner: SandboxRunner): AgentTool {
       name: "sync_up",
       description: `Upload host workspace files / directories into the OpenShell sandbox.
 The OpenShell sandbox does NOT bind-mount the host workspace; use this tool to make \
-host files visible to shell commands. Inputs are paths relative to the tenant \
-workspace; each is uploaded to /sandbox/workspace/<rel>. Directories are uploaded \
-recursively. Idempotent: re-uploading overwrites the sandbox-side copy.
+host files visible to shell commands.
 
-Call this BEFORE \`exec\` when the command depends on workspace files. Don't read \
-file content with \`read_file\` and paste it into the command; let the file move \
-as a unit — it's faster and avoids size limits.
+Paths are resolved relative to your USER HOME, both on host and inside the sandbox:
+  - host  : <tenantWorkspace>/users/<userId>/<path>
+  - guest : /sandbox/workspace/users/<userId>/<path>
+The sandbox 'exec' tool's default cwd is the same user home, so an agent that runs
+\`sync_up({paths:['src/']})\` followed by \`exec({command:'python3 src/hello.py'})\` Just
+Works.
 
-After the command finishes, use \`sync_down\` to pull any outputs back into the \
-host workspace (only if you want the host to keep them; transient build artefacts \
-can be ignored).`,
+Directories are uploaded recursively. Idempotent: re-uploading overwrites the
+sandbox-side copy.
+
+Use this BEFORE 'exec' when the command depends on workspace files. Don't read file
+content and paste it into the command; let the file move as a unit — it's faster
+and avoids size limits.
+
+Use 'scope: "tenant"' (rare) to share files across users in the same tenant; paths
+then resolve to <tenantWorkspace>/<path> on host and /sandbox/workspace/<path> on
+guest, with no user-id prefix.`,
       parameters: Type.Object({
         paths: Type.Array(
           Type.String({
             description:
-              "Path relative to the tenant workspace dir (e.g. 'src/main.py' or 'data/').",
+              "Path relative to your user home (e.g. 'src/main.py' or 'data/').",
           }),
           {
             minItems: 1,
             description: "Files and / or directories to upload.",
           },
         ),
+        scope: Type.Optional(
+          Type.Union(
+            [Type.Literal("user"), Type.Literal("tenant")],
+            {
+              description:
+                "Where to anchor the paths. 'user' (default) scopes to /sandbox/workspace/users/<userId>/. 'tenant' targets the tenant root /sandbox/workspace/. Use 'tenant' only when intentionally sharing files between agents in the same tenant.",
+            },
+          ),
+        ),
       }),
     },
 
-    async execute(args) {
+    async execute(args, ctx: AgentToolContext) {
       const sync = asSyncCapable(runner);
       if (!sync) {
         return {
@@ -277,11 +319,15 @@ can be ignored).`,
       if (!Array.isArray(raw) || raw.length === 0) {
         return { ok: false, error: "paths must be a non-empty string array" };
       }
-      const paths = raw.map((p) => String(p));
+      const scope =
+        (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
+      const inputPaths = raw.map((p) => String(p));
+      const scopedPaths = prefixPaths(inputPaths, scope, ctx.userId);
       try {
-        const r = await sync.syncUp(paths);
+        const r = await sync.syncUp(scopedPaths);
         return {
           ok: r.skipped.length === 0,
+          scope,
           uploaded: r.uploaded,
           skipped: r.skipped,
         };
@@ -299,30 +345,50 @@ export function SyncDownTool(runner: SandboxRunner): AgentTool {
   return {
     schema: {
       name: "sync_down",
-      description: `Download files / directories from /sandbox/workspace/ back to the host \
-tenant workspace. Inputs are paths relative to /sandbox/workspace/, output lands \
-at <hostWorkspaceDir>/<rel>. Directories are recursive. Idempotent: re-downloading \
-overwrites the host-side copy.
+      description: `Download files / directories from the OpenShell sandbox back to the host
+workspace.
 
-Use this AFTER an exec produces files you want to keep on the host (build outputs, \
-logs, generated reports). For transient artefacts (intermediate builds, npm cache), \
-skip this — the sandbox keeps them and the next exec sees them anyway, but the host \
-workspace stays clean.`,
+Paths are resolved relative to your USER HOME, both on host and inside the sandbox:
+  - guest : /sandbox/workspace/users/<userId>/<path>
+  - host  : <tenantWorkspace>/users/<userId>/<path>
+This matches sync_up's scoping, so an agent that runs 'sync_up({paths:['src/']})',
+then exec'd commands that wrote build artefacts into ./dist/, can run
+'sync_down({paths:['dist/']})' to bring them home.
+
+Directories are recursive. Idempotent: re-downloading overwrites the host-side copy.
+
+Use this AFTER an exec produces files you want to keep on the host (build outputs,
+logs, generated reports). For transient artefacts (intermediate builds, npm cache),
+skip this — the sandbox keeps them and the next exec sees them anyway, but the host
+workspace stays clean.
+
+Use 'scope: "tenant"' (rare) to download from the tenant root rather than your user
+home. Use with care: paths will land at <tenantWorkspace>/<path>, possibly
+overwriting files another user / agent created.`,
       parameters: Type.Object({
         paths: Type.Array(
           Type.String({
             description:
-              "Path inside /sandbox/workspace/, given as a relative path (e.g. 'dist/' or 'logs/build.log').",
+              "Path relative to your user home (e.g. 'dist/' or 'logs/build.log').",
           }),
           {
             minItems: 1,
             description: "Files and / or directories to download.",
           },
         ),
+        scope: Type.Optional(
+          Type.Union(
+            [Type.Literal("user"), Type.Literal("tenant")],
+            {
+              description:
+                "Where to anchor the paths. 'user' (default) scopes to /sandbox/workspace/users/<userId>/. 'tenant' targets the tenant root. Use 'tenant' only when intentionally sharing files between agents in the same tenant.",
+            },
+          ),
+        ),
       }),
     },
 
-    async execute(args) {
+    async execute(args, ctx: AgentToolContext) {
       const sync = asSyncCapable(runner);
       if (!sync) {
         return {
@@ -334,11 +400,15 @@ workspace stays clean.`,
       if (!Array.isArray(raw) || raw.length === 0) {
         return { ok: false, error: "paths must be a non-empty string array" };
       }
-      const paths = raw.map((p) => String(p));
+      const scope =
+        (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
+      const inputPaths = raw.map((p) => String(p));
+      const scopedPaths = prefixPaths(inputPaths, scope, ctx.userId);
       try {
-        const r = await sync.syncDown(paths);
+        const r = await sync.syncDown(scopedPaths);
         return {
           ok: r.skipped.length === 0,
+          scope,
           downloaded: r.downloaded,
           skipped: r.skipped,
         };

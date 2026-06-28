@@ -61,7 +61,7 @@ class FakeSyncRunner extends NoSyncRunner {
   }
 }
 
-const fakeCtx = {} as AgentToolContext;
+const fakeCtx = { userId: "alice" } as AgentToolContext;
 
 describe("sync_up tool", () => {
   it("rejects empty paths", async () => {
@@ -84,11 +84,16 @@ describe("sync_up tool", () => {
     expect(res.error).toMatch(/non-empty/);
   });
 
-  it("forwards paths verbatim to runner.syncUp and reports skip diagnostics", async () => {
+  it("prefixes paths with the user home before forwarding to runner.syncUp", async () => {
     const runner = new FakeSyncRunner();
     runner.upResult = {
-      uploaded: ["/sandbox/workspace/a.txt"],
-      skipped: [{ relPath: "missing/", reason: "host path does not exist" }],
+      uploaded: ["/sandbox/workspace/users/alice/a.txt"],
+      skipped: [
+        {
+          relPath: "users/alice/missing/",
+          reason: "host path does not exist",
+        },
+      ],
     };
     const r = SyncUpTool(runner);
     const res = (await r.execute(
@@ -96,15 +101,32 @@ describe("sync_up tool", () => {
       fakeCtx,
     )) as {
       ok: boolean;
+      scope: string;
       uploaded: string[];
       skipped: { relPath: string }[];
     };
-    expect(runner.upCalls).toEqual([["a.txt", "missing/"]]);
-    // ok=false because there was at least one skip; the agent uses
-    // this to decide whether to retry / surface the failure.
+    // Runner sees user-scoped paths.
+    expect(runner.upCalls).toEqual([[
+      "users/alice/a.txt",
+      "users/alice/missing/",
+    ]]);
+    expect(res.scope).toBe("user");
     expect(res.ok).toBe(false);
-    expect(res.uploaded).toEqual(["/sandbox/workspace/a.txt"]);
+    expect(res.uploaded).toEqual(["/sandbox/workspace/users/alice/a.txt"]);
     expect(res.skipped).toHaveLength(1);
+  });
+
+  it("scope:'tenant' bypasses the user-home prefix", async () => {
+    const runner = new FakeSyncRunner();
+    runner.upResult = { uploaded: ["/sandbox/workspace/shared.txt"], skipped: [] };
+    const r = SyncUpTool(runner);
+    const res = (await r.execute(
+      { paths: ["shared.txt"], scope: "tenant" },
+      fakeCtx,
+    )) as { ok: boolean; scope: string };
+    expect(runner.upCalls).toEqual([["shared.txt"]]);
+    expect(res.scope).toBe("tenant");
+    expect(res.ok).toBe(true);
   });
 
   it("reports ok=true when nothing was skipped", async () => {
@@ -157,12 +179,15 @@ describe("sync_down tool", () => {
     expect(res.ok).toBe(false);
   });
 
-  it("forwards paths verbatim and surfaces skip reasons", async () => {
+  it("prefixes paths with the user home before forwarding to runner.syncDown", async () => {
     const runner = new FakeSyncRunner();
     runner.downResult = {
-      downloaded: ["/Users/x/ws/build.log"],
+      downloaded: ["/Users/x/ws/users/alice/build.log"],
       skipped: [
-        { relPath: "dist/", reason: "sandbox download exit 1: not found" },
+        {
+          relPath: "users/alice/dist/",
+          reason: "sandbox download exit 1: not found",
+        },
       ],
     };
     const r = SyncDownTool(runner);
@@ -171,13 +196,24 @@ describe("sync_down tool", () => {
       fakeCtx,
     )) as {
       ok: boolean;
+      scope: string;
       downloaded: string[];
       skipped: { relPath: string }[];
     };
-    expect(runner.downCalls).toEqual([["build.log", "dist/"]]);
+    expect(runner.downCalls).toEqual([[
+      "users/alice/build.log",
+      "users/alice/dist/",
+    ]]);
+    expect(res.scope).toBe("user");
     expect(res.ok).toBe(false);
-    expect(res.downloaded).toHaveLength(1);
-    expect(res.skipped).toHaveLength(1);
+  });
+
+  it("scope:'tenant' bypasses the user-home prefix on sync_down", async () => {
+    const runner = new FakeSyncRunner();
+    runner.downResult = { downloaded: ["/h/ws/shared.log"], skipped: [] };
+    const r = SyncDownTool(runner);
+    await r.execute({ paths: ["shared.log"], scope: "tenant" }, fakeCtx);
+    expect(runner.downCalls).toEqual([["shared.log"]]);
   });
 
   it("returns a clean error when the runner doesn't support sync_down", async () => {
