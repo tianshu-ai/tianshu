@@ -43,26 +43,53 @@ const STDOUT_BYTE_CAP = 8_000;
 // where two agents intentionally share files.
 const SANDBOX_WORKSPACE_PATH = "/sandbox/workspace";
 
-function defaultUserWorkdir(userId: string): string {
-  return `${SANDBOX_WORKSPACE_PATH}/users/${userId}`;
+function defaultUserWorkdir(
+  userId: string,
+  projectSlug?: string,
+): string {
+  // Anchor under the project when the run context has one
+  // (workboard tasks, chat sessions bound to a project). Without
+  // a project, fall back to the bare user-home dir — used by
+  // ad-hoc / scratch tool invocations.
+  const home = `${SANDBOX_WORKSPACE_PATH}/users/${userId}`;
+  return projectSlug ? `${home}/projects/${projectSlug}` : home;
 }
 
-function userScopePrefix(userId: string): string {
-  return `users/${userId}`;
+/**
+ * Compute the sandbox-side prefix for tool inputs. The agent's
+ * paths are interpreted relative to the project working dir
+ * inside the sandbox; we anchor them under
+ *   users/<userId>/projects/<projectSlug>/
+ * to match the per-tenant + per-user + per-project tree the
+ * runner sets up. `projectSlug` is optional for the chat-session
+ * / scratch case where the tool falls back to bare user scope.
+ *
+ * scope='tenant' opts out entirely (paths land at the sandbox
+ * workspace root); used for cross-user shared work, rare.
+ */
+function sandboxPathPrefix(
+  scope: "user" | "tenant",
+  userId: string,
+  projectSlug?: string,
+): string {
+  if (scope === "tenant") return "";
+  const prefix = `users/${userId}`;
+  return projectSlug ? `${prefix}/projects/${projectSlug}` : prefix;
 }
 
 function prefixPaths(
   paths: string[],
   scope: "user" | "tenant",
   userId: string,
+  projectSlug?: string,
 ): string[] {
-  if (scope === "tenant") return paths;
-  const prefix = userScopePrefix(userId);
+  const prefix = sandboxPathPrefix(scope, userId, projectSlug);
+  if (!prefix) return paths;
   return paths.map((p) => {
-    // Strip any leading slash and join with the user-scope prefix.
-    // We don't try to detect "already prefixed" cases (e.g. the
-    // agent passes 'users/alice/foo') — just always prepend so the
-    // resolution is deterministic.
+    // Strip any leading slash and join with the scope prefix. We
+    // don't try to detect "already prefixed" cases — the agent's
+    // convention is to pass project-relative paths (or bare
+    // filenames), and the prefix resolution is deterministic.
     const clean = p.replace(/^\/+/, "");
     return clean === "" || clean === "." ? prefix : `${prefix}/${clean}`;
   });
@@ -158,7 +185,7 @@ Pass an absolute \`workdir\` to step outside the user's home dir.`,
       const workdir =
         typeof (args as { workdir?: unknown }).workdir === "string"
           ? (args as { workdir: string }).workdir
-          : defaultUserWorkdir(ctx.userId);
+          : defaultUserWorkdir(ctx.userId, ctx.projectSlug);
       const timeoutMs = clampTimeout(
         (args as { timeout_ms?: unknown }).timeout_ms,
       );
@@ -271,12 +298,17 @@ export function SyncUpTool(runner: SandboxRunner): AgentTool {
 The OpenShell sandbox does NOT bind-mount the host workspace; use this tool to make \
 host files visible to shell commands.
 
-Paths are resolved relative to your USER HOME, both on host and inside the sandbox:
-  - host  : <tenantWorkspace>/users/<userId>/<path>
-  - guest : /sandbox/workspace/users/<userId>/<path>
-The sandbox 'exec' tool's default cwd is the same user home, so an agent that runs
-\`sync_up({paths:['src/']})\` followed by \`exec({command:'python3 src/hello.py'})\` Just
-Works.
+Paths are resolved relative to your PROJECT working dir, both on host and
+inside the sandbox:
+  - host  : <userHomeDir>/projects/<project>/<path>
+  - guest : /sandbox/workspace/users/<userId>/projects/<project>/<path>
+The sandbox 'exec' tool's default cwd is the same project dir, so
+sync_up({paths:['src/']}) followed by exec({command:'python3 src/hello.py'})
+Just Works.
+
+For ad-hoc chat sessions with no project, the anchor falls back to the user
+home (sandbox: /sandbox/workspace/users/<userId>/<path>); use
+scope='tenant' (rare) to anchor at the workspace root.
 
 Directories are uploaded recursively. Idempotent: re-uploading overwrites the
 sandbox-side copy.
@@ -292,7 +324,7 @@ guest, with no user-id prefix.`,
         paths: Type.Array(
           Type.String({
             description:
-              "Path relative to your user home (e.g. 'src/main.py' or 'data/').",
+              "Path relative to the project working dir (e.g. 'src/main.py' or 'data/'). When you're inside a workboard task this anchors at /sandbox/workspace/users/<userId>/projects/<project>/. For ad-hoc chat sessions with no project, the anchor falls back to /sandbox/workspace/users/<userId>/.",
           }),
           {
             minItems: 1,
@@ -326,7 +358,17 @@ guest, with no user-id prefix.`,
       const scope =
         (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
       const inputPaths = raw.map((p) => String(p));
-      const scopedPaths = prefixPaths(inputPaths, scope, ctx.userId);
+      // Sandbox paths anchor under users/<userId>/projects/<project>/
+      // when a project is in scope (chat session attached to a
+      // project, or workboard task). Plain user scope (no
+      // project) falls back to users/<userId>/, matching the
+      // sandbox tree the runner sets up. Tenant scope skips both.
+      const scopedPaths = prefixPaths(
+        inputPaths,
+        scope,
+        ctx.userId,
+        ctx.projectSlug,
+      );
       try {
         const r = await sync.syncUp(scopedPaths);
         return {
@@ -396,7 +438,7 @@ knows the files are available.`,
         paths: Type.Array(
           Type.String({
             description:
-              "Path relative to your user home in the sandbox (e.g. 'dist/' or 'logs/build.log').",
+              "Path relative to the project working dir in the sandbox (e.g. 'dist/' or 'logs/build.log'). Resolves to /sandbox/workspace/users/<userId>/projects/<project>/<path>; lands on the host at <userHomeDir>/projects/<project>/.results/<task>/<path>.",
           }),
           {
             minItems: 1,
@@ -472,12 +514,22 @@ knows the files are available.`,
       const scope =
         (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
       const inputPaths = raw.map((p) => String(p));
-      const sandboxPaths = prefixPaths(inputPaths, scope, ctx.userId);
-      // Host destination strips the sandbox-side user prefix. The
-      // result tree is already user-scoped (it lives under the
-      // user's home dir), so users/<userId>/ would just be noise.
-      // For scope='tenant' the sandbox path was never prefixed, so
-      // both sides are identical.
+      // Sandbox paths anchor at users/<userId>/projects/<project>/
+      // because that's where the agent's cwd lives. Host
+      // destination strips both the user-scope AND project-scope
+      // prefixes — the result dir is already
+      // <userHomeDir>/projects/<project>/.results/<task>/ so
+      // re-appending them would produce e.g.
+      //   .results/<task>/users/<userId>/projects/<project>/dataset.csv
+      // which Yu rightly flagged as overcomplicated. The agent's
+      // raw input (e.g. 'dataset.csv', 'logs/') lands directly
+      // under the results dir.
+      const sandboxPaths = prefixPaths(
+        inputPaths,
+        scope,
+        ctx.userId,
+        project,
+      );
       const items = inputPaths.map((host, i) => ({
         sandbox: sandboxPaths[i]!,
         host,
