@@ -32,6 +32,16 @@
         "id": "get_sandbox_status",
         "module": "GetSandboxStatusTool",
         "since": "0.4.0"
+      },
+      {
+        "id": "sync_up",
+        "module": "SyncUpTool",
+        "since": "0.4.0"
+      },
+      {
+        "id": "sync_down",
+        "module": "SyncDownTool",
+        "since": "0.4.0"
       }
     ],
     "skills": [

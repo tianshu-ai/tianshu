@@ -36,6 +36,8 @@ import {
   ExecTool,
   GetSandboxStatusTool,
   ResetSandboxTool,
+  SyncDownTool,
+  SyncUpTool,
 } from "./tools/index.js";
 
 let active: { runner: OpenShellRunner; log: PluginContext["log"] } | null =
@@ -104,6 +106,8 @@ export default {
         ExecTool: ExecTool(runner),
         ResetSandboxTool: ResetSandboxTool(runner),
         GetSandboxStatusTool: GetSandboxStatusTool(runner),
+        SyncUpTool: SyncUpTool(runner),
+        SyncDownTool: SyncDownTool(runner),
       },
     };
   },

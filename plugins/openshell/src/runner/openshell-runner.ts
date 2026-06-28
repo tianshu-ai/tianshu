@@ -199,8 +199,18 @@ export class OpenShellRunner implements SandboxRunner {
         this.sandboxName,
         "--no-tty",
       ];
-      if (req.workdir && req.workdir !== "/") {
+      // Default cwd inside the sandbox is /sandbox/workspace (where
+      // writeFile/readFile land their uploads). Callers can
+      // override via req.workdir; passing "/" is interpreted as
+      // "use the sandbox's own default" (currently /sandbox) and
+      // leaves the flag off.
+      if (req.workdir === "/") {
+        // Caller explicitly asked for the sandbox-default cwd; do
+        // not override.
+      } else if (req.workdir) {
         args.push("--workdir", req.workdir);
+      } else {
+        args.push("--workdir", SANDBOX_WORKSPACE_PATH);
       }
       if (req.timeoutMs && req.timeoutMs > 0) {
         // OpenShell --timeout is in whole seconds; round up so we
@@ -305,6 +315,186 @@ export class OpenShellRunner implements SandboxRunner {
     } finally {
       await fs.unlink(tmpHost).catch(() => undefined);
     }
+  }
+
+  /**
+   * Upload host workspace paths into the sandbox under
+   * /sandbox/workspace/. Files and directories are both supported;
+   * directories are recursively uploaded by the OpenShell CLI.
+   *
+   * Inputs are relative to the host workspaceDir (no leading `/`,
+   * no `..` traversal). Returns the list of sandbox-side paths
+   * actually transferred (`/sandbox/workspace/<rel>`).
+   *
+   * This is the recommended way to move file content host->sandbox
+   * for the OpenShell plugin: it's coarse-grained (whole files /
+   * dirs at a time, decided by the agent) which makes the
+   * sync surface line up with how OpenShell's `sandbox upload`
+   * works under the hood (single batched gRPC + tar stream).
+   */
+  async syncUp(
+    hostRelPaths: string[],
+  ): Promise<{ uploaded: string[]; skipped: { relPath: string; reason: string }[] }> {
+    if (this.state !== "ready" && this.state !== "running") {
+      await this.ensureSandbox();
+    }
+    const uploaded: string[] = [];
+    const skipped: { relPath: string; reason: string }[] = [];
+    for (const rel of hostRelPaths) {
+      let safe: string;
+      try {
+        safe = this.assertRelativePath(rel);
+      } catch (err) {
+        skipped.push({
+          relPath: rel,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
+      const hostAbs = path.join(this.opts.workspaceDir, safe);
+      try {
+        await fs.access(hostAbs);
+      } catch {
+        skipped.push({
+          relPath: rel,
+          reason: "host path does not exist",
+        });
+        continue;
+      }
+      // Loosen host-side permissions before upload. OpenShell's
+      // `sandbox upload` preserves source perms; if a host file is
+      // 0600 (common under server umask 077) the sandbox uid 998
+      // can't read it through the upload-side copy and the agent
+      // gets a confusing "file exists but Permission denied" on
+      // exec. Files → 0644, dirs → 0755. We only widen, never
+      // narrow; symlinks are skipped to avoid following them.
+      await widenForUpload(hostAbs).catch(() => undefined);
+      // CLI upload semantics (verified 0.0.72-dev.8):
+      //   - localPath is a file  → dest is the destination file path
+      //   - localPath is a dir   → dest is the PARENT directory; the
+      //     dir lands at <dest>/<basename(localPath)>
+      // To make `syncUp(['src/'])` land at `/sandbox/workspace/src/`
+      // (not `/sandbox/workspace/src/src/`), we pass the parent of
+      // the host dir as the destination.
+      let hostStat;
+      try {
+        hostStat = await fs.stat(hostAbs);
+      } catch (err) {
+        skipped.push({
+          relPath: rel,
+          reason: `stat failed: ${err instanceof Error ? err.message : String(err)}`,
+        });
+        continue;
+      }
+      const guestDest = hostStat.isDirectory()
+        ? path.posix.join(
+            SANDBOX_WORKSPACE_PATH,
+            path.posix.dirname(safe),
+          )
+        : path.posix.join(SANDBOX_WORKSPACE_PATH, safe);
+      // Make sure the guest-side parent dir exists. `sandbox upload`
+      // creates the immediate parent but not deeper ancestors; for a
+      // first-time `syncUp(['a/b/c.py'])` against an empty workspace
+      // we need `a/b/` ahead of time. Done inside the sandbox via
+      // mkdir -p; cheap and idempotent.
+      const guestParent = hostStat.isDirectory()
+        ? guestDest
+        : path.posix.dirname(guestDest);
+      if (guestParent !== SANDBOX_WORKSPACE_PATH) {
+        await this.spawnCli(
+          [
+            "sandbox",
+            "exec",
+            "--name",
+            this.sandboxName,
+            "--no-tty",
+            "--",
+            "mkdir",
+            "-p",
+            guestParent,
+          ],
+          {},
+        ).catch(() => undefined);
+      }
+      const { exitCode, stderr } = await this.spawnCli(
+        [
+          "sandbox",
+          "upload",
+          "--no-git-ignore",
+          this.sandboxName,
+          hostAbs,
+          guestDest,
+        ],
+        {},
+      );
+      if (exitCode !== 0) {
+        skipped.push({
+          relPath: rel,
+          reason: `sandbox upload exit ${exitCode}: ${stderr.trim() || "unknown"}`,
+        });
+        continue;
+      }
+      // Sandbox-side path the agent (or a subsequent exec) should
+      // use. For dirs we append the dir basename so callers see the
+      // same shape they passed in (`syncUp(['src/'])` → reports
+      // `/sandbox/workspace/src/`, not the parent dest we used as a
+      // CLI argument).
+      const sandboxResolved = hostStat.isDirectory()
+        ? path.posix.join(
+            guestDest,
+            path.posix.basename(safe),
+          ) + "/"
+        : guestDest;
+      uploaded.push(sandboxResolved);
+    }
+    return { uploaded, skipped };
+  }
+
+  /**
+   * Download paths from /sandbox/workspace/ back into the host
+   * workspaceDir. Inverse of syncUp(). Inputs are relative paths
+   * inside the sandbox workspace; outputs land at
+   * <workspaceDir>/<rel>.
+   *
+   * Returns the list of host-side paths actually written and any
+   * paths that were skipped (missing on the sandbox side, etc.).
+   */
+  async syncDown(
+    sandboxRelPaths: string[],
+  ): Promise<{ downloaded: string[]; skipped: { relPath: string; reason: string }[] }> {
+    if (this.state !== "ready" && this.state !== "running") {
+      await this.ensureSandbox();
+    }
+    const downloaded: string[] = [];
+    const skipped: { relPath: string; reason: string }[] = [];
+    for (const rel of sandboxRelPaths) {
+      let safe: string;
+      try {
+        safe = this.assertRelativePath(rel);
+      } catch (err) {
+        skipped.push({
+          relPath: rel,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+        continue;
+      }
+      const guestPath = `${SANDBOX_WORKSPACE_PATH}/${safe}`;
+      const hostAbs = path.join(this.opts.workspaceDir, safe);
+      await fs.mkdir(path.dirname(hostAbs), { recursive: true });
+      const { exitCode, stderr } = await this.spawnCli(
+        ["sandbox", "download", this.sandboxName, guestPath, hostAbs],
+        {},
+      );
+      if (exitCode !== 0) {
+        skipped.push({
+          relPath: rel,
+          reason: `sandbox download exit ${exitCode}: ${stderr.trim() || "unknown"}`,
+        });
+        continue;
+      }
+      downloaded.push(hostAbs);
+    }
+    return { downloaded, skipped };
   }
 
   /** Reject absolute paths, .. traversal, and NUL bytes before they
@@ -690,5 +880,32 @@ export class OpenShellRunner implements SandboxRunner {
       "openshell\n",
       "utf8",
     );
+  }
+}
+
+/**
+ * Recursively chmod a host path so the OpenShell sandbox user
+ * (uid 998) can read it after `sandbox upload`. Dirs get 0755,
+ * regular files get 0644. Symlinks are skipped (chmod on a symlink
+ * changes the link itself on Linux but the target on macOS; either
+ * way it's not what we want for an upload-prep step).
+ *
+ * Best-effort: any error is swallowed by the caller so a permission
+ * pre-flight failure on one file doesn't block uploading the rest.
+ */
+async function widenForUpload(absPath: string): Promise<void> {
+  const stat = await fs.lstat(absPath);
+  if (stat.isSymbolicLink()) return;
+  if (stat.isDirectory()) {
+    await fs.chmod(absPath, 0o755).catch(() => undefined);
+    const entries = await fs.readdir(absPath, { withFileTypes: true });
+    for (const e of entries) {
+      if (e.name === ".git") continue; // don't paw at vcs internals
+      await widenForUpload(path.join(absPath, e.name)).catch(() => undefined);
+    }
+    return;
+  }
+  if (stat.isFile()) {
+    await fs.chmod(absPath, 0o644).catch(() => undefined);
   }
 }
