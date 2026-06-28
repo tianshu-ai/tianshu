@@ -540,6 +540,143 @@ self-host by setting `TIANSHU_CATALOG_URL`.
 | **P4** | Uninstall (delete on-disk dir + clear config). |
 | **P5** | Upgrade detection (compare installed version vs `latestVersion`; surface a badge in Plugin Manager). |
 
+## Plugin host prerequisites (`manifest.setup`)
+
+Not every plugin can be activated with just `npm install` — some
+need a running daemon (Docker), a native binary on `$PATH`
+(`openshell`, `playwright-mcp`), a cached container image, or
+file-sharing reachability on the host OS. In v0 we asked plugin
+authors to describe those in a README and trust the user to
+follow along. That doesn't scale; users hit "plugin enabled but
+activate() failed" with no recovery path.
+
+The `manifest.setup` block lets a plugin declare its host-side
+prerequisites in machine-readable form. The setup agent
+(`tianshu setup`) and the doctor (`tianshu doctor`) read it, run
+the verify probes, and walk the user through the install paths
+that match their OS.
+
+### Schema (PluginSetupSpec)
+
+```jsonc
+"setup": {
+  "summary": "One-line description of what the plugin needs.",
+  "docs": "https://.../plugin-readme#prerequisites",
+  "requirements": [
+    {
+      "id": "docker-daemon",        // stable id, used in diagnostics
+      "label": "Docker daemon",
+      "description": "Optional one-liner for the UI.",
+      "severity": "required",       // required | recommended | optional
+      "verify": [                    // first to exit 0 wins
+        { "cmd": "docker info >/dev/null 2>&1" }
+      ],
+      "install": [                   // CANDIDATES, never auto-run
+        {
+          "label": "Docker Desktop",
+          "description": "Recommended on macOS.",
+          "steps": [
+            { "cmd": "open 'https://docker.com/...'", "os": ["darwin"] }
+          ]
+        },
+        {
+          "label": "apt-get docker.io",
+          "steps": [
+            { "cmd": "sudo apt-get install -y docker.io", "os": ["linux"] }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+Field semantics:
+- **`verify[].cmd`** runs via `/bin/sh -c` (POSIX) / `cmd /c`
+  (Windows). It must be side-effect-free — the doctor calls it
+  on every poll. Write it like a probe: `command -v X`,
+  `X --version`, `docker info`, `test -f /path`. Per-command
+  timeout defaults to 5s; a hung daemon is treated as a fail.
+- **`verify[].os`** filters by `process.platform`. If the plugin
+  tags every verify command with `os` and none match the host,
+  the requirement is *skipped* (treated as `ok: true` with a
+  diagnostic note) rather than failed — it might genuinely not
+  apply on this OS.
+- **`severity`** controls how doctor renders failures:
+  - `required` — the plugin won't activate. The doctor shows it
+    as a blocker and the setup agent refuses to call
+    `plugin_enable` until it passes.
+  - `recommended` — the plugin works but is degraded (e.g.
+    "first run will be slow because the base image isn't cached").
+    Surfaces as a warning, not a blocker.
+  - `optional` — purely informational. Also surfaces as a warning
+    but the agent won't bring it up unprompted.
+- **`install[]`** are alternative install paths, NOT a sequence.
+  The setup agent shows them all and lets the user pick one
+  (homebrew vs tarball vs cargo source build, etc.). Each
+  `step.cmd` is shown to the user verbatim and run only after
+  explicit confirmation; the agent NEVER auto-concatenates
+  steps into one shell line.
+
+### Authoring guidelines
+
+- **Probe, don't reach.** Verify commands run on every doctor
+  invocation. Don't pull images, mutate files, or stand up
+  services from a verify probe — use `command -v`, `--version`,
+  `image inspect`, etc.
+- **Ship every supported OS in one manifest.** Tag commands with
+  `os: ["darwin"]`, `os: ["linux"]`, etc. The doctor filters
+  per-host so users see only the steps that apply to them.
+- **Prefer self-contained shell.** Verify and install commands
+  go through `/bin/sh -c`, not the user's login shell. `$PATH`
+  is inherited from the doctor process; `~/.zshrc` / `~/.bashrc`
+  are *not* sourced. Spell out absolute paths or use `command -v`.
+- **Bundle docs.** Set `setup.docs` to a deep link into the
+  plugin README's prerequisites section. The setup agent
+  surfaces it when a requirement fails so the user can read the
+  long version.
+- **One requirement per thing.** Don't roll "Docker + openshell
+  binary + base image" into one requirement — separate ids make
+  the doctor's output actionable.
+
+### Wiring
+
+Host side:
+- `packages/plugin-sdk/src/manifest.ts` — types
+  (`PluginSetupSpec`, `PluginSetupRequirement`,
+  `PluginSetupCommand`, `PluginSetupInstall`).
+- `packages/server/src/core/plugins/manifest.ts` — parser, runs
+  during the discovery pass; malformed `setup` blocks fail
+  manifest validation with a clear error.
+- `packages/server/src/setup/checks/plugin-setup.ts` — runner
+  (`evaluatePluginSetup`, `discoverPluginSetupSpecs`,
+  `pluginSetupToCheckGroup`). Pure async, no global state, safe
+  to call from doctor / tools / tests.
+- `packages/server/src/setup/cli-agent.ts` — two tools:
+  - `plugin_setup_status [pluginId?]` (read-only, side-effect-free
+    even though it spawns probes).
+  - `plugin_setup_install_hint pluginId requirementId` (read-only).
+  Plus a system-prompt section teaching the verify-before-enable
+  pattern.
+
+The setup agent's expected flow:
+
+1. `plugin_setup_status` → see which plugins have failing
+   requirements.
+2. For each `severity: required` fail, `plugin_setup_install_hint`
+   to fetch the candidate install paths.
+3. Show the candidates to the user. Wait for them to pick one.
+4. Run the chosen path's steps one at a time, each through the
+   standard mutating-tool confirmation surface.
+5. Re-run `plugin_setup_status` to confirm green.
+6. `plugin_enable`.
+
+Plugins that need nothing beyond `npm install`
+(`@tianshu-builtin/plugin-files`, `web-search`) can omit
+`manifest.setup` entirely — they're absent from
+`plugin_setup_status` and the agent jumps straight to
+`plugin_enable`.
+
 ## References
 
 - `agent-manager.ts:1115-1300` (closed-source) — skills resolution
