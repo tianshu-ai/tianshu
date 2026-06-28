@@ -1,0 +1,24 @@
+{
+  "name": "@tianshu-builtin/plugin-openshell",
+  "version": "0.1.0",
+  "description": "Tianshu plugin: shell sandbox backed by NVIDIA OpenShell.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "exports": {
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./manifest.json": "./manifest.json"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@tianshu-ai/plugin-sdk": "*"
+  }
+}
