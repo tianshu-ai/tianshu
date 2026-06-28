@@ -175,13 +175,48 @@ async function runCommand(cmd: string, timeoutMs: number): Promise<RunResult> {
     const isWin = process.platform === "win32";
     const shell = isWin ? "cmd" : "/bin/sh";
     const args = isWin ? ["/c", cmd] : ["-c", cmd];
-    const child = spawn(shell, args, { stdio: ["ignore", "pipe", "pipe"] });
+    // detached=true on POSIX so we get our own process group; that
+    // lets us signal the whole group with `kill(-pid)` and reap
+    // shell grandchildren (e.g. the `sleep` inside `/bin/sh -c
+    // "sleep 30"`). Without this, SIGKILL on the shell leaves the
+    // sleep orphan with its stdout pipe open, which keeps Node's
+    // 'close' event from firing and wedges the doctor forever.
+    const child = spawn(shell, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: !isWin,
+    });
     let stdout = "";
     let stderr = "";
     let timedOut = false;
+    let settled = false;
+    const settle = (result: RunResult) => {
+      if (settled) return;
+      settled = true;
+      resolve(result);
+    };
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill("SIGKILL");
+      try {
+        // Negative pid = kill the whole process group. Falls back
+        // to a plain child.kill if we somehow don't have a pid.
+        if (!isWin && child.pid) {
+          process.kill(-child.pid, "SIGKILL");
+        } else {
+          child.kill("SIGKILL");
+        }
+      } catch {
+        /* already gone */
+      }
+      // 'close' waits for stdio pipes to drain; on a SIGKILLed
+      // shell with hung grandchildren that can be slow / never.
+      // Settle immediately with whatever output we got so doctor
+      // doesn't wedge waiting on a dead probe.
+      settle({
+        exitCode: -1,
+        stdout: truncate(stdout, 200),
+        stderr: truncate(stderr, 200),
+        timedOut,
+      });
     }, timeoutMs);
     child.stdout.on("data", (c) => {
       stdout += c.toString("utf8").slice(0, 1024);
@@ -191,7 +226,7 @@ async function runCommand(cmd: string, timeoutMs: number): Promise<RunResult> {
     });
     child.on("close", (code) => {
       clearTimeout(timer);
-      resolve({
+      settle({
         exitCode: code ?? -1,
         stdout: truncate(stdout, 200),
         stderr: truncate(stderr, 200),
@@ -200,7 +235,7 @@ async function runCommand(cmd: string, timeoutMs: number): Promise<RunResult> {
     });
     child.on("error", () => {
       clearTimeout(timer);
-      resolve({
+      settle({
         exitCode: -1,
         stdout: "",
         stderr: `(spawn failed)`,
