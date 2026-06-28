@@ -243,14 +243,14 @@ describe("sync_down tool", () => {
       "/h/acme/workspace/users/alice/projects/foo/.results/42-build";
     runner.downResult = {
       downloaded: [
-        `${expectedDest}/users/alice/build.log`,
-        `${expectedDest}/users/alice/logs/`,
+        `${expectedDest}/build.log`,
+        `${expectedDest}/logs/`,
       ],
       skipped: [],
     };
     const r = SyncDownTool(runner);
     const res = (await r.execute(
-      validArgs({ paths: ["build.log", "logs/"] }),
+      validArgs({ paths: ["build.log", "logs/"], project: "foo" }),
       fakeCtx,
     )) as {
       ok: boolean;
@@ -262,14 +262,15 @@ describe("sync_down tool", () => {
       notice: string;
     };
     expect(runner.downCalls).toHaveLength(1);
-    // Sandbox paths keep the user prefix (for cross-user safety
-    // inside the shared tenant sandbox).
+    // Sandbox paths get the full user+project prefix so they
+    // resolve to the project working dir inside the shared
+    // tenant sandbox.
     expect(runner.downCalls[0]!.paths).toEqual([
-      "users/alice/build.log",
-      "users/alice/logs/",
+      "users/alice/projects/foo/build.log",
+      "users/alice/projects/foo/logs/",
     ]);
-    // Host paths drop the prefix — the result tree is already
-    // anchored at the user's home dir.
+    // Host paths are the agent's raw input — the results dir
+    // is already anchored at the project's .results/<task>/.
     expect(runner.downCalls[0]!.hostPaths).toEqual(["build.log", "logs/"]);
     expect(runner.downCalls[0]!.destBaseDir).toBe(expectedDest);
     expect(res.scope).toBe("user");
