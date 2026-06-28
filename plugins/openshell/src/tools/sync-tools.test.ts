@@ -279,6 +279,92 @@ describe("sync_down tool", () => {
     expect(res.notice).toMatch(/Staged/);
   });
 
+  describe("defaults from ctx", () => {
+    it("uses ctx.projectSlug and ctx.taskId when args are omitted", async () => {
+      const runner = new FakeSyncRunner();
+      runner.downResult = { downloaded: [], skipped: [] };
+      const r = SyncDownTool(runner);
+      const ctx = {
+        userId: "alice",
+        tenantId: "acme",
+        tenantHomeDir: "/h/acme",
+        userHomeDir: "/h/acme/workspace/users/alice",
+        taskId: "42",
+        projectSlug: "blog-engine",
+        taskTitle: "Add Login Flow",
+      } as AgentToolContext;
+      const res = (await r.execute({ paths: ["out.log"] }, ctx)) as {
+        ok: boolean;
+        project: string;
+        task: string;
+        destBaseDir: string;
+      };
+      expect(res.ok).toBe(true);
+      expect(res.project).toBe("blog-engine");
+      // taskId + slugified title.
+      expect(res.task).toBe("42-add-login-flow");
+      expect(res.destBaseDir).toBe(
+        "/h/acme/workspace/users/alice/projects/blog-engine/.results/42-add-login-flow",
+      );
+    });
+
+    it("falls back to bare taskId when taskTitle is empty or slug-empty", async () => {
+      const runner = new FakeSyncRunner();
+      runner.downResult = { downloaded: [], skipped: [] };
+      const r = SyncDownTool(runner);
+      const ctx = {
+        userId: "alice",
+        tenantId: "acme",
+        tenantHomeDir: "/h/acme",
+        userHomeDir: "/h/acme/workspace/users/alice",
+        taskId: "42",
+        projectSlug: "blog-engine",
+        // All symbols → slug collapses to empty → use bare id.
+        taskTitle: "!!!",
+      } as AgentToolContext;
+      const res = (await r.execute({ paths: ["out.log"] }, ctx)) as {
+        task: string;
+      };
+      expect(res.task).toBe("42");
+    });
+
+    it("explicit args win over ctx defaults", async () => {
+      const runner = new FakeSyncRunner();
+      runner.downResult = { downloaded: [], skipped: [] };
+      const r = SyncDownTool(runner);
+      const ctx = {
+        userId: "alice",
+        tenantId: "acme",
+        tenantHomeDir: "/h/acme",
+        userHomeDir: "/h/acme/workspace/users/alice",
+        taskId: "42",
+        projectSlug: "blog-engine",
+        taskTitle: "Add Login",
+      } as AgentToolContext;
+      const res = (await r.execute(
+        {
+          paths: ["out.log"],
+          project: "other-project",
+          task: "custom-folder",
+        },
+        ctx,
+      )) as { project: string; task: string };
+      expect(res.project).toBe("other-project");
+      expect(res.task).toBe("custom-folder");
+    });
+
+    it("errors helpfully when ctx is missing and args weren't passed", async () => {
+      const runner = new FakeSyncRunner();
+      const r = SyncDownTool(runner);
+      const res = (await r.execute({ paths: ["out.log"] }, fakeCtx)) as {
+        ok: boolean;
+        error: string;
+      };
+      expect(res.ok).toBe(false);
+      expect(res.error).toMatch(/ctx\.projectSlug|workboard task/);
+    });
+  });
+
   it("scope:'tenant' bypasses the sandbox-side user prefix", async () => {
     const runner = new FakeSyncRunner();
     const expectedDest =

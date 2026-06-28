@@ -87,6 +87,15 @@ export interface AgentLoopRequest {
    *  importantly the microsandbox `exec` route) can scope their
    *  resources to the task lifecycle. */
   taskId?: string | null;
+  /** Project slug the task belongs to. Plumbed through to
+   *  `AgentToolContext.projectSlug` so tools that stage result
+   *  files on disk (e.g. openshell `sync_down`) can default to
+   *  the project tree without the agent passing it. */
+  projectSlug?: string | null;
+  /** Task title at run start. Plumbed through to
+   *  `AgentToolContext.taskTitle`. User-supplied text — plugins
+   *  MUST slugify before routing it into a filesystem path. */
+  taskTitle?: string | null;
   /** Plugin registry for tool/skill discovery. */
   pluginRegistry?: PluginRegistry;
   /** Tenant root dir on the host. */
@@ -366,6 +375,13 @@ export async function runAgentLoop(
       // Optional task binding: lets per-task tools (microsandbox
       // `exec`) scope resources to the task lifecycle.
       taskId: req.taskId ?? undefined,
+      // Workboard plumbing: project + title travel alongside
+      // taskId so plugins that stage files on disk can default
+      // their destinations to the project tree. Null/empty
+      // strings normalised to undefined so consumers can use
+      // simple truthy checks.
+      projectSlug: req.projectSlug || undefined,
+      taskTitle: req.taskTitle || undefined,
       // Cancellation signal piped from the agent loop's inner
       // abort controller. Tools that do long-running work
       // (microsandbox `exec`, MCP) read this and bail when the

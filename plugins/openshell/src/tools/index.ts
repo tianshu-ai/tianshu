@@ -352,19 +352,21 @@ export function SyncDownTool(runner: SandboxRunner): AgentTool {
       description: `Pull files / directories from the OpenShell sandbox into this task's
 result dir on the host.
 
-Task + project scoped. Required args:
-  - paths   : sandbox paths to pull (relative to your user home).
-  - project : the project slug this task belongs to. The host pins
-              outputs to the project so users browsing
-              users/<user>/projects/<project>/.results/ see one
-              folder per task. Workboard tasks know the project
-              slug; pass it through verbatim. For ad-hoc chat
-              sessions, pass the project the work belongs to or
-              'scratch' if there isn't one.
-  - task    : a stable, human-meaningful task name. Becomes the
-              result-folder name. Workboard tasks should pass the
-              task id (or '<id>-<slugified-title>'); ad-hoc work
-              can pass a short descriptive slug.
+Task + project scoped. Args:
+  - paths   : sandbox paths to pull (relative to your user home). Required.
+  - project : the project slug this task belongs to. Optional inside a
+              workboard task — the host fills it from task.projectSlug.
+              Required for ad-hoc / chat-session calls.
+  - task    : stable, human-meaningful task folder name. Optional inside
+              a workboard task — the host fills it from
+              '<taskId>[-<slugified taskTitle>]'. Required for ad-hoc /
+              chat-session calls.
+
+Inside a workboard task you almost never need to pass project / task by
+hand; just call sync_down({paths:['dist/','out.txt']}). The host's task
+context fills the rest in. Explicit args override the defaults if you
+need to stage results under a different project (rare) or use a custom
+folder name (e.g. one task producing multiple result sets).
 
 Fixed host layout (NOT agent-controlled):
   <userHomeDir>/projects/<project>/.results/<task>/<sandboxRelPath>
@@ -401,16 +403,20 @@ knows the files are available.`,
             description: "Files and / or directories to download.",
           },
         ),
-        project: Type.String({
-          description:
-            "Project slug this task belongs to. Lowercase letters / digits / hyphens; required. For workboard tasks, pass task.projectSlug verbatim. For ad-hoc work, use 'scratch'.",
-          minLength: 1,
-        }),
-        task: Type.String({
-          description:
-            "Stable, human-meaningful task folder name. Workboard tasks should pass the task id (optionally suffixed with a slugified title, e.g. '42-add-login'). Ad-hoc work can pass a short descriptive slug.",
-          minLength: 1,
-        }),
+        project: Type.Optional(
+          Type.String({
+            description:
+              "Project slug this task belongs to. Optional inside a workboard task — the host fills it from task.projectSlug. Required for ad-hoc / chat-session calls. Lowercase letters / digits / hyphens, dot, or underscore.",
+            minLength: 1,
+          }),
+        ),
+        task: Type.Optional(
+          Type.String({
+            description:
+              "Stable, human-meaningful task folder name. Optional inside a workboard task — the host fills it from <taskId>-<slugified taskTitle>. Required for ad-hoc / chat-session calls.",
+            minLength: 1,
+          }),
+        ),
         scope: Type.Optional(
           Type.Union(
             [Type.Literal("user"), Type.Literal("tenant")],
@@ -435,16 +441,34 @@ knows the files are available.`,
       if (!Array.isArray(raw) || raw.length === 0) {
         return { ok: false, error: "paths must be a non-empty string array" };
       }
-      const project = typeof (args as { project?: unknown }).project === "string"
-        ? (args as { project: string }).project.trim()
-        : "";
-      const task = typeof (args as { task?: unknown }).task === "string"
-        ? (args as { task: string }).task.trim()
-        : "";
+      // Resolve project + task. Explicit arg wins; otherwise use
+      // ctx fields the host populates from the workboard task row.
+      // taskTitle is user-supplied text, so we slugify it before
+      // joining onto taskId.
+      const argProject =
+        typeof (args as { project?: unknown }).project === "string"
+          ? (args as { project: string }).project.trim()
+          : "";
+      const project = argProject || (ctx.projectSlug ?? "").trim();
+      const argTask =
+        typeof (args as { task?: unknown }).task === "string"
+          ? (args as { task: string }).task.trim()
+          : "";
+      const task = argTask || deriveTaskFolderFromCtx(ctx);
       const projectErr = validateSlug(project, "project");
-      if (projectErr) return { ok: false, error: projectErr };
+      if (projectErr) {
+        return {
+          ok: false,
+          error: `${projectErr}. Pass 'project' explicitly, or call from a workboard task so ctx.projectSlug is populated.`,
+        };
+      }
       const taskErr = validateSlug(task, "task");
-      if (taskErr) return { ok: false, error: taskErr };
+      if (taskErr) {
+        return {
+          ok: false,
+          error: `${taskErr}. Pass 'task' explicitly, or call from a workboard task so ctx.taskId is populated.`,
+        };
+      }
       const scope =
         (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
       const inputPaths = raw.map((p) => String(p));
@@ -514,6 +538,28 @@ function projectTaskResultsDir(
  * dot + underscore + hyphen so an agent can't escape the result
  * tree by passing `../../etc/passwd`. Length capped at 64.
  */
+/**
+ * Derive a deterministic task-folder name from ctx alone, used
+ * when the agent didn't pass an explicit `task` arg. Workboard
+ * tasks always have ctx.taskId; if taskTitle is also set we
+ * suffix the id with a slugified title so the folder name is
+ * recognisable on disk (e.g. "42-add-login-flow"). When the
+ * title slug would collapse to empty (all-symbols title), fall
+ * back to the bare id.
+ */
+function deriveTaskFolderFromCtx(ctx: AgentToolContext): string {
+  const id = (ctx.taskId ?? "").trim();
+  if (!id) return "";
+  const title = (ctx.taskTitle ?? "").trim();
+  if (!title) return id;
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return slug ? `${id}-${slug}` : id;
+}
+
 function validateSlug(value: string, label: string): string | null {
   if (!value) {
     return `${label} must be a non-empty string`;

@@ -91,6 +91,19 @@ export interface BuildToolContext {
    */
   taskId?: string;
   /**
+   * Project slug the task belongs to. Forwarded to
+   * `AgentToolContext.projectSlug` so plugins that stage files
+   * on disk (openshell `sync_down`) default to the project's
+   * result subtree.
+   */
+  projectSlug?: string;
+  /**
+   * Task title at run start. Forwarded to
+   * `AgentToolContext.taskTitle`. User-supplied text — plugins
+   * must slugify before using it in filesystem paths.
+   */
+  taskTitle?: string;
+  /**
    * Cancellation signal piped from the agent loop's inner abort
    * controller. Forwarded into every tool's
    * `AgentToolContext.signal` so long-running tools can bail
@@ -135,6 +148,8 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       sessionId: toolContext.sessionId,
       channelSession: toolContext.channelSession,
       taskId: toolContext.taskId,
+      projectSlug: toolContext.projectSlug,
+      taskTitle: toolContext.taskTitle,
       signal: toolContext.signal,
     };
     let available = true;

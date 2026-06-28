@@ -46,6 +46,17 @@ export interface AgentLoopRunnerRequest {
    *  sandbox per `taskId` and stops it once the task terminates.
    *  Absent for chat sessions and ad-hoc agent loops. */
   taskId?: string | null;
+  /** Project slug the task belongs to. Plumbed through to
+   *  `AgentToolContext.projectSlug` so tools that stage result
+   *  files on disk (e.g. openshell's `sync_down`) can default to
+   *  the project's results subtree without the agent having to
+   *  pass it. Workboard sets this from `tasks.project_slug`;
+   *  absent for chat sessions and ad-hoc runs. */
+  projectSlug?: string | null;
+  /** Task title at run-start. Plumbed through to
+   *  `AgentToolContext.taskTitle`. Treat as user-supplied text —
+   *  plugins MUST slugify before using it in filesystem paths. */
+  taskTitle?: string | null;
   /** Parent session id (the user's main session that requested
    *  the worker). Lets the UI render worker sessions as children. */
   parentSessionId?: string | null;
