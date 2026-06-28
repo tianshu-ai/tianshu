@@ -586,6 +586,13 @@ export function claimNextTask(
      *  pinning surfaces). */
     workerAgentId?: string | null;
     sessionId?: string | null;
+    /** Skip tasks owned by any of these user ids. Used by the
+     *  pool's per-user concurrency cap: if user X already has K
+     *  tasks in flight, the pool passes excludeUserIds=[X] and
+     *  the next claim looks past X's queue at someone else's
+     *  work. The whole excluded user just waits a turn — their
+     *  tasks become eligible again on the next drain. */
+    excludeUserIds?: ReadonlySet<string> | null;
   } = {},
 ): Task | null {
   const role = opts.workerRole ?? null;
@@ -638,7 +645,14 @@ export function claimNextTask(
       .all();
   })();
 
+  const excludeUsers = opts.excludeUserIds ?? null;
   for (const row of eligible) {
+    if (excludeUsers && excludeUsers.has(row.owner_user_id)) {
+      // Per-user cap reached for this owner; skip this task and
+      // try the next candidate. The skipped task stays 'ready'
+      // and gets a fresh look on the next drain.
+      continue;
+    }
     const candidate = rowToTask(row);
     if (!isEligible(db, candidate)) continue;
 

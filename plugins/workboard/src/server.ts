@@ -134,6 +134,11 @@ const plugin: PluginServerModule = {
        *  each registered worker_agent slot independently claims).
        *  Lower this to throttle LLM / sandbox load. */
       maxConcurrentRuns?: number;
+      /** Cap on simultaneous in-flight runs per owner_user_id.
+       *  Useful in shared tenants to keep one user from
+       *  monopolising the pool. 0 = unlimited per user (subject
+       *  to the tenant cap, if any). */
+      maxConcurrentRunsPerUser?: number;
     };
     const echoEnabled = cfg.echo?.enabled !== false;
     const echoDelayMs =
@@ -257,6 +262,13 @@ const plugin: PluginServerModule = {
       rawMaxRuns > 0
         ? Math.floor(rawMaxRuns)
         : 0;
+    const rawMaxRunsPerUser = cfg.maxConcurrentRunsPerUser;
+    const maxConcurrentRunsPerUser =
+      typeof rawMaxRunsPerUser === "number" &&
+      Number.isFinite(rawMaxRunsPerUser) &&
+      rawMaxRunsPerUser > 0
+        ? Math.floor(rawMaxRunsPerUser)
+        : 0;
     const pool = new WorkerPool({
       db: ctx.db,
       log: ctx.log,
@@ -265,6 +277,7 @@ const plugin: PluginServerModule = {
       factory,
       taskPool,
       maxConcurrentRuns,
+      maxConcurrentRunsPerUser,
       notifyParentSession: sessionInbox
         ? (sessionId, message) => {
             void sessionInbox.enqueue(sessionId, message).catch((err) => {
@@ -333,6 +346,7 @@ const plugin: PluginServerModule = {
       echoDelayMs,
       agentCount: initialAgents.length,
       maxConcurrentRuns: maxConcurrentRuns || "unlimited",
+      maxConcurrentRunsPerUser: maxConcurrentRunsPerUser || "unlimited",
     });
 
     const toolDeps: ToolDeps = {

@@ -149,6 +149,20 @@ export interface WorkerPoolDeps {
    */
   maxConcurrentRuns?: number;
   /**
+   * Per-user cap on simultaneously in-flight runs. When user X
+   * already has K tasks running, the pool skips X's remaining
+   * ready tasks for this drain pass and serves another user's
+   * work instead. Combines independently with `maxConcurrentRuns`
+   * — whichever fires first stops the claim.
+   *
+   * 0 / undefined means unlimited per user (subject only to the
+   * tenant cap if any).
+   *
+   * Useful for shared-tenant deployments where one user shouldn't
+   * be able to flood the pool and starve everyone else's tasks.
+   */
+  maxConcurrentRunsPerUser?: number;
+  /**
    * Per-task sandbox manager. Resolved from the
    * `sandbox.taskPool` capability at activate time. When defined,
    * runOne acquires a per-task sandbox before the worker run and
@@ -168,6 +182,16 @@ export class WorkerPool {
   private watchdogTimer: NodeJS.Timeout | null = null;
   /** agentId → "in-flight task id" (or undefined = idle). */
   private busy = new Map<string, string>();
+  /** userId → count of in-flight tasks owned by that user.
+   *  Drives the per-user concurrency cap (Yu 2026-06-28). We
+   *  track it separately from `busy` because tasks know their
+   *  owner_user_id but `busy` indexes by worker agent id, which
+   *  is orthogonal. Decremented in runOne's finally hook. */
+  private busyByUser = new Map<string, number>();
+  /** taskId → ownerUserId, captured at claim time. Lets the
+   *  busy-by-user decrement happen even if the task row was
+   *  deleted mid-run. */
+  private taskOwners = new Map<string, string>();
   /** taskId → AbortController for the run. Lets the watchdog (or
    *  pool shutdown) cancel a worker mid-flight without scanning
    *  every WorkerHandle. */
@@ -364,27 +388,47 @@ export class WorkerPool {
   private async drain(): Promise<void> {
     if (this.stopped) return;
 
-    // Concurrency cap: if `maxConcurrentRuns` is set and we're
-    // already at or above it, stop claiming until at least one
-    // current run finishes (the finally-hook in runOne re-nudges).
-    // 0 / undefined means unlimited — we drop straight through
-    // and let each worker slot independently claim, which is the
-    // original behaviour.
-    const cap = this.deps.maxConcurrentRuns ?? 0;
+    // Two independent caps, evaluated in this order:
+    //   1. Tenant cap (maxConcurrentRuns) — hard ceiling across
+    //      all workers + all users. Once busy.size hits this we
+    //      stop the whole drain pass.
+    //   2. Per-user cap (maxConcurrentRunsPerUser) — cap on how
+    //      many tasks a single user can have in flight. When a
+    //      user is at their cap we skip their queued work and
+    //      try another user's task on the same drain pass.
+    //
+    // 0 / undefined means unlimited at that level. Whichever
+    // fires first stops the claim; tasks not claimed stay 'ready'
+    // and get a fresh look on the next nudge/poll cycle.
+    const tenantCap = this.deps.maxConcurrentRuns ?? 0;
+    const userCap = this.deps.maxConcurrentRunsPerUser ?? 0;
     for (const worker of this.workers) {
-      if (cap > 0 && this.busy.size >= cap) {
-        // No room. Bail out of the drain pass; the next nudge or
-        // poll will retry once a slot frees up.
+      if (tenantCap > 0 && this.busy.size >= tenantCap) {
+        // Tenant ceiling reached: every user has to wait.
         return;
       }
       if (this.busy.has(worker.agentId)) continue;
+
+      // Build the set of users that are already at their per-
+      // user cap; claimNextTask will skip their tasks for this
+      // call. Computed lazily inside the loop so it reflects the
+      // very latest busyByUser state — a task that completed
+      // mid-drain frees its user up immediately.
+      const excludeUserIds =
+        userCap > 0 ? this.usersAtCap(userCap) : null;
       const claimed = claimNextTask(this.deps.db, {
         workerAgentId: worker.agentId,
         workerRole: worker.kind,
+        excludeUserIds,
       });
       if (!claimed) continue;
 
       this.busy.set(worker.agentId, claimed.id);
+      this.taskOwners.set(claimed.id, claimed.ownerUserId);
+      this.busyByUser.set(
+        claimed.ownerUserId,
+        (this.busyByUser.get(claimed.ownerUserId) ?? 0) + 1,
+      );
       this.deps.broadcast("workboard.task", {
         kind: "claimed",
         taskId: claimed.id,
@@ -401,11 +445,28 @@ export class WorkerPool {
       // Run the worker async so we don't block the drain loop.
       void this.runOne(worker, claimed).finally(() => {
         this.busy.delete(worker.agentId);
+        const owner = this.taskOwners.get(claimed.id);
+        if (owner) {
+          const remaining = (this.busyByUser.get(owner) ?? 1) - 1;
+          if (remaining <= 0) this.busyByUser.delete(owner);
+          else this.busyByUser.set(owner, remaining);
+          this.taskOwners.delete(claimed.id);
+        }
         // After one completion there might be more tasks waiting —
         // re-nudge so the pool keeps draining.
         if (!this.stopped) this.nudge();
       });
     }
+  }
+
+  /** Users currently at or above the per-user cap. Used by drain()
+   *  to instruct claimNextTask to skip their tasks. */
+  private usersAtCap(cap: number): Set<string> {
+    const atCap = new Set<string>();
+    for (const [userId, count] of this.busyByUser) {
+      if (count >= cap) atCap.add(userId);
+    }
+    return atCap;
   }
 
   private async runOne(worker: WorkerHandle, task: Task): Promise<void> {
