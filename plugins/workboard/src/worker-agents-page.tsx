@@ -15,7 +15,15 @@ import {
   useState,
   type ReactElement,
 } from "react";
-import { Bot, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import {
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  RefreshCw,
+  Settings,
+  X,
+} from "lucide-react";
+import { PluginConfigForm } from "@tianshu-ai/plugin-sdk/client";
 
 interface WorkerAgent {
   id: string;
@@ -76,6 +84,12 @@ export function WorkerAgentsPage(): ReactElement {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // "Configure" modal toggle. Click the gear button in the page
+  // header to open the auto-generated PluginConfigForm (pool
+  // concurrency caps + echo/llm worker type defaults). Modal
+  // mirrors the microsandbox plugin's ConfigureSandboxDialog
+  // pattern so the page itself stays focused on the worker list.
+  const [configOpen, setConfigOpen] = useState(false);
   // Set of expanded slugs. UI is per-row collapsible like a
   // stacked accordion — we deliberately allow multiple open at
   // once because comparing two workers' tool sets is the
@@ -211,17 +225,33 @@ export function WorkerAgentsPage(): ReactElement {
             haven't been edited or aren't yet picked up by the merger.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void refresh()}
-          disabled={loading}
-          className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised disabled:opacity-50"
-          title="Reload"
-        >
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-          Reload
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setConfigOpen(true)}
+            className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised"
+            title="Edit pool concurrency caps and worker type defaults"
+          >
+            <Settings size={12} />
+            Configure
+          </button>
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={loading}
+            className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised disabled:opacity-50"
+            title="Reload"
+          >
+            <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+            Reload
+          </button>
+        </div>
       </div>
+
+      <ConfigureWorkboardDialog
+        open={configOpen}
+        onClose={() => setConfigOpen(false)}
+      />
 
       {error && (
         <div className="mb-4 rounded-md border border-red-900/40 bg-red-950/40 px-3 py-2 text-[12px] text-red-300">
@@ -527,6 +557,120 @@ function DetailSection({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Modal wrapper around the auto-generated PluginConfigForm for
+ * the workboard plugin. The form covers pool-level concurrency
+ * caps (maxConcurrentRuns, maxConcurrentRunsPerUser) plus echo /
+ * llm worker type defaults — a surface large enough that pinning
+ * it to the page header would dominate the table the user
+ * actually came here to read.
+ *
+ * Pattern mirrors microsandbox's ConfigureSandboxDialog (same
+ * sticky-action trick to keep Save reachable when the form is
+ * taller than the dialog). Kept inline rather than promoted to a
+ * shared component because the plugin-sdk's PluginConfigForm
+ * already does the heavy lifting; the dialog chrome is just
+ * presentation we'd otherwise have to coordinate across plugins.
+ */
+function ConfigureWorkboardDialog({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-6"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-base shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
+          <div>
+            <div className="text-sm font-medium text-fg-default">
+              Workboard configuration
+            </div>
+            <div className="mt-0.5 text-[11px] text-fg-faint">
+              Pool caps apply on the next run acquire. Worker type
+              defaults (echo / llm) re-activate the plugin so
+              changes take effect on the next request.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-fg-muted hover:bg-bg-raised hover:text-fg-default"
+            aria-label="Close configure dialog"
+          >
+            <X size={14} />
+          </button>
+        </div>
+        {/* Form scroll region.
+         *
+         * DOM under us (verified live with `Array.from` walk on
+         * a Save button click, see PR #248 review):
+         *
+         *   div.flex-1.overflow-y-auto          ← (this element)
+         *     div                                ← PluginConfigFormById's `<div className={className}>` wrapper
+         *       div.space-y-5                    ← PluginConfigForm root
+         *         …field groups…
+         *         div.border-t.pt-3              ← Reset/Save action row (LAST child of .space-y-5)
+         *
+         * We want the action row pinned to the bottom of the
+         * scroll viewport so Save stays reachable while the
+         * fields above scroll. Selector chain (3 levels deep):
+         *
+         *   & > div > div > div:last-child
+         *
+         * Microsandbox uses a 4-deep version of the same trick;
+         * its dialog wraps the SDK form in one extra container.
+         * If the SDK changes its internal layout this degrades
+         * gracefully (the action row stops being sticky but the
+         * form still works — user just scrolls to the bottom).
+         *
+         * px-4 pt-3 only (no pb-3): if the scroll container had
+         * padding-bottom, sticky bottom-0 would stop above that
+         * padding strip and fields scrolling up would peek
+         * through below the sticky row. The pinned row carries
+         * its own pb-3 to give Save breathing room instead.
+         */}
+        <div
+          className={
+            // px-4 pt-3 only (no pb-3): if the scroll container
+            // had bottom padding, sticky bottom-0 would stop
+            // above the padding strip and fields scrolling up
+            // would peek below the pinned row. The sticky row
+            // owns its own pb-3 (further below) for breathing room.
+            "flex-1 overflow-y-auto px-4 pt-3 " +
+            // Pin Reset/Save row to bottom; sit it on top of the
+            // scrolling fields with a solid bg so they don't show
+            // through. -mx-4/px-4 extends the row's background
+            // edge-to-edge inside the scroll viewport so the
+            // border-t the form already draws on this row reads
+            // as a real footer divider rather than a half-width
+            // line. The small bottom shadow gives a hint that
+            // there's content scrolling under it.
+            "[&>div>div>div:last-child]:sticky " +
+            "[&>div>div>div:last-child]:bottom-0 " +
+            "[&>div>div>div:last-child]:z-10 " +
+            "[&>div>div>div:last-child]:-mx-4 " +
+            "[&>div>div>div:last-child]:px-4 " +
+            "[&>div>div>div:last-child]:pb-3 " +
+            "[&>div>div>div:last-child]:bg-bg-base " +
+            "[&>div>div>div:last-child]:shadow-[0_-8px_8px_-8px_rgba(0,0,0,0.4)] "
+          }
+        >
+          <PluginConfigForm pluginId="workboard" />
+        </div>
+      </div>
     </div>
   );
 }
