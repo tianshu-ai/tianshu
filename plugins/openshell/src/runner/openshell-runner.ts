@@ -459,34 +459,50 @@ export class OpenShellRunner implements SandboxRunner {
    * Returns the list of host-side paths actually written and any
    * paths that were skipped (missing on the sandbox side, etc.).
    */
+  /**
+   * Download paths from the sandbox to the host. Sandbox-side
+   * paths and host-side relative paths are decoupled: the caller
+   * can fetch /sandbox/workspace/users/alice/out.txt and have it
+   * land at <destBase>/out.txt by passing `{ sandbox:
+   * "users/alice/out.txt", host: "out.txt" }`. This separation is
+   * what lets the SyncDownTool strip the user-prefix from the host
+   * tree while still namespacing inside the sandbox to prevent
+   * cross-user collisions.
+   *
+   * For ergonomics the runner still accepts a plain string[] (used
+   * by tests / external callers that don't need the rewrite) and
+   * treats sandbox+host paths as identical — the legacy behaviour.
+   */
   async syncDown(
-    sandboxRelPaths: string[],
+    paths:
+      | string[]
+      | { sandbox: string; host: string }[],
     opts: { destBaseDir?: string } = {},
   ): Promise<{ downloaded: string[]; skipped: { relPath: string; reason: string }[] }> {
     if (this.state !== "ready" && this.state !== "running") {
       await this.ensureSandbox();
     }
-    // Caller can opt out of the default "land back in the tenant
-    // workspace" behaviour by passing destBaseDir, e.g. a task-
-    // results staging dir. We do NOT have a separate sandbox-only
-    // download surface; downloading without a host destination is
-    // meaningless.
     const destBase = opts.destBaseDir ?? this.opts.workspaceDir;
     const downloaded: string[] = [];
     const skipped: { relPath: string; reason: string }[] = [];
-    for (const rel of sandboxRelPaths) {
-      let safe: string;
+    const items = paths.map((p) =>
+      typeof p === "string" ? { sandbox: p, host: p } : p,
+    );
+    for (const item of items) {
+      let sandboxSafe: string;
+      let hostSafe: string;
       try {
-        safe = this.assertRelativePath(rel);
+        sandboxSafe = this.assertRelativePath(item.sandbox);
+        hostSafe = this.assertRelativePath(item.host);
       } catch (err) {
         skipped.push({
-          relPath: rel,
+          relPath: item.sandbox,
           reason: err instanceof Error ? err.message : String(err),
         });
         continue;
       }
-      const guestPath = `${SANDBOX_WORKSPACE_PATH}/${safe}`;
-      const hostAbs = path.join(destBase, safe);
+      const guestPath = `${SANDBOX_WORKSPACE_PATH}/${sandboxSafe}`;
+      const hostAbs = path.join(destBase, hostSafe);
       await fs.mkdir(path.dirname(hostAbs), { recursive: true });
       const { exitCode, stderr } = await this.spawnCli(
         ["sandbox", "download", this.sandboxName, guestPath, hostAbs],
@@ -494,7 +510,7 @@ export class OpenShellRunner implements SandboxRunner {
       );
       if (exitCode !== 0) {
         skipped.push({
-          relPath: rel,
+          relPath: item.sandbox,
           reason: `sandbox download exit ${exitCode}: ${stderr.trim() || "unknown"}`,
         });
         continue;

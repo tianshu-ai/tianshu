@@ -245,7 +245,9 @@ interface SyncCapableRunner extends SandboxRunner {
     hostRelPaths: string[],
   ): Promise<{ uploaded: string[]; skipped: { relPath: string; reason: string }[] }>;
   syncDown(
-    sandboxRelPaths: string[],
+    paths:
+      | string[]
+      | { sandbox: string; host: string }[],
     opts?: { destBaseDir?: string },
   ): Promise<{ downloaded: string[]; skipped: { relPath: string; reason: string }[] }>;
 }
@@ -446,10 +448,19 @@ knows the files are available.`,
       const scope =
         (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
       const inputPaths = raw.map((p) => String(p));
-      const scopedPaths = prefixPaths(inputPaths, scope, ctx.userId);
+      const sandboxPaths = prefixPaths(inputPaths, scope, ctx.userId);
+      // Host destination strips the sandbox-side user prefix. The
+      // result tree is already user-scoped (it lives under the
+      // user's home dir), so users/<userId>/ would just be noise.
+      // For scope='tenant' the sandbox path was never prefixed, so
+      // both sides are identical.
+      const items = inputPaths.map((host, i) => ({
+        sandbox: sandboxPaths[i]!,
+        host,
+      }));
       const destBaseDir = projectTaskResultsDir(ctx, project, task);
       try {
-        const r = await sync.syncDown(scopedPaths, { destBaseDir });
+        const r = await sync.syncDown(items, { destBaseDir });
         return {
           ok: r.skipped.length === 0,
           scope,

@@ -41,7 +41,11 @@ class NoSyncRunner implements SandboxRunner {
  *  we can assert tool wiring without involving the CLI. */
 class FakeSyncRunner extends NoSyncRunner {
   readonly upCalls: string[][] = [];
-  readonly downCalls: { paths: string[]; destBaseDir?: string }[] = [];
+  readonly downCalls: {
+    paths: string[];
+    hostPaths: string[];
+    destBaseDir?: string;
+  }[] = [];
   upResult = {
     uploaded: [] as string[],
     skipped: [] as { relPath: string; reason: string }[],
@@ -56,11 +60,17 @@ class FakeSyncRunner extends NoSyncRunner {
     return this.upResult;
   }
   async syncDown(
-    sandboxRelPaths: string[],
+    paths: string[] | { sandbox: string; host: string }[],
     opts: { destBaseDir?: string } = {},
   ) {
+    // Normalise to {sandbox, host} so assertions can check both
+    // halves regardless of caller form.
+    const items = paths.map((p) =>
+      typeof p === "string" ? { sandbox: p, host: p } : p,
+    );
     this.downCalls.push({
-      paths: sandboxRelPaths,
+      paths: items.map((i) => i.sandbox),
+      hostPaths: items.map((i) => i.host),
       destBaseDir: opts.destBaseDir,
     });
     return this.downResult;
@@ -252,10 +262,15 @@ describe("sync_down tool", () => {
       notice: string;
     };
     expect(runner.downCalls).toHaveLength(1);
+    // Sandbox paths keep the user prefix (for cross-user safety
+    // inside the shared tenant sandbox).
     expect(runner.downCalls[0]!.paths).toEqual([
       "users/alice/build.log",
       "users/alice/logs/",
     ]);
+    // Host paths drop the prefix — the result tree is already
+    // anchored at the user's home dir.
+    expect(runner.downCalls[0]!.hostPaths).toEqual(["build.log", "logs/"]);
     expect(runner.downCalls[0]!.destBaseDir).toBe(expectedDest);
     expect(res.scope).toBe("user");
     expect(res.project).toBe("foo");
@@ -278,6 +293,7 @@ describe("sync_down tool", () => {
       fakeCtx,
     )) as { scope: string; destBaseDir: string };
     expect(runner.downCalls[0]!.paths).toEqual(["shared.log"]);
+    expect(runner.downCalls[0]!.hostPaths).toEqual(["shared.log"]);
     // Host result path is unaffected by sandbox-side scope.
     expect(res.destBaseDir).toBe(expectedDest);
     expect(res.scope).toBe("tenant");
