@@ -574,6 +574,57 @@ describe("WorkerPool", () => {
     pool.stop();
   });
 
+  it("single worker runs multiple tasks in parallel up to the tenant cap", async () => {
+    // Yu 2026-06-28: the original pool capped each worker agent
+    // at one in-flight task, which made the tenant
+    // maxConcurrentRuns / per-user caps unreachable in single-
+    // worker setups. This test pins the new behaviour: one
+    // worker, three queued tasks, cap=5 → all three run
+    // concurrently on the same worker handle, none wait.
+    for (let i = 1; i <= 3; i++) {
+      db.prepare(
+        `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
+      ).run(`t${i}`, "inbox", "u1", `task ${i}`, Date.now() + i);
+    }
+    const onlyWorker: AgentSpec = { id: "only", kind: "echo", name: "Only" };
+    const pool = new WorkerPool({
+      db,
+      log: noopLog,
+      broadcast: () => {},
+      agents: [onlyWorker],
+      factory: echoFactory(40),
+      maxConcurrentRuns: 5,
+    });
+    pool.start();
+    // Give the drain loop two ticks to claim all three rows.
+    // echoFactory(40) keeps the run open for ~40ms, so the
+    // window when all three are simultaneously in_progress is
+    // wide enough to observe deterministically.
+    await pause(15);
+    const statuses = ["t1", "t2", "t3"].map(
+      (id) => getTask(db, id)?.status,
+    );
+    expect(statuses).toEqual([
+      "in_progress",
+      "in_progress",
+      "in_progress",
+    ]);
+    // Pool status confirms all three runs are tracked under
+    // the single worker.
+    const st = pool.status();
+    expect(st.running.length).toBe(3);
+    expect(st.workers[0]).toMatchObject({
+      agentId: "only",
+      busy: true,
+      busyCount: 3,
+    });
+    await pause(80);
+    expect(getTask(db, "t1")?.status).toBe("done");
+    expect(getTask(db, "t2")?.status).toBe("done");
+    expect(getTask(db, "t3")?.status).toBe("done");
+    pool.stop();
+  });
+
   it("unlimited (cap=0) keeps legacy behaviour: every slot can run in parallel", async () => {
     db.prepare(
       `INSERT INTO tasks (id, project_slug, owner_user_id, worker_role, worker_agent_id, title, description, status, priority, depends_on, failure_reason, attempts, created_at) VALUES (?, ?, ?, NULL, NULL, ?, NULL, 'ready', 0, '[]', NULL, 0, ?)`,
