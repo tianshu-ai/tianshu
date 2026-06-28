@@ -516,7 +516,7 @@ knows the files are available.`,
         task: Type.Optional(
           Type.String({
             description:
-              "Stable, human-meaningful task folder name. Optional inside a workboard task — the host fills it from <taskId>-<slugified taskTitle>. Required for ad-hoc / chat-session calls.",
+              "Task folder name. INSIDE A WORKBOARD TASK this is host-controlled — the tool ignores whatever you pass and uses <taskId>[-<slugified taskTitle>] so every sync_down in the same task lands in the same folder. ONLY pass this for ad-hoc / chat-session calls where ctx.taskId isn't set; in that case it becomes the folder name verbatim (and is required).",
             minLength: 1,
           }),
         ),
@@ -553,11 +553,22 @@ knows the files are available.`,
           ? (args as { project: string }).project.trim()
           : "";
       const project = argProject || (ctx.projectSlug ?? "").trim();
+      // Task folder name is HOST-controlled when ctx.taskId is
+      // present (workboard task, bound chat session). We ignore
+      // any agent-supplied `task` arg in that case so multiple
+      // sync_down calls inside the same task always land in the
+      // same folder. Yu 2026-06-28: "在一个 task 里生成的文件都
+      // 应该放在一个文件夹里" — agents otherwise improvise
+      // different names per call ('probe-run-1' vs 'probe-run-
+      // single-binary') and each one gets its own .results dir.
+      const ctxTask = deriveTaskFolderFromCtx(ctx);
       const argTask =
         typeof (args as { task?: unknown }).task === "string"
           ? (args as { task: string }).task.trim()
           : "";
-      const task = argTask || deriveTaskFolderFromCtx(ctx);
+      const task = ctxTask || argTask;
+      const taskWasOverridden =
+        Boolean(ctxTask) && Boolean(argTask) && argTask !== ctxTask;
       const projectErr = validateSlug(project, "project");
       if (projectErr) {
         return {
@@ -569,7 +580,7 @@ knows the files are available.`,
       if (taskErr) {
         return {
           ok: false,
-          error: `${taskErr}. Pass 'task' explicitly, or call from a workboard task so ctx.taskId is populated.`,
+          error: `${taskErr}. Call from a workboard task so ctx.taskId is populated, or pass 'task' explicitly when running outside a task.`,
         };
       }
       const scope =
@@ -607,6 +618,18 @@ knows the files are available.`,
       const destBaseDir = projectTaskResultsDir(ctx, project, task);
       try {
         const r = await sync.syncDown(items, { destBaseDir });
+        const noticeLines = [
+          `Staged ${r.downloaded.length} item(s) at ${destBaseDir}.`,
+          `Mention this in your next message so tianshu can review them.`,
+        ];
+        if (taskWasOverridden) {
+          // Inform the agent we ignored its task arg — saves it
+          // wondering why subsequent calls keep landing in the
+          // same folder.
+          noticeLines.push(
+            `(Note: ignored task='${argTask}' — host-supplied taskId '${task}' wins so every call in this task lands in the same folder.)`,
+          );
+        }
         return {
           ok: r.skipped.length === 0,
           scope,
@@ -615,13 +638,13 @@ knows the files are available.`,
           destBaseDir,
           downloaded: r.downloaded,
           skipped: r.skipped,
+          taskOverridden: taskWasOverridden,
           /** Hint surfaced verbatim to the agent. The expected next
            *  step is to narrate what got staged so tianshu's main
            *  session sees the files in the task transcript and can
            *  decide whether to promote any of them into the project
            *  proper. */
-          notice:
-            `Staged ${r.downloaded.length} item(s) at ${destBaseDir}. Mention this in your next message so tianshu can review them.`,
+          notice: noticeLines.join(" "),
         };
       } catch (err) {
         return {

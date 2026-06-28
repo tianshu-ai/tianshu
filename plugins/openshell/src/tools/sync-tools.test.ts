@@ -383,7 +383,53 @@ describe("sync_down tool", () => {
       expect(res.task).toBe("42");
     });
 
-    it("explicit args win over ctx defaults", async () => {
+    it("multiple sync_down calls with different agent task args all land in the same ctx-derived folder", async () => {
+      // Direct repro of Yu's bug: agent calls sync_down 4 times,
+      // each time guessing a slightly different `task` name, and
+      // ends up with 5 separate .results dirs. With ctx.taskId
+      // winning, the agent's `task` arg is dropped each time and
+      // all calls converge on the host-derived folder name.
+      const runner = new FakeSyncRunner();
+      runner.downResult = { downloaded: [], skipped: [] };
+      const r = SyncDownTool(runner);
+      const ctx = {
+        userId: "dev",
+        tenantId: "acme",
+        tenantHomeDir: "/h/acme",
+        userHomeDir: "/h/acme/workspace/users/dev",
+        taskId: "probe",
+        projectSlug: "sync-probe-2026",
+        // No taskTitle here — the folder ends up as the bare
+        // taskId, easier to assert against.
+      } as AgentToolContext;
+      const agentTaskGuesses = [
+        "probe-run-single-binary",
+        "probe-run-single-text",
+        "main-agent-probe-user-home-anchored",
+        "main-agent-probe-project-anchored",
+      ];
+      const seen = new Set<string>();
+      for (const t of agentTaskGuesses) {
+        const res = (await r.execute(
+          { paths: ["chart.png"], task: t },
+          ctx,
+        )) as { destBaseDir: string };
+        seen.add(res.destBaseDir);
+      }
+      expect(seen.size).toBe(1);
+      expect([...seen][0]).toBe(
+        "/h/acme/workspace/users/dev/projects/sync-probe-2026/.results/probe",
+      );
+    });
+
+    it("ctx.taskId wins over agent-supplied task (task folder is host-controlled in a workboard task)", async () => {
+      // Yu 2026-06-28: "在一个 task 里生成的文件都应该放在一个
+      // 文件夹里". Agents otherwise improvise different task names
+      // across calls and we end up with 5 different .results dirs
+      // for one task. ctx.taskId always wins; the agent's `task`
+      // arg is dropped with an explanatory `notice`. Project is
+      // still agent-overridable since cross-project staging is a
+      // valid (rare) use case.
       const runner = new FakeSyncRunner();
       runner.downResult = { downloaded: [], skipped: [] };
       const r = SyncDownTool(runner);
@@ -403,9 +449,18 @@ describe("sync_down tool", () => {
           task: "custom-folder",
         },
         ctx,
-      )) as { project: string; task: string };
+      )) as {
+        project: string;
+        task: string;
+        taskOverridden: boolean;
+        notice: string;
+      };
       expect(res.project).toBe("other-project");
-      expect(res.task).toBe("custom-folder");
+      // Agent's 'custom-folder' is ignored; ctx-derived
+      // '42-add-login' wins.
+      expect(res.task).toBe("42-add-login");
+      expect(res.taskOverridden).toBe(true);
+      expect(res.notice).toMatch(/ignored task='custom-folder'/);
     });
 
     it("errors helpfully when ctx is missing and args weren't passed", async () => {
