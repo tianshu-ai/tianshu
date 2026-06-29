@@ -940,30 +940,23 @@ function ResourceRow({
           <Lock className="size-3 text-fg-muted/50" aria-label="locked" />
         </span>
       ) : (
-        <div className="ml-auto flex items-center gap-2">
-          {isExcluded ? (
-            <span className="rounded-full bg-danger-fg/10 px-2 py-0.5 text-[10px] font-medium text-danger-fg">
-              excluded
-            </span>
-          ) : null}
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => onToggle(o.name)}
-            className={`rounded px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
-              isExcluded
-                ? "bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
-                : "text-fg-muted opacity-0 hover:bg-bg-raised group-hover:opacity-100"
-            }`}
-            title={
-              isExcluded
-                ? "Currently excluded — click to include again."
-                : "Currently included — click to exclude from this solution."
-            }
-          >
-            {isExcluded ? "Include" : "Exclude"}
-          </button>
-        </div>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onToggle(o.name)}
+          className={`ml-auto rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
+            isExcluded
+              ? "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
+              : "border-border-subtle bg-bg-elevated text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"
+          }`}
+          title={
+            isExcluded
+              ? "Currently excluded — click to include again."
+              : "Currently included — click to exclude from this solution."
+          }
+        >
+          {isExcluded ? "Include" : "Exclude"}
+        </button>
       )}
     </li>
   );
