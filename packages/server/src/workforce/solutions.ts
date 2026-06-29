@@ -263,21 +263,29 @@ function buildMainView(
       note: b.note,
     });
   }
-  // A resource is "locked" (can't be excluded) when it comes from
-  // a plugin or the host. Today every skill/tool the snapshot
-  // reports is plugin/host-sourced, so all are locked; tenant-
-  // authored skills (when that path exists) will surface as
-  // unlocked. We still render them all so the operator sees the
-  // complete catalogue.
-  const lockedOrigin = (o: string): boolean =>
-    o === "builtin-plugin" || o === "tenant-plugin" || o === "core" || o === "host";
+  // A resource is "locked" (can't be excluded) ONLY when it comes
+  // from a plugin — built-in or tenant-installed. Yu: "anything
+  // that isn't from a plugin can be excluded." So core / host
+  // tools and tenant-authored skills are all excludable; only
+  // plugin contributions are pinned in.
+  //
+  // Caveat: tenant-authored skills are bucketed under
+  // "tenant-plugin" in resolveOrigin (the WorkforceOrigin enum
+  // has no dedicated tenant-owned value yet), which would
+  // wrongly lock them. We special-case the synthetic tenant-*
+  // skill source ids by passing the real pluginId in here and
+  // treating tenant-authored ones as unlocked.
+  const lockedOrigin = (o: string, pluginId: string): boolean => {
+    if (pluginId.startsWith("tenant-")) return false; // tenant-authored
+    return o === "builtin-plugin" || o === "tenant-plugin";
+  };
   const availableSkills: SolutionResourceOption[] = snap.main.skills
     .map((s) => ({
       name: s.name,
       description: s.description,
       origin: normaliseOrigin(s.origin),
       pluginId: s.pluginId,
-      locked: lockedOrigin(s.origin),
+      locked: lockedOrigin(s.origin, s.pluginId),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
   const availableTools: SolutionResourceOption[] = snap.main.tools
@@ -286,7 +294,7 @@ function buildMainView(
       description: t.description,
       origin: normaliseOrigin(t.origin),
       pluginId: t.pluginId,
-      locked: lockedOrigin(t.origin),
+      locked: lockedOrigin(t.origin, t.pluginId),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
   return { blocks, availableSkills, availableTools };
