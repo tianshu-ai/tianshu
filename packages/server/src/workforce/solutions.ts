@@ -22,6 +22,7 @@ import type {
   SolutionSpecInput,
   SolutionPromptBlock,
   SolutionResourceOption,
+  SolutionWorkerView,
   SolutionSummary,
   SolutionWorker,
 } from "@tianshu-ai/plugin-sdk";
@@ -274,6 +275,7 @@ function resolveDetail(
     tenantPrompt,
     workerPrompts,
     mainBlocks: view.blocks,
+    workerViews: view.workerViews,
     availableSkills: view.availableSkills,
     availableTools: view.availableTools,
     isCurrent: spec.slug === CURRENT_SLUG,
@@ -302,6 +304,7 @@ function buildMainView(
   blocks: SolutionPromptBlock[];
   availableSkills: SolutionResourceOption[];
   availableTools: SolutionResourceOption[];
+  workerViews: Record<string, SolutionWorkerView>;
 } {
   const snap = buildWorkforceSnapshot({
     ctx: deps.ctx,
@@ -412,7 +415,47 @@ function buildMainView(
       locked: lockedOrigin(t.origin, t.pluginId),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
-  return { blocks, availableSkills, availableTools };
+
+  // Per-worker views: reuse each worker's snapshot block list +
+  // its own tool/skill catalogue. The SOUL block is editable; the
+  // rest mirror reality (read-only host/plugin reference). The
+  // deny pickers operate on the worker's own effective set.
+  const workerViews: Record<string, SolutionWorkerView> = {};
+  for (const w of snap.workers) {
+    workerViews[w.slug] = {
+      blocks: w.blocks.map((b) => ({
+        kind: b.kind,
+        title: b.title,
+        source: b.source,
+        origin: b.origin,
+        // Only the worker SOUL block is editable in Phase 2. The
+        // workspace-context + host blocks stay read-only here
+        // (worker override of host blocks is a later refinement).
+        editable: b.kind === "worker-soul",
+        text: b.text,
+        note: b.note,
+      })),
+      availableSkills: w.skills
+        .map((s) => ({
+          name: s.name,
+          description: s.description,
+          origin: normaliseOrigin(s.origin),
+          pluginId: s.pluginId,
+          locked: lockedOrigin(s.origin, s.pluginId),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      availableTools: w.tools
+        .map((t) => ({
+          name: t.name,
+          description: t.description,
+          origin: normaliseOrigin(t.origin),
+          pluginId: t.pluginId,
+          locked: lockedOrigin(t.origin, t.pluginId),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    };
+  }
+  return { blocks, availableSkills, availableTools, workerViews };
 }
 
 function normaliseOrigin(
