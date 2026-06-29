@@ -536,6 +536,14 @@ function SolutionDetailPanel({
         {/* Skill / tool allow-lists are config, not prompt text,
             so they stay as their own editable controls below the
             block list. */}
+        {isCurrent ? (
+          <div className="mt-4 rounded border border-info-fg/30 bg-info-fg/5 px-3 py-2 text-[11px] text-info-fg">
+            This is the live <strong>Current</strong> mirror — it's
+            read-only. To exclude skills or tools, click{" "}
+            <strong>Extract</strong> in the Solutions list to create
+            a named solution, then edit that.
+          </div>
+        ) : null}
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <ResourcePicker
             title="Skills"
