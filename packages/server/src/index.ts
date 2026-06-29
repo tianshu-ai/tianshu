@@ -85,6 +85,7 @@ import type {
 } from "@tianshu-ai/plugin-sdk";
 import { buildWorkforceSnapshot } from "./workforce/snapshot.js";
 import {
+  applySolution,
   diffSolution,
   extractSolution,
   getSolution,
@@ -317,6 +318,7 @@ pluginRegistry = new PluginRegistry({
         save: (userId, input) => saveSolution(deps, userId, input),
         remove: (userId, slug) => removeSolution(deps, userId, slug),
         diff: (userId, args) => diffSolution(deps, userId, args),
+        apply: (userId, slug) => applySolution(deps, userId, slug),
       };
     },
     "host.agentLoop": (ctx) => {

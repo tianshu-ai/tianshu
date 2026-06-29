@@ -29,7 +29,11 @@ import type {
 } from "@tianshu-ai/plugin-sdk";
 
 import type { TenantContext } from "../core/index.js";
-import { getTenantSolutionsDir } from "../core/paths.js";
+import {
+  getTenantConfigDir,
+  getTenantMainConfigDir,
+  getTenantSolutionsDir,
+} from "../core/paths.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { buildWorkforceSnapshot } from "./snapshot.js";
 
@@ -716,6 +720,110 @@ export function removeSolution(
 }
 
 // ─── diff ──────────────────────────────────────────────────────
+
+/** Apply a named solution to reality (ADR-0008 Phase 3,
+ *  non-destructive subset). Writes the main-agent config (prompt
+ *  override + host-block overrides + custom fragments + skill/
+ *  tool deny) and each worker's files (agent.json + SOUL.md)
+ *  back into the tenant config tree. The chat path + worker
+ *  loader read these every turn, so it takes effect without a
+ *  restart. Does NOT touch plugin enable/disable (Phase 4). */
+export function applySolution(
+  deps: StoreDeps,
+  userId: string,
+  slug: string,
+): { ok: true; appliedWorkers: string[] } {
+  if (slug === CURRENT_SLUG) {
+    throw new Error("the `current` mirror is reality — nothing to apply");
+  }
+  assertValidSlug(slug);
+  const detail = getSolution(deps, userId, slug);
+  if (!detail) throw new Error(`solution "${slug}" not found`);
+  const { spec, tenantPrompt, workerPrompts } = detail;
+  const home = deps.ctx.home;
+  const tenantId = deps.ctx.tenantId;
+
+  // --- Main-agent config ---
+  const mainDir = getTenantMainConfigDir(tenantId, home);
+  fs.mkdirSync(mainDir, { recursive: true });
+  const writeMain = (rel: string, body: string) => {
+    const p = path.join(mainDir, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, body, "utf8");
+  };
+  const dir = solutionDir(deps, slug);
+  const ov = spec.mainAgent.overrides;
+  const readSol = (rel: string | null): string | null =>
+    rel ? safeRead(path.join(dir, rel)) : null;
+  const executionBias = readSol(ov?.executionBias ?? null);
+  const replyStyle = readSol(ov?.replyStyle ?? null);
+  const userOnboarding = readSol(ov?.userOnboarding ?? null);
+
+  if (tenantPrompt && tenantPrompt.trim()) writeMain("prompt.md", tenantPrompt);
+  if (executionBias) writeMain("execution-bias.md", executionBias);
+  if (replyStyle) writeMain("reply-style.md", replyStyle);
+  if (userOnboarding) writeMain("user-onboarding.md", userOnboarding);
+  const fragmentEntries = (spec.mainAgent.customFragments ?? []).map((f) => {
+    const body = readSol(f.path) ?? "";
+    if (body.trim()) writeMain(`fragments/${f.id}.md`, body);
+    return { id: f.id, title: f.title, path: `fragments/${f.id}.md`, body };
+  });
+  const mainAgentJson = {
+    schema: "tianshu.main-agent.v1" as const,
+    tenantPromptPath:
+      tenantPrompt && tenantPrompt.trim() ? "prompt.md" : null,
+    overrides: {
+      executionBias: executionBias ? "execution-bias.md" : null,
+      replyStyle: replyStyle ? "reply-style.md" : null,
+      userOnboarding: userOnboarding ? "user-onboarding.md" : null,
+    },
+    customFragments: fragmentEntries
+      .filter((f) => f.body.trim())
+      .map((f) => ({ id: f.id, title: f.title, path: f.path })),
+    skillsDeny: spec.mainAgent.skillsDeny ?? [],
+    toolsDeny: spec.mainAgent.toolsDeny ?? [],
+  };
+  writeMain("main-agent.json", JSON.stringify(mainAgentJson, null, 2));
+
+  // --- Workers ---
+  const workersRoot = path.join(getTenantConfigDir(tenantId, home), "workers");
+  const appliedWorkers: string[] = [];
+  for (const w of spec.workers) {
+    const wDir = path.join(workersRoot, w.slug);
+    fs.mkdirSync(wDir, { recursive: true });
+    let existing: Record<string, unknown> = {};
+    try {
+      const raw = fs.readFileSync(path.join(wDir, "agent.json"), "utf8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") existing = parsed;
+    } catch {
+      /* fresh worker */
+    }
+    const agentJson = {
+      ...existing,
+      kind: w.kind,
+      displayName: w.name,
+      description: w.description,
+      modelId: w.modelId,
+      enabled: w.enabled,
+      toolsAllow: w.toolsAllow,
+      skillsAllow: w.skillsAllow,
+      source: w.source,
+    };
+    fs.writeFileSync(
+      path.join(wDir, "agent.json"),
+      JSON.stringify(agentJson, null, 2),
+      "utf8",
+    );
+    const soul = workerPrompts[w.slug];
+    if (soul && soul.trim()) {
+      fs.writeFileSync(path.join(wDir, "SOUL.md"), soul, "utf8");
+    }
+    appliedWorkers.push(w.slug);
+  }
+
+  return { ok: true, appliedWorkers };
+}
 
 export function diffSolution(
   deps: StoreDeps,

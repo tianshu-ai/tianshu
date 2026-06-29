@@ -308,6 +308,15 @@ export interface SolutionsCapability {
     userId: string,
     args: { slug: string; against: string },
   ): SolutionDiff;
+  /** Apply a solution to reality (ADR-0008 Phase 3). Writes the
+   *  main-agent config + worker files back into the tenant so the
+   *  live chat path picks them up. Non-destructive subset — does
+   *  not touch plugin enable/disable. Rejects the `current`
+   *  mirror. */
+  apply(
+    userId: string,
+    slug: string,
+  ): { ok: true; appliedWorkers: string[] };
 }
 
 /** Input shape for save(): the spec plus inline prompt bodies the

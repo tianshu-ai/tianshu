@@ -45,11 +45,27 @@ export interface PluginPromptFragment {
   text: string;
 }
 
+/** Applied-solution main-agent customisations. All optional;
+ *  when omitted the prompt is the pure host default. */
+export interface MainAgentPromptOverrides {
+  /** Tenant prompt override block, injected after workspace
+   *  context. null = none. */
+  tenantPrompt?: string | null;
+  /** Replacement text for host blocks. null/undefined = host
+   *  default. */
+  executionBias?: string | null;
+  replyStyle?: string | null;
+  userOnboarding?: string | null;
+  /** Extra fragments appended near the end of the prompt. */
+  customFragments?: ReadonlyArray<{ id: string; title: string; body: string }>;
+}
+
 export function defaultSystemPrompt(
   ctx: TenantContext,
   userId: string,
   skills: readonly LoadedSkill[] = [],
   pluginFragments: readonly PluginPromptFragment[] = [],
+  mainOverrides: MainAgentPromptOverrides = {},
 ): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
   const lines: string[] = [
@@ -88,7 +104,12 @@ export function defaultSystemPrompt(
   // workboard tasks ending without task_complete being a typical
   // case). Phrasing kept tight on purpose: the LLM only needs the
   // rule, not a long argument for it.
-  lines.push(``, formatExecutionBiasBlock());
+  lines.push(
+    ``,
+    mainOverrides.executionBias != null
+      ? mainOverrides.executionBias
+      : formatExecutionBiasBlock(),
+  );
 
   // Workspace context files. Each is optional; missing files emit
   // nothing. We inject content (not paths) so the agent has them
@@ -110,11 +131,23 @@ export function defaultSystemPrompt(
   );
   if (ctxBlock) lines.push("", ctxBlock);
 
+  // Tenant prompt override (applied solution). Injected right
+  // after workspace context so it reads as tenant-level guidance
+  // layered on top of the workspace files.
+  if (mainOverrides.tenantPrompt && mainOverrides.tenantPrompt.trim()) {
+    lines.push("", mainOverrides.tenantPrompt);
+  }
+
   // Plugin guidance + skills first; the User Profile rule lands
   // last on purpose because it overrides the "reply concisely"
   // / "delegate to a worker" defaults on the very first turn
   // when USER.md is still scaffold.
-  lines.push(``, `Reply concisely. When you make changes, briefly say what you changed.`);
+  lines.push(
+    ``,
+    mainOverrides.replyStyle != null
+      ? mainOverrides.replyStyle
+      : `Reply concisely. When you make changes, briefly say what you changed.`,
+  );
 
   const fragmentBlock = formatPluginPromptFragments(pluginFragments);
   if (fragmentBlock) lines.push("", fragmentBlock);
@@ -122,12 +155,26 @@ export function defaultSystemPrompt(
   const skillBlock = formatAvailableSkillsBlock(skills);
   if (skillBlock) lines.push("", skillBlock);
 
+  // Custom fragments from the applied solution — operator-authored
+  // extra guidance, appended after skills (lower priority than
+  // identity / tools, same tier as discoverable reference).
+  for (const frag of mainOverrides.customFragments ?? []) {
+    if (frag.body && frag.body.trim()) {
+      lines.push("", `## ${frag.title}`, frag.body);
+    }
+  }
+
   // User onboarding rule — placed last so it wins recency-bias
   // over the brevity / delegate-to-worker rules above. Without
   // this position the LLM responds to a one-word "hi" by replying
   // "hi" back instead of capturing the user's profile.
   const hasUserFile = userMdExists(userHomeDir);
-  lines.push(``, formatUserOnboardingBlock(hasUserFile));
+  lines.push(
+    ``,
+    mainOverrides.userOnboarding != null
+      ? mainOverrides.userOnboarding
+      : formatUserOnboardingBlock(hasUserFile),
+  );
 
   // Final pass: bind `<self>` / `<userId>` placeholders that
   // appear anywhere in the assembled prompt (manifest fragments,
