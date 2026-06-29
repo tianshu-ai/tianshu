@@ -17,6 +17,7 @@ import {
   GitCompare,
   Layers,
   Loader2,
+  Lock,
   Plus,
   RefreshCw,
   Save,
@@ -845,32 +846,30 @@ function ResourcePicker({
     return a.localeCompare(b);
   });
   return (
-    <div className="rounded border border-border-subtle bg-bg-base">
-      <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 text-xs">
-        <span className="font-semibold">{title}</span>
-        <span className="text-fg-muted">
-          {options.length} total · {groups.size} sources
-        </span>
+    <div className="overflow-hidden rounded-lg border border-border-subtle">
+      <div className="flex items-center gap-2 bg-bg-elevated px-3 py-2">
+        <span className="text-sm font-semibold">{title}</span>
+        <span className="text-[11px] text-fg-muted">{options.length}</span>
         {excludedCount > 0 ? (
-          <span className="ml-auto rounded bg-danger-fg/10 px-1.5 py-0.5 text-[10px] text-danger-fg">
+          <span className="ml-auto rounded-full bg-danger-fg/10 px-2 py-0.5 text-[10px] font-medium text-danger-fg">
             {excludedCount} excluded
           </span>
         ) : null}
       </div>
-      <div className="max-h-72 overflow-auto">
+      <div className="max-h-80 overflow-auto bg-bg-base">
         {orderedKeys.map((key) => {
           const items = groups.get(key)!;
           return (
             <div key={key}>
-              <div className="sticky top-0 flex items-center gap-2 border-b border-border-subtle bg-bg-elevated px-3 py-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+              <div className="sticky top-0 z-10 flex items-center gap-2 bg-bg-base/95 px-3 pb-1 pt-2 backdrop-blur">
+                <span className="text-[11px] font-semibold text-fg-default">
                   {groupLabel(key)}
                 </span>
-                <span className="text-[10px] text-fg-muted">
+                <span className="rounded-full bg-fg-muted/10 px-1.5 text-[10px] text-fg-muted">
                   {items.length}
                 </span>
               </div>
-              <ul>
+              <ul className="px-1.5 pb-1">
                 {items.map((o) => (
                   <ResourceRow
                     key={o.name}
@@ -885,7 +884,7 @@ function ResourcePicker({
           );
         })}
         {options.length === 0 ? (
-          <div className="px-3 py-2 text-xs text-fg-muted">None.</div>
+          <div className="px-3 py-3 text-xs text-fg-muted">None.</div>
         ) : null}
       </div>
     </div>
@@ -903,32 +902,44 @@ function ResourceRow({
   disabled: boolean;
   onToggle: (name: string) => void;
 }): ReactElement {
+  // Clean row: name on the left, a single trailing affordance on
+  // the right. Locked entries get a faint lock glyph (no loud
+  // pill); excludable entries get a quiet toggle that only turns
+  // loud (red) once actually excluded. Origin is conveyed by the
+  // group header, so no per-row origin badge.
   return (
-    <li className="flex items-center gap-2 border-b border-border-subtle px-3 py-1.5 text-xs last:border-0">
+    <li
+      className={`group flex items-center gap-2 rounded px-2 py-1 ${
+        o.locked ? "" : "hover:bg-bg-elevated"
+      }`}
+    >
       <code
         className={`font-mono text-[11px] ${
-          isExcluded ? "text-fg-muted line-through" : ""
+          isExcluded
+            ? "text-fg-muted line-through"
+            : o.locked
+            ? "text-fg-muted"
+            : "text-fg-default"
         }`}
       >
         {o.name}
       </code>
-      <ResourceOriginBadge origin={o.origin} />
       {o.locked ? (
         <span
-          className="ml-auto rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] text-fg-muted"
-          title="Contributed by a plugin or the host — included automatically, can't be excluded."
+          className="ml-auto"
+          title="Contributed by a plugin or the host — always included."
         >
-          locked
+          <Lock className="size-3 text-fg-muted/50" aria-label="locked" />
         </span>
       ) : (
         <button
           type="button"
           disabled={disabled}
           onClick={() => onToggle(o.name)}
-          className={`ml-auto rounded px-2 py-0.5 text-[10px] font-medium disabled:opacity-50 ${
+          className={`ml-auto rounded px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
             isExcluded
               ? "bg-danger-fg/10 text-danger-fg hover:bg-danger-fg/20"
-              : "bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
+              : "text-fg-muted opacity-0 hover:bg-bg-raised group-hover:opacity-100"
           }`}
           title={
             isExcluded
@@ -936,7 +947,7 @@ function ResourceRow({
               : "Included — click to exclude from this solution."
           }
         >
-          {isExcluded ? "Excluded" : "Included"}
+          {isExcluded ? "Excluded" : "Exclude"}
         </button>
       )}
     </li>
@@ -948,37 +959,9 @@ function groupKeyFromOrigin(origin: ResourceOption["origin"]): string {
 }
 
 function groupLabel(key: string): string {
-  if (key === "core") return "Core (host-owned)";
+  if (key === "core") return "Core";
   if (key === "host") return "Host";
-  return `Plugin: ${key}`;
-}
-
-function ResourceOriginBadge({
-  origin,
-}: {
-  origin: ResourceOption["origin"];
-}): ReactElement {
-  const map: Record<
-    ResourceOption["origin"],
-    { label: string; className: string }
-  > = {
-    core: { label: "core", className: "bg-info-fg/10 text-info-fg" },
-    "builtin-plugin": {
-      label: "built-in",
-      className: "bg-success-fg/10 text-success-fg",
-    },
-    "tenant-plugin": {
-      label: "tenant plugin",
-      className: "bg-warning-fg/10 text-warning-fg",
-    },
-    host: { label: "host", className: "bg-info-fg/10 text-info-fg" },
-  };
-  const { label, className } = map[origin];
-  return (
-    <span className={`rounded px-1 py-0.5 text-[10px] ${className}`}>
-      {label}
-    </span>
-  );
+  return key;
 }
 
 function toggleInSet(prev: Set<string>, name: string): Set<string> {
