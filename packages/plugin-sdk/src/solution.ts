@@ -118,6 +118,12 @@ export interface SolutionResourceOption {
   description: string;
   /** Provenance bucket for the badge. */
   origin: "core" | "builtin-plugin" | "tenant-plugin" | "host";
+  /** Concrete contributor id: the plugin id (`wechat`,
+   *  `workboard`, …) for plugin-sourced entries, or "core" /
+   *  "host" for host-owned ones. Surfaced so the picker can show
+   *  exactly which plugin a skill / tool came from, not just the
+   *  origin bucket. */
+  pluginId: string;
   /** True iff the entry is contributed by a plugin / host and
    *  therefore can't be excluded — it's shown locked. tenant-
    *  owned entries are unlocked and can be denied. */

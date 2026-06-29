@@ -276,6 +276,7 @@ function buildMainView(
       name: s.name,
       description: s.description,
       origin: normaliseOrigin(s.origin),
+      pluginId: s.pluginId,
       locked: lockedOrigin(s.origin),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -284,6 +285,7 @@ function buildMainView(
       name: t.name,
       description: t.description,
       origin: normaliseOrigin(t.origin),
+      pluginId: t.pluginId,
       locked: lockedOrigin(t.origin),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));

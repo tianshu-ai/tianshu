@@ -89,6 +89,7 @@ interface ResourceOption {
   name: string;
   description: string;
   origin: "core" | "builtin-plugin" | "tenant-plugin" | "host";
+  pluginId: string;
   locked: boolean;
 }
 interface SolutionDetail {
@@ -854,6 +855,14 @@ function ResourcePicker({
                 {o.name}
               </code>
               <ResourceOriginBadge origin={o.origin} />
+              {o.pluginId && o.pluginId !== "core" && o.pluginId !== "host" ? (
+                <code
+                  className="rounded bg-bg-elevated px-1 text-[10px] text-fg-muted"
+                  title={`Contributed by plugin ${o.pluginId}`}
+                >
+                  {o.pluginId}
+                </code>
+              ) : null}
               {o.locked ? (
                 <span
                   className="ml-auto rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] text-fg-muted"
