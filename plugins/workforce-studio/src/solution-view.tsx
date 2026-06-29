@@ -1144,38 +1144,57 @@ function WorkerEditor({
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const set = (patch: Partial<WorkerEdit>) => onChange({ ...edit, ...patch });
+  const excluded = !edit.enabled;
   return (
-    <div className="rounded-lg border border-border-subtle bg-bg-base">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left text-xs"
-      >
-        {open ? (
-          <ChevronDown className="size-3.5 text-fg-muted" />
-        ) : (
-          <ChevronRight className="size-3.5 text-fg-muted" />
-        )}
-        <span className="font-medium">{edit.name}</span>
-        <code className="text-[10px] text-fg-muted">{worker.slug}</code>
-        <span className="text-[10px] text-fg-muted">{worker.kind}</span>
-        <span className="ml-auto flex items-center gap-2 text-[10px] text-fg-muted">
-          {edit.modelId ? (
-            <code>{edit.modelId}</code>
+    <div
+      className={`rounded-lg border bg-bg-base ${
+        excluded ? "border-border-subtle/60 border-dashed" : "border-border-subtle"
+      }`}
+    >
+      {/* Header: toggle region + standalone Exclude button (not
+          one big <button> so the Exclude control isn't nested). */}
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-xs">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="flex flex-1 items-center gap-2 text-left"
+        >
+          {open ? (
+            <ChevronDown className="size-3.5 text-fg-muted" />
           ) : (
-            <span>default model</span>
+            <ChevronRight className="size-3.5 text-fg-muted" />
           )}
           <span
-            className={
-              edit.enabled
-                ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-success-fg"
-                : "rounded bg-fg-muted/15 px-1.5 py-0.5"
-            }
+            className={`font-medium ${
+              excluded ? "text-fg-muted line-through" : ""
+            }`}
           >
-            {edit.enabled ? "enabled" : "disabled"}
+            {edit.name}
           </span>
-        </span>
-      </button>
+          <code className="text-[10px] text-fg-muted">{worker.slug}</code>
+          <span className="text-[10px] text-fg-muted">{worker.kind}</span>
+          <span className="text-[10px] text-fg-muted">
+            {edit.modelId ? edit.modelId : "default model"}
+          </span>
+        </button>
+        <button
+          type="button"
+          disabled={isCurrent}
+          onClick={() => set({ enabled: !edit.enabled })}
+          className={`rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
+            excluded
+              ? "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
+              : "border-border-subtle bg-bg-elevated text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"
+          }`}
+          title={
+            excluded
+              ? "Excluded from this solution — click to include."
+              : "Included — click to exclude this worker from the solution."
+          }
+        >
+          {excluded ? "Include" : "Exclude"}
+        </button>
+      </div>
       {open ? (
         <div className="flex flex-col gap-3 border-t border-border-subtle p-3">
           {/* Basic fields */}
@@ -1218,15 +1237,6 @@ function WorkerEditor({
                 className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1 text-xs disabled:opacity-60"
               />
             </Field>
-            <label className="flex items-center gap-2 self-end text-xs">
-              <input
-                type="checkbox"
-                checked={edit.enabled}
-                disabled={isCurrent}
-                onChange={(ev) => set({ enabled: ev.target.checked })}
-              />
-              Enabled
-            </label>
           </div>
 
           {/* Prompt blocks (SOUL editable, rest read-only) */}
