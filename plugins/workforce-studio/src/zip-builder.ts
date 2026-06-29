@@ -76,6 +76,10 @@ export function buildZipBytes(snapshot: WorkforceSnapshot): Buffer {
     path: "_meta.json",
     body: Buffer.from(JSON.stringify(metaPayload(snapshot), null, 2), "utf8"),
   });
+  entries.push({
+    path: "plugins.md",
+    body: Buffer.from(renderPluginsMarkdown(snapshot), "utf8"),
+  });
   // Main agent
   entries.push({
     path: "main-agent/system-prompt.md",
@@ -218,6 +222,8 @@ function renderReadme(snapshot: WorkforceSnapshot): string {
 
 - \`README.md\` (this file)
 - \`_meta.json\` — machine-readable metadata, useful for tooling.
+- \`plugins.md\` — every plugin visible to the tenant, with origin
+  (🏢 core / 📦 built-in / 🏡 tenant) and tool/skill counts.
 - \`main-agent/\`
   - \`system-prompt.md\` — composed prompt the main agent would see
     on its next turn.
@@ -276,14 +282,15 @@ function renderToolsMarkdown(
     pluginId: string;
     since: string | null;
     parameters: unknown;
+    origin: string;
   }>,
 ): string {
   if (tools.length === 0) {
     return "# Tools\n\n_None_\n";
   }
   const lines: string[] = ["# Tools", ""];
-  lines.push("| Name | Plugin | Since | Description |");
-  lines.push("| --- | --- | --- | --- |");
+  lines.push("| Name | Origin | Plugin | Since | Description |");
+  lines.push("| --- | --- | --- | --- | --- |");
   for (const t of tools) {
     const desc = t.description
       .replace(/\|/g, "\\|")
@@ -291,7 +298,9 @@ function renderToolsMarkdown(
       .trim()
       .slice(0, 240);
     lines.push(
-      `| \`${t.name}\` | \`${t.pluginId}\` | ${t.since ?? "—"} | ${desc} |`,
+      `| \`${t.name}\` | ${originLabel(t.origin)} | \`${t.pluginId}\` | ${
+        t.since ?? "—"
+      } | ${desc} |`,
     );
   }
   lines.push("");
@@ -305,6 +314,47 @@ function renderToolsMarkdown(
     lines.push("");
   }
   return lines.join("\n");
+}
+
+function renderPluginsMarkdown(snapshot: WorkforceSnapshot): string {
+  if (snapshot.plugins.length === 0) {
+    return "# Plugins\n\n_No plugins discovered for this tenant._\n";
+  }
+  const lines: string[] = [
+    "# Plugins",
+    "",
+    `${snapshot.plugins.length} plugin(s) visible to the tenant. "Origin" tells you whether a plugin ships with this Tianshu install or was added per-tenant.`,
+    "",
+    "| Plugin | Origin | Version | State | Tools | Skills | Description |",
+    "| --- | --- | --- | --- | ---: | ---: | --- |",
+  ];
+  for (const p of snapshot.plugins) {
+    const desc = (p.description ?? "")
+      .replace(/\|/g, "\\|")
+      .replace(/\n/g, " ")
+      .trim()
+      .slice(0, 200);
+    const state =
+      p.state === "active"
+        ? "✅ active"
+        : p.state === "failed"
+        ? `❌ failed${p.failureReason ? `: ${p.failureReason}` : ""}`
+        : p.state;
+    lines.push(
+      `| **${p.displayName}** \`${p.id}\` | ${originLabel(p.origin)} | ${
+        p.version
+      } | ${state} | ${p.toolCount} | ${p.skillCount} | ${desc} |`,
+    );
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+function originLabel(o: string): string {
+  if (o === "core") return "🏢 core";
+  if (o === "builtin-plugin") return "📦 built-in";
+  if (o === "tenant-plugin") return "🏡 tenant";
+  return o;
 }
 
 function renderWorkerAgentMd(w: {

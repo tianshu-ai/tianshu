@@ -15,6 +15,22 @@
 // part of the bundle. The catalog capabilities stay slim for
 // the cases that only need names + descriptions.
 
+/** Where a tool / skill comes from. Studio renders this as a
+ *  coloured badge so the operator can tell at a glance whether
+ *  a capability is part of the core install, a built-in plugin,
+ *  or something a tenant administrator added later.
+ *
+ *   - "core"           Host-owned tools registered directly by
+ *                       the server (e.g. worker_analytics).
+ *   - "builtin-plugin" A plugin shipped under `plugins/<id>/`
+ *                       inside this Tianshu install. Always
+ *                       available without operator action.
+ *   - "tenant-plugin"  A plugin discovered under the tenant's
+ *                       `<home>/_tenant/config/plugins/<id>/`
+ *                       — installed/edited per-tenant.
+ */
+export type WorkforceOrigin = "core" | "builtin-plugin" | "tenant-plugin";
+
 /** Tool the agent has access to, with enough detail to render a
  *  studio detail panel + write a `tools.md` entry in the zip. */
 export interface WorkforceToolEntry {
@@ -31,6 +47,9 @@ export interface WorkforceToolEntry {
   /** Manifest `since` version (string semver). null when the
    *  plugin didn't declare it. */
   since: string | null;
+  /** Provenance bucket. Computed from `pluginId` against the
+   *  plugin inventory so the studio can group/colour by origin. */
+  origin: WorkforceOrigin;
 }
 
 /** Skill the agent has access to. Includes the markdown body so
@@ -52,6 +71,35 @@ export interface WorkforceSkillEntry {
   relativePath: string;
   /** Full markdown body, frontmatter included. */
   body: string;
+  /** Same provenance bucket as tools; computed from `pluginId`. */
+  origin: WorkforceOrigin;
+}
+
+/** One row in the plugin inventory the studio displays at the top
+ *  of the snapshot. The host derives this from the active plugin
+ *  registry; non-active (failed / disabled) plugins are still
+ *  surfaced so admins can see why a missing tool/skill is missing. */
+export interface WorkforcePluginInfo {
+  id: string;
+  displayName: string;
+  version: string;
+  description: string;
+  /** Where the plugin manifest was found. Maps directly to
+   *  WorkforceOrigin so the studio can colour-match plugin rows
+   *  against tool/skill badges. */
+  origin: "builtin-plugin" | "tenant-plugin";
+  /** Lifecycle state: "active" means the registry activated it;
+   *  "failed" / "disabled" / etc. mean the plugin is known but
+   *  not currently contributing anything. Studio displays the
+   *  reason for non-active states. */
+  state: "active" | "failed" | "disabled" | "loading";
+  /** Populated for non-active states; null when state===active. */
+  failureReason: string | null;
+  /** Number of tools this plugin currently contributes to the
+   *  main agent. Useful for a quick "weight" view. */
+  toolCount: number;
+  /** Number of skills this plugin currently contributes. */
+  skillCount: number;
 }
 
 export interface WorkforceMainAgent {
@@ -120,6 +168,10 @@ export interface WorkforceSnapshot {
    *  zip's README so future re-imports know what era the export
    *  belongs to. */
   tianshuVersion: string;
+  /** Inventory of every plugin currently visible to the tenant.
+   *  Each tool/skill entry's `origin` field is derived from this
+   *  list, so a UI can correlate a badge back to a concrete row. */
+  plugins: WorkforcePluginInfo[];
   main: WorkforceMainAgent;
   workers: WorkforceWorkerAgent[];
 }
