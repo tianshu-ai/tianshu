@@ -31,6 +31,7 @@ import type {
   AdminPageProps,
   PluginClientExports,
 } from "@tianshu-ai/plugin-sdk/client";
+import { SolutionView } from "./solution-view.js";
 
 // ─── wire shapes (mirror server types via duck-typing) ──────────
 
@@ -149,6 +150,67 @@ function downloadZip(): void {
 // ─── main page ──────────────────────────────────────────────────
 
 function WorkforceStudioPage(_props: AdminPageProps): ReactElement {
+  // Top-level view per ADR-0008: Solution (designtime) vs Reality
+  // (runtime). Default to Reality so the first thing an operator
+  // sees is what's actually running.
+  const [topView, setTopView] = useState<"reality" | "solution">("reality");
+  return (
+    <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle pb-3">
+        <div>
+          <h1 className="text-xl font-semibold">Workforce Studio</h1>
+          <p className="mt-1 max-w-2xl text-sm text-fg-muted">
+            Design and inspect the agent system. The{" "}
+            <strong>Solution</strong> view is your declarative design;
+            the <strong>Reality</strong> view is what's running right
+            now.
+          </p>
+        </div>
+        <TopViewSwitch value={topView} onChange={setTopView} />
+      </div>
+      {topView === "reality" ? <RealityView /> : <SolutionView />}
+    </div>
+  );
+}
+
+function TopViewSwitch({
+  value,
+  onChange,
+}: {
+  value: "reality" | "solution";
+  onChange: (next: "reality" | "solution") => void;
+}): ReactElement {
+  return (
+    <div className="inline-flex overflow-hidden rounded-md border border-border-subtle text-sm">
+      <button
+        type="button"
+        onClick={() => onChange("solution")}
+        className={
+          value === "solution"
+            ? "bg-fg-default px-4 py-1.5 font-medium text-bg-base"
+            : "bg-bg-base px-4 py-1.5 hover:bg-bg-raised"
+        }
+      >
+        Solution
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("reality")}
+        className={
+          value === "reality"
+            ? "bg-fg-default px-4 py-1.5 font-medium text-bg-base"
+            : "bg-bg-base px-4 py-1.5 hover:bg-bg-raised"
+        }
+      >
+        Reality
+      </button>
+    </div>
+  );
+}
+
+// ─── reality view (the former page body) ────────────────────────
+
+function RealityView(): ReactElement {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -171,7 +233,7 @@ function WorkforceStudioPage(_props: AdminPageProps): ReactElement {
   }, [refresh]);
 
   return (
-    <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-6">
+    <div className="flex flex-col gap-4">
       <Header
         snapshot={snapshot}
         loading={loading}
@@ -211,17 +273,10 @@ function Header({
   onRefresh: () => void;
 }): ReactElement {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border-subtle pb-4">
+    <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <h1 className="text-xl font-semibold">Workforce Studio</h1>
-        <p className="mt-1 max-w-2xl text-sm text-fg-muted">
-          Inspect the main agent + every worker agent — their
-          composed prompts, allowed tools, and skills. Download a
-          bundle for sharing or offline review. Editing lands in a
-          later phase.
-        </p>
         {snapshot ? (
-          <div className="mt-2 flex flex-wrap gap-3 text-xs text-fg-muted">
+          <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
             <Badge>
               tenant <code className="font-mono">{snapshot.tenantId}</code>
             </Badge>

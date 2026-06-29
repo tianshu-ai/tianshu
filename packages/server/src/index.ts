@@ -81,8 +81,17 @@ import type {
   ModelCatalogCapability,
   LspCapability,
   WorkforceSnapshotCapability,
+  SolutionsCapability,
 } from "@tianshu-ai/plugin-sdk";
 import { buildWorkforceSnapshot } from "./workforce/snapshot.js";
+import {
+  diffSolution,
+  extractSolution,
+  getSolution,
+  listSolutions,
+  removeSolution,
+  saveSolution,
+} from "./workforce/solutions.js";
 import { enqueue as inboxEnqueue } from "./chat/session-inbox.js";
 import { installIdleRunner } from "./boot/idle-runner.js";
 import { mountChannelRoutes, toView } from "./boot/routes-channels.js";
@@ -292,6 +301,24 @@ pluginRegistry = new PluginRegistry({
         });
       },
     }),
+    // Solution store (ADR-0008 Phase 2). Extract / list / get /
+    // save / delete / diff. No Apply yet — solutions are inert
+    // files until a later phase reconciles them into reality.
+    "host.solutions": (ctx): SolutionsCapability => {
+      const deps = {
+        ctx,
+        pluginRegistry,
+        tianshuVersion: PACKAGE_VERSION,
+      };
+      return {
+        list: (userId) => listSolutions(deps, userId),
+        get: (userId, slug) => getSolution(deps, userId, slug),
+        extract: (userId, args) => extractSolution(deps, userId, args),
+        save: (userId, input) => saveSolution(deps, userId, input),
+        remove: (userId, slug) => removeSolution(deps, userId, slug),
+        diff: (userId, args) => diffSolution(deps, userId, args),
+      };
+    },
     "host.agentLoop": (ctx) => {
       const runner: AgentLoopRunner = {
         run: async (

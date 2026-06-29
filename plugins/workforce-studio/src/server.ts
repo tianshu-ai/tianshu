@@ -17,6 +17,8 @@ import type {
   PluginContext,
   PluginServerExports,
   PluginServerModule,
+  SolutionsCapability,
+  SolutionSpecInput,
   WorkforceSnapshot,
   WorkforceSnapshotCapability,
 } from "@tianshu-ai/plugin-sdk";
@@ -38,6 +40,14 @@ const plugin: PluginServerModule = {
       // returning 500 from every route.
       throw new Error(
         "workforce-studio requires host.workforceSnapshot capability; the host is too old or misconfigured.",
+      );
+    }
+    const solutionsCap = ctx.capabilities.get<SolutionsCapability>(
+      "host.solutions",
+    );
+    if (!solutionsCap) {
+      throw new Error(
+        "workforce-studio requires host.solutions capability; the host is too old or misconfigured.",
       );
     }
 
@@ -91,10 +101,132 @@ const plugin: PluginServerModule = {
           res.setHeader("Content-Length", String(zipBytes.length));
           res.end(zipBytes);
         },
+        // ── Solutions (ADR-0008 Phase 2) ──────────────────────
+        // GET /solutions → { ok, solutions }
+        listSolutions: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user context" });
+            return;
+          }
+          try {
+            res.json({ ok: true, solutions: solutionsCap.list(userId) });
+          } catch (err) {
+            sendError(ctx, res, err, "listSolutions", userId);
+          }
+        },
+        // GET /solutions/:slug → { ok, solution }
+        getSolution: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user context" });
+            return;
+          }
+          const slug = String(req.params.slug ?? "");
+          try {
+            const detail = solutionsCap.get(userId, slug);
+            if (!detail) {
+              res.status(404).json({ ok: false, error: "not found" });
+              return;
+            }
+            res.json({ ok: true, solution: detail });
+          } catch (err) {
+            sendError(ctx, res, err, "getSolution", userId);
+          }
+        },
+        // POST /solutions/extract { slug, name?, description? }
+        extractSolution: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user context" });
+            return;
+          }
+          const body = (req.body ?? {}) as {
+            slug?: string;
+            name?: string;
+            description?: string;
+          };
+          if (!body.slug) {
+            res.status(400).json({ ok: false, error: "slug required" });
+            return;
+          }
+          try {
+            const detail = solutionsCap.extract(userId, {
+              slug: body.slug,
+              name: body.name,
+              description: body.description,
+            });
+            res.json({ ok: true, solution: detail });
+          } catch (err) {
+            sendError(ctx, res, err, "extractSolution", userId);
+          }
+        },
+        // POST /solutions/save  { ...SolutionSpecInput }
+        saveSolution: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user context" });
+            return;
+          }
+          const input = req.body as SolutionSpecInput;
+          if (!input || !input.slug) {
+            res.status(400).json({ ok: false, error: "slug required" });
+            return;
+          }
+          try {
+            const detail = solutionsCap.save(userId, input);
+            res.json({ ok: true, solution: detail });
+          } catch (err) {
+            sendError(ctx, res, err, "saveSolution", userId);
+          }
+        },
+        // DELETE /solutions/:slug → { ok }
+        deleteSolution: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user context" });
+            return;
+          }
+          const slug = String(req.params.slug ?? "");
+          try {
+            solutionsCap.remove(userId, slug);
+            res.json({ ok: true });
+          } catch (err) {
+            sendError(ctx, res, err, "deleteSolution", userId);
+          }
+        },
+        // GET /solutions/:slug/diff?against=reality|<slug>
+        diffSolution: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user context" });
+            return;
+          }
+          const slug = String(req.params.slug ?? "");
+          const against = String(req.query.against ?? "reality");
+          try {
+            const diff = solutionsCap.diff(userId, { slug, against });
+            res.json({ ok: true, diff });
+          } catch (err) {
+            sendError(ctx, res, err, "diffSolution", userId);
+          }
+        },
       },
     };
   },
 };
+
+function sendError(
+  ctx: PluginContext,
+  res: Response,
+  err: unknown,
+  op: string,
+  userId: string,
+): void {
+  const msg = err instanceof Error ? err.message : String(err);
+  ctx.log.warn(`[workforce-studio] ${op} failed for ${userId}: ${msg}`);
+  res.status(500).json({ ok: false, error: msg });
+}
 
 function makeFilename(snapshot: WorkforceSnapshot): string {
   const date = new Date(snapshot.generatedAt)
