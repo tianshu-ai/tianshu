@@ -21,6 +21,7 @@ import type {
   SolutionSpec,
   SolutionSpecInput,
   SolutionPromptBlock,
+  SolutionPluginOption,
   SolutionResourceOption,
   SolutionWorkerView,
   SolutionSummary,
@@ -284,6 +285,7 @@ function resolveDetail(
     workerPrompts,
     mainBlocks: view.blocks,
     workerViews: view.workerViews,
+    availablePlugins: view.availablePlugins,
     availableSkills: view.availableSkills,
     availableTools: view.availableTools,
     isCurrent: spec.slug === CURRENT_SLUG,
@@ -313,6 +315,7 @@ function buildMainView(
   availableSkills: SolutionResourceOption[];
   availableTools: SolutionResourceOption[];
   workerViews: Record<string, SolutionWorkerView>;
+  availablePlugins: SolutionPluginOption[];
 } {
   const snap = buildWorkforceSnapshot({
     ctx: deps.ctx,
@@ -463,7 +466,22 @@ function buildMainView(
         .sort((a, b) => a.name.localeCompare(b.name)),
     };
   }
-  return { blocks, availableSkills, availableTools, workerViews };
+  const availablePlugins: SolutionPluginOption[] = snap.plugins
+    .map((p) => ({
+      id: p.id,
+      displayName: p.displayName,
+      description: p.description,
+      origin: p.origin,
+      state: p.state,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+  return {
+    blocks,
+    availableSkills,
+    availableTools,
+    workerViews,
+    availablePlugins,
+  };
 }
 
 function normaliseOrigin(

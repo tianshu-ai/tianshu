@@ -213,6 +213,10 @@ export interface SolutionDetail {
    *  picker — the worker equivalent of mainBlocks +
    *  availableSkills/Tools. */
   workerViews: Record<string, SolutionWorkerView>;
+  /** Every plugin discovered for the tenant, for the include /
+   *  exclude picker. The solution's `plugins.enabled` decides
+   *  which are ticked; this list is the full menu. */
+  availablePlugins: SolutionPluginOption[];
   /** True for the reserved `current` slug — the studio renders it
    *  read-only (it's a live mirror of reality, regenerated on
    *  extract) and hides Apply. */
@@ -224,6 +228,18 @@ export interface SolutionWorkerView {
   blocks: SolutionPromptBlock[];
   availableSkills: SolutionResourceOption[];
   availableTools: SolutionResourceOption[];
+}
+
+/** One plugin in the solution's plugin include/exclude picker. */
+export interface SolutionPluginOption {
+  id: string;
+  displayName: string;
+  description: string;
+  origin: "builtin-plugin" | "tenant-plugin";
+  /** Live state in reality — surfaced so the operator sees what's
+   *  currently active vs failed, independent of the solution's
+   *  own enable choice. */
+  state: "active" | "failed" | "disabled" | "loading";
 }
 
 /** Lightweight summary for the solution list / picker. */
