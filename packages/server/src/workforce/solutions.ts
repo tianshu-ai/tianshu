@@ -231,17 +231,25 @@ function resolveDetail(
   userId: string,
   spec: SolutionSpec,
   tenantPromptOverride?: string | null,
+  workerPromptsOverride?: Record<string, string>,
 ): SolutionDetail {
   const dir = solutionDir(deps, spec.slug);
   let tenantPrompt: string | null = tenantPromptOverride ?? null;
   if (tenantPromptOverride === undefined && spec.mainAgent.tenantPromptPath) {
     tenantPrompt = safeRead(path.join(dir, spec.mainAgent.tenantPromptPath));
   }
+  // Worker prompts: prefer the in-memory override (used by the
+  // `current` mirror, which isn't persisted to disk so the
+  // sidecars don't exist), else read each worker's SOUL sidecar.
   const workerPrompts: Record<string, string> = {};
-  for (const w of spec.workers) {
-    if (w.systemPromptPath) {
-      const body = safeRead(path.join(dir, w.systemPromptPath));
-      if (body !== null) workerPrompts[w.slug] = body;
+  if (workerPromptsOverride) {
+    Object.assign(workerPrompts, workerPromptsOverride);
+  } else {
+    for (const w of spec.workers) {
+      if (w.systemPromptPath) {
+        const body = safeRead(path.join(dir, w.systemPromptPath));
+        if (body !== null) workerPrompts[w.slug] = body;
+      }
     }
   }
   // Resolve override sidecars + custom fragment bodies so the
@@ -561,9 +569,10 @@ export function extractSolution(
   if (slug !== CURRENT_SLUG) {
     writeSolution(deps, spec, tenantPrompt, workerPrompts);
   }
-  // Pass the extracted tenantPrompt through so the block builder
-  // shows it directly (the live mirror isn't on disk to re-read).
-  return resolveDetail(deps, userId, spec, tenantPrompt);
+  // Pass the extracted tenantPrompt + workerPrompts through so the
+  // block builder shows them directly (the live mirror isn't on
+  // disk to re-read).
+  return resolveDetail(deps, userId, spec, tenantPrompt, workerPrompts);
 }
 
 export function saveSolution(
