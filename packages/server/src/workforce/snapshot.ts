@@ -6,10 +6,21 @@
 // worker fs loader) so the studio shows what the model actually
 // sees — not an idealised contract document.
 //
-// Kept inside packages/server/ rather than the studio plugin so
-// the plugin doesn't pull in `pluginRegistry` / `ctx` internals;
-// instead it gets a clean capability surface
-// (`host.workforceSnapshot.build()`) registered in index.ts.
+// As of `feat/workforce-studio-views`, the main-agent's system
+// prompt is reported in two forms:
+//
+//   - `blocks: WorkforcePromptBlock[]` — block-by-block, tagged
+//     with `source` + `origin` + `editable` so the studio's
+//     Develop view can render an editor / read-only structure.
+//   - `systemPrompt: string` — exactly the text the model sees
+//     on its next turn, produced by `defaultSystemPrompt` and
+//     surfaced verbatim in the Rendered view.
+//
+// We could approximate `systemPrompt` by concatenating the
+// blocks here, but we explicitly call the host's renderer so the
+// Rendered view stays the source of truth — any future change to
+// `defaultSystemPrompt` (separator, ordering, trimming) carries
+// over without us having to keep this file in sync.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -17,6 +28,7 @@ import path from "node:path";
 import type {
   WorkforceOrigin,
   WorkforcePluginInfo,
+  WorkforcePromptBlock,
   WorkforceSkillEntry,
   WorkforceSnapshot,
   WorkforceToolEntry,
@@ -28,7 +40,17 @@ import {
   type WorkerAgentFsRecord,
   loadWorkerAgents,
 } from "../core/worker-agents-fs.js";
-import { defaultSystemPrompt } from "../chat/system-prompt.js";
+import {
+  defaultSystemPrompt,
+  formatAvailableSkillsBlock,
+  formatExecutionBiasBlock,
+  formatMainAgentContextBlock,
+  formatPluginPromptFragments,
+  formatRuntimeContextBlock,
+  formatUserOnboardingBlock,
+  formatWorkerAgentContextBlock,
+  userMdExists,
+} from "../chat/system-prompt.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import type { LoadedSkill } from "../core/plugins/skills.js";
 
@@ -41,31 +63,13 @@ interface BuildSnapshotArgs {
 
 /**
  * Build a {@link WorkforceSnapshot} for the calling user.
- *
- * Why we compose vs. expose helpers individually:
- *
- *   - `pluginRegistry.toolsForTenant()` already filters for active
- *     plugins; we just attach `since` from `toolCatalogForTenant()`
- *     so the studio can display "since 0.3.42" badges.
- *   - `pluginRegistry.skillsForTenant()` already returns LoadedSkill
- *     entries with the full body kept in memory, so the studio can
- *     dump real file contents into its zip export without us
- *     re-reading the fs.
- *   - Worker prompt composition (`req.systemPrompt` branch in
- *     agent-loop.ts) is more involved than the host default — for
- *     Phase 1 we report the worker's stored SOUL.md as-is and tag
- *     it as the "static" prompt. A full "runtime-composed" worker
- *     prompt requires extracting the worker-prompt builder, which
- *     is Phase 2 work. The README in the zip warns about this.
  */
 export function buildWorkforceSnapshot(
   args: BuildSnapshotArgs,
 ): WorkforceSnapshot {
   const { ctx, userId, pluginRegistry, tianshuVersion } = args;
 
-  // --- Plugin inventory (drives the provenance bucket for each
-  //     tool/skill, and is itself surfaced in the studio so an
-  //     operator can see what's actually installed).
+  // --- Plugin inventory ---
   const entries = pluginRegistry.listForTenant(ctx.tenantId);
   const originByPlugin = new Map<string, WorkforceOrigin>();
   originByPlugin.set("core", "core");
@@ -91,9 +95,6 @@ export function buildWorkforceSnapshot(
         typeof tool.schema.description === "string"
           ? tool.schema.description
           : "",
-      // tool.schema.parameters is JSON-schema-shaped; cast to
-      // unknown so the SDK type doesn't pull in the agent-core
-      // schema namespace.
       parameters: (tool.schema as { parameters?: unknown }).parameters ?? null,
       pluginId,
       since: sinceByName.get(tool.schema.name) ?? null,
@@ -108,38 +109,136 @@ export function buildWorkforceSnapshot(
   );
 
   // --- Main agent ---
-  // The host doesn't have a one-call helper to assemble plugin
-  // fragments + skills + brand for arbitrary callers, but
-  // defaultSystemPrompt is itself a pure function over
-  // (ctx, userId, skills, fragments). We can pass in the
-  // skill catalog directly; plugin fragments are also accessible
-  // via the registry.
   const mainSkills = filterScope(allSkills, "main");
-  const fragments = pluginRegistry.systemPromptFragmentsForTenant
-    ? pluginRegistry.systemPromptFragmentsForTenant(ctx.tenantId)
-    : [];
-  const mainSystemPrompt = defaultSystemPrompt(
+  const fragments = pluginRegistry.systemPromptFragmentsForTenant(ctx.tenantId);
+  const fragmentsByPlugin = new Map<
+    string,
+    { pluginDisplayName: string; texts: string[] }
+  >();
+  for (const f of fragments) {
+    const cur = fragmentsByPlugin.get(f.pluginId);
+    if (cur) {
+      cur.texts.push(f.text);
+    } else {
+      fragmentsByPlugin.set(f.pluginId, {
+        pluginDisplayName: f.pluginDisplayName,
+        texts: [f.text],
+      });
+    }
+  }
+  const brandName = ctx.config.branding?.name ?? "Tianshu";
+  const defaultModelId = ctx.config.defaultModel ?? null;
+  const userHomeDir = ctx.userHomeDir(userId);
+
+  // Rendered prompt — the literal text the model sees. We hand
+  // this off to `defaultSystemPrompt` rather than reconstructing
+  // it from blocks so the Rendered view doesn't drift if the
+  // host's renderer changes spacing / ordering / trimming.
+  const renderedSystemPrompt = defaultSystemPrompt(
     ctx,
     userId,
     mainSkills,
     fragments,
   );
-  const brandName = ctx.config.branding?.name ?? "Tianshu";
-  const defaultModelId = ctx.config.defaultModel ?? null;
+
+  // Block decomposition — same ordering `defaultSystemPrompt`
+  // emits, called out into individually-labelled chunks so the
+  // Develop view can render them as an accordion with origin /
+  // editable badges.
+  const blocks: WorkforcePromptBlock[] = [];
+  blocks.push({
+    kind: "brand",
+    title: "Brand intro",
+    source: "host",
+    origin: "host",
+    editable: false,
+    text: `You are ${brandName}, an open-source AI assistant.`,
+    note: "Generated from the tenant's branding config — change the brand name via tenant config.",
+  });
+  blocks.push({
+    kind: "runtime-context",
+    title: "Runtime context",
+    source: "host",
+    origin: "host",
+    editable: false,
+    text: formatRuntimeContextBlock({ tenantId: ctx.tenantId, userId }),
+    note: "Time, timezone, host OS, tenant + user identity. Refreshed every turn at runtime.",
+  });
+  blocks.push({
+    kind: "execution-bias",
+    title: "Execution bias",
+    source: "host",
+    origin: "host",
+    editable: false,
+    text: formatExecutionBiasBlock(),
+    note: "Host-level behaviour rules — same text the workers receive.",
+  });
+  const ctxBlock = formatMainAgentContextBlock(ctx.workspaceDir, userHomeDir);
+  if (ctxBlock) {
+    blocks.push({
+      kind: "workspace-context",
+      title: "Workspace context",
+      source: "workspace",
+      origin: "workspace",
+      editable: true,
+      text: ctxBlock,
+      note: "Sourced from the tenant's _tenant/AGENTS.md / SOUL.md / MEMORY.md + the user's USER.md. Edit the underlying files to change.",
+    });
+  }
+  blocks.push({
+    kind: "reply-style",
+    title: "Reply-style rule",
+    source: "host",
+    origin: "host",
+    editable: false,
+    text: `Reply concisely. When you make changes, briefly say what you changed.`,
+  });
+  // One block per plugin fragment, so the studio shows the
+  // tenant exactly which plugin contributed which paragraph.
+  for (const [pluginId, info] of fragmentsByPlugin) {
+    const text = formatPluginPromptFragments(
+      fragments.filter((f) => f.pluginId === pluginId),
+    );
+    if (!text) continue;
+    blocks.push({
+      kind: "plugin-fragment",
+      title: `${info.pluginDisplayName} guidance`,
+      source: `plugin:${pluginId}`,
+      origin: resolveOrigin(pluginId),
+      editable: false,
+      text,
+      note: `Managed by plugin \`${pluginId}\` — disable the plugin to drop these rules.`,
+    });
+  }
+  const skillsBlock = formatAvailableSkillsBlock(mainSkills);
+  if (skillsBlock) {
+    blocks.push({
+      kind: "available-skills",
+      title: "Available skills catalogue",
+      source: "host",
+      origin: "host",
+      editable: false,
+      text: skillsBlock,
+      note: "Auto-generated from every enabled skill. Toggle individual skills in the Skills panel.",
+    });
+  }
+  blocks.push({
+    kind: "user-onboarding",
+    title: "User onboarding rule",
+    source: "host",
+    origin: "host",
+    editable: false,
+    text: formatUserOnboardingBlock(userMdExists(userHomeDir)),
+    note: "Curates the per-user USER.md file. Behaviour adapts to whether USER.md is populated.",
+  });
 
   // --- Workers ---
   const fsRecords = loadWorkerAgents(ctx.tenantId, ctx.home);
   const workers: WorkforceWorkerAgent[] = fsRecords.map((r) =>
-    toWorkerEntry(r, toolsAll, skillsAll),
+    toWorkerEntry(r, toolsAll, skillsAll, ctx, userId),
   );
 
   // --- Plugin inventory rows ---
-  // We count tools/skills per plugin so the studio can show a
-  // "weight" ("contributes 12 tools, 4 skills"). The counts are
-  // derived from the same catalogs the agent sees, not the
-  // manifest's declared contributes[] — a plugin can declare
-  // tools that fail to register (missing module export) and we
-  // want to surface what actually made it through.
   const toolCountByPlugin = new Map<string, number>();
   for (const t of toolsAll) {
     toolCountByPlugin.set(
@@ -164,9 +263,6 @@ export function buildWorkforceSnapshot(
         e.source === "builtin"
           ? ("builtin-plugin" as const)
           : ("tenant-plugin" as const),
-      // Map the registry's PluginState onto a closed enum the SDK
-      // can present. "loading" only appears mid-activation; by
-      // the time we read the entry it's almost always settled.
       state: mapPluginState(e.state),
       failureReason: e.state === "failed" ? e.failedReason ?? null : null,
       toolCount: toolCountByPlugin.get(e.manifest.id) ?? 0,
@@ -183,8 +279,9 @@ export function buildWorkforceSnapshot(
     main: {
       brandName,
       defaultModelId,
-      systemPrompt: mainSystemPrompt,
-      tools: toolsAll, // main sees the full catalog
+      blocks,
+      systemPrompt: renderedSystemPrompt,
+      tools: toolsAll,
       skills: mainSkills.map((s) => toSkillEntry(s, resolveOrigin)),
     },
     workers,
@@ -216,11 +313,6 @@ function toSkillEntry(
     description: s.description,
     pluginId: s.source.pluginId,
     scope: s.scope,
-    // Make the export-relative path predictable. Strip a leading
-    // absolute path prefix so the zip layout reads like
-    // `skills/<pluginId>/<contributionId>.md`. The original
-    // filePath is still useful for debugging — keep the file name
-    // so callers can correlate, but a stable shape matters more.
     relativePath: `${s.source.pluginId}/${path.basename(s.filePath)}`,
     body: s.body ?? safeReadFile(s.filePath),
     origin: resolveOrigin(s.source.pluginId),
@@ -241,13 +333,11 @@ function toWorkerEntry(
   r: WorkerAgentFsRecord,
   toolsAll: readonly WorkforceToolEntry[],
   skillsAll: readonly WorkforceSkillEntry[],
+  ctx: TenantContext,
+  userId: string,
 ): WorkforceWorkerAgent {
   const spec = r.spec;
   const toolsAllow = spec.toolsAllow ?? null;
-  // null toolsAllow = "no restriction"; otherwise filter the host
-  // catalog down to what's listed. WORKER_DENY_TOOLS isn't applied
-  // here yet because that list is owned by the workboard plugin —
-  // Phase 2 will surface it via a new capability.
   const tools =
     toolsAllow === null
       ? toolsAll.slice()
@@ -255,9 +345,45 @@ function toWorkerEntry(
   const skillsAllow = spec.skillsAllow ?? null;
   const skills =
     skillsAllow === null
-      ? // Workers see worker-scoped + unscoped skills.
-        skillsAll.filter((s) => !s.scope || s.scope === "worker")
+      ? skillsAll.filter((s) => !s.scope || s.scope === "worker")
       : skillsAll.filter((s) => skillsAllow.includes(s.name));
+
+  // Worker block decomposition: SOUL.md (editable) + worker
+  // context block (workspace-sourced). The rendered worker
+  // prompt is composed in agent-loop.ts and pulls in much more
+  // (execution bias, plugin fragments, skill block) — but Phase
+  // 1 stays narrow because the worker prompt builder hasn't
+  // been refactored out yet.
+  const soul = r.systemPrompt ?? "";
+  const blocks: WorkforcePromptBlock[] = [];
+  if (soul.trim().length > 0) {
+    blocks.push({
+      kind: "worker-soul",
+      title: "Worker SOUL.md",
+      source: "workspace",
+      origin: "workspace",
+      editable: true,
+      text: soul,
+      note: `Sourced from _tenant/config/workers/${r.slug}/SOUL.md.`,
+    });
+  }
+  const workerCtxBlock = formatWorkerAgentContextBlock(
+    ctx.workspaceDir,
+    ctx.userHomeDir(userId),
+    r.slug,
+  );
+  if (workerCtxBlock) {
+    blocks.push({
+      kind: "worker-context",
+      title: "Worker workspace context",
+      source: "workspace",
+      origin: "workspace",
+      editable: true,
+      text: workerCtxBlock,
+      note: "Sourced from the worker's own AGENTS.md / MEMORY.md + the user's USER.md.",
+    });
+  }
+
   return {
     slug: r.slug,
     name: spec.displayName ?? r.slug,
@@ -266,7 +392,8 @@ function toWorkerEntry(
     source: spec.source ?? "user",
     enabled: spec.enabled !== false,
     modelId: spec.modelId ?? null,
-    systemPrompt: r.systemPrompt ?? "",
+    blocks,
+    systemPrompt: soul,
     tools,
     skills,
   };

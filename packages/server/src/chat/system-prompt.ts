@@ -146,7 +146,7 @@ export function defaultSystemPrompt(
  * separately so the onboarding prompt can branch its wording
  * without re-reading the file content.
  */
-function userMdExists(userHomeDir: string): boolean {
+export function userMdExists(userHomeDir: string): boolean {
   try {
     const p = path.join(userHomeDir, "USER.md");
     return fs.existsSync(p) && fs.statSync(p).size > 0;
@@ -166,7 +166,7 @@ function userMdExists(userHomeDir: string): boolean {
  * stale facts. Both versions are short — the LLM doesn't need a
  * lecture, just the rule + the file path to write to.
  */
-function formatUserOnboardingBlock(userMdPresent: boolean): string {
+export function formatUserOnboardingBlock(userMdPresent: boolean): string {
   // Same prompt regardless of whether the file exists — the LLM
   // makes the call by inspecting the Workspace Context block above.
   // (We tried branching on `userMdExists` but a USER.md that's

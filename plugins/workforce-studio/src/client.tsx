@@ -35,6 +35,29 @@ import type {
 // ─── wire shapes (mirror server types via duck-typing) ──────────
 
 type Origin = "core" | "builtin-plugin" | "tenant-plugin";
+type BlockOrigin = Origin | "host" | "tenant" | "workspace";
+type BlockKind =
+  | "brand"
+  | "runtime-context"
+  | "execution-bias"
+  | "workspace-context"
+  | "reply-style"
+  | "plugin-fragment"
+  | "available-skills"
+  | "user-onboarding"
+  | "tenant-prompt"
+  | "worker-soul"
+  | "worker-context";
+
+interface PromptBlock {
+  kind: BlockKind;
+  title: string;
+  source: string;
+  origin: BlockOrigin;
+  editable: boolean;
+  text: string;
+  note?: string;
+}
 
 interface ToolEntry {
   name: string;
@@ -67,6 +90,7 @@ interface PluginInfo {
 interface MainAgent {
   brandName: string;
   defaultModelId: string | null;
+  blocks: PromptBlock[];
   systemPrompt: string;
   tools: ToolEntry[];
   skills: SkillEntry[];
@@ -79,6 +103,7 @@ interface WorkerAgent {
   source: "builtin" | "user";
   enabled: boolean;
   modelId: string | null;
+  blocks: PromptBlock[];
   systemPrompt: string;
   tools: ToolEntry[];
   skills: SkillEntry[];
@@ -306,7 +331,13 @@ function PluginsPanel({
         <Package className="size-4 text-fg-muted" />
         <h2 className="text-sm font-semibold">Plugins</h2>
         <span className="ml-2 text-xs text-fg-muted">
-          {plugins.length} discovered
+          {plugins.length} in this solution
+        </span>
+        <span
+          className="ml-1 text-[10px] text-fg-muted"
+          title="Every plugin currently activated for this tenant. Tools, skills and prompt fragments come from these."
+        >
+          (active = contributing to the agent right now)
         </span>
       </div>
       {plugins.length === 0 ? (
@@ -371,42 +402,201 @@ function PluginStateBadge({
 // ─── main agent ─────────────────────────────────────────────────
 
 function MainAgentPanel({ main }: { main: MainAgent }): ReactElement {
+  const [view, setView] = useState<"develop" | "rendered">("develop");
   return (
     <section className="rounded-lg border border-border-subtle bg-bg-elevated">
-      <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
         <Bot className="size-4 text-fg-muted" />
         <h2 className="text-sm font-semibold">Main agent</h2>
         <span className="ml-2 text-xs text-fg-muted">
           {main.brandName} · default model{" "}
           <code className="font-mono">{main.defaultModelId ?? "—"}</code>
         </span>
+        <ViewSwitch value={view} onChange={setView} />
       </div>
-      <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-3">
-        <CollapsibleBlock
-          title={`System prompt (${formatBytes(main.systemPrompt.length)})`}
-          initiallyOpen={false}
-          icon={<Bot className="size-4" />}
-        >
-          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-[11px] leading-snug">
+      {view === "develop" ? (
+        <div className="flex flex-col gap-4 p-4">
+          <PromptBlocks blocks={main.blocks} />
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <CollapsibleBlock
+              title={`Tools (${main.tools.length})`}
+              initiallyOpen={false}
+              icon={<Wrench className="size-4" />}
+            >
+              <ToolsList tools={main.tools} />
+            </CollapsibleBlock>
+            <CollapsibleBlock
+              title={`Skills (${main.skills.length})`}
+              initiallyOpen={false}
+              icon={<Book className="size-4" />}
+            >
+              <SkillsList skills={main.skills} />
+            </CollapsibleBlock>
+          </div>
+        </div>
+      ) : (
+        <div className="p-4">
+          <div className="mb-2 text-xs text-fg-muted">
+            Rendered prompt the model would receive on its next turn (
+            {formatBytes(main.systemPrompt.length)}).
+          </div>
+          <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-[11px] leading-snug">
             {main.systemPrompt}
           </pre>
-        </CollapsibleBlock>
-        <CollapsibleBlock
-          title={`Tools (${main.tools.length})`}
-          initiallyOpen={false}
-          icon={<Wrench className="size-4" />}
-        >
-          <ToolsList tools={main.tools} />
-        </CollapsibleBlock>
-        <CollapsibleBlock
-          title={`Skills (${main.skills.length})`}
-          initiallyOpen={false}
-          icon={<Book className="size-4" />}
-        >
-          <SkillsList skills={main.skills} />
-        </CollapsibleBlock>
-      </div>
+        </div>
+      )}
     </section>
+  );
+}
+
+function ViewSwitch({
+  value,
+  onChange,
+}: {
+  value: "develop" | "rendered";
+  onChange: (next: "develop" | "rendered") => void;
+}): ReactElement {
+  return (
+    <div className="ml-auto inline-flex overflow-hidden rounded-md border border-border-subtle text-xs">
+      <button
+        type="button"
+        onClick={() => onChange("develop")}
+        className={
+          value === "develop"
+            ? "bg-fg-default px-3 py-1 text-bg-base"
+            : "bg-bg-base px-3 py-1 hover:bg-bg-raised"
+        }
+      >
+        Develop
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("rendered")}
+        className={
+          value === "rendered"
+            ? "bg-fg-default px-3 py-1 text-bg-base"
+            : "bg-bg-base px-3 py-1 hover:bg-bg-raised"
+        }
+      >
+        Rendered
+      </button>
+    </div>
+  );
+}
+
+// Render every block as a collapsible card with a coloured
+// origin / editability badge. Non-editable blocks have a faint
+// "lock" border to make the affordance obvious before the user
+// clicks.
+function PromptBlocks({ blocks }: { blocks: PromptBlock[] }): ReactElement {
+  if (blocks.length === 0) {
+    return (
+      <div className="text-xs text-fg-muted">No prompt blocks reported.</div>
+    );
+  }
+  return (
+    <ol className="flex flex-col gap-2">
+      {blocks.map((b, idx) => (
+        <BlockCard key={`${b.kind}-${idx}`} block={b} index={idx + 1} />
+      ))}
+    </ol>
+  );
+}
+
+function BlockCard({
+  block,
+  index,
+}: {
+  block: PromptBlock;
+  index: number;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  const borderTone = block.editable
+    ? "border-border-subtle"
+    : "border-border-subtle/60 border-dashed";
+  return (
+    <li className={`rounded-md border bg-bg-base ${borderTone}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left text-xs"
+      >
+        {open ? (
+          <ChevronDown className="size-3.5 text-fg-muted" />
+        ) : (
+          <ChevronRight className="size-3.5 text-fg-muted" />
+        )}
+        <span className="text-[10px] text-fg-muted">#{index}</span>
+        <span className="font-medium">{block.title}</span>
+        <BlockOriginBadge origin={block.origin} />
+        <span
+          className={
+            block.editable
+              ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-success-fg"
+              : "rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium"
+          }
+          title={
+            block.editable
+              ? "You can edit the underlying source."
+              : "Managed by the host or a plugin — not editable."
+          }
+        >
+          {block.editable ? "editable" : "read-only"}
+        </span>
+        <span className="ml-auto text-[10px] text-fg-muted">
+          {block.source}
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-border-subtle px-3 py-2">
+          {block.note ? (
+            <div className="mb-2 text-[11px] text-fg-muted">{block.note}</div>
+          ) : null}
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-elevated p-2 font-mono text-[11px] leading-snug">
+            {block.text}
+          </pre>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function BlockOriginBadge({
+  origin,
+}: {
+  origin: BlockOrigin;
+}): ReactElement {
+  // Map block origins to the same buckets the tool/skill badge
+  // uses. "host" / "workspace" / "tenant" don't have direct
+  // tool-style equivalents; we colour them distinctly so the
+  // origin column scans cleanly.
+  const map: Record<BlockOrigin, { label: string; className: string }> = {
+    core: { label: "core", className: "bg-info-fg/10 text-info-fg" },
+    "builtin-plugin": {
+      label: "built-in",
+      className: "bg-success-fg/10 text-success-fg",
+    },
+    "tenant-plugin": {
+      label: "tenant plugin",
+      className: "bg-warning-fg/10 text-warning-fg",
+    },
+    host: { label: "host", className: "bg-info-fg/10 text-info-fg" },
+    workspace: {
+      label: "workspace",
+      className: "bg-warning-fg/10 text-warning-fg",
+    },
+    tenant: {
+      label: "tenant",
+      className: "bg-warning-fg/10 text-warning-fg",
+    },
+  };
+  const { label, className } = map[origin];
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${className}`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -496,35 +686,48 @@ function WorkerRow({
         </span>
       </button>
       {open ? (
-        <div className="mt-3 grid grid-cols-1 gap-3 pl-6 md:grid-cols-3">
-          <CollapsibleBlock
-            title={`SOUL / system prompt (${formatBytes(
-              worker.systemPrompt.length,
-            )})`}
-            initiallyOpen
-            icon={<Bot className="size-4" />}
-          >
-            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-[11px] leading-snug">
-              {worker.systemPrompt.trim() || "<empty>"}
-            </pre>
-          </CollapsibleBlock>
-          <CollapsibleBlock
-            title={`Tools (${worker.tools.length})`}
-            initiallyOpen={false}
-            icon={<Wrench className="size-4" />}
-          >
-            <ToolsList tools={worker.tools} />
-          </CollapsibleBlock>
-          <CollapsibleBlock
-            title={`Skills (${worker.skills.length})`}
-            initiallyOpen={false}
-            icon={<Book className="size-4" />}
-          >
-            <SkillsList skills={worker.skills} />
-          </CollapsibleBlock>
-        </div>
+        <WorkerDetail worker={worker} />
       ) : null}
     </li>
+  );
+}
+
+function WorkerDetail({
+  worker,
+}: {
+  worker: WorkerAgent;
+}): ReactElement {
+  const [view, setView] = useState<"develop" | "rendered">("develop");
+  return (
+    <div className="mt-3 flex flex-col gap-3 pl-6">
+      <div className="flex items-center text-xs">
+        <span className="text-fg-muted">System prompt</span>
+        <ViewSwitch value={view} onChange={setView} />
+      </div>
+      {view === "develop" ? (
+        <PromptBlocks blocks={worker.blocks} />
+      ) : (
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-[11px] leading-snug">
+          {worker.systemPrompt.trim() || "<empty>"}
+        </pre>
+      )}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <CollapsibleBlock
+          title={`Tools (${worker.tools.length})`}
+          initiallyOpen={false}
+          icon={<Wrench className="size-4" />}
+        >
+          <ToolsList tools={worker.tools} />
+        </CollapsibleBlock>
+        <CollapsibleBlock
+          title={`Skills (${worker.skills.length})`}
+          initiallyOpen={false}
+          icon={<Book className="size-4" />}
+        >
+          <SkillsList skills={worker.skills} />
+        </CollapsibleBlock>
+      </div>
+    </div>
   );
 }
 

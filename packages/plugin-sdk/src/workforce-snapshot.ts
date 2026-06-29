@@ -102,16 +102,79 @@ export interface WorkforcePluginInfo {
   skillCount: number;
 }
 
+/** Why a block is in the system prompt. The studio renders the
+ *  block in two distinct views:
+ *
+ *   - DEVELOP view: every block is listed, tagged with its
+ *     source + editability. Plugin-injected blocks are
+ *     read-only; tenant-owned blocks are editable (write
+ *     support lands later).
+ *   - RENDERED view: the blocks are concatenated through the
+ *     same join() the host actually uses, producing the literal
+ *     text the model sees on its next turn.
+ *
+ *  We keep this enum closed: any new injection point must teach
+ *  the studio about itself rather than sneaking in as a vague
+ *  "other" bucket. */
+export type WorkforcePromptBlockKind =
+  | "brand"
+  | "runtime-context"
+  | "execution-bias"
+  | "workspace-context"
+  | "reply-style"
+  | "plugin-fragment"
+  | "available-skills"
+  | "user-onboarding"
+  | "tenant-prompt"
+  | "worker-soul"
+  | "worker-context";
+
+/** One contiguous chunk of the composed system prompt. */
+export interface WorkforcePromptBlock {
+  /** Stable kind used by the UI to decide grouping / iconography
+   *  / editability defaults. */
+  kind: WorkforcePromptBlockKind;
+  /** Short human label shown in the Develop view's accordion
+   *  header. */
+  title: string;
+  /** Where this block came from, for the badge:
+   *    - "host"     : hard-coded in the server, always present
+   *    - "plugin:<id>" : a plugin's systemPromptFragments[]
+   *    - "tenant"  : tenant-owned override (config / fs file)
+   *    - "workspace" : tenant/user-authored .md context files
+   *  We use a stringly-typed `source` so plugin ids appear inline
+   *  without us inventing a separate field. */
+  source: string;
+  /** Origin bucket reused from the tool / skill provenance enum
+   *  so badges stay visually consistent across the page. */
+  origin: WorkforceOrigin | "host" | "tenant" | "workspace";
+  /** True iff the studio's editor will accept changes to this
+   *  block. Plugin / host blocks stay false; tenant-owned
+   *  blocks (tenant prompt, SOUL.md, AGENTS.md, USER.md, …) are
+   *  true. */
+  editable: boolean;
+  /** Block body, exactly as it appears in the composed prompt. */
+  text: string;
+  /** Optional one-line hint shown under the block header in the
+   *  Develop view. Used for things like "managed by plugin
+   *  files" or "sourced from <home>/SOUL.md". */
+  note?: string;
+}
+
 export interface WorkforceMainAgent {
   /** Brand name from tenant config. */
   brandName: string;
   /** Default model id (provider-prefixed). May be null when the
    *  tenant has no models configured. */
   defaultModelId: string | null;
+  /** Block-by-block decomposition of the system prompt. Used by
+   *  the Develop view; concatenating `blocks.map(b => b.text).
+   *  join("\n\n")` reproduces (a close approximation of) the
+   *  rendered text the model sees. */
+  blocks: WorkforcePromptBlock[];
   /** Composed system prompt the agent would receive on the next
-   *  turn if it ran right now. Includes plugin fragments + the
-   *  current skill catalog block; static enough to diff across
-   *  upgrades. */
+   *  turn if it ran right now. This is the authoritative rendered
+   *  text — the studio shows it in the Rendered view as-is. */
   systemPrompt: string;
   /** Every tool currently visible to the main agent. Already
    *  filtered for `available()` and skill-aware gating. */
@@ -143,9 +206,17 @@ export interface WorkforceWorkerAgent {
   /** Bound model id, or null when the worker uses whatever the
    *  pool/agent loop picks. */
   modelId: string | null;
+  /** Block-by-block decomposition of the worker prompt for the
+   *  Develop view. Phase 1 reports the stored SOUL.md as a
+   *  single editable block + worker context fragments; richer
+   *  decomposition lands when the worker prompt builder is
+   *  refactored out of agent-loop.ts. */
+  blocks: WorkforcePromptBlock[];
   /** Composed system prompt the worker actually runs with.
    *  Comparable to WorkforceMainAgent.systemPrompt but built
-   *  via the workboard's worker prompt logic. */
+   *  via the workboard's worker prompt logic. Phase 1 reports
+   *  the stored SOUL.md verbatim; runtime decomposition is
+   *  Phase 2 work. */
   systemPrompt: string;
   /** Tools the worker is allowed to call after WORKER_DENY_TOOLS
    *  + agent.json toolsAllow filtering. */
