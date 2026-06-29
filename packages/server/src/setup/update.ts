@@ -154,9 +154,72 @@ export async function runUpdate(opts: UpdateCmdOpts = {}): Promise<number> {
   // so the dev server runs the new code too.
   console.log("");
   console.log(`Installed ${PACKAGE_NAME}@${remoteVersion}.`);
+
+  // Post-install health check (Yu 2026-06-29 follow-up to the
+  // 0.4.0 upgrade incident where openshell's `openshell-gateway`
+  // PATH prereq tripped up an upgraded host that had never
+  // hosted openshell before). We re-import doctor *after* npm
+  // has refreshed the global install so the report reflects
+  // the new dist's plugin set, not the version we booted from.
+  //
+  // This is a best-effort signal, NOT a gate: a failed probe
+  // (offline registry, broken sqlite, transient docker hiccup)
+  // shouldn't block a successful update. We swallow errors and
+  // surface a generic nudge if anything goes sideways. Skip the
+  // npm-registry version probe because we just installed and
+  // it would be redundant.
+  let blockerCount = 0;
+  const blockerTitles: string[] = [];
+  try {
+    const { collectDoctorReport } = await import("./doctor.js");
+    const report = await collectDoctorReport({ skipVersionCheck: true });
+    blockerCount = report.blocker;
+    if (blockerCount > 0) {
+      for (const g of report.groups) {
+        if (g.lines.some((l) => l.severity === "blocker")) {
+          blockerTitles.push(g.title);
+        }
+      }
+    }
+  } catch (err) {
+    // Don't punish a successful upgrade for a noisy doctor.
+    // The dedicated `tianshu doctor` command stays available
+    // if the user wants the full output.
+    console.log(
+      `(Could not run post-install health check: ${err instanceof Error ? err.message : String(err)})`,
+    );
+  }
+
   console.log("Next steps:");
   console.log("  tianshu restart       # bounce the dev server");
   console.log("  tianshu version       # confirm the new version is live");
+  if (blockerCount > 0) {
+    // List the offending groups so the user knows where to
+    // look. The setup agent (`tianshu setup`) reads the same
+    // doctor groups and can drive the fix interactively, so
+    // point them there rather than dumping the full report.
+    console.log("");
+    console.log(
+      `⚠️  Post-install doctor found ${blockerCount} blocker(s) that may stop the server from starting:`,
+    );
+    const shown = blockerTitles.slice(0, 5);
+    for (const t of shown) {
+      console.log(`     • ${t}`);
+    }
+    if (blockerTitles.length > shown.length) {
+      console.log(
+        `     … and ${blockerTitles.length - shown.length} more`,
+      );
+    }
+    console.log("");
+    console.log("   Suggested actions (run either of these):");
+    console.log(
+      "     tianshu setup --wizard   # interactive setup agent fixes prereqs",
+    );
+    console.log(
+      "     tianshu doctor           # full diagnostic report",
+    );
+  }
   return 0;
 }
 
