@@ -53,6 +53,7 @@ import {
 } from "../chat/system-prompt.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import type { LoadedSkill } from "../core/plugins/skills.js";
+import { loadTenantSkills } from "../core/tenant-skills.js";
 
 interface BuildSnapshotArgs {
   ctx: TenantContext;
@@ -79,8 +80,17 @@ export function buildWorkforceSnapshot(
       e.source === "builtin" ? "builtin-plugin" : "tenant-plugin",
     );
   }
-  const resolveOrigin = (pluginId: string): WorkforceOrigin =>
-    originByPlugin.get(pluginId) ?? "core";
+  const resolveOrigin = (pluginId: string): WorkforceOrigin => {
+    const known = originByPlugin.get(pluginId);
+    if (known) return known;
+    // Tenant-authored skills carry synthetic source ids like
+    // "tenant-shared" / "tenant-main" / "tenant-worker-<slug>"
+    // (see core/tenant-skills.ts). They're tenant-owned, not a
+    // plugin or host contribution — bucket them as tenant so the
+    // studio shows them as editable / excludable.
+    if (pluginId.startsWith("tenant-")) return "tenant-plugin";
+    return "core";
+  };
 
   // --- Tool catalog (with since metadata) ---
   const catalog = pluginRegistry.toolCatalogForTenant(ctx.tenantId);
@@ -103,7 +113,27 @@ export function buildWorkforceSnapshot(
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // --- Skills (with body) ---
-  const allSkills = pluginRegistry.skillsForTenant(ctx.tenantId);
+  // Mirror what the agent loop actually composes: plugin / host
+  // skills (mirrored, with tenant-config paths) PLUS the tenant's
+  // own skills under _tenant/config/skills + main/skills. Earlier
+  // this only pulled `skillsForTenant` (plugin-only), which is why
+  // tenant skills like the seeded `skill-creator` never showed up
+  // in the studio even though the agent sees them every turn.
+  const pluginSkills = pluginRegistry.mirroredSkillsForTenant(ctx.tenantId);
+  const tenantMainSkills = loadTenantSkills({
+    tenantId: ctx.tenantId,
+    scope: { kind: "main" },
+    onFailure: (f) =>
+      console.warn(
+        `[workforce-snapshot tenant-skills:${f.scope}] ${f.filePath}: ${f.reason}`,
+      ),
+  });
+  // De-dupe by skill name; tenant skills win on collision (same
+  // precedence as the agent loop's merge order).
+  const skillByName = new Map<string, LoadedSkill>();
+  for (const s of pluginSkills) skillByName.set(s.name, s);
+  for (const s of tenantMainSkills) skillByName.set(s.name, s);
+  const allSkills = [...skillByName.values()];
   const skillsAll: WorkforceSkillEntry[] = allSkills.map((s) =>
     toSkillEntry(s, resolveOrigin),
   );
