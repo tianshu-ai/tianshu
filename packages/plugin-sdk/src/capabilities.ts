@@ -69,6 +69,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Manage channel adapter bindings (chat-platform integrations). Plugins contributing a channel (Feishu / Telegram / WeChat / ...) call create/start/stop/delete here so the host's adapter manager actually wires the inbound stream to the agent. The DB row + adapter lifecycle live together behind this capability.",
   },
+  "host.workforceSnapshot": {
+    exclusive: true,
+    description:
+      "Build a read-only snapshot of the tenant's agent configuration (main agent prompt + tools + skills, every worker agent's prompt + allowed tools + allowed skills). Used by the Workforce Studio plugin to render an inspect-and-export UI; the snapshot includes full skill markdown bodies so the studio can ship a faithful bundle.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;

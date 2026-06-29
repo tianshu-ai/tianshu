@@ -17,6 +17,7 @@ export * from "./session-inbox.js";
 export * from "./catalog.js";
 export * from "./lsp.js";
 export * from "./channel-bindings.js";
+export * from "./workforce-snapshot.js";
 export {
   McpToolset,
   textOfMcpContent,
