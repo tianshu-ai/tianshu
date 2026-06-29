@@ -597,7 +597,7 @@ function SolutionDetailPanel({
                   type="button"
                   onClick={() => void apply()}
                   disabled={busy}
-                  className="inline-flex items-center gap-1 rounded bg-success-fg px-2 py-1 text-xs font-medium text-bg-base hover:opacity-90 disabled:opacity-50"
+                  className="inline-flex items-center gap-1 rounded border border-success-fg bg-success-fg/15 px-2 py-1 text-xs font-semibold text-success-fg hover:bg-success-fg/25 disabled:opacity-50"
                   title="Write this solution into the running system (main agent + workers). Plugins unchanged in this phase."
                 >
                   <Rocket className="size-3.5" /> Apply
