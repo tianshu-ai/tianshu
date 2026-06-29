@@ -616,6 +616,56 @@ function SolutionDetailPanel({
         </div>
       </div>
 
+      {/* Plugins — include / exclude picker over the full set of
+          discovered plugins. Placed first: plugins decide what
+          tools / skills / fragments the rest of the solution even
+          has to work with. */}
+      <Section
+        title={`Plugins (${pluginsEnabled.size} / ${detail.availablePlugins.length})`}
+      >
+        <ul className="flex flex-col gap-1">
+          {detail.availablePlugins.map((p) => {
+            const enabled = pluginsEnabled.has(p.id);
+            return (
+              <li
+                key={p.id}
+                className="flex flex-wrap items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-bg-elevated"
+              >
+                <span className={enabled ? "font-medium" : "text-fg-muted line-through"}>
+                  {p.displayName}
+                </span>
+                <code className="text-[10px] text-fg-muted">{p.id}</code>
+                <SolutionOriginBadge origin={p.origin} />
+                {p.state !== "active" ? (
+                  <span className="rounded bg-danger-fg/10 px-1.5 py-0.5 text-[10px] text-danger-fg">
+                    {p.state}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={isCurrent}
+                  onClick={() =>
+                    setPluginsEnabled((prev) => toggleInSet(prev, p.id))
+                  }
+                  className={`ml-auto rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
+                    enabled
+                      ? "border-border-subtle bg-bg-elevated text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"
+                      : "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
+                  }`}
+                  title={
+                    enabled
+                      ? "Included — click to exclude from this solution."
+                      : "Excluded — click to include."
+                  }
+                >
+                  {enabled ? "Exclude" : "Include"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </Section>
+
       {/* Main agent — block-style editor (ADR-0008): host /
           plugin blocks are read-only reference; the tenant prompt
           block is editable. */}
@@ -740,54 +790,6 @@ function SolutionDetailPanel({
             }
           />
         </div>
-      </Section>
-
-      {/* Plugins — include / exclude picker over the full set of
-          discovered plugins. */}
-      <Section
-        title={`Plugins (${pluginsEnabled.size} / ${detail.availablePlugins.length})`}
-      >
-        <ul className="flex flex-col gap-1">
-          {detail.availablePlugins.map((p) => {
-            const enabled = pluginsEnabled.has(p.id);
-            return (
-              <li
-                key={p.id}
-                className="flex flex-wrap items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-bg-elevated"
-              >
-                <span className={enabled ? "font-medium" : "text-fg-muted line-through"}>
-                  {p.displayName}
-                </span>
-                <code className="text-[10px] text-fg-muted">{p.id}</code>
-                <SolutionOriginBadge origin={p.origin} />
-                {p.state !== "active" ? (
-                  <span className="rounded bg-danger-fg/10 px-1.5 py-0.5 text-[10px] text-danger-fg">
-                    {p.state}
-                  </span>
-                ) : null}
-                <button
-                  type="button"
-                  disabled={isCurrent}
-                  onClick={() =>
-                    setPluginsEnabled((prev) => toggleInSet(prev, p.id))
-                  }
-                  className={`ml-auto rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
-                    enabled
-                      ? "border-border-subtle bg-bg-elevated text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"
-                      : "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
-                  }`}
-                  title={
-                    enabled
-                      ? "Included — click to exclude from this solution."
-                      : "Excluded — click to include."
-                  }
-                >
-                  {enabled ? "Exclude" : "Include"}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
       </Section>
 
       {/* Workers — each gets the same block-style editor as the
