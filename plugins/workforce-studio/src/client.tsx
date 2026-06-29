@@ -467,7 +467,7 @@ function ViewSwitch({
             : "bg-bg-base px-3 py-1 hover:bg-bg-raised"
         }
       >
-        Develop
+        Blocks
       </button>
       <button
         type="button"
