@@ -14,6 +14,7 @@ way it is — not just _what_ shape it has.
 | 0005 | [Language Server Protocol integration](./lsp.md) | Draft |
 | 0006 | [Plugin-contributed system-prompt fragments for tools](./tool-prompt-contributions.md) | Draft |
 | 0007 | [Skill progressive disclosure](./skill-progressive-disclosure.md) | Draft |
+| 0008 | [Solution model & Workforce Studio](./solutions.md) | Proposed |
 
 ## How to write an ADR
 
