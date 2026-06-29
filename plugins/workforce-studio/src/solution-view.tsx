@@ -77,6 +77,7 @@ type BlockOrigin =
   | "host"
   | "tenant"
   | "workspace";
+type OverrideKey = "executionBias" | "replyStyle" | "userOnboarding";
 interface SolutionPromptBlock {
   kind: string;
   title: string;
@@ -84,6 +85,10 @@ interface SolutionPromptBlock {
   origin: BlockOrigin;
   editable: boolean;
   text: string;
+  defaultText?: string | null;
+  overrideKey?: OverrideKey;
+  overridden?: boolean;
+  customFragmentId?: string;
   note?: string;
 }
 interface ResourceOption {
@@ -363,18 +368,32 @@ function SolutionDetailPanel({
   const [toolsDeny, setToolsDeny] = useState<Set<string>>(
     () => new Set(spec.mainAgent.toolsDeny ?? []),
   );
+  // Host-block overrides: null = use host default; string = the
+  // override text. Seeded from the blocks the host marked as
+  // overridden.
+  const [overrides, setOverrides] = useState<Record<OverrideKey, string | null>>(
+    () => seedOverrides(detail.mainBlocks),
+  );
+  // Custom fragments: { id, title, body }. Seeded from existing
+  // custom-fragment blocks.
+  const [fragments, setFragments] = useState<CustomFragmentEdit[]>(() =>
+    seedFragments(detail.mainBlocks),
+  );
   useEffect(() => {
     setName(spec.name);
     setDescription(spec.description);
     setTenantPrompt(detail.tenantPrompt ?? "");
     setSkillsDeny(new Set(spec.mainAgent.skillsDeny));
     setToolsDeny(new Set(spec.mainAgent.toolsDeny ?? []));
+    setOverrides(seedOverrides(detail.mainBlocks));
+    setFragments(seedFragments(detail.mainBlocks));
     setDiff(null);
   }, [
     spec.slug,
     spec.name,
     spec.description,
     detail.tenantPrompt,
+    detail.mainBlocks,
     spec.mainAgent.skillsDeny,
     spec.mainAgent.toolsDeny,
   ]);
@@ -410,6 +429,16 @@ function SolutionDetailPanel({
           skillsDeny: [...skillsDeny].sort(),
           toolsAllow: null,
           toolsDeny: [...toolsDeny].sort(),
+          overrides: {
+            executionBias: overrides.executionBias,
+            replyStyle: overrides.replyStyle,
+            userOnboarding: overrides.userOnboarding,
+          },
+          customFragments: fragments.map((f) => ({
+            id: f.id,
+            title: f.title,
+            body: f.body,
+          })),
         },
         workers: spec.workers.map((w) => ({
           slug: w.slug,
@@ -524,14 +553,91 @@ function SolutionDetailPanel({
         <div className="flex flex-col gap-2">
           {detail.mainBlocks.map((b, idx) => (
             <SolutionBlockCard
-              key={`${b.kind}-${idx}`}
+              key={`${b.kind}-${b.customFragmentId ?? idx}`}
               index={idx + 1}
               block={b}
               isCurrent={isCurrent}
               tenantPrompt={tenantPrompt}
               onTenantPromptChange={setTenantPrompt}
+              overrideValue={
+                b.overrideKey ? overrides[b.overrideKey] : undefined
+              }
+              onOverrideChange={(val) => {
+                if (!b.overrideKey) return;
+                setOverrides((prev) => ({ ...prev, [b.overrideKey!]: val }));
+              }}
+              fragmentValue={
+                b.customFragmentId
+                  ? fragments.find((f) => f.id === b.customFragmentId)?.body ??
+                    ""
+                  : undefined
+              }
+              onFragmentChange={(val) => {
+                if (!b.customFragmentId) return;
+                setFragments((prev) =>
+                  prev.map((f) =>
+                    f.id === b.customFragmentId ? { ...f, body: val } : f,
+                  ),
+                );
+              }}
+              onFragmentRemove={() => {
+                if (!b.customFragmentId) return;
+                setFragments((prev) =>
+                  prev.filter((f) => f.id !== b.customFragmentId),
+                );
+              }}
             />
           ))}
+          {/* Custom fragments added this session but not yet in
+              detail.mainBlocks (which only refreshes after save)
+              render here so the operator sees them immediately. */}
+          {fragments
+            .filter(
+              (f) =>
+                !detail.mainBlocks.some(
+                  (b) => b.customFragmentId === f.id,
+                ),
+            )
+            .map((f) => (
+              <NewFragmentCard
+                key={f.id}
+                fragment={f}
+                disabled={isCurrent}
+                onTitleChange={(title) =>
+                  setFragments((prev) =>
+                    prev.map((x) =>
+                      x.id === f.id ? { ...x, title } : x,
+                    ),
+                  )
+                }
+                onBodyChange={(body) =>
+                  setFragments((prev) =>
+                    prev.map((x) => (x.id === f.id ? { ...x, body } : x)),
+                  )
+                }
+                onRemove={() =>
+                  setFragments((prev) => prev.filter((x) => x.id !== f.id))
+                }
+              />
+            ))}
+          {!isCurrent ? (
+            <button
+              type="button"
+              onClick={() =>
+                setFragments((prev) => [
+                  ...prev,
+                  {
+                    id: `frag-${Date.now()}`,
+                    title: "Custom fragment",
+                    body: "",
+                  },
+                ])
+              }
+              className="self-start rounded-md border border-dashed border-border-subtle px-3 py-1.5 text-xs text-fg-muted hover:border-fg-muted hover:text-fg-default"
+            >
+              + Add custom fragment
+            </button>
+          ) : null}
         </div>
         {/* Skill / tool allow-lists are config, not prompt text,
             so they stay as their own editable controls below the
@@ -680,19 +786,41 @@ function Section({
 // prompt) render a textarea bound to the parent's state instead
 // of read-only <pre>. Plugin / host blocks stay collapsed +
 // read-only with the same origin badge as Reality.
+interface CustomFragmentEdit {
+  id: string;
+  title: string;
+  body: string;
+}
+
 function SolutionBlockCard({
   index,
   block,
   isCurrent,
   tenantPrompt,
   onTenantPromptChange,
+  overrideValue,
+  onOverrideChange,
+  fragmentValue,
+  onFragmentChange,
+  onFragmentRemove,
 }: {
   index: number;
   block: SolutionPromptBlock;
   isCurrent: boolean;
   tenantPrompt: string;
   onTenantPromptChange: (next: string) => void;
+  /** Present only for overridable host blocks. */
+  overrideValue?: string | null;
+  onOverrideChange?: (next: string | null) => void;
+  /** Present only for custom-fragment blocks. */
+  fragmentValue?: string;
+  onFragmentChange?: (next: string) => void;
+  onFragmentRemove?: () => void;
 }): ReactElement {
+  const isTenantPrompt = block.kind === "tenant-prompt";
+  const isOverride = !!block.overrideKey;
+  const isFragment = !!block.customFragmentId;
+  const isOverridden = isOverride && overrideValue !== null && overrideValue !== undefined;
   const [open, setOpen] = useState(block.editable);
   const borderTone = block.editable
     ? "border-border-subtle"
@@ -712,30 +840,37 @@ function SolutionBlockCard({
         <span className="text-[10px] text-fg-muted">#{index}</span>
         <span className="font-medium">{block.title}</span>
         <SolutionOriginBadge origin={block.origin} />
-        <span
-          className={
-            block.editable
-              ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-success-fg"
-              : "rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium"
-          }
-          title={
-            block.editable
-              ? "Editable — part of this solution's main-agent design."
-              : "Auto-injected by the host or a plugin — not editable."
-          }
-        >
-          {block.editable ? "editable" : "read-only"}
-        </span>
-        <span className="ml-auto text-[10px] text-fg-muted">
-          {block.source}
-        </span>
+        {isOverride ? (
+          isOverridden ? (
+            <span className="rounded bg-warning-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-warning-fg">
+              overridden
+            </span>
+          ) : (
+            <span className="rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium">
+              host default
+            </span>
+          )
+        ) : (
+          <span
+            className={
+              block.editable
+                ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-success-fg"
+                : "rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium"
+            }
+          >
+            {block.editable ? "editable" : "read-only"}
+          </span>
+        )}
+        <span className="ml-auto text-[10px] text-fg-muted">{block.source}</span>
       </button>
       {open ? (
         <div className="border-t border-border-subtle px-3 py-2">
           {block.note ? (
             <div className="mb-2 text-[11px] text-fg-muted">{block.note}</div>
           ) : null}
-          {block.editable ? (
+
+          {/* Tenant prompt block: plain editable textarea. */}
+          {isTenantPrompt ? (
             <textarea
               value={tenantPrompt}
               disabled={isCurrent}
@@ -748,11 +883,79 @@ function SolutionBlockCard({
               }
               className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
             />
-          ) : (
+          ) : null}
+
+          {/* Overridable host block: show default + Override /
+              Reset, edit only when overriding. */}
+          {isOverride ? (
+            isOverridden ? (
+              <>
+                <textarea
+                  value={overrideValue ?? ""}
+                  disabled={isCurrent}
+                  onChange={(e) => onOverrideChange?.(e.target.value)}
+                  rows={8}
+                  className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+                />
+                {!isCurrent ? (
+                  <button
+                    type="button"
+                    onClick={() => onOverrideChange?.(null)}
+                    className="mt-2 rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+                  >
+                    Reset to host default
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-elevated p-2 font-mono text-[11px] leading-snug">
+                  {block.defaultText ?? block.text}
+                </pre>
+                {!isCurrent ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOverrideChange?.(block.defaultText ?? block.text)
+                    }
+                    className="mt-2 rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+                  >
+                    Override…
+                  </button>
+                ) : null}
+              </>
+            )
+          ) : null}
+
+          {/* Custom fragment block: editable body + remove. */}
+          {isFragment ? (
+            <>
+              <textarea
+                value={fragmentValue ?? ""}
+                disabled={isCurrent}
+                onChange={(e) => onFragmentChange?.(e.target.value)}
+                rows={6}
+                className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+              />
+              {!isCurrent ? (
+                <button
+                  type="button"
+                  onClick={() => onFragmentRemove?.()}
+                  className="mt-2 rounded border border-danger-fg/40 px-2 py-0.5 text-[10px] text-danger-fg hover:bg-danger-fg/5"
+                >
+                  Remove fragment
+                </button>
+              ) : null}
+            </>
+          ) : null}
+
+          {/* Plain read-only block. */}
+          {!isTenantPrompt && !isOverride && !isFragment ? (
             <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-elevated p-2 font-mono text-[11px] leading-snug">
               {block.text}
             </pre>
-          )}
+          ) : null}
+
           {block.editable && isCurrent ? (
             <div className="mt-2 text-[10px] text-fg-muted">
               The live mirror is read-only. Extract a named solution
@@ -763,6 +966,85 @@ function SolutionBlockCard({
       ) : null}
     </div>
   );
+}
+
+/** Card for a freshly-added custom fragment not yet persisted
+ *  (so it has no server block). Lets the operator name + fill it
+ *  before the first save. */
+function NewFragmentCard({
+  fragment,
+  disabled,
+  onTitleChange,
+  onBodyChange,
+  onRemove,
+}: {
+  fragment: CustomFragmentEdit;
+  disabled: boolean;
+  onTitleChange: (next: string) => void;
+  onBodyChange: (next: string) => void;
+  onRemove: () => void;
+}): ReactElement {
+  return (
+    <div className="rounded-md border border-border-subtle bg-bg-base">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <span className="rounded bg-warning-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-warning-fg">
+          new fragment
+        </span>
+        <input
+          value={fragment.title}
+          disabled={disabled}
+          onChange={(e) => onTitleChange(e.target.value)}
+          placeholder="Fragment title"
+          className="flex-1 rounded border border-border-subtle bg-bg-elevated px-2 py-1 text-xs disabled:opacity-60"
+        />
+      </div>
+      <div className="px-3 pb-2">
+        <textarea
+          value={fragment.body}
+          disabled={disabled}
+          onChange={(e) => onBodyChange(e.target.value)}
+          rows={6}
+          placeholder="Fragment text injected into the main agent prompt…"
+          className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+        />
+        {!disabled ? (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="mt-2 rounded border border-danger-fg/40 px-2 py-0.5 text-[10px] text-danger-fg hover:bg-danger-fg/5"
+          >
+            Remove fragment
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function seedOverrides(
+  blocks: SolutionPromptBlock[],
+): Record<OverrideKey, string | null> {
+  const out: Record<OverrideKey, string | null> = {
+    executionBias: null,
+    replyStyle: null,
+    userOnboarding: null,
+  };
+  for (const b of blocks) {
+    if (b.overrideKey && b.overridden) out[b.overrideKey] = b.text;
+  }
+  return out;
+}
+
+function seedFragments(
+  blocks: SolutionPromptBlock[],
+): CustomFragmentEdit[] {
+  return blocks
+    .filter((b) => b.customFragmentId)
+    .map((b) => ({
+      id: b.customFragmentId!,
+      title: b.title,
+      body: b.text,
+    }));
 }
 
 function SolutionOriginBadge({

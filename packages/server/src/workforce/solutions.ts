@@ -135,6 +135,14 @@ function specFromReality(
       skillsDeny: [],
       toolsAllow: null,
       toolsDeny: [],
+      // No host-block overrides + no custom fragments on a fresh
+      // extract — the operator adds them later by editing.
+      overrides: {
+        executionBias: null,
+        replyStyle: null,
+        userOnboarding: null,
+      },
+      customFragments: [],
     },
     workers,
   };
@@ -148,6 +156,14 @@ function writeSolution(
   spec: SolutionSpec,
   tenantPrompt: string | null,
   workerPrompts: Record<string, string>,
+  extra?: {
+    overrideBodies?: {
+      executionBias: string | null;
+      replyStyle: string | null;
+      userOnboarding: string | null;
+    };
+    fragmentBodies?: Record<string, string>;
+  },
 ): void {
   const dir = solutionDir(deps, spec.slug);
   // Fresh-write the whole dir so stale sidecars from a previous
@@ -155,16 +171,37 @@ function writeSolution(
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(dir, { recursive: true });
 
-  if (tenantPrompt && spec.mainAgent.tenantPromptPath) {
-    const p = path.join(dir, spec.mainAgent.tenantPromptPath);
+  const writeRel = (rel: string, body: string) => {
+    const p = path.join(dir, rel);
     fs.mkdirSync(path.dirname(p), { recursive: true });
-    fs.writeFileSync(p, tenantPrompt, "utf8");
+    fs.writeFileSync(p, body, "utf8");
+  };
+
+  if (tenantPrompt && spec.mainAgent.tenantPromptPath) {
+    writeRel(spec.mainAgent.tenantPromptPath, tenantPrompt);
+  }
+  // Host-block override sidecars.
+  const ob = extra?.overrideBodies;
+  if (ob) {
+    if (spec.mainAgent.overrides.executionBias && ob.executionBias) {
+      writeRel(spec.mainAgent.overrides.executionBias, ob.executionBias);
+    }
+    if (spec.mainAgent.overrides.replyStyle && ob.replyStyle) {
+      writeRel(spec.mainAgent.overrides.replyStyle, ob.replyStyle);
+    }
+    if (spec.mainAgent.overrides.userOnboarding && ob.userOnboarding) {
+      writeRel(spec.mainAgent.overrides.userOnboarding, ob.userOnboarding);
+    }
+  }
+  // Custom fragment sidecars.
+  const fb = extra?.fragmentBodies ?? {};
+  for (const frag of spec.mainAgent.customFragments) {
+    const body = fb[frag.id];
+    if (body !== undefined) writeRel(frag.path, body);
   }
   for (const w of spec.workers) {
     if (w.systemPromptPath && workerPrompts[w.slug] !== undefined) {
-      const p = path.join(dir, w.systemPromptPath);
-      fs.mkdirSync(path.dirname(p), { recursive: true });
-      fs.writeFileSync(p, workerPrompts[w.slug]!, "utf8");
+      writeRel(w.systemPromptPath, workerPrompts[w.slug]!);
     }
   }
   fs.writeFileSync(
@@ -206,7 +243,32 @@ function resolveDetail(
       if (body !== null) workerPrompts[w.slug] = body;
     }
   }
-  const view = buildMainView(deps, userId, tenantPrompt);
+  // Resolve override sidecars + custom fragment bodies so the
+  // block builder can show overridden text + custom blocks.
+  const ov = spec.mainAgent.overrides ?? {
+    executionBias: null,
+    replyStyle: null,
+    userOnboarding: null,
+  };
+  const overrideText = {
+    executionBias: ov.executionBias
+      ? safeRead(path.join(dir, ov.executionBias))
+      : null,
+    replyStyle: ov.replyStyle ? safeRead(path.join(dir, ov.replyStyle)) : null,
+    userOnboarding: ov.userOnboarding
+      ? safeRead(path.join(dir, ov.userOnboarding))
+      : null,
+  };
+  const customFragments = (spec.mainAgent.customFragments ?? []).map((f) => ({
+    id: f.id,
+    title: f.title,
+    body: safeRead(path.join(dir, f.path)) ?? "",
+  }));
+  const view = buildMainView(deps, userId, {
+    tenantPrompt,
+    overrideText,
+    customFragments,
+  });
   return {
     spec,
     tenantPrompt,
@@ -227,7 +289,15 @@ function resolveDetail(
 function buildMainView(
   deps: StoreDeps,
   userId: string,
-  tenantPrompt: string | null,
+  edits: {
+    tenantPrompt: string | null;
+    overrideText: {
+      executionBias: string | null;
+      replyStyle: string | null;
+      userOnboarding: string | null;
+    };
+    customFragments: Array<{ id: string; title: string; body: string }>;
+  },
 ): {
   blocks: SolutionPromptBlock[];
   availableSkills: SolutionResourceOption[];
@@ -239,6 +309,17 @@ function buildMainView(
     pluginRegistry: deps.pluginRegistry,
     tianshuVersion: deps.tianshuVersion,
   });
+  // Map reality block kinds to the override key they persist
+  // under. Only these host blocks are overridable (Yu's list:
+  // execution bias, reply style, user onboarding).
+  const overridableKind: Record<
+    string,
+    "executionBias" | "replyStyle" | "userOnboarding"
+  > = {
+    "execution-bias": "executionBias",
+    "reply-style": "replyStyle",
+    "user-onboarding": "userOnboarding",
+  };
   const blocks: SolutionPromptBlock[] = [];
   for (const b of snap.main.blocks) {
     if (b.kind === "workspace-context") {
@@ -248,8 +329,28 @@ function buildMainView(
         source: "tenant",
         origin: "tenant",
         editable: true,
-        text: tenantPrompt ?? b.text,
+        text: edits.tenantPrompt ?? b.text,
         note: "Editable. This text is injected into the main agent prompt for this solution.",
+      });
+      continue;
+    }
+    const ovKey = overridableKind[b.kind];
+    if (ovKey) {
+      const override = edits.overrideText[ovKey];
+      const overridden = override !== null && override !== undefined;
+      blocks.push({
+        kind: b.kind,
+        title: b.title,
+        source: "host",
+        origin: "host",
+        editable: true,
+        text: overridden ? override : b.text,
+        defaultText: b.text,
+        overrideKey: ovKey,
+        overridden,
+        note: overridden
+          ? "Overridden for this solution. Reset to fall back to the host default."
+          : "Host default. Click Override to replace it for this solution.",
       });
       continue;
     }
@@ -261,6 +362,20 @@ function buildMainView(
       editable: false,
       text: b.text,
       note: b.note,
+    });
+  }
+  // Append user-authored custom fragments as their own editable
+  // blocks at the end of the main-agent prompt.
+  for (const f of edits.customFragments) {
+    blocks.push({
+      kind: "custom-fragment",
+      title: f.title || "Custom fragment",
+      source: "tenant",
+      origin: "tenant",
+      editable: true,
+      text: f.body,
+      customFragmentId: f.id,
+      note: "Custom fragment you added. Injected into the main agent prompt for this solution.",
     });
   }
   // A resource is "locked" (can't be excluded) ONLY when it comes
@@ -439,6 +554,37 @@ export function saveSolution(
   const hasTenantPrompt =
     !!input.mainAgent.tenantPrompt &&
     input.mainAgent.tenantPrompt.trim().length > 0;
+  // Host-block overrides: a non-empty body means "override this
+  // block"; empty / null falls back to the host default (path
+  // null).
+  const ovIn = input.mainAgent.overrides;
+  const nonEmpty = (s: string | null): boolean =>
+    !!s && s.trim().length > 0;
+  const overrides = {
+    executionBias: nonEmpty(ovIn.executionBias)
+      ? "main-agent/execution-bias.md"
+      : null,
+    replyStyle: nonEmpty(ovIn.replyStyle)
+      ? "main-agent/reply-style.md"
+      : null,
+    userOnboarding: nonEmpty(ovIn.userOnboarding)
+      ? "main-agent/user-onboarding.md"
+      : null,
+  };
+  // Custom fragments: drop any with an empty body. id is the
+  // stable slug supplied by the UI; sanitise it for fs safety.
+  const fragmentBodies: Record<string, string> = {};
+  const customFragments = input.mainAgent.customFragments
+    .filter((f) => nonEmpty(f.body))
+    .map((f) => {
+      const id = sanitiseFragmentId(f.id);
+      fragmentBodies[id] = f.body;
+      return {
+        id,
+        title: f.title || id,
+        path: `main-agent/fragments/${id}.md`,
+      };
+    });
   const spec: SolutionSpec = {
     schema: "tianshu.solution.v1",
     slug: input.slug,
@@ -456,6 +602,8 @@ export function saveSolution(
       skillsDeny: input.mainAgent.skillsDeny,
       toolsAllow: input.mainAgent.toolsAllow,
       toolsDeny: input.mainAgent.toolsDeny,
+      overrides,
+      customFragments,
     },
     workers,
   };
@@ -464,8 +612,25 @@ export function saveSolution(
     spec,
     hasTenantPrompt ? input.mainAgent.tenantPrompt : null,
     workerPrompts,
+    {
+      overrideBodies: {
+        executionBias: ovIn.executionBias,
+        replyStyle: ovIn.replyStyle,
+        userOnboarding: ovIn.userOnboarding,
+      },
+      fragmentBodies,
+    },
   );
   return resolveDetail(deps, userId, spec);
+}
+
+function sanitiseFragmentId(raw: string): string {
+  const cleaned = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return cleaned.length > 0 ? cleaned : `frag-${Date.now()}`;
 }
 
 export function removeSolution(
@@ -526,6 +691,15 @@ function computeDiff(
     m["mainAgent.skillsDeny"] = JSON.stringify([...s.mainAgent.skillsDeny].sort());
     m["mainAgent.toolsAllow"] = JSON.stringify(s.mainAgent.toolsAllow);
     m["mainAgent.toolsDeny"] = JSON.stringify([...(s.mainAgent.toolsDeny ?? [])].sort());
+    // Override presence (not bodies — we diff structure, not
+    // prose) + custom fragment ids.
+    const ov = s.mainAgent.overrides;
+    m["mainAgent.overrides.executionBias"] = ov?.executionBias ? "set" : "";
+    m["mainAgent.overrides.replyStyle"] = ov?.replyStyle ? "set" : "";
+    m["mainAgent.overrides.userOnboarding"] = ov?.userOnboarding ? "set" : "";
+    m["mainAgent.customFragments"] = JSON.stringify(
+      (s.mainAgent.customFragments ?? []).map((f) => f.id).sort(),
+    );
     for (const w of s.workers) {
       const k = `workers.${w.slug}`;
       m[`${k}.modelId`] = JSON.stringify(w.modelId);
