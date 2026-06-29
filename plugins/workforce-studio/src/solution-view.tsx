@@ -828,76 +828,129 @@ function ResourcePicker({
   const excludedCount = options.filter(
     (o) => !o.locked && excluded.has(o.name),
   ).length;
+  // Group by contributor so the operator scans by source. Sort
+  // groups: core / host first (host-owned), then plugin ids
+  // alphabetically. Within a group, names stay alphabetical (the
+  // host already sorted the flat list).
+  const groups = new Map<string, ResourceOption[]>();
+  for (const o of options) {
+    const key = o.pluginId || groupKeyFromOrigin(o.origin);
+    const cur = groups.get(key);
+    if (cur) cur.push(o);
+    else groups.set(key, [o]);
+  }
+  const orderedKeys = [...groups.keys()].sort((a, b) => {
+    const rank = (k: string) => (k === "core" || k === "host" ? 0 : 1);
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    return a.localeCompare(b);
+  });
   return (
     <div className="rounded border border-border-subtle bg-bg-base">
       <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 text-xs">
         <span className="font-semibold">{title}</span>
-        <span className="text-fg-muted">{options.length} total</span>
+        <span className="text-fg-muted">
+          {options.length} total · {groups.size} sources
+        </span>
         {excludedCount > 0 ? (
           <span className="ml-auto rounded bg-danger-fg/10 px-1.5 py-0.5 text-[10px] text-danger-fg">
             {excludedCount} excluded
           </span>
         ) : null}
       </div>
-      <ul className="max-h-72 overflow-auto">
-        {options.map((o) => {
-          const isExcluded = excluded.has(o.name);
+      <div className="max-h-72 overflow-auto">
+        {orderedKeys.map((key) => {
+          const items = groups.get(key)!;
           return (
-            <li
-              key={o.name}
-              className="flex items-center gap-2 border-b border-border-subtle px-3 py-1.5 text-xs last:border-0"
-            >
-              <code
-                className={`font-mono text-[11px] ${
-                  isExcluded ? "text-fg-muted line-through" : ""
-                }`}
-              >
-                {o.name}
-              </code>
-              <ResourceOriginBadge origin={o.origin} />
-              {o.pluginId && o.pluginId !== "core" && o.pluginId !== "host" ? (
-                <code
-                  className="rounded bg-bg-elevated px-1 text-[10px] text-fg-muted"
-                  title={`Contributed by plugin ${o.pluginId}`}
-                >
-                  {o.pluginId}
-                </code>
-              ) : null}
-              {o.locked ? (
-                <span
-                  className="ml-auto rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] text-fg-muted"
-                  title="Contributed by a plugin or the host — included automatically, can't be excluded."
-                >
-                  locked
+            <div key={key}>
+              <div className="sticky top-0 flex items-center gap-2 border-b border-border-subtle bg-bg-elevated px-3 py-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                  {groupLabel(key)}
                 </span>
-              ) : (
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onToggle(o.name)}
-                  className={`ml-auto rounded px-2 py-0.5 text-[10px] font-medium disabled:opacity-50 ${
-                    isExcluded
-                      ? "bg-danger-fg/10 text-danger-fg hover:bg-danger-fg/20"
-                      : "bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
-                  }`}
-                  title={
-                    isExcluded
-                      ? "Excluded — click to include again."
-                      : "Included — click to exclude from this solution."
-                  }
-                >
-                  {isExcluded ? "Excluded" : "Included"}
-                </button>
-              )}
-            </li>
+                <span className="text-[10px] text-fg-muted">
+                  {items.length}
+                </span>
+              </div>
+              <ul>
+                {items.map((o) => (
+                  <ResourceRow
+                    key={o.name}
+                    option={o}
+                    isExcluded={excluded.has(o.name)}
+                    disabled={disabled}
+                    onToggle={onToggle}
+                  />
+                ))}
+              </ul>
+            </div>
           );
         })}
         {options.length === 0 ? (
-          <li className="px-3 py-2 text-xs text-fg-muted">None.</li>
+          <div className="px-3 py-2 text-xs text-fg-muted">None.</div>
         ) : null}
-      </ul>
+      </div>
     </div>
   );
+}
+
+function ResourceRow({
+  option: o,
+  isExcluded,
+  disabled,
+  onToggle,
+}: {
+  option: ResourceOption;
+  isExcluded: boolean;
+  disabled: boolean;
+  onToggle: (name: string) => void;
+}): ReactElement {
+  return (
+    <li className="flex items-center gap-2 border-b border-border-subtle px-3 py-1.5 text-xs last:border-0">
+      <code
+        className={`font-mono text-[11px] ${
+          isExcluded ? "text-fg-muted line-through" : ""
+        }`}
+      >
+        {o.name}
+      </code>
+      <ResourceOriginBadge origin={o.origin} />
+      {o.locked ? (
+        <span
+          className="ml-auto rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] text-fg-muted"
+          title="Contributed by a plugin or the host — included automatically, can't be excluded."
+        >
+          locked
+        </span>
+      ) : (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onToggle(o.name)}
+          className={`ml-auto rounded px-2 py-0.5 text-[10px] font-medium disabled:opacity-50 ${
+            isExcluded
+              ? "bg-danger-fg/10 text-danger-fg hover:bg-danger-fg/20"
+              : "bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
+          }`}
+          title={
+            isExcluded
+              ? "Excluded — click to include again."
+              : "Included — click to exclude from this solution."
+          }
+        >
+          {isExcluded ? "Excluded" : "Included"}
+        </button>
+      )}
+    </li>
+  );
+}
+
+function groupKeyFromOrigin(origin: ResourceOption["origin"]): string {
+  return origin === "core" ? "core" : "host";
+}
+
+function groupLabel(key: string): string {
+  if (key === "core") return "Core (host-owned)";
+  if (key === "host") return "Host";
+  return `Plugin: ${key}`;
 }
 
 function ResourceOriginBadge({
