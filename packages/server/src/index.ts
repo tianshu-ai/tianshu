@@ -80,7 +80,9 @@ import type {
   SkillCatalogCapability,
   ModelCatalogCapability,
   LspCapability,
+  WorkforceSnapshotCapability,
 } from "@tianshu-ai/plugin-sdk";
+import { buildWorkforceSnapshot } from "./workforce/snapshot.js";
 import { enqueue as inboxEnqueue } from "./chat/session-inbox.js";
 import { installIdleRunner } from "./boot/idle-runner.js";
 import { mountChannelRoutes, toView } from "./boot/routes-channels.js";
@@ -273,6 +275,21 @@ pluginRegistry = new PluginRegistry({
           models: models.sort((a, b) => a.id.localeCompare(b.id)),
           defaultModelId: cfg.defaultModel ?? null,
         };
+      },
+    }),
+    // Workforce Studio snapshot — a one-call introspection of the
+    // tenant's agent configuration (main agent system prompt +
+    // tools + skills with body, plus every worker_agent's stored
+    // SOUL.md + allow-lists). Powers the read-only Studio admin
+    // page + zip export. Editing surfaces land in later phases.
+    "host.workforceSnapshot": (ctx): WorkforceSnapshotCapability => ({
+      build(userId: string) {
+        return buildWorkforceSnapshot({
+          ctx,
+          userId,
+          pluginRegistry,
+          tianshuVersion: PACKAGE_VERSION,
+        });
       },
     }),
     "host.agentLoop": (ctx) => {
