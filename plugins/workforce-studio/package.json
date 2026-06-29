@@ -1,0 +1,36 @@
+{
+  "name": "@tianshu-builtin/plugin-workforce-studio",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Workforce Studio: inspect + export the tenant's main agent and every worker agent (prompts, tools, skills) as a downloadable bundle.",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./manifest.json": "./manifest.json"
+  },
+  "files": ["dist", "src", "manifest.json"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@tianshu-ai/plugin-sdk": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/react": "^19.2.6",
+    "react": "^19.2.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.9"
+  }
+}

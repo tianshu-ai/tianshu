@@ -1,0 +1,27 @@
+{
+  "id": "workforce-studio",
+  "version": "0.1.0",
+  "displayName": "Workforce Studio",
+  "description": "Inspect + export the tenant's main agent and every worker agent — system prompts, available tools, skills — into a single downloadable bundle. Phase 1 is read-only: editing + import land in later phases.",
+  "author": "tianshu-ai",
+  "license": "MIT",
+  "permissions": [],
+  "server": { "entry": "@tianshu-builtin/plugin-workforce-studio/server" },
+  "client": { "entry": "@tianshu-builtin/plugin-workforce-studio/client" },
+  "contributes": {
+    "adminPages": [
+      {
+        "id": "main",
+        "displayName": "Workforce Studio",
+        "icon": "Layers",
+        "component": "WorkforceStudioPage",
+        "group": "Tools",
+        "order": 50
+      }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/snapshot", "handler": "getSnapshot" },
+      { "method": "GET", "path": "/snapshot/zip", "handler": "downloadZip" }
+    ]
+  }
+}
