@@ -76,6 +76,34 @@ export interface SolutionSpec {
   workers: SolutionWorker[];
 }
 
+/** One main-agent prompt block as shown in the Solution view's
+ *  block editor. Mirrors WorkforcePromptBlock from the snapshot,
+ *  but adds the solution-editing semantics: read-only blocks
+ *  (host / plugin sourced) are shown for context only; editable
+ *  blocks (workspace context, tenant prompt override) carry a
+ *  body the operator can change and we persist on save.
+ *
+ *  We duplicate the shape rather than import WorkforcePromptBlock
+ *  so the solution surface stays self-contained — a solution
+ *  block's editability is a solution concept, not a snapshot one. */
+export interface SolutionPromptBlock {
+  kind: string;
+  title: string;
+  /** "host" | "plugin:<id>" | "tenant" | "workspace". */
+  source: string;
+  /** Provenance bucket for the badge. */
+  origin: "core" | "builtin-plugin" | "tenant-plugin" | "host" | "tenant" | "workspace";
+  /** Whether the Solution editor lets the operator change this
+   *  block. host / plugin blocks are false; workspace / tenant
+   *  blocks are true. */
+  editable: boolean;
+  /** Block body. For editable blocks this is the current value
+   *  (and the editor binds to it); for read-only blocks it's the
+   *  reference text from reality. */
+  text: string;
+  note?: string;
+}
+
 /** A solution as returned to the studio: the spec plus the
  *  resolved bodies of its sidecar files, so the UI can render
  *  prompt content without a second round-trip. */
@@ -86,6 +114,11 @@ export interface SolutionDetail {
   tenantPrompt: string | null;
   /** Resolved worker SOUL.md bodies, keyed by worker slug. */
   workerPrompts: Record<string, string>;
+  /** Main-agent prompt blocks for the block-style editor. The
+   *  read-only host / plugin blocks come from current reality as
+   *  reference; the editable workspace / tenant-prompt blocks
+   *  carry the solution's own values. */
+  mainBlocks: SolutionPromptBlock[];
   /** True for the reserved `current` slug — the studio renders it
    *  read-only (it's a live mirror of reality, regenerated on
    *  extract) and hides Apply. */
