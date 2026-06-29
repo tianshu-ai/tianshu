@@ -103,6 +103,13 @@ interface SolutionWorkerView {
   availableSkills: ResourceOption[];
   availableTools: ResourceOption[];
 }
+interface PluginOption {
+  id: string;
+  displayName: string;
+  description: string;
+  origin: "builtin-plugin" | "tenant-plugin";
+  state: "active" | "failed" | "disabled" | "loading";
+}
 interface SolutionDetail {
   spec: SolutionSpec;
   tenantPrompt: string | null;
@@ -111,6 +118,7 @@ interface SolutionDetail {
   availableSkills: ResourceOption[];
   availableTools: ResourceOption[];
   workerViews: Record<string, SolutionWorkerView>;
+  availablePlugins: PluginOption[];
   isCurrent: boolean;
 }
 interface DiffEntry {
@@ -390,6 +398,13 @@ function SolutionDetailPanel({
   const [workerEdits, setWorkerEdits] = useState<Record<string, WorkerEdit>>(
     () => seedWorkerEdits(spec.workers, detail.workerPrompts),
   );
+  // Enabled plugin ids (include/exclude picker).
+  const [pluginsEnabled, setPluginsEnabled] = useState<Set<string>>(
+    () => new Set(spec.plugins.enabled),
+  );
+  useEffect(() => {
+    setPluginsEnabled(new Set(spec.plugins.enabled));
+  }, [spec.slug, spec.plugins.enabled]);
   useEffect(() => {
     setWorkerEdits(seedWorkerEdits(spec.workers, detail.workerPrompts));
   }, [spec.slug, spec.workers, detail.workerPrompts]);
@@ -434,7 +449,7 @@ function SolutionDetailPanel({
         slug: spec.slug,
         name,
         description,
-        plugins: spec.plugins,
+        plugins: { enabled: [...pluginsEnabled].sort() },
         mainAgent: {
           tenantPrompt: tenantPrompt.trim().length > 0 ? tenantPrompt : null,
           // Deny-only model: allow lists stay null (no whitelist).
@@ -514,6 +529,7 @@ function SolutionDetailPanel({
     overrides,
     fragments,
     workerEdits,
+    pluginsEnabled,
     onSaved,
   ]);
 
@@ -726,18 +742,52 @@ function SolutionDetailPanel({
         </div>
       </Section>
 
-      {/* Plugins */}
-      <Section title={`Plugins (${spec.plugins.enabled.length})`}>
-        <div className="flex flex-wrap gap-1">
-          {spec.plugins.enabled.map((p) => (
-            <code
-              key={p}
-              className="rounded bg-bg-base px-1.5 py-0.5 text-[11px]"
-            >
-              {p}
-            </code>
-          ))}
-        </div>
+      {/* Plugins — include / exclude picker over the full set of
+          discovered plugins. */}
+      <Section
+        title={`Plugins (${pluginsEnabled.size} / ${detail.availablePlugins.length})`}
+      >
+        <ul className="flex flex-col gap-1">
+          {detail.availablePlugins.map((p) => {
+            const enabled = pluginsEnabled.has(p.id);
+            return (
+              <li
+                key={p.id}
+                className="flex flex-wrap items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-bg-elevated"
+              >
+                <span className={enabled ? "font-medium" : "text-fg-muted line-through"}>
+                  {p.displayName}
+                </span>
+                <code className="text-[10px] text-fg-muted">{p.id}</code>
+                <SolutionOriginBadge origin={p.origin} />
+                {p.state !== "active" ? (
+                  <span className="rounded bg-danger-fg/10 px-1.5 py-0.5 text-[10px] text-danger-fg">
+                    {p.state}
+                  </span>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={isCurrent}
+                  onClick={() =>
+                    setPluginsEnabled((prev) => toggleInSet(prev, p.id))
+                  }
+                  className={`ml-auto rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
+                    enabled
+                      ? "border-border-subtle bg-bg-elevated text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"
+                      : "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
+                  }`}
+                  title={
+                    enabled
+                      ? "Included — click to exclude from this solution."
+                      : "Excluded — click to include."
+                  }
+                >
+                  {enabled ? "Exclude" : "Include"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       </Section>
 
       {/* Workers — each gets the same block-style editor as the
