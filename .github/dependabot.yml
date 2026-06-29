@@ -48,6 +48,20 @@ updates:
     commit-message:
       prefix: "chore(deps,server)"
       include: scope
+    # Hold @earendil-works/pi-ai and pi-agent-core at 0.79.x until
+    # the breaking 0.80 surface (Models singleton removal +
+    # AgentHarness auth redesign) gets a dedicated migration PR.
+    # Tracked in https://github.com/tianshu-ai/tianshu/issues/260.
+    # Drop these ignores once the migration lands.
+    ignore:
+      - dependency-name: "@earendil-works/pi-ai"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
+      - dependency-name: "@earendil-works/pi-agent-core"
+        update-types:
+          - "version-update:semver-minor"
+          - "version-update:semver-major"
     groups:
       types:
         patterns:
