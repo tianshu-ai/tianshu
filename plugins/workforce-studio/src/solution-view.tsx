@@ -98,6 +98,11 @@ interface ResourceOption {
   pluginId: string;
   locked: boolean;
 }
+interface SolutionWorkerView {
+  blocks: SolutionPromptBlock[];
+  availableSkills: ResourceOption[];
+  availableTools: ResourceOption[];
+}
 interface SolutionDetail {
   spec: SolutionSpec;
   tenantPrompt: string | null;
@@ -105,6 +110,7 @@ interface SolutionDetail {
   mainBlocks: SolutionPromptBlock[];
   availableSkills: ResourceOption[];
   availableTools: ResourceOption[];
+  workerViews: Record<string, SolutionWorkerView>;
   isCurrent: boolean;
 }
 interface DiffEntry {
@@ -379,6 +385,14 @@ function SolutionDetailPanel({
   const [fragments, setFragments] = useState<CustomFragmentEdit[]>(() =>
     seedFragments(detail.mainBlocks),
   );
+  // Per-worker edits, keyed by slug. Each holds the editable
+  // worker fields + SOUL prompt + skill/tool deny sets.
+  const [workerEdits, setWorkerEdits] = useState<Record<string, WorkerEdit>>(
+    () => seedWorkerEdits(spec.workers, detail.workerPrompts),
+  );
+  useEffect(() => {
+    setWorkerEdits(seedWorkerEdits(spec.workers, detail.workerPrompts));
+  }, [spec.slug, spec.workers, detail.workerPrompts]);
   useEffect(() => {
     setName(spec.name);
     setDescription(spec.description);
@@ -440,18 +454,46 @@ function SolutionDetailPanel({
             body: f.body,
           })),
         },
-        workers: spec.workers.map((w) => ({
-          slug: w.slug,
-          kind: w.kind,
-          name: w.name,
-          description: w.description,
-          modelId: w.modelId,
-          enabled: w.enabled,
-          systemPrompt: detail.workerPrompts[w.slug] ?? null,
-          toolsAllow: w.toolsAllow,
-          skillsAllow: w.skillsAllow,
-          source: w.source,
-        })),
+        workers: spec.workers.map((w) => {
+          const e = workerEdits[w.slug];
+          const view = detail.workerViews[w.slug];
+          if (!e || !view) {
+            // No edit state (shouldn't happen) — pass through.
+            return {
+              slug: w.slug,
+              kind: w.kind,
+              name: w.name,
+              description: w.description,
+              modelId: w.modelId,
+              enabled: w.enabled,
+              systemPrompt: detail.workerPrompts[w.slug] ?? null,
+              toolsAllow: w.toolsAllow,
+              skillsAllow: w.skillsAllow,
+              source: w.source,
+            };
+          }
+          // Deny picker over the worker's effective set → persist
+          // as an allow-list (effective minus excluded). Only the
+          // unlocked entries can be excluded; locked ones always
+          // stay in.
+          const allowFrom = (
+            opts: ResourceOption[],
+            deny: Set<string>,
+          ): string[] =>
+            opts.filter((o) => !deny.has(o.name)).map((o) => o.name).sort();
+          return {
+            slug: w.slug,
+            kind: w.kind,
+            name: e.name,
+            description: e.description,
+            modelId: e.modelId,
+            enabled: e.enabled,
+            systemPrompt: e.soul.trim().length > 0 ? e.soul : null,
+            toolsAllow: allowFrom(view.availableTools, e.toolsDeny),
+            skillsAllow: allowFrom(view.availableSkills, e.skillsDeny),
+            source: w.source,
+          };
+        }),
       };
       await api("/solutions/save", {
         method: "POST",
@@ -461,7 +503,19 @@ function SolutionDetailPanel({
     } finally {
       setBusy(false);
     }
-  }, [spec, name, description, detail, onSaved]);
+  }, [
+    spec,
+    name,
+    description,
+    detail,
+    tenantPrompt,
+    skillsDeny,
+    toolsDeny,
+    overrides,
+    fragments,
+    workerEdits,
+    onSaved,
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -686,35 +740,29 @@ function SolutionDetailPanel({
         </div>
       </Section>
 
-      {/* Workers */}
+      {/* Workers — each gets the same block-style editor as the
+          main agent (SOUL block + read-only host/plugin reference
+          blocks + skill/tool deny pickers + basic fields). */}
       <Section title={`Workers (${spec.workers.length})`}>
-        <ul className="flex flex-col gap-2">
-          {spec.workers.map((w) => (
-            <li
-              key={w.slug}
-              className="rounded border border-border-subtle bg-bg-base px-3 py-2 text-xs"
-            >
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{w.name}</span>
-                <code className="text-[10px] text-fg-muted">{w.slug}</code>
-                <span className="text-[10px] text-fg-muted">{w.kind}</span>
-                {w.modelId ? (
-                  <code className="text-[10px] text-fg-muted">
-                    {w.modelId}
-                  </code>
-                ) : (
-                  <span className="text-[10px] text-fg-muted">
-                    default model
-                  </span>
-                )}
-                <span className="ml-auto text-[10px] text-fg-muted">
-                  {w.toolsAllow?.length ?? "∗"} tools ·{" "}
-                  {w.skillsAllow?.length ?? "∗"} skills
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <div className="flex flex-col gap-3">
+          {spec.workers.map((w) => {
+            const e = workerEdits[w.slug];
+            const view = detail.workerViews[w.slug];
+            if (!e || !view) return null;
+            return (
+              <WorkerEditor
+                key={w.slug}
+                worker={w}
+                view={view}
+                edit={e}
+                isCurrent={isCurrent}
+                onChange={(next) =>
+                  setWorkerEdits((prev) => ({ ...prev, [w.slug]: next }))
+                }
+              />
+            );
+          })}
+        </div>
       </Section>
 
       {diff ? <DiffPanel diff={diff} /> : null}
@@ -1045,6 +1093,254 @@ function seedFragments(
       title: b.title,
       body: b.text,
     }));
+}
+
+// ─── worker editor ──────────────────────────────────────────────
+
+interface WorkerEdit {
+  name: string;
+  description: string | null;
+  modelId: string | null;
+  enabled: boolean;
+  soul: string;
+  skillsDeny: Set<string>;
+  toolsDeny: Set<string>;
+}
+
+function seedWorkerEdits(
+  workers: SolutionWorker[],
+  workerPrompts: Record<string, string>,
+): Record<string, WorkerEdit> {
+  const out: Record<string, WorkerEdit> = {};
+  for (const w of workers) {
+    out[w.slug] = {
+      name: w.name,
+      description: w.description,
+      modelId: w.modelId,
+      enabled: w.enabled,
+      soul: workerPrompts[w.slug] ?? "",
+      // Deny sets start empty: a freshly-extracted worker includes
+      // everything in its effective set. The operator excludes
+      // from there.
+      skillsDeny: new Set(),
+      toolsDeny: new Set(),
+    };
+  }
+  return out;
+}
+
+function WorkerEditor({
+  worker,
+  view,
+  edit,
+  isCurrent,
+  onChange,
+}: {
+  worker: SolutionWorker;
+  view: SolutionWorkerView;
+  edit: WorkerEdit;
+  isCurrent: boolean;
+  onChange: (next: WorkerEdit) => void;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  const set = (patch: Partial<WorkerEdit>) => onChange({ ...edit, ...patch });
+  return (
+    <div className="rounded-lg border border-border-subtle bg-bg-base">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left text-xs"
+      >
+        {open ? (
+          <ChevronDown className="size-3.5 text-fg-muted" />
+        ) : (
+          <ChevronRight className="size-3.5 text-fg-muted" />
+        )}
+        <span className="font-medium">{edit.name}</span>
+        <code className="text-[10px] text-fg-muted">{worker.slug}</code>
+        <span className="text-[10px] text-fg-muted">{worker.kind}</span>
+        <span className="ml-auto flex items-center gap-2 text-[10px] text-fg-muted">
+          {edit.modelId ? (
+            <code>{edit.modelId}</code>
+          ) : (
+            <span>default model</span>
+          )}
+          <span
+            className={
+              edit.enabled
+                ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-success-fg"
+                : "rounded bg-fg-muted/15 px-1.5 py-0.5"
+            }
+          >
+            {edit.enabled ? "enabled" : "disabled"}
+          </span>
+        </span>
+      </button>
+      {open ? (
+        <div className="flex flex-col gap-3 border-t border-border-subtle p-3">
+          {/* Basic fields */}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Field label="Name">
+              <input
+                value={edit.name}
+                disabled={isCurrent}
+                onChange={(ev) => set({ name: ev.target.value })}
+                className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1 text-xs disabled:opacity-60"
+              />
+            </Field>
+            <Field label="Model id (empty = default)">
+              <input
+                value={edit.modelId ?? ""}
+                disabled={isCurrent}
+                onChange={(ev) =>
+                  set({
+                    modelId:
+                      ev.target.value.trim().length > 0
+                        ? ev.target.value
+                        : null,
+                  })
+                }
+                className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1 font-mono text-xs disabled:opacity-60"
+              />
+            </Field>
+            <Field label="Description">
+              <input
+                value={edit.description ?? ""}
+                disabled={isCurrent}
+                onChange={(ev) =>
+                  set({
+                    description:
+                      ev.target.value.trim().length > 0
+                        ? ev.target.value
+                        : null,
+                  })
+                }
+                className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1 text-xs disabled:opacity-60"
+              />
+            </Field>
+            <label className="flex items-center gap-2 self-end text-xs">
+              <input
+                type="checkbox"
+                checked={edit.enabled}
+                disabled={isCurrent}
+                onChange={(ev) => set({ enabled: ev.target.checked })}
+              />
+              Enabled
+            </label>
+          </div>
+
+          {/* Prompt blocks (SOUL editable, rest read-only) */}
+          <div className="flex flex-col gap-2">
+            {view.blocks.map((b, idx) => (
+              <WorkerBlockCard
+                key={`${b.kind}-${idx}`}
+                index={idx + 1}
+                block={b}
+                isCurrent={isCurrent}
+                soul={edit.soul}
+                onSoulChange={(v) => set({ soul: v })}
+              />
+            ))}
+          </div>
+
+          {/* Skill / tool deny pickers */}
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <ResourcePicker
+              title="Skills"
+              options={view.availableSkills}
+              excluded={edit.skillsDeny}
+              disabled={isCurrent}
+              onToggle={(n) =>
+                set({ skillsDeny: toggleInSet(edit.skillsDeny, n) })
+              }
+            />
+            <ResourcePicker
+              title="Tools"
+              options={view.availableTools}
+              excluded={edit.toolsDeny}
+              disabled={isCurrent}
+              onToggle={(n) =>
+                set({ toolsDeny: toggleInSet(edit.toolsDeny, n) })
+              }
+            />
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+// Worker block card: like SolutionBlockCard but only the SOUL
+// block is editable; everything else is read-only reference.
+function WorkerBlockCard({
+  index,
+  block,
+  isCurrent,
+  soul,
+  onSoulChange,
+}: {
+  index: number;
+  block: SolutionPromptBlock;
+  isCurrent: boolean;
+  soul: string;
+  onSoulChange: (next: string) => void;
+}): ReactElement {
+  const isSoul = block.kind === "worker-soul";
+  const [open, setOpen] = useState(isSoul);
+  const borderTone = block.editable
+    ? "border-border-subtle"
+    : "border-border-subtle/60 border-dashed";
+  return (
+    <div className={`rounded-md border bg-bg-elevated ${borderTone}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left text-xs"
+      >
+        {open ? (
+          <ChevronDown className="size-3.5 text-fg-muted" />
+        ) : (
+          <ChevronRight className="size-3.5 text-fg-muted" />
+        )}
+        <span className="text-[10px] text-fg-muted">#{index}</span>
+        <span className="font-medium">{block.title}</span>
+        <SolutionOriginBadge origin={block.origin} />
+        <span
+          className={
+            block.editable
+              ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-success-fg"
+              : "rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium"
+          }
+        >
+          {block.editable ? "editable" : "read-only"}
+        </span>
+        <span className="ml-auto text-[10px] text-fg-muted">{block.source}</span>
+      </button>
+      {open ? (
+        <div className="border-t border-border-subtle px-3 py-2">
+          {block.note ? (
+            <div className="mb-2 text-[11px] text-fg-muted">{block.note}</div>
+          ) : null}
+          {isSoul ? (
+            <textarea
+              value={soul}
+              disabled={isCurrent}
+              onChange={(ev) => onSoulChange(ev.target.value)}
+              rows={8}
+              placeholder={
+                isCurrent ? "" : "Worker SOUL.md — the worker's persona + rules."
+              }
+              className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+            />
+          ) : (
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
+              {block.text}
+            </pre>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function SolutionOriginBadge({

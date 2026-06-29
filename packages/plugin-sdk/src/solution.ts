@@ -207,10 +207,23 @@ export interface SolutionDetail {
   availableSkills: SolutionResourceOption[];
   /** Full tool catalogue from reality, for the deny picker. */
   availableTools: SolutionResourceOption[];
+  /** Per-worker editor views, keyed by worker slug. Each carries
+   *  the worker's block decomposition (mirroring the agent-loop
+   *  worker prompt) + its own skill / tool catalogue for the deny
+   *  picker — the worker equivalent of mainBlocks +
+   *  availableSkills/Tools. */
+  workerViews: Record<string, SolutionWorkerView>;
   /** True for the reserved `current` slug — the studio renders it
    *  read-only (it's a live mirror of reality, regenerated on
    *  extract) and hides Apply. */
   isCurrent: boolean;
+}
+
+/** Editor view data for one worker in the Solution view. */
+export interface SolutionWorkerView {
+  blocks: SolutionPromptBlock[];
+  availableSkills: SolutionResourceOption[];
+  availableTools: SolutionResourceOption[];
 }
 
 /** Lightweight summary for the solution list / picker. */

@@ -265,7 +265,7 @@ export function buildWorkforceSnapshot(
   // --- Workers ---
   const fsRecords = loadWorkerAgents(ctx.tenantId, ctx.home);
   const workers: WorkforceWorkerAgent[] = fsRecords.map((r) =>
-    toWorkerEntry(r, toolsAll, skillsAll, ctx, userId),
+    toWorkerEntry(r, toolsAll, skillsAll, ctx, userId, fragments, resolveOrigin),
   );
 
   // --- Plugin inventory rows ---
@@ -365,6 +365,13 @@ function toWorkerEntry(
   skillsAll: readonly WorkforceSkillEntry[],
   ctx: TenantContext,
   userId: string,
+  fragments: ReadonlyArray<{
+    pluginId: string;
+    pluginDisplayName: string;
+    fragmentId: string;
+    text: string;
+  }>,
+  resolveOrigin: (pluginId: string) => WorkforceOrigin,
 ): WorkforceWorkerAgent {
   const spec = r.spec;
   const toolsAllow = spec.toolsAllow ?? null;
@@ -378,25 +385,45 @@ function toWorkerEntry(
       ? skillsAll.filter((s) => !s.scope || s.scope === "worker")
       : skillsAll.filter((s) => skillsAllow.includes(s.name));
 
-  // Worker block decomposition: SOUL.md (editable) + worker
-  // context block (workspace-sourced). The rendered worker
-  // prompt is composed in agent-loop.ts and pulls in much more
-  // (execution bias, plugin fragments, skill block) — but Phase
-  // 1 stays narrow because the worker prompt builder hasn't
-  // been refactored out yet.
+  // Worker block decomposition mirrors the worker prompt the
+  // agent loop actually composes (see agent-loop.ts, the
+  // req.systemPrompt branch). Order + sources kept in sync so
+  // the studio shows what the worker really receives:
+  //   1. SOUL.md            (editable, workspace)
+  //   2. Runtime context    (read-only, host — per-turn dynamic)
+  //   3. Execution bias     (overridable host text)
+  //   4. Worker context     (editable, workspace files)
+  //   5. Plugin fragments   (read-only, one per plugin)
+  //   6. Available skills   (read-only, host — worker's skill set)
   const soul = r.systemPrompt ?? "";
   const blocks: WorkforcePromptBlock[] = [];
-  if (soul.trim().length > 0) {
-    blocks.push({
-      kind: "worker-soul",
-      title: "Worker SOUL.md",
-      source: "workspace",
-      origin: "workspace",
-      editable: true,
-      text: soul,
-      note: `Sourced from _tenant/config/workers/${r.slug}/SOUL.md.`,
-    });
-  }
+  blocks.push({
+    kind: "worker-soul",
+    title: "Worker SOUL.md",
+    source: "workspace",
+    origin: "workspace",
+    editable: true,
+    text: soul,
+    note: `Sourced from _tenant/config/workers/${r.slug}/SOUL.md.`,
+  });
+  blocks.push({
+    kind: "runtime-context",
+    title: "Runtime context",
+    source: "host",
+    origin: "host",
+    editable: false,
+    text: formatRuntimeContextBlock({ tenantId: ctx.tenantId, userId }),
+    note: "Time, timezone, host OS, identity. Refreshed every turn at runtime.",
+  });
+  blocks.push({
+    kind: "execution-bias",
+    title: "Execution bias",
+    source: "host",
+    origin: "host",
+    editable: false,
+    text: formatExecutionBiasBlock(),
+    note: "Host-level behaviour rules — same text the main agent receives.",
+  });
   const workerCtxBlock = formatWorkerAgentContextBlock(
     ctx.workspaceDir,
     ctx.userHomeDir(userId),
@@ -411,6 +438,58 @@ function toWorkerEntry(
       editable: true,
       text: workerCtxBlock,
       note: "Sourced from the worker's own AGENTS.md / MEMORY.md + the user's USER.md.",
+    });
+  }
+  // Plugin fragments — one block per plugin, same as the main
+  // agent. Workers see the same plugin guidance (how-to-use-tools).
+  const fragmentsByPlugin = new Map<
+    string,
+    { displayName: string; texts: string[] }
+  >();
+  for (const f of fragments) {
+    const cur = fragmentsByPlugin.get(f.pluginId);
+    if (cur) cur.texts.push(f.text);
+    else
+      fragmentsByPlugin.set(f.pluginId, {
+        displayName: f.pluginDisplayName,
+        texts: [f.text],
+      });
+  }
+  for (const [pluginId, info] of fragmentsByPlugin) {
+    blocks.push({
+      kind: "plugin-fragment",
+      title: `${info.displayName} guidance`,
+      source: `plugin:${pluginId}`,
+      origin: resolveOrigin(pluginId),
+      editable: false,
+      text: info.texts.join("\n\n"),
+      note: `Managed by plugin \`${pluginId}\` — disable the plugin to drop these rules.`,
+    });
+  }
+  // Available skills — the worker's own skill set (already
+  // filtered above). We render a lightweight reference list
+  // rather than calling formatAvailableSkillsBlock (which needs
+  // full LoadedSkill records for the tenant-config URIs); this
+  // block is read-only context in the studio, the real
+  // <available_skills> the worker receives is assembled by the
+  // agent loop at run time.
+  if (skills.length > 0) {
+    const skillLines = [
+      "<available_skills>",
+      ...skills.map(
+        (s) =>
+          `  <skill><name>${s.name}</name><description>${s.description}</description></skill>`,
+      ),
+      "</available_skills>",
+    ];
+    blocks.push({
+      kind: "available-skills",
+      title: "Available skills catalogue",
+      source: "host",
+      origin: "host",
+      editable: false,
+      text: skillLines.join("\n"),
+      note: "The worker's skill set. Toggle individual skills in the Skills picker below.",
     });
   }
 
