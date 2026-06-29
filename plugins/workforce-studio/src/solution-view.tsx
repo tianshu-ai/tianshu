@@ -65,6 +65,7 @@ interface SolutionSpec {
     skillsAllow: string[] | null;
     skillsDeny: string[];
     toolsAllow: string[] | null;
+    toolsDeny: string[];
   };
   workers: SolutionWorker[];
 }
@@ -84,11 +85,19 @@ interface SolutionPromptBlock {
   text: string;
   note?: string;
 }
+interface ResourceOption {
+  name: string;
+  description: string;
+  origin: "core" | "builtin-plugin" | "tenant-plugin" | "host";
+  locked: boolean;
+}
 interface SolutionDetail {
   spec: SolutionSpec;
   tenantPrompt: string | null;
   workerPrompts: Record<string, string>;
   mainBlocks: SolutionPromptBlock[];
+  availableSkills: ResourceOption[];
+  availableTools: ResourceOption[];
   isCurrent: boolean;
 }
 interface DiffEntry {
@@ -339,36 +348,33 @@ function SolutionDetailPanel({
 
   // Editable fields (named solutions only). Phase 2 surface:
   // name, description, the main-agent tenant-prompt override,
-  // and the main-agent skill/tool allow + skill deny lists
-  // (edited as comma/newline-separated text, parsed on save).
+  // and — in the deny-only model — the set of excluded skills /
+  // tools. The operator excludes what they don't want; everything
+  // else is included by default. Plugin / host resources are
+  // locked and never enter these sets.
   const [name, setName] = useState(spec.name);
   const [description, setDescription] = useState(spec.description);
   const [tenantPrompt, setTenantPrompt] = useState(detail.tenantPrompt ?? "");
-  const [skillsAllow, setSkillsAllow] = useState(
-    listToText(spec.mainAgent.skillsAllow),
+  const [skillsDeny, setSkillsDeny] = useState<Set<string>>(
+    () => new Set(spec.mainAgent.skillsDeny),
   );
-  const [skillsDeny, setSkillsDeny] = useState(
-    listToText(spec.mainAgent.skillsDeny),
-  );
-  const [toolsAllow, setToolsAllow] = useState(
-    listToText(spec.mainAgent.toolsAllow),
+  const [toolsDeny, setToolsDeny] = useState<Set<string>>(
+    () => new Set(spec.mainAgent.toolsDeny ?? []),
   );
   useEffect(() => {
     setName(spec.name);
     setDescription(spec.description);
     setTenantPrompt(detail.tenantPrompt ?? "");
-    setSkillsAllow(listToText(spec.mainAgent.skillsAllow));
-    setSkillsDeny(listToText(spec.mainAgent.skillsDeny));
-    setToolsAllow(listToText(spec.mainAgent.toolsAllow));
+    setSkillsDeny(new Set(spec.mainAgent.skillsDeny));
+    setToolsDeny(new Set(spec.mainAgent.toolsDeny ?? []));
     setDiff(null);
   }, [
     spec.slug,
     spec.name,
     spec.description,
     detail.tenantPrompt,
-    spec.mainAgent.skillsAllow,
     spec.mainAgent.skillsDeny,
-    spec.mainAgent.toolsAllow,
+    spec.mainAgent.toolsDeny,
   ]);
 
   const runDiff = useCallback(async () => {
@@ -396,11 +402,12 @@ function SolutionDetailPanel({
         plugins: spec.plugins,
         mainAgent: {
           tenantPrompt: tenantPrompt.trim().length > 0 ? tenantPrompt : null,
-          // Empty input parses to null (= no restriction); a
-          // non-empty list narrows the surface.
-          skillsAllow: textToListOrNull(skillsAllow),
-          skillsDeny: textToList(skillsDeny),
-          toolsAllow: textToListOrNull(toolsAllow),
+          // Deny-only model: allow lists stay null (no whitelist).
+          // The deny sets carry the operator's exclusions.
+          skillsAllow: null,
+          skillsDeny: [...skillsDeny].sort(),
+          toolsAllow: null,
+          toolsDeny: [...toolsDeny].sort(),
         },
         workers: spec.workers.map((w) => ({
           slug: w.slug,
@@ -527,34 +534,25 @@ function SolutionDetailPanel({
         {/* Skill / tool allow-lists are config, not prompt text,
             so they stay as their own editable controls below the
             block list. */}
-        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <Field label="Skills allow (one per line; empty = all)">
-            <textarea
-              value={skillsAllow}
-              disabled={isCurrent}
-              onChange={(e) => setSkillsAllow(e.target.value)}
-              rows={4}
-              className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
-            />
-          </Field>
-          <Field label="Skills deny (one per line)">
-            <textarea
-              value={skillsDeny}
-              disabled={isCurrent}
-              onChange={(e) => setSkillsDeny(e.target.value)}
-              rows={4}
-              className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
-            />
-          </Field>
-          <Field label="Tools allow (one per line; empty = all)">
-            <textarea
-              value={toolsAllow}
-              disabled={isCurrent}
-              onChange={(e) => setToolsAllow(e.target.value)}
-              rows={4}
-              className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
-            />
-          </Field>
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+          <ResourcePicker
+            title="Skills"
+            options={detail.availableSkills}
+            excluded={skillsDeny}
+            disabled={isCurrent}
+            onToggle={(name) =>
+              setSkillsDeny((prev) => toggleInSet(prev, name))
+            }
+          />
+          <ResourcePicker
+            title="Tools"
+            options={detail.availableTools}
+            excluded={toolsDeny}
+            disabled={isCurrent}
+            onToggle={(name) =>
+              setToolsDeny((prev) => toggleInSet(prev, name))
+            }
+          />
         </div>
       </Section>
 
@@ -806,25 +804,124 @@ function Field({
   );
 }
 
-// ─── allow-list <-> textarea helpers ────────────────────────────
-// We render allow/deny lists as newline-separated text so the
-// operator can edit them without JSON. `null` means "no
-// restriction" and renders as an empty box; an empty box parses
-// back to null (for allow/tool lists) or [] (for deny lists,
-// where empty genuinely means "deny nothing").
+// ─── resource deny picker ───────────────────────────────────────
+// Deny-only model (Yu's choice): plugin / host resources come in
+// by default and are LOCKED (shown, can't be removed). tenant-
+// owned resources are Included by default and can be Excluded
+// with a single toggle. There's no whitelist UI — the operator
+// just removes what they don't want.
 
-function listToText(list: string[] | null): string {
-  return list ? list.join("\n") : "";
+function ResourcePicker({
+  title,
+  options,
+  excluded,
+  disabled,
+  onToggle,
+}: {
+  title: string;
+  options: ResourceOption[];
+  excluded: Set<string>;
+  disabled: boolean;
+  onToggle: (name: string) => void;
+}): ReactElement {
+  const excludedCount = options.filter(
+    (o) => !o.locked && excluded.has(o.name),
+  ).length;
+  return (
+    <div className="rounded border border-border-subtle bg-bg-base">
+      <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2 text-xs">
+        <span className="font-semibold">{title}</span>
+        <span className="text-fg-muted">{options.length} total</span>
+        {excludedCount > 0 ? (
+          <span className="ml-auto rounded bg-danger-fg/10 px-1.5 py-0.5 text-[10px] text-danger-fg">
+            {excludedCount} excluded
+          </span>
+        ) : null}
+      </div>
+      <ul className="max-h-72 overflow-auto">
+        {options.map((o) => {
+          const isExcluded = excluded.has(o.name);
+          return (
+            <li
+              key={o.name}
+              className="flex items-center gap-2 border-b border-border-subtle px-3 py-1.5 text-xs last:border-0"
+            >
+              <code
+                className={`font-mono text-[11px] ${
+                  isExcluded ? "text-fg-muted line-through" : ""
+                }`}
+              >
+                {o.name}
+              </code>
+              <ResourceOriginBadge origin={o.origin} />
+              {o.locked ? (
+                <span
+                  className="ml-auto rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] text-fg-muted"
+                  title="Contributed by a plugin or the host — included automatically, can't be excluded."
+                >
+                  locked
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onToggle(o.name)}
+                  className={`ml-auto rounded px-2 py-0.5 text-[10px] font-medium disabled:opacity-50 ${
+                    isExcluded
+                      ? "bg-danger-fg/10 text-danger-fg hover:bg-danger-fg/20"
+                      : "bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
+                  }`}
+                  title={
+                    isExcluded
+                      ? "Excluded — click to include again."
+                      : "Included — click to exclude from this solution."
+                  }
+                >
+                  {isExcluded ? "Excluded" : "Included"}
+                </button>
+              )}
+            </li>
+          );
+        })}
+        {options.length === 0 ? (
+          <li className="px-3 py-2 text-xs text-fg-muted">None.</li>
+        ) : null}
+      </ul>
+    </div>
+  );
 }
 
-function textToList(text: string): string[] {
-  return text
-    .split(/[\n,]/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+function ResourceOriginBadge({
+  origin,
+}: {
+  origin: ResourceOption["origin"];
+}): ReactElement {
+  const map: Record<
+    ResourceOption["origin"],
+    { label: string; className: string }
+  > = {
+    core: { label: "core", className: "bg-info-fg/10 text-info-fg" },
+    "builtin-plugin": {
+      label: "built-in",
+      className: "bg-success-fg/10 text-success-fg",
+    },
+    "tenant-plugin": {
+      label: "tenant plugin",
+      className: "bg-warning-fg/10 text-warning-fg",
+    },
+    host: { label: "host", className: "bg-info-fg/10 text-info-fg" },
+  };
+  const { label, className } = map[origin];
+  return (
+    <span className={`rounded px-1 py-0.5 text-[10px] ${className}`}>
+      {label}
+    </span>
+  );
 }
 
-function textToListOrNull(text: string): string[] | null {
-  const list = textToList(text);
-  return list.length > 0 ? list : null;
+function toggleInSet(prev: Set<string>, name: string): Set<string> {
+  const next = new Set(prev);
+  if (next.has(name)) next.delete(name);
+  else next.add(name);
+  return next;
 }
