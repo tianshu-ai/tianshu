@@ -50,7 +50,46 @@ export interface SolutionMainAgent {
   toolsAllow: string[] | null;
   /** Tool deny-list by tool name. Symmetric with skillsDeny. */
   toolsDeny: string[];
+  /** Per-block overrides of host-generated prompt text. Each key
+   *  maps to a relative sidecar path (main-agent/<key>.md) when
+   *  set, or null to fall back to the host default. Only the
+   *  blocks the host marks overridable appear here:
+   *    - executionBias
+   *    - replyStyle
+   *    - userOnboarding
+   *  Reserved for Phase 3 (Apply) — stored but not yet wired into
+   *  the host renderer. */
+  overrides: SolutionPromptOverrides;
+  /** Operator-authored extra prompt fragments appended to the
+   *  main-agent prompt. Each is free-form markdown the user added
+   *  in the studio (not from a plugin). Phase 2 stores them;
+   *  Phase 3 injects them. */
+  customFragments: SolutionCustomFragment[];
 }
+
+/** Override sidecar paths for host-generated blocks. null = use
+ *  the host default. */
+export interface SolutionPromptOverrides {
+  executionBias: string | null;
+  replyStyle: string | null;
+  userOnboarding: string | null;
+}
+
+/** A user-authored prompt fragment. id is a stable slug used for
+ *  the sidecar filename (main-agent/fragments/<id>.md). */
+export interface SolutionCustomFragment {
+  id: string;
+  title: string;
+  /** Relative sidecar path holding the fragment body. */
+  path: string;
+}
+
+/** The override keys the studio understands. Kept as a const-ish
+ *  union so SDK consumers and the host agree on the set. */
+export type SolutionOverrideKey =
+  | "executionBias"
+  | "replyStyle"
+  | "userOnboarding";
 
 export interface SolutionWorker {
   slug: string;
@@ -100,13 +139,30 @@ export interface SolutionPromptBlock {
   /** Provenance bucket for the badge. */
   origin: "core" | "builtin-plugin" | "tenant-plugin" | "host" | "tenant" | "workspace";
   /** Whether the Solution editor lets the operator change this
-   *  block. host / plugin blocks are false; workspace / tenant
-   *  blocks are true. */
+   *  block. plugin blocks + pure code-generated blocks (brand,
+   *  runtime context, available-skills) are false; tenant prompt,
+   *  workspace files, and the overridable host blocks (execution
+   *  bias, reply style, user onboarding) are true. */
   editable: boolean;
-  /** Block body. For editable blocks this is the current value
-   *  (and the editor binds to it); for read-only blocks it's the
-   *  reference text from reality. */
+  /** Block body shown in the editor. For an overridable block
+   *  this is the override value if set, else the host default. */
   text: string;
+  /** The host-generated default text for an overridable block,
+   *  shown as the reset target + the read-only reference. null
+   *  for non-overridable blocks. */
+  defaultText?: string | null;
+  /** For overridable host blocks: the override key the studio
+   *  uses to persist this block's override (executionBias /
+   *  replyStyle / userOnboarding). Absent for tenant-prompt /
+   *  workspace / custom-fragment blocks, which persist through
+   *  their own dedicated fields. */
+  overrideKey?: SolutionOverrideKey;
+  /** True iff this block currently carries a solution override
+   *  (text differs from / supersedes defaultText). */
+  overridden?: boolean;
+  /** For a user-authored custom fragment block: its stable id, so
+   *  the UI can edit / remove it. Absent for all other blocks. */
+  customFragmentId?: string;
   note?: string;
 }
 
@@ -234,10 +290,23 @@ export interface SolutionSpecInput {
   name: string;
   description: string;
   plugins: SolutionPlugins;
-  mainAgent: Omit<SolutionMainAgent, "tenantPromptPath"> & {
+  mainAgent: Omit<
+    SolutionMainAgent,
+    "tenantPromptPath" | "overrides" | "customFragments"
+  > & {
     /** Inline body; host writes to main-agent/prompt.md. Empty /
      *  null clears the override. */
     tenantPrompt: string | null;
+    /** Inline override bodies for the host blocks. null / empty
+     *  clears that override (falls back to host default). */
+    overrides: {
+      executionBias: string | null;
+      replyStyle: string | null;
+      userOnboarding: string | null;
+    };
+    /** Inline custom fragments. id stable across saves; empty
+     *  body drops the fragment. */
+    customFragments: Array<{ id: string; title: string; body: string }>;
   };
   workers: Array<
     Omit<SolutionWorker, "systemPromptPath"> & {
