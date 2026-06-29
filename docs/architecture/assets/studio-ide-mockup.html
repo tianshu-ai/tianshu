@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Workforce Studio — IDE layout mockup</title>
+<style>
+  :root {
+    --bg-base: #0d1117;
+    --bg-elevated: #161b22;
+    --bg-raised: #21262d;
+    --border: #30363d;
+    --border-subtle: #21262d;
+    --fg: #e6edf3;
+    --fg-muted: #8b949e;
+    --accent: #2f81f7;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d29922;
+    --purple: #bc8cff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg-base); color: var(--fg); font-size: 13px;
+  }
+  .app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* top bar */
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 14px; border-bottom: 1px solid var(--border);
+    background: var(--bg-elevated);
+  }
+  .topbar h1 { font-size: 14px; margin: 0; font-weight: 600; }
+  .sol-picker {
+    background: var(--bg-raised); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 10px; color: var(--fg); font-size: 12px;
+  }
+  .toggle {
+    display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden;
+  }
+  .toggle button { border: 0; background: var(--bg-base); color: var(--fg); padding: 5px 14px; font-size: 12px; cursor: pointer; }
+  .toggle button.active { background: var(--fg); color: var(--bg-base); font-weight: 600; }
+  .spacer { flex: 1; }
+  .btn { border: 1px solid var(--border); background: var(--bg-raised); color: var(--fg); border-radius: 6px; padding: 5px 12px; font-size: 12px; cursor: pointer; display: inline-flex; gap: 5px; align-items: center; }
+  .btn.apply { border-color: var(--green); color: var(--green); background: rgba(63,185,80,.12); font-weight: 600; }
+  .btn.export { }
+  .drift { font-size: 11px; color: var(--yellow); }
+
+  /* 3-col body */
+  .body { display: grid; grid-template-columns: 260px 1fr 300px; flex: 1; min-height: 0; }
+  .col { overflow-y: auto; }
+  .explorer { border-right: 1px solid var(--border); background: var(--bg-elevated); }
+  .inspector { border-left: 1px solid var(--border); background: var(--bg-elevated); }
+  .editor { background: var(--bg-base); padding: 16px 20px; }
+
+  /* explorer tree */
+  .tree { padding: 8px 0; }
+  .node { display: flex; align-items: center; gap: 6px; padding: 4px 12px; cursor: pointer; font-size: 12px; white-space: nowrap; }
+  .node:hover { background: var(--bg-raised); }
+  .node.sel { background: var(--bg-raised); box-shadow: inset 2px 0 0 var(--accent); }
+  .node.depth1 { padding-left: 24px; }
+  .node.depth2 { padding-left: 40px; }
+  .node .ico { width: 14px; text-align: center; opacity: .8; }
+  .node .count { color: var(--fg-muted); font-size: 10px; margin-left: 4px; }
+  .badge { font-size: 9px; padding: 1px 5px; border-radius: 999px; margin-left: auto; }
+  .b-ovr { background: rgba(210,153,34,.18); color: var(--yellow); }
+  .b-exc { background: rgba(248,81,73,.18); color: var(--red); }
+  .b-lock { background: rgba(139,148,158,.18); color: var(--fg-muted); }
+  .grouphdr { padding: 10px 12px 4px; font-size: 10px; text-transform: uppercase; letter-spacing: .05em; color: var(--fg-muted); font-weight: 600; }
+  .strike { text-decoration: line-through; color: var(--fg-muted); }
+
+  /* editor */
+  .editor h2 { font-size: 15px; margin: 0 0 4px; }
+  .editor .sub { color: var(--fg-muted); font-size: 12px; margin-bottom: 16px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-muted); margin-bottom: 4px; }
+  .field input, .field textarea {
+    width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
+    border-radius: 6px; color: var(--fg); padding: 8px 10px; font-size: 12px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace; resize: vertical;
+  }
+  .ovr-bar { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .ovr-bar .tag { font-size: 10px; padding: 2px 8px; border-radius: 999px; background: rgba(210,153,34,.18); color: var(--yellow); }
+  .pill-btn { border: 1px solid var(--border); background: var(--bg-raised); color: var(--fg-muted); border-radius: 6px; padding: 3px 10px; font-size: 11px; cursor: pointer; }
+
+  /* inspector */
+  .insp-sec { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+  .insp-sec h3 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--fg-muted); margin: 0 0 8px; }
+  .rendered { font-family: ui-monospace, Menlo, monospace; font-size: 11px; line-height: 1.5; white-space: pre-wrap; color: var(--fg-muted); max-height: 280px; overflow: auto; background: var(--bg-base); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
+  .diff-row { display: flex; gap: 6px; font-size: 11px; padding: 3px 0; font-family: ui-monospace, Menlo, monospace; }
+  .diff-op { font-size: 9px; padding: 1px 5px; border-radius: 4px; }
+  .op-chg { background: rgba(210,153,34,.18); color: var(--yellow); }
+  .op-rem { background: rgba(248,81,73,.18); color: var(--red); }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <h1>⚡ Workforce Studio</h1>
+    <select class="sol-picker">
+      <option>📦 research-team</option>
+      <option>📦 customer-support</option>
+      <option>● current (live mirror)</option>
+    </select>
+    <div class="toggle">
+      <button class="active">Solution</button>
+      <button>Reality</button>
+    </div>
+    <span class="drift">⚠ differs from reality (3 changes)</span>
+    <div class="spacer"></div>
+    <button class="btn export">⬇ Export</button>
+    <button class="btn apply">🚀 Apply</button>
+  </div>
+
+  <div class="body">
+    <!-- ① Explorer -->
+    <div class="col explorer">
+      <div class="tree">
+        <div class="node"><span class="ico">📦</span><b>research-team</b></div>
+
+        <div class="node depth1 sel"><span class="ico">🧩</span>Plugins<span class="count">4/7</span></div>
+
+        <div class="node depth1"><span class="ico">🤖</span>Main agent</div>
+        <div class="node depth2"><span class="ico">📝</span>Tenant prompt</div>
+        <div class="node depth2"><span class="ico">⚙</span>Execution bias<span class="badge b-ovr">overridden</span></div>
+        <div class="node depth2"><span class="ico">💬</span>Reply style</div>
+        <div class="node depth2"><span class="ico">👋</span>User onboarding</div>
+        <div class="node depth2"><span class="ico">➕</span>Custom: research-rules</div>
+        <div class="node depth2"><span class="ico">🔧</span>Tools<span class="count">32</span><span class="badge b-exc">2</span></div>
+        <div class="node depth2"><span class="ico">📚</span>Skills<span class="count">12</span><span class="badge b-exc">1</span></div>
+
+        <div class="node depth1"><span class="ico">👥</span>Workers<span class="count">3</span></div>
+        <div class="node depth2"><span class="ico">🔎</span>researcher</div>
+        <div class="node depth2"><span class="ico">💻</span>coder</div>
+        <div class="node depth2 strike"><span class="ico">📋</span>reviewer<span class="badge b-exc">excluded</span></div>
+      </div>
+    </div>
+
+    <!-- ② Editor (Plugins selected) -->
+    <div class="col editor">
+      <h2>🧩 Plugins</h2>
+      <div class="sub">Which plugins this solution activates. Plugins decide what tools, skills and prompt fragments the rest of the solution can use.</div>
+
+      <div class="grouphdr" style="padding-left:0">Built-in</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border-subtle);border-radius:6px;background:var(--bg-elevated)">
+          <b>Files</b><code style="color:var(--fg-muted);font-size:11px">files</code>
+          <span style="margin-left:auto" class="pill-btn">Exclude</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--border-subtle);border-radius:6px;background:var(--bg-elevated)">
+          <b>Workboard</b><code style="color:var(--fg-muted);font-size:11px">workboard</code>
+          <span style="margin-left:auto" class="pill-btn">Exclude</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px dashed var(--border);border-radius:6px;opacity:.6">
+          <b class="strike">WeChat</b><code style="color:var(--fg-muted);font-size:11px">wechat</code>
+          <span style="margin-left:auto" class="pill-btn" style="border-color:var(--green);color:var(--green)">Include</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ Inspector -->
+    <div class="col inspector">
+      <div class="insp-sec">
+        <h3>Inspector</h3>
+        <div style="font-size:12px">Plugin set drives the available tools (32), skills (12) and prompt fragments (5) below.</div>
+      </div>
+      <div class="insp-sec">
+        <h3>Diff vs reality</h3>
+        <div class="diff-row"><span class="diff-op op-rem">rem</span><code>plugins.enabled: wechat</code></div>
+        <div class="diff-row"><span class="diff-op op-chg">chg</span><code>mainAgent.skillsDeny</code></div>
+        <div class="diff-row"><span class="diff-op op-chg">chg</span><code>workers.reviewer.enabled</code></div>
+      </div>
+      <div class="insp-sec">
+        <h3>Rendered preview</h3>
+        <div class="rendered">You are Tianshu, an open-source AI assistant.
+
+## Runtime context
+Time: 2026-06-30 00:48 ...
+Tenant: default  User: dev
+
+## Execution bias  [overridden]
+Be extra rigorous about source verification...
+
+&lt;available_skills&gt;
+  &lt;skill&gt;deep-research&lt;/skill&gt;
+  ...</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
