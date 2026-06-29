@@ -318,16 +318,39 @@ function SolutionDetailPanel({
   const [diff, setDiff] = useState<SolutionDiff | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Editable fields (named solutions only). For Phase 2 we keep
-  // the editable surface deliberately small: name, description,
-  // and the main-agent skill allow/deny lists (comma-separated).
+  // Editable fields (named solutions only). Phase 2 surface:
+  // name, description, the main-agent tenant-prompt override,
+  // and the main-agent skill/tool allow + skill deny lists
+  // (edited as comma/newline-separated text, parsed on save).
   const [name, setName] = useState(spec.name);
   const [description, setDescription] = useState(spec.description);
+  const [tenantPrompt, setTenantPrompt] = useState(detail.tenantPrompt ?? "");
+  const [skillsAllow, setSkillsAllow] = useState(
+    listToText(spec.mainAgent.skillsAllow),
+  );
+  const [skillsDeny, setSkillsDeny] = useState(
+    listToText(spec.mainAgent.skillsDeny),
+  );
+  const [toolsAllow, setToolsAllow] = useState(
+    listToText(spec.mainAgent.toolsAllow),
+  );
   useEffect(() => {
     setName(spec.name);
     setDescription(spec.description);
+    setTenantPrompt(detail.tenantPrompt ?? "");
+    setSkillsAllow(listToText(spec.mainAgent.skillsAllow));
+    setSkillsDeny(listToText(spec.mainAgent.skillsDeny));
+    setToolsAllow(listToText(spec.mainAgent.toolsAllow));
     setDiff(null);
-  }, [spec.slug, spec.name, spec.description]);
+  }, [
+    spec.slug,
+    spec.name,
+    spec.description,
+    detail.tenantPrompt,
+    spec.mainAgent.skillsAllow,
+    spec.mainAgent.skillsDeny,
+    spec.mainAgent.toolsAllow,
+  ]);
 
   const runDiff = useCallback(async () => {
     setBusy(true);
@@ -353,10 +376,12 @@ function SolutionDetailPanel({
         description,
         plugins: spec.plugins,
         mainAgent: {
-          tenantPrompt: detail.tenantPrompt,
-          skillsAllow: spec.mainAgent.skillsAllow,
-          skillsDeny: spec.mainAgent.skillsDeny,
-          toolsAllow: spec.mainAgent.toolsAllow,
+          tenantPrompt: tenantPrompt.trim().length > 0 ? tenantPrompt : null,
+          // Empty input parses to null (= no restriction); a
+          // non-empty list narrows the surface.
+          skillsAllow: textToListOrNull(skillsAllow),
+          skillsDeny: textToList(skillsDeny),
+          toolsAllow: textToListOrNull(toolsAllow),
         },
         workers: spec.workers.map((w) => ({
           slug: w.slug,
@@ -463,6 +488,62 @@ function SolutionDetailPanel({
           change the running system. Apply lands in a later phase.
         </div>
       </div>
+
+      {/* Main agent */}
+      <Section title="Main agent">
+        <div className="flex flex-col gap-3">
+          <Field label="Tenant prompt override">
+            <textarea
+              value={tenantPrompt}
+              disabled={isCurrent}
+              onChange={(e) => setTenantPrompt(e.target.value)}
+              rows={6}
+              placeholder={
+                isCurrent
+                  ? ""
+                  : "Extra system-prompt text injected for the main agent. Leave empty for none."
+              }
+              className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+            />
+          </Field>
+          {isCurrent ? (
+            <div className="text-[11px] text-fg-muted">
+              For the live mirror this shows the extracted workspace
+              context (AGENTS / SOUL / MEMORY / USER). Edit a named
+              solution to set an explicit override.
+            </div>
+          ) : null}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <Field label="Skills allow (one per line; empty = all)">
+              <textarea
+                value={skillsAllow}
+                disabled={isCurrent}
+                onChange={(e) => setSkillsAllow(e.target.value)}
+                rows={4}
+                className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
+              />
+            </Field>
+            <Field label="Skills deny (one per line)">
+              <textarea
+                value={skillsDeny}
+                disabled={isCurrent}
+                onChange={(e) => setSkillsDeny(e.target.value)}
+                rows={4}
+                className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
+              />
+            </Field>
+            <Field label="Tools allow (one per line; empty = all)">
+              <textarea
+                value={toolsAllow}
+                disabled={isCurrent}
+                onChange={(e) => setToolsAllow(e.target.value)}
+                rows={4}
+                className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
+              />
+            </Field>
+          </div>
+        </div>
+      </Section>
 
       {/* Plugins */}
       <Section title={`Plugins (${spec.plugins.enabled.length})`}>
@@ -588,4 +669,27 @@ function Field({
       {children}
     </label>
   );
+}
+
+// ─── allow-list <-> textarea helpers ────────────────────────────
+// We render allow/deny lists as newline-separated text so the
+// operator can edit them without JSON. `null` means "no
+// restriction" and renders as an empty box; an empty box parses
+// back to null (for allow/tool lists) or [] (for deny lists,
+// where empty genuinely means "deny nothing").
+
+function listToText(list: string[] | null): string {
+  return list ? list.join("\n") : "";
+}
+
+function textToList(text: string): string[] {
+  return text
+    .split(/[\n,]/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+function textToListOrNull(text: string): string[] | null {
+  const list = textToList(text);
+  return list.length > 0 ? list : null;
 }
