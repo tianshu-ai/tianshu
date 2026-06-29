@@ -24,6 +24,7 @@ import {
   Book,
   Bot,
   Users,
+  Package,
   AlertTriangle,
 } from "lucide-react";
 import type {
@@ -33,12 +34,15 @@ import type {
 
 // ─── wire shapes (mirror server types via duck-typing) ──────────
 
+type Origin = "core" | "builtin-plugin" | "tenant-plugin";
+
 interface ToolEntry {
   name: string;
   description: string;
   pluginId: string;
   since: string | null;
   parameters: unknown;
+  origin: Origin;
 }
 interface SkillEntry {
   name: string;
@@ -47,6 +51,18 @@ interface SkillEntry {
   scope?: "main" | "worker";
   relativePath: string;
   body: string;
+  origin: Origin;
+}
+interface PluginInfo {
+  id: string;
+  displayName: string;
+  version: string;
+  description: string;
+  origin: "builtin-plugin" | "tenant-plugin";
+  state: "active" | "failed" | "disabled" | "loading";
+  failureReason: string | null;
+  toolCount: number;
+  skillCount: number;
 }
 interface MainAgent {
   brandName: string;
@@ -72,6 +88,7 @@ interface Snapshot {
   userId: string;
   generatedAt: number;
   tianshuVersion: string;
+  plugins: PluginInfo[];
   main: MainAgent;
   workers: WorkerAgent[];
 }
@@ -146,6 +163,7 @@ function WorkforceStudioPage(_props: AdminPageProps): ReactElement {
       ) : null}
       {snapshot ? (
         <>
+          <PluginsPanel plugins={snapshot.plugins} />
           <MainAgentPanel main={snapshot.main} />
           <WorkersPanel workers={snapshot.workers} />
         </>
@@ -187,6 +205,7 @@ function Header({
             </Badge>
             <Badge>v{snapshot.tianshuVersion}</Badge>
             <Badge>
+              {snapshot.plugins.length} plugins ·{" "}
               {snapshot.main.tools.length} tools ·{" "}
               {snapshot.main.skills.length} skills ·{" "}
               {snapshot.workers.length} workers
@@ -226,6 +245,125 @@ function Badge({ children }: { children: ReactNode }): ReactElement {
   return (
     <span className="rounded-md border border-border-subtle bg-bg-elevated px-2 py-0.5">
       {children}
+    </span>
+  );
+}
+
+// Coloured pill that tells the operator where a tool / skill /
+// plugin came from. Picking distinct hues per bucket so a long
+// list is visually scannable; the labels are kept tiny because
+// they appear on every row.
+function OriginBadge({ origin }: { origin: Origin }): ReactElement {
+  const { label, className } = originStyle(origin);
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${className}`}
+      title={originTitle(origin)}
+    >
+      {label}
+    </span>
+  );
+}
+
+function originStyle(origin: Origin): { label: string; className: string } {
+  if (origin === "core") {
+    return {
+      label: "core",
+      className: "bg-info-fg/10 text-info-fg",
+    };
+  }
+  if (origin === "builtin-plugin") {
+    return {
+      label: "built-in",
+      className: "bg-success-fg/10 text-success-fg",
+    };
+  }
+  // tenant-plugin
+  return {
+    label: "tenant",
+    className: "bg-warning-fg/10 text-warning-fg",
+  };
+}
+
+function originTitle(origin: Origin): string {
+  if (origin === "core")
+    return "Provided by the host (no plugin involved).";
+  if (origin === "builtin-plugin")
+    return "From a plugin shipped with this Tianshu install.";
+  return "From a plugin installed per-tenant.";
+}
+
+// ─── plugins ────────────────────────────────────────────────────
+
+function PluginsPanel({
+  plugins,
+}: {
+  plugins: PluginInfo[];
+}): ReactElement {
+  return (
+    <section className="rounded-lg border border-border-subtle bg-bg-elevated">
+      <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
+        <Package className="size-4 text-fg-muted" />
+        <h2 className="text-sm font-semibold">Plugins</h2>
+        <span className="ml-2 text-xs text-fg-muted">
+          {plugins.length} discovered
+        </span>
+      </div>
+      {plugins.length === 0 ? (
+        <div className="px-4 py-6 text-sm text-fg-muted">
+          No plugins discovered for this tenant.
+        </div>
+      ) : (
+        <ul className="divide-y divide-border-subtle">
+          {plugins.map((p) => (
+            <li key={p.id} className="px-4 py-2 text-xs">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-medium">{p.displayName}</span>
+                <code className="text-fg-muted">{p.id}</code>
+                <span className="text-fg-muted">v{p.version}</span>
+                <OriginBadge origin={p.origin} />
+                <PluginStateBadge
+                  state={p.state}
+                  failureReason={p.failureReason}
+                />
+                <span className="ml-auto text-fg-muted">
+                  <Wrench className="mr-1 inline size-3" />
+                  {p.toolCount}
+                  <Book className="ml-2 mr-1 inline size-3" />
+                  {p.skillCount}
+                </span>
+              </div>
+              {p.description ? (
+                <div className="mt-1 text-[11px] text-fg-muted">
+                  {p.description}
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+function PluginStateBadge({
+  state,
+  failureReason,
+}: {
+  state: PluginInfo["state"];
+  failureReason: string | null;
+}): ReactElement | null {
+  if (state === "active") return null;
+  const cls =
+    state === "failed"
+      ? "bg-danger-fg/10 text-danger-fg"
+      : "bg-fg-muted/10";
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${cls}`}
+      title={failureReason ?? undefined}
+    >
+      {state}
     </span>
   );
 }
@@ -435,8 +573,9 @@ function ToolsList({ tools }: { tools: ToolEntry[] }): ReactElement {
           key={t.name}
           className="rounded border border-border-subtle bg-bg-elevated px-2 py-1.5"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <code className="font-mono text-[11px]">{t.name}</code>
+            <OriginBadge origin={t.origin} />
             <span className="rounded bg-fg-muted/10 px-1 text-[10px]">
               {t.pluginId}
             </span>
@@ -466,8 +605,9 @@ function SkillsList({ skills }: { skills: SkillEntry[] }): ReactElement {
           key={`${s.pluginId}/${s.name}`}
           className="rounded border border-border-subtle bg-bg-elevated px-2 py-1.5"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <code className="font-mono text-[11px]">{s.name}</code>
+            <OriginBadge origin={s.origin} />
             <span className="rounded bg-fg-muted/10 px-1 text-[10px]">
               {s.pluginId}
             </span>

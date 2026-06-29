@@ -15,6 +15,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type {
+  WorkforceOrigin,
+  WorkforcePluginInfo,
   WorkforceSkillEntry,
   WorkforceSnapshot,
   WorkforceToolEntry,
@@ -61,6 +63,21 @@ export function buildWorkforceSnapshot(
 ): WorkforceSnapshot {
   const { ctx, userId, pluginRegistry, tianshuVersion } = args;
 
+  // --- Plugin inventory (drives the provenance bucket for each
+  //     tool/skill, and is itself surfaced in the studio so an
+  //     operator can see what's actually installed).
+  const entries = pluginRegistry.listForTenant(ctx.tenantId);
+  const originByPlugin = new Map<string, WorkforceOrigin>();
+  originByPlugin.set("core", "core");
+  for (const e of entries) {
+    originByPlugin.set(
+      e.manifest.id,
+      e.source === "builtin" ? "builtin-plugin" : "tenant-plugin",
+    );
+  }
+  const resolveOrigin = (pluginId: string): WorkforceOrigin =>
+    originByPlugin.get(pluginId) ?? "core";
+
   // --- Tool catalog (with since metadata) ---
   const catalog = pluginRegistry.toolCatalogForTenant(ctx.tenantId);
   const sinceByName = new Map<string, string | null>();
@@ -80,13 +97,14 @@ export function buildWorkforceSnapshot(
       parameters: (tool.schema as { parameters?: unknown }).parameters ?? null,
       pluginId,
       since: sinceByName.get(tool.schema.name) ?? null,
+      origin: resolveOrigin(pluginId),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // --- Skills (with body) ---
   const allSkills = pluginRegistry.skillsForTenant(ctx.tenantId);
   const skillsAll: WorkforceSkillEntry[] = allSkills.map((s) =>
-    toSkillEntry(s),
+    toSkillEntry(s, resolveOrigin),
   );
 
   // --- Main agent ---
@@ -115,20 +133,71 @@ export function buildWorkforceSnapshot(
     toWorkerEntry(r, toolsAll, skillsAll),
   );
 
+  // --- Plugin inventory rows ---
+  // We count tools/skills per plugin so the studio can show a
+  // "weight" ("contributes 12 tools, 4 skills"). The counts are
+  // derived from the same catalogs the agent sees, not the
+  // manifest's declared contributes[] — a plugin can declare
+  // tools that fail to register (missing module export) and we
+  // want to surface what actually made it through.
+  const toolCountByPlugin = new Map<string, number>();
+  for (const t of toolsAll) {
+    toolCountByPlugin.set(
+      t.pluginId,
+      (toolCountByPlugin.get(t.pluginId) ?? 0) + 1,
+    );
+  }
+  const skillCountByPlugin = new Map<string, number>();
+  for (const s of skillsAll) {
+    skillCountByPlugin.set(
+      s.pluginId,
+      (skillCountByPlugin.get(s.pluginId) ?? 0) + 1,
+    );
+  }
+  const plugins: WorkforcePluginInfo[] = entries
+    .map((e) => ({
+      id: e.manifest.id,
+      displayName: e.manifest.displayName ?? e.manifest.id,
+      version: e.manifest.version ?? "0.0.0",
+      description: e.manifest.description ?? "",
+      origin:
+        e.source === "builtin"
+          ? ("builtin-plugin" as const)
+          : ("tenant-plugin" as const),
+      // Map the registry's PluginState onto a closed enum the SDK
+      // can present. "loading" only appears mid-activation; by
+      // the time we read the entry it's almost always settled.
+      state: mapPluginState(e.state),
+      failureReason: e.state === "failed" ? e.failedReason ?? null : null,
+      toolCount: toolCountByPlugin.get(e.manifest.id) ?? 0,
+      skillCount: skillCountByPlugin.get(e.manifest.id) ?? 0,
+    }))
+    .sort((a, b) => a.id.localeCompare(b.id));
+
   return {
     tenantId: ctx.tenantId,
     userId,
     generatedAt: Date.now(),
     tianshuVersion,
+    plugins,
     main: {
       brandName,
       defaultModelId,
       systemPrompt: mainSystemPrompt,
       tools: toolsAll, // main sees the full catalog
-      skills: mainSkills.map(toSkillEntry),
+      skills: mainSkills.map((s) => toSkillEntry(s, resolveOrigin)),
     },
     workers,
   };
+}
+
+function mapPluginState(
+  state: string,
+): "active" | "failed" | "disabled" | "loading" {
+  if (state === "active" || state === "failed" || state === "disabled") {
+    return state;
+  }
+  return "loading";
 }
 
 function filterScope(
@@ -138,7 +207,10 @@ function filterScope(
   return skills.filter((s) => !s.scope || s.scope === audience);
 }
 
-function toSkillEntry(s: LoadedSkill): WorkforceSkillEntry {
+function toSkillEntry(
+  s: LoadedSkill,
+  resolveOrigin: (pluginId: string) => WorkforceOrigin,
+): WorkforceSkillEntry {
   return {
     name: s.name,
     description: s.description,
@@ -151,6 +223,7 @@ function toSkillEntry(s: LoadedSkill): WorkforceSkillEntry {
     // so callers can correlate, but a stable shape matters more.
     relativePath: `${s.source.pluginId}/${path.basename(s.filePath)}`,
     body: s.body ?? safeReadFile(s.filePath),
+    origin: resolveOrigin(s.source.pluginId),
   };
 }
 
