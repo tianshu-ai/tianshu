@@ -37,13 +37,19 @@ export interface SolutionMainAgent {
    *  for no override. */
   tenantPromptPath: string | null;
   /** Skill allow-list by skill name. null = no restriction.
-   *  Plugin-contributed skills are always implicitly allowed;
-   *  this list only further-restricts tenant-owned skills. */
+   *  Reserved for a future advanced "whitelist" mode; Phase 2's
+   *  UI is deny-only and leaves this null. Plugin-contributed
+   *  skills are always implicitly allowed regardless. */
   skillsAllow: string[] | null;
-  /** Skill deny-list by skill name. Applied after allow. */
+  /** Skill deny-list by skill name. The primary Phase-2 control:
+   *  the operator excludes tenant-owned skills they don't want.
+   *  Plugin-contributed skills can't be denied (they're locked). */
   skillsDeny: string[];
-  /** Tool allow-list by tool name. null = no restriction. */
+  /** Tool allow-list by tool name. null = no restriction.
+   *  Reserved for the future whitelist mode like skillsAllow. */
   toolsAllow: string[] | null;
+  /** Tool deny-list by tool name. Symmetric with skillsDeny. */
+  toolsDeny: string[];
 }
 
 export interface SolutionWorker {
@@ -104,6 +110,20 @@ export interface SolutionPromptBlock {
   note?: string;
 }
 
+/** One selectable skill / tool in the Solution editor's picker.
+ *  The operator excludes (deny) the tenant-owned ones they don't
+ *  want; plugin-locked entries are shown but can't be toggled. */
+export interface SolutionResourceOption {
+  name: string;
+  description: string;
+  /** Provenance bucket for the badge. */
+  origin: "core" | "builtin-plugin" | "tenant-plugin" | "host";
+  /** True iff the entry is contributed by a plugin / host and
+   *  therefore can't be excluded — it's shown locked. tenant-
+   *  owned entries are unlocked and can be denied. */
+  locked: boolean;
+}
+
 /** A solution as returned to the studio: the spec plus the
  *  resolved bodies of its sidecar files, so the UI can render
  *  prompt content without a second round-trip. */
@@ -119,6 +139,12 @@ export interface SolutionDetail {
    *  reference; the editable workspace / tenant-prompt blocks
    *  carry the solution's own values. */
   mainBlocks: SolutionPromptBlock[];
+  /** Full skill catalogue from reality, for the deny picker.
+   *  plugin/host-sourced entries are locked; tenant ones can be
+   *  excluded. */
+  availableSkills: SolutionResourceOption[];
+  /** Full tool catalogue from reality, for the deny picker. */
+  availableTools: SolutionResourceOption[];
   /** True for the reserved `current` slug — the studio renders it
    *  read-only (it's a live mirror of reality, regenerated on
    *  extract) and hides Apply. */

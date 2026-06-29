@@ -21,6 +21,7 @@ import type {
   SolutionSpec,
   SolutionSpecInput,
   SolutionPromptBlock,
+  SolutionResourceOption,
   SolutionSummary,
   SolutionWorker,
 } from "@tianshu-ai/plugin-sdk";
@@ -128,10 +129,12 @@ function specFromReality(
     mainAgent: {
       tenantPromptPath: tenantPrompt ? "main-agent/prompt.md" : null,
       // Reality's main agent is unrestricted; capture null so the
-      // solution doesn't accidentally narrow it.
+      // solution doesn't accidentally narrow it. Deny lists start
+      // empty — the operator excludes what they don't want.
       skillsAllow: null,
       skillsDeny: [],
       toolsAllow: null,
+      toolsDeny: [],
     },
     workers,
   };
@@ -203,39 +206,43 @@ function resolveDetail(
       if (body !== null) workerPrompts[w.slug] = body;
     }
   }
+  const view = buildMainView(deps, userId, tenantPrompt);
   return {
     spec,
     tenantPrompt,
     workerPrompts,
-    mainBlocks: buildMainBlocks(deps, userId, spec, tenantPrompt),
+    mainBlocks: view.blocks,
+    availableSkills: view.availableSkills,
+    availableTools: view.availableTools,
     isCurrent: spec.slug === CURRENT_SLUG,
   };
 }
 
-/** Build the main-agent block list for the Solution view's block
- *  editor. Read-only host / plugin blocks come from current
- *  reality as reference; the editable workspace / tenant-prompt
- *  block carries the solution's own value (when set) so the
- *  operator edits the solution, not reality. */
-function buildMainBlocks(
+/** Build the main-agent view (block list + skill/tool catalogues)
+ *  for the Solution editor in one snapshot pass. Read-only host /
+ *  plugin blocks come from current reality as reference; the
+ *  editable tenant-prompt block carries the solution's own value
+ *  when set. The catalogues drive the deny picker — plugin/host
+ *  entries are locked, tenant-owned ones are excludable. */
+function buildMainView(
   deps: StoreDeps,
   userId: string,
-  spec: SolutionSpec,
   tenantPrompt: string | null,
-): SolutionPromptBlock[] {
+): {
+  blocks: SolutionPromptBlock[];
+  availableSkills: SolutionResourceOption[];
+  availableTools: SolutionResourceOption[];
+} {
   const snap = buildWorkforceSnapshot({
     ctx: deps.ctx,
     userId,
     pluginRegistry: deps.pluginRegistry,
     tianshuVersion: deps.tianshuVersion,
   });
-  const out: SolutionPromptBlock[] = [];
+  const blocks: SolutionPromptBlock[] = [];
   for (const b of snap.main.blocks) {
-    // The workspace-context block is the editable proxy for the
-    // solution's tenant prompt override: show the solution's
-    // stored value when present, otherwise reality's text.
     if (b.kind === "workspace-context") {
-      out.push({
+      blocks.push({
         kind: "tenant-prompt",
         title: "Main agent prompt (tenant override)",
         source: "tenant",
@@ -246,7 +253,7 @@ function buildMainBlocks(
       });
       continue;
     }
-    out.push({
+    blocks.push({
       kind: b.kind,
       title: b.title,
       source: b.source,
@@ -256,7 +263,45 @@ function buildMainBlocks(
       note: b.note,
     });
   }
-  return out;
+  // A resource is "locked" (can't be excluded) when it comes from
+  // a plugin or the host. Today every skill/tool the snapshot
+  // reports is plugin/host-sourced, so all are locked; tenant-
+  // authored skills (when that path exists) will surface as
+  // unlocked. We still render them all so the operator sees the
+  // complete catalogue.
+  const lockedOrigin = (o: string): boolean =>
+    o === "builtin-plugin" || o === "tenant-plugin" || o === "core" || o === "host";
+  const availableSkills: SolutionResourceOption[] = snap.main.skills
+    .map((s) => ({
+      name: s.name,
+      description: s.description,
+      origin: normaliseOrigin(s.origin),
+      locked: lockedOrigin(s.origin),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const availableTools: SolutionResourceOption[] = snap.main.tools
+    .map((t) => ({
+      name: t.name,
+      description: t.description,
+      origin: normaliseOrigin(t.origin),
+      locked: lockedOrigin(t.origin),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { blocks, availableSkills, availableTools };
+}
+
+function normaliseOrigin(
+  o: string,
+): "core" | "builtin-plugin" | "tenant-plugin" | "host" {
+  if (
+    o === "core" ||
+    o === "builtin-plugin" ||
+    o === "tenant-plugin" ||
+    o === "host"
+  ) {
+    return o;
+  }
+  return "host";
 }
 
 function safeRead(p: string): string | null {
@@ -400,6 +445,7 @@ export function saveSolution(
       skillsAllow: input.mainAgent.skillsAllow,
       skillsDeny: input.mainAgent.skillsDeny,
       toolsAllow: input.mainAgent.toolsAllow,
+      toolsDeny: input.mainAgent.toolsDeny,
     },
     workers,
   };
@@ -467,8 +513,9 @@ function computeDiff(
     const m: Record<string, string> = {};
     m["plugins.enabled"] = JSON.stringify([...s.plugins.enabled].sort());
     m["mainAgent.skillsAllow"] = JSON.stringify(s.mainAgent.skillsAllow);
-    m["mainAgent.skillsDeny"] = JSON.stringify(s.mainAgent.skillsDeny);
+    m["mainAgent.skillsDeny"] = JSON.stringify([...s.mainAgent.skillsDeny].sort());
     m["mainAgent.toolsAllow"] = JSON.stringify(s.mainAgent.toolsAllow);
+    m["mainAgent.toolsDeny"] = JSON.stringify([...(s.mainAgent.toolsDeny ?? [])].sort());
     for (const w of s.workers) {
       const k = `workers.${w.slug}`;
       m[`${k}.modelId`] = JSON.stringify(w.modelId);
