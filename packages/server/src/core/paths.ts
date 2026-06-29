@@ -112,6 +112,13 @@ export function getTenantMainSkillsDir(
   return path.join(getTenantConfigDir(tenantId, home), "main", "skills");
 }
 
+/** Main-agent config directory: holds the applied solution's
+ *  main-agent overrides (main-agent.json + prompt.md +
+ *  override/fragment sidecars). Sibling to main/skills. */
+export function getTenantMainConfigDir(tenantId: string, home?: string): string {
+  return path.join(getTenantConfigDir(tenantId, home), "main");
+}
+
 export function getTenantWorkerSkillsDir(
   tenantId: string,
   workerKind: string,

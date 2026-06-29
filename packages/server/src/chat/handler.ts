@@ -84,6 +84,7 @@ import {
   type ResolvedModelInfo,
   type TenantContext,
 } from "../core/index.js";
+import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildToolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
 import { dumpSystemPrompt } from "./dump-system-prompt.js";
@@ -542,12 +543,47 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   send({ type: "stream_start" });
 
-  const adapted = adaptToolset(toolset);
+  // Applied-solution main-agent config (ADR-0008 Phase 3). When a
+  // solution was applied this carries prompt overrides + custom
+  // fragments + skill/tool deny lists; when not, it's empty and
+  // the prompt / tools are the pure host default. Read every turn
+  // from fs so Apply takes effect without a restart.
+  const mainConfig = loadMainAgentConfig(ctx.tenantId, homeDir);
+  // Filter skills by the main-agent deny list. Plugin / host
+  // skills the operator excluded in the solution drop out here.
+  const effectiveSkills =
+    mainConfig.skillsDeny.size > 0
+      ? skills.filter((s) => !mainConfig.skillsDeny.has(s.name))
+      : skills;
+  // Filter the toolset by the tool deny list. Toolset is
+  // { schemas[], executors{} } — drop denied tools from both.
+  const effectiveToolset =
+    mainConfig.toolsDeny.size > 0
+      ? {
+          schemas: toolset.schemas.filter(
+            (s) => !mainConfig.toolsDeny.has(s.name),
+          ),
+          executors: Object.fromEntries(
+            Object.entries(toolset.executors).filter(
+              ([name]) => !mainConfig.toolsDeny.has(name),
+            ),
+          ),
+        }
+      : toolset;
+
+  const adapted = adaptToolset(effectiveToolset);
   const systemPrompt = defaultSystemPrompt(
     ctx,
     userId,
-    skills,
+    effectiveSkills,
     [...channelFragments, ...pluginFragments],
+    {
+      tenantPrompt: mainConfig.tenantPrompt,
+      executionBias: mainConfig.overrides.executionBias,
+      replyStyle: mainConfig.overrides.replyStyle,
+      userOnboarding: mainConfig.overrides.userOnboarding,
+      customFragments: mainConfig.customFragments,
+    },
   );
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
   const harness = new AgentHarness({

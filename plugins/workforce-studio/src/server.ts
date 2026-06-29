@@ -211,6 +211,21 @@ const plugin: PluginServerModule = {
             sendError(ctx, res, err, "diffSolution", userId);
           }
         },
+        // POST /solutions/:slug/apply → { ok, appliedWorkers }
+        applySolution: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user context" });
+            return;
+          }
+          const slug = String(req.params.slug ?? "");
+          try {
+            const result = solutionsCap.apply(userId, slug);
+            res.json(result);
+          } catch (err) {
+            sendError(ctx, res, err, "applySolution", userId);
+          }
+        },
       },
     };
   },

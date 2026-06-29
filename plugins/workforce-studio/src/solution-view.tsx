@@ -20,6 +20,7 @@ import {
   Lock,
   Plus,
   RefreshCw,
+  Rocket,
   Save,
   Trash2,
 } from "lucide-react";
@@ -439,6 +440,34 @@ function SolutionDetailPanel({
     }
   }, [spec.slug]);
 
+  const apply = useCallback(async () => {
+    if (
+      !window.confirm(
+        `Apply "${spec.name}" to the running system?\n\nThis writes the main-agent config + worker files into the tenant. The live agent picks them up on its next turn. (Plugins aren't changed in this phase.)`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await api<{ appliedWorkers: string[] }>(
+        `/solutions/${encodeURIComponent(spec.slug)}/apply`,
+        { method: "POST" },
+      );
+      window.alert(
+        `Applied "${spec.name}". Workers updated: ${
+          r.appliedWorkers.length
+        }. The change takes effect on the next agent turn.`,
+      );
+    } catch (err) {
+      window.alert(
+        `Apply failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      setBusy(false);
+    }
+  }, [spec.slug, spec.name]);
+
   const save = useCallback(async () => {
     setBusy(true);
     try {
@@ -566,6 +595,15 @@ function SolutionDetailPanel({
                 </button>
                 <button
                   type="button"
+                  onClick={() => void apply()}
+                  disabled={busy}
+                  className="inline-flex items-center gap-1 rounded bg-success-fg px-2 py-1 text-xs font-medium text-bg-base hover:opacity-90 disabled:opacity-50"
+                  title="Write this solution into the running system (main agent + workers). Plugins unchanged in this phase."
+                >
+                  <Rocket className="size-3.5" /> Apply
+                </button>
+                <button
+                  type="button"
                   onClick={() => onDelete(spec.slug)}
                   className="inline-flex items-center gap-1 rounded border border-danger-fg/40 px-2 py-1 text-xs text-danger-fg hover:bg-danger-fg/5"
                 >
@@ -609,10 +647,12 @@ function SolutionDetailPanel({
           </Field>
         </div>
 
-        <div className="mt-3 rounded border border-warning-fg/30 bg-warning-fg/5 px-3 py-2 text-[11px] text-warning-fg">
-          Phase 2: saving writes the solution to disk but does
-          <strong> not </strong>
-          change the running system. Apply lands in a later phase.
+        <div className="mt-3 rounded border border-info-fg/30 bg-info-fg/5 px-3 py-2 text-[11px] text-info-fg">
+          <strong>Save</strong> writes this solution to disk (no
+          runtime effect). <strong>Apply</strong> writes it into the
+          running system — main-agent prompt / skills / tools +
+          worker files take effect on the next agent turn. Plugin
+          enable/disable is not applied in this phase.
         </div>
       </div>
 

@@ -27,7 +27,8 @@
       { "method": "POST", "path": "/solutions/extract", "handler": "extractSolution" },
       { "method": "POST", "path": "/solutions/save", "handler": "saveSolution" },
       { "method": "DELETE", "path": "/solutions/:slug", "handler": "deleteSolution" },
-      { "method": "GET", "path": "/solutions/:slug/diff", "handler": "diffSolution" }
+      { "method": "GET", "path": "/solutions/:slug/diff", "handler": "diffSolution" },
+      { "method": "POST", "path": "/solutions/:slug/apply", "handler": "applySolution" }
     ]
   }
 }
