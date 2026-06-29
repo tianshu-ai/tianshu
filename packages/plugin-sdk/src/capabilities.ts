@@ -74,6 +74,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Build a read-only snapshot of the tenant's agent configuration (main agent prompt + tools + skills, every worker agent's prompt + allowed tools + allowed skills). Used by the Workforce Studio plugin to render an inspect-and-export UI; the snapshot includes full skill markdown bodies so the studio can ship a faithful bundle.",
   },
+  "host.solutions": {
+    exclusive: true,
+    description:
+      "Manage Solutions (ADR-0008): declarative descriptions of the desired agent configuration for a tenant. Extract current reality into a named solution, list / read / save / delete solutions, and diff a solution against reality or another solution. Phase 2 has no Apply — solutions are inert files on disk until a later phase reconciles them into reality.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;

@@ -18,6 +18,7 @@ export * from "./catalog.js";
 export * from "./lsp.js";
 export * from "./channel-bindings.js";
 export * from "./workforce-snapshot.js";
+export * from "./solution.js";
 export {
   McpToolset,
   textOfMcpContent,

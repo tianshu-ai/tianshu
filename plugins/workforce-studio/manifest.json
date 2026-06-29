@@ -21,7 +21,13 @@
     ],
     "apiRoutes": [
       { "method": "GET", "path": "/snapshot", "handler": "getSnapshot" },
-      { "method": "GET", "path": "/snapshot/zip", "handler": "downloadZip" }
+      { "method": "GET", "path": "/snapshot/zip", "handler": "downloadZip" },
+      { "method": "GET", "path": "/solutions", "handler": "listSolutions" },
+      { "method": "GET", "path": "/solutions/:slug", "handler": "getSolution" },
+      { "method": "POST", "path": "/solutions/extract", "handler": "extractSolution" },
+      { "method": "POST", "path": "/solutions/save", "handler": "saveSolution" },
+      { "method": "DELETE", "path": "/solutions/:slug", "handler": "deleteSolution" },
+      { "method": "GET", "path": "/solutions/:slug/diff", "handler": "diffSolution" }
     ]
   }
 }

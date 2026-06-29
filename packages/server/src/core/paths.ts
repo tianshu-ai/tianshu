@@ -94,6 +94,17 @@ export function getTenantSharedSkillsDir(
   return path.join(getTenantConfigDir(tenantId, home), "skills");
 }
 
+/** Per-tenant Solutions directory (ADR-0008). Each subdirectory is
+ *  one solution slug:
+ *    _tenant/solutions/<slug>/solution.json
+ *    _tenant/solutions/<slug>/main-agent/prompt.md
+ *    _tenant/solutions/<slug>/workers/<slug>/SOUL.md
+ *  Sibling to config/ under _tenant/ so solutions travel with the
+ *  tenant's shared area but stay distinct from live config. */
+export function getTenantSolutionsDir(tenantId: string, home?: string): string {
+  return path.join(getTenantSharedDir(tenantId, home), "solutions");
+}
+
 export function getTenantMainSkillsDir(
   tenantId: string,
   home?: string,
