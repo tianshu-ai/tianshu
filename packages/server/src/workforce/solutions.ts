@@ -20,6 +20,7 @@ import type {
   SolutionDiffEntry,
   SolutionSpec,
   SolutionSpecInput,
+  SolutionPromptBlock,
   SolutionSummary,
   SolutionWorker,
 } from "@tianshu-ai/plugin-sdk";
@@ -186,11 +187,13 @@ function readSpec(deps: StoreDeps, slug: string): SolutionSpec | null {
 
 function resolveDetail(
   deps: StoreDeps,
+  userId: string,
   spec: SolutionSpec,
+  tenantPromptOverride?: string | null,
 ): SolutionDetail {
   const dir = solutionDir(deps, spec.slug);
-  let tenantPrompt: string | null = null;
-  if (spec.mainAgent.tenantPromptPath) {
+  let tenantPrompt: string | null = tenantPromptOverride ?? null;
+  if (tenantPromptOverride === undefined && spec.mainAgent.tenantPromptPath) {
     tenantPrompt = safeRead(path.join(dir, spec.mainAgent.tenantPromptPath));
   }
   const workerPrompts: Record<string, string> = {};
@@ -204,8 +207,56 @@ function resolveDetail(
     spec,
     tenantPrompt,
     workerPrompts,
+    mainBlocks: buildMainBlocks(deps, userId, spec, tenantPrompt),
     isCurrent: spec.slug === CURRENT_SLUG,
   };
+}
+
+/** Build the main-agent block list for the Solution view's block
+ *  editor. Read-only host / plugin blocks come from current
+ *  reality as reference; the editable workspace / tenant-prompt
+ *  block carries the solution's own value (when set) so the
+ *  operator edits the solution, not reality. */
+function buildMainBlocks(
+  deps: StoreDeps,
+  userId: string,
+  spec: SolutionSpec,
+  tenantPrompt: string | null,
+): SolutionPromptBlock[] {
+  const snap = buildWorkforceSnapshot({
+    ctx: deps.ctx,
+    userId,
+    pluginRegistry: deps.pluginRegistry,
+    tianshuVersion: deps.tianshuVersion,
+  });
+  const out: SolutionPromptBlock[] = [];
+  for (const b of snap.main.blocks) {
+    // The workspace-context block is the editable proxy for the
+    // solution's tenant prompt override: show the solution's
+    // stored value when present, otherwise reality's text.
+    if (b.kind === "workspace-context") {
+      out.push({
+        kind: "tenant-prompt",
+        title: "Main agent prompt (tenant override)",
+        source: "tenant",
+        origin: "tenant",
+        editable: true,
+        text: tenantPrompt ?? b.text,
+        note: "Editable. This text is injected into the main agent prompt for this solution.",
+      });
+      continue;
+    }
+    out.push({
+      kind: b.kind,
+      title: b.title,
+      source: b.source,
+      origin: b.origin,
+      editable: false,
+      text: b.text,
+      note: b.note,
+    });
+  }
+  return out;
 }
 
 function safeRead(p: string): string | null {
@@ -274,7 +325,7 @@ export function getSolution(
   }
   assertValidSlug(slug);
   const spec = readSpec(deps, slug);
-  return spec ? resolveDetail(deps, spec) : null;
+  return spec ? resolveDetail(deps, userId, spec) : null;
 }
 
 export function extractSolution(
@@ -297,12 +348,14 @@ export function extractSolution(
   if (slug !== CURRENT_SLUG) {
     writeSolution(deps, spec, tenantPrompt, workerPrompts);
   }
-  return { spec, tenantPrompt, workerPrompts, isCurrent: slug === CURRENT_SLUG };
+  // Pass the extracted tenantPrompt through so the block builder
+  // shows it directly (the live mirror isn't on disk to re-read).
+  return resolveDetail(deps, userId, spec, tenantPrompt);
 }
 
 export function saveSolution(
   deps: StoreDeps,
-  _userId: string,
+  userId: string,
   input: SolutionSpecInput,
 ): SolutionDetail {
   if (input.slug === CURRENT_SLUG) {
@@ -356,7 +409,7 @@ export function saveSolution(
     hasTenantPrompt ? input.mainAgent.tenantPrompt : null,
     workerPrompts,
   );
-  return resolveDetail(deps, spec);
+  return resolveDetail(deps, userId, spec);
 }
 
 export function removeSolution(

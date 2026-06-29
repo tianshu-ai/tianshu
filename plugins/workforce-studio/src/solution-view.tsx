@@ -12,6 +12,8 @@ import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useState } from "react";
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
   GitCompare,
   Layers,
   Loader2,
@@ -66,10 +68,27 @@ interface SolutionSpec {
   };
   workers: SolutionWorker[];
 }
+type BlockOrigin =
+  | "core"
+  | "builtin-plugin"
+  | "tenant-plugin"
+  | "host"
+  | "tenant"
+  | "workspace";
+interface SolutionPromptBlock {
+  kind: string;
+  title: string;
+  source: string;
+  origin: BlockOrigin;
+  editable: boolean;
+  text: string;
+  note?: string;
+}
 interface SolutionDetail {
   spec: SolutionSpec;
   tenantPrompt: string | null;
   workerPrompts: Record<string, string>;
+  mainBlocks: SolutionPromptBlock[];
   isCurrent: boolean;
 }
 interface DiffEntry {
@@ -489,59 +508,53 @@ function SolutionDetailPanel({
         </div>
       </div>
 
-      {/* Main agent */}
+      {/* Main agent — block-style editor (ADR-0008): host /
+          plugin blocks are read-only reference; the tenant prompt
+          block is editable. */}
       <Section title="Main agent">
-        <div className="flex flex-col gap-3">
-          <Field label="Tenant prompt override">
+        <div className="flex flex-col gap-2">
+          {detail.mainBlocks.map((b, idx) => (
+            <SolutionBlockCard
+              key={`${b.kind}-${idx}`}
+              index={idx + 1}
+              block={b}
+              isCurrent={isCurrent}
+              tenantPrompt={tenantPrompt}
+              onTenantPromptChange={setTenantPrompt}
+            />
+          ))}
+        </div>
+        {/* Skill / tool allow-lists are config, not prompt text,
+            so they stay as their own editable controls below the
+            block list. */}
+        <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
+          <Field label="Skills allow (one per line; empty = all)">
             <textarea
-              value={tenantPrompt}
+              value={skillsAllow}
               disabled={isCurrent}
-              onChange={(e) => setTenantPrompt(e.target.value)}
-              rows={6}
-              placeholder={
-                isCurrent
-                  ? ""
-                  : "Extra system-prompt text injected for the main agent. Leave empty for none."
-              }
-              className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+              onChange={(e) => setSkillsAllow(e.target.value)}
+              rows={4}
+              className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
             />
           </Field>
-          {isCurrent ? (
-            <div className="text-[11px] text-fg-muted">
-              For the live mirror this shows the extracted workspace
-              context (AGENTS / SOUL / MEMORY / USER). Edit a named
-              solution to set an explicit override.
-            </div>
-          ) : null}
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-            <Field label="Skills allow (one per line; empty = all)">
-              <textarea
-                value={skillsAllow}
-                disabled={isCurrent}
-                onChange={(e) => setSkillsAllow(e.target.value)}
-                rows={4}
-                className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
-              />
-            </Field>
-            <Field label="Skills deny (one per line)">
-              <textarea
-                value={skillsDeny}
-                disabled={isCurrent}
-                onChange={(e) => setSkillsDeny(e.target.value)}
-                rows={4}
-                className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
-              />
-            </Field>
-            <Field label="Tools allow (one per line; empty = all)">
-              <textarea
-                value={toolsAllow}
-                disabled={isCurrent}
-                onChange={(e) => setToolsAllow(e.target.value)}
-                rows={4}
-                className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
-              />
-            </Field>
-          </div>
+          <Field label="Skills deny (one per line)">
+            <textarea
+              value={skillsDeny}
+              disabled={isCurrent}
+              onChange={(e) => setSkillsDeny(e.target.value)}
+              rows={4}
+              className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
+            />
+          </Field>
+          <Field label="Tools allow (one per line; empty = all)">
+            <textarea
+              value={toolsAllow}
+              disabled={isCurrent}
+              onChange={(e) => setToolsAllow(e.target.value)}
+              rows={4}
+              className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 font-mono text-[11px] disabled:opacity-60"
+            />
+          </Field>
         </div>
       </Section>
 
@@ -651,6 +664,128 @@ function Section({
       </div>
       <div className="p-4">{children}</div>
     </section>
+  );
+}
+
+// Block card for the Solution view's main-agent editor. Mirrors
+// the Reality view's BlockCard but: editable blocks (tenant
+// prompt) render a textarea bound to the parent's state instead
+// of read-only <pre>. Plugin / host blocks stay collapsed +
+// read-only with the same origin badge as Reality.
+function SolutionBlockCard({
+  index,
+  block,
+  isCurrent,
+  tenantPrompt,
+  onTenantPromptChange,
+}: {
+  index: number;
+  block: SolutionPromptBlock;
+  isCurrent: boolean;
+  tenantPrompt: string;
+  onTenantPromptChange: (next: string) => void;
+}): ReactElement {
+  const [open, setOpen] = useState(block.editable);
+  const borderTone = block.editable
+    ? "border-border-subtle"
+    : "border-border-subtle/60 border-dashed";
+  return (
+    <div className={`rounded-md border bg-bg-base ${borderTone}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left text-xs"
+      >
+        {open ? (
+          <ChevronDown className="size-3.5 text-fg-muted" />
+        ) : (
+          <ChevronRight className="size-3.5 text-fg-muted" />
+        )}
+        <span className="text-[10px] text-fg-muted">#{index}</span>
+        <span className="font-medium">{block.title}</span>
+        <SolutionOriginBadge origin={block.origin} />
+        <span
+          className={
+            block.editable
+              ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-success-fg"
+              : "rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium"
+          }
+          title={
+            block.editable
+              ? "Editable — part of this solution's main-agent design."
+              : "Auto-injected by the host or a plugin — not editable."
+          }
+        >
+          {block.editable ? "editable" : "read-only"}
+        </span>
+        <span className="ml-auto text-[10px] text-fg-muted">
+          {block.source}
+        </span>
+      </button>
+      {open ? (
+        <div className="border-t border-border-subtle px-3 py-2">
+          {block.note ? (
+            <div className="mb-2 text-[11px] text-fg-muted">{block.note}</div>
+          ) : null}
+          {block.editable ? (
+            <textarea
+              value={tenantPrompt}
+              disabled={isCurrent}
+              onChange={(e) => onTenantPromptChange(e.target.value)}
+              rows={8}
+              placeholder={
+                isCurrent
+                  ? ""
+                  : "Main-agent prompt text for this solution. Leave empty for none."
+              }
+              className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+            />
+          ) : (
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-elevated p-2 font-mono text-[11px] leading-snug">
+              {block.text}
+            </pre>
+          )}
+          {block.editable && isCurrent ? (
+            <div className="mt-2 text-[10px] text-fg-muted">
+              The live mirror is read-only. Extract a named solution
+              to edit this block.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function SolutionOriginBadge({
+  origin,
+}: {
+  origin: BlockOrigin;
+}): ReactElement {
+  const map: Record<BlockOrigin, { label: string; className: string }> = {
+    core: { label: "core", className: "bg-info-fg/10 text-info-fg" },
+    "builtin-plugin": {
+      label: "built-in",
+      className: "bg-success-fg/10 text-success-fg",
+    },
+    "tenant-plugin": {
+      label: "tenant plugin",
+      className: "bg-warning-fg/10 text-warning-fg",
+    },
+    host: { label: "host", className: "bg-info-fg/10 text-info-fg" },
+    workspace: {
+      label: "workspace",
+      className: "bg-warning-fg/10 text-warning-fg",
+    },
+    tenant: { label: "tenant", className: "bg-warning-fg/10 text-warning-fg" },
+  };
+  const { label, className } = map[origin];
+  return (
+    <span
+      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${className}`}
+    >
+      {label}
+    </span>
   );
 }
 
