@@ -43,6 +43,10 @@ import {
   CHANNEL_SEND_FILE_TOOL_NAME,
 } from "./chat/host-tools/channel-send-file.js";
 import {
+  buildSolutionTool,
+  SOLUTION_TOOL_NAME,
+} from "./chat/host-tools/solution-tool.js";
+import {
   INSPECT_SESSION_TOOL_NAME,
   NUDGE_SESSION_TOOL_NAME,
   READ_SESSION_LOG_TOOL_NAME,
@@ -173,6 +177,11 @@ pluginRegistry = new PluginRegistry({
       name: CHANNEL_SEND_FILE_TOOL_NAME,
       since: "0.3.50",
       tool: buildChannelSendFileTool(),
+    },
+    {
+      name: SOLUTION_TOOL_NAME,
+      since: "0.4.7",
+      tool: buildSolutionTool(),
     },
     // Recovery agent tool surface. These are *only* useful to the
     // session-recovery agent (chat handler error path spawns one
