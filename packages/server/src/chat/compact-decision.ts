@@ -83,6 +83,27 @@ export function shouldCompactBranch(
 }
 
 /**
+ * Pull the current branch and report whether it is still over the
+ * compaction threshold. Used by the chat handler after a
+ * `nothing_to_compact` outcome to decide whether the legacy
+ * fork+summarise fallback is actually needed (vs. the branch having
+ * drifted back under the window between the decision and the check).
+ * Best-effort: a getBranch() failure reports `false` so we never
+ * block a turn on a transient read error.
+ */
+export async function branchStillOverWindow(args: {
+  piSession: PiSession;
+  contextWindow: number | undefined;
+}): Promise<boolean> {
+  try {
+    const branch = await args.piSession.getBranch();
+    return shouldCompactBranch({ branch, contextWindow: args.contextWindow });
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Pure-side-effect helper that drives one auto-compact decision
  * + (if needed) action against any AgentHarness, with no
  * dependency on the chat WebSocket or session-row plumbing.
@@ -105,6 +126,37 @@ export interface AutoCompactDecision {
   compacted: boolean;
   tokensBefore?: number;
   error?: string;
+  /**
+   * Structured outcome so callers can branch without string-matching
+   * the error. pi 0.80's `harness.compact()` throws
+   * `"Nothing to compact"` when `prepareCompaction` finds no cut point
+   * — most often because the branch tail is already a compaction entry
+   * (we just compacted last turn and nothing new is summarisable yet).
+   * That is NOT a real failure, but it also means we did NOT free any
+   * space: if the branch is still over the window the caller must take
+   * a different path (legacy fork+summarise fallback) instead of
+   * sending an oversized prompt that the provider will reject.
+   *
+   *   - "compacted"            — compact() ran, space freed
+   *   - "below_threshold"      — under the window, no work needed
+   *   - "nothing_to_compact"   — over threshold but pi had no cut point;
+   *                              caller should fall back
+   *   - "error"                — compact() threw something else
+   */
+  reason?:
+    | "compacted"
+    | "below_threshold"
+    | "nothing_to_compact"
+    | "error";
+}
+
+/** pi 0.80's `harness.compact()` message when `prepareCompaction`
+ *  yields no cut point. Matched loosely (case-insensitive substring)
+ *  so a future rephrasing of the harness error doesn't silently break
+ *  the fallback path. */
+function isNothingToCompact(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /nothing to compact/i.test(msg);
 }
 
 export async function tryAutoCompact(args: {
@@ -123,14 +175,22 @@ export async function tryAutoCompact(args: {
     return { compacted: false };
   }
   if (!shouldCompactBranch({ branch, contextWindow })) {
-    return { compacted: false };
+    return { compacted: false, reason: "below_threshold" };
   }
   try {
     const result = await harness.compact();
-    return { compacted: true, tokensBefore: result.tokensBefore };
+    return { compacted: true, tokensBefore: result.tokensBefore, reason: "compacted" };
   } catch (err) {
+    // "Nothing to compact" is the expected over-window-but-no-cut-point
+    // case (see AutoCompactDecision.reason). Surface it distinctly so
+    // the caller can fall back to fork+summarise instead of treating it
+    // as a hard error or pressing on with an oversized prompt.
+    if (isNothingToCompact(err)) {
+      return { compacted: false, reason: "nothing_to_compact" };
+    }
     return {
       compacted: false,
+      reason: "error",
       error: err instanceof Error ? err.message : String(err),
     };
   }

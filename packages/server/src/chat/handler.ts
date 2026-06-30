@@ -49,6 +49,7 @@ import {
 import {
   shouldCompactBranch,
   tryAutoCompact,
+  branchStillOverWindow,
   type AutoCompactDecision,
   type ShouldCompactBranchInput,
 } from "./compact-decision.js";
@@ -334,6 +335,14 @@ interface RunPromptArgs {
    *  before runPrompt picks it up.
    */
   session?: import("./messages.js").ChatSession;
+  /**
+   * Internal: set to true on the single recursive re-entry the
+   * pre-prompt over-window fallback performs (fork+summarise then
+   * retry the turn against the freshly-compacted session). Guards
+   * against an infinite compact→retry loop if the forked session is
+   * somehow still over the window. Not part of the public contract.
+   */
+  _afterCompactFallback?: boolean;
 }
 
 export async function runPrompt(args: RunPromptArgs): Promise<void> {
@@ -667,15 +676,80 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       harness,
       contextWindow: modelInfo.contextWindow,
     });
-    if (pre.error) {
+    if (pre.reason === "error") {
+      // A real compact() failure (not the benign no-cut-point case).
+      // Keep the old behaviour: warn and press on — the turn may go
+      // out oversized, but that's no worse than before this fix.
       console.warn(`[handler] pre-prompt auto-compact failed: ${pre.error}`);
+    } else if (pre.reason === "nothing_to_compact") {
+      // pi 0.80's harness.compact() found no cut point — almost always
+      // because the branch tail is already a compaction entry (we
+      // compacted last turn and nothing new is summarisable yet). If
+      // the branch is STILL over the window, harness.compact() can't
+      // help us this turn: sending the prompt now would ship an
+      // oversized context the provider rejects → the user sees
+      // "compact then stop" with no reply. Fall back to the legacy
+      // fork+summarise compaction, which is not bound by
+      // prepareCompaction's cut-point rules, then retry the turn once
+      // against the freshly-forked (small) session.
+      const stillOver = await branchStillOverWindow({
+        piSession,
+        contextWindow: modelInfo.contextWindow,
+      });
+      if (stillOver && !args._afterCompactFallback) {
+        const recovered = await runOverWindowForkFallback({
+          ctx,
+          userId,
+          session,
+          modelInfo,
+          signal,
+          send,
+        });
+        if (recovered) {
+          // Clean up this aborted attempt's harness wiring before we
+          // re-enter, so we don't leave a dangling subscription /
+          // registry entry for a turn we're abandoning.
+          unsubscribe();
+          unregisterHarness();
+          signal.removeEventListener("abort", onAbort);
+          if (storage) storage.pendingUserAttachments = null;
+          // Retry the turn exactly once against the new active
+          // session. The guard flag prevents an infinite loop if the
+          // forked session is somehow still oversized.
+          await runPrompt({ ...args, session: undefined, _afterCompactFallback: true });
+          return;
+        }
+        // Fallback itself couldn't free space (e.g. too few messages
+        // to summarise) — fall through to the over-window guard below.
+      }
+      if (stillOver) {
+        send({
+          type: "stream_error",
+          reason:
+            "This conversation is over the model's context window and can't be " +
+            "auto-compacted further. Start a new chat, or run /compact, to continue.",
+        });
+        streamErrorSent = true;
+      }
     }
   }
 
   try {
+    if (streamErrorSent) {
+      // Pre-prompt over-window guard fired (or fork fallback was
+      // exhausted): do NOT ship an oversized prompt the provider will
+      // reject. Bail out of the turn cleanly — the user already has an
+      // actionable error.
+      throw new HandledTurnAbort();
+    }
     await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
     await harness.waitForIdle();
   } catch (err) {
+    if (err instanceof HandledTurnAbort) {
+      // Intentional, already-reported bail (pre-prompt over-window
+      // guard). Nothing to send, nothing to recover — fall through to
+      // the finally block which resolves any dangling tool chips.
+    } else {
     if (!streamErrorSent) {
       send({
         type: "stream_error",
@@ -725,6 +799,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           }`,
         );
       }
+    }
     }
   } finally {
     // Resolve any tool-call chip the UI is still showing as
@@ -1119,6 +1194,90 @@ function makeWireOpts(ctx: TenantContext): ToWireOpts {
       return info?.contextWindow;
     },
   };
+}
+
+/** Sentinel thrown to bail out of the turn after the pre-prompt
+ *  over-window guard has already sent an actionable error. The
+ *  prompt catch treats it as a no-op (no stream_error, no recovery
+ *  spawn) so we don't double-report or kick off recovery for a turn
+ *  we deliberately declined to run. */
+class HandledTurnAbort extends Error {
+  constructor() {
+    super("turn aborted: handled pre-prompt");
+    this.name = "HandledTurnAbort";
+  }
+}
+
+/**
+ * Legacy fork+summarise fallback for the case pi 0.80's
+ * `harness.compact()` can't help: the branch is over the window but
+ * `prepareCompaction` finds no cut point (tail is already a
+ * compaction entry). Unlike harness.compact(), `compactSession`
+ * summarises the DB message log and forks a NEW active session
+ * seeded with the summary — so it always frees space regardless of
+ * cut-point rules.
+ *
+ * Returns true if it forked a fresh, smaller session (caller should
+ * retry the turn against it), false if it couldn't (too little to
+ * summarise) so the caller surfaces the over-window error instead.
+ *
+ * On a fresh fork we emit `history_compacted` + a history refresh so
+ * the UI swaps to the new session before the retry runs.
+ */
+async function runOverWindowForkFallback(args: {
+  ctx: TenantContext;
+  userId: string;
+  session: ChatSession;
+  modelInfo: ResolvedModelInfo;
+  signal: AbortSignal;
+  send: (msg: ServerMsg) => void;
+}): Promise<boolean> {
+  const { ctx, userId, session, modelInfo, signal, send } = args;
+  const { messages, rows } = loadAgentHistoryForSession(ctx, session.id, {
+    api: modelInfo.api,
+    provider: modelInfo.providerId,
+    model: modelInfo.modelId,
+  });
+  if (messages.length === 0) return false;
+  try {
+    const result = await compactSession({
+      ctx,
+      userId,
+      oldSession: session,
+      pi: messages,
+      rows,
+      modelInfo,
+      signal,
+    });
+    send({
+      type: "history_compacted",
+      reason: "auto",
+      oldSessionId: result.oldSessionId,
+      newSessionId: result.newSession.id,
+      summarisedCount: result.summarisedCount,
+      keptCount: result.keptCount,
+      durationMs: result.durationMs,
+    });
+    const page = listMessagesForUserPage(ctx, userId);
+    send({
+      type: "history",
+      messages: page.messages.map((m) => toWire(m, makeWireOpts(ctx))),
+      hasMore: page.hasMore,
+    });
+    return true;
+  } catch (err) {
+    // CompactSkippedError (nothing to summarise) or any other failure:
+    // report nothing here; the caller's over-window guard will send a
+    // single clear error.
+    if (!(err instanceof CompactSkippedError)) {
+      console.warn(
+        `[handler] over-window fork fallback failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    return false;
+  }
 }
 
 async function maybeAutoCompact(args: {
