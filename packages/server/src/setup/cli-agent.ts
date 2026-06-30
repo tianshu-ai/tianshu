@@ -29,7 +29,8 @@ import * as p from "@clack/prompts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { complete } from "@earendil-works/pi-ai";
+// pi 0.80: global `complete()` dispatch lives behind `/compat`.
+import { complete } from "@earendil-works/pi-ai/compat";
 import type {
   Api,
   AssistantMessage,

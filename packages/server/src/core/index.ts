@@ -119,3 +119,5 @@ export {
   resolveApiKey,
   type ResolvedModelInfo,
 } from "./llm.js";
+
+export { buildModels } from "./pi-models.js";

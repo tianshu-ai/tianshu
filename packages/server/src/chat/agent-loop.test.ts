@@ -27,6 +27,17 @@ let __abortAcked = false;
  *  Tests inspect this to assert prompt-stitching behaviour. */
 let __lastSystemPrompt: string | undefined;
 
+// The real `buildModels` (core/pi-models.ts) asserts that a builtin
+// pi-ai API implementation exists for the model's `api` id. These
+// tests use a fake api id ("anthropic", not the real
+// "anthropic-messages") and fully mock the harness, so the returned
+// Models is never used for streaming. Stub it out to a dummy so the
+// fake-api guard doesn't fire on a code path that never reaches the
+// network.
+vi.mock("../core/pi-models.js", () => ({
+  buildModels: () => ({}) as never,
+}));
+
 vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
 

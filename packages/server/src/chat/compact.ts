@@ -23,7 +23,11 @@
 // path uses `ensureActiveSession` which only returns the newly-forked
 // active session, so future LLM calls see only the shorter history.
 
-import { completeSimple } from "@earendil-works/pi-ai";
+// pi 0.80: the global complete*/stream* dispatch moved behind the
+// `/compat` entrypoint (the bare package now exposes the
+// createModels()/createProvider() runtime). Types stay on the bare
+// package — they are identical and re-exported by compat anyway.
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type {
   AssistantMessage,
   Context,

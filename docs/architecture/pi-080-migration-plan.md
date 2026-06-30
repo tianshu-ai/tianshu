@@ -1,29 +1,70 @@
 # pi-ai / pi-agent-core 0.79 → 0.80 migration (implementation brief)
 
-> Status: planned. Tracks GitHub issue #260. Pick up in a fresh
-> session: "do the pi 0.80 migration per
-> docs/architecture/pi-080-migration-plan.md". Needs end-to-end
-> smoke testing against a real provider before merge.
+> Status: **DONE** (branch `feat/pi-080-migration`). Tracks GitHub
+> issue #260. Smoke-tested end-to-end against real providers
+> (openai-completions + anthropic-messages via the local SAP proxy):
+> multi-turn chat, structured tool-call round-trip, and
+> `harness.compact()` all green on 0.80.2.
 
-## TL;DR — issue #260 UNDERESTIMATES the work
+## TL;DR — the original probe was WRONG; it's close to #260's estimate
 
-Issue #260 says it's "3 easy compat imports + 2
+⚠️ An earlier draft of this plan (below, struck through) claimed
+0.80 **renamed** `AgentHarness` → `Agent` and **removed**
+`compact()`. Re-probing 0.80.2's actual `.d.ts` shows that is
+**false**:
+
+- 0.80 still exports `AgentHarness` from
+  `pi-agent-core/harness/agent-harness` — it is NOT renamed.
+  `Agent` is a *new, lower-level* loop wrapper added alongside it;
+  we do not use it.
+- `AgentHarness.compact()` is **still there**, unchanged. So is
+  `on()`, `subscribe()`, `env`, `session`, `tools`, `systemPrompt`,
+  `prompt()`, `navigateTree()`, etc. No compaction re-home needed.
+- The ONLY breaking change to `AgentHarness` between 0.79 and 0.80
+  is the constructor: the `getApiKeyAndHeaders` option is removed
+  and replaced by a required `models: Models` field. The harness
+  now drives requests through `models.streamSimple(...)` and
+  resolves auth via the provider's `auth.apiKey.resolve()`.
+
+So the real migration is:
+
+1. Bump deps to `^0.80.2`.
+2. 3 `complete*` imports → `@earendil-works/pi-ai/compat` (the
+   global dispatch API moved behind `/compat`; `{apiKey}` option
+   still works). compat self-registers the builtin API impls on
+   import.
+3. Build a one-line-per-site `Models` instance (new
+   `core/pi-models.ts:buildModels(piModel, apiKey)`) and pass it as
+   `models:` to the two `new AgentHarness({...})` sites
+   (handler.ts + agent-loop.ts), dropping `getApiKeyAndHeaders`.
+
+`compact-decision.ts` / `tryAutoCompact` / the pre-prompt compact in
+handler.ts all keep calling `harness.compact()` unchanged.
+
+### What `buildModels()` does
+
+`createModels()` + `setProvider(createProvider({ id, auth:{ apiKey:{
+resolve: () => ({ auth:{ apiKey } }) } }, models:[piModel], api:
+getApiProvider(piModel.api) }))`. The custom api-key auth hands the
+harness tianshu's already-resolved per-tenant key; the wire-level
+streaming reuses the builtin api impls from the `/compat`
+api-registry (same dispatch table 0.79's global `stream()` used).
+Built per chat run, matching the old per-run `getApiKeyAndHeaders`
+lifetime — no global mutable state, no cross-tenant leakage.
+
+---
+
+## ⚠️ ORIGINAL (INACCURATE) PROBE — kept for the record
+
+~~Issue #260 says it's "3 easy compat imports + 2
 getApiKeyAndHeaders sites". After probing 0.80.2 against the real
-.d.ts files, it is bigger:
+.d.ts files, it is bigger:~~ **(This was a misread — see above.)**
 
-1. `AgentHarness` is **renamed to `Agent`** with a redesigned
-   options object (no `getApiKeyAndHeaders`; new `streamFn` +
-   `getApiKey`).
-2. **`Agent` has no `compact()`** — 0.79's `harness.compact()`
-   is gone. tianshu's auto-compact (incl. the new pre-prompt
-   compact in handler.ts) depends on it. Needs a replacement
-   path or the compaction feature re-homed.
+1. ~~`AgentHarness` is **renamed to `Agent`**~~ — FALSE.
+2. ~~**`Agent` has no `compact()`**~~ — N/A; we keep `AgentHarness`,
+   which still has `compact()`.
 3. The 3 `complete*` imports → `@earendil-works/pi-ai/compat`
-   (genuinely easy, as the issue says).
-
-So this is a real migration touching the core LLM-call path
-(agent-loop.ts + handler.ts), not a dependency bump. Hence:
-dedicated session + real-provider smoke test before merge.
+   (this part was correct).
 
 ## 0.80 API shape (probed from 0.80.2 .d.ts)
 

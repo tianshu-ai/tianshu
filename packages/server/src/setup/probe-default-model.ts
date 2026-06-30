@@ -10,7 +10,8 @@
 // flaking) and surface it as a structured `ProbeResult`. Callers
 // branch on that, never on raw exceptions.
 
-import { completeSimple } from "@earendil-works/pi-ai";
+// pi 0.80: global `completeSimple()` dispatch lives behind `/compat`.
+import { completeSimple } from "@earendil-works/pi-ai/compat";
 import type { Api, Context, Model } from "@earendil-works/pi-ai";
 import {
   buildModel,
