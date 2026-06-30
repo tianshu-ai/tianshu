@@ -126,6 +126,7 @@ export type WorkforcePromptBlockKind =
   | "available-skills"
   | "user-onboarding"
   | "tenant-prompt"
+  | "custom-fragment"
   | "worker-soul"
   | "worker-context";
 
