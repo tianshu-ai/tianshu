@@ -111,6 +111,9 @@ function specFromReality(
       // so the captured solution reproduces the same surface.
       toolsAllow: w.tools.map((t) => t.name),
       skillsAllow: w.skills.map((s) => s.name),
+      // Fresh extract uses host defaults for every worker host
+      // block — no override until the operator sets one.
+      overrides: { executionBias: null },
       source: w.source,
     };
   });
@@ -169,6 +172,9 @@ function writeSolution(
       userOnboarding: string | null;
     };
     fragmentBodies?: Record<string, string>;
+    /** Per-worker host-block override bodies, keyed by worker
+     *  slug. */
+    workerOverrideBodies?: Record<string, { executionBias: string | null }>;
   },
 ): void {
   const dir = solutionDir(deps, spec.slug);
@@ -208,6 +214,11 @@ function writeSolution(
   for (const w of spec.workers) {
     if (w.systemPromptPath && workerPrompts[w.slug] !== undefined) {
       writeRel(w.systemPromptPath, workerPrompts[w.slug]!);
+    }
+    // Per-worker host-block override sidecars.
+    const wob = extra?.workerOverrideBodies?.[w.slug];
+    if (w.overrides?.executionBias && wob?.executionBias) {
+      writeRel(w.overrides.executionBias, wob.executionBias);
     }
   }
   fs.writeFileSync(
@@ -278,10 +289,21 @@ function resolveDetail(
     title: f.title,
     body: safeRead(path.join(dir, f.path)) ?? "",
   }));
+  // Resolve each worker's host-block override sidecars so the
+  // worker view can show overridden text on the editable block.
+  const workerOverrideText: Record<string, { executionBias: string | null }> =
+    {};
+  for (const w of spec.workers) {
+    const eb = w.overrides?.executionBias
+      ? safeRead(path.join(dir, w.overrides.executionBias))
+      : null;
+    workerOverrideText[w.slug] = { executionBias: eb };
+  }
   const view = buildMainView(deps, userId, {
     tenantPrompt,
     overrideText,
     customFragments,
+    workerOverrideText,
   });
   return {
     spec,
@@ -313,6 +335,9 @@ function buildMainView(
       userOnboarding: string | null;
     };
     customFragments: Array<{ id: string; title: string; body: string }>;
+    /** Per-worker host-block override bodies, keyed by worker slug.
+     *  null = host default. */
+    workerOverrideText?: Record<string, { executionBias: string | null }>;
   },
 ): {
   blocks: SolutionPromptBlock[];
@@ -437,19 +462,51 @@ function buildMainView(
   // deny pickers operate on the worker's own effective set.
   const workerViews: Record<string, SolutionWorkerView> = {};
   for (const w of snap.workers) {
+    const wOverride = edits.workerOverrideText?.[w.slug]?.executionBias ?? null;
     workerViews[w.slug] = {
-      blocks: w.blocks.map((b) => ({
-        kind: b.kind,
-        title: b.title,
-        source: b.source,
-        origin: b.origin,
-        // Only the worker SOUL block is editable in Phase 2. The
-        // workspace-context + host blocks stay read-only here
-        // (worker override of host blocks is a later refinement).
-        editable: b.kind === "worker-soul",
-        text: b.text,
-        note: b.note,
-      })),
+      blocks: w.blocks.map((b) => {
+        // Worker SOUL block: editable persona text.
+        if (b.kind === "worker-soul") {
+          return {
+            kind: b.kind,
+            title: b.title,
+            source: b.source,
+            origin: b.origin,
+            editable: true,
+            text: b.text,
+            note: b.note,
+          };
+        }
+        // Worker execution-bias: per-worker overridable host block
+        // (B model — independent of the main agent's override).
+        if (b.kind === "execution-bias") {
+          const overridden = wOverride !== null && wOverride !== undefined;
+          return {
+            kind: b.kind,
+            title: b.title,
+            source: "host",
+            origin: "host",
+            editable: true,
+            text: overridden ? wOverride : b.text,
+            defaultText: b.text,
+            overrideKey: "executionBias" as const,
+            overridden,
+            note: overridden
+              ? "Overridden for this worker. Reset to fall back to the host default."
+              : "Host default (same text the main agent gets). Override to customise it for this worker only.",
+          };
+        }
+        // Everything else stays read-only reference.
+        return {
+          kind: b.kind,
+          title: b.title,
+          source: b.source,
+          origin: b.origin,
+          editable: false,
+          text: b.text,
+          note: b.note,
+        };
+      }),
       availableSkills: w.skills
         .map((s) => ({
           name: s.name,
@@ -609,9 +666,20 @@ export function saveSolution(
   const existing = readSpec(deps, input.slug);
   const now = Date.now();
   const workerPrompts: Record<string, string> = {};
+  const workerOverrideBodies: Record<
+    string,
+    { executionBias: string | null }
+  > = {};
+  const nonEmptyStr = (s: string | null | undefined): boolean =>
+    !!s && s.trim().length > 0;
   const workers: SolutionWorker[] = input.workers.map((w) => {
     const hasPrompt = !!w.systemPrompt && w.systemPrompt.trim().length > 0;
     if (hasPrompt) workerPrompts[w.slug] = w.systemPrompt!;
+    // Per-worker host-block override: non-empty body → override
+    // (sidecar path), else host default (null).
+    const ebBody = w.overrides?.executionBias ?? null;
+    const hasEb = nonEmptyStr(ebBody);
+    workerOverrideBodies[w.slug] = { executionBias: ebBody };
     return {
       slug: w.slug,
       kind: w.kind,
@@ -622,6 +690,11 @@ export function saveSolution(
       systemPromptPath: hasPrompt ? `workers/${w.slug}/SOUL.md` : null,
       toolsAllow: w.toolsAllow,
       skillsAllow: w.skillsAllow,
+      overrides: {
+        executionBias: hasEb
+          ? `workers/${w.slug}/execution-bias.md`
+          : null,
+      },
       source: w.source,
     };
   });
@@ -693,6 +766,7 @@ export function saveSolution(
         userOnboarding: ovIn.userOnboarding,
       },
       fragmentBodies,
+      workerOverrideBodies,
     },
   );
   return resolveDetail(deps, userId, spec);
@@ -799,6 +873,23 @@ export function applySolution(
     } catch {
       /* fresh worker */
     }
+    // Per-worker host-block override: read the solution sidecar and
+    // write it into the worker's live config dir; record a pointer
+    // in agent.json so the runtime loader can find it. Empty / no
+    // override clears the pointer (falls back to host default).
+    const ebBody = readSol(w.overrides?.executionBias ?? null);
+    const hasEb = !!ebBody && ebBody.trim().length > 0;
+    if (hasEb) {
+      fs.writeFileSync(path.join(wDir, "execution-bias.md"), ebBody, "utf8");
+    } else {
+      // Drop a stale override file so reverting an override on
+      // re-apply actually reverts behaviour.
+      try {
+        fs.rmSync(path.join(wDir, "execution-bias.md"), { force: true });
+      } catch {
+        /* ignore */
+      }
+    }
     const agentJson = {
       ...existing,
       kind: w.kind,
@@ -808,6 +899,7 @@ export function applySolution(
       enabled: w.enabled,
       toolsAllow: w.toolsAllow,
       skillsAllow: w.skillsAllow,
+      overrides: { executionBias: hasEb ? "execution-bias.md" : null },
       source: w.source,
     };
     fs.writeFileSync(
@@ -888,6 +980,11 @@ function computeDiff(
       m[`${k}.skillsAllow`] = JSON.stringify(
         w.skillsAllow ? [...w.skillsAllow].sort() : null,
       );
+      // Override presence (structure, not prose) for the worker's
+      // host blocks.
+      m[`${k}.overrides.executionBias`] = w.overrides?.executionBias
+        ? "set"
+        : "";
     }
     return m;
   };

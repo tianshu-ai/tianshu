@@ -107,10 +107,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
   };
 });
 
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { up as runInitialMigration } from "../core/migrations/001-initial.js";
 import { up as runDepsMigration } from "../core/migrations/002-task-dependencies.js";
 import { up as runSessionTreeMigration } from "../core/migrations/003-session-tree.js";
 import type { TenantContext } from "../core/index.js";
+import { getTenantConfigDir } from "../core/paths.js";
 import { runAgentLoop } from "./agent-loop.js";
 
 function freshDb(): Database.Database {
@@ -126,10 +130,11 @@ function freshDb(): Database.Database {
   return db;
 }
 
-function fakeCtx(db: Database.Database): TenantContext {
+function fakeCtx(db: Database.Database, home = "/tmp/fake"): TenantContext {
   return {
     tenantId: "acme",
     db,
+    home,
     workspaceDir: "/tmp/fake",
     userHomeDir: () => "/tmp/fake/users/u1",
     config: {
@@ -399,5 +404,64 @@ describe("runAgentLoop (worker)", () => {
     expect(__lastSystemPrompt).toBeDefined();
     expect(__lastSystemPrompt).toContain("You are SoloWorker.");
     expect(__lastSystemPrompt).not.toContain("## Plugin guidance");
+  });
+
+  // Per-worker execution-bias override (B model): a worker that
+  // carries its own override sidecar gets that text in its prompt
+  // instead of the host default, independent of the main agent.
+  it("worker with execution-bias override: uses override text, not host default", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "ts-worker-eb-"));
+    const localCtx = fakeCtx(freshDb(), home);
+    const wDir = path.join(getTenantConfigDir("acme", home), "workers", "fooworker");
+    fs.mkdirSync(wDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(wDir, "execution-bias.md"),
+      "## Execution bias\nWORKER-ONLY override rule: triple-check sources.",
+      "utf8",
+    );
+    fs.writeFileSync(
+      path.join(wDir, "agent.json"),
+      JSON.stringify({
+        kind: "llm",
+        overrides: { executionBias: "execution-bias.md" },
+      }),
+      "utf8",
+    );
+
+    __script = { events: [] };
+    await runAgentLoop({
+      ctx: localCtx,
+      userId: "u1",
+      initialUserMessage: "do the thing",
+      systemPrompt: "You are FooWorker.",
+      workerSlug: "fooworker",
+    });
+    expect(__lastSystemPrompt).toBeDefined();
+    expect(__lastSystemPrompt).toContain(
+      "WORKER-ONLY override rule: triple-check sources.",
+    );
+
+    fs.rmSync(home, { recursive: true, force: true });
+  });
+
+  it("worker without override sidecar: falls back to host execution-bias default", async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "ts-worker-eb2-"));
+    const localCtx = fakeCtx(freshDb(), home);
+    // No workers dir / no agent.json → loader returns null → host
+    // default block applies. The host default contains the
+    // "Execution Bias" heading from formatExecutionBiasBlock().
+    __script = { events: [] };
+    await runAgentLoop({
+      ctx: localCtx,
+      userId: "u1",
+      initialUserMessage: "do the thing",
+      systemPrompt: "You are PlainWorker.",
+      workerSlug: "plainworker",
+    });
+    expect(__lastSystemPrompt).toBeDefined();
+    expect(__lastSystemPrompt).toContain("You are PlainWorker.");
+    expect(__lastSystemPrompt).not.toContain("WORKER-ONLY override rule");
+
+    fs.rmSync(home, { recursive: true, force: true });
   });
 });

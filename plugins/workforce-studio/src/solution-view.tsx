@@ -397,7 +397,7 @@ function SolutionDetailPanel({
   // Per-worker edits, keyed by slug. Each holds the editable
   // worker fields + SOUL prompt + skill/tool deny sets.
   const [workerEdits, setWorkerEdits] = useState<Record<string, WorkerEdit>>(
-    () => seedWorkerEdits(spec.workers, detail.workerPrompts),
+    () => seedWorkerEdits(spec.workers, detail.workerPrompts, detail.workerViews),
   );
   // Enabled plugin ids (include/exclude picker).
   const [pluginsEnabled, setPluginsEnabled] = useState<Set<string>>(
@@ -407,8 +407,10 @@ function SolutionDetailPanel({
     setPluginsEnabled(new Set(spec.plugins.enabled));
   }, [spec.slug, spec.plugins.enabled]);
   useEffect(() => {
-    setWorkerEdits(seedWorkerEdits(spec.workers, detail.workerPrompts));
-  }, [spec.slug, spec.workers, detail.workerPrompts]);
+    setWorkerEdits(
+      seedWorkerEdits(spec.workers, detail.workerPrompts, detail.workerViews),
+    );
+  }, [spec.slug, spec.workers, detail.workerPrompts, detail.workerViews]);
   useEffect(() => {
     setName(spec.name);
     setDescription(spec.description);
@@ -513,6 +515,7 @@ function SolutionDetailPanel({
               systemPrompt: detail.workerPrompts[w.slug] ?? null,
               toolsAllow: w.toolsAllow,
               skillsAllow: w.skillsAllow,
+              overrides: { executionBias: null },
               source: w.source,
             };
           }
@@ -535,6 +538,12 @@ function SolutionDetailPanel({
             systemPrompt: e.soul.trim().length > 0 ? e.soul : null,
             toolsAllow: allowFrom(view.availableTools, e.toolsDeny),
             skillsAllow: allowFrom(view.availableSkills, e.skillsDeny),
+            overrides: {
+              executionBias:
+                e.executionBias && e.executionBias.trim().length > 0
+                  ? e.executionBias
+                  : null,
+            },
             source: w.source,
           };
         }),
@@ -1195,6 +1204,10 @@ interface WorkerEdit {
   modelId: string | null;
   enabled: boolean;
   soul: string;
+  /** Per-worker execution-bias override. null = host default;
+   *  string = override text. Independent of the main agent's
+   *  override (the "B" model). */
+  executionBias: string | null;
   skillsDeny: Set<string>;
   toolsDeny: Set<string>;
 }
@@ -1202,15 +1215,23 @@ interface WorkerEdit {
 function seedWorkerEdits(
   workers: SolutionWorker[],
   workerPrompts: Record<string, string>,
+  workerViews: Record<string, SolutionWorkerView>,
 ): Record<string, WorkerEdit> {
   const out: Record<string, WorkerEdit> = {};
   for (const w of workers) {
+    // Seed the override from the worker view's execution-bias
+    // block: when the host marked it overridden, its `text` is the
+    // override body; otherwise null (host default).
+    const ebBlock = workerViews[w.slug]?.blocks.find(
+      (b) => b.overrideKey === "executionBias",
+    );
     out[w.slug] = {
       name: w.name,
       description: w.description,
       modelId: w.modelId,
       enabled: w.enabled,
       soul: workerPrompts[w.slug] ?? "",
+      executionBias: ebBlock?.overridden ? ebBlock.text : null,
       // Deny sets start empty: a freshly-extracted worker includes
       // everything in its effective set. The operator excludes
       // from there.
@@ -1341,6 +1362,8 @@ function WorkerEditor({
                 isCurrent={isCurrent}
                 soul={edit.soul}
                 onSoulChange={(v) => set({ soul: v })}
+                executionBias={edit.executionBias}
+                onExecutionBiasChange={(v) => set({ executionBias: v })}
               />
             ))}
           </div>
@@ -1380,14 +1403,22 @@ function WorkerBlockCard({
   isCurrent,
   soul,
   onSoulChange,
+  executionBias,
+  onExecutionBiasChange,
 }: {
   index: number;
   block: SolutionPromptBlock;
   isCurrent: boolean;
   soul: string;
   onSoulChange: (next: string) => void;
+  /** Present for the worker execution-bias override block. */
+  executionBias?: string | null;
+  onExecutionBiasChange?: (next: string | null) => void;
 }): ReactElement {
   const isSoul = block.kind === "worker-soul";
+  const isOverride = block.overrideKey === "executionBias";
+  const isOverridden =
+    isOverride && executionBias !== null && executionBias !== undefined;
   const [open, setOpen] = useState(isSoul);
   const borderTone = block.editable
     ? "border-border-subtle"
@@ -1407,15 +1438,27 @@ function WorkerBlockCard({
         <span className="text-[10px] text-fg-muted">#{index}</span>
         <span className="font-medium">{block.title}</span>
         <SolutionOriginBadge origin={block.origin} />
-        <span
-          className={
-            block.editable
-              ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-success-fg"
-              : "rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium"
-          }
-        >
-          {block.editable ? "editable" : "read-only"}
-        </span>
+        {isOverride ? (
+          isOverridden ? (
+            <span className="rounded bg-warning-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-warning-fg">
+              overridden
+            </span>
+          ) : (
+            <span className="rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium">
+              host default
+            </span>
+          )
+        ) : (
+          <span
+            className={
+              block.editable
+                ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-success-fg"
+                : "rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium"
+            }
+          >
+            {block.editable ? "editable" : "read-only"}
+          </span>
+        )}
         <span className="ml-auto text-[10px] text-fg-muted">{block.source}</span>
       </button>
       {open ? (
@@ -1434,6 +1477,44 @@ function WorkerBlockCard({
               }
               className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
             />
+          ) : isOverride ? (
+            isOverridden ? (
+              <>
+                <textarea
+                  value={executionBias ?? ""}
+                  disabled={isCurrent}
+                  onChange={(ev) => onExecutionBiasChange?.(ev.target.value)}
+                  rows={8}
+                  className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+                />
+                {!isCurrent ? (
+                  <button
+                    type="button"
+                    onClick={() => onExecutionBiasChange?.(null)}
+                    className="mt-2 rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+                  >
+                    Reset to host default
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
+                  {block.defaultText ?? block.text}
+                </pre>
+                {!isCurrent ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onExecutionBiasChange?.(block.defaultText ?? block.text)
+                    }
+                    className="mt-2 rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+                  >
+                    Override…
+                  </button>
+                ) : null}
+              </>
+            )
           ) : (
             <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
               {block.text}

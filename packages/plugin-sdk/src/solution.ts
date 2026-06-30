@@ -103,7 +103,22 @@ export interface SolutionWorker {
   systemPromptPath: string | null;
   toolsAllow: string[] | null;
   skillsAllow: string[] | null;
+  /** Per-worker host-block overrides. Independent of the main
+   *  agent's overrides — a worker can replace the host default
+   *  execution-bias block for itself without affecting the main
+   *  agent or sibling workers. Each maps to a relative sidecar
+   *  path (workers/<slug>/<key>.md) when set, or null to fall
+   *  back to the host default. Only `executionBias` is wired
+   *  today; the shape leaves room for the other overridable host
+   *  blocks later. */
+  overrides?: SolutionWorkerOverrides;
   source: "builtin" | "user";
+}
+
+/** Override sidecar paths for a worker's host-generated blocks.
+ *  null = use the host default. */
+export interface SolutionWorkerOverrides {
+  executionBias: string | null;
 }
 
 /** The on-disk `solution.json` shape (schema v1). */
@@ -347,10 +362,16 @@ export interface SolutionSpecInput {
     customFragments: Array<{ id: string; title: string; body: string }>;
   };
   workers: Array<
-    Omit<SolutionWorker, "systemPromptPath"> & {
+    Omit<SolutionWorker, "systemPromptPath" | "overrides"> & {
       /** Inline SOUL.md body; host writes to
        *  workers/<slug>/SOUL.md. */
       systemPrompt: string | null;
+      /** Inline per-worker host-block override bodies. null /
+       *  empty clears that override (falls back to host default).
+       *  Optional for backward compatibility with older clients. */
+      overrides?: {
+        executionBias: string | null;
+      };
     }
   >;
 }

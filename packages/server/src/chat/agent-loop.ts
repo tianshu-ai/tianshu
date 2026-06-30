@@ -51,6 +51,7 @@ import {
   tryAutoCompact,
 } from "./handler.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
+import { loadWorkerExecutionBiasOverride } from "../core/worker-agents-fs.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
@@ -448,10 +449,19 @@ export async function runAgentLoop(
     // long-running worker that needs "what's today's date?" or
     // "am I on Linux for these shell flags?" should not have to
     // call a tool to find out.
+    // Execution bias: a worker may carry its own host-block
+    // override (Solution apply writes workers/<slug>/agent.json +
+    // execution-bias.md). Independent of the main agent's override
+    // — we resolve the worker's own sidecar here, falling back to
+    // the host default when absent. Read fresh each run so an
+    // applied solution takes effect without a restart.
+    const workerExecutionBias = req.workerSlug
+      ? loadWorkerExecutionBiasOverride(ctx.tenantId, req.workerSlug, ctx.home)
+      : null;
     const parts = [
       req.systemPrompt,
       formatRuntimeContextBlock({ tenantId: ctx.tenantId, userId }),
-      formatExecutionBiasBlock(),
+      workerExecutionBias ?? formatExecutionBiasBlock(),
     ];
     // Worker context: only the worker's own AGENTS.md / MEMORY.md
     // bundle plus the caller's USER.md. SOUL.md is already in
