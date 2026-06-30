@@ -81,7 +81,7 @@ export function buildSolutionTool(): AgentTool {
         spec: Type.Optional(
           Type.String({
             description:
-              "Full SolutionSpecInput for `save`, as a JSON STRING (not an object). Get an existing solution first (action=get), edit the fields you want, and pass the edited spec back here JSON-stringified. Shape: { slug, name, description, plugins:{enabled:[]}, mainAgent:{tenantPrompt, skillsAllow, skillsDeny, toolsAllow, toolsDeny, overrides:{executionBias,replyStyle,userOnboarding}, customFragments:[]}, workers:[{slug,kind,name,description,modelId,enabled,systemPrompt,toolsAllow,skillsAllow,source}] }.",
+              "Full SolutionSpecInput for `save`, as a JSON STRING (not an object). Get an existing solution first (action=get), edit the fields you want, and pass the edited spec back here JSON-stringified. Shape: { slug, name, description, plugins:{enabled:[]}, mainAgent:{tenantPrompt, skillsAllow, skillsDeny, toolsAllow, toolsDeny, overrides:{executionBias,replyStyle,userOnboarding}, customFragments:[{id,title,body}]}, workers:[{slug,kind,name,description,modelId,enabled,systemPrompt,toolsAllow,skillsAllow,source}] }. Each customFragments item MUST be {id (stable slug), title, body (the fragment text)} — NOT `text`; a missing/empty body or id is rejected, not silently dropped.",
           }),
         ),
         confirm: Type.Optional(
