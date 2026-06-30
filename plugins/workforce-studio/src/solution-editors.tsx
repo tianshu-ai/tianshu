@@ -451,15 +451,24 @@ function WorkersOverview({
   edits: SolutionEdits;
 }): ReactElement {
   const { spec } = detail;
+  const isCurrent = detail.isCurrent;
   return (
     <EditorShell
       title="👥 Workers"
-      sub="Expand a worker in the Explorer to edit it. Excluded workers are dropped from the applied solution."
+      sub="Include or exclude a worker here; expand it in the Explorer to edit its prompt / tools / skills. Excluded workers are dropped from the applied solution."
     >
       <ul className="flex flex-col gap-1">
         {spec.workers.map((w) => {
           const e = edits.workerEdits[w.slug];
           const excluded = e ? !e.enabled : !w.enabled;
+          const toggle = () => {
+            const cur = edits.workerEdits[w.slug];
+            if (!cur) return;
+            edits.setWorkerEdits((prev) => ({
+              ...prev,
+              [w.slug]: { ...cur, enabled: !cur.enabled },
+            }));
+          };
           return (
             <li
               key={w.slug}
@@ -474,11 +483,23 @@ function WorkersOverview({
               </span>
               <code className="text-[10px] text-fg-muted">{w.slug}</code>
               <span className="text-[10px] text-fg-muted">{w.kind}</span>
-              {excluded ? (
-                <span className="ml-auto rounded-full bg-danger-fg/15 px-1.5 py-0.5 text-[9px] text-danger-fg">
+              <button
+                type="button"
+                disabled={isCurrent}
+                onClick={toggle}
+                className={`ml-auto rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
                   excluded
-                </span>
-              ) : null}
+                    ? "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
+                    : "border-border-subtle bg-bg-raised text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"
+                }`}
+                title={
+                  excluded
+                    ? "Excluded from this solution — click to include."
+                    : "Included — click to exclude this worker from the solution."
+                }
+              >
+                {excluded ? "Include" : "Exclude"}
+              </button>
             </li>
           );
         })}
