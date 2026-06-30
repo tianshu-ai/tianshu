@@ -226,6 +226,34 @@ const plugin: PluginServerModule = {
             sendError(ctx, res, err, "applySolution", userId);
           }
         },
+        // POST /solutions/:slug/activate → apply + mark active
+        activateSolution: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user context" });
+            return;
+          }
+          const slug = String(req.params.slug ?? "");
+          try {
+            const result = solutionsCap.activate(userId, slug);
+            res.json(result);
+          } catch (err) {
+            sendError(ctx, res, err, "activateSolution", userId);
+          }
+        },
+        // GET /solutions-active → { ok, activeSlug }
+        getActive: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) {
+            res.status(401).json({ ok: false, error: "no user context" });
+            return;
+          }
+          try {
+            res.json({ ok: true, activeSlug: solutionsCap.getActive(userId) });
+          } catch (err) {
+            sendError(ctx, res, err, "getActive", userId);
+          }
+        },
       },
     };
   },

@@ -39,6 +39,7 @@ import { buildWorkforceSnapshot } from "./snapshot.js";
 
 const CURRENT_SLUG = "current";
 const SOLUTION_FILE = "solution.json";
+const ACTIVE_FILE = ".active"; // pointer: slug of the live solution
 
 interface StoreDeps {
   ctx: TenantContext;
@@ -60,6 +61,33 @@ function assertValidSlug(slug: string): void {
 
 function solutionDir(deps: StoreDeps, slug: string): string {
   return path.join(getTenantSolutionsDir(deps.ctx.tenantId, deps.ctx.home), slug);
+}
+
+// ─── active pointer ────────────────────────────────────────────
+// `_tenant/solutions/.active` holds the slug of the currently-
+// live solution (the one last activated). Absent = no solution
+// activated yet (fresh tenant runs pure host defaults).
+
+function activePointerPath(deps: StoreDeps): string {
+  return path.join(
+    getTenantSolutionsDir(deps.ctx.tenantId, deps.ctx.home),
+    ACTIVE_FILE,
+  );
+}
+
+export function getActiveSlug(deps: StoreDeps): string | null {
+  try {
+    const raw = fs.readFileSync(activePointerPath(deps), "utf8").trim();
+    return raw.length > 0 ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+function setActiveSlug(deps: StoreDeps, slug: string): void {
+  const p = activePointerPath(deps);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, slug, "utf8");
 }
 
 // ─── extraction (reality → solution) ───────────────────────────
@@ -315,6 +343,7 @@ function resolveDetail(
     availableSkills: view.availableSkills,
     availableTools: view.availableTools,
     isCurrent: spec.slug === CURRENT_SLUG,
+    isActive: spec.slug !== CURRENT_SLUG && getActiveSlug(deps) === spec.slug,
   };
 }
 
@@ -574,6 +603,7 @@ export function listSolutions(
   userId: string,
 ): SolutionSummary[] {
   const root = getTenantSolutionsDir(deps.ctx.tenantId, deps.ctx.home);
+  const activeSlug = getActiveSlug(deps);
   const out: SolutionSummary[] = [];
   // Always surface `current` first, materialising it on the fly.
   const current = extractSolution(deps, userId, {
@@ -581,14 +611,14 @@ export function listSolutions(
     name: "Current (live mirror)",
     description: "Auto-extracted snapshot of the running system.",
   });
-  out.push(toSummary(current.spec, true));
+  out.push(toSummary(current.spec, true, false));
 
   if (fs.existsSync(root)) {
     for (const e of fs.readdirSync(root, { withFileTypes: true })) {
       if (!e.isDirectory() || e.name === CURRENT_SLUG) continue;
       if (e.name.startsWith(".")) continue;
       const spec = readSpec(deps, e.name);
-      if (spec) out.push(toSummary(spec, false));
+      if (spec) out.push(toSummary(spec, false, spec.slug === activeSlug));
     }
   }
   // Named solutions sorted by recency; `current` stays pinned at
@@ -598,7 +628,11 @@ export function listSolutions(
   return head ? [head, ...rest] : rest;
 }
 
-function toSummary(spec: SolutionSpec, isCurrent: boolean): SolutionSummary {
+function toSummary(
+  spec: SolutionSpec,
+  isCurrent: boolean,
+  isActive: boolean,
+): SolutionSummary {
   return {
     slug: spec.slug,
     name: spec.name,
@@ -607,6 +641,7 @@ function toSummary(spec: SolutionSpec, isCurrent: boolean): SolutionSummary {
     workerCount: spec.workers.length,
     pluginCount: spec.plugins.enabled.length,
     isCurrent,
+    isActive,
     kind: spec.extractedFrom ? "extracted" : "authored",
   };
 }
@@ -791,6 +826,14 @@ export function removeSolution(
   }
   assertValidSlug(slug);
   fs.rmSync(solutionDir(deps, slug), { recursive: true, force: true });
+  // If the deleted solution was active, clear the pointer.
+  if (getActiveSlug(deps) === slug) {
+    try {
+      fs.rmSync(activePointerPath(deps), { force: true });
+    } catch {
+      /* best effort */
+    }
+  }
 }
 
 // ─── diff ──────────────────────────────────────────────────────
@@ -915,6 +958,19 @@ export function applySolution(
   }
 
   return { ok: true, appliedWorkers };
+}
+
+/** Activate a solution: apply its config to reality AND mark it
+ *  as the live one (the `.active` pointer). User-facing "go
+ *  live" action. */
+export function activateSolution(
+  deps: StoreDeps,
+  userId: string,
+  slug: string,
+): { ok: true; appliedWorkers: string[]; activeSlug: string } {
+  const result = applySolution(deps, userId, slug);
+  setActiveSlug(deps, slug);
+  return { ...result, activeSlug: slug };
 }
 
 export function diffSolution(

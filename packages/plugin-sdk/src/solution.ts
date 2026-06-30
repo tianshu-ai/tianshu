@@ -236,6 +236,8 @@ export interface SolutionDetail {
    *  read-only (it's a live mirror of reality, regenerated on
    *  extract) and hides Apply. */
   isCurrent: boolean;
+  /** True iff this is the currently-active (live) solution. */
+  isActive: boolean;
 }
 
 /** Editor view data for one worker in the Solution view. */
@@ -267,6 +269,10 @@ export interface SolutionSummary {
   pluginCount: number;
   /** Whether this is the reserved `current` mirror. */
   isCurrent: boolean;
+  /** Whether this solution is the currently-active (live) one
+   *  — i.e. the one last activated into reality. At most one
+   *  named solution is active at a time. */
+  isActive: boolean;
   /** Provenance: "extracted" when extractedFrom is set,
    *  "authored" otherwise. */
   kind: "extracted" | "authored";
@@ -323,15 +329,27 @@ export interface SolutionsCapability {
     userId: string,
     args: { slug: string; against: string },
   ): SolutionDiff;
-  /** Apply a solution to reality (ADR-0008 Phase 3). Writes the
-   *  main-agent config + worker files back into the tenant so the
-   *  live chat path picks them up. Non-destructive subset — does
+  /** Activate a solution: write its config into the tenant (so
+   *  the live chat path picks it up) AND mark it as the active
+   *  solution. This is the user-facing "go live" action (the
+   *  button is labelled Activate). Non-destructive subset — does
    *  not touch plugin enable/disable. Rejects the `current`
-   *  mirror. */
+   *  mirror. Supersedes the old `apply`, which remains as an
+   *  alias for back-compat. */
+  activate(
+    userId: string,
+    slug: string,
+  ): { ok: true; appliedWorkers: string[]; activeSlug: string };
+  /** @deprecated use activate. Writes config without (re)setting
+   *  the active pointer's intent — kept so older callers don't
+   *  break. */
   apply(
     userId: string,
     slug: string,
   ): { ok: true; appliedWorkers: string[] };
+  /** Slug of the currently-active solution, or null when none has
+   *  been activated (fresh tenant). */
+  getActive(userId: string): string | null;
 }
 
 /** Input shape for save(): the spec plus inline prompt bodies the
