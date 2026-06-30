@@ -698,6 +698,14 @@ export function saveSolution(
     throw new Error("the reserved `current` solution cannot be saved");
   }
   assertValidSlug(input.slug);
+  // Validate custom fragments up front. Previously a fragment with a
+  // missing/empty `body` (e.g. a client that sent `{title, text}`
+  // instead of `{id, title, body}`) was silently dropped by the
+  // `.filter(nonEmpty(f.body))` below — the save "succeeded" but the
+  // fragment vanished, only discoverable by diffing the round-trip.
+  // Fail loudly instead so the caller (Studio HTTP → 4xx JSON, or the
+  // agent `solution` tool → error text) learns exactly what's wrong.
+  validateCustomFragmentsInput(input.mainAgent.customFragments);
   const existing = readSpec(deps, input.slug);
   const now = Date.now();
   const workerPrompts: Record<string, string> = {};
@@ -805,6 +813,58 @@ export function saveSolution(
     },
   );
   return resolveDetail(deps, userId, spec);
+}
+
+/**
+ * Validate the `customFragments` array of a SolutionSpecInput before
+ * save. Throws a precise, caller-facing error instead of letting a
+ * malformed fragment be silently filtered out downstream.
+ *
+ * Required per item: a non-empty `id` (stable slug) and a non-empty
+ * `body` (the fragment text). We special-case the historically common
+ * mistake of sending `text` instead of `body` so the message is
+ * actionable rather than a generic "body required".
+ */
+export function validateCustomFragmentsInput(
+  fragments: SolutionSpecInput["mainAgent"]["customFragments"] | undefined,
+): void {
+  if (fragments == null) return;
+  if (!Array.isArray(fragments)) {
+    throw new Error(
+      "mainAgent.customFragments must be an array of { id, title, body }.",
+    );
+  }
+  fragments.forEach((f, i) => {
+    const where = `mainAgent.customFragments[${i}]`;
+    if (f == null || typeof f !== "object") {
+      throw new Error(`${where} must be an object { id, title, body }.`);
+    }
+    const rec = f as Record<string, unknown>;
+    const hasBody = typeof rec.body === "string" && rec.body.trim().length > 0;
+    // Wrong field name is the usual culprit (clients guessing the
+    // shape). Detect `text`/`content` and point at the fix directly.
+    if (!hasBody) {
+      const misnamed = ["text", "content", "value"].find(
+        (k) => typeof rec[k] === "string" && (rec[k] as string).trim().length > 0,
+      );
+      if (misnamed) {
+        throw new Error(
+          `${where} uses "${misnamed}" for the fragment text; the field must be "body". ` +
+            `Expected shape: { id, title, body }.`,
+        );
+      }
+      throw new Error(
+        `${where} is missing a non-empty "body". Expected shape: { id, title, body }. ` +
+          `To drop a fragment, omit it from the array entirely.`,
+      );
+    }
+    if (typeof rec.id !== "string" || rec.id.trim().length === 0) {
+      throw new Error(
+        `${where} is missing a non-empty "id" (a stable slug used for the ` +
+          `fragment's sidecar filename). Expected shape: { id, title, body }.`,
+      );
+    }
+  });
 }
 
 function sanitiseFragmentId(raw: string): string {
