@@ -1,8 +1,11 @@
 # Workforce Studio — IDE-layout rework (implementation brief)
 
-> Status: planned. Not yet implemented. Pick this up in a fresh
-> session: "implement the Studio IDE rework per
-> docs/architecture/studio-ide-rework-plan.md".
+> Status: implemented (2026-06-30). solution-view.tsx was split
+> into solution-state.ts / solution-tree.tsx / solution-editors.tsx
+> / solution-inspector.tsx + a 3-pane IDE shell in solution-view.tsx.
+> Edit state + save()/apply() payloads unchanged; `current` mirror
+> stays read-only; RealityView untouched. typecheck + plugin build
+> + plugin tests all green.
 
 ## Goal
 
