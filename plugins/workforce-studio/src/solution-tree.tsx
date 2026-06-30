@@ -18,7 +18,7 @@ import type {
 // plugins
 // main:tenant-prompt | main:override:<key> | main:fragment:<id>
 //   | main:tools | main:skills
-// worker:<slug> | worker:<slug>:soul | worker:<slug>:host
+// worker:<slug> | worker:<slug>:soul | worker:<slug>:override:executionBias
 //   | worker:<slug>:tools | worker:<slug>:skills
 
 export type NodeId = string;
@@ -150,15 +150,22 @@ export function buildTree(
           icon: "📝",
           depth: 2,
         });
+        // Execution bias as its own node, mirroring the main
+        // agent's structure (where each overridable host block is
+        // a flat node). It's the one per-worker overridable host
+        // block; the remaining host blocks (runtime / plugin
+        // fragments / skill catalogue) are read-only and shown in
+        // the Inspector's rendered preview rather than cluttering
+        // the tree.
         const ebOverridden = !!e && e.executionBias !== null;
         nodes.push({
-          id: `${wid}:host`,
-          label: "Host blocks",
+          id: `${wid}:override:executionBias`,
+          label: "Execution bias",
           icon: "⚙",
           depth: 2,
           badge: ebOverridden
             ? { kind: "overridden", text: "overridden" }
-            : { kind: "locked", text: "read-only" },
+            : undefined,
         });
         nodes.push({
           id: `${wid}:tools`,

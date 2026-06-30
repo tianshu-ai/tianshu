@@ -201,18 +201,10 @@ function renderedPreview(
     const e = edits.workerEdits[slug];
     if (!view || !e) return "";
     if (sub === "soul") return e.soul;
-    if (sub === "host") {
-      return view.blocks
-        .filter((b) => b.kind !== "worker-soul")
-        .map((b) => {
-          // Reflect the per-worker execution-bias override in the
-          // preview when set.
-          if (b.overrideKey === "executionBias" && e.executionBias !== null) {
-            return `## ${b.title}\n${e.executionBias}`;
-          }
-          return `## ${b.title}\n${b.text}`;
-        })
-        .join("\n\n");
+    if (sub === "override:executionBias") {
+      const eb = view.blocks.find((b) => b.overrideKey === "executionBias");
+      if (e.executionBias !== null) return e.executionBias;
+      return eb?.defaultText ?? eb?.text ?? "";
     }
     if (sub === "tools" || sub === "skills") return "";
     // worker root → composed worker prompt

@@ -539,95 +539,68 @@ function WorkerNodeEditor({
     );
   }
 
-  if (sub === "host") {
-    const hostBlocks = view.blocks.filter((b) => b.kind !== "worker-soul");
+  if (sub === "override:executionBias") {
+    // Per-worker execution-bias override — mirrors the main
+    // agent's override editor structure. The other host blocks
+    // (runtime / plugin fragments / skill catalogue) are
+    // read-only and live in the Inspector's rendered preview, so
+    // this node is just the one overridable block.
+    const ebBlock = view.blocks.find(
+      (b) => b.overrideKey === "executionBias",
+    );
+    const defaultText = ebBlock?.defaultText ?? ebBlock?.text ?? "";
     const isOverridden =
       edit.executionBias !== null && edit.executionBias !== undefined;
     return (
       <EditorShell
-        title={`⚙ ${edit.name} — Host blocks`}
-        sub="Host/plugin blocks injected into this worker. Execution bias can be overridden per worker; the rest are read-only reference."
+        title={`⚙ ${edit.name} — Execution bias`}
+        sub="Host behaviour rules for this worker. Override to replace them just for this worker; reset to fall back to the host default."
       >
-        {hostBlocks.length === 0 ? (
-          <div className="text-xs text-fg-muted">No host blocks.</div>
-        ) : (
-          hostBlocks.map((b, idx) => {
-            // Execution-bias is the one per-worker overridable host
-            // block (B model). Everything else stays read-only.
-            if (b.overrideKey === "executionBias") {
-              const defaultText = b.defaultText ?? b.text;
-              return (
-                <div
-                  key={`${b.kind}-${idx}`}
-                  className="rounded border border-border-subtle bg-bg-elevated"
+        <div className="rounded border border-border-subtle bg-bg-elevated">
+          <div className="flex items-center gap-2 px-3 py-2 text-xs">
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                isOverridden
+                  ? "bg-warning-fg/15 text-warning-fg"
+                  : "bg-fg-muted/15 text-fg-muted"
+              }`}
+            >
+              {isOverridden ? "overridden" : "host default"}
+            </span>
+            {!isCurrent ? (
+              isOverridden ? (
+                <button
+                  type="button"
+                  onClick={() => set({ executionBias: null })}
+                  className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
                 >
-                  <div className="flex items-center gap-2 px-3 py-2 text-xs">
-                    <span className="font-medium">{b.title}</span>
-                    <OriginBadge origin={b.origin} />
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                        isOverridden
-                          ? "bg-warning-fg/15 text-warning-fg"
-                          : "bg-fg-muted/15 text-fg-muted"
-                      }`}
-                    >
-                      {isOverridden ? "overridden" : "host default"}
-                    </span>
-                    {!isCurrent ? (
-                      isOverridden ? (
-                        <button
-                          type="button"
-                          onClick={() => set({ executionBias: null })}
-                          className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
-                        >
-                          Reset to host default
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => set({ executionBias: defaultText })}
-                          className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
-                        >
-                          Override…
-                        </button>
-                      )
-                    ) : null}
-                  </div>
-                  {isOverridden ? (
-                    <textarea
-                      value={edit.executionBias ?? ""}
-                      disabled={isCurrent}
-                      onChange={(e) => set({ executionBias: e.target.value })}
-                      rows={12}
-                      className="w-full border-t border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
-                    />
-                  ) : (
-                    <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
-                      {defaultText}
-                    </pre>
-                  )}
-                </div>
-              );
-            }
-            return (
-              <div
-                key={`${b.kind}-${idx}`}
-                className="rounded border border-border-subtle/60 border-dashed bg-bg-elevated"
-              >
-                <div className="flex items-center gap-2 px-3 py-2 text-xs">
-                  <span className="font-medium">{b.title}</span>
-                  <OriginBadge origin={b.origin} />
-                  <span className="ml-auto text-[10px] text-fg-muted">
-                    {b.source}
-                  </span>
-                </div>
-                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
-                  {b.text}
-                </pre>
-              </div>
-            );
-          })
-        )}
+                  Reset to host default
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => set({ executionBias: defaultText })}
+                  className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+                >
+                  Override…
+                </button>
+              )
+            ) : null}
+          </div>
+          {isOverridden ? (
+            <textarea
+              value={edit.executionBias ?? ""}
+              disabled={isCurrent}
+              onChange={(e) => set({ executionBias: e.target.value })}
+              rows={14}
+              className="w-full border-t border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+            />
+          ) : (
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words border-t border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
+              {defaultText}
+            </pre>
+          )}
+        </div>
       </EditorShell>
     );
   }
