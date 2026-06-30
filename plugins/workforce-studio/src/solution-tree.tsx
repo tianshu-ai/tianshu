@@ -150,12 +150,15 @@ export function buildTree(
           icon: "📝",
           depth: 2,
         });
+        const ebOverridden = !!e && e.executionBias !== null;
         nodes.push({
           id: `${wid}:host`,
           label: "Host blocks",
           icon: "⚙",
           depth: 2,
-          badge: { kind: "locked", text: "read-only" },
+          badge: ebOverridden
+            ? { kind: "overridden", text: "overridden" }
+            : { kind: "locked", text: "read-only" },
         });
         nodes.push({
           id: `${wid}:tools`,

@@ -204,13 +204,26 @@ function renderedPreview(
     if (sub === "host") {
       return view.blocks
         .filter((b) => b.kind !== "worker-soul")
-        .map((b) => `## ${b.title}\n${b.text}`)
+        .map((b) => {
+          // Reflect the per-worker execution-bias override in the
+          // preview when set.
+          if (b.overrideKey === "executionBias" && e.executionBias !== null) {
+            return `## ${b.title}\n${e.executionBias}`;
+          }
+          return `## ${b.title}\n${b.text}`;
+        })
         .join("\n\n");
     }
     if (sub === "tools" || sub === "skills") return "";
     // worker root → composed worker prompt
     return view.blocks
-      .map((b) => (b.kind === "worker-soul" ? e.soul : b.text))
+      .map((b) => {
+        if (b.kind === "worker-soul") return e.soul;
+        if (b.overrideKey === "executionBias" && e.executionBias !== null) {
+          return e.executionBias;
+        }
+        return b.text;
+      })
       .filter((t) => t && t.trim().length > 0)
       .join("\n\n");
   }

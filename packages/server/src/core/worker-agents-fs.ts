@@ -37,6 +37,13 @@ export interface WorkerAgentSpecJson {
   skillsAllow?: string[] | null;
   /** Default true. */
   enabled?: boolean;
+  /** Per-worker host-block override sidecar pointers (relative to
+   *  the worker dir). Written by Solution apply; read at runtime
+   *  to replace the host default execution-bias block for this
+   *  worker only. null = host default. */
+  overrides?: {
+    executionBias?: string | null;
+  };
   /** Provenance hint. "builtin" = came from a plugin agentSeed
    *  contribution; "user" = created by hand or a tool. Used by
    *  the future reset path. */
@@ -58,6 +65,34 @@ export interface WorkerAgentFsRecord {
   /** Why we couldn't load this worker, if anything. Empty array →
    *  ok. */
   errors: string[];
+}
+
+/** Resolve a single worker's execution-bias override body, or null
+ *  when the worker has no override (→ host default applies). Reads
+ *  the agent.json pointer + the sidecar fresh each call so an
+ *  applied solution takes effect without a restart, mirroring
+ *  `loadMainAgentConfig`. Never throws. */
+export function loadWorkerExecutionBiasOverride(
+  tenantId: string,
+  slug: string,
+  home?: string,
+): string | null {
+  const dir = path.join(getTenantConfigDir(tenantId, home), "workers", slug);
+  let pointer: string | null = null;
+  try {
+    const raw = fs.readFileSync(path.join(dir, "agent.json"), "utf8");
+    const parsed = JSON.parse(raw) as WorkerAgentSpecJson;
+    pointer = parsed?.overrides?.executionBias ?? null;
+  } catch {
+    return null;
+  }
+  if (!pointer) return null;
+  try {
+    const body = fs.readFileSync(path.join(dir, pointer), "utf8");
+    return body.trim().length > 0 ? body : null;
+  } catch {
+    return null;
+  }
 }
 
 export function loadWorkerAgents(

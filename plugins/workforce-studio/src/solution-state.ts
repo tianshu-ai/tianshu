@@ -136,6 +136,10 @@ export interface WorkerEdit {
   modelId: string | null;
   enabled: boolean;
   soul: string;
+  /** Per-worker execution-bias override. null = host default;
+   *  string = override text. Independent of the main agent's
+   *  override (the "B" model). */
+  executionBias: string | null;
   skillsDeny: Set<string>;
   toolsDeny: Set<string>;
 }
@@ -189,15 +193,23 @@ export function seedFragments(
 export function seedWorkerEdits(
   workers: SolutionWorker[],
   workerPrompts: Record<string, string>,
+  workerViews: Record<string, SolutionWorkerView>,
 ): Record<string, WorkerEdit> {
   const out: Record<string, WorkerEdit> = {};
   for (const w of workers) {
+    // Seed the override from the worker view's execution-bias
+    // block: when the host marked it overridden, its `text` is the
+    // override body; otherwise null (host default).
+    const ebBlock = workerViews[w.slug]?.blocks.find(
+      (b) => b.overrideKey === "executionBias",
+    );
     out[w.slug] = {
       name: w.name,
       description: w.description,
       modelId: w.modelId,
       enabled: w.enabled,
       soul: workerPrompts[w.slug] ?? "",
+      executionBias: ebBlock?.overridden ? ebBlock.text : null,
       // Deny sets start empty: a freshly-extracted worker includes
       // everything in its effective set. The operator excludes
       // from there.
@@ -278,7 +290,8 @@ export function useSolutionEdits(
     seedFragments(detail.mainBlocks),
   );
   const [workerEdits, setWorkerEdits] = useState<Record<string, WorkerEdit>>(
-    () => seedWorkerEdits(spec.workers, detail.workerPrompts),
+    () =>
+      seedWorkerEdits(spec.workers, detail.workerPrompts, detail.workerViews),
   );
   const [pluginsEnabled, setPluginsEnabled] = useState<Set<string>>(
     () => new Set(spec.plugins.enabled),
@@ -290,8 +303,10 @@ export function useSolutionEdits(
     setPluginsEnabled(new Set(spec.plugins.enabled));
   }, [spec.slug, spec.plugins.enabled]);
   useEffect(() => {
-    setWorkerEdits(seedWorkerEdits(spec.workers, detail.workerPrompts));
-  }, [spec.slug, spec.workers, detail.workerPrompts]);
+    setWorkerEdits(
+      seedWorkerEdits(spec.workers, detail.workerPrompts, detail.workerViews),
+    );
+  }, [spec.slug, spec.workers, detail.workerPrompts, detail.workerViews]);
   useEffect(() => {
     setName(spec.name);
     setDescription(spec.description);
@@ -397,6 +412,7 @@ export function useSolutionEdits(
               systemPrompt: detail.workerPrompts[w.slug] ?? null,
               toolsAllow: w.toolsAllow,
               skillsAllow: w.skillsAllow,
+              overrides: { executionBias: null },
               source: w.source,
             };
           }
@@ -422,6 +438,12 @@ export function useSolutionEdits(
             systemPrompt: e.soul.trim().length > 0 ? e.soul : null,
             toolsAllow: allowFrom(view.availableTools, e.toolsDeny),
             skillsAllow: allowFrom(view.availableSkills, e.skillsDeny),
+            overrides: {
+              executionBias:
+                e.executionBias && e.executionBias.trim().length > 0
+                  ? e.executionBias
+                  : null,
+            },
             source: w.source,
           };
         }),

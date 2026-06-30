@@ -541,31 +541,92 @@ function WorkerNodeEditor({
 
   if (sub === "host") {
     const hostBlocks = view.blocks.filter((b) => b.kind !== "worker-soul");
+    const isOverridden =
+      edit.executionBias !== null && edit.executionBias !== undefined;
     return (
       <EditorShell
         title={`⚙ ${edit.name} — Host blocks`}
-        sub="Read-only reference: blocks the host/plugins inject into this worker."
+        sub="Host/plugin blocks injected into this worker. Execution bias can be overridden per worker; the rest are read-only reference."
       >
         {hostBlocks.length === 0 ? (
           <div className="text-xs text-fg-muted">No host blocks.</div>
         ) : (
-          hostBlocks.map((b, idx) => (
-            <div
-              key={`${b.kind}-${idx}`}
-              className="rounded border border-border-subtle/60 border-dashed bg-bg-elevated"
-            >
-              <div className="flex items-center gap-2 px-3 py-2 text-xs">
-                <span className="font-medium">{b.title}</span>
-                <OriginBadge origin={b.origin} />
-                <span className="ml-auto text-[10px] text-fg-muted">
-                  {b.source}
-                </span>
+          hostBlocks.map((b, idx) => {
+            // Execution-bias is the one per-worker overridable host
+            // block (B model). Everything else stays read-only.
+            if (b.overrideKey === "executionBias") {
+              const defaultText = b.defaultText ?? b.text;
+              return (
+                <div
+                  key={`${b.kind}-${idx}`}
+                  className="rounded border border-border-subtle bg-bg-elevated"
+                >
+                  <div className="flex items-center gap-2 px-3 py-2 text-xs">
+                    <span className="font-medium">{b.title}</span>
+                    <OriginBadge origin={b.origin} />
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                        isOverridden
+                          ? "bg-warning-fg/15 text-warning-fg"
+                          : "bg-fg-muted/15 text-fg-muted"
+                      }`}
+                    >
+                      {isOverridden ? "overridden" : "host default"}
+                    </span>
+                    {!isCurrent ? (
+                      isOverridden ? (
+                        <button
+                          type="button"
+                          onClick={() => set({ executionBias: null })}
+                          className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+                        >
+                          Reset to host default
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => set({ executionBias: defaultText })}
+                          className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+                        >
+                          Override…
+                        </button>
+                      )
+                    ) : null}
+                  </div>
+                  {isOverridden ? (
+                    <textarea
+                      value={edit.executionBias ?? ""}
+                      disabled={isCurrent}
+                      onChange={(e) => set({ executionBias: e.target.value })}
+                      rows={12}
+                      className="w-full border-t border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+                    />
+                  ) : (
+                    <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
+                      {defaultText}
+                    </pre>
+                  )}
+                </div>
+              );
+            }
+            return (
+              <div
+                key={`${b.kind}-${idx}`}
+                className="rounded border border-border-subtle/60 border-dashed bg-bg-elevated"
+              >
+                <div className="flex items-center gap-2 px-3 py-2 text-xs">
+                  <span className="font-medium">{b.title}</span>
+                  <OriginBadge origin={b.origin} />
+                  <span className="ml-auto text-[10px] text-fg-muted">
+                    {b.source}
+                  </span>
+                </div>
+                <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
+                  {b.text}
+                </pre>
               </div>
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
-                {b.text}
-              </pre>
-            </div>
-          ))
+            );
+          })
         )}
       </EditorShell>
     );
