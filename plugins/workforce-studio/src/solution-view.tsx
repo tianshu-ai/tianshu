@@ -197,12 +197,12 @@ function SolutionIDE({
   // expanded so the tree reads as a full outline.
   const [selectedNode, setSelectedNode] = useState<NodeId>("plugins");
   const [expanded, setExpanded] = useState<Set<NodeId>>(
-    () => new Set<NodeId>(["workers"]),
+    () => new Set<NodeId>(["main", "workers"]),
   );
   // Reset selection when switching solutions.
   useEffect(() => {
     setSelectedNode("plugins");
-    setExpanded(new Set<NodeId>(["workers"]));
+    setExpanded(new Set<NodeId>(["main", "workers"]));
   }, [spec.slug]);
 
   const expandable = useMemo(() => expandableIds(detail), [detail]);
