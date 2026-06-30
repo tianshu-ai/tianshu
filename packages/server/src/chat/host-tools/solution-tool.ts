@@ -79,9 +79,9 @@ export function buildSolutionTool(): AgentTool {
           Type.String({ description: "Description (extract / save)." }),
         ),
         spec: Type.Optional(
-          Type.Any({
+          Type.String({
             description:
-              "Full SolutionSpecInput object for `save`. Get an existing solution first (action=get) to see the exact shape, edit the fields you want, and pass the whole object back. Fields: slug, name, description, plugins.enabled[], mainAgent {tenantPrompt, skillsAllow, skillsDeny, toolsAllow, toolsDeny, overrides{executionBias,replyStyle,userOnboarding}, customFragments[]}, workers[] {slug,kind,name,description,modelId,enabled,systemPrompt,toolsAllow,skillsAllow,source}.",
+              "Full SolutionSpecInput for `save`, as a JSON STRING (not an object). Get an existing solution first (action=get), edit the fields you want, and pass the edited spec back here JSON-stringified. Shape: { slug, name, description, plugins:{enabled:[]}, mainAgent:{tenantPrompt, skillsAllow, skillsDeny, toolsAllow, toolsDeny, overrides:{executionBias,replyStyle,userOnboarding}, customFragments:[]}, workers:[{slug,kind,name,description,modelId,enabled,systemPrompt,toolsAllow,skillsAllow,source}] }.",
           }),
         ),
         confirm: Type.Optional(
@@ -153,12 +153,39 @@ export function buildSolutionTool(): AgentTool {
             );
           }
           case "save": {
-            if (!p.spec || typeof p.spec !== "object") {
+            // spec arrives as a JSON string (preferred — nested
+            // objects survive the tool-call boundary intact), but
+            // tolerate an already-parsed object too in case the
+            // framework hands one through.
+            let parsed: unknown = p.spec;
+            if (typeof p.spec === "string") {
+              const s = p.spec.trim();
+              if (s.length === 0) {
+                return err(
+                  "solution save: spec is empty. Pass the SolutionSpecInput as a JSON string (action=get first to see the shape).",
+                );
+              }
+              try {
+                parsed = JSON.parse(s);
+              } catch (e) {
+                return err(
+                  `solution save: spec is not valid JSON: ${
+                    e instanceof Error ? e.message : String(e)
+                  }`,
+                );
+              }
+            }
+            if (!parsed || typeof parsed !== "object") {
               return err(
-                "solution save: spec object required (get an existing solution first to see the shape).",
+                "solution save: spec required — pass the SolutionSpecInput as a JSON string (action=get first to see the shape).",
               );
             }
-            const detail = cap.save(userId, p.spec as SolutionSpecInput);
+            if (!(parsed as { slug?: unknown }).slug) {
+              return err(
+                "solution save: spec.slug is required (the solution to create/update).",
+              );
+            }
+            const detail = cap.save(userId, parsed as SolutionSpecInput);
             return ok(
               `Saved solution "${detail.spec.slug}" to disk. This does NOT change the running system — call diff to review, then activate (with the user's consent) to go live.`,
             );
