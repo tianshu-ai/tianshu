@@ -8,6 +8,7 @@
 // on top of the mockup).
 
 import type { ReactElement } from "react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import type {
   OverrideKey,
   SolutionDetail,
@@ -73,51 +74,59 @@ export function buildTree(
     count: `${edits.pluginsEnabled.size}/${detail.availablePlugins.length}`,
   });
 
-  // main agent
-  nodes.push({ id: "main", label: "Main agent", icon: "🤖", depth: 1 });
+  // main agent (expandable, like the workers group)
   nodes.push({
-    id: "main:tenant-prompt",
-    label: "Tenant prompt",
-    icon: "📝",
-    depth: 2,
+    id: "main",
+    label: "Main agent",
+    icon: "🤖",
+    depth: 1,
+    expandable: true,
   });
-  for (const key of Object.keys(OVERRIDE_META) as OverrideKey[]) {
-    const meta = OVERRIDE_META[key];
-    const overridden = edits.overrides[key] !== null;
+  if (expanded.has("main")) {
     nodes.push({
-      id: `main:override:${key}`,
-      label: meta.label,
-      icon: meta.icon,
-      depth: 2,
-      badge: overridden
-        ? { kind: "overridden", text: "overridden" }
-        : undefined,
-    });
-  }
-  for (const f of edits.fragments) {
-    nodes.push({
-      id: `main:fragment:${f.id}`,
-      label: `Custom: ${f.title || "untitled"}`,
-      icon: "➕",
+      id: "main:tenant-prompt",
+      label: "Tenant prompt",
+      icon: "📝",
       depth: 2,
     });
+    for (const key of Object.keys(OVERRIDE_META) as OverrideKey[]) {
+      const meta = OVERRIDE_META[key];
+      const overridden = edits.overrides[key] !== null;
+      nodes.push({
+        id: `main:override:${key}`,
+        label: meta.label,
+        icon: meta.icon,
+        depth: 2,
+        badge: overridden
+          ? { kind: "overridden", text: "overridden" }
+          : undefined,
+      });
+    }
+    for (const f of edits.fragments) {
+      nodes.push({
+        id: `main:fragment:${f.id}`,
+        label: `Custom: ${f.title || "untitled"}`,
+        icon: "➕",
+        depth: 2,
+      });
+    }
+    nodes.push({
+      id: "main:tools",
+      label: "Tools",
+      icon: "🔧",
+      depth: 2,
+      count: `${detail.availableTools.length}`,
+      badge: excludedBadge(edits.toolsDeny.size),
+    });
+    nodes.push({
+      id: "main:skills",
+      label: "Skills",
+      icon: "📚",
+      depth: 2,
+      count: `${detail.availableSkills.length}`,
+      badge: excludedBadge(edits.skillsDeny.size),
+    });
   }
-  nodes.push({
-    id: "main:tools",
-    label: "Tools",
-    icon: "🔧",
-    depth: 2,
-    count: `${detail.availableTools.length}`,
-    badge: excludedBadge(edits.toolsDeny.size),
-  });
-  nodes.push({
-    id: "main:skills",
-    label: "Skills",
-    icon: "📚",
-    depth: 2,
-    count: `${detail.availableSkills.length}`,
-    badge: excludedBadge(edits.skillsDeny.size),
-  });
 
   // workers group (expandable)
   nodes.push({
@@ -206,7 +215,7 @@ function workerIcon(kind: string): string {
 
 /** Expandable parents: the workers group + every worker root. */
 export function expandableIds(detail: SolutionDetail): Set<NodeId> {
-  const out = new Set<NodeId>(["workers"]);
+  const out = new Set<NodeId>(["main", "workers"]);
   for (const w of detail.spec.workers) out.add(`worker:${w.slug}`);
   return out;
 }
@@ -262,36 +271,55 @@ function TreeRow({
     node.depth === 0 ? "pl-2" : node.depth === 1 ? "pl-5" : "pl-9";
   const isRoot = node.id === "root";
   return (
-    <button
-      type="button"
-      onClick={() => {
-        if (node.expandable) onToggleExpand(node.id);
-        onSelect(node.id);
-      }}
-      className={`flex w-full items-center gap-1.5 border-l-2 ${pad} pr-2 py-1 text-left text-xs whitespace-nowrap hover:bg-bg-raised ${
-        isSelected
-          ? "border-info-fg bg-bg-raised"
-          : "border-transparent"
+    <div
+      className={`flex w-full items-center gap-1 border-l-2 ${pad} pr-2 py-1 text-xs whitespace-nowrap ${
+        isSelected ? "border-info-fg bg-bg-raised" : "border-transparent hover:bg-bg-raised"
       }`}
     >
+      {/* Chevron is its own hit target: toggles expand without
+          changing selection. Bigger tap area + lucide icon so it
+          reads as a real disclosure control. */}
       {node.expandable ? (
-        <span className="w-3 text-fg-muted">{isExpanded ? "▾" : "▸"}</span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand(node.id);
+          }}
+          className="flex size-5 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-bg-base hover:text-fg-default"
+          aria-label={isExpanded ? "Collapse" : "Expand"}
+        >
+          {isExpanded ? (
+            <ChevronDown className="size-3.5" />
+          ) : (
+            <ChevronRight className="size-3.5" />
+          )}
+        </button>
       ) : (
-        <span className="w-3" />
+        <span className="size-5 shrink-0" />
       )}
-      <span className="w-4 text-center opacity-80">{node.icon}</span>
-      <span
-        className={`${isRoot ? "font-semibold" : ""} ${
-          node.excluded ? "text-fg-muted line-through" : ""
-        }`}
+      <button
+        type="button"
+        onClick={() => {
+          if (node.expandable && !isExpanded) onToggleExpand(node.id);
+          onSelect(node.id);
+        }}
+        className="flex flex-1 items-center gap-1.5 text-left"
       >
-        {node.label}
-      </span>
-      {node.count ? (
-        <span className="text-[10px] text-fg-muted">{node.count}</span>
-      ) : null}
-      {node.badge ? <TreeBadge badge={node.badge} /> : null}
-    </button>
+        <span className="w-4 text-center opacity-80">{node.icon}</span>
+        <span
+          className={`${isRoot ? "font-semibold" : ""} ${
+            node.excluded ? "text-fg-muted line-through" : ""
+          }`}
+        >
+          {node.label}
+        </span>
+        {node.count ? (
+          <span className="text-[10px] text-fg-muted">{node.count}</span>
+        ) : null}
+        {node.badge ? <TreeBadge badge={node.badge} /> : null}
+      </button>
+    </div>
   );
 }
 
