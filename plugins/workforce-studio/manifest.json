@@ -28,7 +28,9 @@
       { "method": "POST", "path": "/solutions/save", "handler": "saveSolution" },
       { "method": "DELETE", "path": "/solutions/:slug", "handler": "deleteSolution" },
       { "method": "GET", "path": "/solutions/:slug/diff", "handler": "diffSolution" },
-      { "method": "POST", "path": "/solutions/:slug/apply", "handler": "applySolution" }
+      { "method": "POST", "path": "/solutions/:slug/apply", "handler": "applySolution" },
+      { "method": "POST", "path": "/solutions/:slug/activate", "handler": "activateSolution" },
+      { "method": "GET", "path": "/solutions-active", "handler": "getActive" }
     ]
   }
 }

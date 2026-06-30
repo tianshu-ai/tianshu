@@ -25,6 +25,7 @@ export interface SolutionSummary {
   workerCount: number;
   pluginCount: number;
   isCurrent: boolean;
+  isActive: boolean;
   kind: "extracted" | "authored";
 }
 export interface SolutionWorker {
@@ -111,6 +112,7 @@ export interface SolutionDetail {
   workerViews: Record<string, SolutionWorkerView>;
   availablePlugins: PluginOption[];
   isCurrent: boolean;
+  isActive: boolean;
 }
 export interface DiffEntry {
   path: string;
@@ -271,6 +273,7 @@ export interface SolutionEdits {
 export function useSolutionEdits(
   detail: SolutionDetail,
   onSaved: () => void,
+  onActivated?: () => void,
 ): SolutionEdits {
   const { spec } = detail;
 
@@ -341,30 +344,31 @@ export function useSolutionEdits(
   const apply = useCallback(async () => {
     if (
       !window.confirm(
-        `Apply "${spec.name}" to the running system?\n\nThis writes the main-agent config + worker files into the tenant. The live agent picks them up on its next turn. (Plugins aren't changed in this phase.)`,
+        `Activate "${spec.name}"?\n\nThis makes it the live solution: its main-agent config + worker files are written into the tenant and the agent picks them up on its next turn. Any previously-active solution is superseded. (Plugins aren't changed in this phase.)`,
       )
     ) {
       return;
     }
     setBusy(true);
     try {
-      const r = await api<{ appliedWorkers: string[] }>(
-        `/solutions/${encodeURIComponent(spec.slug)}/apply`,
+      const r = await api<{ appliedWorkers: string[]; activeSlug: string }>(
+        `/solutions/${encodeURIComponent(spec.slug)}/activate`,
         { method: "POST" },
       );
       window.alert(
-        `Applied "${spec.name}". Workers updated: ${
+        `“${spec.name}” is now the active solution. Workers updated: ${
           r.appliedWorkers.length
-        }. The change takes effect on the next agent turn.`,
+        }. Takes effect on the next agent turn.`,
       );
+      onActivated?.();
     } catch (err) {
       window.alert(
-        `Apply failed: ${err instanceof Error ? err.message : String(err)}`,
+        `Activate failed: ${err instanceof Error ? err.message : String(err)}`,
       );
     } finally {
       setBusy(false);
     }
-  }, [spec.slug, spec.name]);
+  }, [spec.slug, spec.name, onActivated]);
 
   const save = useCallback(async () => {
     setBusy(true);

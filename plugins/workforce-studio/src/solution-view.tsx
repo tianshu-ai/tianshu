@@ -190,7 +190,7 @@ function SolutionIDE({
   onSaved: () => void;
 }): ReactElement {
   const { spec, isCurrent } = detail;
-  const edits = useSolutionEdits(detail, onSaved);
+  const edits = useSolutionEdits(detail, onSaved, onRefresh);
 
   // Tree expansion + focused-node selection. Default selection:
   // the Plugins node (matches the mockup). Workers group starts
@@ -233,15 +233,19 @@ function SolutionIDE({
         >
           {(summaries ?? []).map((s) => (
             <option key={s.slug} value={s.slug}>
-              {s.isCurrent ? "● " : "📦 "}
+              {s.isCurrent ? "● " : s.isActive ? "🚀 " : "📦 "}
               {s.name}
-              {s.isCurrent ? " (live mirror)" : ""}
+              {s.isCurrent ? " (live mirror)" : s.isActive ? " (active)" : ""}
             </option>
           ))}
         </select>
         {isCurrent ? (
           <span className="rounded bg-info-fg/10 px-1.5 py-0.5 text-[10px] text-info-fg">
             live mirror · read-only
+          </span>
+        ) : detail.isActive ? (
+          <span className="rounded bg-success-fg/15 px-1.5 py-0.5 text-[10px] font-medium text-success-fg">
+            🚀 active (live)
           </span>
         ) : null}
         {driftCount !== null ? (
@@ -296,10 +300,15 @@ function SolutionIDE({
                 type="button"
                 onClick={() => void edits.apply()}
                 disabled={edits.busy}
-                className="inline-flex items-center gap-1 rounded border border-success-fg bg-success-fg/15 px-2 py-1 text-xs font-semibold text-success-fg hover:bg-success-fg/25 disabled:opacity-50"
-                title="Write this solution into the running system (main agent + workers). Plugins unchanged in this phase."
+                className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold disabled:opacity-50 ${
+                  detail.isActive
+                    ? "border-success-fg bg-success-fg/25 text-success-fg"
+                    : "border-success-fg bg-success-fg/15 text-success-fg hover:bg-success-fg/25"
+                }`}
+                title="Make this the live solution: write its config into the running system + mark it active. Takes effect on the next agent turn."
               >
-                <Rocket className="size-3.5" /> Apply
+                <Rocket className="size-3.5" />{" "}
+                {detail.isActive ? "Re-activate" : "Activate"}
               </button>
               <button
                 type="button"
