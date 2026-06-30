@@ -36,9 +36,11 @@ import type {
 } from "@tianshu-ai/plugin-sdk";
 
 import type { TenantContext } from "../core/index.js";
+import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import {
   type WorkerAgentFsRecord,
   loadWorkerAgents,
+  loadWorkerExecutionBiasOverride,
 } from "../core/worker-agents-fs.js";
 import {
   defaultSystemPrompt,
@@ -70,7 +72,14 @@ export function buildWorkforceSnapshot(
 ): WorkforceSnapshot {
   const { ctx, userId, pluginRegistry, tianshuVersion } = args;
 
-  // --- Plugin inventory ---
+  // --- Applied-solution main-agent config (ADR-0008 Phase 3) ---
+  // The live chat path (handler.ts) reads this every turn and
+  // layers it over the host default: prompt/host-block overrides,
+  // custom fragments, and skill/tool deny lists. The snapshot MUST
+  // read the same file or the Reality view (and the `current` live
+  // mirror that feeds diffs) drifts from what the model actually
+  // sees after an Apply. Empty + harmless when no solution applied.
+  const mainConfig = loadMainAgentConfig(ctx.tenantId, ctx.home);
   const entries = pluginRegistry.listForTenant(ctx.tenantId);
   const originByPlugin = new Map<string, WorkforceOrigin>();
   originByPlugin.set("core", "core");
@@ -139,7 +148,20 @@ export function buildWorkforceSnapshot(
   );
 
   // --- Main agent ---
-  const mainSkills = filterScope(allSkills, "main");
+  // Apply the main-agent skill deny list before reporting, mirroring
+  // handler.ts:`effectiveSkills`. A solution that excludes a skill
+  // drops it from the agent's real surface, so the snapshot must
+  // drop it too.
+  const mainSkills = filterScope(allSkills, "main").filter(
+    (s) => !mainConfig.skillsDeny.has(s.name),
+  );
+  // Apply the main-agent tool deny list, mirroring handler.ts
+  // `effectiveToolset`. Workers keep their own per-worker allow
+  // lists (handled in toWorkerEntry); the deny list is main-only.
+  const mainTools =
+    mainConfig.toolsDeny.size > 0
+      ? toolsAll.filter((t) => !mainConfig.toolsDeny.has(t.name))
+      : toolsAll;
   const fragments = pluginRegistry.systemPromptFragmentsForTenant(ctx.tenantId);
   const fragmentsByPlugin = new Map<
     string,
@@ -169,6 +191,13 @@ export function buildWorkforceSnapshot(
     userId,
     mainSkills,
     fragments,
+    {
+      tenantPrompt: mainConfig.tenantPrompt,
+      executionBias: mainConfig.overrides.executionBias,
+      replyStyle: mainConfig.overrides.replyStyle,
+      userOnboarding: mainConfig.overrides.userOnboarding,
+      customFragments: mainConfig.customFragments,
+    },
   );
 
   // Block decomposition — same ordering `defaultSystemPrompt`
@@ -194,14 +223,23 @@ export function buildWorkforceSnapshot(
     text: formatRuntimeContextBlock({ tenantId: ctx.tenantId, userId }),
     note: "Time, timezone, host OS, tenant + user identity. Refreshed every turn at runtime.",
   });
+  // Execution bias: an applied solution can override the host
+  // default (handler.ts passes mainConfig.overrides.executionBias
+  // into defaultSystemPrompt). Report the override text when set so
+  // the Reality view matches the rendered prompt above.
+  const execBiasOverridden = mainConfig.overrides.executionBias != null;
   blocks.push({
     kind: "execution-bias",
     title: "Execution bias",
     source: "host",
     origin: "host",
     editable: false,
-    text: formatExecutionBiasBlock(),
-    note: "Host-level behaviour rules — same text the workers receive.",
+    text: execBiasOverridden
+      ? mainConfig.overrides.executionBias!
+      : formatExecutionBiasBlock(),
+    note: execBiasOverridden
+      ? "Overridden by the applied solution (_tenant/config/main/execution-bias.md)."
+      : "Host-level behaviour rules — same text the workers receive.",
   });
   const ctxBlock = formatMainAgentContextBlock(ctx.workspaceDir, userHomeDir);
   if (ctxBlock) {
@@ -215,13 +253,33 @@ export function buildWorkforceSnapshot(
       note: "Sourced from the tenant's _tenant/AGENTS.md / SOUL.md / MEMORY.md + the user's USER.md. Edit the underlying files to change.",
     });
   }
+  // Tenant prompt override (applied solution). The chat path injects
+  // this right after workspace context; surface it here so the
+  // Reality view shows the same extra block the model receives.
+  if (mainConfig.tenantPrompt && mainConfig.tenantPrompt.trim()) {
+    blocks.push({
+      kind: "tenant-prompt",
+      title: "Tenant prompt (applied solution)",
+      source: "tenant",
+      origin: "tenant",
+      editable: false,
+      text: mainConfig.tenantPrompt,
+      note: "Injected by the applied solution (_tenant/config/main/prompt.md).",
+    });
+  }
+  const replyStyleOverridden = mainConfig.overrides.replyStyle != null;
   blocks.push({
     kind: "reply-style",
     title: "Reply-style rule",
     source: "host",
     origin: "host",
     editable: false,
-    text: `Reply concisely. When you make changes, briefly say what you changed.`,
+    text: replyStyleOverridden
+      ? mainConfig.overrides.replyStyle!
+      : `Reply concisely. When you make changes, briefly say what you changed.`,
+    note: replyStyleOverridden
+      ? "Overridden by the applied solution (_tenant/config/main/reply-style.md)."
+      : undefined,
   });
   // One block per plugin fragment, so the studio shows the
   // tenant exactly which plugin contributed which paragraph.
@@ -252,14 +310,33 @@ export function buildWorkforceSnapshot(
       note: "Auto-generated from every enabled skill. Toggle individual skills in the Skills panel.",
     });
   }
+  // Custom fragments from the applied solution — appended after the
+  // skills block, same position defaultSystemPrompt emits them.
+  for (const frag of mainConfig.customFragments) {
+    if (!frag.body || !frag.body.trim()) continue;
+    blocks.push({
+      kind: "custom-fragment",
+      title: frag.title || "Custom fragment",
+      source: "tenant",
+      origin: "tenant",
+      editable: false,
+      text: frag.body,
+      note: `Injected by the applied solution (custom fragment \`${frag.id}\`).`,
+    });
+  }
+  const onboardingOverridden = mainConfig.overrides.userOnboarding != null;
   blocks.push({
     kind: "user-onboarding",
     title: "User onboarding rule",
     source: "host",
     origin: "host",
     editable: false,
-    text: formatUserOnboardingBlock(userMdExists(userHomeDir)),
-    note: "Curates the per-user USER.md file. Behaviour adapts to whether USER.md is populated.",
+    text: onboardingOverridden
+      ? mainConfig.overrides.userOnboarding!
+      : formatUserOnboardingBlock(userMdExists(userHomeDir)),
+    note: onboardingOverridden
+      ? "Overridden by the applied solution (_tenant/config/main/user-onboarding.md)."
+      : "Curates the per-user USER.md file. Behaviour adapts to whether USER.md is populated.",
   });
 
   // --- Workers ---
@@ -311,7 +388,7 @@ export function buildWorkforceSnapshot(
       defaultModelId,
       blocks,
       systemPrompt: renderedSystemPrompt,
-      tools: toolsAll,
+      tools: mainTools,
       skills: mainSkills.map((s) => toSkillEntry(s, resolveOrigin)),
     },
     workers,
@@ -415,14 +492,29 @@ function toWorkerEntry(
     text: formatRuntimeContextBlock({ tenantId: ctx.tenantId, userId }),
     note: "Time, timezone, host OS, identity. Refreshed every turn at runtime.",
   });
+  // Per-worker execution-bias override: the agent loop reads the
+  // worker's own agent.json pointer → execution-bias.md sidecar
+  // (loadWorkerExecutionBiasOverride) and falls back to the host
+  // default. Mirror that here so the worker's Reality view matches
+  // the prompt it actually runs with after a Solution apply.
+  const workerExecBias = loadWorkerExecutionBiasOverride(
+    ctx.tenantId,
+    r.slug,
+    ctx.home,
+  );
+  const workerExecBiasOverridden = workerExecBias != null;
   blocks.push({
     kind: "execution-bias",
     title: "Execution bias",
     source: "host",
     origin: "host",
     editable: false,
-    text: formatExecutionBiasBlock(),
-    note: "Host-level behaviour rules — same text the main agent receives.",
+    text: workerExecBiasOverridden
+      ? workerExecBias
+      : formatExecutionBiasBlock(),
+    note: workerExecBiasOverridden
+      ? `Overridden by the applied solution (_tenant/config/workers/${r.slug}/execution-bias.md).`
+      : "Host-level behaviour rules — same text the main agent receives.",
   });
   const workerCtxBlock = formatWorkerAgentContextBlock(
     ctx.workspaceDir,

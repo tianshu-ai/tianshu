@@ -47,6 +47,7 @@ type BlockKind =
   | "available-skills"
   | "user-onboarding"
   | "tenant-prompt"
+  | "custom-fragment"
   | "worker-soul"
   | "worker-context";
 
