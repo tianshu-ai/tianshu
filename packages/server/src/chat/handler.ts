@@ -78,6 +78,7 @@ export {
 import type { WebSocket } from "ws";
 import {
   buildModel,
+  buildModels,
   findModel,
   getDefaultModel,
   resolveApiKey,
@@ -586,13 +587,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     },
   );
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
+  // pi 0.80: the harness owns a `Models` instance and resolves auth
+  // through it, replacing 0.79's `getApiKeyAndHeaders` callback. We
+  // build a single-provider Models closing over this run's resolved
+  // (model, apiKey). See core/pi-models.ts.
   const harness = new AgentHarness({
     env: makeStubExecutionEnv(ctx.userHomeDir(userId)),
     session: piSession,
     tools: adapted.tools,
     systemPrompt,
     model: piModel,
-    getApiKeyAndHeaders: async () => ({ apiKey }),
+    models: buildModels(piModel, apiKey),
   });
 
   // External abort → harness.abort()

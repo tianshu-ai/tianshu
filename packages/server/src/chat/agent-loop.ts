@@ -29,6 +29,7 @@ import {
 import type { TenantContext } from "../core/index.js";
 import {
   buildModel,
+  buildModels,
   findModel,
   getDefaultModel,
   resolveApiKey,
@@ -538,13 +539,15 @@ export async function runAgentLoop(
     }
   }, TICK_MS);
 
+  // pi 0.80: harness resolves auth via a `Models` instance instead of
+  // the old `getApiKeyAndHeaders` callback. See core/pi-models.ts.
   const harness = new AgentHarness({
     env: makeStubExecutionEnv(homeDir ?? ctx.userHomeDir(userId)),
     session,
     tools: adapted.tools,
     systemPrompt,
     model: piModel,
-    getApiKeyAndHeaders: async () => ({ apiKey }),
+    models: buildModels(piModel, apiKey),
   });
 
   // Watch harness events for two purposes:
