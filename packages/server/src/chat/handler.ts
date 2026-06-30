@@ -649,6 +649,24 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     });
   });
 
+  // Pre-prompt auto-compact. The post-turn compact below only
+  // frees space for the NEXT turn; if history is already over the
+  // window, THIS turn would otherwise go out oversized and the
+  // provider rejects it — the user sees "0 compressed" + no reply
+  // ("compact then stop"). Compacting BEFORE prompt() makes room
+  // so the current turn runs normally. Silent: no history_compacted
+  // event (the user is mid-send; the refresh would yank the view).
+  if (!streamErrorSent) {
+    const pre = await tryAutoCompact({
+      piSession,
+      harness,
+      contextWindow: modelInfo.contextWindow,
+    });
+    if (pre.error) {
+      console.warn(`[handler] pre-prompt auto-compact failed: ${pre.error}`);
+    }
+  }
+
   try {
     await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
     await harness.waitForIdle();
