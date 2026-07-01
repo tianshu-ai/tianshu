@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.14](https://github.com/tianshu-ai/tianshu/compare/v0.4.13...v0.4.14) (2026-07-01)
+
+### Bug Fixes
+
+* **workforce-studio:** the selected tree item is now visible in
+  light theme. It used bg-bg-raised, which is white (same as the
+  sidebar) in light theme, so the highlight vanished. Selection
+  now uses a semi-transparent blue (bg-info-fg/10) and hover uses
+  the dedicated bg-hover token.
+
 ## [0.4.0](https://github.com/tianshu-ai/tianshu/compare/v0.3.56...v0.4.0) (2026-06-28)
 
 
