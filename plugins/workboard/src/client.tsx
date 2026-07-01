@@ -990,7 +990,7 @@ function BoardCard({
                     interventionAt: null,
                   });
                 }}
-                className="shrink-0 rounded border border-rose-500/40 px-1 py-px text-[9.5px] font-medium text-rose-100 hover:bg-rose-500/20 disabled:opacity-50"
+                className="shrink-0 rounded bg-rose-600 px-1.5 py-px text-[9.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-50"
               >
                 Retry
               </button>
@@ -1025,7 +1025,7 @@ function BoardCard({
                     failureReason: null,
                   });
                 }}
-                className="shrink-0 rounded border border-orange-500/40 px-1 py-px text-[9.5px] font-medium text-orange-100 hover:bg-orange-500/15 disabled:opacity-50"
+                className="shrink-0 rounded bg-orange-600 px-1.5 py-px text-[9.5px] font-medium text-white hover:bg-orange-500 disabled:opacity-50"
               >
                 Retry
               </button>

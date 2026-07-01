@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.21](https://github.com/tianshu-ai/tianshu/compare/v0.4.20...v0.4.21) (2026-07-01)
+
+### Bug Fixes
+
+* **workboard:** the Retry button on awaiting-intervention and
+  stalled task cards was invisible in light theme. It used
+  text-rose-100 / text-orange-100 (near-white) with no background
+  (transparent until hover), so on the card's light rose/orange
+  tint the label vanished — leaving just an empty red outline. Both
+  Retry buttons now use a solid accent background (rose-600 /
+  orange-600) with white text, legible in both themes. Verified by
+  rendering old vs new on light and dark card backgrounds.
+
 ## [0.4.20](https://github.com/tianshu-ai/tianshu/compare/v0.4.19...v0.4.20) (2026-07-01)
 
 ### Features
