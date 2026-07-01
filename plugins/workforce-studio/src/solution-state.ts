@@ -259,8 +259,18 @@ export interface SolutionEdits {
   setDiff: Dispatch<SetStateAction<SolutionDiff | null>>;
   busy: boolean;
   runDiff: () => Promise<void>;
-  apply: () => Promise<void>;
   save: () => Promise<void>;
+  // Activate uses an in-app confirm flow (no window.confirm):
+  // requestActivate() opens the confirm dialog, confirmActivate()
+  // performs it, cancelActivate() dismisses. `activatePending` is
+  // true while the dialog is open. `notice` carries the
+  // success/error result to show in-page instead of window.alert.
+  activatePending: boolean;
+  requestActivate: () => void;
+  confirmActivate: () => Promise<void>;
+  cancelActivate: () => void;
+  notice: { kind: "success" | "error"; text: string } | null;
+  clearNotice: () => void;
 }
 
 /**
@@ -301,6 +311,11 @@ export function useSolutionEdits(
   );
   const [diff, setDiff] = useState<SolutionDiff | null>(null);
   const [busy, setBusy] = useState(false);
+  const [activatePending, setActivatePending] = useState(false);
+  const [notice, setNotice] = useState<
+    { kind: "success" | "error"; text: string } | null
+  >(null);
+  const clearNotice = useCallback(() => setNotice(null), []);
 
   useEffect(() => {
     setPluginsEnabled(new Set(spec.plugins.enabled));
@@ -341,30 +356,33 @@ export function useSolutionEdits(
     }
   }, [spec.slug]);
 
-  const apply = useCallback(async () => {
-    if (
-      !window.confirm(
-        `Activate "${spec.name}"?\n\nThis makes it the live solution: its main-agent config + worker files are written into the tenant and the agent picks them up on its next turn. Any previously-active solution is superseded. (Plugins aren't changed in this phase.)`,
-      )
-    ) {
-      return;
-    }
+  // In-app confirm flow (replaces window.confirm / window.alert).
+  const requestActivate = useCallback(() => {
+    setActivatePending(true);
+  }, []);
+  const cancelActivate = useCallback(() => {
+    setActivatePending(false);
+  }, []);
+  const confirmActivate = useCallback(async () => {
+    setActivatePending(false);
     setBusy(true);
     try {
       const r = await api<{ appliedWorkers: string[]; activeSlug: string }>(
         `/solutions/${encodeURIComponent(spec.slug)}/activate`,
         { method: "POST" },
       );
-      window.alert(
-        `“${spec.name}” is now the active solution. Workers updated: ${
-          r.appliedWorkers.length
-        }. Takes effect on the next agent turn.`,
-      );
+      setNotice({
+        kind: "success",
+        text: `“${spec.name}” is now the active solution. Workers updated: ${r.appliedWorkers.length}. Takes effect on the next agent turn.`,
+      });
       onActivated?.();
     } catch (err) {
-      window.alert(
-        `Activate failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      setNotice({
+        kind: "error",
+        text: `Activate failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      });
     } finally {
       setBusy(false);
     }
@@ -498,7 +516,12 @@ export function useSolutionEdits(
     setDiff,
     busy,
     runDiff,
-    apply,
     save,
+    activatePending,
+    requestActivate,
+    confirmActivate,
+    cancelActivate,
+    notice,
+    clearNotice,
   };
 }
