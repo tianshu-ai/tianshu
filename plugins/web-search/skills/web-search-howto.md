@@ -9,10 +9,9 @@ scope: worker
 This plugin gives you two tools:
 
 - **`web_search`** — returns a JSON array of `{title, url,
-  content, publishedDate}` results. The host picks the backend
-  scheme (you don't): key-free hosted MCP (Exa/Parallel),
-  a self-hosted SearXNG instance, or Tavily/Brave. Same result
-  shape regardless.
+  content, publishedDate}` results. Key-free: runs against a
+  hosted endpoint (Exa or Parallel; the host picks which). You
+  don't configure or choose anything at call time.
 - **`web_fetch`** — fetches ONE URL and returns its readable
   body as markdown or text. No API key, no JavaScript. Use it
   to read a page you got from a search result.
@@ -43,9 +42,7 @@ snippet is insufficient.
   Biases engines toward language-specific sources. Skip this
   for technical English-language queries; technical content is
   usually English regardless of locale.
-- `provider`: force `"hosted"`, `"searxng"`, `"tavily"`, or
-  `"brave"` if you want a specific backend. Default is the
-  scheme the host configured. Usually leave it unset.
+
 
 ## Anti-patterns
 

@@ -1,10 +1,7 @@
 export {
   buildWebSearchTool,
   readWebSearchConfig,
-  effectiveScheme,
-  isConfigured,
   type WebSearchPluginConfig,
-  type SearchScheme,
 } from "./web-search.js";
 export { buildWebFetchTool, type WebFetchConfig } from "./web-fetch.js";
 export {
@@ -12,4 +9,5 @@ export {
   type SearchOpts,
   type SearchProvider,
   type ProviderName,
+  type HostedBackend,
 } from "./providers.js";

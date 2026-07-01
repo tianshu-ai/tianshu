@@ -1,8 +1,8 @@
 {
   "id": "web-search",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "displayName": "Web Search",
-  "description": "Web search + single-page fetch for agents. Pick a scheme: key-free hosted MCP (Exa/Parallel), self-hosted SearXNG, or keyed Tavily/Brave. web_fetch works with no config.",
+  "description": "Key-free web search + single-page fetch for agents. Search runs against a hosted endpoint (Exa or Parallel) with no API key. web_fetch reads a page to markdown, also no config.",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["network.external"],
@@ -26,63 +26,15 @@
   "configSchema": {
     "fields": [
       {
-        "key": "scheme",
-        "label": "Search scheme",
-        "kind": "select",
-        "default": "hosted",
-        "options": [
-          { "label": "Hosted MCP (key-free: Exa / Parallel)", "value": "hosted" },
-          { "label": "SearXNG (self-hosted)", "value": "searxng" },
-          { "label": "Tavily (API key)", "value": "tavily" },
-          { "label": "Brave (API key)", "value": "brave" }
-        ],
-        "description": "Which backend web_search uses. \"hosted\" needs no key (uses Exa/Parallel free MCP endpoints). \"searxng\" needs a base URL below. \"tavily\"/\"brave\" need the matching API key. web_fetch always works regardless of this setting."
-      },
-      {
-        "key": "hostedBackend",
-        "label": "Hosted backend",
+        "key": "backend",
+        "label": "Search backend",
         "kind": "select",
         "default": "exa",
         "options": [
           { "label": "Exa", "value": "exa" },
           { "label": "Parallel", "value": "parallel" }
         ],
-        "description": "Only used when scheme = hosted. Which free MCP endpoint to query. Both work anonymously; add a key below only if you have one and want higher limits."
-      },
-      {
-        "key": "searxngBaseUrl",
-        "label": "SearXNG base URL",
-        "kind": "string",
-        "placeholder": "https://searx.example.com",
-        "description": "Only used when scheme = searxng. Base URL of your SearXNG instance (its JSON API must be enabled: `search.formats: [json]` in settings.yml). No API key needed."
-      },
-      {
-        "key": "exaApiKey",
-        "label": "Exa API key (optional)",
-        "kind": "secret",
-        "placeholder": "exa-...",
-        "description": "Optional. Only used when scheme = hosted and backend = Exa. Raises limits; the free endpoint works without it. Stored under <tenant>/secrets/, never returned to the browser."
-      },
-      {
-        "key": "parallelApiKey",
-        "label": "Parallel API key (optional)",
-        "kind": "secret",
-        "placeholder": "...",
-        "description": "Optional. Only used when scheme = hosted and backend = Parallel. Raises limits; the free endpoint works without it."
-      },
-      {
-        "key": "tavilyApiKey",
-        "label": "Tavily API key",
-        "kind": "secret",
-        "placeholder": "tvly-...",
-        "description": "Only used when scheme = tavily. Sign up at tavily.com (free tier 1000 searches/month). Stored under <tenant>/secrets/, never returned to the browser."
-      },
-      {
-        "key": "braveApiKey",
-        "label": "Brave Search API key",
-        "kind": "secret",
-        "placeholder": "BSA...",
-        "description": "Only used when scheme = brave. Get a free key at api-dashboard.search.brave.com (2000/month)."
+        "description": "Which hosted endpoint web_search queries. Both are key-free (anonymous free tier). Exa returns highlighted excerpts; Parallel returns ranked results. web_fetch is unaffected."
       },
       {
         "key": "timeoutMs",

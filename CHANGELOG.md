@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.23](https://github.com/tianshu-ai/tianshu/compare/v0.4.22...v0.4.23) (2026-07-02)
+
+### Features
+
+* **web-search:** simplified to a single key-free backend, per Yu.
+  Dropped the Tavily / Brave / SearXNG schemes and the scheme
+  selector entirely; web_search now always uses the hosted MCP
+  path. The only config is `backend`: Exa or Parallel (both
+  anonymous/free). Removed all API-key and SearXNG-URL fields. The
+  hosted provider's `key` argument is now just the backend name,
+  not a credential blob. web_fetch is unchanged. Both backends
+  re-verified live after the cut.
+
 ## [0.4.22](https://github.com/tianshu-ai/tianshu/compare/v0.4.21...v0.4.22) (2026-07-01)
 
 ### Bug Fixes
