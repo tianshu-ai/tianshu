@@ -193,3 +193,58 @@ describe("buildWorkforceSnapshot — worker execution-bias override", () => {
     );
   });
 });
+
+// Regression for the `current` live-mirror extract path
+// (specFromReality), which is SEPARATE from buildWorkforceSnapshot:
+// it must also read main-agent.json, else the `current` solution
+// shows host defaults even when an override is applied+active
+// (the tenant-prompt-shows-workspace-context bug Yu hit).
+describe("extractSolution (current mirror) — applied main-agent config", () => {
+  function writeMainConfig(ctx: TenantContext) {
+    const dir = getTenantMainConfigDir(ctx.tenantId, ctx.home);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "prompt.md"), "OVERRIDDEN TENANT PROMPT");
+    fs.writeFileSync(
+      path.join(dir, "main-agent.json"),
+      JSON.stringify({
+        schema: "tianshu.main-agent.v1",
+        tenantPromptPath: "prompt.md",
+        overrides: {
+          executionBias: null,
+          replyStyle: null,
+          userOnboarding: null,
+        },
+        customFragments: [],
+        skillsDeny: ["meme-maker"],
+        toolsDeny: ["channel_send_file"],
+      }),
+    );
+  }
+
+  it("current tenantPrompt = applied override, not workspace context", async () => {
+    const ctx = fakeCtx(home);
+    writeMainConfig(ctx);
+    const { extractSolution } = await import("./solutions.js");
+    const detail = extractSolution(
+      { ctx, pluginRegistry: stubRegistry(), tianshuVersion: "0.0.0-test" },
+      "u1",
+      { slug: "current", name: "Current", description: "" },
+    );
+    expect(detail.tenantPrompt).toBe("OVERRIDDEN TENANT PROMPT");
+    expect(detail.spec.mainAgent.skillsDeny).toContain("meme-maker");
+    expect(detail.spec.mainAgent.toolsDeny).toContain("channel_send_file");
+  });
+
+  it("current with no applied config falls back to workspace context", async () => {
+    const ctx = fakeCtx(home);
+    const { extractSolution } = await import("./solutions.js");
+    const detail = extractSolution(
+      { ctx, pluginRegistry: stubRegistry(), tianshuVersion: "0.0.0-test" },
+      "u1",
+      { slug: "current", name: "Current", description: "" },
+    );
+    // No override applied → deny lists empty (host-default surface).
+    expect(detail.spec.mainAgent.skillsDeny).toEqual([]);
+    expect(detail.spec.mainAgent.toolsDeny).toEqual([]);
+  });
+});
