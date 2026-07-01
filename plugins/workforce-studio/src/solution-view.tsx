@@ -38,6 +38,7 @@ import {
 } from "./solution-tree.js";
 import { SolutionEditor } from "./solution-editors.js";
 import { SolutionInspector } from "./solution-inspector.js";
+import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 
 // ─── main solution view ─────────────────────────────────────────
 
@@ -220,9 +221,66 @@ function SolutionIDE({
   );
 
   const driftCount = edits.diff?.entries.length ?? null;
+  const { Modal } = useUiPrimitives();
 
   return (
     <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-base">
+      {/* In-app Activate confirm (replaces window.confirm). */}
+      {edits.activatePending ? (
+        <Modal
+          isOpen
+          title="Activate solution"
+          size="sm"
+          allowMaximize={false}
+          onClose={edits.cancelActivate}
+        >
+          <div className="flex flex-col gap-4 p-1 text-sm">
+            <p>
+              Make <strong>{spec.name}</strong> the live solution? Its
+              main-agent config, workers and plugin enable-set are
+              written into the running system; the agent picks them up
+              on its next turn. Any previously-active solution is
+              superseded.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={edits.cancelActivate}
+                className="rounded border border-border-subtle px-3 py-1.5 text-xs hover:bg-bg-raised"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void edits.confirmActivate()}
+                className="inline-flex items-center gap-1 rounded border border-success-fg bg-success-fg/15 px-3 py-1.5 text-xs font-semibold text-success-fg hover:bg-success-fg/25"
+              >
+                <Rocket className="size-3.5" /> Activate
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+      {/* Result notice (replaces window.alert). */}
+      {edits.notice ? (
+        <div
+          className={`flex items-start gap-2 px-3 py-2 text-xs ${
+            edits.notice.kind === "success"
+              ? "bg-success-fg/10 text-success-fg"
+              : "bg-danger-fg/10 text-danger-fg"
+          }`}
+        >
+          <span className="flex-1">{edits.notice.text}</span>
+          <button
+            type="button"
+            onClick={edits.clearNotice}
+            className="rounded px-1 hover:bg-bg-raised"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      ) : null}
       {/* topbar */}
       <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle bg-bg-elevated px-3 py-2">
         <Layers className="size-4 text-fg-muted" />
@@ -298,7 +356,7 @@ function SolutionIDE({
               </button>
               <button
                 type="button"
-                onClick={() => void edits.apply()}
+                onClick={() => edits.requestActivate()}
                 disabled={edits.busy}
                 className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold disabled:opacity-50 ${
                   detail.isActive
