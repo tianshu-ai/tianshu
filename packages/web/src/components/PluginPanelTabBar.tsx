@@ -71,8 +71,8 @@ export default function PluginPanelTabBar() {
               className={[
                 "group relative flex shrink-0 items-center gap-1.5 rounded-md text-xs transition-all",
                 active
-                  ? "bg-bg-hover/70 px-2.5 py-1 font-medium text-fg-default"
-                  : "px-2 py-1 text-fg-faint hover:bg-bg-raised/60 hover:text-fg-default",
+                  ? "bg-bg-hover px-2.5 py-1 font-medium text-fg-default"
+                  : "px-2 py-1 text-fg-faint hover:bg-bg-hover/60 hover:text-fg-default",
               ].join(" ")}
             >
               <Icon size={14} />

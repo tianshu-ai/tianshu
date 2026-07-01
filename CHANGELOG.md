@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.18](https://github.com/tianshu-ai/tianshu/compare/v0.4.17...v0.4.18) (2026-07-01)
+
+### Bug Fixes
+
+* **web:** unify selected-row highlight across the app to match the
+  sidebar channel list (webchat / wechat), per Yu. All now use
+  --color-bg-hover as the selected background instead of drifting
+  looks: studio file tree (was bg-info-fg/10), admin nav and image/
+  html preview tabs (were bg-bg-raised — invisible white in light
+  theme), model-selector dropdown (was bg-bg-hover/60) and plugin
+  panel tabs (were bg-bg-hover/70). bg-bg-raised is #ffffff in light
+  theme so any selection built on it vanished on white surfaces.
+
 ## [0.4.17](https://github.com/tianshu-ai/tianshu/compare/v0.4.16...v0.4.17) (2026-07-01)
 
 ### Bug Fixes
