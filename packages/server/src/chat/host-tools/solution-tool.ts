@@ -206,7 +206,7 @@ export function buildSolutionTool(): AgentTool {
                 )}\n\nAsk the user to confirm, then call again with confirm:true.`,
               );
             }
-            const r = cap.activate(userId, p.slug);
+            const r = await cap.activate(userId, p.slug);
             return ok(
               `Activated "${r.activeSlug}". It is now the live solution; ${r.appliedWorkers.length} workers updated. Takes effect on the next agent turn.`,
             );
