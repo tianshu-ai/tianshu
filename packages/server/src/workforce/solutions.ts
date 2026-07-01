@@ -35,6 +35,7 @@ import {
   getTenantSolutionsDir,
 } from "../core/paths.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
+import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildWorkforceSnapshot } from "./snapshot.js";
 
 const CURRENT_SLUG = "current";
@@ -110,13 +111,23 @@ function specFromReality(
   });
   const now = Date.now();
 
-  // Tenant prompt override: reality has no explicit override field
-  // yet (that lands with Apply), so we extract the workspace-context
-  // block as the closest editable proxy. null when absent.
-  const tenantPromptBlock = snap.main.blocks.find(
-    (b) => b.kind === "workspace-context",
-  );
-  const tenantPrompt = tenantPromptBlock ? tenantPromptBlock.text : null;
+  // Applied-solution config is the source of truth for what the
+  // live agent actually runs (Apply wrote it; the chat path reads
+  // it every turn). The `current` mirror must reflect THAT, not
+  // the host defaults. Read the same main-agent.json the chat
+  // path reads.
+  const mainConfig = loadMainAgentConfig(deps.ctx.tenantId, deps.ctx.home);
+
+  // Tenant prompt: prefer the applied override; fall back to the
+  // workspace-context block (host AGENTS/USER.md proxy) only when
+  // no solution has set an explicit override.
+  let tenantPrompt: string | null = mainConfig.tenantPrompt;
+  if (tenantPrompt == null) {
+    const tenantPromptBlock = snap.main.blocks.find(
+      (b) => b.kind === "workspace-context",
+    );
+    tenantPrompt = tenantPromptBlock ? tenantPromptBlock.text : null;
+  }
 
   const workerPrompts: Record<string, string> = {};
   const workers: SolutionWorker[] = snap.workers.map((w) => {
@@ -165,21 +176,32 @@ function specFromReality(
     },
     mainAgent: {
       tenantPromptPath: tenantPrompt ? "main-agent/prompt.md" : null,
-      // Reality's main agent is unrestricted; capture null so the
-      // solution doesn't accidentally narrow it. Deny lists start
-      // empty — the operator excludes what they don't want.
       skillsAllow: null,
-      skillsDeny: [],
+      // Reflect the applied solution's deny lists so the `current`
+      // mirror shows what the live agent actually has (the badge
+      // counts + the picker exclusions match reality).
+      skillsDeny: [...mainConfig.skillsDeny],
       toolsAllow: null,
-      toolsDeny: [],
-      // No host-block overrides + no custom fragments on a fresh
-      // extract — the operator adds them later by editing.
+      toolsDeny: [...mainConfig.toolsDeny],
+      // Host-block overrides: point at the sidecar path when the
+      // applied config has an override body; resolveDetail /
+      // buildMainView surface the actual text.
       overrides: {
-        executionBias: null,
-        replyStyle: null,
-        userOnboarding: null,
+        executionBias: mainConfig.overrides.executionBias
+          ? "main-agent/execution-bias.md"
+          : null,
+        replyStyle: mainConfig.overrides.replyStyle
+          ? "main-agent/reply-style.md"
+          : null,
+        userOnboarding: mainConfig.overrides.userOnboarding
+          ? "main-agent/user-onboarding.md"
+          : null,
       },
-      customFragments: [],
+      customFragments: mainConfig.customFragments.map((f) => ({
+        id: f.id,
+        title: f.title,
+        path: `main-agent/fragments/${f.id}.md`,
+      })),
     },
     workers,
   };
