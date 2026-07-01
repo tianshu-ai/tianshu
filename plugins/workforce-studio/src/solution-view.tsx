@@ -12,9 +12,10 @@
 // change. The `current` mirror stays read-only.
 
 import type { ReactElement } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Download,
   GitCompare,
   Layers,
   Loader2,
@@ -23,6 +24,7 @@ import {
   Rocket,
   Save,
   Trash2,
+  Upload,
 } from "lucide-react";
 
 import {
@@ -31,6 +33,11 @@ import {
   type SolutionDetail,
   type SolutionSummary,
 } from "./solution-state.js";
+import {
+  downloadSolution,
+  parseSolutionFile,
+  uniqueSlug,
+} from "./solution-io.js";
 import {
   SolutionTree,
   expandableIds,
@@ -121,6 +128,47 @@ export function SolutionView(): ReactElement {
     [refreshList],
   );
 
+  // Import: read a .solution.json file, validate it, give it a
+  // collision-free slug, POST it through the frozen /solutions/save
+  // contract, then refresh + select the new solution. `current` is
+  // reserved (the live mirror) so an imported file never overwrites
+  // it — we always route to a fresh slug.
+  const onImportFile = useCallback(
+    async (file: File) => {
+      setError(null);
+      try {
+        const text = await file.text();
+        const spec = parseSolutionFile(text);
+        const taken = new Set<string>([
+          "current",
+          ...(summaries ?? []).map((s) => s.slug),
+        ]);
+        // Prefer the file's own slug; fall back to its name; keep
+        // it unique against everything already present.
+        const slug = uniqueSlug(spec.slug || spec.name, taken);
+        const renamed = slug !== spec.slug;
+        const input = {
+          ...spec,
+          slug,
+          name: renamed ? `${spec.name} (imported)` : spec.name,
+        };
+        await api("/solutions/save", {
+          method: "POST",
+          body: JSON.stringify(input),
+        });
+        await refreshList();
+        setSelected(slug);
+      } catch (err) {
+        setError(
+          `Import failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    },
+    [refreshList, summaries],
+  );
+
   return (
     <div className="flex min-h-[70vh] flex-col gap-3">
       {error ? (
@@ -144,6 +192,7 @@ export function SolutionView(): ReactElement {
           selectedSlug={selected}
           onSelectSlug={setSelected}
           onExtract={onExtract}
+          onImportFile={onImportFile}
           onRefresh={() => void refreshList()}
           detail={detail}
           onDelete={onDelete}
@@ -176,6 +225,7 @@ function SolutionIDE({
   selectedSlug,
   onSelectSlug,
   onExtract,
+  onImportFile,
   onRefresh,
   detail,
   onDelete,
@@ -185,6 +235,7 @@ function SolutionIDE({
   selectedSlug: string | null;
   onSelectSlug: (slug: string) => void;
   onExtract: () => void;
+  onImportFile: (file: File) => void;
   onRefresh: () => void;
   detail: SolutionDetail;
   onDelete: (slug: string) => void;
@@ -205,6 +256,9 @@ function SolutionIDE({
     setSelectedNode("plugins");
     setExpanded(new Set<NodeId>(["main", "workers"]));
   }, [spec.slug]);
+
+  // Hidden <input type=file> that the Import button clicks.
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const expandable = useMemo(() => expandableIds(detail), [detail]);
   const toggleExpand = useCallback(
@@ -335,6 +389,36 @@ function SolutionIDE({
             title="Extract current reality into a new named solution"
           >
             <Plus className="size-3.5" /> Extract
+          </button>
+          {/* Import: hidden file input + trigger button. Reads a
+              .solution.json and saves it as a new solution. */}
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              // Reset so picking the same file twice re-fires change.
+              e.target.value = "";
+              if (file) onImportFile(file);
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            className="inline-flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-xs hover:bg-bg-raised"
+            title="Import a solution from a .solution.json file (creates a new solution)"
+          >
+            <Upload className="size-3.5" /> Import
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadSolution(detail)}
+            className="inline-flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-xs hover:bg-bg-raised"
+            title="Export this solution to a .solution.json file"
+          >
+            <Download className="size-3.5" /> Export
           </button>
           <button
             type="button"

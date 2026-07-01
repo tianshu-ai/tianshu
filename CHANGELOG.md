@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.19](https://github.com/tianshu-ai/tianshu/compare/v0.4.18...v0.4.19) (2026-07-01)
+
+### Features
+
+* **workforce-studio:** export / import a solution as a
+  `.solution.json` file. Export serialises the loaded solution
+  (inlining tenant prompt, host-block overrides, custom fragments,
+  worker SOUL.md and per-worker execution-bias) into the same
+  SolutionSpecInput shape the frozen `/solutions/save` contract
+  accepts, wrapped in a versioned envelope. Import reads a file,
+  validates it (envelope or bare spec), assigns a collision-free
+  slug (never touching the reserved `current` mirror) and saves it
+  as a new solution. No new server routes — pure client round-trip
+  over the existing get + save endpoints. New Export/Import buttons
+  sit in the solution IDE topbar next to Extract. Round-trip
+  verified in isolation.
+
 ## [0.4.18](https://github.com/tianshu-ai/tianshu/compare/v0.4.17...v0.4.18) (2026-07-01)
 
 ### Bug Fixes
