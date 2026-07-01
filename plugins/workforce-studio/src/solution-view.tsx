@@ -234,8 +234,8 @@ function SolutionIDE({
           allowMaximize={false}
           onClose={edits.cancelActivate}
         >
-          <div className="flex flex-col gap-4 p-1 text-sm">
-            <p>
+          <div className="flex flex-col gap-4 p-1 text-sm text-fg-default">
+            <p className="text-fg-default">
               Make <strong>{spec.name}</strong> the live solution? Its
               main-agent config, workers and plugin enable-set are
               written into the running system; the agent picks them up
@@ -246,14 +246,14 @@ function SolutionIDE({
               <button
                 type="button"
                 onClick={edits.cancelActivate}
-                className="rounded border border-border-subtle px-3 py-1.5 text-xs hover:bg-bg-raised"
+                className="rounded border border-border-subtle bg-bg-elevated px-3 py-1.5 text-xs font-medium text-fg-default hover:bg-bg-raised"
               >
                 Cancel
               </button>
               <button
                 type="button"
                 onClick={() => void edits.confirmActivate()}
-                className="inline-flex items-center gap-1 rounded border border-success-fg bg-success-fg/15 px-3 py-1.5 text-xs font-semibold text-success-fg hover:bg-success-fg/25"
+                className="inline-flex items-center gap-1 rounded bg-success-fg px-3 py-1.5 text-xs font-semibold text-bg-base hover:opacity-90"
               >
                 <Rocket className="size-3.5" /> Activate
               </button>
