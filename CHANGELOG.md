@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.17](https://github.com/tianshu-ai/tianshu/compare/v0.4.16...v0.4.17) (2026-07-01)
+
+### Bug Fixes
+
+* **web:** the active ThemeToggle mode now matches the sidebar
+  channel-list selected row (webchat / wechat) exactly, per Yu:
+  bg-hover background + fg-default text + a border-default
+  outline, instead of the invented solid-accent / faint-accent
+  looks from 0.4.15/0.4.16. --color-bg-hover is a visible grey in
+  both themes. Verified by rendering the channel row and the
+  toggle side by side in both themes.
+
 ## [0.4.16](https://github.com/tianshu-ai/tianshu/compare/v0.4.15...v0.4.16) (2026-07-01)
 
 ### Bug Fixes
