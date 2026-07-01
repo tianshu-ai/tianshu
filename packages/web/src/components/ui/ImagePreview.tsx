@@ -93,8 +93,8 @@ function ModeToggle({
         onClick={() => onChange("render")}
         className={`flex items-center gap-1 rounded px-2 py-0.5 transition-colors ${
           mode === "render"
-            ? "bg-bg-raised text-fg-default"
-            : "hover:bg-bg-raised/60 hover:text-fg-default"
+            ? "bg-bg-hover text-fg-default"
+            : "hover:bg-bg-hover/60 hover:text-fg-default"
         }`}
         title="Render"
       >
@@ -106,8 +106,8 @@ function ModeToggle({
         onClick={() => onChange("source")}
         className={`flex items-center gap-1 rounded px-2 py-0.5 transition-colors ${
           mode === "source"
-            ? "bg-bg-raised text-fg-default"
-            : "hover:bg-bg-raised/60 hover:text-fg-default"
+            ? "bg-bg-hover text-fg-default"
+            : "hover:bg-bg-hover/60 hover:text-fg-default"
         }`}
         title="View source"
       >
