@@ -19,26 +19,40 @@ import type {
   PluginServerExports,
   PluginServerModule,
 } from "@tianshu-ai/plugin-sdk";
-import { buildWebSearchTool, readWebSearchConfig } from "./tools/index.js";
+import {
+  buildWebSearchTool,
+  buildWebFetchTool,
+  readWebSearchConfig,
+  effectiveScheme,
+  isConfigured,
+} from "./tools/index.js";
 import { ProviderHealth } from "./tools/health.js";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     const cfg = readWebSearchConfig(ctx.pluginConfig);
-    const haveTavily = !!cfg.tavilyApiKey;
-    const haveBrave = !!cfg.braveApiKey;
-    if (!haveTavily && !haveBrave) {
+    const scheme = effectiveScheme(cfg);
+    if (!isConfigured(cfg)) {
       ctx.log.warn(
-        "web-search: no API keys configured. Open Settings → Plugins → Web Search and add a Tavily or Brave key.",
+        `web-search: scheme "${scheme}" is selected but not fully ` +
+          `configured. Open Settings → Plugins → Web Search ` +
+          `(searxng needs a base URL; tavily/brave need a key). ` +
+          `web_fetch still works without any config.`,
       );
     } else {
-      ctx.log.info(
-        `web-search: enabled with ${
-          [haveTavily && "Tavily", haveBrave && "Brave"]
-            .filter(Boolean)
-            .join(" + ") || "(no providers)"
-        }`,
-      );
+      const detail =
+        scheme === "hosted"
+          ? `hosted (${cfg.hostedBackend ?? "exa"}${
+              (cfg.hostedBackend === "parallel"
+                ? cfg.parallelApiKey
+                : cfg.exaApiKey)
+                ? ", keyed"
+                : ", key-free"
+            })`
+          : scheme === "searxng"
+            ? `searxng (${cfg.searxngBaseUrl})`
+            : scheme;
+      ctx.log.info(`web-search: enabled — scheme ${detail}; web_fetch on`);
     }
 
     const health = new ProviderHealth();
@@ -46,17 +60,29 @@ const plugin: PluginServerModule = {
     return {
       tools: {
         WebSearchTool: buildWebSearchTool(cfg, health),
+        WebFetchTool: buildWebFetchTool({ timeoutMs: cfg.timeoutMs }),
       },
       routes: {
         // GET /api/p/web-search/health
         getHealth: (_req: Request, res: Response) => {
           res.json({
             ok: true,
+            scheme,
+            configured: isConfigured(cfg),
             providers: {
-              tavily: { configured: haveTavily },
-              brave: { configured: haveBrave },
+              hosted: {
+                configured: true,
+                backend: cfg.hostedBackend ?? "exa",
+                keyed: Boolean(
+                  (cfg.hostedBackend === "parallel"
+                    ? cfg.parallelApiKey
+                    : cfg.exaApiKey),
+                ),
+              },
+              searxng: { configured: Boolean(cfg.searxngBaseUrl) },
+              tavily: { configured: Boolean(cfg.tavilyApiKey) },
+              brave: { configured: Boolean(cfg.braveApiKey) },
             },
-            preferredProvider: cfg.preferredProvider ?? "tavily",
             timeoutMs: cfg.timeoutMs ?? 8000,
             dead: health.snapshot(),
           });
@@ -67,7 +93,12 @@ const plugin: PluginServerModule = {
         resetHealth: (req: Request, res: Response) => {
           const body = req.body as { provider?: unknown } | undefined;
           const target = body?.provider;
-          if (target === "tavily" || target === "brave") {
+          if (
+            target === "tavily" ||
+            target === "brave" ||
+            target === "hosted" ||
+            target === "searxng"
+          ) {
             health.resetOne(target);
             res.json({ ok: true, cleared: [target] });
             return;

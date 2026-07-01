@@ -31,17 +31,36 @@ import { Type } from "typebox";
 import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import {
   braveProvider,
+  hostedProvider,
+  searxngProvider,
   tavilyProvider,
+  type ProviderName,
   type SearchOpts,
   type SearchResult,
   type SearchProvider,
 } from "./providers.js";
-import { ProviderHealth, type ProviderName } from "./health.js";
+import { ProviderHealth } from "./health.js";
+
+/** Which search scheme the operator picked. The plugin supports
+ *  two key-free schemes (hosted MCP + self-hosted SearXNG) and two
+ *  key-based ones (Tavily + Brave) kept from the original plugin. */
+export type SearchScheme = "hosted" | "searxng" | "tavily" | "brave";
 
 export interface WebSearchPluginConfig {
+  /** Operator's chosen scheme. Defaults to "hosted" (key-free). */
+  scheme?: SearchScheme;
+  // Key-free scheme config:
+  /** Backend for the hosted MCP scheme. */
+  hostedBackend?: "exa" | "parallel";
+  /** Optional key for the hosted backend (higher limits; not
+   *  required — the free tier works anonymously). */
+  exaApiKey?: string;
+  parallelApiKey?: string;
+  /** Base URL of a self-hosted SearXNG instance. */
+  searxngBaseUrl?: string;
+  // Key-based scheme config (unchanged):
   tavilyApiKey?: string;
   braveApiKey?: string;
-  preferredProvider?: "tavily" | "brave";
   /** Optional default timeout override (ms). 8000 if unset. */
   timeoutMs?: number;
 }
@@ -94,15 +113,23 @@ export function buildWebSearchTool(
           ),
         ),
         provider: Type.Optional(
-          Type.Union([Type.Literal("tavily"), Type.Literal("brave")], {
-            description:
-              "Force a specific provider. Default uses the host's preferred provider with automatic fallback.",
-          }),
+          Type.Union(
+            [
+              Type.Literal("hosted"),
+              Type.Literal("searxng"),
+              Type.Literal("tavily"),
+              Type.Literal("brave"),
+            ],
+            {
+              description:
+                "Force a specific provider. Default uses the scheme the host configured.",
+            },
+          ),
         ),
       }),
     },
     available(_ctx: AgentToolContext) {
-      return Boolean(cfg.tavilyApiKey ?? cfg.braveApiKey);
+      return isConfigured(cfg);
     },
     async execute(rawArgs, _ctx: AgentToolContext) {
       const args = rawArgs as {
@@ -110,7 +137,7 @@ export function buildWebSearchTool(
         count?: number;
         language?: string;
         freshness?: SearchOpts["freshness"];
-        provider?: "tavily" | "brave";
+        provider?: ProviderName;
       };
       const query =
         typeof args.query === "string" ? args.query.trim() : "";
@@ -129,7 +156,10 @@ export function buildWebSearchTool(
         return {
           ok: false,
           text:
-            "web_search has no API keys configured. Open Settings → Plugins → Web Search and add a Tavily or Brave API key.",
+            "web_search is not configured. Open Settings → Plugins → Web " +
+            "Search and pick a scheme: \"hosted\" (key-free, Exa/Parallel), " +
+            "\"searxng\" (set your instance URL), or \"tavily\"/\"brave\" " +
+            "(set an API key).",
         };
       }
       // Apply health cache: skip providers we already know are
@@ -227,19 +257,26 @@ export function buildWebSearchTool(
 export function readWebSearchConfig(raw: unknown): WebSearchPluginConfig {
   if (!raw || typeof raw !== "object") return {};
   const r = raw as Record<string, unknown>;
+  const str = (k: string): string | undefined =>
+    typeof r[k] === "string" && r[k] ? (r[k] as string) : undefined;
+  const scheme: SearchScheme | undefined =
+    r.scheme === "hosted" ||
+    r.scheme === "searxng" ||
+    r.scheme === "tavily" ||
+    r.scheme === "brave"
+      ? r.scheme
+      : undefined;
   return {
-    tavilyApiKey:
-      typeof r.tavilyApiKey === "string" && r.tavilyApiKey
-        ? r.tavilyApiKey
+    scheme,
+    hostedBackend:
+      r.hostedBackend === "parallel" || r.hostedBackend === "exa"
+        ? r.hostedBackend
         : undefined,
-    braveApiKey:
-      typeof r.braveApiKey === "string" && r.braveApiKey
-        ? r.braveApiKey
-        : undefined,
-    preferredProvider:
-      r.preferredProvider === "tavily" || r.preferredProvider === "brave"
-        ? r.preferredProvider
-        : undefined,
+    exaApiKey: str("exaApiKey"),
+    parallelApiKey: str("parallelApiKey"),
+    searxngBaseUrl: str("searxngBaseUrl"),
+    tavilyApiKey: str("tavilyApiKey"),
+    braveApiKey: str("braveApiKey"),
     timeoutMs:
       typeof r.timeoutMs === "number" && Number.isFinite(r.timeoutMs)
         ? r.timeoutMs
@@ -247,39 +284,80 @@ export function readWebSearchConfig(raw: unknown): WebSearchPluginConfig {
   };
 }
 
+/** Resolve the effective scheme. Explicit `scheme` wins; otherwise
+ *  infer from what's configured, preferring the key-free hosted
+ *  scheme so a fresh install works out of the box. */
+export function effectiveScheme(cfg: WebSearchPluginConfig): SearchScheme {
+  if (cfg.scheme) return cfg.scheme;
+  if (cfg.searxngBaseUrl) return "searxng";
+  if (cfg.tavilyApiKey) return "tavily";
+  if (cfg.braveApiKey) return "brave";
+  return "hosted"; // key-free default
+}
+
+/** True when the effective scheme has everything it needs to run. */
+export function isConfigured(cfg: WebSearchPluginConfig): boolean {
+  switch (effectiveScheme(cfg)) {
+    case "hosted":
+      return true; // key-free
+    case "searxng":
+      return Boolean(cfg.searxngBaseUrl);
+    case "tavily":
+      return Boolean(cfg.tavilyApiKey);
+    case "brave":
+      return Boolean(cfg.braveApiKey);
+  }
+}
+
+/** Pack the hosted provider's opaque `key` blob (backend + optional
+ *  api key). See hostedProvider in providers.ts. */
+function hostedKey(cfg: WebSearchPluginConfig): string {
+  const backend = cfg.hostedBackend ?? "exa";
+  const apiKey = backend === "parallel" ? cfg.parallelApiKey : cfg.exaApiKey;
+  return JSON.stringify({ backend, apiKey });
+}
+
 /** Decide which providers to try, in order. Returns at most two
  *  entries (the configured pair, preferred first). */
 function providerOrder(
   cfg: WebSearchPluginConfig,
-  override: "tavily" | "brave" | undefined,
+  override: ProviderName | undefined,
 ): Array<{ provider: SearchProvider; key: string }> {
-  const haveTavily = !!cfg.tavilyApiKey;
-  const haveBrave = !!cfg.braveApiKey;
+  // Build the entry for a single scheme, or null when that scheme
+  // isn't usable (missing credential).
+  const entryFor = (
+    scheme: SearchScheme,
+  ): { provider: SearchProvider; key: string } | null => {
+    switch (scheme) {
+      case "hosted":
+        return { provider: hostedProvider, key: hostedKey(cfg) };
+      case "searxng":
+        return cfg.searxngBaseUrl
+          ? { provider: searxngProvider, key: cfg.searxngBaseUrl }
+          : null;
+      case "tavily":
+        return cfg.tavilyApiKey
+          ? { provider: tavilyProvider, key: cfg.tavilyApiKey }
+          : null;
+      case "brave":
+        return cfg.braveApiKey
+          ? { provider: braveProvider, key: cfg.braveApiKey }
+          : null;
+    }
+  };
+
+  // Explicit per-call override: honour it if usable, else fall
+  // through to the configured scheme.
   if (override) {
-    if (override === "tavily" && haveTavily) {
-      return [{ provider: tavilyProvider, key: cfg.tavilyApiKey! }];
-    }
-    if (override === "brave" && haveBrave) {
-      return [{ provider: braveProvider, key: cfg.braveApiKey! }];
-    }
-    // Override asked for a provider with no key configured; skip
-    // it and fall through to the default ordering rather than
-    // returning [], so the agent still gets results.
+    const e = entryFor(override);
+    if (e) return [e];
   }
-  const preferTavily = (cfg.preferredProvider ?? "tavily") === "tavily";
-  const order: Array<{ provider: SearchProvider; key: string }> = [];
-  if (preferTavily) {
-    if (haveTavily)
-      order.push({ provider: tavilyProvider, key: cfg.tavilyApiKey! });
-    if (haveBrave)
-      order.push({ provider: braveProvider, key: cfg.braveApiKey! });
-  } else {
-    if (haveBrave)
-      order.push({ provider: braveProvider, key: cfg.braveApiKey! });
-    if (haveTavily)
-      order.push({ provider: tavilyProvider, key: cfg.tavilyApiKey! });
-  }
-  return order;
+
+  // No cross-scheme fallback: the operator picked a scheme, we use
+  // it. (Mixing a self-hosted SearXNG with a paid Tavily fallback
+  // would be surprising.) Return the single effective scheme.
+  const e = entryFor(effectiveScheme(cfg));
+  return e ? [e] : [];
 }
 
 function formatSuccess(

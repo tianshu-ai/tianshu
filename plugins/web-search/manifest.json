@@ -1,15 +1,16 @@
 {
   "id": "web-search",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "displayName": "Web Search",
-  "description": "Web search via Tavily and Brave Search APIs. One tool, two providers, automatic fallback. Set API keys in Settings → Plugins.",
+  "description": "Web search + single-page fetch for agents. Pick a scheme: key-free hosted MCP (Exa/Parallel), self-hosted SearXNG, or keyed Tavily/Brave. web_fetch works with no config.",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["network.external"],
   "server": { "entry": "@tianshu-builtin/plugin-web-search/server" },
   "contributes": {
     "tools": [
-      { "id": "web_search", "module": "WebSearchTool", "since": "0.1.0" }
+      { "id": "web_search", "module": "WebSearchTool", "since": "0.1.0" },
+      { "id": "web_fetch", "module": "WebFetchTool", "since": "0.2.0" }
     ],
     "skills": [
       {
@@ -25,29 +26,63 @@
   "configSchema": {
     "fields": [
       {
+        "key": "scheme",
+        "label": "Search scheme",
+        "kind": "select",
+        "default": "hosted",
+        "options": [
+          { "label": "Hosted MCP (key-free: Exa / Parallel)", "value": "hosted" },
+          { "label": "SearXNG (self-hosted)", "value": "searxng" },
+          { "label": "Tavily (API key)", "value": "tavily" },
+          { "label": "Brave (API key)", "value": "brave" }
+        ],
+        "description": "Which backend web_search uses. \"hosted\" needs no key (uses Exa/Parallel free MCP endpoints). \"searxng\" needs a base URL below. \"tavily\"/\"brave\" need the matching API key. web_fetch always works regardless of this setting."
+      },
+      {
+        "key": "hostedBackend",
+        "label": "Hosted backend",
+        "kind": "select",
+        "default": "exa",
+        "options": [
+          { "label": "Exa", "value": "exa" },
+          { "label": "Parallel", "value": "parallel" }
+        ],
+        "description": "Only used when scheme = hosted. Which free MCP endpoint to query. Both work anonymously; add a key below only if you have one and want higher limits."
+      },
+      {
+        "key": "searxngBaseUrl",
+        "label": "SearXNG base URL",
+        "kind": "string",
+        "placeholder": "https://searx.example.com",
+        "description": "Only used when scheme = searxng. Base URL of your SearXNG instance (its JSON API must be enabled: `search.formats: [json]` in settings.yml). No API key needed."
+      },
+      {
+        "key": "exaApiKey",
+        "label": "Exa API key (optional)",
+        "kind": "secret",
+        "placeholder": "exa-...",
+        "description": "Optional. Only used when scheme = hosted and backend = Exa. Raises limits; the free endpoint works without it. Stored under <tenant>/secrets/, never returned to the browser."
+      },
+      {
+        "key": "parallelApiKey",
+        "label": "Parallel API key (optional)",
+        "kind": "secret",
+        "placeholder": "...",
+        "description": "Optional. Only used when scheme = hosted and backend = Parallel. Raises limits; the free endpoint works without it."
+      },
+      {
         "key": "tavilyApiKey",
         "label": "Tavily API key",
         "kind": "secret",
         "placeholder": "tvly-...",
-        "description": "Sign up at tavily.com (free tier 1000 searches/month). Stored under <tenant>/secrets/, never returned to the browser."
+        "description": "Only used when scheme = tavily. Sign up at tavily.com (free tier 1000 searches/month). Stored under <tenant>/secrets/, never returned to the browser."
       },
       {
         "key": "braveApiKey",
         "label": "Brave Search API key",
         "kind": "secret",
         "placeholder": "BSA...",
-        "description": "Optional. Get a free key at api-dashboard.search.brave.com (2000/month). Used as fallback when Tavily fails or returns nothing."
-      },
-      {
-        "key": "preferredProvider",
-        "label": "Preferred provider",
-        "kind": "select",
-        "default": "tavily",
-        "options": [
-          { "label": "Tavily", "value": "tavily" },
-          { "label": "Brave", "value": "brave" }
-        ],
-        "description": "Tried first when both keys are set. The other provider is used as automatic fallback only on transient errors (network / 5xx / 429). Auth failures (401 / 403) park the bad key in the health cache; clear it from Settings after fixing the key."
+        "description": "Only used when scheme = brave. Get a free key at api-dashboard.search.brave.com (2000/month)."
       },
       {
         "key": "timeoutMs",
@@ -58,7 +93,7 @@
         "max": 60000,
         "step": 500,
         "default": 8000,
-        "description": "Network timeout for each provider call. Increase if you hit timeouts on slow networks."
+        "description": "Network timeout for each web_search / web_fetch call. Increase if you hit timeouts on slow networks."
       }
     ]
   }

@@ -1,14 +1,23 @@
 ---
 name: web-search-howto
-description: How to use the `web_search` tool for tasks that need fresh information from the open web — current events, recent docs, prices, release notes, anything not in your training set or in the user's local files.
+description: How to use `web_search` and `web_fetch` for tasks that need fresh information from the open web — current events, recent docs, prices, release notes, anything not in your training set or in the user's local files.
 scope: worker
 ---
 
-# Web search
+# Web search & fetch
 
-`web_search` returns a JSON array of `{title, url, content,
-publishedDate}` objects from Tavily or Brave Search (whichever
-the host has an API key for; you don't have to pick).
+This plugin gives you two tools:
+
+- **`web_search`** — returns a JSON array of `{title, url,
+  content, publishedDate}` results. The host picks the backend
+  scheme (you don't): key-free hosted MCP (Exa/Parallel),
+  a self-hosted SearXNG instance, or Tavily/Brave. Same result
+  shape regardless.
+- **`web_fetch`** — fetches ONE URL and returns its readable
+  body as markdown or text. No API key, no JavaScript. Use it
+  to read a page you got from a search result.
+
+## web_search
 
 ## Basic call
 
@@ -34,9 +43,9 @@ snippet is insufficient.
   Biases engines toward language-specific sources. Skip this
   for technical English-language queries; technical content is
   usually English regardless of locale.
-- `provider`: force `"tavily"` or `"brave"` if you want a
-  specific source. Default is "host's preferred provider with
-  fallback".
+- `provider`: force `"hosted"`, `"searxng"`, `"tavily"`, or
+  `"brave"` if you want a specific backend. Default is the
+  scheme the host configured. Usually leave it unset.
 
 ## Anti-patterns
 
@@ -52,14 +61,26 @@ snippet is insufficient.
   cite. Agents who paste 10 result blocks turn answers into
   noise.
 
-## When the snippet isn't enough
+## web_fetch — reading a page
 
-`content` is 1-3 sentences. For the actual page body, fetch
-the URL through whatever HTTP fetcher you have available
-(`read_file` on a previously-saved page, the browser tools,
-etc.). `web_search` itself does not return page bodies; that's
-intentional — fetching only the URLs you actually need keeps
-the tool fast and cheap.
+`web_search` `content` is only 1-3 sentences. For the actual
+page body, call `web_fetch`:
+
+```
+web_fetch({ url: "https://example.com/article" })
+```
+
+- `extractMode`: `"markdown"` (default) or `"text"`.
+- `maxChars`: truncate the output (default 20000).
+
+`web_fetch` does a plain HTTP GET and extracts readable
+content — it does **not** run JavaScript. For JS-heavy or
+login-gated pages, use the browser tools instead. It blocks
+private/internal hosts, so you can't fetch `localhost` or
+cloud metadata endpoints.
+
+Fetch only the URLs you actually need — one or two authoritative
+pages beats fetching every result.
 
 ## Citing sources
 

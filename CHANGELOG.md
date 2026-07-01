@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.20](https://github.com/tianshu-ai/tianshu/compare/v0.4.19...v0.4.20) (2026-07-01)
+
+### Features
+
+* **web-search:** the plugin now offers selectable search schemes
+  and a `web_fetch` tool. Schemes: **hosted** (key-free — queries
+  Exa's or Parallel's free hosted MCP endpoints anonymously; an
+  optional key raises limits), **searxng** (point at your own
+  self-hosted instance URL, no key), and the existing **tavily** /
+  **brave** (API key). The operator picks the scheme in Settings →
+  Plugins; the agent can still force one per call via `provider`.
+  `web_fetch(url, extractMode?, maxChars?)` does a dependency-free
+  HTTP GET with readable-content extraction (HTML → markdown/text)
+  and an SSRF guard blocking private/loopback/metadata hosts; it
+  needs no configuration. Hosted Exa/Parallel round-trips verified
+  live against both endpoints.
+
 ## [0.4.19](https://github.com/tianshu-ai/tianshu/compare/v0.4.18...v0.4.19) (2026-07-01)
 
 ### Features
