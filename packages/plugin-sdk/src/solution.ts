@@ -339,14 +339,18 @@ export interface SolutionsCapability {
   activate(
     userId: string,
     slug: string,
-  ): { ok: true; appliedWorkers: string[]; activeSlug: string };
+  ):
+    | { ok: true; appliedWorkers: string[]; activeSlug: string }
+    | Promise<{ ok: true; appliedWorkers: string[]; activeSlug: string }>;
   /** @deprecated use activate. Writes config without (re)setting
    *  the active pointer's intent — kept so older callers don't
    *  break. */
   apply(
     userId: string,
     slug: string,
-  ): { ok: true; appliedWorkers: string[] };
+  ):
+    | { ok: true; appliedWorkers: string[] }
+    | Promise<{ ok: true; appliedWorkers: string[] }>;
   /** Slug of the currently-active solution, or null when none has
    *  been activated (fresh tenant). */
   getActive(userId: string): string | null;

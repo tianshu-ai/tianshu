@@ -36,6 +36,7 @@ import {
 } from "../core/paths.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { loadMainAgentConfig } from "../core/main-agent-config.js";
+import { loadTenantConfig, writeTenantConfig } from "../core/config.js";
 import { buildWorkforceSnapshot } from "./snapshot.js";
 
 const CURRENT_SLUG = "current";
@@ -927,11 +928,11 @@ export function removeSolution(
  *  back into the tenant config tree. The chat path + worker
  *  loader read these every turn, so it takes effect without a
  *  restart. Does NOT touch plugin enable/disable (Phase 4). */
-export function applySolution(
+export async function applySolution(
   deps: StoreDeps,
   userId: string,
   slug: string,
-): { ok: true; appliedWorkers: string[] } {
+): Promise<{ ok: true; appliedWorkers: string[] }> {
   if (slug === CURRENT_SLUG) {
     throw new Error("the `current` mirror is reality — nothing to apply");
   }
@@ -1039,18 +1040,44 @@ export function applySolution(
     appliedWorkers.push(w.slug);
   }
 
+  // --- Plugins (enable/disable per the solution) ---
+  // Write the solution's plugin enable-set into tenant config: any
+  // plugin in spec.plugins.enabled → enabled:true, every other
+  // known plugin → enabled:false. Dependency edges are NOT
+  // considered (per Yu: just apply the config as-is). Then
+  // invalidate the registry so the change takes effect.
+  const wanted = new Set(spec.plugins.enabled);
+  const cfg = loadTenantConfig(tenantId, home);
+  const plugins: Record<
+    string,
+    { enabled?: boolean; config?: Record<string, unknown> }
+  > = { ...(cfg.plugins ?? {}) };
+  // Every plugin the studio knows about (from the snapshot's
+  // availablePlugins, surfaced on the solution). Flip each to the
+  // solution's intent.
+  const known = new Set<string>([
+    ...Object.keys(plugins),
+    ...spec.plugins.enabled,
+  ]);
+  for (const id of known) {
+    const existing = plugins[id] ?? {};
+    plugins[id] = { ...existing, enabled: wanted.has(id) };
+  }
+  writeTenantConfig(tenantId, { ...cfg, plugins }, home);
+  await deps.pluginRegistry.invalidate(tenantId);
+
   return { ok: true, appliedWorkers };
 }
 
 /** Activate a solution: apply its config to reality AND mark it
  *  as the live one (the `.active` pointer). User-facing "go
  *  live" action. */
-export function activateSolution(
+export async function activateSolution(
   deps: StoreDeps,
   userId: string,
   slug: string,
-): { ok: true; appliedWorkers: string[]; activeSlug: string } {
-  const result = applySolution(deps, userId, slug);
+): Promise<{ ok: true; appliedWorkers: string[]; activeSlug: string }> {
+  const result = await applySolution(deps, userId, slug);
   setActiveSlug(deps, slug);
   return { ...result, activeSlug: slug };
 }

@@ -220,7 +220,7 @@ const plugin: PluginServerModule = {
           }
           const slug = String(req.params.slug ?? "");
           try {
-            const result = solutionsCap.apply(userId, slug);
+            const result = await solutionsCap.apply(userId, slug);
             res.json(result);
           } catch (err) {
             sendError(ctx, res, err, "applySolution", userId);
@@ -235,7 +235,7 @@ const plugin: PluginServerModule = {
           }
           const slug = String(req.params.slug ?? "");
           try {
-            const result = solutionsCap.activate(userId, slug);
+            const result = await solutionsCap.activate(userId, slug);
             res.json(result);
           } catch (err) {
             sendError(ctx, res, err, "activateSolution", userId);
