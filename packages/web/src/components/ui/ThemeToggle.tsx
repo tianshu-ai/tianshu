@@ -47,8 +47,14 @@ export function ThemeToggle({ compact = false, className = "" }: ThemeToggleProp
             style={
               active
                 ? {
-                    background: "var(--color-bg-raised)",
-                    color: "var(--color-fg-default)",
+                    // In light theme --color-bg-raised is #ffffff, same as
+                    // the toggle's --color-bg-elevated backing, so a raised
+                    // background was invisible. Use the semi-transparent
+                    // accent tint (visible in both themes) plus the accent
+                    // foreground colour to mark the active mode.
+                    background: "var(--color-accent-faint)",
+                    color: "var(--color-accent)",
+                    boxShadow: "inset 0 0 0 1px var(--color-accent)",
                   }
                 : undefined
             }

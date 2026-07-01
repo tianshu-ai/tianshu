@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.15](https://github.com/tianshu-ai/tianshu/compare/v0.4.14...v0.4.15) (2026-07-01)
+
+### Bug Fixes
+
+* **web:** the active mode in the light/dark/system ThemeToggle is
+  now visible in light theme. The active button used
+  bg-bg-raised via inline style, which is white (#ffffff) in light
+  theme — identical to the toggle's own bg-elevated backing — so
+  the selected state was invisible. The active mode now uses the
+  semi-transparent accent tint (--color-accent-faint) as
+  background, the accent colour for the icon/label, and an inset
+  accent border, all visible in both themes. Same root cause as
+  the 0.4.14 tree-selection fix, different component.
+
 ## [0.4.14](https://github.com/tianshu-ai/tianshu/compare/v0.4.13...v0.4.14) (2026-07-01)
 
 ### Bug Fixes
