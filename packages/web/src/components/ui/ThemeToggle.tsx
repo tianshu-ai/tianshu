@@ -47,15 +47,15 @@ export function ThemeToggle({ compact = false, className = "" }: ThemeToggleProp
             style={
               active
                 ? {
-                    // The active mode needs an unmistakable highlight in
-                    // both themes. Earlier attempts used bg-raised (white
-                    // in light theme, invisible) and accent-faint (only
-                    // 8% alpha in light theme, barely visible on white).
-                    // Use the SOLID accent colour as the pill background
-                    // with on-accent (white) text, like a normal
-                    // segmented control. Unambiguous on any surface.
-                    background: "var(--color-accent)",
-                    color: "var(--color-fg-on-accent)",
+                    // Match the sidebar channel-list selected row exactly
+                    // (webchat / wechat): bg-hover + fg-default + a
+                    // border-default outline. --color-bg-hover is a
+                    // visible grey in both themes (slate-200 in light,
+                    // gray-800 in dark), so the highlight reads clearly
+                    // without inventing a new colour.
+                    background: "var(--color-bg-hover)",
+                    color: "var(--color-fg-default)",
+                    boxShadow: "inset 0 0 0 1px var(--color-border-default)",
                   }
                 : undefined
             }
