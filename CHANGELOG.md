@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.24](https://github.com/tianshu-ai/tianshu/compare/v0.4.23...v0.4.24) (2026-07-02)
+
+### Features
+
+* **workboard:** `task_create` can now define a dependency graph in
+  one batch call. Each task may carry a local `ref` alias; other
+  rows in the same `tasks` array reference it in `depends_on` to
+  depend on a sibling that has no real id yet. The batch assigns
+  ids up front, resolves refs to ids, creates rows in topological
+  order (so the `blocked` flag is correct at creation), and
+  rejects cyclic batch deps per-row (the offending edge is dropped
+  with a note; the task is still created). `depends_on` still
+  accepts existing task ids you own. Previously an intra-batch
+  dependency was silently dropped because the sibling didn't exist
+  in the DB yet, forcing serial create-then-link calls.
+
 ## [0.4.23](https://github.com/tianshu-ai/tianshu/compare/v0.4.22...v0.4.23) (2026-07-02)
 
 ### Features
