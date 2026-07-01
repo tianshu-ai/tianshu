@@ -350,7 +350,7 @@ function CapabilityBadges({ entry }: { entry: PluginListEntry }) {
       {provided.map((c) => (
         <span
           key={`p-${c}`}
-          className="rounded bg-emerald-900/40 px-1.5 py-0.5 text-success"
+          className="rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-success"
           title={`This plugin provides ${c}`}
         >
           provides {c}
@@ -361,7 +361,7 @@ function CapabilityBadges({ entry }: { entry: PluginListEntry }) {
         .map((c) => (
           <span
             key={`r-${c}`}
-            className="rounded bg-sky-900/40 px-1.5 py-0.5 text-sky-300"
+            className="rounded border border-accent/40 bg-accent/15 px-1.5 py-0.5 text-accent"
             title={`This plugin requires ${c} (satisfied)`}
           >
             requires {c}
@@ -370,7 +370,7 @@ function CapabilityBadges({ entry }: { entry: PluginListEntry }) {
       {missing.map((c) => (
         <span
           key={`m-${c}`}
-          className="rounded bg-rose-900/40 px-1.5 py-0.5 text-danger"
+          className="rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-danger"
           title={`This plugin requires ${c}, but no provider is enabled`}
         >
           missing {c}
@@ -453,7 +453,7 @@ function CatalogRow({
           </code>
           <span className="text-[10px] text-fg-fainter">v{entry.latestVersion}</span>
           {entry.verified && (
-            <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] uppercase text-success">
+            <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[9px] uppercase text-success">
               <ShieldCheck size={10} /> verified
             </span>
           )}
@@ -504,25 +504,25 @@ function StateBadge({ state }: { state: PluginState }) {
   switch (state) {
     case "active":
       return (
-        <span className="flex items-center gap-1 rounded bg-emerald-900/50 px-1.5 py-0.5 text-[9px] uppercase text-success">
+        <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[9px] uppercase text-success">
           <CheckCircle2 size={10} /> active
         </span>
       );
     case "disabled":
       return (
-        <span className="flex items-center gap-1 rounded bg-bg-raised px-1.5 py-0.5 text-[9px] uppercase text-fg-muted">
+        <span className="flex items-center gap-1 rounded border border-border-default bg-bg-hover px-1.5 py-0.5 text-[9px] uppercase text-fg-muted">
           <Pause size={10} /> disabled
         </span>
       );
     case "failed":
       return (
-        <span className="flex items-center gap-1 rounded bg-rose-900/50 px-1.5 py-0.5 text-[9px] uppercase text-danger">
+        <span className="flex items-center gap-1 rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-[9px] uppercase text-danger">
           <AlertTriangle size={10} /> failed
         </span>
       );
     case "client-bundle-missing":
       return (
-        <span className="rounded bg-amber-900/50 px-1.5 py-0.5 text-[9px] uppercase text-warning">
+        <span className="rounded border border-warning/40 bg-warning/15 px-1.5 py-0.5 text-[9px] uppercase text-warning">
           no client bundle
         </span>
       );

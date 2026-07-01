@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.22](https://github.com/tianshu-ai/tianshu/compare/v0.4.21...v0.4.22) (2026-07-01)
+
+### Bug Fixes
+
+* **web:** the capability/state tags in the Plugin Manager (active,
+  disabled, failed, verified, no-client-bundle, provides/requires/
+  missing) used dark-theme-only tints (bg-emerald-900/40,
+  bg-sky-900/40, …) that turned muddy and low-contrast on the white
+  light-theme surface. All now use theme-aware semantic colours
+  (bg-<sem>/15 + border-<sem>/40 + text-<sem>): success for
+  active/provides/verified, accent for satisfied requires, danger
+  for missing/failed, warning for no-client-bundle, and bg-hover
+  for disabled. Legible in both themes. Verified by rendering old
+  vs new on light and dark surfaces.
+
 ## [0.4.21](https://github.com/tianshu-ai/tianshu/compare/v0.4.20...v0.4.21) (2026-07-01)
 
 ### Bug Fixes
