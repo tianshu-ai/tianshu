@@ -273,7 +273,9 @@ function TreeRow({
   return (
     <div
       className={`flex w-full items-center gap-1 border-l-2 ${pad} pr-2 py-1 text-xs whitespace-nowrap ${
-        isSelected ? "border-info-fg bg-bg-raised" : "border-transparent hover:bg-bg-raised"
+        isSelected
+          ? "border-info-fg bg-info-fg/10"
+          : "border-transparent hover:bg-bg-hover"
       }`}
     >
       {/* Chevron is its own hit target: toggles expand without
