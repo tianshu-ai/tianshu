@@ -47,14 +47,15 @@ export function ThemeToggle({ compact = false, className = "" }: ThemeToggleProp
             style={
               active
                 ? {
-                    // In light theme --color-bg-raised is #ffffff, same as
-                    // the toggle's --color-bg-elevated backing, so a raised
-                    // background was invisible. Use the semi-transparent
-                    // accent tint (visible in both themes) plus the accent
-                    // foreground colour to mark the active mode.
-                    background: "var(--color-accent-faint)",
-                    color: "var(--color-accent)",
-                    boxShadow: "inset 0 0 0 1px var(--color-accent)",
+                    // The active mode needs an unmistakable highlight in
+                    // both themes. Earlier attempts used bg-raised (white
+                    // in light theme, invisible) and accent-faint (only
+                    // 8% alpha in light theme, barely visible on white).
+                    // Use the SOLID accent colour as the pill background
+                    // with on-accent (white) text, like a normal
+                    // segmented control. Unambiguous on any surface.
+                    background: "var(--color-accent)",
+                    color: "var(--color-fg-on-accent)",
                   }
                 : undefined
             }

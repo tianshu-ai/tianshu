@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.16](https://github.com/tianshu-ai/tianshu/compare/v0.4.15...v0.4.16) (2026-07-01)
+
+### Bug Fixes
+
+* **web:** the active mode in the ThemeToggle now has a clearly
+  visible highlight. 0.4.15 used --color-accent-faint, which is
+  only 8% alpha (rgba(66 99 235 / 0.08)) in light theme — barely
+  visible on the white sidebar. The active pill now uses the SOLID
+  accent colour with on-accent (white) text, like a standard
+  segmented control, unmistakable on any surface. Verified by
+  rendering both themes in isolation.
+
 ## [0.4.15](https://github.com/tianshu-ai/tianshu/compare/v0.4.14...v0.4.15) (2026-07-01)
 
 ### Bug Fixes
