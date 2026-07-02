@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.27](https://github.com/tianshu-ai/tianshu/compare/v0.4.26...v0.4.27) (2026-07-02)
+
+### Bug Fixes
+
+* **opencode-worker:** surface the full API error. Failures showed a
+  bare `OpenCode error: APIError` because the NDJSON parser only
+  read `error.name`; opencode nests the detail under
+  `error.data.{message,statusCode,responseBody}`. Now the task's
+  failure_reason includes the status code, message, and an upstream
+  body snippet, so a proxy/upstream 4xx/5xx is diagnosable.
+
 ## [0.4.26](https://github.com/tianshu-ai/tianshu/compare/v0.4.25...v0.4.26) (2026-07-02)
 
 ### Bug Fixes
