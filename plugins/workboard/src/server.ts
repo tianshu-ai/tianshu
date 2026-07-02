@@ -34,6 +34,8 @@ import type {
   ToolCatalogCapability,
   SkillCatalogCapability,
   TaskSandboxPool,
+  SandboxRunner,
+  OpenCodeProxyCapability,
 } from "@tianshu-ai/plugin-sdk";
 import { setAgentEnabled } from "./fs-worker-agents.js";
 import {
@@ -43,6 +45,7 @@ import {
   type AgentSpec,
   type WorkerHandle,
 } from "./worker/pool.js";
+import { OpenCodeWorker } from "./worker/opencode-worker.js";
 import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 import {
   buildModelListTool,
@@ -210,6 +213,18 @@ const plugin: PluginServerModule = {
       "sandbox.taskPool",
     );
 
+    // OpenCode worker deps: the shell sandbox runner (openshell /
+    // microsandbox) + the host proxy that lets a sandboxed opencode
+    // reach a tianshu model without seeing the real key/baseUrl.
+    // Both optional — if either is missing, opencode-kind agents are
+    // skipped (factory returns null) just like a missing agentLoop.
+    const shellRunner = ctx.capabilities.get<SandboxRunner>(
+      "sandbox.shell",
+    );
+    const opencodeProxy = ctx.capabilities.get<OpenCodeProxyCapability>(
+      "host.opencodeProxy",
+    );
+
     const factory = (a: AgentSpec): WorkerHandle | null => {
       if (a.kind === "echo") {
         if (!echoEnabled) return null;
@@ -233,6 +248,38 @@ const plugin: PluginServerModule = {
           log: ctx.log,
           db: ctx.db,
           taskPool,
+        });
+      }
+      if (a.kind === "opencode") {
+        if (!shellRunner) {
+          ctx.log.warn(
+            "workboard: opencode worker needs a sandbox.shell runner " +
+              "(openshell / microsandbox) — skipping",
+          );
+          return null;
+        }
+        if (!opencodeProxy) {
+          ctx.log.warn(
+            "workboard: opencode worker needs host.opencodeProxy — skipping",
+          );
+          return null;
+        }
+        const row = agentRowsById.get(a.id);
+        const defaultModel = row?.modelId ?? null;
+        if (!defaultModel) {
+          ctx.log.warn(
+            `workboard: opencode worker "${a.id}" has no modelId configured — skipping`,
+          );
+          return null;
+        }
+        return new OpenCodeWorker({
+          agentId: a.id,
+          name: a.name,
+          defaultModel,
+          tenantId: ctx.tenantId,
+          shell: shellRunner,
+          proxy: opencodeProxy,
+          log: ctx.log,
         });
       }
       return null;
