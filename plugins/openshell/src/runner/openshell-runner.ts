@@ -106,6 +106,9 @@ export class OpenShellRunner implements SandboxRunner {
   private readonly opts: OpenShellRunnerOpts & { port: number };
   private readonly gateway: GatewayManager;
   private gatewayHandle: GatewayHandle | null = null;
+  /** host:port endpoints already granted egress this session
+   *  (allowEgress idempotency). Cleared on reset(). */
+  private readonly grantedEgress = new Set<string>();
 
   constructor(opts: OpenShellRunnerOpts) {
     this.opts = {
@@ -551,6 +554,9 @@ export class OpenShellRunner implements SandboxRunner {
       );
     } finally {
       this.state = "stopped";
+      // The recreated sandbox starts with a fresh (deny-by-default)
+      // policy, so drop our egress-grant memo.
+      this.grantedEgress.clear();
     }
     await this.ensureSandbox();
     this.opts.log.info("openshell: reset() done");
@@ -597,6 +603,55 @@ export class OpenShellRunner implements SandboxRunner {
   }
 
   // ─── internals ───────────────────────────────────────────────────
+
+  /**
+   * Grant sandbox egress to host:port via openshell's policy engine.
+   * openshell is deny-by-default for network, so the in-sandbox
+   * OpenCode agent can't reach the host model proxy until we add an
+   * endpoint. Idempotent (tracks granted endpoints). `--wait` blocks
+   * until the sandbox loads the revision so a run started right
+   * after doesn't race the policy.
+   */
+  async allowEgress(endpoint: {
+    host: string;
+    port: number;
+    protocol?: "http" | "https" | "tcp";
+    /** Absolute paths of binaries authorized to use this endpoint.
+     *  openshell gates egress by BOTH host:port AND the requesting
+     *  binary — an endpoint with no binaries is unusable, which is
+     *  what caused the persistent 403 policy_denied. */
+    binaries?: string[];
+  }): Promise<void> {
+    if (this.state !== "ready" && this.state !== "running") {
+      await this.ensureSandbox();
+    }
+    const key = `${endpoint.host}:${endpoint.port}`;
+    if (this.grantedEgress.has(key)) return;
+    // openshell's endpoint "protocol" segment is an L7 class —
+    // 'rest' | 'websocket' | 'sql'. The proxy is HTTP/JSON → 'rest'.
+    // read-write expands to allow-all methods; enforce is fine once
+    // the requesting binary is authorized (see --binary below).
+    const spec = `${endpoint.host}:${endpoint.port}:read-write:rest:enforce`;
+    const args = [
+      "policy",
+      "update",
+      this.sandboxName,
+      "--add-endpoint",
+      spec,
+    ];
+    // Authorize the binaries that will make the request. Without at
+    // least one, openshell denies every process (403 policy_denied
+    // even with the endpoint + path rules present).
+    for (const b of endpoint.binaries ?? []) {
+      args.push("--binary", b);
+    }
+    args.push("--wait");
+    await this.cli(args);
+    this.grantedEgress.add(key);
+    this.opts.log.info(
+      `openshell: granted egress ${key} (rest, ${(endpoint.binaries ?? []).length} binaries) to sandbox ${this.sandboxName}`,
+    );
+  }
 
   private resolveSafe(relPath: string): string {
     const root = path.resolve(this.opts.workspaceDir);

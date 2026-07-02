@@ -157,6 +157,44 @@ export class OpenCodeWorker implements WorkerHandle {
         JSON.stringify(opencodeConfig, null, 2),
       );
 
+      // Grant the sandbox egress to the proxy. openshell is
+      // deny-by-default for network, so without this the in-sandbox
+      // opencode gets a 403 policy_denied reaching the proxy. Derive
+      // host:port from the grant's baseUrl. No-op on runtimes with
+      // open network (allowEgress undefined).
+      if (this.deps.shell.allowEgress) {
+        try {
+          const u = new URL(grant.baseUrl);
+          const port = u.port
+            ? Number(u.port)
+            : u.protocol === "https:"
+              ? 443
+              : 80;
+          // openshell gates egress by BOTH host:port AND the
+          // requesting binary, so authorize opencode + its node
+          // runtime. Without these the endpoint registers but every
+          // request is denied (403 policy_denied). Cover both the
+          // real (node_modules) path and the /usr/bin symlink.
+          await this.deps.shell.allowEgress({
+            host: u.hostname,
+            port,
+            protocol: u.protocol === "https:" ? "https" : "http",
+            binaries: [
+              "/usr/lib/node_modules/opencode-ai/bin/opencode",
+              "/usr/bin/opencode",
+              "/usr/local/bin/opencode",
+              "/usr/bin/node",
+              "/usr/local/bin/node",
+            ],
+          });
+        } catch (err) {
+          this.deps.log.warn?.(
+            "opencode-worker: allowEgress failed (continuing; run may 403)",
+            { err: err instanceof Error ? err.message : String(err) },
+          );
+        }
+      }
+
       // Write the prompt to a file and pipe it via stdin rather than
       // passing it as a command-line argument. The sandbox exec
       // transport (openshell) rejects any argv element containing a

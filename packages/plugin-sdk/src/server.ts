@@ -428,6 +428,35 @@ export interface SandboxRunner {
   /** Snapshot for the status panel + `GET /api/p/<id>/status`. */
   status(): Promise<SandboxStatus>;
 
+  // ─── optional egress control ───────────────────────────────
+  /**
+   * Grant the sandbox network egress to a specific host:port.
+   *
+   * Some sandbox runtimes (openshell) run a deny-by-default network
+   * policy, so an in-sandbox process (e.g. a headless OpenCode
+   * agent) can't reach a host-side service (the OpenCode model
+   * proxy) until egress to it is explicitly allowed. Runners that
+   * sandbox the network implement this; runners with open network
+   * access may leave it undefined (the caller treats undefined as
+   * "already reachable"). Idempotent.
+   */
+  allowEgress?(endpoint: {
+    host: string;
+    port: number;
+    /** Wire protocol hint, default "http". */
+    protocol?: "http" | "https" | "tcp";
+    /**
+     * Absolute paths of the sandbox binaries authorized to use this
+     * egress. Some runtimes (openshell) gate egress by BOTH the
+     * host:port AND the requesting binary; without at least one
+     * authorized binary the endpoint is registered but every
+     * request is denied. Runners that don't gate by binary ignore
+     * this. Include the agent's launcher + its runtime (e.g. the
+     * opencode binary and node).
+     */
+    binaries?: string[];
+  }): Promise<void>;
+
   // ─── optional browser sidecar (§2) ─────────────────────────
   /** If this runner's plugin also provides `browser.cdp`, the
    *  sidecar is exposed here so the host can register it under the
