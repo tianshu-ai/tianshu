@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.30](https://github.com/tianshu-ai/tianshu/compare/v0.4.29...v0.4.30) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** write the opencode run transcript into task
+  history so the Execution tab shows what opencode did. The worker
+  now creates a worker session and inserts messages (prompt,
+  assistant text + tool calls, outcome) into the shared messages
+  table, and the pool stamps the session id onto the task — the
+  existing GET /tasks/:id/history renders it with no frontend
+  change. The raw NDJSON is also saved as opencode-transcript.jsonl
+  in the task workdir.
+
 ## [0.4.29](https://github.com/tianshu-ai/tianshu/compare/v0.4.28...v0.4.29) (2026-07-03)
 
 ### Bug Fixes
