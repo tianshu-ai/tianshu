@@ -93,6 +93,11 @@ export class OpenCodeWorker implements WorkerHandle {
 
     try {
       grant = this.deps.proxy.grant(this.deps.tenantId, modelId);
+      this.deps.log.info?.("opencode-worker: starting task", {
+        taskId: task.id,
+        model: modelId,
+        api: grant.api,
+      });
 
       // opencode.json: point the "tianshu" provider at the proxy.
       // The token is the apiKey; the proxy baseUrl already carries
@@ -152,16 +157,34 @@ export class OpenCodeWorker implements WorkerHandle {
         JSON.stringify(opencodeConfig, null, 2),
       );
 
+      // Write the prompt to a file and pipe it via stdin rather than
+      // passing it as a command-line argument. The sandbox exec
+      // transport (openshell) rejects any argv element containing a
+      // newline ("command argument N contains newline"), so a
+      // multi-line task description would break a positional-arg
+      // call. opencode reads a piped prompt from stdin
+      // (Bun.stdin.text()), so `... run --format json < .prompt.txt`
+      // keeps the command line newline-free while still delivering
+      // the full multi-line prompt.
       const prompt = buildPrompt(task);
+      await this.deps.shell.writeFile(`${workdir}/.prompt.txt`, prompt);
+
       // OPENCODE_CONFIG points opencode at our config; run from the
-      // task workdir so file artifacts land there.
+      // task workdir so file artifacts land there. Prompt via stdin.
       const cmd =
         `cd ${shq(workdir)} && ` +
         `OPENCODE_CONFIG=./opencode.json ` +
-        `opencode run ${shq(prompt)} ` +
-        `--model tianshu/${nativeModelId} --format json`;
+        `opencode run --model tianshu/${nativeModelId} --format json ` +
+        `< .prompt.txt`;
 
       const res = await this.sh(cmd, task, signal, this.deps.timeoutMs);
+      this.deps.log.info?.("opencode-worker: run finished", {
+        taskId: task.id,
+        exitCode: res.exitCode,
+        timedOut: res.timedOut,
+        aborted: res.aborted,
+        stderrHead: res.stderr ? res.stderr.slice(0, 200) : "",
+      });
 
       if (res.aborted) {
         return {
@@ -249,8 +272,8 @@ export class OpenCodeWorker implements WorkerHandle {
   ): Promise<string[]> {
     try {
       const res = await this.sh(
-        // list files (not opencode.json), newline-separated, relative
-        `cd ${shq(workdir)} && find . -type f ! -name opencode.json -printf '%P\\n' 2>/dev/null | head -100`,
+        // list files (skip our scaffolding), newline-separated, relative
+        `cd ${shq(workdir)} && find . -type f ! -name opencode.json ! -name .prompt.txt -printf '%P\\n' 2>/dev/null | head -100`,
         task,
         signal,
       );
