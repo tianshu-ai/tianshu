@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.29](https://github.com/tianshu-ai/tianshu/compare/v0.4.28...v0.4.29) (2026-07-03)
+
+### Bug Fixes
+
+* **opencode-worker:** isolate opencode's XDG dirs per task so it
+  no longer loads the container's global opencode config/plugins
+  (e.g. opencode-anthropic-auth) that fight the injected tianshu
+  provider and left it spinning on init without producing task
+  output. Runs now use per-task XDG_CONFIG_HOME/XDG_DATA_HOME while
+  OPENCODE_CONFIG still supplies the proxied provider.
+
 ## [0.4.28](https://github.com/tianshu-ai/tianshu/compare/v0.4.27...v0.4.28) (2026-07-02)
 
 ### Bug Fixes
