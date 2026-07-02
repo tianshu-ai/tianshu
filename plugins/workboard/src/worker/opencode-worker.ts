@@ -14,12 +14,14 @@
 // `opencode/<taskId>/` inside the sandbox so concurrent tasks don't
 // clobber each other's cwd / opencode.json / file artifacts.
 
+import { randomUUID } from "node:crypto";
 import type {
   ExecRequest,
   OpenCodeProxyCapability,
   OpenCodeProxyGrant,
   PluginLogger,
   SandboxRunner,
+  TenantDbHandle,
 } from "@tianshu-ai/plugin-sdk";
 import type { Task } from "../db/tasks.js";
 import type { WorkerHandle, TerminalUpdate } from "./pool.js";
@@ -65,6 +67,11 @@ export interface OpenCodeWorkerDeps {
   tenantId: string;
   shell: SandboxRunner;
   proxy: OpenCodeProxyCapability;
+  /** DB handle — used to write the opencode run transcript into a
+   *  worker session so the task's Execution tab can render it. */
+  db: TenantDbHandle;
+  /** Owner user id for the session row (FK). */
+  ownerUserId?: string;
   log: PluginLogger;
   /** Per-run timeout (ms). Default 20 min. */
   timeoutMs?: number;
@@ -234,10 +241,23 @@ export class OpenCodeWorker implements WorkerHandle {
         stderrHead: res.stderr ? res.stderr.slice(0, 200) : "",
       });
 
+      const parsed = parseOpencodeEvents(res.stdout);
+
+      // Write the run's transcript into a worker session so the
+      // task's Execution tab can show what opencode did (prompt +
+      // assistant text + tool calls). Best-effort; failure to write
+      // history never fails the task. Also drop the raw NDJSON into
+      // the workdir as a downloadable artifact.
+      const sessionId = this.writeHistory(task, parsed, res);
+      await this.deps.shell
+        .writeFile(`${workdir}/opencode-transcript.jsonl`, res.stdout ?? "")
+        .catch(() => undefined);
+
       if (res.aborted) {
         return {
           status: "aborted",
           resultSummary: "OpenCode run aborted (signal).",
+          sessionId,
         };
       }
       if (res.timedOut) {
@@ -246,14 +266,14 @@ export class OpenCodeWorker implements WorkerHandle {
           resultSummary: `OpenCode run timed out after ${
             this.deps.timeoutMs ?? 20 * 60_000
           }ms.`,
+          sessionId,
         };
       }
-
-      const parsed = parseOpencodeEvents(res.stdout);
       if (parsed.error) {
         return {
           status: "stalled",
           resultSummary: `OpenCode error: ${parsed.error}`,
+          sessionId,
         };
       }
       if (res.exitCode !== 0) {
@@ -263,6 +283,7 @@ export class OpenCodeWorker implements WorkerHandle {
             `OpenCode exited ${res.exitCode}.` +
             (parsed.text ? `\n\n${parsed.text}` : "") +
             (res.stderr ? `\n\nstderr: ${res.stderr.slice(0, 500)}` : ""),
+          sessionId,
         };
       }
 
@@ -274,6 +295,7 @@ export class OpenCodeWorker implements WorkerHandle {
         status: "done",
         resultSummary: parsed.text || "(OpenCode produced no text output.)",
         resultFiles: files,
+        sessionId,
       };
     } catch (err) {
       return {
@@ -292,6 +314,109 @@ export class OpenCodeWorker implements WorkerHandle {
           });
         }
       }
+    }
+  }
+
+  /**
+   * Persist the opencode run as a worker session + messages so the
+   * task's Execution tab (GET /tasks/:id/history) can render it:
+   *   - user   : the prompt we sent
+   *   - assistant: opencode's text output, with its tool calls
+   *                attached as toolCalls (rendered by the history
+   *                reader)
+   *   - system : a short outcome footer (exit code / error / timeout)
+   * Best-effort: any failure is swallowed (returns null) so history
+   * writing never breaks the task. Returns the session id to stamp
+   * onto the task.
+   */
+  private writeHistory(
+    task: Task,
+    parsed: { text: string; error?: string; tools: OpencodeToolEvent[] },
+    res: {
+      exitCode?: number;
+      timedOut?: boolean;
+      aborted?: boolean;
+      stderr?: string;
+    },
+  ): string | null {
+    try {
+      const db = this.deps.db;
+      const now = Date.now();
+      const sessionId = `ocs_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
+      const userId = this.deps.ownerUserId ?? task.ownerUserId;
+
+      db.prepare(
+        `INSERT INTO sessions (id, user_id, status, kind, worker_role, title, project_slug, created_at)
+         VALUES (?, ?, 'active', 'worker', ?, ?, ?, ?)`,
+      ).run(
+        sessionId,
+        userId,
+        `opencode:${this.agentId}`,
+        `OpenCode: ${task.title}`.slice(0, 200),
+        task.projectSlug,
+        now,
+      );
+
+      const insertMsg = db.prepare(
+        `INSERT INTO messages (id, session_id, role, content, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      );
+      const mkId = () => `ocm_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
+
+      // 1) the prompt we sent (user)
+      insertMsg.run(
+        mkId(),
+        sessionId,
+        "user",
+        JSON.stringify({ text: buildPrompt(task) }),
+        now,
+      );
+
+      // 2) assistant text + tool calls. Store in the shape the
+      //    history reader understands: content with text + a
+      //    toolCalls array.
+      const toolCalls = parsed.tools.map((t, i) => ({
+        callId: `oc_${i}`,
+        toolName: t.tool,
+        argsJson: t.detail,
+      }));
+      const assistantText =
+        parsed.text ||
+        (parsed.tools.length
+          ? `(ran ${parsed.tools.length} tool call(s), no final text)`
+          : "(no output)");
+      insertMsg.run(
+        mkId(),
+        sessionId,
+        "assistant",
+        JSON.stringify({ text: assistantText, toolCalls }),
+        now + 1,
+      );
+
+      // 3) outcome footer (system)
+      const outcome = res.aborted
+        ? "aborted"
+        : res.timedOut
+          ? "timed out"
+          : parsed.error
+            ? `error: ${parsed.error}`
+            : res.exitCode !== 0
+              ? `exited ${res.exitCode ?? "?"}${res.stderr ? `: ${res.stderr.slice(0, 300)}` : ""}`
+              : "completed";
+      insertMsg.run(
+        mkId(),
+        sessionId,
+        "system",
+        JSON.stringify({ text: `OpenCode run ${outcome}.` }),
+        now + 2,
+      );
+
+      return sessionId;
+    } catch (err) {
+      this.deps.log.warn?.("opencode-worker: writeHistory failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return null;
     }
   }
 
@@ -349,11 +474,20 @@ function buildPrompt(task: Task): string {
 /** Parse OpenCode's `--format json` NDJSON stream. Collects the
  *  assistant text parts and surfaces the first session error.
  *  Each line is `{type, timestamp, sessionID, ...data}`. */
+export interface OpencodeToolEvent {
+  tool: string;
+  /** Best-effort short arg summary. */
+  detail: string;
+}
+
 export function parseOpencodeEvents(stdout: string): {
   text: string;
   error?: string;
+  /** Tool calls opencode made, in order — for the history view. */
+  tools: OpencodeToolEvent[];
 } {
   const texts: string[] = [];
+  const tools: OpencodeToolEvent[] = [];
   let error: string | undefined;
   for (const line of stdout.split(/\r?\n/)) {
     const s = line.trim();
@@ -370,6 +504,20 @@ export function parseOpencodeEvents(stdout: string): {
       if (part && typeof part.text === "string" && part.text.trim()) {
         texts.push(part.text.trim());
       }
+    } else if (type === "tool_use" || type === "tool") {
+      const part = (ev.part ?? ev) as Record<string, unknown>;
+      const tool =
+        (typeof part.tool === "string" && part.tool) ||
+        (typeof part.name === "string" && part.name) ||
+        "tool";
+      const input = part.input ?? part.args ?? part.arguments;
+      let detail = "";
+      try {
+        detail = input ? JSON.stringify(input).slice(0, 200) : "";
+      } catch {
+        detail = "";
+      }
+      tools.push({ tool, detail });
     } else if (type === "session.error" || type === "error") {
       // opencode error shape (observed): {type,error:{name,data:{
       // message,statusCode,responseBody,...}}} — sometimes nested
@@ -404,7 +552,7 @@ export function parseOpencodeEvents(stdout: string): {
       }
     }
   }
-  return { text: texts.join("\n\n"), error };
+  return { text: texts.join("\n\n"), error, tools };
 }
 
 /** Minimal shell single-quote escaping for embedding a string in a

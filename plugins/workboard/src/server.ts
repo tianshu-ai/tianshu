@@ -279,6 +279,7 @@ const plugin: PluginServerModule = {
           tenantId: ctx.tenantId,
           shell: shellRunner,
           proxy: opencodeProxy,
+          db: ctx.db,
           log: ctx.log,
         });
       }

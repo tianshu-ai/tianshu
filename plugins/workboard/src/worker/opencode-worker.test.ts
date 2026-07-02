@@ -120,5 +120,18 @@ describe("parseOpencodeEvents", () => {
     const r = parseOpencodeEvents("");
     expect(r.text).toBe("");
     expect(r.error).toBeUndefined();
+    expect(r.tools).toEqual([]);
+  });
+
+  it("collects tool_use events for the history view", () => {
+    const ndjson = [
+      JSON.stringify({ type: "tool_use", part: { tool: "bash", input: { cmd: "ls" } } }),
+      JSON.stringify({ type: "tool", part: { name: "write", args: { path: "hello.sh" } } }),
+      JSON.stringify({ type: "text", part: { text: "done" } }),
+    ].join("\n");
+    const r = parseOpencodeEvents(ndjson);
+    expect(r.tools.map((t) => t.tool)).toEqual(["bash", "write"]);
+    expect(r.tools[0].detail).toContain("ls");
+    expect(r.text).toBe("done");
   });
 });

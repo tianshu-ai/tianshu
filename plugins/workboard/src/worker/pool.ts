@@ -84,6 +84,12 @@ export interface TerminalUpdate {
   status: "done" | "stalled" | "aborted";
   resultSummary?: string | null;
   resultFiles?: string[];
+  /** Session the run wrote its transcript into, if any. The pool
+   *  stamps it onto `tasks.session_id` so the Execution tab
+   *  (GET /tasks/:id/history) can render the conversation. LLM
+   *  workers bind their session live; workers that run an external
+   *  agent (OpenCode) create a session and return its id here. */
+  sessionId?: string | null;
 }
 
 /** Snapshot row the pool needs about each worker_agents entry.
@@ -635,6 +641,10 @@ export class WorkerPool {
         endedAt: now,
         interventionReason: null,
         interventionAt: null,
+        // Link the transcript session (external-agent workers like
+        // OpenCode create one and report it here) so the Execution
+        // tab can render the run. undefined leaves it unchanged.
+        ...(update.sessionId ? { sessionId: update.sessionId } : {}),
       });
     } else {
       // Failure (worker stalled / aborted, exception, or watchdog
@@ -662,6 +672,7 @@ export class WorkerPool {
         failureReason: reason,
         attempts: nextAttempts,
         labels: nextLabels,
+        ...(update.sessionId ? { sessionId: update.sessionId } : {}),
         // Keep session_id pointing at the most recent run — the
         // chat agent uses it (via task_continue) to resume the
         // same conversation.
