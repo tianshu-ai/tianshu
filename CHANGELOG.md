@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.26](https://github.com/tianshu-ai/tianshu/compare/v0.4.25...v0.4.26) (2026-07-02)
+
+### Bug Fixes
+
+* **opencode-worker:** pipe the task prompt via stdin instead of
+  passing it as a CLI argument. The openshell exec transport rejects
+  any argv element containing a newline ("command argument N
+  contains newline"), so a multi-line task description broke every
+  run (OpenCode exited 1 after ~20s). The worker now writes the
+  prompt to `<workdir>/.prompt.txt` and runs
+  `opencode run --format json < .prompt.txt`, keeping the command
+  line newline-free while delivering the full multi-line prompt.
+  Added run logging (start/finish + stderr head) for observability.
+
 ## [0.4.25](https://github.com/tianshu-ai/tianshu/compare/v0.4.24...v0.4.25) (2026-07-02)
 
 ### Features
