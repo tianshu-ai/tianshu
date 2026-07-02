@@ -323,14 +323,37 @@ export function parseOpencodeEvents(stdout: string): {
         texts.push(part.text.trim());
       }
     } else if (type === "session.error" || type === "error") {
-      // shape varies; pull any message-ish field.
-      const props = (ev.properties ?? ev) as Record<string, unknown>;
-      const e = (props.error ?? props) as Record<string, unknown>;
-      const msg =
-        (e.message as string) ??
-        (e.name as string) ??
-        (typeof e === "string" ? e : JSON.stringify(e).slice(0, 300));
-      if (!error) error = String(msg);
+      // opencode error shape (observed): {type,error:{name,data:{
+      // message,statusCode,responseBody,...}}} — sometimes nested
+      // under `properties`. Dig for the useful bits: name +
+      // statusCode + message + a snippet of the upstream body, so a
+      // proxy/upstream 4xx/5xx is diagnosable instead of just
+      // "APIError".
+      if (!error) {
+        const props = (ev.properties ?? ev) as Record<string, unknown>;
+        const e = (props.error ?? props) as Record<string, unknown>;
+        const data = (e.data ?? {}) as Record<string, unknown>;
+        const name =
+          typeof e.name === "string" ? e.name : "error";
+        const status =
+          typeof data.statusCode === "number"
+            ? ` (status ${data.statusCode})`
+            : "";
+        const msg =
+          (typeof data.message === "string" && data.message) ||
+          (typeof e.message === "string" && e.message) ||
+          "";
+        const bodyRaw =
+          (typeof data.responseBody === "string" && data.responseBody) ||
+          (typeof data.body === "string" && data.body) ||
+          "";
+        const body = bodyRaw
+          ? ` — body: ${bodyRaw.replace(/\s+/g, " ").slice(0, 300)}`
+          : "";
+        error =
+          `${name}${status}${msg ? `: ${msg}` : ""}${body}` ||
+          JSON.stringify(e).slice(0, 400);
+      }
     }
   }
   return { text: texts.join("\n\n"), error };

@@ -81,8 +81,27 @@ describe("parseOpencodeEvents", () => {
       }),
     ].join("\n");
     const r = parseOpencodeEvents(ndjson);
-    expect(r.error).toBe("rate limited");
+    expect(r.error).toContain("rate limited");
     expect(r.text).toBe("partial");
+  });
+
+  it("extracts statusCode + message + body from an APIError (the E2E case)", () => {
+    const ndjson = JSON.stringify({
+      type: "error",
+      error: {
+        name: "APIError",
+        data: {
+          message: "Not Found",
+          statusCode: 404,
+          responseBody: "<html>Cannot POST /messages</html>",
+        },
+      },
+    });
+    const r = parseOpencodeEvents(ndjson);
+    expect(r.error).toContain("APIError");
+    expect(r.error).toContain("status 404");
+    expect(r.error).toContain("Not Found");
+    expect(r.error).toContain("Cannot POST /messages");
   });
 
   it("ignores non-JSON / blank lines", () => {
