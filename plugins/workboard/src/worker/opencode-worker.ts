@@ -1,0 +1,291 @@
+// OpenCodeWorker — drives the headless OpenCode CLI inside the
+// tenant's shell sandbox to complete a workboard task.
+//
+// The model comes from tianshu's own model list, reached through the
+// host `host.opencodeProxy` capability: the worker mints a per-task,
+// single-model token, writes an opencode.json that points OpenCode
+// at the proxy (token as apiKey, proxy address as baseURL), runs
+// `opencode run ... --format json`, parses the NDJSON event stream,
+// and revokes the token when done. The real LLM key / baseUrl never
+// enter the sandbox.
+//
+// Sandbox model (openshell): one long-lived container per tenant, no
+// per-task VM. We isolate each task under its own working directory
+// `opencode/<taskId>/` inside the sandbox so concurrent tasks don't
+// clobber each other's cwd / opencode.json / file artifacts.
+
+import type {
+  ExecRequest,
+  OpenCodeProxyCapability,
+  OpenCodeProxyGrant,
+  PluginLogger,
+  SandboxRunner,
+} from "@tianshu-ai/plugin-sdk";
+import type { Task } from "../db/tasks.js";
+import type { WorkerHandle, TerminalUpdate } from "./pool.js";
+
+/** Map a tianshu model's `api` to the OpenCode provider npm package
+ *  + whether the model id sits in the request body (openai/anthropic)
+ *  or the URL path (google). Used to shape opencode.json. */
+export function providerNpmForApi(api: string): string {
+  switch (api) {
+    case "anthropic-messages":
+      return "@ai-sdk/anthropic";
+    case "google-generative-ai":
+      return "@ai-sdk/google";
+    case "openai-completions":
+    case "openai-responses":
+    default:
+      // openai-compatible works for the SAP-proxy openai endpoint and
+      // any other openai-completions provider.
+      return "@ai-sdk/openai-compatible";
+  }
+}
+
+/** Per-task model override rides on a label `opencode-model:<id>`
+ *  so no task schema change is needed. Falls back to the worker's
+ *  configured default. */
+export function resolveTaskModel(task: Task, defaultModel: string): string {
+  const label = (task.labels ?? []).find((l) =>
+    l.startsWith("opencode-model:"),
+  );
+  if (label) {
+    const id = label.slice("opencode-model:".length).trim();
+    if (id) return id;
+  }
+  return defaultModel;
+}
+
+export interface OpenCodeWorkerDeps {
+  agentId: string;
+  name: string;
+  /** Worker's default model id, e.g. "anthropic/claude-opus-4-7".
+   *  A task label `opencode-model:<id>` overrides it per task. */
+  defaultModel: string;
+  tenantId: string;
+  shell: SandboxRunner;
+  proxy: OpenCodeProxyCapability;
+  log: PluginLogger;
+  /** Per-run timeout (ms). Default 20 min. */
+  timeoutMs?: number;
+}
+
+export class OpenCodeWorker implements WorkerHandle {
+  readonly kind = "opencode";
+  readonly agentId: string;
+  readonly name: string;
+
+  constructor(private readonly deps: OpenCodeWorkerDeps) {
+    this.agentId = deps.agentId;
+    this.name = deps.name;
+  }
+
+  async run(task: Task, signal: AbortSignal): Promise<TerminalUpdate> {
+    const modelId = resolveTaskModel(task, this.deps.defaultModel);
+
+    let grant: OpenCodeProxyGrant | null = null;
+    const workdir = `opencode/${task.id}`;
+
+    try {
+      grant = this.deps.proxy.grant(this.deps.tenantId, modelId);
+
+      // opencode.json: point the "tianshu" provider at the proxy.
+      // The token is the apiKey; the proxy baseUrl already carries
+      // the token path segment. OpenCode appends the protocol tail.
+      // The grant tells us the model's wire protocol → provider npm.
+      const providerNpm = providerNpmForApi(grant.api);
+      const nativeModelId = modelId.includes("/")
+        ? modelId.slice(modelId.indexOf("/") + 1)
+        : modelId;
+      const opencodeConfig = {
+        $schema: "https://opencode.ai/config.json",
+        provider: {
+          tianshu: {
+            npm: providerNpm,
+            name: "Tianshu (proxied)",
+            options: {
+              baseURL: grant.baseUrl,
+              apiKey: grant.token,
+            },
+            models: { [nativeModelId]: { name: nativeModelId } },
+          },
+        },
+      };
+
+      // Write config + prompt into the task's isolated workdir.
+      await this.sh(
+        `mkdir -p ${shq(workdir)}`,
+        task,
+        signal,
+      );
+      await this.deps.shell.writeFile(
+        `${workdir}/opencode.json`,
+        JSON.stringify(opencodeConfig, null, 2),
+      );
+
+      const prompt = buildPrompt(task);
+      // OPENCODE_CONFIG points opencode at our config; run from the
+      // task workdir so file artifacts land there.
+      const cmd =
+        `cd ${shq(workdir)} && ` +
+        `OPENCODE_CONFIG=./opencode.json ` +
+        `opencode run ${shq(prompt)} ` +
+        `--model tianshu/${nativeModelId} --format json`;
+
+      const res = await this.sh(cmd, task, signal, this.deps.timeoutMs);
+
+      if (res.aborted) {
+        return {
+          status: "aborted",
+          resultSummary: "OpenCode run aborted (signal).",
+        };
+      }
+      if (res.timedOut) {
+        return {
+          status: "stalled",
+          resultSummary: `OpenCode run timed out after ${
+            this.deps.timeoutMs ?? 20 * 60_000
+          }ms.`,
+        };
+      }
+
+      const parsed = parseOpencodeEvents(res.stdout);
+      if (parsed.error) {
+        return {
+          status: "stalled",
+          resultSummary: `OpenCode error: ${parsed.error}`,
+        };
+      }
+      if (res.exitCode !== 0) {
+        return {
+          status: "stalled",
+          resultSummary:
+            `OpenCode exited ${res.exitCode}.` +
+            (parsed.text ? `\n\n${parsed.text}` : "") +
+            (res.stderr ? `\n\nstderr: ${res.stderr.slice(0, 500)}` : ""),
+        };
+      }
+
+      // Collect file artifacts opencode may have written under the
+      // task workdir (best-effort — non-fatal if the listing fails).
+      const files = await this.listArtifacts(workdir, task, signal);
+
+      return {
+        status: "done",
+        resultSummary: parsed.text || "(OpenCode produced no text output.)",
+        resultFiles: files,
+      };
+    } catch (err) {
+      return {
+        status: "stalled",
+        resultSummary: `OpenCodeWorker failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      };
+    } finally {
+      if (grant) {
+        try {
+          this.deps.proxy.revoke(grant.token);
+        } catch (err) {
+          this.deps.log.warn?.("opencode-worker: proxy.revoke failed", {
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+  }
+
+  private sh(
+    command: string,
+    task: Task,
+    signal: AbortSignal,
+    timeoutMs?: number,
+  ): ReturnType<SandboxRunner["exec"]> {
+    const req: ExecRequest = {
+      command,
+      userId: task.ownerUserId,
+      taskId: task.id,
+      signal,
+      ...(timeoutMs ? { timeoutMs } : {}),
+    };
+    return this.deps.shell.exec(req);
+  }
+
+  /** Best-effort list of files opencode wrote under the workdir,
+   *  returned as workspace-relative paths for TerminalUpdate. */
+  private async listArtifacts(
+    workdir: string,
+    task: Task,
+    signal: AbortSignal,
+  ): Promise<string[]> {
+    try {
+      const res = await this.sh(
+        // list files (not opencode.json), newline-separated, relative
+        `cd ${shq(workdir)} && find . -type f ! -name opencode.json -printf '%P\\n' 2>/dev/null | head -100`,
+        task,
+        signal,
+      );
+      if (res.exitCode !== 0) return [];
+      return res.stdout
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((rel) => `${workdir}/${rel}`);
+    } catch {
+      return [];
+    }
+  }
+}
+
+/** Compose the prompt handed to `opencode run` from the task. */
+function buildPrompt(task: Task): string {
+  const parts = [task.title];
+  if (task.description && task.description.trim()) {
+    parts.push("", task.description.trim());
+  }
+  return parts.join("\n");
+}
+
+/** Parse OpenCode's `--format json` NDJSON stream. Collects the
+ *  assistant text parts and surfaces the first session error.
+ *  Each line is `{type, timestamp, sessionID, ...data}`. */
+export function parseOpencodeEvents(stdout: string): {
+  text: string;
+  error?: string;
+} {
+  const texts: string[] = [];
+  let error: string | undefined;
+  for (const line of stdout.split(/\r?\n/)) {
+    const s = line.trim();
+    if (!s || s[0] !== "{") continue;
+    let ev: Record<string, unknown>;
+    try {
+      ev = JSON.parse(s) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const type = ev.type;
+    if (type === "text") {
+      const part = ev.part as { text?: unknown } | undefined;
+      if (part && typeof part.text === "string" && part.text.trim()) {
+        texts.push(part.text.trim());
+      }
+    } else if (type === "session.error" || type === "error") {
+      // shape varies; pull any message-ish field.
+      const props = (ev.properties ?? ev) as Record<string, unknown>;
+      const e = (props.error ?? props) as Record<string, unknown>;
+      const msg =
+        (e.message as string) ??
+        (e.name as string) ??
+        (typeof e === "string" ? e : JSON.stringify(e).slice(0, 300));
+      if (!error) error = String(msg);
+    }
+  }
+  return { text: texts.join("\n\n"), error };
+}
+
+/** Minimal shell single-quote escaping for embedding a string in a
+ *  bash command. Wraps in single quotes; escapes embedded quotes. */
+function shq(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}

@@ -20,6 +20,11 @@ export interface OpenCodeProxyGrant {
   /** Full model id the token is bound to, e.g.
    *  "anthropic/claude-opus-4-7". */
   modelId: string;
+  /** Wire protocol the model speaks (`anthropic-messages` /
+   *  `openai-completions` / `google-generative-ai`). The caller
+   *  uses it to pick the matching OpenCode provider npm package.
+   *  This is protocol shape, not a secret — no key/baseUrl leaks. */
+  api: string;
   /** Base URL the sandbox should point OpenCode at. Already
    *  includes the token path segment, e.g.
    *  "http://host.internal:PORT/opencode-proxy/<token>". The

@@ -68,6 +68,8 @@ export interface OpenCodeProxyOptions {
 export interface OpenCodeProxyGrantView {
   token: string;
   modelId: string;
+  /** Wire protocol the model speaks (protocol shape, not secret). */
+  api: string;
   baseUrl: string;
   expiresAt: number;
 }
@@ -156,9 +158,20 @@ export class OpenCodeProxy {
     origin?: string,
   ): OpenCodeProxyGrantView {
     const g = this.grant(tenantId, modelId);
+    // Resolve the model's wire protocol so the caller can pick the
+    // matching OpenCode provider npm. Non-fatal if it can't resolve
+    // (bad model id surfaces later at request time); default to the
+    // openai-compatible shape.
+    let api = "openai-completions";
+    try {
+      api = this.resolveModel(g).info.api;
+    } catch {
+      /* leave default */
+    }
     return {
       token: g.token,
       modelId: g.modelId,
+      api,
       baseUrl: this.baseUrlFor(g.token, origin),
       expiresAt: g.expiresAt,
     };
