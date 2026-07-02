@@ -6,6 +6,27 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.25](https://github.com/tianshu-ai/tianshu/compare/v0.4.24...v0.4.25) (2026-07-02)
+
+### Features
+
+* **opencode-worker:** new `kind:"opencode"` worker drives the
+  headless OpenCode CLI inside the tenant shell sandbox to complete
+  a workboard task, using any tianshu model. A host OpenCode proxy
+  (`packages/server/src/opencode-proxy`) mints a per-task,
+  single-model, single-tenant token; the sandbox reaches a model
+  through the proxy and never sees the real provider key or baseUrl.
+  The proxy overwrites the request `model` (anti-tamper), enforces a
+  path/method allowlist, and normalizes the upstream API version per
+  protocol. The worker self-installs opencode
+  (`npm i -g opencode-ai@1.17.13`, idempotent) so no custom Docker
+  image is needed. Per-task model override via an `opencode-model:<id>`
+  label. Configure the sandbox-reachable proxy origin via
+  `opencodeProxy.sandboxReachableOrigin` (default
+  `http://host.docker.internal:<server.port>`). The opencode <-> proxy
+  <-> model core is validated end-to-end; live openshell wiring
+  depends on the operator's sandbox runtime.
+
 ## [0.4.24](https://github.com/tianshu-ai/tianshu/compare/v0.4.23...v0.4.24) (2026-07-02)
 
 ### Features
