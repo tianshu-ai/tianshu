@@ -157,7 +157,22 @@ let channelManager: ChannelAdapterManager;
 // sandbox-reachable origin is left unset in phase 1 — grantView()
 // callers (the worker, phase 2) pass the per-runtime origin
 // explicitly, so the proxy doesn't need to guess it here.
-const opencodeProxy = new OpenCodeProxy();
+// Resolve the sandbox-reachable origin for the OpenCode proxy. A
+// sandbox (openshell Docker container) can't reach the host on
+// `localhost` — it needs the Docker host-gateway name. Operators
+// override via config.opencodeProxy.sandboxReachableOrigin; the
+// default targets the common Docker-desktop case.
+const opencodeProxyCfg = loadGlobalConfig().opencodeProxy;
+const opencodeProxyOrigin =
+  opencodeProxyCfg?.sandboxReachableOrigin ??
+  `http://host.docker.internal:${PORT}`;
+const opencodeProxy = new OpenCodeProxy({
+  sandboxReachableOrigin: opencodeProxyOrigin,
+  ...(opencodeProxyCfg?.ttlMs ? { ttlMs: opencodeProxyCfg.ttlMs } : {}),
+});
+console.log(
+  `[tianshu] opencode proxy: sandbox-reachable origin = ${opencodeProxyOrigin}`,
+);
 
 pluginRegistry = new PluginRegistry({
   resolver: reloadingResolver,

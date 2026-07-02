@@ -70,6 +70,11 @@ export interface OpenCodeWorkerDeps {
   timeoutMs?: number;
 }
 
+/** opencode-ai version the worker installs into the sandbox. Pinned
+ *  so a task run is reproducible and a bad upstream release can't
+ *  silently break every worker. Bump deliberately. */
+const OPENCODE_VERSION = "1.17.13";
+
 export class OpenCodeWorker implements WorkerHandle {
   readonly kind = "opencode";
   readonly agentId: string;
@@ -113,6 +118,30 @@ export class OpenCodeWorker implements WorkerHandle {
       };
 
       // Write config + prompt into the task's isolated workdir.
+      // Ensure opencode is available in the sandbox. openshell's base
+      // image ships node but not opencode; install once (idempotent —
+      // subsequent tasks in the same long-lived container skip it).
+      // Generous timeout: first install pulls the platform binary.
+      const ensure = await this.sh(
+        `command -v opencode >/dev/null 2>&1 || npm i -g opencode-ai@${OPENCODE_VERSION}`,
+        task,
+        signal,
+        5 * 60_000,
+      );
+      if (ensure.exitCode !== 0 && !ensure.aborted) {
+        return {
+          status: "stalled",
+          resultSummary:
+            `Failed to install opencode in the sandbox (exit ${ensure.exitCode}).` +
+            (ensure.stderr
+              ? `\n\nstderr: ${ensure.stderr.slice(0, 500)}`
+              : ""),
+        };
+      }
+      if (ensure.aborted) {
+        return { status: "aborted", resultSummary: "Aborted during opencode install." };
+      }
+
       await this.sh(
         `mkdir -p ${shq(workdir)}`,
         task,
