@@ -207,10 +207,20 @@ export class OpenCodeWorker implements WorkerHandle {
       const prompt = buildPrompt(task);
       await this.deps.shell.writeFile(`${workdir}/.prompt.txt`, prompt);
 
-      // OPENCODE_CONFIG points opencode at our config; run from the
-      // task workdir so file artifacts land there. Prompt via stdin.
+      // Run opencode with ISOLATED XDG dirs so it doesn't pick up
+      // the container's global opencode config/plugins. Without this
+      // opencode loads ~/.config/opencode (e.g. an
+      // opencode-anthropic-auth plugin) which fights the tianshu
+      // provider we inject and leaves it spinning on auth/init
+      // without producing task output. Pointing XDG_CONFIG_HOME +
+      // XDG_DATA_HOME at per-task dirs gives opencode a clean slate;
+      // OPENCODE_CONFIG still supplies our provider. Prompt via stdin
+      // (avoids the openshell newline-in-argv rejection).
       const cmd =
         `cd ${shq(workdir)} && ` +
+        `mkdir -p .oc-config .oc-data && ` +
+        `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
+        `XDG_DATA_HOME="$PWD/.oc-data" ` +
         `OPENCODE_CONFIG=./opencode.json ` +
         `opencode run --model tianshu/${nativeModelId} --format json ` +
         `< .prompt.txt`;
@@ -311,7 +321,7 @@ export class OpenCodeWorker implements WorkerHandle {
     try {
       const res = await this.sh(
         // list files (skip our scaffolding), newline-separated, relative
-        `cd ${shq(workdir)} && find . -type f ! -name opencode.json ! -name .prompt.txt -printf '%P\\n' 2>/dev/null | head -100`,
+        `cd ${shq(workdir)} && find . -type f ! -path './.oc-config/*' ! -path './.oc-data/*' ! -name opencode.json ! -name .prompt.txt -printf '%P\\n' 2>/dev/null | head -100`,
         task,
         signal,
       );
