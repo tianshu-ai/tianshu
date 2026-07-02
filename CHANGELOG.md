@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.28](https://github.com/tianshu-ai/tianshu/compare/v0.4.27...v0.4.28) (2026-07-02)
+
+### Bug Fixes
+
+* **opencode-worker:** grant sandbox egress by binary, not just
+  host:port — the OpenCode worker now runs end to end. openshell's
+  network policy gates egress by BOTH the host:port endpoint AND the
+  requesting binary; registering the proxy endpoint with no
+  authorized binaries left every request denied (403 policy_denied,
+  the error that persisted through the earlier attempts).
+  SandboxRunner.allowEgress gains an optional `binaries` list; the
+  openshell runner passes them as `--binary` to
+  `policy update --add-endpoint`, and OpenCodeWorker authorizes the
+  opencode binary + node. Validated on a real local openshell
+  sandbox: task → self-install opencode → egress granted → opencode
+  run through the proxy → result returned → task done.
+
 ## [0.4.27](https://github.com/tianshu-ai/tianshu/compare/v0.4.26...v0.4.27) (2026-07-02)
 
 ### Bug Fixes
