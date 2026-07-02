@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { Request, Response } from "express";
-import { OpenCodeProxy } from "./proxy.js";
+import { OpenCodeProxy, resolveUpstreamPath } from "./proxy.js";
 
 // --- mock the model-resolution layer so tests don't need real
 //     tenant config / env keys. The proxy only touches these three.
@@ -105,6 +105,48 @@ function streamResponse(status: number, text: string): globalThis.Response {
     headers: { "content-type": "text/event-stream" },
   });
 }
+
+describe("resolveUpstreamPath — version normalization", () => {
+  it("anthropic: bare baseUrl + `messages` tail → v1/messages (the E2E bug)", () => {
+    // @ai-sdk/anthropic sends `messages`; tianshu anthropic baseUrl
+    // is bare (no /v1). Must re-insert v1.
+    expect(
+      resolveUpstreamPath("anthropic-messages", "http://x:3031", "messages"),
+    ).toBe("v1/messages");
+  });
+  it("anthropic: client-sent v1/messages is not doubled", () => {
+    expect(
+      resolveUpstreamPath("anthropic-messages", "http://x:3031", "v1/messages"),
+    ).toBe("v1/messages");
+  });
+  it("openai: baseUrl already /v1 + `chat/completions` → not doubled", () => {
+    expect(
+      resolveUpstreamPath(
+        "openai-completions",
+        "http://x:3031/v1",
+        "chat/completions",
+      ),
+    ).toBe("chat/completions");
+  });
+  it("openai: baseUrl /v1 + client-sent v1/chat/completions → stripped, not doubled", () => {
+    expect(
+      resolveUpstreamPath(
+        "openai-completions",
+        "http://x:3031/v1",
+        "v1/chat/completions",
+      ),
+    ).toBe("chat/completions");
+  });
+  it("google: bare baseUrl + generateContent → v1beta/...", () => {
+    expect(
+      resolveUpstreamPath(
+        "google-generative-ai",
+        "http://x:3031",
+        "models/gemini-2.5-pro:generateContent",
+      ),
+    ).toBe("v1beta/models/gemini-2.5-pro:generateContent");
+  });
+});
 
 describe("OpenCodeProxy — grant lifecycle", () => {
   it("grants a unique token bound to one (tenant, model)", () => {
@@ -217,6 +259,8 @@ describe("OpenCodeProxy — forwarding + hardening", () => {
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0];
+    // anthropic baseUrl has no /v1; client sent tail `messages`;
+    // proxy re-inserts /v1.
     expect(url).toBe("http://upstream.test:3031/v1/messages");
     // real key injected, sandbox fake key stripped
     expect(init.headers["x-api-key"]).toBe("REAL-SECRET-KEY");
@@ -249,7 +293,7 @@ describe("OpenCodeProxy — forwarding + hardening", () => {
     const g = p.grant("t1", "openai/gpt-4o");
     const { res } = makeRes();
     // openai baseUrl already ends in /v1, so the AI SDK sends the
-    // tail WITHOUT a leading v1/.
+    // tail WITHOUT a leading v1/. Proxy must NOT double it.
     await p.handler(
       makeReq({
         token: g.token,

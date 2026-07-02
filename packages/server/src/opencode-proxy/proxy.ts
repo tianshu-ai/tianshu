@@ -124,6 +124,49 @@ function pathAllowed(tail: string): boolean {
   });
 }
 
+/** The version prefix each protocol's endpoints live under. */
+function versionForApi(api: string): string {
+  switch (api) {
+    case "anthropic-messages":
+    case "openai-completions":
+    case "openai-responses":
+      return "v1";
+    case "google-generative-ai":
+      return "v1beta";
+    default:
+      return "v1";
+  }
+}
+
+/** Normalise the upstream request path.
+ *
+ *  AI SDK providers are inconsistent about where the API version
+ *  lives: some assume the baseURL is already at `/v1` and send a
+ *  bare endpoint (`messages`), others carry it in the path. Meanwhile
+ *  tianshu's per-provider baseUrl may or may not already include the
+ *  version (anthropic `localhost:3031` has none; openai
+ *  `localhost:3031/v1` has it).
+ *
+ *  Rule: strip any leading version segment the client sent, then
+ *  prepend the protocol's version ONLY IF the baseUrl doesn't already
+ *  end with it. Result: exactly one version segment, always correct.
+ */
+export function resolveUpstreamPath(
+  api: string,
+  base: string,
+  tail: string,
+): string {
+  const version = versionForApi(api);
+  // Strip a leading version the client may have prepended.
+  let p = tail.replace(/^\/+/, "");
+  p = p.replace(/^v1beta\//, "").replace(/^v1\//, "");
+  // Does the baseUrl already terminate in this version segment?
+  const baseHasVersion = new RegExp(`/${version}$`).test(
+    base.replace(/\/+$/, ""),
+  );
+  return baseHasVersion ? p : `${version}/${p}`;
+}
+
 export class OpenCodeProxy {
   private grants = new Map<string, ProxyGrant>();
   private readonly ttlMs: number;
@@ -276,11 +319,18 @@ export class OpenCodeProxy {
       return;
     }
 
-    // Build the upstream URL from the model's real baseUrl + tail.
+    // Build the upstream URL from the model's real baseUrl + tail,
+    // normalising the version segment per protocol (see
+    // resolveUpstreamPath). AI SDK providers disagree on whether the
+    // version lives in the baseURL or the path: @ai-sdk/anthropic
+    // sends `messages` (expects baseURL to already be at /v1), while
+    // tianshu's anthropic baseUrl is bare (`localhost:3031`), so we
+    // must re-insert /v1. openai's baseUrl already carries /v1.
     const base = info.baseUrl.replace(/\/+$/, "");
     const qIdx = req.originalUrl.indexOf("?");
     const qs = qIdx >= 0 ? req.originalUrl.slice(qIdx) : "";
-    const upstreamUrl = `${base}/${tail}${qs}`;
+    const upstreamPath = resolveUpstreamPath(info.api, base, tail);
+    const upstreamUrl = `${base}/${upstreamPath}${qs}`;
 
     // Copy inbound headers, strip hop-by-hop + any auth the sandbox
     // tried to set, then inject the real auth for this protocol.
