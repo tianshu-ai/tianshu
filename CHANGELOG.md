@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.35](https://github.com/tianshu-ai/tianshu/compare/v0.4.34...v0.4.35) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** generated opencode.json now allows all tools
+  (edit/bash/webfetch = allow) so a headless run never stalls on a
+  tool-approval prompt ("user rejected permission").
+* **openshell:** new `allowPublicEgress` plugin config. When true,
+  the sandbox is created with a permissive policy allowing all
+  public + host egress for any binary (instead of deny-by-default),
+  so an OpenCode worker can install toolchains and reach external
+  services. Opt-in — weakens sandbox isolation.
+
 ## [0.4.34](https://github.com/tianshu-ai/tianshu/compare/v0.4.33...v0.4.34) (2026-07-03)
 
 ### Features
