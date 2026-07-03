@@ -75,7 +75,31 @@ export interface OpenCodeWorkerDeps {
   log: PluginLogger;
   /** Per-run timeout (ms). Default 20 min. */
   timeoutMs?: number;
+  /**
+   * Enable opencode's LSP + formatters. OFF by default: opencode
+   * auto-installs a language server for the edited file (npm/go/gem),
+   * but the sandbox egress is normally locked to just the model
+   * proxy, so that install hangs forever. When true, the worker (a)
+   * keeps lsp/formatter enabled in opencode.json, (b) does NOT set
+   * OPENCODE_DISABLE_LSP_DOWNLOAD, and (c) opens sandbox egress to
+   * the package registries opencode needs (npm + GitHub) so the
+   * install can succeed. This widens the sandbox's network surface
+   * — only enable it when you want richer code intelligence and
+   * accept the reduced isolation.
+   */
+  enableLsp?: boolean;
 }
+
+/** Hosts opencode needs to reach to auto-install LSP servers /
+ *  formatters when enableLsp is on. Kept tight (npm + GitHub
+ *  release assets) rather than opening all public egress. */
+const LSP_INSTALL_EGRESS: Array<{ host: string; port: number }> = [
+  { host: "registry.npmjs.org", port: 443 },
+  { host: "github.com", port: 443 },
+  { host: "objects.githubusercontent.com", port: 443 },
+  { host: "raw.githubusercontent.com", port: 443 },
+  { host: "codeload.github.com", port: 443 },
+];
 
 /** opencode-ai version the worker installs into the sandbox. Pinned
  *  so a task run is reproducible and a bad upstream release can't
@@ -118,18 +142,19 @@ export class OpenCodeWorker implements WorkerHandle {
         $schema: "https://opencode.ai/config.json",
         // Disable services that keep the process alive / phone home:
         // snapshot spins up an internal git watcher, autoupdate
-        // reaches the network. Formatters/LSP are off by default.
+        // reaches the network.
         snapshot: false,
         autoupdate: false,
-        // Disable LSP + formatters. opencode otherwise auto-INSTALLS
-        // a language server for the edited file (e.g.
-        // bash-language-server via npm) — but the sandbox egress is
-        // locked to just the model proxy, so that install has no
-        // network and hangs FOREVER, before opencode even calls the
-        // model (that was the real "stuck" cause). `false` turns the
-        // whole subsystem off.
-        lsp: false,
-        formatter: false,
+        // LSP + formatters: OFF unless the worker enabled them.
+        // opencode auto-installs a language server for the edited
+        // file (e.g. bash-language-server via npm); with the default
+        // proxy-only egress that install hangs forever before the
+        // model is even called. When enableLsp is on we keep them
+        // enabled AND open egress to npm/GitHub (below) so the
+        // install can complete.
+        ...(this.deps.enableLsp
+          ? {}
+          : { lsp: false as const, formatter: false as const }),
         provider: {
           tianshu: {
             npm: providerNpm,
@@ -214,6 +239,37 @@ export class OpenCodeWorker implements WorkerHandle {
             { err: err instanceof Error ? err.message : String(err) },
           );
         }
+
+        // When LSP is enabled, also open egress to the package
+        // registries opencode installs language servers / formatters
+        // from (npm + GitHub). Authorize node/npm binaries. Without
+        // this the LSP auto-install has no network and hangs.
+        if (this.deps.enableLsp) {
+          for (const ep of LSP_INSTALL_EGRESS) {
+            try {
+              await this.deps.shell.allowEgress({
+                host: ep.host,
+                port: ep.port,
+                protocol: "https",
+                binaries: [
+                  "/usr/bin/node",
+                  "/usr/local/bin/node",
+                  "/usr/bin/npm",
+                  "/usr/local/bin/npm",
+                  "/usr/lib/node_modules/opencode-ai/bin/opencode",
+                ],
+              });
+            } catch (err) {
+              this.deps.log.warn?.(
+                "opencode-worker: LSP-install egress grant failed",
+                {
+                  host: ep.host,
+                  err: err instanceof Error ? err.message : String(err),
+                },
+              );
+            }
+          }
+        }
       }
 
       // Write the prompt to a file and pipe it via stdin rather than
@@ -276,7 +332,9 @@ export class OpenCodeWorker implements WorkerHandle {
         `mkdir -p .oc-config .oc-data && ` +
         `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
         `XDG_DATA_HOME="$PWD/.oc-data" ` +
-        `OPENCODE_DISABLE_LSP_DOWNLOAD=1 ` +
+        // Block LSP auto-download unless the worker enabled LSP (and
+        // opened the egress for it above).
+        (this.deps.enableLsp ? `` : `OPENCODE_DISABLE_LSP_DOWNLOAD=1 `) +
         `OPENCODE_CONFIG=./opencode.json ` +
         `timeout -s KILL ${capS} ` +
         `opencode run --model tianshu/${nativeModelId} --format json ` +

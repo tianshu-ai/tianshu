@@ -280,6 +280,7 @@ const plugin: PluginServerModule = {
           shell: shellRunner,
           proxy: opencodeProxy,
           db: ctx.db,
+          enableLsp: row?.enableLsp === true,
           log: ctx.log,
         });
       }
