@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.32](https://github.com/tianshu-ai/tianshu/compare/v0.4.31...v0.4.32) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** optional `enableLsp` toggle on the worker
+  agent.json (default false). When on, opencode keeps LSP +
+  formatters enabled and the worker opens sandbox egress to the
+  package registries opencode installs language servers from
+  (npm + GitHub) so the auto-install can complete instead of
+  hanging. Off by default preserves the locked-down, proxy-only
+  egress. Opt-in because it widens the sandbox's network surface.
+
 ## [0.4.31](https://github.com/tianshu-ai/tianshu/compare/v0.4.30...v0.4.31) (2026-07-03)
 
 ### Bug Fixes
