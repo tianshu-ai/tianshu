@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.33](https://github.com/tianshu-ai/tianshu/compare/v0.4.32...v0.4.33) (2026-07-03)
+
+### Bug Fixes
+
+* **opencode-worker:** the task Execution tab now renders the
+  opencode run as structured cards (clean text + tool chips with
+  real arguments) instead of raw JSON blobs with empty args. The
+  worker was writing history in a shape the reader didn't
+  understand (so it dumped the JSON as text), and tool args were
+  read from the wrong field (opencode puts them under
+  part.state.input). Both fixed and round-trip verified.
+
 ## [0.4.32](https://github.com/tianshu-ai/tianshu/compare/v0.4.31...v0.4.32) (2026-07-03)
 
 ### Features
