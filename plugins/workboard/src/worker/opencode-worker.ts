@@ -116,6 +116,20 @@ export class OpenCodeWorker implements WorkerHandle {
         : modelId;
       const opencodeConfig = {
         $schema: "https://opencode.ai/config.json",
+        // Disable services that keep the process alive / phone home:
+        // snapshot spins up an internal git watcher, autoupdate
+        // reaches the network. Formatters/LSP are off by default.
+        snapshot: false,
+        autoupdate: false,
+        // Disable LSP + formatters. opencode otherwise auto-INSTALLS
+        // a language server for the edited file (e.g.
+        // bash-language-server via npm) — but the sandbox egress is
+        // locked to just the model proxy, so that install has no
+        // network and hangs FOREVER, before opencode even calls the
+        // model (that was the real "stuck" cause). `false` turns the
+        // whole subsystem off.
+        lsp: false,
+        formatter: false,
         provider: {
           tianshu: {
             npm: providerNpm,
@@ -223,14 +237,51 @@ export class OpenCodeWorker implements WorkerHandle {
       // XDG_DATA_HOME at per-task dirs gives opencode a clean slate;
       // OPENCODE_CONFIG still supplies our provider. Prompt via stdin
       // (avoids the openshell newline-in-argv rejection).
+      // opencode `run` emits its NDJSON result to stdout, then does
+      // NOT exit — its embedded server (file.watcher, LSP, the slow
+      // formatter sweep) keeps the process alive indefinitely, so we
+      // can't wait for a clean exit. Idle-watchdog: run opencode in
+      // the background with a plain stdout redirect to oc.out; poll
+      // oc.out's mtime, and once it's been idle for idleS seconds
+      // (opencode finished emitting and is just idling in its server
+      // loop) kill opencode + its children and return. `cat oc.out`
+      // yields the captured NDJSON. A hard cap (from the run budget)
+      // bounds the whole thing if opencode never produces output.
+      const budgetMs = this.deps.timeoutMs ?? 20 * 60_000;
+      // Watchdog note: openshell wraps the command in its own
+      // `bash -c`, which can re-exec, making `$!` unreliable for
+      // tracking the opencode pid. So we DON'T track a pid — we poll
+      // oc.out's mtime, and when it's non-empty and idle for idleS
+      // seconds (opencode done emitting, or stuck) we pkill every
+      // opencode process and return oc.out. A hard cap bounds the
+      // case where opencode never emits anything.
+      // Run opencode in the FOREGROUND with a stdout redirect, capped
+      // by `timeout`. Notes learned the hard way:
+      //   - Backgrounding with `&` breaks the `> oc.out` redirect
+      //     (opencode's re-exec'd child doesn't inherit the fd), so
+      //     the file ends up empty/absent. Foreground redirect works.
+      //   - OPENCODE_DISABLE_LSP_DOWNLOAD=1 stops opencode from
+      //     auto-installing a language server (e.g.
+      //     bash-language-server via npm) for the edited file — that
+      //     install has no network in the egress-locked sandbox and
+      //     hangs forever BEFORE opencode calls the model. This is
+      //     the real fix for the "stuck, proxy never hit" symptom.
+      //   - opencode `run`'s embedded server may still not exit
+      //     cleanly, so `timeout -s KILL` bounds it; the NDJSON
+      //     result is already in oc.out by then. cap = run budget
+      //     minus a margin, floor 120s.
+      const capS = Math.max(120, Math.floor(budgetMs / 1000) - 15);
       const cmd =
         `cd ${shq(workdir)} && ` +
         `mkdir -p .oc-config .oc-data && ` +
         `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
         `XDG_DATA_HOME="$PWD/.oc-data" ` +
+        `OPENCODE_DISABLE_LSP_DOWNLOAD=1 ` +
         `OPENCODE_CONFIG=./opencode.json ` +
+        `timeout -s KILL ${capS} ` +
         `opencode run --model tianshu/${nativeModelId} --format json ` +
-        `< .prompt.txt`;
+        `< .prompt.txt > oc.out 2> oc.err ; ` +
+        `cat oc.out`;
 
       const res = await this.sh(cmd, task, signal, this.deps.timeoutMs);
       this.deps.log.info?.("opencode-worker: run finished", {
@@ -345,6 +396,15 @@ export class OpenCodeWorker implements WorkerHandle {
       const sessionId = `ocs_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
       const userId = this.deps.ownerUserId ?? task.ownerUserId;
 
+      // sessions.user_id has a NOT NULL FK to users(id). The task's
+      // owner is normally already a user, but dev-tenant / virtual
+      // users may not be persisted — ensure the row exists so the
+      // session insert doesn't hit a FOREIGN KEY constraint. Idempotent.
+      db.prepare(
+        `INSERT OR IGNORE INTO users (id, external_id, provider, display_name, created_at)
+         VALUES (?, ?, 'opencode-worker', ?, ?)`,
+      ).run(userId, userId, userId, now);
+
       db.prepare(
         `INSERT INTO sessions (id, user_id, status, kind, worker_role, title, project_slug, created_at)
          VALUES (?, ?, 'active', 'worker', ?, ?, ?, ?)`,
@@ -415,6 +475,8 @@ export class OpenCodeWorker implements WorkerHandle {
     } catch (err) {
       this.deps.log.warn?.("opencode-worker: writeHistory failed", {
         err: err instanceof Error ? err.message : String(err),
+        userId: this.deps.ownerUserId ?? task.ownerUserId,
+        ownerUserId: task.ownerUserId,
       });
       return null;
     }
@@ -446,7 +508,7 @@ export class OpenCodeWorker implements WorkerHandle {
     try {
       const res = await this.sh(
         // list files (skip our scaffolding), newline-separated, relative
-        `cd ${shq(workdir)} && find . -type f ! -path './.oc-config/*' ! -path './.oc-data/*' ! -name opencode.json ! -name .prompt.txt -printf '%P\\n' 2>/dev/null | head -100`,
+        `cd ${shq(workdir)} && find . -type f ! -path './.oc-config/*' ! -path './.oc-data/*' ! -name opencode.json ! -name .prompt.txt ! -name oc.out ! -name oc.err -printf '%P\\n' 2>/dev/null | head -100`,
         task,
         signal,
       );
