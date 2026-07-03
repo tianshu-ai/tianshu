@@ -123,15 +123,28 @@ describe("parseOpencodeEvents", () => {
     expect(r.tools).toEqual([]);
   });
 
-  it("collects tool_use events for the history view", () => {
+  it("collects tool_use events with args from state.input", () => {
     const ndjson = [
-      JSON.stringify({ type: "tool_use", part: { tool: "bash", input: { cmd: "ls" } } }),
-      JSON.stringify({ type: "tool", part: { name: "write", args: { path: "hello.sh" } } }),
+      // opencode's real shape: args under part.state.input
+      JSON.stringify({ type: "tool_use", part: { tool: "bash", state: { input: { command: "ls -la" } } } }),
+      JSON.stringify({ type: "tool", part: { tool: "write", state: { input: { filePath: "hello.sh" } } } }),
       JSON.stringify({ type: "text", part: { text: "done" } }),
     ].join("\n");
     const r = parseOpencodeEvents(ndjson);
     expect(r.tools.map((t) => t.tool)).toEqual(["bash", "write"]);
-    expect(r.tools[0].detail).toContain("ls");
+    expect(r.tools[0].detail).toContain("ls -la");
+    expect((r.tools[0].input as { command?: string }).command).toBe("ls -la");
+    expect((r.tools[1].input as { filePath?: string }).filePath).toBe("hello.sh");
     expect(r.text).toBe("done");
+  });
+
+  it("merges an arg-less tool_use dup into the completed one", () => {
+    const ndjson = [
+      JSON.stringify({ type: "tool", part: { tool: "bash", state: {} } }),
+      JSON.stringify({ type: "tool", part: { tool: "bash", state: { input: { command: "pytest" } } } }),
+    ].join("\n");
+    const r = parseOpencodeEvents(ndjson);
+    expect(r.tools.length).toBe(1);
+    expect((r.tools[0].input as { command?: string }).command).toBe("pytest");
   });
 });

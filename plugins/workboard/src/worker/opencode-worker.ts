@@ -481,33 +481,43 @@ export class OpenCodeWorker implements WorkerHandle {
       );
       const mkId = () => `ocm_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
 
+      // Content shape: the history reader (session-history.ts)
+      // understands `{ content: <string | part[]> }`. A plain string
+      // renders as the message text; a part array renders text parts
+      // + tool_use chips (with args). We write that shape so the
+      // Execution tab renders structured cards instead of raw JSON.
+
       // 1) the prompt we sent (user)
       insertMsg.run(
         mkId(),
         sessionId,
         "user",
-        JSON.stringify({ text: buildPrompt(task) }),
+        JSON.stringify({ content: buildPrompt(task) }),
         now,
       );
 
-      // 2) assistant text + tool calls. Store in the shape the
-      //    history reader understands: content with text + a
-      //    toolCalls array.
-      const toolCalls = parsed.tools.map((t, i) => ({
-        callId: `oc_${i}`,
-        toolName: t.tool,
-        argsJson: t.detail,
-      }));
+      // 2) assistant: final text + tool_use parts (real args from the
+      //    NDJSON). Ordered so text reads first, then the tool chips.
       const assistantText =
         parsed.text ||
         (parsed.tools.length
           ? `(ran ${parsed.tools.length} tool call(s), no final text)`
           : "(no output)");
+      const parts: Array<Record<string, unknown>> = [
+        { type: "text", text: assistantText },
+        ...parsed.tools.map((t, i) => ({
+          type: "tool_use",
+          id: `oc_${i}`,
+          name: t.tool,
+          // reader reads input ?? arguments ?? args → argsJson
+          input: t.input ?? {},
+        })),
+      ];
       insertMsg.run(
         mkId(),
         sessionId,
         "assistant",
-        JSON.stringify({ text: assistantText, toolCalls }),
+        JSON.stringify({ content: parts }),
         now + 1,
       );
 
@@ -525,7 +535,7 @@ export class OpenCodeWorker implements WorkerHandle {
         mkId(),
         sessionId,
         "system",
-        JSON.stringify({ text: `OpenCode run ${outcome}.` }),
+        JSON.stringify({ content: `OpenCode run ${outcome}.` }),
         now + 2,
       );
 
@@ -596,8 +606,11 @@ function buildPrompt(task: Task): string {
  *  Each line is `{type, timestamp, sessionID, ...data}`. */
 export interface OpencodeToolEvent {
   tool: string;
-  /** Best-effort short arg summary. */
+  /** Best-effort short arg summary (for logs). */
   detail: string;
+  /** The tool's input object, when opencode reported one — used to
+   *  render real args in the transcript. */
+  input?: unknown;
 }
 
 export function parseOpencodeEvents(stdout: string): {
@@ -630,14 +643,26 @@ export function parseOpencodeEvents(stdout: string): {
         (typeof part.tool === "string" && part.tool) ||
         (typeof part.name === "string" && part.name) ||
         "tool";
-      const input = part.input ?? part.args ?? part.arguments;
+      // opencode's ToolPart carries the args under `state.input`
+      // (completed tool part). Fall back to the older/simpler spots.
+      const state = (part.state ?? {}) as Record<string, unknown>;
+      const input =
+        state.input ?? part.input ?? part.args ?? part.arguments;
+      // de-dupe: opencode emits a tool_use per state change; keep the
+      // one that has input (completed) and drop a prior arg-less dup.
       let detail = "";
       try {
         detail = input ? JSON.stringify(input).slice(0, 200) : "";
       } catch {
         detail = "";
       }
-      tools.push({ tool, detail });
+      const prev = tools[tools.length - 1];
+      if (prev && prev.tool === tool && !prev.input && input) {
+        prev.input = input;
+        prev.detail = detail;
+      } else {
+        tools.push({ tool, detail, input });
+      }
     } else if (type === "session.error" || type === "error") {
       // opencode error shape (observed): {type,error:{name,data:{
       // message,statusCode,responseBody,...}}} — sometimes nested
