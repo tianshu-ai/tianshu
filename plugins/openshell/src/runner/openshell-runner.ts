@@ -82,14 +82,22 @@ export interface OpenShellRunnerOpts {
    *  `base` image (python + node + git + standard CLI). */
   fromImage?: string;
   /**
-   * Allow the sandbox unrestricted egress to the public internet
-   * (any host:port) for all binaries, instead of the default
-   * deny-by-default posture. Set by plugin config
-   * `allowPublicEgress: true`. Convenience for "just make it run"
-   * setups (e.g. an OpenCode worker that installs toolchains); it
-   * significantly weakens sandbox isolation, so it's opt-in.
+   * OpenShell Policy Advisor mode. Controls whether in-sandbox
+   * agents (OpenCode etc.) can dynamically propose egress rules
+   * when they hit a `policy_denied`, and how those proposals are
+   * approved:
+   *   - "off"    (default): advisor disabled — sandbox stays
+   *              strictly deny-by-default; no proposal loop.
+   *   - "manual": advisor enabled, proposals queue as pending
+   *              drafts for a human to approve/reject.
+   *   - "auto":  advisor enabled; proposals that the policy prover
+   *              judges safe (empty delta) are auto-approved + hot
+   *              reloaded, risky ones fall to the manual inbox.
+   * Set via plugin config `policyAdvisor`. This replaces the old
+   * `allowPublicEgress` permissive-policy hack (which broke
+   * provisioning by wholesale-replacing the default policy).
    */
-  allowPublicEgress?: boolean;
+  policyAdvisor?: "auto" | "manual" | "off";
   log: PluginContext["log"];
 }
 
@@ -155,6 +163,11 @@ export class OpenShellRunner implements SandboxRunner {
       // plugin-local CLI config. Synchronous so the first CLI call
       // below sees a valid cert dir.
       await this.ensureCliConfig();
+      // Apply global policy-advisor settings (proposals + approval
+      // mode) before the sandbox is created/adopted. Settings are
+      // gateway-global and idempotent; best-effort so a settings
+      // hiccup doesn't block the sandbox coming up.
+      await this.ensurePolicyAdvisorSettings();
       const existing = await this.findSandbox(this.sandboxName);
       if (!existing) {
         await this.createSandbox();
@@ -700,14 +713,12 @@ export class OpenShellRunner implements SandboxRunner {
     if (this.opts.fromImage) {
       args.push("--from", this.opts.fromImage);
     }
-    // Optionally create with a permissive policy that allows all
-    // public + host egress for every binary. Written to the state
-    // dir and passed via --policy (overrides the built-in
-    // default-deny). Opt-in via config.allowPublicEgress.
-    if (this.opts.allowPublicEgress) {
-      const policyPath = await this.writePermissivePolicy();
-      if (policyPath) args.push("--policy", policyPath);
-    }
+    // Note: we deliberately do NOT pass a custom `--policy`. A
+    // custom policy wholesale-replaces the built-in default (losing
+    // its named policies, incl. the `opencode` egress grants) and
+    // broke provisioning in 0.4.35. Dynamic egress now goes through
+    // the Policy Advisor loop (see ensurePolicyAdvisorSettings) or
+    // explicit allowEgress() grants against the default policy.
     args.push("--", "true");
     await this.cli(args);
     // mkdir the workspace root inside the sandbox so the first
@@ -735,58 +746,70 @@ export class OpenShellRunner implements SandboxRunner {
     );
   }
 
-  /** Write a permissive sandbox policy YAML (all public + host
-   *  egress, no binary restriction) to the state dir and return its
-   *  path. Used when allowPublicEgress is set. Best-effort: returns
-   *  null on write failure (create falls back to default policy). */
-  private async writePermissivePolicy(): Promise<string | null> {
+  /**
+   * Apply the gateway-global Policy Advisor settings that the
+   * configured `policyAdvisor` mode implies. These are the two
+   * upstream global settings that gate the dynamic egress-proposal
+   * loop:
+   *   - `agent_policy_proposals_enabled` (bool): whether the
+   *     supervisor installs the policy.local API + advisor skill
+   *     and enriches `policy_denied` responses with agent guidance.
+   *   - `proposal_approval_mode` ("auto" | "manual"): whether
+   *     prover-clean proposals hot-reload automatically or wait for
+   *     a human.
+   *
+   * Mode mapping:
+   *   off    → proposals disabled (approval mode left untouched).
+   *   manual → proposals enabled, approval mode = manual.
+   *   auto   → proposals enabled, approval mode = auto.
+   *
+   * Settings are gateway-global (not per-sandbox) and idempotent,
+   * so we can safely re-apply on every ensureSandbox(). Best-effort:
+   * a settings failure is logged, not thrown — the sandbox should
+   * still come up (just without the advisor loop).
+   *
+   * CLI auth: `this.cli()` already pins OPENSHELL_GATEWAY_ENDPOINT +
+   * the plugin-local XDG cert dir, matching how allowEgress() drives
+   * `policy update`. The gateway's mTLS is required here — a hand-run
+   * `openshell settings set` wouldn't have the client cert.
+   */
+  private async ensurePolicyAdvisorSettings(): Promise<void> {
+    const mode = this.opts.policyAdvisor ?? "off";
+    const enabled = mode === "auto" || mode === "manual";
     try {
-      const dir = path.join(this.opts.stateDir, "policy");
-      await fs.mkdir(dir, { recursive: true });
-      const file = path.join(dir, "permissive.yaml");
-      // Filesystem/process defaults mirror the built-in base policy;
-      // network_policies allow all public + host egress. `access:
-      // full` + no `binaries` list = any binary may use the
-      // endpoint (avoids the per-binary gating that otherwise 403s).
-      const yaml = [
-        "version: 1",
-        "filesystem_policy:",
-        "  include_workdir: true",
-        "  read_only: [/usr, /lib, /proc, /dev/urandom, /app, /etc, /var/log]",
-        "  read_write: [/sandbox, /tmp, /dev/null]",
-        "landlock:",
-        "  compatibility: best_effort",
-        "process:",
-        "  run_as_user: sandbox",
-        "  run_as_group: sandbox",
-        "network_policies:",
-        "  allow_all_egress:",
-        "    name: allow_all_egress",
-        "    endpoints:",
-        "    - host: '*'",
-        "      port: 0",
-        "      protocol: rest",
-        "      enforcement: audit",
-        "      access: full",
-        "    - host: '*'",
-        "      port: 0",
-        "      protocol: tcp",
-        "      enforcement: audit",
-        "      access: full",
-        "",
-      ].join("\n");
-      await fs.writeFile(file, yaml, "utf8");
+      await this.cli([
+        "settings",
+        "set",
+        "--global",
+        "--key",
+        "agent_policy_proposals_enabled",
+        "--value",
+        enabled ? "true" : "false",
+        "--yes",
+      ]);
+      if (enabled) {
+        await this.cli([
+          "settings",
+          "set",
+          "--global",
+          "--key",
+          "proposal_approval_mode",
+          "--value",
+          mode, // "auto" | "manual"
+          "--yes",
+        ]);
+      }
       this.opts.log.info(
-        `openshell: allowPublicEgress on — sandbox uses permissive policy ${file}`,
+        `openshell: policy advisor mode=${mode} (proposals ${
+          enabled ? "enabled" : "disabled"
+        }${enabled ? `, approval=${mode}` : ""})`,
       );
-      return file;
     } catch (err) {
       this.opts.log.warn(
-        `openshell: failed to write permissive policy (${
+        `openshell: failed to apply policy advisor settings (mode=${mode}): ${
           err instanceof Error ? err.message : String(err)
-        }); falling back to default`,
+        }`,
       );
-      return null;
     }
   }
 

@@ -12,8 +12,12 @@
 //      so the host wires it under the `sandbox.shell` capability.
 //   4. Register three agent tools (exec / reset_sandbox /
 //      get_sandbox_status). MVP intentionally skips browser, per-task
-//      pool, build management, and the openshell policy/inference
-//      admin surface — see manifest description.
+//      pool, build management, and the openshell inference admin
+//      surface — see manifest description.
+//   5. Optionally enable the OpenShell Policy Advisor loop
+//      (config.policyAdvisor = "auto"|"manual"|"off", default off) so
+//      in-sandbox agents can dynamically propose egress rules on a
+//      policy_denied instead of relying on a static permissive policy.
 //
 // State directory layout (created on first start, cleaned on
 // uninstall):
@@ -78,11 +82,18 @@ export default {
           : undefined,
       fromImage:
         typeof cfg.fromImage === "string" ? cfg.fromImage : undefined,
-      // Opt-in: allow the sandbox unrestricted public+host egress
-      // (weakens isolation; convenience for toolchain-installing
-      // workers like OpenCode). Config: plugins.openshell.config
-      // .allowPublicEgress = true.
-      allowPublicEgress: cfg.allowPublicEgress === true,
+      // OpenShell Policy Advisor mode. Lets in-sandbox agents
+      // (OpenCode etc.) dynamically propose egress rules when they
+      // hit a policy_denied, instead of the old permissive-policy
+      // hack. Config: plugins.openshell.config.policyAdvisor =
+      // "auto" | "manual" | "off" (default off).
+      //   - auto:   prover-clean proposals hot-reload automatically
+      //   - manual: proposals queue for human approval
+      //   - off:    advisor disabled (strict deny-by-default)
+      policyAdvisor:
+        cfg.policyAdvisor === "auto" || cfg.policyAdvisor === "manual"
+          ? cfg.policyAdvisor
+          : "off",
       log: ctx.log,
     });
 
