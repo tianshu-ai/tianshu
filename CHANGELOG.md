@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.36](https://github.com/tianshu-ai/tianshu/compare/v0.4.35...v0.4.36) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** judge completion with an LLM agent turn
+  instead of opencode's exit code. After opencode finishes, the
+  worker runs a short host.agentLoop turn that reads the transcript
+  + produced files, decides whether the task was actually completed
+  (opencode exits 0 even when it gives up), and calls task_complete.
+  Also fixes a hang where the task stayed in_progress after opencode
+  had already exited — the worker now proceeds to judgment
+  immediately. Falls back to mechanical judgment if the agent-loop
+  capability is unavailable.
+
 ## [0.4.35](https://github.com/tianshu-ai/tianshu/compare/v0.4.34...v0.4.35) (2026-07-03)
 
 ### Features
