@@ -281,6 +281,10 @@ const plugin: PluginServerModule = {
           proxy: opencodeProxy,
           db: ctx.db,
           enableLsp: row?.enableLsp === true,
+          // Post-run LLM judge (opencode -> read transcript -> decide
+          // + task_complete). Optional; falls back to mechanical
+          // judgment if the host.agentLoop capability is missing.
+          runner: agentLoopRunner ?? undefined,
           log: ctx.log,
         });
       }

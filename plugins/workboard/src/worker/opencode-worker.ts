@@ -16,6 +16,7 @@
 
 import { randomUUID } from "node:crypto";
 import type {
+  AgentLoopRunner,
   ExecRequest,
   OpenCodeProxyCapability,
   OpenCodeProxyGrant,
@@ -72,6 +73,13 @@ export interface OpenCodeWorkerDeps {
   db: TenantDbHandle;
   /** Owner user id for the session row (FK). */
   ownerUserId?: string;
+  /** host.agentLoop — after opencode finishes, we run a short agent
+   *  turn that reads opencode's transcript, judges whether the task
+   *  actually succeeded, and calls task_complete. This replaces the
+   *  old mechanical exitCode-based judgment (opencode exits 0 even
+   *  when it gave up), and also unblocks the run the moment opencode
+   *  exits. Optional: if absent, fall back to mechanical judgment. */
+  runner?: AgentLoopRunner;
   log: PluginLogger;
   /** Per-run timeout (ms). Default 20 min. */
   timeoutMs?: number;
@@ -405,6 +413,8 @@ export class OpenCodeWorker implements WorkerHandle {
         .writeFile(`${workdir}/opencode-transcript.jsonl`, res.stdout ?? "")
         .catch(() => undefined);
 
+      // Infra-level failures the LLM judge can't help with: return
+      // straight away.
       if (res.aborted) {
         return {
           status: "aborted",
@@ -421,10 +431,36 @@ export class OpenCodeWorker implements WorkerHandle {
           sessionId,
         };
       }
+
+      // Collect file artifacts opencode wrote under the task workdir.
+      const files = await this.listArtifacts(workdir, task, signal);
+
+      // JUDGMENT: opencode exits 0 even when it gave up ("I can't
+      // install Rust, let me ask the user"), so exitCode is not a
+      // reliable success signal. Hand opencode's transcript to a
+      // short agent turn (host.agentLoop) that reads what happened,
+      // decides whether the task's acceptance criteria were actually
+      // met, and calls task_complete. Its result becomes this
+      // worker's outcome. Falls back to mechanical judgment if no
+      // runner is wired or the judge itself errors.
+      if (this.deps.runner) {
+        try {
+          const judged = await this.judge(task, parsed, files, signal);
+          if (judged) return { ...judged, sessionId };
+        } catch (err) {
+          this.deps.log.warn?.(
+            "opencode-worker: judge failed, falling back to mechanical",
+            { err: err instanceof Error ? err.message : String(err) },
+          );
+        }
+      }
+
+      // Mechanical fallback (no judge available).
       if (parsed.error) {
         return {
           status: "stalled",
           resultSummary: `OpenCode error: ${parsed.error}`,
+          resultFiles: files,
           sessionId,
         };
       }
@@ -435,14 +471,10 @@ export class OpenCodeWorker implements WorkerHandle {
             `OpenCode exited ${res.exitCode}.` +
             (parsed.text ? `\n\n${parsed.text}` : "") +
             (res.stderr ? `\n\nstderr: ${res.stderr.slice(0, 500)}` : ""),
+          resultFiles: files,
           sessionId,
         };
       }
-
-      // Collect file artifacts opencode may have written under the
-      // task workdir (best-effort — non-fatal if the listing fails).
-      const files = await this.listArtifacts(workdir, task, signal);
-
       return {
         status: "done",
         resultSummary: parsed.text || "(OpenCode produced no text output.)",
@@ -481,6 +513,105 @@ export class OpenCodeWorker implements WorkerHandle {
    * writing never breaks the task. Returns the session id to stamp
    * onto the task.
    */
+  /**
+   * Post-run judgment: run a short agent turn that reads opencode's
+   * transcript + the files it produced, decides whether the task's
+   * acceptance criteria were actually met, and calls task_complete
+   * (or leaves it incomplete). Returns the mapped TerminalUpdate, or
+   * null to fall back to mechanical judgment.
+   *
+   * The agent shares this task's sandbox (taskId), so it can inspect
+   * artifacts / re-run checks itself before deciding. It's given
+   * read + task_complete tools only (it judges, it doesn't redo the
+   * work).
+   */
+  private async judge(
+    task: Task,
+    parsed: { text: string; error?: string; tools: OpencodeToolEvent[] },
+    files: string[],
+    signal: AbortSignal,
+  ): Promise<TerminalUpdate | null> {
+    const runner = this.deps.runner;
+    if (!runner) return null;
+
+    const toolLines = parsed.tools
+      .slice(0, 60)
+      .map(
+        (t) =>
+          `- ${t.tool}(${t.detail || ""})${
+            t.status ? ` -> ${t.status}` : ""
+          }`,
+      )
+      .join("\n");
+    const fileLines = files.length
+      ? files.map((f) => `- ${f}`).join("\n")
+      : "(none reported)";
+
+    const initialUserMessage = [
+      `A headless OpenCode agent was asked to do this task:`,
+      ``,
+      `--- TASK ---`,
+      `${task.title}`,
+      task.description ? `\n${task.description}` : ``,
+      `--- END TASK ---`,
+      ``,
+      `OpenCode finished. Here is what it did.`,
+      ``,
+      `Its final message:`,
+      parsed.text ? parsed.text.slice(0, 6000) : "(no final text)",
+      ``,
+      `Tool calls it made:`,
+      toolLines || "(none)",
+      ``,
+      `Files it produced under the task workdir:`,
+      fileLines,
+      ``,
+      `Your job: judge whether the task's acceptance criteria were`,
+      `ACTUALLY met. OpenCode often exits "successfully" even when it`,
+      `gave up (e.g. it couldn't install a toolchain, or asked the`,
+      `user how to proceed). You may inspect the produced files with`,
+      `your read/bash tools in the same sandbox to verify. Then call`,
+      `task_complete: pass completed=true with a concise summary if`,
+      `the work genuinely satisfies the task, or completed=false with`,
+      `a clear reason (what's missing / why it failed) if it does not.`,
+      `Do not redo the work yourself — only judge and, if trivial,`,
+      `verify.`,
+    ]
+      .filter((l) => l !== undefined)
+      .join("\n");
+
+    const result = await runner.run({
+      userId: this.deps.ownerUserId ?? task.ownerUserId,
+      signal,
+      initialUserMessage,
+      modelId: this.deps.defaultModel,
+      // Judge-only toolset: task_complete to record the verdict,
+      // read/bash to inspect artifacts. No write/edit — it judges,
+      // it doesn't redo the work.
+      toolsAllow: ["task_complete", "bash", "read", "list", "grep"],
+      sessionTitle: `Judge: ${task.title}`.slice(0, 200),
+      workerRole: this.kind,
+      workerSlug: this.agentId,
+      taskId: task.id,
+      projectSlug: task.projectSlug,
+      taskTitle: task.title || null,
+    });
+
+    // Map the agent-loop result to our TerminalUpdate. The agent's
+    // task_complete call drives status; if it finished without
+    // completing, treat as stalled with its reason.
+    const status: TerminalUpdate["status"] =
+      result.status === "done" ? "done" : "stalled";
+    return {
+      status,
+      resultSummary:
+        result.summary ??
+        result.reason ??
+        (status === "done" ? "Task completed." : "Task not completed."),
+      resultFiles: files,
+    };
+  }
+
   /** Ensure the worker session + owner user row exist once. Returns
    *  the session id (stable for the whole run so the poller and the
    *  final write target the same session). */
