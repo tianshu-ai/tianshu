@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.31](https://github.com/tianshu-ai/tianshu/compare/v0.4.30...v0.4.31) (2026-07-03)
+
+### Bug Fixes
+
+* **opencode-worker:** opencode runs now actually complete inside the
+  openshell sandbox (validated end-to-end: task done, file created,
+  result + transcript + history persisted, clean process exit). The
+  "stuck in_progress forever" was opencode auto-installing a language
+  server (bash-language-server via npm) before calling the model —
+  the sandbox egress is locked to the model proxy, so the install had
+  no network and hung, and the model was never called. Fixed with
+  OPENCODE_DISABLE_LSP_DOWNLOAD=1 + disabling lsp/formatter/snapshot/
+  autoupdate in the generated opencode.json. Also: run opencode in
+  the foreground under `timeout` (backgrounding broke the stdout
+  capture), and fixed a FOREIGN KEY failure when writing run history
+  for dev/virtual users.
+
 ## [0.4.30](https://github.com/tianshu-ai/tianshu/compare/v0.4.29...v0.4.30) (2026-07-03)
 
 ### Features
