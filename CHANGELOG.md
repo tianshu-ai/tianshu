@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.34](https://github.com/tianshu-ai/tianshu/compare/v0.4.33...v0.4.34) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** near-real-time transcript + resolved tool
+  chips. A 4s poller now reads opencode's NDJSON from the sandbox
+  while it runs and rewrites the session history, so the task
+  Execution tab shows progress mid-run instead of only at the end.
+  And tool chips no longer spin forever: the parser captures each
+  tool's completion status + output, and the worker writes a paired
+  tool-result row so the chip resolves to done/failed with the real
+  output.
+
 ## [0.4.33](https://github.com/tianshu-ai/tianshu/compare/v0.4.32...v0.4.33) (2026-07-03)
 
 ### Bug Fixes
