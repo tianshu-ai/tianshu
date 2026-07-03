@@ -81,6 +81,15 @@ export interface OpenShellRunnerOpts {
   /** Sandbox `--from` source. Defaults to OpenShell Community's
    *  `base` image (python + node + git + standard CLI). */
   fromImage?: string;
+  /**
+   * Allow the sandbox unrestricted egress to the public internet
+   * (any host:port) for all binaries, instead of the default
+   * deny-by-default posture. Set by plugin config
+   * `allowPublicEgress: true`. Convenience for "just make it run"
+   * setups (e.g. an OpenCode worker that installs toolchains); it
+   * significantly weakens sandbox isolation, so it's opt-in.
+   */
+  allowPublicEgress?: boolean;
   log: PluginContext["log"];
 }
 
@@ -691,6 +700,14 @@ export class OpenShellRunner implements SandboxRunner {
     if (this.opts.fromImage) {
       args.push("--from", this.opts.fromImage);
     }
+    // Optionally create with a permissive policy that allows all
+    // public + host egress for every binary. Written to the state
+    // dir and passed via --policy (overrides the built-in
+    // default-deny). Opt-in via config.allowPublicEgress.
+    if (this.opts.allowPublicEgress) {
+      const policyPath = await this.writePermissivePolicy();
+      if (policyPath) args.push("--policy", policyPath);
+    }
     args.push("--", "true");
     await this.cli(args);
     // mkdir the workspace root inside the sandbox so the first
@@ -716,6 +733,61 @@ export class OpenShellRunner implements SandboxRunner {
     this.opts.log.info(
       `openshell: sandbox created name=${this.sandboxName} workspace=${this.opts.workspaceDir} guest=${SANDBOX_WORKSPACE_PATH}`,
     );
+  }
+
+  /** Write a permissive sandbox policy YAML (all public + host
+   *  egress, no binary restriction) to the state dir and return its
+   *  path. Used when allowPublicEgress is set. Best-effort: returns
+   *  null on write failure (create falls back to default policy). */
+  private async writePermissivePolicy(): Promise<string | null> {
+    try {
+      const dir = path.join(this.opts.stateDir, "policy");
+      await fs.mkdir(dir, { recursive: true });
+      const file = path.join(dir, "permissive.yaml");
+      // Filesystem/process defaults mirror the built-in base policy;
+      // network_policies allow all public + host egress. `access:
+      // full` + no `binaries` list = any binary may use the
+      // endpoint (avoids the per-binary gating that otherwise 403s).
+      const yaml = [
+        "version: 1",
+        "filesystem_policy:",
+        "  include_workdir: true",
+        "  read_only: [/usr, /lib, /proc, /dev/urandom, /app, /etc, /var/log]",
+        "  read_write: [/sandbox, /tmp, /dev/null]",
+        "landlock:",
+        "  compatibility: best_effort",
+        "process:",
+        "  run_as_user: sandbox",
+        "  run_as_group: sandbox",
+        "network_policies:",
+        "  allow_all_egress:",
+        "    name: allow_all_egress",
+        "    endpoints:",
+        "    - host: '*'",
+        "      port: 0",
+        "      protocol: rest",
+        "      enforcement: audit",
+        "      access: full",
+        "    - host: '*'",
+        "      port: 0",
+        "      protocol: tcp",
+        "      enforcement: audit",
+        "      access: full",
+        "",
+      ].join("\n");
+      await fs.writeFile(file, yaml, "utf8");
+      this.opts.log.info(
+        `openshell: allowPublicEgress on — sandbox uses permissive policy ${file}`,
+      );
+      return file;
+    } catch (err) {
+      this.opts.log.warn(
+        `openshell: failed to write permissive policy (${
+          err instanceof Error ? err.message : String(err)
+        }); falling back to default`,
+      );
+      return null;
+    }
   }
 
   /** Poll `sandbox get` until Phase == Ready. Throws on Failed or

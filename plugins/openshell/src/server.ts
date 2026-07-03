@@ -78,6 +78,11 @@ export default {
           : undefined,
       fromImage:
         typeof cfg.fromImage === "string" ? cfg.fromImage : undefined,
+      // Opt-in: allow the sandbox unrestricted public+host egress
+      // (weakens isolation; convenience for toolchain-installing
+      // workers like OpenCode). Config: plugins.openshell.config
+      // .allowPublicEgress = true.
+      allowPublicEgress: cfg.allowPublicEgress === true,
       log: ctx.log,
     });
 

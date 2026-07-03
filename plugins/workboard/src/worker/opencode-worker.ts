@@ -148,6 +148,15 @@ export class OpenCodeWorker implements WorkerHandle {
         // reaches the network.
         snapshot: false,
         autoupdate: false,
+        // Headless: never pause for approval. opencode is
+        // interactive by default and, run non-interactively, a tool
+        // that needs approval is auto-rejected ("user rejected
+        // permission") and the run stalls. Allow every tool.
+        permission: {
+          edit: "allow" as const,
+          bash: "allow" as const,
+          webfetch: "allow" as const,
+        },
         // LSP + formatters: OFF unless the worker enabled them.
         // opencode auto-installs a language server for the edited
         // file (e.g. bash-language-server via npm); with the default
