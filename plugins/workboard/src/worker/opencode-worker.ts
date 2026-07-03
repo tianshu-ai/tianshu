@@ -114,6 +114,147 @@ const LSP_INSTALL_EGRESS: Array<{ host: string; port: number }> = [
  *  silently break every worker. Bump deliberately. */
 const OPENCODE_VERSION = "1.17.13";
 
+/**
+ * opencode-native skill (SKILL.md, with the YAML frontmatter opencode
+ * requires) that teaches opencode to use the OpenShell Policy Advisor
+ * loop when the deny-by-default sandbox blocks a network request.
+ *
+ * Written into each task's `.oc-config/opencode/skills/` so opencode
+ * discovers it as a global skill. The gateway must have the advisor
+ * enabled (agent_policy_proposals_enabled=true) for proposals to be
+ * accepted, and proposal_approval_mode=auto for prover-clean rules to
+ * self-approve; otherwise the proposal lands in `pending` for a human.
+ *
+ * The proposal schema below is the one the sandbox's own advisor
+ * (/etc/openshell/skills/policy_advisor.md) documents and that we
+ * verified end-to-end: POST /v1/proposals with
+ * {intent_summary, operations:[{addRule:{ruleName, rule:{name,
+ * endpoints:[{host,port,protocol,enforcement,rules:[{allow:{method,
+ * path}}]}], binaries:[{path}]}}}]}.
+ *
+ * Binary gating (critical): openshell authorizes egress by BOTH
+ * host:port AND the requesting binary's absolute path. opencode's
+ * own `webfetch` runs inside the opencode/bun runtime, NOT curl, so a
+ * rule that only lists /usr/bin/curl will not unblock webfetch. The
+ * skill therefore (a) lists every relevant binary and (b) tells
+ * opencode to retry with `curl` (deterministic path) after approval.
+ *
+ * The binary paths below were verified against the OpenShell
+ * community base image after `npm i -g opencode-ai`:
+ *   /usr/bin/node                                   (node runtime)
+ *   /usr/bin/curl                                   (retry path)
+ *   /usr/bin/opencode                               (wrapper symlink)
+ *   /usr/lib/node_modules/opencode-ai/bin/opencode  (js entry)
+ *   /usr/lib/node_modules/opencode-ai/bin/.opencode (real ~158MB
+ *     bun-compiled binary that actually opens the socket for
+ *     webfetch — note the leading dot; this is the one the kernel
+ *     sees, so it MUST be listed or webfetch stays blocked)
+ */
+const ADVISOR_SKILL_MD = `---
+name: openshell-network-policy
+description: >-
+  Unblock a denied outbound network request in this deny-by-default
+  OpenShell sandbox by proposing the narrowest egress rule via the
+  local policy API (http://policy.local). Use on HTTP 403 "CONNECT
+  tunnel failed" or any \`policy_denied\` response.
+---
+
+# OpenShell network policy (unblock denied egress)
+
+This sandbox denies outbound network by default. A blocked request
+shows up as \`curl: (56) CONNECT tunnel failed, response 403\`, an
+HTTP 403, or a JSON body containing \`policy_denied\`. Do not give up
+and do not report the host as "needs allowlisting" — propose the
+rule yourself through the sandbox-local policy API, then retry.
+
+## Procedure
+
+1. See what was denied:
+   \`curl -s http://policy.local/v1/denials?last=10\`
+   Each line shows the binary, host, and port that were blocked.
+2. Build the smallest proposal for exactly the host+port you need
+   (see schema below). Prefer an L7 REST rule with a tight path.
+3. Submit it:
+   \`\`\`sh
+   curl -s -X POST http://policy.local/v1/proposals \\
+     -H 'content-type: application/json' -d @proposal.json
+   \`\`\`
+   The 202 response has \`accepted_chunk_ids\` (save the first id)
+   and \`rejection_reasons\` (fix + resubmit if non-empty).
+4. Wait for the decision (auto-approval returns in ~1s):
+   \`curl -s "http://policy.local/v1/proposals/<chunk_id>/wait?timeout=60"\`
+   - \`status:"approved"\` + \`policy_reloaded:true\` → retry the
+     original request; it should now succeed.
+   - \`status:"approved"\` + \`policy_reloaded:false\` → wait once
+     more: \`.../wait?timeout=30\`, then retry.
+   - \`status:"rejected"\` → read \`rejection_reason\` +
+     \`validation_result\`, revise, resubmit. Do not loop blindly.
+   - \`status:"pending"\` with \`timed_out:true\` → call \`/wait\`
+     again. (Pending means a human must approve — the gateway is not
+     in auto mode, or the prover flagged the rule.)
+
+## Binary gating (important)
+
+OpenShell allows egress only for the specific binaries you list. Your
+\`webfetch\` tool runs inside the opencode/bun runtime, not curl, so
+list ALL of these in every rule's \`binaries\`, and after approval
+**retry the fetch with \`curl\`** (its path is deterministic):
+
+- \`/usr/bin/curl\`
+- \`/usr/bin/node\`
+- \`/usr/bin/opencode\`
+- \`/usr/lib/node_modules/opencode-ai/bin/opencode\`
+- \`/usr/lib/node_modules/opencode-ai/bin/.opencode\`
+
+(The last one — with the leading dot — is the real bun-compiled
+binary that actually opens the network socket for \`webfetch\`. If
+your \`webfetch\` still 403s after approval, it is almost always
+because this path was omitted. When in doubt, just retry with
+\`curl\`.)
+
+## Proposal schema (write to proposal.json)
+
+Example: allow GET to https://example.com over HTTPS.
+
+\`\`\`json
+{
+  "intent_summary": "Fetch example.com over HTTPS for the current task.",
+  "operations": [
+    {
+      "addRule": {
+        "ruleName": "example_com_get",
+        "rule": {
+          "name": "example_com_get",
+          "endpoints": [
+            {
+              "host": "example.com",
+              "port": 443,
+              "protocol": "rest",
+              "enforcement": "enforce",
+              "rules": [{ "allow": { "method": "GET", "path": "/**" } }]
+            }
+          ],
+          "binaries": [
+            { "path": "/usr/bin/curl" },
+            { "path": "/usr/bin/node" },
+            { "path": "/usr/bin/opencode" },
+            { "path": "/usr/lib/node_modules/opencode-ai/bin/opencode" },
+            { "path": "/usr/lib/node_modules/opencode-ai/bin/.opencode" }
+          ]
+        }
+      }
+    }
+  ]
+}
+\`\`\`
+
+Rules of thumb: one rule per host you actually need; keep \`path\`
+as narrow as the task allows (\`/**\` only if you truly browse the
+whole site); use \`protocol:"tcp"\` with an L4 endpoint (no \`rules\`)
+only for opaque protocols (ssh, git-over-ssh). Credentialed hosts and
+capability-expanding rules will NOT auto-approve — they go to a human.
+`;
+
 export class OpenCodeWorker implements WorkerHandle {
   readonly kind = "opencode";
   readonly agentId: string;
@@ -223,6 +364,31 @@ export class OpenCodeWorker implements WorkerHandle {
         JSON.stringify(opencodeConfig, null, 2),
       );
 
+      // On a deny-by-default sandbox (openshell exposes allowEgress),
+      // drop an opencode-native skill that teaches opencode to use
+      // the OpenShell Policy Advisor loop when a network request is
+      // denied (403 CONNECT tunnel failed / policy_denied), instead
+      // of giving up. opencode discovers global skills under
+      // $XDG_CONFIG_HOME/opencode/skills/<name>/SKILL.md; the run
+      // sets XDG_CONFIG_HOME=$PWD/.oc-config, so we write it there.
+      // Harmless when the gateway's advisor is off/manual — opencode
+      // just won't get an auto-approval (same as today). No-op on
+      // open-network runtimes (allowEgress undefined) where the skill
+      // would be misleading.
+      if (this.deps.shell.allowEgress) {
+        await this.deps.shell
+          .writeFile(
+            `${workdir}/.oc-config/opencode/skills/openshell-network-policy/SKILL.md`,
+            ADVISOR_SKILL_MD,
+          )
+          .catch((err) => {
+            this.deps.log.warn?.(
+              "opencode-worker: failed to write advisor skill (continuing)",
+              { err: err instanceof Error ? err.message : String(err) },
+            );
+          });
+      }
+
       // Grant the sandbox egress to the proxy. openshell is
       // deny-by-default for network, so without this the in-sandbox
       // opencode gets a 403 policy_denied reaching the proxy. Derive
@@ -301,7 +467,9 @@ export class OpenCodeWorker implements WorkerHandle {
       // (Bun.stdin.text()), so `... run --format json < .prompt.txt`
       // keeps the command line newline-free while still delivering
       // the full multi-line prompt.
-      const prompt = buildPrompt(task);
+      const prompt = buildPrompt(task, {
+        networkPolicyAdvisor: Boolean(this.deps.shell.allowEgress),
+      });
       await this.deps.shell.writeFile(`${workdir}/.prompt.txt`, prompt);
 
       // Run opencode with ISOLATED XDG dirs so it doesn't pick up
@@ -800,11 +968,31 @@ export class OpenCodeWorker implements WorkerHandle {
   }
 }
 
-/** Compose the prompt handed to `opencode run` from the task. */
-function buildPrompt(task: Task): string {
+/** Compose the prompt handed to `opencode run` from the task.
+ *
+ *  When the sandbox is deny-by-default (openshell), append a short
+ *  trigger telling opencode to use the `openshell-network-policy`
+ *  skill on a network denial. The skill file carries the full
+ *  procedure; this one-liner is what makes opencode actually reach
+ *  for it (a skill is only loaded on demand). */
+export function buildPrompt(
+  task: Task,
+  opts: { networkPolicyAdvisor?: boolean } = {},
+): string {
   const parts = [task.title];
   if (task.description && task.description.trim()) {
     parts.push("", task.description.trim());
+  }
+  if (opts.networkPolicyAdvisor) {
+    parts.push(
+      "",
+      "---",
+      "Network note: this sandbox denies outbound network by default. " +
+        "If a request is blocked (HTTP 403 \"CONNECT tunnel failed\", or a " +
+        "`policy_denied` response), do NOT give up or report the domain as " +
+        "un-allowlisted. Load the `openshell-network-policy` skill and follow " +
+        "it to propose the needed egress via http://policy.local, then retry.",
+    );
   }
   return parts.join("\n");
 }

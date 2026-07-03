@@ -3,6 +3,7 @@ import {
   parseOpencodeEvents,
   resolveTaskModel,
   providerNpmForApi,
+  buildPrompt,
 } from "./opencode-worker.js";
 import type { Task } from "../db/tasks.js";
 
@@ -26,6 +27,34 @@ function fakeTask(labels: string[] = []): Task {
     labels,
   } as unknown as Task;
 }
+
+describe("buildPrompt network policy advisor hint", () => {
+  it("omits the advisor note by default (open-network runtime)", () => {
+    const p = buildPrompt(fakeTask());
+    expect(p).toBe("do a thing");
+    expect(p).not.toContain("policy.local");
+    expect(p).not.toContain("openshell-network-policy");
+  });
+
+  it("appends the advisor trigger on a deny-by-default sandbox", () => {
+    const p = buildPrompt(fakeTask(), { networkPolicyAdvisor: true });
+    expect(p).toContain("do a thing");
+    // Must name the skill (so opencode reaches for it) and the local
+    // policy API (so the model knows the mechanism exists).
+    expect(p).toContain("openshell-network-policy");
+    expect(p).toContain("http://policy.local");
+    expect(p).toContain("policy_denied");
+  });
+
+  it("keeps the task description above the advisor note", () => {
+    const t = fakeTask();
+    (t as { description: string | null }).description = "fetch the docs";
+    const p = buildPrompt(t, { networkPolicyAdvisor: true });
+    expect(p.indexOf("fetch the docs")).toBeLessThan(
+      p.indexOf("openshell-network-policy"),
+    );
+  });
+});
 
 describe("providerNpmForApi", () => {
   it("maps each protocol to the right AI SDK package", () => {
