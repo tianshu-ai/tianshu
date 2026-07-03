@@ -110,6 +110,9 @@ export class OpenCodeWorker implements WorkerHandle {
   readonly kind = "opencode";
   readonly agentId: string;
   readonly name: string;
+  /** Worker session for the current run's transcript. Created once
+   *  by ensureSession(), reused by the poller + the final write. */
+  private sessionId: string | null = null;
 
   constructor(private readonly deps: OpenCodeWorkerDeps) {
     this.agentId = deps.agentId;
@@ -341,7 +344,38 @@ export class OpenCodeWorker implements WorkerHandle {
         `< .prompt.txt > oc.out 2> oc.err ; ` +
         `cat oc.out`;
 
-      const res = await this.sh(cmd, task, signal, this.deps.timeoutMs);
+      // Near-real-time transcript: while opencode runs (sh() blocks
+      // until it exits), poll the oc.out NDJSON file from the sandbox
+      // every few seconds, parse what's there so far, and rewrite the
+      // session history. Lets the Execution tab show progress
+      // mid-run instead of only at the end. Best-effort; any poll
+      // error is ignored. Cleared in finally.
+      this.ensureSession(task);
+      const pollWorkdir = workdir;
+      let polling = true;
+      const pollTimer = setInterval(() => {
+        void (async () => {
+          if (!polling) return;
+          try {
+            const out = await this.deps.shell.readFile(
+              `${pollWorkdir}/oc.out`,
+            );
+            if (!out) return;
+            const p = parseOpencodeEvents(out);
+            this.writeHistory(task, p, {}, false);
+          } catch {
+            /* file not there yet / read raced — ignore */
+          }
+        })();
+      }, 4000);
+
+      let res: Awaited<ReturnType<typeof this.sh>>;
+      try {
+        res = await this.sh(cmd, task, signal, this.deps.timeoutMs);
+      } finally {
+        polling = false;
+        clearInterval(pollTimer);
+      }
       this.deps.log.info?.("opencode-worker: run finished", {
         taskId: task.id,
         exitCode: res.exitCode,
@@ -357,7 +391,7 @@ export class OpenCodeWorker implements WorkerHandle {
       // assistant text + tool calls). Best-effort; failure to write
       // history never fails the task. Also drop the raw NDJSON into
       // the workdir as a downloadable artifact.
-      const sessionId = this.writeHistory(task, parsed, res);
+      const sessionId = this.writeHistory(task, parsed, res, true);
       await this.deps.shell
         .writeFile(`${workdir}/opencode-transcript.jsonl`, res.stdout ?? "")
         .catch(() => undefined);
@@ -438,31 +472,22 @@ export class OpenCodeWorker implements WorkerHandle {
    * writing never breaks the task. Returns the session id to stamp
    * onto the task.
    */
-  private writeHistory(
-    task: Task,
-    parsed: { text: string; error?: string; tools: OpencodeToolEvent[] },
-    res: {
-      exitCode?: number;
-      timedOut?: boolean;
-      aborted?: boolean;
-      stderr?: string;
-    },
-  ): string | null {
+  /** Ensure the worker session + owner user row exist once. Returns
+   *  the session id (stable for the whole run so the poller and the
+   *  final write target the same session). */
+  private ensureSession(task: Task): string | null {
+    if (this.sessionId) return this.sessionId;
     try {
       const db = this.deps.db;
       const now = Date.now();
       const sessionId = `ocs_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
       const userId = this.deps.ownerUserId ?? task.ownerUserId;
-
-      // sessions.user_id has a NOT NULL FK to users(id). The task's
-      // owner is normally already a user, but dev-tenant / virtual
-      // users may not be persisted — ensure the row exists so the
-      // session insert doesn't hit a FOREIGN KEY constraint. Idempotent.
+      // sessions.user_id FK -> users(id); dev/virtual users may not
+      // be persisted, so ensure the row exists first (idempotent).
       db.prepare(
         `INSERT OR IGNORE INTO users (id, external_id, provider, display_name, created_at)
          VALUES (?, ?, 'opencode-worker', ?, ?)`,
       ).run(userId, userId, userId, now);
-
       db.prepare(
         `INSERT INTO sessions (id, user_id, status, kind, worker_role, title, project_slug, created_at)
          VALUES (?, ?, 'active', 'worker', ?, ?, ?, ?)`,
@@ -474,79 +499,122 @@ export class OpenCodeWorker implements WorkerHandle {
         task.projectSlug,
         now,
       );
+      this.sessionId = sessionId;
+      return sessionId;
+    } catch (err) {
+      this.deps.log.warn?.("opencode-worker: ensureSession failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return null;
+    }
+  }
 
+  /**
+   * (Re)write the session's transcript from the current parsed state.
+   * Called repeatedly during the run (poller) and once at the end.
+   * Idempotent: clears the session's messages and reinserts, so the
+   * Execution tab reflects the latest progress. Emits, in order:
+   *   - user      : the prompt
+   *   - assistant : the text-so-far + tool_use parts (real args)
+   *   - tool      : one tool_result per completed/errored tool so
+   *                 the chips resolve (done/failed) instead of
+   *                 spinning forever
+   *   - system    : outcome footer (only when `final`)
+   * Best-effort; never throws into the run.
+   */
+  private writeHistory(
+    task: Task,
+    parsed: { text: string; error?: string; tools: OpencodeToolEvent[] },
+    res: {
+      exitCode?: number;
+      timedOut?: boolean;
+      aborted?: boolean;
+      stderr?: string;
+    },
+    final: boolean,
+  ): string | null {
+    const sessionId = this.ensureSession(task);
+    if (!sessionId) return null;
+    try {
+      const db = this.deps.db;
+      const now = Date.now();
+      db.prepare(`DELETE FROM messages WHERE session_id = ?`).run(sessionId);
       const insertMsg = db.prepare(
         `INSERT INTO messages (id, session_id, role, content, created_at)
          VALUES (?, ?, ?, ?, ?)`,
       );
-      const mkId = () => `ocm_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
+      let seq = 0;
+      const mk = (role: string, content: unknown) =>
+        insertMsg.run(
+          `ocm_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
+          sessionId,
+          role,
+          JSON.stringify({ content }),
+          now + seq++,
+        );
 
-      // Content shape: the history reader (session-history.ts)
-      // understands `{ content: <string | part[]> }`. A plain string
-      // renders as the message text; a part array renders text parts
-      // + tool_use chips (with args). We write that shape so the
-      // Execution tab renders structured cards instead of raw JSON.
+      // 1) prompt
+      mk("user", buildPrompt(task));
 
-      // 1) the prompt we sent (user)
-      insertMsg.run(
-        mkId(),
-        sessionId,
-        "user",
-        JSON.stringify({ content: buildPrompt(task) }),
-        now,
-      );
-
-      // 2) assistant: final text + tool_use parts (real args from the
-      //    NDJSON). Ordered so text reads first, then the tool chips.
+      // 2) assistant: text + tool_use parts (real args). callId ties
+      //    each tool_use to its tool_result below.
       const assistantText =
         parsed.text ||
         (parsed.tools.length
-          ? `(ran ${parsed.tools.length} tool call(s), no final text)`
-          : "(no output)");
+          ? `(running — ${parsed.tools.length} tool call(s) so far)`
+          : final
+            ? "(no output)"
+            : "(running…)");
       const parts: Array<Record<string, unknown>> = [
         { type: "text", text: assistantText },
         ...parsed.tools.map((t, i) => ({
           type: "tool_use",
           id: `oc_${i}`,
           name: t.tool,
-          // reader reads input ?? arguments ?? args → argsJson
           input: t.input ?? {},
         })),
       ];
-      insertMsg.run(
-        mkId(),
-        sessionId,
-        "assistant",
-        JSON.stringify({ content: parts }),
-        now + 1,
-      );
+      mk("assistant", parts);
 
-      // 3) outcome footer (system)
-      const outcome = res.aborted
-        ? "aborted"
-        : res.timedOut
-          ? "timed out"
-          : parsed.error
-            ? `error: ${parsed.error}`
-            : res.exitCode !== 0
-              ? `exited ${res.exitCode ?? "?"}${res.stderr ? `: ${res.stderr.slice(0, 300)}` : ""}`
-              : "completed";
-      insertMsg.run(
-        mkId(),
-        sessionId,
-        "system",
-        JSON.stringify({ content: `OpenCode run ${outcome}.` }),
-        now + 2,
-      );
+      // 3) one tool_result per finished tool (completed/error) so the
+      //    UI chip resolves. Reader recognises role=tool +
+      //    {role:"toolResult", toolCallId, toolName, content, isError}.
+      parsed.tools.forEach((t, i) => {
+        if (!t.status) return; // still running -> leave chip spinning
+        insertMsg.run(
+          `ocm_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
+          sessionId,
+          "tool",
+          JSON.stringify({
+            role: "toolResult",
+            toolCallId: `oc_${i}`,
+            toolName: t.tool,
+            isError: t.status === "error",
+            content: t.output ?? (t.status === "error" ? "(error)" : "(done)"),
+          }),
+          now + seq++,
+        );
+      });
 
+      // 4) outcome footer only on the final write
+      if (final) {
+        const outcome = res.aborted
+          ? "aborted"
+          : res.timedOut
+            ? "timed out"
+            : parsed.error
+              ? `error: ${parsed.error}`
+              : res.exitCode !== 0
+                ? `exited ${res.exitCode ?? "?"}${res.stderr ? `: ${res.stderr.slice(0, 300)}` : ""}`
+                : "completed";
+        mk("system", `OpenCode run ${outcome}.`);
+      }
       return sessionId;
     } catch (err) {
       this.deps.log.warn?.("opencode-worker: writeHistory failed", {
         err: err instanceof Error ? err.message : String(err),
-        userId: this.deps.ownerUserId ?? task.ownerUserId,
-        ownerUserId: task.ownerUserId,
       });
-      return null;
+      return sessionId;
     }
   }
 
@@ -611,6 +679,11 @@ export interface OpencodeToolEvent {
   /** The tool's input object, when opencode reported one — used to
    *  render real args in the transcript. */
   input?: unknown;
+  /** "completed" | "error" | undefined (still running). Drives the
+   *  tool-result chip so the UI shows done vs. failed vs. spinner. */
+  status?: string;
+  /** The tool's output/result text (completed) or error (error). */
+  output?: string;
 }
 
 export function parseOpencodeEvents(stdout: string): {
@@ -648,20 +721,31 @@ export function parseOpencodeEvents(stdout: string): {
       const state = (part.state ?? {}) as Record<string, unknown>;
       const input =
         state.input ?? part.input ?? part.args ?? part.arguments;
-      // de-dupe: opencode emits a tool_use per state change; keep the
-      // one that has input (completed) and drop a prior arg-less dup.
+      const status =
+        typeof state.status === "string" ? state.status : undefined;
+      // opencode's completed tool part carries the result under
+      // state.output (string) and errors under state.error.
+      const outRaw =
+        (typeof state.output === "string" && state.output) ||
+        (typeof state.error === "string" && state.error) ||
+        "";
+      const output = outRaw ? outRaw.slice(0, 4000) : undefined;
       let detail = "";
       try {
         detail = input ? JSON.stringify(input).slice(0, 200) : "";
       } catch {
         detail = "";
       }
+      // de-dupe: opencode emits a tool_use per state change; merge a
+      // later (completed) event into an earlier arg-less one.
       const prev = tools[tools.length - 1];
       if (prev && prev.tool === tool && !prev.input && input) {
         prev.input = input;
         prev.detail = detail;
+        prev.status = status ?? prev.status;
+        prev.output = output ?? prev.output;
       } else {
-        tools.push({ tool, detail, input });
+        tools.push({ tool, detail, input, status, output });
       }
     } else if (type === "session.error" || type === "error") {
       // opencode error shape (observed): {type,error:{name,data:{
