@@ -893,30 +893,39 @@ export class OpenCodeWorker implements WorkerHandle {
         sandbox: `${workdir}/${f}`,
         host: hostRel[i],
       }));
+      this.deps.log.info?.("opencode-worker: staging deliverables", {
+        taskId: task.id,
+        pairs,
+      });
       const res = await syncDown.call(this.deps.shell, pairs);
       if (res.skipped?.length) {
         this.deps.log.warn?.(
           "opencode-worker: some deliverables failed to sync to host",
-          { skipped: res.skipped },
+          { taskId: task.id, skipped: res.skipped },
         );
       }
+      this.deps.log.info?.("opencode-worker: syncDown result", {
+        taskId: task.id,
+        downloaded: res.downloaded,
+      });
       // `downloaded` holds ABSOLUTE host paths
-      // (<workspaceDir>/projects/<slug>/<file>). Report only the
-      // host-relative paths that actually landed, matched by suffix.
+      // (<workspaceDir>/projects/<slug>/<file>). Report ONLY the
+      // host-relative paths that actually landed — never report a
+      // path we didn't sync, or the UI shows a link to a file that
+      // isn't on the host (404). Match downloaded abs paths back to
+      // their host-relative form by suffix.
       const downloaded = res.downloaded ?? [];
       const ok = hostRel.filter((h) =>
         downloaded.some((abs) => abs === h || abs.endsWith(`/${h}`)),
       );
-      // If matching found nothing (path-shape drift) but the sync
-      // reported no skips, fall back to the intended host paths so a
-      // successful sync isn't dropped on a matching quirk.
-      return ok.length || res.skipped?.length ? ok : hostRel;
+      return ok;
     } catch (err) {
       this.deps.log.warn?.(
         "opencode-worker: stageDeliverables syncDown failed",
-        { err: err instanceof Error ? err.message : String(err) },
+        { taskId: task.id, err: err instanceof Error ? err.message : String(err) },
       );
-      return hostRel;
+      // Do NOT report intended-but-unsynced paths — they'd 404.
+      return [];
     }
   }
 
