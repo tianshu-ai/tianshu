@@ -887,23 +887,26 @@ export class OpenCodeWorker implements WorkerHandle {
     const status: TerminalUpdate["status"] =
       result.status === "done" ? "done" : "stalled";
 
-    // Stage deliverables to the host so the kanban file links
-    // resolve (files plugin /api/p/files/raw serves host
-    // <tenant>/workspace/<path>; a sandbox-only path 404s). The
-    // judge (part 2 of its prompt) COPIED every real deliverable
-    // into <workdir>/.deliverables/ regardless of where opencode
-    // originally wrote it, so we just sync that whole directory to
-    // the host project subtree `projects/<slug>/` — the layout the
-    // LLM worker uses and the UI opens.
+    // DETERMINISTIC deliverable collection (do NOT trust the judge to
+    // cp the right files). Before staging, the worker itself scans
+    // the opencode workdir for real output files opencode wrote and
+    // copies any that aren't already in .deliverables/ into it. This
+    // guarantees a file opencode genuinely produced (e.g. notes.md)
+    // is delivered even when the judge collected the wrong thing or
+    // nothing. The judge's own cp still counts (union); scaffolding
+    // is excluded.
+    await this.autoCollectDeliverables(workdir, task);
+
+    // Stage the .deliverables/ dir to the host so kanban file links
+    // resolve (files plugin serves from userHomeDir; a sandbox-only
+    // path 404s). Layout matches the LLM worker's SyncDownTool.
     let hostFiles = await this.stageDeliverables(workdir, task);
 
-    // Deterministic safety net for "inline output" tasks + judge
-    // misfires (e.g. judge called task_complete on its first turn
-    // and never collected anything). If nothing landed but OpenCode
-    // produced a substantial final message, the report IS that text
-    // — write it to result.md ourselves and stage it, so the user
-    // always gets a readable FILE instead of a black box. This does
-    // NOT rely on the judge behaving.
+    // Last-resort safety net for pure "inline output" tasks (opencode
+    // printed a report as its final message and wrote NO file at
+    // all). If still nothing staged but there's substantial final
+    // text, write it to result.md so the user gets a readable file
+    // instead of a black box.
     if (hostFiles.length === 0) {
       const finalText = (parsed.text ?? "").trim();
       if (finalText.length >= 40) {
@@ -919,6 +922,61 @@ export class OpenCodeWorker implements WorkerHandle {
         (status === "done" ? "Task completed." : "Task not completed."),
       resultFiles: hostFiles,
     };
+  }
+
+  /**
+   * DETERMINISTIC deliverable collection — program-driven, does NOT
+   * trust the judge. Scan the opencode workdir for real output files
+   * opencode wrote (recursively, excluding scaffolding + the
+   * .deliverables dir itself) and copy any missing ones INTO
+   * .deliverables/. Runs before stageDeliverables so a file opencode
+   * genuinely produced is delivered even if the judge cp'd the wrong
+   * thing or nothing. Union with whatever the judge already put
+   * there. Best-effort; never throws into the run.
+   *
+   * Uses a single `find ... -exec cp` so it's one sandbox exec (no
+   * newline-in-argv issues, no per-file round-trips).
+   */
+  private async autoCollectDeliverables(
+    workdir: string,
+    task: Task,
+  ): Promise<void> {
+    const wd = `${SANDBOX_WORKSPACE_ROOT}/${workdir}`;
+    const dd = `${wd}/${DELIVERABLES_DIR}`;
+    // Prune scaffolding dirs; skip scaffolding files by name; copy
+    // every remaining regular file into .deliverables/, preserving
+    // relative sub-path. `cp --parents` keeps out/foo.csv layout.
+    // -newer guard not needed: overwrite is fine (idempotent).
+    const excludeNames = [...EXCLUDED_DELIVERABLE]
+      .map((n) => `! -name ${shq(n)}`)
+      .join(" ");
+    const cmd =
+      `mkdir -p ${shq(dd)} && cd ${shq(wd)} && ` +
+      `find . -type d \\( -name .deliverables -o -name .oc-config ` +
+      `-o -name .oc-data \\) -prune -o ` +
+      `-type f ${excludeNames} -print0 2>/dev/null | ` +
+      // copy each (relative) file into .deliverables/, keeping subdirs
+      `while IFS= read -r -d '' f; do ` +
+      `  d=${shq(dd)}/"$(dirname "$f")"; mkdir -p "$d"; ` +
+      `  cp -f "$f" "$d/"; ` +
+      `done; echo AUTO_COLLECT_DONE`;
+    try {
+      const r = await this.deps.shell.exec({
+        command: cmd,
+        userId: this.deps.ownerUserId ?? task.ownerUserId,
+        taskId: task.id,
+        timeoutMs: 30_000,
+      });
+      this.deps.log.info?.("opencode-worker: auto-collected deliverables", {
+        taskId: task.id,
+        ok: /AUTO_COLLECT_DONE/.test(r.stdout),
+      });
+    } catch (err) {
+      this.deps.log.warn?.(
+        "opencode-worker: autoCollectDeliverables failed (non-fatal)",
+        { taskId: task.id, err: err instanceof Error ? err.message : String(err) },
+      );
+    }
   }
 
   /**
