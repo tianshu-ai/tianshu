@@ -267,7 +267,7 @@ export class OpenShellRunner implements SandboxRunner {
       // are honoured exactly like the SDK contract promises.
       args.push("--", "bash", "-c", req.command);
       const { exitCode, stdout, stderr, timedOut, aborted } =
-        await this.spawnCli(args, {
+        await this.spawnCliReady(args, {
           // Host-side budget is gateway timeout + 2s slack so we can
           // observe a structured timeout error from the gateway
           // before our own SIGKILL fires.
@@ -301,7 +301,7 @@ export class OpenShellRunner implements SandboxRunner {
     );
     await fs.mkdir(path.dirname(tmpHost), { recursive: true });
     try {
-      const { exitCode, stderr } = await this.spawnCli(
+      const { exitCode, stderr } = await this.spawnCliReady(
         ["sandbox", "download", this.sandboxName, guestPath, tmpHost],
         {},
       );
@@ -339,7 +339,7 @@ export class OpenShellRunner implements SandboxRunner {
     await fs.mkdir(path.dirname(tmpHost), { recursive: true });
     await fs.writeFile(tmpHost, content, "utf8");
     try {
-      const { exitCode, stderr } = await this.spawnCli(
+      const { exitCode, stderr } = await this.spawnCliReady(
         [
           "sandbox",
           "upload",
@@ -459,7 +459,7 @@ export class OpenShellRunner implements SandboxRunner {
           {},
         ).catch(() => undefined);
       }
-      const { exitCode, stderr } = await this.spawnCli(
+      const { exitCode, stderr } = await this.spawnCliReady(
         [
           "sandbox",
           "upload",
@@ -547,7 +547,7 @@ export class OpenShellRunner implements SandboxRunner {
       const guestPath = `${SANDBOX_WORKSPACE_PATH}/${sandboxSafe}`;
       const hostAbs = path.join(destBase, hostSafe);
       await fs.mkdir(path.dirname(hostAbs), { recursive: true });
-      const { exitCode, stderr } = await this.spawnCli(
+      const { exitCode, stderr } = await this.spawnCliReady(
         ["sandbox", "download", this.sandboxName, guestPath, hostAbs],
         {},
       );
@@ -939,29 +939,99 @@ export class OpenShellRunner implements SandboxRunner {
    *  on a per-call deadline (2 minutes — first-ever start has to
    *  pull the base image). */
   private async waitForReady(): Promise<void> {
-    const deadline = Date.now() + 120_000;
+    // A healthy sandbox reaches Ready within seconds (cold image pull
+    // aside). But a policy hot-reload or a concurrent `reset_sandbox`
+    // on the SHARED per-tenant sandbox can wedge it in `Provisioning`
+    // indefinitely (observed: stuck 18 min, container Up but every
+    // exec rejected "not ready (phase: Provisioning)"). openshell
+    // does not self-recover. So: if Provisioning persists past
+    // STUCK_MS without becoming Ready, delete + recreate ONCE
+    // (guarded so we can't loop), which reliably returns to Ready in
+    // ~5s. Terminal-failure phases recreate immediately.
+    const STUCK_MS = 45_000;
+    const deadline = Date.now() + 180_000;
+    let provisioningSince: number | null = null;
+    let recreated = false;
+    let missingSince: number | null = null;
     while (Date.now() < deadline) {
       const info = await this.findSandbox(this.sandboxName);
       if (!info) {
-        throw new Error(
-          `openshell: sandbox ${this.sandboxName} disappeared while waiting for Ready`,
-        );
+        // Transient: a policy hot-reload / recreate can make the
+        // sandbox momentarily unlistable. Tolerate a short window
+        // before treating it as truly gone (and then recreate).
+        if (missingSince === null) missingSince = Date.now();
+        if (Date.now() - missingSince > 15_000) {
+          if (!recreated) {
+            this.opts.log.warn(
+              `openshell: sandbox ${this.sandboxName} not listable for >15s; recreating once`,
+            );
+            recreated = true;
+            await this.recreateSandbox();
+            missingSince = null;
+            provisioningSince = null;
+            continue;
+          }
+          throw new Error(
+            `openshell: sandbox ${this.sandboxName} disappeared while waiting for Ready`,
+          );
+        }
+        await new Promise((r) => setTimeout(r, 500));
+        continue;
       }
+      missingSince = null;
       if (info.phase === "ready") return;
       if (
         info.phase === "failed" ||
         info.phase === "error" ||
         info.phase === "errored"
       ) {
+        if (!recreated) {
+          this.opts.log.warn(
+            `openshell: sandbox ${this.sandboxName} phase=${info.phase}; recreating once`,
+          );
+          recreated = true;
+          await this.recreateSandbox();
+          provisioningSince = null;
+          continue;
+        }
         throw new Error(
-          `openshell: sandbox ${this.sandboxName} entered phase=${info.phase}`,
+          `openshell: sandbox ${this.sandboxName} entered phase=${info.phase} after recreate`,
         );
+      }
+      // Provisioning / other non-ready phase: track how long we've
+      // been stuck. If it exceeds STUCK_MS and we haven't already
+      // recreated, treat it as wedged and recreate once.
+      if (provisioningSince === null) provisioningSince = Date.now();
+      if (
+        !recreated &&
+        Date.now() - provisioningSince > STUCK_MS
+      ) {
+        this.opts.log.warn(
+          `openshell: sandbox ${this.sandboxName} stuck in phase=${info.phase} for >${
+            Math.round(STUCK_MS / 1000)
+          }s; recreating once (likely wedged by a concurrent reset/policy-reload)`,
+        );
+        recreated = true;
+        await this.recreateSandbox();
+        provisioningSince = null;
+        continue;
       }
       await new Promise((r) => setTimeout(r, 500));
     }
     throw new Error(
-      `openshell: sandbox ${this.sandboxName} did not reach Ready within 2 minutes`,
+      `openshell: sandbox ${this.sandboxName} did not reach Ready within 3 minutes`,
     );
+  }
+
+  /** Delete + recreate the sandbox (used to recover a wedged
+   *  Provisioning / terminal-failure sandbox). Clears egress grants
+   *  since the fresh sandbox starts from the default policy. */
+  private async recreateSandbox(): Promise<void> {
+    await this.cli(["sandbox", "delete", this.sandboxName]).catch(
+      () => undefined,
+    );
+    this.grantedEgress.clear();
+    await this.createSandbox();
   }
 
   private async findSandbox(
@@ -1032,6 +1102,65 @@ export class OpenShellRunner implements SandboxRunner {
    * The CLI honours `OPENSHELL_GATEWAY_ENDPOINT` and reads its mTLS
    * client cert from the cert dir we pass via XDG.
    */
+  /**
+   * spawnCli + resilience to the sandbox being briefly NOT-Ready.
+   *
+   * The per-tenant sandbox is shared: another task's allowEgress (or
+   * the advisor self-heal) triggers a policy hot-reload that bounces
+   * the sandbox through `Provisioning`. Meanwhile `this.state` may
+   * still say "ready" (it went stale), so a concurrent exec/upload/
+   * download reaches the gateway and gets rejected with
+   * "sandbox '<name>' is not ready (phase: Provisioning)". Previously
+   * that error propagated and the opencode worker stalled before it
+   * even ran.
+   *
+   * This wrapper: run the CLI; if it failed specifically because the
+   * sandbox wasn't Ready, wait for Ready (bounded) and retry, up to
+   * `retries` times. Any other failure passes through unchanged.
+   * Use for sandbox-scoped ops (exec/upload/download/policy update).
+   */
+  private async spawnCliReady(
+    args: string[],
+    opts: { timeoutMs?: number; signal?: AbortSignal } = {},
+    retries = 2,
+  ): Promise<{
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+    timedOut: boolean;
+    aborted: boolean;
+  }> {
+    let attempt = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const res = await this.spawnCli(args, opts);
+      const notReady =
+        res.exitCode !== 0 &&
+        /not ready|phase:\s*provision|is not in a state/i.test(
+          `${res.stdout}\n${res.stderr}`,
+        );
+      if (!notReady || attempt >= retries || res.aborted) {
+        return res;
+      }
+      attempt++;
+      this.opts.log.warn(
+        `openshell: sandbox ${this.sandboxName} not ready (attempt ${attempt}/${retries}); waiting for Ready then retrying`,
+      );
+      try {
+        await this.waitForReady();
+      } catch (err) {
+        // Ready never came; return the last not-ready result so the
+        // caller sees a real error rather than looping.
+        this.opts.log.warn(
+          `openshell: waitForReady during retry failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        return res;
+      }
+    }
+  }
+
   private spawnCli(
     args: string[],
     opts: { timeoutMs?: number; signal?: AbortSignal },
