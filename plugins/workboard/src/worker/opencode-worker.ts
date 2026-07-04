@@ -1125,6 +1125,26 @@ export class OpenCodeWorker implements WorkerHandle {
         task.projectSlug,
         now,
       );
+      // Stamp the task row's session_id NOW (run start), not at the
+      // end. The Execution tab's GET /tasks/:id/history reads
+      // tasks.session_id; the pool set it to the claim/agent-loop
+      // session, which the opencode poller does NOT write to. Until
+      // this repoint, mid-run writeHistory() lands in our ocs_
+      // session but the endpoint reads the wrong one — so the tab
+      // stays empty until the terminal update finally repoints it.
+      // Repointing here makes the 3s frontend poll + 4s worker poll
+      // actually show live progress.
+      try {
+        db.prepare(`UPDATE tasks SET session_id = ? WHERE id = ?`).run(
+          sessionId,
+          task.id,
+        );
+      } catch (err) {
+        this.deps.log.warn?.(
+          "opencode-worker: failed to stamp task.session_id at start",
+          { taskId: task.id, err: err instanceof Error ? err.message : String(err) },
+        );
+      }
       this.sessionId = sessionId;
       return sessionId;
     } catch (err) {
