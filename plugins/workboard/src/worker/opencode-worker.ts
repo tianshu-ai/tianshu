@@ -952,17 +952,43 @@ export class OpenCodeWorker implements WorkerHandle {
   ): Promise<void> {
     const wd = `${SANDBOX_WORKSPACE_ROOT}/${workdir}`;
     const dd = `${wd}/${DELIVERABLES_DIR}`;
-    // Prune scaffolding dirs; skip scaffolding files by name; copy
-    // every remaining regular file into .deliverables/, preserving
-    // relative sub-path. `cp --parents` keeps out/foo.csv layout.
-    // -newer guard not needed: overwrite is fine (idempotent).
-    const excludeNames = [...EXCLUDED_DELIVERABLE]
-      .map((n) => `! -name ${shq(n)}`)
-      .join(" ");
+    // Prune scaffolding + build/cache dirs (they're not deliverables
+    // and pollute the result set — observed __pycache__/.pytest_cache
+    // sweeping in). Skip scaffolding files by name + junk file
+    // patterns (*.pyc etc). Copy every remaining regular file into
+    // .deliverables/, preserving relative sub-path.
+    const pruneDirNames = [
+      DELIVERABLES_DIR,
+      ".oc-config",
+      ".oc-data",
+      "__pycache__",
+      ".pytest_cache",
+      ".mypy_cache",
+      ".ruff_cache",
+      ".git",
+      "node_modules",
+      ".venv",
+      "venv",
+      ".tox",
+      "dist",
+      "build",
+      "target",
+      ".next",
+      ".cache",
+    ];
+    const pruneExpr = pruneDirNames
+      .map((n) => `-name ${shq(n)}`)
+      .join(" -o ");
+    const excludeNames = [
+      ...[...EXCLUDED_DELIVERABLE].map((n) => `! -name ${shq(n)}`),
+      "! -name '*.pyc'",
+      "! -name '*.pyo'",
+      "! -name '*.class'",
+      "! -name '.DS_Store'",
+    ].join(" ");
     const cmd =
       `mkdir -p ${shq(dd)} && cd ${shq(wd)} && ` +
-      `find . -type d \\( -name .deliverables -o -name .oc-config ` +
-      `-o -name .oc-data \\) -prune -o ` +
+      `find . -type d \\( ${pruneExpr} \\) -prune -o ` +
       `-type f ${excludeNames} -print0 2>/dev/null | ` +
       // copy each (relative) file into .deliverables/, keeping subdirs
       `while IFS= read -r -d '' f; do ` +
