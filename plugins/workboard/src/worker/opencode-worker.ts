@@ -958,7 +958,20 @@ export class OpenCodeWorker implements WorkerHandle {
     // <workspace>/users/<userId>/; the .results/<task>/ layer keeps
     // each task's outputs together, same as sync_down.)
     const taskFolder = deriveTaskFolder(task);
+    // TWO different path bases (this distinction is the fix for the
+    // dead file link):
+    //   - hostBase: where the file physically lands, relative to the
+    //     runner's workspaceDir. Includes users/<userId>/ because the
+    //     workspace root holds all users.
+    //   - reportBase: what we put in result_files, which the kanban
+    //     UI hands to the files plugin's /api/p/files/raw. That
+    //     endpoint roots at ctx.userHomeDir(userId) = <workspace>/
+    //     users/<userId>/, so the reported path must be RELATIVE to
+    //     the user home — i.e. WITHOUT the users/<userId>/ prefix.
+    //     Including it would resolve to users/<uid>/users/<uid>/...
+    //     → 404 (the dead-link bug).
     const hostBase = `users/${userId}/projects/${slug}/.results/${taskFolder}`;
+    const reportBase = `projects/${slug}/.results/${taskFolder}`;
 
     // Enumerate files the judge collected (relative to the
     // deliverables dir). No newlines-in-argv worries: this is one
@@ -994,10 +1007,12 @@ export class OpenCodeWorker implements WorkerHandle {
     }
 
     const hostRel = files.map((f) => `${hostBase}/${f}`);
+    const reportRel = files.map((f) => `${reportBase}/${f}`);
     const syncDown = this.deps.shell.syncDown;
     if (!syncDown) {
       // Bind-mounted runtime: files already visible on the host.
-      return hostRel;
+      // Report user-home-relative paths (files-plugin root).
+      return reportRel;
     }
     try {
       // Sync each collected file individually (sandbox path under
@@ -1025,11 +1040,17 @@ export class OpenCodeWorker implements WorkerHandle {
         downloaded: res.downloaded,
       });
       const downloaded = res.downloaded ?? [];
-      // Report ONLY host-relative paths that actually landed (never
-      // a path we didn't sync — that'd 404 in the UI).
-      return hostRel.filter((h) =>
-        downloaded.some((abs) => abs === h || abs.endsWith(`/${h}`)),
-      );
+      // Report ONLY files that actually landed, and report them as
+      // user-home-relative paths (reportRel) — NOT the disk-relative
+      // hostRel — so the files plugin (rooted at userHomeDir)
+      // resolves them. Match landed files by their hostRel suffix.
+      const landedIdx = hostRel
+        .map((h, i) => ({ h, i }))
+        .filter(({ h }) =>
+          downloaded.some((abs) => abs === h || abs.endsWith(`/${h}`)),
+        )
+        .map(({ i }) => i);
+      return landedIdx.map((i) => reportRel[i]);
     } catch (err) {
       this.deps.log.warn?.(
         "opencode-worker: stageDeliverables syncDown failed",
