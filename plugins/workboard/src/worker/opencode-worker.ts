@@ -877,8 +877,24 @@ export class OpenCodeWorker implements WorkerHandle {
     rel: string[],
     task: Task,
   ): Promise<string[]> {
+    // The judge is an LLM — it may report a deliverable as a bare
+    // name ("report.txt"), a dotted rel path ("./report.txt"), a
+    // workdir-prefixed path ("opencode/<taskId>/report.txt"), or an
+    // absolute sandbox path ("/sandbox/workspace/opencode/<taskId>/
+    // report.txt"). Normalise all of these down to a path RELATIVE
+    // to the opencode workdir, because that's what syncDown's
+    // sandbox side expects (joined onto the workdir below). Without
+    // this, an absolute/prefixed path gets rejected or points at the
+    // wrong sandbox location and the sync silently skips — the
+    // "link shows but file absent" bug.
+    const absRoot = `${SANDBOX_WORKSPACE_ROOT}/`;
+    const wdPrefix = `${workdir}/`;
     const clean = rel
-      .map((r) => r.replace(/^\.?\//, "").trim())
+      .map((r) => r.trim())
+      .map((r) => (r.startsWith(absRoot) ? r.slice(absRoot.length) : r))
+      .map((r) => r.replace(/^\.?\//, ""))
+      .map((r) => (r.startsWith(wdPrefix) ? r.slice(wdPrefix.length) : r))
+      .map((r) => r.trim())
       .filter((r) => r && !r.includes("..") && !EXCLUDED_DELIVERABLE.has(r));
     if (clean.length === 0) return [];
     const slug = task.projectSlug || "inbox";
