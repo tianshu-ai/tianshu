@@ -163,10 +163,16 @@ export class OpenShellRunner implements SandboxRunner {
       // plugin-local CLI config. Synchronous so the first CLI call
       // below sees a valid cert dir.
       await this.ensureCliConfig();
-      // Apply global policy-advisor settings (proposals + approval
-      // mode) before the sandbox is created/adopted. Settings are
-      // gateway-global and idempotent; best-effort so a settings
-      // hiccup doesn't block the sandbox coming up.
+      // Apply the policy-advisor settings at gateway-global scope
+      // before the sandbox is created/adopted. A freshly-created
+      // sandbox inherits the global value (verified: its scope shows
+      // "true (global)" and proposals work). Idempotent + best-
+      // effort so a settings hiccup doesn't block the sandbox.
+      // NOTE: a pre-existing sandbox created BEFORE this ran keeps
+      // its own baked-in value until recreated — that's the
+      // `feature_disabled` symptom on stale sandboxes; fix by
+      // reset/recreate, not by a second sandbox-scoped set (openshell
+      // rejects that once the setting is managed globally).
       await this.ensurePolicyAdvisorSettings();
       const existing = await this.findSandbox(this.sandboxName);
       if (!existing) {
@@ -776,6 +782,13 @@ export class OpenShellRunner implements SandboxRunner {
   private async ensurePolicyAdvisorSettings(): Promise<void> {
     const mode = this.opts.policyAdvisor ?? "off";
     const enabled = mode === "auto" || mode === "manual";
+    // Gateway-GLOBAL scope only. Verified against openshell 0.0.74:
+    // a sandbox inherits the global value (its own scope shows
+    // "true (global)") and proposals work on a freshly-created
+    // sandbox with just this. Do NOT also set sandbox scope — once a
+    // setting is managed globally, `settings set <sandbox>` is
+    // rejected with "managed globally; delete the global setting
+    // before sandbox update".
     try {
       await this.cli([
         "settings",
@@ -802,7 +815,7 @@ export class OpenShellRunner implements SandboxRunner {
       this.opts.log.info(
         `openshell: policy advisor mode=${mode} (proposals ${
           enabled ? "enabled" : "disabled"
-        }${enabled ? `, approval=${mode}` : ""})`,
+        }${enabled ? `, approval=${mode}` : ""}) @ global`,
       );
     } catch (err) {
       this.opts.log.warn(
