@@ -814,28 +814,41 @@ export class OpenCodeWorker implements WorkerHandle {
       `You can inspect it with bash, e.g. \`ls -la ${workdirAbs}\` or`,
       `\`cat ${workdirAbs}/<file>\`.`,
       ``,
-      `Your job has THREE parts:`,
+      `⚠ CRITICAL: \`task_complete\` is TERMINAL. The moment you call`,
+      `it, you exit and CANNOT run any more tools. So you MUST do all`,
+      `inspection and file collection FIRST, and call task_complete`,
+      `only as your VERY LAST action. Do NOT call task_complete as a`,
+      `first "let me start" step — that throws away the whole run.`,
+      ``,
+      `Your job has THREE parts, IN THIS ORDER:`,
       ``,
       `1) JUDGE whether the task's acceptance criteria were ACTUALLY`,
       `   met. OpenCode often exits "successfully" even when it gave`,
       `   up (couldn't install a toolchain, hit a blocked network`,
-      `   request, or asked the user how to proceed). Verify by`,
-      `   reading the produced files before deciding.`,
+      `   request, or asked the user how to proceed). Verify with bash`,
+      `   before deciding.`,
       ``,
-      `2) COLLECT the deliverables. The files the USER should receive`,
-      `   may have been written ANYWHERE (the workdir, /tmp, a home`,
-      `   dir, an absolute path). Find them (use bash: ls, find,`,
-      `   grep) and COPY each one into this exact directory:`,
+      `2) COLLECT the deliverables into this exact directory (create`,
+      `   it, then copy with bash — do this BEFORE task_complete):`,
       `     ${DELIVERABLES_ABS(workdirAbs)}`,
-      `   Create it first and copy with bash, preserving a sensible`,
-      `   filename, e.g.:`,
-      `     mkdir -p ${DELIVERABLES_ABS(workdirAbs)}`,
-      `     cp <wherever-the-file-is> ${DELIVERABLES_ABS(workdirAbs)}/report.md`,
-      `   Include ONLY real outputs (reports, generated docs, code,`,
-      `   data). Do NOT copy process/scaffolding files: opencode.json,`,
-      `   .prompt.txt, oc.out, oc.err, opencode-transcript.jsonl,`,
-      `   proposal.json, or anything under .oc-config/ or .oc-data/.`,
-      `   If there are no real deliverables, leave the directory empty.`,
+      `   a) FILES: the outputs may have been written ANYWHERE (the`,
+      `      workdir, /tmp, a home dir, an absolute path). Find them`,
+      `      (bash: ls, find, grep) and copy each into the dir:`,
+      `        mkdir -p ${DELIVERABLES_ABS(workdirAbs)}`,
+      `        cp <wherever-the-file-is> ${DELIVERABLES_ABS(workdirAbs)}/report.md`,
+      `   b) INLINE OUTPUT: if the real deliverable is text OpenCode`,
+      `      printed in its final message (a report/summary/answer)`,
+      `      rather than a file — common for research/aggregation`,
+      `      tasks — WRITE that content to a file in the dir yourself,`,
+      `      e.g. save the full report to`,
+      `      ${DELIVERABLES_ABS(workdirAbs)}/result.md using a bash`,
+      `      heredoc or by cat-ing OpenCode's output file. The user`,
+      `      must end up with a FILE, never just chat text.`,
+      `   Include ONLY real outputs. Do NOT copy process/scaffolding:`,
+      `   opencode.json, .prompt.txt, oc.out, oc.err,`,
+      `   opencode-transcript.jsonl, proposal.json, or anything under`,
+      `   .oc-config/ or .oc-data/.`,
+      `   If there is genuinely no deliverable, leave the dir empty.`,
       ``,
       `3) REPORT via task_complete:`,
       `   - completed=true with a concise \`summary\` and a \`files\``,
@@ -882,7 +895,21 @@ export class OpenCodeWorker implements WorkerHandle {
     // originally wrote it, so we just sync that whole directory to
     // the host project subtree `projects/<slug>/` — the layout the
     // LLM worker uses and the UI opens.
-    const hostFiles = await this.stageDeliverables(workdir, task);
+    let hostFiles = await this.stageDeliverables(workdir, task);
+
+    // Deterministic safety net for "inline output" tasks + judge
+    // misfires (e.g. judge called task_complete on its first turn
+    // and never collected anything). If nothing landed but OpenCode
+    // produced a substantial final message, the report IS that text
+    // — write it to result.md ourselves and stage it, so the user
+    // always gets a readable FILE instead of a black box. This does
+    // NOT rely on the judge behaving.
+    if (hostFiles.length === 0) {
+      const finalText = (parsed.text ?? "").trim();
+      if (finalText.length >= 40) {
+        hostFiles = await this.stageInlineFallback(workdir, task, finalText);
+      }
+    }
 
     return {
       status,
@@ -1006,6 +1033,41 @@ export class OpenCodeWorker implements WorkerHandle {
     } catch (err) {
       this.deps.log.warn?.(
         "opencode-worker: stageDeliverables syncDown failed",
+        {
+          taskId: task.id,
+          err: err instanceof Error ? err.message : String(err),
+        },
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Deterministic fallback for tasks whose real deliverable is the
+   * text OpenCode printed (research/aggregation "inline" tasks), or
+   * when the judge misfired and collected nothing. Writes the final
+   * text to `<workdir>/.deliverables/result.md` in the sandbox
+   * (via writeFile so newlines are safe — sandbox exec rejects
+   * newline-in-argv), then stages the dir like any other deliverable.
+   * Returns the host paths that landed. Program-driven; does not
+   * depend on the judge.
+   */
+  private async stageInlineFallback(
+    workdir: string,
+    task: Task,
+    finalText: string,
+  ): Promise<string[]> {
+    try {
+      const rel = `${workdir}/${DELIVERABLES_DIR}/result.md`;
+      await this.deps.shell.writeFile(rel, finalText);
+      this.deps.log.info?.(
+        "opencode-worker: no files collected; wrote inline final text to result.md",
+        { taskId: task.id, bytes: finalText.length },
+      );
+      return await this.stageDeliverables(workdir, task);
+    } catch (err) {
+      this.deps.log.warn?.(
+        "opencode-worker: inline fallback (result.md) failed",
         {
           taskId: task.id,
           err: err instanceof Error ? err.message : String(err),
