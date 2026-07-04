@@ -31,9 +31,18 @@ function fakeTask(labels: string[] = []): Task {
 describe("buildPrompt network policy advisor hint", () => {
   it("omits the advisor note by default (open-network runtime)", () => {
     const p = buildPrompt(fakeTask());
-    expect(p).toBe("do a thing");
+    // The task title is always first; the network-advisor note must
+    // NOT appear without the flag. (The generic Deliverables note is
+    // always present — asserted separately below.)
+    expect(p.startsWith("do a thing")).toBe(true);
     expect(p).not.toContain("policy.local");
     expect(p).not.toContain("openshell-network-policy");
+  });
+
+  it("always includes the deliverables convention", () => {
+    const p = buildPrompt(fakeTask());
+    expect(p).toContain("Deliverables:");
+    expect(p).toContain("CURRENT working directory");
   });
 
   it("appends the advisor trigger on a deny-by-default sandbox", () => {

@@ -457,6 +457,27 @@ export interface SandboxRunner {
     binaries?: string[];
   }): Promise<void>;
 
+  // ─── optional host<->sandbox file staging ───────────────────
+  /**
+   * Copy files FROM the sandbox back to the host tenant workspace.
+   * Some runtimes (openshell) don't bind-mount the workspace, so a
+   * file an in-sandbox agent produced only exists inside the
+   * container; callers that need the host to see it (e.g. to serve
+   * a download link, or to hand results to another worker) must
+   * stage it down. Accepts either plain sandbox-relative paths
+   * (staged to the same host-relative path) or explicit
+   * {sandbox, host} pairs when the two layouts differ. Runners that
+   * already share the workspace with the host may leave this
+   * undefined; the caller treats undefined as "already on host".
+   */
+  syncDown?(
+    paths: string[] | { sandbox: string; host: string }[],
+    opts?: { destBaseDir?: string },
+  ): Promise<{
+    downloaded: string[];
+    skipped: { relPath: string; reason: string }[];
+  }>;
+
   // ─── optional browser sidecar (§2) ─────────────────────────
   /** If this runner's plugin also provides `browser.cdp`, the
    *  sidecar is exposed here so the host can register it under the
