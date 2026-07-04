@@ -313,9 +313,15 @@ export class OpenCodeWorker implements WorkerHandle {
   readonly kind = "opencode";
   readonly agentId: string;
   readonly name: string;
-  /** Worker session for the current run's transcript. Created once
-   *  by ensureSession(), reused by the poller + the final write. */
-  private sessionId: string | null = null;
+  /** Worker session id PER TASK for the run's transcript. A single
+   *  OpenCodeWorker instance is reused by the pool across many tasks
+   *  (and can run several concurrently), so this MUST be keyed by
+   *  task id — a shared instance field would make every task reuse
+   *  the first task's session, collapsing all transcripts into one
+   *  stale session (the poller + stamp would target the wrong one).
+   *  Created by ensureSession(task), reused by the poller + final
+   *  write for the SAME task. */
+  private readonly sessionIds = new Map<string, string>();
 
   constructor(private readonly deps: OpenCodeWorkerDeps) {
     this.agentId = deps.agentId;
@@ -736,6 +742,9 @@ export class OpenCodeWorker implements WorkerHandle {
           });
         }
       }
+      // Drop the per-task session cache entry so the Map doesn't grow
+      // unbounded over a long-lived worker instance's lifetime.
+      this.sessionIds.delete(task.id);
     }
   }
 
@@ -1160,7 +1169,8 @@ export class OpenCodeWorker implements WorkerHandle {
    *  the session id (stable for the whole run so the poller and the
    *  final write target the same session). */
   private ensureSession(task: Task): string | null {
-    if (this.sessionId) return this.sessionId;
+    const cached = this.sessionIds.get(task.id);
+    if (cached) return cached;
     try {
       const db = this.deps.db;
       const now = Date.now();
@@ -1203,7 +1213,7 @@ export class OpenCodeWorker implements WorkerHandle {
           { taskId: task.id, err: err instanceof Error ? err.message : String(err) },
         );
       }
-      this.sessionId = sessionId;
+      this.sessionIds.set(task.id, sessionId);
       return sessionId;
     } catch (err) {
       this.deps.log.warn?.("opencode-worker: ensureSession failed", {

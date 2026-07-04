@@ -214,6 +214,16 @@ export class OpenShellRunner implements SandboxRunner {
       // globally). Detect that here and recreate ONCE so the fresh
       // sandbox inherits the now-correct global value.
       await this.healAdvisorIfStale();
+      // Guarantee the workspace root exists on EVERY ensureSandbox,
+      // not just fresh createSandbox(). An ADOPTED sandbox (found
+      // ready, so createSandbox — which mkdirs it — was skipped), or
+      // one created out of band (bare `sandbox create -- true`, an
+      // older code version, or a heal/recreate), may lack
+      // /sandbox/workspace. Then every writeFile/exec that does
+      // `cd /sandbox/workspace` fails "No such file or directory"
+      // (observed: opencode install exit 1 -> task stalls with
+      // failureReason but empty summary). Idempotent mkdir closes it.
+      await this.ensureWorkspaceDir();
       this.state = "ready";
       this.lastError = undefined;
     } catch (err) {
@@ -1021,6 +1031,40 @@ export class OpenShellRunner implements SandboxRunner {
     throw new Error(
       `openshell: sandbox ${this.sandboxName} did not reach Ready within 3 minutes`,
     );
+  }
+
+  /** Idempotent `mkdir -p /sandbox/workspace` inside the sandbox.
+   *  Runs via spawnCliReady (not this.exec) because it's called from
+   *  ensureSandbox() before state becomes "ready" — exec() would
+   *  re-enter ensureSandbox. Best-effort: logs on failure, doesn't
+   *  throw (a genuinely broken sandbox surfaces later on first use). */
+  private async ensureWorkspaceDir(): Promise<void> {
+    try {
+      const res = await this.spawnCliReady([
+        "sandbox",
+        "exec",
+        "--name",
+        this.sandboxName,
+        "--no-tty",
+        "--",
+        "mkdir",
+        "-p",
+        SANDBOX_WORKSPACE_PATH,
+      ]);
+      if (res.exitCode !== 0) {
+        this.opts.log.warn(
+          `openshell: mkdir ${SANDBOX_WORKSPACE_PATH} exit ${res.exitCode}: ${
+            res.stderr.trim() || "unknown"
+          }`,
+        );
+      }
+    } catch (err) {
+      this.opts.log.warn(
+        `openshell: ensureWorkspaceDir failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   /** Delete + recreate the sandbox (used to recover a wedged
