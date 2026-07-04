@@ -132,6 +132,25 @@ function DELIVERABLES_ABS(workdirAbs: string): string {
   return `${workdirAbs}/${DELIVERABLES_DIR}`;
 }
 
+/** Host-side per-task results folder name, HOST-DERIVED from the task
+ *  row (never from the agent). Mirrors openshell SyncDownTool's
+ *  deriveTaskFolderFromCtx: taskId, or a slugified title when present,
+ *  so opencode + LLM-worker deliverables share one convention. */
+function deriveTaskFolder(task: Task): string {
+  const id = (task.id ?? "").trim();
+  const title = (task.title ?? "").trim();
+  if (!title) return id || "task";
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+  if (!slug || slug === "." || slug === ".." || slug.startsWith(".")) {
+    return id || "task";
+  }
+  return slug;
+}
+
 /** Process/scaffolding files that must never be reported as task
  *  deliverables even if the judge lists them by mistake. These are
  *  the worker's own artifacts (config, prompt, captured output,
@@ -901,14 +920,18 @@ export class OpenCodeWorker implements WorkerHandle {
     const userId = this.deps.ownerUserId ?? task.ownerUserId;
     const sandboxDir = `${workdir}/${DELIVERABLES_DIR}`;
     const guestDirAbs = `${SANDBOX_WORKSPACE_ROOT}/${sandboxDir}`;
-    // Host destination MUST match the tree the files plugin + main
-    // agent read from: `<workspace>/users/<userId>/projects/<slug>/`.
-    // The files plugin roots reads at ctx.userHomeDir(userId) =
-    // <workspace>/users/<userId>/, so a file staged to bare
-    // projects/<slug>/ (missing the users/<userId>/ layer) exists on
-    // disk but is INVISIBLE to read_file / files-attach. This is the
-    // same layout SyncDownTool uses for LLM-worker deliverables.
-    const hostBase = `users/${userId}/projects/${slug}`;
+    // Host destination is fully HOST-DERIVED from context (tenant is
+    // implicit in the runner's workspaceDir; user + project + task
+    // come from the task row) — the LLM never specifies it. Mirror
+    // exactly the layout openshell's SyncDownTool uses for
+    // LLM-worker deliverables so the files plugin + main agent read
+    // it identically:
+    //   <workspace>/users/<userId>/projects/<slug>/.results/<task>/
+    // (files plugin roots reads at ctx.userHomeDir(userId) =
+    // <workspace>/users/<userId>/; the .results/<task>/ layer keeps
+    // each task's outputs together, same as sync_down.)
+    const taskFolder = deriveTaskFolder(task);
+    const hostBase = `users/${userId}/projects/${slug}/.results/${taskFolder}`;
 
     // Enumerate files the judge collected (relative to the
     // deliverables dir). No newlines-in-argv worries: this is one
