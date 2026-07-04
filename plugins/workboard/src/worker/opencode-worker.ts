@@ -119,6 +119,19 @@ const OPENCODE_VERSION = "1.17.13";
  *  the judge needs the absolute path for its bash/ls. */
 const SANDBOX_WORKSPACE_ROOT = "/sandbox/workspace";
 
+/** Name of the collect-here directory the judge copies deliverables
+ *  into (relative to the opencode workdir). The worker then syncs
+ *  this whole dir to the host. Using a fixed collection dir means we
+ *  don't depend on WHERE opencode originally wrote a file — the judge
+ *  (which has bash) gathers them here first. */
+const DELIVERABLES_DIR = ".deliverables";
+
+/** Absolute sandbox path of the deliverables collection dir for a
+ *  given absolute workdir. */
+function DELIVERABLES_ABS(workdirAbs: string): string {
+  return `${workdirAbs}/${DELIVERABLES_DIR}`;
+}
+
 /** Process/scaffolding files that must never be reported as task
  *  deliverables even if the judge lists them by mistake. These are
  *  the worker's own artifacts (config, prompt, captured output,
@@ -782,7 +795,7 @@ export class OpenCodeWorker implements WorkerHandle {
       `You can inspect it with bash, e.g. \`ls -la ${workdirAbs}\` or`,
       `\`cat ${workdirAbs}/<file>\`.`,
       ``,
-      `Your job has TWO parts:`,
+      `Your job has THREE parts:`,
       ``,
       `1) JUDGE whether the task's acceptance criteria were ACTUALLY`,
       `   met. OpenCode often exits "successfully" even when it gave`,
@@ -790,24 +803,31 @@ export class OpenCodeWorker implements WorkerHandle {
       `   request, or asked the user how to proceed). Verify by`,
       `   reading the produced files before deciding.`,
       ``,
-      `2) SELECT the deliverable files — the files the USER should`,
-      `   actually receive. Include only real outputs (reports,`,
-      `   generated docs, code, data). EXCLUDE process/scaffolding`,
-      `   files: opencode.json, .prompt.txt, oc.out, oc.err,`,
-      `   opencode-transcript.jsonl, proposal.json, and anything`,
-      `   under .oc-config/ or .oc-data/. Pass their paths RELATIVE`,
-      `   to the working directory above (e.g. "report.md",`,
-      `   "out/data.csv").`,
+      `2) COLLECT the deliverables. The files the USER should receive`,
+      `   may have been written ANYWHERE (the workdir, /tmp, a home`,
+      `   dir, an absolute path). Find them (use bash: ls, find,`,
+      `   grep) and COPY each one into this exact directory:`,
+      `     ${DELIVERABLES_ABS(workdirAbs)}`,
+      `   Create it first and copy with bash, preserving a sensible`,
+      `   filename, e.g.:`,
+      `     mkdir -p ${DELIVERABLES_ABS(workdirAbs)}`,
+      `     cp <wherever-the-file-is> ${DELIVERABLES_ABS(workdirAbs)}/report.md`,
+      `   Include ONLY real outputs (reports, generated docs, code,`,
+      `   data). Do NOT copy process/scaffolding files: opencode.json,`,
+      `   .prompt.txt, oc.out, oc.err, opencode-transcript.jsonl,`,
+      `   proposal.json, or anything under .oc-config/ or .oc-data/.`,
+      `   If there are no real deliverables, leave the directory empty.`,
       ``,
-      `Then call task_complete:`,
-      `  - completed=true with a concise \`summary\` and a \`files\``,
-      `    array of the deliverable paths (relative to the workdir)`,
-      `    if the work genuinely satisfies the task;`,
-      `  - completed=false with a clear \`reason\` (what's missing /`,
-      `    why it failed) if it does not. If it failed, you may still`,
-      `    pass any partial-output files in \`files\`.`,
-      `Do not redo the work yourself — only judge, verify, and pick`,
-      `the deliverables.`,
+      `3) REPORT via task_complete:`,
+      `   - completed=true with a concise \`summary\` and a \`files\``,
+      `     array listing the filenames you copied into the`,
+      `     deliverables dir (just the names, e.g. ["report.md"]),`,
+      `     if the work genuinely satisfies the task;`,
+      `   - completed=false with a clear \`reason\` (what's missing /`,
+      `     why it failed) if it does not. If it failed but produced`,
+      `     partial output worth keeping, still copy it into the`,
+      `     deliverables dir and list it.`,
+      `Do not redo the work yourself — only judge, collect, and report.`,
     ]
       .filter((l) => l !== undefined)
       .join("\n");
@@ -835,18 +855,15 @@ export class OpenCodeWorker implements WorkerHandle {
     const status: TerminalUpdate["status"] =
       result.status === "done" ? "done" : "stalled";
 
-    // Stage the judge-selected deliverables from the sandbox to the
-    // host so the kanban file links resolve (the files plugin's
-    // /api/p/files/raw serves host <tenant>/workspace/<path>; a
-    // sandbox-only path 404s). We syncDown each deliverable from the
-    // opencode workdir to the host project subtree
-    // `projects/<slug>/<file>` — the same layout the LLM worker uses
-    // and the UI opens. resultFiles then holds host-servable paths.
-    const hostFiles = await this.stageDeliverables(
-      workdir,
-      result.files ?? [],
-      task,
-    );
+    // Stage deliverables to the host so the kanban file links
+    // resolve (files plugin /api/p/files/raw serves host
+    // <tenant>/workspace/<path>; a sandbox-only path 404s). The
+    // judge (part 2 of its prompt) COPIED every real deliverable
+    // into <workdir>/.deliverables/ regardless of where opencode
+    // originally wrote it, so we just sync that whole directory to
+    // the host project subtree `projects/<slug>/` — the layout the
+    // LLM worker uses and the UI opens.
+    const hostFiles = await this.stageDeliverables(workdir, task);
 
     return {
       status,
@@ -859,54 +876,78 @@ export class OpenCodeWorker implements WorkerHandle {
   }
 
   /**
-   * Copy the judge-selected deliverable files out of the opencode
-   * sandbox workdir and into the host tenant workspace under
-   * `projects/<slug>/<file>`, returning the host-relative paths to
-   * store in `resultFiles`. Those paths are what the kanban UI
-   * hands to the files plugin's raw endpoint, so they MUST exist on
-   * the host and match the project layout the LLM worker uses.
+   * Sync the judge-collected deliverables directory
+   * (`<workdir>/.deliverables/`) from the sandbox to the host tenant
+   * workspace under `projects/<slug>/`, returning the host-relative
+   * paths of the files that actually landed (for `resultFiles`).
    *
-   * No-op (returns []) when there are no deliverables. On a runtime
-   * without syncDown (open-network microsandbox that already
-   * bind-mounts the workspace) we fall back to reporting the
-   * project-relative path directly, since the file is already on
-   * the host via the mount.
+   * Why a whole directory instead of per-file paths: opencode (an
+   * LLM) may write output ANYWHERE, and the judge (also an LLM) may
+   * report paths in any shape. The judge's prompt instead has it
+   * COPY real deliverables into a fixed collection dir with bash;
+   * we then sync that one dir. This decouples "where the file ended
+   * up" from "what we deliver", killing the earlier class of
+   * silent-skip bugs.
+   *
+   * Returns [] when the dir is missing/empty. On a runtime without
+   * syncDown (bind-mounted microsandbox) the files are already on
+   * the host, so we just enumerate + report them.
    */
   private async stageDeliverables(
     workdir: string,
-    rel: string[],
     task: Task,
   ): Promise<string[]> {
-    // The judge is an LLM — it may report a deliverable as a bare
-    // name ("report.txt"), a dotted rel path ("./report.txt"), a
-    // workdir-prefixed path ("opencode/<taskId>/report.txt"), or an
-    // absolute sandbox path ("/sandbox/workspace/opencode/<taskId>/
-    // report.txt"). Normalise all of these down to a path RELATIVE
-    // to the opencode workdir, because that's what syncDown's
-    // sandbox side expects (joined onto the workdir below). Without
-    // this, an absolute/prefixed path gets rejected or points at the
-    // wrong sandbox location and the sync silently skips — the
-    // "link shows but file absent" bug.
-    const absRoot = `${SANDBOX_WORKSPACE_ROOT}/`;
-    const wdPrefix = `${workdir}/`;
-    const clean = rel
-      .map((r) => r.trim())
-      .map((r) => (r.startsWith(absRoot) ? r.slice(absRoot.length) : r))
-      .map((r) => r.replace(/^\.?\//, ""))
-      .map((r) => (r.startsWith(wdPrefix) ? r.slice(wdPrefix.length) : r))
-      .map((r) => r.trim())
-      .filter((r) => r && !r.includes("..") && !EXCLUDED_DELIVERABLE.has(r));
-    if (clean.length === 0) return [];
     const slug = task.projectSlug || "inbox";
-    const hostRel = clean.map((f) => `projects/${slug}/${f}`);
+    const sandboxDir = `${workdir}/${DELIVERABLES_DIR}`;
+    const guestDirAbs = `${SANDBOX_WORKSPACE_ROOT}/${sandboxDir}`;
+
+    // Enumerate files the judge collected (relative to the
+    // deliverables dir). No newlines-in-argv worries: this is one
+    // find command. Missing dir → empty list.
+    let files: string[] = [];
+    try {
+      const listed = await this.deps.shell.exec({
+        command: `cd ${shq(guestDirAbs)} 2>/dev/null && find . -type f -printf '%P\\n' 2>/dev/null | head -200 || true`,
+        userId: this.deps.ownerUserId ?? task.ownerUserId,
+        taskId: task.id,
+        timeoutMs: 20_000,
+      });
+      files = listed.stdout
+        .split(/\r?\n/)
+        .map((l: string) => l.trim())
+        .filter((l: string) => Boolean(l))
+        .filter(
+          (f: string) => !f.includes("..") && !EXCLUDED_DELIVERABLE.has(f),
+        );
+    } catch (err) {
+      this.deps.log.warn?.(
+        "opencode-worker: could not list deliverables dir",
+        { taskId: task.id, err: err instanceof Error ? err.message : String(err) },
+      );
+      return [];
+    }
+    if (files.length === 0) {
+      this.deps.log.info?.("opencode-worker: no deliverables collected", {
+        taskId: task.id,
+        dir: guestDirAbs,
+      });
+      return [];
+    }
+
+    const hostRel = files.map((f) => `projects/${slug}/${f}`);
     const syncDown = this.deps.shell.syncDown;
     if (!syncDown) {
-      // Open-network / bind-mounted runtime: file already on host.
+      // Bind-mounted runtime: files already visible on the host.
       return hostRel;
     }
     try {
-      const pairs = clean.map((f, i) => ({
-        sandbox: `${workdir}/${f}`,
+      // Sync each collected file individually (sandbox path under
+      // the collection dir → host projects/<slug>/<relative>). One
+      // pair per file keeps the host layout flat under the project
+      // (drops the .deliverables/ level) and lets us report exactly
+      // what landed.
+      const pairs = files.map((f, i) => ({
+        sandbox: `${sandboxDir}/${f}`,
         host: hostRel[i],
       }));
       this.deps.log.info?.("opencode-worker: staging deliverables", {
@@ -924,23 +965,20 @@ export class OpenCodeWorker implements WorkerHandle {
         taskId: task.id,
         downloaded: res.downloaded,
       });
-      // `downloaded` holds ABSOLUTE host paths
-      // (<workspaceDir>/projects/<slug>/<file>). Report ONLY the
-      // host-relative paths that actually landed — never report a
-      // path we didn't sync, or the UI shows a link to a file that
-      // isn't on the host (404). Match downloaded abs paths back to
-      // their host-relative form by suffix.
       const downloaded = res.downloaded ?? [];
-      const ok = hostRel.filter((h) =>
+      // Report ONLY host-relative paths that actually landed (never
+      // a path we didn't sync — that'd 404 in the UI).
+      return hostRel.filter((h) =>
         downloaded.some((abs) => abs === h || abs.endsWith(`/${h}`)),
       );
-      return ok;
     } catch (err) {
       this.deps.log.warn?.(
         "opencode-worker: stageDeliverables syncDown failed",
-        { taskId: task.id, err: err instanceof Error ? err.message : String(err) },
+        {
+          taskId: task.id,
+          err: err instanceof Error ? err.message : String(err),
+        },
       );
-      // Do NOT report intended-but-unsynced paths — they'd 404.
       return [];
     }
   }
