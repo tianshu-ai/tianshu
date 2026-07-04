@@ -126,6 +126,10 @@ export class OpenShellRunner implements SandboxRunner {
   /** host:port endpoints already granted egress this session
    *  (allowEgress idempotency). Cleared on reset(). */
   private readonly grantedEgress = new Set<string>();
+  /** Guard: at most one advisor-driven sandbox recreate per
+   *  ensureSandbox() pass, so a persistent feature_disabled can't
+   *  spin the sandbox in a recreate loop. Reset at each pass start. */
+  private healedAdvisorThisPass = false;
 
   constructor(opts: OpenShellRunnerOpts) {
     this.opts = {
@@ -157,6 +161,7 @@ export class OpenShellRunner implements SandboxRunner {
   async ensureSandbox(): Promise<void> {
     this.state = "starting";
     this.startedAt = Date.now();
+    this.healedAdvisorThisPass = false;
     try {
       this.gatewayHandle = await this.gateway.ensureRunning();
       // After the gateway is up + certs exist we can lay down the
@@ -202,6 +207,13 @@ export class OpenShellRunner implements SandboxRunner {
       // Wait for Ready. Cold image pull is slow; subsequent creates
       // are fast because the docker image is cached.
       await this.waitForReady();
+      // Self-heal stale sandboxes: a sandbox created BEFORE the
+      // global advisor setting existed baked in `proposals disabled`
+      // and won't pick up the global flip (openshell forbids a
+      // sandbox-scoped override once the setting is managed
+      // globally). Detect that here and recreate ONCE so the fresh
+      // sandbox inherits the now-correct global value.
+      await this.healAdvisorIfStale();
       this.state = "ready";
       this.lastError = undefined;
     } catch (err) {
@@ -779,6 +791,103 @@ export class OpenShellRunner implements SandboxRunner {
    * `policy update`. The gateway's mTLS is required here — a hand-run
    * `openshell settings set` wouldn't have the client cert.
    */
+  /**
+   * If the advisor is enabled but the (possibly pre-existing /
+   * adopted) sandbox still reports proposals as disabled, recreate
+   * it once so it inherits the global setting. No-op when the
+   * advisor is off, when the probe shows proposals already work, or
+   * when we've already recreated this ensureSandbox() pass (guards
+   * against a recreate loop if something deeper is wrong).
+   *
+   * Probe: POST an empty-operations proposal to the sandbox-local
+   * policy API. Verified against openshell 0.0.74:
+   *   - proposals disabled -> {"error":"feature_disabled", ...}
+   *   - proposals enabled  -> {"error":"invalid_proposal", ...}
+   * (an empty proposal is always rejected; we only care WHICH way.)
+   */
+  private async healAdvisorIfStale(): Promise<void> {
+    const mode = this.opts.policyAdvisor ?? "off";
+    if (mode !== "auto" && mode !== "manual") return; // advisor off
+    if (this.healedAdvisorThisPass) return; // already recreated once
+    let disabled: boolean;
+    try {
+      disabled = await this.probeProposalsDisabled();
+    } catch (err) {
+      // Probe itself failed (curl missing, API unreachable) — don't
+      // recreate on a flaky probe; just log and move on.
+      this.opts.log.warn(
+        `openshell: advisor self-heal probe failed (skipping recreate): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return;
+    }
+    if (!disabled) return; // healthy — proposals already enabled
+    this.opts.log.warn(
+      `openshell: sandbox ${this.sandboxName} has policy proposals ` +
+        `disabled despite advisor mode=${mode} (stale sandbox); ` +
+        `recreating once so it inherits the global setting`,
+    );
+    this.healedAdvisorThisPass = true;
+    await this.cli(["sandbox", "delete", this.sandboxName]).catch(
+      () => undefined,
+    );
+    this.grantedEgress.clear(); // fresh sandbox = fresh policy
+    await this.createSandbox();
+    await this.waitForReady();
+    // Verify the recreate actually fixed it; if not, surface a
+    // warning but don't loop (guard is set).
+    try {
+      if (await this.probeProposalsDisabled()) {
+        this.opts.log.error(
+          `openshell: sandbox ${this.sandboxName} STILL reports proposals ` +
+            `disabled after recreate — check the global ` +
+            `agent_policy_proposals_enabled setting`,
+        );
+      } else {
+        this.opts.log.info(
+          `openshell: sandbox ${this.sandboxName} recreated; policy ` +
+            `proposals now enabled`,
+        );
+      }
+    } catch {
+      /* re-probe best-effort */
+    }
+  }
+
+  /**
+   * Probe whether agent-driven policy proposals are DISABLED in the
+   * live sandbox by POSTing an empty proposal to the sandbox-local
+   * policy API and inspecting the error class. Returns true only
+   * when the API explicitly answers `feature_disabled`; any other
+   * response (invalid_proposal, accepted, or an unrecognised body)
+   * is treated as "not disabled" so we never recreate on ambiguity.
+   */
+  private async probeProposalsDisabled(): Promise<boolean> {
+    // Run via spawnCli directly (NOT this.exec) — exec() re-enters
+    // ensureSandbox() when state isn't "ready", which would recurse
+    // since we're called from inside ensureSandbox() before state is
+    // set. spawnCli is the same low-level transport exec uses.
+    const { stdout, stderr } = await this.spawnCli(
+      [
+        "sandbox",
+        "exec",
+        "--name",
+        this.sandboxName,
+        "--no-tty",
+        "--",
+        "bash",
+        "-c",
+        "curl -sS -m 8 -X POST http://policy.local/v1/proposals " +
+          "-H 'content-type: application/json' " +
+          `-d '{"intent_summary":"advisor-selfcheck","operations":[]}' 2>&1`,
+      ],
+      { timeoutMs: 15_000 },
+    );
+    const body = `${stdout}\n${stderr}`;
+    return /feature_disabled/.test(body);
+  }
+
   private async ensurePolicyAdvisorSettings(): Promise<void> {
     const mode = this.opts.policyAdvisor ?? "off";
     const enabled = mode === "auto" || mode === "manual";
