@@ -174,10 +174,13 @@ rule yourself through the sandbox-local policy API, then retry.
    Each line shows the binary, host, and port that were blocked.
 2. Build the smallest proposal for exactly the host+port you need
    (see schema below). Prefer an L7 REST rule with a tight path.
-3. Submit it:
+   Write it to \`./proposal.json\` in the CURRENT working directory
+   — do NOT use /tmp or any absolute path outside the workdir, or
+   the write will be rejected.
+3. Submit it (run from the same directory as proposal.json):
    \`\`\`sh
    curl -s -X POST http://policy.local/v1/proposals \\
-     -H 'content-type: application/json' -d @proposal.json
+     -H 'content-type: application/json' -d @./proposal.json
    \`\`\`
    The 202 response has \`accepted_chunk_ids\` (save the first id)
    and \`rejection_reasons\` (fix + resubmit if non-empty).
@@ -212,9 +215,10 @@ your \`webfetch\` still 403s after approval, it is almost always
 because this path was omitted. When in doubt, just retry with
 \`curl\`.)
 
-## Proposal schema (write to proposal.json)
+## Proposal schema (write to ./proposal.json in the current dir)
 
-Example: allow GET to https://example.com over HTTPS.
+Example: allow GET to https://example.com over HTTPS. Save this to
+\`./proposal.json\` (relative to your working directory — never /tmp).
 
 \`\`\`json
 {
@@ -300,11 +304,27 @@ export class OpenCodeWorker implements WorkerHandle {
         // Headless: never pause for approval. opencode is
         // interactive by default and, run non-interactively, a tool
         // that needs approval is auto-rejected ("user rejected
-        // permission") and the run stalls. Allow every tool.
+        // permission") and the run stalls. Allow EVERY tool via the
+        // catch-all, then keep the explicit keys as documentation.
+        //
+        // Two footguns this closes:
+        //   - `write`/`patch` are separate tools from `edit`; the
+        //     catch-all covers them so a policy-advisor proposal file
+        //     write isn't auto-rejected (the failure we hit before).
+        //   - `external_directory`: any tool touching a path OUTSIDE
+        //     the run's cwd (e.g. opencode writing /tmp/proposal.json,
+        //     or the policy skill's curl reading it) is denied by
+        //     default even when the tool itself is allowed. Whitelist
+        //     the sandbox workspace + /tmp so those go through.
         permission: {
+          "*": "allow" as const,
           edit: "allow" as const,
           bash: "allow" as const,
           webfetch: "allow" as const,
+          external_directory: {
+            "/tmp/**": "allow" as const,
+            "/sandbox/**": "allow" as const,
+          },
         },
         // LSP + formatters: OFF unless the worker enabled them.
         // opencode auto-installs a language server for the edited
