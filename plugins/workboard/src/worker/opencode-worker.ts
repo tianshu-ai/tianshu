@@ -101,6 +101,15 @@ export interface OpenCodeWorkerDeps {
 /** Hosts opencode needs to reach to auto-install LSP servers /
  *  formatters when enableLsp is on. Kept tight (npm + GitHub
  *  release assets) rather than opening all public egress. */
+/** Hosts opencode's `skill` tool needs to auto-download ripgrep
+ *  (from GitHub releases) on first use. Opened UNCONDITIONALLY when
+ *  the sandbox is deny-by-default, because without rg the skill tool
+ *  errors (RipgrepDownloadFailedError) and NO skill can load. */
+const RIPGREP_DL_EGRESS: Array<{ host: string; port: number }> = [
+  { host: "github.com", port: 443 },
+  { host: "objects.githubusercontent.com", port: 443 },
+];
+
 const LSP_INSTALL_EGRESS: Array<{ host: string; port: number }> = [
   { host: "registry.npmjs.org", port: 443 },
   { host: "github.com", port: 443 },
@@ -500,6 +509,37 @@ export class OpenCodeWorker implements WorkerHandle {
             "opencode-worker: allowEgress failed (continuing; run may 403)",
             { err: err instanceof Error ? err.message : String(err) },
           );
+        }
+
+        // opencode's `skill` tool needs ripgrep, which it
+        // auto-downloads from GitHub releases on first use. On a
+        // deny-by-default sandbox that download is blocked ->
+        // RipgrepDownloadFailedError -> the skill tool ERRORS (it
+        // can't load ANY skill, incl. our openshell-network-policy
+        // one — opencode then falls back to reading the file, but the
+        // skill tool itself is broken). Open egress to the ripgrep
+        // download hosts unconditionally (not just under enableLsp)
+        // so skills work. opencode/bun opens the socket, so authorize
+        // those binaries too (incl. the real .opencode bun binary).
+        for (const ep of RIPGREP_DL_EGRESS) {
+          try {
+            await this.deps.shell.allowEgress({
+              host: ep.host,
+              port: ep.port,
+              protocol: "https",
+              binaries: [
+                "/usr/bin/node",
+                "/usr/lib/node_modules/opencode-ai/bin/opencode",
+                "/usr/lib/node_modules/opencode-ai/bin/.opencode",
+                "/usr/bin/opencode",
+              ],
+            });
+          } catch (err) {
+            this.deps.log.warn?.(
+              "opencode-worker: ripgrep egress grant failed (skill tool may fail)",
+              { err: err instanceof Error ? err.message : String(err) },
+            );
+          }
         }
 
         // When LSP is enabled, also open egress to the package
