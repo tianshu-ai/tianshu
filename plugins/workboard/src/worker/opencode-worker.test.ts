@@ -110,6 +110,32 @@ describe("parseOpencodeEvents", () => {
     expect(r.text).toBe("Hello\n\nworld.");
   });
 
+  it("preserves stream-order interleaving in the timeline (text/tool/text/tool)", () => {
+    const ndjson = [
+      JSON.stringify({ type: "text", part: { text: "first" } }),
+      JSON.stringify({ type: "tool_use", part: { tool: "bash", state: { input: { cmd: "ls" }, status: "completed", output: "a" } } }),
+      JSON.stringify({ type: "text", part: { text: "second" } }),
+      JSON.stringify({ type: "tool_use", part: { tool: "write", state: { input: { path: "x" }, status: "completed" } } }),
+    ].join("\n");
+    const r = parseOpencodeEvents(ndjson);
+    // NOT grouped as [all text][all tools] — order is preserved.
+    expect(r.timeline.map((n) => n.kind)).toEqual([
+      "text",
+      "tool",
+      "text",
+      "tool",
+    ]);
+    expect(r.timeline[0]).toMatchObject({ kind: "text", text: "first" });
+    expect(r.timeline[1]).toMatchObject({ kind: "tool", index: 0 });
+    expect((r.timeline[1] as { tool: { tool: string } }).tool.tool).toBe(
+      "bash",
+    );
+    expect(r.timeline[2]).toMatchObject({ kind: "text", text: "second" });
+    expect(r.timeline[3]).toMatchObject({ kind: "tool", index: 1 });
+    // tools[] still available (backward compat)
+    expect(r.tools.map((t) => t.tool)).toEqual(["bash", "write"]);
+  });
+
   it("surfaces the first session error", () => {
     const ndjson = [
       JSON.stringify({ type: "text", part: { text: "partial" } }),

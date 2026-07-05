@@ -1264,7 +1264,12 @@ export class OpenCodeWorker implements WorkerHandle {
    */
   private writeHistory(
     task: Task,
-    parsed: { text: string; error?: string; tools: OpencodeToolEvent[] },
+    parsed: {
+      text: string;
+      error?: string;
+      tools: OpencodeToolEvent[];
+      timeline?: OpencodeTimelineNode[];
+    },
     res: {
       exitCode?: number;
       timedOut?: boolean;
@@ -1296,30 +1301,16 @@ export class OpenCodeWorker implements WorkerHandle {
       // 1) prompt
       mk("user", buildPrompt(task));
 
-      // 2) assistant: text + tool_use parts (real args). callId ties
-      //    each tool_use to its tool_result below.
-      const assistantText =
-        parsed.text ||
-        (parsed.tools.length
-          ? `(running — ${parsed.tools.length} tool call(s) so far)`
-          : final
-            ? "(no output)"
-            : "(running…)");
-      const parts: Array<Record<string, unknown>> = [
-        { type: "text", text: assistantText },
-        ...parsed.tools.map((t, i) => ({
-          type: "tool_use",
-          id: `oc_${i}`,
-          name: t.tool,
-          input: t.input ?? {},
-        })),
-      ];
-      mk("assistant", parts);
-
-      // 3) one tool_result per finished tool (completed/error) so the
-      //    UI chip resolves. Reader recognises role=tool +
-      //    {role:"toolResult", toolCallId, toolName, content, isError}.
-      parsed.tools.forEach((t, i) => {
+      // 2+3) Walk the STREAM-ORDER timeline so text and tool calls
+      //    render interleaved (say → call → result → say → call …),
+      //    the way opencode actually produced them — NOT "one big
+      //    text block then a wall of tool chips" (the old grouped
+      //    layout). Each text node -> an assistant text message.
+      //    Each tool node -> an assistant message carrying that one
+      //    tool_use, immediately followed by its tool_result so the
+      //    chip resolves next to where it was called.
+      const timeline = parsed.timeline ?? [];
+      const mkToolResult = (t: OpencodeToolEvent, id: string) => {
         if (!t.status) return; // still running -> leave chip spinning
         insertMsg.run(
           `ocm_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
@@ -1327,14 +1318,43 @@ export class OpenCodeWorker implements WorkerHandle {
           "tool",
           JSON.stringify({
             role: "toolResult",
-            toolCallId: `oc_${i}`,
+            toolCallId: id,
             toolName: t.tool,
             isError: t.status === "error",
-            content: t.output ?? (t.status === "error" ? "(error)" : "(done)"),
+            content:
+              t.output ?? (t.status === "error" ? "(error)" : "(done)"),
           }),
           now + seq++,
         );
-      });
+      };
+      if (timeline.length === 0) {
+        // No structured events yet (very start of run, or parse
+        // produced nothing): show a placeholder so the tab isn't
+        // blank.
+        mk("assistant", [
+          {
+            type: "text",
+            text: parsed.text || (final ? "(no output)" : "(running…)"),
+          },
+        ]);
+      } else {
+        for (const node of timeline) {
+          if (node.kind === "text") {
+            mk("assistant", [{ type: "text", text: node.text }]);
+          } else {
+            const id = `oc_${node.index}`;
+            mk("assistant", [
+              {
+                type: "tool_use",
+                id,
+                name: node.tool.tool,
+                input: node.tool.input ?? {},
+              },
+            ]);
+            mkToolResult(node.tool, id);
+          }
+        }
+      }
 
       // 4) outcome footer only on the final write
       if (final) {
@@ -1461,14 +1481,25 @@ export interface OpencodeToolEvent {
   output?: string;
 }
 
+/** One node in the assistant's turn timeline, in STREAM ORDER, so the
+ *  transcript renders text and tool calls interleaved the way
+ *  opencode actually produced them (say → call → say → call) rather
+ *  than "all text, then all tools". */
+export type OpencodeTimelineNode =
+  | { kind: "text"; text: string }
+  | { kind: "tool"; tool: OpencodeToolEvent; index: number };
+
 export function parseOpencodeEvents(stdout: string): {
   text: string;
   error?: string;
   /** Tool calls opencode made, in order — for the history view. */
   tools: OpencodeToolEvent[];
+  /** Text + tool events in original stream order (interleaved). */
+  timeline: OpencodeTimelineNode[];
 } {
   const texts: string[] = [];
   const tools: OpencodeToolEvent[] = [];
+  const timeline: OpencodeTimelineNode[] = [];
   let error: string | undefined;
   for (const line of stdout.split(/\r?\n/)) {
     const s = line.trim();
@@ -1483,7 +1514,13 @@ export function parseOpencodeEvents(stdout: string): {
     if (type === "text") {
       const part = ev.part as { text?: unknown } | undefined;
       if (part && typeof part.text === "string" && part.text.trim()) {
-        texts.push(part.text.trim());
+        const t = part.text.trim();
+        texts.push(t);
+        // Merge consecutive text nodes (opencode streams a text part
+        // in deltas) so we don't fragment one message into many.
+        const last = timeline[timeline.length - 1];
+        if (last && last.kind === "text") last.text += `\n\n${t}`;
+        else timeline.push({ kind: "text", text: t });
       }
     } else if (type === "tool_use" || type === "tool") {
       const part = (ev.part ?? ev) as Record<string, unknown>;
@@ -1519,8 +1556,12 @@ export function parseOpencodeEvents(stdout: string): {
         prev.detail = detail;
         prev.status = status ?? prev.status;
         prev.output = output ?? prev.output;
+        // prev is already the last tool node in the timeline; the
+        // merge above updated it in place (same object reference).
       } else {
-        tools.push({ tool, detail, input, status, output });
+        const ev2: OpencodeToolEvent = { tool, detail, input, status, output };
+        tools.push(ev2);
+        timeline.push({ kind: "tool", tool: ev2, index: tools.length - 1 });
       }
     } else if (type === "session.error" || type === "error") {
       // opencode error shape (observed): {type,error:{name,data:{
@@ -1556,7 +1597,7 @@ export function parseOpencodeEvents(stdout: string): {
       }
     }
   }
-  return { text: texts.join("\n\n"), error, tools };
+  return { text: texts.join("\n\n"), error, tools, timeline };
 }
 
 /** Minimal shell single-quote escaping for embedding a string in a
