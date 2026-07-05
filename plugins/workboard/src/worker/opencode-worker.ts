@@ -890,6 +890,13 @@ export class OpenCodeWorker implements WorkerHandle {
       taskTitle: task.title || null,
     });
 
+    // Merge the judge's own transcript into the opencode session so
+    // ONE task log shows both: opencode's work, then the judge's
+    // verdict process. The judge runs in its own `Judge:` session
+    // (result.sessionId); copy its messages into the opencode ocs_
+    // session (which tasks.session_id points at) behind a divider.
+    this.appendJudgeTranscript(task, result.sessionId);
+
     // Map the agent-loop result to our TerminalUpdate. The agent's
     // task_complete call drives status; if it finished without
     // completing, treat as stalled with its reason.
@@ -1246,6 +1253,71 @@ export class OpenCodeWorker implements WorkerHandle {
         err: err instanceof Error ? err.message : String(err),
       });
       return null;
+    }
+  }
+
+  /**
+   * Append the judge's transcript into the opencode session so the
+   * task's Execution tab shows ONE stream: opencode's work, a
+   * divider, then the judge's verdict process (its reasoning +
+   * inspect tool calls + the final task_complete). The judge ran in
+   * its own `Judge:` session (judgeSessionId); we copy those rows
+   * into the opencode ocs_ session (the one tasks.session_id points
+   * at). Best-effort; never throws into the run.
+   */
+  private appendJudgeTranscript(
+    task: Task,
+    judgeSessionId: string | undefined,
+  ): void {
+    if (!judgeSessionId) return;
+    const ocsId = this.sessionIds.get(task.id);
+    if (!ocsId || ocsId === judgeSessionId) return;
+    try {
+      const db = this.deps.db;
+      const rows = db
+        .prepare(
+          `SELECT role, content FROM messages
+             WHERE session_id = ? AND role != 'user'
+             ORDER BY created_at`,
+        )
+        .all(judgeSessionId) as { role: string; content: string }[];
+      if (!rows.length) return;
+      const base = Date.now();
+      let seq = 0;
+      const insert = db.prepare(
+        `INSERT INTO messages (id, session_id, role, content, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      );
+      // Divider so the tab visibly separates work from verdict.
+      insert.run(
+        `ocm_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
+        ocsId,
+        "system",
+        JSON.stringify({ content: "── Judge (verdict) ──" }),
+        base + seq++,
+      );
+      // Skip the judge's giant initial prompt (role=user, excluded
+      // by the query) — it's the whole opencode transcript re-fed to
+      // the judge, redundant here. Copy the judge's assistant/tool
+      // rows verbatim so tool chips + reasoning render the same way.
+      for (const r of rows) {
+        insert.run(
+          `ocm_${randomUUID().replace(/-/g, "").slice(0, 20)}`,
+          ocsId,
+          r.role,
+          r.content,
+          base + seq++,
+        );
+      }
+      this.deps.log.info?.("opencode-worker: appended judge transcript", {
+        taskId: task.id,
+        judgeRows: rows.length,
+      });
+    } catch (err) {
+      this.deps.log.warn?.(
+        "opencode-worker: appendJudgeTranscript failed (non-fatal)",
+        { taskId: task.id, err: err instanceof Error ? err.message : String(err) },
+      );
     }
   }
 
