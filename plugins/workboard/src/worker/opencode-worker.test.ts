@@ -45,6 +45,21 @@ describe("buildPrompt network policy advisor hint", () => {
     expect(p).toContain("CURRENT working directory");
   });
 
+  it("omits the resume note when there are no prior files", () => {
+    const p = buildPrompt(fakeTask());
+    expect(p).not.toContain("Resuming a previous attempt");
+  });
+
+  it("lists prior files + tells opencode to build on them when resuming", () => {
+    const p = buildPrompt(fakeTask(), {
+      priorFiles: ["report.md", "src/main.py"],
+    });
+    expect(p).toContain("Resuming a previous attempt");
+    expect(p).toContain("- report.md");
+    expect(p).toContain("- src/main.py");
+    expect(p).toContain("BUILD ON");
+  });
+
   it("appends the advisor trigger on a deny-by-default sandbox", () => {
     const p = buildPrompt(fakeTask(), { networkPolicyAdvisor: true });
     expect(p).toContain("do a thing");

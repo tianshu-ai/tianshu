@@ -537,8 +537,20 @@ export class OpenCodeWorker implements WorkerHandle {
       // (Bun.stdin.text()), so `... run --format json < .prompt.txt`
       // keeps the command line newline-free while still delivering
       // the full multi-line prompt.
+      // Resume awareness: on a re-claim after task_continue
+      // (attempts>0) the workdir is REUSED (same taskId, mkdir -p not
+      // rm -rf), so a prior attempt's partial files are still here.
+      // opencode gets a fresh prompt though, so unless we tell it,
+      // it has no idea prior work exists and may restart from
+      // scratch. List the surviving non-scaffolding files and hand
+      // them to the prompt so opencode continues instead of redoing.
+      let priorFiles: string[] = [];
+      if ((task.attempts ?? 0) > 0) {
+        priorFiles = await this.listPriorWorkdirFiles(workdir, task);
+      }
       const prompt = buildPrompt(task, {
         networkPolicyAdvisor: Boolean(this.deps.shell.allowEgress),
+        priorFiles,
       });
       await this.deps.shell.writeFile(`${workdir}/.prompt.txt`, prompt);
 
@@ -921,6 +933,44 @@ export class OpenCodeWorker implements WorkerHandle {
         (status === "done" ? "Task completed." : "Task not completed."),
       resultFiles: hostFiles,
     };
+  }
+
+  /**
+   * List the non-scaffolding files already present in the reused
+   * workdir (a prior attempt's partial work). Used to tell opencode
+   * on resume that prior output exists so it continues rather than
+   * restarting. Best-effort; returns [] on any error or empty dir.
+   */
+  private async listPriorWorkdirFiles(
+    workdir: string,
+    task: Task,
+  ): Promise<string[]> {
+    try {
+      const abs = `${SANDBOX_WORKSPACE_ROOT}/${workdir}`;
+      const listed = await this.deps.shell.exec({
+        command:
+          `cd ${shq(abs)} 2>/dev/null && find . -type d \\( ` +
+          `-name .deliverables -o -name .oc-config -o -name .oc-data ` +
+          `-o -name __pycache__ -o -name .pytest_cache -o -name .git ` +
+          `-o -name node_modules \\) -prune -o -type f -printf '%P\\n' ` +
+          `2>/dev/null | head -100 || true`,
+        userId: this.deps.ownerUserId ?? task.ownerUserId,
+        taskId: task.id,
+        timeoutMs: 15_000,
+      });
+      return listed.stdout
+        .split(/\r?\n/)
+        .map((l: string) => l.trim())
+        .filter(
+          (f: string) =>
+            Boolean(f) &&
+            !f.includes("..") &&
+            !EXCLUDED_DELIVERABLE.has(f) &&
+            !f.endsWith(".pyc"),
+        );
+    } catch {
+      return [];
+    }
   }
 
   /**
@@ -1495,11 +1545,27 @@ export class OpenCodeWorker implements WorkerHandle {
  *  for it (a skill is only loaded on demand). */
 export function buildPrompt(
   task: Task,
-  opts: { networkPolicyAdvisor?: boolean } = {},
+  opts: { networkPolicyAdvisor?: boolean; priorFiles?: string[] } = {},
 ): string {
   const parts = [task.title];
   if (task.description && task.description.trim()) {
     parts.push("", task.description.trim());
+  }
+  // Resume: a prior attempt left partial work in this same working
+  // directory. Tell opencode it exists so it CONTINUES from it
+  // instead of starting over (it gets a fresh conversation each
+  // attempt and would otherwise not know).
+  if (opts.priorFiles && opts.priorFiles.length) {
+    parts.push(
+      "",
+      "---",
+      "Resuming a previous attempt. Files from your earlier work are " +
+        "ALREADY in the current working directory — inspect and BUILD ON " +
+        "them rather than starting from scratch:",
+      ...opts.priorFiles.slice(0, 50).map((f) => `- ${f}`),
+      "Read what's there first (e.g. `ls -la`, `cat <file>`), keep what's " +
+        "correct, and only redo what's missing or wrong.",
+    );
   }
   // Delivery convention: tell opencode where to put its real output
   // and to keep it separate from scratch/process files. A post-run
