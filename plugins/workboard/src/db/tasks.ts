@@ -683,14 +683,23 @@ export function claimNextTask(
       ? `UPDATE tasks
            SET status = 'in_progress',
                started_at = ?,
-               session_id = ?,
+               session_id = COALESCE(?, session_id),
                worker_agent_id = ?
          WHERE id = ? AND status = 'ready'`
       : `UPDATE tasks
            SET status = 'in_progress',
                started_at = ?,
-               session_id = ?
+               session_id = COALESCE(?, session_id)
          WHERE id = ? AND status = 'ready'`;
+    // COALESCE(?, session_id) preserves an existing session on claim
+    // when the caller passes no sessionId — this is what makes RESUME
+    // work. task_continue keeps tasks.session_id + bumps attempts,
+    // then the pool re-claims with sessionId=undefined; previously
+    // that overwrote session_id to NULL, so LLMWorker's
+    // `shouldResume = attempts>0 && task.sessionId` saw null and the
+    // task restarted fresh (losing the prior transcript). First
+    // claim is unaffected: session_id is already null, stays null,
+    // and the worker stamps its own fresh session at run start.
     const result = (
       agentId
         ? db.prepare(claimSql).run(now, sessionId, agentId, candidate.id)

@@ -1207,6 +1207,17 @@ export class OpenCodeWorker implements WorkerHandle {
     try {
       const db = this.deps.db;
       const now = Date.now();
+      // NOTE on resume: each opencode attempt is a genuinely fresh
+      // `opencode run` process (opencode can't resume its own LLM
+      // context from our DB), so we mint a NEW transcript session per
+      // attempt rather than reuse task.sessionId. Reusing it would be
+      // wrong here because writeHistory() DELETEs+rewrites the session
+      // from the CURRENT run's oc.out — which doesn't contain the
+      // prior attempt — so reuse would erase attempt N-1's log. The
+      // real cross-attempt continuity for opencode is the REUSED
+      // WORKDIR (opencode/<taskId>, same id across attempts) whose
+      // prior files survive; the continuation hint in the prompt
+      // tells opencode to build on them.
       const sessionId = `ocs_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
       const userId = this.deps.ownerUserId ?? task.ownerUserId;
       // sessions.user_id FK -> users(id); dev/virtual users may not
