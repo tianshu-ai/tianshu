@@ -146,6 +146,70 @@ const OPENCODE_BINARIES = [
   "/sandbox/.oc-npm/**",
 ];
 
+/** All oh-my-openagent agent names (from its config schema's
+ *  `agents` keys). Every one gets pinned to our single model. */
+const OMO_AGENTS = [
+  "build",
+  "plan",
+  "sisyphus",
+  "hephaestus",
+  "sisyphus-junior",
+  "OpenCode-Builder",
+  "prometheus",
+  "metis",
+  "momus",
+  "oracle",
+  "librarian",
+  "explore",
+  "multimodal-looker",
+  "atlas",
+];
+
+/** omo delegation categories (from its orchestration docs). Pinned
+ *  too, since task(category=...) routing resolves a model per
+ *  category. */
+const OMO_CATEGORIES = [
+  "visual-engineering",
+  "artistry",
+  "ultrabrain",
+  "deep",
+  "quick",
+  "unspecified-low",
+  "unspecified-high",
+  "writing",
+  "quick-rust",
+  "quick-zig",
+  "git",
+];
+
+/** Build an oh-my-opencode.jsonc that forces every omo agent +
+ *  category onto a single model (our proxied tianshu model), and
+ *  turns off omo's runtime model fallback (there is only one model,
+ *  so a fallback chain to unavailable providers would just error).
+ *  Team mode is left off (default). */
+function buildOmoConfig(model: string): string {
+  const agents: Record<string, { model: string }> = {};
+  for (const a of OMO_AGENTS) agents[a] = { model };
+  const categories: Record<string, { model: string }> = {};
+  for (const c of OMO_CATEGORIES) categories[c] = { model };
+  return JSON.stringify(
+    {
+      $schema:
+        "https://raw.githubusercontent.com/code-yeongyu/oh-my-openagent/dev/assets/oh-my-opencode.schema.json",
+      // one model everywhere
+      agents,
+      categories,
+      // Only one model is reachable (single proxy provider), so
+      // disable the multi-provider fallback machinery.
+      model_fallback: false,
+      runtime_fallback: false,
+      telemetry: false,
+    },
+    null,
+    2,
+  );
+}
+
 /** Sandbox-side workspace root the openshell runner uses. The
  *  opencode workdir (`opencode/<taskId>`) is relative to this;
  *  the judge needs the absolute path for its bash/ls. */
@@ -524,6 +588,28 @@ export class OpenCodeWorker implements WorkerHandle {
         `${workdir}/opencode.json`,
         JSON.stringify(opencodeConfig, null, 2),
       );
+
+      // oh-my-openagent config: pin EVERY omo agent + category to our
+      // single proxied model. omo's built-in fallback chains list
+      // provider names like anthropic/openai/google — none of which
+      // is our "tianshu" proxy provider, so out of the box omo can't
+      // resolve any model and its agents don't work. Writing an
+      // oh-my-opencode config that sets model=tianshu/<model> on all
+      // agents + categories forces everything onto the one model we
+      // expose (Yu: "first configure them all to the same one").
+      // omo reads `.opencode/oh-my-opencode.jsonc`; with
+      // OPENCODE_CONFIG=./opencode.json + XDG_CONFIG_HOME=./.oc-config
+      // we cover both the project-relative and XDG locations.
+      const omoModel = `tianshu/${nativeModelId}`;
+      const omoConfigJson = buildOmoConfig(omoModel);
+      for (const rel of [
+        `${workdir}/.opencode/oh-my-opencode.jsonc`,
+        `${workdir}/.oc-config/opencode/oh-my-opencode.jsonc`,
+      ]) {
+        await this.deps.shell
+          .writeFile(rel, omoConfigJson)
+          .catch(() => undefined);
+      }
 
       // On a deny-by-default sandbox (openshell exposes allowEgress),
       // drop an opencode-native skill that teaches opencode to use
