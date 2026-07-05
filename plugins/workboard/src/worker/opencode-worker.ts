@@ -123,6 +123,29 @@ const LSP_INSTALL_EGRESS: Array<{ host: string; port: number }> = [
  *  silently break every worker. Bump deliberately. */
 const OPENCODE_VERSION = "1.17.13";
 
+/** Absolute binary paths that may open network sockets on opencode's
+ *  behalf. openshell gates egress by BOTH host:port AND the calling
+ *  binary, so every egress grant must list these. Covers: the base
+ *  image's root install (/usr/lib, /usr/bin, /usr/local/bin), node,
+ *  npm, and — critically — our user-prefix install under the sandbox
+ *  user's HOME (glob, since HOME varies: /home/sandbox, /sandbox,
+ *  /root...). The `**` glob is supported by openshell binary
+ *  matchers (see the community base policy). */
+const OPENCODE_BINARIES = [
+  "/usr/lib/node_modules/opencode-ai/bin/opencode",
+  "/usr/lib/node_modules/opencode-ai/bin/.opencode",
+  "/usr/bin/opencode",
+  "/usr/local/bin/opencode",
+  "/usr/bin/node",
+  "/usr/local/bin/node",
+  "/usr/bin/npm",
+  "/usr/local/bin/npm",
+  // user-prefix install ($HOME/.oc-npm) — HOME varies, so glob:
+  "/home/*/.oc-npm/**",
+  "/root/.oc-npm/**",
+  "/sandbox/.oc-npm/**",
+];
+
 /** Sandbox-side workspace root the openshell runner uses. The
  *  opencode workdir (`opencode/<taskId>`) is relative to this;
  *  the judge needs the absolute path for its bash/ls. */
@@ -360,6 +383,13 @@ export class OpenCodeWorker implements WorkerHandle {
         // reaches the network.
         snapshot: false,
         autoupdate: false,
+        // oh-my-openagent: batteries-included opencode plugin
+        // (multi-model orchestration, background agents, LSP/AST
+        // tools). opencode auto-installs npm plugins via Bun at
+        // startup into ~/.cache/opencode/node_modules — needs egress
+        // to registry.npmjs.org, provided by the policy-advisor loop
+        // (opencode self-proposes) when policyAdvisor is on.
+        plugin: ["oh-my-openagent"],
         // Headless: never pause for approval. opencode is
         // interactive by default and, run non-interactively, a tool
         // that needs approval is auto-rejected ("user rejected
@@ -413,8 +443,54 @@ export class OpenCodeWorker implements WorkerHandle {
       // image ships node but not opencode; install once (idempotent —
       // subsequent tasks in the same long-lived container skip it).
       // Generous timeout: first install pulls the platform binary.
+      //
+      // Version pinning matters: the openshell community base image
+      // PREINSTALLS an old opencode (observed 1.2.18) that lacks the
+      // websearch tool + OPENCODE_ENABLE_PARALLEL flag. A bare
+      // `command -v opencode || install` would keep that stale
+      // binary forever. So we install our pinned version unless the
+      // installed one already matches it (idempotent, but upgrades
+      // the stale preinstall).
+      // Install into a USER-writable npm prefix ($HOME/.oc-npm), not
+      // the root-owned global /usr/lib/node_modules (the base image's
+      // preinstalled opencode lives there and the sandbox user can't
+      // overwrite it -> EACCES). We then put $HOME/.oc-npm/bin first
+      // on PATH in the run command so our pinned version wins over
+      // the stale preinstall. Skip the install if our prefix already
+      // has the right version.
+      const OC_PREFIX = "$HOME/.oc-npm";
+      const ocBin = `${OC_PREFIX}/bin/opencode`;
+
+      // Installing opencode (+ later its oh-my-openagent plugin)
+      // needs egress to the npm registry, and it's `npm`/`node`
+      // doing the fetch, not opencode — so opencode's policy-advisor
+      // self-proposal can't cover it. Pre-grant npm egress for the
+      // node/npm binaries before installing. No-op on open-network
+      // runtimes.
+      if (this.deps.shell.allowEgress) {
+        for (const host of ["registry.npmjs.org"]) {
+          await this.deps.shell
+            .allowEgress({
+              host,
+              port: 443,
+              protocol: "https",
+              binaries: [
+                ...OPENCODE_BINARIES,
+                "/usr/lib/node_modules/npm/bin/npm-cli.js",
+              ],
+            })
+            .catch((err) =>
+              this.deps.log.warn?.(
+                "opencode-worker: npm egress grant failed (install may 403)",
+                { err: err instanceof Error ? err.message : String(err) },
+              ),
+            );
+        }
+      }
+
       const ensure = await this.sh(
-        `command -v opencode >/dev/null 2>&1 || npm i -g opencode-ai@${OPENCODE_VERSION}`,
+        `test "$(${ocBin} --version 2>/dev/null | head -1)" = "${OPENCODE_VERSION}" || ` +
+          `npm i -g --prefix ${OC_PREFIX} opencode-ai@${OPENCODE_VERSION}`,
         task,
         signal,
         5 * 60_000,
@@ -496,13 +572,7 @@ export class OpenCodeWorker implements WorkerHandle {
             host: u.hostname,
             port,
             protocol: u.protocol === "https:" ? "https" : "http",
-            binaries: [
-              "/usr/lib/node_modules/opencode-ai/bin/opencode",
-              "/usr/bin/opencode",
-              "/usr/local/bin/opencode",
-              "/usr/bin/node",
-              "/usr/local/bin/node",
-            ],
+            binaries: OPENCODE_BINARIES,
           });
         } catch (err) {
           this.deps.log.warn?.(
@@ -646,11 +716,25 @@ export class OpenCodeWorker implements WorkerHandle {
       const cmd =
         `cd ${shq(workdir)} && ` +
         `mkdir -p .oc-config .oc-data && ` +
+        // Put our user-prefix opencode first so it wins over the
+        // base image's stale root-installed one.
+        `export PATH="$HOME/.oc-npm/bin:$PATH" && ` +
         `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
         `XDG_DATA_HOME="$PWD/.oc-data" ` +
         // Block LSP auto-download unless the worker enabled LSP (and
         // opened the egress for it above).
         (this.deps.enableLsp ? `` : `OPENCODE_DISABLE_LSP_DOWNLOAD=1 `) +
+        // Enable opencode's built-in web_search tool. Without a flag
+        // it's filtered OUT of the toolset unless the model provider
+        // is opencode's own (registry.ts webSearchEnabled: providerID
+        // === opencode || flags.exa || flags.parallel). Our provider
+        // is "tianshu", so web_search would be absent (the observed
+        // "web_search not available"). Parallel is key-free (same
+        // backend tianshu's web-search plugin uses), so enable it;
+        // egress to search.parallel.ai is handled by the policy
+        // advisor loop (opencode self-proposes on first denial) when
+        // policyAdvisor is on.
+        `OPENCODE_ENABLE_PARALLEL=1 ` +
         `OPENCODE_CONFIG=./opencode.json ` +
         `timeout -s KILL ${capS} ` +
         `opencode run --model tianshu/${nativeModelId} --format json ` +
