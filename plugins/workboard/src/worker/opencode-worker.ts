@@ -838,6 +838,12 @@ export class OpenCodeWorker implements WorkerHandle {
         `OPENCODE_CONFIG=./opencode.json ` +
         `timeout -s KILL ${capS} ` +
         `opencode run --model tianshu/${nativeModelId} --format json ` +
+        // With oh-my-openagent loaded, its Sisyphus orchestrator is
+        // the intended primary agent; a headless `run` with no agent
+        // selected loads omo but doesn't drive it (observed: config
+        // loads, then nothing). Select sisyphus explicitly so the omo
+        // agent actually runs the task.
+        `--agent sisyphus ` +
         // TRUE resume: opencode persists its session (conversation +
         // tool history) in .oc-data/opencode (opencode.db + storage/),
         // which lives under the reused per-task workdir and survives
