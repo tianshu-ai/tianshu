@@ -608,6 +608,15 @@ export class OpenCodeWorker implements WorkerHandle {
         `OPENCODE_CONFIG=./opencode.json ` +
         `timeout -s KILL ${capS} ` +
         `opencode run --model tianshu/${nativeModelId} --format json ` +
+        // TRUE resume: opencode persists its session (conversation +
+        // tool history) in .oc-data/opencode (opencode.db + storage/),
+        // which lives under the reused per-task workdir and survives
+        // across attempts. On a re-claim (attempts>0) pass
+        // `--continue` so opencode restores the LAST session and
+        // continues the actual conversation — not just the files.
+        // First attempt: no `--continue`, fresh session. (.oc-data is
+        // per-task, so `--continue`=last session is unambiguous.)
+        ((task.attempts ?? 0) > 0 ? `--continue ` : ``) +
         `< .prompt.txt > oc.out 2> oc.err ; ` +
         `cat oc.out`;
 
