@@ -223,6 +223,50 @@ describe("runAgentLoop (worker)", () => {
     expect(r.reason).toBe("task_complete");
   });
 
+  it("task_complete is terminal: first call wins, harness aborted, later calls ignored", async () => {
+    // Regression: an agent (observed: the judge) mis-fired
+    // task_complete on turn 1, kept generating, then called it AGAIN
+    // with a correction. Nothing stopped the turn, so the SECOND
+    // (wrong) summary overwrote the first. Now the first call must
+    // win and abort the harness.
+    __script = {
+      events: [
+        {
+          type: "tool_result",
+          toolCallId: "c1",
+          toolName: "task_complete",
+          input: { summary: "FIRST verdict", files: ["a.md"] },
+          content: [],
+          details: undefined,
+          isError: false,
+        } as AgentHarnessEvent,
+        {
+          type: "tool_result",
+          toolCallId: "c2",
+          toolName: "task_complete",
+          input: { summary: "SECOND (oops) verdict", files: ["b.md"] },
+          content: [],
+          details: undefined,
+          isError: false,
+        } as AgentHarnessEvent,
+      ],
+    };
+
+    const r = await runAgentLoop({
+      ctx,
+      userId: "u1",
+      initialUserMessage: "do the thing",
+    });
+
+    expect(r.status).toBe("done");
+    expect(r.reason).toBe("task_complete");
+    // First call wins; second is ignored.
+    expect(r.summary).toBe("FIRST verdict");
+    expect(r.files).toEqual(["a.md"]);
+    // Harness was aborted to actually end the turn.
+    expect(__abortAcked).toBe(true);
+  });
+
   it("max-run timeout → error / max_run_timeout", async () => {
     __script = { events: [], delayMs: 500 };
 
