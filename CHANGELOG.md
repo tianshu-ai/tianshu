@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.37](https://github.com/tianshu-ai/tianshu/compare/v0.4.36...v0.4.37) (2026-07-05)
+
+### Bug Fixes
+
+* **opencode-worker:** enable opencode's web_search tool
+  (OPENCODE_ENABLE_PARALLEL, key-free Parallel backend), add the
+  oh-my-openagent plugin, and force the pinned opencode version
+  (1.17.13) instead of keeping the base image's stale preinstall
+  (1.2.18, which lacks websearch). Installs to a user-writable
+  prefix (avoids EACCES on the root global), pre-grants npm egress
+  for the install, and centralizes the authorized-binary list so
+  egress grants cover opencode at its new location. web_fetch works
+  once policyAdvisor is enabled (config).
+
 ## [0.4.36](https://github.com/tianshu-ai/tianshu/compare/v0.4.35...v0.4.36) (2026-07-03)
 
 ### Features
