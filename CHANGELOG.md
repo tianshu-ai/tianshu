@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.38](https://github.com/tianshu-ai/tianshu/compare/v0.4.37...v0.4.38) (2026-07-06)
+
+### Features
+
+* **opencode-worker:** make oh-my-openagent's agents actually run.
+  Listing the plugin wasn't enough — omo's built-in fallback chains
+  reference provider names (anthropic/openai/google/…) that don't
+  include our "tianshu" proxy provider, so it resolved no model and
+  the agents never ran. The worker now writes an oh-my-opencode
+  config pinning every omo agent + delegation category to the single
+  proxied model and disabling the multi-provider fallback. (First
+  pass: all agents share one model.)
+
 ## [0.4.37](https://github.com/tianshu-ai/tianshu/compare/v0.4.36...v0.4.37) (2026-07-05)
 
 ### Bug Fixes
