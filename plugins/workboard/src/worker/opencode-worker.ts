@@ -414,14 +414,20 @@ export class OpenCodeWorker implements WorkerHandle {
         return {
           status: "stalled",
           resultSummary:
-            `Failed to install opencode in the sandbox (exit ${ensure.exitCode}).` +
+            `FAILED [SETUP]: could not install opencode in the sandbox ` +
+            `(exit ${ensure.exitCode})— opencode never ran. Likely a ` +
+            `sandbox/network/npm issue, not a task problem.` +
             (ensure.stderr
               ? `\n\nstderr: ${ensure.stderr.slice(0, 500)}`
               : ""),
         };
       }
       if (ensure.aborted) {
-        return { status: "aborted", resultSummary: "Aborted during opencode install." };
+        return {
+          status: "aborted",
+          resultSummary:
+            "FAILED [ABORTED]: cancelled during opencode install (signal).",
+        };
       }
 
       await this.sh(
@@ -618,7 +624,13 @@ export class OpenCodeWorker implements WorkerHandle {
         // per-task, so `--continue`=last session is unambiguous.)
         ((task.attempts ?? 0) > 0 ? `--continue ` : ``) +
         `< .prompt.txt > oc.out 2> oc.err ; ` +
-        `cat oc.out`;
+        // Capture opencode's REAL exit code before the trailing
+        // `cat`. Previously `opencode run ... ; cat oc.out` made the
+        // compound command's exit = cat's (always 0), masking
+        // opencode being killed/OOM/timed-out — so the failure
+        // classifier never saw the non-zero code. Preserve it and
+        // re-exit with it after streaming oc.out back.
+        `rc=$? ; cat oc.out ; exit $rc`;
 
       // Near-real-time transcript: while opencode runs (sh() blocks
       // until it exits), poll the oc.out NDJSON file from the sandbox
@@ -646,12 +658,16 @@ export class OpenCodeWorker implements WorkerHandle {
       }, 4000);
 
       let res: Awaited<ReturnType<typeof this.sh>>;
+      const runStartedAt = Date.now();
       try {
         res = await this.sh(cmd, task, signal, this.deps.timeoutMs);
       } finally {
         polling = false;
         clearInterval(pollTimer);
       }
+      const runElapsedMs = Date.now() - runStartedAt;
+      // Sandbox-side hard cap (the `timeout -s KILL ${capS}` wrapper).
+      const sandboxCapMs = capS * 1000;
       this.deps.log.info?.("opencode-worker: run finished", {
         taskId: task.id,
         exitCode: res.exitCode,
@@ -673,20 +689,48 @@ export class OpenCodeWorker implements WorkerHandle {
         .catch(() => undefined);
 
       // Infra-level failures the LLM judge can't help with: return
-      // straight away.
+      // straight away, with a CLEAR labeled reason so the operator
+      // can tell WHY a task died (timeout vs OOM vs signal vs crash)
+      // instead of a bare exit code.
       if (res.aborted) {
         return {
           status: "aborted",
-          resultSummary: "OpenCode run aborted (signal).",
+          resultSummary:
+            "FAILED [ABORTED]: the run was cancelled by a signal " +
+            "(host abort / pool stop / watchdog)." +
+            failureEvidence(res, runElapsedMs, sandboxCapMs),
           sessionId,
         };
       }
       if (res.timedOut) {
         return {
           status: "stalled",
-          resultSummary: `OpenCode run timed out after ${
-            this.deps.timeoutMs ?? 20 * 60_000
-          }ms.`,
+          resultSummary:
+            `FAILED [TIMEOUT — host budget]: exceeded the worker's ` +
+            `${this.deps.timeoutMs ?? 20 * 60_000}ms budget and was ` +
+            `killed host-side.` +
+            failureEvidence(res, runElapsedMs, sandboxCapMs),
+          sessionId,
+        };
+      }
+      // Hard infra failure the judge CANNOT salvage: opencode was
+      // killed by a signal (137 SIGKILL / 139 SIGSEGV / 143 SIGTERM)
+      // or exited non-zero having produced essentially nothing. Give
+      // the clear labeled reason (timeout-cap vs OOM/kill vs crash)
+      // and return BEFORE the judge — running the judge on a
+      // killed/empty run just produces a vague "no output" verdict
+      // that hides the real cause (the whole point: 任务退出要有明显原因).
+      const killedSignal =
+        res.exitCode === 137 ||
+        res.exitCode === 139 ||
+        res.exitCode === 143;
+      const producedNothing = (res.stdout ?? "").trim().length === 0;
+      if (res.exitCode !== 0 && (killedSignal || producedNothing)) {
+        return {
+          status: "stalled",
+          resultSummary:
+            classifyOpencodeExit(res, runElapsedMs, sandboxCapMs) +
+            (res.stderr ? `\n\nstderr: ${res.stderr.slice(0, 500)}` : ""),
           sessionId,
         };
       }
@@ -718,7 +762,7 @@ export class OpenCodeWorker implements WorkerHandle {
       if (parsed.error) {
         return {
           status: "stalled",
-          resultSummary: `OpenCode error: ${parsed.error}`,
+          resultSummary: `FAILED [OPENCODE ERROR]: ${parsed.error}`,
           resultFiles: files,
           sessionId,
         };
@@ -727,8 +771,8 @@ export class OpenCodeWorker implements WorkerHandle {
         return {
           status: "stalled",
           resultSummary:
-            `OpenCode exited ${res.exitCode}.` +
-            (parsed.text ? `\n\n${parsed.text}` : "") +
+            classifyOpencodeExit(res, runElapsedMs, sandboxCapMs) +
+            (parsed.text ? `\n\n${parsed.text.slice(0, 400)}` : "") +
             (res.stderr ? `\n\nstderr: ${res.stderr.slice(0, 500)}` : ""),
           resultFiles: files,
           sessionId,
@@ -1745,4 +1789,78 @@ export function parseOpencodeEvents(stdout: string): {
  *  bash command. Wraps in single quotes; escapes embedded quotes. */
 function shq(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+interface OcExitInfo {
+  exitCode: number;
+  stderr?: string;
+}
+
+/** Compact evidence line appended to every failure summary so the
+ *  operator can see the raw signals behind the label. */
+function failureEvidence(
+  res: OcExitInfo,
+  elapsedMs: number,
+  capMs: number,
+): string {
+  return (
+    `\n\n[evidence] exit=${res.exitCode} ` +
+    `elapsed=${Math.round(elapsedMs / 1000)}s ` +
+    `sandboxCap=${Math.round(capMs / 1000)}s`
+  );
+}
+
+/**
+ * Turn a non-zero opencode exit into a CLEAR, LABELED failure reason
+ * so the operator knows WHY a task died. Distinguishes:
+ *   [TIMEOUT — sandbox cap]  exit 137 (SIGKILL), elapsed ≈ the
+ *                           in-sandbox `timeout -s KILL Ns` cap.
+ *   [OUT OF MEMORY / KILLED] exit 137 killed WELL BEFORE the cap →
+ *                           kernel OOM-killer / external kill (we
+ *                           can't read the sandbox cgroup
+ *                           memory.events — denied inside — so we
+ *                           infer from timing + stderr).
+ *   [CRASH SIGSEGV] 139, [TERMINATED SIGTERM] 143, [TIMEOUT] 124,
+ *   [exited N] otherwise. stderr is scanned for explicit OOM strings
+ *   first, which upgrades the guess to a certainty.
+ */
+export function classifyOpencodeExit(
+  res: OcExitInfo,
+  elapsedMs: number,
+  capMs: number,
+): string {
+  const err = (res.stderr ?? "").toLowerCase();
+  const oomStr =
+    /out of memory|oom|cannot allocate memory|killed process|std::bad_alloc|javascript heap out of memory/.test(
+      err,
+    );
+  const ev = failureEvidence(res, elapsedMs, capMs);
+  if (res.exitCode === 137) {
+    if (oomStr) {
+      return `FAILED [OUT OF MEMORY]: opencode was OOM-killed (SIGKILL; stderr names it).${ev}`;
+    }
+    if (capMs > 0 && elapsedMs >= capMs - 15_000) {
+      return `FAILED [TIMEOUT — sandbox cap]: opencode ran past the ${Math.round(
+        capMs / 1000,
+      )}s in-sandbox cap and was killed (SIGKILL).${ev}`;
+    }
+    return `FAILED [OUT OF MEMORY / KILLED]: opencode was SIGKILLed ${Math.round(
+      elapsedMs / 1000,
+    )}s in — well before the ${Math.round(
+      capMs / 1000,
+    )}s timeout cap, so the likely cause is the OOM-killer (or an external kill), not a timeout.${ev}`;
+  }
+  if (oomStr) {
+    return `FAILED [OUT OF MEMORY]: stderr indicates an out-of-memory condition.${ev}`;
+  }
+  if (res.exitCode === 139) {
+    return `FAILED [CRASH — SIGSEGV]: opencode segfaulted (exit 139).${ev}`;
+  }
+  if (res.exitCode === 143) {
+    return `FAILED [TERMINATED — SIGTERM]: opencode was terminated (exit 143).${ev}`;
+  }
+  if (res.exitCode === 124) {
+    return `FAILED [TIMEOUT]: the timeout wrapper expired (exit 124).${ev}`;
+  }
+  return `FAILED [exited ${res.exitCode}]: opencode exited non-zero.${ev}`;
 }

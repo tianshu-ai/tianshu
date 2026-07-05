@@ -4,6 +4,7 @@ import {
   resolveTaskModel,
   providerNpmForApi,
   buildPrompt,
+  classifyOpencodeExit,
 } from "./opencode-worker.js";
 import type { Task } from "../db/tasks.js";
 
@@ -77,6 +78,43 @@ describe("buildPrompt network policy advisor hint", () => {
     expect(p.indexOf("fetch the docs")).toBeLessThan(
       p.indexOf("openshell-network-policy"),
     );
+  });
+});
+
+describe("classifyOpencodeExit — clear failure reasons", () => {
+  const cap = 300_000; // 300s sandbox cap
+  it("137 near the cap = sandbox TIMEOUT", () => {
+    const r = classifyOpencodeExit({ exitCode: 137 }, 298_000, cap);
+    expect(r).toContain("TIMEOUT");
+    expect(r).toContain("sandbox cap");
+    expect(r).toContain("exit=137");
+  });
+  it("137 well before the cap = OOM/killed (not timeout)", () => {
+    const r = classifyOpencodeExit({ exitCode: 137 }, 20_000, cap);
+    expect(r).toContain("OUT OF MEMORY");
+    expect(r).toContain("elapsed=20s");
+  });
+  it("stderr naming OOM = certain OUT OF MEMORY", () => {
+    const r = classifyOpencodeExit(
+      { exitCode: 137, stderr: "JavaScript heap out of memory" },
+      200_000,
+      cap,
+    );
+    expect(r).toContain("OUT OF MEMORY");
+  });
+  it("139 = SIGSEGV crash", () => {
+    expect(classifyOpencodeExit({ exitCode: 139 }, 5_000, cap)).toContain(
+      "SIGSEGV",
+    );
+  });
+  it("143 = SIGTERM terminated", () => {
+    expect(classifyOpencodeExit({ exitCode: 143 }, 5_000, cap)).toContain(
+      "SIGTERM",
+    );
+  });
+  it("other non-zero = plain exited N", () => {
+    const r = classifyOpencodeExit({ exitCode: 2 }, 5_000, cap);
+    expect(r).toContain("exited 2");
   });
 });
 
