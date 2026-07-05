@@ -532,7 +532,14 @@ export class OpenCodeWorker implements WorkerHandle {
       // node/npm binaries before installing. No-op on open-network
       // runtimes.
       if (this.deps.shell.allowEgress) {
-        for (const host of ["registry.npmjs.org"]) {
+        // registry.npmjs.org: npm install of opencode/plugins.
+        // models.dev: opencode 1.17.13 fetches its model catalog
+        //   (https://models.dev/api.json) at STARTUP; if blocked it
+        //   errors before running (the model call never happens) and
+        //   the run produces nothing. It's opencode itself fetching
+        //   pre-run, so the policy-advisor self-proposal can't cover
+        //   it — pre-grant it.
+        for (const host of ["registry.npmjs.org", "models.dev"]) {
           await this.deps.shell
             .allowEgress({
               host,
@@ -552,8 +559,15 @@ export class OpenCodeWorker implements WorkerHandle {
         }
       }
 
+      // Skip install entirely when a matching opencode is ALREADY on
+      // PATH at the right version — this is the fast path for the
+      // prebuilt tianshu/opencode-sandbox image, which bakes
+      // opencode ${OPENCODE_VERSION} + a warmed omo plugin cache. Only
+      // fall back to the user-prefix install on a bare base image
+      // (where PATH's opencode is the stale preinstall).
       const ensure = await this.sh(
-        `test "$(${ocBin} --version 2>/dev/null | head -1)" = "${OPENCODE_VERSION}" || ` +
+        `test "$(opencode --version 2>/dev/null | head -1)" = "${OPENCODE_VERSION}" || ` +
+          `test "$(${ocBin} --version 2>/dev/null | head -1)" = "${OPENCODE_VERSION}" || ` +
           `npm i -g --prefix ${OC_PREFIX} opencode-ai@${OPENCODE_VERSION}`,
         task,
         signal,
