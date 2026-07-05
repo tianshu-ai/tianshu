@@ -82,6 +82,23 @@ export interface OpenShellRunnerOpts {
    *  `base` image (python + node + git + standard CLI). */
   fromImage?: string;
   /**
+   * Optional memory limit for the sandbox, passed to
+   * `openshell sandbox create --memory <v>` (e.g. "4Gi", "8G",
+   * "512Mi"). Two reasons to set it:
+   *   1. Containment — a runaway task can't eat all host RAM.
+   *   2. Diagnosability — with a cgroup limit, an over-allocation is
+   *      OOM-killed (SIGKILL/137) so the failure classifier can
+   *      report [OUT OF MEMORY] instead of a vague hang. Without a
+   *      limit there is no cgroup OOM event to observe.
+   * Config: plugins.openshell.config.memoryLimit. Undefined = no
+   * limit (unbounded, host-RAM bound).
+   */
+  memoryLimit?: string;
+  /** Optional CPU limit for the sandbox, passed to
+   *  `sandbox create --cpu <v>` (e.g. "2", "500m"). Config:
+   *  plugins.openshell.config.cpuLimit. */
+  cpuLimit?: string;
+  /**
    * OpenShell Policy Advisor mode. Controls whether in-sandbox
    * agents (OpenCode etc.) can dynamically propose egress rules
    * when they hit a `policy_denied`, and how those proposals are
@@ -740,6 +757,16 @@ export class OpenShellRunner implements SandboxRunner {
     ];
     if (this.opts.fromImage) {
       args.push("--from", this.opts.fromImage);
+    }
+    // Resource limits (optional). A memory limit both contains a
+    // runaway task and makes over-allocation OOM-killable (so the
+    // failure classifier can report [OUT OF MEMORY] instead of an
+    // opaque hang).
+    if (this.opts.memoryLimit) {
+      args.push("--memory", this.opts.memoryLimit);
+    }
+    if (this.opts.cpuLimit) {
+      args.push("--cpu", this.opts.cpuLimit);
     }
     // Note: we deliberately do NOT pass a custom `--policy`. A
     // custom policy wholesale-replaces the built-in default (losing

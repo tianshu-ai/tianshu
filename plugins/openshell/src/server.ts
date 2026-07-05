@@ -82,6 +82,13 @@ export default {
           : undefined,
       fromImage:
         typeof cfg.fromImage === "string" ? cfg.fromImage : undefined,
+      // Sandbox resource limits (optional). memoryLimit both contains
+      // runaway tasks and makes OOM show up as a clean SIGKILL the
+      // failure classifier can label [OUT OF MEMORY]. e.g. "4Gi".
+      memoryLimit:
+        typeof cfg.memoryLimit === "string" ? cfg.memoryLimit : undefined,
+      cpuLimit:
+        typeof cfg.cpuLimit === "string" ? cfg.cpuLimit : undefined,
       // OpenShell Policy Advisor mode. Lets in-sandbox agents
       // (OpenCode etc.) dynamically propose egress rules when they
       // hit a policy_denied, instead of the old permissive-policy
