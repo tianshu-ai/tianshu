@@ -177,6 +177,13 @@ console.log(
 pluginRegistry = new PluginRegistry({
   resolver: reloadingResolver,
   mcpManager,
+  // Route plugin `ctx.broadcast(type, payload)` to every ws client
+  // of that tenant as a generic `plugin_event`. The registry already
+  // namespaces the event as `<pluginId>:<type>` before calling this.
+  // Lets plugin frontends (e.g. workboard's kanban) react to pushes
+  // instead of polling.
+  broadcast: (tenantId, event, payload) =>
+    broadcastToTenant(tenantId, { type: "plugin_event", event, payload }),
   // Plugin/host skills get mirrored into each tenant's config
   // tree so the agent can read them via `tenant_config_read`
   // exactly like tenant-authored ones — same tool, same path

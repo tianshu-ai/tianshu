@@ -55,7 +55,15 @@ export type ServerEvent =
       fromVersion: string | null;
       toVersion: string;
       newTools: ReadonlyArray<{ name: string; pluginId: string }>;
-    };
+    }
+  /**
+   * Generic passthrough for a plugin's `ctx.broadcast(type, payload)`,
+   * wrapped host-side. `event` is `<pluginId>:<type>` (e.g.
+   * "workboard:workboard.task"); plugin frontends filter on it and
+   * read `payload`. Lets plugin UIs react to server pushes instead of
+   * polling on a timer.
+   */
+  | { type: "plugin_event"; event: string; payload: unknown };
 
 export interface PluginsChangedDelta {
   pluginId: string;

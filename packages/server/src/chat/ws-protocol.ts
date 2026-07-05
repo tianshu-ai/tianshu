@@ -174,7 +174,16 @@ export type ServerMsg =
       fromVersion: string | null;
       toVersion: string;
       newTools: ReadonlyArray<{ name: string; pluginId: string }>;
-    };
+    }
+  /**
+   * Generic passthrough for a plugin's `ctx.broadcast(type, payload)`.
+   * The host wraps it as `{type:"plugin_event", event:"<pluginId>:<type>",
+   * payload}` so plugin frontends can subscribe over the shared /ws
+   * without adding a bespoke ServerMsg variant per plugin event.
+   * (workboard uses event "workboard:workboard.task" to push kanban
+   * task updates so the board can drop its 3s poll.)
+   */
+  | { type: "plugin_event"; event: string; payload: unknown };
 
 export interface PluginsChangedDelta {
   pluginId: string;

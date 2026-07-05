@@ -46,6 +46,7 @@ import {
   Zap,
 } from "lucide-react";
 import {
+  subscribeToWsEvent,
   useOpenFile,
   useUiPrimitives,
   type AdminPageProps,
@@ -348,8 +349,32 @@ function useBoardController(opts: {
 
   useEffect(() => {
     void reload();
-    const id = window.setInterval(() => void reload(), 3000);
-    return () => window.clearInterval(id);
+    // Event-driven: the server pushes `workboard:workboard.task` on
+    // every claim/completion, so reload immediately on a push instead
+    // of polling on a tight timer. A slow 15s interval stays as a
+    // safety net (missed event / dropped ws / non-host shell where
+    // subscribeToWsEvent is a no-op). Debounce bursts (a batch of
+    // task events shouldn't fire N reloads).
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    const kick = () => {
+      if (debounce) return;
+      debounce = setTimeout(() => {
+        debounce = null;
+        void reload();
+      }, 250);
+    };
+    const off = subscribeToWsEvent<{ type: string; event?: string }>(
+      "plugin_event",
+      (ev) => {
+        if (ev.event === "workboard:workboard.task") kick();
+      },
+    );
+    const id = window.setInterval(() => void reload(), 15000);
+    return () => {
+      off();
+      if (debounce) clearTimeout(debounce);
+      window.clearInterval(id);
+    };
   }, [reload]);
 
   const moveTask = useCallback(
