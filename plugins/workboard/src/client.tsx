@@ -21,7 +21,7 @@
 //
 // Both surfaces hit /api/p/workboard/*.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import {
   AlertTriangle,
@@ -301,14 +301,42 @@ function useBoardController(opts: {
         requests.push(getJson<WorkerSnapshot>(`${API_BASE}/workers/status`));
       }
       const results = await Promise.all(requests);
-      setTasks((results[0] as { tasks: Task[] }).tasks);
+      const nextTasks = (results[0] as { tasks: Task[] }).tasks;
+      // Preserve object identity for unchanged tasks across the 3s
+      // poll. Each poll returns fresh JSON (new object refs), which
+      // would defeat BoardCard's memo (task is a prop) and re-render
+      // every card. Reuse the previous task object when its content
+      // is byte-identical, so memo'd cards that didn't change skip
+      // re-render entirely — a mostly-idle board becomes a near-noop.
+      setTasks((prev) => {
+        if (!prev) return nextTasks;
+        const prevById = new Map(prev.map((t) => [t.id, t]));
+        let changed = prev.length !== nextTasks.length;
+        const merged = nextTasks.map((t) => {
+          const old = prevById.get(t.id);
+          if (old && JSON.stringify(old) === JSON.stringify(t)) return old;
+          changed = true;
+          return t;
+        });
+        return changed ? merged : prev;
+      });
       setProjects((results[1] as { projects: ProjectSummary[] }).projects);
       const agentList = (results[2] as {
         agents: Array<{ id: string; name: string }>;
       }).agents;
-      setAgentNames(
-        new Map(agentList.map((a) => [a.id, a.name])),
-      );
+      // Only replace the map when it actually changed — the 3s poll
+      // returns the same agents almost every time, and a fresh Map
+      // reference each poll would break BoardCard's memo (agentNames
+      // is a card prop) and force a full re-render.
+      setAgentNames((prev) => {
+        if (
+          prev.size === agentList.length &&
+          agentList.every((a) => prev.get(a.id) === a.name)
+        ) {
+          return prev;
+        }
+        return new Map(agentList.map((a) => [a.id, a.name]));
+      });
       if (opts.withWorker) {
         setWorker(results[3] as WorkerSnapshot);
       }
@@ -723,6 +751,14 @@ function KanbanColumn({
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  // Build the id→task index ONCE per render, not once per card.
+  // computeMeta used to `new Map(allTasks.map(...))` on every call,
+  // and it's called per card → O(n²) per column each 3s poll. Hoist
+  // to O(n).
+  const taskById = useMemo(
+    () => new Map(allTasks.map((t) => [t.id, t] as const)),
+    [allTasks],
+  );
 
   return (
     <div
@@ -769,7 +805,7 @@ function KanbanColumn({
           <BoardCard
             key={t.id}
             task={t}
-            meta={computeMeta(t, allTasks)}
+            meta={computeMeta(t, taskById)}
             busy={busyId === t.id}
             compact={compact}
             agentNames={agentNames}
@@ -813,8 +849,7 @@ function KanbanColumn({
   );
 }
 
-function computeMeta(task: Task, allTasks: Task[]): TaskMeta {
-  const byId = new Map(allTasks.map((t) => [t.id, t]));
+function computeMeta(task: Task, byId: Map<string, Task>): TaskMeta {
   const deps: Task[] = [];
   const pendingDeps: Task[] = [];
   for (const id of task.dependsOn ?? []) {
@@ -832,7 +867,11 @@ function computeMeta(task: Task, allTasks: Task[]): TaskMeta {
   return { deps, pendingDeps, blocked };
 }
 
-function BoardCard({
+// Memoized: the 3s board poll re-renders the whole board; without
+// memo every card re-renders even when its own task didn't change.
+// Props are stable (agentNames map + callbacks are useMemo/useCallback
+// upstream), so memo skips unchanged cards.
+const BoardCard = memo(function BoardCard({
   task,
   meta,
   busy,
@@ -1171,7 +1210,7 @@ function BoardCard({
       )}
     </li>
   );
-}
+});
 
 /**
  * Trigger row that opens the worker transcript in a full dialog.
