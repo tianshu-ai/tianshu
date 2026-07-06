@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.46](https://github.com/tianshu-ai/tianshu/compare/v0.4.45...v0.4.46) (2026-07-06)
+
+### Bug Fixes
+
+* **opencode-worker:** harden the headless omo config — disable the
+  reply-listener daemon (background-notification hook), codegraph
+  auto-provision, and gate remote-MCP egress; add `--auto` to the
+  run. Bare `docker run` omo init completes (~28s, reaches the model)
+  but the openshell L7-proxied sandbox still hangs before init —
+  residual hang is environment-specific, under investigation.
+  Escape hatch: `OPENCODE_DISABLE_OMO=1`.
+
 ## [0.4.45](https://github.com/tianshu-ai/tianshu/compare/v0.4.44...v0.4.45) (2026-07-06)
 
 ### Bug Fixes
