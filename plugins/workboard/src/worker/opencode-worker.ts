@@ -132,15 +132,26 @@ const OPENCODE_VERSION = "1.17.13";
  *  /root...). The `**` glob is supported by openshell binary
  *  matchers (see the community base policy). */
 const OPENCODE_BINARIES = [
+  // opencode 1.17.x ships a COMPILED native binary named
+  // `opencode.exe` (167MB ELF); /usr/bin/opencode is a symlink to
+  // it. The process that actually opens sockets is opencode.exe, so
+  // it MUST be authorized or egress (models.dev, the model proxy)
+  // gets 403'd — that was the "stuck at startup / models.dev 403"
+  // bug. Authorize the .exe + the older non-.exe/.opencode forms +
+  // a broad glob so any layout works.
+  "/usr/lib/node_modules/opencode-ai/bin/opencode.exe",
   "/usr/lib/node_modules/opencode-ai/bin/opencode",
   "/usr/lib/node_modules/opencode-ai/bin/.opencode",
+  "/usr/lib/node_modules/opencode-ai/**",
   "/usr/bin/opencode",
+  "/usr/bin/opencode.exe",
   "/usr/local/bin/opencode",
   "/usr/bin/node",
   "/usr/local/bin/node",
   "/usr/bin/npm",
   "/usr/local/bin/npm",
-  // user-prefix install ($HOME/.oc-npm) — HOME varies, so glob:
+  // user-prefix install ($HOME/.oc-npm) — HOME varies, so glob (the
+  // ** also covers the nested opencode.exe there):
   "/home/*/.oc-npm/**",
   "/root/.oc-npm/**",
   "/sandbox/.oc-npm/**",
