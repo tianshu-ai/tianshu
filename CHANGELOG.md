@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.41](https://github.com/tianshu-ai/tianshu/compare/v0.4.40...v0.4.41) (2026-07-06)
+
+### Bug Fixes
+
+* **opencode-worker:** authorize the `opencode.exe` binary for
+  sandbox egress. opencode 1.17.x ships a compiled native binary
+  (opencode.exe); openshell gates egress by the requesting binary
+  and the authorized list omitted it, so opencode's startup
+  models.dev fetch (and model-proxy calls) were 403'd and it stalled
+  at startup. Verified the models.dev 403 is gone after the fix.
+
 ## [0.4.40](https://github.com/tianshu-ai/tianshu/compare/v0.4.39...v0.4.40) (2026-07-06)
 
 ### Bug Fixes
