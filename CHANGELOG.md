@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.44](https://github.com/tianshu-ai/tianshu/compare/v0.4.43...v0.4.44) (2026-07-06)
+
+### Features
+
+* **opencode-worker:** `OPENCODE_DISABLE_OMO=1` env toggle to run
+  bare opencode without the oh-my-openagent plugin. Root-caused the
+  "opencode hangs after loading config" symptom to omo's init (not
+  the proxy/upstream key): with omo disabled the same task completes
+  and returns an assistant message. Escape hatch + diagnostic lever.
+* **workboard:** `scripts/opencode-e2e.mjs` end-to-end integration
+  probe — fires an opencoder task on the ENV default model, waits
+  for completion, asserts an assistant message came back, and
+  classifies the failing layer otherwise.
+
 ## [0.4.43](https://github.com/tianshu-ai/tianshu/compare/v0.4.42...v0.4.43) (2026-07-06)
 
 ### Features
