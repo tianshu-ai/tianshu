@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.45](https://github.com/tianshu-ai/tianshu/compare/v0.4.44...v0.4.45) (2026-07-06)
+
+### Bug Fixes
+
+* **opencode-worker:** generate a headless-safe oh-my-openagent
+  config (tmux/team_mode/monitor/new_task_system off + all always-on
+  MCPs disabled). Finding: even fully stripped, omo still hangs at
+  plugin init in the locked sandbox — the working path remains
+  `OPENCODE_DISABLE_OMO=1`. Documented in code.
+
 ## [0.4.44](https://github.com/tianshu-ai/tianshu/compare/v0.4.43...v0.4.44) (2026-07-06)
 
 ### Features
