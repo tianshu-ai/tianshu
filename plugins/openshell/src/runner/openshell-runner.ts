@@ -328,7 +328,15 @@ export class OpenShellRunner implements SandboxRunner {
     );
     await fs.mkdir(path.dirname(tmpHost), { recursive: true });
     try {
-      const { exitCode, stderr } = await this.spawnCliReady(
+      // Use spawnCli (NOT spawnCliReady): a read must never trigger
+      // waitForReady/recreate. The opencode-worker's 4s history
+      // poller calls readFile repeatedly WHILE a long opencode exec
+      // is running; if that read hit the not-ready retry path it
+      // could recreate the (busy) sandbox mid-run and kill the task
+      // (observed: task stuck in_progress, workdir wiped). Reads are
+      // best-effort — a failure just propagates as an error the
+      // caller can ignore.
+      const { exitCode, stderr } = await this.spawnCli(
         ["sandbox", "download", this.sandboxName, guestPath, tmpHost],
         {},
       );
@@ -993,14 +1001,30 @@ export class OpenShellRunner implements SandboxRunner {
     while (Date.now() < deadline) {
       const info = await this.findSandbox(this.sandboxName);
       if (!info) {
-        // Transient: a policy hot-reload / recreate can make the
-        // sandbox momentarily unlistable. Tolerate a short window
-        // before treating it as truly gone (and then recreate).
+        // Transient: a BUSY sandbox (a long opencode run saturating
+        // it) makes `sandbox get` time out / return no Phase, so it
+        // looks momentarily "not listable". That is NOT a reason to
+        // recreate — doing so mid-run wipes the workdir and kills
+        // the task (observed: longer tasks stuck in_progress). Only
+        // recreate if it stays unlistable for a LONG window AND the
+        // backing docker container is actually gone; a running
+        // container that's just slow to list must be left alone.
         if (missingSince === null) missingSince = Date.now();
-        if (Date.now() - missingSince > 15_000) {
+        if (Date.now() - missingSince > 90_000) {
+          const containerAlive = await this.isContainerRunning();
+          if (containerAlive) {
+            // Alive but slow to list under load — keep waiting, do
+            // not recreate (that would kill the in-flight run).
+            this.opts.log.warn(
+              `openshell: sandbox ${this.sandboxName} slow to list but container is running; NOT recreating (busy)`,
+            );
+            missingSince = Date.now(); // reset the window
+            await new Promise((r) => setTimeout(r, 2000));
+            continue;
+          }
           if (!recreated) {
             this.opts.log.warn(
-              `openshell: sandbox ${this.sandboxName} not listable for >15s; recreating once`,
+              `openshell: sandbox ${this.sandboxName} not listable for >90s and container gone; recreating once`,
             );
             recreated = true;
             await this.recreateSandbox();
@@ -1154,6 +1178,65 @@ export class OpenShellRunner implements SandboxRunner {
   private stripAnsi(s: string): string {
     // Lightweight ANSI strip. openshell CLI uses CSI sequences only.
     return s.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
+  }
+
+  /** Minimal generic binary spawn (for `docker` checks). Captures
+   *  stdout/exit with a hard timeout; never throws on non-zero. */
+  private spawnCliBinary(
+    bin: string,
+    args: string[],
+    timeoutMs: number,
+  ): Promise<{ exitCode: number; stdout: string }> {
+    return new Promise((resolve) => {
+      let stdout = "";
+      let done = false;
+      const child = spawn(bin, args, { stdio: ["ignore", "pipe", "ignore"] });
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        child.kill("SIGKILL");
+        resolve({ exitCode: -1, stdout });
+      }, timeoutMs);
+      child.stdout?.on("data", (d) => (stdout += d.toString()));
+      child.on("error", () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve({ exitCode: -1, stdout });
+      });
+      child.on("close", (code) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve({ exitCode: code ?? -1, stdout });
+      });
+    });
+  }
+
+  /** True if a docker container for this sandbox is running. Used to
+   *  distinguish "sandbox slow to list because it's busy" (container
+   *  up) from "sandbox actually gone" (container absent) so we don't
+   *  recreate a live, in-use sandbox and kill its running task.
+   *  openshell names containers `openshell-<sandboxName>-<uuid>`. */
+  private async isContainerRunning(): Promise<boolean> {
+    try {
+      const res = await this.spawnCliBinary(
+        "docker",
+        [
+          "ps",
+          "--filter",
+          `name=openshell-${this.sandboxName}-`,
+          "--format",
+          "{{.Names}}",
+        ],
+        5000,
+      );
+      return res.exitCode === 0 && res.stdout.trim().length > 0;
+    } catch {
+      // If we can't even check docker, be conservative and assume
+      // it's alive (don't recreate) — a false "gone" is worse.
+      return true;
+    }
   }
 
   private async cli(args: string[]): Promise<{ stdout: string }> {
