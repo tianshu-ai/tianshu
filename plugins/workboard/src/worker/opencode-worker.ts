@@ -550,7 +550,19 @@ export class OpenCodeWorker implements WorkerHandle {
         //   the run produces nothing. It's opencode itself fetching
         //   pre-run, so the policy-advisor self-proposal can't cover
         //   it — pre-grant it.
-        for (const host of ["registry.npmjs.org", "models.dev"]) {
+        // registry.npmjs.org: npm install. models.dev: opencode's
+        // startup model-catalog fetch. mcp.*: oh-my-openagent's
+        // always-on remote MCP servers (context7 docs, grep.app code
+        // search, exa web search) — without egress they log
+        // "server unavailable" and omo loses those capabilities.
+        for (const host of [
+          "registry.npmjs.org",
+          "models.dev",
+          "mcp.context7.com",
+          "mcp.grep.app",
+          "mcp.exa.ai",
+          "mcp.tavily.com",
+        ]) {
           await this.deps.shell
             .allowEgress({
               host,
