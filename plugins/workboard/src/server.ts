@@ -481,6 +481,22 @@ const plugin: PluginServerModule = {
             });
           }
         : undefined,
+      // Serve the raw opencode.log to the Execution dialog's
+      // "Raw log" view. opencode writes it inside the sandbox at
+      // opencode/<taskId>/.oc-data/opencode/log/opencode.log
+      // (relative to /sandbox/workspace, which is the shell
+      // runner's readFile root). Only wired when a sandbox.shell
+      // runner is present; best-effort — missing file -> "".
+      readOpencodeLog: shellRunner
+        ? async (taskId: string) => {
+            try {
+              const rel = `opencode/${taskId}/.oc-data/opencode/log/opencode.log`;
+              return (await shellRunner.readFile(rel)) ?? "";
+            } catch {
+              return "";
+            }
+          }
+        : undefined,
       workerKinds: WORKER_KINDS,
       // GET /agents reads through the same fs-first merge the
       // pool uses, so the admin UI sees identical inventory.

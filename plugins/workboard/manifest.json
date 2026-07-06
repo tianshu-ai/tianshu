@@ -85,6 +85,7 @@
       { "method": "POST",   "path": "/tasks/delete",       "handler": "deleteTask"    },
       { "method": "PATCH",  "path": "/tasks/:id",          "handler": "patchTask"     },
       { "method": "GET",    "path": "/tasks/:id/history",  "handler": "taskHistory"   },
+      { "method": "GET",    "path": "/tasks/:id/opencode-log", "handler": "taskOpencodeLog" },
       { "method": "GET",    "path": "/projects",           "handler": "listProjects"  },
       { "method": "GET",    "path": "/workers/status",     "handler": "workerStatus"  },
       { "method": "POST",   "path": "/workers/restart",    "handler": "workerRestart" },

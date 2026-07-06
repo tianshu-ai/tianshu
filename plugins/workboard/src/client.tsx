@@ -1306,6 +1306,30 @@ function ExecutionDialog({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+  // "transcript" = parsed worker turns (default). "rawlog" = the
+  // raw opencode.log straight from the sandbox, for debugging
+  // startup/egress/MCP issues without shelling into docker.
+  const [view, setView] = useState<"transcript" | "rawlog">("transcript");
+  const [rawLog, setRawLog] = useState<string | null>(null);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawAvailable, setRawAvailable] = useState(true);
+
+  const fetchRawLog = useCallback(async () => {
+    if (!task.id) return;
+    setRawLoading(true);
+    try {
+      const data = await getJson<{ log: string; available?: boolean }>(
+        `${API_BASE}/tasks/${task.id}/opencode-log`,
+      );
+      setRawLog(data.log ?? "");
+      setRawAvailable(data.available !== false);
+    } catch (err) {
+      setRawLog(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRawLoading(false);
+    }
+  }, [task.id]);
 
   const fetchHistory = useCallback(async () => {
     if (!task.id) return;
@@ -1329,12 +1353,21 @@ function ExecutionDialog({
     void fetchHistory();
   }, [fetchHistory]);
 
-  // Tail while the task is running.
+  // Fetch the raw log when the user switches to that view.
+  useEffect(() => {
+    if (view === "rawlog") void fetchRawLog();
+  }, [view, fetchRawLog]);
+
+  // Tail while the task is running — refresh whichever view is
+  // currently showing.
   useEffect(() => {
     if (task.status !== "in_progress") return;
-    const t = setInterval(() => void fetchHistory(), 3000);
+    const t = setInterval(() => {
+      if (view === "rawlog") void fetchRawLog();
+      else void fetchHistory();
+    }, 3000);
     return () => clearInterval(t);
-  }, [task.status, fetchHistory]);
+  }, [task.status, view, fetchHistory, fetchRawLog]);
 
   // Auto-scroll to bottom on new entries when user is at bottom.
   useEffect(() => {
@@ -1380,8 +1413,32 @@ function ExecutionDialog({
       >
         <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-[10px] text-fg-faint">
           <ScrollText className="h-3.5 w-3.5 text-fg-faint" />
-          <span>worker transcript</span>
-          {sessionId && (
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setView("transcript")}
+              className={`rounded px-1.5 py-0.5 ${
+                view === "transcript"
+                  ? "bg-bg-hover text-fg-default"
+                  : "text-fg-faint hover:text-fg-muted"
+              }`}
+            >
+              transcript
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("rawlog")}
+              className={`rounded px-1.5 py-0.5 ${
+                view === "rawlog"
+                  ? "bg-bg-hover text-fg-default"
+                  : "text-fg-faint hover:text-fg-muted"
+              }`}
+              title="Raw opencode.log from the sandbox"
+            >
+              raw log
+            </button>
+          </div>
+          {view === "transcript" && sessionId && (
             <span className="font-mono text-fg-fainter">· {sessionId}</span>
           )}
           {task.status === "in_progress" && (
@@ -1394,13 +1451,17 @@ function ExecutionDialog({
           <div className="ml-auto">
             <button
               type="button"
-              onClick={() => void fetchHistory()}
-              disabled={loading}
+              onClick={() =>
+                view === "rawlog" ? void fetchRawLog() : void fetchHistory()
+              }
+              disabled={view === "rawlog" ? rawLoading : loading}
               className="rounded p-1 text-fg-muted hover:bg-bg-raised hover:text-fg-default disabled:opacity-50"
               title="Refresh"
             >
               <RefreshCw
-                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+                className={`h-3.5 w-3.5 ${
+                  (view === "rawlog" ? rawLoading : loading) ? "animate-spin" : ""
+                }`}
               />
             </button>
           </div>
@@ -1416,19 +1477,41 @@ function ExecutionDialog({
               {error}
             </div>
           )}
-          {entries === null && loading && (
-            <div className="text-xs italic text-fg-faint">Loading…</div>
+          {view === "rawlog" ? (
+            <>
+              {rawLog === null && rawLoading && (
+                <div className="text-xs italic text-fg-faint">Loading…</div>
+              )}
+              {rawLog !== null && rawLog.trim() === "" && !rawLoading && (
+                <div className="text-xs italic text-fg-faint">
+                  {rawAvailable
+                    ? "No opencode log yet (task hasn't produced one, or the sandbox was torn down)."
+                    : "Raw log unavailable — this worker doesn't run in a shell sandbox."}
+                </div>
+              )}
+              {rawLog !== null && rawLog.trim() !== "" && (
+                <pre className="whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-fg-muted">
+                  {rawLog}
+                </pre>
+              )}
+            </>
+          ) : (
+            <>
+              {entries === null && loading && (
+                <div className="text-xs italic text-fg-faint">Loading…</div>
+              )}
+              {entries !== null && merged.length === 0 && !loading && (
+                <div className="text-xs italic text-fg-faint">
+                  {task.sessionId
+                    ? "No messages yet."
+                    : "Worker hasn't started yet."}
+                </div>
+              )}
+              {merged.map((row) => (
+                <ExecutionTurn key={row.id} row={row} />
+              ))}
+            </>
           )}
-          {entries !== null && merged.length === 0 && !loading && (
-            <div className="text-xs italic text-fg-faint">
-              {task.sessionId
-                ? "No messages yet."
-                : "Worker hasn't started yet."}
-            </div>
-          )}
-          {merged.map((row) => (
-            <ExecutionTurn key={row.id} row={row} />
-          ))}
         </div>
       </div>
     </Modal>
