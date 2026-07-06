@@ -241,6 +241,31 @@ function buildOmoConfig(model: string): string {
         "playwright",
         "fetch",
       ],
+      // The real init hang: omo's `background-notification` hook
+      // starts a "reply listener" DAEMON (spawnReplyListenerDaemon)
+      // and awaits its startup token; in a headless sandbox that
+      // daemon can't come up and opencode blocks right after config
+      // load. Disable it + the other hooks that spawn/provision or
+      // assume an interactive TTY at startup, so omo initialises as
+      // a plain headless harness.
+      disabled_hooks: [
+        "background-notification",
+        "session-notification",
+        "interactive-bash-session",
+        "ast-grep-sg-provision",
+        "codegraph-bootstrap",
+        "auto-update-checker",
+        "unstable-agent-babysitter",
+        "startup-toast",
+        "legacy-plugin-toast",
+      ],
+      // codegraph auto-provisions (downloads a binary from GitHub)
+      // and auto-builds a code index AT STARTUP; that provision +
+      // build hangs through the openshell L7 proxy and blocks omo
+      // init before the model call (seen as
+      // /sandbox/.omo/codegraph/locks/*.lock + an idle ESTABLISHED
+      // fakeip connection). Turn it fully off for the sandbox.
+      codegraph: { enabled: false, auto_init: false, auto_provision: false },
     },
     null,
     2,
@@ -586,14 +611,25 @@ export class OpenCodeWorker implements WorkerHandle {
         // always-on remote MCP servers (context7 docs, grep.app code
         // search, exa web search) — without egress they log
         // "server unavailable" and omo loses those capabilities.
-        for (const host of [
-          "registry.npmjs.org",
-          "models.dev",
-          "mcp.context7.com",
-          "mcp.grep.app",
-          "mcp.exa.ai",
-          "mcp.tavily.com",
-        ]) {
+        // NOTE: granting the mcp.* egress lets omo's always-on
+        // remote MCPs CONNECT over the openshell L7 proxy — and the
+        // SSE/long-poll streams those MCPs open appear to STALL
+        // through the proxy MITM, hanging omo's init before it
+        // reaches the model call. When they're NOT granted, the
+        // MCPs fast-fail ("server unavailable") and omo proceeds
+        // (verified: bare `docker run` with no MCP egress inits in
+        // ~28s). So the MCP grants are gated OFF by default; set
+        // OPENCODE_GRANT_OMO_MCPS=1 to re-enable them.
+        const egressHosts = ["registry.npmjs.org", "models.dev"];
+        if (process.env.OPENCODE_GRANT_OMO_MCPS === "1") {
+          egressHosts.push(
+            "mcp.context7.com",
+            "mcp.grep.app",
+            "mcp.exa.ai",
+            "mcp.tavily.com",
+          );
+        }
+        for (const host of egressHosts) {
           await this.deps.shell
             .allowEgress({
               host,
@@ -893,7 +929,12 @@ export class OpenCodeWorker implements WorkerHandle {
         `OPENCODE_ENABLE_PARALLEL=1 ` +
         `OPENCODE_CONFIG=./opencode.json ` +
         `timeout -s KILL ${capS} ` +
-        `opencode run --model tianshu/${nativeModelId} --format json ` +
+        // --auto: auto-approve any permission that isn't explicitly
+        // denied. Headless runs have nobody to answer an interactive
+        // permission prompt; omo requests some permissions as `ask`
+        // (doom_loop / external_directory), and an unanswered `ask`
+        // hangs the run forever. --auto answers them automatically.
+        `opencode run --auto --model tianshu/${nativeModelId} --format json ` +
         // No --agent: oh-my-openagent already registers its Sisyphus
         // orchestrator as the DEFAULT primary agent, so a plain
         // headless `run` uses Sisyphus automatically (verified: the
