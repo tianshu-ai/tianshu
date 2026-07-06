@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.43](https://github.com/tianshu-ai/tianshu/compare/v0.4.42...v0.4.43) (2026-07-06)
+
+### Features
+
+* **workboard:** add a "Raw log" view to the task Execution dialog.
+  A tab next to "transcript" shows the raw opencode.log read
+  straight from the sandbox (new `GET /tasks/:id/opencode-log`
+  route), so debugging opencode startup/egress/MCP issues no longer
+  needs `docker exec`. Tails every 3s while the task is running.
+
 ## [0.4.42](https://github.com/tianshu-ai/tianshu/compare/v0.4.41...v0.4.42) (2026-07-06)
 
 ### Bug Fixes
