@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.40](https://github.com/tianshu-ai/tianshu/compare/v0.4.39...v0.4.40) (2026-07-06)
+
+### Bug Fixes
+
+* **openshell:** don't recreate a busy sandbox mid-run. A long
+  opencode run makes the sandbox slow to list; waitForReady treated
+  >15s of that as "gone" and recreated it, wiping the workdir and
+  killing the running task (longer tasks stuck in_progress). Now the
+  history-poller read never triggers recreate, and before recreating
+  on "not listable" the runner checks the docker container is truly
+  gone (vs just busy). Verified end-to-end: oh-my-openagent's
+  Sisyphus completed a real FizzBuzz task (code written, executed,
+  output recorded) with zero recreates.
+
 ## [0.4.39](https://github.com/tianshu-ai/tianshu/compare/v0.4.38...v0.4.39) (2026-07-06)
 
 ### Features
