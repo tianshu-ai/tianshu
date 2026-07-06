@@ -6,6 +6,15 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.42](https://github.com/tianshu-ai/tianshu/compare/v0.4.41...v0.4.42) (2026-07-06)
+
+### Bug Fixes
+
+* **opencode-worker:** grant sandbox egress for oh-my-openagent's
+  always-on remote MCP servers (mcp.context7.com, mcp.grep.app,
+  mcp.exa.ai, mcp.tavily.com) so they connect instead of logging
+  "server unavailable" at startup.
+
 ## [0.4.41](https://github.com/tianshu-ai/tianshu/compare/v0.4.40...v0.4.41) (2026-07-06)
 
 ### Bug Fixes
