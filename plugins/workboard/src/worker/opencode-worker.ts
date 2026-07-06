@@ -464,7 +464,12 @@ export class OpenCodeWorker implements WorkerHandle {
         // startup into ~/.cache/opencode/node_modules — needs egress
         // to registry.npmjs.org, provided by the policy-advisor loop
         // (opencode self-proposes) when policyAdvisor is on.
-        plugin: ["oh-my-openagent"],
+        // oh-my-openagent is on by default. Set OPENCODE_DISABLE_OMO=1
+        // to run bare opencode (no plugin) — useful to isolate whether
+        // an init hang is omo's doing, and as an escape hatch.
+        ...(process.env.OPENCODE_DISABLE_OMO === "1"
+          ? {}
+          : { plugin: ["oh-my-openagent"] }),
         // Headless: never pause for approval. opencode is
         // interactive by default and, run non-interactively, a tool
         // that needs approval is auto-rejected ("user rejected
@@ -637,15 +642,17 @@ export class OpenCodeWorker implements WorkerHandle {
       // omo reads `.opencode/oh-my-opencode.jsonc`; with
       // OPENCODE_CONFIG=./opencode.json + XDG_CONFIG_HOME=./.oc-config
       // we cover both the project-relative and XDG locations.
-      const omoModel = `tianshu/${nativeModelId}`;
-      const omoConfigJson = buildOmoConfig(omoModel);
-      for (const rel of [
-        `${workdir}/.opencode/oh-my-opencode.jsonc`,
-        `${workdir}/.oc-config/opencode/oh-my-opencode.jsonc`,
-      ]) {
-        await this.deps.shell
-          .writeFile(rel, omoConfigJson)
-          .catch(() => undefined);
+      if (process.env.OPENCODE_DISABLE_OMO !== "1") {
+        const omoModel = `tianshu/${nativeModelId}`;
+        const omoConfigJson = buildOmoConfig(omoModel);
+        for (const rel of [
+          `${workdir}/.opencode/oh-my-opencode.jsonc`,
+          `${workdir}/.oc-config/opencode/oh-my-opencode.jsonc`,
+        ]) {
+          await this.deps.shell
+            .writeFile(rel, omoConfigJson)
+            .catch(() => undefined);
+        }
       }
 
       // On a deny-by-default sandbox (openshell exposes allowEgress),
