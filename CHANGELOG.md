@@ -6,6 +6,27 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.39](https://github.com/tianshu-ai/tianshu/compare/v0.4.38...v0.4.39) (2026-07-06)
+
+### Features
+
+* **openshell:** prebuilt opencode sandbox image
+  (plugins/openshell/sandbox-image/Dockerfile) baking opencode
+  1.17.13 + a warmed oh-my-openagent plugin cache, so sandboxes
+  start instantly instead of installing ~500MB per task. Point at it
+  via `plugins.openshell.config.fromImage`.
+
+### Bug Fixes
+
+* **opencode-worker:** oh-my-openagent's Sisyphus now runs as the
+  default agent end-to-end (verified: agent self-reports as
+  Sisyphus, task done in ~10s). Pre-grant models.dev egress
+  (opencode fetches its model catalog at startup; blocked = silent
+  no-op run). Skip the runtime opencode install when the pinned
+  version is already on PATH (fast path for the prebuilt image).
+  Removed an invalid `--agent sisyphus` (omo already sets Sisyphus
+  as the default primary).
+
 ## [0.4.38](https://github.com/tianshu-ai/tianshu/compare/v0.4.37...v0.4.38) (2026-07-06)
 
 ### Features
