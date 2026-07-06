@@ -215,6 +215,32 @@ function buildOmoConfig(model: string): string {
       model_fallback: false,
       runtime_fallback: false,
       telemetry: false,
+      // ── headless-sandbox safety ──────────────────────────────
+      // omo is built for an interactive dev box: it spins up tmux
+      // panes, a background-task orchestrator, a monitor, and
+      // always-on MCP servers (context7/grep/exa/tavily/playwright/
+      // fetch). Turn all of that off for the locked headless
+      // sandbox. NOTE (2026-07-06): even with ALL of these disabled
+      // the run still freezes right after config load and never
+      // reaches the model call — so the hang lives in omo's plugin
+      // init itself, not in these feature toggles. Kept off anyway
+      // (they're the right defaults for headless), but the real
+      // escape hatch is OPENCODE_DISABLE_OMO=1 (bare opencode),
+      // which runs to completion. Revisit if omo ships a
+      // headless/non-interactive mode.
+      tmux: { enabled: false },
+      team_mode: { enabled: false, tmux_visualization: false },
+      monitor: { enabled: false },
+      new_task_system_enabled: false,
+      disabled_mcps: [
+        "context7",
+        "grep_app",
+        "websearch",
+        "exa",
+        "tavily",
+        "playwright",
+        "fetch",
+      ],
     },
     null,
     2,
