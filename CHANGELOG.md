@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.50](https://github.com/tianshu-ai/tianshu/compare/v0.4.49...v0.4.50) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** force IPv4 DNS
+  (`NODE_OPTIONS=--dns-result-order=ipv4first`) for the opencode run.
+  The sandbox maps host.docker.internal to both IPv4 and IPv6;
+  Node/Bun prefer IPv6, but openshell only permits the first
+  /etc/hosts entry (IPv4) and rejects other IPs — so opencode's model
+  call to the tianshu proxy resolved to IPv6 and was rejected
+  ("Cannot connect to API"). Found via `openshell logs --level
+  trace`.
+
 ## [0.4.49](https://github.com/tianshu-ai/tianshu/compare/v0.4.48...v0.4.49) (2026-07-07)
 
 ### Bug Fixes
