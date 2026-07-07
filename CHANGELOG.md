@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.48](https://github.com/tianshu-ai/tianshu/compare/v0.4.47...v0.4.48) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** pin the oh-my-openagent plugin to an exact
+  version (`@4.15.1`) instead of bare/`@latest`. opencode re-resolves
+  an unpinned plugin against npm on every startup, and that resolve
+  stalls through the openshell L7 proxy — hanging plugin-load before
+  omo runs. Pinning to the version warmed in the sandbox image skips
+  the npm resolve. Also add `host.docker.internal` to NO_PROXY so
+  model calls to the tianshu proxy go direct. A residual intermittent
+  plugin-load deadlock may remain; `OPENCODE_DISABLE_OMO=1` is the
+  fallback.
+
 ## [0.4.47](https://github.com/tianshu-ai/tianshu/compare/v0.4.46...v0.4.47) (2026-07-07)
 
 ### Bug Fixes
