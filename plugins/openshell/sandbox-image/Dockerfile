@@ -45,6 +45,10 @@ ARG OMO_PACKAGE=oh-my-openagent@4.15.1
 # Overwrite it with our pinned version so `opencode` on PATH is the
 # right one for every user (no per-task user-prefix install needed).
 USER root
+# strace: for debugging the opencode/omo plugin-load deadlock in the
+# openshell gRPC-exec tunnel (lets us trace exactly which syscall the
+# hung opencode.exe blocks on). Small, harmless to ship.
+RUN apt-get update -qq && apt-get install -y -qq strace >/dev/null 2>&1 || true
 RUN npm install -g opencode-ai@${OPENCODE_VERSION} \
     && opencode --version
 
