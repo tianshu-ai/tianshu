@@ -908,6 +908,18 @@ export class OpenCodeWorker implements WorkerHandle {
       const cmd =
         `cd ${shq(workdir)} && ` +
         `mkdir -p .oc-config .oc-data && ` +
+        // Clear stale opencode/omo lock dirs before each run. Harmless
+        // hygiene (SIGKILL'd prior runs can leave lock files), though
+        // NOTE (2026-07-06): clearing these does NOT fix the omo
+        // init-hang in the openshell sandbox — that hang is an omo
+        // init busy-loop spawning `sh -c` ~1/s (only inside the
+        // openshell-supervised container; a bare `docker run` of the
+        // same image runs fine). Still under investigation.
+        `rm -rf .oc-data/opencode/locks ` +
+        `"$HOME/.local/state/opencode/locks" ` +
+        `"$HOME/.omo"/*/locks ` +
+        `/sandbox/.local/state/opencode/locks ` +
+        `/sandbox/.omo/*/locks 2>/dev/null; ` +
         // Put our user-prefix opencode first so it wins over the
         // base image's stale root-installed one.
         `export PATH="$HOME/.oc-npm/bin:$PATH" && ` +
@@ -927,7 +939,32 @@ export class OpenCodeWorker implements WorkerHandle {
         // advisor loop (opencode self-proposes on first denial) when
         // policyAdvisor is on.
         `OPENCODE_ENABLE_PARALLEL=1 ` +
+        // ROOT-CAUSE FIX for the omo "hang after loading config" in
+        // the openshell sandbox (2026-07-06): opencode 1.17.x fetches
+        // https://models.dev/api.json at startup for its (optional)
+        // model catalog. Egress to models.dev IS granted, but the
+        // CONNECT is made THROUGH the openshell L7 proxy, and in the
+        // gRPC-exec-tunnelled run that proxied connection STALLS
+        // (never completes, never errors) — opencode's plugin init
+        // blocks on it forever, right after "loading opencode.jsonc",
+        // before the model call. (Isolation: the identical run via a
+        // direct `docker exec` completes; only the tunnelled path
+        // hangs; the single stuck socket is to models.dev's fakeip.)
+        // We don't need models.dev at all — the model + its metadata
+        // come from our tianshu provider config — so disable the
+        // startup fetch. Verified: with this set the sandbox log
+        // shows ZERO models.dev references and omo reaches the model.
+        `OPENCODE_DISABLE_MODELS_FETCH=1 ` +
         `OPENCODE_CONFIG=./opencode.json ` +
+        // Widen NO_PROXY to include 0.0.0.0 (opencode's embedded
+        // server binds 0.0.0.0:<port>); harmless hygiene so any
+        // loopback fetch stays direct. NOTE: this alone does NOT fix
+        // the omo hang — root cause is the openshell gRPC exec
+        // tunnel (see the detached-launch handling below), not the
+        // proxy env (verified: identical proxy env via `docker exec`
+        // inits fine; only the tunnelled foreground exec hangs).
+        `NO_PROXY=127.0.0.1,localhost,::1,0.0.0.0 ` +
+        `no_proxy=127.0.0.1,localhost,::1,0.0.0.0,host.docker.internal ` +
         `timeout -s KILL ${capS} ` +
         // --auto: auto-approve any permission that isn't explicitly
         // denied. Headless runs have nobody to answer an interactive
@@ -953,11 +990,8 @@ export class OpenCodeWorker implements WorkerHandle {
         ((task.attempts ?? 0) > 0 ? `--continue ` : ``) +
         `< .prompt.txt > oc.out 2> oc.err ; ` +
         // Capture opencode's REAL exit code before the trailing
-        // `cat`. Previously `opencode run ... ; cat oc.out` made the
-        // compound command's exit = cat's (always 0), masking
-        // opencode being killed/OOM/timed-out — so the failure
-        // classifier never saw the non-zero code. Preserve it and
-        // re-exit with it after streaming oc.out back.
+        // `cat` so the failure classifier sees a killed/OOM/timed-out
+        // run instead of cat's always-0 exit.
         `rc=$? ; cat oc.out ; exit $rc`;
 
       // Near-real-time transcript: while opencode runs (sh() blocks

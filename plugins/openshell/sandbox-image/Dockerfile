@@ -56,26 +56,56 @@ RUN npm install -g opencode-ai@${OPENCODE_VERSION} \
 # + deps got cached.
 USER sandbox
 WORKDIR /sandbox
-RUN mkdir -p /sandbox/.config/opencode /sandbox/.warmup \
-    && cat > /sandbox/.config/opencode/opencode.json <<'JSON'
+RUN mkdir -p /sandbox/.config/opencode /sandbox/.warmup/.opencode
+# The warmup config lists the plugin AND ships an omo config that
+# looks like a real task's, so the warm run triggers not just the
+# plugin DEP install but also omo's one-time FIRST-INIT PROVISIONING
+# (codegraph binary + ast-grep + ~/.omo state). That provisioning,
+# if left to the first real task, stalls under the openshell gRPC
+# exec tunnel (observed: omo hangs at first init in a fresh sandbox);
+# doing it at build time bakes the provisioned ~/.omo + caches into
+# the image so every runtime start is already "hot" and skips it.
+RUN cat > /sandbox/.warmup/opencode.json <<'JSON'
 {
   "$schema": "https://opencode.ai/config.json",
   "snapshot": false,
   "autoupdate": false,
-  "plugin": ["oh-my-openagent"]
+  "plugin": ["oh-my-openagent"],
+  "permission": { "*": "allow" }
 }
 JSON
-# Trigger plugin install: `opencode` loads plugins at startup. Run a
-# no-op command; ignore its exit (no model configured). The install
-# populates ~/.cache/opencode/node_modules with omo + deps.
+RUN cat > /sandbox/.warmup/.opencode/oh-my-opencode.jsonc <<'JSON'
+{
+  "agents": { "sisyphus": { "model": "warmup/none" } },
+  "model_fallback": false,
+  "runtime_fallback": false,
+  "telemetry": false
+}
+JSON
+# Run opencode once with the omo config active. It installs the
+# plugin deps AND kicks omo's first-init provisioning. No model is
+# reachable, so it exits non-zero after provisioning — that's fine,
+# we only want the cached deps + provisioned ~/.omo state.
 RUN cd /sandbox/.warmup \
-    && (OPENCODE_DISABLE_LSP_DOWNLOAD=1 timeout 600 opencode run "noop" --format json < /dev/null > /sandbox/.warmup/warm.log 2>&1 || true) \
+    && (OPENCODE_DISABLE_LSP_DOWNLOAD=1 OPENCODE_CONFIG=./opencode.json \
+        timeout 600 opencode run "noop" --format json < /dev/null \
+        > /sandbox/.warmup/warm.log 2>&1 || true) \
     && echo "opencode plugin cache warmed:" \
-    && du -sh /sandbox/.cache/opencode 2>/dev/null || true
+    && du -sh /sandbox/.cache/opencode 2>/dev/null || true \
+    && echo "omo provisioned state:" \
+    && du -sh /sandbox/.omo 2>/dev/null || true
 
-# Leave the throwaway warmup config out of the runtime — the worker
-# writes its own opencode.json per task. Keep the cache.
-RUN rm -rf /sandbox/.warmup /sandbox/.config/opencode/opencode.json
+# Drop the throwaway warmup workdir + config; KEEP the warmed caches
+# (~/.cache/opencode) and omo's provisioned state (~/.omo). BUT also
+# drop the codegraph LOCK dir the warm run left behind
+# (~/.omo/codegraph/locks/codegraph-buildkitsandbox.lock, named after
+# the build container): baking a stale lock into the image makes
+# omo's codegraph init contend/wait on a lock from a process that no
+# longer exists, which intermittently hangs the first task in a fresh
+# sandbox. Keep the provisioned codegraph data, drop only the locks.
+RUN rm -rf /sandbox/.warmup /sandbox/.config/opencode/opencode.json \
+    && rm -rf /sandbox/.omo/codegraph/locks /sandbox/.omo/*/locks \
+    && find /sandbox/.omo -name '*.lock' -exec rm -rf {} + 2>/dev/null || true
 
 USER sandbox
 ENTRYPOINT ["/bin/bash"]
