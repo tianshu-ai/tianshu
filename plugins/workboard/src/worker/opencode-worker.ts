@@ -965,6 +965,20 @@ export class OpenCodeWorker implements WorkerHandle {
         `http_proxy= https_proxy= all_proxy= grpc_proxy= ` +
         `NO_PROXY=127.0.0.1,localhost,::1,0.0.0.0,host.docker.internal ` +
         `no_proxy=127.0.0.1,localhost,::1,0.0.0.0,host.docker.internal ` +
+        // Force IPv4 DNS resolution (root-cause fix for "Cannot
+        // connect to API", 2026-07-07, from `openshell logs` trace).
+        // The sandbox's /etc/hosts maps host.docker.internal to BOTH
+        // an IPv4 (192.168.65.254) and an IPv6 (fdc4:...::254)
+        // address. Node/Bun default to resolving the IPv6 one first,
+        // but openshell's supervisor only allows the FIRST /etc/hosts
+        // entry (IPv4) and REJECTS connections to any other IP
+        // (logged: "host.openshell.internal has 2 distinct IPs ...
+        // Connections resolving to any other IP will be rejected").
+        // So opencode's model call to the tianshu proxy resolves to
+        // IPv6 -> openshell rejects it -> "Cannot connect to API"
+        // (while a curl that happens to pick IPv4 works). Pinning DNS
+        // to ipv4first makes opencode use the allowed IPv4 address.
+        `NODE_OPTIONS=--dns-result-order=ipv4first ` +
         `timeout -s KILL ${capS} ` +
         // --auto: auto-approve any permission that isn't explicitly
         // denied. Headless runs have nobody to answer an interactive
