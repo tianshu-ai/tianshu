@@ -230,57 +230,21 @@ function buildOmoConfig(model: string): string {
       model_fallback: false,
       runtime_fallback: false,
       telemetry: false,
-      // ── headless-sandbox safety ──────────────────────────────
-      // omo is built for an interactive dev box: it spins up tmux
-      // panes, a background-task orchestrator, a monitor, and
-      // always-on MCP servers (context7/grep/exa/tavily/playwright/
-      // fetch). Turn all of that off for the locked headless
-      // sandbox. NOTE (2026-07-06): even with ALL of these disabled
-      // the run still freezes right after config load and never
-      // reaches the model call — so the hang lives in omo's plugin
-      // init itself, not in these feature toggles. Kept off anyway
-      // (they're the right defaults for headless), but the real
-      // escape hatch is OPENCODE_DISABLE_OMO=1 (bare opencode),
-      // which runs to completion. Revisit if omo ships a
-      // headless/non-interactive mode.
-      tmux: { enabled: false },
-      team_mode: { enabled: false, tmux_visualization: false },
-      monitor: { enabled: false },
-      new_task_system_enabled: false,
-      disabled_mcps: [
-        "context7",
-        "grep_app",
-        "websearch",
-        "exa",
-        "tavily",
-        "playwright",
-        "fetch",
-      ],
-      // The real init hang: omo's `background-notification` hook
-      // starts a "reply listener" DAEMON (spawnReplyListenerDaemon)
-      // and awaits its startup token; in a headless sandbox that
-      // daemon can't come up and opencode blocks right after config
-      // load. Disable it + the other hooks that spawn/provision or
-      // assume an interactive TTY at startup, so omo initialises as
-      // a plain headless harness.
-      disabled_hooks: [
-        "background-notification",
-        "session-notification",
-        "interactive-bash-session",
-        "ast-grep-sg-provision",
-        "codegraph-bootstrap",
-        "auto-update-checker",
-        "unstable-agent-babysitter",
-        "startup-toast",
-        "legacy-plugin-toast",
-      ],
-      // codegraph auto-provisions (downloads a binary from GitHub)
-      // and auto-builds a code index AT STARTUP; that provision +
-      // build hangs through the openshell L7 proxy and blocks omo
-      // init before the model call (seen as
-      // /sandbox/.omo/codegraph/locks/*.lock + an idle ESTABLISHED
-      // fakeip connection). Turn it fully off for the sandbox.
-      codegraph: { enabled: false, auto_init: false, auto_provision: false },
+      // THE fix for the omo "hangs after loading config" in the
+      // openshell sandbox (root-caused 2026-07-07, from Yu's on-box
+      // diagnostic + local repro): omo spawns an `lsp-daemon` MCP
+      // subprocess (packages/lsp-daemon/dist/cli.js mcp) at startup
+      // that opens a connection through the openshell L7 proxy
+      // (10.200.0.1:3128) and BLOCKS waiting on it; opencode awaits
+      // that MCP's startup and never reaches the main loop. Disabling
+      // just the `lsp` MCP lets omo initialise and reach the model.
+      // Verified locally: with disabled_mcps:["lsp"] the run logs
+      // "all LSPs are disabled", Sisyphus starts, and the model
+      // streams (rc=0). We keep the disabled list MINIMAL — only the
+      // one MCP that deadlocks — rather than the broad disabled_*
+      // block tried earlier (which didn't help and risked conflicting
+      // with the plugin's agent/category init).
+      disabled_mcps: ["lsp"],
     },
     null,
     2,
@@ -978,12 +942,27 @@ export class OpenCodeWorker implements WorkerHandle {
         // tunnel (see the detached-launch handling below), not the
         // proxy env (verified: identical proxy env via `docker exec`
         // inits fine; only the tunnelled foreground exec hangs).
-        // host.docker.internal: opencode's model calls hit the tianshu
-        // proxy there; under NODE_USE_ENV_PROXY it would otherwise be
-        // routed through the openshell L7 proxy (which can't cleanly
-        // reach the docker host gateway — opencode reports "Cannot
-        // connect to API" though a direct curl works). 0.0.0.0 covers
-        // opencode's own embedded server bind.
+        // UNSET all proxy env for opencode (root-cause fix,
+        // 2026-07-07). The openshell sandbox injects
+        // NODE_USE_ENV_PROXY=1 + HTTP(S)_PROXY=10.200.0.1:3128 so
+        // guest tools egress through the L7 policy proxy. But once
+        // models.dev fetch is disabled and omo's lsp MCP is off,
+        // opencode makes NO outbound egress that needs the proxy —
+        // it only talks to the tianshu model proxy at
+        // host.docker.internal:3303 and its own embedded server on
+        // localhost, both of which must be DIRECT. Under
+        // NODE_USE_ENV_PROXY, Bun routes even those through the L7
+        // proxy (NO_PROXY isn't honoured for host.docker.internal /
+        // the random-port loopback URL), the proxy can't reach the
+        // docker host gateway, and opencode reports "Cannot connect
+        // to API" — even though a direct curl to the same URL from
+        // the sandbox works. Clearing the proxy env makes opencode
+        // connect directly. Verified: with the proxy env unset the
+        // run reaches the model and returns (rc=0). (Real egress
+        // like the npm/omo warmup already happened at image build
+        // time, so nothing at task-run time needs the proxy.)
+        `NODE_USE_ENV_PROXY= HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= GRPC_PROXY= ` +
+        `http_proxy= https_proxy= all_proxy= grpc_proxy= ` +
         `NO_PROXY=127.0.0.1,localhost,::1,0.0.0.0,host.docker.internal ` +
         `no_proxy=127.0.0.1,localhost,::1,0.0.0.0,host.docker.internal ` +
         `timeout -s KILL ${capS} ` +

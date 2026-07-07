@@ -80,12 +80,19 @@ RUN cat > /sandbox/.warmup/opencode.json <<'JSON'
   "permission": { "*": "allow" }
 }
 JSON
+# NOTE: mirror the RUNTIME omo config here (esp. disabled_mcps:["lsp"])
+# so the warm run does the SAME first-init as a real task — with the
+# lsp-daemon MCP disabled. Otherwise the warm run leaves lsp-daemon
+# state that differs from runtime and the first real task still pays
+# (and hangs on) the cold first-init. Keep in sync with buildOmoConfig
+# in plugins/workboard/src/worker/opencode-worker.ts.
 RUN cat > /sandbox/.warmup/.opencode/oh-my-opencode.jsonc <<'JSON'
 {
   "agents": { "sisyphus": { "model": "warmup/none" } },
   "model_fallback": false,
   "runtime_fallback": false,
-  "telemetry": false
+  "telemetry": false,
+  "disabled_mcps": ["lsp"]
 }
 JSON
 # Run opencode once with the omo config active. It installs the
