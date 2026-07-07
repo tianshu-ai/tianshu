@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.53](https://github.com/tianshu-ai/tianshu/compare/v0.4.52...v0.4.53) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** pin the proxy baseURL + egress grant to the
+  IPv4 host-gateway literal (192.168.65.254, override via
+  OPENCODE_PROXY_HOST_IP). The sandbox resolves host.docker.internal
+  to IPv6 first, which openshell rejects (only the first /etc/hosts
+  IP is permitted) — opencode's model call never connected and the
+  proxy never received it ("Cannot connect to API"). NODE_OPTIONS
+  ipv4first doesn't work on Bun. Rewriting both the baseURL and the
+  egress host to IPv4 fixes it.
+
 ## [0.4.52](https://github.com/tianshu-ai/tianshu/compare/v0.4.51...v0.4.52) (2026-07-07)
 
 ### Chores
