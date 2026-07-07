@@ -539,7 +539,27 @@ export class OpenCodeWorker implements WorkerHandle {
             npm: providerNpm,
             name: "Tianshu (proxied)",
             options: {
-              baseURL: grant.baseUrl,
+              // Rewrite host.docker.internal -> its IPv4 literal.
+              // ROOT CAUSE (2026-07-07, trace-confirmed): the
+              // openshell sandbox's /etc/hosts maps
+              // host.docker.internal to BOTH IPv4 (192.168.65.254)
+              // and IPv6 (fdc4:...::254). Bun/opencode resolve the
+              // IPv6 first, but openshell only permits the first
+              // /etc/hosts entry (IPv4) and REJECTS other IPs — so
+              // opencode's model call never connects and the proxy
+              // never even receives it ("Cannot connect to API",
+              // zero opencode-proxy logs). NODE_OPTIONS=
+              // --dns-result-order=ipv4first does NOT help (Node
+              // flag; opencode is a Bun native binary that ignores
+              // it — verified: env set, getent still returns IPv6).
+              // Pinning the baseURL to the IPv4 literal avoids the
+              // name resolution entirely. Docker-desktop's host
+              // gateway is a stable 192.168.65.254; override via
+              // OPENCODE_PROXY_HOST_IP for other setups.
+              baseURL: grant.baseUrl.replace(
+                "host.docker.internal",
+                process.env.OPENCODE_PROXY_HOST_IP || "192.168.65.254",
+              ),
               apiKey: grant.token,
             },
             models: { [nativeModelId]: { name: nativeModelId } },
@@ -733,13 +753,24 @@ export class OpenCodeWorker implements WorkerHandle {
             : u.protocol === "https:"
               ? 443
               : 80;
+          // Grant egress for the SAME host opencode actually dials.
+          // We rewrite host.docker.internal -> its IPv4 literal in
+          // the provider baseURL (see the provider block above: the
+          // sandbox resolves the name to IPv6 which openshell
+          // rejects), so the egress endpoint must be granted for
+          // that IPv4 too — otherwise the endpoint is authorized for
+          // the name while opencode connects to the IP and gets
+          // policy_denied. Keep them in sync.
+          const egressHost =
+            u.hostname === "host.docker.internal"
+              ? process.env.OPENCODE_PROXY_HOST_IP || "192.168.65.254"
+              : u.hostname;
           // openshell gates egress by BOTH host:port AND the
           // requesting binary, so authorize opencode + its node
           // runtime. Without these the endpoint registers but every
-          // request is denied (403 policy_denied). Cover both the
-          // real (node_modules) path and the /usr/bin symlink.
+          // request is denied (403 policy_denied).
           await this.deps.shell.allowEgress({
-            host: u.hostname,
+            host: egressHost,
             port,
             protocol: u.protocol === "https:" ? "https" : "http",
             binaries: OPENCODE_BINARIES,
