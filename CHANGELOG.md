@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.51](https://github.com/tianshu-ai/tianshu/compare/v0.4.50...v0.4.51) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** trim `OPENCODE_BINARIES` to paths that exist
+  in the sandbox image. openshell symlink-resolves each policy
+  binary and logged "Cannot access container filesystem" WARNs for
+  the nonexistent entries; keeping only the real paths
+  (/usr/bin/opencode + opencode.exe + node/npm) removes the noise
+  and the ambiguity.
+
 ## [0.4.50](https://github.com/tianshu-ai/tianshu/compare/v0.4.49...v0.4.50) (2026-07-07)
 
 ### Bug Fixes
