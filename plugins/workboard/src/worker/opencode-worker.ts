@@ -149,22 +149,21 @@ const OMO_PLUGIN = `oh-my-openagent@${OMO_VERSION}`;
 const OPENCODE_BINARIES = [
   // opencode 1.17.x ships a COMPILED native binary named
   // `opencode.exe` (167MB ELF); /usr/bin/opencode is a symlink to
-  // it. The process that actually opens sockets is opencode.exe, so
-  // it MUST be authorized or egress (models.dev, the model proxy)
-  // gets 403'd — that was the "stuck at startup / models.dev 403"
-  // bug. Authorize the .exe + the older non-.exe/.opencode forms +
-  // a broad glob so any layout works.
-  "/usr/lib/node_modules/opencode-ai/bin/opencode.exe",
-  "/usr/lib/node_modules/opencode-ai/bin/opencode",
-  "/usr/lib/node_modules/opencode-ai/bin/.opencode",
-  "/usr/lib/node_modules/opencode-ai/**",
+  // it. The process that opens sockets is opencode.exe, so BOTH the
+  // symlink (the exec path) and the resolved .exe MUST be
+  // authorized. openshell symlink-resolves each policy binary
+  // against /proc/<pid>/root; listing paths that DON'T exist in the
+  // image (e.g. /usr/local/bin/opencode, .opencode,
+  // /usr/bin/opencode.exe) makes it log "Cannot access container
+  // filesystem for symlink resolution" WARNs and match literally,
+  // which is noise and can mask the real binary. List ONLY paths
+  // that actually exist in the sandbox image:
+  //   /usr/bin/opencode -> ../lib/node_modules/opencode-ai/bin/opencode.exe
   "/usr/bin/opencode",
-  "/usr/bin/opencode.exe",
-  "/usr/local/bin/opencode",
+  "/usr/lib/node_modules/opencode-ai/bin/opencode.exe",
+  "/usr/lib/node_modules/opencode-ai/**",
   "/usr/bin/node",
-  "/usr/local/bin/node",
   "/usr/bin/npm",
-  "/usr/local/bin/npm",
   // user-prefix install ($HOME/.oc-npm) — HOME varies, so glob (the
   // ** also covers the nested opencode.exe there):
   "/home/*/.oc-npm/**",
