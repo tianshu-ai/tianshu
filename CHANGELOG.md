@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.49](https://github.com/tianshu-ai/tianshu/compare/v0.4.48...v0.4.49) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode/omo:** disable omo's `lsp` MCP (its lsp-daemon blocks on
+  the L7 proxy at startup and deadlocks init) and UNSET the proxy env
+  for the opencode run (with models.dev + lsp off, opencode only needs
+  direct connections to the tianshu proxy + its loopback server;
+  Bun mis-routes those through the L7 proxy -> "Cannot connect").
+  Sandbox image warmup config mirrors disabled_mcps:["lsp"]. Verified
+  via docker exec: reaches the model, rc=0. A residual
+  gRPC-exec-tunnel hang may remain in some envs; OPENCODE_DISABLE_OMO=1
+  is the fallback.
+
 ## [0.4.48](https://github.com/tianshu-ai/tianshu/compare/v0.4.47...v0.4.48) (2026-07-07)
 
 ### Bug Fixes
