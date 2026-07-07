@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.47](https://github.com/tianshu-ai/tianshu/compare/v0.4.46...v0.4.47) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** set `OPENCODE_DISABLE_MODELS_FETCH=1` —
+  opencode's startup models.dev fetch stalled through the openshell
+  L7 proxy and blocked omo init; we don't need it (model metadata
+  comes from the tianshu provider). Plus warm omo first-init
+  provisioning into the sandbox image + strip the stale build-time
+  codegraph lock. Note: a residual openshell gRPC-exec-tunnel plugin
+  init deadlock remains under investigation; `OPENCODE_DISABLE_OMO=1`
+  is the reliable fallback.
+
 ## [0.4.46](https://github.com/tianshu-ai/tianshu/compare/v0.4.45...v0.4.46) (2026-07-06)
 
 ### Bug Fixes
