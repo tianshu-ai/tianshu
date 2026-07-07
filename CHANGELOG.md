@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.52](https://github.com/tianshu-ai/tianshu/compare/v0.4.51...v0.4.52) (2026-07-07)
+
+### Chores
+
+* **opencode-proxy:** add diagnostic logging (recv token lookup /
+  forward upstream URL / upstream>=400 status) to pin down whether an
+  opencode "Unauthorized" is a proxy-token miss or an upstream 401.
+
 ## [0.4.51](https://github.com/tianshu-ai/tianshu/compare/v0.4.50...v0.4.51) (2026-07-07)
 
 ### Bug Fixes
