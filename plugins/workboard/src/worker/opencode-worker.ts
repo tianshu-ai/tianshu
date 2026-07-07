@@ -123,6 +123,21 @@ const LSP_INSTALL_EGRESS: Array<{ host: string; port: number }> = [
  *  silently break every worker. Bump deliberately. */
 const OPENCODE_VERSION = "1.17.13";
 
+/** oh-my-openagent version, pinned to an EXACT version (never
+ *  "latest"). This is critical: opencode resolves an unpinned/`@latest`
+ *  plugin against the npm registry on EVERY startup (an Arborist
+ *  reify + lock under ~/.cache/opencode), and in the openshell sandbox
+ *  that npm resolve goes through the L7 egress proxy, which stalls it
+ *  — opencode then hangs during plugin-load, before omo's code even
+ *  runs (the "frozen after loading config" symptom). Pinning to an
+ *  exact version that's already warmed into the sandbox image lets
+ *  opencode see the cached package and SKIP the npm resolve entirely.
+ *  Verified 2026-07-07: `oh-my-openagent@latest` hangs; the pinned
+ *  exact version reaches the model. Keep in sync with OMO_PACKAGE in
+ *  plugins/openshell/sandbox-image/Dockerfile + the warmed cache. */
+const OMO_VERSION = "4.15.1";
+const OMO_PLUGIN = `oh-my-openagent@${OMO_VERSION}`;
+
 /** Absolute binary paths that may open network sockets on opencode's
  *  behalf. openshell gates egress by BOTH host:port AND the calling
  *  binary, so every egress grant must list these. Covers: the base
@@ -520,7 +535,7 @@ export class OpenCodeWorker implements WorkerHandle {
         // an init hang is omo's doing, and as an escape hatch.
         ...(process.env.OPENCODE_DISABLE_OMO === "1"
           ? {}
-          : { plugin: ["oh-my-openagent"] }),
+          : { plugin: [OMO_PLUGIN] }),
         // Headless: never pause for approval. opencode is
         // interactive by default and, run non-interactively, a tool
         // that needs approval is auto-rejected ("user rejected
@@ -963,7 +978,13 @@ export class OpenCodeWorker implements WorkerHandle {
         // tunnel (see the detached-launch handling below), not the
         // proxy env (verified: identical proxy env via `docker exec`
         // inits fine; only the tunnelled foreground exec hangs).
-        `NO_PROXY=127.0.0.1,localhost,::1,0.0.0.0 ` +
+        // host.docker.internal: opencode's model calls hit the tianshu
+        // proxy there; under NODE_USE_ENV_PROXY it would otherwise be
+        // routed through the openshell L7 proxy (which can't cleanly
+        // reach the docker host gateway — opencode reports "Cannot
+        // connect to API" though a direct curl works). 0.0.0.0 covers
+        // opencode's own embedded server bind.
+        `NO_PROXY=127.0.0.1,localhost,::1,0.0.0.0,host.docker.internal ` +
         `no_proxy=127.0.0.1,localhost,::1,0.0.0.0,host.docker.internal ` +
         `timeout -s KILL ${capS} ` +
         // --auto: auto-approve any permission that isn't explicitly

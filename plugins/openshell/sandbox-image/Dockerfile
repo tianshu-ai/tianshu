@@ -32,7 +32,13 @@ FROM ${BASE_IMAGE}
 # Versions pinned for reproducibility. Keep OPENCODE_VERSION in sync
 # with OPENCODE_VERSION in plugins/workboard/src/worker/opencode-worker.ts.
 ARG OPENCODE_VERSION=1.17.13
-ARG OMO_PACKAGE=oh-my-openagent@latest
+# Pin an EXACT omo version (never @latest). opencode re-resolves an
+# unpinned plugin against npm on every startup, which stalls through
+# the openshell egress proxy and hangs plugin-load; a pinned version
+# warmed here matches what the worker requests (OMO_VERSION in
+# opencode-worker.ts) so opencode uses the cached package and skips
+# the npm resolve. Keep in sync with OMO_VERSION in the worker.
+ARG OMO_PACKAGE=oh-my-openagent@4.15.1
 
 # --- 1. Upgrade opencode (root global) -----------------------------
 # The base image preinstalls an older opencode at /usr/lib/node_modules.
@@ -70,7 +76,7 @@ RUN cat > /sandbox/.warmup/opencode.json <<'JSON'
   "$schema": "https://opencode.ai/config.json",
   "snapshot": false,
   "autoupdate": false,
-  "plugin": ["oh-my-openagent"],
+  "plugin": ["oh-my-openagent@4.15.1"],
   "permission": { "*": "allow" }
 }
 JSON
