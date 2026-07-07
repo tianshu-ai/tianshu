@@ -287,6 +287,15 @@ export class OpenCodeProxy {
     const rawToken = (req.params as Record<string, unknown>).token;
     const token = typeof rawToken === "string" ? rawToken : "";
     const g = token ? this.lookup(token) : null;
+    // DIAG (2026-07-07): trace where an opencode Unauthorized comes
+    // from — proxy-level (token invalid/expired) vs upstream 401.
+    console.log(
+      `[opencode-proxy] recv ${req.method} tail=${String(
+        (req.params as Record<string, unknown>).splat ?? "",
+      )} tokenPrefix=${token.slice(0, 6)} lookup=${
+        g ? `ok(model=${g.modelId})` : "MISS"
+      }`,
+    );
     if (!g) {
       res.status(401).json({ error: "invalid or expired proxy token" });
       return;
@@ -374,6 +383,10 @@ export class OpenCodeProxy {
       headers["content-type"] = "application/json";
     }
 
+    console.log(
+      `[opencode-proxy] forward model=${info.modelId} api=${info.api} ` +
+        `-> ${upstreamUrl} apiKeyPrefix=${apiKey.slice(0, 6)}`,
+    );
     let upstream: globalThis.Response;
     try {
       upstream = await fetch(upstreamUrl, {
@@ -390,6 +403,12 @@ export class OpenCodeProxy {
     }
 
     // Mirror status + relevant headers; stream body straight back.
+    if (upstream.status >= 400) {
+      console.log(
+        `[opencode-proxy] upstream ${upstream.status} model=${info.modelId} ` +
+          `url=${upstreamUrl}`,
+      );
+    }
     res.status(upstream.status);
     const ct = upstream.headers.get("content-type");
     if (ct) res.setHeader("content-type", ct);
