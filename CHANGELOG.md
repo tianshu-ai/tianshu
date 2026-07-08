@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.58](https://github.com/tianshu-ai/tianshu/compare/v0.4.57...v0.4.58) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** disable oh-my-openagent's anonymous PostHog
+  telemetry (`OMO_SEND_ANONYMOUS_TELEMETRY=no`). In the locked
+  sandbox the telemetry POST to us.i.posthog.com is egress-denied
+  (403), spamming the run output with harmless-but-noisy
+  PostHogFetchHttpError stack traces. (omo end-to-end run now works;
+  this removes the last cosmetic noise.)
+
 ## [0.4.57](https://github.com/tianshu-ai/tianshu/compare/v0.4.56...v0.4.57) (2026-07-08)
 
 ### Features
