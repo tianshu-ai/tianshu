@@ -1063,6 +1063,10 @@ export class OpenCodeWorker implements WorkerHandle {
         })();
       }, 4000);
 
+      // DIAG (2026-07-08): log the FULL command the worker hands to
+      // openshell, so we can diff it against a manual
+      // `openshell sandbox exec ... opencode run` that works.
+      this.deps.log.info?.("opencode-worker: RUN cmd", { workdir, cmd });
       let res: Awaited<ReturnType<typeof this.sh>>;
       const runStartedAt = Date.now();
       try {

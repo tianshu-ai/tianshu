@@ -293,6 +293,14 @@ export class OpenShellRunner implements SandboxRunner {
       // `bash -c` wraps the command so pipes / redirections / `&&`
       // are honoured exactly like the SDK contract promises.
       args.push("--", "bash", "-c", req.command);
+      // DIAG (2026-07-08): full argv handed to the openshell CLI, so
+      // we can compare the worker's invocation with a manual
+      // `openshell sandbox exec` that works.
+      this.opts.log.info(
+        `openshell exec argv: openshell ${args
+          .map((a) => (/\s/.test(a) ? JSON.stringify(a) : a))
+          .join(" ")}`,
+      );
       const { exitCode, stdout, stderr, timedOut, aborted } =
         await this.spawnCliReady(args, {
           // Host-side budget is gateway timeout + 2s slack so we can
