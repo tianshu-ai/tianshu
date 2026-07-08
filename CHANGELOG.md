@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.60](https://github.com/tianshu-ai/tianshu/compare/v0.4.59...v0.4.60) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** surface oh-my-opencode.jsonc write
+  success/failure (was `.catch(()=>undefined)`, silently hiding a
+  failed write). If the omo config write fails, omo falls back to
+  its DEFAULT config (agents not pinned to the single proxied
+  model). Now logged so a missing omo config is visible.
+
 ## [0.4.59](https://github.com/tianshu-ai/tianshu/compare/v0.4.58...v0.4.59) (2026-07-08)
 
 ### Refactor
