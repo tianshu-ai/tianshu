@@ -705,6 +705,25 @@ export class OpenCodeWorker implements WorkerHandle {
       if (process.env.OPENCODE_DISABLE_OMO !== "1") {
         const omoModel = `tianshu/${nativeModelId}`;
         const omoConfigJson = buildOmoConfig(omoModel);
+        // Ensure the nested parent dirs exist FIRST. `sandbox upload`
+        // only auto-creates the immediate parent, and these configs
+        // live under a new `.opencode/` (and `.oc-config/opencode/`)
+        // subtree that doesn't exist yet in a fresh workdir — without
+        // this mkdir the upload fails and (previously) was silently
+        // swallowed, so omo fell back to its DEFAULT config. Observed:
+        // the workdir had only opencode.json, no .opencode/.
+        await this.deps.shell
+          .exec({
+            command: `cd ${shq(workdir)} && mkdir -p .opencode .oc-config/opencode`,
+            workdir: SANDBOX_WORKSPACE_ROOT,
+            timeoutMs: 30_000,
+          })
+          .catch((err) =>
+            this.deps.log.warn?.(
+              "opencode-worker: mkdir omo config dirs failed",
+              { err: err instanceof Error ? err.message : String(err) },
+            ),
+          );
         for (const rel of [
           `${workdir}/.opencode/oh-my-opencode.jsonc`,
           `${workdir}/.oc-config/opencode/oh-my-opencode.jsonc`,
