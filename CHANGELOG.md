@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.64](https://github.com/tianshu-ai/tianshu/compare/v0.4.63...v0.4.64) (2026-07-08)
+
+### Reverts
+
+* **opencode/openshell:** drop `allow_encoded_slash` (0.4.62). The
+  openshell CLI doesn't support it in the endpoint options segment,
+  so it always failed and fell back — spamming a warning per grant.
+  omo deps are pre-warmed into the image, so no scoped-package (%2F)
+  install happens at task time; the option was unnecessary.
+
 ## [0.4.63](https://github.com/tianshu-ai/tianshu/compare/v0.4.62...v0.4.63) (2026-07-08)
 
 ### Refactor

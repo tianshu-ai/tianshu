@@ -1,6 +1,6 @@
 {
   "name": "@tianshu-ai/tianshu",
-  "version": "0.4.63",
+  "version": "0.4.64",
   "description": "An open AI agent platform with a sidecar browser. Built in public.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/tianshu-ai/tianshu",
