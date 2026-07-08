@@ -6,6 +6,15 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.54](https://github.com/tianshu-ai/tianshu/compare/v0.4.53...v0.4.54) (2026-07-08)
+
+### Chores
+
+* log the full openshell exec command the opencode worker runs
+  ("opencode-worker: RUN cmd" + "openshell exec argv") to diff a
+  failing worker task against a working manual `openshell sandbox
+  exec ... opencode run`.
+
 ## [0.4.53](https://github.com/tianshu-ai/tianshu/compare/v0.4.52...v0.4.53) (2026-07-07)
 
 ### Bug Fixes
