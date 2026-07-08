@@ -968,9 +968,12 @@ export class OpenCodeWorker implements WorkerHandle {
       const cmd =
         `cd ${shq(workdir)} && ` +
         `mkdir -p .oc-config .oc-data && ` +
-        // user-prefix opencode first (falls back to the image's
-        // global one if absent).
-        `export PATH="$HOME/.oc-npm/bin:$PATH" && ` +
+        // NOTE: no `export PATH=$HOME/.oc-npm/bin` prepend anymore.
+        // The sandbox image ships the pinned opencode globally at
+        // /usr/bin/opencode, so plain `opencode` on PATH is already
+        // the right one; the user-prefix path was only a fallback
+        // for images lacking it and just added noise. If a future
+        // image needs the user-prefix install, re-add it.
         `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
         `XDG_DATA_HOME="$PWD/.oc-data" ` +
         `OPENCODE_CONFIG=./opencode.json ` +
