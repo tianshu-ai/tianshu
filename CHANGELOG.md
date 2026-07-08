@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.62](https://github.com/tianshu-ai/tianshu/compare/v0.4.61...v0.4.62) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode/openshell:** allow encoded slash (%2F) for the npm
+  registry egress. openshell's L7 REST engine denies request-targets
+  containing %2F by default, so npm scoped-package installs
+  (@ai-sdk%2Fanthropic, ...) — which omo depends on — were DENIED.
+  `allowEgress` now takes `allowEncodedSlash`; the runner appends
+  `allow_encoded_slash=true` to the endpoint spec (falls back to the
+  plain spec if the CLI rejects the option).
+
 ## [0.4.61](https://github.com/tianshu-ai/tianshu/compare/v0.4.60...v0.4.61) (2026-07-08)
 
 ### Bug Fixes
