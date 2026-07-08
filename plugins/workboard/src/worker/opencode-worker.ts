@@ -598,100 +598,22 @@ export class OpenCodeWorker implements WorkerHandle {
       // on PATH in the run command so our pinned version wins over
       // the stale preinstall. Skip the install if our prefix already
       // has the right version.
-      const OC_PREFIX = "$HOME/.oc-npm";
-      const ocBin = `${OC_PREFIX}/bin/opencode`;
-
-      // Installing opencode (+ later its oh-my-openagent plugin)
-      // needs egress to the npm registry, and it's `npm`/`node`
-      // doing the fetch, not opencode — so opencode's policy-advisor
-      // self-proposal can't cover it. Pre-grant npm egress for the
-      // node/npm binaries before installing. No-op on open-network
-      // runtimes.
-      if (this.deps.shell.allowEgress) {
-        // registry.npmjs.org: npm install of opencode/plugins.
-        // models.dev: opencode 1.17.13 fetches its model catalog
-        //   (https://models.dev/api.json) at STARTUP; if blocked it
-        //   errors before running (the model call never happens) and
-        //   the run produces nothing. It's opencode itself fetching
-        //   pre-run, so the policy-advisor self-proposal can't cover
-        //   it — pre-grant it.
-        // registry.npmjs.org: npm install. models.dev: opencode's
-        // startup model-catalog fetch. mcp.*: oh-my-openagent's
-        // always-on remote MCP servers (context7 docs, grep.app code
-        // search, exa web search) — without egress they log
-        // "server unavailable" and omo loses those capabilities.
-        // NOTE: granting the mcp.* egress lets omo's always-on
-        // remote MCPs CONNECT over the openshell L7 proxy — and the
-        // SSE/long-poll streams those MCPs open appear to STALL
-        // through the proxy MITM, hanging omo's init before it
-        // reaches the model call. When they're NOT granted, the
-        // MCPs fast-fail ("server unavailable") and omo proceeds
-        // (verified: bare `docker run` with no MCP egress inits in
-        // ~28s). So the MCP grants are gated OFF by default; set
-        // OPENCODE_GRANT_OMO_MCPS=1 to re-enable them.
-        const egressHosts = ["registry.npmjs.org", "models.dev"];
-        if (process.env.OPENCODE_GRANT_OMO_MCPS === "1") {
-          egressHosts.push(
-            "mcp.context7.com",
-            "mcp.grep.app",
-            "mcp.exa.ai",
-            "mcp.tavily.com",
-          );
-        }
-        for (const host of egressHosts) {
-          await this.deps.shell
-            .allowEgress({
-              host,
-              port: 443,
-              protocol: "https",
-              binaries: [
-                ...OPENCODE_BINARIES,
-                "/usr/lib/node_modules/npm/bin/npm-cli.js",
-              ],
-            })
-            .catch((err) =>
-              this.deps.log.warn?.(
-                "opencode-worker: npm egress grant failed (install may 403)",
-                { err: err instanceof Error ? err.message : String(err) },
-              ),
-            );
-        }
-      }
-
-      // Skip install entirely when a matching opencode is ALREADY on
-      // PATH at the right version — this is the fast path for the
-      // prebuilt tianshu/opencode-sandbox image, which bakes
-      // opencode ${OPENCODE_VERSION} + a warmed omo plugin cache. Only
-      // fall back to the user-prefix install on a bare base image
-      // (where PATH's opencode is the stale preinstall).
-      const ensure = await this.sh(
-        `test "$(opencode --version 2>/dev/null | head -1)" = "${OPENCODE_VERSION}" || ` +
-          `test "$(${ocBin} --version 2>/dev/null | head -1)" = "${OPENCODE_VERSION}" || ` +
-          `npm i -g --prefix ${OC_PREFIX} opencode-ai@${OPENCODE_VERSION}`,
-        task,
-        signal,
-        5 * 60_000,
-      );
-      if (ensure.exitCode !== 0 && !ensure.aborted) {
-        return {
-          status: "stalled",
-          resultSummary:
-            `FAILED [SETUP]: could not install opencode in the sandbox ` +
-            `(exit ${ensure.exitCode})— opencode never ran. Likely a ` +
-            `sandbox/network/npm issue, not a task problem.` +
-            (ensure.stderr
-              ? `\n\nstderr: ${ensure.stderr.slice(0, 500)}`
-              : ""),
-        };
-      }
-      if (ensure.aborted) {
-        return {
-          status: "aborted",
-          resultSummary:
-            "FAILED [ABORTED]: cancelled during opencode install (signal).",
-        };
-      }
-
+      // SIMPLIFIED (2026-07-08, per Yu): a task now runs opencode
+      // DIRECTLY — no version-probe, no npm-install fallback, no
+      // pre-run npm/models.dev egress grants. Assumes the sandbox
+      // image already ships the pinned opencode ${OPENCODE_VERSION}
+      // globally on PATH. If a future image lacks it, the run will
+      // fail at `opencode run` (command not found) instead of
+      // silently self-installing.
+      //
+      // REMOVED (kept here for rollback if regressions appear):
+      //  - allowEgress pre-grants for registry.npmjs.org / models.dev
+      //    (+ optional OPENCODE_GRANT_OMO_MCPS mcp.* hosts)
+      //  - `test opencode --version == ${OPENCODE_VERSION} ||
+      //     test $HOME/.oc-npm/bin/opencode ... || npm i -g
+      //     --prefix $HOME/.oc-npm opencode-ai@${OPENCODE_VERSION}`
+      //  - the SETUP-failure / aborted-during-install guards
+      // See git history of this file for the exact removed block.
       await this.sh(
         `mkdir -p ${shq(workdir)}`,
         task,
@@ -963,55 +885,29 @@ export class OpenCodeWorker implements WorkerHandle {
       // .json baseURL being the IPv4 literal (see the provider block
       // above), so opencode connects directly with no proxy-env
       // gymnastics — matching the working manual command.
+      // SIMPLIFIED (2026-07-08, per Yu — option C): run opencode
+      // DIRECTLY, nothing else. Removed the pre-run scaffolding that
+      // had accumulated during the 2026-07 omo bring-up:
+      //   - `rm -rf .opencode` (avoided the ~12-min per-task project-
+      //     local @opencode-ai/plugin install)
+      //   - stale lock clearing (.oc-data/opencode/locks, $HOME/.omo
+      //     & /sandbox/.omo */locks — guarded the "hang after loading
+      //     config" from a SIGKILLed prior run's leftover lock)
+      //   - OPENCODE_DISABLE_MODELS_FETCH / OPENCODE_ENABLE_PARALLEL /
+      //     OPENCODE_DISABLE_LSP_DOWNLOAD / OMO_SEND_ANONYMOUS_TELEMETRY
+      // KEPT ONLY the worker mechanism that makes a run possible at
+      // all: per-task workdir, XDG dirs + OPENCODE_CONFIG (this is
+      // how opencode finds the `tianshu` provider/model — without it
+      // the model can't resolve), output capture, real exit code,
+      // and --continue resume. If the removed guards' symptoms
+      // return (12-min project install, config-load hang), re-add
+      // them from git history of this file.
       const cmd =
         `cd ${shq(workdir)} && ` +
-        // Remove any project-relative ./.opencode BEFORE running.
-        // A ./.opencode dir makes opencode treat the workdir as a
-        // project and run a ~12-minute per-task project-local
-        // dependency install into ./.opencode/node_modules
-        // (@opencode-ai/plugin) every run ("background dependency
-        // install failed / token mismatch"). Verified on-box:
-        // removing ./.opencode makes the run start instantly and omo
-        // (a GLOBAL plugin from the prewarmed image cache) still
-        // loads. omo config lives in XDG (./.oc-config/opencode), so
-        // deleting ./.opencode doesn't lose it. Do this every run
-        // since opencode can recreate ./.opencode on a prior start.
-        `rm -rf .opencode && ` +
         `mkdir -p .oc-config .oc-data && ` +
-        // Clear STALE lock dirs before the run. opencode + omo take
-        // locks during init (omo's codegraph lock lives in the
-        // SANDBOX-GLOBAL $HOME/.omo/*/locks, NOT per-workdir; opencode's
-        // in .oc-data). Because we bound the run with `timeout -s KILL`
-        // (SIGKILL, no cleanup), a killed/interrupted prior run leaves
-        // its lock behind, and the NEXT run's acquireLock then waits on
-        // a lock held by a dead process -> the intermittent
-        // "hang after loading config". Verified on-box: 0 opencode
-        // processes yet a residual /sandbox/.omo/codegraph/locks/*.lock.
-        // Safe: only clears lock files/dirs, not data. (Also see: don't
-        // run two opencode+omo in one sandbox concurrently -- they
-        // contend on the shared $HOME/.omo locks.)
-        `rm -rf .oc-data/opencode/locks "$HOME/.omo"/*/locks ` +
-        `/sandbox/.omo/*/locks 2>/dev/null; ` +
-        // NOTE: no `export PATH=$HOME/.oc-npm/bin` prepend anymore.
-        // The sandbox image ships the pinned opencode globally at
-        // /usr/bin/opencode, so plain `opencode` on PATH is already
-        // the right one; the user-prefix path was only a fallback
-        // for images lacking it and just added noise. If a future
-        // image needs the user-prefix install, re-add it.
         `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
         `XDG_DATA_HOME="$PWD/.oc-data" ` +
         `OPENCODE_CONFIG=./opencode.json ` +
-        // don't auto-download LSP servers unless LSP is enabled.
-        (this.deps.enableLsp ? `` : `OPENCODE_DISABLE_LSP_DOWNLOAD=1 `) +
-        // enable the key-free Parallel web_search backend.
-        `OPENCODE_ENABLE_PARALLEL=1 ` +
-        // skip opencode's startup models.dev catalog fetch (we supply
-        // the model via the tianshu provider; the fetch would stall
-        // through the sandbox egress proxy).
-        `OPENCODE_DISABLE_MODELS_FETCH=1 ` +
-        // silence omo's PostHog telemetry (egress-denied in the
-        // sandbox -> noisy 403 stack traces; harmless but ugly).
-        `OMO_SEND_ANONYMOUS_TELEMETRY=no ` +
         `timeout -s KILL ${capS} ` +
         // --auto: auto-approve any non-denied permission (headless
         // runs can't answer an interactive `ask`).
