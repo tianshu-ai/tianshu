@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.63](https://github.com/tianshu-ai/tianshu/compare/v0.4.62...v0.4.63) (2026-07-08)
+
+### Refactor
+
+* **opencode-worker:** drop the redundant `$HOME/.oc-npm/bin` PATH
+  prepend from the run command — the sandbox image ships the pinned
+  opencode globally, so plain `opencode` is already correct.
+
 ## [0.4.62](https://github.com/tianshu-ai/tianshu/compare/v0.4.61...v0.4.62) (2026-07-08)
 
 ### Bug Fixes
