@@ -250,14 +250,19 @@ export class OpenCodeProxy {
   }
 
   private lookup(token: string): ProxyGrant | null {
-    // TEST HELPER (debugging only): a long-lived token that never
-    // expires and is never revoked, so a manual `opencode run` can
-    // exercise the full proxy chain without racing the worker's
-    // per-task mint/revoke. Enable by setting OPENCODE_PROXY_TEST_TOKEN
-    // (and optionally OPENCODE_PROXY_TEST_MODEL, defaults to
-    // anthropic/claude-opus-4-6). DO NOT set in production.
-    const testToken = process.env.OPENCODE_PROXY_TEST_TOKEN;
-    if (testToken && token === testToken) {
+    const g = this.grants.get(token);
+    // DEBUG SWITCH (do NOT enable in production):
+    // OPENCODE_PROXY_SKIP_TOKEN_VALIDATION=1 turns off token
+    // validation entirely — ANY token is accepted so a manual
+    // `opencode run` / curl can exercise the full proxy chain
+    // without racing the worker's per-task mint/revoke or TTL. If a
+    // real grant exists for the token we still use it (correct
+    // tenant/model); otherwise we synthesize one for a default
+    // model (OPENCODE_PROXY_TEST_MODEL, default
+    // anthropic/claude-opus-4-6; OPENCODE_PROXY_TEST_TENANT, default
+    // "default"). This does NOT hardcode any token value.
+    if (process.env.OPENCODE_PROXY_SKIP_TOKEN_VALIDATION === "1") {
+      if (g) return g; // honour a real live grant when present
       return {
         token,
         tenantId: process.env.OPENCODE_PROXY_TEST_TENANT || "default",
@@ -267,7 +272,6 @@ export class OpenCodeProxy {
         expiresAt: Number.MAX_SAFE_INTEGER,
       };
     }
-    const g = this.grants.get(token);
     if (!g) return null;
     if (Date.now() > g.expiresAt) {
       this.grants.delete(token);
