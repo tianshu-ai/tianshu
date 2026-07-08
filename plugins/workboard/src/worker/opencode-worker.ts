@@ -706,13 +706,19 @@ export class OpenCodeWorker implements WorkerHandle {
       // single proxied model. omo's built-in fallback chains list
       // provider names like anthropic/openai/google — none of which
       // is our "tianshu" proxy provider, so out of the box omo can't
-      // resolve any model and its agents don't work. Writing an
-      // oh-my-opencode config that sets model=tianshu/<model> on all
-      // agents + categories forces everything onto the one model we
-      // expose (Yu: "first configure them all to the same one").
-      // omo reads `.opencode/oh-my-opencode.jsonc`; with
-      // OPENCODE_CONFIG=./opencode.json + XDG_CONFIG_HOME=./.oc-config
-      // we cover both the project-relative and XDG locations.
+      // resolve any model.
+      //
+      // CRITICAL (2026-07-08): write this ONLY to the XDG location
+      // ($XDG_CONFIG_HOME/opencode = ./.oc-config/opencode), NOT to a
+      // project-relative ./.opencode/ dir. Any ./.opencode/ directory
+      // makes opencode treat the workdir as a project and run a
+      // per-task PROJECT-LOCAL dependency install into
+      // ./.opencode/node_modules (@opencode-ai/plugin) — that took
+      // ~12 minutes every task and logged "background dependency
+      // install failed / token mismatch". Verified: removing
+      // ./.opencode makes the run start instantly and omo (a GLOBAL
+      // plugin from the prewarmed image cache) still loads. So keep
+      // the omo config in XDG only.
       if (process.env.OPENCODE_DISABLE_OMO !== "1") {
         const omoModel = `tianshu/${nativeModelId}`;
         // Per-task codegraph dir (absolute guest path) so its lock +
@@ -720,47 +726,30 @@ export class OpenCodeWorker implements WorkerHandle {
         // $HOME/.omo/codegraph — prevents cross-run lock contention.
         const codegraphDir = `${SANDBOX_WORKSPACE_ROOT}/${workdir}/.oc-data/codegraph`;
         const omoConfigJson = buildOmoConfig(omoModel, codegraphDir);
-        // Ensure the nested parent dirs exist FIRST. `sandbox upload`
-        // only auto-creates the immediate parent, and these configs
-        // live under a new `.opencode/` (and `.oc-config/opencode/`)
-        // subtree that doesn't exist yet in a fresh workdir — without
-        // this mkdir the upload fails and (previously) was silently
-        // swallowed, so omo fell back to its DEFAULT config. Observed:
-        // the workdir had only opencode.json, no .opencode/.
+        // mkdir the XDG config dir first (sandbox upload only
+        // auto-creates the immediate parent).
         await this.deps.shell
           .exec({
-            command: `cd ${shq(workdir)} && mkdir -p .opencode .oc-config/opencode`,
+            command: `cd ${shq(workdir)} && mkdir -p .oc-config/opencode`,
             workdir: SANDBOX_WORKSPACE_ROOT,
             timeoutMs: 30_000,
           })
           .catch((err) =>
             this.deps.log.warn?.(
-              "opencode-worker: mkdir omo config dirs failed",
+              "opencode-worker: mkdir omo config dir failed",
               { err: err instanceof Error ? err.message : String(err) },
             ),
           );
-        for (const rel of [
-          `${workdir}/.opencode/oh-my-opencode.jsonc`,
-          `${workdir}/.oc-config/opencode/oh-my-opencode.jsonc`,
-        ]) {
-          await this.deps.shell.writeFile(rel, omoConfigJson).then(
-            () =>
-              this.deps.log.info?.("opencode-worker: wrote omo config", {
-                rel,
-              }),
-            (err) =>
-              // Surface (don't silently swallow) — if this fails, omo
-              // falls back to its DEFAULT config (agents not pinned
-              // to our single proxied model), which can misbehave.
-              this.deps.log.warn?.(
-                "opencode-worker: FAILED to write omo config",
-                {
-                  rel,
-                  err: err instanceof Error ? err.message : String(err),
-                },
-              ),
-          );
-        }
+        const rel = `${workdir}/.oc-config/opencode/oh-my-opencode.jsonc`;
+        await this.deps.shell.writeFile(rel, omoConfigJson).then(
+          () =>
+            this.deps.log.info?.("opencode-worker: wrote omo config", { rel }),
+          (err) =>
+            this.deps.log.warn?.(
+              "opencode-worker: FAILED to write omo config",
+              { rel, err: err instanceof Error ? err.message : String(err) },
+            ),
+        );
       }
 
       // On a deny-by-default sandbox (openshell exposes allowEgress),
