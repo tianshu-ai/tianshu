@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.56](https://github.com/tianshu-ai/tianshu/compare/v0.4.55...v0.4.56) (2026-07-08)
+
+### Features
+
+* **opencode-proxy:** `OPENCODE_PROXY_TEST_TOKEN` — a long-lived proxy
+  token (never expires, never revoked) for manually exercising the
+  full proxy chain without racing the worker's per-task mint/revoke.
+  Optional `OPENCODE_PROXY_TEST_MODEL` (default
+  anthropic/claude-opus-4-6) + `OPENCODE_PROXY_TEST_TENANT` (default
+  default). Debugging only — do not set in production.
+
 ## [0.4.55](https://github.com/tianshu-ai/tianshu/compare/v0.4.54...v0.4.55) (2026-07-08)
 
 ### Chores
