@@ -309,6 +309,16 @@ export class OpenShellRunner implements SandboxRunner {
           timeoutMs: req.timeoutMs ? req.timeoutMs + 2_000 : undefined,
           signal: req.signal,
         });
+      // DIAG (2026-07-08): log the RESULT of each openshell exec
+      // (exit code + trimmed stdout/stderr) so we can see whether the
+      // version-check / mkdir / opencode-run steps each succeeded and
+      // what they printed. Truncated to keep logs sane.
+      this.opts.log.info(
+        `openshell exec result: exit=${exitCode} timedOut=${timedOut} ` +
+          `aborted=${aborted} stdout=${JSON.stringify(
+            (stdout ?? "").slice(0, 800),
+          )} stderr=${JSON.stringify((stderr ?? "").slice(0, 800))}`,
+      );
       return {
         exitCode,
         stdout,
