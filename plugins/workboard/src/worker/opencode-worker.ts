@@ -212,7 +212,7 @@ const OMO_CATEGORIES = [
  *  turns off omo's runtime model fallback (there is only one model,
  *  so a fallback chain to unavailable providers would just error).
  *  Team mode is left off (default). */
-function buildOmoConfig(model: string): string {
+function buildOmoConfig(model: string, codegraphInstallDir?: string): string {
   const agents: Record<string, { model: string }> = {};
   for (const a of OMO_AGENTS) agents[a] = { model };
   const categories: Record<string, { model: string }> = {};
@@ -229,6 +229,17 @@ function buildOmoConfig(model: string): string {
       model_fallback: false,
       runtime_fallback: false,
       telemetry: false,
+      // Point codegraph's install/lock dir at a PER-TASK path instead
+      // of the sandbox-global $HOME/.omo/codegraph. codegraph takes a
+      // lock under <install_dir>/locks at init; the default location
+      // is shared across every opencode run in the sandbox, so two
+      // concurrent runs (or a leftover lock from a SIGKILL'd run)
+      // contend on it and the second run's acquireLock stalls — the
+      // intermittent "hang after loading config". A per-task
+      // install_dir isolates the lock+data so runs can't collide.
+      ...(codegraphInstallDir
+        ? { codegraph: { install_dir: codegraphInstallDir } }
+        : {}),
       // THE fix for the omo "hangs after loading config" in the
       // openshell sandbox (root-caused 2026-07-07, from Yu's on-box
       // diagnostic + local repro): omo spawns an `lsp-daemon` MCP
@@ -704,7 +715,11 @@ export class OpenCodeWorker implements WorkerHandle {
       // we cover both the project-relative and XDG locations.
       if (process.env.OPENCODE_DISABLE_OMO !== "1") {
         const omoModel = `tianshu/${nativeModelId}`;
-        const omoConfigJson = buildOmoConfig(omoModel);
+        // Per-task codegraph dir (absolute guest path) so its lock +
+        // data live under this task's workdir, not the sandbox-global
+        // $HOME/.omo/codegraph — prevents cross-run lock contention.
+        const codegraphDir = `${SANDBOX_WORKSPACE_ROOT}/${workdir}/.oc-data/codegraph`;
+        const omoConfigJson = buildOmoConfig(omoModel, codegraphDir);
         // Ensure the nested parent dirs exist FIRST. `sandbox upload`
         // only auto-creates the immediate parent, and these configs
         // live under a new `.opencode/` (and `.oc-config/opencode/`)
@@ -962,6 +977,20 @@ export class OpenCodeWorker implements WorkerHandle {
       const cmd =
         `cd ${shq(workdir)} && ` +
         `mkdir -p .oc-config .oc-data && ` +
+        // Clear STALE lock dirs before the run. opencode + omo take
+        // locks during init (omo's codegraph lock lives in the
+        // SANDBOX-GLOBAL $HOME/.omo/*/locks, NOT per-workdir; opencode's
+        // in .oc-data). Because we bound the run with `timeout -s KILL`
+        // (SIGKILL, no cleanup), a killed/interrupted prior run leaves
+        // its lock behind, and the NEXT run's acquireLock then waits on
+        // a lock held by a dead process -> the intermittent
+        // "hang after loading config". Verified on-box: 0 opencode
+        // processes yet a residual /sandbox/.omo/codegraph/locks/*.lock.
+        // Safe: only clears lock files/dirs, not data. (Also see: don't
+        // run two opencode+omo in one sandbox concurrently -- they
+        // contend on the shared $HOME/.omo locks.)
+        `rm -rf .oc-data/opencode/locks "$HOME/.omo"/*/locks ` +
+        `/sandbox/.omo/*/locks 2>/dev/null; ` +
         // NOTE: no `export PATH=$HOME/.oc-npm/bin` prepend anymore.
         // The sandbox image ships the pinned opencode globally at
         // /usr/bin/opencode, so plain `opencode` on PATH is already
