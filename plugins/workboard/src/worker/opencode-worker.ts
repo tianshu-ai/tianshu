@@ -948,6 +948,13 @@ export class OpenCodeWorker implements WorkerHandle {
         // advisor loop (opencode self-proposes on first denial) when
         // policyAdvisor is on.
         `OPENCODE_ENABLE_PARALLEL=1 ` +
+        // Disable oh-my-openagent's anonymous PostHog telemetry. In
+        // the locked sandbox the telemetry POST to us.i.posthog.com
+        // is egress-denied (policy_denied 403), which spams the run
+        // output with PostHogFetchHttpError stack traces (harmless
+        // but noisy). omo only sends telemetry when this is exactly
+        // "yes"; any other value disables it.
+        `OMO_SEND_ANONYMOUS_TELEMETRY=no ` +
         // ROOT-CAUSE FIX for the omo "hang after loading config" in
         // the openshell sandbox (2026-07-06): opencode 1.17.x fetches
         // https://models.dev/api.json at startup for its (optional)
