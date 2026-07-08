@@ -630,22 +630,34 @@ export class OpenCodeWorker implements WorkerHandle {
       );
 
       // oh-my-openagent config: pin EVERY omo agent + category to our
-      // single proxied model. omo's built-in fallback chains list
-      // provider names like anthropic/openai/google — none of which
-      // is our "tianshu" proxy provider, so out of the box omo can't
-      // resolve any model.
+      // single proxied model, and set disabled_mcps:["lsp"] (only the
+      // lsp-daemon MCP deadlocks; all the REMOTE MCPs — context7 /
+      // grep_app / exa / tavily / websearch — stay ENABLED). Without
+      // this config omo falls back to its IMAGE-DEFAULT jsonc, which
+      // (a) lists provider names like anthropic/openai/google that
+      // our single "tianshu" proxy provider can't resolve, and
+      // (b) ships disabled_mcps:["context7","grep_app","websearch",
+      // "exa","tavily","playwright","fetch"] — i.e. every remote MCP
+      // OFF. So this file is what actually turns the MCPs on.
       //
-      // CRITICAL (2026-07-08): write this ONLY to the XDG location
-      // ($XDG_CONFIG_HOME/opencode = ./.oc-config/opencode), NOT to a
-      // project-relative ./.opencode/ dir. Any ./.opencode/ directory
-      // makes opencode treat the workdir as a project and run a
-      // per-task PROJECT-LOCAL dependency install into
-      // ./.opencode/node_modules (@opencode-ai/plugin) — that took
-      // ~12 minutes every task and logged "background dependency
-      // install failed / token mismatch". Verified: removing
-      // ./.opencode makes the run start instantly and omo (a GLOBAL
-      // plugin from the prewarmed image cache) still loads. So keep
-      // the omo config in XDG only.
+      // CRITICAL (2026-07-09): write to opencode's DEFAULT global
+      // config dir ($HOME/.config/opencode/oh-my-opencode.jsonc), NOT
+      // a workdir-relative .oc-config that we point XDG_CONFIG_HOME
+      // at. History: we USED to write it to ./.oc-config and set
+      // XDG_CONFIG_HOME=$PWD/.oc-config — but that made opencode treat
+      // the workdir as a configured project, load omo's codegraph,
+      // take its lock, and HANG. Dropping XDG_CONFIG_HOME fixed the
+      // hang but ALSO silently stopped omo from reading this config
+      // (it went back to the image default -> MCPs off, model unpinned).
+      // Writing to the untouched default HOME config dir gives omo the
+      // config WITHOUT any XDG override, so both the hang stays fixed
+      // AND the config takes effect. Matches the advisor-skill fix.
+      // NOT ./.opencode either: any ./.opencode makes opencode run a
+      // ~12-min per-task project-local @opencode-ai/plugin install.
+      //
+      // Written via `this.sh` (sandbox bash) + base64 because
+      // shell.writeFile only reaches workdir-relative paths under
+      // /sandbox/workspace, not $HOME.
       if (process.env.OPENCODE_DISABLE_OMO !== "1") {
         const omoModel = `tianshu/${nativeModelId}`;
         // Per-task codegraph dir (absolute guest path) so its lock +
@@ -653,28 +665,22 @@ export class OpenCodeWorker implements WorkerHandle {
         // $HOME/.omo/codegraph — prevents cross-run lock contention.
         const codegraphDir = `${SANDBOX_WORKSPACE_ROOT}/${workdir}/.oc-data/codegraph`;
         const omoConfigJson = buildOmoConfig(omoModel, codegraphDir);
-        // mkdir the XDG config dir first (sandbox upload only
-        // auto-creates the immediate parent).
-        await this.deps.shell
-          .exec({
-            command: `cd ${shq(workdir)} && mkdir -p .oc-config/opencode`,
-            workdir: SANDBOX_WORKSPACE_ROOT,
-            timeoutMs: 30_000,
-          })
-          .catch((err) =>
-            this.deps.log.warn?.(
-              "opencode-worker: mkdir omo config dir failed",
-              { err: err instanceof Error ? err.message : String(err) },
-            ),
-          );
-        const rel = `${workdir}/.oc-config/opencode/oh-my-opencode.jsonc`;
-        await this.deps.shell.writeFile(rel, omoConfigJson).then(
+        const omoB64 = Buffer.from(omoConfigJson, "utf8").toString("base64");
+        await this.sh(
+          `mkdir -p "$HOME/.config/opencode" && ` +
+            `printf %s ${shq(omoB64)} | base64 -d > ` +
+            `"$HOME/.config/opencode/oh-my-opencode.jsonc"`,
+          task,
+          signal,
+        ).then(
           () =>
-            this.deps.log.info?.("opencode-worker: wrote omo config", { rel }),
+            this.deps.log.info?.(
+              "opencode-worker: wrote omo config to $HOME/.config/opencode",
+            ),
           (err) =>
             this.deps.log.warn?.(
               "opencode-worker: FAILED to write omo config",
-              { rel, err: err instanceof Error ? err.message : String(err) },
+              { err: err instanceof Error ? err.message : String(err) },
             ),
         );
       }
