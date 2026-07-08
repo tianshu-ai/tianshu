@@ -965,6 +965,18 @@ export class OpenCodeWorker implements WorkerHandle {
       // gymnastics — matching the working manual command.
       const cmd =
         `cd ${shq(workdir)} && ` +
+        // Remove any project-relative ./.opencode BEFORE running.
+        // A ./.opencode dir makes opencode treat the workdir as a
+        // project and run a ~12-minute per-task project-local
+        // dependency install into ./.opencode/node_modules
+        // (@opencode-ai/plugin) every run ("background dependency
+        // install failed / token mismatch"). Verified on-box:
+        // removing ./.opencode makes the run start instantly and omo
+        // (a GLOBAL plugin from the prewarmed image cache) still
+        // loads. omo config lives in XDG (./.oc-config/opencode), so
+        // deleting ./.opencode doesn't lose it. Do this every run
+        // since opencode can recreate ./.opencode on a prior start.
+        `rm -rf .opencode && ` +
         `mkdir -p .oc-config .oc-data && ` +
         // Clear STALE lock dirs before the run. opencode + omo take
         // locks during init (omo's codegraph lock lives in the
