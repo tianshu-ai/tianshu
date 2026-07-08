@@ -709,9 +709,23 @@ export class OpenCodeWorker implements WorkerHandle {
           `${workdir}/.opencode/oh-my-opencode.jsonc`,
           `${workdir}/.oc-config/opencode/oh-my-opencode.jsonc`,
         ]) {
-          await this.deps.shell
-            .writeFile(rel, omoConfigJson)
-            .catch(() => undefined);
+          await this.deps.shell.writeFile(rel, omoConfigJson).then(
+            () =>
+              this.deps.log.info?.("opencode-worker: wrote omo config", {
+                rel,
+              }),
+            (err) =>
+              // Surface (don't silently swallow) — if this fails, omo
+              // falls back to its DEFAULT config (agents not pinned
+              // to our single proxied model), which can misbehave.
+              this.deps.log.warn?.(
+                "opencode-worker: FAILED to write omo config",
+                {
+                  rel,
+                  err: err instanceof Error ? err.message : String(err),
+                },
+              ),
+          );
         }
       }
 
