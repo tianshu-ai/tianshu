@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.55](https://github.com/tianshu-ai/tianshu/compare/v0.4.54...v0.4.55) (2026-07-08)
+
+### Chores
+
+* log each openshell exec RESULT (exit code + trimmed stdout/stderr)
+  so the version-check / mkdir / opencode-run steps can be seen to
+  succeed or fail with their output.
+
 ## [0.4.54](https://github.com/tianshu-ai/tianshu/compare/v0.4.53...v0.4.54) (2026-07-08)
 
 ### Chores
