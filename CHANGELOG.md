@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.57](https://github.com/tianshu-ai/tianshu/compare/v0.4.56...v0.4.57) (2026-07-08)
+
+### Features
+
+* **opencode-proxy:** `OPENCODE_PROXY_SKIP_TOKEN_VALIDATION=1` debug
+  switch — accept ANY token (uses the real grant if present, else a
+  default model) so manual proxy testing isn't blocked by
+  mint/revoke/TTL. No hardcoded token. Replaces the 0.4.56
+  hardcoded-test-token approach. Do NOT enable in production.
+
 ## [0.4.56](https://github.com/tianshu-ai/tianshu/compare/v0.4.55...v0.4.56) (2026-07-08)
 
 ### Features
