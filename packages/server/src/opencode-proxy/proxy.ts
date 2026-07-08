@@ -250,6 +250,23 @@ export class OpenCodeProxy {
   }
 
   private lookup(token: string): ProxyGrant | null {
+    // TEST HELPER (debugging only): a long-lived token that never
+    // expires and is never revoked, so a manual `opencode run` can
+    // exercise the full proxy chain without racing the worker's
+    // per-task mint/revoke. Enable by setting OPENCODE_PROXY_TEST_TOKEN
+    // (and optionally OPENCODE_PROXY_TEST_MODEL, defaults to
+    // anthropic/claude-opus-4-6). DO NOT set in production.
+    const testToken = process.env.OPENCODE_PROXY_TEST_TOKEN;
+    if (testToken && token === testToken) {
+      return {
+        token,
+        tenantId: process.env.OPENCODE_PROXY_TEST_TENANT || "default",
+        modelId:
+          process.env.OPENCODE_PROXY_TEST_MODEL ||
+          "anthropic/claude-opus-4-6",
+        expiresAt: Number.MAX_SAFE_INTEGER,
+      };
+    }
     const g = this.grants.get(token);
     if (!g) return null;
     if (Date.now() > g.expiresAt) {
