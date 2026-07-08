@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.59](https://github.com/tianshu-ai/tianshu/compare/v0.4.58...v0.4.59) (2026-07-08)
+
+### Refactor
+
+* **opencode-worker:** simplify the generated opencode run command.
+  Removed the accumulated firefighting env (proxy-env unset,
+  NO_PROXY, NODE_OPTIONS=ipv4first, stale-lock clearing) now that the
+  opencode.json baseURL is the IPv4 literal and opencode connects
+  directly. Matches the verified manual command
+  `OPENCODE_CONFIG=<workdir>/opencode.json opencode run <prompt>`;
+  keeps only worker mechanics + the proven-necessary env
+  (DISABLE_MODELS_FETCH, ENABLE_PARALLEL, SEND_ANONYMOUS_TELEMETRY=no,
+  DISABLE_LSP_DOWNLOAD).
+
 ## [0.4.58](https://github.com/tianshu-ai/tianshu/compare/v0.4.57...v0.4.58) (2026-07-08)
 
 ### Bug Fixes
