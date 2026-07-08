@@ -6,9 +6,31 @@
   "license": "Apache-2.0",
   "homepage": "https://github.com/NVIDIA/OpenShell",
   "server": { "entry": "@tianshu-builtin/plugin-openshell/server" },
+  "client": { "entry": "@tianshu-builtin/plugin-openshell/client" },
   "provides": ["sandbox.shell"],
   "requires": [],
   "contributes": {
+    "adminPages": [
+      {
+        "id": "policy",
+        "displayName": "Network Policy",
+        "icon": "ShieldCheck",
+        "component": "OpenShellPolicyPage",
+        "order": 20
+      }
+    ],
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/policy/denials",
+        "handler": "listDenials"
+      },
+      {
+        "method": "GET",
+        "path": "/policy/allowed",
+        "handler": "listAllowed"
+      }
+    ],
     "sandboxes": [
       {
         "id": "main",

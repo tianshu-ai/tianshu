@@ -36,6 +36,7 @@ import type {
   PluginServerExports,
 } from "@tianshu-ai/plugin-sdk";
 import { OpenShellRunner } from "./runner/openshell-runner.js";
+import { buildPolicyRoutes } from "./routes.js";
 import {
   ExecTool,
   GetSandboxStatusTool,
@@ -132,6 +133,9 @@ export default {
         SyncUpTool: SyncUpTool(runner),
         SyncDownTool: SyncDownTool(runner),
       },
+      // Admin API routes (mounted at /api/p/openshell/*). Keys match
+      // manifest.contributes.apiRoutes[].handler.
+      routes: buildPolicyRoutes(runner),
     };
   },
 

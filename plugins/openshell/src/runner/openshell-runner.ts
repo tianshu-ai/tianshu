@@ -60,6 +60,70 @@ import {
   type GatewayHandle,
 } from "./gateway-manager.js";
 
+/** One parsed network-denial record from the sandbox policy log. */
+export interface ParsedDenial {
+  /** ISO-8601 timestamp (from the log line), or undefined if absent. */
+  at?: string;
+  /** Severity token, e.g. "MED" / "HIGH" (best-effort). */
+  severity?: string;
+  /** Requesting binary path (+pid) when the log includes it. */
+  binary?: string;
+  /** Destination host that was blocked. */
+  host?: string;
+  /** Destination port. */
+  port?: number;
+  /** Named policy that matched (or "-" when none). */
+  policy?: string;
+  /** Enforcement engine: "l7" | "opa" | ... */
+  engine?: string;
+  /** Human-readable reason string. */
+  reason?: string;
+  /** The original unparsed line (always present). */
+  raw: string;
+}
+
+/**
+ * Parse a single OCSF-ish denial log line into structured fields.
+ * Tolerant: any field it can't find is left undefined and `raw` is
+ * always the original line, so an unexpected format never drops data.
+ *
+ * Sample line:
+ *   2026-07-08T16:12:57.644Z OCSF NET:OPEN [MED] DENIED
+ *   release-assets.githubusercontent.com:443 [policy:copilot
+ *   engine:l7] [reason:L7 tunnel closed after policy reload [...]]
+ * or (opa engine, with binary):
+ *   ...DENIED /usr/lib/.../opencode.exe(92) -> us.i.posthog.com:443
+ *   [policy:- engine:opa] [reason:endpoint ... not allowed ...]
+ */
+function parseDenialLine(line: string): ParsedDenial {
+  const out: ParsedDenial = { raw: line };
+  const tsMatch = line.match(/^(\S+Z)\s/);
+  if (tsMatch) out.at = tsMatch[1];
+  const sevMatch = line.match(/\[(LOW|MED|MEDIUM|HIGH|CRIT|CRITICAL|INFO)\]/i);
+  if (sevMatch) out.severity = sevMatch[1].toUpperCase();
+  const policyMatch = line.match(/\[policy:([^\s\]]+)/);
+  if (policyMatch && policyMatch[1] !== "-") out.policy = policyMatch[1];
+  const engineMatch = line.match(/engine:([^\s\]]+)/);
+  if (engineMatch) out.engine = engineMatch[1];
+  const reasonMatch = line.match(/\[reason:([\s\S]*)\]?$/);
+  if (reasonMatch) out.reason = reasonMatch[1].replace(/\]+$/, "").trim();
+  // Binary + host:port. Two shapes: "<bin>(pid) -> host:port" (opa)
+  // or a bare "host:port" right after DENIED (l7).
+  const arrowMatch = line.match(/DENIED\s+(\S+?)\s*->\s*([^\s:]+):(\d+)/);
+  if (arrowMatch) {
+    out.binary = arrowMatch[1];
+    out.host = arrowMatch[2];
+    out.port = Number(arrowMatch[3]);
+  } else {
+    const hostMatch = line.match(/DENIED\s+([^\s:]+):(\d+)/);
+    if (hostMatch) {
+      out.host = hostMatch[1];
+      out.port = Number(hostMatch[2]);
+    }
+  }
+  return out;
+}
+
 export interface OpenShellRunnerOpts {
   /** Tenant id; used to derive sandbox name + state dir. */
   tenantId: string;
@@ -736,6 +800,99 @@ export class OpenShellRunner implements SandboxRunner {
     this.opts.log.info(
       `openshell: granted egress ${key} (rest, ${(endpoint.binaries ?? []).length} binaries) to sandbox ${this.sandboxName}`,
     );
+  }
+
+  /**
+   * List recent network DENIALS from the sandbox-local policy API.
+   * The gateway keeps a rolling in-sandbox log at
+   * `http://policy.local/v1/denials?last=N` (only reachable INSIDE
+   * the container), so we bridge in via `sandbox exec ... curl`.
+   *
+   * Each raw line is OCSF-ish text, e.g.:
+   *   2026-07-08T16:12:57.644Z OCSF NET:OPEN [MED] DENIED
+   *   <binary(pid)-> >host:port [policy:<x> engine:<l7|opa>]
+   *   [reason:<...>]
+   * We parse out the timestamp, severity, binary, host:port, policy,
+   * engine, and reason, and (when `minutes` is given) drop anything
+   * older than that window. Best-effort: unparseable lines are still
+   * returned with the raw text so nothing is silently lost.
+   */
+  async listDenials(
+    opts: { last?: number; minutes?: number } = {},
+  ): Promise<{ denials: ParsedDenial[]; logAvailable: boolean }> {
+    if (this.state !== "ready" && this.state !== "running") {
+      await this.ensureSandbox();
+    }
+    const last = Math.min(Math.max(opts.last ?? 200, 1), 1000);
+    const url = `http://policy.local/v1/denials?last=${last}`;
+    const { exitCode, stdout, stderr } = await this.spawnCliReady([
+      "sandbox",
+      "exec",
+      "--name",
+      this.sandboxName,
+      "--no-tty",
+      "--",
+      "bash",
+      "-c",
+      `curl -sS -m 8 ${url}`,
+    ]);
+    if (exitCode !== 0) {
+      throw new Error(
+        `openshell: listDenials failed (exit ${exitCode}): ${
+          stderr || stdout
+        }`,
+      );
+    }
+    let parsed: { denials?: unknown; log_available?: unknown };
+    try {
+      parsed = JSON.parse(stdout.trim());
+    } catch {
+      throw new Error(
+        `openshell: listDenials got non-JSON from policy API: ${stdout.slice(
+          0,
+          200,
+        )}`,
+      );
+    }
+    const rawLines = Array.isArray(parsed.denials)
+      ? (parsed.denials as unknown[]).filter(
+          (l): l is string => typeof l === "string",
+        )
+      : [];
+    const cutoffMs =
+      typeof opts.minutes === "number" && opts.minutes > 0
+        ? Date.now() - opts.minutes * 60_000
+        : null;
+    const denials: ParsedDenial[] = [];
+    for (const line of rawLines) {
+      const d = parseDenialLine(line);
+      if (cutoffMs !== null && d.at) {
+        const t = Date.parse(d.at);
+        if (!Number.isNaN(t) && t < cutoffMs) continue;
+      }
+      denials.push(d);
+    }
+    // Newest first.
+    denials.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
+    return {
+      denials,
+      logAvailable: parsed.log_available === true,
+    };
+  }
+
+  /**
+   * Return the current EFFECTIVE policy for this sandbox — i.e. the
+   * allow-list of endpoints/rules currently in force. Uses the CLI
+   * `openshell policy get <sandbox>` (mTLS via this.cli()). Returns
+   * the raw text/JSON as the CLI prints it; the caller (admin page)
+   * decides how to render.
+   */
+  async getPolicy(): Promise<{ raw: string }> {
+    if (this.state !== "ready" && this.state !== "running") {
+      await this.ensureSandbox();
+    }
+    const { stdout } = await this.cli(["policy", "get", this.sandboxName]);
+    return { raw: stdout };
   }
 
   private resolveSafe(relPath: string): string {
