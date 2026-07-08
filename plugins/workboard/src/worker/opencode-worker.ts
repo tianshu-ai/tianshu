@@ -633,6 +633,12 @@ export class OpenCodeWorker implements WorkerHandle {
               host,
               port: 443,
               protocol: "https",
+              // npm scoped packages (@ai-sdk%2Fanthropic etc.) put an
+              // encoded slash in the registry request-target, which
+              // openshell's L7 REST engine DENIES by default
+              // ("request-target contains an encoded '/' (%2F)").
+              // Allow it for the npm registry so scoped deps install.
+              allowEncodedSlash: host === "registry.npmjs.org",
               binaries: [
                 ...OPENCODE_BINARIES,
                 "/usr/lib/node_modules/npm/bin/npm-cli.js",

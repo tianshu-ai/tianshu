@@ -714,6 +714,10 @@ export class OpenShellRunner implements SandboxRunner {
      *  binary — an endpoint with no binaries is unusable, which is
      *  what caused the persistent 403 policy_denied. */
     binaries?: string[];
+    /** Allow encoded slashes (%2F) in the request-target. openshell's
+     *  L7 REST engine rejects %2F by default; npm needs it for scoped
+     *  packages (@scope%2Fname), else the install is DENIED. */
+    allowEncodedSlash?: boolean;
   }): Promise<void> {
     if (this.state !== "ready" && this.state !== "running") {
       await this.ensureSandbox();
@@ -724,22 +728,39 @@ export class OpenShellRunner implements SandboxRunner {
     // 'rest' | 'websocket' | 'sql'. The proxy is HTTP/JSON → 'rest'.
     // read-write expands to allow-all methods; enforce is fine once
     // the requesting binary is authorized (see --binary below).
-    const spec = `${endpoint.host}:${endpoint.port}:read-write:rest:enforce`;
-    const args = [
-      "policy",
-      "update",
-      this.sandboxName,
-      "--add-endpoint",
-      spec,
-    ];
-    // Authorize the binaries that will make the request. Without at
-    // least one, openshell denies every process (403 policy_denied
-    // even with the endpoint + path rules present).
-    for (const b of endpoint.binaries ?? []) {
-      args.push("--binary", b);
+    // 6th spec segment is `options`. allow_encoded_slash=true lets
+    // %2F through (npm scoped-package registry paths).
+    const spec = endpoint.allowEncodedSlash
+      ? `${endpoint.host}:${endpoint.port}:read-write:rest:enforce:allow_encoded_slash=true`
+      : `${endpoint.host}:${endpoint.port}:read-write:rest:enforce`;
+    const buildArgs = (endpointSpec: string) => {
+      const a = ["policy", "update", this.sandboxName, "--add-endpoint", endpointSpec];
+      // Authorize the binaries that will make the request. Without at
+      // least one, openshell denies every process (403 policy_denied
+      // even with the endpoint + path rules present).
+      for (const b of endpoint.binaries ?? []) a.push("--binary", b);
+      a.push("--wait");
+      return a;
+    };
+    try {
+      await this.cli(buildArgs(spec));
+    } catch (err) {
+      // If the allow_encoded_slash option spec was rejected (CLI
+      // syntax mismatch across openshell versions), fall back to the
+      // plain spec so the grant still lands — npm scoped installs may
+      // then 403 on %2F, but at least the endpoint is authorized.
+      if (endpoint.allowEncodedSlash) {
+        this.opts.log.warn(
+          `openshell: allow_encoded_slash spec rejected for ${key}, retrying without it`,
+          { err: err instanceof Error ? err.message : String(err) },
+        );
+        await this.cli(
+          buildArgs(`${endpoint.host}:${endpoint.port}:read-write:rest:enforce`),
+        );
+      } else {
+        throw err;
+      }
     }
-    args.push("--wait");
-    await this.cli(args);
     this.grantedEgress.add(key);
     this.opts.log.info(
       `openshell: granted egress ${key} (rest, ${(endpoint.binaries ?? []).length} binaries) to sandbox ${this.sandboxName}`,
