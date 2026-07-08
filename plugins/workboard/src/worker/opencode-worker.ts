@@ -895,16 +895,22 @@ export class OpenCodeWorker implements WorkerHandle {
       //     config" from a SIGKILLed prior run's leftover lock)
       //   - OPENCODE_DISABLE_MODELS_FETCH / OPENCODE_ENABLE_PARALLEL /
       //     OPENCODE_DISABLE_LSP_DOWNLOAD / OMO_SEND_ANONYMOUS_TELEMETRY
-      //   - `mkdir -p .oc-config .oc-data` + XDG_CONFIG_HOME /
-      //     XDG_DATA_HOME (opencode uses its default XDG dirs)
-      // KEPT ONLY what the working manual command has: cd into the
-      // per-task workdir, OPENCODE_CONFIG=./opencode.json (how
-      // opencode finds the `tianshu` provider/model), the timeout
-      // bound, output capture, real exit code, and --continue resume.
-      // If the removed guards' symptoms return (12-min project
-      // install, config-load hang), re-add them from git history.
+      //   - `mkdir -p .oc-config .oc-data` + XDG_DATA_HOME
+      //     (opencode uses its default XDG data dir)
+      // KEPT: cd into the per-task workdir, OPENCODE_CONFIG=./opencode.json
+      // (how opencode finds the `tianshu` provider/model), the
+      // timeout bound, output capture, real exit code, --continue
+      // resume, AND XDG_CONFIG_HOME=$PWD/.oc-config — the latter is
+      // how opencode discovers the openshell-network-policy advisor
+      // skill we write to ${workdir}/.oc-config/opencode/skills/
+      // (see the skill-write block above). Without it the agent
+      // can't find the http://policy.local/v1/proposals route and
+      // blindly probes GET paths when egress is denied. If the
+      // removed guards' symptoms return (12-min project install,
+      // config-load hang), re-add them from git history.
       const cmd =
         `cd ${shq(workdir)} && ` +
+        `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
         `OPENCODE_CONFIG=./opencode.json ` +
         `timeout -s KILL ${capS} ` +
         // --auto: auto-approve any non-denied permission (headless
