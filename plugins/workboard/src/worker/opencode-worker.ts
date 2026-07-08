@@ -611,7 +611,9 @@ export class OpenCodeWorker implements WorkerHandle {
       //
       // REMOVED (kept here for rollback if regressions appear):
       //  - allowEgress pre-grants for registry.npmjs.org / models.dev
-      //    (+ optional OPENCODE_GRANT_OMO_MCPS mcp.* hosts)
+      //    (the omo remote-MCP mcp.* grants moved to the run-egress
+      //     block below and are now ON by default; see
+      //     OPENCODE_GRANT_OMO_MCPS there)
       //  - `test opencode --version == ${OPENCODE_VERSION} ||
       //     test $HOME/.oc-npm/bin/opencode ... || npm i -g
       //     --prefix $HOME/.oc-npm opencode-ai@${OPENCODE_VERSION}`
@@ -793,6 +795,48 @@ export class OpenCodeWorker implements WorkerHandle {
               "opencode-worker: ripgrep egress grant failed (skill tool may fail)",
               { err: err instanceof Error ? err.message : String(err) },
             );
+          }
+        }
+
+        // oh-my-openagent's always-on REMOTE MCP servers (context7
+        // docs, grep.app code search, exa + tavily web search).
+        // omo registers these by default; on a deny-by-default
+        // sandbox they can't reach the network, fast-fail
+        // ("server unavailable"), and omo loses those capabilities.
+        // Grant egress so they connect over the openshell L7 proxy.
+        //
+        // ENABLED BY DEFAULT (2026-07-09, per Yu). Set
+        // OPENCODE_GRANT_OMO_MCPS=0 to turn them back OFF.
+        //
+        // KNOWN RISK (documented 2026-07-08): the SSE/long-poll
+        // streams these remote MCPs open have been observed to STALL
+        // through the proxy MITM, which can hang omo's init before it
+        // reaches the model call. If runs start hanging at omo init
+        // again, set OPENCODE_GRANT_OMO_MCPS=0 to fast-fail the MCPs
+        // and let omo proceed (bare docker w/o these inits in ~28s).
+        if (process.env.OPENCODE_GRANT_OMO_MCPS !== "0") {
+          for (const host of [
+            "mcp.context7.com",
+            "mcp.grep.app",
+            "mcp.exa.ai",
+            "mcp.tavily.com",
+          ]) {
+            try {
+              await this.deps.shell.allowEgress({
+                host,
+                port: 443,
+                protocol: "https",
+                binaries: OPENCODE_BINARIES,
+              });
+            } catch (err) {
+              this.deps.log.warn?.(
+                "opencode-worker: omo MCP egress grant failed (MCP may be unavailable)",
+                {
+                  host,
+                  err: err instanceof Error ? err.message : String(err),
+                },
+              );
+            }
           }
         }
 
