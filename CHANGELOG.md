@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.61](https://github.com/tianshu-ai/tianshu/compare/v0.4.60...v0.4.61) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** `mkdir -p .opencode .oc-config/opencode` before
+  writing the omo config. `sandbox upload` only auto-creates the
+  immediate parent, so the nested `.opencode/oh-my-opencode.jsonc`
+  write failed on a fresh workdir (observed: workdir had only
+  opencode.json). Without the omo config, omo used its DEFAULT config
+  (agents not pinned to the proxied model).
+
 ## [0.4.60](https://github.com/tianshu-ai/tianshu/compare/v0.4.59...v0.4.60) (2026-07-08)
 
 ### Bug Fixes
