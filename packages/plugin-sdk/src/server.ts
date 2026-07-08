@@ -455,13 +455,6 @@ export interface SandboxRunner {
      * opencode binary and node).
      */
     binaries?: string[];
-    /**
-     * Allow encoded slashes (%2F) in the request-target. openshell's
-     * L7 REST engine rejects %2F by default; npm needs it for scoped
-     * packages (@scope%2Fname) or the registry request is denied.
-     * Runners without L7 request-target filtering ignore this.
-     */
-    allowEncodedSlash?: boolean;
   }): Promise<void>;
 
   // ─── optional host<->sandbox file staging ───────────────────
