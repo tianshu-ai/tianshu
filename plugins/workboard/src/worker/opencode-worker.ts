@@ -914,114 +914,41 @@ export class OpenCodeWorker implements WorkerHandle {
       //     result is already in oc.out by then. cap = run budget
       //     minus a margin, floor 120s.
       const capS = Math.max(120, Math.floor(budgetMs / 1000) - 15);
+      // Keep this SIMPLE. The reference command that works by hand is
+      // just:
+      //   OPENCODE_CONFIG=<workdir>/opencode.json opencode run <prompt>
+      // Everything else here is either a worker mechanism (per-task
+      // workdir, XDG dirs, output capture, exit code, resume) or one
+      // of the few env vars proven necessary during the 2026-07 omo
+      // bring-up. The big proxy-env / NO_PROXY / NODE_OPTIONS /
+      // lock-clearing block that accumulated during debugging was
+      // REMOVED: the IPv6/proxy issue is now handled by the opencode
+      // .json baseURL being the IPv4 literal (see the provider block
+      // above), so opencode connects directly with no proxy-env
+      // gymnastics — matching the working manual command.
       const cmd =
         `cd ${shq(workdir)} && ` +
         `mkdir -p .oc-config .oc-data && ` +
-        // Clear stale opencode/omo lock dirs before each run. Harmless
-        // hygiene (SIGKILL'd prior runs can leave lock files), though
-        // NOTE (2026-07-06): clearing these does NOT fix the omo
-        // init-hang in the openshell sandbox — that hang is an omo
-        // init busy-loop spawning `sh -c` ~1/s (only inside the
-        // openshell-supervised container; a bare `docker run` of the
-        // same image runs fine). Still under investigation.
-        `rm -rf .oc-data/opencode/locks ` +
-        `"$HOME/.local/state/opencode/locks" ` +
-        `"$HOME/.omo"/*/locks ` +
-        `/sandbox/.local/state/opencode/locks ` +
-        `/sandbox/.omo/*/locks 2>/dev/null; ` +
-        // Put our user-prefix opencode first so it wins over the
-        // base image's stale root-installed one.
+        // user-prefix opencode first (falls back to the image's
+        // global one if absent).
         `export PATH="$HOME/.oc-npm/bin:$PATH" && ` +
         `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
         `XDG_DATA_HOME="$PWD/.oc-data" ` +
-        // Block LSP auto-download unless the worker enabled LSP (and
-        // opened the egress for it above).
-        (this.deps.enableLsp ? `` : `OPENCODE_DISABLE_LSP_DOWNLOAD=1 `) +
-        // Enable opencode's built-in web_search tool. Without a flag
-        // it's filtered OUT of the toolset unless the model provider
-        // is opencode's own (registry.ts webSearchEnabled: providerID
-        // === opencode || flags.exa || flags.parallel). Our provider
-        // is "tianshu", so web_search would be absent (the observed
-        // "web_search not available"). Parallel is key-free (same
-        // backend tianshu's web-search plugin uses), so enable it;
-        // egress to search.parallel.ai is handled by the policy
-        // advisor loop (opencode self-proposes on first denial) when
-        // policyAdvisor is on.
-        `OPENCODE_ENABLE_PARALLEL=1 ` +
-        // Disable oh-my-openagent's anonymous PostHog telemetry. In
-        // the locked sandbox the telemetry POST to us.i.posthog.com
-        // is egress-denied (policy_denied 403), which spams the run
-        // output with PostHogFetchHttpError stack traces (harmless
-        // but noisy). omo only sends telemetry when this is exactly
-        // "yes"; any other value disables it.
-        `OMO_SEND_ANONYMOUS_TELEMETRY=no ` +
-        // ROOT-CAUSE FIX for the omo "hang after loading config" in
-        // the openshell sandbox (2026-07-06): opencode 1.17.x fetches
-        // https://models.dev/api.json at startup for its (optional)
-        // model catalog. Egress to models.dev IS granted, but the
-        // CONNECT is made THROUGH the openshell L7 proxy, and in the
-        // gRPC-exec-tunnelled run that proxied connection STALLS
-        // (never completes, never errors) — opencode's plugin init
-        // blocks on it forever, right after "loading opencode.jsonc",
-        // before the model call. (Isolation: the identical run via a
-        // direct `docker exec` completes; only the tunnelled path
-        // hangs; the single stuck socket is to models.dev's fakeip.)
-        // We don't need models.dev at all — the model + its metadata
-        // come from our tianshu provider config — so disable the
-        // startup fetch. Verified: with this set the sandbox log
-        // shows ZERO models.dev references and omo reaches the model.
-        `OPENCODE_DISABLE_MODELS_FETCH=1 ` +
         `OPENCODE_CONFIG=./opencode.json ` +
-        // Widen NO_PROXY to include 0.0.0.0 (opencode's embedded
-        // server binds 0.0.0.0:<port>); harmless hygiene so any
-        // loopback fetch stays direct. NOTE: this alone does NOT fix
-        // the omo hang — root cause is the openshell gRPC exec
-        // tunnel (see the detached-launch handling below), not the
-        // proxy env (verified: identical proxy env via `docker exec`
-        // inits fine; only the tunnelled foreground exec hangs).
-        // UNSET all proxy env for opencode (root-cause fix,
-        // 2026-07-07). The openshell sandbox injects
-        // NODE_USE_ENV_PROXY=1 + HTTP(S)_PROXY=10.200.0.1:3128 so
-        // guest tools egress through the L7 policy proxy. But once
-        // models.dev fetch is disabled and omo's lsp MCP is off,
-        // opencode makes NO outbound egress that needs the proxy —
-        // it only talks to the tianshu model proxy at
-        // host.docker.internal:3303 and its own embedded server on
-        // localhost, both of which must be DIRECT. Under
-        // NODE_USE_ENV_PROXY, Bun routes even those through the L7
-        // proxy (NO_PROXY isn't honoured for host.docker.internal /
-        // the random-port loopback URL), the proxy can't reach the
-        // docker host gateway, and opencode reports "Cannot connect
-        // to API" — even though a direct curl to the same URL from
-        // the sandbox works. Clearing the proxy env makes opencode
-        // connect directly. Verified: with the proxy env unset the
-        // run reaches the model and returns (rc=0). (Real egress
-        // like the npm/omo warmup already happened at image build
-        // time, so nothing at task-run time needs the proxy.)
-        `NODE_USE_ENV_PROXY= HTTP_PROXY= HTTPS_PROXY= ALL_PROXY= GRPC_PROXY= ` +
-        `http_proxy= https_proxy= all_proxy= grpc_proxy= ` +
-        `NO_PROXY=127.0.0.1,localhost,::1,0.0.0.0,host.docker.internal ` +
-        `no_proxy=127.0.0.1,localhost,::1,0.0.0.0,host.docker.internal ` +
-        // Force IPv4 DNS resolution (root-cause fix for "Cannot
-        // connect to API", 2026-07-07, from `openshell logs` trace).
-        // The sandbox's /etc/hosts maps host.docker.internal to BOTH
-        // an IPv4 (192.168.65.254) and an IPv6 (fdc4:...::254)
-        // address. Node/Bun default to resolving the IPv6 one first,
-        // but openshell's supervisor only allows the FIRST /etc/hosts
-        // entry (IPv4) and REJECTS connections to any other IP
-        // (logged: "host.openshell.internal has 2 distinct IPs ...
-        // Connections resolving to any other IP will be rejected").
-        // So opencode's model call to the tianshu proxy resolves to
-        // IPv6 -> openshell rejects it -> "Cannot connect to API"
-        // (while a curl that happens to pick IPv4 works). Pinning DNS
-        // to ipv4first makes opencode use the allowed IPv4 address.
-        `NODE_OPTIONS=--dns-result-order=ipv4first ` +
+        // don't auto-download LSP servers unless LSP is enabled.
+        (this.deps.enableLsp ? `` : `OPENCODE_DISABLE_LSP_DOWNLOAD=1 `) +
+        // enable the key-free Parallel web_search backend.
+        `OPENCODE_ENABLE_PARALLEL=1 ` +
+        // skip opencode's startup models.dev catalog fetch (we supply
+        // the model via the tianshu provider; the fetch would stall
+        // through the sandbox egress proxy).
+        `OPENCODE_DISABLE_MODELS_FETCH=1 ` +
+        // silence omo's PostHog telemetry (egress-denied in the
+        // sandbox -> noisy 403 stack traces; harmless but ugly).
+        `OMO_SEND_ANONYMOUS_TELEMETRY=no ` +
         `timeout -s KILL ${capS} ` +
-        // --auto: auto-approve any permission that isn't explicitly
-        // denied. Headless runs have nobody to answer an interactive
-        // permission prompt; omo requests some permissions as `ask`
-        // (doom_loop / external_directory), and an unanswered `ask`
-        // hangs the run forever. --auto answers them automatically.
+        // --auto: auto-approve any non-denied permission (headless
+        // runs can't answer an interactive `ask`).
         `opencode run --auto --model tianshu/${nativeModelId} --format json ` +
         // No --agent: oh-my-openagent already registers its Sisyphus
         // orchestrator as the DEFAULT primary agent, so a plain
