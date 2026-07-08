@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.65](https://github.com/tianshu-ai/tianshu/compare/v0.4.64...v0.4.65) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** isolate omo locks per task to fix the
+  intermittent "hang after loading config". omo's codegraph lock
+  lives in the sandbox-global `$HOME/.omo/codegraph/locks`, so
+  concurrent runs (or a SIGKILL'd run's leftover lock) contend and
+  the next run's acquireLock stalls. Now set `codegraph.install_dir`
+  to a per-task path and re-add pre-run stale-lock cleanup (dropped
+  in the 0.4.59 simplification).
+
 ## [0.4.64](https://github.com/tianshu-ai/tianshu/compare/v0.4.63...v0.4.64) (2026-07-08)
 
 ### Reverts
