@@ -310,8 +310,11 @@ const EXCLUDED_DELIVERABLE = new Set<string>([
  * requires) that teaches opencode to use the OpenShell Policy Advisor
  * loop when the deny-by-default sandbox blocks a network request.
  *
- * Written into each task's `.oc-config/opencode/skills/` so opencode
- * discovers it as a global skill. The gateway must have the advisor
+ * Written into opencode's DEFAULT global skills dir
+ * ($HOME/.config/opencode/skills/) so opencode discovers it as a
+ * global skill WITHOUT us overriding XDG_CONFIG_HOME (which, when
+ * pointed at the workdir, made opencode load omo + hang on the
+ * codegraph lock). The gateway must have the advisor
  * enabled (agent_policy_proposals_enabled=true) for proposals to be
  * accepted, and proposal_approval_mode=auto for prover-clean rules to
  * self-approve; otherwise the proposal lands in `pending` for a human.
@@ -679,24 +682,45 @@ export class OpenCodeWorker implements WorkerHandle {
       // the OpenShell Policy Advisor loop when a network request is
       // denied (403 CONNECT tunnel failed / policy_denied), instead
       // of giving up. opencode discovers global skills under
-      // $XDG_CONFIG_HOME/opencode/skills/<name>/SKILL.md; the run
-      // sets XDG_CONFIG_HOME=$PWD/.oc-config, so we write it there.
+      // $XDG_CONFIG_HOME/opencode/skills/<name>/SKILL.md, which
+      // DEFAULTS to $HOME/.config/opencode/skills/ (XDG spec).
+      //
+      // CRITICAL (2026-07-08): write to the DEFAULT global dir
+      // ($HOME/.config/opencode/skills), NOT to a workdir-relative
+      // .oc-config that we point XDG_CONFIG_HOME at. Redirecting
+      // XDG_CONFIG_HOME=$PWD/.oc-config made opencode treat the
+      // workdir as a configured project -> loaded omo -> took the
+      // codegraph lock -> hung ("stuck after loading config"). By
+      // writing the skill to the untouched default HOME config dir,
+      // opencode discovers it WITHOUT us setting XDG_CONFIG_HOME, so
+      // the run command stays the clean `opencode run` that works.
+      //
+      // Written via `this.sh` (a sandbox bash -c) rather than
+      // shell.writeFile, because writeFile only accepts workdir-
+      // relative paths under /sandbox/workspace and can't reach
+      // $HOME/.config. base64 the markdown to avoid any heredoc /
+      // quoting hazards (the skill body has backticks, quotes, YAML).
+      //
       // Harmless when the gateway's advisor is off/manual — opencode
       // just won't get an auto-approval (same as today). No-op on
       // open-network runtimes (allowEgress undefined) where the skill
       // would be misleading.
       if (this.deps.shell.allowEgress) {
-        await this.deps.shell
-          .writeFile(
-            `${workdir}/.oc-config/opencode/skills/openshell-network-policy/SKILL.md`,
-            ADVISOR_SKILL_MD,
-          )
-          .catch((err) => {
-            this.deps.log.warn?.(
-              "opencode-worker: failed to write advisor skill (continuing)",
-              { err: err instanceof Error ? err.message : String(err) },
-            );
-          });
+        const skillB64 = Buffer.from(ADVISOR_SKILL_MD, "utf8").toString(
+          "base64",
+        );
+        await this.sh(
+          `mkdir -p "$HOME/.config/opencode/skills/openshell-network-policy" && ` +
+            `printf %s ${shq(skillB64)} | base64 -d > ` +
+            `"$HOME/.config/opencode/skills/openshell-network-policy/SKILL.md"`,
+          task,
+          signal,
+        ).catch((err) => {
+          this.deps.log.warn?.(
+            "opencode-worker: failed to write advisor skill (continuing)",
+            { err: err instanceof Error ? err.message : String(err) },
+          );
+        });
       }
 
       // Grant the sandbox egress to the proxy. openshell is
@@ -895,22 +919,22 @@ export class OpenCodeWorker implements WorkerHandle {
       //     config" from a SIGKILLed prior run's leftover lock)
       //   - OPENCODE_DISABLE_MODELS_FETCH / OPENCODE_ENABLE_PARALLEL /
       //     OPENCODE_DISABLE_LSP_DOWNLOAD / OMO_SEND_ANONYMOUS_TELEMETRY
-      //   - `mkdir -p .oc-config .oc-data` + XDG_DATA_HOME
-      //     (opencode uses its default XDG data dir)
+      //   - `mkdir -p .oc-config .oc-data` + XDG_CONFIG_HOME /
+      //     XDG_DATA_HOME. Do NOT set XDG_CONFIG_HOME=$PWD/.oc-config:
+      //     pointing it at the workdir made opencode treat the
+      //     workdir as a configured project, load omo, take the
+      //     codegraph lock, and HANG (verified on-box). The advisor
+      //     skill instead lives in opencode's DEFAULT global config
+      //     dir ($HOME/.config/opencode/skills, written above), so
+      //     opencode discovers it with NO XDG override and the run
+      //     stays the clean `opencode run` that works.
       // KEPT: cd into the per-task workdir, OPENCODE_CONFIG=./opencode.json
       // (how opencode finds the `tianshu` provider/model), the
       // timeout bound, output capture, real exit code, --continue
-      // resume, AND XDG_CONFIG_HOME=$PWD/.oc-config — the latter is
-      // how opencode discovers the openshell-network-policy advisor
-      // skill we write to ${workdir}/.oc-config/opencode/skills/
-      // (see the skill-write block above). Without it the agent
-      // can't find the http://policy.local/v1/proposals route and
-      // blindly probes GET paths when egress is denied. If the
-      // removed guards' symptoms return (12-min project install,
-      // config-load hang), re-add them from git history.
+      // resume. If the removed guards' symptoms return (12-min
+      // project install, config-load hang), re-add from git history.
       const cmd =
         `cd ${shq(workdir)} && ` +
-        `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
         `OPENCODE_CONFIG=./opencode.json ` +
         `timeout -s KILL ${capS} ` +
         // --auto: auto-approve any non-denied permission (headless
