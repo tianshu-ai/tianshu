@@ -895,18 +895,16 @@ export class OpenCodeWorker implements WorkerHandle {
       //     config" from a SIGKILLed prior run's leftover lock)
       //   - OPENCODE_DISABLE_MODELS_FETCH / OPENCODE_ENABLE_PARALLEL /
       //     OPENCODE_DISABLE_LSP_DOWNLOAD / OMO_SEND_ANONYMOUS_TELEMETRY
-      // KEPT ONLY the worker mechanism that makes a run possible at
-      // all: per-task workdir, XDG dirs + OPENCODE_CONFIG (this is
-      // how opencode finds the `tianshu` provider/model — without it
-      // the model can't resolve), output capture, real exit code,
-      // and --continue resume. If the removed guards' symptoms
-      // return (12-min project install, config-load hang), re-add
-      // them from git history of this file.
+      //   - `mkdir -p .oc-config .oc-data` + XDG_CONFIG_HOME /
+      //     XDG_DATA_HOME (opencode uses its default XDG dirs)
+      // KEPT ONLY what the working manual command has: cd into the
+      // per-task workdir, OPENCODE_CONFIG=./opencode.json (how
+      // opencode finds the `tianshu` provider/model), the timeout
+      // bound, output capture, real exit code, and --continue resume.
+      // If the removed guards' symptoms return (12-min project
+      // install, config-load hang), re-add them from git history.
       const cmd =
         `cd ${shq(workdir)} && ` +
-        `mkdir -p .oc-config .oc-data && ` +
-        `XDG_CONFIG_HOME="$PWD/.oc-config" ` +
-        `XDG_DATA_HOME="$PWD/.oc-data" ` +
         `OPENCODE_CONFIG=./opencode.json ` +
         `timeout -s KILL ${capS} ` +
         // --auto: auto-approve any non-denied permission (headless
