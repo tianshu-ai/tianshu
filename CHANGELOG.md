@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.66](https://github.com/tianshu-ai/tianshu/compare/v0.4.65...v0.4.66) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** write the omo config to the XDG location only
+  (`./.oc-config/opencode`), never to a project-relative
+  `./.opencode`. A `./.opencode` dir made opencode treat the workdir
+  as a project and run a ~12-minute per-task project-local dependency
+  install (`@opencode-ai/plugin` into `./.opencode/node_modules`,
+  logging "background dependency install failed / token mismatch").
+  omo is a global prewarmed plugin, so XDG-only config loads it and
+  the run starts instantly.
+
 ## [0.4.65](https://github.com/tianshu-ai/tianshu/compare/v0.4.64...v0.4.65) (2026-07-08)
 
 ### Bug Fixes
