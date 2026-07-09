@@ -96,6 +96,29 @@ export type ServerMsg =
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
   | { type: "stream_error"; reason: string }
+  /**
+   * A transient LLM call failure is being retried. Emitted once per
+   * retry attempt so the UI can show a small "retrying…" notice with
+   * the reason and how long we're waiting. Purely informational — the
+   * stream continues normally on success, or ends with `stream_error`
+   * if all attempts are exhausted.
+   */
+  | {
+      type: "model_retry";
+      /** 1-based attempt that just failed (the retry is attempt+1). */
+      attempt: number;
+      /** Total attempts allowed (including the first try). */
+      maxAttempts: number;
+      /** Short reason label, e.g. "http-429" / "network" / "rate-limit". */
+      kind: string;
+      /** Backoff before the next attempt, in ms. */
+      delayMs: number;
+      /** True when the failure is a rate limit (drives a distinct icon). */
+      rateLimited: boolean;
+      /** Human-readable one-liner for the notice. */
+      message: string;
+      sessionId?: string;
+    }
   /** Agent invoked a tool. Sent before the tool runs so the UI can
    *  render an in-progress chip. */
   | {

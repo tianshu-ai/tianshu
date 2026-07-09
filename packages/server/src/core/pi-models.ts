@@ -43,6 +43,7 @@ import {
   resolveResilience,
   wrapStreamFn,
   type StreamFn,
+  type RetryNotice,
 } from "./model-retry.js";
 import type { ModelResilienceConfig } from "./config.js";
 
@@ -78,6 +79,9 @@ export interface BuildModelsOptions {
    *  auth-failure retry reuses the original key (still useful if the
    *  provider's own token cache refreshed out of band). */
   reResolveApiKey?: () => string;
+  /** Called once per retry (before backoff) so the caller can surface
+   *  a UI notification. Applies to both stream and streamSimple. */
+  onRetry?: (notice: RetryNotice) => void;
 }
 
 export function buildModels(
@@ -147,6 +151,7 @@ function wrapWithRetry(
   const wrapped = wrapStreamFn(fn as unknown as StreamFn, {
     resilience,
     reResolveApiKey: options?.reResolveApiKey,
+    onRetry: options?.onRetry,
     label: `${piModel.provider}/${piModel.id}`,
   });
   return wrapped as unknown as typeof fn;

@@ -112,6 +112,9 @@ export interface AgentLoopRequest {
   signal?: AbortSignal;
   /** Fires once after the worker session row has been inserted. */
   onSessionStart?: (sessionId: string) => void;
+  /** Fires on each transient LLM-call retry (before backoff). Lets a
+   *  caller surface retries in a worker/task UI. Always also logged. */
+  onModelRetry?: (notice: import("../core/model-retry.js").RetryNotice) => void;
   /**
    * Resume an existing worker session instead of creating a fresh
    * one. When set, `initialUserMessage` is treated as a follow-up
@@ -550,6 +553,7 @@ export async function runAgentLoop(
     models: buildModels(piModel, apiKey, {
       resilience: ctx.config.models?.resilience,
       reResolveApiKey: () => resolveApiKey(modelInfo),
+      onRetry: req.onModelRetry,
     }),
   });
 

@@ -534,6 +534,59 @@ export interface WrapStreamDeps {
   };
   /** Label for logs (model id). */
   label?: string;
+  /** Called once per retry, BEFORE the backoff sleep, so callers can
+   *  surface a UI notification ("retrying in Ns…"). Must not throw. */
+  onRetry?: (notice: RetryNotice) => void;
+}
+
+/** Structured retry notification for logs + UI. */
+export interface RetryNotice {
+  /** 1-based attempt that just failed (the retry will be attempt+1). */
+  attempt: number;
+  maxAttempts: number;
+  /** Short label: "http-429" / "network" / "rate-limit" / "http-401". */
+  kind: string;
+  /** Backoff before the next attempt, in ms. */
+  delayMs: number;
+  rateLimited: boolean;
+  authFailure: boolean;
+  /** Model label (provider/id). */
+  label: string;
+  /** Human-readable one-liner. */
+  message: string;
+}
+
+/** Build the standard human-readable retry line, reused by log + UI. */
+function retryMessage(n: RetryNotice): string {
+  const secs = (n.delayMs / 1000).toFixed(n.delayMs < 1000 ? 2 : 1);
+  const why = n.rateLimited
+    ? "rate limited"
+    : n.authFailure
+      ? "auth expired"
+      : n.kind;
+  return `${n.label}: ${why} (${n.kind}), retrying in ${secs}s (attempt ${n.attempt}/${n.maxAttempts})`;
+}
+
+/** Log the retry and fire the (optional) UI callback. `notice.message`
+ *  is filled in from `retryMessage()` here so both channels share one
+ *  wording. The onRetry callback is guarded — a throwing UI handler
+ *  must never derail the retry loop. */
+function emitRetry(
+  deps: WrapStreamDeps,
+  log: { warn: (msg: string) => void },
+  notice: RetryNotice,
+): void {
+  notice.message = retryMessage(notice);
+  log.warn(`[model-retry] ${notice.message}`);
+  if (deps.onRetry) {
+    try {
+      deps.onRetry(notice);
+    } catch (err) {
+      log.warn(
+        `[model-retry] onRetry callback threw: ${errText(err)}`,
+      );
+    }
+  }
 }
 
 /**
@@ -629,9 +682,16 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
           }
 
           const delay = backoffDelayMs(attempt, cls, r);
-          log.warn(
-            `[model-retry] ${label}: attempt ${attempt}/${r.maxAttempts} failed (${cls.kind}); retrying in ${delay}ms`,
-          );
+          emitRetry(deps, log, {
+            attempt,
+            maxAttempts: r.maxAttempts,
+            kind: cls.kind,
+            delayMs: delay,
+            rateLimited: cls.rateLimited,
+            authFailure: cls.authFailure,
+            label,
+            message: "",
+          });
           try {
             await sleep(delay, signal);
           } catch {
@@ -686,9 +746,16 @@ export async function retryCompletion<T>(
         }
       }
       const delay = backoffDelayMs(attempt, cls, r);
-      log.warn(
-        `[model-retry] ${label}: completion attempt ${attempt}/${r.maxAttempts} failed (${cls.kind}); retrying in ${delay}ms`,
-      );
+      emitRetry(deps, log, {
+        attempt,
+        maxAttempts: r.maxAttempts,
+        kind: cls.kind,
+        delayMs: delay,
+        rateLimited: cls.rateLimited,
+        authFailure: cls.authFailure,
+        label,
+        message: "",
+      });
       await sleep(delay);
     }
   }

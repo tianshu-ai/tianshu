@@ -20,6 +20,23 @@ export type ServerEvent =
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
   | { type: "stream_error"; reason: string }
+  /**
+   * A transient LLM call failure is being retried (rate limit /
+   * network / expired token). Emitted once per retry attempt so the
+   * UI can show a small "retrying…" notice. Informational only: the
+   * stream continues on success, or ends with `stream_error` if all
+   * attempts are exhausted.
+   */
+  | {
+      type: "model_retry";
+      attempt: number;
+      maxAttempts: number;
+      kind: string;
+      delayMs: number;
+      rateLimited: boolean;
+      message: string;
+      sessionId?: string;
+    }
   | { type: "tool_call"; callId: string; name: string; arguments: Record<string, unknown>; sessionId?: string }
   | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string; sessionId?: string }
   | {

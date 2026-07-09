@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.73](https://github.com/tianshu-ai/tianshu/compare/v0.4.72...v0.4.73) (2026-07-09)
+
+### Features
+
+* **models:** surface LLM-call retries in logs and the UI. Every
+  retry logs a one-line reason (`[model-retry] provider/model: rate
+  limited (http-429), retrying in 5.0s (attempt 1/4)`) and emits a
+  new `model_retry` WS event, so the chat area shows a small
+  "retrying…" banner with the reason, backoff, and attempt count
+  while a transient failure is being retried. The banner clears on
+  the next stream start / end. Worker agent-loop runs can forward
+  the same notice via `onModelRetry`.
+
 ## [0.4.72](https://github.com/tianshu-ai/tianshu/compare/v0.4.71...v0.4.72) (2026-07-09)
 
 ### Features

@@ -609,6 +609,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     models: buildModels(piModel, apiKey, {
       resilience: ctx.config.models?.resilience,
       reResolveApiKey: () => resolveApiKey(modelInfo),
+      onRetry: (n) =>
+        send({
+          type: "model_retry",
+          attempt: n.attempt,
+          maxAttempts: n.maxAttempts,
+          kind: n.kind,
+          delayMs: n.delayMs,
+          rateLimited: n.rateLimited,
+          message: n.message,
+          sessionId: session.id,
+        }),
     }),
   });
 

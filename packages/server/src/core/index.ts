@@ -130,4 +130,6 @@ export {
   backoffDelayMs,
   type ResolvedResilience,
   type RetryClassification,
+  type RetryNotice,
+  type WrapStreamDeps,
 } from "./model-retry.js";

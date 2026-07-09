@@ -33,6 +33,8 @@ export default function ChatArea() {
   const clearStreamError = useChatStore((s) => s.clearStreamError);
   const compactNotice = useChatStore((s) => s.compactNotice);
   const clearCompactNotice = useChatStore((s) => s.clearCompactNotice);
+  const retryNotice = useChatStore((s) => s.retryNotice);
+  const clearRetryNotice = useChatStore((s) => s.clearRetryNotice);
   const hasMoreHistory = useChatStore((s) => s.hasMoreHistory);
   const loadingMore = useChatStore((s) => s.loadingMore);
   const loadEarlier = useChatStore((s) => s.loadEarlier);
@@ -130,6 +132,31 @@ export default function ChatArea() {
                   type="button"
                   onClick={clearStreamError}
                   className="ml-3 text-[11px] uppercase tracking-wider text-rose-300/80 hover:text-white"
+                >
+                  dismiss
+                </button>
+              </div>
+            )}
+            {retryNotice && (
+              <div className="flex items-center justify-between rounded-md border border-sky-700/40 bg-sky-950/30 px-3 py-2 text-sm text-sky-200">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="inline-block h-2 w-2 flex-none animate-pulse rounded-full bg-sky-400" />
+                  <span className="truncate">
+                    {retryNotice.rateLimited ? "⏳" : "🔁"}{" "}
+                    {retryNotice.rateLimited
+                      ? "Rate limited"
+                      : retryNotice.kind === "http-401" || retryNotice.kind === "http-403"
+                        ? "Auth expired"
+                        : "Connection issue"}
+                    {" — retrying in "}
+                    {(retryNotice.delayMs / 1000).toFixed(retryNotice.delayMs < 1000 ? 1 : 0)}s{" "}
+                    (attempt {retryNotice.attempt}/{retryNotice.maxAttempts})
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={clearRetryNotice}
+                  className="ml-3 text-[11px] uppercase tracking-wider text-sky-300/80 hover:text-white"
                 >
                   dismiss
                 </button>

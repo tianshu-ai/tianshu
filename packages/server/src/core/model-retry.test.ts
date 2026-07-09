@@ -383,6 +383,46 @@ describe("wrapStreamFn", () => {
     expect(result.stopReason).toBe("stop");
   });
 
+  it("fires onRetry once per retry with a filled message", async () => {
+    const { fn } = scriptedStream([
+      { kind: "errorEvent", err: assistantError("HTTP 503") },
+      { kind: "errorEvent", err: assistantError("HTTP 503") },
+      { kind: "done", text: "ok" },
+    ]);
+    const notices: unknown[] = [];
+    const wrapped = wrapStreamFn(fn, {
+      resilience: fastResilience,
+      log: { warn: () => {} },
+      onRetry: (n) => notices.push(n),
+      label: "prov/model",
+    });
+    await drain(wrapped({} as never, {} as never));
+    expect(notices).toHaveLength(2);
+    expect(notices[0]).toMatchObject({
+      attempt: 1,
+      maxAttempts: 4,
+      kind: "http-503",
+      label: "prov/model",
+    });
+    expect((notices[0] as { message: string }).message).toContain("retrying in");
+  });
+
+  it("a throwing onRetry does not derail the retry loop", async () => {
+    const { fn } = scriptedStream([
+      { kind: "errorEvent", err: assistantError("HTTP 429") },
+      { kind: "done", text: "ok" },
+    ]);
+    const wrapped = wrapStreamFn(fn, {
+      resilience: fastResilience,
+      log: { warn: () => {} },
+      onRetry: () => {
+        throw new Error("ui handler blew up");
+      },
+    });
+    const { result } = await drain(wrapped({} as never, {} as never));
+    expect(result.stopReason).toBe("stop");
+  });
+
   it("returns fn unchanged when disabled", () => {
     const { fn } = scriptedStream([{ kind: "done", text: "x" }]);
     const wrapped = wrapStreamFn(fn, {
@@ -449,5 +489,22 @@ describe("retryCompletion", () => {
       retryCompletion(run, "k", { resilience: fastResilience, log: { warn: () => {} } }),
     ).rejects.toMatchObject({ status: 400 });
     expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires onRetry for completion retries", async () => {
+    let n = 0;
+    const run = vi.fn(async () => {
+      n += 1;
+      if (n < 2) throw { status: 429, message: "rate limited" };
+      return "ok";
+    });
+    const notices: Array<{ rateLimited: boolean }> = [];
+    await retryCompletion(run, "k", {
+      resilience: fastResilience,
+      log: { warn: () => {} },
+      onRetry: (notice) => notices.push(notice),
+    });
+    expect(notices).toHaveLength(1);
+    expect(notices[0]!.rateLimited).toBe(true);
   });
 });

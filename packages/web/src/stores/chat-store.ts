@@ -56,6 +56,19 @@ interface ChatState {
     keptCount: number;
     durationMs: number;
   } | null;
+  /** Latest transient LLM-call retry notice. The chat area renders
+   *  this as a small "retrying…" banner while a call is being retried
+   *  (rate limit / network / expired token). Cleared automatically
+   *  when the next stream starts or ends. */
+  retryNotice: {
+    attempt: number;
+    maxAttempts: number;
+    kind: string;
+    delayMs: number;
+    rateLimited: boolean;
+    message: string;
+    at: number;
+  } | null;
 
   // model selection — persisted to localStorage so the UI remembers your
   // pick across reloads. The server still uses config.defaultModel as a
@@ -94,6 +107,7 @@ interface ChatState {
   loadEarlier: () => void;
   clearStreamError: () => void;
   clearCompactNotice: () => void;
+  clearRetryNotice: () => void;
   setPreferredModel: (id: string | null) => void;
   /** Pin the chat area to a specific session id. Pass `null` to
    *  return to the main webchat thread. Channel plugins drive
@@ -113,6 +127,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   isStreaming: false,
   streamError: null,
   compactNotice: null,
+  retryNotice: null,
 
   preferredModel: loadPreferredModel(),
 
@@ -225,6 +240,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return {
           isStreaming: true,
           streamError: null,
+          // A fresh turn started successfully — any prior retry notice
+          // is resolved.
+          retryNotice: null,
           messages: [
             ...withoutStale,
             {
@@ -276,6 +294,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return {
           messages: alreadyHave ? withoutPlaceholder : [...withoutPlaceholder, m.message],
           isStreaming: false,
+          // Turn completed successfully; clear any transient retry notice.
+          retryNotice: null,
         };
       }),
     );
@@ -283,7 +303,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
       set((s) => ({
         isStreaming: false,
         streamError: m.reason,
+        // The run ended (retries exhausted or non-retriable) — drop the
+        // transient "retrying…" banner; the error banner takes over.
+        retryNotice: null,
         messages: s.messages.filter((x) => x.id !== STREAMING_ID),
+      })),
+    );
+    tianshuWs.on("model_retry", (m) =>
+      set(() => ({
+        retryNotice: {
+          attempt: m.attempt,
+          maxAttempts: m.maxAttempts,
+          kind: m.kind,
+          delayMs: m.delayMs,
+          rateLimited: m.rateLimited,
+          message: m.message,
+          at: Date.now(),
+        },
       })),
     );
     tianshuWs.on("history_compacted", (m) =>
@@ -410,6 +446,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   clearStreamError: () => set({ streamError: null }),
   clearCompactNotice: () => set({ compactNotice: null }),
+  clearRetryNotice: () => set({ retryNotice: null }),
 
   setPreferredModel: (id) => {
     storePreferredModel(id);
