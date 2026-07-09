@@ -6,6 +6,15 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.71](https://github.com/tianshu-ai/tianshu/compare/v0.4.70...v0.4.71) (2026-07-09)
+
+### Features
+
+* **files:** paste attachments from the clipboard into the chat
+  composer (Cmd/Ctrl+V) — screenshots, copied images, and copied
+  files stage via the same upload path as the attach button. Pure
+  text paste is unaffected.
+
 ## [0.4.70](https://github.com/tianshu-ai/tianshu/compare/v0.4.68...v0.4.70) (2026-07-09)
 
 ### Bug Fixes
