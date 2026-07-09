@@ -1295,22 +1295,41 @@ export function takeResumableUserPrompt(
   if (rows.length === 0) return null;
 
   // Walk newest-first, collecting the trailing turn's entries until we
-  // reach a completed assistant reply (= the previous turn's end).
+  // reach a SUCCESSFULLY-COMPLETED assistant reply (= the previous
+  // turn's end). An assistant row whose persisted message carries
+  // stopReason "error"/"aborted" is a failed partial (e.g. the
+  // provider "terminated" the stream mid-sentence) — it belongs to the
+  // trailing failed turn and must be dropped, NOT treated as a
+  // completion boundary. Missing that was why a terminated turn never
+  // resumed: takeResumableUserPrompt saw the partial text, called it
+  // "done", and refused to retry.
   const toDelete: string[] = [];
   let userText: string | null = null;
   let newLeafId: string | null = null;
   for (const row of rows) {
-    if (row.role === "assistant" && row.content.trim().length > 0) {
+    if (
+      row.role === "assistant" &&
+      row.content.trim().length > 0 &&
+      !assistantRowFailed(row.content)
+    ) {
       // Boundary: previous turn's completed reply. Stop; this becomes
       // the new leaf.
       newLeafId = row.id;
       break;
     }
-    // Part of the trailing (failed) turn.
+    // Part of the trailing (failed) turn — includes failed/partial
+    // assistant rows and tool rows.
     toDelete.push(row.id);
     if (row.role === "user" && userText === null) {
       // The user prompt we'll resume (first user seen scanning back).
-      userText = row.content;
+      // CRITICAL: user rows are stored as a full AgentMessage JSON
+      // ({"role":"user","content":[{"type":"text","text":"…"}]}).
+      // We must extract the PLAIN TEXT here — re-running prompt() with
+      // the raw JSON string would re-serialize it into another
+      // AgentMessage, nesting the JSON one layer deeper on every
+      // retry (the "repeated JSON messages" bug). Legacy rows may be
+      // plain text; extractUserText handles both.
+      userText = extractUserText(row.content);
     }
   }
   if (userText === null) return null; // nothing to resume
@@ -1329,6 +1348,52 @@ export function takeResumableUserPrompt(
   });
   tx();
   return userText;
+}
+
+/** Extract the plain user text from a persisted user row. Rows are
+ *  stored as a full AgentMessage JSON
+ *  ({"role":"user","content":[{"type":"text","text":"…"}], …}); we
+ *  concat the text blocks. Legacy rows may already be plain text —
+ *  return them as-is. This MUST be used before re-running prompt() on
+ *  a resumed turn, else the raw JSON gets re-wrapped into a new
+ *  AgentMessage and nests one layer deeper each retry. */
+function extractUserText(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return content; // legacy plain-text row
+  }
+  try {
+    const parsed = JSON.parse(content) as {
+      role?: string;
+      content?: Array<{ type?: string; text?: string }> | string;
+    };
+    if (typeof parsed.content === "string") return parsed.content;
+    if (Array.isArray(parsed.content)) {
+      const text = parsed.content
+        .filter((b) => b && b.type === "text" && typeof b.text === "string")
+        .map((b) => b.text as string)
+        .join("");
+      // If there were only non-text blocks (e.g. images), fall back to
+      // empty string rather than the raw JSON.
+      return text;
+    }
+    return content;
+  } catch {
+    return content; // not JSON after all — treat as plain text
+  }
+}
+
+/** True iff a persisted assistant row's JSON carries a failure
+ *  stopReason ("error" / "aborted"). Such a row is a partial/aborted
+ *  reply, not a completed turn. Non-JSON or missing stopReason → not
+ *  failed (treat as a normal completed reply). */
+function assistantRowFailed(content: string): boolean {
+  try {
+    const parsed = JSON.parse(content) as { stopReason?: string };
+    return parsed.stopReason === "error" || parsed.stopReason === "aborted";
+  } catch {
+    return false;
+  }
 }
 
 /** Build a `ToWireOpts` bound to the current tenant config. The

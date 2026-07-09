@@ -139,6 +139,45 @@ describe("takeResumableUserPrompt", () => {
     expect(leafId(ctx, sid)).toBe(doneAssistant);
   });
 
+  it("resumes past an errored partial assistant (provider 'terminated' mid-stream)", () => {
+    // The real bug: a stream terminated mid-sentence persists an
+    // assistant row WITH partial content but stopReason:error. It must
+    // be treated as a failed turn (dropped + resumed), not a boundary.
+    seed(ctx, sid, "user", "q1");
+    const doneAssistant = seed(ctx, sid, "assistant", "a1 complete");
+    seed(ctx, sid, "user", "写一个长故事");
+    // Partial assistant with real text but stopReason:error.
+    seed(
+      ctx,
+      sid,
+      "assistant",
+      JSON.stringify({ role: "assistant", stopReason: "error", errorMessage: "terminated", content: [{ type: "text", text: "很久以前……（被截断）" }] }),
+    );
+
+    const text = takeResumableUserPrompt(ctx, sid);
+    expect(text).toBe("写一个长故事");
+    // Errored partial + its user prompt removed; completed turn stays.
+    expect(rowCount(ctx, sid)).toBe(2);
+    expect(leafId(ctx, sid)).toBe(doneAssistant);
+  });
+
+  it("treats an aborted partial assistant as a failed turn too", () => {
+    seed(ctx, sid, "user", "q1");
+    const doneAssistant = seed(ctx, sid, "assistant", "a1");
+    seed(ctx, sid, "user", "继续");
+    seed(ctx, sid, "assistant", JSON.stringify({ role: "assistant", stopReason: "aborted", content: [{ type: "text", text: "部分" }] }));
+
+    expect(takeResumableUserPrompt(ctx, sid)).toBe("继续");
+    expect(leafId(ctx, sid)).toBe(doneAssistant);
+  });
+
+  it("a COMPLETED assistant reply (stopReason stop) IS a boundary", () => {
+    seed(ctx, sid, "user", "q1");
+    seed(ctx, sid, "assistant", JSON.stringify({ role: "assistant", stopReason: "stop", content: [{ type: "text", text: "done" }] }));
+    // No dangling user after it → nothing to resume.
+    expect(takeResumableUserPrompt(ctx, sid)).toBeNull();
+  });
+
   it("returns null when the last turn actually completed (nothing to resume)", () => {
     seed(ctx, sid, "user", "q1");
     seed(ctx, sid, "assistant", "a1 (complete)");
@@ -151,6 +190,27 @@ describe("takeResumableUserPrompt", () => {
 
   it("returns null for an empty session", () => {
     expect(takeResumableUserPrompt(ctx, sid)).toBeNull();
+  });
+
+  it("extracts PLAIN TEXT from an AgentMessage-JSON user row (no nesting)", () => {
+    // Real storage: user rows are full AgentMessage JSON. Resuming
+    // must return the inner text, NOT the raw JSON — else prompt()
+    // re-wraps it and the JSON nests one layer deeper each retry
+    // (the "repeated JSON messages" bug Yu hit).
+    seed(ctx, sid, "user", "q1");
+    seed(ctx, sid, "assistant", "a1");
+    seed(
+      ctx,
+      sid,
+      "user",
+      JSON.stringify({ role: "user", content: [{ type: "text", text: "讲故事" }], timestamp: 123 }),
+    );
+
+    const text = takeResumableUserPrompt(ctx, sid);
+    expect(text).toBe("讲故事");
+    // Not the raw JSON.
+    expect(text).not.toContain("role");
+    expect(text).not.toContain("{");
   });
 
   it("resumes the very first turn (no prior completed assistant)", () => {

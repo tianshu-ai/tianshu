@@ -6,6 +6,30 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.79](https://github.com/tianshu-ai/tianshu/compare/v0.4.78...v0.4.79) (2026-07-10)
+
+### Bug Fixes
+
+* **server:** fix retry re-wrapping the user prompt into nested JSON.
+  Found via live DB inspection: user rows are stored as a full
+  AgentMessage JSON (`{"role":"user","content":[{"type":"text","text":
+  "…"}]}`). `takeResumableUserPrompt` returned that raw JSON string and
+  the resume re-ran `prompt()` on it, re-serializing into another
+  AgentMessage — so every retry nested the JSON one layer deeper and
+  the chat showed repeated `{"role":"user"…}` blobs. Now extracts the
+  plain text (via `extractUserText`, concatenating text blocks; legacy
+  plain-text rows pass through).
+* **server:** resume past an errored/partial assistant. A provider
+  that drops the stream mid-response persists an assistant row with
+  content but `stopReason:"error"` (e.g. SAP-proxy Claude
+  `errorMessage:"terminated"`). `takeResumableUserPrompt` treated that
+  partial as a completed reply and refused to resume (the stuck `…`).
+  It now recognizes `stopReason` error/aborted rows as failed turns to
+  drop + resume.
+* **models:** classify provider `"terminated"` / `"stream
+  interrupted"` / `"connection closed"` as retriable transient
+  failures so the server-side model-retry layer catches them too.
+
 ## [0.4.78](https://github.com/tianshu-ai/tianshu/compare/v0.4.77...v0.4.78) (2026-07-10)
 
 ### Bug Fixes

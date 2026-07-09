@@ -385,6 +385,12 @@ const NETWORK_HINTS = [
   "aborted", // transport abort, not user abort (guarded by caller signal)
   "stream closed",
   "premature close",
+  "terminated", // provider dropped the stream mid-response (seen on
+                // SAP-proxy Claude: stopReason=error errorMessage="terminated",
+                // output cut mid-sentence). Transient — retry.
+  "connection closed",
+  "connection error",
+  "stream interrupted",
 ];
 
 export function classifyError(err: unknown): RetryClassification {

@@ -161,6 +161,14 @@ describe("classifyError", () => {
     expect(classifyError(new Error("ETIMEDOUT")).retriable).toBe(true);
   });
 
+  it("treats provider 'terminated' as a retriable transient failure", () => {
+    // SAP-proxy Claude drops the stream mid-response with
+    // stopReason=error errorMessage="terminated". Must retry.
+    expect(classifyError({ errorMessage: "terminated" }).retriable).toBe(true);
+    expect(classifyError(new Error("terminated")).retriable).toBe(true);
+    expect(classifyError(new Error("stream interrupted")).retriable).toBe(true);
+  });
+
   it("scrapes status codes out of message text", () => {
     expect(classifyError(new Error("upstream returned 503")).kind).toBe(
       "http-503",
