@@ -478,6 +478,18 @@ export interface SandboxRunner {
     skipped: { relPath: string; reason: string }[];
   }>;
 
+  /**
+   * Stage host files INTO the sandbox (inverse of syncDown). Inputs
+   * are host-relative paths (relative to the runner's workspaceDir);
+   * each is uploaded to /sandbox/workspace/<same rel path>. Runtimes
+   * that already share the workspace with the host may leave this
+   * undefined; the caller treats undefined as "already on sandbox".
+   */
+  syncUp?(hostRelPaths: string[]): Promise<{
+    uploaded: string[];
+    skipped: { relPath: string; reason: string }[];
+  }>;
+
   // ─── optional browser sidecar (§2) ─────────────────────────
   /** If this runner's plugin also provides `browser.cdp`, the
    *  sidecar is exposed here so the host can register it under the

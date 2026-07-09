@@ -898,6 +898,19 @@ export class OpenCodeWorker implements WorkerHandle {
       if ((task.attempts ?? 0) > 0) {
         priorFiles = await this.listPriorWorkdirFiles(workdir, task);
       }
+      // SYNC-UP: stage the project's existing files into this task's
+      // workdir so opencode can READ/EDIT them (not just create from
+      // scratch). Mirrors the LLM-worker model: files live on the
+      // host under users/<userId>/projects/<slug>/; we copy them into
+      // the sandbox workdir before the run. Best-effort — a fresh
+      // project (no files) just yields an empty sync.
+      await this.syncProjectUp(workdir, task).catch((err) =>
+        this.deps.log.warn?.("opencode-worker: syncProjectUp failed", {
+          taskId: task.id,
+          err: err instanceof Error ? err.message : String(err),
+        }),
+      );
+
       const prompt = buildPrompt(task, {
         networkPolicyAdvisor: Boolean(this.deps.shell.allowEgress),
         priorFiles,
@@ -1509,6 +1522,72 @@ export class OpenCodeWorker implements WorkerHandle {
    * syncDown (bind-mounted microsandbox) the files are already on
    * the host, so we just enumerate + report them.
    */
+  /**
+   * SYNC-UP: stage the project's existing files from the host into
+   * this task's sandbox workdir so opencode can read/edit them.
+   *
+   * Host source (mirrors the LLM-worker / SyncDownTool layout):
+   *   <workspace>/users/<userId>/projects/<slug>/
+   * We syncUp that host-relative dir (runner uploads it to
+   * /sandbox/workspace/users/<userId>/projects/<slug>/), then copy
+   * its contents into the task workdir (opencode/<taskid>/) so the
+   * run sees them at $PWD. Excludes .results/ (prior deliverables)
+   * and the opencode scratch dirs to avoid pulling junk back in.
+   *
+   * No-ops cleanly when: no userId/slug, the project dir doesn't
+   * exist yet (fresh project), or the runner lacks syncUp
+   * (bind-mounted runtime already shares the fs).
+   */
+  private async syncProjectUp(workdir: string, task: Task): Promise<void> {
+    const slug = task.projectSlug;
+    const userId = this.deps.ownerUserId ?? task.ownerUserId;
+    if (!slug || !userId) return;
+    const syncUp = this.deps.shell.syncUp;
+    const projectRel = `users/${userId}/projects/${slug}`;
+    if (syncUp) {
+      const res = await syncUp.call(this.deps.shell, [projectRel]);
+      if (res.skipped?.length) {
+        // "host path does not exist" = fresh project, fine.
+        this.deps.log.info?.("opencode-worker: syncProjectUp skipped", {
+          taskId: task.id,
+          skipped: res.skipped,
+        });
+      }
+      if (!res.uploaded?.length) return; // nothing to stage
+    }
+    // Copy the synced project contents into the workdir (opencode's
+    // $PWD), excluding prior-results + scratch dirs. Belt: also runs
+    // on bind-mounted runtimes where syncUp is absent but the
+    // project dir is already on the sandbox fs.
+    const projectAbs = `${SANDBOX_WORKSPACE_ROOT}/${projectRel}`;
+    const workdirAbs = `${SANDBOX_WORKSPACE_ROOT}/${workdir}`;
+    await this.deps.shell
+      .exec({
+        command:
+          `if [ -d ${shq(projectAbs)} ]; then ` +
+          `mkdir -p ${shq(workdirAbs)} && ` +
+          `cp -a ${shq(projectAbs)}/. ${shq(workdirAbs)}/ 2>/dev/null; ` +
+          `rm -rf ${shq(workdirAbs)}/.results ${shq(workdirAbs)}/.deliverables ` +
+          `${shq(workdirAbs)}/.oc-config ${shq(workdirAbs)}/.oc-data ` +
+          `${shq(workdirAbs)}/.opencode 2>/dev/null; ` +
+          `fi`,
+        workdir: SANDBOX_WORKSPACE_ROOT,
+        timeoutMs: 120_000,
+      })
+      .then(
+        () =>
+          this.deps.log.info?.("opencode-worker: synced project into workdir", {
+            taskId: task.id,
+            projectRel,
+          }),
+        (err) =>
+          this.deps.log.warn?.("opencode-worker: copy project->workdir failed", {
+            taskId: task.id,
+            err: err instanceof Error ? err.message : String(err),
+          }),
+      );
+  }
+
   private async stageDeliverables(
     workdir: string,
     task: Task,
