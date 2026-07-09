@@ -413,59 +413,73 @@ function shortBinary(bin?: string): string {
 }
 
 /**
- * Best-effort flatten of the `policy get --output json --full` body
- * into a list of allowed endpoints. openshell's exact nesting isn't
- * pinned down here, so we walk the whole JSON tree and pull out every
- * object that looks like an endpoint (has a `host`). Ports, protocol,
- * enforcement, binaries and a rule name are collected from the same
- * object (and its enclosing rule) when present. Returns [] when
- * nothing endpoint-shaped is found, which makes the UI fall back to
- * the raw JSON dump.
+ * Flatten the `policy get --output json --full` body into a list of
+ * allowed endpoints. Verified shape (2026-07-09):
+ *   policy.network_policies.<ruleName> = {
+ *     name, binaries: [{path}], endpoints: [{host,port,protocol,
+ *     access,enforcement}]
+ *   }
+ * A rule can have multiple endpoints; binaries are per-rule, so each
+ * endpoint inherits the rule's binaries. One table row per endpoint.
+ * Falls back to [] (UI shows raw JSON) if the shape is unexpected.
  */
 function flattenPolicy(policy: unknown): AllowedRule[] {
   const out: AllowedRule[] = [];
-  const seen = new Set<unknown>();
-  const walk = (node: unknown, ruleName?: string): void => {
-    if (node == null || typeof node !== "object") return;
-    if (seen.has(node)) return;
-    seen.add(node);
-    if (Array.isArray(node)) {
-      for (const el of node) walk(el, ruleName);
-      return;
-    }
-    const o = node as Record<string, unknown>;
-    const name =
-      typeof o.name === "string" ? o.name : typeof o.ruleName === "string" ? o.ruleName : ruleName;
-    if (typeof o.host === "string") {
-      const binaries = Array.isArray(o.binaries)
-        ? (o.binaries as unknown[])
-            .map((b) =>
-              typeof b === "string"
+  const root =
+    policy && typeof policy === "object"
+      ? ((policy as Record<string, unknown>).policy as
+          | Record<string, unknown>
+          | undefined) ?? (policy as Record<string, unknown>)
+      : undefined;
+  const net =
+    root && typeof root === "object"
+      ? (root.network_policies as Record<string, unknown> | undefined)
+      : undefined;
+  if (!net || typeof net !== "object") return out;
+
+  for (const [ruleKey, ruleVal] of Object.entries(net)) {
+    if (!ruleVal || typeof ruleVal !== "object") continue;
+    const rule = ruleVal as Record<string, unknown>;
+    const name = typeof rule.name === "string" ? rule.name : ruleKey;
+    const binaries = Array.isArray(rule.binaries)
+      ? (rule.binaries as unknown[])
+          .map((b) =>
+            b && typeof b === "object" &&
+            typeof (b as { path?: unknown }).path === "string"
+              ? (b as { path: string }).path
+              : typeof b === "string"
                 ? b
-                : b && typeof b === "object" && typeof (b as { path?: unknown }).path === "string"
-                  ? (b as { path: string }).path
-                  : undefined,
-            )
-            .filter((b): b is string => typeof b === "string")
-        : undefined;
+                : undefined,
+          )
+          .filter((b): b is string => typeof b === "string")
+      : undefined;
+    const endpoints = Array.isArray(rule.endpoints)
+      ? (rule.endpoints as unknown[])
+      : [];
+    if (endpoints.length === 0) {
+      // Rule with no endpoints — still list it so it's visible.
+      out.push({ name, binaries });
+      continue;
+    }
+    for (const epVal of endpoints) {
+      if (!epVal || typeof epVal !== "object") continue;
+      const ep = epVal as Record<string, unknown>;
       out.push({
         name,
-        host: o.host,
+        host: typeof ep.host === "string" ? ep.host : undefined,
         port:
-          typeof o.port === "number"
-            ? o.port
-            : typeof o.port === "string"
-              ? Number.parseInt(o.port, 10)
+          typeof ep.port === "number"
+            ? ep.port
+            : typeof ep.port === "string"
+              ? Number.parseInt(ep.port, 10)
               : undefined,
-        protocol: typeof o.protocol === "string" ? o.protocol : undefined,
+        protocol: typeof ep.protocol === "string" ? ep.protocol : undefined,
         enforcement:
-          typeof o.enforcement === "string" ? o.enforcement : undefined,
+          typeof ep.enforcement === "string" ? ep.enforcement : undefined,
         binaries,
       });
     }
-    for (const v of Object.values(o)) walk(v, name);
-  };
-  walk(policy);
+  }
   return out;
 }
 
