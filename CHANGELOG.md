@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.70](https://github.com/tianshu-ai/tianshu/compare/v0.4.68...v0.4.70) (2026-07-09)
+
+### Bug Fixes
+
+* **web:** don't send the chat message on Enter while an IME is
+  composing (Chinese/Japanese/Korean). Pressing Enter to confirm an
+  IME candidate no longer triggers send; guarded with
+  `!nativeEvent.isComposing && keyCode !== 229`.
+
+### Chores
+
+* 0.4.69: added diagnostic logging to `syncProjectUp`.
+
 ## [0.4.68](https://github.com/tianshu-ai/tianshu/compare/v0.4.67...v0.4.68) (2026-07-09)
 
 ### Features
