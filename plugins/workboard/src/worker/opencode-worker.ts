@@ -1541,7 +1541,19 @@ export class OpenCodeWorker implements WorkerHandle {
   private async syncProjectUp(workdir: string, task: Task): Promise<void> {
     const slug = task.projectSlug;
     const userId = this.deps.ownerUserId ?? task.ownerUserId;
-    if (!slug || !userId) return;
+    this.deps.log.info?.("opencode-worker: syncProjectUp enter", {
+      taskId: task.id,
+      slug,
+      userId,
+      hasSyncUp: typeof this.deps.shell.syncUp === "function",
+    });
+    if (!slug || !userId) {
+      this.deps.log.info?.(
+        "opencode-worker: syncProjectUp skip (no slug/userId)",
+        { taskId: task.id },
+      );
+      return;
+    }
     const syncUp = this.deps.shell.syncUp;
     const projectRel = `users/${userId}/projects/${slug}`;
     if (syncUp) {
