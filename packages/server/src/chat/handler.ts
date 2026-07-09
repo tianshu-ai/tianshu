@@ -609,7 +609,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     models: buildModels(piModel, apiKey, {
       resilience: ctx.config.models?.resilience,
       reResolveApiKey: () => resolveApiKey(modelInfo),
-      onRetry: (n) =>
+      onRetry: (n) => {
+        // Rebuilding after partial content: tell the client to drop the
+        // half-streamed bubble before the replay's deltas land, so the
+        // answer isn't duplicated.
+        if (n.contentStreamed) {
+          send({ type: "stream_reset", sessionId: session.id });
+        }
         send({
           type: "model_retry",
           attempt: n.attempt,
@@ -618,8 +624,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           delayMs: n.delayMs,
           rateLimited: n.rateLimited,
           message: n.message,
+          contentStreamed: n.contentStreamed,
           sessionId: session.id,
-        }),
+        });
+      },
     }),
   });
 

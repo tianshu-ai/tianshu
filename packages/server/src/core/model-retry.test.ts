@@ -343,16 +343,45 @@ describe("wrapStreamFn", () => {
     expect(events.some((e) => e.type === "error")).toBe(true);
   });
 
-  it("does NOT retry once content has streamed", async () => {
+  it("retries after content when retryAfterContent is on (default), suppressing the replay start", async () => {
+    const { fn, calls } = scriptedStream([
+      { kind: "contentThenThrow", err: assistantError("HTTP 503 mid-stream") },
+      { kind: "done", text: "recovered" },
+    ]);
+    const notices: Array<{ contentStreamed: boolean }> = [];
+    const wrapped = wrapStreamFn(fn, {
+      resilience: fastResilience,
+      log: { warn: () => {} },
+      onRetry: (n) => notices.push(n),
+    });
+    const { events, result } = await drain(wrapped({} as never, {} as never));
+    expect(calls()).toBe(2); // retried
+    expect(result.stopReason).toBe("stop");
+    // Exactly one `start` reaches the consumer (first attempt's); the
+    // replay's start is swallowed so the harness keeps one msg slot.
+    expect(events.filter((e) => e.type === "start")).toHaveLength(1);
+    // The retry notice flags that content had streamed (client resets).
+    expect(notices).toHaveLength(1);
+    expect(notices[0]!.contentStreamed).toBe(true);
+  });
+
+  it("does NOT retry after content when retryAfterContent is off", async () => {
     const { fn, calls } = scriptedStream([
       { kind: "contentThenThrow", err: assistantError("HTTP 503 mid-stream") },
       { kind: "done", text: "should-not-reach" },
     ]);
-    const wrapped = wrapStreamFn(fn, { resilience: fastResilience, log: { warn: () => {} } });
+    const noContentRetry = resolveResilience({
+      maxAttempts: 4,
+      baseDelayMs: 1,
+      maxDelayMs: 4,
+      jitter: 0,
+      respectRetryAfter: false,
+      retryAfterContent: false,
+    });
+    const wrapped = wrapStreamFn(fn, { resilience: noContentRetry, log: { warn: () => {} } });
     const { events, result } = await drain(wrapped({} as never, {} as never));
     expect(calls()).toBe(1); // no retry
     expect(result.stopReason).toBe("error");
-    // The partial content delta was forwarded before the error.
     expect(events.some((e) => e.type === "text_delta")).toBe(true);
   });
 

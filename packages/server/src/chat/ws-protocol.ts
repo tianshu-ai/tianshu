@@ -117,8 +117,21 @@ export type ServerMsg =
       rateLimited: boolean;
       /** Human-readable one-liner for the notice. */
       message: string;
+      /** True when partial content had already streamed before the
+       *  failure; the client should reset its in-progress bubble (a
+       *  `stream_reset` is also sent) so the rebuilt answer doesn't
+       *  duplicate the aborted half. */
+      contentStreamed: boolean;
       sessionId?: string;
     }
+  /**
+   * Discard the in-progress streaming bubble. Sent when a mid-stream
+   * failure is being retried and content had already streamed — the
+   * retry rebuilds the message from scratch, so the client clears what
+   * it has before the replay's deltas arrive. Followed by fresh
+   * `stream_delta`s (no new `stream_start`).
+   */
+  | { type: "stream_reset"; sessionId?: string }
   /** Agent invoked a tool. Sent before the tool runs so the UI can
    *  render an in-progress chip. */
   | {

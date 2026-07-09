@@ -96,11 +96,19 @@ interface ChatState {
    * twice and the UI would render duplicates and interleaved deltas.
    */
   _initialized: boolean;
+  /** Last prompt sent, retained so the "Retry" button can resend it
+   *  after a failed / terminated run. Cleared on a successful
+   *  stream_end. */
+  _lastPrompt: { content: string; attachments?: WireAttachment[] } | null;
 
   // actions
   init: () => void;
   toggleSidebar: () => void;
   sendPrompt: (content: string, attachments?: WireAttachment[]) => void;
+  /** Re-send the last prompt. Used by the "Retry" button on the
+   *  stream-error banner (e.g. after a connection drop / terminated
+   *  run). No-op if there's nothing to resend or a stream is live. */
+  retryLastPrompt: () => void;
   abort: () => void;
   /** Request the next older page. No-op when already loading or
    *  when `hasMoreHistory` is false. */
@@ -136,6 +144,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   viewingSessionId: null,
 
   _initialized: false,
+  _lastPrompt: null,
 
   init: () => {
     if (get()._initialized) return;
@@ -294,8 +303,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return {
           messages: alreadyHave ? withoutPlaceholder : [...withoutPlaceholder, m.message],
           isStreaming: false,
-          // Turn completed successfully; clear any transient retry notice.
+          // Turn completed successfully; clear any transient retry notice
+          // and the retained retry-prompt.
           retryNotice: null,
+          _lastPrompt: null,
         };
       }),
     );
@@ -308,6 +319,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         retryNotice: null,
         messages: s.messages.filter((x) => x.id !== STREAMING_ID),
       })),
+    );
+    tianshuWs.on("stream_reset", () =>
+      set((s) => {
+        // A mid-stream retry is rebuilding the answer. Reset the
+        // streaming bubble's text to empty (keep the placeholder) so
+        // the replay's deltas don't append onto the aborted half.
+        const next = s.messages.map((x) =>
+          x.id === STREAMING_ID ? { ...x, text: "" } : x,
+        );
+        return { messages: next };
+      }),
     );
     tianshuWs.on("model_retry", (m) =>
       set(() => ({
@@ -419,12 +441,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
     if (!trimmed && !hasAttachments) return;
     if (get().isStreaming) return;
     const modelId = get().preferredModel ?? undefined;
+    // Remember for the Retry button (clears on successful stream_end).
+    set({ _lastPrompt: { content: trimmed, attachments } });
     tianshuWs.send({
       type: "prompt",
       content: trimmed,
       modelId,
       ...(hasAttachments ? { attachments } : {}),
     });
+  },
+
+  retryLastPrompt: () => {
+    const s = get();
+    if (s.isStreaming) return;
+    const last = s._lastPrompt;
+    if (!last) return;
+    // Clear the error banner and resend via the normal path.
+    set({ streamError: null, retryNotice: null });
+    get().sendPrompt(last.content, last.attachments);
   },
 
   abort: () => {

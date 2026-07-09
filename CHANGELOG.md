@@ -6,6 +6,24 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.74](https://github.com/tianshu-ai/tianshu/compare/v0.4.73...v0.4.74) (2026-07-09)
+
+### Features
+
+* **models:** retry mid-stream failures. When a transient error hits
+  after partial content already streamed (e.g. the connection dropped
+  mid-response), the call is re-run and the assistant message is
+  rebuilt from scratch; the replay's `start` event is suppressed so
+  the harness keeps one message slot, and a new `stream_reset` WS
+  event tells the client to clear the in-progress bubble so text isn't
+  duplicated. Gated by `models.resilience.retryAfterContent` (default
+  true); user aborts are never retried.
+* **web:** add a "Retry" button to the stream-error banner that
+  resends the last prompt (covers terminated / connection-dropped
+  runs), and handle `stream_reset` by clearing the streaming bubble
+  before the rebuilt answer arrives. The WS layer already
+  auto-reconnects with backoff.
+
 ## [0.4.73](https://github.com/tianshu-ai/tianshu/compare/v0.4.72...v0.4.73) (2026-07-09)
 
 ### Features

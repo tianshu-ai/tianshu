@@ -71,7 +71,8 @@
       "jitter": 0.25,
       "respectRetryAfter": true,
       "maxRetryAfterMs": 60000,
-      "rateLimitFloorMs": 5000
+      "rateLimitFloorMs": 5000,
+      "retryAfterContent": true
     }
   },
 

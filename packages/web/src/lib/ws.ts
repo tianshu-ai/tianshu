@@ -35,8 +35,16 @@ export type ServerEvent =
       delayMs: number;
       rateLimited: boolean;
       message: string;
+      contentStreamed: boolean;
       sessionId?: string;
     }
+  /**
+   * Discard the in-progress streaming bubble. Sent when a mid-stream
+   * failure is retried after content already streamed — the retry
+   * rebuilds the message, so the client clears what it has before the
+   * replay's deltas arrive.
+   */
+  | { type: "stream_reset"; sessionId?: string }
   | { type: "tool_call"; callId: string; name: string; arguments: Record<string, unknown>; sessionId?: string }
   | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string; sessionId?: string }
   | {

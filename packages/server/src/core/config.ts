@@ -195,6 +195,13 @@ export interface ModelResilienceConfig {
    *  explicit server wait time. Prevents the short exponential schedule
    *  from re-tripping the limit. Default: 5000. Capped by maxDelayMs. */
   rateLimitFloorMs?: number;
+  /** Retry even after partial content has already streamed to the
+   *  client (e.g. the connection dropped mid-response). On retry the
+   *  whole call is re-run and the assistant message is rebuilt from
+   *  scratch — the client is told to reset the in-progress bubble
+   *  first (see the `stream_reset` WS event) so text isn't duplicated.
+   *  Only applies to non-abort transient failures. Default: true. */
+  retryAfterContent?: boolean;
 }
 
 export interface ProviderEntry {

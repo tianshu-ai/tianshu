@@ -75,6 +75,7 @@ export interface ResolvedResilience {
   respectRetryAfter: boolean;
   maxRetryAfterMs: number;
   rateLimitFloorMs: number;
+  retryAfterContent: boolean;
 }
 
 const DEFAULTS: ResolvedResilience = {
@@ -90,6 +91,10 @@ const DEFAULTS: ResolvedResilience = {
   // = 500ms) — that just keeps the limit tripped. Start no lower than
   // this floor and still grow/jitter from there. Capped by maxDelayMs.
   rateLimitFloorMs: 5_000,
+  // Retry mid-stream failures (connection dropped after some tokens
+  // already streamed) by re-running the whole call and rebuilding the
+  // message; the client resets its in-progress bubble first.
+  retryAfterContent: true,
 };
 
 export function resolveResilience(
@@ -121,6 +126,7 @@ export function resolveResilience(
       0,
       DEFAULTS.rateLimitFloorMs,
     ),
+    retryAfterContent: cfg.retryAfterContent ?? DEFAULTS.retryAfterContent,
   };
 }
 
@@ -550,6 +556,10 @@ export interface RetryNotice {
   delayMs: number;
   rateLimited: boolean;
   authFailure: boolean;
+  /** True when partial content had already streamed before the failure
+   *  — the retry rebuilds the message, so the client should reset its
+   *  in-progress bubble to avoid duplicated text. */
+  contentStreamed: boolean;
   /** Model label (provider/id). */
   label: string;
   /** Human-readable one-liner. */
@@ -624,6 +634,14 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
         ...(options ?? {}),
       };
 
+      // Whether ANY prior attempt had already streamed content. When
+      // true, a replay attempt suppresses its `start` event so the
+      // downstream harness keeps a single message slot and each event's
+      // full `partial` overwrites the failed half (rather than pushing
+      // a second assistant message). The client is separately told to
+      // reset its in-progress bubble via the retry notice.
+      let replayingAfterContent = false;
+
       // eslint-disable-next-line no-constant-condition
       while (true) {
         attempt += 1;
@@ -632,8 +650,16 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
           const src = fn(model, context, opts);
           for await (const ev of src) {
             if (isContentEvent(ev)) sawContent = true;
+            // On a post-content replay, swallow the fresh `start`: the
+            // harness already has a message slot from the first run and
+            // a second `start` would append a duplicate assistant
+            // message. Subsequent events carry the full `partial`, so
+            // the slot is overwritten cleanly.
+            if (ev.type === "start" && replayingAfterContent) {
+              continue;
+            }
             // A terminal error event: treat like a thrown error so the
-            // retry decision is centralised, but only if no content yet.
+            // retry decision is centralised.
             if (ev.type === "error") {
               if (ev.reason === "aborted") {
                 out.push(ev);
@@ -658,17 +684,26 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
             return;
           }
           const cls = classifyError(err);
+          // Retry after content only when explicitly allowed. Rebuilding
+          // the whole message is correct (the harness overwrites via
+          // `partial`, the client resets its bubble), but it re-spends
+          // tokens and briefly flashes the answer, so it's gated.
+          const contentBlocks = sawContent && !r.retryAfterContent;
           const canRetry =
-            cls.retriable && !sawContent && attempt < r.maxAttempts;
+            cls.retriable && !contentBlocks && attempt < r.maxAttempts;
           if (!canRetry) {
-            if (sawContent && cls.retriable) {
+            if (sawContent && cls.retriable && !r.retryAfterContent) {
               log.warn(
-                `[model-retry] ${label}: transient error after content already streamed (${cls.kind}); not retrying`,
+                `[model-retry] ${label}: transient error after content already streamed (${cls.kind}); retryAfterContent disabled, not retrying`,
               );
             }
             failStream(out, err);
             return;
           }
+          // Remember if this (or any prior) attempt streamed content, so
+          // the next attempt suppresses its `start` and the client is
+          // told to reset.
+          if (sawContent) replayingAfterContent = true;
 
           if (cls.authFailure && deps.reResolveApiKey) {
             try {
@@ -689,6 +724,7 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
             delayMs: delay,
             rateLimited: cls.rateLimited,
             authFailure: cls.authFailure,
+            contentStreamed: replayingAfterContent,
             label,
             message: "",
           });
@@ -753,6 +789,7 @@ export async function retryCompletion<T>(
         delayMs: delay,
         rateLimited: cls.rateLimited,
         authFailure: cls.authFailure,
+        contentStreamed: false,
         label,
         message: "",
       });

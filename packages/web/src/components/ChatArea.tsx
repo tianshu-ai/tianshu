@@ -31,6 +31,8 @@ export default function ChatArea() {
   const isStreaming = useChatStore((s) => s.isStreaming);
   const streamError = useChatStore((s) => s.streamError);
   const clearStreamError = useChatStore((s) => s.clearStreamError);
+  const retryLastPrompt = useChatStore((s) => s.retryLastPrompt);
+  const canRetryLast = useChatStore((s) => s._lastPrompt !== null && !s.isStreaming);
   const compactNotice = useChatStore((s) => s.compactNotice);
   const clearCompactNotice = useChatStore((s) => s.clearCompactNotice);
   const retryNotice = useChatStore((s) => s.retryNotice);
@@ -128,13 +130,24 @@ export default function ChatArea() {
             {streamError && (
               <div className="flex items-center justify-between rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-danger">
                 <span className="truncate">{streamError}</span>
-                <button
-                  type="button"
-                  onClick={clearStreamError}
-                  className="ml-3 text-[11px] uppercase tracking-wider text-rose-300/80 hover:text-white"
-                >
-                  dismiss
-                </button>
+                <span className="ml-3 flex flex-none items-center gap-3">
+                  {canRetryLast && (
+                    <button
+                      type="button"
+                      onClick={retryLastPrompt}
+                      className="rounded border border-rose-400/40 px-2 py-0.5 text-[11px] uppercase tracking-wider text-rose-200 hover:bg-rose-400/10 hover:text-white"
+                    >
+                      retry
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={clearStreamError}
+                    className="text-[11px] uppercase tracking-wider text-rose-300/80 hover:text-white"
+                  >
+                    dismiss
+                  </button>
+                </span>
               </div>
             )}
             {retryNotice && (
