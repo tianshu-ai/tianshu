@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.68](https://github.com/tianshu-ai/tianshu/compare/v0.4.67...v0.4.68) (2026-07-09)
+
+### Features
+
+* **opencode-worker:** sync the project's existing files into the
+  sandbox before the run (sync-up), so opencode can read/edit an
+  existing project instead of only creating from scratch. Mirrors the
+  LLM-worker layout (`users/<userId>/projects/<slug>/` → task
+  workdir), excludes prior results/scratch, no-ops for fresh
+  projects. Results continue to sync down via stageDeliverables.
+  Adds optional `syncUp()` to the SDK `SandboxRunner`.
+
 ## [0.4.67](https://github.com/tianshu-ai/tianshu/compare/v0.4.66...v0.4.67) (2026-07-08)
 
 ### Bug Fixes
