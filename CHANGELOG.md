@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.76](https://github.com/tianshu-ai/tianshu/compare/v0.4.75...v0.4.76) (2026-07-10)
+
+### Bug Fixes
+
+* **web,server:** auto-retry now RESUMES the last turn instead of
+  resending a new prompt. The 0.4.75 loop re-sent a fresh `prompt`
+  each attempt, so a flaky connection stacked duplicate user messages
+  in history ("继续" ×N). New `retry` WS message re-runs the existing
+  turn server-side: `takeResumableUserPrompt` drops the dangling
+  failed turn (trailing user msg + any empty/partial assistant),
+  re-points the session leaf at the last completed reply, and re-runs
+  that single user message via one `prompt()`. History keeps exactly
+  one user message no matter how many retries happen. Falls back to a
+  clean stream end when there's nothing to resume.
+
 ## [0.4.75](https://github.com/tianshu-ai/tianshu/compare/v0.4.74...v0.4.75) (2026-07-10)
 
 ### Features

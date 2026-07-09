@@ -56,6 +56,15 @@ export type ClientMsg =
        */
       attachments?: WireAttachment[];
     }
+  /**
+   * Re-run the last turn of the current session WITHOUT inserting a
+   * new user message. Used by the client's auto-retry loop after a
+   * failed / interrupted run: the user's prompt is already persisted,
+   * so we resume it via `harness.continue()` rather than resending a
+   * duplicate prompt. No-op if the session's last message isn't a
+   * user/tool-result message (nothing to continue).
+   */
+  | { type: "retry"; modelId?: string }
   | { type: "abort" };
 
 export interface WireAttachment {

@@ -548,27 +548,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
     retryTimer = setTimeout(() => {
       retryTimer = null;
       const s = get();
-      // Bail if the user stopped, a stream is already live, or we lost
-      // the prompt somehow.
-      if (!s.autoRetry?.active || s.isStreaming || !s._lastPrompt) return;
+      // Bail if the user stopped or a stream is already live.
+      if (!s.autoRetry?.active || s.isStreaming) return;
       const modelId = s.preferredModel ?? undefined;
-      const last = s._lastPrompt;
-      // Resend directly (not via sendPrompt, which would reset the
-      // auto-retry state we want to keep across attempts). If the
-      // socket is still down, ws queues it and flushes on reconnect.
-      tianshuWs.send({
-        type: "prompt",
-        content: last.content,
-        modelId,
-        ...(last.attachments && last.attachments.length > 0
-          ? { attachments: last.attachments }
-          : {}),
-      });
-      // If this send fails to produce a stream_start (e.g. still
-      // disconnected and it just re-queues), a subsequent stream_error
-      // or another socket close will call _beginAutoRetry again and
-      // bump the attempt/backoff. We optimistically clear the visible
-      // countdown; the banner will re-arm if it fails again.
+      // Resume the LAST turn in place — do NOT resend a new prompt.
+      // The server re-runs the existing user message (dropping the
+      // dangling failed turn first), so history keeps exactly one
+      // user message no matter how many times we retry. If the socket
+      // is still down, ws queues this and flushes on reconnect.
+      tianshuWs.send({ type: "retry", ...(modelId ? { modelId } : {}) });
+      // If this doesn't produce a stream_start (still disconnected /
+      // fails again), a subsequent stream_error or socket-close event
+      // re-arms the loop and bumps the attempt/backoff.
     }, delayMs);
   },
 

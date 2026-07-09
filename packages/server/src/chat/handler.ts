@@ -300,6 +300,30 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         });
         return;
       }
+      case "retry": {
+        // Resume the last turn of the current session in place (no new
+        // user message). The client's auto-retry loop uses this so a
+        // failed / interrupted run doesn't spawn duplicate prompts.
+        if (aborter) aborter.abort();
+        aborter = new AbortController();
+        runPrompt({
+          ctx,
+          userId,
+          send,
+          content: "",
+          retryLastTurn: true,
+          modelId: parsed.modelId,
+          signal: aborter.signal,
+          pluginRegistry,
+          homeDir,
+        }).catch((err) => {
+          send({
+            type: "stream_error",
+            reason: err instanceof Error ? err.message : String(err),
+          });
+        });
+        return;
+      }
       case "abort": {
         aborter?.abort();
         aborter = null;
@@ -343,10 +367,20 @@ interface RunPromptArgs {
    * somehow still over the window. Not part of the public contract.
    */
   _afterCompactFallback?: boolean;
+  /**
+   * Resume the last turn of the session via `harness.continue()`
+   * instead of `harness.prompt()`. No new user message is inserted;
+   * `content` / `attachments` are ignored. Used by the client's
+   * auto-retry loop after a failed / interrupted run so history keeps
+   * a single user message. No-op (clean stream_end) if the session's
+   * last message isn't a user/tool-result message.
+   */
+  retryLastTurn?: boolean;
 }
 
 export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const { ctx, userId, send, content, modelId, attachments, signal, pluginRegistry, homeDir } = args;
+  const retryLastTurn = args.retryLastTurn ?? false;
   const wireOpts = makeWireOpts(ctx);
   const repo = new SqliteSessionRepo(ctx);
 
@@ -764,7 +798,21 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // actionable error.
       throw new HandledTurnAbort();
     }
-    await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
+    if (retryLastTurn) {
+      // Resume the last turn WITHOUT inserting a duplicate user
+      // message. The failed/interrupted turn left the user's message
+      // as the transcript leaf; we drop that dangling turn and re-run
+      // it from the same content, so history keeps exactly one user
+      // message. If there's nothing resumable (last message is an
+      // assistant reply => the turn actually finished), end cleanly.
+      const resume = takeResumableUserPrompt(ctx, session.id);
+      if (!resume) {
+        throw new HandledTurnAbort();
+      }
+      await harness.prompt(resume, images.length > 0 ? { images } : undefined);
+    } else {
+      await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
+    }
     await harness.waitForIdle();
   } catch (err) {
     if (err instanceof HandledTurnAbort) {
@@ -1204,6 +1252,83 @@ function readBackLatestMessage(
     content: row.content,
     createdAt: row.created_at,
   };
+}
+
+/**
+ * Retry helper. A failed / interrupted turn leaves the user's prompt
+ * as the transcript tail (the assistant reply never completed, or is
+ * a partial). To resume WITHOUT duplicating the user message, we:
+ *   1. find the trailing turn (from the leaf back to — but not
+ *      including — the last COMPLETED assistant reply),
+ *   2. confirm it contains a user message (else nothing to resume),
+ *   3. delete those trailing entries and re-point the session leaf at
+ *      the prior completed entry,
+ *   4. return the user message text so the caller re-runs it via a
+ *      single fresh `prompt()`.
+ * Net effect: history keeps exactly one user message for the turn.
+ *
+ * Returns null when there's nothing resumable (e.g. the last turn
+ * actually completed, or the session is empty) — the caller then ends
+ * the stream cleanly instead of erroring.
+ */
+export function takeResumableUserPrompt(
+  ctx: TenantContext,
+  sessionId: string,
+): string | null {
+  // Pull the message chain newest-first. entry_type='message' skips
+  // compaction/system tree entries; we only reason about turns.
+  const rows = ctx.db
+    .prepare<
+      [string],
+      {
+        id: string;
+        role: ChatMessage["role"];
+        content: string;
+      }
+    >(
+      `SELECT id, role, content
+         FROM messages
+        WHERE session_id = ? AND entry_type = 'message'
+        ORDER BY created_at DESC, rowid DESC`,
+    )
+    .all(sessionId);
+  if (rows.length === 0) return null;
+
+  // Walk newest-first, collecting the trailing turn's entries until we
+  // reach a completed assistant reply (= the previous turn's end).
+  const toDelete: string[] = [];
+  let userText: string | null = null;
+  let newLeafId: string | null = null;
+  for (const row of rows) {
+    if (row.role === "assistant" && row.content.trim().length > 0) {
+      // Boundary: previous turn's completed reply. Stop; this becomes
+      // the new leaf.
+      newLeafId = row.id;
+      break;
+    }
+    // Part of the trailing (failed) turn.
+    toDelete.push(row.id);
+    if (row.role === "user" && userText === null) {
+      // The user prompt we'll resume (first user seen scanning back).
+      userText = row.content;
+    }
+  }
+  if (userText === null) return null; // nothing to resume
+
+  // Drop the dangling turn and re-point the leaf at the prior entry.
+  const tx = ctx.db.transaction(() => {
+    const del = ctx.db.prepare<[string], unknown>(
+      `DELETE FROM messages WHERE id = ?`,
+    );
+    for (const id of toDelete) del.run(id);
+    ctx.db
+      .prepare<[string | null, string], unknown>(
+        `UPDATE sessions SET leaf_id = ? WHERE id = ?`,
+      )
+      .run(newLeafId, sessionId);
+  });
+  tx();
+  return userText;
 }
 
 /** Build a `ToWireOpts` bound to the current tenant config. The
