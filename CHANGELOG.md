@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.77](https://github.com/tianshu-ai/tianshu/compare/v0.4.76...v0.4.77) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** auto-retry no longer stalls or resets its backoff when a
+  retry itself fails. Two bugs: (1) `stream_start` cleared the whole
+  auto-retry state, so a retry that resumed then failed again snapped
+  the backoff back to 1s instead of climbing; (2) a retry sent while
+  still disconnected just re-queued and produced no event, stalling
+  the loop (the stuck "…" spinner). Fix: the attempt counter now lives
+  in module scope and only resets on success / user-stop / a fresh
+  prompt (not on `stream_start`), so backoff climbs monotonically
+  toward the 30-minute cap across repeated failures; and a watchdog
+  re-arms the next backoff if a sent retry neither resumes nor errors
+  within 15s. The loop keeps retrying until it succeeds or the user
+  hits stop.
+
 ## [0.4.76](https://github.com/tianshu-ai/tianshu/compare/v0.4.75...v0.4.76) (2026-07-10)
 
 ### Bug Fixes
