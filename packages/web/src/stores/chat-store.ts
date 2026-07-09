@@ -169,9 +169,18 @@ interface ChatState {
    *  follows is NOT treated as a transient error worth auto-retrying.
    *  Reset on the next user prompt. */
   _userAborted: boolean;
+  /** True from the moment a prompt / retry is sent until the turn is
+   *  acknowledged by a successful stream_end (or the user stops).
+   *  Drives connection-drop recovery: a socket close while this is set
+   *  — even before stream_start — re-arms the auto-retry loop, so a
+   *  turn sent right as the connection dies isn't silently lost. */
+  _awaitingResponse: boolean;
   /** Internal: (re)arm the exponential-backoff auto-retry loop.
    *  `reason` is a short label surfaced in the banner. */
   _beginAutoRetry: (reason: string) => void;
+  /** Internal: fire the pending retry immediately (e.g. socket just
+   *  reconnected) instead of waiting out the remaining backoff. */
+  _retryNow: () => void;
 
   // actions
   init: () => void;
@@ -219,6 +228,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _initialized: false,
   _lastPrompt: null,
   _userAborted: false,
+  _awaitingResponse: false,
 
   init: () => {
     if (get()._initialized) return;
@@ -228,10 +238,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // restart, network blip). The WS layer auto-reconnects; here we
     // kick the auto-retry loop so the interrupted turn resumes.
     tianshuWs.onStatus((status) => {
-      if (status !== "closed") return;
       const s = get();
-      // Only if a stream was live and the user didn't abort it.
-      if (s.isStreaming && !s._userAborted && s._lastPrompt) {
+      if (status === "open") {
+        // Reconnected. If a retry loop is waiting out its backoff, fire
+        // the resume now instead of making the user sit through the
+        // remaining countdown — the connection is back.
+        if (!s._userAborted && s.autoRetry?.active && retryTimer) {
+          get()._retryNow();
+        }
+        return;
+      }
+      // status === "closed": the socket dropped. Re-arm whenever a turn
+      // is unacknowledged (prompt/retry sent, no stream_end yet). This
+      // also covers a drop BEFORE stream_start (isStreaming still
+      // false), which an isStreaming-only guard would miss.
+      if (!s._userAborted && s._awaitingResponse) {
         get()._beginAutoRetry("connection lost");
       }
     });
@@ -403,6 +424,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           retryNotice: null,
           autoRetry: null,
           _lastPrompt: null,
+          _awaitingResponse: false,
         };
       }),
     );
@@ -555,6 +577,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set({
       _lastPrompt: { content: trimmed, attachments },
       _userAborted: false,
+      _awaitingResponse: true,
       autoRetry: null,
       streamError: null,
     });
@@ -567,12 +590,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   _beginAutoRetry: (reason: string) => {
-    // Guard: user stopped, or a stream is already live — don't arm.
-    const s0 = get();
-    if (s0._userAborted) return;
+    // Guard: user stopped — don't arm.
+    if (get()._userAborted) return;
     // Coalesce: if a backoff is already pending, don't stack another.
     if (retryTimer) return;
     clearRetryWatchdog();
+
+    // The stream (if any) is dead — the socket dropped or the turn
+    // errored. Clear isStreaming so the retry-send path isn't blocked
+    // by a stale "a stream is live" flag (no stream_end/error will
+    // arrive on a dropped socket to reset it). The stuck "…" bubble
+    // came from exactly this: isStreaming pinned true forever.
+    if (get().isStreaming) set({ isStreaming: false });
 
     // Climb the backoff every time we (re)arm — including when a
     // resumed stream failed again. The counter lives in module scope
@@ -593,40 +622,51 @@ export const useChatStore = create<ChatState>((set, get) => ({
     });
     retryTimer = setTimeout(() => {
       retryTimer = null;
-      const s = get();
-      // Bail if the user stopped or a stream is already live.
-      if (!s.autoRetry?.active || s.isStreaming) return;
-      const modelId = s.preferredModel ?? undefined;
-      // Resume the LAST turn in place — do NOT resend a new prompt.
-      // The server re-runs the existing user message (dropping the
-      // dangling failed turn first), so history keeps exactly one
-      // user message no matter how many times we retry. If the socket
-      // is still down, ws queues this and flushes on reconnect.
-      tianshuWs.send({ type: "retry", ...(modelId ? { modelId } : {}) });
-      // Watchdog: if this retry neither resumes (stream_start) nor
-      // fails (stream_error) within the window — e.g. still
-      // disconnected and just queued, or the server dropped it —
-      // re-arm the next backoff so the loop never stalls.
-      clearRetryWatchdog();
-      retryWatchdog = setTimeout(() => {
-        retryWatchdog = null;
-        const st = get();
-        if (st._userAborted || st.isStreaming || !st.autoRetry?.active) return;
-        get()._beginAutoRetry(reason);
-      }, RETRY_WATCHDOG_MS);
+      get()._retryNow();
     }, delayMs);
+  },
+
+  _retryNow: () => {
+    // Cancel any pending backoff timer (we're firing now).
+    clearRetryTimer();
+    const s = get();
+    // Only bail if the user stopped or the loop was cancelled. Do NOT
+    // gate on isStreaming: during the retry loop the previous stream is
+    // dead, and a stale isStreaming=true would block the resume forever
+    // (the stuck "…" bug).
+    if (s._userAborted || !s.autoRetry?.active) return;
+    const modelId = s.preferredModel ?? undefined;
+    // Still an unacknowledged turn until a stream_end lands.
+    set({ _awaitingResponse: true });
+    // Resume the LAST turn in place — do NOT resend a new prompt. The
+    // server re-runs the existing user message (dropping the dangling
+    // failed turn first), so history keeps exactly one user message no
+    // matter how many times we retry. If the socket is still down, ws
+    // queues this and flushes on reconnect.
+    tianshuWs.send({ type: "retry", ...(modelId ? { modelId } : {}) });
+    // Watchdog: if this retry neither resumes (stream_start) nor fails
+    // (stream_error) within the window — e.g. still disconnected and
+    // just queued, or the server dropped it — re-arm the next backoff
+    // so the loop never stalls.
+    clearRetryWatchdog();
+    retryWatchdog = setTimeout(() => {
+      retryWatchdog = null;
+      const st = get();
+      if (st._userAborted || !st.autoRetry?.active) return;
+      get()._beginAutoRetry("connection lost");
+    }, RETRY_WATCHDOG_MS);
   },
 
   stopAutoRetry: () => {
     resetRetryLoop();
-    set({ autoRetry: null, _userAborted: true });
+    set({ autoRetry: null, _userAborted: true, _awaitingResponse: false });
   },
 
   abort: () => {
     // User stop: cancel auto-retry and mark aborted so the resulting
     // stream_error isn't treated as a transient failure.
     resetRetryLoop();
-    set({ _userAborted: true, autoRetry: null });
+    set({ _userAborted: true, autoRetry: null, _awaitingResponse: false });
     tianshuWs.send({ type: "abort" });
   },
 

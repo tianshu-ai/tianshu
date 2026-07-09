@@ -6,6 +6,25 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.78](https://github.com/tianshu-ai/tianshu/compare/v0.4.77...v0.4.78) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** fix the stuck "…" after auto-retry. Verified live by killing
+  the server mid-stream: two real bugs remained. (1) A mid-stream
+  socket drop left `isStreaming` pinned true (no stream_end/error ever
+  arrives on a dead socket), and the retry-send path was gated behind
+  `if (isStreaming) return`, so every backoff fired but nothing was
+  ever sent — the loop spun forever on the "…" bubble. The retry loop
+  no longer gates on isStreaming and clears the stale flag when
+  arming. (2) A turn dropped before stream_start (isStreaming still
+  false) never re-armed; now tracked via `_awaitingResponse` (set from
+  send until a successful stream_end), so any unacknowledged turn
+  recovers. Also: on socket reconnect the pending retry fires
+  immediately (`_retryNow`) instead of waiting out the remaining
+  backoff. Confirmed end-to-end: retry climbs, resumes on reconnect,
+  completes, and history keeps a single user message.
+
 ## [0.4.77](https://github.com/tianshu-ai/tianshu/compare/v0.4.76...v0.4.77) (2026-07-10)
 
 ### Bug Fixes
