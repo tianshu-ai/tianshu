@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.80](https://github.com/tianshu-ai/tianshu/compare/v0.4.79...v0.4.80) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** de-dupe the user bubble on resumed turns. Server-side
+  resume deletes + recreates the user row (new id) and broadcasts
+  `message_added`, so the client appended a fresh identical user
+  bubble on every retry (Yu saw N bubbles for N attempts — clean text
+  now, not nested JSON, but still repeated). The client now detects a
+  `message_added` user row whose text matches an existing bubble in
+  the current turn (scanning back to the previous completed assistant
+  reply as the boundary) and REPLACES it in place instead of
+  appending. Verified live (kill server mid-stream, 5+ retries,
+  reconnect+complete): exactly one user bubble throughout, DB holds
+  one row.
+
 ## [0.4.79](https://github.com/tianshu-ai/tianshu/compare/v0.4.78...v0.4.79) (2026-07-10)
 
 ### Bug Fixes

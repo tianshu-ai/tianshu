@@ -330,6 +330,47 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // the same message id. We never want to render the same row
         // twice.
         if (s.messages.some((x) => x.id === m.message.id)) return {} as Partial<ChatState>;
+        // Retry re-persist de-dupe. On a resumed turn the server deletes
+        // the old user row and inserts a fresh one (new id), then
+        // broadcasts message_added — which would append a SECOND
+        // identical user bubble (one per retry: the "repeated messages"
+        // Yu saw). Two CONSECUTIVE user bubbles with identical text but
+        // different ids never happen in normal flow (a real turn always
+        // has an assistant reply between user messages), so treat the
+        // incoming one as a re-persist and REPLACE the trailing bubble
+        // instead of appending. Not gated on _awaitingResponse: the
+        // final successful resume can broadcast this after the flag has
+        // already flipped.
+        if (m.message.role === "user") {
+          // Find an existing user bubble with identical text but a
+          // different id (the pre-resume copy). On resume the server
+          // deletes+recreates the user row, so this incoming one is the
+          // same logical message with a fresh id — swap it in place
+          // rather than appending a duplicate. Scan from the end and
+          // stop at the first COMPLETED assistant reply (that bounds the
+          // current turn) so we never collapse a genuinely-repeated
+          // prompt from an earlier turn.
+          for (let i = s.messages.length - 1; i >= 0; i--) {
+            const row = s.messages[i]!;
+            if (
+              row.role === "assistant" &&
+              row.id !== STREAMING_ID &&
+              typeof row.text === "string" &&
+              row.text.trim().length > 0
+            ) {
+              break; // reached the previous turn's boundary
+            }
+            if (
+              row.role === "user" &&
+              row.id !== m.message.id &&
+              row.text === m.message.text
+            ) {
+              const next = s.messages.slice();
+              next[i] = m.message;
+              return { messages: next };
+            }
+          }
+        }
         // When the server pushes a finalised assistant turn that
         // arrived via `message_added` (multi-turn agents emit one
         // such message per intermediate tool-use turn), drop any
