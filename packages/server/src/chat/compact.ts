@@ -45,6 +45,8 @@ import {
   resolveApiKey,
   type ResolvedModelInfo,
 } from "../core/index.js";
+import type { ModelResilienceConfig } from "../core/config.js";
+import { resolveResilience, retryCompletion } from "../core/model-retry.js";
 import { appendMessage } from "./messages.js";
 import type { ChatMessage, ChatSession } from "./messages.js";
 
@@ -138,6 +140,7 @@ export async function summarise(
   toSummarise: Message[],
   modelInfo: ResolvedModelInfo,
   signal?: AbortSignal,
+  resilienceCfg?: ModelResilienceConfig,
 ): Promise<{ summary: string; durationMs: number }> {
   const transcript = buildTranscript(toSummarise);
   if (!transcript.trim()) {
@@ -145,6 +148,7 @@ export async function summarise(
   }
   const model = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
+  const resilience = resolveResilience(resilienceCfg);
   const ctx: Context = {
     systemPrompt: SUMMARY_PROMPT,
     messages: [
@@ -161,10 +165,23 @@ export async function summarise(
     ],
   };
   const t0 = Date.now();
-  const result = (await completeSimple(model, ctx, {
-    signal,
+  const result = (await retryCompletion(
+    (key) =>
+      completeSimple(model, ctx, {
+        signal,
+        apiKey: key,
+        // Retry policy lives in retryCompletion (auth re-resolve +
+        // rate-limit aware); disable the SDK's own client retries so
+        // the two layers don't compound backoff.
+        maxRetries: 0,
+      }) as Promise<AssistantMessage>,
     apiKey,
-  })) as AssistantMessage;
+    {
+      resilience,
+      reResolveApiKey: () => resolveApiKey(modelInfo),
+      label: `${modelInfo.providerId}/${modelInfo.modelId} (compact)`,
+    },
+  )) as AssistantMessage;
   const durationMs = Date.now() - t0;
   const text = result.content
     .filter((c): c is TextContent => c.type === "text")
@@ -199,6 +216,7 @@ export async function compactSession(args: {
     plan.toSummarise,
     modelInfo,
     signal,
+    ctx.config.models?.resilience,
   );
 
   // Mark the old session compacted + stash the summary for audit.

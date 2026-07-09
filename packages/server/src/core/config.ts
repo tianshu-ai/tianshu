@@ -168,6 +168,33 @@ export interface GlobalOnlyConfig {
 
 export interface ModelsCatalog {
   providers: Record<string, ProviderEntry>;
+  /** Cross-provider retry policy for transient LLM call failures
+   *  (network, 429 rate-limit, 5xx, expired JWT/401). Applied at the
+   *  single stream chokepoint in core/pi-models.ts, so it covers the
+   *  chat handler, worker agent-loop, and compact() uniformly. */
+  resilience?: ModelResilienceConfig;
+}
+
+export interface ModelResilienceConfig {
+  /** Master switch. Default: true. */
+  enabled?: boolean;
+  /** Max attempts including the first try. Default: 4 (=> 3 retries). */
+  maxAttempts?: number;
+  /** Base backoff in ms for the exponential schedule. Default: 500. */
+  baseDelayMs?: number;
+  /** Ceiling for a single backoff wait in ms. Default: 20000. */
+  maxDelayMs?: number;
+  /** Jitter fraction [0..1] applied to each backoff. Default: 0.25. */
+  jitter?: number;
+  /** Honour a server-provided Retry-After header/hint when present.
+   *  Default: true. Capped by maxRetryAfterMs. */
+  respectRetryAfter?: boolean;
+  /** Upper bound on an honoured Retry-After wait in ms. Default: 60000. */
+  maxRetryAfterMs?: number;
+  /** Minimum backoff for a rate-limit (429) failure that carries NO
+   *  explicit server wait time. Prevents the short exponential schedule
+   *  from re-tripping the limit. Default: 5000. Capped by maxDelayMs. */
+  rateLimitFloorMs?: number;
 }
 
 export interface ProviderEntry {

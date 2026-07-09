@@ -606,7 +606,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     tools: adapted.tools,
     systemPrompt,
     model: piModel,
-    models: buildModels(piModel, apiKey),
+    models: buildModels(piModel, apiKey, {
+      resilience: ctx.config.models?.resilience,
+      reResolveApiKey: () => resolveApiKey(modelInfo),
+    }),
   });
 
   // External abort → harness.abort()

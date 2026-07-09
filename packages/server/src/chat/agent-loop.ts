@@ -547,7 +547,10 @@ export async function runAgentLoop(
     tools: adapted.tools,
     systemPrompt,
     model: piModel,
-    models: buildModels(piModel, apiKey),
+    models: buildModels(piModel, apiKey, {
+      resilience: ctx.config.models?.resilience,
+      reResolveApiKey: () => resolveApiKey(modelInfo),
+    }),
   });
 
   // Watch harness events for two purposes:

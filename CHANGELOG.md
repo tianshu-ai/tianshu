@@ -6,6 +6,28 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.72](https://github.com/tianshu-ai/tianshu/compare/v0.4.71...v0.4.72) (2026-07-09)
+
+### Features
+
+* **models:** resilient LLM calls with a unified retry policy at the
+  single stream chokepoint (`core/pi-models.ts`), covering the chat
+  handler, worker agent-loop, and compaction. Retries transient
+  failures (network blips, 5xx, 429 rate-limits) and re-resolves the
+  apiKey on 401/403 so an expired JWT recovers. Retries only happen
+  before any content has streamed (never duplicates output); a user
+  cancel / watchdog abort stops retries mid-backoff.
+* **models:** rate-limit aware backoff. Extracts the server's
+  requested wait time from `Retry-After` / `x-ratelimit-reset*`
+  headers (seconds/ms/duration/epoch/RFC3339), Gemini's structured
+  `retryDelay`, or a "try again in Xs" message hint, and waits at
+  least that long (never less, small jitter on top). When no explicit
+  wait is given, a 429 falls back to a conservative floor
+  (`rateLimitFloorMs`, default 5s) instead of the short exponential
+  schedule that would keep re-tripping the limit. The SDK's own
+  client-side retries are disabled so the two layers don't compound.
+  Configurable via `models.resilience`.
+
 ## [0.4.71](https://github.com/tianshu-ai/tianshu/compare/v0.4.70...v0.4.71) (2026-07-09)
 
 ### Features
