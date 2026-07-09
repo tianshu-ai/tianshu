@@ -124,6 +124,23 @@ function parseDenialLine(line: string): ParsedDenial {
   return out;
 }
 
+/**
+ * Default binaries authorized when a human clicks "Allow" on a
+ * denied endpoint. openshell gates egress by BOTH host:port AND the
+ * requesting binary, so a rule needs at least one binary to be
+ * usable. These cover the opencode/bun runtime + node/npm (the
+ * common in-sandbox network callers); the denial's own binary is
+ * appended on top. Mirrors the worker's OPENCODE_BINARIES set.
+ */
+const DEFAULT_ALLOW_BINARIES = [
+  "/usr/bin/opencode",
+  "/usr/lib/node_modules/opencode-ai/bin/opencode.exe",
+  "/usr/lib/node_modules/opencode-ai/**",
+  "/usr/bin/node",
+  "/usr/bin/npm",
+  "/usr/bin/curl",
+];
+
 export interface OpenShellRunnerOpts {
   /** Tenant id; used to derive sandbox name + state dir. */
   tenantId: string;
@@ -882,17 +899,63 @@ export class OpenShellRunner implements SandboxRunner {
 
   /**
    * Return the current EFFECTIVE policy for this sandbox — i.e. the
-   * allow-list of endpoints/rules currently in force. Uses the CLI
-   * `openshell policy get <sandbox>` (mTLS via this.cli()). Returns
-   * the raw text/JSON as the CLI prints it; the caller (admin page)
-   * decides how to render.
+   * allow-list of endpoints/rules currently in force. Uses
+   * `openshell policy get <sandbox> --output json --full` (verified
+   * by Yu 2026-07-09: the plain form only prints a metadata header;
+   * `--output json --full` is what emits the actual rule bodies).
+   * Returns the parsed JSON (or null if it didn't parse) plus the
+   * raw text so the admin page can render structured rules and still
+   * fall back to raw on an unexpected shape.
    */
-  async getPolicy(): Promise<{ raw: string }> {
+  async getPolicy(): Promise<{ policy: unknown; raw: string }> {
     if (this.state !== "ready" && this.state !== "running") {
       await this.ensureSandbox();
     }
-    const { stdout } = await this.cli(["policy", "get", this.sandboxName]);
-    return { raw: stdout };
+    const { stdout } = await this.cli([
+      "policy",
+      "get",
+      this.sandboxName,
+      "--output",
+      "json",
+      "--full",
+    ]);
+    let policy: unknown = null;
+    try {
+      policy = JSON.parse(stdout);
+    } catch {
+      policy = null;
+    }
+    return { policy, raw: stdout };
+  }
+
+  /**
+   * Manually ALLOW a previously-denied endpoint (the admin page's
+   * "Allow" button). Thin wrapper over allowEgress that fills in a
+   * sensible default binary set so the resulting rule is actually
+   * usable (openshell gates egress by host:port AND binary; a rule
+   * with no binaries is inert). We authorize the opencode/node
+   * runtime binaries by default, plus the specific binary from the
+   * denial record when the caller passes one (pid suffix stripped).
+   */
+  async allowDenial(opts: {
+    host: string;
+    port: number;
+    protocol?: "http" | "https" | "tcp";
+    binary?: string;
+  }): Promise<void> {
+    const binaries = [...DEFAULT_ALLOW_BINARIES];
+    if (opts.binary) {
+      // Denial lines carry the binary as `/abs/path/bin.exe(1234)`;
+      // strip the (pid) suffix and de-dup.
+      const clean = opts.binary.replace(/\(\d+\)\s*$/, "").trim();
+      if (clean && !binaries.includes(clean)) binaries.push(clean);
+    }
+    await this.allowEgress({
+      host: opts.host,
+      port: opts.port,
+      protocol: opts.protocol ?? "https",
+      binaries,
+    });
   }
 
   private resolveSafe(relPath: string): string {

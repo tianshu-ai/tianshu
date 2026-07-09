@@ -38,16 +38,48 @@ export function buildPolicyRoutes(
 
   const listAllowed: PluginRouteHandler = async (_req, res) => {
     try {
-      const { raw } = await runner.getPolicy();
-      // Try to parse as JSON; if the CLI printed text, hand back the
-      // raw string so the UI can render it verbatim.
-      let policy: unknown = null;
-      try {
-        policy = JSON.parse(raw);
-      } catch {
-        policy = null;
-      }
+      const { policy, raw } = await runner.getPolicy();
       res.json({ policy, raw });
+    } catch (err) {
+      res
+        .status(502)
+        .json({ error: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  // POST /policy/allow — manually allow a denied endpoint. Body:
+  //   { host: string, port: number, protocol?: "http"|"https"|"tcp",
+  //     binary?: string }
+  // Reuses the runner's allowEgress via allowDenial (fills default
+  // opencode binaries). Returns { ok: true } on success.
+  const allowDenied: PluginRouteHandler = async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as {
+        host?: unknown;
+        port?: unknown;
+        protocol?: unknown;
+        binary?: unknown;
+      };
+      const host = typeof body.host === "string" ? body.host.trim() : "";
+      const port =
+        typeof body.port === "number"
+          ? body.port
+          : typeof body.port === "string"
+            ? Number.parseInt(body.port, 10)
+            : NaN;
+      if (!host || Number.isNaN(port) || port < 1 || port > 65535) {
+        res.status(400).json({ error: "host and a valid port are required" });
+        return;
+      }
+      const protocol =
+        body.protocol === "http" ||
+        body.protocol === "https" ||
+        body.protocol === "tcp"
+          ? body.protocol
+          : undefined;
+      const binary = typeof body.binary === "string" ? body.binary : undefined;
+      await runner.allowDenial({ host, port, protocol, binary });
+      res.json({ ok: true, host, port });
     } catch (err) {
       res
         .status(502)
@@ -58,6 +90,7 @@ export function buildPolicyRoutes(
   return {
     listDenials,
     listAllowed,
+    allowDenied,
   };
 }
 

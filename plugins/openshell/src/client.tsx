@@ -13,7 +13,7 @@
 //                       reason,raw}], logAvailable}
 //   allowed: {policy:<parsed JSON|null>, raw:<CLI text>}
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AdminPageProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import {
   ShieldAlert,
@@ -21,6 +21,8 @@ import {
   RefreshCw,
   Clock,
   Ban,
+  Check,
+  Loader2,
 } from "lucide-react";
 
 interface Denial {
@@ -48,6 +50,17 @@ interface AllowedResponse {
   error?: string;
 }
 
+/** A best-effort flattened "allowed endpoint" pulled out of the
+ *  policy JSON, whatever nesting openshell uses. */
+interface AllowedRule {
+  name?: string;
+  host?: string;
+  port?: number;
+  protocol?: string;
+  enforcement?: string;
+  binaries?: string[];
+}
+
 const WINDOW_OPTIONS = [
   { label: "5 min", value: 5 },
   { label: "15 min", value: 15 },
@@ -63,9 +76,14 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
   const [denialsErr, setDenialsErr] = useState<string | null>(null);
   const [denialsLoading, setDenialsLoading] = useState(false);
 
+  const [allowedRules, setAllowedRules] = useState<AllowedRule[] | null>(null);
   const [allowedRaw, setAllowedRaw] = useState<string | null>(null);
   const [allowedErr, setAllowedErr] = useState<string | null>(null);
   const [allowedLoading, setAllowedLoading] = useState(false);
+
+  // Per-denial "Allow" button state, keyed by host:port.
+  const [allowing, setAllowing] = useState<Record<string, boolean>>({});
+  const [allowErr, setAllowErr] = useState<string | null>(null);
 
   const fetchDenials = useCallback(async (mins: number) => {
     setDenialsLoading(true);
@@ -99,7 +117,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
       if (!r.ok || j.error) {
         throw new Error(j.error ?? `HTTP ${r.status}`);
       }
-      // Prefer pretty-printed parsed JSON, else the raw CLI text.
+      setAllowedRules(flattenPolicy(j.policy));
       setAllowedRaw(
         j.policy != null ? JSON.stringify(j.policy, null, 2) : j.raw ?? "",
       );
@@ -109,6 +127,41 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
       setAllowedLoading(false);
     }
   }, []);
+
+  const allowDenial = useCallback(
+    async (d: Denial) => {
+      if (!d.host || !d.port) return;
+      const key = `${d.host}:${d.port}`;
+      setAllowing((m) => ({ ...m, [key]: true }));
+      setAllowErr(null);
+      try {
+        const r = await fetch("/api/p/openshell/policy/allow", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            host: d.host,
+            port: d.port,
+            protocol: d.port === 443 ? "https" : undefined,
+            binary: d.binary,
+          }),
+        });
+        const j = (await r.json()) as { ok?: boolean; error?: string };
+        if (!r.ok || j.error) {
+          throw new Error(j.error ?? `HTTP ${r.status}`);
+        }
+        // Refresh both panels: the denial should stop recurring and
+        // the new rule should appear in the allow-list.
+        void fetchAllowed();
+        void fetchDenials(minutes);
+      } catch (err) {
+        setAllowErr(err instanceof Error ? err.message : String(err));
+      } finally {
+        setAllowing((m) => ({ ...m, [key]: false }));
+      }
+    },
+    [fetchAllowed, fetchDenials, minutes],
+  );
 
   useEffect(() => {
     void fetchDenials(minutes);
@@ -218,33 +271,58 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                   <th className="px-3 py-2 font-medium">Engine</th>
                   <th className="px-3 py-2 font-medium">Binary</th>
                   <th className="px-3 py-2 font-medium">Reason</th>
+                  <th className="px-3 py-2 text-right font-medium">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {denials!.map((d, i) => (
-                  <tr
-                    key={`${d.at ?? i}-${i}`}
-                    className="border-t border-border-default/60 align-top"
-                  >
-                    <td className="whitespace-nowrap px-3 py-2 font-mono text-fg-faint">
-                      {d.at ? new Date(d.at).toLocaleTimeString() : "—"}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-fg-default">
-                      {d.host ? `${d.host}:${d.port ?? "?"}` : "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted">
-                        {d.engine ?? "?"}
-                      </span>
-                    </td>
-                    <td className="max-w-[180px] truncate px-3 py-2 font-mono text-[11px] text-fg-faint">
-                      {shortBinary(d.binary)}
-                    </td>
-                    <td className="max-w-[260px] px-3 py-2 text-[11px] text-fg-muted">
-                      {d.reason ?? d.raw}
-                    </td>
-                  </tr>
-                ))}
+                {denials!.map((d, i) => {
+                  const key = d.host ? `${d.host}:${d.port}` : "";
+                  const busy = key ? allowing[key] === true : false;
+                  return (
+                    <tr
+                      key={`${d.at ?? i}-${i}`}
+                      className="border-t border-border-default/60 align-top"
+                    >
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-fg-faint">
+                        {d.at ? new Date(d.at).toLocaleTimeString() : "—"}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-fg-default">
+                        {d.host ? `${d.host}:${d.port ?? "?"}` : "—"}
+                      </td>
+                      <td className="px-3 py-2">
+                        <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted">
+                          {d.engine ?? "?"}
+                        </span>
+                      </td>
+                      <td className="max-w-[180px] truncate px-3 py-2 font-mono text-[11px] text-fg-faint">
+                        {shortBinary(d.binary)}
+                      </td>
+                      <td className="max-w-[240px] px-3 py-2 text-[11px] text-fg-muted">
+                        {d.reason ?? d.raw}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                        {d.host && d.port ? (
+                          <button
+                            type="button"
+                            onClick={() => allowDenial(d)}
+                            disabled={busy}
+                            title={`Allow ${d.host}:${d.port}`}
+                            className="inline-flex items-center gap-1 rounded-md border border-green-500/40 px-2 py-1 text-[11px] text-green-300 hover:bg-green-500/10 disabled:opacity-50"
+                          >
+                            {busy ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : (
+                              <Check size={11} />
+                            )}
+                            Allow
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-fg-faint">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -257,6 +335,11 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
           <ShieldCheck size={15} className="text-green-400" />
           Allowed policy (effective allow-list)
         </h2>
+        {allowErr && (
+          <div className="mb-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+            Allow failed: {allowErr}
+          </div>
+        )}
         {allowedErr && (
           <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
             {allowedErr}
@@ -267,11 +350,56 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
             Loading policy…
           </div>
         )}
-        {!allowedErr && allowedRaw != null && (
-          <pre className="max-h-[420px] overflow-auto rounded-md border border-border-default bg-bg-raised/40 p-3 font-mono text-[11px] leading-relaxed text-fg-muted">
-            {allowedRaw || "(empty policy)"}
-          </pre>
+        {!allowedErr && allowedRules && allowedRules.length > 0 && (
+          <div className="mb-3 overflow-hidden rounded-md border border-border-default">
+            <table className="w-full text-left text-[12px]">
+              <thead className="bg-bg-raised/60 text-fg-muted">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Rule</th>
+                  <th className="px-3 py-2 font-medium">Host:Port</th>
+                  <th className="px-3 py-2 font-medium">Proto</th>
+                  <th className="px-3 py-2 font-medium">Enforce</th>
+                  <th className="px-3 py-2 font-medium">Binaries</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allowedRules.map((r, i) => (
+                  <tr
+                    key={`${r.name ?? r.host ?? i}-${i}`}
+                    className="border-t border-border-default/60 align-top"
+                  >
+                    <td className="px-3 py-2 text-fg-muted">{r.name ?? "—"}</td>
+                    <td className="px-3 py-2 font-mono text-fg-default">
+                      {r.host ? `${r.host}:${r.port ?? "*"}` : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-fg-muted">{r.protocol ?? "—"}</td>
+                    <td className="px-3 py-2 text-fg-muted">
+                      {r.enforcement ?? "—"}
+                    </td>
+                    <td className="max-w-[240px] px-3 py-2 font-mono text-[11px] text-fg-faint">
+                      {r.binaries && r.binaries.length
+                        ? r.binaries.map(shortBinary).join(", ")
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
+        {!allowedErr &&
+          allowedRules &&
+          allowedRules.length === 0 &&
+          allowedRaw != null && (
+            <details className="rounded-md border border-border-default bg-bg-raised/40">
+              <summary className="cursor-pointer px-3 py-2 text-[12px] text-fg-muted">
+                No endpoints parsed — show raw policy JSON
+              </summary>
+              <pre className="max-h-[420px] overflow-auto border-t border-border-default p-3 font-mono text-[11px] leading-relaxed text-fg-muted">
+                {allowedRaw || "(empty policy)"}
+              </pre>
+            </details>
+          )}
       </section>
     </div>
   );
@@ -280,12 +408,67 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
 /** Shorten a long absolute binary path (+pid) to just the basename. */
 function shortBinary(bin?: string): string {
   if (!bin) return "—";
-  const m = bin.match(/([^/]+)$/);
+  const m = bin.replace(/\(\d+\)\s*$/, "").match(/([^/]+)$/);
   return m ? m[1] : bin;
 }
 
-// silence unused-in-some-builds warning without dropping the export.
-void useMemo;
+/**
+ * Best-effort flatten of the `policy get --output json --full` body
+ * into a list of allowed endpoints. openshell's exact nesting isn't
+ * pinned down here, so we walk the whole JSON tree and pull out every
+ * object that looks like an endpoint (has a `host`). Ports, protocol,
+ * enforcement, binaries and a rule name are collected from the same
+ * object (and its enclosing rule) when present. Returns [] when
+ * nothing endpoint-shaped is found, which makes the UI fall back to
+ * the raw JSON dump.
+ */
+function flattenPolicy(policy: unknown): AllowedRule[] {
+  const out: AllowedRule[] = [];
+  const seen = new Set<unknown>();
+  const walk = (node: unknown, ruleName?: string): void => {
+    if (node == null || typeof node !== "object") return;
+    if (seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const el of node) walk(el, ruleName);
+      return;
+    }
+    const o = node as Record<string, unknown>;
+    const name =
+      typeof o.name === "string" ? o.name : typeof o.ruleName === "string" ? o.ruleName : ruleName;
+    if (typeof o.host === "string") {
+      const binaries = Array.isArray(o.binaries)
+        ? (o.binaries as unknown[])
+            .map((b) =>
+              typeof b === "string"
+                ? b
+                : b && typeof b === "object" && typeof (b as { path?: unknown }).path === "string"
+                  ? (b as { path: string }).path
+                  : undefined,
+            )
+            .filter((b): b is string => typeof b === "string")
+        : undefined;
+      out.push({
+        name,
+        host: o.host,
+        port:
+          typeof o.port === "number"
+            ? o.port
+            : typeof o.port === "string"
+              ? Number.parseInt(o.port, 10)
+              : undefined,
+        protocol: typeof o.protocol === "string" ? o.protocol : undefined,
+        enforcement:
+          typeof o.enforcement === "string" ? o.enforcement : undefined,
+        binaries,
+      });
+    }
+    for (const v of Object.values(o)) walk(v, name);
+  };
+  walk(policy);
+  return out;
+}
+
 
 const clientExports: PluginClientExports = {
   components: {

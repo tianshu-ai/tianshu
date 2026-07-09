@@ -29,6 +29,11 @@
         "method": "GET",
         "path": "/policy/allowed",
         "handler": "listAllowed"
+      },
+      {
+        "method": "POST",
+        "path": "/policy/allow",
+        "handler": "allowDenied"
       }
     ],
     "sandboxes": [
