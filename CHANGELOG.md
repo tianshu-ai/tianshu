@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.75](https://github.com/tianshu-ai/tianshu/compare/v0.4.74...v0.4.75) (2026-07-10)
+
+### Features
+
+* **web:** auto-retry interrupted runs with exponential backoff until
+  the user stops. When a run fails transiently (`stream_error`) or the
+  socket drops mid-stream (server restart / network blip), the client
+  resends the last prompt on a backoff schedule that doubles from 1s
+  and caps at 30 minutes (1s,2s,4s,…,30m), with jitter. Replaces the
+  one-shot "Retry" button with a live "retrying in … (attempt N)"
+  banner and a Stop button that cancels the loop. User-initiated
+  aborts are never auto-retried. The WS layer now surfaces
+  connection open/close so an orphaned stream re-arms the loop.
+
 ## [0.4.74](https://github.com/tianshu-ai/tianshu/compare/v0.4.73...v0.4.74) (2026-07-09)
 
 ### Features

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { PanelLeftClose, PanelLeftOpen, Puzzle } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
 import { mergeToolTurns } from "../lib/merge-tool-turns";
@@ -31,8 +31,8 @@ export default function ChatArea() {
   const isStreaming = useChatStore((s) => s.isStreaming);
   const streamError = useChatStore((s) => s.streamError);
   const clearStreamError = useChatStore((s) => s.clearStreamError);
-  const retryLastPrompt = useChatStore((s) => s.retryLastPrompt);
-  const canRetryLast = useChatStore((s) => s._lastPrompt !== null && !s.isStreaming);
+  const autoRetry = useChatStore((s) => s.autoRetry);
+  const stopAutoRetry = useChatStore((s) => s.stopAutoRetry);
   const compactNotice = useChatStore((s) => s.compactNotice);
   const clearCompactNotice = useChatStore((s) => s.clearCompactNotice);
   const retryNotice = useChatStore((s) => s.retryNotice);
@@ -127,28 +127,26 @@ export default function ChatArea() {
             {/* No "streaming…" label here — the streaming bubble
              *  itself shows incoming text or a typing indicator,
              *  which is visual enough. */}
-            {streamError && (
-              <div className="flex items-center justify-between rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-danger">
-                <span className="truncate">{streamError}</span>
-                <span className="ml-3 flex flex-none items-center gap-3">
-                  {canRetryLast && (
-                    <button
-                      type="button"
-                      onClick={retryLastPrompt}
-                      className="rounded border border-rose-400/40 px-2 py-0.5 text-[11px] uppercase tracking-wider text-rose-200 hover:bg-rose-400/10 hover:text-white"
-                    >
-                      retry
-                    </button>
-                  )}
+            {autoRetry?.active ? (
+              <AutoRetryBanner
+                attempt={autoRetry.attempt}
+                nextRetryAt={autoRetry.nextRetryAt}
+                reason={streamError}
+                onStop={stopAutoRetry}
+              />
+            ) : (
+              streamError && (
+                <div className="flex items-center justify-between rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-danger">
+                  <span className="truncate">{streamError}</span>
                   <button
                     type="button"
                     onClick={clearStreamError}
-                    className="text-[11px] uppercase tracking-wider text-rose-300/80 hover:text-white"
+                    className="ml-3 flex-none text-[11px] uppercase tracking-wider text-rose-300/80 hover:text-white"
                   >
                     dismiss
                   </button>
-                </span>
-              </div>
+                </div>
+              )
             )}
             {retryNotice && (
               <div className="flex items-center justify-between rounded-md border border-sky-700/40 bg-sky-950/30 px-3 py-2 text-sm text-sky-200">
@@ -316,4 +314,55 @@ function ChannelSessionFooter({ sessionId }: { sessionId: string }) {
       </span>
     </div>
   );
+}
+
+/**
+ * Auto-retry banner. Shown while the client is retrying a failed /
+ * interrupted run with exponential backoff. Counts down to the next
+ * attempt and offers a Stop button. The countdown is derived from
+ * `nextRetryAt` (epoch ms) and ticks locally once a second.
+ */
+function AutoRetryBanner({
+  attempt,
+  nextRetryAt,
+  reason,
+  onStop,
+}: {
+  attempt: number;
+  nextRetryAt: number;
+  reason: string | null;
+  onStop: () => void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(t);
+  }, []);
+  const remainingMs = Math.max(0, nextRetryAt - now);
+  const remaining = formatRemaining(remainingMs);
+  return (
+    <div className="flex items-center justify-between rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+      <span className="flex min-w-0 items-center gap-2">
+        <RotateCw className="h-3.5 w-3.5 flex-none animate-spin text-amber-300" style={{ animationDuration: "2s" }} />
+        <span className="truncate">
+          Connection interrupted{reason ? ` (${reason})` : ""} — retrying in {remaining} (attempt {attempt})
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onStop}
+        className="ml-3 flex-none rounded border border-amber-400/40 px-2 py-0.5 text-[11px] uppercase tracking-wider text-amber-100 hover:bg-amber-400/10 hover:text-white"
+      >
+        stop
+      </button>
+    </div>
+  );
+}
+
+function formatRemaining(ms: number): string {
+  const totalSec = Math.ceil(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return sec === 0 ? `${min}m` : `${min}m ${sec}s`;
 }

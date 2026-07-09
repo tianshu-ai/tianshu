@@ -103,12 +103,36 @@ type Handler<T extends EventType> = (msg: Extract<ServerEvent, { type: T }>) => 
 // hold mixed-type handler sets without per-Set generics gymnastics.
 type AnyHandler = (msg: ServerEvent) => void;
 
+export type ConnStatus = "open" | "closed";
+type StatusHandler = (status: ConnStatus) => void;
+
 class TianshuWs {
   private ws: WebSocket | null = null;
   private listeners = new Map<EventType, Set<AnyHandler>>();
+  private statusListeners = new Set<StatusHandler>();
   private connectAttempts = 0;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private outgoingQueue: string[] = [];
+
+  /** Subscribe to connection open/close transitions. Returns an
+   *  unsubscribe fn. Used by the chat store to detect a stream that
+   *  was orphaned by a socket drop (server restart, network blip). */
+  onStatus(h: StatusHandler): () => void {
+    this.statusListeners.add(h);
+    return () => {
+      this.statusListeners.delete(h);
+    };
+  }
+
+  private emitStatus(status: ConnStatus): void {
+    for (const h of this.statusListeners) {
+      try {
+        h(status);
+      } catch {
+        // a throwing status listener must not break the socket.
+      }
+    }
+  }
 
   connect(): void {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
@@ -121,6 +145,7 @@ class TianshuWs {
       this.connectAttempts = 0;
       const queued = this.outgoingQueue.splice(0);
       for (const m of queued) ws.send(m);
+      this.emitStatus("open");
     });
     ws.addEventListener("message", (ev) => {
       let parsed: ServerEvent;
@@ -135,6 +160,7 @@ class TianshuWs {
     });
     ws.addEventListener("close", () => {
       this.ws = null;
+      this.emitStatus("closed");
       this.scheduleReconnect();
     });
     ws.addEventListener("error", () => {
