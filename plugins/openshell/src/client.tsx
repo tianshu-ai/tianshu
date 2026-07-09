@@ -13,7 +13,7 @@
 //                       reason,raw}], logAvailable}
 //   allowed: {policy:<parsed JSON|null>, raw:<CLI text>}
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminPageProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import {
   ShieldAlert,
@@ -178,6 +178,32 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
 
   const denialCount = denials?.length ?? 0;
 
+  // Set of "host:port" that the effective policy already allows, so a
+  // denial whose endpoint is now permitted can be shown as resolved
+  // (struck through, Allow disabled). We match on host+port; a rule
+  // with no explicit port is treated as covering any port for that
+  // host.
+  const allowedSet = useMemo(() => {
+    const exact = new Set<string>();
+    const hostWildcard = new Set<string>();
+    for (const r of allowedRules ?? []) {
+      if (!r.host) continue;
+      if (typeof r.port === "number") exact.add(`${r.host}:${r.port}`);
+      else hostWildcard.add(r.host);
+    }
+    return { exact, hostWildcard };
+  }, [allowedRules]);
+
+  const isAllowed = useCallback(
+    (d: Denial): boolean => {
+      if (!d.host) return false;
+      if (d.port != null && allowedSet.exact.has(`${d.host}:${d.port}`))
+        return true;
+      return allowedSet.hostWildcard.has(d.host);
+    },
+    [allowedSet],
+  );
+
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -278,15 +304,29 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                 {denials!.map((d, i) => {
                   const key = d.host ? `${d.host}:${d.port}` : "";
                   const busy = key ? allowing[key] === true : false;
+                  // Already covered by the effective policy? Then this
+                  // denial is historical — strike it through and disable
+                  // Allow, but keep the row so the past block is visible.
+                  const resolved = isAllowed(d);
                   return (
                     <tr
                       key={`${d.at ?? i}-${i}`}
-                      className="border-t border-border-default/60 align-top"
+                      className={`border-t border-border-default/60 align-top ${
+                        resolved ? "opacity-55" : ""
+                      }`}
                     >
-                      <td className="whitespace-nowrap px-3 py-2 font-mono text-fg-faint">
+                      <td
+                        className={`whitespace-nowrap px-3 py-2 font-mono text-fg-faint ${
+                          resolved ? "line-through" : ""
+                        }`}
+                      >
                         {d.at ? new Date(d.at).toLocaleTimeString() : "—"}
                       </td>
-                      <td className="px-3 py-2 font-mono text-fg-default">
+                      <td
+                        className={`px-3 py-2 font-mono text-fg-default ${
+                          resolved ? "line-through" : ""
+                        }`}
+                      >
                         {d.host ? `${d.host}:${d.port ?? "?"}` : "—"}
                       </td>
                       <td className="px-3 py-2">
@@ -294,14 +334,27 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                           {d.engine ?? "?"}
                         </span>
                       </td>
-                      <td className="max-w-[180px] truncate px-3 py-2 font-mono text-[11px] text-fg-faint">
+                      <td
+                        className={`max-w-[180px] truncate px-3 py-2 font-mono text-[11px] text-fg-faint ${
+                          resolved ? "line-through" : ""
+                        }`}
+                      >
                         {shortBinary(d.binary)}
                       </td>
-                      <td className="max-w-[240px] px-3 py-2 text-[11px] text-fg-muted">
+                      <td
+                        className={`max-w-[240px] px-3 py-2 text-[11px] text-fg-muted ${
+                          resolved ? "line-through" : ""
+                        }`}
+                      >
                         {d.reason ?? d.raw}
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right">
-                        {d.host && d.port ? (
+                        {resolved ? (
+                          <span className="inline-flex items-center gap-1 rounded-md border border-green-500/30 bg-green-500/10 px-2 py-1 text-[11px] text-green-300">
+                            <Check size={11} />
+                            Allowed
+                          </span>
+                        ) : d.host && d.port ? (
                           <button
                             type="button"
                             onClick={() => allowDenial(d)}
