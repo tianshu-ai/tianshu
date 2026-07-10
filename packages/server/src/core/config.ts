@@ -128,6 +128,23 @@ export interface GlobalOnlyConfig {
     publicUrl?: string;
     effectivePublicUrl?: string;
   };
+  /**
+   * OpenCode worker model proxy. Lets a sandboxed OpenCode agent
+   * reach a tianshu model without seeing the real key/baseUrl.
+   *
+   * `sandboxReachableOrigin` is the origin a SANDBOX uses to reach
+   * this server's proxy route — NOT the host's own localhost. For
+   * Docker-based sandboxes (openshell) this is typically
+   * `http://host.docker.internal:<serverPort>`. For microsandbox
+   * it's the host-group gateway address. When unset, the proxy
+   * defaults to `http://host.docker.internal:<server.port>` (the
+   * common Docker-desktop case); override here for other setups.
+   */
+  opencodeProxy?: {
+    sandboxReachableOrigin?: string;
+    /** Grant TTL in ms. Default 6h. */
+    ttlMs?: number;
+  };
   logging?: {
     level?: "debug" | "info" | "warn" | "error";
     /**
@@ -151,6 +168,40 @@ export interface GlobalOnlyConfig {
 
 export interface ModelsCatalog {
   providers: Record<string, ProviderEntry>;
+  /** Cross-provider retry policy for transient LLM call failures
+   *  (network, 429 rate-limit, 5xx, expired JWT/401). Applied at the
+   *  single stream chokepoint in core/pi-models.ts, so it covers the
+   *  chat handler, worker agent-loop, and compact() uniformly. */
+  resilience?: ModelResilienceConfig;
+}
+
+export interface ModelResilienceConfig {
+  /** Master switch. Default: true. */
+  enabled?: boolean;
+  /** Max attempts including the first try. Default: 4 (=> 3 retries). */
+  maxAttempts?: number;
+  /** Base backoff in ms for the exponential schedule. Default: 500. */
+  baseDelayMs?: number;
+  /** Ceiling for a single backoff wait in ms. Default: 20000. */
+  maxDelayMs?: number;
+  /** Jitter fraction [0..1] applied to each backoff. Default: 0.25. */
+  jitter?: number;
+  /** Honour a server-provided Retry-After header/hint when present.
+   *  Default: true. Capped by maxRetryAfterMs. */
+  respectRetryAfter?: boolean;
+  /** Upper bound on an honoured Retry-After wait in ms. Default: 60000. */
+  maxRetryAfterMs?: number;
+  /** Minimum backoff for a rate-limit (429) failure that carries NO
+   *  explicit server wait time. Prevents the short exponential schedule
+   *  from re-tripping the limit. Default: 5000. Capped by maxDelayMs. */
+  rateLimitFloorMs?: number;
+  /** Retry even after partial content has already streamed to the
+   *  client (e.g. the connection dropped mid-response). On retry the
+   *  whole call is re-run and the assistant message is rebuilt from
+   *  scratch — the client is told to reset the in-progress bubble
+   *  first (see the `stream_reset` WS event) so text isn't duplicated.
+   *  Only applies to non-abort transient failures. Default: true. */
+  retryAfterContent?: boolean;
 }
 
 export interface ProviderEntry {

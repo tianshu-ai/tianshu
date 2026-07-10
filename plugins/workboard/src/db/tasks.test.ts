@@ -157,6 +157,47 @@ describe("tasks db layer", () => {
     expect(c).toBeNull();
   });
 
+  it("claimNextTask preserves an existing session_id on resume (no sessionId passed)", () => {
+    // Resume flow: task_continue keeps tasks.session_id + bumps
+    // attempts, sets status ready; the pool re-claims WITHOUT passing
+    // a sessionId. The claim must NOT wipe session_id (COALESCE),
+    // otherwise LLMWorker.shouldResume (attempts>0 && task.sessionId)
+    // sees null and restarts fresh, losing the transcript.
+    createTask(db, "r1", { ownerUserId: "u1", title: "resume me" });
+    // tasks.session_id has a FK to sessions(id); create the prior
+    // session row (as a real run would) before pointing at it.
+    db.prepare(
+      `INSERT OR IGNORE INTO users (id, external_id, provider, display_name, created_at)
+       VALUES ('u1','u1','test','u1',0)`,
+    ).run();
+    db.prepare(
+      `INSERT INTO sessions (id, user_id, status, kind, worker_role, title, project_slug, created_at)
+       VALUES ('ocs_prior123','u1','active','worker','opencode:agent-1','prior','inbox',0)`,
+    ).run();
+    // simulate a prior run that stamped a session + one attempt, then
+    // task_continue put it back to ready keeping the session.
+    updateTask(db, "r1", {
+      status: "ready",
+      sessionId: "ocs_prior123",
+      attempts: 1,
+    });
+    const claimed = claimNextTask(db, { workerAgentId: "agent-1" });
+    expect(claimed?.id).toBe("r1");
+    expect(claimed?.status).toBe("in_progress");
+    // The prior session survived the claim → resume can work.
+    expect(claimed?.sessionId).toBe("ocs_prior123");
+    expect(claimed?.attempts).toBe(1);
+  });
+
+  it("claimNextTask leaves session_id null on a first claim", () => {
+    createTask(db, "f1", { ownerUserId: "u1", title: "fresh" });
+    const claimed = claimNextTask(db, { workerAgentId: "agent-1" });
+    expect(claimed?.id).toBe("f1");
+    // First claim: no prior session, nothing passed → stays null; the
+    // worker mints its own session at run start.
+    expect(claimed?.sessionId).toBeNull();
+  });
+
   it("claimNextTask allows multiple in-flight tasks for the same worker", () => {
     // Yu 2026-06-28: the original "one task per worker" SQL
     // guard was removed so the tenant's maxConcurrentRuns cap

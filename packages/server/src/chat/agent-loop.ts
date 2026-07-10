@@ -112,6 +112,9 @@ export interface AgentLoopRequest {
   signal?: AbortSignal;
   /** Fires once after the worker session row has been inserted. */
   onSessionStart?: (sessionId: string) => void;
+  /** Fires on each transient LLM-call retry (before backoff). Lets a
+   *  caller surface retries in a worker/task UI. Always also logged. */
+  onModelRetry?: (notice: import("../core/model-retry.js").RetryNotice) => void;
   /**
    * Resume an existing worker session instead of creating a fresh
    * one. When set, `initialUserMessage` is treated as a follow-up
@@ -547,7 +550,11 @@ export async function runAgentLoop(
     tools: adapted.tools,
     systemPrompt,
     model: piModel,
-    models: buildModels(piModel, apiKey),
+    models: buildModels(piModel, apiKey, {
+      resilience: ctx.config.models?.resilience,
+      reResolveApiKey: () => resolveApiKey(modelInfo),
+      onRetry: req.onModelRetry,
+    }),
   });
 
   // Watch harness events for two purposes:
@@ -622,6 +629,19 @@ export async function runAgentLoop(
   // pool re-queued the task forever.
   const unhookToolResult = harness.on("tool_result", (e) => {
     if (e.toolName !== TASK_COMPLETE_TOOL) return;
+    // task_complete is TERMINAL and captured ONCE. The tool result
+    // text promises "the worker will exit", and the prompt tells the
+    // agent so — but nothing actually stopped the turn, so an agent
+    // that mis-fired task_complete kept generating and called it
+    // AGAIN, overwriting the first (correct) verdict with a later
+    // (often "oops I called it early") one. Observed with the judge:
+    // first call = real intent, second = a panicked correction.
+    // Fix: honour only the FIRST call, then abort the harness so the
+    // turn genuinely ends — making the tool actually terminal.
+    if (completionSink.summary !== undefined) {
+      // Already captured the terminal call; ignore any stragglers.
+      return undefined;
+    }
     const input = e.input as { summary?: unknown; files?: unknown };
     if (typeof input.summary === "string") {
       completionSink.summary = input.summary;
@@ -634,6 +654,15 @@ export async function runAgentLoop(
     // Also bump the watchdog — a tool_result counts as activity.
     lastEventAt = Date.now();
     sawAnyEvent = true;
+    // Genuinely end the turn now. Without this the harness keeps
+    // looping until it happens to go idle; abort() stops generation
+    // right after the terminal call, so exactly one task_complete
+    // decides the outcome.
+    try {
+      harness.abort();
+    } catch {
+      // best-effort; waitForIdle() below still resolves the run.
+    }
     return undefined;
   });
 

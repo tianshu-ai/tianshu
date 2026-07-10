@@ -21,6 +21,10 @@ export interface WorkerAgent {
   name: string;
   description: string | null;
   modelId: string | null;
+  /** opencode workers: enable LSP + formatters (opens npm/GitHub
+   *  egress so opencode can install language servers). Default
+   *  false. Ignored by non-opencode kinds. */
+  enableLsp?: boolean;
   systemPrompt: string | null;
   toolsAllow: string[] | null;
   /** Field name kept as `skills` (not `skillsAllow`) for parity

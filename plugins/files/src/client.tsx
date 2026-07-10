@@ -522,27 +522,41 @@ function UploadButton(props: ComposerActionProps) {
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     e.target.value = ""; // reset so picking the same file twice still works
-
-    for (const file of files) {
-      if (file.size > MAX_UPLOAD_BYTES) {
-        composer.addAttachment({
-          name: file.name,
-          size: file.size,
-          status: "error",
-          error: `File exceeds ${(MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)} MB cap`,
-          mimeType: file.type || "application/octet-stream",
-        });
-        continue;
-      }
-      const id = composer.addAttachment({
-        name: file.name,
-        size: file.size,
-        status: "uploading",
-        mimeType: file.type || "application/octet-stream",
-      });
-      void uploadOne(file, id, composer);
-    }
+    ingestFiles(files, composer);
   };
+
+  // Clipboard paste: images/files copied to the clipboard (screenshots,
+  // "copy image", files in the OS file manager) paste straight into
+  // the composer via the same upload path as the attach button. We
+  // listen on the document (capture) so it works regardless of which
+  // element is focused, and only act when the clipboard actually
+  // carries files (so plain text paste into the textarea is
+  // untouched).
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const dt = e.clipboardData;
+      if (!dt) return;
+      const files: File[] = [];
+      // Prefer items (covers pasted images that have no entry in
+      // dt.files on some browsers); fall back to dt.files.
+      if (dt.items && dt.items.length) {
+        for (const it of Array.from(dt.items)) {
+          if (it.kind === "file") {
+            const f = it.getAsFile();
+            if (f) files.push(f);
+          }
+        }
+      }
+      if (files.length === 0 && dt.files && dt.files.length) {
+        files.push(...Array.from(dt.files));
+      }
+      if (files.length === 0) return; // pure text paste — leave it
+      e.preventDefault();
+      ingestFiles(files, composer);
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [composer]);
 
   const click = () => inputRef.current?.click();
 
@@ -568,17 +582,67 @@ function UploadButton(props: ComposerActionProps) {
   );
 }
 
+/**
+ * Stage a list of Files into the composer using the same upload path
+ * as the attach button. Shared by the file picker and clipboard paste.
+ * Pasted images often have a generic/empty name — synthesize a
+ * timestamped one so the upload + display are sane.
+ */
+function ingestFiles(
+  files: File[],
+  composer: ComposerActionProps["composer"],
+): void {
+  for (const file of files) {
+    const name =
+      file.name && file.name.trim()
+        ? file.name
+        : `pasted-${Date.now()}${extFromMime(file.type)}`;
+    if (file.size > MAX_UPLOAD_BYTES) {
+      composer.addAttachment({
+        name,
+        size: file.size,
+        status: "error",
+        error: `File exceeds ${(MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)} MB cap`,
+        mimeType: file.type || "application/octet-stream",
+      });
+      continue;
+    }
+    const id = composer.addAttachment({
+      name,
+      size: file.size,
+      status: "uploading",
+      mimeType: file.type || "application/octet-stream",
+    });
+    void uploadOne(file, id, composer, name);
+  }
+}
+
+function extFromMime(mime: string): string {
+  if (!mime) return "";
+  const map: Record<string, string> = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "image/svg+xml": ".svg",
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+  };
+  return map[mime] ?? "";
+}
+
 async function uploadOne(
   file: File,
   attachmentId: string,
   composer: ComposerActionProps["composer"],
+  overrideName?: string,
 ): Promise<void> {
   try {
     const resp = await fetch(`${API_BASE}/upload`, {
       method: "POST",
       headers: {
         "Content-Type": "application/octet-stream",
-        "X-Filename": encodeURIComponent(file.name),
+        "X-Filename": encodeURIComponent(overrideName ?? file.name),
       },
       body: file,
     });

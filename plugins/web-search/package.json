@@ -1,8 +1,8 @@
 {
   "name": "@tianshu-builtin/plugin-web-search",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Web search tool for tianshu agents (Tavily / Brave Search providers).",
+  "description": "Web search + fetch for tianshu agents. Schemes: key-free hosted MCP (Exa/Parallel), self-hosted SearXNG, or keyed Tavily/Brave.",
   "type": "module",
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",

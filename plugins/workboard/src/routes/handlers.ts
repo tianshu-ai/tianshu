@@ -169,6 +169,15 @@ export interface RoutesDeps {
    * never block the database delete.
    */
   onTaskDelete?(taskId: string): void;
+  /**
+   * Read the raw opencode.log for an opencode-worker task straight
+   * from the sandbox, for the Execution dialog's "Raw log" view.
+   * Optional: only wired when a sandbox.shell runner exists; the
+   * route returns an empty log otherwise. Best-effort — returns
+   * "" if the file isn't there (task not an opencode run / not
+   * started / already torn down).
+   */
+  readOpencodeLog?(taskId: string): Promise<string>;
   /** Workboard-internal kind catalogue. Surfaced to the admin UI
    *  so the picker only offers kinds the runtime can staff. */
   workerKinds: WorkerKindDef[];
@@ -718,6 +727,55 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
   };
 
   /**
+   * GET /tasks/:id/opencode-log
+   *
+   * Returns the raw opencode.log for an opencode-worker task, read
+   * straight from the sandbox, so the Execution dialog can show a
+   * "Raw log" view without anyone shelling into the container.
+   *
+   * Auth: same ownership check as taskHistory. Returns
+   * `{ log: "" }` (not 404) when the log isn't available (task
+   * isn't an opencode run, hasn't started, sandbox torn down, or
+   * no sandbox.shell runner is wired) so the UI renders an empty
+   * state instead of erroring.
+   */
+  const taskOpencodeLogHandler: PluginRouteHandler = async (req, res) => {
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no_user" });
+      return;
+    }
+    const id = stringParam(req, "id");
+    if (!id) {
+      res.status(400).json({ error: "id_required" });
+      return;
+    }
+    const task = getTask(deps.db, id);
+    if (!task) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    if (task.ownerUserId !== userId) {
+      res.status(403).json({ error: "not_yours" });
+      return;
+    }
+    if (!deps.readOpencodeLog) {
+      res.json({ log: "", available: false });
+      return;
+    }
+    let log = "";
+    try {
+      log = await deps.readOpencodeLog(id);
+    } catch (err) {
+      deps.log.warn("workboard: readOpencodeLog failed", {
+        taskId: id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    res.json({ log, available: true });
+  };
+
+  /**
    * Try to delete one task on behalf of `userId`. Returns a per-row
    * result envelope so the batch handler can aggregate.
    */
@@ -891,6 +949,7 @@ export function buildRoutes(deps: RoutesDeps): Record<string, PluginRouteHandler
     createTask: createTaskHandler,
     patchTask: patchTaskHandler,
     taskHistory: taskHistoryHandler,
+    taskOpencodeLog: taskOpencodeLogHandler,
     deleteTask: deleteTaskHandler,
     listProjects: listProjectsHandler,
     workerStatus: workerStatusHandler,

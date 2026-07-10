@@ -44,6 +44,7 @@ export {
   type McpUserConfig,
   type ModelEntry,
   type ModelsCatalog,
+  type ModelResilienceConfig,
   type OAuthProviderConfig,
   type PluginsConfig,
   type ProviderEntry,
@@ -120,4 +121,15 @@ export {
   type ResolvedModelInfo,
 } from "./llm.js";
 
-export { buildModels } from "./pi-models.js";
+export { buildModels, type BuildModelsOptions } from "./pi-models.js";
+export {
+  resolveResilience,
+  wrapStreamFn,
+  retryCompletion,
+  classifyError,
+  backoffDelayMs,
+  type ResolvedResilience,
+  type RetryClassification,
+  type RetryNotice,
+  type WrapStreamDeps,
+} from "./model-retry.js";

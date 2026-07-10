@@ -24,7 +24,8 @@
 // "Empty results" is not a health concern — a working API can
 // legitimately return zero hits for an obscure query.
 
-export type ProviderName = "tavily" | "brave";
+export type { ProviderName } from "./providers.js";
+import type { ProviderName } from "./providers.js";
 
 export interface DeadProviderEntry {
   /** HTTP status that flagged it dead. 401 / 403 are the only

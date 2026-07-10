@@ -111,7 +111,17 @@ export default function ChatInput() {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            // Don't send while an IME (Chinese/Japanese/Korean, etc.)
+            // is composing — Enter there confirms the candidate, not
+            // "send". e.nativeEvent.isComposing covers modern
+            // browsers; keyCode === 229 is the legacy still-composing
+            // signal some IMEs emit.
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing &&
+              e.keyCode !== 229
+            ) {
               e.preventDefault();
               void submit();
             }

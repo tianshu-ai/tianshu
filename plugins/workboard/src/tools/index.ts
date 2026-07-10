@@ -147,6 +147,96 @@ function sanitiseDepsForOwner(
   return rows.map((r) => r.id);
 }
 
+/** Find every row index that participates in a cycle in the
+ *  intra-batch dependency graph (edges[i] = list of row indices i
+ *  depends on). Uses iterative DFS colouring; any node on a
+ *  back-edge, plus the nodes forming that back-edge path, are
+ *  marked. Returns the set of offending indices. */
+export function detectCycleMembers(edges: number[][]): Set<number> {
+  const n = edges.length;
+  const WHITE = 0;
+  const GRAY = 1;
+  const BLACK = 2;
+  const color = new Array<number>(n).fill(WHITE);
+  const inCycle = new Set<number>();
+  const stack: number[] = [];
+
+  const visit = (start: number) => {
+    // Explicit stack of {node, nextEdgeIdx} frames.
+    const frames: Array<{ node: number; i: number }> = [
+      { node: start, i: 0 },
+    ];
+    color[start] = GRAY;
+    stack.push(start);
+    while (frames.length > 0) {
+      const frame = frames[frames.length - 1];
+      if (frame.i < edges[frame.node].length) {
+        const next = edges[frame.node][frame.i++];
+        if (color[next] === GRAY) {
+          // Back-edge: everything from `next` up the stack is a cycle.
+          const from = stack.lastIndexOf(next);
+          if (from >= 0) {
+            for (let k = from; k < stack.length; k++) inCycle.add(stack[k]);
+          }
+        } else if (color[next] === WHITE) {
+          color[next] = GRAY;
+          stack.push(next);
+          frames.push({ node: next, i: 0 });
+        }
+      } else {
+        color[frame.node] = BLACK;
+        stack.pop();
+        frames.pop();
+      }
+    }
+  };
+
+  for (let i = 0; i < n; i++) {
+    if (color[i] === WHITE) visit(i);
+  }
+  return inCycle;
+}
+
+/** Kahn-style topological order of the intra-batch dependency
+ *  graph so a dependency row is created before its dependents.
+ *  Edges from/to cyclic rows are ignored (those rows fall back to
+ *  input order). Any leftover (shouldn't happen once cycles are
+ *  excluded) is appended in input order. */
+export function topoOrder(edges: number[][], inCycle: Set<number>): number[] {
+  const n = edges.length;
+  const indeg = new Array<number>(n).fill(0);
+  const adj: number[][] = Array.from({ length: n }, () => []);
+  for (let i = 0; i < n; i++) {
+    if (inCycle.has(i)) continue;
+    for (const dep of edges[i]) {
+      if (inCycle.has(dep)) continue;
+      // dep must come before i.
+      adj[dep].push(i);
+      indeg[i]++;
+    }
+  }
+  const queue: number[] = [];
+  // Seed in input order for stable output.
+  for (let i = 0; i < n; i++) {
+    if (!inCycle.has(i) && indeg[i] === 0) queue.push(i);
+  }
+  const out: number[] = [];
+  const seen = new Set<number>();
+  while (queue.length > 0) {
+    const node = queue.shift() as number;
+    out.push(node);
+    seen.add(node);
+    for (const m of adj[node]) {
+      if (--indeg[m] === 0) queue.push(m);
+    }
+  }
+  // Append cyclic rows + anything not emitted, in input order.
+  for (let i = 0; i < n; i++) {
+    if (!seen.has(i)) out.push(i);
+  }
+  return out;
+}
+
 function formatBoard(
   tasks: Task[],
   blockedSet: Set<string>,
@@ -268,10 +358,16 @@ const TaskCreateItem = Type.Object({
         "Slug of the worker that should pick this task up (e.g. \"coder\", \"llm-default\"). Use `tenant_config_list({path:\"workers\"})` to see what's registered. Omitting this leaves the task unpinned — any enabled worker can grab it, but you lose control over which one. Pinning by slug is the recommended path; kind-based dispatch is no longer exposed.",
     }),
   ),
+  ref: Type.Optional(
+    Type.String({
+      description:
+        "Optional local alias for THIS task within this batch, e.g. \"A\". Other rows in the same `tasks` array can list this ref in their `depends_on` to depend on this task before it has a real id. Refs are batch-scoped and never persisted. Must be unique within the batch.",
+    }),
+  ),
   depends_on: Type.Optional(
     Type.Array(Type.String(), {
       description:
-        "Task ids that must reach status='done' before this task is eligible for a worker. Use this to express 'B starts after A'. Ids that don't belong to you are silently ignored.",
+        "What must reach status='done' before this task becomes eligible. Each entry is EITHER an existing task id you own OR a `ref` of another task in this same batch (to express 'B starts after A' in one call). Existing ids that aren't yours, and refs that don't match any row, are silently dropped. Self- and cyclic dependencies within the batch are rejected for the offending rows.",
     }),
   ),
   labels: Type.Optional(
@@ -288,6 +384,7 @@ type TaskCreateItemArgs = {
   project?: string;
   priority?: number;
   worker_agent_id?: string;
+  ref?: string;
   depends_on?: string[];
   labels?: string[];
 };
@@ -302,7 +399,14 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
         "status=ready, project=inbox; workers in the pool will pick up ready " +
         "tasks automatically. Per-row failures (e.g. an unknown worker_agent_id) do " +
         "NOT abort the rest of the batch — each row reports independently in " +
-        "the response's `results` array.",
+        "the response's `results` array.\n\n" +
+        "Dependency graphs in one call: give a task a `ref` (a local alias like " +
+        "\"A\") and have another row list that ref in its `depends_on`. The batch " +
+        "resolves refs to real ids, creates rows in dependency order, and rejects " +
+        "cyclic batch deps per-row. `depends_on` also still accepts existing task " +
+        "ids you own. Example: [{ref:\"A\",title:\"design\"}, " +
+        "{ref:\"B\",title:\"build\",depends_on:[\"A\"]}, " +
+        "{title:\"ship\",depends_on:[\"B\"]}].",
       parameters: Type.Object({
         tasks: Type.Array(TaskCreateItem, {
           minItems: 1,
@@ -328,41 +432,103 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
         task?: ReturnType<typeof summarise>;
         text?: string;
       };
-      const results: Row[] = items.map((item, index) => {
+
+      // ── Pass 1: pre-assign a real id to every row and build the
+      // batch-local ref → id map, so a later row can depend on an
+      // earlier row's `ref` before either exists in the DB. Refs
+      // are validated for uniqueness; a dup ref makes the map
+      // ambiguous, so the later definition wins and we note it.
+      const ids: string[] = items.map(() => randomUUID());
+      const refToId = new Map<string, number>(); // ref → row index
+      items.forEach((item, index) => {
+        const ref = item?.ref?.trim();
+        if (ref) refToId.set(ref, index);
+      });
+
+      // Resolve each row's raw depends_on into { batch: indices,
+      // external: ids }. A token that matches a batch ref becomes
+      // an intra-batch edge; anything else is treated as an
+      // external task id (sanitised against the owner's tasks in
+      // pass 3).
+      const batchDeps: number[][] = items.map((item, index) => {
+        const edges = new Set<number>();
+        for (const tok of item?.depends_on ?? []) {
+          const t = typeof tok === "string" ? tok.trim() : "";
+          if (!t) continue;
+          const dep = refToId.get(t);
+          if (dep !== undefined && dep !== index) edges.add(dep);
+        }
+        return [...edges];
+      });
+
+      // Detect cycles in the intra-batch dependency graph. Rows
+      // that participate in a cycle get flagged and their batch
+      // edges dropped (they'll still be created, just without the
+      // cyclic dep, and reported as a per-row warning).
+      const inCycle = detectCycleMembers(batchDeps);
+
+      // Topological order for creation so a dependency row is
+      // inserted before its dependents — keeps the `blocked` flag
+      // correct at creation time. Rows in a cycle fall back to
+      // input order among themselves.
+      const order = topoOrder(batchDeps, inCycle);
+
+      const results: Row[] = new Array(items.length);
+
+      // ── Pass 2/3: validate + create in dependency order.
+      for (const index of order) {
+        const item = items[index];
         const title = item?.title?.trim();
         if (!title) {
-          return { ok: false, index, text: "title is required" };
+          results[index] = { ok: false, index, text: "title is required" };
+          continue;
         }
         if (title.length > 200) {
-          return {
+          results[index] = {
             ok: false,
             index,
             text: "title too long (max 200 chars)",
           };
+          continue;
         }
-        const id = randomUUID();
-        const dependsOn = sanitiseDepsForOwner(
+        const id = ids[index];
+
+        // External (non-ref) ids: sanitise against owner tasks.
+        const refTokens = new Set(refToId.keys());
+        const externalRaw = (item.depends_on ?? []).filter(
+          (t) => typeof t === "string" && !refTokens.has(t.trim()),
+        );
+        const externalDeps = sanitiseDepsForOwner(
           deps.db,
           ctx.userId,
-          item.depends_on,
+          externalRaw,
           id,
         );
+        // Intra-batch deps: map surviving (non-cyclic) edges to
+        // their pre-assigned ids.
+        const batchEdgeIds = inCycle.has(index)
+          ? []
+          : batchDeps[index].map((depIdx) => ids[depIdx]);
+        const dependsOn = [...new Set([...externalDeps, ...batchEdgeIds])];
+
         const explicitAgentId = item.worker_agent_id?.trim() || null;
         if (explicitAgentId) {
           const target = agents.find((a) => a.id === explicitAgentId);
           if (!target) {
-            return {
+            results[index] = {
               ok: false,
               index,
               text: `Worker agent "${explicitAgentId}" doesn't exist in this tenant. Use \`tenant_config_list({ path: "workers" })\` to see available slugs.`,
             };
+            continue;
           }
           if (!target.enabled) {
-            return {
+            results[index] = {
               ok: false,
               index,
               text: `Worker agent "${target.name}" (${explicitAgentId}) is disabled. Enable it (set agent.json enabled: true) or pick another worker.`,
             };
+            continue;
           }
         }
         const task = createTask(deps.db, id, {
@@ -385,12 +551,16 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
           parentSessionId: ctx.sessionId ?? null,
         });
         const blocked = !isEligible(deps.db, task);
-        return {
+        const cycleNote = inCycle.has(index)
+          ? " (note: a cyclic batch dependency on this row was dropped)"
+          : "";
+        results[index] = {
           ok: true,
           index,
           task: summarise(task, blocked),
+          ...(cycleNote ? { text: cycleNote.trim() } : {}),
         };
-      });
+      }
       const okCount = results.filter((r) => r.ok).length;
       if (okCount > 0) deps.onTaskWrite();
       const failCount = results.length - okCount;

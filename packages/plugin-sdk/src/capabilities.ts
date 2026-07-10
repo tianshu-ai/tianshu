@@ -79,6 +79,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Manage Solutions (ADR-0008): declarative descriptions of the desired agent configuration for a tenant. Extract current reality into a named solution, list / read / save / delete solutions, and diff a solution against reality or another solution. Phase 2 has no Apply — solutions are inert files on disk until a later phase reconciles them into reality.",
   },
+  "host.opencodeProxy": {
+    exclusive: true,
+    description:
+      "Mint a short-lived, single-model, single-tenant token for a sandboxed external agent (OpenCode) to reach a tianshu model through the host's transparent proxy. The sandbox never sees the real provider key or baseUrl. Used by the workboard OpenCode worker; grant() returns a token + sandbox-reachable baseUrl, revoke() invalidates it on task end.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;

@@ -39,6 +39,13 @@ import {
   getApiProvider,
   registerBuiltInApiProviders,
 } from "@earendil-works/pi-ai/compat";
+import {
+  resolveResilience,
+  wrapStreamFn,
+  type StreamFn,
+  type RetryNotice,
+} from "./model-retry.js";
+import type { ModelResilienceConfig } from "./config.js";
 
 // The compat module registers the builtin api implementations on
 // import (it self-calls `registerBuiltInApiProviders()` at module
@@ -64,7 +71,24 @@ function ensureBuiltinsRegistered(): void {
  * core/llm.ts:buildModel), so we leave baseUrl off the AuthResult and
  * let the model's own baseUrl flow through `Models.streamSimple`.
  */
-export function buildModels(piModel: Model<Api>, apiKey: string): Models {
+export interface BuildModelsOptions {
+  /** Retry policy from config.models.resilience. Undefined => defaults. */
+  resilience?: ModelResilienceConfig;
+  /** Re-resolve the apiKey for a retry after an auth failure (expired
+   *  JWT). Should return the freshly-expanded key. When omitted, an
+   *  auth-failure retry reuses the original key (still useful if the
+   *  provider's own token cache refreshed out of band). */
+  reResolveApiKey?: () => string;
+  /** Called once per retry (before backoff) so the caller can surface
+   *  a UI notification. Applies to both stream and streamSimple. */
+  onRetry?: (notice: RetryNotice) => void;
+}
+
+export function buildModels(
+  piModel: Model<Api>,
+  apiKey: string,
+  options?: BuildModelsOptions,
+): Models {
   ensureBuiltinsRegistered();
 
   const apiStreams = getApiProvider(piModel.api);
@@ -102,12 +126,33 @@ export function buildModels(piModel: Model<Api>, apiKey: string): Models {
     },
     models: [piModel],
     api: {
-      stream: apiStreams.stream,
-      streamSimple: apiStreams.streamSimple,
+      stream: wrapWithRetry(apiStreams.stream, piModel, options),
+      streamSimple: wrapWithRetry(apiStreams.streamSimple, piModel, options),
     },
   });
 
   const models = createModels();
   models.setProvider(provider);
   return models;
+}
+
+/** Wrap one api-registry stream function with the resilience policy,
+ *  threading through the model label and (optional) apiKey re-resolver.
+ *  The cast bridges pi-ai's per-api `StreamFunction` generics to the
+ *  untyped dispatch `StreamFn` the retry wrapper operates on — both are
+ *  `(model, context, options?) => AssistantMessageEventStream`. */
+function wrapWithRetry(
+  fn: (...args: never[]) => ReturnType<StreamFn>,
+  piModel: Model<Api>,
+  options: BuildModelsOptions | undefined,
+): typeof fn {
+  const resilience = resolveResilience(options?.resilience);
+  if (!resilience.enabled || resilience.maxAttempts <= 1) return fn;
+  const wrapped = wrapStreamFn(fn as unknown as StreamFn, {
+    resilience,
+    reResolveApiKey: options?.reResolveApiKey,
+    onRetry: options?.onRetry,
+    label: `${piModel.provider}/${piModel.id}`,
+  });
+  return wrapped as unknown as typeof fn;
 }

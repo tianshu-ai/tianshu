@@ -21,7 +21,7 @@
 //
 // Both surfaces hit /api/p/workboard/*.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent } from "react";
 import {
   AlertTriangle,
@@ -46,6 +46,7 @@ import {
   Zap,
 } from "lucide-react";
 import {
+  subscribeToWsEvent,
   useOpenFile,
   useUiPrimitives,
   type AdminPageProps,
@@ -301,14 +302,42 @@ function useBoardController(opts: {
         requests.push(getJson<WorkerSnapshot>(`${API_BASE}/workers/status`));
       }
       const results = await Promise.all(requests);
-      setTasks((results[0] as { tasks: Task[] }).tasks);
+      const nextTasks = (results[0] as { tasks: Task[] }).tasks;
+      // Preserve object identity for unchanged tasks across the 3s
+      // poll. Each poll returns fresh JSON (new object refs), which
+      // would defeat BoardCard's memo (task is a prop) and re-render
+      // every card. Reuse the previous task object when its content
+      // is byte-identical, so memo'd cards that didn't change skip
+      // re-render entirely — a mostly-idle board becomes a near-noop.
+      setTasks((prev) => {
+        if (!prev) return nextTasks;
+        const prevById = new Map(prev.map((t) => [t.id, t]));
+        let changed = prev.length !== nextTasks.length;
+        const merged = nextTasks.map((t) => {
+          const old = prevById.get(t.id);
+          if (old && JSON.stringify(old) === JSON.stringify(t)) return old;
+          changed = true;
+          return t;
+        });
+        return changed ? merged : prev;
+      });
       setProjects((results[1] as { projects: ProjectSummary[] }).projects);
       const agentList = (results[2] as {
         agents: Array<{ id: string; name: string }>;
       }).agents;
-      setAgentNames(
-        new Map(agentList.map((a) => [a.id, a.name])),
-      );
+      // Only replace the map when it actually changed — the 3s poll
+      // returns the same agents almost every time, and a fresh Map
+      // reference each poll would break BoardCard's memo (agentNames
+      // is a card prop) and force a full re-render.
+      setAgentNames((prev) => {
+        if (
+          prev.size === agentList.length &&
+          agentList.every((a) => prev.get(a.id) === a.name)
+        ) {
+          return prev;
+        }
+        return new Map(agentList.map((a) => [a.id, a.name]));
+      });
       if (opts.withWorker) {
         setWorker(results[3] as WorkerSnapshot);
       }
@@ -320,8 +349,32 @@ function useBoardController(opts: {
 
   useEffect(() => {
     void reload();
-    const id = window.setInterval(() => void reload(), 3000);
-    return () => window.clearInterval(id);
+    // Event-driven: the server pushes `workboard:workboard.task` on
+    // every claim/completion, so reload immediately on a push instead
+    // of polling on a tight timer. A slow 15s interval stays as a
+    // safety net (missed event / dropped ws / non-host shell where
+    // subscribeToWsEvent is a no-op). Debounce bursts (a batch of
+    // task events shouldn't fire N reloads).
+    let debounce: ReturnType<typeof setTimeout> | null = null;
+    const kick = () => {
+      if (debounce) return;
+      debounce = setTimeout(() => {
+        debounce = null;
+        void reload();
+      }, 250);
+    };
+    const off = subscribeToWsEvent<{ type: string; event?: string }>(
+      "plugin_event",
+      (ev) => {
+        if (ev.event === "workboard:workboard.task") kick();
+      },
+    );
+    const id = window.setInterval(() => void reload(), 15000);
+    return () => {
+      off();
+      if (debounce) clearTimeout(debounce);
+      window.clearInterval(id);
+    };
   }, [reload]);
 
   const moveTask = useCallback(
@@ -723,6 +776,14 @@ function KanbanColumn({
 }) {
   const [showAdd, setShowAdd] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  // Build the id→task index ONCE per render, not once per card.
+  // computeMeta used to `new Map(allTasks.map(...))` on every call,
+  // and it's called per card → O(n²) per column each 3s poll. Hoist
+  // to O(n).
+  const taskById = useMemo(
+    () => new Map(allTasks.map((t) => [t.id, t] as const)),
+    [allTasks],
+  );
 
   return (
     <div
@@ -769,7 +830,7 @@ function KanbanColumn({
           <BoardCard
             key={t.id}
             task={t}
-            meta={computeMeta(t, allTasks)}
+            meta={computeMeta(t, taskById)}
             busy={busyId === t.id}
             compact={compact}
             agentNames={agentNames}
@@ -813,8 +874,7 @@ function KanbanColumn({
   );
 }
 
-function computeMeta(task: Task, allTasks: Task[]): TaskMeta {
-  const byId = new Map(allTasks.map((t) => [t.id, t]));
+function computeMeta(task: Task, byId: Map<string, Task>): TaskMeta {
   const deps: Task[] = [];
   const pendingDeps: Task[] = [];
   for (const id of task.dependsOn ?? []) {
@@ -832,7 +892,11 @@ function computeMeta(task: Task, allTasks: Task[]): TaskMeta {
   return { deps, pendingDeps, blocked };
 }
 
-function BoardCard({
+// Memoized: the 3s board poll re-renders the whole board; without
+// memo every card re-renders even when its own task didn't change.
+// Props are stable (agentNames map + callbacks are useMemo/useCallback
+// upstream), so memo skips unchanged cards.
+const BoardCard = memo(function BoardCard({
   task,
   meta,
   busy,
@@ -990,7 +1054,7 @@ function BoardCard({
                     interventionAt: null,
                   });
                 }}
-                className="shrink-0 rounded border border-rose-500/40 px-1 py-px text-[9.5px] font-medium text-rose-100 hover:bg-rose-500/20 disabled:opacity-50"
+                className="shrink-0 rounded bg-rose-600 px-1.5 py-px text-[9.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-50"
               >
                 Retry
               </button>
@@ -1025,7 +1089,7 @@ function BoardCard({
                     failureReason: null,
                   });
                 }}
-                className="shrink-0 rounded border border-orange-500/40 px-1 py-px text-[9.5px] font-medium text-orange-100 hover:bg-orange-500/15 disabled:opacity-50"
+                className="shrink-0 rounded bg-orange-600 px-1.5 py-px text-[9.5px] font-medium text-white hover:bg-orange-500 disabled:opacity-50"
               >
                 Retry
               </button>
@@ -1171,7 +1235,7 @@ function BoardCard({
       )}
     </li>
   );
-}
+});
 
 /**
  * Trigger row that opens the worker transcript in a full dialog.
@@ -1242,6 +1306,30 @@ function ExecutionDialog({
   const [sessionId, setSessionId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef(true);
+  // "transcript" = parsed worker turns (default). "rawlog" = the
+  // raw opencode.log straight from the sandbox, for debugging
+  // startup/egress/MCP issues without shelling into docker.
+  const [view, setView] = useState<"transcript" | "rawlog">("transcript");
+  const [rawLog, setRawLog] = useState<string | null>(null);
+  const [rawLoading, setRawLoading] = useState(false);
+  const [rawAvailable, setRawAvailable] = useState(true);
+
+  const fetchRawLog = useCallback(async () => {
+    if (!task.id) return;
+    setRawLoading(true);
+    try {
+      const data = await getJson<{ log: string; available?: boolean }>(
+        `${API_BASE}/tasks/${task.id}/opencode-log`,
+      );
+      setRawLog(data.log ?? "");
+      setRawAvailable(data.available !== false);
+    } catch (err) {
+      setRawLog(null);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRawLoading(false);
+    }
+  }, [task.id]);
 
   const fetchHistory = useCallback(async () => {
     if (!task.id) return;
@@ -1265,12 +1353,21 @@ function ExecutionDialog({
     void fetchHistory();
   }, [fetchHistory]);
 
-  // Tail while the task is running.
+  // Fetch the raw log when the user switches to that view.
+  useEffect(() => {
+    if (view === "rawlog") void fetchRawLog();
+  }, [view, fetchRawLog]);
+
+  // Tail while the task is running — refresh whichever view is
+  // currently showing.
   useEffect(() => {
     if (task.status !== "in_progress") return;
-    const t = setInterval(() => void fetchHistory(), 3000);
+    const t = setInterval(() => {
+      if (view === "rawlog") void fetchRawLog();
+      else void fetchHistory();
+    }, 3000);
     return () => clearInterval(t);
-  }, [task.status, fetchHistory]);
+  }, [task.status, view, fetchHistory, fetchRawLog]);
 
   // Auto-scroll to bottom on new entries when user is at bottom.
   useEffect(() => {
@@ -1316,8 +1413,32 @@ function ExecutionDialog({
       >
         <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-[10px] text-fg-faint">
           <ScrollText className="h-3.5 w-3.5 text-fg-faint" />
-          <span>worker transcript</span>
-          {sessionId && (
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setView("transcript")}
+              className={`rounded px-1.5 py-0.5 ${
+                view === "transcript"
+                  ? "bg-bg-hover text-fg-default"
+                  : "text-fg-faint hover:text-fg-muted"
+              }`}
+            >
+              transcript
+            </button>
+            <button
+              type="button"
+              onClick={() => setView("rawlog")}
+              className={`rounded px-1.5 py-0.5 ${
+                view === "rawlog"
+                  ? "bg-bg-hover text-fg-default"
+                  : "text-fg-faint hover:text-fg-muted"
+              }`}
+              title="Raw opencode.log from the sandbox"
+            >
+              raw log
+            </button>
+          </div>
+          {view === "transcript" && sessionId && (
             <span className="font-mono text-fg-fainter">· {sessionId}</span>
           )}
           {task.status === "in_progress" && (
@@ -1330,13 +1451,17 @@ function ExecutionDialog({
           <div className="ml-auto">
             <button
               type="button"
-              onClick={() => void fetchHistory()}
-              disabled={loading}
+              onClick={() =>
+                view === "rawlog" ? void fetchRawLog() : void fetchHistory()
+              }
+              disabled={view === "rawlog" ? rawLoading : loading}
               className="rounded p-1 text-fg-muted hover:bg-bg-raised hover:text-fg-default disabled:opacity-50"
               title="Refresh"
             >
               <RefreshCw
-                className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`}
+                className={`h-3.5 w-3.5 ${
+                  (view === "rawlog" ? rawLoading : loading) ? "animate-spin" : ""
+                }`}
               />
             </button>
           </div>
@@ -1352,19 +1477,41 @@ function ExecutionDialog({
               {error}
             </div>
           )}
-          {entries === null && loading && (
-            <div className="text-xs italic text-fg-faint">Loading…</div>
+          {view === "rawlog" ? (
+            <>
+              {rawLog === null && rawLoading && (
+                <div className="text-xs italic text-fg-faint">Loading…</div>
+              )}
+              {rawLog !== null && rawLog.trim() === "" && !rawLoading && (
+                <div className="text-xs italic text-fg-faint">
+                  {rawAvailable
+                    ? "No opencode log yet (task hasn't produced one, or the sandbox was torn down)."
+                    : "Raw log unavailable — this worker doesn't run in a shell sandbox."}
+                </div>
+              )}
+              {rawLog !== null && rawLog.trim() !== "" && (
+                <pre className="whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-fg-muted">
+                  {rawLog}
+                </pre>
+              )}
+            </>
+          ) : (
+            <>
+              {entries === null && loading && (
+                <div className="text-xs italic text-fg-faint">Loading…</div>
+              )}
+              {entries !== null && merged.length === 0 && !loading && (
+                <div className="text-xs italic text-fg-faint">
+                  {task.sessionId
+                    ? "No messages yet."
+                    : "Worker hasn't started yet."}
+                </div>
+              )}
+              {merged.map((row) => (
+                <ExecutionTurn key={row.id} row={row} />
+              ))}
+            </>
           )}
-          {entries !== null && merged.length === 0 && !loading && (
-            <div className="text-xs italic text-fg-faint">
-              {task.sessionId
-                ? "No messages yet."
-                : "Worker hasn't started yet."}
-            </div>
-          )}
-          {merged.map((row) => (
-            <ExecutionTurn key={row.id} row={row} />
-          ))}
         </div>
       </div>
     </Modal>

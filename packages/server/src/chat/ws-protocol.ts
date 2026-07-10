@@ -56,6 +56,15 @@ export type ClientMsg =
        */
       attachments?: WireAttachment[];
     }
+  /**
+   * Re-run the last turn of the current session WITHOUT inserting a
+   * new user message. Used by the client's auto-retry loop after a
+   * failed / interrupted run: the user's prompt is already persisted,
+   * so we resume it via `harness.continue()` rather than resending a
+   * duplicate prompt. No-op if the session's last message isn't a
+   * user/tool-result message (nothing to continue).
+   */
+  | { type: "retry"; modelId?: string }
   | { type: "abort" };
 
 export interface WireAttachment {
@@ -96,6 +105,42 @@ export type ServerMsg =
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
   | { type: "stream_error"; reason: string }
+  /**
+   * A transient LLM call failure is being retried. Emitted once per
+   * retry attempt so the UI can show a small "retrying…" notice with
+   * the reason and how long we're waiting. Purely informational — the
+   * stream continues normally on success, or ends with `stream_error`
+   * if all attempts are exhausted.
+   */
+  | {
+      type: "model_retry";
+      /** 1-based attempt that just failed (the retry is attempt+1). */
+      attempt: number;
+      /** Total attempts allowed (including the first try). */
+      maxAttempts: number;
+      /** Short reason label, e.g. "http-429" / "network" / "rate-limit". */
+      kind: string;
+      /** Backoff before the next attempt, in ms. */
+      delayMs: number;
+      /** True when the failure is a rate limit (drives a distinct icon). */
+      rateLimited: boolean;
+      /** Human-readable one-liner for the notice. */
+      message: string;
+      /** True when partial content had already streamed before the
+       *  failure; the client should reset its in-progress bubble (a
+       *  `stream_reset` is also sent) so the rebuilt answer doesn't
+       *  duplicate the aborted half. */
+      contentStreamed: boolean;
+      sessionId?: string;
+    }
+  /**
+   * Discard the in-progress streaming bubble. Sent when a mid-stream
+   * failure is being retried and content had already streamed — the
+   * retry rebuilds the message from scratch, so the client clears what
+   * it has before the replay's deltas arrive. Followed by fresh
+   * `stream_delta`s (no new `stream_start`).
+   */
+  | { type: "stream_reset"; sessionId?: string }
   /** Agent invoked a tool. Sent before the tool runs so the UI can
    *  render an in-progress chip. */
   | {
@@ -174,7 +219,16 @@ export type ServerMsg =
       fromVersion: string | null;
       toVersion: string;
       newTools: ReadonlyArray<{ name: string; pluginId: string }>;
-    };
+    }
+  /**
+   * Generic passthrough for a plugin's `ctx.broadcast(type, payload)`.
+   * The host wraps it as `{type:"plugin_event", event:"<pluginId>:<type>",
+   * payload}` so plugin frontends can subscribe over the shared /ws
+   * without adding a bespoke ServerMsg variant per plugin event.
+   * (workboard uses event "workboard:workboard.task" to push kanban
+   * task updates so the board can drop its 3s poll.)
+   */
+  | { type: "plugin_event"; event: string; payload: unknown };
 
 export interface PluginsChangedDelta {
   pluginId: string;

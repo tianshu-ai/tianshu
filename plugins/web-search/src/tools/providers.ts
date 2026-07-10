@@ -1,37 +1,37 @@
-// Two adapters with the same shape so the surrounding tool can
-// fall back from one to the other without branching on provider
-// names. Both providers serve a JSON API; the only async is one
-// fetch + json parse per call.
+// Web search backend: hosted MCP only.
 //
-// Why the contract is `(query, opts) => SearchResult[]` and not
-// the provider's native shape:
-//   - the agent shouldn't have to know which provider answered
-//   - errors are uniform (one place that throws, one error log)
-//   - if we add Exa / Serper / a self-hosted SearXNG later it
-//     drops in here without touching the tool
+// The plugin used to ship four schemes (Tavily / Brave / hosted
+// MCP / SearXNG). Per Yu it's now just the key-free hosted MCP
+// path — you only choose which anonymous endpoint to hit: Exa or
+// Parallel. Both expose a hosted MCP endpoint answering anonymous
+// JSON-RPC `tools/call` requests on a free tier (the same approach
+// OpenCode uses). No API key, no account, no self-hosting.
+//
+// The `SearchProvider` shape is kept so web_search's plumbing
+// (health cache, error trail) doesn't have to special-case a
+// single provider; `key` here is just the backend name
+// ("exa" | "parallel"), not a credential.
 
 export interface SearchResult {
   title: string;
   url: string;
-  /** 1-3 sentence snippet. Empty when the provider didn't supply
-   *  one (Tavily always supplies, Brave usually does). */
+  /** 1-3 sentence snippet. */
   content: string;
-  /** ISO-8601 string from the provider, when available. Useful for
-   *  recency filtering downstream; agents reading the JSON should
-   *  treat this as best-effort and not parse strictly. */
+  /** ISO-8601 / free-form date string from the provider when
+   *  available; best-effort, agents shouldn't parse strictly. */
   publishedDate?: string | null;
 }
 
 export interface SearchOpts {
-  /** 1-20. Tavily max 20, Brave max 20. The tool clamps. */
+  /** 1-20. The provider clamps. */
   count: number;
-  /** Free-text language hint, passed through where the provider
-   *  supports it. e.g. `"zh-CN"`, `"en"`. */
+  /** Free-text language hint (unused by the hosted endpoints today,
+   *  kept for tool-schema compatibility). */
   language?: string;
-  /** Recency window. Maps to provider-specific values; absence
-   *  means "no recency filter". */
+  /** Recency window (unused by the hosted endpoints today, kept for
+   *  tool-schema compatibility). */
   freshness?: "day" | "week" | "month" | "year";
-  /** Network timeout per fetch (ms). 8000 is the tool's default. */
+  /** Network timeout per fetch (ms). */
   timeoutMs: number;
 }
 
@@ -42,11 +42,16 @@ export interface ProviderError {
   message: string;
 }
 
-/** Each provider implements this. `key` is the API key from
- *  `pluginConfig`; the surrounding tool decides which provider(s)
- *  to call based on which keys are present. */
+/** The only backend name today. Kept as a type so the health cache
+ *  and error trail stay generic. */
+export type ProviderName = "hosted";
+
+/** Which hosted MCP endpoint to query. */
+export type HostedBackend = "exa" | "parallel";
+
 export interface SearchProvider {
-  readonly name: "tavily" | "brave";
+  readonly name: ProviderName;
+  /** `key` carries the backend name ("exa" | "parallel"). */
   search(
     query: string,
     key: string,
@@ -54,142 +59,185 @@ export interface SearchProvider {
   ): Promise<{ results: SearchResult[] } | { error: ProviderError }>;
 }
 
-export const tavilyProvider: SearchProvider = {
-  name: "tavily",
+export const PARALLEL_MCP_URL = "https://search.parallel.ai/mcp";
+export const EXA_MCP_URL = "https://mcp.exa.ai/mcp";
+
+function normBackend(key: string): HostedBackend {
+  return key === "parallel" ? "parallel" : "exa";
+}
+
+export const hostedProvider: SearchProvider = {
+  name: "hosted",
   async search(query, key, opts) {
-    // Tavily's "advanced" mode summarises content; "basic" returns
-    // bare snippets. We pick basic — the agent will fetch the page
-    // when it needs the body, and basic is faster + cheaper.
-    const body: Record<string, unknown> = {
-      api_key: key,
-      query,
-      search_depth: "basic",
-      include_answer: false,
-      include_raw_content: false,
-      include_images: false,
-      max_results: clamp(opts.count, 1, 20),
+    const backend = normBackend(key);
+    const url = backend === "parallel" ? PARALLEL_MCP_URL : EXA_MCP_URL;
+
+    // MCP tool + args differ per backend.
+    const toolName = backend === "parallel" ? "web_search" : "web_search_exa";
+    const toolArgs =
+      backend === "parallel"
+        ? { objective: query, search_queries: [query] }
+        : { query, numResults: clamp(opts.count, 1, 20), type: "auto" };
+
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      "user-agent": "tianshu-web-search/0.3",
     };
-    if (opts.freshness) {
-      body.time_range = opts.freshness;
-    }
+
+    const rpc = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: toolName, arguments: toolArgs },
+    };
+
     try {
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), opts.timeoutMs);
-      const res = await fetch("https://api.tavily.com/search", {
+      const res = await fetch(url, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        headers,
+        body: JSON.stringify(rpc),
         signal: ctl.signal,
       }).finally(() => clearTimeout(timer));
       if (!res.ok) {
         return {
           error: {
-            provider: "tavily",
+            provider: "hosted",
             status: res.status,
-            message: await safeText(res),
+            message: `${backend}: ${await safeText(res)}`,
           },
         };
       }
-      const json = (await res.json()) as {
-        results?: Array<{
-          title?: string;
-          url?: string;
-          content?: string;
-          published_date?: string;
-        }>;
-      };
-      const results: SearchResult[] = (json.results ?? []).map((r) => ({
-        title: typeof r.title === "string" ? r.title : "",
-        url: typeof r.url === "string" ? r.url : "",
-        content: typeof r.content === "string" ? r.content : "",
-        publishedDate: r.published_date ?? null,
-      }));
-      return { results };
+      const raw = await res.text();
+      const text = extractMcpText(raw);
+      if (text === null) {
+        return {
+          error: {
+            provider: "hosted",
+            status: 0,
+            message: `${backend}: could not parse MCP response`,
+          },
+        };
+      }
+      // Exa returns a plain-text block (Title:/URL:/Published:/
+      // Highlights:, results split by `---`). Parallel returns
+      // JSON (array or {results:[...]}). Parse per backend, with a
+      // cross-fallback so a format change on either side degrades
+      // gracefully instead of returning nothing.
+      const primary =
+        backend === "exa" ? parseExaText(text) : parseHostedResults(text);
+      const final = (
+        primary.length > 0
+          ? primary
+          : backend === "exa"
+            ? parseHostedResults(text)
+            : parseExaText(text)
+      ).slice(0, clamp(opts.count, 1, 20));
+      return { results: final };
     } catch (err) {
       return {
         error: {
-          provider: "tavily",
+          provider: "hosted",
           status: 0,
-          message: err instanceof Error ? err.message : String(err),
+          message: `${backend}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
         },
       };
     }
   },
 };
 
-export const braveProvider: SearchProvider = {
-  name: "brave",
-  async search(query, key, opts) {
-    // Brave's web search returns up to 20 in `web.results`; news /
-    // images live in sibling sections we ignore for now.
-    const params = new URLSearchParams({
-      q: query,
-      count: String(clamp(opts.count, 1, 20)),
-      safesearch: "off",
-      // Brave understands ISO 639-1 + locale; we only forward the
-      // first 5 chars to keep the param valid (`zh-CN` → `zh-CN`,
-      // `en` → `en`).
-      ...(opts.language ? { search_lang: opts.language.slice(0, 5) } : {}),
-      // Recency: Brave uses pd / pw / pm / py.
-      ...(opts.freshness
-        ? {
-            freshness: { day: "pd", week: "pw", month: "pm", year: "py" }[
-              opts.freshness
-            ],
-          }
-        : {}),
-    });
+/** MCP endpoints answer either as plain JSON or as an SSE stream
+ *  (`data: {...}` lines). Pull the inner `result.content[].text`
+ *  payload out of whichever we got. Returns null if nothing
+ *  usable is found. */
+function extractMcpText(body: string): string | null {
+  const tryOne = (s: string): string | null => {
     try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), opts.timeoutMs);
-      const res = await fetch(
-        `https://api.search.brave.com/res/v1/web/search?${params.toString()}`,
-        {
-          headers: {
-            "x-subscription-token": key,
-            accept: "application/json",
-            "accept-encoding": "gzip",
-          },
-          signal: ctl.signal,
-        },
-      ).finally(() => clearTimeout(timer));
-      if (!res.ok) {
-        return {
-          error: {
-            provider: "brave",
-            status: res.status,
-            message: await safeText(res),
-          },
-        };
-      }
-      const json = (await res.json()) as {
-        web?: {
-          results?: Array<{
-            title?: string;
-            url?: string;
-            description?: string;
-            page_age?: string;
-          }>;
-        };
+      const j = JSON.parse(s) as {
+        result?: { content?: Array<{ text?: string }> };
       };
-      const results: SearchResult[] = (json.web?.results ?? []).map((r) => ({
-        title: typeof r.title === "string" ? r.title : "",
-        url: typeof r.url === "string" ? r.url : "",
-        content: typeof r.description === "string" ? r.description : "",
-        publishedDate: r.page_age ?? null,
-      }));
-      return { results };
-    } catch (err) {
-      return {
-        error: {
-          provider: "brave",
-          status: 0,
-          message: err instanceof Error ? err.message : String(err),
-        },
-      };
+      const item = j.result?.content?.find((c) => typeof c.text === "string");
+      return item?.text ?? null;
+    } catch {
+      return null;
     }
-  },
-};
+  };
+  const trimmed = body.trim();
+  const direct = trimmed ? tryOne(trimmed) : null;
+  if (direct !== null) return direct;
+  // SSE: scan `data:` lines.
+  for (const line of trimmed.split(/\r?\n/)) {
+    if (line.startsWith("data:")) {
+      const got = tryOne(line.slice(5).trim());
+      if (got !== null) return got;
+    }
+  }
+  return null;
+}
+
+/** Parallel-style payload: JSON, either an array or `{results:[...]}`. */
+function parseHostedResults(text: string): SearchResult[] {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    const t = text.trim();
+    return t ? [{ title: "result", url: "", content: t.slice(0, 2000) }] : [];
+  }
+  const arr: unknown[] = Array.isArray(data)
+    ? data
+    : Array.isArray((data as { results?: unknown[] })?.results)
+      ? (data as { results: unknown[] }).results
+      : [];
+  return arr.map((raw) => {
+    const r = (raw ?? {}) as Record<string, unknown>;
+    const str = (...keys: string[]): string => {
+      for (const k of keys) {
+        if (typeof r[k] === "string" && r[k]) return r[k] as string;
+      }
+      return "";
+    };
+    return {
+      title: str("title", "name"),
+      url: str("url", "link"),
+      content: str("text", "snippet", "content", "summary").slice(0, 1000),
+      publishedDate: str("publishedDate", "published_date", "date") || null,
+    };
+  });
+}
+
+/** Exa's plain-text MCP payload: blocks split by a `---` line, each
+ *  carrying `Title:` / `URL:` / `Published:` / `Highlights:`. */
+function parseExaText(text: string): SearchResult[] {
+  const blocks = text
+    .split(/\n\s*---\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+  const out: SearchResult[] = [];
+  for (const block of blocks) {
+    const title = block.match(/^\s*Title:\s*(.+)$/im)?.[1]?.trim() ?? "";
+    const url = block.match(/^\s*URL:\s*(\S+)/im)?.[1]?.trim() ?? "";
+    const published = block.match(/^\s*Published:\s*(.+)$/im)?.[1]?.trim();
+    const hi = block.split(/^\s*Highlights:\s*$/im)[1] ?? "";
+    const content = hi
+      .replace(/\n\.\.\.\n/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 1000);
+    if (!title && !url) continue;
+    out.push({
+      title: title || url,
+      url,
+      content,
+      publishedDate: published && published !== "N/A" ? published : null,
+    });
+  }
+  return out;
+}
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, Math.floor(n)));

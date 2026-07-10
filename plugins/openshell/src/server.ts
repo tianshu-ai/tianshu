@@ -12,8 +12,12 @@
 //      so the host wires it under the `sandbox.shell` capability.
 //   4. Register three agent tools (exec / reset_sandbox /
 //      get_sandbox_status). MVP intentionally skips browser, per-task
-//      pool, build management, and the openshell policy/inference
-//      admin surface — see manifest description.
+//      pool, build management, and the openshell inference admin
+//      surface — see manifest description.
+//   5. Optionally enable the OpenShell Policy Advisor loop
+//      (config.policyAdvisor = "auto"|"manual"|"off", default off) so
+//      in-sandbox agents can dynamically propose egress rules on a
+//      policy_denied instead of relying on a static permissive policy.
 //
 // State directory layout (created on first start, cleaned on
 // uninstall):
@@ -32,6 +36,7 @@ import type {
   PluginServerExports,
 } from "@tianshu-ai/plugin-sdk";
 import { OpenShellRunner } from "./runner/openshell-runner.js";
+import { buildPolicyRoutes } from "./routes.js";
 import {
   ExecTool,
   GetSandboxStatusTool,
@@ -78,6 +83,25 @@ export default {
           : undefined,
       fromImage:
         typeof cfg.fromImage === "string" ? cfg.fromImage : undefined,
+      // Sandbox resource limits (optional). memoryLimit both contains
+      // runaway tasks and makes OOM show up as a clean SIGKILL the
+      // failure classifier can label [OUT OF MEMORY]. e.g. "4Gi".
+      memoryLimit:
+        typeof cfg.memoryLimit === "string" ? cfg.memoryLimit : undefined,
+      cpuLimit:
+        typeof cfg.cpuLimit === "string" ? cfg.cpuLimit : undefined,
+      // OpenShell Policy Advisor mode. Lets in-sandbox agents
+      // (OpenCode etc.) dynamically propose egress rules when they
+      // hit a policy_denied, instead of the old permissive-policy
+      // hack. Config: plugins.openshell.config.policyAdvisor =
+      // "auto" | "manual" | "off" (default off).
+      //   - auto:   prover-clean proposals hot-reload automatically
+      //   - manual: proposals queue for human approval
+      //   - off:    advisor disabled (strict deny-by-default)
+      policyAdvisor:
+        cfg.policyAdvisor === "auto" || cfg.policyAdvisor === "manual"
+          ? cfg.policyAdvisor
+          : "off",
       log: ctx.log,
     });
 
@@ -109,6 +133,9 @@ export default {
         SyncUpTool: SyncUpTool(runner),
         SyncDownTool: SyncDownTool(runner),
       },
+      // Admin API routes (mounted at /api/p/openshell/*). Keys match
+      // manifest.contributes.apiRoutes[].handler.
+      routes: buildPolicyRoutes(runner),
     };
   },
 

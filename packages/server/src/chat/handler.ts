@@ -300,6 +300,30 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         });
         return;
       }
+      case "retry": {
+        // Resume the last turn of the current session in place (no new
+        // user message). The client's auto-retry loop uses this so a
+        // failed / interrupted run doesn't spawn duplicate prompts.
+        if (aborter) aborter.abort();
+        aborter = new AbortController();
+        runPrompt({
+          ctx,
+          userId,
+          send,
+          content: "",
+          retryLastTurn: true,
+          modelId: parsed.modelId,
+          signal: aborter.signal,
+          pluginRegistry,
+          homeDir,
+        }).catch((err) => {
+          send({
+            type: "stream_error",
+            reason: err instanceof Error ? err.message : String(err),
+          });
+        });
+        return;
+      }
       case "abort": {
         aborter?.abort();
         aborter = null;
@@ -343,10 +367,20 @@ interface RunPromptArgs {
    * somehow still over the window. Not part of the public contract.
    */
   _afterCompactFallback?: boolean;
+  /**
+   * Resume the last turn of the session via `harness.continue()`
+   * instead of `harness.prompt()`. No new user message is inserted;
+   * `content` / `attachments` are ignored. Used by the client's
+   * auto-retry loop after a failed / interrupted run so history keeps
+   * a single user message. No-op (clean stream_end) if the session's
+   * last message isn't a user/tool-result message.
+   */
+  retryLastTurn?: boolean;
 }
 
 export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const { ctx, userId, send, content, modelId, attachments, signal, pluginRegistry, homeDir } = args;
+  const retryLastTurn = args.retryLastTurn ?? false;
   const wireOpts = makeWireOpts(ctx);
   const repo = new SqliteSessionRepo(ctx);
 
@@ -606,7 +640,29 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     tools: adapted.tools,
     systemPrompt,
     model: piModel,
-    models: buildModels(piModel, apiKey),
+    models: buildModels(piModel, apiKey, {
+      resilience: ctx.config.models?.resilience,
+      reResolveApiKey: () => resolveApiKey(modelInfo),
+      onRetry: (n) => {
+        // Rebuilding after partial content: tell the client to drop the
+        // half-streamed bubble before the replay's deltas land, so the
+        // answer isn't duplicated.
+        if (n.contentStreamed) {
+          send({ type: "stream_reset", sessionId: session.id });
+        }
+        send({
+          type: "model_retry",
+          attempt: n.attempt,
+          maxAttempts: n.maxAttempts,
+          kind: n.kind,
+          delayMs: n.delayMs,
+          rateLimited: n.rateLimited,
+          message: n.message,
+          contentStreamed: n.contentStreamed,
+          sessionId: session.id,
+        });
+      },
+    }),
   });
 
   // External abort → harness.abort()
@@ -742,7 +798,21 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // actionable error.
       throw new HandledTurnAbort();
     }
-    await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
+    if (retryLastTurn) {
+      // Resume the last turn WITHOUT inserting a duplicate user
+      // message. The failed/interrupted turn left the user's message
+      // as the transcript leaf; we drop that dangling turn and re-run
+      // it from the same content, so history keeps exactly one user
+      // message. If there's nothing resumable (last message is an
+      // assistant reply => the turn actually finished), end cleanly.
+      const resume = takeResumableUserPrompt(ctx, session.id);
+      if (!resume) {
+        throw new HandledTurnAbort();
+      }
+      await harness.prompt(resume, images.length > 0 ? { images } : undefined);
+    } else {
+      await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
+    }
     await harness.waitForIdle();
   } catch (err) {
     if (err instanceof HandledTurnAbort) {
@@ -1182,6 +1252,148 @@ function readBackLatestMessage(
     content: row.content,
     createdAt: row.created_at,
   };
+}
+
+/**
+ * Retry helper. A failed / interrupted turn leaves the user's prompt
+ * as the transcript tail (the assistant reply never completed, or is
+ * a partial). To resume WITHOUT duplicating the user message, we:
+ *   1. find the trailing turn (from the leaf back to — but not
+ *      including — the last COMPLETED assistant reply),
+ *   2. confirm it contains a user message (else nothing to resume),
+ *   3. delete those trailing entries and re-point the session leaf at
+ *      the prior completed entry,
+ *   4. return the user message text so the caller re-runs it via a
+ *      single fresh `prompt()`.
+ * Net effect: history keeps exactly one user message for the turn.
+ *
+ * Returns null when there's nothing resumable (e.g. the last turn
+ * actually completed, or the session is empty) — the caller then ends
+ * the stream cleanly instead of erroring.
+ */
+export function takeResumableUserPrompt(
+  ctx: TenantContext,
+  sessionId: string,
+): string | null {
+  // Pull the message chain newest-first. entry_type='message' skips
+  // compaction/system tree entries; we only reason about turns.
+  const rows = ctx.db
+    .prepare<
+      [string],
+      {
+        id: string;
+        role: ChatMessage["role"];
+        content: string;
+      }
+    >(
+      `SELECT id, role, content
+         FROM messages
+        WHERE session_id = ? AND entry_type = 'message'
+        ORDER BY created_at DESC, rowid DESC`,
+    )
+    .all(sessionId);
+  if (rows.length === 0) return null;
+
+  // Walk newest-first, collecting the trailing turn's entries until we
+  // reach a SUCCESSFULLY-COMPLETED assistant reply (= the previous
+  // turn's end). An assistant row whose persisted message carries
+  // stopReason "error"/"aborted" is a failed partial (e.g. the
+  // provider "terminated" the stream mid-sentence) — it belongs to the
+  // trailing failed turn and must be dropped, NOT treated as a
+  // completion boundary. Missing that was why a terminated turn never
+  // resumed: takeResumableUserPrompt saw the partial text, called it
+  // "done", and refused to retry.
+  const toDelete: string[] = [];
+  let userText: string | null = null;
+  let newLeafId: string | null = null;
+  for (const row of rows) {
+    if (
+      row.role === "assistant" &&
+      row.content.trim().length > 0 &&
+      !assistantRowFailed(row.content)
+    ) {
+      // Boundary: previous turn's completed reply. Stop; this becomes
+      // the new leaf.
+      newLeafId = row.id;
+      break;
+    }
+    // Part of the trailing (failed) turn — includes failed/partial
+    // assistant rows and tool rows.
+    toDelete.push(row.id);
+    if (row.role === "user" && userText === null) {
+      // The user prompt we'll resume (first user seen scanning back).
+      // CRITICAL: user rows are stored as a full AgentMessage JSON
+      // ({"role":"user","content":[{"type":"text","text":"…"}]}).
+      // We must extract the PLAIN TEXT here — re-running prompt() with
+      // the raw JSON string would re-serialize it into another
+      // AgentMessage, nesting the JSON one layer deeper on every
+      // retry (the "repeated JSON messages" bug). Legacy rows may be
+      // plain text; extractUserText handles both.
+      userText = extractUserText(row.content);
+    }
+  }
+  if (userText === null) return null; // nothing to resume
+
+  // Drop the dangling turn and re-point the leaf at the prior entry.
+  const tx = ctx.db.transaction(() => {
+    const del = ctx.db.prepare<[string], unknown>(
+      `DELETE FROM messages WHERE id = ?`,
+    );
+    for (const id of toDelete) del.run(id);
+    ctx.db
+      .prepare<[string | null, string], unknown>(
+        `UPDATE sessions SET leaf_id = ? WHERE id = ?`,
+      )
+      .run(newLeafId, sessionId);
+  });
+  tx();
+  return userText;
+}
+
+/** Extract the plain user text from a persisted user row. Rows are
+ *  stored as a full AgentMessage JSON
+ *  ({"role":"user","content":[{"type":"text","text":"…"}], …}); we
+ *  concat the text blocks. Legacy rows may already be plain text —
+ *  return them as-is. This MUST be used before re-running prompt() on
+ *  a resumed turn, else the raw JSON gets re-wrapped into a new
+ *  AgentMessage and nests one layer deeper each retry. */
+function extractUserText(content: string): string {
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return content; // legacy plain-text row
+  }
+  try {
+    const parsed = JSON.parse(content) as {
+      role?: string;
+      content?: Array<{ type?: string; text?: string }> | string;
+    };
+    if (typeof parsed.content === "string") return parsed.content;
+    if (Array.isArray(parsed.content)) {
+      const text = parsed.content
+        .filter((b) => b && b.type === "text" && typeof b.text === "string")
+        .map((b) => b.text as string)
+        .join("");
+      // If there were only non-text blocks (e.g. images), fall back to
+      // empty string rather than the raw JSON.
+      return text;
+    }
+    return content;
+  } catch {
+    return content; // not JSON after all — treat as plain text
+  }
+}
+
+/** True iff a persisted assistant row's JSON carries a failure
+ *  stopReason ("error" / "aborted"). Such a row is a partial/aborted
+ *  reply, not a completed turn. Non-JSON or missing stopReason → not
+ *  failed (treat as a normal completed reply). */
+function assistantRowFailed(content: string): boolean {
+  try {
+    const parsed = JSON.parse(content) as { stopReason?: string };
+    return parsed.stopReason === "error" || parsed.stopReason === "aborted";
+  } catch {
+    return false;
+  }
 }
 
 /** Build a `ToWireOpts` bound to the current tenant config. The

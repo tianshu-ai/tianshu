@@ -11,8 +11,18 @@
       "types": "./dist/server.d.ts",
       "default": "./dist/server.js"
     },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
     "./manifest.json": "./manifest.json"
   },
+  "files": [
+    "dist",
+    "src",
+    "skills",
+    "manifest.json"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch --preserveWatchOutput",
@@ -20,5 +30,13 @@
   },
   "dependencies": {
     "@tianshu-ai/plugin-sdk": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "@types/react": "^19.2.17",
+    "lucide-react": "^1.17.0",
+    "react": "^19.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
   }
 }

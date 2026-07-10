@@ -1,15 +1,16 @@
 {
   "id": "web-search",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "displayName": "Web Search",
-  "description": "Web search via Tavily and Brave Search APIs. One tool, two providers, automatic fallback. Set API keys in Settings → Plugins.",
+  "description": "Key-free web search + single-page fetch for agents. Search runs against a hosted endpoint (Exa or Parallel) with no API key. web_fetch reads a page to markdown, also no config.",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["network.external"],
   "server": { "entry": "@tianshu-builtin/plugin-web-search/server" },
   "contributes": {
     "tools": [
-      { "id": "web_search", "module": "WebSearchTool", "since": "0.1.0" }
+      { "id": "web_search", "module": "WebSearchTool", "since": "0.1.0" },
+      { "id": "web_fetch", "module": "WebFetchTool", "since": "0.2.0" }
     ],
     "skills": [
       {
@@ -25,29 +26,15 @@
   "configSchema": {
     "fields": [
       {
-        "key": "tavilyApiKey",
-        "label": "Tavily API key",
-        "kind": "secret",
-        "placeholder": "tvly-...",
-        "description": "Sign up at tavily.com (free tier 1000 searches/month). Stored under <tenant>/secrets/, never returned to the browser."
-      },
-      {
-        "key": "braveApiKey",
-        "label": "Brave Search API key",
-        "kind": "secret",
-        "placeholder": "BSA...",
-        "description": "Optional. Get a free key at api-dashboard.search.brave.com (2000/month). Used as fallback when Tavily fails or returns nothing."
-      },
-      {
-        "key": "preferredProvider",
-        "label": "Preferred provider",
+        "key": "backend",
+        "label": "Search backend",
         "kind": "select",
-        "default": "tavily",
+        "default": "exa",
         "options": [
-          { "label": "Tavily", "value": "tavily" },
-          { "label": "Brave", "value": "brave" }
+          { "label": "Exa", "value": "exa" },
+          { "label": "Parallel", "value": "parallel" }
         ],
-        "description": "Tried first when both keys are set. The other provider is used as automatic fallback only on transient errors (network / 5xx / 429). Auth failures (401 / 403) park the bad key in the health cache; clear it from Settings after fixing the key."
+        "description": "Which hosted endpoint web_search queries. Both are key-free (anonymous free tier). Exa returns highlighted excerpts; Parallel returns ranked results. web_fetch is unaffected."
       },
       {
         "key": "timeoutMs",
@@ -58,7 +45,7 @@
         "max": 60000,
         "step": 500,
         "default": 8000,
-        "description": "Network timeout for each provider call. Increase if you hit timeouts on slow networks."
+        "description": "Network timeout for each web_search / web_fetch call. Increase if you hit timeouts on slow networks."
       }
     ]
   }

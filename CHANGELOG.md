@@ -6,6 +6,804 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.80](https://github.com/tianshu-ai/tianshu/compare/v0.4.79...v0.4.80) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** de-dupe the user bubble on resumed turns. Server-side
+  resume deletes + recreates the user row (new id) and broadcasts
+  `message_added`, so the client appended a fresh identical user
+  bubble on every retry (Yu saw N bubbles for N attempts — clean text
+  now, not nested JSON, but still repeated). The client now detects a
+  `message_added` user row whose text matches an existing bubble in
+  the current turn (scanning back to the previous completed assistant
+  reply as the boundary) and REPLACES it in place instead of
+  appending. Verified live (kill server mid-stream, 5+ retries,
+  reconnect+complete): exactly one user bubble throughout, DB holds
+  one row.
+
+## [0.4.79](https://github.com/tianshu-ai/tianshu/compare/v0.4.78...v0.4.79) (2026-07-10)
+
+### Bug Fixes
+
+* **server:** fix retry re-wrapping the user prompt into nested JSON.
+  Found via live DB inspection: user rows are stored as a full
+  AgentMessage JSON (`{"role":"user","content":[{"type":"text","text":
+  "…"}]}`). `takeResumableUserPrompt` returned that raw JSON string and
+  the resume re-ran `prompt()` on it, re-serializing into another
+  AgentMessage — so every retry nested the JSON one layer deeper and
+  the chat showed repeated `{"role":"user"…}` blobs. Now extracts the
+  plain text (via `extractUserText`, concatenating text blocks; legacy
+  plain-text rows pass through).
+* **server:** resume past an errored/partial assistant. A provider
+  that drops the stream mid-response persists an assistant row with
+  content but `stopReason:"error"` (e.g. SAP-proxy Claude
+  `errorMessage:"terminated"`). `takeResumableUserPrompt` treated that
+  partial as a completed reply and refused to resume (the stuck `…`).
+  It now recognizes `stopReason` error/aborted rows as failed turns to
+  drop + resume.
+* **models:** classify provider `"terminated"` / `"stream
+  interrupted"` / `"connection closed"` as retriable transient
+  failures so the server-side model-retry layer catches them too.
+
+## [0.4.78](https://github.com/tianshu-ai/tianshu/compare/v0.4.77...v0.4.78) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** fix the stuck "…" after auto-retry. Verified live by killing
+  the server mid-stream: two real bugs remained. (1) A mid-stream
+  socket drop left `isStreaming` pinned true (no stream_end/error ever
+  arrives on a dead socket), and the retry-send path was gated behind
+  `if (isStreaming) return`, so every backoff fired but nothing was
+  ever sent — the loop spun forever on the "…" bubble. The retry loop
+  no longer gates on isStreaming and clears the stale flag when
+  arming. (2) A turn dropped before stream_start (isStreaming still
+  false) never re-armed; now tracked via `_awaitingResponse` (set from
+  send until a successful stream_end), so any unacknowledged turn
+  recovers. Also: on socket reconnect the pending retry fires
+  immediately (`_retryNow`) instead of waiting out the remaining
+  backoff. Confirmed end-to-end: retry climbs, resumes on reconnect,
+  completes, and history keeps a single user message.
+
+## [0.4.77](https://github.com/tianshu-ai/tianshu/compare/v0.4.76...v0.4.77) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** auto-retry no longer stalls or resets its backoff when a
+  retry itself fails. Two bugs: (1) `stream_start` cleared the whole
+  auto-retry state, so a retry that resumed then failed again snapped
+  the backoff back to 1s instead of climbing; (2) a retry sent while
+  still disconnected just re-queued and produced no event, stalling
+  the loop (the stuck "…" spinner). Fix: the attempt counter now lives
+  in module scope and only resets on success / user-stop / a fresh
+  prompt (not on `stream_start`), so backoff climbs monotonically
+  toward the 30-minute cap across repeated failures; and a watchdog
+  re-arms the next backoff if a sent retry neither resumes nor errors
+  within 15s. The loop keeps retrying until it succeeds or the user
+  hits stop.
+
+## [0.4.76](https://github.com/tianshu-ai/tianshu/compare/v0.4.75...v0.4.76) (2026-07-10)
+
+### Bug Fixes
+
+* **web,server:** auto-retry now RESUMES the last turn instead of
+  resending a new prompt. The 0.4.75 loop re-sent a fresh `prompt`
+  each attempt, so a flaky connection stacked duplicate user messages
+  in history ("继续" ×N). New `retry` WS message re-runs the existing
+  turn server-side: `takeResumableUserPrompt` drops the dangling
+  failed turn (trailing user msg + any empty/partial assistant),
+  re-points the session leaf at the last completed reply, and re-runs
+  that single user message via one `prompt()`. History keeps exactly
+  one user message no matter how many retries happen. Falls back to a
+  clean stream end when there's nothing to resume.
+
+## [0.4.75](https://github.com/tianshu-ai/tianshu/compare/v0.4.74...v0.4.75) (2026-07-10)
+
+### Features
+
+* **web:** auto-retry interrupted runs with exponential backoff until
+  the user stops. When a run fails transiently (`stream_error`) or the
+  socket drops mid-stream (server restart / network blip), the client
+  resends the last prompt on a backoff schedule that doubles from 1s
+  and caps at 30 minutes (1s,2s,4s,…,30m), with jitter. Replaces the
+  one-shot "Retry" button with a live "retrying in … (attempt N)"
+  banner and a Stop button that cancels the loop. User-initiated
+  aborts are never auto-retried. The WS layer now surfaces
+  connection open/close so an orphaned stream re-arms the loop.
+
+## [0.4.74](https://github.com/tianshu-ai/tianshu/compare/v0.4.73...v0.4.74) (2026-07-09)
+
+### Features
+
+* **models:** retry mid-stream failures. When a transient error hits
+  after partial content already streamed (e.g. the connection dropped
+  mid-response), the call is re-run and the assistant message is
+  rebuilt from scratch; the replay's `start` event is suppressed so
+  the harness keeps one message slot, and a new `stream_reset` WS
+  event tells the client to clear the in-progress bubble so text isn't
+  duplicated. Gated by `models.resilience.retryAfterContent` (default
+  true); user aborts are never retried.
+* **web:** add a "Retry" button to the stream-error banner that
+  resends the last prompt (covers terminated / connection-dropped
+  runs), and handle `stream_reset` by clearing the streaming bubble
+  before the rebuilt answer arrives. The WS layer already
+  auto-reconnects with backoff.
+
+## [0.4.73](https://github.com/tianshu-ai/tianshu/compare/v0.4.72...v0.4.73) (2026-07-09)
+
+### Features
+
+* **models:** surface LLM-call retries in logs and the UI. Every
+  retry logs a one-line reason (`[model-retry] provider/model: rate
+  limited (http-429), retrying in 5.0s (attempt 1/4)`) and emits a
+  new `model_retry` WS event, so the chat area shows a small
+  "retrying…" banner with the reason, backoff, and attempt count
+  while a transient failure is being retried. The banner clears on
+  the next stream start / end. Worker agent-loop runs can forward
+  the same notice via `onModelRetry`.
+
+## [0.4.72](https://github.com/tianshu-ai/tianshu/compare/v0.4.71...v0.4.72) (2026-07-09)
+
+### Features
+
+* **models:** resilient LLM calls with a unified retry policy at the
+  single stream chokepoint (`core/pi-models.ts`), covering the chat
+  handler, worker agent-loop, and compaction. Retries transient
+  failures (network blips, 5xx, 429 rate-limits) and re-resolves the
+  apiKey on 401/403 so an expired JWT recovers. Retries only happen
+  before any content has streamed (never duplicates output); a user
+  cancel / watchdog abort stops retries mid-backoff.
+* **models:** rate-limit aware backoff. Extracts the server's
+  requested wait time from `Retry-After` / `x-ratelimit-reset*`
+  headers (seconds/ms/duration/epoch/RFC3339), Gemini's structured
+  `retryDelay`, or a "try again in Xs" message hint, and waits at
+  least that long (never less, small jitter on top). When no explicit
+  wait is given, a 429 falls back to a conservative floor
+  (`rateLimitFloorMs`, default 5s) instead of the short exponential
+  schedule that would keep re-tripping the limit. The SDK's own
+  client-side retries are disabled so the two layers don't compound.
+  Configurable via `models.resilience`.
+
+## [0.4.71](https://github.com/tianshu-ai/tianshu/compare/v0.4.70...v0.4.71) (2026-07-09)
+
+### Features
+
+* **files:** paste attachments from the clipboard into the chat
+  composer (Cmd/Ctrl+V) — screenshots, copied images, and copied
+  files stage via the same upload path as the attach button. Pure
+  text paste is unaffected.
+
+## [0.4.70](https://github.com/tianshu-ai/tianshu/compare/v0.4.68...v0.4.70) (2026-07-09)
+
+### Bug Fixes
+
+* **web:** don't send the chat message on Enter while an IME is
+  composing (Chinese/Japanese/Korean). Pressing Enter to confirm an
+  IME candidate no longer triggers send; guarded with
+  `!nativeEvent.isComposing && keyCode !== 229`.
+
+### Chores
+
+* 0.4.69: added diagnostic logging to `syncProjectUp`.
+
+## [0.4.68](https://github.com/tianshu-ai/tianshu/compare/v0.4.67...v0.4.68) (2026-07-09)
+
+### Features
+
+* **opencode-worker:** sync the project's existing files into the
+  sandbox before the run (sync-up), so opencode can read/edit an
+  existing project instead of only creating from scratch. Mirrors the
+  LLM-worker layout (`users/<userId>/projects/<slug>/` → task
+  workdir), excludes prior results/scratch, no-ops for fresh
+  projects. Results continue to sync down via stageDeliverables.
+  Adds optional `syncUp()` to the SDK `SandboxRunner`.
+
+## [0.4.67](https://github.com/tianshu-ai/tianshu/compare/v0.4.66...v0.4.67) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** `rm -rf ./.opencode` before every run. 0.4.66
+  stopped the worker creating it, but opencode itself can
+  (re)create a project-relative `./.opencode` on start, re-triggering
+  the ~12-minute per-task project-local dependency install. Removing
+  it each run (omo config lives in XDG; omo is a global prewarmed
+  plugin) keeps startup instant.
+
+## [0.4.66](https://github.com/tianshu-ai/tianshu/compare/v0.4.65...v0.4.66) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** write the omo config to the XDG location only
+  (`./.oc-config/opencode`), never to a project-relative
+  `./.opencode`. A `./.opencode` dir made opencode treat the workdir
+  as a project and run a ~12-minute per-task project-local dependency
+  install (`@opencode-ai/plugin` into `./.opencode/node_modules`,
+  logging "background dependency install failed / token mismatch").
+  omo is a global prewarmed plugin, so XDG-only config loads it and
+  the run starts instantly.
+
+## [0.4.65](https://github.com/tianshu-ai/tianshu/compare/v0.4.64...v0.4.65) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** isolate omo locks per task to fix the
+  intermittent "hang after loading config". omo's codegraph lock
+  lives in the sandbox-global `$HOME/.omo/codegraph/locks`, so
+  concurrent runs (or a SIGKILL'd run's leftover lock) contend and
+  the next run's acquireLock stalls. Now set `codegraph.install_dir`
+  to a per-task path and re-add pre-run stale-lock cleanup (dropped
+  in the 0.4.59 simplification).
+
+## [0.4.64](https://github.com/tianshu-ai/tianshu/compare/v0.4.63...v0.4.64) (2026-07-08)
+
+### Reverts
+
+* **opencode/openshell:** drop `allow_encoded_slash` (0.4.62). The
+  openshell CLI doesn't support it in the endpoint options segment,
+  so it always failed and fell back — spamming a warning per grant.
+  omo deps are pre-warmed into the image, so no scoped-package (%2F)
+  install happens at task time; the option was unnecessary.
+
+## [0.4.63](https://github.com/tianshu-ai/tianshu/compare/v0.4.62...v0.4.63) (2026-07-08)
+
+### Refactor
+
+* **opencode-worker:** drop the redundant `$HOME/.oc-npm/bin` PATH
+  prepend from the run command — the sandbox image ships the pinned
+  opencode globally, so plain `opencode` is already correct.
+
+## [0.4.62](https://github.com/tianshu-ai/tianshu/compare/v0.4.61...v0.4.62) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode/openshell:** allow encoded slash (%2F) for the npm
+  registry egress. openshell's L7 REST engine denies request-targets
+  containing %2F by default, so npm scoped-package installs
+  (@ai-sdk%2Fanthropic, ...) — which omo depends on — were DENIED.
+  `allowEgress` now takes `allowEncodedSlash`; the runner appends
+  `allow_encoded_slash=true` to the endpoint spec (falls back to the
+  plain spec if the CLI rejects the option).
+
+## [0.4.61](https://github.com/tianshu-ai/tianshu/compare/v0.4.60...v0.4.61) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** `mkdir -p .opencode .oc-config/opencode` before
+  writing the omo config. `sandbox upload` only auto-creates the
+  immediate parent, so the nested `.opencode/oh-my-opencode.jsonc`
+  write failed on a fresh workdir (observed: workdir had only
+  opencode.json). Without the omo config, omo used its DEFAULT config
+  (agents not pinned to the proxied model).
+
+## [0.4.60](https://github.com/tianshu-ai/tianshu/compare/v0.4.59...v0.4.60) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** surface oh-my-opencode.jsonc write
+  success/failure (was `.catch(()=>undefined)`, silently hiding a
+  failed write). If the omo config write fails, omo falls back to
+  its DEFAULT config (agents not pinned to the single proxied
+  model). Now logged so a missing omo config is visible.
+
+## [0.4.59](https://github.com/tianshu-ai/tianshu/compare/v0.4.58...v0.4.59) (2026-07-08)
+
+### Refactor
+
+* **opencode-worker:** simplify the generated opencode run command.
+  Removed the accumulated firefighting env (proxy-env unset,
+  NO_PROXY, NODE_OPTIONS=ipv4first, stale-lock clearing) now that the
+  opencode.json baseURL is the IPv4 literal and opencode connects
+  directly. Matches the verified manual command
+  `OPENCODE_CONFIG=<workdir>/opencode.json opencode run <prompt>`;
+  keeps only worker mechanics + the proven-necessary env
+  (DISABLE_MODELS_FETCH, ENABLE_PARALLEL, SEND_ANONYMOUS_TELEMETRY=no,
+  DISABLE_LSP_DOWNLOAD).
+
+## [0.4.58](https://github.com/tianshu-ai/tianshu/compare/v0.4.57...v0.4.58) (2026-07-08)
+
+### Bug Fixes
+
+* **opencode-worker:** disable oh-my-openagent's anonymous PostHog
+  telemetry (`OMO_SEND_ANONYMOUS_TELEMETRY=no`). In the locked
+  sandbox the telemetry POST to us.i.posthog.com is egress-denied
+  (403), spamming the run output with harmless-but-noisy
+  PostHogFetchHttpError stack traces. (omo end-to-end run now works;
+  this removes the last cosmetic noise.)
+
+## [0.4.57](https://github.com/tianshu-ai/tianshu/compare/v0.4.56...v0.4.57) (2026-07-08)
+
+### Features
+
+* **opencode-proxy:** `OPENCODE_PROXY_SKIP_TOKEN_VALIDATION=1` debug
+  switch — accept ANY token (uses the real grant if present, else a
+  default model) so manual proxy testing isn't blocked by
+  mint/revoke/TTL. No hardcoded token. Replaces the 0.4.56
+  hardcoded-test-token approach. Do NOT enable in production.
+
+## [0.4.56](https://github.com/tianshu-ai/tianshu/compare/v0.4.55...v0.4.56) (2026-07-08)
+
+### Features
+
+* **opencode-proxy:** `OPENCODE_PROXY_TEST_TOKEN` — a long-lived proxy
+  token (never expires, never revoked) for manually exercising the
+  full proxy chain without racing the worker's per-task mint/revoke.
+  Optional `OPENCODE_PROXY_TEST_MODEL` (default
+  anthropic/claude-opus-4-6) + `OPENCODE_PROXY_TEST_TENANT` (default
+  default). Debugging only — do not set in production.
+
+## [0.4.55](https://github.com/tianshu-ai/tianshu/compare/v0.4.54...v0.4.55) (2026-07-08)
+
+### Chores
+
+* log each openshell exec RESULT (exit code + trimmed stdout/stderr)
+  so the version-check / mkdir / opencode-run steps can be seen to
+  succeed or fail with their output.
+
+## [0.4.54](https://github.com/tianshu-ai/tianshu/compare/v0.4.53...v0.4.54) (2026-07-08)
+
+### Chores
+
+* log the full openshell exec command the opencode worker runs
+  ("opencode-worker: RUN cmd" + "openshell exec argv") to diff a
+  failing worker task against a working manual `openshell sandbox
+  exec ... opencode run`.
+
+## [0.4.53](https://github.com/tianshu-ai/tianshu/compare/v0.4.52...v0.4.53) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** pin the proxy baseURL + egress grant to the
+  IPv4 host-gateway literal (192.168.65.254, override via
+  OPENCODE_PROXY_HOST_IP). The sandbox resolves host.docker.internal
+  to IPv6 first, which openshell rejects (only the first /etc/hosts
+  IP is permitted) — opencode's model call never connected and the
+  proxy never received it ("Cannot connect to API"). NODE_OPTIONS
+  ipv4first doesn't work on Bun. Rewriting both the baseURL and the
+  egress host to IPv4 fixes it.
+
+## [0.4.52](https://github.com/tianshu-ai/tianshu/compare/v0.4.51...v0.4.52) (2026-07-07)
+
+### Chores
+
+* **opencode-proxy:** add diagnostic logging (recv token lookup /
+  forward upstream URL / upstream>=400 status) to pin down whether an
+  opencode "Unauthorized" is a proxy-token miss or an upstream 401.
+
+## [0.4.51](https://github.com/tianshu-ai/tianshu/compare/v0.4.50...v0.4.51) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** trim `OPENCODE_BINARIES` to paths that exist
+  in the sandbox image. openshell symlink-resolves each policy
+  binary and logged "Cannot access container filesystem" WARNs for
+  the nonexistent entries; keeping only the real paths
+  (/usr/bin/opencode + opencode.exe + node/npm) removes the noise
+  and the ambiguity.
+
+## [0.4.50](https://github.com/tianshu-ai/tianshu/compare/v0.4.49...v0.4.50) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** force IPv4 DNS
+  (`NODE_OPTIONS=--dns-result-order=ipv4first`) for the opencode run.
+  The sandbox maps host.docker.internal to both IPv4 and IPv6;
+  Node/Bun prefer IPv6, but openshell only permits the first
+  /etc/hosts entry (IPv4) and rejects other IPs — so opencode's model
+  call to the tianshu proxy resolved to IPv6 and was rejected
+  ("Cannot connect to API"). Found via `openshell logs --level
+  trace`.
+
+## [0.4.49](https://github.com/tianshu-ai/tianshu/compare/v0.4.48...v0.4.49) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode/omo:** disable omo's `lsp` MCP (its lsp-daemon blocks on
+  the L7 proxy at startup and deadlocks init) and UNSET the proxy env
+  for the opencode run (with models.dev + lsp off, opencode only needs
+  direct connections to the tianshu proxy + its loopback server;
+  Bun mis-routes those through the L7 proxy -> "Cannot connect").
+  Sandbox image warmup config mirrors disabled_mcps:["lsp"]. Verified
+  via docker exec: reaches the model, rc=0. A residual
+  gRPC-exec-tunnel hang may remain in some envs; OPENCODE_DISABLE_OMO=1
+  is the fallback.
+
+## [0.4.48](https://github.com/tianshu-ai/tianshu/compare/v0.4.47...v0.4.48) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** pin the oh-my-openagent plugin to an exact
+  version (`@4.15.1`) instead of bare/`@latest`. opencode re-resolves
+  an unpinned plugin against npm on every startup, and that resolve
+  stalls through the openshell L7 proxy — hanging plugin-load before
+  omo runs. Pinning to the version warmed in the sandbox image skips
+  the npm resolve. Also add `host.docker.internal` to NO_PROXY so
+  model calls to the tianshu proxy go direct. A residual intermittent
+  plugin-load deadlock may remain; `OPENCODE_DISABLE_OMO=1` is the
+  fallback.
+
+## [0.4.47](https://github.com/tianshu-ai/tianshu/compare/v0.4.46...v0.4.47) (2026-07-07)
+
+### Bug Fixes
+
+* **opencode-worker:** set `OPENCODE_DISABLE_MODELS_FETCH=1` —
+  opencode's startup models.dev fetch stalled through the openshell
+  L7 proxy and blocked omo init; we don't need it (model metadata
+  comes from the tianshu provider). Plus warm omo first-init
+  provisioning into the sandbox image + strip the stale build-time
+  codegraph lock. Note: a residual openshell gRPC-exec-tunnel plugin
+  init deadlock remains under investigation; `OPENCODE_DISABLE_OMO=1`
+  is the reliable fallback.
+
+## [0.4.46](https://github.com/tianshu-ai/tianshu/compare/v0.4.45...v0.4.46) (2026-07-06)
+
+### Bug Fixes
+
+* **opencode-worker:** harden the headless omo config — disable the
+  reply-listener daemon (background-notification hook), codegraph
+  auto-provision, and gate remote-MCP egress; add `--auto` to the
+  run. Bare `docker run` omo init completes (~28s, reaches the model)
+  but the openshell L7-proxied sandbox still hangs before init —
+  residual hang is environment-specific, under investigation.
+  Escape hatch: `OPENCODE_DISABLE_OMO=1`.
+
+## [0.4.45](https://github.com/tianshu-ai/tianshu/compare/v0.4.44...v0.4.45) (2026-07-06)
+
+### Bug Fixes
+
+* **opencode-worker:** generate a headless-safe oh-my-openagent
+  config (tmux/team_mode/monitor/new_task_system off + all always-on
+  MCPs disabled). Finding: even fully stripped, omo still hangs at
+  plugin init in the locked sandbox — the working path remains
+  `OPENCODE_DISABLE_OMO=1`. Documented in code.
+
+## [0.4.44](https://github.com/tianshu-ai/tianshu/compare/v0.4.43...v0.4.44) (2026-07-06)
+
+### Features
+
+* **opencode-worker:** `OPENCODE_DISABLE_OMO=1` env toggle to run
+  bare opencode without the oh-my-openagent plugin. Root-caused the
+  "opencode hangs after loading config" symptom to omo's init (not
+  the proxy/upstream key): with omo disabled the same task completes
+  and returns an assistant message. Escape hatch + diagnostic lever.
+* **workboard:** `scripts/opencode-e2e.mjs` end-to-end integration
+  probe — fires an opencoder task on the ENV default model, waits
+  for completion, asserts an assistant message came back, and
+  classifies the failing layer otherwise.
+
+## [0.4.43](https://github.com/tianshu-ai/tianshu/compare/v0.4.42...v0.4.43) (2026-07-06)
+
+### Features
+
+* **workboard:** add a "Raw log" view to the task Execution dialog.
+  A tab next to "transcript" shows the raw opencode.log read
+  straight from the sandbox (new `GET /tasks/:id/opencode-log`
+  route), so debugging opencode startup/egress/MCP issues no longer
+  needs `docker exec`. Tails every 3s while the task is running.
+
+## [0.4.42](https://github.com/tianshu-ai/tianshu/compare/v0.4.41...v0.4.42) (2026-07-06)
+
+### Bug Fixes
+
+* **opencode-worker:** grant sandbox egress for oh-my-openagent's
+  always-on remote MCP servers (mcp.context7.com, mcp.grep.app,
+  mcp.exa.ai, mcp.tavily.com) so they connect instead of logging
+  "server unavailable" at startup.
+
+## [0.4.41](https://github.com/tianshu-ai/tianshu/compare/v0.4.40...v0.4.41) (2026-07-06)
+
+### Bug Fixes
+
+* **opencode-worker:** authorize the `opencode.exe` binary for
+  sandbox egress. opencode 1.17.x ships a compiled native binary
+  (opencode.exe); openshell gates egress by the requesting binary
+  and the authorized list omitted it, so opencode's startup
+  models.dev fetch (and model-proxy calls) were 403'd and it stalled
+  at startup. Verified the models.dev 403 is gone after the fix.
+
+## [0.4.40](https://github.com/tianshu-ai/tianshu/compare/v0.4.39...v0.4.40) (2026-07-06)
+
+### Bug Fixes
+
+* **openshell:** don't recreate a busy sandbox mid-run. A long
+  opencode run makes the sandbox slow to list; waitForReady treated
+  >15s of that as "gone" and recreated it, wiping the workdir and
+  killing the running task (longer tasks stuck in_progress). Now the
+  history-poller read never triggers recreate, and before recreating
+  on "not listable" the runner checks the docker container is truly
+  gone (vs just busy). Verified end-to-end: oh-my-openagent's
+  Sisyphus completed a real FizzBuzz task (code written, executed,
+  output recorded) with zero recreates.
+
+## [0.4.39](https://github.com/tianshu-ai/tianshu/compare/v0.4.38...v0.4.39) (2026-07-06)
+
+### Features
+
+* **openshell:** prebuilt opencode sandbox image
+  (plugins/openshell/sandbox-image/Dockerfile) baking opencode
+  1.17.13 + a warmed oh-my-openagent plugin cache, so sandboxes
+  start instantly instead of installing ~500MB per task. Point at it
+  via `plugins.openshell.config.fromImage`.
+
+### Bug Fixes
+
+* **opencode-worker:** oh-my-openagent's Sisyphus now runs as the
+  default agent end-to-end (verified: agent self-reports as
+  Sisyphus, task done in ~10s). Pre-grant models.dev egress
+  (opencode fetches its model catalog at startup; blocked = silent
+  no-op run). Skip the runtime opencode install when the pinned
+  version is already on PATH (fast path for the prebuilt image).
+  Removed an invalid `--agent sisyphus` (omo already sets Sisyphus
+  as the default primary).
+
+## [0.4.38](https://github.com/tianshu-ai/tianshu/compare/v0.4.37...v0.4.38) (2026-07-06)
+
+### Features
+
+* **opencode-worker:** make oh-my-openagent's agents actually run.
+  Listing the plugin wasn't enough — omo's built-in fallback chains
+  reference provider names (anthropic/openai/google/…) that don't
+  include our "tianshu" proxy provider, so it resolved no model and
+  the agents never ran. The worker now writes an oh-my-opencode
+  config pinning every omo agent + delegation category to the single
+  proxied model and disabling the multi-provider fallback. (First
+  pass: all agents share one model.)
+
+## [0.4.37](https://github.com/tianshu-ai/tianshu/compare/v0.4.36...v0.4.37) (2026-07-05)
+
+### Bug Fixes
+
+* **opencode-worker:** enable opencode's web_search tool
+  (OPENCODE_ENABLE_PARALLEL, key-free Parallel backend), add the
+  oh-my-openagent plugin, and force the pinned opencode version
+  (1.17.13) instead of keeping the base image's stale preinstall
+  (1.2.18, which lacks websearch). Installs to a user-writable
+  prefix (avoids EACCES on the root global), pre-grants npm egress
+  for the install, and centralizes the authorized-binary list so
+  egress grants cover opencode at its new location. web_fetch works
+  once policyAdvisor is enabled (config).
+
+## [0.4.36](https://github.com/tianshu-ai/tianshu/compare/v0.4.35...v0.4.36) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** judge completion with an LLM agent turn
+  instead of opencode's exit code. After opencode finishes, the
+  worker runs a short host.agentLoop turn that reads the transcript
+  + produced files, decides whether the task was actually completed
+  (opencode exits 0 even when it gives up), and calls task_complete.
+  Also fixes a hang where the task stayed in_progress after opencode
+  had already exited — the worker now proceeds to judgment
+  immediately. Falls back to mechanical judgment if the agent-loop
+  capability is unavailable.
+
+## [0.4.35](https://github.com/tianshu-ai/tianshu/compare/v0.4.34...v0.4.35) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** generated opencode.json now allows all tools
+  (edit/bash/webfetch = allow) so a headless run never stalls on a
+  tool-approval prompt ("user rejected permission").
+* **openshell:** new `allowPublicEgress` plugin config. When true,
+  the sandbox is created with a permissive policy allowing all
+  public + host egress for any binary (instead of deny-by-default),
+  so an OpenCode worker can install toolchains and reach external
+  services. Opt-in — weakens sandbox isolation.
+
+## [0.4.34](https://github.com/tianshu-ai/tianshu/compare/v0.4.33...v0.4.34) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** near-real-time transcript + resolved tool
+  chips. A 4s poller now reads opencode's NDJSON from the sandbox
+  while it runs and rewrites the session history, so the task
+  Execution tab shows progress mid-run instead of only at the end.
+  And tool chips no longer spin forever: the parser captures each
+  tool's completion status + output, and the worker writes a paired
+  tool-result row so the chip resolves to done/failed with the real
+  output.
+
+## [0.4.33](https://github.com/tianshu-ai/tianshu/compare/v0.4.32...v0.4.33) (2026-07-03)
+
+### Bug Fixes
+
+* **opencode-worker:** the task Execution tab now renders the
+  opencode run as structured cards (clean text + tool chips with
+  real arguments) instead of raw JSON blobs with empty args. The
+  worker was writing history in a shape the reader didn't
+  understand (so it dumped the JSON as text), and tool args were
+  read from the wrong field (opencode puts them under
+  part.state.input). Both fixed and round-trip verified.
+
+## [0.4.32](https://github.com/tianshu-ai/tianshu/compare/v0.4.31...v0.4.32) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** optional `enableLsp` toggle on the worker
+  agent.json (default false). When on, opencode keeps LSP +
+  formatters enabled and the worker opens sandbox egress to the
+  package registries opencode installs language servers from
+  (npm + GitHub) so the auto-install can complete instead of
+  hanging. Off by default preserves the locked-down, proxy-only
+  egress. Opt-in because it widens the sandbox's network surface.
+
+## [0.4.31](https://github.com/tianshu-ai/tianshu/compare/v0.4.30...v0.4.31) (2026-07-03)
+
+### Bug Fixes
+
+* **opencode-worker:** opencode runs now actually complete inside the
+  openshell sandbox (validated end-to-end: task done, file created,
+  result + transcript + history persisted, clean process exit). The
+  "stuck in_progress forever" was opencode auto-installing a language
+  server (bash-language-server via npm) before calling the model —
+  the sandbox egress is locked to the model proxy, so the install had
+  no network and hung, and the model was never called. Fixed with
+  OPENCODE_DISABLE_LSP_DOWNLOAD=1 + disabling lsp/formatter/snapshot/
+  autoupdate in the generated opencode.json. Also: run opencode in
+  the foreground under `timeout` (backgrounding broke the stdout
+  capture), and fixed a FOREIGN KEY failure when writing run history
+  for dev/virtual users.
+
+## [0.4.30](https://github.com/tianshu-ai/tianshu/compare/v0.4.29...v0.4.30) (2026-07-03)
+
+### Features
+
+* **opencode-worker:** write the opencode run transcript into task
+  history so the Execution tab shows what opencode did. The worker
+  now creates a worker session and inserts messages (prompt,
+  assistant text + tool calls, outcome) into the shared messages
+  table, and the pool stamps the session id onto the task — the
+  existing GET /tasks/:id/history renders it with no frontend
+  change. The raw NDJSON is also saved as opencode-transcript.jsonl
+  in the task workdir.
+
+## [0.4.29](https://github.com/tianshu-ai/tianshu/compare/v0.4.28...v0.4.29) (2026-07-03)
+
+### Bug Fixes
+
+* **opencode-worker:** isolate opencode's XDG dirs per task so it
+  no longer loads the container's global opencode config/plugins
+  (e.g. opencode-anthropic-auth) that fight the injected tianshu
+  provider and left it spinning on init without producing task
+  output. Runs now use per-task XDG_CONFIG_HOME/XDG_DATA_HOME while
+  OPENCODE_CONFIG still supplies the proxied provider.
+
+## [0.4.28](https://github.com/tianshu-ai/tianshu/compare/v0.4.27...v0.4.28) (2026-07-02)
+
+### Bug Fixes
+
+* **opencode-worker:** grant sandbox egress by binary, not just
+  host:port — the OpenCode worker now runs end to end. openshell's
+  network policy gates egress by BOTH the host:port endpoint AND the
+  requesting binary; registering the proxy endpoint with no
+  authorized binaries left every request denied (403 policy_denied,
+  the error that persisted through the earlier attempts).
+  SandboxRunner.allowEgress gains an optional `binaries` list; the
+  openshell runner passes them as `--binary` to
+  `policy update --add-endpoint`, and OpenCodeWorker authorizes the
+  opencode binary + node. Validated on a real local openshell
+  sandbox: task → self-install opencode → egress granted → opencode
+  run through the proxy → result returned → task done.
+
+## [0.4.27](https://github.com/tianshu-ai/tianshu/compare/v0.4.26...v0.4.27) (2026-07-02)
+
+### Bug Fixes
+
+* **opencode-worker:** surface the full API error. Failures showed a
+  bare `OpenCode error: APIError` because the NDJSON parser only
+  read `error.name`; opencode nests the detail under
+  `error.data.{message,statusCode,responseBody}`. Now the task's
+  failure_reason includes the status code, message, and an upstream
+  body snippet, so a proxy/upstream 4xx/5xx is diagnosable.
+
+## [0.4.26](https://github.com/tianshu-ai/tianshu/compare/v0.4.25...v0.4.26) (2026-07-02)
+
+### Bug Fixes
+
+* **opencode-worker:** pipe the task prompt via stdin instead of
+  passing it as a CLI argument. The openshell exec transport rejects
+  any argv element containing a newline ("command argument N
+  contains newline"), so a multi-line task description broke every
+  run (OpenCode exited 1 after ~20s). The worker now writes the
+  prompt to `<workdir>/.prompt.txt` and runs
+  `opencode run --format json < .prompt.txt`, keeping the command
+  line newline-free while delivering the full multi-line prompt.
+  Added run logging (start/finish + stderr head) for observability.
+
+## [0.4.25](https://github.com/tianshu-ai/tianshu/compare/v0.4.24...v0.4.25) (2026-07-02)
+
+### Features
+
+* **opencode-worker:** new `kind:"opencode"` worker drives the
+  headless OpenCode CLI inside the tenant shell sandbox to complete
+  a workboard task, using any tianshu model. A host OpenCode proxy
+  (`packages/server/src/opencode-proxy`) mints a per-task,
+  single-model, single-tenant token; the sandbox reaches a model
+  through the proxy and never sees the real provider key or baseUrl.
+  The proxy overwrites the request `model` (anti-tamper), enforces a
+  path/method allowlist, and normalizes the upstream API version per
+  protocol. The worker self-installs opencode
+  (`npm i -g opencode-ai@1.17.13`, idempotent) so no custom Docker
+  image is needed. Per-task model override via an `opencode-model:<id>`
+  label. Configure the sandbox-reachable proxy origin via
+  `opencodeProxy.sandboxReachableOrigin` (default
+  `http://host.docker.internal:<server.port>`). The opencode <-> proxy
+  <-> model core is validated end-to-end; live openshell wiring
+  depends on the operator's sandbox runtime.
+
+## [0.4.24](https://github.com/tianshu-ai/tianshu/compare/v0.4.23...v0.4.24) (2026-07-02)
+
+### Features
+
+* **workboard:** `task_create` can now define a dependency graph in
+  one batch call. Each task may carry a local `ref` alias; other
+  rows in the same `tasks` array reference it in `depends_on` to
+  depend on a sibling that has no real id yet. The batch assigns
+  ids up front, resolves refs to ids, creates rows in topological
+  order (so the `blocked` flag is correct at creation), and
+  rejects cyclic batch deps per-row (the offending edge is dropped
+  with a note; the task is still created). `depends_on` still
+  accepts existing task ids you own. Previously an intra-batch
+  dependency was silently dropped because the sibling didn't exist
+  in the DB yet, forcing serial create-then-link calls.
+
+## [0.4.23](https://github.com/tianshu-ai/tianshu/compare/v0.4.22...v0.4.23) (2026-07-02)
+
+### Features
+
+* **web-search:** simplified to a single key-free backend, per Yu.
+  Dropped the Tavily / Brave / SearXNG schemes and the scheme
+  selector entirely; web_search now always uses the hosted MCP
+  path. The only config is `backend`: Exa or Parallel (both
+  anonymous/free). Removed all API-key and SearXNG-URL fields. The
+  hosted provider's `key` argument is now just the backend name,
+  not a credential blob. web_fetch is unchanged. Both backends
+  re-verified live after the cut.
+
+## [0.4.22](https://github.com/tianshu-ai/tianshu/compare/v0.4.21...v0.4.22) (2026-07-01)
+
+### Bug Fixes
+
+* **web:** the capability/state tags in the Plugin Manager (active,
+  disabled, failed, verified, no-client-bundle, provides/requires/
+  missing) used dark-theme-only tints (bg-emerald-900/40,
+  bg-sky-900/40, …) that turned muddy and low-contrast on the white
+  light-theme surface. All now use theme-aware semantic colours
+  (bg-<sem>/15 + border-<sem>/40 + text-<sem>): success for
+  active/provides/verified, accent for satisfied requires, danger
+  for missing/failed, warning for no-client-bundle, and bg-hover
+  for disabled. Legible in both themes. Verified by rendering old
+  vs new on light and dark surfaces.
+
+## [0.4.21](https://github.com/tianshu-ai/tianshu/compare/v0.4.20...v0.4.21) (2026-07-01)
+
+### Bug Fixes
+
+* **workboard:** the Retry button on awaiting-intervention and
+  stalled task cards was invisible in light theme. It used
+  text-rose-100 / text-orange-100 (near-white) with no background
+  (transparent until hover), so on the card's light rose/orange
+  tint the label vanished — leaving just an empty red outline. Both
+  Retry buttons now use a solid accent background (rose-600 /
+  orange-600) with white text, legible in both themes. Verified by
+  rendering old vs new on light and dark card backgrounds.
+
+## [0.4.20](https://github.com/tianshu-ai/tianshu/compare/v0.4.19...v0.4.20) (2026-07-01)
+
+### Features
+
+* **web-search:** the plugin now offers selectable search schemes
+  and a `web_fetch` tool. Schemes: **hosted** (key-free — queries
+  Exa's or Parallel's free hosted MCP endpoints anonymously; an
+  optional key raises limits), **searxng** (point at your own
+  self-hosted instance URL, no key), and the existing **tavily** /
+  **brave** (API key). The operator picks the scheme in Settings →
+  Plugins; the agent can still force one per call via `provider`.
+  `web_fetch(url, extractMode?, maxChars?)` does a dependency-free
+  HTTP GET with readable-content extraction (HTML → markdown/text)
+  and an SSRF guard blocking private/loopback/metadata hosts; it
+  needs no configuration. Hosted Exa/Parallel round-trips verified
+  live against both endpoints.
+
 ## [0.4.19](https://github.com/tianshu-ai/tianshu/compare/v0.4.18...v0.4.19) (2026-07-01)
 
 ### Features

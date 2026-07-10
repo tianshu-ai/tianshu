@@ -20,6 +20,31 @@ export type ServerEvent =
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
   | { type: "stream_error"; reason: string }
+  /**
+   * A transient LLM call failure is being retried (rate limit /
+   * network / expired token). Emitted once per retry attempt so the
+   * UI can show a small "retrying…" notice. Informational only: the
+   * stream continues on success, or ends with `stream_error` if all
+   * attempts are exhausted.
+   */
+  | {
+      type: "model_retry";
+      attempt: number;
+      maxAttempts: number;
+      kind: string;
+      delayMs: number;
+      rateLimited: boolean;
+      message: string;
+      contentStreamed: boolean;
+      sessionId?: string;
+    }
+  /**
+   * Discard the in-progress streaming bubble. Sent when a mid-stream
+   * failure is retried after content already streamed — the retry
+   * rebuilds the message, so the client clears what it has before the
+   * replay's deltas arrive.
+   */
+  | { type: "stream_reset"; sessionId?: string }
   | { type: "tool_call"; callId: string; name: string; arguments: Record<string, unknown>; sessionId?: string }
   | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string; sessionId?: string }
   | {
@@ -55,7 +80,15 @@ export type ServerEvent =
       fromVersion: string | null;
       toVersion: string;
       newTools: ReadonlyArray<{ name: string; pluginId: string }>;
-    };
+    }
+  /**
+   * Generic passthrough for a plugin's `ctx.broadcast(type, payload)`,
+   * wrapped host-side. `event` is `<pluginId>:<type>` (e.g.
+   * "workboard:workboard.task"); plugin frontends filter on it and
+   * read `payload`. Lets plugin UIs react to server pushes instead of
+   * polling on a timer.
+   */
+  | { type: "plugin_event"; event: string; payload: unknown };
 
 export interface PluginsChangedDelta {
   pluginId: string;
@@ -70,12 +103,36 @@ type Handler<T extends EventType> = (msg: Extract<ServerEvent, { type: T }>) => 
 // hold mixed-type handler sets without per-Set generics gymnastics.
 type AnyHandler = (msg: ServerEvent) => void;
 
+export type ConnStatus = "open" | "closed";
+type StatusHandler = (status: ConnStatus) => void;
+
 class TianshuWs {
   private ws: WebSocket | null = null;
   private listeners = new Map<EventType, Set<AnyHandler>>();
+  private statusListeners = new Set<StatusHandler>();
   private connectAttempts = 0;
   private connectTimer: ReturnType<typeof setTimeout> | null = null;
   private outgoingQueue: string[] = [];
+
+  /** Subscribe to connection open/close transitions. Returns an
+   *  unsubscribe fn. Used by the chat store to detect a stream that
+   *  was orphaned by a socket drop (server restart, network blip). */
+  onStatus(h: StatusHandler): () => void {
+    this.statusListeners.add(h);
+    return () => {
+      this.statusListeners.delete(h);
+    };
+  }
+
+  private emitStatus(status: ConnStatus): void {
+    for (const h of this.statusListeners) {
+      try {
+        h(status);
+      } catch {
+        // a throwing status listener must not break the socket.
+      }
+    }
+  }
 
   connect(): void {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
@@ -88,6 +145,7 @@ class TianshuWs {
       this.connectAttempts = 0;
       const queued = this.outgoingQueue.splice(0);
       for (const m of queued) ws.send(m);
+      this.emitStatus("open");
     });
     ws.addEventListener("message", (ev) => {
       let parsed: ServerEvent;
@@ -102,6 +160,7 @@ class TianshuWs {
     });
     ws.addEventListener("close", () => {
       this.ws = null;
+      this.emitStatus("closed");
       this.scheduleReconnect();
     });
     ws.addEventListener("error", () => {

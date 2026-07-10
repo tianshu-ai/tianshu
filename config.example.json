@@ -54,6 +54,25 @@
           { "id": "Qwen3.6-35B-A3B-Q8_0.gguf", "name": "Qwen3.6 35B (Local)", "contextWindow": 262144, "maxTokens": 8192 }
         ]
       }
+    },
+
+    // Cross-provider retry policy for transient LLM call failures
+    // (network blips, 429 rate-limits, 5xx gateway errors, expired
+    // JWT / 401). Applied at the single stream chokepoint, so it covers
+    // the chat handler, worker agent-loop, and compaction uniformly.
+    // Retries only happen BEFORE any content has streamed to the user
+    // (never duplicates output); once tokens start flowing, a failure
+    // surfaces as-is. All fields optional; defaults shown below.
+    "resilience": {
+      "enabled": true,
+      "maxAttempts": 4,
+      "baseDelayMs": 500,
+      "maxDelayMs": 20000,
+      "jitter": 0.25,
+      "respectRetryAfter": true,
+      "maxRetryAfterMs": 60000,
+      "rateLimitFloorMs": 5000,
+      "retryAfterContent": true
     }
   },
 

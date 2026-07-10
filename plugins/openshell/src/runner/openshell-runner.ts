@@ -60,6 +60,87 @@ import {
   type GatewayHandle,
 } from "./gateway-manager.js";
 
+/** One parsed network-denial record from the sandbox policy log. */
+export interface ParsedDenial {
+  /** ISO-8601 timestamp (from the log line), or undefined if absent. */
+  at?: string;
+  /** Severity token, e.g. "MED" / "HIGH" (best-effort). */
+  severity?: string;
+  /** Requesting binary path (+pid) when the log includes it. */
+  binary?: string;
+  /** Destination host that was blocked. */
+  host?: string;
+  /** Destination port. */
+  port?: number;
+  /** Named policy that matched (or "-" when none). */
+  policy?: string;
+  /** Enforcement engine: "l7" | "opa" | ... */
+  engine?: string;
+  /** Human-readable reason string. */
+  reason?: string;
+  /** The original unparsed line (always present). */
+  raw: string;
+}
+
+/**
+ * Parse a single OCSF-ish denial log line into structured fields.
+ * Tolerant: any field it can't find is left undefined and `raw` is
+ * always the original line, so an unexpected format never drops data.
+ *
+ * Sample line:
+ *   2026-07-08T16:12:57.644Z OCSF NET:OPEN [MED] DENIED
+ *   release-assets.githubusercontent.com:443 [policy:copilot
+ *   engine:l7] [reason:L7 tunnel closed after policy reload [...]]
+ * or (opa engine, with binary):
+ *   ...DENIED /usr/lib/.../opencode.exe(92) -> us.i.posthog.com:443
+ *   [policy:- engine:opa] [reason:endpoint ... not allowed ...]
+ */
+function parseDenialLine(line: string): ParsedDenial {
+  const out: ParsedDenial = { raw: line };
+  const tsMatch = line.match(/^(\S+Z)\s/);
+  if (tsMatch) out.at = tsMatch[1];
+  const sevMatch = line.match(/\[(LOW|MED|MEDIUM|HIGH|CRIT|CRITICAL|INFO)\]/i);
+  if (sevMatch) out.severity = sevMatch[1].toUpperCase();
+  const policyMatch = line.match(/\[policy:([^\s\]]+)/);
+  if (policyMatch && policyMatch[1] !== "-") out.policy = policyMatch[1];
+  const engineMatch = line.match(/engine:([^\s\]]+)/);
+  if (engineMatch) out.engine = engineMatch[1];
+  const reasonMatch = line.match(/\[reason:([\s\S]*)\]?$/);
+  if (reasonMatch) out.reason = reasonMatch[1].replace(/\]+$/, "").trim();
+  // Binary + host:port. Two shapes: "<bin>(pid) -> host:port" (opa)
+  // or a bare "host:port" right after DENIED (l7).
+  const arrowMatch = line.match(/DENIED\s+(\S+?)\s*->\s*([^\s:]+):(\d+)/);
+  if (arrowMatch) {
+    out.binary = arrowMatch[1];
+    out.host = arrowMatch[2];
+    out.port = Number(arrowMatch[3]);
+  } else {
+    const hostMatch = line.match(/DENIED\s+([^\s:]+):(\d+)/);
+    if (hostMatch) {
+      out.host = hostMatch[1];
+      out.port = Number(hostMatch[2]);
+    }
+  }
+  return out;
+}
+
+/**
+ * Default binaries authorized when a human clicks "Allow" on a
+ * denied endpoint. openshell gates egress by BOTH host:port AND the
+ * requesting binary, so a rule needs at least one binary to be
+ * usable. These cover the opencode/bun runtime + node/npm (the
+ * common in-sandbox network callers); the denial's own binary is
+ * appended on top. Mirrors the worker's OPENCODE_BINARIES set.
+ */
+const DEFAULT_ALLOW_BINARIES = [
+  "/usr/bin/opencode",
+  "/usr/lib/node_modules/opencode-ai/bin/opencode.exe",
+  "/usr/lib/node_modules/opencode-ai/**",
+  "/usr/bin/node",
+  "/usr/bin/npm",
+  "/usr/bin/curl",
+];
+
 export interface OpenShellRunnerOpts {
   /** Tenant id; used to derive sandbox name + state dir. */
   tenantId: string;
@@ -81,6 +162,40 @@ export interface OpenShellRunnerOpts {
   /** Sandbox `--from` source. Defaults to OpenShell Community's
    *  `base` image (python + node + git + standard CLI). */
   fromImage?: string;
+  /**
+   * Optional memory limit for the sandbox, passed to
+   * `openshell sandbox create --memory <v>` (e.g. "4Gi", "8G",
+   * "512Mi"). Two reasons to set it:
+   *   1. Containment — a runaway task can't eat all host RAM.
+   *   2. Diagnosability — with a cgroup limit, an over-allocation is
+   *      OOM-killed (SIGKILL/137) so the failure classifier can
+   *      report [OUT OF MEMORY] instead of a vague hang. Without a
+   *      limit there is no cgroup OOM event to observe.
+   * Config: plugins.openshell.config.memoryLimit. Undefined = no
+   * limit (unbounded, host-RAM bound).
+   */
+  memoryLimit?: string;
+  /** Optional CPU limit for the sandbox, passed to
+   *  `sandbox create --cpu <v>` (e.g. "2", "500m"). Config:
+   *  plugins.openshell.config.cpuLimit. */
+  cpuLimit?: string;
+  /**
+   * OpenShell Policy Advisor mode. Controls whether in-sandbox
+   * agents (OpenCode etc.) can dynamically propose egress rules
+   * when they hit a `policy_denied`, and how those proposals are
+   * approved:
+   *   - "off"    (default): advisor disabled — sandbox stays
+   *              strictly deny-by-default; no proposal loop.
+   *   - "manual": advisor enabled, proposals queue as pending
+   *              drafts for a human to approve/reject.
+   *   - "auto":  advisor enabled; proposals that the policy prover
+   *              judges safe (empty delta) are auto-approved + hot
+   *              reloaded, risky ones fall to the manual inbox.
+   * Set via plugin config `policyAdvisor`. This replaces the old
+   * `allowPublicEgress` permissive-policy hack (which broke
+   * provisioning by wholesale-replacing the default policy).
+   */
+  policyAdvisor?: "auto" | "manual" | "off";
   log: PluginContext["log"];
 }
 
@@ -106,6 +221,13 @@ export class OpenShellRunner implements SandboxRunner {
   private readonly opts: OpenShellRunnerOpts & { port: number };
   private readonly gateway: GatewayManager;
   private gatewayHandle: GatewayHandle | null = null;
+  /** host:port endpoints already granted egress this session
+   *  (allowEgress idempotency). Cleared on reset(). */
+  private readonly grantedEgress = new Set<string>();
+  /** Guard: at most one advisor-driven sandbox recreate per
+   *  ensureSandbox() pass, so a persistent feature_disabled can't
+   *  spin the sandbox in a recreate loop. Reset at each pass start. */
+  private healedAdvisorThisPass = false;
 
   constructor(opts: OpenShellRunnerOpts) {
     this.opts = {
@@ -137,12 +259,24 @@ export class OpenShellRunner implements SandboxRunner {
   async ensureSandbox(): Promise<void> {
     this.state = "starting";
     this.startedAt = Date.now();
+    this.healedAdvisorThisPass = false;
     try {
       this.gatewayHandle = await this.gateway.ensureRunning();
       // After the gateway is up + certs exist we can lay down the
       // plugin-local CLI config. Synchronous so the first CLI call
       // below sees a valid cert dir.
       await this.ensureCliConfig();
+      // Apply the policy-advisor settings at gateway-global scope
+      // before the sandbox is created/adopted. A freshly-created
+      // sandbox inherits the global value (verified: its scope shows
+      // "true (global)" and proposals work). Idempotent + best-
+      // effort so a settings hiccup doesn't block the sandbox.
+      // NOTE: a pre-existing sandbox created BEFORE this ran keeps
+      // its own baked-in value until recreated — that's the
+      // `feature_disabled` symptom on stale sandboxes; fix by
+      // reset/recreate, not by a second sandbox-scoped set (openshell
+      // rejects that once the setting is managed globally).
+      await this.ensurePolicyAdvisorSettings();
       const existing = await this.findSandbox(this.sandboxName);
       if (!existing) {
         await this.createSandbox();
@@ -171,6 +305,23 @@ export class OpenShellRunner implements SandboxRunner {
       // Wait for Ready. Cold image pull is slow; subsequent creates
       // are fast because the docker image is cached.
       await this.waitForReady();
+      // Self-heal stale sandboxes: a sandbox created BEFORE the
+      // global advisor setting existed baked in `proposals disabled`
+      // and won't pick up the global flip (openshell forbids a
+      // sandbox-scoped override once the setting is managed
+      // globally). Detect that here and recreate ONCE so the fresh
+      // sandbox inherits the now-correct global value.
+      await this.healAdvisorIfStale();
+      // Guarantee the workspace root exists on EVERY ensureSandbox,
+      // not just fresh createSandbox(). An ADOPTED sandbox (found
+      // ready, so createSandbox — which mkdirs it — was skipped), or
+      // one created out of band (bare `sandbox create -- true`, an
+      // older code version, or a heal/recreate), may lack
+      // /sandbox/workspace. Then every writeFile/exec that does
+      // `cd /sandbox/workspace` fails "No such file or directory"
+      // (observed: opencode install exit 1 -> task stalls with
+      // failureReason but empty summary). Idempotent mkdir closes it.
+      await this.ensureWorkspaceDir();
       this.state = "ready";
       this.lastError = undefined;
     } catch (err) {
@@ -223,14 +374,32 @@ export class OpenShellRunner implements SandboxRunner {
       // `bash -c` wraps the command so pipes / redirections / `&&`
       // are honoured exactly like the SDK contract promises.
       args.push("--", "bash", "-c", req.command);
+      // DIAG (2026-07-08): full argv handed to the openshell CLI, so
+      // we can compare the worker's invocation with a manual
+      // `openshell sandbox exec` that works.
+      this.opts.log.info(
+        `openshell exec argv: openshell ${args
+          .map((a) => (/\s/.test(a) ? JSON.stringify(a) : a))
+          .join(" ")}`,
+      );
       const { exitCode, stdout, stderr, timedOut, aborted } =
-        await this.spawnCli(args, {
+        await this.spawnCliReady(args, {
           // Host-side budget is gateway timeout + 2s slack so we can
           // observe a structured timeout error from the gateway
           // before our own SIGKILL fires.
           timeoutMs: req.timeoutMs ? req.timeoutMs + 2_000 : undefined,
           signal: req.signal,
         });
+      // DIAG (2026-07-08): log the RESULT of each openshell exec
+      // (exit code + trimmed stdout/stderr) so we can see whether the
+      // version-check / mkdir / opencode-run steps each succeeded and
+      // what they printed. Truncated to keep logs sane.
+      this.opts.log.info(
+        `openshell exec result: exit=${exitCode} timedOut=${timedOut} ` +
+          `aborted=${aborted} stdout=${JSON.stringify(
+            (stdout ?? "").slice(0, 800),
+          )} stderr=${JSON.stringify((stderr ?? "").slice(0, 800))}`,
+      );
       return {
         exitCode,
         stdout,
@@ -258,6 +427,14 @@ export class OpenShellRunner implements SandboxRunner {
     );
     await fs.mkdir(path.dirname(tmpHost), { recursive: true });
     try {
+      // Use spawnCli (NOT spawnCliReady): a read must never trigger
+      // waitForReady/recreate. The opencode-worker's 4s history
+      // poller calls readFile repeatedly WHILE a long opencode exec
+      // is running; if that read hit the not-ready retry path it
+      // could recreate the (busy) sandbox mid-run and kill the task
+      // (observed: task stuck in_progress, workdir wiped). Reads are
+      // best-effort — a failure just propagates as an error the
+      // caller can ignore.
       const { exitCode, stderr } = await this.spawnCli(
         ["sandbox", "download", this.sandboxName, guestPath, tmpHost],
         {},
@@ -296,7 +473,7 @@ export class OpenShellRunner implements SandboxRunner {
     await fs.mkdir(path.dirname(tmpHost), { recursive: true });
     await fs.writeFile(tmpHost, content, "utf8");
     try {
-      const { exitCode, stderr } = await this.spawnCli(
+      const { exitCode, stderr } = await this.spawnCliReady(
         [
           "sandbox",
           "upload",
@@ -416,7 +593,7 @@ export class OpenShellRunner implements SandboxRunner {
           {},
         ).catch(() => undefined);
       }
-      const { exitCode, stderr } = await this.spawnCli(
+      const { exitCode, stderr } = await this.spawnCliReady(
         [
           "sandbox",
           "upload",
@@ -504,7 +681,7 @@ export class OpenShellRunner implements SandboxRunner {
       const guestPath = `${SANDBOX_WORKSPACE_PATH}/${sandboxSafe}`;
       const hostAbs = path.join(destBase, hostSafe);
       await fs.mkdir(path.dirname(hostAbs), { recursive: true });
-      const { exitCode, stderr } = await this.spawnCli(
+      const { exitCode, stderr } = await this.spawnCliReady(
         ["sandbox", "download", this.sandboxName, guestPath, hostAbs],
         {},
       );
@@ -551,6 +728,9 @@ export class OpenShellRunner implements SandboxRunner {
       );
     } finally {
       this.state = "stopped";
+      // The recreated sandbox starts with a fresh (deny-by-default)
+      // policy, so drop our egress-grant memo.
+      this.grantedEgress.clear();
     }
     await this.ensureSandbox();
     this.opts.log.info("openshell: reset() done");
@@ -598,6 +778,186 @@ export class OpenShellRunner implements SandboxRunner {
 
   // ─── internals ───────────────────────────────────────────────────
 
+  /**
+   * Grant sandbox egress to host:port via openshell's policy engine.
+   * openshell is deny-by-default for network, so the in-sandbox
+   * OpenCode agent can't reach the host model proxy until we add an
+   * endpoint. Idempotent (tracks granted endpoints). `--wait` blocks
+   * until the sandbox loads the revision so a run started right
+   * after doesn't race the policy.
+   */
+  async allowEgress(endpoint: {
+    host: string;
+    port: number;
+    protocol?: "http" | "https" | "tcp";
+    /** Absolute paths of binaries authorized to use this endpoint.
+     *  openshell gates egress by BOTH host:port AND the requesting
+     *  binary — an endpoint with no binaries is unusable, which is
+     *  what caused the persistent 403 policy_denied. */
+    binaries?: string[];
+  }): Promise<void> {
+    if (this.state !== "ready" && this.state !== "running") {
+      await this.ensureSandbox();
+    }
+    const key = `${endpoint.host}:${endpoint.port}`;
+    if (this.grantedEgress.has(key)) return;
+    // openshell's endpoint "protocol" segment is an L7 class —
+    // 'rest' | 'websocket' | 'sql'. The proxy is HTTP/JSON → 'rest'.
+    // read-write expands to allow-all methods; enforce is fine once
+    // the requesting binary is authorized (see --binary below).
+    const spec = `${endpoint.host}:${endpoint.port}:read-write:rest:enforce`;
+    const args = ["policy", "update", this.sandboxName, "--add-endpoint", spec];
+    // Authorize the binaries that will make the request. Without at
+    // least one, openshell denies every process (403 policy_denied
+    // even with the endpoint + path rules present).
+    for (const b of endpoint.binaries ?? []) args.push("--binary", b);
+    args.push("--wait");
+    await this.cli(args);
+    this.grantedEgress.add(key);
+    this.opts.log.info(
+      `openshell: granted egress ${key} (rest, ${(endpoint.binaries ?? []).length} binaries) to sandbox ${this.sandboxName}`,
+    );
+  }
+
+  /**
+   * List recent network DENIALS from the sandbox-local policy API.
+   * The gateway keeps a rolling in-sandbox log at
+   * `http://policy.local/v1/denials?last=N` (only reachable INSIDE
+   * the container), so we bridge in via `sandbox exec ... curl`.
+   *
+   * Each raw line is OCSF-ish text, e.g.:
+   *   2026-07-08T16:12:57.644Z OCSF NET:OPEN [MED] DENIED
+   *   <binary(pid)-> >host:port [policy:<x> engine:<l7|opa>]
+   *   [reason:<...>]
+   * We parse out the timestamp, severity, binary, host:port, policy,
+   * engine, and reason, and (when `minutes` is given) drop anything
+   * older than that window. Best-effort: unparseable lines are still
+   * returned with the raw text so nothing is silently lost.
+   */
+  async listDenials(
+    opts: { last?: number; minutes?: number } = {},
+  ): Promise<{ denials: ParsedDenial[]; logAvailable: boolean }> {
+    if (this.state !== "ready" && this.state !== "running") {
+      await this.ensureSandbox();
+    }
+    const last = Math.min(Math.max(opts.last ?? 200, 1), 1000);
+    const url = `http://policy.local/v1/denials?last=${last}`;
+    const { exitCode, stdout, stderr } = await this.spawnCliReady([
+      "sandbox",
+      "exec",
+      "--name",
+      this.sandboxName,
+      "--no-tty",
+      "--",
+      "bash",
+      "-c",
+      `curl -sS -m 8 ${url}`,
+    ]);
+    if (exitCode !== 0) {
+      throw new Error(
+        `openshell: listDenials failed (exit ${exitCode}): ${
+          stderr || stdout
+        }`,
+      );
+    }
+    let parsed: { denials?: unknown; log_available?: unknown };
+    try {
+      parsed = JSON.parse(stdout.trim());
+    } catch {
+      throw new Error(
+        `openshell: listDenials got non-JSON from policy API: ${stdout.slice(
+          0,
+          200,
+        )}`,
+      );
+    }
+    const rawLines = Array.isArray(parsed.denials)
+      ? (parsed.denials as unknown[]).filter(
+          (l): l is string => typeof l === "string",
+        )
+      : [];
+    const cutoffMs =
+      typeof opts.minutes === "number" && opts.minutes > 0
+        ? Date.now() - opts.minutes * 60_000
+        : null;
+    const denials: ParsedDenial[] = [];
+    for (const line of rawLines) {
+      const d = parseDenialLine(line);
+      if (cutoffMs !== null && d.at) {
+        const t = Date.parse(d.at);
+        if (!Number.isNaN(t) && t < cutoffMs) continue;
+      }
+      denials.push(d);
+    }
+    // Newest first.
+    denials.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
+    return {
+      denials,
+      logAvailable: parsed.log_available === true,
+    };
+  }
+
+  /**
+   * Return the current EFFECTIVE policy for this sandbox — i.e. the
+   * allow-list of endpoints/rules currently in force. Uses
+   * `openshell policy get <sandbox> --output json --full` (verified
+   * by Yu 2026-07-09: the plain form only prints a metadata header;
+   * `--output json --full` is what emits the actual rule bodies).
+   * Returns the parsed JSON (or null if it didn't parse) plus the
+   * raw text so the admin page can render structured rules and still
+   * fall back to raw on an unexpected shape.
+   */
+  async getPolicy(): Promise<{ policy: unknown; raw: string }> {
+    if (this.state !== "ready" && this.state !== "running") {
+      await this.ensureSandbox();
+    }
+    const { stdout } = await this.cli([
+      "policy",
+      "get",
+      this.sandboxName,
+      "--output",
+      "json",
+      "--full",
+    ]);
+    let policy: unknown = null;
+    try {
+      policy = JSON.parse(stdout);
+    } catch {
+      policy = null;
+    }
+    return { policy, raw: stdout };
+  }
+
+  /**
+   * Manually ALLOW a previously-denied endpoint (the admin page's
+   * "Allow" button). Thin wrapper over allowEgress that fills in a
+   * sensible default binary set so the resulting rule is actually
+   * usable (openshell gates egress by host:port AND binary; a rule
+   * with no binaries is inert). We authorize the opencode/node
+   * runtime binaries by default, plus the specific binary from the
+   * denial record when the caller passes one (pid suffix stripped).
+   */
+  async allowDenial(opts: {
+    host: string;
+    port: number;
+    protocol?: "http" | "https" | "tcp";
+    binary?: string;
+  }): Promise<void> {
+    const binaries = [...DEFAULT_ALLOW_BINARIES];
+    if (opts.binary) {
+      // Denial lines carry the binary as `/abs/path/bin.exe(1234)`;
+      // strip the (pid) suffix and de-dup.
+      const clean = opts.binary.replace(/\(\d+\)\s*$/, "").trim();
+      if (clean && !binaries.includes(clean)) binaries.push(clean);
+    }
+    await this.allowEgress({
+      host: opts.host,
+      port: opts.port,
+      protocol: opts.protocol ?? "https",
+      binaries,
+    });
+  }
+
   private resolveSafe(relPath: string): string {
     const root = path.resolve(this.opts.workspaceDir);
     const resolved = path.resolve(root, relPath);
@@ -636,6 +996,22 @@ export class OpenShellRunner implements SandboxRunner {
     if (this.opts.fromImage) {
       args.push("--from", this.opts.fromImage);
     }
+    // Resource limits (optional). A memory limit both contains a
+    // runaway task and makes over-allocation OOM-killable (so the
+    // failure classifier can report [OUT OF MEMORY] instead of an
+    // opaque hang).
+    if (this.opts.memoryLimit) {
+      args.push("--memory", this.opts.memoryLimit);
+    }
+    if (this.opts.cpuLimit) {
+      args.push("--cpu", this.opts.cpuLimit);
+    }
+    // Note: we deliberately do NOT pass a custom `--policy`. A
+    // custom policy wholesale-replaces the built-in default (losing
+    // its named policies, incl. the `opencode` egress grants) and
+    // broke provisioning in 0.4.35. Dynamic egress now goes through
+    // the Policy Advisor loop (see ensurePolicyAdvisorSettings) or
+    // explicit allowEgress() grants against the default policy.
     args.push("--", "true");
     await this.cli(args);
     // mkdir the workspace root inside the sandbox so the first
@@ -663,33 +1039,324 @@ export class OpenShellRunner implements SandboxRunner {
     );
   }
 
+  /**
+   * Apply the gateway-global Policy Advisor settings that the
+   * configured `policyAdvisor` mode implies. These are the two
+   * upstream global settings that gate the dynamic egress-proposal
+   * loop:
+   *   - `agent_policy_proposals_enabled` (bool): whether the
+   *     supervisor installs the policy.local API + advisor skill
+   *     and enriches `policy_denied` responses with agent guidance.
+   *   - `proposal_approval_mode` ("auto" | "manual"): whether
+   *     prover-clean proposals hot-reload automatically or wait for
+   *     a human.
+   *
+   * Mode mapping:
+   *   off    → proposals disabled (approval mode left untouched).
+   *   manual → proposals enabled, approval mode = manual.
+   *   auto   → proposals enabled, approval mode = auto.
+   *
+   * Settings are gateway-global (not per-sandbox) and idempotent,
+   * so we can safely re-apply on every ensureSandbox(). Best-effort:
+   * a settings failure is logged, not thrown — the sandbox should
+   * still come up (just without the advisor loop).
+   *
+   * CLI auth: `this.cli()` already pins OPENSHELL_GATEWAY_ENDPOINT +
+   * the plugin-local XDG cert dir, matching how allowEgress() drives
+   * `policy update`. The gateway's mTLS is required here — a hand-run
+   * `openshell settings set` wouldn't have the client cert.
+   */
+  /**
+   * If the advisor is enabled but the (possibly pre-existing /
+   * adopted) sandbox still reports proposals as disabled, recreate
+   * it once so it inherits the global setting. No-op when the
+   * advisor is off, when the probe shows proposals already work, or
+   * when we've already recreated this ensureSandbox() pass (guards
+   * against a recreate loop if something deeper is wrong).
+   *
+   * Probe: POST an empty-operations proposal to the sandbox-local
+   * policy API. Verified against openshell 0.0.74:
+   *   - proposals disabled -> {"error":"feature_disabled", ...}
+   *   - proposals enabled  -> {"error":"invalid_proposal", ...}
+   * (an empty proposal is always rejected; we only care WHICH way.)
+   */
+  private async healAdvisorIfStale(): Promise<void> {
+    const mode = this.opts.policyAdvisor ?? "off";
+    if (mode !== "auto" && mode !== "manual") return; // advisor off
+    if (this.healedAdvisorThisPass) return; // already recreated once
+    let disabled: boolean;
+    try {
+      disabled = await this.probeProposalsDisabled();
+    } catch (err) {
+      // Probe itself failed (curl missing, API unreachable) — don't
+      // recreate on a flaky probe; just log and move on.
+      this.opts.log.warn(
+        `openshell: advisor self-heal probe failed (skipping recreate): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+      return;
+    }
+    if (!disabled) return; // healthy — proposals already enabled
+    this.opts.log.warn(
+      `openshell: sandbox ${this.sandboxName} has policy proposals ` +
+        `disabled despite advisor mode=${mode} (stale sandbox); ` +
+        `recreating once so it inherits the global setting`,
+    );
+    this.healedAdvisorThisPass = true;
+    await this.cli(["sandbox", "delete", this.sandboxName]).catch(
+      () => undefined,
+    );
+    this.grantedEgress.clear(); // fresh sandbox = fresh policy
+    await this.createSandbox();
+    await this.waitForReady();
+    // Verify the recreate actually fixed it; if not, surface a
+    // warning but don't loop (guard is set).
+    try {
+      if (await this.probeProposalsDisabled()) {
+        this.opts.log.error(
+          `openshell: sandbox ${this.sandboxName} STILL reports proposals ` +
+            `disabled after recreate — check the global ` +
+            `agent_policy_proposals_enabled setting`,
+        );
+      } else {
+        this.opts.log.info(
+          `openshell: sandbox ${this.sandboxName} recreated; policy ` +
+            `proposals now enabled`,
+        );
+      }
+    } catch {
+      /* re-probe best-effort */
+    }
+  }
+
+  /**
+   * Probe whether agent-driven policy proposals are DISABLED in the
+   * live sandbox by POSTing an empty proposal to the sandbox-local
+   * policy API and inspecting the error class. Returns true only
+   * when the API explicitly answers `feature_disabled`; any other
+   * response (invalid_proposal, accepted, or an unrecognised body)
+   * is treated as "not disabled" so we never recreate on ambiguity.
+   */
+  private async probeProposalsDisabled(): Promise<boolean> {
+    // Run via spawnCli directly (NOT this.exec) — exec() re-enters
+    // ensureSandbox() when state isn't "ready", which would recurse
+    // since we're called from inside ensureSandbox() before state is
+    // set. spawnCli is the same low-level transport exec uses.
+    const { stdout, stderr } = await this.spawnCli(
+      [
+        "sandbox",
+        "exec",
+        "--name",
+        this.sandboxName,
+        "--no-tty",
+        "--",
+        "bash",
+        "-c",
+        "curl -sS -m 8 -X POST http://policy.local/v1/proposals " +
+          "-H 'content-type: application/json' " +
+          `-d '{"intent_summary":"advisor-selfcheck","operations":[]}' 2>&1`,
+      ],
+      { timeoutMs: 15_000 },
+    );
+    const body = `${stdout}\n${stderr}`;
+    return /feature_disabled/.test(body);
+  }
+
+  private async ensurePolicyAdvisorSettings(): Promise<void> {
+    const mode = this.opts.policyAdvisor ?? "off";
+    const enabled = mode === "auto" || mode === "manual";
+    // Gateway-GLOBAL scope only. Verified against openshell 0.0.74:
+    // a sandbox inherits the global value (its own scope shows
+    // "true (global)") and proposals work on a freshly-created
+    // sandbox with just this. Do NOT also set sandbox scope — once a
+    // setting is managed globally, `settings set <sandbox>` is
+    // rejected with "managed globally; delete the global setting
+    // before sandbox update".
+    try {
+      await this.cli([
+        "settings",
+        "set",
+        "--global",
+        "--key",
+        "agent_policy_proposals_enabled",
+        "--value",
+        enabled ? "true" : "false",
+        "--yes",
+      ]);
+      if (enabled) {
+        await this.cli([
+          "settings",
+          "set",
+          "--global",
+          "--key",
+          "proposal_approval_mode",
+          "--value",
+          mode, // "auto" | "manual"
+          "--yes",
+        ]);
+      }
+      this.opts.log.info(
+        `openshell: policy advisor mode=${mode} (proposals ${
+          enabled ? "enabled" : "disabled"
+        }${enabled ? `, approval=${mode}` : ""}) @ global`,
+      );
+    } catch (err) {
+      this.opts.log.warn(
+        `openshell: failed to apply policy advisor settings (mode=${mode}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
   /** Poll `sandbox get` until Phase == Ready. Throws on Failed or
    *  on a per-call deadline (2 minutes — first-ever start has to
    *  pull the base image). */
   private async waitForReady(): Promise<void> {
-    const deadline = Date.now() + 120_000;
+    // A healthy sandbox reaches Ready within seconds (cold image pull
+    // aside). But a policy hot-reload or a concurrent `reset_sandbox`
+    // on the SHARED per-tenant sandbox can wedge it in `Provisioning`
+    // indefinitely (observed: stuck 18 min, container Up but every
+    // exec rejected "not ready (phase: Provisioning)"). openshell
+    // does not self-recover. So: if Provisioning persists past
+    // STUCK_MS without becoming Ready, delete + recreate ONCE
+    // (guarded so we can't loop), which reliably returns to Ready in
+    // ~5s. Terminal-failure phases recreate immediately.
+    const STUCK_MS = 45_000;
+    const deadline = Date.now() + 180_000;
+    let provisioningSince: number | null = null;
+    let recreated = false;
+    let missingSince: number | null = null;
     while (Date.now() < deadline) {
       const info = await this.findSandbox(this.sandboxName);
       if (!info) {
-        throw new Error(
-          `openshell: sandbox ${this.sandboxName} disappeared while waiting for Ready`,
-        );
+        // Transient: a BUSY sandbox (a long opencode run saturating
+        // it) makes `sandbox get` time out / return no Phase, so it
+        // looks momentarily "not listable". That is NOT a reason to
+        // recreate — doing so mid-run wipes the workdir and kills
+        // the task (observed: longer tasks stuck in_progress). Only
+        // recreate if it stays unlistable for a LONG window AND the
+        // backing docker container is actually gone; a running
+        // container that's just slow to list must be left alone.
+        if (missingSince === null) missingSince = Date.now();
+        if (Date.now() - missingSince > 90_000) {
+          const containerAlive = await this.isContainerRunning();
+          if (containerAlive) {
+            // Alive but slow to list under load — keep waiting, do
+            // not recreate (that would kill the in-flight run).
+            this.opts.log.warn(
+              `openshell: sandbox ${this.sandboxName} slow to list but container is running; NOT recreating (busy)`,
+            );
+            missingSince = Date.now(); // reset the window
+            await new Promise((r) => setTimeout(r, 2000));
+            continue;
+          }
+          if (!recreated) {
+            this.opts.log.warn(
+              `openshell: sandbox ${this.sandboxName} not listable for >90s and container gone; recreating once`,
+            );
+            recreated = true;
+            await this.recreateSandbox();
+            missingSince = null;
+            provisioningSince = null;
+            continue;
+          }
+          throw new Error(
+            `openshell: sandbox ${this.sandboxName} disappeared while waiting for Ready`,
+          );
+        }
+        await new Promise((r) => setTimeout(r, 500));
+        continue;
       }
+      missingSince = null;
       if (info.phase === "ready") return;
       if (
         info.phase === "failed" ||
         info.phase === "error" ||
         info.phase === "errored"
       ) {
+        if (!recreated) {
+          this.opts.log.warn(
+            `openshell: sandbox ${this.sandboxName} phase=${info.phase}; recreating once`,
+          );
+          recreated = true;
+          await this.recreateSandbox();
+          provisioningSince = null;
+          continue;
+        }
         throw new Error(
-          `openshell: sandbox ${this.sandboxName} entered phase=${info.phase}`,
+          `openshell: sandbox ${this.sandboxName} entered phase=${info.phase} after recreate`,
         );
+      }
+      // Provisioning / other non-ready phase: track how long we've
+      // been stuck. If it exceeds STUCK_MS and we haven't already
+      // recreated, treat it as wedged and recreate once.
+      if (provisioningSince === null) provisioningSince = Date.now();
+      if (
+        !recreated &&
+        Date.now() - provisioningSince > STUCK_MS
+      ) {
+        this.opts.log.warn(
+          `openshell: sandbox ${this.sandboxName} stuck in phase=${info.phase} for >${
+            Math.round(STUCK_MS / 1000)
+          }s; recreating once (likely wedged by a concurrent reset/policy-reload)`,
+        );
+        recreated = true;
+        await this.recreateSandbox();
+        provisioningSince = null;
+        continue;
       }
       await new Promise((r) => setTimeout(r, 500));
     }
     throw new Error(
-      `openshell: sandbox ${this.sandboxName} did not reach Ready within 2 minutes`,
+      `openshell: sandbox ${this.sandboxName} did not reach Ready within 3 minutes`,
     );
+  }
+
+  /** Idempotent `mkdir -p /sandbox/workspace` inside the sandbox.
+   *  Runs via spawnCliReady (not this.exec) because it's called from
+   *  ensureSandbox() before state becomes "ready" — exec() would
+   *  re-enter ensureSandbox. Best-effort: logs on failure, doesn't
+   *  throw (a genuinely broken sandbox surfaces later on first use). */
+  private async ensureWorkspaceDir(): Promise<void> {
+    try {
+      const res = await this.spawnCliReady([
+        "sandbox",
+        "exec",
+        "--name",
+        this.sandboxName,
+        "--no-tty",
+        "--",
+        "mkdir",
+        "-p",
+        SANDBOX_WORKSPACE_PATH,
+      ]);
+      if (res.exitCode !== 0) {
+        this.opts.log.warn(
+          `openshell: mkdir ${SANDBOX_WORKSPACE_PATH} exit ${res.exitCode}: ${
+            res.stderr.trim() || "unknown"
+          }`,
+        );
+      }
+    } catch (err) {
+      this.opts.log.warn(
+        `openshell: ensureWorkspaceDir failed: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /** Delete + recreate the sandbox (used to recover a wedged
+   *  Provisioning / terminal-failure sandbox). Clears egress grants
+   *  since the fresh sandbox starts from the default policy. */
+  private async recreateSandbox(): Promise<void> {
+    await this.cli(["sandbox", "delete", this.sandboxName]).catch(
+      () => undefined,
+    );
+    this.grantedEgress.clear();
+    await this.createSandbox();
   }
 
   private async findSandbox(
@@ -743,6 +1410,65 @@ export class OpenShellRunner implements SandboxRunner {
     return s.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
   }
 
+  /** Minimal generic binary spawn (for `docker` checks). Captures
+   *  stdout/exit with a hard timeout; never throws on non-zero. */
+  private spawnCliBinary(
+    bin: string,
+    args: string[],
+    timeoutMs: number,
+  ): Promise<{ exitCode: number; stdout: string }> {
+    return new Promise((resolve) => {
+      let stdout = "";
+      let done = false;
+      const child = spawn(bin, args, { stdio: ["ignore", "pipe", "ignore"] });
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        child.kill("SIGKILL");
+        resolve({ exitCode: -1, stdout });
+      }, timeoutMs);
+      child.stdout?.on("data", (d) => (stdout += d.toString()));
+      child.on("error", () => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve({ exitCode: -1, stdout });
+      });
+      child.on("close", (code) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        resolve({ exitCode: code ?? -1, stdout });
+      });
+    });
+  }
+
+  /** True if a docker container for this sandbox is running. Used to
+   *  distinguish "sandbox slow to list because it's busy" (container
+   *  up) from "sandbox actually gone" (container absent) so we don't
+   *  recreate a live, in-use sandbox and kill its running task.
+   *  openshell names containers `openshell-<sandboxName>-<uuid>`. */
+  private async isContainerRunning(): Promise<boolean> {
+    try {
+      const res = await this.spawnCliBinary(
+        "docker",
+        [
+          "ps",
+          "--filter",
+          `name=openshell-${this.sandboxName}-`,
+          "--format",
+          "{{.Names}}",
+        ],
+        5000,
+      );
+      return res.exitCode === 0 && res.stdout.trim().length > 0;
+    } catch {
+      // If we can't even check docker, be conservative and assume
+      // it's alive (don't recreate) — a false "gone" is worse.
+      return true;
+    }
+  }
+
   private async cli(args: string[]): Promise<{ stdout: string }> {
     const res = await this.spawnCli(args, {});
     if (res.exitCode !== 0) {
@@ -760,6 +1486,65 @@ export class OpenShellRunner implements SandboxRunner {
    * The CLI honours `OPENSHELL_GATEWAY_ENDPOINT` and reads its mTLS
    * client cert from the cert dir we pass via XDG.
    */
+  /**
+   * spawnCli + resilience to the sandbox being briefly NOT-Ready.
+   *
+   * The per-tenant sandbox is shared: another task's allowEgress (or
+   * the advisor self-heal) triggers a policy hot-reload that bounces
+   * the sandbox through `Provisioning`. Meanwhile `this.state` may
+   * still say "ready" (it went stale), so a concurrent exec/upload/
+   * download reaches the gateway and gets rejected with
+   * "sandbox '<name>' is not ready (phase: Provisioning)". Previously
+   * that error propagated and the opencode worker stalled before it
+   * even ran.
+   *
+   * This wrapper: run the CLI; if it failed specifically because the
+   * sandbox wasn't Ready, wait for Ready (bounded) and retry, up to
+   * `retries` times. Any other failure passes through unchanged.
+   * Use for sandbox-scoped ops (exec/upload/download/policy update).
+   */
+  private async spawnCliReady(
+    args: string[],
+    opts: { timeoutMs?: number; signal?: AbortSignal } = {},
+    retries = 2,
+  ): Promise<{
+    exitCode: number;
+    stdout: string;
+    stderr: string;
+    timedOut: boolean;
+    aborted: boolean;
+  }> {
+    let attempt = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const res = await this.spawnCli(args, opts);
+      const notReady =
+        res.exitCode !== 0 &&
+        /not ready|phase:\s*provision|is not in a state/i.test(
+          `${res.stdout}\n${res.stderr}`,
+        );
+      if (!notReady || attempt >= retries || res.aborted) {
+        return res;
+      }
+      attempt++;
+      this.opts.log.warn(
+        `openshell: sandbox ${this.sandboxName} not ready (attempt ${attempt}/${retries}); waiting for Ready then retrying`,
+      );
+      try {
+        await this.waitForReady();
+      } catch (err) {
+        // Ready never came; return the last not-ready result so the
+        // caller sees a real error rather than looping.
+        this.opts.log.warn(
+          `openshell: waitForReady during retry failed: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        return res;
+      }
+    }
+  }
+
   private spawnCli(
     args: string[],
     opts: { timeoutMs?: number; signal?: AbortSignal },
