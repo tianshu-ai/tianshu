@@ -7,11 +7,19 @@ import { collectDoctorReport, runQuickReadinessCheck } from "./doctor.js";
 import { runSetupWizard } from "./wizard.js";
 
 describe("collectDoctorReport", () => {
+  // collectDoctorReport() runs real environment probes (filesystem,
+  // config, optional network reachability). On loaded CI runners those
+  // occasionally exceed vitest's default 5s and flake the whole suite
+  // (locally it's ~500ms). Give these two an explicit generous timeout
+  // so a slow runner doesn't red a PR that has nothing to do with the
+  // doctor. See PR #284 CI flake, 2026-07-10.
+  const DOCTOR_TIMEOUT_MS = 30_000;
+
   it("returns groups + tally", async () => {
     const r = await collectDoctorReport();
     expect(r.groups.length).toBeGreaterThanOrEqual(5);
     expect(r.ok + r.warning + r.blocker).toBeGreaterThan(0);
-  });
+  }, DOCTOR_TIMEOUT_MS);
 
   it("tally counts each line's severity correctly", async () => {
     const r = await collectDoctorReport();
@@ -28,7 +36,7 @@ describe("collectDoctorReport", () => {
     expect(r.ok).toBe(ok);
     expect(r.warning).toBe(warning);
     expect(r.blocker).toBe(blocker);
-  });
+  }, DOCTOR_TIMEOUT_MS);
 });
 
 describe("runQuickReadinessCheck", () => {
