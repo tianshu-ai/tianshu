@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.82](https://github.com/tianshu-ai/tianshu/compare/v0.4.81...v0.4.82) (2026-07-10)
+
+### Features
+
+* **web:** Settings → Models default-model field is now a dropdown
+  instead of free text. Options are derived from the live (including
+  unsaved) provider catalog as `<providerId>/<modelId>` with a
+  friendly label; a stored value that isn't in the catalog (set
+  externally, or whose model was removed) is preserved as a
+  "(not in catalog)" option so it's never silently dropped.
+
 ## [0.4.81](https://github.com/tianshu-ai/tianshu/compare/v0.4.80...v0.4.81) (2026-07-10)
 
 ### Features

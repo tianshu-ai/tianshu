@@ -204,6 +204,24 @@ export default function ModelsPage() {
     [providers],
   );
 
+  // Options for the default-model picker, derived from the live
+  // (possibly-unsaved) provider list so a just-added model is
+  // selectable immediately. value is "<providerId>/<modelId>".
+  const modelOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [];
+    for (const p of providers ?? []) {
+      const pid = p.id.trim();
+      if (!pid) continue;
+      for (const m of p.models ?? []) {
+        const mid = (m.id ?? "").trim();
+        if (!mid) continue;
+        const value = `${pid}/${mid}`;
+        opts.push({ value, label: m.name ? `${m.name} — ${value}` : value });
+      }
+    }
+    return opts;
+  }, [providers]);
+
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
@@ -260,21 +278,39 @@ export default function ModelsPage() {
         </div>
       )}
 
-      {/* Default model id */}
+      {/* Default model */}
       <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
         <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
-          Default model id
+          Default model
         </label>
-        <input
+        <select
           value={defaultModelId}
           onChange={(e) => {
             setDefaultModelId(e.target.value);
             setDirty(true);
             setNotice(null);
           }}
-          placeholder="e.g. anthropic/claude-opus-4-7 (optional)"
-          className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
-        />
+          className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
+        >
+          <option value="">(none)</option>
+          {modelOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+          {/* Preserve a stored value that isn't in the current model
+              list (e.g. set externally, or its provider/model was just
+              removed) so selecting it back is possible and it isn't
+              silently dropped. */}
+          {defaultModelId &&
+            !modelOptions.some((o) => o.value === defaultModelId) && (
+              <option value={defaultModelId}>{defaultModelId} (not in catalog)</option>
+            )}
+        </select>
+        <p className="mt-1 text-[11px] text-fg-fainter">
+          Pick from the configured models above. Add a model to a
+          provider to make it selectable here.
+        </p>
       </div>
 
       {loading && !providers && (
