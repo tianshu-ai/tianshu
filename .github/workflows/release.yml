@@ -63,7 +63,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout the tagged commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # release-please updates package.json + CHANGELOG.md in
           # the same commit it tags, so checking out the tag is
