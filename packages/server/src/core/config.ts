@@ -168,6 +168,10 @@ export interface GlobalOnlyConfig {
 
 export interface ModelsCatalog {
   providers: Record<string, ProviderEntry>;
+  /** Optional explicit default model id. Mirrors the closed-source
+   *  tianshu.models.json field; the Settings Models page reads/writes
+   *  it. */
+  defaultModelId?: string;
   /** Cross-provider retry policy for transient LLM call failures
    *  (network, 429 rate-limit, 5xx, expired JWT/401). Applied at the
    *  single stream chokepoint in core/pi-models.ts, so it covers the

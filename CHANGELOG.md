@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.81](https://github.com/tianshu-ai/tianshu/compare/v0.4.80...v0.4.81) (2026-07-10)
+
+### Features
+
+* **web,server:** Settings → Models page. A new host admin page
+  (Agent → Models) displays and maintains the provider catalog stored
+  in the global config (`~/.tianshu/config.json` → `models.providers`)
+  — the same shape you'd hand-edit. Add / edit / remove providers
+  (baseUrl, api, group, apiKey) and their models (id, display name,
+  context window, reasoning). Saving writes back to config.json; an
+  external edit to the file shows up on Reload (config is re-read per
+  request, no restart). API keys are never sent to the browser: GET
+  masks them to a sentinel and PUT preserves the stored key when the
+  sentinel comes back, so editing other fields can't wipe a secret.
+  New endpoints `GET`/`PUT /api/admin/models/providers`.
+
 ## [0.4.80](https://github.com/tianshu-ai/tianshu/compare/v0.4.79...v0.4.80) (2026-07-10)
 
 ### Bug Fixes
