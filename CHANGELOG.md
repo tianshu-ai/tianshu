@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.84](https://github.com/tianshu-ai/tianshu/compare/v0.4.83...v0.4.84) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** Models delete buttons now use the theme-aware `danger`
+  token instead of hard-coded dark-theme rose shades, which were
+  washed out (looked disabled) on the light theme. Provider "Remove"
+  and the per-model trash icon now render `text-danger` /
+  `border-danger` with a solid `bg-danger` hover, readable in both
+  light and dark themes.
+
 ## [0.4.83](https://github.com/tianshu-ai/tianshu/compare/v0.4.82...v0.4.83) (2026-07-10)
 
 ### Bug Fixes
