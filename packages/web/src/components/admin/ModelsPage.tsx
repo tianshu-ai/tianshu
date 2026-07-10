@@ -418,7 +418,7 @@ function ProviderCard({
         <button
           type="button"
           onClick={onDelete}
-          className="flex items-center gap-1 rounded px-2 py-1 text-[11px] text-rose-300/80 hover:bg-rose-950/40 hover:text-rose-200"
+          className="flex items-center gap-1 rounded-md border border-rose-500/40 px-2 py-1 text-[11px] font-medium text-rose-300 hover:border-rose-500/70 hover:bg-rose-500/15 hover:text-rose-200"
         >
           <Trash2 size={12} /> Remove
         </button>
@@ -520,7 +520,7 @@ function ProviderCard({
                   <button
                     type="button"
                     onClick={() => delModel(idx)}
-                    className="col-span-1 flex justify-center text-rose-300/70 hover:text-rose-200"
+                    className="col-span-1 flex justify-center rounded p-1 text-rose-400 hover:bg-rose-500/15 hover:text-rose-300"
                     aria-label="Remove model"
                   >
                     <Trash2 size={13} />

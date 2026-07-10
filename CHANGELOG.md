@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.83](https://github.com/tianshu-ai/tianshu/compare/v0.4.82...v0.4.83) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** Models page delete buttons no longer look disabled. The
+  provider "Remove" button is now an outlined danger button (solid
+  rose text + border, full opacity) and the per-model trash icon uses
+  a brighter rose with a hover fill, so both read as active
+  destructive actions rather than greyed-out/disabled.
+
 ## [0.4.82](https://github.com/tianshu-ai/tianshu/compare/v0.4.81...v0.4.82) (2026-07-10)
 
 ### Features
