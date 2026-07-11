@@ -36,6 +36,7 @@ import type { PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
 import { buildIdentityPath } from "../../dev-identity";
 import McpServersPage from "./McpServersPage";
+import ModelsPage from "./ModelsPage";
 import { PluginConfigForm } from "../PluginConfigForm";
 
 interface ContributesAdminPage {
@@ -71,6 +72,19 @@ interface FlatAdminPage {
  * the same `:pluginId/:pageId` URL structure as plugin pages.
  */
 const CORE_PAGES: FlatAdminPage[] = [
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "models",
+    displayName: "Models",
+    icon: "Boxes",
+    kind: "core",
+    component: "ModelsPage",
+    coreComponent: ModelsPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "Agent",
+    order: 5,
+    clientEntry: null,
+  },
   {
     pluginId: "core",
     pluginDisplayName: "Tianshu",

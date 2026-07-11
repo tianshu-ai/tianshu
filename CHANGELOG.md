@@ -6,6 +6,68 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.85](https://github.com/tianshu-ai/tianshu/compare/v0.4.84...v0.4.85) (2026-07-11)
+
+### Bug Fixes
+
+* **web:** Models page never binds the apiKey mask sentinel to the
+  password input. Previously the server's `"__stored__"` sentinel was
+  shown in the field, so a partial edit stored a corrupted key
+  (`"__stored__xyz"`) and the UX was confusing. Now the field loads
+  empty with a "•••• stored (leave blank to keep)" placeholder; an
+  untouched field re-sends the sentinel (server preserves the real
+  key), a typed value replaces it, and a new **Clear** button removes
+  a stored key. Verified live: saving with the key field untouched
+  preserves all providers' real keys intact. (Review finding B3.)
+
+## [0.4.84](https://github.com/tianshu-ai/tianshu/compare/v0.4.83...v0.4.84) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** Models delete buttons now use the theme-aware `danger`
+  token instead of hard-coded dark-theme rose shades, which were
+  washed out (looked disabled) on the light theme. Provider "Remove"
+  and the per-model trash icon now render `text-danger` /
+  `border-danger` with a solid `bg-danger` hover, readable in both
+  light and dark themes.
+
+## [0.4.83](https://github.com/tianshu-ai/tianshu/compare/v0.4.82...v0.4.83) (2026-07-10)
+
+### Bug Fixes
+
+* **web:** Models page delete buttons no longer look disabled. The
+  provider "Remove" button is now an outlined danger button (solid
+  rose text + border, full opacity) and the per-model trash icon uses
+  a brighter rose with a hover fill, so both read as active
+  destructive actions rather than greyed-out/disabled.
+
+## [0.4.82](https://github.com/tianshu-ai/tianshu/compare/v0.4.81...v0.4.82) (2026-07-10)
+
+### Features
+
+* **web:** Settings → Models default-model field is now a dropdown
+  instead of free text. Options are derived from the live (including
+  unsaved) provider catalog as `<providerId>/<modelId>` with a
+  friendly label; a stored value that isn't in the catalog (set
+  externally, or whose model was removed) is preserved as a
+  "(not in catalog)" option so it's never silently dropped.
+
+## [0.4.81](https://github.com/tianshu-ai/tianshu/compare/v0.4.80...v0.4.81) (2026-07-10)
+
+### Features
+
+* **web,server:** Settings → Models page. A new host admin page
+  (Agent → Models) displays and maintains the provider catalog stored
+  in the global config (`~/.tianshu/config.json` → `models.providers`)
+  — the same shape you'd hand-edit. Add / edit / remove providers
+  (baseUrl, api, group, apiKey) and their models (id, display name,
+  context window, reasoning). Saving writes back to config.json; an
+  external edit to the file shows up on Reload (config is re-read per
+  request, no restart). API keys are never sent to the browser: GET
+  masks them to a sentinel and PUT preserves the stored key when the
+  sentinel comes back, so editing other fields can't wipe a secret.
+  New endpoints `GET`/`PUT /api/admin/models/providers`.
+
 ## [0.4.80](https://github.com/tianshu-ai/tianshu/compare/v0.4.79...v0.4.80) (2026-07-10)
 
 ### Bug Fixes

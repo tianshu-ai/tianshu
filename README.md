@@ -51,7 +51,7 @@
 | What           | Why                                                |
 |----------------|----------------------------------------------------|
 | **Node 22+**   | Runtime. Use a Node manager (`nvm` / `volta` / `asdf`); avoid system Node with `sudo`. |
-| **macOS Apple Silicon** *or* **Linux + KVM** | Sandbox layer ([microsandbox](https://github.com/microsandbox/microsandbox)) needs hardware virt. Chat surface still works elsewhere, but `exec` / browser tools won't. |
+| **Docker** (recommended) *or* **macOS Apple Silicon / Linux + KVM** | Sandbox layer. The default **OpenShell** backend needs a running Docker daemon (Docker Desktop / Colima / OrbStack / …). The alternative **microsandbox** backend needs hardware virt instead of Docker. Pick one — they're mutually exclusive. Chat still works without either, but `exec` / browser tools won't. |
 | **An LLM API key** | Anthropic, OpenAI, or Google. Or a local model server reachable on the network. |
 
 ### One command
@@ -145,19 +145,46 @@ Tianshu is **a runtime, not a chatbox.** Three things make it different:
 navigates, clicks, types — you watch it live in a side panel, take the
 mouse back when you want to.
 
-📦 **A real Linux sandbox per tenant.** Every `exec` runs in a
-[microsandbox](https://github.com/microsandbox/microsandbox) VM. Crash
-it, fork-bomb it, fill the disk — your host is untouched.
+📦 **A real Linux sandbox per tenant.** Every `exec` runs in an
+isolated sandbox — crash it, fork-bomb it, fill the disk, your host is
+untouched. Two interchangeable backends ship as plugins (pick **one**;
+they're mutually exclusive): **OpenShell** (Docker container, the
+recommended default — near-zero idle CPU on Apple Silicon and a
+built-in per-host network egress policy) or
+[microsandbox](https://github.com/microsandbox/microsandbox) (a
+Hypervisor.framework / KVM microVM, if you'd rather not run Docker).
 
 📁 **A real per-tenant workspace.** The agent reads and writes files
 you can preview in the UI; they persist across sessions. The file
 tree is a first-class citizen, not a "tool output."
 
+![Per-tenant workspace: a browsable file tree that persists across sessions](docs/assets/workspace.png)
+
 Plus:
 
+- 🎛️ **Workforce Studio — your agent config, as a versionable
+  Solution.** Stop hand-editing scattered `agent.json` /
+  `SOUL.md` files. Studio extracts your live setup (main agent +
+  every worker + the plugin enable-set + prompt blocks) into one
+  **Solution** you can edit in a three-pane IDE, diff against
+  what's running, export/import as a file, and **activate** in one
+  click. Override a single worker's model or execution-bias,
+  include/exclude plugins, tune prompt fragments — then apply the
+  whole thing atomically. See
+  [docs/architecture/solutions.md](docs/architecture/solutions.md).
+
+  ![Workforce Studio — your agent config as an editable, diffable Solution](docs/assets/workforce-studio.png)
+
+- 💻 **OpenCode workers.** Beyond the built-in worker, run
+  [opencode](https://github.com/sst/opencode) +
+  oh-my-openagent inside a prebuilt sandbox image as a first-class
+  worker type — near-real-time transcript and resolved tool chips
+  stream back to the board.
 - 🤖 **Background workers, not "tools."** Dispatch parallel agents
   onto a Kanban board; watch elapsed time per task; intervene when
-  one stalls.
+  one stalls. Define task dependency graphs in a single batch.
+
+  ![Worker pool + Kanban task board with real OpenCoder tasks](docs/assets/workboard.png)
 - 🔍 **The orchestrator is a supervisor.** The main agent (天枢,
   literally "the pivot") doesn't just dispatch — it reads across
   every worker run on the board (duration, intervention rate,
@@ -175,6 +202,55 @@ Plus:
   report, enable plugins, write config, build sandboxes, and even
   upgrade itself. See it talk you through it in
   [the launch video](https://youtu.be/Xw7c3JrlUVo).
+- 🎚️ **Point-and-click day-2 controls.** A Settings surface for the
+  things you used to hand-edit: a **Models** page to manage the
+  provider catalog (add/edit providers + models, pick the default,
+  keys stay server-side), a **Network Policy** page to see sandbox
+  egress denials and allow hosts with one click, and MCP-server and
+  per-plugin config pages. Config files stay the source of truth —
+  edit either way, they stay in sync.
+
+  ![Settings → Models: manage the provider catalog from the UI](docs/assets/models.png)
+
+  ![Settings → Network Policy: sandbox egress denials + allow-list](docs/assets/network-policy.png)
+- 🔌 **Resilient model calls.** Rate-limit-aware retries (honours
+  `Retry-After`), and a client that rides out a dropped connection
+  with exponential backoff and resumes the interrupted turn — no
+  duplicated messages, no lost prompt.
+- 🔎 **Key-free web search built in.** An Exa/Parallel-backed
+  `web_search` plus a `web_fetch` tool, no extra API key to wire up.
+
+  ![Web Search settings: pick Exa or Parallel, no API key](docs/assets/websearch.png)
+
+> ⚠️ **Security note (0.5.0):** the admin/Settings pages (Models,
+> MCP servers, Network Policy, plugin config) are **not yet behind an
+> authorization gate** — any signed-in user can edit host-wide
+> config. Run Tianshu as a **single trusted operator** for now, and
+> don't expose the admin surface to untrusted users on a multi-tenant
+> box. A proper auth/role gate lands with the login work on the
+> roadmap.
+
+---
+
+## 🧩 Plugins
+
+Almost everything above is a **plugin** — capabilities the host loads,
+enables per tenant, and exposes to the agent as tools / admin pages /
+channels. Tianshu ships these built-in:
+
+| Plugin | What it does |
+|---|---|
+| **Workspace Files** | Browse, read, preview, and upload files in the per-tenant workspace. The file tree is a first-class panel in the UI, and files persist across sessions. |
+| **OpenShell** *(recommended sandbox)* | Runs the agent's shell (`exec`) in an [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)-managed Docker sandbox. Near-zero idle CPU on Apple Silicon and a built-in per-host **network egress policy** (allow-list + live denial log). Needs a Docker daemon. |
+| **MicroSandbox** *(alternative sandbox)* | Runs `exec` in a [microsandbox](https://github.com/microsandbox/microsandbox) microVM (Apple Virtualization.framework / KVM) — no Docker needed, but needs hardware virt. **Mutually exclusive with OpenShell** — enable exactly one. |
+| **Workboard** | The Kanban task board + worker pool. The orchestrator drops tasks onto Ready; workers pick them up, run them (with a live transcript), and report back through In-progress → Done. Supports task dependency graphs and per-worker config. |
+| **Workforce Studio** | Inspect, edit, diff, export/import, and **activate** your whole agent configuration (main agent + every worker + the enabled plugin set + prompt blocks) as a single versionable **Solution**, in a three-pane IDE. |
+| **Web Search** | Key-free `web_search` (hosted Exa / Parallel endpoint, no API key) plus a `web_fetch` tool that reads any page to markdown. |
+| **WeChat (微信)** | A chat channel backed by Tencent's iLink bot API — scan a QR code to authorise, then inbound DMs route to the agent through the channel system. |
+
+Manage them under **Settings → Plugins** (enable/disable + per-plugin
+config). Third-party plugins install the same way; see
+[docs/architecture/plugins.md](docs/architecture/plugins.md).
 
 ---
 
@@ -319,7 +395,7 @@ flowchart LR
 
   subgraph Sidecars["Per-tenant sidecars"]
     ChromiumBox["Chromium + Playwright + noVNC"]
-    SandBox["Linux microsandbox VM"]
+    SandBox["Linux sandbox<br/>(OpenShell / microsandbox)"]
     Files["Workspace filesystem"]
   end
 
@@ -340,7 +416,9 @@ flowchart LR
 The agent runtime stands on
 [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earendil-works/pi-agent-core)
 by [@badlogic](https://github.com/badlogic). The sandbox layer is
-[microsandbox](https://github.com/microsandbox/microsandbox).
+pluggable: **OpenShell** (Docker, the recommended default) or
+[microsandbox](https://github.com/microsandbox/microsandbox)
+(Hypervisor.framework / KVM) — one at a time.
 
 A 0.x repo, but the core loop — chat, sandbox `exec`, sidecar browser,
 multi-tenant filesystem, background workers — works end-to-end today.
@@ -359,8 +437,22 @@ the full picture.
 - [x] Setup agent with 18 tools (inventory, build, fix, upgrade)
 - [x] Tenant model, plugin registry, sandbox role pointers
 
-**Next (0.4.x)**
+**Shipped (0.4.x → 0.5.0)**
 
+- [x] **Workforce Studio** — extract / edit / diff / export / activate
+      your agent config as a Solution
+- [x] **OpenCode workers** — opencode + oh-my-openagent as a worker
+      type, in a prebuilt sandbox image
+- [x] **Settings UI** — Models (provider catalog), Network Policy
+      (sandbox egress), MCP servers, per-plugin config
+- [x] Rate-limit-aware model retries + client auto-reconnect / resume
+- [x] Key-free `web_search` + `web_fetch`
+- [x] Worker task dependency graphs in one batch
+
+**Next (0.5.x → 0.6)**
+
+- [ ] **Auth + roles** — login, and an authorization gate on the
+      admin/Settings surface (see the security note above)
 - [ ] Docker image with sandbox layer baked in
 - [ ] Linux systemd user service (matches macOS launchd UX)
 - [ ] Skills marketplace (registry + install command)
@@ -418,6 +510,7 @@ not** file vulnerabilities in public issues.
 [Apache License 2.0](./LICENSE) © 2026 Yu Yu and Tianshu contributors.
 
 Built on [pi-agent-core](https://github.com/badlogic/pi-mono) (MIT) by
-[@badlogic](https://github.com/badlogic), and
-[microsandbox](https://github.com/microsandbox/microsandbox) (Apache-2.0)
-by [@nyxxxie](https://github.com/nyxxxie) and contributors.
+[@badlogic](https://github.com/badlogic); sandbox backends
+[NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell) and
+[microsandbox](https://github.com/microsandbox/microsandbox) (Apache-2.0,
+by [@nyxxxie](https://github.com/nyxxxie) and contributors).

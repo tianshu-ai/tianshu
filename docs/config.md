@@ -43,6 +43,15 @@ them is rejected at load time:
 Mirrors the closed-source predecessor's `tianshu.models.json` for easy
 transplant.
 
+> **Tip (0.5.0+):** you no longer have to edit this by hand — the SPA
+> has a **Settings → Models** page that reads and writes this exact
+> `models.providers` block in the global `config.json` (add/edit
+> providers + models, pick the default model; API keys stay masked
+> and server-side). The file and the UI are two views of the same
+> source of truth — edit either way, an external file edit shows up
+> in the UI on Reload. Note that in 0.5.0 the admin pages are not yet
+> auth-gated; run as a single trusted operator.
+
 ```jsonc
 {
   "models": {
