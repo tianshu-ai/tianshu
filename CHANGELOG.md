@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.4.85](https://github.com/tianshu-ai/tianshu/compare/v0.4.84...v0.4.85) (2026-07-11)
+
+### Bug Fixes
+
+* **web:** Models page never binds the apiKey mask sentinel to the
+  password input. Previously the server's `"__stored__"` sentinel was
+  shown in the field, so a partial edit stored a corrupted key
+  (`"__stored__xyz"`) and the UX was confusing. Now the field loads
+  empty with a "•••• stored (leave blank to keep)" placeholder; an
+  untouched field re-sends the sentinel (server preserves the real
+  key), a typed value replaces it, and a new **Clear** button removes
+  a stored key. Verified live: saving with the key field untouched
+  preserves all providers' real keys intact. (Review finding B3.)
+
 ## [0.4.84](https://github.com/tianshu-ai/tianshu/compare/v0.4.83...v0.4.84) (2026-07-10)
 
 ### Bug Fixes

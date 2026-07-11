@@ -62,6 +62,13 @@ interface ApiResponse {
 interface EditableProvider extends ProviderRow {
   _key: string; // stable react key
   id: string; // provider id (editable)
+  // True once the user has typed in the apiKey field this session. On
+  // load the field is EMPTY (never the mask sentinel), so an untouched
+  // field with hasApiKey=true means "keep the stored key" and we send
+  // the sentinel back; an edited field sends its literal value (or
+  // empty = clear the key). This is what avoids the sentinel ever
+  // reaching the <input> and getting corrupted on partial edits.
+  _apiKeyEdited?: boolean;
 }
 
 const API_OPTIONS = [
@@ -72,6 +79,22 @@ const API_OPTIONS = [
 
 let keySeq = 0;
 const nextKey = () => `p${keySeq++}`;
+
+// Normalise a provider row from the server into the editable shape:
+// the server sends apiKey = API_KEY_MASK when a key is stored; we
+// blank the field and rely on hasApiKey + _apiKeyEdited instead so the
+// sentinel is never bound to an input.
+function toEditable(id: string, p: ProviderRow): EditableProvider {
+  const stored = p.apiKey === API_KEY_MASK || p.hasApiKey;
+  return {
+    ...p,
+    id,
+    _key: nextKey(),
+    apiKey: "",
+    hasApiKey: !!stored,
+    _apiKeyEdited: false,
+  };
+}
 
 export default function ModelsPage() {
   const [providers, setProviders] = useState<EditableProvider[] | null>(null);
@@ -97,7 +120,7 @@ export default function ModelsPage() {
       }
       const j = (await r.json()) as ApiResponse;
       const list: EditableProvider[] = Object.entries(j.providers ?? {}).map(
-        ([id, p]) => ({ ...p, id, _key: nextKey() }),
+        ([id, p]) => toEditable(id, p),
       );
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
@@ -155,11 +178,19 @@ export default function ModelsPage() {
     // Build the providers object keyed by id.
     const body: Record<string, ProviderRow> = {};
     for (const p of providers) {
-      const { _key, id, hasApiKey, ...rest } = p;
+      const { _key, id, hasApiKey, _apiKeyEdited, apiKey, ...rest } = p;
       void _key;
-      void hasApiKey;
+      // apiKey resolution:
+      //   - untouched field + a stored key  → send the mask sentinel;
+      //     the server preserves the existing secret.
+      //   - user typed something            → send the literal value.
+      //   - user cleared it (edited, empty)  → send "" to remove it.
+      //   - no stored key, untouched         → "" (nothing to keep).
+      const apiKeyOut =
+        !_apiKeyEdited && hasApiKey ? API_KEY_MASK : (apiKey ?? "");
       body[id.trim()] = {
         ...rest,
+        apiKey: apiKeyOut,
         models: (p.models ?? []).map((m) => ({ ...m, id: m.id.trim() })),
       };
     }
@@ -186,7 +217,7 @@ export default function ModelsPage() {
       }
       const j = (await r.json()) as ApiResponse;
       const list: EditableProvider[] = Object.entries(j.providers ?? {}).map(
-        ([id, p]) => ({ ...p, id, _key: nextKey() }),
+        ([id, p]) => toEditable(id, p),
       );
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
@@ -453,13 +484,37 @@ function ProviderCard({
               />
             </Field>
             <Field label="API key">
-              <input
-                type="password"
-                value={provider.apiKey ?? ""}
-                onChange={(e) => onChange({ apiKey: e.target.value })}
-                placeholder={provider.hasApiKey ? "•••• (stored)" : "unset"}
-                className="w-full rounded border border-border-default bg-bg-base px-2 py-1.5 text-sm text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
-              />
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="password"
+                  value={provider.apiKey ?? ""}
+                  onChange={(e) =>
+                    onChange({ apiKey: e.target.value, _apiKeyEdited: true })
+                  }
+                  placeholder={
+                    provider.hasApiKey && !provider._apiKeyEdited
+                      ? "•••• stored (leave blank to keep)"
+                      : "unset"
+                  }
+                  className="w-full rounded border border-border-default bg-bg-base px-2 py-1.5 text-sm text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
+                />
+                {provider.hasApiKey && !provider._apiKeyEdited && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChange({
+                        apiKey: "",
+                        hasApiKey: false,
+                        _apiKeyEdited: true,
+                      })
+                    }
+                    title="Clear the stored key"
+                    className="flex-shrink-0 rounded border border-border-default px-2 py-1.5 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
             </Field>
           </div>
           <Field label="Base URL">
