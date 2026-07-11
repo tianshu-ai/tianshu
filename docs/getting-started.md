@@ -10,10 +10,13 @@ tianshu start` already worked for you, you can skip ahead to
 - **Node 22 or newer.** `node --version` to check. We test
   against current Node 22, 24, and 25; older majors are not
   supported.
-- **macOS Apple Silicon** or **Linux + KVM**. The sandbox
-  layer (microsandbox) won't boot on other platforms. The
-  chat surface still works elsewhere, but `exec` and the
-  browser sidecar will be unavailable.
+- **A sandbox backend.** The recommended default is **OpenShell**,
+  which needs a running **Docker** daemon (Docker Desktop / Colima /
+  OrbStack / …) and works anywhere Docker does. The alternative is
+  **microsandbox** (a Hypervisor.framework / KVM microVM), which needs
+  **macOS Apple Silicon** or **Linux + KVM** but no Docker. Enable
+  exactly one — they're mutually exclusive. The chat surface still
+  works with neither, but `exec` and the browser sidecar won't.
 - **An API key** for at least one of Anthropic, OpenAI, or
   Google — or a local model server reachable on the network.
 

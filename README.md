@@ -51,7 +51,7 @@
 | What           | Why                                                |
 |----------------|----------------------------------------------------|
 | **Node 22+**   | Runtime. Use a Node manager (`nvm` / `volta` / `asdf`); avoid system Node with `sudo`. |
-| **macOS Apple Silicon** *or* **Linux + KVM** | Sandbox layer ([microsandbox](https://github.com/microsandbox/microsandbox)) needs hardware virt. Chat surface still works elsewhere, but `exec` / browser tools won't. |
+| **Docker** (recommended) *or* **macOS Apple Silicon / Linux + KVM** | Sandbox layer. The default **OpenShell** backend needs a running Docker daemon (Docker Desktop / Colima / OrbStack / …). The alternative **microsandbox** backend needs hardware virt instead of Docker. Pick one — they're mutually exclusive. Chat still works without either, but `exec` / browser tools won't. |
 | **An LLM API key** | Anthropic, OpenAI, or Google. Or a local model server reachable on the network. |
 
 ### One command
@@ -145,9 +145,14 @@ Tianshu is **a runtime, not a chatbox.** Three things make it different:
 navigates, clicks, types — you watch it live in a side panel, take the
 mouse back when you want to.
 
-📦 **A real Linux sandbox per tenant.** Every `exec` runs in a
-[microsandbox](https://github.com/microsandbox/microsandbox) VM. Crash
-it, fork-bomb it, fill the disk — your host is untouched.
+📦 **A real Linux sandbox per tenant.** Every `exec` runs in an
+isolated sandbox — crash it, fork-bomb it, fill the disk, your host is
+untouched. Two interchangeable backends ship as plugins (pick **one**;
+they're mutually exclusive): **OpenShell** (Docker container, the
+recommended default — near-zero idle CPU on Apple Silicon and a
+built-in per-host network egress policy) or
+[microsandbox](https://github.com/microsandbox/microsandbox) (a
+Hypervisor.framework / KVM microVM, if you'd rather not run Docker).
 
 📁 **A real per-tenant workspace.** The agent reads and writes files
 you can preview in the UI; they persist across sessions. The file
@@ -362,7 +367,7 @@ flowchart LR
 
   subgraph Sidecars["Per-tenant sidecars"]
     ChromiumBox["Chromium + Playwright + noVNC"]
-    SandBox["Linux microsandbox VM"]
+    SandBox["Linux sandbox<br/>(OpenShell / microsandbox)"]
     Files["Workspace filesystem"]
   end
 
@@ -383,7 +388,9 @@ flowchart LR
 The agent runtime stands on
 [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earendil-works/pi-agent-core)
 by [@badlogic](https://github.com/badlogic). The sandbox layer is
-[microsandbox](https://github.com/microsandbox/microsandbox).
+pluggable: **OpenShell** (Docker, the recommended default) or
+[microsandbox](https://github.com/microsandbox/microsandbox)
+(Hypervisor.framework / KVM) — one at a time.
 
 A 0.x repo, but the core loop — chat, sandbox `exec`, sidecar browser,
 multi-tenant filesystem, background workers — works end-to-end today.
@@ -475,6 +482,7 @@ not** file vulnerabilities in public issues.
 [Apache License 2.0](./LICENSE) © 2026 Yu Yu and Tianshu contributors.
 
 Built on [pi-agent-core](https://github.com/badlogic/pi-mono) (MIT) by
-[@badlogic](https://github.com/badlogic), and
-[microsandbox](https://github.com/microsandbox/microsandbox) (Apache-2.0)
-by [@nyxxxie](https://github.com/nyxxxie) and contributors.
+[@badlogic](https://github.com/badlogic); sandbox backends
+[NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell) and
+[microsandbox](https://github.com/microsandbox/microsandbox) (Apache-2.0,
+by [@nyxxxie](https://github.com/nyxxxie) and contributors).
