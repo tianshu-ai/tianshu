@@ -158,6 +158,8 @@ Hypervisor.framework / KVM microVM, if you'd rather not run Docker).
 you can preview in the UI; they persist across sessions. The file
 tree is a first-class citizen, not a "tool output."
 
+![Per-tenant workspace: a browsable file tree that persists across sessions](docs/assets/workspace.png)
+
 Plus:
 
 - 🎛️ **Workforce Studio — your agent config, as a versionable
@@ -181,6 +183,8 @@ Plus:
 - 🤖 **Background workers, not "tools."** Dispatch parallel agents
   onto a Kanban board; watch elapsed time per task; intervene when
   one stalls. Define task dependency graphs in a single batch.
+
+  ![Worker pool + Kanban task board with real OpenCoder tasks](docs/assets/workboard.png)
 - 🔍 **The orchestrator is a supervisor.** The main agent (天枢,
   literally "the pivot") doesn't just dispatch — it reads across
   every worker run on the board (duration, intervention rate,
@@ -215,6 +219,8 @@ Plus:
   duplicated messages, no lost prompt.
 - 🔎 **Key-free web search built in.** An Exa/Parallel-backed
   `web_search` plus a `web_fetch` tool, no extra API key to wire up.
+
+  ![Web Search settings: pick Exa or Parallel, no API key](docs/assets/websearch.png)
 
 > ⚠️ **Security note (0.5.0):** the admin/Settings pages (Models,
 > MCP servers, Network Policy, plugin config) are **not yet behind an
