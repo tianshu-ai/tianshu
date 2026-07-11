@@ -232,6 +232,28 @@ Plus:
 
 ---
 
+## 🧩 Plugins
+
+Almost everything above is a **plugin** — capabilities the host loads,
+enables per tenant, and exposes to the agent as tools / admin pages /
+channels. Tianshu ships these built-in:
+
+| Plugin | What it does |
+|---|---|
+| **Workspace Files** | Browse, read, preview, and upload files in the per-tenant workspace. The file tree is a first-class panel in the UI, and files persist across sessions. |
+| **OpenShell** *(recommended sandbox)* | Runs the agent's shell (`exec`) in an [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)-managed Docker sandbox. Near-zero idle CPU on Apple Silicon and a built-in per-host **network egress policy** (allow-list + live denial log). Needs a Docker daemon. |
+| **MicroSandbox** *(alternative sandbox)* | Runs `exec` in a [microsandbox](https://github.com/microsandbox/microsandbox) microVM (Apple Virtualization.framework / KVM) — no Docker needed, but needs hardware virt. **Mutually exclusive with OpenShell** — enable exactly one. |
+| **Workboard** | The Kanban task board + worker pool. The orchestrator drops tasks onto Ready; workers pick them up, run them (with a live transcript), and report back through In-progress → Done. Supports task dependency graphs and per-worker config. |
+| **Workforce Studio** | Inspect, edit, diff, export/import, and **activate** your whole agent configuration (main agent + every worker + the enabled plugin set + prompt blocks) as a single versionable **Solution**, in a three-pane IDE. |
+| **Web Search** | Key-free `web_search` (hosted Exa / Parallel endpoint, no API key) plus a `web_fetch` tool that reads any page to markdown. |
+| **WeChat (微信)** | A chat channel backed by Tencent's iLink bot API — scan a QR code to authorise, then inbound DMs route to the agent through the channel system. |
+
+Manage them under **Settings → Plugins** (enable/disable + per-plugin
+config). Third-party plugins install the same way; see
+[docs/architecture/plugins.md](docs/architecture/plugins.md).
+
+---
+
 ## 👋 First run — 5 minutes start to finish
 
 A narrated walk-through. From zero to "agent driving a real
