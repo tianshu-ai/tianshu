@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the selected branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         # No `ref:` — uses the branch chosen in the workflow_dispatch UI.
 
       - name: Refuse to publish from main

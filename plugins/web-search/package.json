@@ -13,7 +13,12 @@
     },
     "./manifest.json": "./manifest.json"
   },
-  "files": ["dist", "src", "skills", "manifest.json"],
+  "files": [
+    "dist",
+    "src",
+    "skills",
+    "manifest.json"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch --preserveWatchOutput",
@@ -25,6 +30,6 @@
   "devDependencies": {
     "@types/node": "^26.0.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   }
 }

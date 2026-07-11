@@ -37,6 +37,6 @@
     "lucide-react": "^1.17.0",
     "react": "^19.0.0",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   }
 }
