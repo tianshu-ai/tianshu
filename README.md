@@ -155,9 +155,27 @@ tree is a first-class citizen, not a "tool output."
 
 Plus:
 
+- 🎛️ **Workforce Studio — your agent config, as a versionable
+  Solution.** Stop hand-editing scattered `agent.json` /
+  `SOUL.md` files. Studio extracts your live setup (main agent +
+  every worker + the plugin enable-set + prompt blocks) into one
+  **Solution** you can edit in a three-pane IDE, diff against
+  what's running, export/import as a file, and **activate** in one
+  click. Override a single worker's model or execution-bias,
+  include/exclude plugins, tune prompt fragments — then apply the
+  whole thing atomically. See
+  [docs/architecture/solutions.md](docs/architecture/solutions.md).
+
+  ![Workforce Studio — your agent config as an editable, diffable Solution](docs/assets/workforce-studio.png)
+
+- 💻 **OpenCode workers.** Beyond the built-in worker, run
+  [opencode](https://github.com/sst/opencode) +
+  oh-my-openagent inside a prebuilt sandbox image as a first-class
+  worker type — near-real-time transcript and resolved tool chips
+  stream back to the board.
 - 🤖 **Background workers, not "tools."** Dispatch parallel agents
   onto a Kanban board; watch elapsed time per task; intervene when
-  one stalls.
+  one stalls. Define task dependency graphs in a single batch.
 - 🔍 **The orchestrator is a supervisor.** The main agent (天枢,
   literally "the pivot") doesn't just dispatch — it reads across
   every worker run on the board (duration, intervention rate,
@@ -175,6 +193,31 @@ Plus:
   report, enable plugins, write config, build sandboxes, and even
   upgrade itself. See it talk you through it in
   [the launch video](https://youtu.be/Xw7c3JrlUVo).
+- 🎚️ **Point-and-click day-2 controls.** A Settings surface for the
+  things you used to hand-edit: a **Models** page to manage the
+  provider catalog (add/edit providers + models, pick the default,
+  keys stay server-side), a **Network Policy** page to see sandbox
+  egress denials and allow hosts with one click, and MCP-server and
+  per-plugin config pages. Config files stay the source of truth —
+  edit either way, they stay in sync.
+
+  ![Settings → Models: manage the provider catalog from the UI](docs/assets/models.png)
+
+  ![Settings → Network Policy: sandbox egress denials + allow-list](docs/assets/network-policy.png)
+- 🔌 **Resilient model calls.** Rate-limit-aware retries (honours
+  `Retry-After`), and a client that rides out a dropped connection
+  with exponential backoff and resumes the interrupted turn — no
+  duplicated messages, no lost prompt.
+- 🔎 **Key-free web search built in.** An Exa/Parallel-backed
+  `web_search` plus a `web_fetch` tool, no extra API key to wire up.
+
+> ⚠️ **Security note (0.5.0):** the admin/Settings pages (Models,
+> MCP servers, Network Policy, plugin config) are **not yet behind an
+> authorization gate** — any signed-in user can edit host-wide
+> config. Run Tianshu as a **single trusted operator** for now, and
+> don't expose the admin surface to untrusted users on a multi-tenant
+> box. A proper auth/role gate lands with the login work on the
+> roadmap.
 
 ---
 
@@ -359,8 +402,22 @@ the full picture.
 - [x] Setup agent with 18 tools (inventory, build, fix, upgrade)
 - [x] Tenant model, plugin registry, sandbox role pointers
 
-**Next (0.4.x)**
+**Shipped (0.4.x → 0.5.0)**
 
+- [x] **Workforce Studio** — extract / edit / diff / export / activate
+      your agent config as a Solution
+- [x] **OpenCode workers** — opencode + oh-my-openagent as a worker
+      type, in a prebuilt sandbox image
+- [x] **Settings UI** — Models (provider catalog), Network Policy
+      (sandbox egress), MCP servers, per-plugin config
+- [x] Rate-limit-aware model retries + client auto-reconnect / resume
+- [x] Key-free `web_search` + `web_fetch`
+- [x] Worker task dependency graphs in one batch
+
+**Next (0.5.x → 0.6)**
+
+- [ ] **Auth + roles** — login, and an authorization gate on the
+      admin/Settings surface (see the security note above)
 - [ ] Docker image with sandbox layer baked in
 - [ ] Linux systemd user service (matches macOS launchd UX)
 - [ ] Skills marketplace (registry + install command)
