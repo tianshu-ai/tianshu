@@ -482,16 +482,24 @@ Tracked in [GitHub Issues](https://github.com/tianshu-ai/tianshu/issues).
 
 ## 📺 Build log
 
-A development log goes out roughly every week. Pick the channel that
-fits you:
+A development log goes out roughly every week.
+
+**Latest — v0.5.0: "I said I'd build it. Now it runs."**
+[YouTube](https://youtu.be/m7hDXyHachc) ·
+[Bilibili](https://www.bilibili.com/video/BV18rNA66Euo/) ·
+[dev.to write-up](https://dev.to/tianshu_ai/i-promised-an-ai-agent-platform-with-3-things-fixed-heres-v05-delivered-4m2c) ·
+[抖音](https://v.douyin.com/T-JHsOVU9GM/) ·
+[小红书](https://www.xiaohongshu.com/discovery/item/6a52599d0000000011011880)
+
+Pick the channel that fits you:
 
 | Channel | Language | Format |
 | --- | --- | --- |
 | [dev.to/tianshu_ai](https://dev.to/tianshu_ai) | English | Long-form articles |
 | [YouTube @Tianshu-AI](https://www.youtube.com/@Tianshu-AI) | English | Long-form video |
-| Bilibili 天枢AI *(launching)* | 中文 | Long-form video |
-| X / Twitter *(launching)* | English | Build-in-public threads |
-| 小红书 / 抖音 *(launching)* | 中文 | Short-form clips |
+| [Bilibili 天枢AI](https://space.bilibili.com/3707000053565696) | 中文 | Long-form video |
+| [X / Twitter @tianshuAIdev](https://x.com/tianshuAIdev) | English | Build-in-public threads |
+| [小红书](https://www.xiaohongshu.com/user/profile/67232223000000001c01b3bf) / [抖音](https://www.douyin.com/user/MS4wLjABAAAAjQ3Xyawy8EG4KJiSycllBiePYQg2USup9HRBClHfFGbnEXRHUZvWSk-T1oYVpRfD) | 中文 | Short-form clips |
 
 ---
 
