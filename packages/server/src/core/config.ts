@@ -371,16 +371,86 @@ function assertOnlyOverridable(tenantId: string, raw: Record<string, unknown>): 
 
 // ─── Read / merge ─────────────────────────────────────────────────────
 
+// ─── mtime-invalidated read cache ─────────────────────────────────────
+//
+// Config is read on the HOT PATH: buildTenantContext → resolveTenantConfig
+// runs `loadGlobalConfig` + `loadTenantConfig` on EVERY request, and the
+// auth resolver chain reads global config per request too. Doing a
+// readFileSync + JSON.parse each time is a blocking syscall + parse on
+// the request path.
+//
+// We cache the parsed object keyed by path, invalidated by the file's
+// (mtimeMs, size). Each call still does ONE `statSync` — but stat on a
+// hot file hits the OS inode cache and is ~an order of magnitude cheaper
+// than read+parse. When mtime/size are unchanged we return the cached
+// parse (deep-cloned so callers can't mutate the shared object).
+//
+// Crucially this PRESERVES the "hand-edit config.json → takes effect on
+// the next request, no restart" property: an external edit bumps mtime,
+// so the very next stat sees the change and re-reads. writeGlobalConfig /
+// writeTenantConfig additionally punch the cache entry to avoid a
+// same-millisecond-mtime race after our own writes.
+interface CacheEntry {
+  mtimeMs: number;
+  size: number;
+  parsed: Record<string, unknown>;
+}
+const configCache = new Map<string, CacheEntry>();
+
+/** Drop a cached entry (called after our own writes). */
+function invalidateConfigCache(filepath: string): void {
+  configCache.delete(filepath);
+}
+
+/** Test/ops hook: clear the whole cache. */
+export function clearConfigCache(): void {
+  configCache.clear();
+}
+
+function deepClone<T>(v: T): T {
+  // structuredClone is available on Node 17+; config objects are plain
+  // JSON so it's exact. Cloning stops a caller from mutating the cached
+  // parse and poisoning every subsequent reader.
+  return structuredClone(v);
+}
+
 function readJsonOrEmpty(filepath: string): Record<string, unknown> {
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(filepath);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      configCache.delete(filepath);
+      return {};
+    }
+    throw new Error(
+      `failed to stat config ${filepath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const hit = configCache.get(filepath);
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+    return deepClone(hit.parsed);
+  }
+
   try {
     const buf = fs.readFileSync(filepath, "utf8");
     const parsed = JSON.parse(buf);
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error(`expected JSON object, got ${typeof parsed}`);
     }
-    return parsed as Record<string, unknown>;
+    configCache.set(filepath, {
+      mtimeMs: st.mtimeMs,
+      size: st.size,
+      parsed: parsed as Record<string, unknown>,
+    });
+    return deepClone(parsed as Record<string, unknown>);
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      // Raced with a delete between stat and read.
+      configCache.delete(filepath);
+      return {};
+    }
     throw new Error(
       `failed to read config ${filepath}: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -480,6 +550,9 @@ export function writeTenantConfig(
   const tmp = `${target}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, target);
+  // Punch the cache: a write within the same millisecond as the last
+  // read would otherwise keep serving the stale parse (mtimeMs unchanged).
+  invalidateConfigCache(target);
 }
 
 export function writeGlobalConfig(cfg: GlobalConfig, home: string = getTianshuHome()): void {
@@ -488,6 +561,7 @@ export function writeGlobalConfig(cfg: GlobalConfig, home: string = getTianshuHo
   const tmp = `${target}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, target);
+  invalidateConfigCache(target);
 }
 
 /**

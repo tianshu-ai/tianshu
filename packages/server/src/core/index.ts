@@ -31,6 +31,7 @@ export {
 
 export {
   DEFAULTS,
+  clearConfigCache,
   loadGlobalConfig,
   loadTenantConfig,
   mergeConfigs,
