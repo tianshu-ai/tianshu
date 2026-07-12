@@ -117,6 +117,10 @@ function SidebarFooter() {
     me?.role ?? (me?.devTenant ? t("user.role.dev") : t("user.role.member"));
   const subline = `${roleText} · ${me?.tenantId ?? ""}`;
   const canLogout = !!me?.provider;
+  // Admin entry: in dev mode (no session/provider) everyone is de-facto
+  // admin; in auth mode only tenant-admins / super-admins. Members don't
+  // see it (the settings write routes 403 them anyway).
+  const showAdmin = !me?.provider || me?.role === "admin";
   // Tenants this user can switch between (auth mode, >1 membership).
   const switchableTenants = me?.tenants ?? [];
   const canSwitchTenant = !!me?.provider && switchableTenants.length > 1;
@@ -188,22 +192,24 @@ function SidebarFooter() {
             <div className="truncate text-[10px] text-fg-fainter">{subline}</div>
           </div>
 
-          {/* Admin entry. v0 shows it for everyone (no JWT yet);
-           *  when auth lands we'll gate on me.role === 'admin'. */}
-          <Link
-            // Relative to the current identity-scoped route.
-            // The sidebar lives inside ChatLayout which renders
-            // under `/tenants/:t/users/:u`, so "admin" resolves
-            // to `/tenants/:t/users/:u/admin` without us having
-            // to know who's signed in.
-            to="admin"
-            role="menuitem"
-            onClick={() => setMenuOpen(false)}
-            className="flex items-center gap-2 px-3 py-1.5 text-fg-default hover:bg-bg-raised"
-          >
-            <ShieldCheck size={14} className="text-fg-faint" />
-            <span>{t("admin.title")}</span>
-          </Link>
+          {/* Admin entry — tenant-admins / super-admins only (dev mode:
+           *  everyone). Members don't see it; the write routes 403 them. */}
+          {showAdmin && (
+            <Link
+              // Relative to the current identity-scoped route.
+              // The sidebar lives inside ChatLayout which renders
+              // under `/tenants/:t/users/:u`, so "admin" resolves
+              // to `/tenants/:t/users/:u/admin` without us having
+              // to know who's signed in.
+              to="admin"
+              role="menuitem"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 px-3 py-1.5 text-fg-default hover:bg-bg-raised"
+            >
+              <ShieldCheck size={14} className="text-fg-faint" />
+              <span>{t("admin.title")}</span>
+            </Link>
+          )}
 
           {/* Switch-tenant sub-menu — a session is bound to one tenant
            *  (a tenant = one agent+workers). Switching re-mints the
