@@ -143,6 +143,16 @@ export function buildIdentityPath(
  */
 export function applyDevIdentityFromUrl(): void {
   if (typeof window === "undefined") return;
+
+  // Auth-mode surfaces live OUTSIDE the identity path prefix and must
+  // never be rewritten into `/tenants/<t>/users/<u>/...` — doing so
+  // sends `/login` to `/tenants/default/users/dev/login`, which matches
+  // the identity route's catch-all and renders blank. The login page is
+  // reached before any identity exists (the api client bounces here on a
+  // 401), so leave these paths exactly as-is and let the top-level
+  // routes in App.tsx handle them.
+  if (isAuthSurfacePath(window.location.pathname)) return;
+
   const params = new URLSearchParams(window.location.search);
 
   // 1. ?reset-identity → wipe cookie, fresh start at /.
@@ -225,4 +235,10 @@ function stripIdentityPrefix(pathname: string): string {
 
 function isSafeId(s: string): boolean {
   return /^[A-Za-z0-9._-]+$/.test(s) && s.length <= 64;
+}
+
+/** Paths that must NOT be rewritten under the dev-identity prefix
+ *  (they belong to the auth flow, which is pre-identity). */
+function isAuthSurfacePath(pathname: string): boolean {
+  return pathname === "/login" || pathname.startsWith("/login/");
 }
