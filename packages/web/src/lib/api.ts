@@ -228,6 +228,8 @@ export const api = {
   /** Self-registration (when allowRegistration). */
   register: (username: string, password: string, email?: string) =>
     postJson<{ ok: boolean; userId: string }>("/api/auth/register", { username, password, email }),
+  /** Admin: existing tenant ids (for the role-assignment picker). */
+  adminTenants: () => getJson<{ tenants: string[] }>("/api/admin/tenants"),
   /** Admin: list local users + their per-tenant roles. */
   adminUsers: () => getJson<{ users: AdminLocalUser[] }>("/api/admin/users"),
   adminCreateUser: (username: string, password: string, email?: string) =>

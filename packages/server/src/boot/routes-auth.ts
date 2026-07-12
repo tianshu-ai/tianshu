@@ -419,6 +419,12 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
   });
 
   // ── Local user + per-tenant role management (auth.db) ──
+  // List existing tenants (for the role-assignment picker so roles are
+  // always tied to a real tenant, never a free-typed id).
+  app.get("/api/admin/tenants", requireAdmin, (_req: Request, res: Response) => {
+    res.json({ tenants: deps.listTenants() });
+  });
+
   // List local users with their per-tenant roles.
   app.get("/api/admin/users", requireAdmin, (_req: Request, res: Response) => {
     const store = getUserStore();

@@ -25,7 +25,11 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle2,
+  KeyRound,
+  UserPlus,
+  ShieldPlus,
 } from "lucide-react";
+import { Modal } from "../ui/Modal";
 import {
   api,
   type AdminAuthConfig,
@@ -349,14 +353,19 @@ export default function AuthPage() {
 
 function LocalUsersSection() {
   const [users, setUsers] = useState<AdminLocalUser[]>([]);
+  const [tenants, setTenants] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  const [nu, setNu] = useState({ username: "", password: "", email: "" });
+  // Which modal is open (null = none). Buttons open these; no window.prompt.
+  const [creating, setCreating] = useState(false);
+  const [pwUser, setPwUser] = useState<AdminLocalUser | null>(null);
+  const [roleUser, setRoleUser] = useState<AdminLocalUser | null>(null);
 
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const r = await api.adminUsers();
-      setUsers(r.users);
+      const [u, t] = await Promise.all([api.adminUsers(), api.adminTenants()]);
+      setUsers(u.users);
+      setTenants(t.tenants);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -365,31 +374,9 @@ function LocalUsersSection() {
     void load();
   }, [load]);
 
-  const create = async () => {
-    setErr(null);
-    try {
-      await api.adminCreateUser(nu.username.trim(), nu.password, nu.email.trim() || undefined);
-      setNu({ username: "", password: "", email: "" });
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : String(e));
-    }
-  };
-  const del = async (id: string) => {
-    await api.adminDeleteUser(id);
-    await load();
-  };
-  const resetPw = async (id: string) => {
-    const pw = window.prompt("New password (≥6 chars):");
-    if (!pw) return;
-    await api.adminSetPassword(id, pw);
-  };
-  const addRole = async (id: string) => {
-    const tenantId = window.prompt("Tenant id:");
-    if (!tenantId) return;
-    const role = window.prompt("Role (admin/member):", "member");
-    if (role !== "admin" && role !== "member") return;
-    await api.adminSetRole(id, tenantId.trim(), role);
+  const del = async (u: AdminLocalUser) => {
+    if (!window.confirm(`Delete user "${u.username}"? This removes all their tenant roles.`)) return;
+    await api.adminDeleteUser(u.id);
     await load();
   };
   const rmRole = async (id: string, tenantId: string) => {
@@ -399,65 +386,324 @@ function LocalUsersSection() {
 
   return (
     <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
-      <div className="mb-2 text-sm font-medium text-fg-default">Local users</div>
-      <p className="mb-3 text-xs text-fg-faint">
-        Username/password accounts (auth.db). Assign per-tenant roles
-        (tenant admin / member). Super-admins above override these everywhere.
-      </p>
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <div className="text-sm font-medium text-fg-default">Local users</div>
+          <div className="text-xs text-fg-faint">
+            Username/password accounts. Roles are per tenant — a user can be
+            admin in one tenant and member in another. Super-admins override
+            these everywhere.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
+        >
+          <UserPlus size={15} /> Add user
+        </button>
+      </div>
+
       {err && (
         <div className="mb-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">
           {err}
         </div>
       )}
 
-      {/* Create */}
-      <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-border-subtle pb-3">
-        <Field label="username" value={nu.username} onChange={(v) => setNu({ ...nu, username: v })} placeholder="alice" />
-        <Field label="password" type="password" value={nu.password} onChange={(v) => setNu({ ...nu, password: v })} placeholder="≥6 chars" />
-        <Field label="email (optional)" value={nu.email} onChange={(v) => setNu({ ...nu, email: v })} placeholder="a@b.com" />
-        <button
-          type="button"
-          onClick={() => void create()}
-          disabled={nu.username.length < 2 || nu.password.length < 6}
-          className="flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-sm text-fg-muted hover:text-fg-default disabled:opacity-50"
-        >
-          <Plus size={14} /> Create
-        </button>
-      </div>
-
       {users.length === 0 ? (
-        <div className="text-xs text-fg-fainter">no local users</div>
+        <div className="rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center text-xs text-fg-fainter">
+          No local users yet. Click “Add user” to create one.
+        </div>
       ) : (
         <div className="flex flex-col gap-2">
           {users.map((u) => (
-            <div key={u.id} className="rounded-lg border border-border-subtle bg-bg-base p-2.5">
-              <div className="flex items-center justify-between">
-                <div className="text-sm text-fg-default">
-                  {u.username}
-                  {u.email && <span className="ml-2 text-xs text-fg-faint">{u.email}</span>}
+            <div key={u.id} className="rounded-lg border border-border-subtle bg-bg-base p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-fg-default">{u.username}</div>
+                  {u.email && <div className="truncate text-xs text-fg-faint">{u.email}</div>}
                 </div>
-                <div className="flex items-center gap-2 text-fg-fainter">
-                  <button type="button" onClick={() => void resetPw(u.id)} className="text-xs hover:text-fg-default">reset pw</button>
-                  <button type="button" onClick={() => void addRole(u.id)} className="text-xs hover:text-fg-default">+ role</button>
-                  <button type="button" onClick={() => void del(u.id)} className="hover:text-danger" title="Delete"><Trash2 size={14} /></button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setRoleUser(u)}
+                    className="flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:bg-bg-raised hover:text-fg-default"
+                  >
+                    <ShieldPlus size={13} /> Roles
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPwUser(u)}
+                    className="flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:bg-bg-raised hover:text-fg-default"
+                  >
+                    <KeyRound size={13} /> Password
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void del(u)}
+                    className="flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:border-rose-700/60 hover:text-danger"
+                  >
+                    <Trash2 size={13} /> Delete
+                  </button>
                 </div>
               </div>
-              {u.roles.length > 0 && (
-                <ul className="mt-1.5 flex flex-wrap gap-1.5">
-                  {u.roles.map((r) => (
-                    <li key={r.tenantId} className="flex items-center gap-1 rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted">
+              {/* Per-tenant roles */}
+              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                {u.roles.length === 0 ? (
+                  <span className="text-[11px] text-fg-fainter">no tenant roles — can’t sign in until granted one</span>
+                ) : (
+                  u.roles.map((r) => (
+                    <span
+                      key={r.tenantId}
+                      className="flex items-center gap-1.5 rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted"
+                    >
                       <span className="font-mono">{r.tenantId}</span>
-                      <span className={r.role === "admin" ? "text-brand-400" : ""}>{r.role}</span>
-                      <button type="button" onClick={() => void rmRole(u.id, r.tenantId)} className="ml-0.5 hover:text-danger">×</button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+                      <span className={r.role === "admin" ? "font-medium text-brand-400" : ""}>{r.role}</span>
+                      <button
+                        type="button"
+                        onClick={() => void rmRole(u.id, r.tenantId)}
+                        className="ml-0.5 text-fg-fainter hover:text-danger"
+                        title="Remove role"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
+
+      {/* Create-user modal */}
+      {creating && (
+        <CreateUserModal
+          onClose={() => setCreating(false)}
+          onCreated={() => {
+            setCreating(false);
+            void load();
+          }}
+        />
+      )}
+      {/* Reset-password modal */}
+      {pwUser && (
+        <SetPasswordModal
+          user={pwUser}
+          onClose={() => setPwUser(null)}
+          onDone={() => setPwUser(null)}
+        />
+      )}
+      {/* Assign-role modal */}
+      {roleUser && (
+        <AssignRoleModal
+          user={roleUser}
+          tenants={tenants}
+          onClose={() => setRoleUser(null)}
+          onDone={() => {
+            setRoleUser(null);
+            void load();
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function CreateUserModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const valid = username.trim().length >= 2 && password.length >= 6;
+
+  const submit = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.adminCreateUser(username.trim(), password, email.trim() || undefined);
+      onCreated();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title="Add local user" size="sm" allowMaximize={false}>
+      <div className="flex flex-col gap-3 p-1">
+        {err && <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">{err}</div>}
+        <Field label="Username" value={username} onChange={setUsername} placeholder="alice" />
+        <Field label="Password (≥6 chars)" type="password" value={password} onChange={setPassword} placeholder="••••••" />
+        <Field label="Email (optional)" value={email} onChange={setEmail} placeholder="a@b.com" />
+        <div className="mt-1 flex justify-end gap-2">
+          <ModalBtn kind="ghost" onClick={onClose}>Cancel</ModalBtn>
+          <ModalBtn kind="primary" disabled={!valid || busy} onClick={() => void submit()}>
+            {busy ? "Creating…" : "Create"}
+          </ModalBtn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SetPasswordModal({
+  user,
+  onClose,
+  onDone,
+}: {
+  user: AdminLocalUser;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.adminSetPassword(user.id, password);
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Set password — ${user.username}`} size="sm" allowMaximize={false}>
+      <div className="flex flex-col gap-3 p-1">
+        {err && <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">{err}</div>}
+        <Field label="New password (≥6 chars)" type="password" value={password} onChange={setPassword} placeholder="••••••" />
+        <div className="mt-1 flex justify-end gap-2">
+          <ModalBtn kind="ghost" onClick={onClose}>Cancel</ModalBtn>
+          <ModalBtn kind="primary" disabled={password.length < 6 || busy} onClick={() => void submit()}>
+            {busy ? "Saving…" : "Set password"}
+          </ModalBtn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AssignRoleModal({
+  user,
+  tenants,
+  onClose,
+  onDone,
+}: {
+  user: AdminLocalUser;
+  tenants: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [tenantId, setTenantId] = useState(tenants[0] ?? "");
+  const [role, setRole] = useState<"admin" | "member">("member");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async () => {
+    if (!tenantId) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.adminSetRole(user.id, tenantId, role);
+      onDone();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Tenant roles — ${user.username}`} size="sm" allowMaximize={false}>
+      <div className="flex flex-col gap-3 p-1">
+        {err && <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">{err}</div>}
+        {/* Existing roles */}
+        {user.roles.length > 0 && (
+          <div>
+            <div className="mb-1 text-[11px] text-fg-faint">Current roles</div>
+            <div className="flex flex-wrap gap-1.5">
+              {user.roles.map((r) => (
+                <span key={r.tenantId} className="rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted">
+                  <span className="font-mono">{r.tenantId}</span>{" "}
+                  <span className={r.role === "admin" ? "text-brand-400" : ""}>{r.role}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {tenants.length === 0 ? (
+          <div className="rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+            No tenants exist yet. Create a tenant before assigning roles.
+          </div>
+        ) : (
+          <>
+            <label className="text-sm">
+              <span className="mb-1 block text-[11px] text-fg-faint">Tenant</span>
+              <select
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
+              >
+                {tenants.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-[11px] text-fg-faint">Role in this tenant</span>
+              <select
+                value={role}
+                onChange={(e) => setRole(e.target.value as "admin" | "member")}
+                className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
+              >
+                <option value="member">member</option>
+                <option value="admin">admin</option>
+              </select>
+            </label>
+            <div className="mt-1 flex justify-end gap-2">
+              <ModalBtn kind="ghost" onClick={onClose}>Close</ModalBtn>
+              <ModalBtn kind="primary" disabled={!tenantId || busy} onClick={() => void submit()}>
+                {busy ? "Saving…" : "Set role"}
+              </ModalBtn>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function ModalBtn({
+  kind,
+  disabled,
+  onClick,
+  children,
+}: {
+  kind: "primary" | "ghost";
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  const base = "rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50";
+  const cls =
+    kind === "primary"
+      ? `${base} bg-brand-600 text-white hover:bg-brand-500`
+      : `${base} border border-border-default text-fg-muted hover:text-fg-default`;
+  return (
+    <button type="button" disabled={disabled} onClick={onClick} className={cls}>
+      {children}
+    </button>
   );
 }
 
