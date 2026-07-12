@@ -17,6 +17,8 @@ import {
   type ModelEntry,
 } from "../core/config.js";
 import { getTianshuHome } from "../core/paths.js";
+import { resolveTenantRole } from "../core/auth/identity.js";
+import { getUserStore } from "../core/auth/user-store.js";
 
 // Sentinel the client echoes back for an apiKey field it did NOT
 // change. Lets the UI edit other fields (or reorder models) without
@@ -44,9 +46,29 @@ export function mountCoreRoutes(
     }
     const { tenant, userId } = req.ctx;
     const def = getDefaultModel(tenant.config);
+    // Human-friendly identity for the UI. sessionResolver stashes the
+    // authed name/email/provider in identityMeta; prefer name → email →
+    // raw id so the sidebar shows "admin" not "ul_5457...". Role is
+    // resolved against the current tenant (super-admin > db role >
+    // member); in dev mode (no meta) it's the dev user.
+    const meta = req.ctx.identityMeta ?? {};
+    const displayName = meta.name || meta.email || userId;
+    const authCfg = loadGlobalConfig().auth ?? {};
+    const role = authCfg.enabled
+      ? resolveTenantRole(authCfg, getUserStore(), {
+          userId,
+          tenantId: tenant.tenantId,
+          email: meta.email,
+          username: meta.provider === "local" ? meta.name : undefined,
+        })
+      : "admin"; // dev mode: de-facto admin
     res.json({
       tenantId: tenant.tenantId,
       userId,
+      displayName,
+      email: meta.email ?? null,
+      provider: meta.provider ?? null,
+      role,
       config: { branding: tenant.config.branding ?? null },
       defaultModel: def
         ? { id: def.id, name: def.name, provider: def.providerId }

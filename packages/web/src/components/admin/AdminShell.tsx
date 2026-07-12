@@ -139,7 +139,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "ModelsPage",
     coreComponent: ModelsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Agent",
+    group: "System",
     order: 5,
     clientEntry: null,
   },
@@ -152,8 +152,8 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "McpServersPage",
     coreComponent: McpServersPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Agent",
-    order: 10,
+    group: "System",
+    order: 6,
     clientEntry: null,
   },
 ];
@@ -294,9 +294,11 @@ export default function AdminShell() {
 function AdminSidebar({
   pages,
   userLabel,
+  userRole,
 }: {
   pages: FlatAdminPage[];
   userLabel: string | null;
+  userRole?: "admin" | "member" | null;
 }) {
   const t = useT();
   const shellTitle = t("admin.title");
@@ -364,7 +366,7 @@ function AdminSidebar({
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[11px] text-fg-muted">{userLabel}</div>
-            <div className="text-[10px] text-fg-fainter">admin</div>
+            {userRole && <div className="text-[10px] text-fg-fainter">{userRole}</div>}
           </div>
         </div>
       )}

@@ -3,6 +3,11 @@
 export interface Me {
   tenantId: string;
   userId: string;
+  /** Human-friendly label: name → email → userId. */
+  displayName?: string;
+  email?: string | null;
+  provider?: string | null;
+  role?: "admin" | "member";
   config: { branding: { name?: string; emoji?: string } | null };
   defaultModel: { id: string; name: string; provider: string } | null;
   devTenant: boolean;
