@@ -37,7 +37,12 @@ import { useT } from "../../hooks/useT";
 import { buildIdentityPath } from "../../dev-identity";
 import McpServersPage from "./McpServersPage";
 import ModelsPage from "./ModelsPage";
-import AuthPage from "./AuthPage";
+import {
+  AuthSettingsPage,
+  AuthProvidersPage,
+  AuthUsersPage,
+  AuthTenantsPage,
+} from "./AuthPage";
 import { PluginConfigForm } from "../PluginConfigForm";
 
 interface ContributesAdminPage {
@@ -77,13 +82,52 @@ const CORE_PAGES: FlatAdminPage[] = [
     pluginId: "core",
     pluginDisplayName: "Tianshu",
     pageId: "auth",
-    displayName: "Admin",
+    displayName: "Auth",
     icon: "ShieldCheck",
     kind: "core",
-    component: "AuthPage",
-    coreComponent: AuthPage as unknown as React.ComponentType<AdminPageProps>,
+    component: "AuthSettingsPage",
+    coreComponent: AuthSettingsPage as unknown as React.ComponentType<AdminPageProps>,
     group: "System",
     order: 1,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "auth-providers",
+    displayName: "Providers",
+    icon: "KeyRound",
+    kind: "core",
+    component: "AuthProvidersPage",
+    coreComponent: AuthProvidersPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "System",
+    order: 2,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "auth-users",
+    displayName: "Users",
+    icon: "UserCog",
+    kind: "core",
+    component: "AuthUsersPage",
+    coreComponent: AuthUsersPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "System",
+    order: 3,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "auth-tenants",
+    displayName: "Tenants",
+    icon: "Building2",
+    kind: "core",
+    component: "AuthTenantsPage",
+    coreComponent: AuthTenantsPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "System",
+    order: 4,
     clientEntry: null,
   },
   {

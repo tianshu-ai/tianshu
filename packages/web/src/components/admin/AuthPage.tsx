@@ -94,13 +94,78 @@ function draftToWire(d: ProviderDraft): Record<string, unknown> {
   return out;
 }
 
-export default function AuthPage() {
+/** Shared page shell: title bar + Reload/Save + error/saved banners. */
+function PageShell({
+  title,
+  onReload,
+  onSave,
+  saving,
+  error,
+  saved,
+  children,
+}: {
+  title: string;
+  onReload?: () => void;
+  onSave?: () => void;
+  saving?: boolean;
+  error?: string | null;
+  saved?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mx-auto max-w-3xl p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={20} className="text-brand-400" />
+          <h1 className="text-lg font-semibold text-fg-default">{title}</h1>
+        </div>
+        {(onReload || onSave) && (
+          <div className="flex items-center gap-2">
+            {onReload && (
+              <button
+                type="button"
+                onClick={onReload}
+                className="flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-sm text-fg-muted hover:text-fg-default"
+              >
+                <RefreshCw size={14} /> Reload
+              </button>
+            )}
+            {onSave && (
+              <button
+                type="button"
+                onClick={onSave}
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-60"
+              >
+                <Save size={14} /> {saving ? "Saving…" : "Save"}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {error && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-danger">
+          <AlertTriangle size={14} /> {error}
+        </div>
+      )}
+      {saved && (
+        <div className="mb-4 flex items-center gap-2 rounded-md border border-emerald-700/40 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
+          <CheckCircle2 size={14} /> Saved. The server re-arms auth on the next request.
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
+// ── Tab 1: Settings — master switch, session secret, registration,
+//    super-admins (read-only). PATCHes only its own fields. ──
+export function AuthSettingsPage() {
   const [cfg, setCfg] = useState<AdminAuthConfig | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [allowRegistration, setAllowRegistration] = useState(false);
   const [sessionSecret, setSessionSecret] = useState("");
   const [sessionSecretSet, setSessionSecretSet] = useState(false);
-  const [providers, setProviders] = useState<ProviderDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -116,14 +181,12 @@ export default function AuthPage() {
       setAllowRegistration(c.allowRegistration);
       setSessionSecretSet(c.sessionSecretSet);
       setSessionSecret(c.sessionSecretSet ? SECRET_MASK : "");
-      setProviders(c.providers.map(toDraft));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }, []);
-
   useEffect(() => {
     void load();
   }, [load]);
@@ -133,11 +196,7 @@ export default function AuthPage() {
     setError(null);
     setSaved(false);
     try {
-      const patch: Record<string, unknown> = {
-        enabled,
-        allowRegistration,
-        providers: providers.map(draftToWire),
-      };
+      const patch: Record<string, unknown> = { enabled, allowRegistration };
       if (sessionSecret && sessionSecret !== SECRET_MASK) patch.sessionSecret = sessionSecret;
       await api.patchAdminAuth(patch);
       setSaved(true);
@@ -148,74 +207,19 @@ export default function AuthPage() {
     } finally {
       setSaving(false);
     }
-  }, [enabled, allowRegistration, sessionSecret, providers, load]);
+  }, [enabled, allowRegistration, sessionSecret, load]);
 
-  const addProvider = () => {
-    setProviders((prev) => [
-      ...prev,
-      {
-        id: "",
-        displayName: "",
-        clientId: "",
-        clientSecret: "",
-        issuer: "",
-        authorizeUrl: "",
-        tokenUrl: "",
-        userInfoUrl: "",
-        scopes: "openid email profile",
-        claimsSubject: "",
-        claimsEmail: "",
-        claimsName: "",
-      },
-    ]);
-  };
-
-  const patchProvider = (i: number, patch: Partial<ProviderDraft>) =>
-    setProviders((prev) => prev.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
-  const removeProvider = (i: number) =>
-    setProviders((prev) => prev.filter((_, idx) => idx !== i));
-
-  if (loading) {
-    return <div className="p-6 text-sm text-fg-faint">Loading…</div>;
-  }
+  if (loading) return <div className="p-6 text-sm text-fg-faint">Loading…</div>;
 
   return (
-    <div className="mx-auto max-w-3xl p-6">
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={20} className="text-brand-400" />
-          <h1 className="text-lg font-semibold text-fg-default">Admin · Authentication</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => void load()}
-            className="flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-sm text-fg-muted hover:text-fg-default"
-          >
-            <RefreshCw size={14} /> Reload
-          </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={saving}
-            className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-60"
-          >
-            <Save size={14} /> {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </div>
-
-      {error && (
-        <div className="mb-4 flex items-center gap-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-danger">
-          <AlertTriangle size={14} /> {error}
-        </div>
-      )}
-      {saved && (
-        <div className="mb-4 flex items-center gap-2 rounded-md border border-emerald-700/40 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
-          <CheckCircle2 size={14} /> Saved. The server re-arms auth on the next request.
-        </div>
-      )}
-
+    <PageShell
+      title="Auth · Settings"
+      onReload={() => void load()}
+      onSave={() => void save()}
+      saving={saving}
+      error={error}
+      saved={saved}
+    >
       {/* Master switch */}
       <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
         <label className="flex items-center justify-between">
@@ -223,7 +227,7 @@ export default function AuthPage() {
             <span className="block text-sm font-medium text-fg-default">Require sign-in</span>
             <span className="block text-xs text-fg-faint">
               When on, unauthenticated requests are rejected and users must log
-              in via a provider below. When off, the app runs in open dev mode.
+              in. When off, the app runs in open dev mode.
             </span>
           </span>
           <input
@@ -257,16 +261,15 @@ export default function AuthPage() {
             </label>
             <p className="text-xs text-fg-faint sm:col-span-2">
               A tenant = one agent + its workers. A user is a session inside it;
-              which tenant(s) a login can enter is decided by the per-tenant
-              roles below (membership), not a global rule. A user with no role
-              in any tenant can't sign in until an admin grants access.
+              which tenant(s) a login can enter is decided by per-tenant roles
+              (see Users), not a global rule.
             </p>
           </div>
         )}
       </section>
 
       {/* Super-admins (read-only, config-declared) */}
-      <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
+      <section className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
         <div className="mb-2 text-sm font-medium text-fg-default">Super-admins</div>
         <p className="mb-2 text-xs text-fg-faint">
           Global admins with all permissions across all tenants. Declared in
@@ -286,15 +289,75 @@ export default function AuthPage() {
           <span className="text-xs text-fg-fainter">no OAuth super-admin emails configured</span>
         )}
       </section>
+    </PageShell>
+  );
+}
 
-      {/* Tenant management — super-admin only. A tenant = one agent +
-          its workers. Create / disable (soft off-switch) here. */}
-      {cfg?.viewerIsSuperAdmin && <TenantsSection />}
+// ── Tab 2: Providers — OAuth/OIDC. PATCHes only providers. ──
+export function AuthProvidersPage() {
+  const [providers, setProviders] = useState<ProviderDraft[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
-      {/* Local users + per-tenant roles */}
-      {enabled && <LocalUsersSection />}
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const c = await api.adminAuth();
+      setProviders(c.providers.map(toDraft));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-      {/* Providers */}
+  const save = useCallback(async () => {
+    setSaving(true);
+    setError(null);
+    setSaved(false);
+    try {
+      await api.patchAdminAuth({ providers: providers.map(draftToWire) });
+      setSaved(true);
+      await load();
+      window.setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }, [providers, load]);
+
+  const addProvider = () =>
+    setProviders((prev) => [
+      ...prev,
+      {
+        id: "", displayName: "", clientId: "", clientSecret: "", issuer: "",
+        authorizeUrl: "", tokenUrl: "", userInfoUrl: "",
+        scopes: "openid email profile", claimsSubject: "", claimsEmail: "", claimsName: "",
+      },
+    ]);
+  const patchProvider = (i: number, patch: Partial<ProviderDraft>) =>
+    setProviders((prev) => prev.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
+  const removeProvider = (i: number) =>
+    setProviders((prev) => prev.filter((_, idx) => idx !== i));
+
+  if (loading) return <div className="p-6 text-sm text-fg-faint">Loading…</div>;
+
+  return (
+    <PageShell
+      title="Auth · Providers"
+      onReload={() => void load()}
+      onSave={() => void save()}
+      saving={saving}
+      error={error}
+      saved={saved}
+    >
       <section className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
@@ -351,7 +414,47 @@ export default function AuthPage() {
           ))}
         </div>
       </section>
-    </div>
+    </PageShell>
+  );
+}
+
+// ── Tab 3: Users — local accounts + per-tenant roles. ──
+export function AuthUsersPage() {
+  return (
+    <PageShell title="Auth · Users">
+      <LocalUsersSection />
+    </PageShell>
+  );
+}
+
+// ── Tab 4: Tenants — super-admin only. ──
+export function AuthTenantsPage() {
+  const [allowed, setAllowed] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .adminAuth()
+      .then((c) => {
+        if (!cancelled) setAllowed(c.viewerIsSuperAdmin);
+      })
+      .catch(() => {
+        if (!cancelled) setAllowed(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (allowed === null) return <div className="p-6 text-sm text-fg-faint">Loading…</div>;
+  return (
+    <PageShell title="Auth · Tenants">
+      {allowed ? (
+        <TenantsSection />
+      ) : (
+        <div className="rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-3 text-sm text-amber-200">
+          Tenant management is restricted to super-admins.
+        </div>
+      )}
+    </PageShell>
   );
 }
 
