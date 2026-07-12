@@ -33,7 +33,13 @@ import {
 
   tenantMiddleware,
   writeGlobalConfig,
+  buildResolverChain,
+  assertAuthArmable,
 } from "./core/index.js";
+import {
+  mountPublicAuthRoutes,
+  mountAdminAuthRoutes,
+} from "./boot/routes-auth.js";
 import { buildReloadingBuiltinResolver, PluginRegistry } from "./core/plugins/index.js";
 import {
   buildToolCatalogRefreshTool,
@@ -668,12 +674,45 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
-// Everything below /api/* needs a tenant context. Default resolver in
-// dev mode pins to the bootstrap tenant + user; JWT mode will replace
-// this resolver in a later PR.
+// ─── Auth (user authentication) ──────────────────────────────────────
+//
+// PUBLIC auth routes mount BEFORE the tenant wall — you can't require
+// login to log in. When `auth.enabled=false` (default) they 404, so the
+// login surface is dark until an operator opts in.
+//
+// A getter that reads config fresh each request builds the resolver
+// chain: `auth.enabled` toggles between the dev chain (cookie → env →
+// default-dev) and the authed chain (session → deny). Toggling auth via
+// the admin API re-arms on the next request with no restart.
+function resolvePublicUrl(): string {
+  return (
+    process.env.TIANSHU_WEB_URL ||
+    loadGlobalConfig().server?.publicUrl ||
+    loadGlobalConfig().server?.effectivePublicUrl ||
+    `http://localhost:${loadGlobalConfig().server?.port ?? 3110}`
+  );
+}
+
+// Fail fast at boot if auth is turned on but not armable (no secret /
+// no providers) — a clear error beats a silent 401-all.
+try {
+  const bootAuth = loadGlobalConfig().auth;
+  if (bootAuth?.enabled) assertAuthArmable(bootAuth);
+} catch (err) {
+  console.error(`[tianshu][auth] ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
+
+mountPublicAuthRoutes(app, { publicUrl: resolvePublicUrl });
+
+// Everything below /api/* needs a tenant context. The chain is built
+// per-request from the live auth config (see resolvePublicUrl comment).
 app.use(
   "/api",
-  tenantMiddleware({ ops: globalOps }),
+  tenantMiddleware({
+    ops: globalOps,
+    resolvers: () => buildResolverChain(loadGlobalConfig().auth),
+  }),
 );
 
 // `/api/channel-sessions/*` + `/api/channel-bindings/:id/model`
@@ -684,6 +723,11 @@ mountChannelRoutes(app);
 // boot/routes-core.ts for the bodies. Identity badge / model picker /
 // worker-agents allow-list pickers consume these.
 mountCoreRoutes(app, { pluginRegistry });
+
+// Admin auth routes (after the wall): GET/PATCH /api/admin/auth,
+// guarded by requireAdmin. Writes to config.json; the resolver chain
+// getter above re-reads on the next request so no restart is needed.
+mountAdminAuthRoutes(app, { publicUrl: resolvePublicUrl });
 
 const server = createServer(app);
 

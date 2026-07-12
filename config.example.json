@@ -82,5 +82,36 @@
     "model": "anthropic/claude-sonnet-4-6"
   },
 
-  "branding": { "name": "Tianshu", "emoji": "⭐" }
+  "branding": { "name": "Tianshu", "emoji": "⭐" },
+
+  // User authentication. GLOBAL-ONLY. Absent / enabled:false (default)
+  // keeps open dev mode (no login wall). Turn on + configure providers
+  // via Settings → Admin, or hand-edit here.
+  //
+  // OAuth is fully config-driven — NO provider is hardcoded. Declare any
+  // OAuth2/OIDC provider by (a) an OIDC `issuer` (discovery) or
+  // (b) explicit authorizeUrl/tokenUrl/userInfoUrl. Admins live HERE
+  // (auth.admins by email), not in a DB.
+  "auth": {
+    "enabled": false,
+    "sessionSecret": "***}",
+    "admins": ["you@example.com"],
+    "tenantStrategy": "single",
+    "singleTenant": "default",
+    "providers": [
+      {
+        "id": "my-sso",
+        "displayName": "Company SSO",
+        "clientId": "${OIDC_CLIENT_ID}",
+        "clientSecret": "***}",
+        "scopes": ["openid", "email", "profile"],
+        "issuer": "https://sso.example.com/realms/main"
+        // OR explicit endpoints instead of issuer (e.g. GitHub):
+        // "authorizeUrl": "https://github.com/login/oauth/authorize",
+        // "tokenUrl":     "https://github.com/login/oauth/access_token",
+        // "userInfoUrl":  "https://api.github.com/user",
+        // "claims": { "subject": "id", "email": "email", "name": "name" }
+      }
+    ]
+  }
 }

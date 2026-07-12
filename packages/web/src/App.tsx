@@ -24,12 +24,17 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import ChatLayout from "./components/ChatLayout";
 import AdminShell from "./components/admin/AdminShell";
 import FileOpenDialog from "./components/FileOpenDialog";
+import LoginPage from "./components/LoginPage";
 import { buildIdentityPath } from "./dev-identity";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        {/* Login page (auth mode). Outside the identity prefix
+            because it's reached before any identity exists; the
+            api client bounces here on a 401 when auth is on. */}
+        <Route path="/login" element={<LoginPage />} />
         {/* Identity-scoped surfaces. */}
         <Route path="/tenants/:tenantId/users/:userId">
           <Route index element={<ChatLayout />} />

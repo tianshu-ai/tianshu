@@ -164,6 +164,12 @@ export interface GlobalOnlyConfig {
   autoCreateDefault?: boolean;
   /** Override builtinConfig directory (handy for tests / Docker). */
   builtinConfigDir?: string;
+  /**
+   * User authentication. GLOBAL-ONLY — a tenant must not disable the
+   * auth wall or add itself as admin. Absent / `enabled:false` keeps
+   * the current dev behaviour (no login wall). See AuthConfig.
+   */
+  auth?: AuthConfig;
 }
 
 export interface ModelsCatalog {
@@ -238,13 +244,77 @@ export interface WorkerSettings {
   model?: string;
 }
 
+/**
+ * A single OAuth2 / OIDC login provider. GENERIC + config-driven — the
+ * runtime hardcodes NO provider (no github/google/lark enum). Every
+ * provider goes through the same authorization-code + PKCE flow. The
+ * operator declares whatever they use by endpoint or OIDC issuer.
+ *
+ * Declare a provider one of two ways:
+ *   (a) OIDC discovery — set `issuer`; we fetch
+ *       `<issuer>/.well-known/openid-configuration` for the
+ *       authorize/token/userinfo endpoints.
+ *   (b) explicit endpoints — set authorizeUrl/tokenUrl/userInfoUrl
+ *       directly (for plain OAuth2 without discovery, e.g. GitHub).
+ */
 export interface OAuthProviderConfig {
-  id: string; // e.g. "github", "google"
-  type: "github" | "google" | "oidc" | "lark";
-  clientId?: string;
-  clientSecret?: string; // typically lives in secrets/, not config.json
-  issuer?: string; // for generic OIDC
+  /** Stable id, used in the callback URL `/api/auth/<id>/callback`.
+   *  Lowercase letters, digits, dashes. */
+  id: string;
+  /** Button label on the login page. Defaults to `id`. */
+  displayName?: string;
+  clientId: string;
+  /** May contain `${VAR}` placeholders (resolved at use time). */
+  clientSecret: string;
+  /** OAuth scopes. Defaults to `["openid","email","profile"]`. */
   scopes?: string[];
+
+  // ── endpoint source: issuer (a) OR explicit URLs (b) ──
+  /** OIDC issuer for discovery. Mutually exclusive with the explicit
+   *  *Url fields; if both are set, explicit URLs win. */
+  issuer?: string;
+  authorizeUrl?: string;
+  tokenUrl?: string;
+  userInfoUrl?: string;
+
+  /** Map the provider's userinfo JSON → tianshu identity. Dot paths
+   *  into the userinfo response. Defaults suit OIDC
+   *  (`sub`/`email`/`name`); override for providers that differ
+   *  (GitHub nests email, Lark uses open_id/en_name, …). */
+  claims?: {
+    subject?: string;
+    email?: string;
+    name?: string;
+  };
+}
+
+/**
+ * User-authentication config. GLOBAL-ONLY (never in TENANT_WHITELIST):
+ * a tenant must not be able to disable the auth wall or add itself as
+ * admin. Default `enabled:false` ⇒ zero behaviour change (dev chain).
+ */
+export interface AuthConfig {
+  /** Master switch. false (default) keeps the dev resolver chain
+   *  (cookie → env → default-dev, no login wall). true arms the
+   *  session resolver and 401s unauthenticated /api requests. */
+  enabled?: boolean;
+  /** Session cookie signing secret. `${VAR}` placeholder resolved at
+   *  use time. REQUIRED when enabled=true. */
+  sessionSecret?: string;
+  /** Admins declared by email (Yu's requirement: admins live in the
+   *  config file, not the DB). Login email in this list ⇒ role=admin. */
+  admins?: string[];
+  /** Configured OAuth/OIDC login providers. */
+  providers?: OAuthProviderConfig[];
+  /** Session lifetime in seconds. Default 7 days. */
+  sessionTtlSec?: number;
+  /** Tenant assignment for a freshly-authed user:
+   *   "single" → everyone lands in `singleTenant` (default "default").
+   *   "email"  → one tenant per user, derived from the email local-part.
+   *  Default "single". */
+  tenantStrategy?: "single" | "email";
+  /** Tenant id used when tenantStrategy="single". Default "default". */
+  singleTenant?: string;
 }
 
 export interface BrandingConfig {
@@ -383,6 +453,7 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     logging: global.logging,
     autoCreateDefault: global.autoCreateDefault ?? DEFAULTS.autoCreateDefault,
     builtinConfigDir: global.builtinConfigDir,
+    auth: global.auth,
 
     // overridable — tenant wins
     defaultModel,
@@ -417,4 +488,18 @@ export function writeGlobalConfig(cfg: GlobalConfig, home: string = getTianshuHo
   const tmp = `${target}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, target);
+}
+
+/**
+ * `${VAR}` and `${VAR:-fallback}` → process.env[VAR] | fallback | "".
+ * Shared placeholder resolver for config secrets (auth session secret,
+ * OAuth client secrets). Mirrors the apiKey resolution in llm.ts so
+ * every secret in config.json expands the same way. Returns undefined
+ * for undefined input; never throws.
+ */
+export function expandEnvPlaceholders(value: string | undefined): string | undefined {
+  if (!value) return value;
+  return value.replace(/\$\{([A-Z0-9_]+)(?::-([^}]*))?\}/gi, (_m, name, fallback) => {
+    return process.env[name] ?? fallback ?? "";
+  });
 }

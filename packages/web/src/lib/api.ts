@@ -116,9 +116,30 @@ export interface CatalogSnapshot {
   entriesDropped: number;
 }
 
+/**
+ * When auth is enabled, an unauthenticated /api call 401s. Bounce the
+ * user to the login page rather than surfacing a raw error deep in some
+ * component. We only redirect once (guard flag) and skip when already
+ * on /login to avoid loops. `/api/auth/*` and `/api/me` opt out so the
+ * login page + boot probe can read a 401 without redirecting.
+ */
+let redirecting = false;
+function maybeRedirectToLogin(status: number, path: string): void {
+  if (status !== 401) return;
+  if (redirecting) return;
+  if (typeof window === "undefined") return;
+  if (window.location.pathname === "/login") return;
+  if (path.startsWith("/api/auth/")) return;
+  redirecting = true;
+  window.location.assign("/login");
+}
+
 async function getJson<T>(path: string): Promise<T> {
   const r = await fetch(path, { credentials: "include" });
-  if (!r.ok) throw new Error(`${path} → ${r.status}`);
+  if (!r.ok) {
+    maybeRedirectToLogin(r.status, path);
+    throw new Error(`${path} → ${r.status}`);
+  }
   const text = await r.text();
   if (!text) throw new Error(`${path} returned empty body`);
   return JSON.parse(text) as T;
@@ -145,6 +166,7 @@ async function mutateJson<T>(
   });
   const text = await r.text();
   if (!r.ok) {
+    maybeRedirectToLogin(r.status, path);
     let message = `${path} → ${r.status}`;
     try {
       const parsed = text ? JSON.parse(text) : null;
@@ -192,4 +214,53 @@ export const api = {
   refreshPlugins: () => postJson<{ plugins: PluginListEntry[] }>("/api/plugins/refresh"),
   pluginCatalog: () => getJson<CatalogSnapshot>("/api/plugins/catalog"),
   refreshPluginCatalog: () => postJson<CatalogSnapshot>("/api/plugins/catalog/refresh"),
+
+  // ── Auth ──
+  /** Public: is auth on + which providers to show on the login page. */
+  authConfig: () =>
+    getJson<AuthPublicConfig>("/api/auth/config"),
+  /** Admin: full auth config (secrets redacted to *Set booleans). */
+  adminAuth: () => getJson<AdminAuthConfig>("/api/admin/auth"),
+  /** Admin: patch auth config; server re-arms the chain on next request. */
+  patchAdminAuth: (patch: Partial<AdminAuthPatch>) =>
+    patchJson<{ ok: boolean; enabled: boolean }>("/api/admin/auth", patch),
+  /** Clear the session cookie. */
+  logout: () => postJson<{ ok: boolean }>("/api/auth/logout"),
 };
+
+export interface AuthPublicConfig {
+  enabled: boolean;
+  providers: Array<{ id: string; displayName: string }>;
+}
+
+export interface AdminAuthProvider {
+  id: string;
+  displayName: string;
+  issuer: string | null;
+  authorizeUrl: string | null;
+  tokenUrl: string | null;
+  userInfoUrl: string | null;
+  clientId: string;
+  clientSecretSet: boolean;
+  scopes: string[] | null;
+  claims: { subject?: string; email?: string; name?: string } | null;
+}
+
+export interface AdminAuthConfig {
+  enabled: boolean;
+  tenantStrategy: "single" | "email";
+  singleTenant: string;
+  admins: string[];
+  sessionSecretSet: boolean;
+  providers: AdminAuthProvider[];
+}
+
+export interface AdminAuthPatch {
+  enabled: boolean;
+  sessionSecret: string;
+  admins: string[];
+  providers: unknown[];
+  tenantStrategy: "single" | "email";
+  singleTenant: string;
+  sessionTtlSec: number;
+}

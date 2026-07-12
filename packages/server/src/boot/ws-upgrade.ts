@@ -18,10 +18,11 @@
 import type { Server as HttpServer } from "node:http";
 import { WebSocketServer } from "ws";
 import {
-  DEV_RESOLVER_CHAIN,
   DEV_TENANT_ID,
   TenantNotFoundError,
   runIdentityChain,
+  buildResolverChain,
+  loadGlobalConfig,
 } from "../core/index.js";
 import type { GlobalOps } from "../core/global-ops.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
@@ -45,9 +46,12 @@ export function installChatWebSocket(
   const wss = new WebSocketServer({ server, path: "/ws" });
 
   wss.on("connection", async (socket, request) => {
+    // Build the chain from the live auth config so WS honours the same
+    // login wall as HTTP. Skipping this (pinning DEV_RESOLVER_CHAIN) would
+    // be an isolation hole: an unauthenticated socket could bypass auth.
     const { resolution, error: chainError } = runIdentityChain(
       request as unknown as Parameters<typeof runIdentityChain>[0],
-      DEV_RESOLVER_CHAIN,
+      buildResolverChain(loadGlobalConfig().auth),
     );
     if (chainError) {
       socket.send(

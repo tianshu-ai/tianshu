@@ -113,6 +113,13 @@ export {
 } from "./middleware.js";
 
 export {
+  buildResolverChain,
+  assertAuthArmable,
+  sessionResolver,
+  denyResolver,
+} from "./auth/resolvers.js";
+
+export {
   buildModel,
   findModel,
   getDefaultModel,

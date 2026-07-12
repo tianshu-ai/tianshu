@@ -37,6 +37,7 @@ import { useT } from "../../hooks/useT";
 import { buildIdentityPath } from "../../dev-identity";
 import McpServersPage from "./McpServersPage";
 import ModelsPage from "./ModelsPage";
+import AuthPage from "./AuthPage";
 import { PluginConfigForm } from "../PluginConfigForm";
 
 interface ContributesAdminPage {
@@ -72,6 +73,19 @@ interface FlatAdminPage {
  * the same `:pluginId/:pageId` URL structure as plugin pages.
  */
 const CORE_PAGES: FlatAdminPage[] = [
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "auth",
+    displayName: "Admin",
+    icon: "ShieldCheck",
+    kind: "core",
+    component: "AuthPage",
+    coreComponent: AuthPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "System",
+    order: 1,
+    clientEntry: null,
+  },
   {
     pluginId: "core",
     pluginDisplayName: "Tianshu",

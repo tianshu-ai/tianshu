@@ -55,6 +55,11 @@ export interface RequestCtx {
    *  routes / plugins that care (audit logs, rate limiting) can
    *  branch on the source without re-running the chain. */
   identitySource: string;
+  /** Free-form per-resolver context (email, provider, token id, ...).
+   *  Audit / role-derivation only; NEVER trusted for isolation. The
+   *  session resolver puts the authed email here so requireAdmin can
+   *  derive role from auth.admins without re-parsing the token. */
+  identityMeta?: Readonly<Record<string, string>>;
 }
 
 declare module "express-serve-static-core" {
@@ -66,22 +71,30 @@ declare module "express-serve-static-core" {
 export interface TenantMiddlewareOpts {
   ops: GlobalOps;
   /**
-   * Ordered list of identity resolvers. Defaults to the dev chain
-   * (cookie → env → always-fall-back-to-dev). Production setups
-   * should pass an explicit chain that ends with a resolver
-   * returning `deny` rather than the default-dev resolver.
+   * Ordered list of identity resolvers, OR a getter returning it.
+   * Defaults to the dev chain (cookie → env → always-fall-back-to-dev).
+   *
+   * A getter lets the chain change at runtime without rebuilding the
+   * middleware — used by auth mode so toggling `auth.enabled` re-arms
+   * `[sessionResolver, denyResolver]` vs. the dev chain on the next
+   * request. Production setups pass an explicit chain that ends with a
+   * resolver returning `deny` rather than the default-dev resolver.
    */
-  resolvers?: readonly IdentityResolver[];
+  resolvers?: readonly IdentityResolver[] | (() => readonly IdentityResolver[]);
 }
 
 export function tenantMiddleware(opts: TenantMiddlewareOpts) {
-  const chain = opts.resolvers ?? DEV_RESOLVER_CHAIN;
+  const resolversOpt = opts.resolvers;
+  const getChain: () => readonly IdentityResolver[] =
+    typeof resolversOpt === "function"
+      ? resolversOpt
+      : () => resolversOpt ?? DEV_RESOLVER_CHAIN;
   return function tenantMiddlewareHandler(
     req: Request,
     res: Response,
     next: NextFunction,
   ): void {
-    const { resolution, error } = runIdentityChain(req, chain);
+    const { resolution, error } = runIdentityChain(req, getChain());
     if (error) {
       // Resolver crash is treated as a hard 500 — never silently
       // fall through to a more permissive resolver downstream.
@@ -150,6 +163,7 @@ export function tenantMiddleware(opts: TenantMiddlewareOpts) {
       tenant,
       userId: resolution.userId,
       identitySource: resolution.source,
+      identityMeta: resolution.meta,
     };
     res.setHeader("X-Tianshu-Identity-Source", resolution.source);
     next();
