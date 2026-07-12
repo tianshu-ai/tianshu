@@ -25,6 +25,7 @@ import ChatLayout from "./components/ChatLayout";
 import AdminShell from "./components/admin/AdminShell";
 import FileOpenDialog from "./components/FileOpenDialog";
 import LoginPage from "./components/LoginPage";
+import IdentityGuard from "./components/IdentityGuard";
 import { buildIdentityPath } from "./dev-identity";
 
 export default function App() {
@@ -37,8 +38,11 @@ export default function App() {
         <Route path="/login" element={<LoginPage />} />
         {/* Identity-scoped surfaces. */}
         <Route path="/tenants/:tenantId/users/:userId">
-          <Route index element={<ChatLayout />} />
-          <Route path="admin/*" element={<AdminShell />} />
+          {/* IdentityGuard: when auth is on, force the URL identity to
+              match the logged-in session (redirect on mismatch). No-op
+              in dev mode. */}
+          <Route index element={<IdentityGuard><ChatLayout /></IdentityGuard>} />
+          <Route path="admin/*" element={<IdentityGuard><AdminShell /></IdentityGuard>} />
           {/* Catch-all under identity → bounce to the identity
               root (which renders the chat). Avoids dead links
               like /tenants/foo/users/bar/typo404 silently
