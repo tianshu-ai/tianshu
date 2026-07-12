@@ -61,7 +61,6 @@ export interface OverridableConfig {
    *   then resurrect with a real shape.
    */
   worker?: WorkerSettings;
-  oauth?: OAuthProviderConfig[];
   branding?: BrandingConfig;
   apiKeys?: Record<string, string>; // provider name → key
   /**
@@ -344,7 +343,6 @@ const TENANT_WHITELIST = new Set<keyof OverridableConfig>([
   "defaultModel",
   "models",
   "worker",
-  "oauth",
   "branding",
   "apiKeys",
   "plugins",
@@ -529,7 +527,6 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     defaultModel,
     models,
     worker: { ...global.worker, ...tenant.worker },
-    oauth: tenant.oauth ?? global.oauth,
     branding: { ...global.branding, ...tenant.branding },
     apiKeys: { ...global.apiKeys, ...tenant.apiKeys },
     plugins: { ...global.plugins, ...tenant.plugins },

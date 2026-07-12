@@ -137,12 +137,49 @@ OAuth2 authorization-code + PKCE flow). This is what Yu asked for:
 "OAuth 只要可以配置就行，不用写死" — no baked-in provider list, the user
 configures whatever they use.
 
-### Why global-only
+### Why global-only (decision, 2026-07-12)
 
-`server.*` and `logging.*` are already global-only in `config.ts`
-(a tenant can't flip the listener port). Auth is the same class of
-knob: a tenant must not disable the auth wall or add itself as admin.
-Enforced by leaving `auth` OUT of `TENANT_WHITELIST`.
+Question raised: should the login switch live at the global or the
+tenant level? **Decision: global-only for v1.** Reasoning:
+
+1. **Authentication precedes tenancy.** When an unauthenticated request
+   arrives there is NO tenant context yet — you can't read a tenant's
+   config to decide whether to challenge them. Chicken-and-egg. The
+   `auth.enabled` switch therefore has to be resolvable before any
+   tenant is known → global.
+2. **Security red-line.** If a tenant could set `auth.enabled` it could
+   turn off its own wall (self-inflicted open access); if it could set
+   `auth.admins` it could self-promote. Isolation must not be delegated
+   to the isolated party. Same class as `server.port` / CORS —
+   process/platform-level, not tenant business config.
+3. Enforced by leaving `auth` OUT of `TENANT_WHITELIST`; a tenant
+   config that sets `auth` is rejected with `TenantConfigForbiddenFieldError`.
+
+**Also removed (2026-07-12):** the dead `OverridableConfig.oauth?:
+OAuthProviderConfig[]` field. It sat in `TENANT_WHITELIST` (implying
+tenants could configure OAuth) but had zero runtime consumers and
+collided in name with the new `auth.providers`. Removing it kills a
+"looks tenant-configurable but does nothing" trap. `OAuthProviderConfig`
+itself stays — now used by `auth.providers`.
+
+### Future: multi-tenant SaaS evolution (NOT implemented)
+
+If tianshu ever ships as a multi-tenant SaaS where each tenant brings
+its own IdP (tenant A on Okta, tenant B on Azure AD), the path is:
+
+- `auth.enabled` + `auth.admins` **stay global** (the red-lines above
+  never move).
+- `auth.providers` could become `global defaults ⊕ tenant-appended`,
+  mirroring the existing `models` global⊕tenant merge — a tenant may
+  ADD its own provider but not disable the wall or touch admins.
+- Per-tenant callback URLs (`/api/auth/<tenant>/<provider>/callback`)
+  and provider-conflict merge rules would need design then.
+
+Deliberately deferred (YAGNI): the open-source repo is single-tenant
+for most deployments; per-tenant SSO is a hypothetical need. Building
+the two-layer merge now would be premature complexity. The seam (config
+merge + resolver chain) is already shaped so this is additive later,
+not a rewrite.
 
 ---
 
@@ -233,13 +270,17 @@ from `auth.admins.includes(req.ctx.email)`.
 
 ## Open questions for Yu
 
-1. **Session mechanism**: stateless signed cookie (no DB, simplest) vs.
-   server-side session table in a global `auth.db` (supports instant
-   revocation). Recommend stateless for v1.
-2. **Tenant assignment**: `single` (everyone → `default`, simplest) vs.
-   `email` (one tenant per user, matches closed-source "user==tenant")?
-   The multi-tenant red-line leans toward per-user tenants eventually,
-   but v1 could ship `single`.
+1. ~~Session mechanism~~ — **RESOLVED**: stateless signed cookie
+   (HMAC-SHA256, no new DB). Swap to a global sessions table later only
+   if server-side revocation is needed.
+2. ~~Tenant assignment~~ — **RESOLVED**: v1 ships `single` as the
+   default (everyone → `default`); `email` (one tenant per user) is
+   implemented and selectable but not the default.
+2b. ~~Global vs tenant-level login control~~ — **RESOLVED (Yu,
+   2026-07-12)**: global-only. See "Why global-only" above. Total switch
+   `auth.enabled` + `auth.admins` are process-level; a tenant cannot set
+   them. Future multi-tenant SaaS may append per-tenant providers, but
+   the switch/admins never move to tenant scope.
 3. ~~Which providers to hardcode~~ — **RESOLVED (Yu, 2026-07-12)**:
    nothing hardcoded. Generic config-driven OAuth2/OIDC; the user
    declares providers by endpoint/issuer. Code is provider-agnostic.
