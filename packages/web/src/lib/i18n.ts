@@ -41,6 +41,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "user.role.dev": "dev",
     "user.theme": "Theme",
     "user.signOut": "Sign out",
+    "user.switchTenant": "Switch tenant",
   },
   zh: {
     "auth.signOut": "退出登录",
@@ -51,6 +52,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "user.role.dev": "开发者",
     "user.theme": "主题",
     "user.signOut": "退出登录",
+    "user.switchTenant": "切换租户",
   },
 };
 

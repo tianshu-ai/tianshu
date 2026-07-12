@@ -729,7 +729,7 @@ mountChannelRoutes(app);
 // /api/me, /api/models, /api/tools, /api/skills — see
 // boot/routes-core.ts for the bodies. Identity badge / model picker /
 // worker-agents allow-list pickers consume these.
-mountCoreRoutes(app, { pluginRegistry });
+mountCoreRoutes(app, { pluginRegistry, listTenants: () => globalOps.list() });
 
 // Admin auth routes (after the wall): GET/PATCH /api/admin/auth,
 // guarded by requireAdmin. Writes to config.json; the resolver chain

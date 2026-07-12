@@ -8,6 +8,7 @@ import {
   Hash,
   ShieldCheck,
   LogOut,
+  Building2,
 } from "lucide-react";
 import PluginSidebarSections from "./PluginSidebarSections";
 import { ThemeToggle } from "./ui/ThemeToggle";
@@ -116,9 +117,13 @@ function SidebarFooter() {
     me?.role ?? (me?.devTenant ? t("user.role.dev") : t("user.role.member"));
   const subline = `${roleText} · ${me?.tenantId ?? ""}`;
   const canLogout = !!me?.provider;
+  // Tenants this user can switch between (auth mode, >1 membership).
+  const switchableTenants = me?.tenants ?? [];
+  const canSwitchTenant = !!me?.provider && switchableTenants.length > 1;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
+  const [tenantOpen, setTenantOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   // Close on outside click / Esc — standard popover dismissal.
@@ -131,12 +136,14 @@ function SidebarFooter() {
       if (!wrapRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
         setLangOpen(false);
+        setTenantOpen(false);
       }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setMenuOpen(false);
         setLangOpen(false);
+        setTenantOpen(false);
       }
     };
     window.addEventListener("mousedown", onDown);
@@ -197,6 +204,69 @@ function SidebarFooter() {
             <ShieldCheck size={14} className="text-fg-faint" />
             <span>{t("admin.title")}</span>
           </Link>
+
+          {/* Switch-tenant sub-menu — a session is bound to one tenant
+           *  (a tenant = one agent+workers). Switching re-mints the
+           *  session for the target tenant, then reloads onto its URL.
+           *  Shown only when the user belongs to more than one. */}
+          {canSwitchTenant && (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                aria-haspopup="menu"
+                aria-expanded={tenantOpen}
+                onClick={() => setTenantOpen((v) => !v)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-fg-default hover:bg-bg-raised"
+              >
+                <Building2 size={14} className="text-fg-faint" />
+                <span className="flex-1 text-left">{t("user.switchTenant")}</span>
+                <span className="max-w-[80px] truncate text-[10px] text-fg-faint">{me?.tenantId}</span>
+                <ChevronRight
+                  size={12}
+                  className={`text-fg-faint transition-transform ${tenantOpen ? "rotate-90" : ""}`}
+                />
+              </button>
+              {tenantOpen && (
+                <ul role="menu" className="border-y border-border-subtle bg-bg-base/60">
+                  {switchableTenants.map((tid) => {
+                    const active = tid === me?.tenantId;
+                    return (
+                      <li
+                        key={tid}
+                        role="menuitemradio"
+                        aria-checked={active}
+                        tabIndex={0}
+                        onClick={async () => {
+                          if (active) {
+                            setTenantOpen(false);
+                            setMenuOpen(false);
+                            return;
+                          }
+                          try {
+                            await api.switchTenant(tid);
+                          } finally {
+                            // Land on the new tenant's URL; IdentityGuard
+                            // keeps URL == session. Full reload so all
+                            // tenant-scoped state is rebuilt.
+                            window.location.assign(
+                              `/tenants/${tid}/users/${me?.userId ?? ""}`,
+                            );
+                          }
+                        }}
+                        className={`flex cursor-pointer items-center gap-2 py-1.5 pl-9 pr-3 outline-none ${
+                          active ? "text-link" : "text-fg-muted hover:bg-bg-raised"
+                        }`}
+                      >
+                        <span className="flex-1 truncate font-mono">{tid}</span>
+                        {active && <Check size={13} className="text-link" />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
+          )}
 
           {/* Language sub-menu — inline expansion keeps the popover
            *  scoped instead of fanning out a second floating panel.

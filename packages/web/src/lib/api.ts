@@ -8,6 +8,8 @@ export interface Me {
   email?: string | null;
   provider?: string | null;
   role?: "admin" | "member";
+  /** Tenants this user may enter (for the tenant switcher). */
+  tenants?: string[];
   config: { branding: { name?: string; emoji?: string } | null };
   defaultModel: { id: string; name: string; provider: string } | null;
   devTenant: boolean;
@@ -272,6 +274,9 @@ export const api = {
     patchJson<{ ok: boolean; enabled: boolean }>("/api/admin/auth", patch),
   /** Clear the session cookie. */
   logout: () => postJson<{ ok: boolean }>("/api/auth/logout"),
+  /** Switch the session to another tenant the user has access to. */
+  switchTenant: (tenantId: string) =>
+    postJson<{ ok: boolean; tenantId: string }>("/api/auth/switch-tenant", { tenantId }),
 };
 
 export interface AuthPublicConfig {

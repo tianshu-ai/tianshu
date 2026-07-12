@@ -30,6 +30,8 @@ import {
   mintSession,
   buildSessionCookie,
   buildClearCookie,
+  verifySession,
+  readSessionCookie,
 } from "../core/auth/session.js";
 import {
   deriveUserId,
@@ -316,6 +318,61 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
   app.post("/api/auth/logout", (_req: Request, res: Response) => {
     res.setHeader("Set-Cookie", buildClearCookie(true));
     res.json({ ok: true });
+  });
+
+  // Switch tenant. The session is bound to a single tenant (claims.tenant);
+  // a user who belongs to several must re-mint a session bound to the
+  // target. Mounted before the tenant wall, so we read + verify the
+  // current session cookie directly rather than relying on req.ctx.
+  app.post("/api/auth/switch-tenant", (req: Request, res: Response) => {
+    const cfg = currentAuth();
+    if (!cfg.enabled) {
+      res.status(404).json({ error: "auth_disabled" });
+      return;
+    }
+    const secret = expandEnv(cfg.sessionSecret) ?? "";
+    const token = readSessionCookie(req.headers.cookie);
+    const claims = token ? verifySession(token, secret) : null;
+    if (!claims) {
+      res.status(401).json({ error: "not_authenticated" });
+      return;
+    }
+    const target = (req.body as { tenantId?: string }).tenantId?.trim() ?? "";
+    if (!target) {
+      res.status(400).json({ error: "missing_tenant_id" });
+      return;
+    }
+    // Authorise: the target must be in the user's allowed set (membership
+    // or super-admin), and not disabled. Reuse the exact login logic.
+    const allowed = tenantsForUser(
+      cfg,
+      getUserStore(),
+      {
+        userId: claims.sub,
+        email: claims.email,
+        username: claims.provider === "local" ? claims.name : undefined,
+      },
+      deps.listTenants,
+      isTenantDisabled,
+    );
+    if (!allowed.includes(target)) {
+      res.status(403).json({ error: "no_access_to_tenant", tenantId: target });
+      return;
+    }
+    const ttlSec = cfg.sessionTtlSec ?? 60 * 60 * 24 * 7;
+    const next = mintSession(
+      {
+        sub: claims.sub,
+        tenant: target,
+        email: claims.email,
+        name: claims.name,
+        provider: claims.provider,
+      },
+      secret,
+      ttlSec,
+    );
+    res.setHeader("Set-Cookie", buildSessionCookie(next, ttlSec, isSecureUrl(deps.publicUrl())));
+    res.json({ ok: true, tenantId: target });
   });
 }
 

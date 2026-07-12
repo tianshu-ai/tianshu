@@ -17,8 +17,9 @@ import {
   type ModelEntry,
 } from "../core/config.js";
 import { getTianshuHome } from "../core/paths.js";
-import { resolveTenantRole } from "../core/auth/identity.js";
+import { resolveTenantRole, tenantsForUser } from "../core/auth/identity.js";
 import { getUserStore } from "../core/auth/user-store.js";
+import { isTenantDisabled } from "../core/config.js";
 
 // Sentinel the client echoes back for an apiKey field it did NOT
 // change. Lets the UI edit other fields (or reorder models) without
@@ -31,6 +32,8 @@ export interface MountCoreRoutesDeps {
    *  current tenant's catalog. Closures resolve it at request time
    *  so plugin enable/disable cycles take effect immediately. */
   pluginRegistry: PluginRegistry;
+  /** All existing tenant ids — for the /api/me tenant switcher list. */
+  listTenants: () => string[];
 }
 
 export function mountCoreRoutes(
@@ -62,6 +65,21 @@ export function mountCoreRoutes(
           username: meta.provider === "local" ? meta.name : undefined,
         })
       : "admin"; // dev mode: de-facto admin
+    // Tenants this user may enter (for the tenant switcher). Only
+    // meaningful in auth mode; membership + super-admin, minus disabled.
+    const tenants = authCfg.enabled
+      ? tenantsForUser(
+          authCfg,
+          getUserStore(),
+          {
+            userId,
+            email: meta.email,
+            username: meta.provider === "local" ? meta.name : undefined,
+          },
+          deps.listTenants,
+          isTenantDisabled,
+        )
+      : [tenant.tenantId];
     res.json({
       tenantId: tenant.tenantId,
       userId,
@@ -69,6 +87,7 @@ export function mountCoreRoutes(
       email: meta.email ?? null,
       provider: meta.provider ?? null,
       role,
+      tenants,
       config: { branding: tenant.config.branding ?? null },
       defaultModel: def
         ? { id: def.id, name: def.name, provider: def.providerId }
