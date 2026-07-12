@@ -15,6 +15,7 @@ import { ThemeToggle } from "./ui/ThemeToggle";
 import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
 import { api } from "../lib/api";
+import { clearIdentityCookie } from "../dev-identity";
 import {
   getSupportedLocales,
   LOCALE_LABELS,
@@ -348,6 +349,9 @@ function SidebarFooter() {
                 try {
                   await api.logout();
                 } finally {
+                  // Also drop the dev-identity cookie so the next login
+                  // doesn't inherit this user's tenant/user path.
+                  clearIdentityCookie();
                   window.location.assign("/login");
                 }
               }}

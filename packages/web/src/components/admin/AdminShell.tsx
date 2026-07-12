@@ -34,7 +34,7 @@ import { resolveComponent } from "../../lib/plugin-registry";
 import type { AdminPageProps } from "@tianshu-ai/plugin-sdk/client";
 import { api, type PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
-import { buildIdentityPath } from "../../dev-identity";
+import { buildIdentityPath, clearIdentityCookie } from "../../dev-identity";
 import McpServersPage from "./McpServersPage";
 import ModelsPage from "./ModelsPage";
 import {
@@ -384,6 +384,7 @@ function AdminSidebar({
                 try {
                   await api.logout();
                 } finally {
+                  clearIdentityCookie();
                   window.location.assign("/login");
                 }
               }}

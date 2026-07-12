@@ -96,7 +96,7 @@ function writeIdentityCookie(tenantId: string, userId: string): void {
   document.cookie = `${COOKIE_NAME}=${value};Path=/;Max-Age=${30 * 24 * 3600};SameSite=Lax`;
 }
 
-function clearIdentityCookie(): void {
+export function clearIdentityCookie(): void {
   document.cookie = `${COOKIE_NAME}=;Path=/;Max-Age=0;SameSite=Lax`;
 }
 
@@ -116,7 +116,23 @@ export function buildIdentityPath(
   identity?: { tenantId: string; userId: string },
 ): string {
   if (IDENTITY_PATH_RE.test(rest)) return rest;
-  const id = identity ?? readIdentityFromCookie();
+  // Identity precedence:
+  //   1. explicit arg
+  //   2. the CURRENT URL path — authoritative in auth mode (IdentityGuard
+  //      forces URL == session) and correct in dev mode too. Using this
+  //      first fixes the bug where, after logging out one user and into
+  //      another, the stale `tianshu_identity` dev cookie made admin nav
+  //      links point at the PREVIOUS user's path ("Settings won't open").
+  //   3. the dev cookie (dev-mode fallback / pre-navigation).
+  const fromPath =
+    typeof window !== "undefined"
+      ? parseIdentityPath(window.location.pathname)
+      : null;
+  const id =
+    identity ??
+    (fromPath
+      ? { tenantId: fromPath.tenantId, userId: fromPath.userId }
+      : readIdentityFromCookie());
   const tenant = id?.tenantId ?? FALLBACK_TENANT;
   const user = id?.userId ?? FALLBACK_USER;
   const tail = rest.startsWith("/") ? rest : `/${rest}`;
