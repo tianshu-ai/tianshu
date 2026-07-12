@@ -366,6 +366,7 @@ export class WorkerPool {
       workerCount: next.length,
       agents: next.map((w) => ({ id: w.agentId, kind: w.kind })),
     });
+    this.broadcastStatus(); // roster changed
     this.nudge();
   }
 
@@ -403,6 +404,19 @@ export class WorkerPool {
       })),
       running: [...this.busy.keys()],
     };
+  }
+
+  /** Push the current worker status snapshot to subscribed UIs.
+   *  Called on every busy-state transition so the Workers sidebar /
+   *  board reflect changes immediately instead of polling. Mirrors
+   *  the `workers.status` REST shape; the client subscribes to
+   *  `workboard:workers.status`. */
+  private broadcastStatus(): void {
+    try {
+      this.deps.broadcast("workers.status", this.status());
+    } catch {
+      // Broadcasting is best-effort; never let it break the drain loop.
+    }
   }
 
   /** Schedule one drain pass on the next tick. Called from the
@@ -516,6 +530,7 @@ export class WorkerPool {
         workerAgentId: worker.agentId,
         workerName: worker.name,
       });
+      this.broadcastStatus(); // worker just went busy
       this.deps.log.info("workboard: claimed task", {
         taskId: claimed.id,
         agentId: worker.agentId,
@@ -538,6 +553,7 @@ export class WorkerPool {
           else this.busyByUser.set(owner, remaining);
           this.taskOwners.delete(claimed.id);
         }
+        this.broadcastStatus(); // worker just freed a slot
         // After one completion there might be more tasks waiting —
         // re-nudge so the pool keeps draining.
         if (!this.stopped) this.nudge();

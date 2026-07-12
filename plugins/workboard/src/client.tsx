@@ -2496,9 +2496,26 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
   }, []);
 
   useEffect(() => {
+    // Fetch once for the initial state, then rely on server pushes
+    // (`workboard:workers.status`, sent on every busy-state / roster
+    // change) instead of a 5s poll. The server carries the full
+    // snapshot in the event payload, so no re-fetch on push.
     void reload();
-    const id = window.setInterval(() => void reload(), 5000);
-    return () => window.clearInterval(id);
+    const off = subscribeToWsEvent<{ type: string; event?: string; payload?: unknown }>(
+      "plugin_event",
+      (ev) => {
+        if (ev.event !== "workboard:workers.status") return;
+        if (ev.payload) setSnapshot(ev.payload as WorkerSnapshot);
+      },
+    );
+    // WS may be unavailable (subscribeToWsEvent is a no-op then); a slow
+    // safety-net poll keeps the sidebar eventually-correct without the
+    // old 5s churn.
+    const id = window.setInterval(() => void reload(), 60000);
+    return () => {
+      off();
+      window.clearInterval(id);
+    };
   }, [reload]);
 
   const realWorkers = snapshot?.workers ?? [];
