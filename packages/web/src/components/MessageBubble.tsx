@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -35,7 +35,14 @@ import MessageAttachments from "./MessageAttachments";
 
 
 
-export default function MessageBubble({ m }: { m: MergedMessage }) {
+// Memoised: with ChatArea's `useMemo(mergeToolTurns)` the merged
+// message objects keep a stable identity across renders unless their
+// underlying row actually changed. So during streaming only the ONE
+// message whose text is growing re-renders; the other N-1 completed
+// bubbles (each of which re-parses markdown + may highlight code) are
+// skipped. Default shallow prop compare on `{ m }` is exactly right
+// here because `m` is the only prop and its identity is meaningful.
+function MessageBubbleImpl({ m }: { m: MergedMessage }) {
   const isUser = m.role === "user";
   // MarkdownBlock comes through the plugin-sdk UiPrimitives slot so
   // the chat bubble + the files preview + every other surface
@@ -115,6 +122,9 @@ export default function MessageBubble({ m }: { m: MergedMessage }) {
     </div>
   );
 }
+
+const MessageBubble = memo(MessageBubbleImpl);
+export default MessageBubble;
 
 function renderAssistantBlock(
   block: MergedAssistantBlock,
