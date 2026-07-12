@@ -15,6 +15,28 @@ import { api, type AuthPublicConfig } from "../lib/api";
 export default function LoginPage() {
   const [cfg, setCfg] = useState<AuthPublicConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [busy, setBusy] = useState(false);
+
+  const submitLocal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      if (mode === "register") {
+        await api.register(username.trim(), password);
+      }
+      await api.login(username.trim(), password);
+      // Session cookie is set; drop the stale dev-identity cookie path
+      // and land on the app root (dev-identity is bypassed for /login).
+      window.location.assign("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -62,26 +84,77 @@ export default function LoginPage() {
           </div>
         )}
 
-        {cfg && cfg.enabled && cfg.providers.length === 0 && (
-          <div className="rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-3 text-center text-sm text-amber-200">
-            Auth is on but no login providers are configured. An admin must
-            add one in Settings → Admin.
-          </div>
-        )}
+        {cfg && cfg.enabled && (
+          <>
+            {/* Local username/password */}
+            {cfg.localLogin && (
+              <form onSubmit={submitLocal} className="flex flex-col gap-2">
+                <input
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Username"
+                  autoComplete="username"
+                  className="rounded-lg border border-border-default bg-bg-base px-3 py-2 text-sm text-fg-default"
+                />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Password"
+                  autoComplete={mode === "register" ? "new-password" : "current-password"}
+                  className="rounded-lg border border-border-default bg-bg-base px-3 py-2 text-sm text-fg-default"
+                />
+                <button
+                  type="submit"
+                  disabled={busy || !username || !password}
+                  className="flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-60"
+                >
+                  <LogIn size={16} />
+                  {busy ? "…" : mode === "register" ? "Register & sign in" : "Sign in"}
+                </button>
+                {cfg.allowRegistration && (
+                  <button
+                    type="button"
+                    onClick={() => setMode((m) => (m === "login" ? "register" : "login"))}
+                    className="text-center text-xs text-fg-faint hover:text-fg-muted"
+                  >
+                    {mode === "login" ? "No account? Register" : "Have an account? Sign in"}
+                  </button>
+                )}
+              </form>
+            )}
 
-        {cfg && cfg.enabled && cfg.providers.length > 0 && (
-          <div className="flex flex-col gap-2">
-            {cfg.providers.map((p) => (
-              <a
-                key={p.id}
-                href={`/api/auth/${encodeURIComponent(p.id)}/start`}
-                className="flex items-center justify-center gap-2 rounded-lg border border-border-default bg-bg-raised px-4 py-2.5 text-sm font-medium text-fg-default transition-colors hover:bg-bg-raised/70 hover:text-white"
-              >
-                <LogIn size={16} />
-                Continue with {p.displayName}
-              </a>
-            ))}
-          </div>
+            {/* Divider when both local + OAuth are present */}
+            {cfg.localLogin && cfg.providers.length > 0 && (
+              <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-wider text-fg-fainter">
+                <span className="h-px flex-1 bg-border-subtle" />
+                or
+                <span className="h-px flex-1 bg-border-subtle" />
+              </div>
+            )}
+
+            {/* OAuth providers */}
+            {cfg.providers.length > 0 && (
+              <div className="flex flex-col gap-2">
+                {cfg.providers.map((p) => (
+                  <a
+                    key={p.id}
+                    href={`/api/auth/${encodeURIComponent(p.id)}/start`}
+                    className="flex items-center justify-center gap-2 rounded-lg border border-border-default bg-bg-raised px-4 py-2.5 text-sm font-medium text-fg-default transition-colors hover:bg-bg-raised/70 hover:text-white"
+                  >
+                    <LogIn size={16} />
+                    Continue with {p.displayName}
+                  </a>
+                ))}
+              </div>
+            )}
+
+            {!cfg.localLogin && cfg.providers.length === 0 && (
+              <div className="rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-3 text-center text-sm text-amber-200">
+                Auth is on but no login method is configured.
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

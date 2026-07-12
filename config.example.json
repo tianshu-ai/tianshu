@@ -95,9 +95,21 @@
   "auth": {
     "enabled": false,
     "sessionSecret": "***}",
+    // OAuth super-admins by email (global admin, all tenants).
     "admins": ["you@example.com"],
+    // Local super-admin accounts (username+password). These are the
+    // bootstrap / global admins — hashed into auth.db on boot. password
+    // supports ${VAR} so no plaintext need live in the file.
+    "superAdmins": [
+      { "username": "admin", "password": "***}" }
+    ],
+    // Allow local users to self-register on the login page. Default
+    // false — only super-admins + admin-created users exist.
+    "allowRegistration": false,
     "tenantStrategy": "single",
     "singleTenant": "default",
+    // OAuth/OIDC providers (optional — local password login always works
+    // when auth is on). Fully config-driven; nothing hardcoded.
     "providers": [
       {
         "id": "my-sso",

@@ -26,7 +26,12 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
-import { api, type AdminAuthConfig, type AdminAuthProvider } from "../../lib/api";
+import {
+  api,
+  type AdminAuthConfig,
+  type AdminAuthProvider,
+  type AdminLocalUser,
+} from "../../lib/api";
 
 const SECRET_MASK = "__stored__";
 
@@ -265,12 +270,14 @@ export default function AuthPage() {
         )}
       </section>
 
-      {/* Admins (read-only) */}
+      {/* Super-admins (read-only, config-declared) */}
       <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
-        <div className="mb-2 text-sm font-medium text-fg-default">Admins</div>
+        <div className="mb-2 text-sm font-medium text-fg-default">Super-admins</div>
         <p className="mb-2 text-xs text-fg-faint">
-          Admins are declared in the config file (<code className="rounded bg-bg-raised px-1">auth.admins</code>).
-          Edit that list in <code className="rounded bg-bg-raised px-1">~/.tianshu/config.json</code>.
+          Global admins with all permissions across all tenants. Declared in
+          the config file (<code className="rounded bg-bg-raised px-1">auth.admins</code> by
+          OAuth email, <code className="rounded bg-bg-raised px-1">auth.superAdmins</code> for
+          local accounts). Edit <code className="rounded bg-bg-raised px-1">~/.tianshu/config.json</code>.
         </p>
         {cfg && cfg.admins.length > 0 ? (
           <ul className="flex flex-wrap gap-1.5">
@@ -281,9 +288,12 @@ export default function AuthPage() {
             ))}
           </ul>
         ) : (
-          <span className="text-xs text-fg-fainter">none configured</span>
+          <span className="text-xs text-fg-fainter">no OAuth super-admin emails configured</span>
         )}
       </section>
+
+      {/* Local users + per-tenant roles */}
+      {enabled && <LocalUsersSection />}
 
       {/* Providers */}
       <section className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
@@ -343,6 +353,120 @@ export default function AuthPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function LocalUsersSection() {
+  const [users, setUsers] = useState<AdminLocalUser[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [nu, setNu] = useState({ username: "", password: "", email: "" });
+
+  const load = useCallback(async () => {
+    setErr(null);
+    try {
+      const r = await api.adminUsers();
+      setUsers(r.users);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const create = async () => {
+    setErr(null);
+    try {
+      await api.adminCreateUser(nu.username.trim(), nu.password, nu.email.trim() || undefined);
+      setNu({ username: "", password: "", email: "" });
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+  const del = async (id: string) => {
+    await api.adminDeleteUser(id);
+    await load();
+  };
+  const resetPw = async (id: string) => {
+    const pw = window.prompt("New password (≥6 chars):");
+    if (!pw) return;
+    await api.adminSetPassword(id, pw);
+  };
+  const addRole = async (id: string) => {
+    const tenantId = window.prompt("Tenant id:");
+    if (!tenantId) return;
+    const role = window.prompt("Role (admin/member):", "member");
+    if (role !== "admin" && role !== "member") return;
+    await api.adminSetRole(id, tenantId.trim(), role);
+    await load();
+  };
+  const rmRole = async (id: string, tenantId: string) => {
+    await api.adminRemoveRole(id, tenantId);
+    await load();
+  };
+
+  return (
+    <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
+      <div className="mb-2 text-sm font-medium text-fg-default">Local users</div>
+      <p className="mb-3 text-xs text-fg-faint">
+        Username/password accounts (auth.db). Assign per-tenant roles
+        (tenant admin / member). Super-admins above override these everywhere.
+      </p>
+      {err && (
+        <div className="mb-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">
+          {err}
+        </div>
+      )}
+
+      {/* Create */}
+      <div className="mb-3 flex flex-wrap items-end gap-2 border-b border-border-subtle pb-3">
+        <Field label="username" value={nu.username} onChange={(v) => setNu({ ...nu, username: v })} placeholder="alice" />
+        <Field label="password" type="password" value={nu.password} onChange={(v) => setNu({ ...nu, password: v })} placeholder="≥6 chars" />
+        <Field label="email (optional)" value={nu.email} onChange={(v) => setNu({ ...nu, email: v })} placeholder="a@b.com" />
+        <button
+          type="button"
+          onClick={() => void create()}
+          disabled={nu.username.length < 2 || nu.password.length < 6}
+          className="flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-sm text-fg-muted hover:text-fg-default disabled:opacity-50"
+        >
+          <Plus size={14} /> Create
+        </button>
+      </div>
+
+      {users.length === 0 ? (
+        <div className="text-xs text-fg-fainter">no local users</div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {users.map((u) => (
+            <div key={u.id} className="rounded-lg border border-border-subtle bg-bg-base p-2.5">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-fg-default">
+                  {u.username}
+                  {u.email && <span className="ml-2 text-xs text-fg-faint">{u.email}</span>}
+                </div>
+                <div className="flex items-center gap-2 text-fg-fainter">
+                  <button type="button" onClick={() => void resetPw(u.id)} className="text-xs hover:text-fg-default">reset pw</button>
+                  <button type="button" onClick={() => void addRole(u.id)} className="text-xs hover:text-fg-default">+ role</button>
+                  <button type="button" onClick={() => void del(u.id)} className="hover:text-danger" title="Delete"><Trash2 size={14} /></button>
+                </div>
+              </div>
+              {u.roles.length > 0 && (
+                <ul className="mt-1.5 flex flex-wrap gap-1.5">
+                  {u.roles.map((r) => (
+                    <li key={r.tenantId} className="flex items-center gap-1 rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted">
+                      <span className="font-mono">{r.tenantId}</span>
+                      <span className={r.role === "admin" ? "text-brand-400" : ""}>{r.role}</span>
+                      <button type="button" onClick={() => void rmRole(u.id, r.tenantId)} className="ml-0.5 hover:text-danger">×</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

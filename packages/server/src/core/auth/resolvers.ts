@@ -40,7 +40,11 @@ export function sessionResolver(cfg: AuthConfig): IdentityResolver {
         tenantId: claims.tenant,
         userId: claims.sub,
         source: "session",
-        meta: { email: claims.email, provider: claims.provider },
+        meta: {
+          email: claims.email,
+          provider: claims.provider,
+          ...(claims.name ? { name: claims.name } : {}),
+        },
       };
     },
   };
@@ -78,9 +82,11 @@ export function assertAuthArmable(cfg: AuthConfig): void {
       "auth.enabled=true but auth.sessionSecret is empty (set it or a ${VAR} that resolves)",
     );
   }
-  if (!cfg.providers || cfg.providers.length === 0) {
+  const hasOAuth = !!cfg.providers && cfg.providers.length > 0;
+  const hasLocal = !!cfg.superAdmins && cfg.superAdmins.length > 0;
+  if (!hasOAuth && !hasLocal && !cfg.allowRegistration) {
     throw new Error(
-      "auth.enabled=true but no auth.providers configured — nobody could log in",
+      "auth.enabled=true but no way to log in — configure auth.providers, auth.superAdmins, or auth.allowRegistration",
     );
   }
 }

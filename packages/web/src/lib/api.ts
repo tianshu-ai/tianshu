@@ -155,7 +155,7 @@ async function postJson<T>(path: string, body?: unknown): Promise<T> {
 
 async function mutateJson<T>(
   path: string,
-  method: "PATCH" | "POST",
+  method: "PATCH" | "POST" | "PUT" | "DELETE",
   body?: unknown,
 ): Promise<T> {
   const r = await fetch(path, {
@@ -219,6 +219,34 @@ export const api = {
   /** Public: is auth on + which providers to show on the login page. */
   authConfig: () =>
     getJson<AuthPublicConfig>("/api/auth/config"),
+  /** Local password login. */
+  login: (username: string, password: string) =>
+    postJson<{ ok: boolean; userId: string; tenantId: string }>("/api/auth/login", {
+      username,
+      password,
+    }),
+  /** Self-registration (when allowRegistration). */
+  register: (username: string, password: string, email?: string) =>
+    postJson<{ ok: boolean; userId: string }>("/api/auth/register", { username, password, email }),
+  /** Admin: list local users + their per-tenant roles. */
+  adminUsers: () => getJson<{ users: AdminLocalUser[] }>("/api/admin/users"),
+  adminCreateUser: (username: string, password: string, email?: string) =>
+    postJson<{ ok: boolean; id: string }>("/api/admin/users", { username, password, email }),
+  adminSetPassword: (id: string, password: string) =>
+    patchJson<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(id)}/password`, { password }),
+  adminDeleteUser: (id: string) =>
+    mutateJson<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(id)}`, "DELETE"),
+  adminSetRole: (id: string, tenantId: string, role: "admin" | "member") =>
+    mutateJson<{ ok: boolean }>(
+      `/api/admin/users/${encodeURIComponent(id)}/roles/${encodeURIComponent(tenantId)}`,
+      "PUT",
+      { role },
+    ),
+  adminRemoveRole: (id: string, tenantId: string) =>
+    mutateJson<{ ok: boolean }>(
+      `/api/admin/users/${encodeURIComponent(id)}/roles/${encodeURIComponent(tenantId)}`,
+      "DELETE",
+    ),
   /** Admin: full auth config (secrets redacted to *Set booleans). */
   adminAuth: () => getJson<AdminAuthConfig>("/api/admin/auth"),
   /** Admin: patch auth config; server re-arms the chain on next request. */
@@ -231,6 +259,16 @@ export const api = {
 export interface AuthPublicConfig {
   enabled: boolean;
   providers: Array<{ id: string; displayName: string }>;
+  localLogin: boolean;
+  allowRegistration: boolean;
+}
+
+export interface AdminLocalUser {
+  id: string;
+  username: string;
+  email: string | null;
+  createdAt: number;
+  roles: Array<{ tenantId: string; role: "admin" | "member" }>;
 }
 
 export interface AdminAuthProvider {

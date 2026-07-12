@@ -121,6 +121,19 @@ export {
 } from "./auth/resolvers.js";
 
 export {
+  UserStore,
+  getUserStore,
+  hashPassword,
+  verifyPassword,
+  type LocalUser,
+  type TenantRole,
+} from "./auth/user-store.js";
+export {
+  isSuperAdmin,
+  resolveTenantRole,
+} from "./auth/identity.js";
+
+export {
   buildModel,
   findModel,
   getDefaultModel,

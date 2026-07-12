@@ -34,8 +34,11 @@ import {
 import {
   deriveUserId,
   deriveTenantId,
-  roleForEmail,
+  isSuperAdmin,
+  resolveTenantRole,
 } from "../core/auth/identity.js";
+import { getUserStore, type TenantRole } from "../core/auth/user-store.js";
+import { expandEnvPlaceholders as expandEnv } from "../core/config.js";
 
 /** Short-lived cookie carrying PKCE state between /start and /callback. */
 const PKCE_COOKIE = "tianshu_oauth_pkce";
@@ -102,9 +105,14 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
   // to show a login wall at all.
   app.get("/api/auth/config", (_req: Request, res: Response) => {
     const cfg = currentAuth();
+    // Local password login is available when auth is on (super-admins
+    // and/or admin-created users can always sign in). Register form is
+    // gated on allowRegistration.
     res.json({
       enabled: !!cfg.enabled,
       providers: cfg.enabled ? publicProviders(cfg) : [],
+      localLogin: !!cfg.enabled,
+      allowRegistration: !!cfg.enabled && !!cfg.allowRegistration,
     });
   });
 
@@ -200,6 +208,77 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
     }
   });
 
+  // Local password login. Verifies against auth.db (or a config
+  // super-admin), mints the same stateless session cookie as OAuth.
+  app.post("/api/auth/login", (req: Request, res: Response) => {
+    const cfg = currentAuth();
+    if (!cfg.enabled) {
+      res.status(404).json({ error: "auth_disabled" });
+      return;
+    }
+    const body = req.body as { username?: string; password?: string };
+    const username = (body.username ?? "").trim();
+    const password = body.password ?? "";
+    if (!username || !password) {
+      res.status(400).json({ error: "missing_credentials" });
+      return;
+    }
+
+    const store = getUserStore();
+    const user = store.authenticate(username, password);
+    if (!user) {
+      res.status(401).json({ error: "invalid_credentials" });
+      return;
+    }
+
+    const tenantId = deriveTenantId(
+      { subject: user.id, email: user.email ?? `${username}@local` },
+      cfg,
+    );
+    const secret = expandEnv(cfg.sessionSecret) ?? "";
+    const ttlSec = cfg.sessionTtlSec ?? 60 * 60 * 24 * 7;
+    const token = mintSession(
+      {
+        sub: user.id,
+        tenant: tenantId,
+        email: user.email ?? `${username}@local`,
+        name: user.username,
+        provider: "local",
+      },
+      secret,
+      ttlSec,
+    );
+    res.setHeader("Set-Cookie", buildSessionCookie(token, ttlSec, isSecureUrl(deps.publicUrl())));
+    res.json({ ok: true, userId: user.id, tenantId });
+  });
+
+  // Self-registration (only when auth.allowRegistration=true).
+  app.post("/api/auth/register", (req: Request, res: Response) => {
+    const cfg = currentAuth();
+    if (!cfg.enabled) {
+      res.status(404).json({ error: "auth_disabled" });
+      return;
+    }
+    if (!cfg.allowRegistration) {
+      res.status(403).json({ error: "registration_closed" });
+      return;
+    }
+    const body = req.body as { username?: string; password?: string; email?: string };
+    const username = (body.username ?? "").trim();
+    const password = body.password ?? "";
+    if (username.length < 2 || password.length < 6) {
+      res.status(400).json({ error: "weak_credentials", detail: "username ≥2, password ≥6" });
+      return;
+    }
+    const store = getUserStore();
+    if (store.getByUsername(username)) {
+      res.status(409).json({ error: "username_taken" });
+      return;
+    }
+    const user = store.createUser(username, password, body.email);
+    res.json({ ok: true, userId: user.id });
+  });
+
   // Logout: clear the session cookie. Safe to call even when disabled.
   app.post("/api/auth/logout", (_req: Request, res: Response) => {
     res.setHeader("Set-Cookie", buildClearCookie(true));
@@ -208,10 +287,28 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
 }
 
 /**
- * requireAdmin guard. Role is derived from `auth.admins` against the
- * email carried in the identity source meta (set by sessionResolver).
- * In dev mode (auth disabled) the dev user is treated as admin so the
- * admin UI is usable locally.
+ * Boot step: hash + upsert every configured super-admin local account
+ * into auth.db (idempotent). Called once at startup when auth.enabled.
+ * Passwords support `${VAR}` placeholders.
+ */
+export function bootstrapSuperAdmins(cfg: AuthConfig): void {
+  if (!cfg.enabled || !cfg.superAdmins?.length) return;
+  const store = getUserStore();
+  for (const sa of cfg.superAdmins) {
+    const username = sa.username?.trim();
+    const password = expandEnv(sa.password) ?? "";
+    if (!username || !password) {
+      console.warn(`[auth] skipping super-admin with empty username/password: ${username || "(blank)"}`);
+      continue;
+    }
+    store.ensureUser(username, password, sa.email);
+  }
+}
+
+/**
+ * requireAdmin guard. Admin = config super-admin (email/username) OR
+ * tenant-admin (auth.db role) for the CURRENT tenant. In dev mode (auth
+ * disabled) the dev user is de-facto admin so the local UI works.
  */
 export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
   const cfg = currentAuth();
@@ -219,9 +316,19 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     next(); // dev mode: no wall, dev user is de-facto admin
     return;
   }
-  const email = (req.ctx as { identityMeta?: Record<string, string> } | undefined)?.identityMeta
-    ?.email;
-  if (!email || roleForEmail(email, cfg) !== "admin") {
+  const ctx = req.ctx;
+  if (!ctx) {
+    res.status(500).json({ error: "no_ctx" });
+    return;
+  }
+  const meta = ctx.identityMeta ?? {};
+  const role = resolveTenantRole(cfg, getUserStore(), {
+    userId: ctx.userId,
+    tenantId: ctx.tenant.tenantId,
+    email: meta.email,
+    username: meta.provider === "local" ? meta.name : undefined,
+  });
+  if (role !== "admin") {
     res.status(403).json({ error: "admin_only" });
     return;
   }
@@ -283,5 +390,80 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
         message: err instanceof Error ? err.message : String(err),
       });
     }
+  });
+
+  // ── Local user + per-tenant role management (auth.db) ──
+  // List local users with their per-tenant roles.
+  app.get("/api/admin/users", requireAdmin, (_req: Request, res: Response) => {
+    const store = getUserStore();
+    const users = store.list().map((u) => ({
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      createdAt: u.createdAt,
+      roles: store.rolesForUser(u.id),
+    }));
+    res.json({ users });
+  });
+
+  // Create a local user.
+  app.post("/api/admin/users", requireAdmin, (req: Request, res: Response) => {
+    const body = req.body as { username?: string; password?: string; email?: string };
+    const username = (body.username ?? "").trim();
+    const password = body.password ?? "";
+    if (username.length < 2 || password.length < 6) {
+      res.status(400).json({ error: "weak_credentials", detail: "username ≥2, password ≥6" });
+      return;
+    }
+    const store = getUserStore();
+    if (store.getByUsername(username)) {
+      res.status(409).json({ error: "username_taken" });
+      return;
+    }
+    const user = store.createUser(username, password, body.email);
+    res.json({ ok: true, id: user.id });
+  });
+
+  // Reset a user's password.
+  app.patch("/api/admin/users/:id/password", requireAdmin, (req: Request, res: Response) => {
+    const password = (req.body as { password?: string }).password ?? "";
+    if (password.length < 6) {
+      res.status(400).json({ error: "weak_password" });
+      return;
+    }
+    const store = getUserStore();
+    if (!store.getById(String(req.params.id))) {
+      res.status(404).json({ error: "user_not_found" });
+      return;
+    }
+    store.setPassword(String(req.params.id), password);
+    res.json({ ok: true });
+  });
+
+  // Delete a user.
+  app.delete("/api/admin/users/:id", requireAdmin, (req: Request, res: Response) => {
+    getUserStore().deleteUser(String(req.params.id));
+    res.json({ ok: true });
+  });
+
+  // Set / remove a user's role in a tenant.
+  app.put("/api/admin/users/:id/roles/:tenantId", requireAdmin, (req: Request, res: Response) => {
+    const role = (req.body as { role?: string }).role;
+    const store = getUserStore();
+    if (!store.getById(String(req.params.id))) {
+      res.status(404).json({ error: "user_not_found" });
+      return;
+    }
+    if (role !== "admin" && role !== "member") {
+      res.status(400).json({ error: "invalid_role" });
+      return;
+    }
+    store.setRole(String(req.params.id), String(req.params.tenantId), role as TenantRole);
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/admin/users/:id/roles/:tenantId", requireAdmin, (req: Request, res: Response) => {
+    getUserStore().removeRole(String(req.params.id), String(req.params.tenantId));
+    res.json({ ok: true });
   });
 }

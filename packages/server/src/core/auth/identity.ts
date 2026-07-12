@@ -5,11 +5,49 @@
 import { createHash } from "node:crypto";
 import type { AuthConfig } from "../config.js";
 import type { ProviderIdentity } from "./oauth.js";
+import type { TenantRole, UserStore } from "./user-store.js";
 
-/** Role is admin iff the email is in `auth.admins` (case-insensitive). */
+/**
+ * Is this identity a GLOBAL super-admin (all permissions, all tenants)?
+ * Super-admins are config-declared: by OAuth email (`auth.admins`) or by
+ * local username (`auth.superAdmins`). This overrides any per-tenant role.
+ */
+export function isSuperAdmin(
+  cfg: AuthConfig,
+  who: { email?: string | null; username?: string | null },
+): boolean {
+  if (who.email) {
+    const admins = (cfg.admins ?? []).map((e) => e.trim().toLowerCase());
+    if (admins.includes(who.email.trim().toLowerCase())) return true;
+  }
+  if (who.username) {
+    const supers = (cfg.superAdmins ?? []).map((s) => s.username.trim().toLowerCase());
+    if (supers.includes(who.username.trim().toLowerCase())) return true;
+  }
+  return false;
+}
+
+/** @deprecated use `isSuperAdmin` — kept for the existing OAuth email path. */
 export function roleForEmail(email: string, cfg: AuthConfig): "admin" | "member" {
-  const admins = (cfg.admins ?? []).map((e) => e.trim().toLowerCase());
-  return admins.includes(email.trim().toLowerCase()) ? "admin" : "member";
+  return isSuperAdmin(cfg, { email }) ? "admin" : "member";
+}
+
+/**
+ * Resolve a user's effective role IN A GIVEN TENANT.
+ *
+ * Precedence:
+ *   1. config super-admin (email or username) → "admin" everywhere.
+ *   2. auth.db tenant_roles(userId, tenantId) → that role.
+ *   3. nothing → "member" (a signed-in user with no explicit grant is a
+ *      plain member of the tenant they resolved into).
+ */
+export function resolveTenantRole(
+  cfg: AuthConfig,
+  store: Pick<UserStore, "getRole">,
+  who: { userId: string; tenantId: string; email?: string | null; username?: string | null },
+): TenantRole {
+  if (isSuperAdmin(cfg, who)) return "admin";
+  return store.getRole(who.userId, who.tenantId) ?? "member";
 }
 
 /**

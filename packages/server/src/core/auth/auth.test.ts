@@ -109,8 +109,18 @@ describe("resolver chain", () => {
     ).toThrow(/sessionSecret/);
   });
 
-  it("assertAuthArmable throws without providers", () => {
-    expect(() => assertAuthArmable({ enabled: true, sessionSecret: SECRET })).toThrow(/providers/);
+  it("assertAuthArmable throws when no login method at all", () => {
+    expect(() => assertAuthArmable({ enabled: true, sessionSecret: SECRET })).toThrow(/no way to log in/);
+  });
+
+  it("assertAuthArmable passes with only superAdmins (local-only auth)", () => {
+    expect(() =>
+      assertAuthArmable({
+        enabled: true,
+        sessionSecret: SECRET,
+        superAdmins: [{ username: "yu", password: "pw" }],
+      }),
+    ).not.toThrow();
   });
 
   it("assertAuthArmable passes when armable", () => {

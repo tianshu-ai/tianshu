@@ -300,11 +300,25 @@ export interface AuthConfig {
   /** Session cookie signing secret. `${VAR}` placeholder resolved at
    *  use time. REQUIRED when enabled=true. */
   sessionSecret?: string;
-  /** Admins declared by email (Yu's requirement: admins live in the
-   *  config file, not the DB). Login email in this list ⇒ role=admin. */
+  /** Super-admins declared by OAuth email. A login whose email is in
+   *  this list is a GLOBAL admin — all permissions across ALL tenants,
+   *  overriding any per-tenant role in auth.db. Config-file-declared
+   *  (not editable in the DB). */
   admins?: string[];
+  /** Super-admin LOCAL accounts (username + password). These are the
+   *  bootstrap / global admins: the first user(s), password configured
+   *  here. On boot they're hashed into auth.db (idempotent). Like
+   *  `admins`, they hold all permissions across all tenants. `password`
+   *  supports `${VAR}` placeholders so the plaintext need not live in
+   *  the file. */
+  superAdmins?: Array<{ username: string; password: string; email?: string }>;
   /** Configured OAuth/OIDC login providers. */
   providers?: OAuthProviderConfig[];
+  /** Whether local password users may self-register. Default false —
+   *  only super-admins + admin-created users exist. When true, the
+   *  login page exposes a register form; the first-ever registrant is
+   *  irrelevant here since the bootstrap admin comes from superAdmins. */
+  allowRegistration?: boolean;
   /** Session lifetime in seconds. Default 7 days. */
   sessionTtlSec?: number;
   /** Tenant assignment for a freshly-authed user:

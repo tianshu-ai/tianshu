@@ -39,6 +39,7 @@ import {
 import {
   mountPublicAuthRoutes,
   mountAdminAuthRoutes,
+  bootstrapSuperAdmins,
 } from "./boot/routes-auth.js";
 import { buildReloadingBuiltinResolver, PluginRegistry } from "./core/plugins/index.js";
 import {
@@ -693,11 +694,14 @@ function resolvePublicUrl(): string {
   );
 }
 
-// Fail fast at boot if auth is turned on but not armable (no secret /
-// no providers) — a clear error beats a silent 401-all.
+// Fail fast at boot if auth is turned on but not armable, then hash the
+// configured super-admin local accounts into auth.db (idempotent).
 try {
   const bootAuth = loadGlobalConfig().auth;
-  if (bootAuth?.enabled) assertAuthArmable(bootAuth);
+  if (bootAuth?.enabled) {
+    assertAuthArmable(bootAuth);
+    bootstrapSuperAdmins(bootAuth);
+  }
 } catch (err) {
   console.error(`[tianshu][auth] ${err instanceof Error ? err.message : String(err)}`);
   process.exit(1);

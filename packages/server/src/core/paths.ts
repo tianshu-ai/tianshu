@@ -40,6 +40,14 @@ export function getTenantsRoot(home: string = getTianshuHome()): string {
   return path.join(home, "tenants");
 }
 
+/** Global auth database: local password users + per-tenant roles.
+ *  Global (not per-tenant) because users are platform-level entities
+ *  that exist BEFORE any tenant context — you log in, THEN we know
+ *  which tenant(s) you belong to. */
+export function getAuthDbPath(home: string = getTianshuHome()): string {
+  return path.join(home, "auth.db");
+}
+
 export function getTenantRoot(tenantId: string, home: string = getTianshuHome()): string {
   return path.join(getTenantsRoot(home), tenantId);
 }
