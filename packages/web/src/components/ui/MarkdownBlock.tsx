@@ -28,6 +28,16 @@ import { useThemeStore } from "../../stores/theme-store";
 // and invisible.
 const PROSE_BASE = "prose prose-sm max-w-none text-[14px] leading-relaxed";
 
+// Hoisted to a stable module-level reference. Inlining `[remarkGfm]`
+// in JSX allocates a fresh array every render, and react-markdown
+// keys its internal unified processor on the plugins array identity
+// — so a new array forces a full processor rebuild on each render.
+// During streaming the live bubble re-renders per token, so this
+// turns "rebuild the whole remark pipeline every token" into "build
+// once". `MARKDOWN_COMPONENTS` and `urlTransform` are already stable
+// module-level references.
+const REMARK_PLUGINS = [remarkGfm];
+
 export function MarkdownBlock({
   children,
   className = "",
@@ -44,7 +54,7 @@ export function MarkdownBlock({
   return (
     <div className={wrapperClass}>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={REMARK_PLUGINS}
         urlTransform={urlTransform}
         components={MARKDOWN_COMPONENTS}
       >

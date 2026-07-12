@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
@@ -62,6 +62,13 @@ export default function ChatArea() {
   const brandEmoji = brand?.emoji ?? "⭐";
   const empty = messages.length === 0;
 
+  // Merge tool-result rows into their owning assistant turn ONCE per
+  // change to `messages`. Without this memo the whole transcript is
+  // walked twice + rebuilt into fresh objects on every render — and
+  // during streaming that's once per token, which also defeats the
+  // React.memo on MessageBubble (every child would get new props).
+  const merged = useMemo(() => mergeToolTurns(messages), [messages]);
+
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       {/* Top bar */}
@@ -119,7 +126,7 @@ export default function ChatArea() {
                 {loadingMore ? "Loading…" : "Load earlier messages"}
               </button>
             )}
-            {mergeToolTurns(messages).map((m, i) => (
+            {merged.map((m, i) => (
               <div key={m.id} className={i === 0 ? "" : "mt-4"}>
                 <MessageBubble m={m} />
               </div>
