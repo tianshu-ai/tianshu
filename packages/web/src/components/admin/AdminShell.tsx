@@ -27,12 +27,12 @@ import {
   useParams,
 } from "react-router-dom";
 import * as Icons from "lucide-react";
-import { ArrowLeft, ShieldCheck, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Settings as SettingsIcon, LogOut } from "lucide-react";
 import { useChatStore } from "../../stores/chat-store";
 import { usePluginStore } from "../../stores/plugin-store";
 import { resolveComponent } from "../../lib/plugin-registry";
 import type { AdminPageProps } from "@tianshu-ai/plugin-sdk/client";
-import type { PluginListEntry } from "../../lib/api";
+import { api, type PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
 import { buildIdentityPath } from "../../dev-identity";
 import McpServersPage from "./McpServersPage";
@@ -258,7 +258,12 @@ export default function AdminShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-base text-fg-default">
-      <AdminSidebar pages={pages} userLabel={me?.userId ?? null} />
+      <AdminSidebar
+        pages={pages}
+        userLabel={me?.displayName ?? me?.userId ?? null}
+        userRole={me?.role ?? null}
+        showLogout={!!me?.provider}
+      />
       <main className="min-w-0 flex-1 overflow-y-auto">
         <Routes>
           <Route
@@ -295,10 +300,13 @@ function AdminSidebar({
   pages,
   userLabel,
   userRole,
+  showLogout,
 }: {
   pages: FlatAdminPage[];
   userLabel: string | null;
   userRole?: "admin" | "member" | null;
+  /** Show a logout button (auth mode / session login only). */
+  showLogout?: boolean;
 }) {
   const t = useT();
   const shellTitle = t("admin.title");
@@ -368,6 +376,22 @@ function AdminSidebar({
             <div className="truncate text-[11px] text-fg-muted">{userLabel}</div>
             {userRole && <div className="text-[10px] text-fg-fainter">{userRole}</div>}
           </div>
+          {showLogout && (
+            <button
+              type="button"
+              title="Log out"
+              onClick={async () => {
+                try {
+                  await api.logout();
+                } finally {
+                  window.location.assign("/login");
+                }
+              }}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-fainter hover:bg-bg-hover hover:text-danger"
+            >
+              <LogOut size={13} />
+            </button>
+          )}
         </div>
       )}
     </aside>

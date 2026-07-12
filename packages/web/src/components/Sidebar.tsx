@@ -7,11 +7,13 @@ import {
   Globe,
   Hash,
   ShieldCheck,
+  LogOut,
 } from "lucide-react";
 import PluginSidebarSections from "./PluginSidebarSections";
 import { ThemeToggle } from "./ui/ThemeToggle";
 import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
+import { api } from "../lib/api";
 import {
   getSupportedLocales,
   LOCALE_LABELS,
@@ -108,9 +110,12 @@ function SidebarFooter() {
   const locale = useLocale();
   const locales = getSupportedLocales();
   const userId = me?.userId ?? "…";
-  const initial = userId.slice(0, 1).toUpperCase();
-  const roleKey = me?.devTenant ? "user.role.dev" : "user.role.member";
-  const subline = `${t(roleKey)} · ${me?.tenantId ?? ""}`;
+  const displayName = me?.displayName ?? userId;
+  const initial = displayName.slice(0, 1).toUpperCase();
+  const roleText =
+    me?.role ?? (me?.devTenant ? t("user.role.dev") : t("user.role.member"));
+  const subline = `${roleText} · ${me?.tenantId ?? ""}`;
+  const canLogout = !!me?.provider;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
@@ -156,7 +161,7 @@ function SidebarFooter() {
           {initial}
         </div>
         <div className="min-w-0 flex-1 text-left">
-          <div className="truncate text-[11px] text-fg-muted">{userId}</div>
+          <div className="truncate text-[11px] text-fg-muted">{displayName}</div>
           <div className="truncate text-[10px] text-fg-fainter">{subline}</div>
         </div>
         <ChevronDown
@@ -172,7 +177,7 @@ function SidebarFooter() {
         >
           {/* Identity header inside menu, mirrors Linear/Discord style. */}
           <div className="border-b border-border-subtle px-3 py-2">
-            <div className="truncate text-fg-default">{userId}</div>
+            <div className="truncate text-fg-default">{displayName}</div>
             <div className="truncate text-[10px] text-fg-fainter">{subline}</div>
           </div>
 
@@ -255,9 +260,27 @@ function SidebarFooter() {
             <ThemeToggle compact />
           </div>
 
-          {/* Sign-out is intentionally absent until JWT auth ports
-           *  over — there's nothing to sign out of yet. The menu's
-           *  shape leaves the slot ready. */}
+          {/* Sign out — only when signed in via a real session
+           *  (auth mode). Clears the cookie then full-reloads; the
+           *  api client bounces to /login on the resulting 401. */}
+          {canLogout && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={async () => {
+                setMenuOpen(false);
+                try {
+                  await api.logout();
+                } finally {
+                  window.location.assign("/login");
+                }
+              }}
+              className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-1.5 text-danger hover:bg-bg-raised"
+            >
+              <LogOut size={14} />
+              <span>{t("user.signOut")}</span>
+            </button>
+          )}
         </div>
       )}
     </div>
