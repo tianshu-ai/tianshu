@@ -38,7 +38,7 @@ import {
   resolveTenantRole,
 } from "../core/auth/identity.js";
 import { getUserStore, type TenantRole } from "../core/auth/user-store.js";
-import { expandEnvPlaceholders as expandEnv } from "../core/config.js";
+import { expandEnvPlaceholders as expandEnv, isTenantDisabled } from "../core/config.js";
 
 /** Short-lived cookie carrying PKCE state between /start and /callback. */
 const PKCE_COOKIE = "tianshu_oauth_pkce";
@@ -48,6 +48,9 @@ interface RoutesAuthDeps {
   publicUrl: () => string;
   /** All existing tenant ids (super-admins may enter any of them). */
   listTenants: () => string[];
+  /** Create a new tenant (dirs + db + workspace seed). Throws on
+   *  invalid/duplicate id. Super-admin only. */
+  createTenant?: (tenantId: string) => void;
   /** Called after config mutation so the running server re-arms the
    *  resolver chain without a restart where possible. */
   onAuthConfigChanged?: () => void;
@@ -185,6 +188,7 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
         getUserStore(),
         { userId, email: identity.email, username: null },
         deps.listTenants,
+        isTenantDisabled,
       );
       if (tenants.length === 0) {
         res.setHeader("Set-Cookie", clearPkceCookie(secure));
@@ -253,6 +257,7 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
       store,
       { userId: user.id, email: user.email, username: user.username },
       deps.listTenants,
+      isTenantDisabled,
     );
     if (tenants.length === 0) {
       res.status(403).json({
@@ -363,14 +368,54 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
   next();
 }
 
+/**
+ * requireSuperAdmin guard — STRICTER than requireAdmin. Only a config
+ * super-admin (auth.admins email / auth.superAdmins username) passes;
+ * a mere tenant-admin does NOT. Used for platform-level operations like
+ * creating/disabling tenants. In dev mode (auth disabled) the dev user
+ * passes so local dev keeps working.
+ */
+export function requireSuperAdmin(req: Request, res: Response, next: NextFunction): void {
+  const cfg = currentAuth();
+  if (!cfg.enabled) {
+    next();
+    return;
+  }
+  const ctx = req.ctx;
+  if (!ctx) {
+    res.status(500).json({ error: "no_ctx" });
+    return;
+  }
+  const meta = ctx.identityMeta ?? {};
+  const ok = isSuperAdmin(cfg, {
+    email: meta.email,
+    username: meta.provider === "local" ? meta.name : undefined,
+  });
+  if (!ok) {
+    res.status(403).json({ error: "super_admin_only" });
+    return;
+  }
+  next();
+}
+
 /** Mount the ADMIN auth routes (after the tenant wall). */
 export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
   // Read current auth config (secrets redacted).
-  app.get("/api/admin/auth", requireAdmin, (_req: Request, res: Response) => {
+  app.get("/api/admin/auth", requireAdmin, (req: Request, res: Response) => {
     const cfg = currentAuth();
+    // Is the CURRENT viewer a config super-admin? Drives whether the
+    // tenant-management section (super-admin-only) is shown.
+    const meta = req.ctx?.identityMeta ?? {};
+    const viewerIsSuperAdmin = !cfg.enabled
+      ? true // dev mode: de-facto super-admin
+      : isSuperAdmin(cfg, {
+          email: meta.email,
+          username: meta.provider === "local" ? meta.name : undefined,
+        });
     res.json({
       enabled: !!cfg.enabled,
       allowRegistration: !!cfg.allowRegistration,
+      viewerIsSuperAdmin,
       admins: cfg.admins ?? [],
       sessionSecretSet: !!(expandEnvPlaceholders(cfg.sessionSecret) ?? ""),
       providers: (cfg.providers ?? []).map((p) => ({
@@ -418,11 +463,67 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
     }
   });
 
-  // ── Local user + per-tenant role management (auth.db) ──
-  // List existing tenants (for the role-assignment picker so roles are
-  // always tied to a real tenant, never a free-typed id).
+  // ── Tenant management (super-admin only) ──
+  // List existing tenants + their disabled state. requireAdmin (not
+  // super) so the role-assignment picker can read it; mutations below
+  // are super-admin only.
   app.get("/api/admin/tenants", requireAdmin, (_req: Request, res: Response) => {
-    res.json({ tenants: deps.listTenants() });
+    const disabled = new Set(loadGlobalConfig().disabledTenants ?? []);
+    const ids = deps.listTenants();
+    res.json({
+      tenants: ids,
+      detail: ids.map((id) => ({ id, disabled: disabled.has(id) })),
+    });
+  });
+
+  // Create a tenant (= a new agent+workers instance). Super-admin only.
+  app.post("/api/admin/tenants", requireSuperAdmin, (req: Request, res: Response) => {
+    const id = (req.body as { id?: string }).id?.trim() ?? "";
+    if (!id) {
+      res.status(400).json({ error: "missing_tenant_id" });
+      return;
+    }
+    if (!deps.createTenant) {
+      res.status(501).json({ error: "create_not_supported" });
+      return;
+    }
+    try {
+      deps.createTenant(id);
+      res.json({ ok: true, id });
+    } catch (err) {
+      res.status(400).json({
+        error: "create_failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  // Enable / disable a tenant (soft off-switch — data untouched).
+  // Super-admin only. Writes disabledTenants[] in global config.
+  app.patch("/api/admin/tenants/:id", requireSuperAdmin, (req: Request, res: Response) => {
+    const id = String(req.params.id);
+    const disabled = (req.body as { disabled?: boolean }).disabled;
+    if (typeof disabled !== "boolean") {
+      res.status(400).json({ error: "missing_disabled_flag" });
+      return;
+    }
+    if (!deps.listTenants().includes(id)) {
+      res.status(404).json({ error: "tenant_not_found", id });
+      return;
+    }
+    const global = loadGlobalConfig();
+    const set = new Set(global.disabledTenants ?? []);
+    if (disabled) set.add(id);
+    else set.delete(id);
+    try {
+      writeGlobalConfig({ ...global, disabledTenants: [...set] });
+      res.json({ ok: true, id, disabled });
+    } catch (err) {
+      res.status(500).json({
+        error: "write_failed",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   });
 
   // List local users with their per-tenant roles.

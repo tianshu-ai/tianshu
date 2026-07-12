@@ -91,6 +91,24 @@ describe("identity derivation", () => {
       "t3",
     ]);
   });
+
+  it("tenantsForUser: disabled tenants are filtered out for everyone", () => {
+    const allTenants = () => ["t1", "t2", "t3"];
+    const store = {
+      rolesForUser: () => [
+        { tenantId: "t1", role: "member" as const },
+        { tenantId: "t2", role: "admin" as const },
+      ],
+    };
+    const isDisabled = (t: string) => t === "t2";
+    // member of t1+t2, but t2 disabled → only t1
+    expect(tenantsForUser({}, store, { userId: "u" }, allTenants, isDisabled)).toEqual(["t1"]);
+    // super-admin sees all-but-disabled too
+    const cfg: AuthConfig = { superAdmins: [{ username: "root", password: "x" }] };
+    expect(
+      tenantsForUser(cfg, store, { userId: "x", username: "root" }, allTenants, isDisabled),
+    ).toEqual(["t1", "t3"]);
+  });
 });
 
 describe("resolver chain", () => {

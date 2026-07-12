@@ -26,6 +26,7 @@ import type { NextFunction, Request, Response } from "express";
 import { GlobalOps, TenantNotFoundError } from "./global-ops.js";
 import type { TenantContext } from "./tenant-context.js";
 import { DEV_TENANT_ID, DEV_USER_ID } from "./dev-mode.js";
+import { isTenantDisabled } from "./config.js";
 import {
   DEV_RESOLVER_CHAIN,
   runIdentityChain,
@@ -119,6 +120,19 @@ export function tenantMiddleware(opts: TenantMiddlewareOpts) {
         error: "identity_denied",
         resolver: resolution.source,
         reason: resolution.reason,
+      });
+      return;
+    }
+
+    // Soft off-switch: a disabled tenant is rejected even for an
+    // otherwise-valid identity. Data on disk is untouched; this just
+    // refuses to route requests into it. Super-admins are NOT exempt
+    // here — a disabled tenant is disabled for everyone; manage the
+    // list on the admin page (or by hand) to bring it back.
+    if (isTenantDisabled(resolution.tenantId)) {
+      res.status(403).json({
+        error: "tenant_disabled",
+        tenantId: resolution.tenantId,
       });
       return;
     }

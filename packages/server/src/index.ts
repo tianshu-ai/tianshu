@@ -737,6 +737,9 @@ mountCoreRoutes(app, { pluginRegistry });
 mountAdminAuthRoutes(app, {
   publicUrl: resolvePublicUrl,
   listTenants: () => globalOps.list(),
+  createTenant: (tenantId: string) => {
+    globalOps.create(tenantId);
+  },
 });
 
 const server = createServer(app);

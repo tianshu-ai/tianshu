@@ -228,8 +228,19 @@ export const api = {
   /** Self-registration (when allowRegistration). */
   register: (username: string, password: string, email?: string) =>
     postJson<{ ok: boolean; userId: string }>("/api/auth/register", { username, password, email }),
-  /** Admin: existing tenant ids (for the role-assignment picker). */
-  adminTenants: () => getJson<{ tenants: string[] }>("/api/admin/tenants"),
+  /** Admin: existing tenants + disabled state. */
+  adminTenants: () =>
+    getJson<{ tenants: string[]; detail: AdminTenant[] }>("/api/admin/tenants"),
+  /** Super-admin: create a tenant (new agent+workers instance). */
+  adminCreateTenant: (id: string) =>
+    postJson<{ ok: boolean; id: string }>("/api/admin/tenants", { id }),
+  /** Super-admin: enable/disable a tenant (soft off-switch). */
+  adminSetTenantDisabled: (id: string, disabled: boolean) =>
+    mutateJson<{ ok: boolean; id: string; disabled: boolean }>(
+      `/api/admin/tenants/${encodeURIComponent(id)}`,
+      "PATCH",
+      { disabled },
+    ),
   /** Admin: list local users + their per-tenant roles. */
   adminUsers: () => getJson<{ users: AdminLocalUser[] }>("/api/admin/users"),
   adminCreateUser: (username: string, password: string, email?: string) =>
@@ -265,6 +276,11 @@ export interface AuthPublicConfig {
   allowRegistration: boolean;
 }
 
+export interface AdminTenant {
+  id: string;
+  disabled: boolean;
+}
+
 export interface AdminLocalUser {
   id: string;
   username: string;
@@ -289,6 +305,7 @@ export interface AdminAuthProvider {
 export interface AdminAuthConfig {
   enabled: boolean;
   allowRegistration: boolean;
+  viewerIsSuperAdmin: boolean;
   admins: string[];
   sessionSecretSet: boolean;
   providers: AdminAuthProvider[];

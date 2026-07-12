@@ -169,6 +169,15 @@ export interface GlobalOnlyConfig {
    * the current dev behaviour (no login wall). See AuthConfig.
    */
   auth?: AuthConfig;
+  /**
+   * Disabled tenants. GLOBAL-ONLY, super-admin-managed. A tenant id in
+   * this list is treated as unavailable: logins can't enter it and
+   * in-flight requests targeting it are rejected — but the on-disk data
+   * is left untouched (this is a soft off-switch, NOT a delete). To
+   * really remove a tenant, an admin deletes its directory by hand.
+   * Managed via the admin Auth page or by hand-editing this array.
+   */
+  disabledTenants?: string[];
 }
 
 export interface ModelsCatalog {
@@ -534,6 +543,7 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     autoCreateDefault: global.autoCreateDefault ?? DEFAULTS.autoCreateDefault,
     builtinConfigDir: global.builtinConfigDir,
     auth: global.auth,
+    disabledTenants: global.disabledTenants,
 
     // overridable — tenant wins
     defaultModel,
@@ -585,4 +595,13 @@ export function expandEnvPlaceholders(value: string | undefined): string | undef
   return value.replace(/\$\{([A-Z0-9_]+)(?::-([^}]*))?\}/gi, (_m, name, fallback) => {
     return process.env[name] ?? fallback ?? "";
   });
+}
+
+/** Is a tenant currently disabled (soft off-switch in global config)? */
+export function isTenantDisabled(
+  tenantId: string,
+  home: string = getTianshuHome(),
+): boolean {
+  const list = loadGlobalConfig(home).disabledTenants ?? [];
+  return list.includes(tenantId);
 }

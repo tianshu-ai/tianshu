@@ -79,7 +79,12 @@ export function tenantsForUser(
   store: Pick<UserStore, "rolesForUser">,
   who: { userId: string; email?: string | null; username?: string | null },
   allTenants: () => string[],
+  isDisabled: (tenantId: string) => boolean = () => false,
 ): string[] {
-  if (isSuperAdmin(cfg, who)) return allTenants();
-  return store.rolesForUser(who.userId).map((r) => r.tenantId);
+  const candidates = isSuperAdmin(cfg, who)
+    ? allTenants()
+    : store.rolesForUser(who.userId).map((r) => r.tenantId);
+  // A disabled tenant can't be entered by anyone — filter it out of the
+  // login candidate set so the picker never offers it.
+  return candidates.filter((t) => !isDisabled(t));
 }

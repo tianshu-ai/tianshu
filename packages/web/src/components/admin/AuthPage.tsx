@@ -287,6 +287,10 @@ export default function AuthPage() {
         )}
       </section>
 
+      {/* Tenant management — super-admin only. A tenant = one agent +
+          its workers. Create / disable (soft off-switch) here. */}
+      {cfg?.viewerIsSuperAdmin && <TenantsSection />}
+
       {/* Local users + per-tenant roles */}
       {enabled && <LocalUsersSection />}
 
@@ -348,6 +352,134 @@ export default function AuthPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function TenantsSection() {
+  const [tenants, setTenants] = useState<import("../../lib/api").AdminTenant[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newId, setNewId] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setErr(null);
+    try {
+      const r = await api.adminTenants();
+      setTenants(r.detail);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const create = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await api.adminCreateTenant(newId.trim());
+      setNewId("");
+      setCreating(false);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toggle = async (id: string, disabled: boolean) => {
+    setErr(null);
+    try {
+      await api.adminSetTenantDisabled(id, disabled);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  return (
+    <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <div>
+          <div className="text-sm font-medium text-fg-default">Tenants</div>
+          <div className="text-xs text-fg-faint">
+            A tenant = one agent + its workers. Super-admin only. Disabling
+            is a soft off-switch (logins can’t enter, in-flight requests are
+            rejected) — on-disk data is untouched. To really delete a tenant,
+            remove its directory under ~/.tianshu/tenants/ by hand.
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
+        >
+          <Plus size={15} /> Create tenant
+        </button>
+      </div>
+
+      {err && (
+        <div className="mb-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">
+          {err}
+        </div>
+      )}
+
+      {tenants.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center text-xs text-fg-fainter">
+          No tenants.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {tenants.map((t) => (
+            <div
+              key={t.id}
+              className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-base p-3"
+            >
+              <div className="flex items-center gap-2">
+                <span className="font-mono text-sm text-fg-default">{t.id}</span>
+                {t.disabled && (
+                  <span className="rounded-full border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[11px] text-amber-200">
+                    disabled
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => void toggle(t.id, !t.disabled)}
+                className={
+                  "rounded-md border px-2.5 py-1 text-xs " +
+                  (t.disabled
+                    ? "border-border-default text-fg-muted hover:bg-bg-raised hover:text-fg-default"
+                    : "border-border-default text-fg-muted hover:border-amber-700/60 hover:text-amber-200")
+                }
+              >
+                {t.disabled ? "Enable" : "Disable"}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {creating && (
+        <Modal isOpen onClose={() => setCreating(false)} title="Create tenant" size="sm" allowMaximize={false}>
+          <div className="flex flex-col gap-3 p-1">
+            <p className="text-xs text-fg-faint">
+              Creates a new agent + workers instance (dirs, db, workspace seed).
+              Id: 2–32 chars, lowercase letters/digits/-/_, no leading _.
+            </p>
+            <Field label="Tenant id" value={newId} onChange={setNewId} placeholder="acme" />
+            <div className="mt-1 flex justify-end gap-2">
+              <ModalBtn kind="ghost" onClick={() => setCreating(false)}>Cancel</ModalBtn>
+              <ModalBtn kind="primary" disabled={newId.trim().length < 2 || busy} onClick={() => void create()}>
+                {busy ? "Creating…" : "Create"}
+              </ModalBtn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </section>
   );
 }
 
