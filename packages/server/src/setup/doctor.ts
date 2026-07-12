@@ -33,6 +33,7 @@ import { getBuiltinConfigDir } from "../core/plugins/discovery.js";
 import * as path from "node:path";
 import { checkTenants } from "./checks/tenants.js";
 import { checkDb } from "./checks/db.js";
+import { checkAuth } from "./checks/auth.js";
 
 export interface DoctorOpts {
   /** When true, hit each provider's /v1/models endpoint to test
@@ -71,6 +72,7 @@ export async function collectDoctorReport(
   groups.push(await checkSandbox({ full: opts.probeSandbox }));
   groups.push(checkTenants());
   groups.push(checkDb());
+  groups.push(checkAuth());
   // Per-plugin host prerequisites (manifest.setup). Plugins that
   // don't declare a setup spec contribute nothing here. Verify
   // probes have a 5s/command timeout so a hung daemon can't wedge
