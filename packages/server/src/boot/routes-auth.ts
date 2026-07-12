@@ -528,6 +528,7 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
 
   // List local users with their per-tenant roles.
   app.get("/api/admin/users", requireAdmin, (_req: Request, res: Response) => {
+    const cfg = currentAuth();
     const store = getUserStore();
     const users = store.list().map((u) => ({
       id: u.id,
@@ -535,6 +536,10 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
       email: u.email,
       createdAt: u.createdAt,
       roles: store.rolesForUser(u.id),
+      // Super-admins (config-declared by username or email) have all
+      // permissions across ALL tenants, so their empty tenant_roles is
+      // expected — flag it so the UI doesn't say "no tenant roles".
+      superAdmin: isSuperAdmin(cfg, { username: u.username, email: u.email }),
     }));
     res.json({ users });
   });

@@ -684,7 +684,11 @@ function LocalUsersSection() {
               </div>
               {/* Per-tenant roles */}
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {u.roles.length === 0 ? (
+                {u.superAdmin ? (
+                  <span className="rounded-full border border-brand-500/40 bg-brand-600/15 px-2 py-0.5 text-[11px] font-medium text-brand-300">
+                    super-admin · all tenants
+                  </span>
+                ) : u.roles.length === 0 ? (
                   <span className="text-[11px] text-fg-fainter">no tenant roles — can’t sign in until granted one</span>
                 ) : (
                   u.roles.map((r) => (

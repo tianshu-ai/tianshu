@@ -292,6 +292,9 @@ export interface AdminLocalUser {
   email: string | null;
   createdAt: number;
   roles: Array<{ tenantId: string; role: "admin" | "member" }>;
+  /** Config-declared super-admin: all permissions across all tenants
+   *  (empty `roles` is expected — authority comes from config). */
+  superAdmin: boolean;
 }
 
 export interface AdminAuthProvider {
