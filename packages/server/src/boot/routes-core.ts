@@ -20,6 +20,7 @@ import { getTianshuHome } from "../core/paths.js";
 import { resolveTenantRole, tenantsForUser } from "../core/auth/identity.js";
 import { getUserStore } from "../core/auth/user-store.js";
 import { isTenantDisabled } from "../core/config.js";
+import { requireAdmin } from "./routes-auth.js";
 
 // Sentinel the client echoes back for an apiKey field it did NOT
 // change. Lets the UI edit other fields (or reorder models) without
@@ -216,6 +217,7 @@ export function mountCoreRoutes(
 
   app.put(
     "/api/admin/models/providers",
+    requireAdmin,
     express.json({ limit: "1mb" }),
     (req: Request, res: Response) => {
       if (!req.ctx) {
