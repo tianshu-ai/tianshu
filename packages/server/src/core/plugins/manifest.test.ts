@@ -112,9 +112,30 @@ describe("parseManifest", () => {
     });
     expect(m.contributes!.topBarButtons![0]!.id).toBe("files.toggle");
     expect(m.contributes!.apiRoutes![0]!.path).toBe("/list");
+    // access defaults to "member" when unspecified (back-compat).
+    expect(m.contributes!.apiRoutes![0]!.access).toBe("member");
     expect(m.contributes!.composerActions![0]!.component).toBe("UploadButton");
     expect(m.contributes!.composerActions![0]!.icon).toBe("Paperclip");
     expect(m.contributes!.composerActions![0]!.order).toBe(100);
+  });
+
+  it("apiRoutes[].access parses \"admin\"; anything else → \"member\"", () => {
+    const m = parseManifest({
+      id: "wb",
+      version: "1.0.0",
+      displayName: "WB",
+      contributes: {
+        apiRoutes: [
+          { method: "PATCH", path: "/agents/:slug/enabled", handler: "setAgentEnabled", access: "admin" },
+          { method: "POST", path: "/tasks", handler: "createTask", access: "bogus" },
+          { method: "GET", path: "/tasks", handler: "listTasks" },
+        ],
+      },
+    });
+    const routes = m.contributes!.apiRoutes!;
+    expect(routes[0]!.access).toBe("admin");
+    expect(routes[1]!.access).toBe("member"); // invalid → member
+    expect(routes[2]!.access).toBe("member"); // absent → member
   });
 
   it("attachmentRenderers[].id, component, mimePattern are required; order optional", () => {

@@ -775,10 +775,16 @@ function parseApiRoute(raw: unknown, ctx: string, acc: Acc): ApiRouteContributio
     return null;
   }
   if (method == null || pathStr == null || handler == null) return null;
+  // Optional access level. Anything other than "admin" (incl. absent /
+  // invalid) falls back to "member" — the safe-for-usage default that
+  // preserves existing member behaviour; config routes opt into "admin".
+  const rawAccess = isPlainObject(raw) ? (raw as { access?: unknown }).access : undefined;
+  const access: "member" | "admin" = rawAccess === "admin" ? "admin" : "member";
   return {
     method: method as ApiRouteContribution["method"],
     path: pathStr,
     handler,
+    access,
   };
 }
 

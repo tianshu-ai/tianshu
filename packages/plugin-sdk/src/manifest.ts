@@ -578,6 +578,16 @@ export interface ApiRouteContribution {
   path: string;
   /** Key in the plugin's server-exports `routes` map. */
   handler: string;
+  /**
+   * Who may call this route.
+   *   "member" (default) — any authenticated user of the tenant. Use for
+   *     normal usage + reads (e.g. create/list/abort your own tasks).
+   *   "admin"  — tenant-admin or super-admin only. Use for configuration
+   *     that affects the whole tenant (e.g. create/modify a worker,
+   *     enable/disable an agent, edit project/provider config).
+   * When auth is disabled (dev mode) everyone is treated as admin.
+   */
+  access?: "member" | "admin";
 }
 
 export interface WsMessageContribution {

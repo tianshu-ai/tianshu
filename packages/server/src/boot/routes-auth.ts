@@ -396,21 +396,15 @@ export function bootstrapSuperAdmins(cfg: AuthConfig): void {
 }
 
 /**
- * requireAdmin guard. Admin = config super-admin (email/username) OR
- * tenant-admin (auth.db role) for the CURRENT tenant. In dev mode (auth
- * disabled) the dev user is de-facto admin so the local UI works.
+ * Is this request from an admin (tenant-admin or super-admin) of the
+ * CURRENT tenant? In dev mode (auth disabled) everyone is de-facto admin.
+ * Shared by requireAdmin and the plugin-route access enforcement.
  */
-export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+export function isAdminRequest(req: Request): boolean {
   const cfg = currentAuth();
-  if (!cfg.enabled) {
-    next(); // dev mode: no wall, dev user is de-facto admin
-    return;
-  }
+  if (!cfg.enabled) return true; // dev mode
   const ctx = req.ctx;
-  if (!ctx) {
-    res.status(500).json({ error: "no_ctx" });
-    return;
-  }
+  if (!ctx) return false;
   const meta = ctx.identityMeta ?? {};
   const role = resolveTenantRole(cfg, getUserStore(), {
     userId: ctx.userId,
@@ -418,7 +412,20 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction): v
     email: meta.email,
     username: meta.provider === "local" ? meta.name : undefined,
   });
-  if (role !== "admin") {
+  return role === "admin";
+}
+
+/**
+ * requireAdmin guard. Admin = config super-admin (email/username) OR
+ * tenant-admin (auth.db role) for the CURRENT tenant. In dev mode (auth
+ * disabled) the dev user is de-facto admin so the local UI works.
+ */
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  if (!req.ctx) {
+    res.status(500).json({ error: "no_ctx" });
+    return;
+  }
+  if (!isAdminRequest(req)) {
     res.status(403).json({ error: "admin_only" });
     return;
   }

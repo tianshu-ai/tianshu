@@ -1234,12 +1234,14 @@ export function collectRoutesForTenant(
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
   handler: PluginRouteHandler;
+  access: "member" | "admin";
 }> {
   const out: Array<{
     pluginId: string;
     method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     path: string;
     handler: PluginRouteHandler;
+    access: "member" | "admin";
   }> = [];
   for (const e of registry.listForTenant(tenantId)) {
     if (e.state !== "active" || !e.manifest.contributes?.apiRoutes) continue;
@@ -1257,6 +1259,7 @@ export function collectRoutesForTenant(
         method: r.method,
         path: r.path,
         handler: fn,
+        access: r.access === "admin" ? "admin" : "member",
       });
     }
   }

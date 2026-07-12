@@ -25,7 +25,7 @@ import {
   redactSecretsInConfig,
 } from "./core/plugins/index.js";
 import { CatalogClient } from "./catalog.js";
-import { requireAdmin } from "./boot/routes-auth.js";
+import { requireAdmin, isAdminRequest } from "./boot/routes-auth.js";
 
 const PLUGIN_ID_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
@@ -173,6 +173,14 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       }
       if (!match) {
         res.status(404).json({ error: "plugin_route_not_found", pluginId, path: subPath });
+        return;
+      }
+      // Access control: a route the plugin marked access:"admin" (config
+      // that affects the whole tenant — e.g. create/modify a worker) is
+      // tenant-admin / super-admin only. Members can hit the default
+      // "member" routes (normal usage + reads) but not admin ones.
+      if (match.access === "admin" && !isAdminRequest(req)) {
+        res.status(403).json({ error: "admin_only", pluginId, path: subPath });
         return;
       }
       // Express has already populated `req.params.pluginId` for the
