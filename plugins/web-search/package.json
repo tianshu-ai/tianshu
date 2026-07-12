@@ -28,7 +28,7 @@
     "@tianshu-ai/plugin-sdk": "*"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.1.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
   }
