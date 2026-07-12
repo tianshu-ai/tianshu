@@ -78,7 +78,7 @@ export default function ChatArea() {
           <h1 className="ml-3 text-sm font-medium text-fg-muted">main</h1>
           <span className="ml-3 text-[11px] text-fg-faint">
             tenant <span className="text-fg-muted">{me?.tenantId ?? "…"}</span> · user{" "}
-            <span className="text-fg-muted">{me?.userId ?? "…"}</span>
+            <span className="text-fg-muted">{me?.displayName ?? me?.userId ?? "…"}</span>
           </span>
         </div>
         <div className="flex items-center gap-2">
