@@ -106,8 +106,11 @@
     // Allow local users to self-register on the login page. Default
     // false — only super-admins + admin-created users exist.
     "allowRegistration": false,
-    "tenantStrategy": "single",
-    "singleTenant": "default",
+    // NOTE: no "tenant strategy". A tenant = one agent + its workers; a
+    // user is a session inside it. Which tenant(s) a login enters is
+    // decided by membership (per-tenant roles in auth.db / super-admin),
+    // set via Settings → Admin → Local users. A user with no tenant role
+    // cannot sign in until an admin grants access.
     // OAuth/OIDC providers (optional — local password login always works
     // when auth is on). Fully config-driven; nothing hardcoded.
     "providers": [

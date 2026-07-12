@@ -4,7 +4,6 @@
 
 import { createHash } from "node:crypto";
 import type { AuthConfig } from "../config.js";
-import type { ProviderIdentity } from "./oauth.js";
 import type { TenantRole, UserStore } from "./user-store.js";
 
 /**
@@ -61,26 +60,26 @@ export function deriveUserId(providerId: string, subject: string): string {
 }
 
 /**
- * Tenant assignment for a freshly-authed user.
- *   "single" → everyone lands in `singleTenant` (default "default").
- *   "email"  → one tenant per user, derived from the email local-part,
- *              sanitized to the tenant-id charset. Falls back to a hash
- *              suffix if the local-part sanitizes to something invalid.
+ * The set of tenants a user may enter, in the tianshu model where
+ *   tenant = one agent + its workers (an "instance"/workspace)
+ *   user   = a session inside that instance (many users share the
+ *            same agent/workers/workspace, each with their own chat).
+ *
+ * Membership — not a global strategy — decides which tenant(s) a login
+ * lands in:
+ *   - super-admin  → every existing tenant (they can enter anything).
+ *   - otherwise    → the tenants they have a `tenant_roles` grant for.
+ *
+ * Returns the candidate tenant ids. The caller picks:
+ *   1 → enter it; N → let the user choose; 0 → reject (needs an admin
+ *   to grant access first).
  */
-export function deriveTenantId(identity: ProviderIdentity, cfg: AuthConfig): string {
-  const strategy = cfg.tenantStrategy ?? "single";
-  if (strategy === "single") {
-    return cfg.singleTenant ?? "default";
-  }
-  // "email" strategy.
-  const local = identity.email.split("@")[0] ?? "";
-  let candidate = local.toLowerCase().replace(/[^a-z0-9_-]/g, "-");
-  candidate = candidate.replace(/^-+/, "").replace(/-+$/, "");
-  // tenant-id rules: 2..32 chars, can't start with "_". Pad/trim + hash
-  // fallback keeps it valid without colliding across different emails.
-  if (candidate.length < 2 || /^_/.test(candidate)) {
-    const h = createHash("sha256").update(identity.email).digest("hex").slice(0, 8);
-    candidate = `u-${h}`;
-  }
-  return candidate.slice(0, 32);
+export function tenantsForUser(
+  cfg: AuthConfig,
+  store: Pick<UserStore, "rolesForUser">,
+  who: { userId: string; email?: string | null; username?: string | null },
+  allTenants: () => string[],
+): string[] {
+  if (isSuperAdmin(cfg, who)) return allTenants();
+  return store.rolesForUser(who.userId).map((r) => r.tenantId);
 }

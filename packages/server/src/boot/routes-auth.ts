@@ -33,7 +33,7 @@ import {
 } from "../core/auth/session.js";
 import {
   deriveUserId,
-  deriveTenantId,
+  tenantsForUser,
   isSuperAdmin,
   resolveTenantRole,
 } from "../core/auth/identity.js";
@@ -46,6 +46,8 @@ const PKCE_COOKIE = "tianshu_oauth_pkce";
 interface RoutesAuthDeps {
   /** How the browser reaches this server (for redirect_uri). */
   publicUrl: () => string;
+  /** All existing tenant ids (super-admins may enter any of them). */
+  listTenants: () => string[];
   /** Called after config mutation so the running server re-arms the
    *  resolver chain without a restart where possible. */
   onAuthConfigChanged?: () => void;
@@ -178,7 +180,22 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
       const identity = await fetchIdentity(provider, endpoints, token);
 
       const userId = deriveUserId(provider.id, identity.subject);
-      const tenantId = deriveTenantId(identity, cfg);
+      const tenants = tenantsForUser(
+        cfg,
+        getUserStore(),
+        { userId, email: identity.email, username: null },
+        deps.listTenants,
+      );
+      if (tenants.length === 0) {
+        res.setHeader("Set-Cookie", clearPkceCookie(secure));
+        res.status(403).json({
+          error: "no_tenant_access",
+          detail: "this account is not a member of any tenant — an admin must grant access",
+        });
+        return;
+      }
+      // 1 → enter it; N → enter the first (the SPA can offer a switcher).
+      const tenantId = tenants[0]!;
       const secret = expandEnvPlaceholders(cfg.sessionSecret) ?? "";
       const ttlSec = cfg.sessionTtlSec ?? 60 * 60 * 24 * 7;
       const sessionToken = mintSession(
@@ -231,10 +248,20 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
       return;
     }
 
-    const tenantId = deriveTenantId(
-      { subject: user.id, email: user.email ?? `${username}@local` },
+    const tenants = tenantsForUser(
       cfg,
+      store,
+      { userId: user.id, email: user.email, username: user.username },
+      deps.listTenants,
     );
+    if (tenants.length === 0) {
+      res.status(403).json({
+        error: "no_tenant_access",
+        detail: "this account is not a member of any tenant — an admin must grant access",
+      });
+      return;
+    }
+    const tenantId = tenants[0]!;
     const secret = expandEnv(cfg.sessionSecret) ?? "";
     const ttlSec = cfg.sessionTtlSec ?? 60 * 60 * 24 * 7;
     const token = mintSession(
@@ -249,7 +276,8 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
       ttlSec,
     );
     res.setHeader("Set-Cookie", buildSessionCookie(token, ttlSec, isSecureUrl(deps.publicUrl())));
-    res.json({ ok: true, userId: user.id, tenantId });
+    // Return the full tenant list so the SPA can offer a switcher when N>1.
+    res.json({ ok: true, userId: user.id, tenantId, tenants });
   });
 
   // Self-registration (only when auth.allowRegistration=true).
@@ -342,8 +370,7 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
     const cfg = currentAuth();
     res.json({
       enabled: !!cfg.enabled,
-      tenantStrategy: cfg.tenantStrategy ?? "single",
-      singleTenant: cfg.singleTenant ?? "default",
+      allowRegistration: !!cfg.allowRegistration,
       admins: cfg.admins ?? [],
       sessionSecretSet: !!(expandEnvPlaceholders(cfg.sessionSecret) ?? ""),
       providers: (cfg.providers ?? []).map((p) => ({
@@ -375,8 +402,7 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
       ...(typeof body.sessionSecret === "string" ? { sessionSecret: body.sessionSecret } : {}),
       ...(Array.isArray(body.admins) ? { admins: body.admins } : {}),
       ...(Array.isArray(body.providers) ? { providers: body.providers } : {}),
-      ...(body.tenantStrategy ? { tenantStrategy: body.tenantStrategy } : {}),
-      ...(typeof body.singleTenant === "string" ? { singleTenant: body.singleTenant } : {}),
+      ...(typeof body.allowRegistration === "boolean" ? { allowRegistration: body.allowRegistration } : {}),
       ...(typeof body.sessionTtlSec === "number" ? { sessionTtlSec: body.sessionTtlSec } : {}),
     };
 

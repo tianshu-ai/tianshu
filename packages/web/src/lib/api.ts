@@ -286,8 +286,7 @@ export interface AdminAuthProvider {
 
 export interface AdminAuthConfig {
   enabled: boolean;
-  tenantStrategy: "single" | "email";
-  singleTenant: string;
+  allowRegistration: boolean;
   admins: string[];
   sessionSecretSet: boolean;
   providers: AdminAuthProvider[];
@@ -298,7 +297,6 @@ export interface AdminAuthPatch {
   sessionSecret: string;
   admins: string[];
   providers: unknown[];
-  tenantStrategy: "single" | "email";
-  singleTenant: string;
+  allowRegistration: boolean;
   sessionTtlSec: number;
 }

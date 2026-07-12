@@ -707,7 +707,10 @@ try {
   process.exit(1);
 }
 
-mountPublicAuthRoutes(app, { publicUrl: resolvePublicUrl });
+mountPublicAuthRoutes(app, {
+  publicUrl: resolvePublicUrl,
+  listTenants: () => globalOps.list(),
+});
 
 // Everything below /api/* needs a tenant context. The chain is built
 // per-request from the live auth config (see resolvePublicUrl comment).
@@ -731,7 +734,10 @@ mountCoreRoutes(app, { pluginRegistry });
 // Admin auth routes (after the wall): GET/PATCH /api/admin/auth,
 // guarded by requireAdmin. Writes to config.json; the resolver chain
 // getter above re-reads on the next request so no restart is needed.
-mountAdminAuthRoutes(app, { publicUrl: resolvePublicUrl });
+mountAdminAuthRoutes(app, {
+  publicUrl: resolvePublicUrl,
+  listTenants: () => globalOps.list(),
+});
 
 const server = createServer(app);
 

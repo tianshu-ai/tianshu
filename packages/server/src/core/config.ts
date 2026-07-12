@@ -321,14 +321,12 @@ export interface AuthConfig {
   allowRegistration?: boolean;
   /** Session lifetime in seconds. Default 7 days. */
   sessionTtlSec?: number;
-  /** Tenant assignment for a freshly-authed user:
-   *   "single" → everyone lands in `singleTenant` (default "default").
-   *   "email"  → one tenant per user, derived from the email local-part.
-   *  Default "single". */
-  tenantStrategy?: "single" | "email";
-  /** Tenant id used when tenantStrategy="single". Default "default". */
-  singleTenant?: string;
 }
+
+// NOTE: there is deliberately NO global "tenant strategy". In the tianshu
+// model a tenant is one agent+workers (an instance); a user is a session
+// inside it. Which tenant(s) a login can enter is decided by MEMBERSHIP
+// (auth.db tenant_roles), not a process-wide rule — see tenantsForUser().
 
 export interface BrandingConfig {
   name?: string;

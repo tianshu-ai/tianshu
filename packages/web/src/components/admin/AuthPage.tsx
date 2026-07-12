@@ -93,8 +93,7 @@ function draftToWire(d: ProviderDraft): Record<string, unknown> {
 export default function AuthPage() {
   const [cfg, setCfg] = useState<AdminAuthConfig | null>(null);
   const [enabled, setEnabled] = useState(false);
-  const [tenantStrategy, setTenantStrategy] = useState<"single" | "email">("single");
-  const [singleTenant, setSingleTenant] = useState("default");
+  const [allowRegistration, setAllowRegistration] = useState(false);
   const [sessionSecret, setSessionSecret] = useState("");
   const [sessionSecretSet, setSessionSecretSet] = useState(false);
   const [providers, setProviders] = useState<ProviderDraft[]>([]);
@@ -110,8 +109,7 @@ export default function AuthPage() {
       const c = await api.adminAuth();
       setCfg(c);
       setEnabled(c.enabled);
-      setTenantStrategy(c.tenantStrategy);
-      setSingleTenant(c.singleTenant);
+      setAllowRegistration(c.allowRegistration);
       setSessionSecretSet(c.sessionSecretSet);
       setSessionSecret(c.sessionSecretSet ? SECRET_MASK : "");
       setProviders(c.providers.map(toDraft));
@@ -133,8 +131,7 @@ export default function AuthPage() {
     try {
       const patch: Record<string, unknown> = {
         enabled,
-        tenantStrategy,
-        singleTenant: singleTenant.trim() || "default",
+        allowRegistration,
         providers: providers.map(draftToWire),
       };
       if (sessionSecret && sessionSecret !== SECRET_MASK) patch.sessionSecret = sessionSecret;
@@ -147,7 +144,7 @@ export default function AuthPage() {
     } finally {
       setSaving(false);
     }
-  }, [enabled, tenantStrategy, singleTenant, sessionSecret, providers, load]);
+  }, [enabled, allowRegistration, sessionSecret, providers, load]);
 
   const addProvider = () => {
     setProviders((prev) => [
@@ -245,27 +242,21 @@ export default function AuthPage() {
                 className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-fg-default"
               />
             </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-xs text-fg-faint">Tenant strategy</span>
-              <select
-                value={tenantStrategy}
-                onChange={(e) => setTenantStrategy(e.target.value as "single" | "email")}
-                className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-fg-default"
-              >
-                <option value="single">single — everyone → one tenant</option>
-                <option value="email">email — one tenant per user</option>
-              </select>
+            <label className="flex items-center gap-2 self-end text-sm">
+              <input
+                type="checkbox"
+                checked={allowRegistration}
+                onChange={(e) => setAllowRegistration(e.target.checked)}
+                className="h-4 w-4 accent-brand-500"
+              />
+              <span className="text-fg-default">Allow self-registration</span>
             </label>
-            {tenantStrategy === "single" && (
-              <label className="text-sm">
-                <span className="mb-1 block text-xs text-fg-faint">Single tenant id</span>
-                <input
-                  value={singleTenant}
-                  onChange={(e) => setSingleTenant(e.target.value)}
-                  className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-fg-default"
-                />
-              </label>
-            )}
+            <p className="text-xs text-fg-faint sm:col-span-2">
+              A tenant = one agent + its workers. A user is a session inside it;
+              which tenant(s) a login can enter is decided by the per-tenant
+              roles below (membership), not a global rule. A user with no role
+              in any tenant can't sign in until an admin grants access.
+            </p>
           </div>
         )}
       </section>

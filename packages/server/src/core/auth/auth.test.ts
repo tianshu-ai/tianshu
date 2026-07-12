@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { mintSession, verifySession, readSessionCookie, buildSessionCookie } from "./session.js";
-import { deriveUserId, deriveTenantId, roleForEmail } from "./identity.js";
+import { deriveUserId, tenantsForUser, roleForEmail } from "./identity.js";
 import { buildResolverChain, assertAuthArmable } from "./resolvers.js";
 import type { AuthConfig } from "../config.js";
-import type { ProviderIdentity } from "./oauth.js";
 
 const SECRET = "test-secret-value";
 
@@ -72,19 +71,25 @@ describe("identity derivation", () => {
     expect(roleForEmail("a@b.com", {})).toBe("member");
   });
 
-  it("single tenant strategy", () => {
-    const id: ProviderIdentity = { subject: "s", email: "who@corp.com" };
-    expect(deriveTenantId(id, { tenantStrategy: "single" })).toBe("default");
-    expect(deriveTenantId(id, { tenantStrategy: "single", singleTenant: "acme" })).toBe("acme");
-    expect(deriveTenantId(id, {})).toBe("default"); // default strategy
-  });
+  it("tenantsForUser: membership-based, not a global strategy", () => {
+    const allTenants = () => ["t1", "t2", "t3"];
+    // stub store: user u1 is a member of t2 only
+    const store = {
+      rolesForUser: (uid: string) =>
+        uid === "u1" ? [{ tenantId: "t2", role: "member" as const }] : [],
+    };
 
-  it("email tenant strategy sanitizes the local-part", () => {
-    expect(deriveTenantId({ subject: "s", email: "John.Doe@corp.com" }, { tenantStrategy: "email" }))
-      .toBe("john-doe");
-    // a local-part that sanitizes too short → hash fallback
-    const t = deriveTenantId({ subject: "s", email: "_@corp.com" }, { tenantStrategy: "email" });
-    expect(t).toMatch(/^u-[0-9a-f]{8}$/);
+    // member of exactly one tenant
+    expect(tenantsForUser({}, store, { userId: "u1" }, allTenants)).toEqual(["t2"]);
+    // member of none → empty (caller rejects)
+    expect(tenantsForUser({}, store, { userId: "ghost" }, allTenants)).toEqual([]);
+    // super-admin (by username) → every existing tenant
+    const cfg: AuthConfig = { superAdmins: [{ username: "root", password: "x" }] };
+    expect(tenantsForUser(cfg, store, { userId: "whatever", username: "root" }, allTenants)).toEqual([
+      "t1",
+      "t2",
+      "t3",
+    ]);
   });
 });
 
