@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.5.1](https://github.com/tianshu-ai/tianshu/compare/v0.5.0...v0.5.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* **web:** render tool calls live, not only after refresh ([258efb1](https://github.com/tianshu-ai/tianshu/commit/258efb1e9fa1a69ea6f76c2e5055ea77fe39343d))
+
 ## [0.5.0](https://github.com/tianshu-ai/tianshu/compare/v0.4.85...v0.5.0) (2026-07-15)
 
 
