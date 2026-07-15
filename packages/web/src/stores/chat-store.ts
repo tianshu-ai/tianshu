@@ -330,6 +330,43 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // the same message id. We never want to render the same row
         // twice.
         if (s.messages.some((x) => x.id === m.message.id)) return {} as Partial<ChatState>;
+        // Live tool rows we synthesised (toolres_<callId>) from the
+        // tool_result WS event get a real persisted twin here via
+        // message_added. Adopt the persisted row in place of ours
+        // (same callId) so the result isn't rendered twice.
+        if (m.message.role === "tool" && m.message.toolResult) {
+          const cid = m.message.toolResult.callId;
+          const dupIdx = s.messages.findIndex(
+            (x) => x.role === "tool" && x.toolResult?.callId === cid,
+          );
+          if (dupIdx >= 0) {
+            const next = s.messages.slice();
+            next[dupIdx] = m.message;
+            return { messages: next };
+          }
+        }
+        // Same idea for a persisted assistant turn that carries the tool
+        // calls we already surfaced live as standalone toolcall_<callId>
+        // rows: drop our synthetic rows for those callIds so the real
+        // turn (which may also carry text) replaces them.
+        if (m.message.role === "assistant" && (m.message.toolCalls?.length ?? 0) > 0) {
+          const cids = new Set((m.message.toolCalls ?? []).map((c) => c.id));
+          const hasSynthetic = s.messages.some(
+            (x) =>
+              x.id.startsWith("toolcall_") &&
+              (x.toolCalls ?? []).some((c) => cids.has(c.id)),
+          );
+          if (hasSynthetic) {
+            const pruned = s.messages.filter(
+              (x) =>
+                !(
+                  x.id.startsWith("toolcall_") &&
+                  (x.toolCalls ?? []).some((c) => cids.has(c.id))
+                ),
+            );
+            return { messages: [...pruned.filter((x) => x.id !== STREAMING_ID), m.message] };
+          }
+        }
         // Retry re-persist de-dupe. On a resumed turn the server deletes
         // the old user row and inserts a fresh one (new id), then
         // broadcasts message_added — which would append a SECOND
@@ -444,6 +481,85 @@ export const useChatStore = create<ChatState>((set, get) => ({
           next = next.slice();
         }
         next[idx] = { ...next[idx]!, text: next[idx]!.text + m.delta };
+        return { messages: next };
+      }),
+    );
+    // Live tool-call rendering. The server emits tool_call / tool_result
+    // during a streaming turn; without handling them here they were
+    // dropped and only appeared after a refresh (which reloads the
+    // persisted history where mergeToolTurns can see them). We mirror
+    // the persisted shape so mergeToolTurns renders them live too:
+    //  - tool_call  → append to the streaming assistant msg's toolCalls[]
+    //  - tool_result → append a `tool`-role msg carrying toolResult
+    // (both filtered to the currently-viewed session, like message_added).
+    tianshuWs.on("tool_call", (m) =>
+      set((s) => {
+        if (m.sessionId) {
+          if (m.sessionId !== s.viewingSessionId) return {} as Partial<ChatState>;
+        } else if (s.viewingSessionId !== null) {
+          return {} as Partial<ChatState>;
+        }
+        // De-dupe on callId (handler re-fire / server re-emit).
+        if (
+          s.messages.some(
+            (x) => x.role === "assistant" && (x.toolCalls ?? []).some((c) => c.id === m.callId),
+          )
+        ) {
+          return {} as Partial<ChatState>;
+        }
+        // Represent the tool call as its OWN persisted-shape assistant
+        // row (id toolcall_<callId>), inserted BEFORE the streaming
+        // placeholder so live text stays at the bottom. A standalone
+        // row (rather than attaching to STREAMING) survives stream_end,
+        // which drops the placeholder — mergeToolTurns then pairs it
+        // with the matching tool-result row for a live chip.
+        const toolCallRow: WireMessage = {
+          id: `toolcall_${m.callId}`,
+          sessionId: "",
+          role: "assistant",
+          text: "",
+          toolCalls: [{ id: m.callId, name: m.name, arguments: m.arguments }],
+          createdAt: Date.now(),
+        };
+        const streamIdx = s.messages.findIndex((x) => x.id === STREAMING_ID);
+        const next = s.messages.slice();
+        if (streamIdx < 0) next.push(toolCallRow);
+        else next.splice(streamIdx, 0, toolCallRow);
+        return { messages: next };
+      }),
+    );
+    tianshuWs.on("tool_result", (m) =>
+      set((s) => {
+        if (m.sessionId) {
+          if (m.sessionId !== s.viewingSessionId) return {} as Partial<ChatState>;
+        } else if (s.viewingSessionId !== null) {
+          return {} as Partial<ChatState>;
+        }
+        // De-dupe: a tool-result row for this callId already present?
+        if (
+          s.messages.some(
+            (x) => x.role === "tool" && x.toolResult?.callId === m.callId,
+          )
+        ) {
+          return {} as Partial<ChatState>;
+        }
+        // Insert the tool-result row right after its matching tool-call
+        // row (mergeToolTurns pairs by callId regardless of position,
+        // but keeping them adjacent avoids reordering surprises).
+        const toolRow: WireMessage = {
+          id: `toolres_${m.callId}`,
+          sessionId: "",
+          role: "tool",
+          text: "",
+          toolResult: { callId: m.callId, name: m.name, ok: m.ok, text: m.text },
+          createdAt: Date.now(),
+        };
+        const callIdx = s.messages.findIndex(
+          (x) => x.role === "assistant" && (x.toolCalls ?? []).some((c) => c.id === m.callId),
+        );
+        const next = s.messages.slice();
+        if (callIdx < 0) next.push(toolRow);
+        else next.splice(callIdx + 1, 0, toolRow);
         return { messages: next };
       }),
     );
