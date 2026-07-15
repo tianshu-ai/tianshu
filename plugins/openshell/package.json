@@ -32,11 +32,11 @@
     "@tianshu-ai/plugin-sdk": "*"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
     "lucide-react": "^1.17.0",
     "react": "^19.0.0",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   }
 }
