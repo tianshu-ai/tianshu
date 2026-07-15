@@ -82,6 +82,18 @@ export interface TenantMiddlewareOpts {
    * resolver returning `deny` rather than the default-dev resolver.
    */
   resolvers?: readonly IdentityResolver[] | (() => readonly IdentityResolver[]);
+  /**
+   * Ensure the per-tenant `users` row exists for a resolved identity.
+   * The tenant DB's sessions/tasks tables FK to users(id); auth users
+   * live in the global auth.db and were never seeded into a tenant, so
+   * without this the first session insert fails with a FOREIGN KEY
+   * error. Called once per (tenant,user) per process (cached). Given
+   * the open TenantContext + identity so it can upsert idempotently.
+   */
+  ensureTenantUser?: (
+    tenant: TenantContext,
+    identity: { userId: string; source: string; meta?: Readonly<Record<string, string>> },
+  ) => void;
 }
 
 export function tenantMiddleware(opts: TenantMiddlewareOpts) {
@@ -179,7 +191,30 @@ export function tenantMiddleware(opts: TenantMiddlewareOpts) {
       identitySource: resolution.source,
       identityMeta: resolution.meta,
     };
+    // Make sure the tenant DB has a users row for this identity before
+    // any session/task insert (which FK to users(id)). Cached per
+    // (tenant,user) so it's a no-op after the first request. Best-effort:
+    // a seeding failure must not break the request.
+    if (opts.ensureTenantUser) {
+      const key = `${tenant.tenantId}\u0000${resolution.userId}`;
+      if (!seededTenantUsers.has(key)) {
+        try {
+          opts.ensureTenantUser(tenant, {
+            userId: resolution.userId,
+            source: resolution.source,
+            meta: resolution.meta,
+          });
+          seededTenantUsers.add(key);
+        } catch {
+          // leave uncached so a later request retries
+        }
+      }
+    }
     res.setHeader("X-Tianshu-Identity-Source", resolution.source);
     next();
   };
 }
+
+/** Process-wide cache of (tenantId\0userId) we've already ensured a
+ *  tenant users row for, so the upsert runs once, not per request. */
+const seededTenantUsers = new Set<string>();

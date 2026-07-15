@@ -719,6 +719,23 @@ app.use(
   tenantMiddleware({
     ops: globalOps,
     resolvers: () => buildResolverChain(loadGlobalConfig().auth),
+    // Seed the per-tenant users row for authed identities. The tenant
+    // DB's sessions/tasks FK to users(id); auth users live in auth.db
+    // and were never in the tenant, so the first session insert would
+    // fail with FOREIGN KEY. Idempotent upsert, cached per (tenant,user).
+    ensureTenantUser: (tenant, identity) => {
+      const meta = identity.meta ?? {};
+      globalOps.ensureUser(tenant, {
+        userId: identity.userId,
+        // Keep provider/externalId stable + unique per identity so the
+        // ON CONFLICT(provider, external_id) upsert is a clean no-op on
+        // repeat. `session` covers auth logins; dev/env sources already
+        // seed via their own paths but this is harmless for them too.
+        provider: meta.provider ? `auth:${meta.provider}` : identity.source,
+        externalId: identity.userId,
+        displayName: meta.name || meta.email || undefined,
+      });
+    },
   }),
 );
 
