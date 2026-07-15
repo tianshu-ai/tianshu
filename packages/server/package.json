@@ -30,7 +30,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.1.1",
     "@types/supertest": "^7.2.0",
     "@types/ws": "^8.5.13",
     "supertest": "^7.2.2",
