@@ -25,6 +25,7 @@ import {
   redactSecretsInConfig,
 } from "./core/plugins/index.js";
 import { CatalogClient } from "./catalog.js";
+import { requireAdmin, isAdminRequest } from "./boot/routes-auth.js";
 
 const PLUGIN_ID_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
@@ -174,6 +175,14 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
         res.status(404).json({ error: "plugin_route_not_found", pluginId, path: subPath });
         return;
       }
+      // Access control: a route the plugin marked access:"admin" (config
+      // that affects the whole tenant — e.g. create/modify a worker) is
+      // tenant-admin / super-admin only. Members can hit the default
+      // "member" routes (normal usage + reads) but not admin ones.
+      if (match.access === "admin" && !isAdminRequest(req)) {
+        res.status(403).json({ error: "admin_only", pluginId, path: subPath });
+        return;
+      }
       // Express has already populated `req.params.pluginId` for the
       // outer mount; fold the inner route's params on top so the
       // handler sees them.
@@ -197,7 +206,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
         next(err);
       }
     });
-    r.post("/plugins/catalog/refresh", async (_req, res, next) => {
+    r.post("/plugins/catalog/refresh", requireAdmin, async (_req, res, next) => {
       try {
         catalog.invalidate();
         const snap = await catalog.get({ force: true });
@@ -258,7 +267,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
-  r.post("/mcp/servers", express.json(), async (req, res, next) => {
+  r.post("/mcp/servers", requireAdmin, express.json(), async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
@@ -298,7 +307,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
-  r.patch("/mcp/servers/:id", express.json(), async (req, res, next) => {
+  r.patch("/mcp/servers/:id", requireAdmin, express.json(), async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
@@ -308,7 +317,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       return;
     }
     try {
-      const id = req.params.id;
+      const id = String(req.params.id);
       const tenantId = req.ctx.tenant.tenantId;
       const cfg = loadTenantConfig(tenantId, ops.homeDir);
       const servers = [...(cfg.mcp?.servers ?? [])];
@@ -339,7 +348,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
-  r.delete("/mcp/servers/:id", async (req, res, next) => {
+  r.delete("/mcp/servers/:id", requireAdmin, async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
@@ -349,7 +358,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
       return;
     }
     try {
-      const id = req.params.id;
+      const id = String(req.params.id);
       const tenantId = req.ctx.tenant.tenantId;
       const cfg = loadTenantConfig(tenantId, ops.homeDir);
       const servers = (cfg.mcp?.servers ?? []).filter((s) => s.id !== id);
@@ -370,14 +379,14 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
   // both user-configured and plugin-contributed servers — the
   // admin UI doesn't know (or care) which is which, only that a
   // "Refresh" click should re-probe the upstream.
-  r.post("/mcp/servers/:id/refresh", async (req, res, next) => {
+  r.post("/mcp/servers/:id/refresh", requireAdmin, async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
     }
     try {
       await registry.ensureForTenant(req.ctx.tenant);
-      const id = req.params.id;
+      const id = String(req.params.id);
       const tenantId = req.ctx.tenant.tenantId;
       const tsets = registry.toolsetsForTenant(tenantId);
       const target = tsets.find((t) => t.id === id);
@@ -403,7 +412,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
   // any time the on-disk plugin set changed without a config edit.
   // PATCH /plugins/:id already invalidates the registry; this route
   // is for the no-config-change case.
-  r.post("/plugins/refresh", async (req, res, next) => {
+  r.post("/plugins/refresh", requireAdmin, async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
@@ -428,13 +437,13 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
-  r.patch("/plugins/:id", express.json(), async (req, res, next) => {
+  r.patch("/plugins/:id", requireAdmin, express.json(), async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
     }
 
-    const pluginId = req.params.id;
+    const pluginId = String(req.params.id);
     if (!PLUGIN_ID_RE.test(pluginId)) {
       res.status(400).json({ error: "bad_plugin_id" });
       return;

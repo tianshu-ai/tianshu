@@ -31,6 +31,7 @@ export {
 
 export {
   DEFAULTS,
+  clearConfigCache,
   loadGlobalConfig,
   loadTenantConfig,
   mergeConfigs,
@@ -111,6 +112,26 @@ export {
   type IdentityResolver,
   type IdentityResolution,
 } from "./middleware.js";
+
+export {
+  buildResolverChain,
+  assertAuthArmable,
+  sessionResolver,
+  denyResolver,
+} from "./auth/resolvers.js";
+
+export {
+  UserStore,
+  getUserStore,
+  hashPassword,
+  verifyPassword,
+  type LocalUser,
+  type TenantRole,
+} from "./auth/user-store.js";
+export {
+  isSuperAdmin,
+  resolveTenantRole,
+} from "./auth/identity.js";
 
 export {
   buildModel,

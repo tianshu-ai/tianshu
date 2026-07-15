@@ -7,11 +7,15 @@ import {
   Globe,
   Hash,
   ShieldCheck,
+  LogOut,
+  Building2,
 } from "lucide-react";
 import PluginSidebarSections from "./PluginSidebarSections";
 import { ThemeToggle } from "./ui/ThemeToggle";
 import { Link } from "react-router-dom";
 import { useChatStore } from "../stores/chat-store";
+import { api } from "../lib/api";
+import { clearIdentityCookie } from "../dev-identity";
 import {
   getSupportedLocales,
   LOCALE_LABELS,
@@ -108,12 +112,23 @@ function SidebarFooter() {
   const locale = useLocale();
   const locales = getSupportedLocales();
   const userId = me?.userId ?? "…";
-  const initial = userId.slice(0, 1).toUpperCase();
-  const roleKey = me?.devTenant ? "user.role.dev" : "user.role.member";
-  const subline = `${t(roleKey)} · ${me?.tenantId ?? ""}`;
+  const displayName = me?.displayName ?? userId;
+  const initial = displayName.slice(0, 1).toUpperCase();
+  const roleText =
+    me?.role ?? (me?.devTenant ? t("user.role.dev") : t("user.role.member"));
+  const subline = `${roleText} · ${me?.tenantId ?? ""}`;
+  const canLogout = !!me?.provider;
+  // Admin entry: in dev mode (no session/provider) everyone is de-facto
+  // admin; in auth mode only tenant-admins / super-admins. Members don't
+  // see it (the settings write routes 403 them anyway).
+  const showAdmin = !me?.provider || me?.role === "admin";
+  // Tenants this user can switch between (auth mode, >1 membership).
+  const switchableTenants = me?.tenants ?? [];
+  const canSwitchTenant = !!me?.provider && switchableTenants.length > 1;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
+  const [tenantOpen, setTenantOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
 
   // Close on outside click / Esc — standard popover dismissal.
@@ -126,12 +141,14 @@ function SidebarFooter() {
       if (!wrapRef.current.contains(e.target as Node)) {
         setMenuOpen(false);
         setLangOpen(false);
+        setTenantOpen(false);
       }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setMenuOpen(false);
         setLangOpen(false);
+        setTenantOpen(false);
       }
     };
     window.addEventListener("mousedown", onDown);
@@ -156,7 +173,7 @@ function SidebarFooter() {
           {initial}
         </div>
         <div className="min-w-0 flex-1 text-left">
-          <div className="truncate text-[11px] text-fg-muted">{userId}</div>
+          <div className="truncate text-[11px] text-fg-muted">{displayName}</div>
           <div className="truncate text-[10px] text-fg-fainter">{subline}</div>
         </div>
         <ChevronDown
@@ -172,26 +189,91 @@ function SidebarFooter() {
         >
           {/* Identity header inside menu, mirrors Linear/Discord style. */}
           <div className="border-b border-border-subtle px-3 py-2">
-            <div className="truncate text-fg-default">{userId}</div>
+            <div className="truncate text-fg-default">{displayName}</div>
             <div className="truncate text-[10px] text-fg-fainter">{subline}</div>
           </div>
 
-          {/* Admin entry. v0 shows it for everyone (no JWT yet);
-           *  when auth lands we'll gate on me.role === 'admin'. */}
-          <Link
-            // Relative to the current identity-scoped route.
-            // The sidebar lives inside ChatLayout which renders
-            // under `/tenants/:t/users/:u`, so "admin" resolves
-            // to `/tenants/:t/users/:u/admin` without us having
-            // to know who's signed in.
-            to="admin"
-            role="menuitem"
-            onClick={() => setMenuOpen(false)}
-            className="flex items-center gap-2 px-3 py-1.5 text-fg-default hover:bg-bg-raised"
-          >
-            <ShieldCheck size={14} className="text-fg-faint" />
-            <span>{t("admin.title")}</span>
-          </Link>
+          {/* Admin entry — tenant-admins / super-admins only (dev mode:
+           *  everyone). Members don't see it; the write routes 403 them. */}
+          {showAdmin && (
+            <Link
+              // Relative to the current identity-scoped route.
+              // The sidebar lives inside ChatLayout which renders
+              // under `/tenants/:t/users/:u`, so "admin" resolves
+              // to `/tenants/:t/users/:u/admin` without us having
+              // to know who's signed in.
+              to="admin"
+              role="menuitem"
+              onClick={() => setMenuOpen(false)}
+              className="flex items-center gap-2 px-3 py-1.5 text-fg-default hover:bg-bg-raised"
+            >
+              <ShieldCheck size={14} className="text-fg-faint" />
+              <span>{t("admin.title")}</span>
+            </Link>
+          )}
+
+          {/* Switch-tenant sub-menu — a session is bound to one tenant
+           *  (a tenant = one agent+workers). Switching re-mints the
+           *  session for the target tenant, then reloads onto its URL.
+           *  Shown only when the user belongs to more than one. */}
+          {canSwitchTenant && (
+            <>
+              <button
+                type="button"
+                role="menuitem"
+                aria-haspopup="menu"
+                aria-expanded={tenantOpen}
+                onClick={() => setTenantOpen((v) => !v)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-fg-default hover:bg-bg-raised"
+              >
+                <Building2 size={14} className="text-fg-faint" />
+                <span className="flex-1 text-left">{t("user.switchTenant")}</span>
+                <span className="max-w-[80px] truncate text-[10px] text-fg-faint">{me?.tenantId}</span>
+                <ChevronRight
+                  size={12}
+                  className={`text-fg-faint transition-transform ${tenantOpen ? "rotate-90" : ""}`}
+                />
+              </button>
+              {tenantOpen && (
+                <ul role="menu" className="border-y border-border-subtle bg-bg-base/60">
+                  {switchableTenants.map((tid) => {
+                    const active = tid === me?.tenantId;
+                    return (
+                      <li
+                        key={tid}
+                        role="menuitemradio"
+                        aria-checked={active}
+                        tabIndex={0}
+                        onClick={async () => {
+                          if (active) {
+                            setTenantOpen(false);
+                            setMenuOpen(false);
+                            return;
+                          }
+                          try {
+                            await api.switchTenant(tid);
+                          } finally {
+                            // Land on the new tenant's URL; IdentityGuard
+                            // keeps URL == session. Full reload so all
+                            // tenant-scoped state is rebuilt.
+                            window.location.assign(
+                              `/tenants/${tid}/users/${me?.userId ?? ""}`,
+                            );
+                          }
+                        }}
+                        className={`flex cursor-pointer items-center gap-2 py-1.5 pl-9 pr-3 outline-none ${
+                          active ? "text-link" : "text-fg-muted hover:bg-bg-raised"
+                        }`}
+                      >
+                        <span className="flex-1 truncate font-mono">{tid}</span>
+                        {active && <Check size={13} className="text-link" />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </>
+          )}
 
           {/* Language sub-menu — inline expansion keeps the popover
            *  scoped instead of fanning out a second floating panel.
@@ -255,9 +337,30 @@ function SidebarFooter() {
             <ThemeToggle compact />
           </div>
 
-          {/* Sign-out is intentionally absent until JWT auth ports
-           *  over — there's nothing to sign out of yet. The menu's
-           *  shape leaves the slot ready. */}
+          {/* Sign out — only when signed in via a real session
+           *  (auth mode). Clears the cookie then full-reloads; the
+           *  api client bounces to /login on the resulting 401. */}
+          {canLogout && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={async () => {
+                setMenuOpen(false);
+                try {
+                  await api.logout();
+                } finally {
+                  // Also drop the dev-identity cookie so the next login
+                  // doesn't inherit this user's tenant/user path.
+                  clearIdentityCookie();
+                  window.location.assign("/login");
+                }
+              }}
+              className="flex w-full items-center gap-2 border-t border-border-subtle px-3 py-1.5 text-danger hover:bg-bg-raised"
+            >
+              <LogOut size={14} />
+              <span>{t("user.signOut")}</span>
+            </button>
+          )}
         </div>
       )}
     </div>

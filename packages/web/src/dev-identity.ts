@@ -96,7 +96,7 @@ function writeIdentityCookie(tenantId: string, userId: string): void {
   document.cookie = `${COOKIE_NAME}=${value};Path=/;Max-Age=${30 * 24 * 3600};SameSite=Lax`;
 }
 
-function clearIdentityCookie(): void {
+export function clearIdentityCookie(): void {
   document.cookie = `${COOKIE_NAME}=;Path=/;Max-Age=0;SameSite=Lax`;
 }
 
@@ -116,7 +116,23 @@ export function buildIdentityPath(
   identity?: { tenantId: string; userId: string },
 ): string {
   if (IDENTITY_PATH_RE.test(rest)) return rest;
-  const id = identity ?? readIdentityFromCookie();
+  // Identity precedence:
+  //   1. explicit arg
+  //   2. the CURRENT URL path — authoritative in auth mode (IdentityGuard
+  //      forces URL == session) and correct in dev mode too. Using this
+  //      first fixes the bug where, after logging out one user and into
+  //      another, the stale `tianshu_identity` dev cookie made admin nav
+  //      links point at the PREVIOUS user's path ("Settings won't open").
+  //   3. the dev cookie (dev-mode fallback / pre-navigation).
+  const fromPath =
+    typeof window !== "undefined"
+      ? parseIdentityPath(window.location.pathname)
+      : null;
+  const id =
+    identity ??
+    (fromPath
+      ? { tenantId: fromPath.tenantId, userId: fromPath.userId }
+      : readIdentityFromCookie());
   const tenant = id?.tenantId ?? FALLBACK_TENANT;
   const user = id?.userId ?? FALLBACK_USER;
   const tail = rest.startsWith("/") ? rest : `/${rest}`;
@@ -143,6 +159,16 @@ export function buildIdentityPath(
  */
 export function applyDevIdentityFromUrl(): void {
   if (typeof window === "undefined") return;
+
+  // Auth-mode surfaces live OUTSIDE the identity path prefix and must
+  // never be rewritten into `/tenants/<t>/users/<u>/...` — doing so
+  // sends `/login` to `/tenants/default/users/dev/login`, which matches
+  // the identity route's catch-all and renders blank. The login page is
+  // reached before any identity exists (the api client bounces here on a
+  // 401), so leave these paths exactly as-is and let the top-level
+  // routes in App.tsx handle them.
+  if (isAuthSurfacePath(window.location.pathname)) return;
+
   const params = new URLSearchParams(window.location.search);
 
   // 1. ?reset-identity → wipe cookie, fresh start at /.
@@ -225,4 +251,10 @@ function stripIdentityPrefix(pathname: string): string {
 
 function isSafeId(s: string): boolean {
   return /^[A-Za-z0-9._-]+$/.test(s) && s.length <= 64;
+}
+
+/** Paths that must NOT be rewritten under the dev-identity prefix
+ *  (they belong to the auth flow, which is pre-identity). */
+function isAuthSurfacePath(pathname: string): boolean {
+  return pathname === "/login" || pathname.startsWith("/login/");
 }

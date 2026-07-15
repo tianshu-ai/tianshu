@@ -82,5 +82,51 @@
     "model": "anthropic/claude-sonnet-4-6"
   },
 
-  "branding": { "name": "Tianshu", "emoji": "⭐" }
+  "branding": { "name": "Tianshu", "emoji": "⭐" },
+
+  // User authentication. GLOBAL-ONLY. Absent / enabled:false (default)
+  // keeps open dev mode (no login wall). Turn on + configure providers
+  // via Settings → Admin, or hand-edit here.
+  //
+  // OAuth is fully config-driven — NO provider is hardcoded. Declare any
+  // OAuth2/OIDC provider by (a) an OIDC `issuer` (discovery) or
+  // (b) explicit authorizeUrl/tokenUrl/userInfoUrl. Admins live HERE
+  // (auth.admins by email), not in a DB.
+  "auth": {
+    "enabled": false,
+    "sessionSecret": "***}",
+    // OAuth super-admins by email (global admin, all tenants).
+    "admins": ["you@example.com"],
+    // Local super-admin accounts (username+password). These are the
+    // bootstrap / global admins — hashed into auth.db on boot. password
+    // supports ${VAR} so no plaintext need live in the file.
+    "superAdmins": [
+      { "username": "admin", "password": "***}" }
+    ],
+    // Allow local users to self-register on the login page. Default
+    // false — only super-admins + admin-created users exist.
+    "allowRegistration": false,
+    // NOTE: no "tenant strategy". A tenant = one agent + its workers; a
+    // user is a session inside it. Which tenant(s) a login enters is
+    // decided by membership (per-tenant roles in auth.db / super-admin),
+    // set via Settings → Admin → Local users. A user with no tenant role
+    // cannot sign in until an admin grants access.
+    // OAuth/OIDC providers (optional — local password login always works
+    // when auth is on). Fully config-driven; nothing hardcoded.
+    "providers": [
+      {
+        "id": "my-sso",
+        "displayName": "Company SSO",
+        "clientId": "${OIDC_CLIENT_ID}",
+        "clientSecret": "***}",
+        "scopes": ["openid", "email", "profile"],
+        "issuer": "https://sso.example.com/realms/main"
+        // OR explicit endpoints instead of issuer (e.g. GitHub):
+        // "authorizeUrl": "https://github.com/login/oauth/authorize",
+        // "tokenUrl":     "https://github.com/login/oauth/access_token",
+        // "userInfoUrl":  "https://api.github.com/user",
+        // "claims": { "subject": "id", "email": "email", "name": "name" }
+      }
+    ]
+  }
 }

@@ -33,7 +33,14 @@ import {
 
   tenantMiddleware,
   writeGlobalConfig,
+  buildResolverChain,
+  assertAuthArmable,
 } from "./core/index.js";
+import {
+  mountPublicAuthRoutes,
+  mountAdminAuthRoutes,
+  bootstrapSuperAdmins,
+} from "./boot/routes-auth.js";
 import { buildReloadingBuiltinResolver, PluginRegistry } from "./core/plugins/index.js";
 import {
   buildToolCatalogRefreshTool,
@@ -668,12 +675,68 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
-// Everything below /api/* needs a tenant context. Default resolver in
-// dev mode pins to the bootstrap tenant + user; JWT mode will replace
-// this resolver in a later PR.
+// ─── Auth (user authentication) ──────────────────────────────────────
+//
+// PUBLIC auth routes mount BEFORE the tenant wall — you can't require
+// login to log in. When `auth.enabled=false` (default) they 404, so the
+// login surface is dark until an operator opts in.
+//
+// A getter that reads config fresh each request builds the resolver
+// chain: `auth.enabled` toggles between the dev chain (cookie → env →
+// default-dev) and the authed chain (session → deny). Toggling auth via
+// the admin API re-arms on the next request with no restart.
+function resolvePublicUrl(): string {
+  return (
+    process.env.TIANSHU_WEB_URL ||
+    loadGlobalConfig().server?.publicUrl ||
+    loadGlobalConfig().server?.effectivePublicUrl ||
+    `http://localhost:${loadGlobalConfig().server?.port ?? 3110}`
+  );
+}
+
+// Fail fast at boot if auth is turned on but not armable, then hash the
+// configured super-admin local accounts into auth.db (idempotent).
+try {
+  const bootAuth = loadGlobalConfig().auth;
+  if (bootAuth?.enabled) {
+    assertAuthArmable(bootAuth);
+    bootstrapSuperAdmins(bootAuth);
+  }
+} catch (err) {
+  console.error(`[tianshu][auth] ${err instanceof Error ? err.message : String(err)}`);
+  process.exit(1);
+}
+
+mountPublicAuthRoutes(app, {
+  publicUrl: resolvePublicUrl,
+  listTenants: () => globalOps.list(),
+});
+
+// Everything below /api/* needs a tenant context. The chain is built
+// per-request from the live auth config (see resolvePublicUrl comment).
 app.use(
   "/api",
-  tenantMiddleware({ ops: globalOps }),
+  tenantMiddleware({
+    ops: globalOps,
+    resolvers: () => buildResolverChain(loadGlobalConfig().auth),
+    // Seed the per-tenant users row for authed identities. The tenant
+    // DB's sessions/tasks FK to users(id); auth users live in auth.db
+    // and were never in the tenant, so the first session insert would
+    // fail with FOREIGN KEY. Idempotent upsert, cached per (tenant,user).
+    ensureTenantUser: (tenant, identity) => {
+      const meta = identity.meta ?? {};
+      globalOps.ensureUser(tenant, {
+        userId: identity.userId,
+        // Keep provider/externalId stable + unique per identity so the
+        // ON CONFLICT(provider, external_id) upsert is a clean no-op on
+        // repeat. `session` covers auth logins; dev/env sources already
+        // seed via their own paths but this is harmless for them too.
+        provider: meta.provider ? `auth:${meta.provider}` : identity.source,
+        externalId: identity.userId,
+        displayName: meta.name || meta.email || undefined,
+      });
+    },
+  }),
 );
 
 // `/api/channel-sessions/*` + `/api/channel-bindings/:id/model`
@@ -683,7 +746,18 @@ mountChannelRoutes(app);
 // /api/me, /api/models, /api/tools, /api/skills — see
 // boot/routes-core.ts for the bodies. Identity badge / model picker /
 // worker-agents allow-list pickers consume these.
-mountCoreRoutes(app, { pluginRegistry });
+mountCoreRoutes(app, { pluginRegistry, listTenants: () => globalOps.list() });
+
+// Admin auth routes (after the wall): GET/PATCH /api/admin/auth,
+// guarded by requireAdmin. Writes to config.json; the resolver chain
+// getter above re-reads on the next request so no restart is needed.
+mountAdminAuthRoutes(app, {
+  publicUrl: resolvePublicUrl,
+  listTenants: () => globalOps.list(),
+  createTenant: (tenantId: string) => {
+    globalOps.create(tenantId);
+  },
+});
 
 const server = createServer(app);
 

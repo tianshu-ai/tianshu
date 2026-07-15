@@ -27,16 +27,22 @@ import {
   useParams,
 } from "react-router-dom";
 import * as Icons from "lucide-react";
-import { ArrowLeft, ShieldCheck, Settings as SettingsIcon } from "lucide-react";
+import { ArrowLeft, ShieldCheck, Settings as SettingsIcon, LogOut } from "lucide-react";
 import { useChatStore } from "../../stores/chat-store";
 import { usePluginStore } from "../../stores/plugin-store";
 import { resolveComponent } from "../../lib/plugin-registry";
 import type { AdminPageProps } from "@tianshu-ai/plugin-sdk/client";
-import type { PluginListEntry } from "../../lib/api";
+import { api, type PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
-import { buildIdentityPath } from "../../dev-identity";
+import { buildIdentityPath, clearIdentityCookie } from "../../dev-identity";
 import McpServersPage from "./McpServersPage";
 import ModelsPage from "./ModelsPage";
+import {
+  AuthSettingsPage,
+  AuthProvidersPage,
+  AuthUsersPage,
+  AuthTenantsPage,
+} from "./AuthPage";
 import { PluginConfigForm } from "../PluginConfigForm";
 
 interface ContributesAdminPage {
@@ -75,13 +81,65 @@ const CORE_PAGES: FlatAdminPage[] = [
   {
     pluginId: "core",
     pluginDisplayName: "Tianshu",
+    pageId: "auth",
+    displayName: "Auth",
+    icon: "ShieldCheck",
+    kind: "core",
+    component: "AuthSettingsPage",
+    coreComponent: AuthSettingsPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "System",
+    order: 1,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "auth-providers",
+    displayName: "Providers",
+    icon: "KeyRound",
+    kind: "core",
+    component: "AuthProvidersPage",
+    coreComponent: AuthProvidersPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "System",
+    order: 2,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "auth-users",
+    displayName: "Users",
+    icon: "UserCog",
+    kind: "core",
+    component: "AuthUsersPage",
+    coreComponent: AuthUsersPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "System",
+    order: 3,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "auth-tenants",
+    displayName: "Tenants",
+    icon: "Building2",
+    kind: "core",
+    component: "AuthTenantsPage",
+    coreComponent: AuthTenantsPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "System",
+    order: 4,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
     pageId: "models",
     displayName: "Models",
     icon: "Boxes",
     kind: "core",
     component: "ModelsPage",
     coreComponent: ModelsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Agent",
+    group: "System",
     order: 5,
     clientEntry: null,
   },
@@ -94,8 +152,8 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "McpServersPage",
     coreComponent: McpServersPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Agent",
-    order: 10,
+    group: "System",
+    order: 6,
     clientEntry: null,
   },
 ];
@@ -200,7 +258,12 @@ export default function AdminShell() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-base text-fg-default">
-      <AdminSidebar pages={pages} userLabel={me?.userId ?? null} />
+      <AdminSidebar
+        pages={pages}
+        userLabel={me?.displayName ?? me?.userId ?? null}
+        userRole={me?.role ?? null}
+        showLogout={!!me?.provider}
+      />
       <main className="min-w-0 flex-1 overflow-y-auto">
         <Routes>
           <Route
@@ -236,9 +299,14 @@ export default function AdminShell() {
 function AdminSidebar({
   pages,
   userLabel,
+  userRole,
+  showLogout,
 }: {
   pages: FlatAdminPage[];
   userLabel: string | null;
+  userRole?: "admin" | "member" | null;
+  /** Show a logout button (auth mode / session login only). */
+  showLogout?: boolean;
 }) {
   const t = useT();
   const shellTitle = t("admin.title");
@@ -306,8 +374,25 @@ function AdminSidebar({
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[11px] text-fg-muted">{userLabel}</div>
-            <div className="text-[10px] text-fg-fainter">admin</div>
+            {userRole && <div className="text-[10px] text-fg-fainter">{userRole}</div>}
           </div>
+          {showLogout && (
+            <button
+              type="button"
+              title="Log out"
+              onClick={async () => {
+                try {
+                  await api.logout();
+                } finally {
+                  clearIdentityCookie();
+                  window.location.assign("/login");
+                }
+              }}
+              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-fg-fainter hover:bg-bg-hover hover:text-danger"
+            >
+              <LogOut size={13} />
+            </button>
+          )}
         </div>
       )}
     </aside>

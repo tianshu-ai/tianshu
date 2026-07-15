@@ -96,19 +96,19 @@ export function Modal({
     };
   }, [isOpen]);
 
-  // ESC + initial focus + restore focus on unmount.
+  // Initial focus + restore focus on unmount. Keyed on `isOpen` ONLY.
+  //
+  // BUG FIX: this used to depend on `onClose` too. Callers routinely pass
+  // an inline `onClose={() => setX(false)}`, whose identity changes on
+  // every parent render. Since typing in a modal input triggers a parent
+  // re-render (controlled state), the effect re-ran on every keystroke and
+  // re-focused the FIRST focusable element — yanking focus out of the
+  // input after each character. Focus-on-open must fire once per open, so
+  // it only keys on `isOpen`.
   useEffect(() => {
     if (!isOpen) return;
     previousFocusRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
 
     // Focus the first focusable on next tick — the panel needs to
     // render once for the ref to be live.
@@ -120,7 +120,6 @@ export function Modal({
     }, 0);
 
     return () => {
-      window.removeEventListener("keydown", onKey);
       window.clearTimeout(t);
       // Best-effort focus restore. Skip when the previously focused
       // element has been removed from the DOM since we opened.
@@ -129,6 +128,20 @@ export function Modal({
         prev.focus();
       }
     };
+  }, [isOpen]);
+
+  // ESC-to-close, in its own effect so `onClose` identity changes don't
+  // disturb the focus-on-open effect above.
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [isOpen, onClose]);
 
   // Tab / Shift+Tab wrap. We do NOT trap focus for arrow-keys etc.;

@@ -61,7 +61,6 @@ export interface OverridableConfig {
    *   then resurrect with a real shape.
    */
   worker?: WorkerSettings;
-  oauth?: OAuthProviderConfig[];
   branding?: BrandingConfig;
   apiKeys?: Record<string, string>; // provider name → key
   /**
@@ -164,6 +163,21 @@ export interface GlobalOnlyConfig {
   autoCreateDefault?: boolean;
   /** Override builtinConfig directory (handy for tests / Docker). */
   builtinConfigDir?: string;
+  /**
+   * User authentication. GLOBAL-ONLY — a tenant must not disable the
+   * auth wall or add itself as admin. Absent / `enabled:false` keeps
+   * the current dev behaviour (no login wall). See AuthConfig.
+   */
+  auth?: AuthConfig;
+  /**
+   * Disabled tenants. GLOBAL-ONLY, super-admin-managed. A tenant id in
+   * this list is treated as unavailable: logins can't enter it and
+   * in-flight requests targeting it are rejected — but the on-disk data
+   * is left untouched (this is a soft off-switch, NOT a delete). To
+   * really remove a tenant, an admin deletes its directory by hand.
+   * Managed via the admin Auth page or by hand-editing this array.
+   */
+  disabledTenants?: string[];
 }
 
 export interface ModelsCatalog {
@@ -238,14 +252,90 @@ export interface WorkerSettings {
   model?: string;
 }
 
+/**
+ * A single OAuth2 / OIDC login provider. GENERIC + config-driven — the
+ * runtime hardcodes NO provider (no github/google/lark enum). Every
+ * provider goes through the same authorization-code + PKCE flow. The
+ * operator declares whatever they use by endpoint or OIDC issuer.
+ *
+ * Declare a provider one of two ways:
+ *   (a) OIDC discovery — set `issuer`; we fetch
+ *       `<issuer>/.well-known/openid-configuration` for the
+ *       authorize/token/userinfo endpoints.
+ *   (b) explicit endpoints — set authorizeUrl/tokenUrl/userInfoUrl
+ *       directly (for plain OAuth2 without discovery, e.g. GitHub).
+ */
 export interface OAuthProviderConfig {
-  id: string; // e.g. "github", "google"
-  type: "github" | "google" | "oidc" | "lark";
-  clientId?: string;
-  clientSecret?: string; // typically lives in secrets/, not config.json
-  issuer?: string; // for generic OIDC
+  /** Stable id, used in the callback URL `/api/auth/<id>/callback`.
+   *  Lowercase letters, digits, dashes. */
+  id: string;
+  /** Button label on the login page. Defaults to `id`. */
+  displayName?: string;
+  clientId: string;
+  /** May contain `${VAR}` placeholders (resolved at use time). */
+  clientSecret: string;
+  /** OAuth scopes. Defaults to `["openid","email","profile"]`. */
   scopes?: string[];
+
+  // ── endpoint source: issuer (a) OR explicit URLs (b) ──
+  /** OIDC issuer for discovery. Mutually exclusive with the explicit
+   *  *Url fields; if both are set, explicit URLs win. */
+  issuer?: string;
+  authorizeUrl?: string;
+  tokenUrl?: string;
+  userInfoUrl?: string;
+
+  /** Map the provider's userinfo JSON → tianshu identity. Dot paths
+   *  into the userinfo response. Defaults suit OIDC
+   *  (`sub`/`email`/`name`); override for providers that differ
+   *  (GitHub nests email, Lark uses open_id/en_name, …). */
+  claims?: {
+    subject?: string;
+    email?: string;
+    name?: string;
+  };
 }
+
+/**
+ * User-authentication config. GLOBAL-ONLY (never in TENANT_WHITELIST):
+ * a tenant must not be able to disable the auth wall or add itself as
+ * admin. Default `enabled:false` ⇒ zero behaviour change (dev chain).
+ */
+export interface AuthConfig {
+  /** Master switch. false (default) keeps the dev resolver chain
+   *  (cookie → env → default-dev, no login wall). true arms the
+   *  session resolver and 401s unauthenticated /api requests. */
+  enabled?: boolean;
+  /** Session cookie signing secret. `${VAR}` placeholder resolved at
+   *  use time. REQUIRED when enabled=true. */
+  sessionSecret?: string;
+  /** Super-admins declared by OAuth email. A login whose email is in
+   *  this list is a GLOBAL admin — all permissions across ALL tenants,
+   *  overriding any per-tenant role in auth.db. Config-file-declared
+   *  (not editable in the DB). */
+  admins?: string[];
+  /** Super-admin LOCAL accounts (username + password). These are the
+   *  bootstrap / global admins: the first user(s), password configured
+   *  here. On boot they're hashed into auth.db (idempotent). Like
+   *  `admins`, they hold all permissions across all tenants. `password`
+   *  supports `${VAR}` placeholders so the plaintext need not live in
+   *  the file. */
+  superAdmins?: Array<{ username: string; password: string; email?: string }>;
+  /** Configured OAuth/OIDC login providers. */
+  providers?: OAuthProviderConfig[];
+  /** Whether local password users may self-register. Default false —
+   *  only super-admins + admin-created users exist. When true, the
+   *  login page exposes a register form; the first-ever registrant is
+   *  irrelevant here since the bootstrap admin comes from superAdmins. */
+  allowRegistration?: boolean;
+  /** Session lifetime in seconds. Default 7 days. */
+  sessionTtlSec?: number;
+}
+
+// NOTE: there is deliberately NO global "tenant strategy". In the tianshu
+// model a tenant is one agent+workers (an instance); a user is a session
+// inside it. Which tenant(s) a login can enter is decided by MEMBERSHIP
+// (auth.db tenant_roles), not a process-wide rule — see tenantsForUser().
 
 export interface BrandingConfig {
   name?: string;
@@ -274,7 +364,6 @@ const TENANT_WHITELIST = new Set<keyof OverridableConfig>([
   "defaultModel",
   "models",
   "worker",
-  "oauth",
   "branding",
   "apiKeys",
   "plugins",
@@ -301,16 +390,86 @@ function assertOnlyOverridable(tenantId: string, raw: Record<string, unknown>): 
 
 // ─── Read / merge ─────────────────────────────────────────────────────
 
+// ─── mtime-invalidated read cache ─────────────────────────────────────
+//
+// Config is read on the HOT PATH: buildTenantContext → resolveTenantConfig
+// runs `loadGlobalConfig` + `loadTenantConfig` on EVERY request, and the
+// auth resolver chain reads global config per request too. Doing a
+// readFileSync + JSON.parse each time is a blocking syscall + parse on
+// the request path.
+//
+// We cache the parsed object keyed by path, invalidated by the file's
+// (mtimeMs, size). Each call still does ONE `statSync` — but stat on a
+// hot file hits the OS inode cache and is ~an order of magnitude cheaper
+// than read+parse. When mtime/size are unchanged we return the cached
+// parse (deep-cloned so callers can't mutate the shared object).
+//
+// Crucially this PRESERVES the "hand-edit config.json → takes effect on
+// the next request, no restart" property: an external edit bumps mtime,
+// so the very next stat sees the change and re-reads. writeGlobalConfig /
+// writeTenantConfig additionally punch the cache entry to avoid a
+// same-millisecond-mtime race after our own writes.
+interface CacheEntry {
+  mtimeMs: number;
+  size: number;
+  parsed: Record<string, unknown>;
+}
+const configCache = new Map<string, CacheEntry>();
+
+/** Drop a cached entry (called after our own writes). */
+function invalidateConfigCache(filepath: string): void {
+  configCache.delete(filepath);
+}
+
+/** Test/ops hook: clear the whole cache. */
+export function clearConfigCache(): void {
+  configCache.clear();
+}
+
+function deepClone<T>(v: T): T {
+  // structuredClone is available on Node 17+; config objects are plain
+  // JSON so it's exact. Cloning stops a caller from mutating the cached
+  // parse and poisoning every subsequent reader.
+  return structuredClone(v);
+}
+
 function readJsonOrEmpty(filepath: string): Record<string, unknown> {
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(filepath);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      configCache.delete(filepath);
+      return {};
+    }
+    throw new Error(
+      `failed to stat config ${filepath}: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+
+  const hit = configCache.get(filepath);
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) {
+    return deepClone(hit.parsed);
+  }
+
   try {
     const buf = fs.readFileSync(filepath, "utf8");
     const parsed = JSON.parse(buf);
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
       throw new Error(`expected JSON object, got ${typeof parsed}`);
     }
-    return parsed as Record<string, unknown>;
+    configCache.set(filepath, {
+      mtimeMs: st.mtimeMs,
+      size: st.size,
+      parsed: parsed as Record<string, unknown>,
+    });
+    return deepClone(parsed as Record<string, unknown>);
   } catch (err: unknown) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return {};
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      // Raced with a delete between stat and read.
+      configCache.delete(filepath);
+      return {};
+    }
     throw new Error(
       `failed to read config ${filepath}: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -383,12 +542,13 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     logging: global.logging,
     autoCreateDefault: global.autoCreateDefault ?? DEFAULTS.autoCreateDefault,
     builtinConfigDir: global.builtinConfigDir,
+    auth: global.auth,
+    disabledTenants: global.disabledTenants,
 
     // overridable — tenant wins
     defaultModel,
     models,
     worker: { ...global.worker, ...tenant.worker },
-    oauth: tenant.oauth ?? global.oauth,
     branding: { ...global.branding, ...tenant.branding },
     apiKeys: { ...global.apiKeys, ...tenant.apiKeys },
     plugins: { ...global.plugins, ...tenant.plugins },
@@ -409,6 +569,9 @@ export function writeTenantConfig(
   const tmp = `${target}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, target);
+  // Punch the cache: a write within the same millisecond as the last
+  // read would otherwise keep serving the stale parse (mtimeMs unchanged).
+  invalidateConfigCache(target);
 }
 
 export function writeGlobalConfig(cfg: GlobalConfig, home: string = getTianshuHome()): void {
@@ -417,4 +580,28 @@ export function writeGlobalConfig(cfg: GlobalConfig, home: string = getTianshuHo
   const tmp = `${target}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tmp, JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
   fs.renameSync(tmp, target);
+  invalidateConfigCache(target);
+}
+
+/**
+ * `${VAR}` and `${VAR:-fallback}` → process.env[VAR] | fallback | "".
+ * Shared placeholder resolver for config secrets (auth session secret,
+ * OAuth client secrets). Mirrors the apiKey resolution in llm.ts so
+ * every secret in config.json expands the same way. Returns undefined
+ * for undefined input; never throws.
+ */
+export function expandEnvPlaceholders(value: string | undefined): string | undefined {
+  if (!value) return value;
+  return value.replace(/\$\{([A-Z0-9_]+)(?::-([^}]*))?\}/gi, (_m, name, fallback) => {
+    return process.env[name] ?? fallback ?? "";
+  });
+}
+
+/** Is a tenant currently disabled (soft off-switch in global config)? */
+export function isTenantDisabled(
+  tenantId: string,
+  home: string = getTianshuHome(),
+): boolean {
+  const list = loadGlobalConfig(home).disabledTenants ?? [];
+  return list.includes(tenantId);
 }
