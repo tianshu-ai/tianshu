@@ -6,6 +6,8 @@
 // channel-bound session). Timezone is first-class so recurring jobs
 // fire at the user's wall-clock time regardless of server tz.
 
+import fs from "node:fs";
+import path from "node:path";
 import { Type } from "typebox";
 import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import {
@@ -16,6 +18,35 @@ import {
   listJobs,
   updateJob,
 } from "./scheduler.js";
+
+/** List the worker slugs registered in this tenant, read straight
+ *  from the filesystem source of truth
+ *  (`_tenant/config/workers/<slug>/`) that the workboard pool uses to
+ *  claim tasks. Mirrors workboard's path resolution: the caller may
+ *  pass the tenant root or its workspace dir. Returns [] if the dir
+ *  is absent or unreadable (treated as "no workers"). */
+function listWorkerSlugs(tenantHomeDir: string): string[] {
+  const candidates = [
+    path.join(tenantHomeDir, "workspace", "_tenant", "config", "workers"),
+    path.join(tenantHomeDir, "_tenant", "config", "workers"),
+  ];
+  const root = candidates.find((p) => {
+    try {
+      return fs.existsSync(p);
+    } catch {
+      return false;
+    }
+  });
+  if (!root) return [];
+  try {
+    return fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+      .map((e) => e.name);
+  } catch {
+    return [];
+  }
+}
 
 interface ToolReturn {
   ok: boolean;
@@ -117,7 +148,7 @@ export function buildScheduleTool(deps: CronToolDeps): AgentTool {
             return r;
           }
           case "update": {
-            const r = doUpdate(deps.db, userId, p);
+            const r = doUpdate(deps.db, ctx, userId, p);
             if (r.ok) deps.onChanged?.();
             return r;
           }
@@ -169,10 +200,11 @@ function doCreate(
   if (p.action_type !== "message" && p.action_type !== "task") {
     return { ok: false, text: "action_type must be 'message' or 'task'" };
   }
-  // A scheduled task MUST be assigned to a specific worker. An
-  // unpinned task sits in Ready hoping some worker grabs it, which is
-  // unpredictable for an unattended scheduled run — so require the
-  // slug up front and tell the agent how to discover valid ones.
+  // A scheduled task MUST be assigned to a specific, EXISTING worker.
+  // Unpinned tasks sit in Ready hoping some worker grabs them, and a
+  // bogus slug pins to a worker that never claims it — both leave an
+  // unattended job stuck forever. So require the slug and verify it
+  // against the tenant's registered workers up front.
   if (p.action_type === "task") {
     const wid =
       typeof p.payload?.workerAgentId === "string"
@@ -182,6 +214,18 @@ function doCreate(
       return {
         ok: false,
         text: "task jobs must set payload.workerAgentId (the worker slug that runs it). List available slugs with tenant_config_list({ path: \"workers\" }) and pass one, e.g. payload:{ workerAgentId: \"opencoder\" }.",
+      };
+    }
+    const slugs = listWorkerSlugs(ctx.tenantHomeDir);
+    if (!slugs.includes(wid)) {
+      return {
+        ok: false,
+        text:
+          slugs.length > 0
+            ? `worker "${wid}" doesn't exist in this tenant. Available workers: ${slugs
+                .map((s) => `"${s}"`)
+                .join(", ")}. Pass one of these as payload.workerAgentId.`
+            : `worker "${wid}" doesn't exist — this tenant has no workers registered. Create one first (tenant_config_list({ path: "workers" }) shows the current set).`,
       };
     }
   }
@@ -238,8 +282,33 @@ function doCreate(
   };
 }
 
-function doUpdate(db: Db, userId: string, p: Record<string, any>): ToolReturn {
+function doUpdate(
+  db: Db,
+  ctx: AgentToolContext,
+  userId: string,
+  p: Record<string, any>,
+): ToolReturn {
   if (!p.id) return { ok: false, text: "id is required" };
+  // If the update re-pins the worker, verify the new slug exists
+  // (same guard as create) so an update can't strand a task on a
+  // non-existent worker.
+  if (typeof p.payload?.workerAgentId === "string") {
+    const wid = p.payload.workerAgentId.trim();
+    if (wid) {
+      const slugs = listWorkerSlugs(ctx.tenantHomeDir);
+      if (!slugs.includes(wid)) {
+        return {
+          ok: false,
+          text:
+            slugs.length > 0
+              ? `worker "${wid}" doesn't exist in this tenant. Available workers: ${slugs
+                  .map((s) => `"${s}"`)
+                  .join(", ")}.`
+              : `worker "${wid}" doesn't exist — this tenant has no workers registered.`,
+        };
+      }
+    }
+  }
   const updates: Record<string, unknown> = {};
   if (p.title !== undefined) updates.title = p.title;
   if (p.cron_expr !== undefined) {
