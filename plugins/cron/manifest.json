@@ -1,0 +1,55 @@
+{
+  "id": "cron",
+  "version": "0.1.0",
+  "displayName": "Scheduler",
+  "description": "Scheduled and recurring jobs. Fire a message into a chat session or drop a task on the workboard at a future time (once) or on a cron schedule. Timezone-aware. The agent's `schedule` tool and a calendar panel both manage jobs.",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["tenant.db"],
+  "requires": ["host.sessionInbox"],
+  "client": { "entry": "@tianshu-builtin/plugin-cron/client" },
+  "server": { "entry": "@tianshu-builtin/plugin-cron/server" },
+  "contributes": {
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "CalendarClock",
+        "tooltip": "Scheduled jobs",
+        "opensPanel": "cron.main",
+        "order": 300
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "main",
+        "displayName": "Schedule",
+        "component": "CalendarPanel"
+      }
+    ],
+    "tools": [
+      { "id": "schedule", "module": "ScheduleTool", "since": "0.1.0" }
+    ],
+    "apiRoutes": [
+      { "method": "GET",    "path": "/schedules",     "handler": "listSchedules"   },
+      { "method": "POST",   "path": "/schedules",     "handler": "createSchedule"  },
+      { "method": "PUT",    "path": "/schedules/:id", "handler": "updateSchedule"  },
+      { "method": "DELETE", "path": "/schedules/:id", "handler": "deleteSchedule"  }
+    ]
+  },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "defaultTz",
+        "label": "Default timezone",
+        "description": "IANA timezone (e.g. Asia/Shanghai) applied to cron jobs whose creator didn't specify one. Leave blank to use the server's local timezone. Only affects cron-type jobs; once-type jobs use absolute timestamps.",
+        "kind": "string",
+        "default": "",
+        "group": {
+          "id": "schedule",
+          "label": "Schedule",
+          "badge": "runtime"
+        }
+      }
+    ]
+  }
+}
