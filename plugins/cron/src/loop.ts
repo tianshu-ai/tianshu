@@ -122,6 +122,12 @@ export class SchedulerLoop {
       priority?: number;
       projectSlug?: string;
       ownerUserId?: string;
+      /** Worker slug under _tenant/config/workers/<slug>/ — the pool
+       *  claims a task by this (tasks.worker_agent_id). Leaving it
+       *  unset makes an unpinned task any enabled worker can grab. */
+      workerAgentId?: string;
+      /** Legacy kind-based column (tasks.worker_role), kept for
+       *  back-compat; the pool prefers worker_agent_id. */
       workerRole?: string;
     };
     // Owner precedence: an explicit payload.ownerUserId wins, then
@@ -133,24 +139,37 @@ export class SchedulerLoop {
       this.deps.log.warn?.(`[cron] task job ${job.id} skipped — no ownerUserId`);
       return;
     }
+    const workerAgentId = p.workerAgentId?.trim() || null;
+    const workerRole = p.workerRole?.trim() || null;
     const id = `task-${now.toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    // Mirror workboard's createTask column set so the pool recognises
+    // the row. Crucially includes worker_agent_id (the slug the pool
+    // claims on) — without it the task sits unpinned/unclaimed. We
+    // also seed depends_on / labels to empty JSON so the row is
+    // complete regardless of column defaults.
     this.deps.db
       .prepare(
         `INSERT INTO tasks
-           (id, project_slug, owner_user_id, worker_role, title, description, status, priority, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'ready', ?, ?)`,
+           (id, project_slug, owner_user_id, worker_role, worker_agent_id,
+            title, description, status, priority,
+            depends_on, labels, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, '[]', '[]', ?)`,
       )
       .run(
         id,
         p.projectSlug || "inbox",
         owner,
-        p.workerRole ?? null,
+        workerRole,
+        workerAgentId,
         p.title || job.title,
         p.description ?? null,
         typeof p.priority === "number" ? p.priority : 0,
         now,
       );
-    this.deps.log.info?.(`[cron] task job ${job.id} created task ${id}`);
+    this.deps.log.info?.(`[cron] task job ${job.id} created task ${id}`, {
+      workerAgentId,
+      workerRole,
+    });
   }
 }
 

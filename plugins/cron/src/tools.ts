@@ -52,7 +52,7 @@ schedule_type:
 
 action_type:
 - message: enqueue a note into a chat session when it fires. payload: { message, sessionId? }. sessionId defaults to the current session.
-- task: drop a ready task on the workboard for a worker. payload: { title, description?, priority?, projectSlug?, workerRole? }.
+- task: drop a ready task on the workboard for a worker. payload: { title, description?, priority?, projectSlug?, workerAgentId? }. Set workerAgentId to the worker slug that should run it (e.g. "opencoder", "llm-default"; see tenant_config_list({path:"workers"})). Omitting it leaves the task unpinned — any enabled worker can claim it.
 
 Cron examples: "0 9 * * 1-5" (weekdays 9am), "30 14 * * *" (daily 2:30pm), "0 0 1 * *" (1st of month), "*/15 * * * *" (every 15 min).
 
@@ -90,7 +90,7 @@ export function buildScheduleTool(deps: CronToolDeps): AgentTool {
             {
               additionalProperties: true,
               description:
-                "message: {message, sessionId?}. task: {title, description?, priority?, projectSlug?, workerRole?}.",
+                "message: {message, sessionId?}. task: {title, description?, priority?, projectSlug?, workerAgentId?}. workerAgentId = worker slug to run the task (unpinned if omitted).",
             },
           ),
         ),
