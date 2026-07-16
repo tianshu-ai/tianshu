@@ -169,18 +169,18 @@ function CalendarPanel(_props: PanelProps) {
     j.scheduleType === "once" && !!j.lastRun && !j.nextRun;
 
   return (
-    <div className="flex flex-col h-full overflow-hidden text-gray-200">
+    <div className="flex flex-col h-full overflow-hidden text-fg-default">
       {/* month header */}
-      <div className="flex-shrink-0 px-3 pt-3 pb-2 bg-gray-900/50 rounded-lg mx-2 w-full max-w-xl self-center">
+      <div className="flex-shrink-0 px-3 pt-3 pb-2 bg-bg-elevated rounded-lg mx-2 w-full max-w-xl self-center">
         <div className="flex items-center justify-between mb-2">
           <button
             onClick={() => setMonth(new Date(y, m - 1, 1))}
-            className="p-1 rounded hover:bg-gray-800 text-gray-500 hover:text-gray-300"
+            className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"
             aria-label="Previous month"
           >
             <ChevronLeft size={14} />
           </button>
-          <span className="text-xs font-medium text-gray-300">
+          <span className="text-xs font-medium text-fg-muted">
             {new Date(y, m, 1).toLocaleString("en-US", {
               month: "long",
               year: "numeric",
@@ -188,7 +188,7 @@ function CalendarPanel(_props: PanelProps) {
           </span>
           <button
             onClick={() => setMonth(new Date(y, m + 1, 1))}
-            className="p-1 rounded hover:bg-gray-800 text-gray-500 hover:text-gray-300"
+            className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"
             aria-label="Next month"
           >
             <ChevronRight size={14} />
@@ -197,7 +197,7 @@ function CalendarPanel(_props: PanelProps) {
 
         <div className="grid grid-cols-7 mb-0.5">
           {SHORT_DAYS.map((d) => (
-            <div key={d} className="text-center text-[10px] text-gray-600 py-0.5">
+            <div key={d} className="text-center text-[10px] text-fg-fainter py-0.5">
               {d}
             </div>
           ))}
@@ -219,10 +219,10 @@ function CalendarPanel(_props: PanelProps) {
                 style={{ maxHeight: 44 }}
                 className={`aspect-square w-full rounded text-[11px] relative transition-all flex items-center justify-center ${
                   isSel
-                    ? "bg-blue-600 text-white font-bold"
+                    ? "bg-accent text-fg-on-accent font-bold"
                     : isToday
-                      ? "bg-gray-800 text-blue-400 font-bold"
-                      : "text-gray-400 hover:bg-gray-800/60"
+                      ? "bg-bg-raised text-accent font-bold"
+                      : "text-fg-muted hover:bg-bg-hover"
                 }`}
               >
                 {day}
@@ -230,12 +230,14 @@ function CalendarPanel(_props: PanelProps) {
                   <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
                     {dayJobs.slice(0, 3).map((j) => {
                       if (isSel)
-                        return <span key={j.id} className="w-1 h-1 rounded-full bg-white" />;
+                        return (
+                          <span key={j.id} className="w-1 h-1 rounded-full bg-fg-on-accent" />
+                        );
                       const color = isPast(j)
-                        ? "bg-gray-500"
+                        ? "bg-fg-faint"
                         : j.actionType === "task"
-                          ? "bg-amber-400"
-                          : "bg-blue-400";
+                          ? "bg-amber-500"
+                          : "bg-accent";
                       return <span key={j.id} className={`w-1 h-1 rounded-full ${color}`} />;
                     })}
                   </div>
@@ -247,16 +249,16 @@ function CalendarPanel(_props: PanelProps) {
       </div>
 
       {/* selected-day header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-gray-800 self-stretch">
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-border-subtle self-stretch">
         <div>
-          <div className="text-sm font-semibold text-gray-100">
+          <div className="text-sm font-semibold text-fg-default">
             {selected.toLocaleDateString("en-US", {
               weekday: "long",
               month: "short",
               day: "numeric",
             })}
           </div>
-          <div className="text-[10px] text-gray-500">
+          <div className="text-[10px] text-fg-faint">
             {selectedJobs.length > 0
               ? `${selectedJobs.length} job${selectedJobs.length > 1 ? "s" : ""}`
               : "No jobs"}
@@ -265,7 +267,7 @@ function CalendarPanel(_props: PanelProps) {
         {!sameDay(today, selected.getFullYear(), selected.getMonth(), selected.getDate()) && (
           <button
             onClick={goToday}
-            className="text-[10px] text-blue-400 hover:text-blue-300 px-2 py-1 rounded hover:bg-gray-800"
+            className="text-[10px] text-accent hover:text-fg-default px-2 py-1 rounded hover:bg-bg-hover"
           >
             Today
           </button>
@@ -273,9 +275,9 @@ function CalendarPanel(_props: PanelProps) {
       </div>
 
       {/* agenda */}
-      <div className="flex-1 overflow-y-auto border-t border-gray-800 self-stretch">
+      <div className="flex-1 overflow-y-auto border-t border-border-subtle self-stretch">
         {selectedJobs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-600">
+          <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
             <Calendar size={28} className="mb-2 opacity-30" />
             <span className="text-xs">Nothing scheduled</span>
           </div>
@@ -295,57 +297,57 @@ function CalendarPanel(_props: PanelProps) {
               return (
                 <div
                   key={j.id}
-                  className={`flex items-start gap-3 px-4 py-2.5 group hover:bg-gray-800/40 ${
+                  className={`flex items-start gap-3 px-4 py-2.5 group hover:bg-bg-hover ${
                     isPast(j) ? "opacity-50" : ""
                   }`}
                 >
                   <div className="flex-shrink-0 w-12 text-right">
-                    <span className="text-[11px] font-mono text-gray-400">{time}</span>
+                    <span className="text-[11px] font-mono text-fg-muted">{time}</span>
                   </div>
                   <div
                     className={`w-0.5 self-stretch rounded-full flex-shrink-0 ${
-                      j.actionType === "task" ? "bg-amber-500" : "bg-blue-500"
+                      j.actionType === "task" ? "bg-amber-500" : "bg-accent"
                     }`}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs text-gray-200 font-medium">{j.title}</div>
-                    <div className="text-[10px] text-gray-500 flex items-center gap-1 mt-0.5 flex-wrap">
+                    <div className="text-xs text-fg-default font-medium">{j.title}</div>
+                    <div className="text-[10px] text-fg-faint flex items-center gap-1 mt-0.5 flex-wrap">
                       {j.scheduleType === "cron" ? <Repeat size={9} /> : <Clock size={9} />}
                       <span>{j.scheduleType === "cron" ? "Recurring" : "One-time"}</span>
-                      <span className="text-gray-700">·</span>
+                      <span className="text-fg-fainter">·</span>
                       <span
                         className={
-                          j.actionType === "task" ? "text-amber-400/80" : "text-blue-400/80"
+                          j.actionType === "task" ? "text-amber-500" : "text-accent"
                         }
                       >
                         {j.actionType === "task" ? "Task" : "Message"}
                       </span>
                       {j.tz && (
                         <>
-                          <span className="text-gray-700">·</span>
+                          <span className="text-fg-fainter">·</span>
                           <span>{j.tz}</span>
                         </>
                       )}
                       {!j.enabled && (
                         <>
-                          <span className="text-gray-700">·</span>
+                          <span className="text-fg-fainter">·</span>
                           <span>⏸️ disabled</span>
                         </>
                       )}
                       {isPast(j) && (
                         <>
-                          <span className="text-gray-700">·</span>
+                          <span className="text-fg-fainter">·</span>
                           <span>executed</span>
                         </>
                       )}
                     </div>
                     {msg && (
-                      <div className="text-[10px] text-gray-600 mt-1 truncate">“{msg}”</div>
+                      <div className="text-[10px] text-fg-faint mt-1 truncate">“{msg}”</div>
                     )}
                   </div>
                   <button
                     onClick={() => handleDelete(j.id)}
-                    className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 p-1 rounded flex-shrink-0"
+                    className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1 rounded flex-shrink-0"
                     aria-label="Delete job"
                   >
                     <Trash2 size={12} />
