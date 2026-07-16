@@ -242,11 +242,21 @@ function CalendarPanel(_props: PanelProps) {
                         return (
                           <span key={j.id} className="w-1 h-1 rounded-full bg-fg-on-accent" />
                         );
-                      const color = isPast(j)
-                        ? "bg-fg-faint"
-                        : j.actionType === "task"
-                          ? "bg-amber-500"
-                          : "bg-accent";
+                      // Fired one-time jobs render as a hollow ring
+                      // (border, no fill) so they read as "done" at a
+                      // glance vs the solid dots of pending jobs.
+                      // Pending jobs keep the type colour (task amber /
+                      // message accent).
+                      if (isPast(j)) {
+                        return (
+                          <span
+                            key={j.id}
+                            className="w-1 h-1 rounded-full border border-fg-faint bg-transparent"
+                          />
+                        );
+                      }
+                      const color =
+                        j.actionType === "task" ? "bg-amber-500" : "bg-accent";
                       return <span key={j.id} className={`w-1 h-1 rounded-full ${color}`} />;
                     })}
                   </div>
