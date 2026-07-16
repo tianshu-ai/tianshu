@@ -592,6 +592,7 @@ function WorkboardPanel(_props: PanelProps) {
                 agentNames={ctrl.agentNames}
                 allTasks={ctrl.tasks ?? []}
                 onPatchTask={ctrl.patchTask}
+                onDeleteTask={ctrl.deleteTask}
                 onDragStart={drag.onDragStart}
                 onDragEnd={drag.onDragEnd}
                 onDrop={drag.onDrop}
@@ -715,6 +716,7 @@ function WorkboardAdminPage(_props: AdminPageProps) {
                 agentNames={ctrl.agentNames}
                 allTasks={ctrl.tasks ?? []}
                 onPatchTask={ctrl.patchTask}
+                onDeleteTask={ctrl.deleteTask}
                 onDragStart={drag.onDragStart}
                 onDragEnd={drag.onDragEnd}
                 onDrop={drag.onDrop}
@@ -748,6 +750,7 @@ function KanbanColumn({
   compact,
   onAddTask,
   onPatchTask,
+  onDeleteTask,
   projects,
   workerRoles,
   agentNames,
@@ -766,6 +769,9 @@ function KanbanColumn({
   /** Card-initiated patches - e.g. the "Retry" button on a
    *  stalled-label chip clears the label so the pool re-claims. */
   onPatchTask: (id: string, patch: Record<string, unknown>) => Promise<void>;
+  /** Card-initiated delete (quick delete from the card, with an
+   *  in-card confirm step). */
+  onDeleteTask: (id: string) => Promise<void>;
   projects: ProjectSummary[];
   workerRoles: string[];
   /** Slug → worker display name for the assignee chip. */
@@ -837,6 +843,7 @@ function KanbanColumn({
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             onPatch={onPatchTask}
+            onDelete={onDeleteTask}
           />
         ))}
 
@@ -905,6 +912,7 @@ const BoardCard = memo(function BoardCard({
   onDragStart,
   onDragEnd,
   onPatch,
+  onDelete,
 }: {
   task: Task;
   meta: TaskMeta;
@@ -916,6 +924,7 @@ const BoardCard = memo(function BoardCard({
   onDragStart: (e: DragEvent, taskId: string) => void;
   onDragEnd: () => void;
   onPatch: (id: string, patch: Record<string, unknown>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const hasMore =
@@ -947,12 +956,31 @@ const BoardCard = memo(function BoardCard({
         e.stopPropagation();
         if (hasMore) setExpanded((v) => !v);
       }}
-      className={`rounded border bg-bg-elevated/60 hover:border-border-default ${
+      className={`group relative rounded border bg-bg-elevated/60 hover:border-border-default ${
         meta.blocked
           ? "border-indigo-500/40"
           : "border-border-subtle"
       } ${hasMore ? "cursor-pointer" : "cursor-grab"} ${busy ? "opacity-60" : ""}`}
     >
+      {/* Quick delete: hover-revealed, top-right. Confirms before
+          deleting so a stray click can't drop a task. Stops event
+          propagation so it doesn't toggle expand or start a drag. */}
+      <button
+        type="button"
+        disabled={busy}
+        title="Delete task"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (
+            window.confirm(`Delete task "${task.title}"? This is permanent.`)
+          ) {
+            void onDelete(task.id);
+          }
+        }}
+        className="absolute top-1 right-1 z-10 p-0.5 rounded opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-red-400 hover:bg-bg-raised transition-opacity disabled:opacity-0"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
       <div className="px-2 py-1.5 flex items-start gap-1.5">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1 flex-wrap">
