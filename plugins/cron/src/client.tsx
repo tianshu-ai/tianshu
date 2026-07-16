@@ -307,7 +307,7 @@ function CalendarPanel(_props: PanelProps) {
       </div>
 
       {/* selected-day header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 border-t border-border-subtle self-stretch">
+      <div className="flex-shrink-0 flex items-center justify-between px-6 py-2.5 border-t border-border-subtle self-stretch">
         <div>
           <div className="text-[13px] font-semibold text-fg-default">
             {selected.toLocaleDateString("en-US", {
@@ -355,7 +355,7 @@ function CalendarPanel(_props: PanelProps) {
               return (
                 <div
                   key={j.id}
-                  className={`flex items-start gap-3 px-4 py-2.5 group hover:bg-bg-hover ${
+                  className={`flex items-start gap-3 px-6 py-2.5 group hover:bg-bg-hover ${
                     isPast(j) ? "opacity-80" : ""
                   }`}
                 >
