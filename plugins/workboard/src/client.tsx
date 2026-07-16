@@ -1146,25 +1146,6 @@ const BoardCard = memo(function BoardCard({
             {fmtRelative(task.endedAt ?? task.startedAt ?? task.createdAt)}
           </div>
         </div>
-        {/* Quick delete: sits inline before the expand chevron so the
-            two never overlap. Hover-revealed; confirms first; stops
-            propagation so it doesn't toggle expand or start a drag. */}
-        <button
-          type="button"
-          disabled={busy}
-          title="Delete task"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (
-              window.confirm(`Delete task "${task.title}"? This is permanent.`)
-            ) {
-              void onDelete(task.id);
-            }
-          }}
-          className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-red-400 hover:bg-bg-raised transition-opacity disabled:opacity-0"
-        >
-          <Trash2 className="w-3 h-3" />
-        </button>
         {hasMore && (
           <ChevronDown
             className={`w-3 h-3 mt-0.5 text-fg-faint shrink-0 transition-transform ${
@@ -1261,6 +1242,26 @@ const BoardCard = memo(function BoardCard({
           <ExecutionSection task={task} />
         </div>
       )}
+      {/* Quick delete: bottom-right, away from the top-right expand
+          chevron so the two can't be mis-clicked. Hover-revealed;
+          confirms first; stops propagation so it doesn't toggle
+          expand or start a drag. */}
+      <button
+        type="button"
+        disabled={busy}
+        title="Delete task"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (
+            window.confirm(`Delete task "${task.title}"? This is permanent.`)
+          ) {
+            void onDelete(task.id);
+          }
+        }}
+        className="absolute bottom-1 right-1 z-10 p-0.5 rounded opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-red-400 hover:bg-bg-raised transition-opacity disabled:opacity-0"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
     </li>
   );
 });
