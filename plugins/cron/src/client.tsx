@@ -218,8 +218,9 @@ function CalendarPanel(_props: PanelProps) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden text-fg-default">
-      {/* month header */}
-      <div className="flex-shrink-0 px-3 pt-3 pb-2 bg-bg-elevated rounded-lg mx-2 w-full max-w-xl self-center">
+      {/* month header. Full-width (no max-w/self-center) so its left
+          edge is fixed, letting the agenda below line up with it. */}
+      <div className="flex-shrink-0 mx-3 mt-2 px-3 pt-3 pb-2 bg-bg-elevated rounded-lg">
         <div className="flex items-center justify-between mb-2">
           <button
             onClick={() => setMonth(new Date(y, m - 1, 1))}
@@ -346,7 +347,7 @@ function CalendarPanel(_props: PanelProps) {
       </div>
 
       {/* selected-day header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-5 py-2.5 border-t border-border-subtle self-stretch">
+      <div className="flex-shrink-0 flex items-center justify-between px-3 py-2.5 border-t border-border-subtle self-stretch">
         <div>
           <div className="text-[13px] font-semibold text-fg-default">
             {selected.toLocaleDateString("en-US", {
@@ -398,7 +399,7 @@ function CalendarPanel(_props: PanelProps) {
                 <div
                   key={j.id}
                   ref={idx === nextUpcomingIdx ? nextRowRef : undefined}
-                  className={`flex items-start gap-3 px-5 py-2.5 group hover:bg-bg-hover ${
+                  className={`flex items-start gap-3 px-3 py-2.5 group hover:bg-bg-hover ${
                     isPast(j) ? "opacity-80" : ""
                   }`}
                 >

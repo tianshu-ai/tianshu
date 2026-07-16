@@ -52,7 +52,7 @@ schedule_type:
 
 action_type:
 - message: enqueue a note into a chat session when it fires. payload: { message, sessionId? }. sessionId defaults to the current session.
-- task: drop a ready task on the workboard for a worker. payload: { title, description?, priority?, projectSlug?, workerAgentId? }. Set workerAgentId to the worker slug that should run it (e.g. "opencoder", "llm-default"; see tenant_config_list({path:"workers"})). Omitting it leaves the task unpinned — any enabled worker can claim it.
+- task: drop a ready task on the workboard for a worker. payload: { title, description?, priority?, projectSlug?, workerAgentId }. workerAgentId is REQUIRED — it's the worker slug that runs the task (e.g. "opencoder", "llm-default"). List valid slugs with tenant_config_list({path:"workers"}) and pick one before creating the job. Scheduled tasks must be pinned to a worker (no unattended unpinned tasks).
 
 Cron examples: "0 9 * * 1-5" (weekdays 9am), "30 14 * * *" (daily 2:30pm), "0 0 1 * *" (1st of month), "*/15 * * * *" (every 15 min).
 
@@ -90,7 +90,7 @@ export function buildScheduleTool(deps: CronToolDeps): AgentTool {
             {
               additionalProperties: true,
               description:
-                "message: {message, sessionId?}. task: {title, description?, priority?, projectSlug?, workerAgentId?}. workerAgentId = worker slug to run the task (unpinned if omitted).",
+                "message: {message, sessionId?}. task: {title, description?, priority?, projectSlug?, workerAgentId}. workerAgentId is REQUIRED for task jobs (the worker slug to run it).",
             },
           ),
         ),
@@ -168,6 +168,22 @@ function doCreate(
   }
   if (p.action_type !== "message" && p.action_type !== "task") {
     return { ok: false, text: "action_type must be 'message' or 'task'" };
+  }
+  // A scheduled task MUST be assigned to a specific worker. An
+  // unpinned task sits in Ready hoping some worker grabs it, which is
+  // unpredictable for an unattended scheduled run — so require the
+  // slug up front and tell the agent how to discover valid ones.
+  if (p.action_type === "task") {
+    const wid =
+      typeof p.payload?.workerAgentId === "string"
+        ? p.payload.workerAgentId.trim()
+        : "";
+    if (!wid) {
+      return {
+        ok: false,
+        text: "task jobs must set payload.workerAgentId (the worker slug that runs it). List available slugs with tenant_config_list({ path: \"workers\" }) and pass one, e.g. payload:{ workerAgentId: \"opencoder\" }.",
+      };
+    }
   }
 
   let runAt: number | null = null;
