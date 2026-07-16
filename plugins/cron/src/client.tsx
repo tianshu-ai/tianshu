@@ -236,66 +236,65 @@ function CalendarPanel(_props: PanelProps) {
               >
                 {day}
                 {dayJobs.length > 0 && (
-                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-0.5">
+                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-1">
                     {(() => {
-                      // A cell is tiny (~44px), so we can't paint a dot
-                      // per job when a day has a dozen+. Show up to
-                      // MAX_DOTS dots then a "+N" badge for the rest.
-                      // Pending jobs sort first so the visible dots
-                      // favour what still needs to run.
-                      const MAX_DOTS = 3;
-                      const sorted = [...dayJobs].sort(
-                        (a, b) => Number(isPast(a)) - Number(isPast(b)),
+                      // A cell is tiny, so on busy days we don't paint
+                      // one dot per job. Instead group by state:
+                      //   ● N  pending jobs (solid dot + count)
+                      //   ○ N  fired  jobs (hollow ring + count)
+                      // Each group shows a single representative dot
+                      // plus its count (count only when > 1). This keeps
+                      // both "how many still to run" and "how many ran"
+                      // visible regardless of total volume.
+                      const pending = dayJobs.filter((j) => !isPast(j));
+                      const past = dayJobs.filter((j) => isPast(j));
+                      const countCls = isSel ? "text-fg-on-accent" : "text-fg-faint";
+                      const Group = ({
+                        n,
+                        dot,
+                      }: {
+                        n: number;
+                        dot: React.ReactNode;
+                      }) =>
+                        n === 0 ? null : (
+                          <span className="flex items-center gap-0.5">
+                            {dot}
+                            {n > 1 && (
+                              <span
+                                className={`text-[8px] leading-none font-medium ${countCls}`}
+                              >
+                                {n}
+                              </span>
+                            )}
+                          </span>
+                        );
+                      // Pending dot: solid. On the selected (accent)
+                      // cell it's white; otherwise the type colour of
+                      // the first pending job (task amber / message
+                      // accent).
+                      const pendingDot = isSel ? (
+                        <span className="w-1 h-1 rounded-full bg-fg-on-accent" />
+                      ) : (
+                        <span
+                          className={`w-1 h-1 rounded-full ${
+                            pending[0]?.actionType === "task"
+                              ? "bg-amber-500"
+                              : "bg-accent"
+                          }`}
+                        />
                       );
-                      const overflow = sorted.length - MAX_DOTS;
-                      const shown = overflow > 0 ? sorted.slice(0, MAX_DOTS - 1) : sorted;
-                      const badgeCls = isSel
-                        ? "text-fg-on-accent"
-                        : "text-fg-faint";
+                      // Fired dot: hollow ring (white on selected cell).
+                      const pastDot = (
+                        <span
+                          className={`w-1 h-1 rounded-full border bg-transparent ${
+                            isSel ? "border-fg-on-accent" : "border-fg-faint"
+                          }`}
+                        />
+                      );
                       return (
                         <>
-                          {shown.map((j) => {
-                            // Selected (accent-filled) day: white dots
-                            // for contrast; fired jobs stay hollow so
-                            // "done" is still distinguishable.
-                            if (isSel)
-                              return isPast(j) ? (
-                                <span
-                                  key={j.id}
-                                  className="w-1 h-1 rounded-full border border-fg-on-accent bg-transparent"
-                                />
-                              ) : (
-                                <span
-                                  key={j.id}
-                                  className="w-1 h-1 rounded-full bg-fg-on-accent"
-                                />
-                              );
-                            // Fired one-time jobs render as a hollow
-                            // ring; pending jobs keep the type colour
-                            // (task amber / message accent).
-                            if (isPast(j))
-                              return (
-                                <span
-                                  key={j.id}
-                                  className="w-1 h-1 rounded-full border border-fg-faint bg-transparent"
-                                />
-                              );
-                            const color =
-                              j.actionType === "task" ? "bg-amber-500" : "bg-accent";
-                            return (
-                              <span
-                                key={j.id}
-                                className={`w-1 h-1 rounded-full ${color}`}
-                              />
-                            );
-                          })}
-                          {overflow > 0 && (
-                            <span
-                              className={`text-[8px] leading-none font-medium ${badgeCls}`}
-                            >
-                              +{overflow + 1}
-                            </span>
-                          )}
+                          <Group n={pending.length} dot={pendingDot} />
+                          <Group n={past.length} dot={pastDot} />
                         </>
                       );
                     })()}
