@@ -129,6 +129,10 @@ export class SchedulerLoop {
       /** Legacy kind-based column (tasks.worker_role), kept for
        *  back-compat; the pool prefers worker_agent_id. */
       workerRole?: string;
+      /** Session to notify when the task finishes. Set to the
+       *  creating chat session so scheduled tasks report back
+       *  (task_done / intervention) just like task_create does. */
+      sessionId?: string;
     };
     // Owner precedence: an explicit payload.ownerUserId wins, then
     // the job's own owner (jobs are user-scoped), then the tenant
@@ -141,10 +145,16 @@ export class SchedulerLoop {
     }
     const workerAgentId = p.workerAgentId?.trim() || null;
     const workerRole = p.workerRole?.trim() || null;
+    // Parent session = the chat that scheduled the task. The worker
+    // pool notifies it on completion (task_done / intervention), so
+    // scheduled tasks report back into that chat. Null = fire-and-
+    // forget (no completion message anywhere).
+    const parentSessionId = p.sessionId?.trim() || null;
     const id = `task-${now.toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
     // Mirror workboard's createTask column set so the pool recognises
     // the row. Crucially includes worker_agent_id (the slug the pool
-    // claims on) — without it the task sits unpinned/unclaimed. We
+    // claims on) — without it the task sits unpinned/unclaimed — and
+    // parent_session_id so completion notifications route back. We
     // also seed depends_on / labels to empty JSON so the row is
     // complete regardless of column defaults.
     this.deps.db
@@ -152,8 +162,8 @@ export class SchedulerLoop {
         `INSERT INTO tasks
            (id, project_slug, owner_user_id, worker_role, worker_agent_id,
             title, description, status, priority,
-            depends_on, labels, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, '[]', '[]', ?)`,
+            depends_on, labels, parent_session_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'ready', ?, '[]', '[]', ?, ?)`,
       )
       .run(
         id,
@@ -164,11 +174,13 @@ export class SchedulerLoop {
         p.title || job.title,
         p.description ?? null,
         typeof p.priority === "number" ? p.priority : 0,
+        parentSessionId,
         now,
       );
     this.deps.log.info?.(`[cron] task job ${job.id} created task ${id}`, {
       workerAgentId,
       workerRole,
+      parentSessionId,
     });
   }
 }

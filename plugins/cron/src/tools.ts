@@ -193,8 +193,12 @@ function doCreate(
   }
 
   const payload: Record<string, unknown> = { ...(p.payload ?? {}) };
-  // message jobs default to the caller's own session.
-  if (p.action_type === "message" && !payload.sessionId) {
+  // Both action types default to the caller's own session:
+  //  - message: where the reminder is delivered.
+  //  - task:    the parent session the worker notifies when the
+  //    task finishes (task_done / intervention), so scheduled
+  //    tasks report back into this chat just like task_create does.
+  if (!payload.sessionId) {
     const sid = deps.resolveDefaultSessionId?.(ctx);
     if (sid) payload.sessionId = sid;
   }
