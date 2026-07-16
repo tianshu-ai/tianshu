@@ -100,22 +100,30 @@ export function buildScheduleTool(deps: CronToolDeps): AgentTool {
     execute: (raw, ctx: AgentToolContext): ToolReturn => {
       const p = raw as Record<string, any>;
       try {
+        // Every action is scoped to the calling user. A tool call
+        // without a userId (shouldn't happen inside an agent loop)
+        // is refused rather than silently touching another user's
+        // jobs or writing an unowned row.
+        const userId = ctx.userId;
+        if (!userId) {
+          return { ok: false, text: "no user context — cannot manage schedules" };
+        }
         switch (p.action) {
           case "list":
-            return doList(deps.db);
+            return doList(deps.db, userId);
           case "create": {
-            const r = doCreate(deps, ctx, p);
+            const r = doCreate(deps, ctx, userId, p);
             if (r.ok) deps.onChanged?.();
             return r;
           }
           case "update": {
-            const r = doUpdate(deps.db, p);
+            const r = doUpdate(deps.db, userId, p);
             if (r.ok) deps.onChanged?.();
             return r;
           }
           case "delete": {
             if (!p.id) return { ok: false, text: "id is required" };
-            const ok = deleteJob(deps.db, p.id);
+            const ok = deleteJob(deps.db, p.id, userId);
             if (ok) deps.onChanged?.();
             return ok
               ? { ok: true, text: "✅ Job deleted" }
@@ -134,8 +142,8 @@ export function buildScheduleTool(deps: CronToolDeps): AgentTool {
   };
 }
 
-function doList(db: Db): ToolReturn {
-  const jobs = listJobs(db);
+function doList(db: Db, userId: string): ToolReturn {
+  const jobs = listJobs(db, userId);
   if (jobs.length === 0) return { ok: true, text: "No scheduled jobs." };
   const lines = jobs.map((j) => {
     const sched =
@@ -152,6 +160,7 @@ function doList(db: Db): ToolReturn {
 function doCreate(
   deps: CronToolDeps,
   ctx: AgentToolContext,
+  userId: string,
   p: Record<string, any>,
 ): ToolReturn {
   if (!p.title || !p.schedule_type || !p.action_type) {
@@ -191,6 +200,7 @@ function doCreate(
   }
 
   const job = createJob(deps.db, {
+    userId,
     title: p.title,
     scheduleType: p.schedule_type,
     cronExpr,
@@ -208,7 +218,7 @@ function doCreate(
   };
 }
 
-function doUpdate(db: Db, p: Record<string, any>): ToolReturn {
+function doUpdate(db: Db, userId: string, p: Record<string, any>): ToolReturn {
   if (!p.id) return { ok: false, text: "id is required" };
   const updates: Record<string, unknown> = {};
   if (p.title !== undefined) updates.title = p.title;
@@ -222,7 +232,7 @@ function doUpdate(db: Db, p: Record<string, any>): ToolReturn {
   if (p.action_type !== undefined) updates.actionType = p.action_type;
   if (p.payload !== undefined) updates.payload = p.payload;
   if (p.enabled !== undefined) updates.enabled = p.enabled;
-  return updateJob(db, p.id, updates as never)
+  return updateJob(db, p.id, userId, updates as never)
     ? { ok: true, text: "✅ Job updated" }
     : { ok: false, text: "Job not found (or no changes)" };
 }

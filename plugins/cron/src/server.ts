@@ -139,16 +139,34 @@ interface RouteDeps {
   defaultTz?: string;
 }
 
+/** Current user id, set by the host's auth middleware on `req.ctx`.
+ *  Every route is user-scoped; a request without it is rejected
+ *  rather than allowed to touch another user's jobs. */
+function userIdFromReq(req: Request): string {
+  const ctx = (req as { ctx?: { userId?: string } }).ctx;
+  return ctx?.userId ?? "";
+}
+
 function buildCronRoutes(
   deps: RouteDeps,
 ): Record<string, PluginRouteHandler> {
   const { db, broadcast } = deps;
 
-  const listHandler: PluginRouteHandler = (_req: Request, res: Response) => {
-    res.json({ jobs: listJobs(db) });
+  const listHandler: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no user context" });
+      return;
+    }
+    res.json({ jobs: listJobs(db, userId) });
   };
 
   const createHandler: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no user context" });
+      return;
+    }
     const b = (req.body ?? {}) as Record<string, unknown>;
     const title = typeof b.title === "string" ? b.title : "";
     const scheduleType = b.scheduleType as ScheduleType | undefined;
@@ -166,6 +184,7 @@ function buildCronRoutes(
       return;
     }
     const job = createJob(db, {
+      userId,
       title,
       scheduleType,
       cronExpr: typeof b.cronExpr === "string" ? b.cronExpr : null,
@@ -179,12 +198,17 @@ function buildCronRoutes(
   };
 
   const updateHandler: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no user context" });
+      return;
+    }
     const id = String(req.params.id ?? "");
     if (!id) {
       res.status(400).json({ error: "id is required" });
       return;
     }
-    const ok = updateJob(db, id, (req.body ?? {}) as never);
+    const ok = updateJob(db, id, userId, (req.body ?? {}) as never);
     if (!ok) {
       res.status(404).json({ error: "job not found" });
       return;
@@ -194,12 +218,17 @@ function buildCronRoutes(
   };
 
   const deleteHandler: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no user context" });
+      return;
+    }
     const id = String(req.params.id ?? "");
     if (!id) {
       res.status(400).json({ error: "id is required" });
       return;
     }
-    const ok = deleteJob(db, id);
+    const ok = deleteJob(db, id, userId);
     if (!ok) {
       res.status(404).json({ error: "job not found" });
       return;

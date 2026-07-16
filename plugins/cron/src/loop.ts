@@ -124,7 +124,11 @@ export class SchedulerLoop {
       ownerUserId?: string;
       workerRole?: string;
     };
-    const owner = p.ownerUserId || this.deps.fallbackOwnerUserId;
+    // Owner precedence: an explicit payload.ownerUserId wins, then
+    // the job's own owner (jobs are user-scoped), then the tenant
+    // fallback. job.userId is the normal case now that jobs are
+    // created with the calling user's id.
+    const owner = p.ownerUserId || job.userId || this.deps.fallbackOwnerUserId;
     if (!owner) {
       this.deps.log.warn?.(`[cron] task job ${job.id} skipped — no ownerUserId`);
       return;

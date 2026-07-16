@@ -40,6 +40,12 @@ export type ScheduleType = "once" | "cron";
 
 export interface ScheduledJob {
   id: string;
+  /** Owning user. Jobs are user-scoped within a tenant: each user
+   *  only sees / manages their own. The loop still scans the whole
+   *  tenant DB for due jobs, but attributes each firing back to its
+   *  `userId` (message → that user's session; task → that user as
+   *  owner). */
+  userId: string;
   title: string;
   scheduleType: ScheduleType;
   cronExpr: string | null;
@@ -57,7 +63,7 @@ export interface ScheduledJob {
 }
 
 const SELECT_COLS = `
-  id, title,
+  id, user_id as userId, title,
   schedule_type as scheduleType, cron_expr as cronExpr, tz,
   run_at as runAt, action_type as actionType, payload,
   enabled, last_run as lastRun, next_run as nextRun,
@@ -68,6 +74,7 @@ export function ensureSchema(db: Db): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS cron_jobs (
       id            TEXT PRIMARY KEY,
+      user_id       TEXT NOT NULL DEFAULT '',
       title         TEXT NOT NULL,
       schedule_type TEXT NOT NULL DEFAULT 'once',
       cron_expr     TEXT,
@@ -83,11 +90,26 @@ export function ensureSchema(db: Db): void {
     );
     CREATE INDEX IF NOT EXISTS idx_cron_jobs_next ON cron_jobs(next_run);
   `);
+  // Migrate a pre-user-scoping table: add the column if an older
+  // build created cron_jobs without it. Idempotent — guarded by a
+  // column-presence check (SQLite has no ADD COLUMN IF NOT EXISTS).
+  // Must run BEFORE the user_id index is created, otherwise the
+  // index references a column that doesn't exist on the old table.
+  const cols = db
+    .prepare(`PRAGMA table_info(cron_jobs)`)
+    .all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "user_id")) {
+    db.exec(`ALTER TABLE cron_jobs ADD COLUMN user_id TEXT NOT NULL DEFAULT ''`);
+  }
+  // Safe now that the column is guaranteed to exist (fresh table
+  // created it inline; old table just had it added above).
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_cron_jobs_user ON cron_jobs(user_id)`);
 }
 
 function rowToJob(r: Record<string, unknown>): ScheduledJob {
   return {
     id: String(r.id),
+    userId: String(r.userId ?? ""),
     title: String(r.title),
     scheduleType: r.scheduleType as ScheduleType,
     cronExpr: (r.cronExpr as string | null) ?? null,
@@ -151,6 +173,7 @@ function newId(): string {
 export function createJob(
   db: Db,
   opts: {
+    userId: string;
     title: string;
     scheduleType: ScheduleType;
     cronExpr?: string | null;
@@ -169,10 +192,11 @@ export function createJob(
 
   db.prepare(
     `INSERT INTO cron_jobs
-       (id, title, schedule_type, cron_expr, tz, run_at, action_type, payload, enabled, next_run, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+       (id, user_id, title, schedule_type, cron_expr, tz, run_at, action_type, payload, enabled, next_run, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
   ).run(
     id,
+    opts.userId,
     opts.title,
     opts.scheduleType,
     opts.cronExpr ?? null,
@@ -187,6 +211,7 @@ export function createJob(
 
   return {
     id,
+    userId: opts.userId,
     title: opts.title,
     scheduleType: opts.scheduleType,
     cronExpr: opts.cronExpr ?? null,
@@ -202,23 +227,34 @@ export function createJob(
   };
 }
 
-export function listJobs(db: Db): ScheduledJob[] {
+/** List a single user's jobs. User-scoped: never returns another
+ *  user's jobs in the same tenant. */
+export function listJobs(db: Db, userId: string): ScheduledJob[] {
   const rows = db
-    .prepare(`SELECT ${SELECT_COLS} FROM cron_jobs ORDER BY next_run ASC`)
-    .all() as Record<string, unknown>[];
+    .prepare(
+      `SELECT ${SELECT_COLS} FROM cron_jobs WHERE user_id = ? ORDER BY next_run ASC`,
+    )
+    .all(userId) as Record<string, unknown>[];
   return rows.map(rowToJob);
 }
 
-export function getJob(db: Db, id: string): ScheduledJob | undefined {
+/** Get one job, scoped to its owner. Returns undefined if the id
+ *  doesn't exist OR belongs to a different user. */
+export function getJob(
+  db: Db,
+  id: string,
+  userId: string,
+): ScheduledJob | undefined {
   const r = db
-    .prepare(`SELECT ${SELECT_COLS} FROM cron_jobs WHERE id = ?`)
-    .get(id) as Record<string, unknown> | undefined;
+    .prepare(`SELECT ${SELECT_COLS} FROM cron_jobs WHERE id = ? AND user_id = ?`)
+    .get(id, userId) as Record<string, unknown> | undefined;
   return r ? rowToJob(r) : undefined;
 }
 
 export function updateJob(
   db: Db,
   id: string,
+  userId: string,
   updates: Partial<
     Pick<
       ScheduledJob,
@@ -249,7 +285,7 @@ export function updateJob(
   if (fields.length === 0) return false;
 
   // Recompute next_run when the schedule shape changed.
-  const cur = getJob(db, id);
+  const cur = getJob(db, id, userId);
   if (!cur) return false;
   const nextExpr = updates.cronExpr !== undefined ? updates.cronExpr : cur.cronExpr;
   const nextTz = updates.tz !== undefined ? updates.tz : cur.tz;
@@ -267,15 +303,19 @@ export function updateJob(
   }
 
   set("updated_at", Date.now());
-  values.push(id);
+  values.push(id, userId);
   const res = db
-    .prepare(`UPDATE cron_jobs SET ${fields.join(", ")} WHERE id = ?`)
+    .prepare(
+      `UPDATE cron_jobs SET ${fields.join(", ")} WHERE id = ? AND user_id = ?`,
+    )
     .run(...values) as RunResult;
   return res.changes > 0;
 }
 
-export function deleteJob(db: Db, id: string): boolean {
-  const res = db.prepare("DELETE FROM cron_jobs WHERE id = ?").run(id) as RunResult;
+export function deleteJob(db: Db, id: string, userId: string): boolean {
+  const res = db
+    .prepare("DELETE FROM cron_jobs WHERE id = ? AND user_id = ?")
+    .run(id, userId) as RunResult;
   return res.changes > 0;
 }
 
