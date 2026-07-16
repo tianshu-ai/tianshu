@@ -307,7 +307,7 @@ function CalendarPanel(_props: PanelProps) {
                 <div
                   key={j.id}
                   className={`flex items-start gap-3 px-4 py-2.5 group hover:bg-bg-hover ${
-                    isPast(j) ? "opacity-50" : ""
+                    isPast(j) ? "opacity-80" : ""
                   }`}
                 >
                   <div className="flex-shrink-0 w-12 text-right">
@@ -320,8 +320,10 @@ function CalendarPanel(_props: PanelProps) {
                   />
                   <div className="flex-1 min-w-0">
                     <div
-                      className={`text-xs text-fg-default font-medium ${
-                        isPast(j) ? "line-through decoration-fg-faint" : ""
+                      className={`text-xs font-medium ${
+                        isPast(j)
+                          ? "text-fg-muted line-through decoration-2 decoration-danger"
+                          : "text-fg-default"
                       }`}
                     >
                       {j.title}
