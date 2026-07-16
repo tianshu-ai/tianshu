@@ -319,7 +319,13 @@ function CalendarPanel(_props: PanelProps) {
                     }`}
                   />
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs text-fg-default font-medium">{j.title}</div>
+                    <div
+                      className={`text-xs text-fg-default font-medium ${
+                        isPast(j) ? "line-through decoration-fg-faint" : ""
+                      }`}
+                    >
+                      {j.title}
+                    </div>
                     <div className="text-[10px] text-fg-faint flex items-center gap-1 mt-0.5 flex-wrap">
                       {j.scheduleType === "cron" ? <Repeat size={9} /> : <Clock size={9} />}
                       <span>{j.scheduleType === "cron" ? "Recurring" : "One-time"}</span>
