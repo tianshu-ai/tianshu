@@ -232,7 +232,13 @@ export function createJob(
 export function listJobs(db: Db, userId: string): ScheduledJob[] {
   const rows = db
     .prepare(
-      `SELECT ${SELECT_COLS} FROM cron_jobs WHERE user_id = ? ORDER BY next_run ASC`,
+      // Ordering goal: the NEXT job to run is always at the top.
+      //  - pending jobs (next_run set) first, soonest-first;
+      //  - finished one-shots (next_run NULL) sink to the bottom,
+      //    most-recently-run first within that group.
+      // `next_run IS NULL` sorts 0 (pending) before 1 (done).
+      `SELECT ${SELECT_COLS} FROM cron_jobs WHERE user_id = ?
+       ORDER BY (next_run IS NULL) ASC, next_run ASC, last_run DESC`,
     )
     .all(userId) as Record<string, unknown>[];
   return rows.map(rowToJob);

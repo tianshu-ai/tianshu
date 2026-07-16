@@ -157,7 +157,22 @@ function CalendarPanel(_props: PanelProps) {
   );
 
   const today = new Date();
-  const selectedJobs = jobsForDate(selected);
+  const isPast = (j: ScheduledJob) =>
+    j.scheduleType === "once" && !!j.lastRun && !j.nextRun;
+  // Within the selected day: pending jobs first (so the next thing to
+  // run is at the top of the agenda), finished ones sink to the
+  // bottom. Pending sorted by nextRun/runAt ascending; done by
+  // lastRun descending.
+  const selectedJobs = useMemo(() => {
+    const list = jobsForDate(selected);
+    const ts = (j: ScheduledJob) => j.nextRun ?? j.runAt ?? j.lastRun ?? 0;
+    return [...list].sort((a, b) => {
+      const pa = isPast(a) ? 1 : 0;
+      const pb = isPast(b) ? 1 : 0;
+      if (pa !== pb) return pa - pb;
+      return pa === 1 ? ts(b) - ts(a) : ts(a) - ts(b);
+    });
+  }, [jobsForDate, selected]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -173,9 +188,6 @@ function CalendarPanel(_props: PanelProps) {
     setSelected(n);
     setMonth(new Date(n.getFullYear(), n.getMonth(), 1));
   };
-
-  const isPast = (j: ScheduledJob) =>
-    j.scheduleType === "once" && !!j.lastRun && !j.nextRun;
 
   return (
     <div className="flex flex-col h-full overflow-hidden text-fg-default">
