@@ -31,6 +31,11 @@ export interface CronToolDeps {
   /** Resolve the session to target for `message` jobs when the caller
    *  doesn't pass one — normally the caller's own session. */
   resolveDefaultSessionId?(ctx: AgentToolContext): string | undefined;
+  /** Fired after any create/update/delete so the host can broadcast
+   *  `schedule_changed` and open CalendarPanels refresh live. Without
+   *  this, agent-created jobs only show up after a manual reload
+   *  (the REST routes broadcast, but the tool path didn't). */
+  onChanged?(): void;
 }
 
 const DESCRIPTION = `Create and manage scheduled / recurring jobs. Jobs fire automatically at the specified time.
@@ -98,15 +103,24 @@ export function buildScheduleTool(deps: CronToolDeps): AgentTool {
         switch (p.action) {
           case "list":
             return doList(deps.db);
-          case "create":
-            return doCreate(deps, ctx, p);
-          case "update":
-            return doUpdate(deps.db, p);
-          case "delete":
+          case "create": {
+            const r = doCreate(deps, ctx, p);
+            if (r.ok) deps.onChanged?.();
+            return r;
+          }
+          case "update": {
+            const r = doUpdate(deps.db, p);
+            if (r.ok) deps.onChanged?.();
+            return r;
+          }
+          case "delete": {
             if (!p.id) return { ok: false, text: "id is required" };
-            return deleteJob(deps.db, p.id)
+            const ok = deleteJob(deps.db, p.id);
+            if (ok) deps.onChanged?.();
+            return ok
               ? { ok: true, text: "✅ Job deleted" }
               : { ok: false, text: "Job not found" };
+          }
           default:
             return {
               ok: false,

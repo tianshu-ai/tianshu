@@ -103,6 +103,9 @@ const plugin: PluginServerModule = {
       // `message` jobs default to the session the tool was called
       // from, so "remind me in 5 minutes" lands back in this chat.
       resolveDefaultSessionId: (toolCtx) => toolCtx.sessionId,
+      // Broadcast so any open CalendarPanel refreshes the moment the
+      // agent creates/updates/deletes a job (not just on reload).
+      onChanged: () => ctx.broadcast("schedule_changed", {}),
     });
 
     const routes = buildCronRoutes({

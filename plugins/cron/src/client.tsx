@@ -113,8 +113,17 @@ function CalendarPanel(_props: PanelProps) {
 
   useEffect(() => {
     fetchJobs();
-    // broadcast prefixes plugin id → "cron:schedule_changed".
-    return subscribeToWsEvent("cron:schedule_changed", fetchJobs);
+    // The host wraps every plugin broadcast as a top-level
+    // `plugin_event` whose `event` is `<pluginId>:<type>`. So we
+    // subscribe to "plugin_event" and filter on the event name —
+    // subscribing to "cron:schedule_changed" directly never fires
+    // (that string is never a top-level ws message type).
+    return subscribeToWsEvent<{ type: string; event?: string }>(
+      "plugin_event",
+      (ev) => {
+        if (ev.event === "cron:schedule_changed") fetchJobs();
+      },
+    );
   }, [fetchJobs]);
 
   const y = month.getFullYear();
