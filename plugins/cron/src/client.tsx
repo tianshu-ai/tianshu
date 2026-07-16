@@ -226,11 +226,11 @@ function CalendarPanel(_props: PanelProps) {
                 key={day}
                 onClick={() => setSelected(new Date(y, m, day))}
                 style={{ maxHeight: 44 }}
-                className={`aspect-square w-full rounded text-[11px] relative transition-all flex items-center justify-center ${
+                className={`aspect-square w-full rounded-md text-[11px] relative transition-colors flex items-center justify-center ${
                   isSel
-                    ? "bg-accent text-fg-on-accent font-bold"
+                    ? "bg-accent text-fg-on-accent font-semibold"
                     : isToday
-                      ? "bg-bg-raised text-accent font-bold"
+                      ? "text-accent font-semibold ring-1 ring-inset ring-accent/50 hover:bg-bg-hover"
                       : "text-fg-muted hover:bg-bg-hover"
                 }`}
               >
@@ -307,16 +307,16 @@ function CalendarPanel(_props: PanelProps) {
       </div>
 
       {/* selected-day header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 border-t border-border-subtle self-stretch">
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-2.5 border-t border-border-subtle self-stretch">
         <div>
-          <div className="text-sm font-semibold text-fg-default">
+          <div className="text-[13px] font-semibold text-fg-default">
             {selected.toLocaleDateString("en-US", {
               weekday: "long",
               month: "short",
               day: "numeric",
             })}
           </div>
-          <div className="text-[10px] text-fg-faint">
+          <div className="text-[10px] text-fg-faint mt-0.5">
             {selectedJobs.length > 0
               ? `${selectedJobs.length} job${selectedJobs.length > 1 ? "s" : ""}`
               : "No jobs"}
@@ -325,7 +325,7 @@ function CalendarPanel(_props: PanelProps) {
         {!sameDay(today, selected.getFullYear(), selected.getMonth(), selected.getDate()) && (
           <button
             onClick={goToday}
-            className="text-[10px] text-accent hover:text-fg-default px-2 py-1 rounded hover:bg-bg-hover"
+            className="text-[11px] text-fg-muted hover:text-accent px-2.5 py-1 rounded-md ring-1 ring-inset ring-border-default hover:ring-accent/50 transition-colors"
           >
             Today
           </button>
