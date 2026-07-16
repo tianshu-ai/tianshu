@@ -11,7 +11,7 @@
 // server's `croner`-backed next-run computation; the panel only needs
 // "does this job fire on this calendar day".
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Calendar,
   ChevronLeft,
@@ -162,20 +162,44 @@ function CalendarPanel(_props: PanelProps) {
   const today = new Date();
   const isPast = (j: ScheduledJob) =>
     j.scheduleType === "once" && !!j.lastRun && !j.nextRun;
-  // Within the selected day: pending jobs first (so the next thing to
-  // run is at the top of the agenda), finished ones sink to the
-  // bottom. Pending sorted by nextRun/runAt ascending; done by
-  // lastRun descending.
+  /** The moment a row sits at on the timeline: upcoming jobs by their
+   *  next/scheduled time, already-fired one-shots by when they ran. */
+  const jobTime = (j: ScheduledJob) =>
+    j.nextRun ?? j.runAt ?? j.lastRun ?? 0;
+  // A single chronological list — fired and upcoming interleaved by
+  // time, no grouping. (The viewport auto-scrolls to the next
+  // upcoming row; see the scroll effect below.)
   const selectedJobs = useMemo(() => {
     const list = jobsForDate(selected);
-    const ts = (j: ScheduledJob) => j.nextRun ?? j.runAt ?? j.lastRun ?? 0;
-    return [...list].sort((a, b) => {
-      const pa = isPast(a) ? 1 : 0;
-      const pb = isPast(b) ? 1 : 0;
-      if (pa !== pb) return pa - pb;
-      return pa === 1 ? ts(b) - ts(a) : ts(a) - ts(b);
-    });
+    return [...list].sort((a, b) => jobTime(a) - jobTime(b));
   }, [jobsForDate, selected]);
+  // Index of the first still-upcoming row (not yet fired / still has a
+  // future time). -1 when every row is in the past. Used to scroll it
+  // to the top on load + refresh.
+  const nextUpcomingIdx = useMemo(() => {
+    const now = Date.now();
+    return selectedJobs.findIndex(
+      (j) => !isPast(j) && jobTime(j) >= now,
+    );
+  }, [selectedJobs]);
+  // Scroll the next-upcoming row to the top of the agenda on load and
+  // whenever the list changes (a refresh, a fire, a new job). If
+  // everything is in the past we leave the scroll where it is. We key
+  // the effect on the row's id so it only re-scrolls when the target
+  // actually changes, not on every unrelated re-render.
+  const agendaRef = useRef<HTMLDivElement>(null);
+  const nextRowRef = useRef<HTMLDivElement>(null);
+  const nextUpcomingId =
+    nextUpcomingIdx >= 0 ? selectedJobs[nextUpcomingIdx]?.id : null;
+  useEffect(() => {
+    if (!nextUpcomingId) return;
+    const row = nextRowRef.current;
+    const container = agendaRef.current;
+    if (!row || !container) return;
+    // Align the row's top with the container's top (minus a little
+    // breathing room) so past rows scroll up out of view.
+    container.scrollTop = row.offsetTop - container.offsetTop - 8;
+  }, [nextUpcomingId, selected]);
 
   const doDelete = async (id: string) => {
     try {
@@ -348,7 +372,10 @@ function CalendarPanel(_props: PanelProps) {
       </div>
 
       {/* agenda */}
-      <div className="flex-1 overflow-y-auto border-t border-border-subtle self-stretch">
+      <div
+        ref={agendaRef}
+        className="flex-1 overflow-y-auto border-t border-border-subtle self-stretch"
+      >
         {selectedJobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
             <Calendar size={28} className="mb-2 opacity-30" />
@@ -356,7 +383,7 @@ function CalendarPanel(_props: PanelProps) {
           </div>
         ) : (
           <div className="py-2">
-            {selectedJobs.map((j) => {
+            {selectedJobs.map((j, idx) => {
               const time =
                 j.scheduleType === "cron" && j.cronExpr
                   ? cronTimeLabel(j.cronExpr)
@@ -370,6 +397,7 @@ function CalendarPanel(_props: PanelProps) {
               return (
                 <div
                   key={j.id}
+                  ref={idx === nextUpcomingIdx ? nextRowRef : undefined}
                   className={`flex items-start gap-3 px-6 py-2.5 group hover:bg-bg-hover ${
                     isPast(j) ? "opacity-80" : ""
                   }`}
