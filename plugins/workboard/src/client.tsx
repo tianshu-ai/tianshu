@@ -926,7 +926,9 @@ const BoardCard = memo(function BoardCard({
   onPatch: (id: string, patch: Record<string, unknown>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const { Modal } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const hasMore =
     Boolean(task.description?.trim()) ||
     Boolean(task.resultSummary?.trim()) ||
@@ -1252,16 +1254,55 @@ const BoardCard = memo(function BoardCard({
         title="Delete task"
         onClick={(e) => {
           e.stopPropagation();
-          if (
-            window.confirm(`Delete task "${task.title}"? This is permanent.`)
-          ) {
-            void onDelete(task.id);
-          }
+          setConfirmingDelete(true);
         }}
         className="absolute bottom-1 right-1 z-10 p-0.5 rounded opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-red-400 hover:bg-bg-raised transition-opacity disabled:opacity-0"
       >
         <Trash2 className="w-3 h-3" />
       </button>
+
+      {/* Styled confirm (SDK Modal) instead of a native window.confirm,
+          to match the rest of the UI. stopPropagation on the wrapper
+          so clicks inside don't toggle the card's expand. */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <Modal
+          isOpen={confirmingDelete}
+          onClose={() => setConfirmingDelete(false)}
+          title="Delete task?"
+          size="sm"
+          allowMaximize={false}
+        >
+          <div className="flex flex-col gap-4 p-1">
+            <p className="text-sm text-fg-muted">
+              This will permanently delete{" "}
+              <span className="font-medium text-fg-default">
+                “{task.title}”
+              </span>
+              . This can’t be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setConfirmingDelete(false);
+                  void onDelete(task.id);
+                }}
+                className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </Modal>
+      </div>
     </li>
   );
 });
@@ -2240,6 +2281,7 @@ function TaskModal({
   const [priority, setPriority] = useState(task.priority);
   const [workerRole, setWorkerRole] = useState(task.workerRole || "");
   const [dependsOn, setDependsOn] = useState<string[]>(task.dependsOn ?? []);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Re-sync local form state when the parent reloads with fresh data.
   useEffect(() => {
@@ -2459,19 +2501,48 @@ function TaskModal({
           <button
             type="button"
             disabled={busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Delete task "${task.title}"? This is permanent.`,
-                )
-              ) {
-                void onDelete();
-              }
-            }}
+            onClick={() => setConfirmingDelete(true)}
             className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-red-800 text-red-200 hover:bg-red-900/30 disabled:opacity-50"
           >
             <Trash2 className="w-3 h-3" /> Delete
           </button>
+          <Modal
+            isOpen={confirmingDelete}
+            onClose={() => setConfirmingDelete(false)}
+            title="Delete task?"
+            size="sm"
+            allowMaximize={false}
+          >
+            <div className="flex flex-col gap-4 p-1">
+              <p className="text-sm text-fg-muted">
+                This will permanently delete{" "}
+                <span className="font-medium text-fg-default">
+                  “{task.title}”
+                </span>
+                . This can’t be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setConfirmingDelete(false);
+                    void onDelete();
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </Modal>
           <button
             type="button"
             onClick={onClose}
