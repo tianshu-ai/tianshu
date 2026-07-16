@@ -21,7 +21,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/cron";
 
@@ -97,12 +97,15 @@ function sameDay(a: Date, y: number, m: number, d: number): boolean {
 // ─── panel ──────────────────────────────────────────────────────
 
 function CalendarPanel(_props: PanelProps) {
+  const { Modal } = useUiPrimitives();
   const [jobs, setJobs] = useState<ScheduledJob[]>([]);
   const [selected, setSelected] = useState(() => new Date());
   const [month, setMonth] = useState(() => {
     const n = new Date();
     return new Date(n.getFullYear(), n.getMonth(), 1);
   });
+  // Job pending delete confirmation (null = no dialog open).
+  const [confirmJob, setConfirmJob] = useState<ScheduledJob | null>(null);
 
   const fetchJobs = useCallback(() => {
     fetch(`${API_BASE}/schedules`)
@@ -174,7 +177,7 @@ function CalendarPanel(_props: PanelProps) {
     });
   }, [jobsForDate, selected]);
 
-  const handleDelete = async (id: string) => {
+  const doDelete = async (id: string) => {
     try {
       await fetch(`${API_BASE}/schedules/${id}`, { method: "DELETE" });
       setJobs((prev) => prev.filter((j) => j.id !== id));
@@ -424,7 +427,7 @@ function CalendarPanel(_props: PanelProps) {
                     )}
                   </div>
                   <button
-                    onClick={() => handleDelete(j.id)}
+                    onClick={() => setConfirmJob(j)}
                     className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1 rounded flex-shrink-0"
                     aria-label="Delete job"
                   >
@@ -436,6 +439,46 @@ function CalendarPanel(_props: PanelProps) {
           </div>
         )}
       </div>
+
+      {/* Delete confirmation */}
+      <Modal
+        isOpen={confirmJob !== null}
+        onClose={() => setConfirmJob(null)}
+        title="Delete scheduled job?"
+        size="sm"
+        allowMaximize={false}
+      >
+        <div className="flex flex-col gap-4 p-1">
+          <p className="text-sm text-fg-muted">
+            This will permanently remove{" "}
+            <span className="font-medium text-fg-default">
+              “{confirmJob?.title}”
+            </span>
+            {confirmJob?.scheduleType === "cron"
+              ? " and stop all future runs."
+              : "."}{" "}
+            This can’t be undone.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setConfirmJob(null)}
+              className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                const id = confirmJob?.id;
+                setConfirmJob(null);
+                if (id) void doDelete(id);
+              }}
+              className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90 transition-opacity"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
