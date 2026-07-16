@@ -322,7 +322,7 @@ function CalendarPanel(_props: PanelProps) {
                     <div
                       className={`text-xs font-medium ${
                         isPast(j)
-                          ? "text-fg-muted line-through decoration-2 decoration-danger"
+                          ? "text-fg-muted line-through decoration-[3px] decoration-fg-default"
                           : "text-fg-default"
                       }`}
                     >
