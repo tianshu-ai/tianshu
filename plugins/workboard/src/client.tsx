@@ -592,6 +592,7 @@ function WorkboardPanel(_props: PanelProps) {
                 agentNames={ctrl.agentNames}
                 allTasks={ctrl.tasks ?? []}
                 onPatchTask={ctrl.patchTask}
+                onDeleteTask={ctrl.deleteTask}
                 onDragStart={drag.onDragStart}
                 onDragEnd={drag.onDragEnd}
                 onDrop={drag.onDrop}
@@ -715,6 +716,7 @@ function WorkboardAdminPage(_props: AdminPageProps) {
                 agentNames={ctrl.agentNames}
                 allTasks={ctrl.tasks ?? []}
                 onPatchTask={ctrl.patchTask}
+                onDeleteTask={ctrl.deleteTask}
                 onDragStart={drag.onDragStart}
                 onDragEnd={drag.onDragEnd}
                 onDrop={drag.onDrop}
@@ -748,6 +750,7 @@ function KanbanColumn({
   compact,
   onAddTask,
   onPatchTask,
+  onDeleteTask,
   projects,
   workerRoles,
   agentNames,
@@ -766,6 +769,9 @@ function KanbanColumn({
   /** Card-initiated patches - e.g. the "Retry" button on a
    *  stalled-label chip clears the label so the pool re-claims. */
   onPatchTask: (id: string, patch: Record<string, unknown>) => Promise<void>;
+  /** Card-initiated delete (quick delete from the card, with an
+   *  in-card confirm step). */
+  onDeleteTask: (id: string) => Promise<void>;
   projects: ProjectSummary[];
   workerRoles: string[];
   /** Slug → worker display name for the assignee chip. */
@@ -837,6 +843,7 @@ function KanbanColumn({
             onDragStart={onDragStart}
             onDragEnd={onDragEnd}
             onPatch={onPatchTask}
+            onDelete={onDeleteTask}
           />
         ))}
 
@@ -905,6 +912,7 @@ const BoardCard = memo(function BoardCard({
   onDragStart,
   onDragEnd,
   onPatch,
+  onDelete,
 }: {
   task: Task;
   meta: TaskMeta;
@@ -916,8 +924,11 @@ const BoardCard = memo(function BoardCard({
   onDragStart: (e: DragEvent, taskId: string) => void;
   onDragEnd: () => void;
   onPatch: (id: string, patch: Record<string, unknown>) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
+  const { Modal } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const hasMore =
     Boolean(task.description?.trim()) ||
     Boolean(task.resultSummary?.trim()) ||
@@ -947,7 +958,7 @@ const BoardCard = memo(function BoardCard({
         e.stopPropagation();
         if (hasMore) setExpanded((v) => !v);
       }}
-      className={`rounded border bg-bg-elevated/60 hover:border-border-default ${
+      className={`group relative rounded border bg-bg-elevated/60 hover:border-border-default ${
         meta.blocked
           ? "border-indigo-500/40"
           : "border-border-subtle"
@@ -1233,6 +1244,65 @@ const BoardCard = memo(function BoardCard({
           <ExecutionSection task={task} />
         </div>
       )}
+      {/* Quick delete: bottom-right, away from the top-right expand
+          chevron so the two can't be mis-clicked. Hover-revealed;
+          confirms first; stops propagation so it doesn't toggle
+          expand or start a drag. */}
+      <button
+        type="button"
+        disabled={busy}
+        title="Delete task"
+        onClick={(e) => {
+          e.stopPropagation();
+          setConfirmingDelete(true);
+        }}
+        className="absolute bottom-1 right-1 z-10 p-0.5 rounded opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-red-400 hover:bg-bg-raised transition-opacity disabled:opacity-0"
+      >
+        <Trash2 className="w-3 h-3" />
+      </button>
+
+      {/* Styled confirm (SDK Modal) instead of a native window.confirm,
+          to match the rest of the UI. stopPropagation on the wrapper
+          so clicks inside don't toggle the card's expand. */}
+      <div onClick={(e) => e.stopPropagation()}>
+        <Modal
+          isOpen={confirmingDelete}
+          onClose={() => setConfirmingDelete(false)}
+          title="Delete task?"
+          size="sm"
+          allowMaximize={false}
+        >
+          <div className="flex flex-col gap-4 p-1">
+            <p className="text-sm text-fg-muted">
+              This will permanently delete{" "}
+              <span className="font-medium text-fg-default">
+                “{task.title}”
+              </span>
+              . This can’t be undone.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingDelete(false)}
+                className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setConfirmingDelete(false);
+                  void onDelete(task.id);
+                }}
+                className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </Modal>
+      </div>
     </li>
   );
 });
@@ -2211,6 +2281,7 @@ function TaskModal({
   const [priority, setPriority] = useState(task.priority);
   const [workerRole, setWorkerRole] = useState(task.workerRole || "");
   const [dependsOn, setDependsOn] = useState<string[]>(task.dependsOn ?? []);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   // Re-sync local form state when the parent reloads with fresh data.
   useEffect(() => {
@@ -2430,19 +2501,48 @@ function TaskModal({
           <button
             type="button"
             disabled={busy}
-            onClick={() => {
-              if (
-                window.confirm(
-                  `Delete task "${task.title}"? This is permanent.`,
-                )
-              ) {
-                void onDelete();
-              }
-            }}
+            onClick={() => setConfirmingDelete(true)}
             className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-red-800 text-red-200 hover:bg-red-900/30 disabled:opacity-50"
           >
             <Trash2 className="w-3 h-3" /> Delete
           </button>
+          <Modal
+            isOpen={confirmingDelete}
+            onClose={() => setConfirmingDelete(false)}
+            title="Delete task?"
+            size="sm"
+            allowMaximize={false}
+          >
+            <div className="flex flex-col gap-4 p-1">
+              <p className="text-sm text-fg-muted">
+                This will permanently delete{" "}
+                <span className="font-medium text-fg-default">
+                  “{task.title}”
+                </span>
+                . This can’t be undone.
+              </p>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setConfirmingDelete(false);
+                    void onDelete();
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </Modal>
           <button
             type="button"
             onClick={onClose}
