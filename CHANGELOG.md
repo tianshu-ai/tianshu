@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.5.3](https://github.com/tianshu-ai/tianshu/compare/v0.5.2...v0.5.3) (2026-07-17)
+
+### Bug Fixes
+
+* **cron:** declare `croner` as a root dependency so the plugin loads from the published package (0.5.2 shipped without it, so the scheduler plugin failed with "server.entry not registered")
+
+
+## [0.5.2](https://github.com/tianshu-ai/tianshu/compare/v0.5.1...v0.5.2) (2026-07-17)
+
+### Features
+
+* **cron:** scheduled & recurring jobs plugin (once + cron, message + task) ([#303](https://github.com/tianshu-ai/tianshu/issues/303))
+* **cron:** verify workerAgentId is a real worker on create + update ([#306](https://github.com/tianshu-ai/tianshu/issues/306))
+* **workboard:** quick-delete a task from its board card, with confirm ([#304](https://github.com/tianshu-ai/tianshu/issues/304))
+
+
 ## [0.5.1](https://github.com/tianshu-ai/tianshu/compare/v0.5.0...v0.5.1) (2026-07-15)
 
 
