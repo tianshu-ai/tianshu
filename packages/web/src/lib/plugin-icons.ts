@@ -9,6 +9,7 @@
 import {
   Bot,
   Calendar,
+  CalendarClock,
   FileText,
   FolderOpen,
   Globe,
@@ -23,6 +24,7 @@ import type { ComponentType } from "react";
 export const ICONS_BY_NAME: Record<string, ComponentType<{ size?: number }>> = {
   Bot,
   Calendar,
+  CalendarClock,
   FileText,
   FolderOpen,
   Globe,
