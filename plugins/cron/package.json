@@ -1,0 +1,43 @@
+{
+  "name": "@tianshu-builtin/plugin-cron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scheduled / recurring jobs (once + cron) for Tianshu. Triggers messages into a session or tasks onto the workboard. Builtin plugin (ADR-0002).",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./manifest.json": "./manifest.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "skills",
+    "manifest.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@tianshu-ai/plugin-sdk": "*",
+    "croner": "^10.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "lucide-react": "^1.17.0",
+    "react": "^19.0.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}
