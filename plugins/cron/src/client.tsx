@@ -236,38 +236,69 @@ function CalendarPanel(_props: PanelProps) {
               >
                 {day}
                 {dayJobs.length > 0 && (
-                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
-                    {dayJobs.slice(0, 3).map((j) => {
-                      // On the selected (accent-filled) day, dots go
-                      // white for contrast — but fired jobs still read
-                      // as a hollow ring so "done" stays distinguishable
-                      // even when the cell is highlighted.
-                      if (isSel)
-                        return isPast(j) ? (
-                          <span
-                            key={j.id}
-                            className="w-1 h-1 rounded-full border border-fg-on-accent bg-transparent"
-                          />
-                        ) : (
-                          <span key={j.id} className="w-1 h-1 rounded-full bg-fg-on-accent" />
-                        );
-                      // Fired one-time jobs render as a hollow ring
-                      // (border, no fill) so they read as "done" at a
-                      // glance vs the solid dots of pending jobs.
-                      // Pending jobs keep the type colour (task amber /
-                      // message accent).
-                      if (isPast(j)) {
-                        return (
-                          <span
-                            key={j.id}
-                            className="w-1 h-1 rounded-full border border-fg-faint bg-transparent"
-                          />
-                        );
-                      }
-                      const color =
-                        j.actionType === "task" ? "bg-amber-500" : "bg-accent";
-                      return <span key={j.id} className={`w-1 h-1 rounded-full ${color}`} />;
-                    })}
+                  <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-0.5">
+                    {(() => {
+                      // A cell is tiny (~44px), so we can't paint a dot
+                      // per job when a day has a dozen+. Show up to
+                      // MAX_DOTS dots then a "+N" badge for the rest.
+                      // Pending jobs sort first so the visible dots
+                      // favour what still needs to run.
+                      const MAX_DOTS = 3;
+                      const sorted = [...dayJobs].sort(
+                        (a, b) => Number(isPast(a)) - Number(isPast(b)),
+                      );
+                      const overflow = sorted.length - MAX_DOTS;
+                      const shown = overflow > 0 ? sorted.slice(0, MAX_DOTS - 1) : sorted;
+                      const badgeCls = isSel
+                        ? "text-fg-on-accent"
+                        : "text-fg-faint";
+                      return (
+                        <>
+                          {shown.map((j) => {
+                            // Selected (accent-filled) day: white dots
+                            // for contrast; fired jobs stay hollow so
+                            // "done" is still distinguishable.
+                            if (isSel)
+                              return isPast(j) ? (
+                                <span
+                                  key={j.id}
+                                  className="w-1 h-1 rounded-full border border-fg-on-accent bg-transparent"
+                                />
+                              ) : (
+                                <span
+                                  key={j.id}
+                                  className="w-1 h-1 rounded-full bg-fg-on-accent"
+                                />
+                              );
+                            // Fired one-time jobs render as a hollow
+                            // ring; pending jobs keep the type colour
+                            // (task amber / message accent).
+                            if (isPast(j))
+                              return (
+                                <span
+                                  key={j.id}
+                                  className="w-1 h-1 rounded-full border border-fg-faint bg-transparent"
+                                />
+                              );
+                            const color =
+                              j.actionType === "task" ? "bg-amber-500" : "bg-accent";
+                            return (
+                              <span
+                                key={j.id}
+                                className={`w-1 h-1 rounded-full ${color}`}
+                              />
+                            );
+                          })}
+                          {overflow > 0 && (
+                            <span
+                              className={`text-[8px] leading-none font-medium ${badgeCls}`}
+                            >
+                              +{overflow + 1}
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
               </button>
