@@ -238,8 +238,17 @@ function CalendarPanel(_props: PanelProps) {
                 {dayJobs.length > 0 && (
                   <div className="absolute bottom-1 left-1/2 -translate-x-1/2 flex gap-0.5">
                     {dayJobs.slice(0, 3).map((j) => {
+                      // On the selected (accent-filled) day, dots go
+                      // white for contrast — but fired jobs still read
+                      // as a hollow ring so "done" stays distinguishable
+                      // even when the cell is highlighted.
                       if (isSel)
-                        return (
+                        return isPast(j) ? (
+                          <span
+                            key={j.id}
+                            className="w-1 h-1 rounded-full border border-fg-on-accent bg-transparent"
+                          />
+                        ) : (
                           <span key={j.id} className="w-1 h-1 rounded-full bg-fg-on-accent" />
                         );
                       // Fired one-time jobs render as a hollow ring
