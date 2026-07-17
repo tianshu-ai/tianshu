@@ -26,8 +26,19 @@ function BoardPanel(_props: PanelProps) {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((res: { boards: string[] }) => {
         const list = res.boards ?? [];
-        setBoards(list);
-        setSelected((cur) => (cur && list.includes(cur) ? cur : (list[0] ?? null)));
+        // Auto-switch to a newly-created board: compare against the
+        // previous list and, if exactly-new names appeared, select the
+        // (last) new one. Otherwise keep the current selection if it
+        // still exists, else fall back to the first board.
+        setBoards((prev) => {
+          const added = list.filter((b) => !prev.includes(b));
+          setSelected((cur) => {
+            if (added.length > 0) return added[added.length - 1];
+            if (cur && list.includes(cur)) return cur;
+            return list[0] ?? null;
+          });
+          return list;
+        });
       })
       .catch(() => setBoards([]))
       .finally(() => setLoading(false));
