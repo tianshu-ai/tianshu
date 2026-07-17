@@ -59,7 +59,24 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
   // won't be there — show a hint to re-run the tool rather than a
   // blank frame. `ui.html` is honoured too for any caller that still
   // passes it inline.
-  const html = ui.html ?? getMcpUiHtml(ui.uri) ?? null;
+  const [html, setHtml] = useState<string | null>(
+    () => ui.html ?? getMcpUiHtml(ui.uri) ?? null,
+  );
+
+  // If we rendered the "not loaded" placeholder (no html yet) and the
+  // html later lands in the cache — e.g. the agent re-ran show_board and
+  // its live tool_result cached the html — pick it up without a reload.
+  useEffect(() => {
+    if (html !== null) return;
+    const onCached = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ uri?: string }>).detail;
+      if (detail?.uri && detail.uri !== ui.uri) return;
+      const found = ui.html ?? getMcpUiHtml(ui.uri) ?? null;
+      if (found !== null) setHtml(found);
+    };
+    window.addEventListener("tianshu:mcp-ui-cached", onCached);
+    return () => window.removeEventListener("tianshu:mcp-ui-cached", onCached);
+  }, [html, ui.uri, ui.html]);
 
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {

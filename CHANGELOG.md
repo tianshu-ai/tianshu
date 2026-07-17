@@ -19,6 +19,11 @@ this file is automatically maintained.
 * **files,board:** broadcast `workspace_changed` after write/edit/delete/upload so FilesPanel + BoardPanel refresh live
 * **plugins:** plugin bidirectional WS — manifest `wsMessages[]`, host ws-dispatch, and SDK `sendWsMessage()`
 
+
+### Bug Fixes
+
+* **mcp-ui:** cache a re-run's UI html even when its tool-result row is de-duped, so a board re-shown after a reload / fresh service renders instead of staying on "isn't loaded in this tab"
+
 ## [0.5.1](https://github.com/tianshu-ai/tianshu/compare/v0.5.0...v0.5.1) (2026-07-15)
 
 
