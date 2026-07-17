@@ -41,7 +41,13 @@ function BoardPanel(_props: PanelProps) {
     return subscribeToWsEvent<{ type: string; event?: string }>(
       "plugin_event",
       (ev) => {
-        if (ev.event && /board|workspace/i.test(ev.event)) fetchBoards();
+        if (ev.event && /board|workspace/i.test(ev.event)) {
+          // Refresh the list AND reload the iframe: a board's own
+          // index.html may have changed, so bump the key to re-fetch
+          // the rendered content, not just the board names.
+          fetchBoards();
+          setIframeKey((k) => k + 1);
+        }
       },
     );
   }, [fetchBoards]);

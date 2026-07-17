@@ -23,6 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Request } from "express";
 import type {
+  AgentTool,
   PluginContext,
   PluginRouteHandler,
   PluginServerExports,
@@ -278,8 +279,15 @@ const plugin: PluginServerModule = {
 
         const finalName = path.basename(finalAbs);
         const stat = fs.statSync(finalAbs);
+        const rel = `/uploads/${finalName}`;
+        // Notify panels a workspace file landed so they refresh live.
+        try {
+          ctx.broadcast("workspace_changed", { path: rel });
+        } catch {
+          /* best-effort */
+        }
         res.json({
-          path: `/uploads/${finalName}`,
+          path: rel,
           size: stat.size,
         });
       } catch (err) {
@@ -295,19 +303,43 @@ const plugin: PluginServerModule = {
       }
     };
 
+    // Wrap a write-capable tool so that, after a successful call, we
+    // broadcast `workspace_changed`. Panels (FilesPanel, BoardPanel)
+    // subscribe and refresh live instead of only on manual reload.
+    // The wrapper is transparent: same schema, same result; it only
+    // fires a best-effort broadcast on ok results.
+    const withBroadcast = (tool: AgentTool): AgentTool => ({
+      ...tool,
+      execute: async (args, toolCtx) => {
+        const result = await tool.execute(args, toolCtx);
+        try {
+          const ok = (result as { ok?: unknown } | null)?.ok;
+          if (ok !== false) {
+            const p = (args as { path?: unknown })?.path;
+            ctx.broadcast("workspace_changed", {
+              path: typeof p === "string" ? p : undefined,
+            });
+          }
+        } catch {
+          /* broadcast is best-effort; never break the tool result */
+        }
+        return result;
+      },
+    });
+
     return {
       routes: { list, read, raw, upload },
       tools: {
         ListDirTool,
         ReadFileTool,
-        WriteFileTool,
-        EditFileTool,
+        WriteFileTool: withBroadcast(WriteFileTool),
+        EditFileTool: withBroadcast(EditFileTool),
         GlobTool,
         TenantConfigListTool,
         TenantConfigReadTool,
-        TenantConfigWriteTool,
-        TenantConfigEditTool,
-        TenantConfigDeleteTool,
+        TenantConfigWriteTool: withBroadcast(TenantConfigWriteTool),
+        TenantConfigEditTool: withBroadcast(TenantConfigEditTool),
+        TenantConfigDeleteTool: withBroadcast(TenantConfigDeleteTool),
         TenantConfigGlobTool,
       },
     };
