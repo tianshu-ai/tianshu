@@ -158,8 +158,12 @@ function buildBoardActTool(ctx: PluginContext): AgentTool {
     schema: {
       name: "board_act",
       description:
-        "Interact with a board currently open in the user's side panel: click an element, fill a form field, read text/attributes, wait for an element, dump the interactive DOM, or eval a small script. The board must be open in the Boards panel for this to work. Selectors are CSS. Use `dump` first to discover selectors.",
+        "Interact with a specific board's live DOM: click an element, fill a form field, read text/attributes, wait for an element, dump the interactive DOM, or eval a small script. Pass the board `name` (the same name you'd pass to show_board) so the op targets the right board — the board must be visible (shown in chat via show_board or open in the Boards panel). Selectors are CSS. Use `dump` first to discover selectors.",
       parameters: Type.Object({
+        name: Type.String({
+          description:
+            "Board name to target (subdirectory of board/, e.g. the name passed to show_board). Required so the op reaches the right board when several are on screen.",
+        }),
         action: Type.Union(
           ACT_ACTIONS.map((a) => Type.Literal(a)),
           { description: "Operation to perform on the board DOM." },
@@ -186,6 +190,7 @@ function buildBoardActTool(ctx: PluginContext): AgentTool {
     },
     execute: async (raw): Promise<ToolResult> => {
       const op = raw as {
+        name?: string;
         action?: string;
         selector?: string;
         value?: string;
@@ -194,6 +199,10 @@ function buildBoardActTool(ctx: PluginContext): AgentTool {
         script?: string;
         timeout_ms?: number;
       };
+      const name = typeof op.name === "string" ? op.name.trim() : "";
+      if (!name) {
+        return { ok: false, text: "board_act requires a `name` (which board to act on). Pass the same name you used with show_board." };
+      }
       const action = typeof op.action === "string" ? op.action : "";
       if (!ACT_ACTIONS.includes(action as (typeof ACT_ACTIONS)[number])) {
         return { ok: false, text: `Invalid action: "${action}". One of: ${ACT_ACTIONS.join(", ")}.` };
@@ -203,7 +212,10 @@ function buildBoardActTool(ctx: PluginContext): AgentTool {
           ? Math.min(op.timeout_ms, 120_000)
           : 30_000;
       const { reqId, promise } = registerRequest(timeoutMs);
-      ctx.broadcast("board_act_request", { reqId, op });
+      // Include `name` so exactly the matching board iframe answers
+      // (several boards can be on screen at once; without routing they
+      // race and a stale board can win, returning the wrong content).
+      ctx.broadcast("board_act_request", { reqId, name, op });
       let result: BoardActResult;
       try {
         result = await promise;

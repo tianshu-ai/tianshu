@@ -145,9 +145,15 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
   // they coexist on the same iframe without interfering.
   useEffect(() => {
     if (!ui.uri.startsWith("ui://board/")) return;
+    const myBoard = ui.uri.slice("ui://board/".length);
     const offReq = tianshuWs.on("plugin_event", (ev) => {
       if (ev.event !== "board:board_act_request") return;
-      const payload = ev.payload as { reqId?: string; op?: unknown } | undefined;
+      const payload = ev.payload as
+        | { reqId?: string; name?: string; op?: unknown }
+        | undefined;
+      // Only the frame showing the targeted board answers, so several
+      // boards on screen don't race (a stale one could win otherwise).
+      if (payload?.name && payload.name !== myBoard) return;
       const reqId = payload?.reqId;
       const win = iframeRef.current?.contentWindow;
       if (!reqId || !win) return;
@@ -180,6 +186,7 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
       offReq();
       window.removeEventListener("message", onResp);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ui.uri]);
 
   if (html === null) {

@@ -21,6 +21,11 @@ function BoardPanel(_props: PanelProps) {
   const [iframeKey, setIframeKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  // Mirror `selected` into a ref so the board_act subscription (mounted
+  // once, empty deps) always compares against the board on screen now,
+  // not the one captured at mount.
+  const selectedRef = useRef<string | null>(null);
+  selectedRef.current = selected;
 
   const fetchBoards = useCallback(() => {
     fetch(`${API_BASE}/boards`)
@@ -73,20 +78,30 @@ function BoardPanel(_props: PanelProps) {
     const offReq = subscribeToWsEvent<{
       type: string;
       event?: string;
-      payload?: { reqId?: string; op?: unknown };
+      payload?: { reqId?: string; name?: string; op?: unknown };
     }>("plugin_event", (ev) => {
       if (ev.event !== "board:board_act_request") return;
       const reqId = ev.payload?.reqId;
+      const name = ev.payload?.name;
       const op = ev.payload?.op;
-      const win = iframeRef.current?.contentWindow;
       if (!reqId) return;
+      // Only answer when this panel is showing the targeted board, so
+      // we don't race the chat-card frame (or a stale board) and reply
+      // with the wrong content. If a name is given and it isn't the
+      // one we're showing, stay silent and let the right frame answer.
+      if (name && name !== selectedRef.current) return;
+      const win = iframeRef.current?.contentWindow;
       if (!win) {
-        sendWsMessage({
-          type: "board_act_response",
-          reqId,
-          ok: false,
-          error: "No board is open in the Boards panel.",
-        });
+        // Only surface "not open" when the op was actually meant for a
+        // board we'd be responsible for (name matched but no iframe).
+        if (name && name === selectedRef.current) {
+          sendWsMessage({
+            type: "board_act_response",
+            reqId,
+            ok: false,
+            error: `Board "${name}" is selected but its frame isn't ready yet.`,
+          });
+        }
         return;
       }
       win.postMessage({ type: "tianshu:board_act", reqId, op }, "*");
