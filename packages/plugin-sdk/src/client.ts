@@ -631,6 +631,12 @@ export interface WsEventApi {
     type: string,
     handler: (event: { type: string } & Record<string, unknown>) => void,
   ) => () => void;
+  /** Send a WS message up to the host. Used by plugins whose panels
+   *  need to reply to a server-initiated request (e.g. board_act:
+   *  the server broadcasts an op, the panel drives its iframe, then
+   *  sends the result back here). Best-effort: queued if the socket
+   *  isn't open yet. */
+  send?: (msg: { type: string } & Record<string, unknown>) => void;
 }
 
 interface WsEventGlobalSlot {
@@ -663,4 +669,14 @@ export function subscribeToWsEvent<TEvent extends { type: string }>(
     type,
     handler as (e: { type: string } & Record<string, unknown>) => void,
   );
+}
+
+/** Programmatic send — plugins call this to push a WS message up to
+ *  the host (e.g. replying to a server-initiated board_act request).
+ *  No-op when the host hasn't installed a WS API yet. */
+export function sendWsMessage(
+  msg: { type: string } & Record<string, unknown>,
+): void {
+  const api = wsEventSlot().__tianshuPluginSdkWsEventApi__;
+  api?.send?.(msg);
 }

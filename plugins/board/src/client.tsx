@@ -8,10 +8,10 @@
 // into the chat via the show_board tool (rendered by the shared MCP-UI
 // iframe path). Refreshes its list on workspace changes.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Globe, ChevronDown, RefreshCw } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, sendWsMessage } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/board";
 
@@ -20,6 +20,7 @@ function BoardPanel(_props: PanelProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
   const [loading, setLoading] = useState(true);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const fetchBoards = useCallback(() => {
     fetch(`${API_BASE}/boards`)
@@ -62,6 +63,60 @@ function BoardPanel(_props: PanelProps) {
       },
     );
   }, [fetchBoards]);
+
+  // board_act bridge (browser side).
+  //   server broadcasts `board:board_act_request` { reqId, op }
+  //     -> postMessage the op into the board iframe
+  //   iframe runtime replies `tianshu:board_act_response` { reqId, ok, data?, error? }
+  //     -> send it back up to the host as ws `board_act_response`
+  useEffect(() => {
+    const offReq = subscribeToWsEvent<{
+      type: string;
+      event?: string;
+      payload?: { reqId?: string; op?: unknown };
+    }>("plugin_event", (ev) => {
+      if (ev.event !== "board:board_act_request") return;
+      const reqId = ev.payload?.reqId;
+      const op = ev.payload?.op;
+      const win = iframeRef.current?.contentWindow;
+      if (!reqId) return;
+      if (!win) {
+        sendWsMessage({
+          type: "board_act_response",
+          reqId,
+          ok: false,
+          error: "No board is open in the Boards panel.",
+        });
+        return;
+      }
+      win.postMessage({ type: "tianshu:board_act", reqId, op }, "*");
+    });
+
+    const onMsg = (ev: MessageEvent) => {
+      const win = iframeRef.current?.contentWindow;
+      if (win && ev.source !== win) return;
+      const msg = ev.data as {
+        type?: string;
+        reqId?: string;
+        ok?: boolean;
+        data?: unknown;
+        error?: string;
+      } | null;
+      if (!msg || msg.type !== "tianshu:board_act_response" || !msg.reqId) return;
+      sendWsMessage({
+        type: "board_act_response",
+        reqId: msg.reqId,
+        ok: msg.ok === true,
+        data: msg.data,
+        error: msg.error,
+      });
+    };
+    window.addEventListener("message", onMsg);
+    return () => {
+      offReq();
+      window.removeEventListener("message", onMsg);
+    };
+  }, []);
 
   const reload = () => {
     fetchBoards();
@@ -111,6 +166,7 @@ function BoardPanel(_props: PanelProps) {
       {selected ? (
         <iframe
           key={iframeKey}
+          ref={iframeRef}
           src={src}
           title={selected}
           sandbox="allow-scripts allow-forms allow-popups allow-same-origin"

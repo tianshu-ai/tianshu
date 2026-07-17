@@ -30,6 +30,9 @@ import type {
 } from "@tianshu-ai/plugin-sdk";
 import { Type } from "typebox";
 import type { Request, Response } from "express";
+import type { WebSocket } from "ws";
+import { injectRuntime } from "./runtime.js";
+import { registerRequest, resolveRequest, type BoardActResult } from "./bridge.js";
 
 // A board name is a single path segment: letters, digits, dash,
 // underscore, dot (no slashes, no "..").
@@ -121,16 +124,109 @@ function buildShowBoardTool(): AgentTool {
       }
       // Return the board as an MCP-UI resource so the chat renders it
       // as an iframe (same path as any ui:// resource). Short text for
-      // the model; html on data.mcpUi for the web layer.
+      // the model; html on data.mcpUi for the web layer. Inject the
+      // board_act runtime so the agent can drive the live DOM.
       return {
         ok: true,
         text: `[board: ${name}]`,
         data: {
           mcpUi: [
-            { uri: `ui://board/${name}`, mimeType: "text/html", html },
+            {
+              uri: `ui://board/${name}`,
+              mimeType: "text/html",
+              html: injectRuntime(html),
+            },
           ],
         },
       };
+    },
+  };
+}
+
+// ─── agent tool: board_act ──────────────────────────────────────
+//
+// Drive a live board's DOM (click / fill / query / wait_for / eval /
+// dump). The tool can't touch the iframe directly (it lives in the
+// user's browser), so it registers a pending request in the bridge,
+// broadcasts `board_act_request` to the tenant, and awaits the
+// browser's `board_act_response` (handled by boardActResponse below).
+
+const ACT_ACTIONS = ["query", "click", "fill", "wait_for", "eval", "dump"] as const;
+
+function buildBoardActTool(ctx: PluginContext): AgentTool {
+  return {
+    schema: {
+      name: "board_act",
+      description:
+        "Interact with a board currently open in the user's side panel: click an element, fill a form field, read text/attributes, wait for an element, dump the interactive DOM, or eval a small script. The board must be open in the Boards panel for this to work. Selectors are CSS. Use `dump` first to discover selectors.",
+      parameters: Type.Object({
+        action: Type.Union(
+          ACT_ACTIONS.map((a) => Type.Literal(a)),
+          { description: "Operation to perform on the board DOM." },
+        ),
+        selector: Type.Optional(
+          Type.String({ description: "CSS selector (click/fill/query/wait_for; optional for dump)." }),
+        ),
+        value: Type.Optional(
+          Type.String({ description: "Value to set (fill)." }),
+        ),
+        attr: Type.Optional(
+          Type.String({ description: "Attribute to read for query: 'text' (default), 'html', 'value', or any attribute name." }),
+        ),
+        mode: Type.Optional(
+          Type.String({ description: "dump mode: 'elements' (default, interactive DOM outline) or 'text'." }),
+        ),
+        script: Type.Optional(
+          Type.String({ description: "Async JS body to eval inside the board (return a JSON-serialisable value)." }),
+        ),
+        timeout_ms: Type.Optional(
+          Type.Number({ description: "Timeout in ms for wait_for (default 5000) and the overall request (default 30000)." }),
+        ),
+      }),
+    },
+    execute: async (raw): Promise<ToolResult> => {
+      const op = raw as {
+        action?: string;
+        selector?: string;
+        value?: string;
+        attr?: string;
+        mode?: string;
+        script?: string;
+        timeout_ms?: number;
+      };
+      const action = typeof op.action === "string" ? op.action : "";
+      if (!ACT_ACTIONS.includes(action as (typeof ACT_ACTIONS)[number])) {
+        return { ok: false, text: `Invalid action: "${action}". One of: ${ACT_ACTIONS.join(", ")}.` };
+      }
+      const timeoutMs =
+        typeof op.timeout_ms === "number" && op.timeout_ms > 0
+          ? Math.min(op.timeout_ms, 120_000)
+          : 30_000;
+      const { reqId, promise } = registerRequest(timeoutMs);
+      ctx.broadcast("board_act_request", { reqId, op });
+      let result: BoardActResult;
+      try {
+        result = await promise;
+      } catch (err) {
+        return {
+          ok: false,
+          text:
+            err instanceof Error
+              ? err.message
+              : `board_act failed: ${String(err)}. Is the board open in the Boards panel?`,
+        };
+      }
+      if (!result.ok) {
+        return { ok: false, text: result.error ?? "board_act failed" };
+      }
+      const data = result.data;
+      const text =
+        data === null || data === undefined
+          ? `board_act ${action} ok`
+          : typeof data === "string"
+            ? data
+            : JSON.stringify(data);
+      return { ok: true, text: text.slice(0, 8000), data };
     },
   };
 }
@@ -165,18 +261,44 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
       return;
     }
     res.setHeader("Content-Type", "text/html; charset=utf-8");
-    res.send(html);
+    // Inject the board_act runtime so the agent's board_act tool can
+    // drive this board's DOM through the panel iframe.
+    res.send(injectRuntime(html));
   };
 
   return { listBoards, serveBoard };
+}
+
+// ─── WS handler: board_act_response ─────────────────────────────
+//
+// The BoardPanel (browser) sends this after driving its iframe in
+// response to a `board_act_request`. We resolve the pending promise
+// the board_act tool is awaiting, keyed by reqId.
+
+function boardActResponse(
+  msg: { type: string } & Record<string, unknown>,
+  _socket: WebSocket,
+): void {
+  const reqId = typeof msg.reqId === "string" ? msg.reqId : "";
+  if (!reqId) return;
+  const result: BoardActResult = {
+    ok: msg.ok === true,
+    data: msg.data,
+    error: typeof msg.error === "string" ? msg.error : undefined,
+  };
+  resolveRequest(reqId, result);
 }
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     ctx.log.info("board activated");
     return {
-      tools: { ShowBoardTool: buildShowBoardTool() },
+      tools: {
+        ShowBoardTool: buildShowBoardTool(),
+        BoardActTool: buildBoardActTool(ctx),
+      },
       routes: buildRoutes(ctx),
+      wsHandlers: { boardActResponse },
     };
   },
   async deactivate() {

@@ -75,6 +75,9 @@ __installWsEventApi({
       tianshuWs.on(type as never, handler as never) ?? (() => {})
     );
   },
+  // Let plugins push a message up to the host (e.g. board_act
+  // panels replying to a server-initiated op request).
+  send: (msg) => tianshuWs.send(msg),
 });
 
 // Bootstrap fallback for OpenFileApi.

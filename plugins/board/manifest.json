@@ -26,7 +26,11 @@
       }
     ],
     "tools": [
-      { "id": "show_board", "module": "ShowBoardTool", "since": "0.1.0" }
+      { "id": "show_board", "module": "ShowBoardTool", "since": "0.1.0" },
+      { "id": "board_act",  "module": "BoardActTool",  "since": "0.2.0" }
+    ],
+    "wsMessages": [
+      { "type": "board_act_response", "handler": "boardActResponse" }
     ],
     "apiRoutes": [
       { "method": "GET", "path": "/boards",              "handler": "listBoards"  },

@@ -329,6 +329,33 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         aborter = null;
         return;
       }
+      default: {
+        // Not a core message type. Offer it to plugin WS handlers
+        // (declared via manifest `contributes.wsMessages[]`). Used by
+        // e.g. the board plugin's `board_act_response`: the panel
+        // replies to a server-initiated board_act op here.
+        const unknownType = (parsed as { type?: unknown }).type;
+        if (typeof unknownType !== "string" || !pluginRegistry) return;
+        const match = pluginRegistry.resolveWsHandler(
+          ctx.tenantId,
+          unknownType,
+        );
+        if (!match || !match.entry.ctx) return;
+        Promise.resolve(
+          match.handler(
+            parsed as { type: string } & Record<string, unknown>,
+            socket,
+            match.entry.ctx,
+          ),
+        ).catch((err) => {
+          console.warn(
+            `[chat] plugin ws handler for "${unknownType}" threw: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        });
+        return;
+      }
     }
   });
 
