@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.5.4](https://github.com/tianshu-ai/tianshu/compare/v0.5.1...v0.5.4) (2026-07-18)
+
+
+### Features
+
+* **mcp-ui:** render MCP-UI (`ui://`) resources in chat as sandboxed iframes with the postMessage bridge; HTML is cached per-uri and kept out of the model context (A1)
+* **board:** new `board` plugin — `show_board` renders a user's `board/<name>/index.html` dashboard as an MCP-UI resource and switches the side Boards panel to it
+* **board:** `board_act` tool lets the agent drive a live board's DOM (click / fill / query / wait_for / eval / dump), routed to the named board
+* **board:** chat board iframes auto-size to their content
+* **files:** add `delete_file` tool for workspace files
+* **files,board:** broadcast `workspace_changed` after write/edit/delete/upload so FilesPanel + BoardPanel refresh live
+* **plugins:** plugin bidirectional WS — manifest `wsMessages[]`, host ws-dispatch, and SDK `sendWsMessage()`
+
 ## [0.5.1](https://github.com/tianshu-ai/tianshu/compare/v0.5.0...v0.5.1) (2026-07-15)
 
 
