@@ -33,6 +33,7 @@ import { useEffect, useRef } from "react";
 import type { McpUiResource } from "../types/chat";
 import { useChatStore } from "../stores/chat-store";
 import { getMcpUiHtml } from "../lib/mcp-ui-cache";
+import { tianshuWs } from "../lib/ws";
 
 interface McpUiMessage {
   type: string;
@@ -132,6 +133,54 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
   }, [sendPrompt]);
+
+  // board_act bridge: when this frame is showing a board (ui://board/*),
+  // relay the agent's board_act ops into the injected board runtime and
+  // send the result back to the host. This makes board_act work whether
+  // the board is opened in the side panel or dropped into the chat via
+  // show_board (both carry the same injected runtime).
+  //
+  // The board runtime and the McpUiFrame message handler above use
+  // disjoint message types (tianshu:board_act* vs prompt/tool/link), so
+  // they coexist on the same iframe without interfering.
+  useEffect(() => {
+    if (!ui.uri.startsWith("ui://board/")) return;
+    const offReq = tianshuWs.on("plugin_event", (ev) => {
+      if (ev.event !== "board:board_act_request") return;
+      const payload = ev.payload as { reqId?: string; op?: unknown } | undefined;
+      const reqId = payload?.reqId;
+      const win = iframeRef.current?.contentWindow;
+      if (!reqId || !win) return;
+      win.postMessage(
+        { type: "tianshu:board_act", reqId, op: payload?.op },
+        "*",
+      );
+    });
+    const onResp = (ev: MessageEvent) => {
+      const win = iframeRef.current?.contentWindow;
+      if (win && ev.source !== win) return;
+      const msg = ev.data as {
+        type?: string;
+        reqId?: string;
+        ok?: boolean;
+        data?: unknown;
+        error?: string;
+      } | null;
+      if (!msg || msg.type !== "tianshu:board_act_response" || !msg.reqId) return;
+      tianshuWs.send({
+        type: "board_act_response",
+        reqId: msg.reqId,
+        ok: msg.ok === true,
+        data: msg.data,
+        error: msg.error,
+      });
+    };
+    window.addEventListener("message", onResp);
+    return () => {
+      offReq();
+      window.removeEventListener("message", onResp);
+    };
+  }, [ui.uri]);
 
   if (html === null) {
     // Cold reload with no cached html for this uri (tab was closed,
