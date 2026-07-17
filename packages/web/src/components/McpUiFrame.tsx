@@ -29,7 +29,7 @@
 //   - link   → window.open(url)
 //   - notify/intent → console only (no host side-effects wired yet).
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { McpUiResource } from "../types/chat";
 import { useChatStore } from "../stores/chat-store";
 import { getMcpUiHtml } from "../lib/mcp-ui-cache";
@@ -41,9 +41,17 @@ interface McpUiMessage {
   payload?: Record<string, unknown>;
 }
 
+// Fallback height before the guest reports its own; also the height
+// used for non-board MCP-UI resources that don't report a size.
+const DEFAULT_HEIGHT = 360;
+// Cap so an unusually tall board can't dominate the whole chat; it
+// scrolls internally past this.
+const MAX_HEIGHT = 1200;
+
 export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const sendPrompt = useChatStore((s) => s.sendPrompt);
+  const [height, setHeight] = useState(DEFAULT_HEIGHT);
   // The html isn't carried on the message (A1: only {uri, mimeType}
   // is). We look it up from the per-uri cache, which the live
   // tool_result populated (and which survives reloads via
@@ -171,8 +179,18 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
         ok?: boolean;
         data?: unknown;
         error?: string;
+        height?: number;
       } | null;
-      if (!msg || msg.type !== "tianshu:board_act_response" || !msg.reqId) return;
+      if (!msg || typeof msg.type !== "string") return;
+      // Guest reports its content height so we grow the frame to fit
+      // instead of clipping at the default height.
+      if (msg.type === "tianshu:board_resize") {
+        if (typeof msg.height === "number" && msg.height > 0) {
+          setHeight(Math.min(Math.ceil(msg.height), MAX_HEIGHT));
+        }
+        return;
+      }
+      if (msg.type !== "tianshu:board_act_response" || !msg.reqId) return;
       tianshuWs.send({
         type: "board_act_response",
         reqId: msg.reqId,
@@ -211,7 +229,7 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
       // working; popups route through our link handler in practice.
       sandbox="allow-scripts allow-forms allow-popups"
       className="w-full border-0 bg-white"
-      style={{ height: 360 }}
+      style={{ height }}
     />
   );
 }

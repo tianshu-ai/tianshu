@@ -116,7 +116,37 @@ export const BOARD_RUNTIME_SOURCE = `(function () {
     }
   });
 
+  // Report our content height to the parent so a host that renders us
+  // in an auto-sizing frame (e.g. the chat MCP-UI card) can grow to
+  // fit instead of clipping at a fixed height.
+  function reportHeight() {
+    try {
+      var doc = document.documentElement;
+      var body = document.body;
+      var h = Math.max(
+        body ? body.scrollHeight : 0,
+        body ? body.offsetHeight : 0,
+        doc ? doc.scrollHeight : 0,
+        doc ? doc.offsetHeight : 0
+      );
+      if (h > 0) window.parent.postMessage({ type: 'tianshu:board_resize', height: h }, '*');
+    } catch (e) {}
+  }
+
   try { window.parent.postMessage({ type: 'tianshu:board_runtime_ready' }, '*'); } catch (e) {}
+
+  // Initial report + keep reporting as the DOM changes size (timers,
+  // expanding sections, images loading, etc.).
+  reportHeight();
+  try {
+    if (typeof ResizeObserver !== 'undefined' && document.body) {
+      var ro = new ResizeObserver(function () { reportHeight(); });
+      ro.observe(document.body);
+    }
+  } catch (e) {}
+  window.addEventListener('load', reportHeight);
+  setTimeout(reportHeight, 100);
+  setTimeout(reportHeight, 500);
 })();
 `;
 
