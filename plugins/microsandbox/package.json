@@ -25,7 +25,7 @@
     "manifest.json"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "node ../../scripts/build-plugin.mjs",
     "dev": "tsc --watch --preserveWatchOutput",
     "test": "vitest run --passWithNoTests"
   },
