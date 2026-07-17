@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.5.6](https://github.com/tianshu-ai/tianshu/compare/v0.5.5...v0.5.6) (2026-07-18)
+
+
+### Bug Fixes
+
+* **board:** fetch a board's html from disk (`/api/p/board/boards/<name>/index.html`) on a cache miss, so boards shown earlier still render in a new browser / device / origin instead of stranding on "re-run the tool" (MCP-UI html was only cached in per-tab, per-origin sessionStorage)
+
 ## [0.5.5](https://github.com/tianshu-ai/tianshu/compare/v0.5.4...v0.5.5) (2026-07-18)
 
 
