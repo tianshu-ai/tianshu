@@ -32,6 +32,7 @@ import type {
   MergedToolCall,
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
+import McpUiFrame from "./McpUiFrame";
 
 
 
@@ -75,9 +76,27 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
         </div>
 
         {blocks ? (
-          <div className={`flex flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
-            {blocks.map((b, i) => renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert))}
-          </div>
+          blocks.some(
+            (b) => b.kind === "toolCall" && (b.result?.ui?.length ?? 0) > 0,
+          ) ? (
+            // Unified card: when the turn contains an interactive UI,
+            // wrap ALL of its blocks (the UI, the narration text, the
+            // tool detail) in ONE bordered container with hairline
+            // separators, so the iframe and the agent's message read as
+            // a single block instead of stacked, separately-bordered
+            // bubbles.
+            <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 divide-y divide-border-subtle/60">
+              {blocks.map((b, i) =>
+                renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert, true),
+              )}
+            </div>
+          ) : (
+            <div className={`flex flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
+              {blocks.map((b, i) =>
+                renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert),
+              )}
+            </div>
+          )
         ) : (
           <>
             {hasText ? (
@@ -132,9 +151,22 @@ function renderAssistantBlock(
   isUser: boolean,
   MarkdownBlock: React.ComponentType<{ children: string; noProse?: boolean }>,
   proseInvert: string,
+  inCard = false,
 ): React.ReactNode {
   if (block.kind === "text") {
     if (block.text.length === 0) return null;
+    // inCard: the surrounding unified card provides the border/bg, so
+    // this text block is just a padded prose segment (no own frame).
+    if (inCard) {
+      return (
+        <div
+          key={`t${i}`}
+          className={`prose${proseInvert} prose-sm max-w-none px-3.5 py-2.5 text-[14px] leading-relaxed text-fg-default`}
+        >
+          <MarkdownBlock noProse>{block.text}</MarkdownBlock>
+        </div>
+      );
+    }
     return (
       <div
         key={`t${i}`}
@@ -150,7 +182,7 @@ function renderAssistantBlock(
     );
   }
   // toolCall block: reuse the same chip the legacy path renders.
-  return <ToolCallRow key={`c${i}-${block.id}`} call={block} />;
+  return <ToolCallRow key={`c${i}-${block.id}`} call={block} inCard={inCard} />;
 }
 
 function MessageMeta({
@@ -204,11 +236,61 @@ function formatTokens(n: number): string {
   return String(n);
 }
 
-function ToolCallRow({ call }: { call: MergedToolCall }) {
+function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const running = !call.result;
   const isError = !!call.result && !call.result.ok;
   const result = call.result;
+  const uiResources = result?.ui ?? [];
+  const hasUi = uiResources.length > 0;
+
+  // A tool that returned MCP-UI renders as a self-contained card: a
+  // thin header row (status + tool name, click to reveal the raw text
+  // result) with the interactive iframe(s) directly below, all inside
+  // one bordered container. This reads as a single unit and sits
+  // naturally next to the agent's narration block in the same turn,
+  // instead of a bare chip detached from a separate iframe.
+  if (hasUi) {
+    // Header + optional raw-text detail + iframe(s). When inCard, the
+    // surrounding unified turn card provides the outer border/bg + the
+    // hairline separators (divide-y), so we render as bare sections.
+    const body = (
+      <>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full select-none items-center gap-1.5 px-3 py-1.5 text-xs text-fg-faint hover:text-fg-muted transition-colors"
+        >
+          {isError ? (
+            <XCircle size={11} className="text-rose-400/70" />
+          ) : (
+            <CheckCircle2 size={11} className="text-emerald-500/60" />
+          )}
+          <code className="font-mono text-[12px] text-link">{call.name}</code>
+          <span className="ml-auto text-[10px] text-fg-fainter">
+            {expanded ? "hide details" : "details"}
+          </span>
+        </button>
+        {expanded && result && (
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] text-fg-muted">
+            {truncate(result.text, 4000)}
+          </pre>
+        )}
+        {uiResources.map((u, i) => (
+          <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
+        ))}
+      </>
+    );
+    if (inCard) {
+      // Bare: outer card + divide-y draw the frame/separators.
+      return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
+    }
+    return (
+      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60">
+        {body}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col">
@@ -250,6 +332,7 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
           {truncate(result.text, 4000)}
         </pre>
       )}
+
     </div>
   );
 }

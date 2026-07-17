@@ -329,6 +329,33 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         aborter = null;
         return;
       }
+      default: {
+        // Not a core message type. Offer it to plugin WS handlers
+        // (declared via manifest `contributes.wsMessages[]`). Used by
+        // e.g. the board plugin's `board_act_response`: the panel
+        // replies to a server-initiated board_act op here.
+        const unknownType = (parsed as { type?: unknown }).type;
+        if (typeof unknownType !== "string" || !pluginRegistry) return;
+        const match = pluginRegistry.resolveWsHandler(
+          ctx.tenantId,
+          unknownType,
+        );
+        if (!match || !match.entry.ctx) return;
+        Promise.resolve(
+          match.handler(
+            parsed as { type: string } & Record<string, unknown>,
+            socket,
+            match.entry.ctx,
+          ),
+        ).catch((err) => {
+          console.warn(
+            `[chat] plugin ws handler for "${unknownType}" threw: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        });
+        return;
+      }
     }
   });
 
@@ -1167,19 +1194,32 @@ function bridgeHarnessEventToWs(
     const te = event as unknown as {
       toolCallId: string;
       toolName: string;
-      result: { content: Array<{ type: string; text?: string }> } | undefined;
+      result:
+        | {
+            content: Array<{ type: string; text?: string }>;
+            // adapter stashes the raw plugin ToolResult here
+            // (agent-tool-adapter.ts): { ok, text, data } — where
+            // data.mcpUi holds any MCP-UI resources the tool returned.
+            details?: { data?: { mcpUi?: unknown } };
+          }
+        | undefined;
       isError?: boolean;
     };
     const blocks = te.result?.content ?? [];
     const text = blocks
       .map((c) => (c.type === "text" && typeof c.text === "string" ? c.text : ""))
       .join("");
+    // Forward any MCP-UI resources so the chat UI can render the
+    // interactive iframe. Shape validated on the web side.
+    const mcpUi = te.result?.details?.data?.mcpUi;
+    const ui = Array.isArray(mcpUi) && mcpUi.length > 0 ? mcpUi : undefined;
     send({
       type: "tool_result",
       callId: te.toolCallId,
       name: te.toolName,
       ok: !te.isError,
       text,
+      ...(ui ? { ui } : {}),
     });
     return;
   }

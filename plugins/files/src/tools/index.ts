@@ -26,6 +26,7 @@ import { listDirSchema, executeListDir } from "./list-dir.js";
 import { readFileSchema, executeReadFile } from "./read-file.js";
 import { writeFileSchema, executeWriteFile } from "./write-file.js";
 import { editFileSchema, executeEditFile } from "./edit-file.js";
+import { deleteFileSchema, executeDeleteFile } from "./delete-file.js";
 import { globSchema, executeGlob } from "./glob.js";
 import {
   tenantConfigListSchema,
@@ -180,6 +181,15 @@ function fsReadFile(absolutePath: string): string {
   // (the SDK consumer only imports tool schemas).
   return readFileSync(absolutePath, "utf8");
 }
+
+export const DeleteFileTool: AgentTool = {
+  schema: deleteFileSchema(),
+  execute: (args, ctx: AgentToolContext) =>
+    executeDeleteFile(
+      ctx.userHomeDir,
+      args as { path: string; recursive?: boolean },
+    ),
+};
 
 export const GlobTool: AgentTool = {
   schema: globSchema(),

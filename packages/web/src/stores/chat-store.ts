@@ -7,6 +7,7 @@
 import { create } from "zustand";
 import { api, type Me, type ModelListEntry } from "../lib/api";
 import { tianshuWs } from "../lib/ws";
+import { cacheMcpUiHtml } from "../lib/mcp-ui-cache";
 import type { WireAttachment, WireMessage } from "../types/chat";
 
 const STREAMING_ID = "__streaming__";
@@ -341,7 +342,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
           );
           if (dupIdx >= 0) {
             const next = s.messages.slice();
-            next[dupIdx] = m.message;
+            // The persisted row doesn't carry the MCP-UI reference (ui
+            // isn't persisted — A1). Preserve the live row's ui so the
+            // interactive iframe survives this adoption; the html
+            // itself is already in the per-uri cache.
+            const liveUi = next[dupIdx]?.toolResult?.ui;
+            next[dupIdx] =
+              liveUi && m.message.toolResult && !m.message.toolResult.ui
+                ? {
+                    ...m.message,
+                    toolResult: { ...m.message.toolResult, ui: liveUi },
+                  }
+                : m.message;
             return { messages: next };
           }
         }
@@ -551,7 +563,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
           sessionId: "",
           role: "tool",
           text: "",
-          toolResult: { callId: m.callId, name: m.name, ok: m.ok, text: m.text },
+          // Cache each inline UI html by its uri (survives reload via
+          // sessionStorage), and keep only the lightweight {uri,
+          // mimeType} reference on the message — the html itself never
+          // lives on the chat message (A1 design). McpUiFrame reads
+          // the html back from the cache by uri.
+          toolResult: {
+            callId: m.callId,
+            name: m.name,
+            ok: m.ok,
+            text: m.text,
+            ui: m.ui?.map((u) => {
+              if (u.html) cacheMcpUiHtml(u.uri, u.html);
+              return { uri: u.uri, mimeType: u.mimeType };
+            }),
+          },
           createdAt: Date.now(),
         };
         const callIdx = s.messages.findIndex(
