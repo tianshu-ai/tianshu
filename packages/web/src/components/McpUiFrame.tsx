@@ -32,7 +32,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { McpUiResource } from "../types/chat";
 import { useChatStore } from "../stores/chat-store";
-import { getMcpUiHtml } from "../lib/mcp-ui-cache";
+import { getMcpUiHtml, cacheMcpUiHtml } from "../lib/mcp-ui-cache";
 import { tianshuWs } from "../lib/ws";
 
 interface McpUiMessage {
@@ -77,6 +77,39 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
     window.addEventListener("tianshu:mcp-ui-cached", onCached);
     return () => window.removeEventListener("tianshu:mcp-ui-cached", onCached);
   }, [html, ui.uri, ui.html]);
+
+  // Server-side fallback for boards: a board's HTML lives on disk
+  // (board/<name>/index.html) and is servable at a stable route, so a
+  // cache miss (new browser / device / origin, closed tab, switched
+  // from `npm run dev` to a published build — sessionStorage is
+  // per-tab + per-origin) doesn't have to strand the user on "re-run
+  // the tool". Fetch the board HTML directly and render it. Non-board
+  // MCP-UI resources have no disk source, so they keep the cache-only
+  // path + the re-run hint.
+  useEffect(() => {
+    if (html !== null) return;
+    const prefix = "ui://board/";
+    if (!ui.uri.startsWith(prefix)) return;
+    const name = ui.uri.slice(prefix.length);
+    if (!name) return;
+    let cancelled = false;
+    fetch(`/api/p/board/boards/${encodeURIComponent(name)}/index.html`, {
+      credentials: "include",
+    })
+      .then((r) => (r.ok ? r.text() : Promise.reject(new Error(String(r.status)))))
+      .then((fetched) => {
+        if (cancelled || !fetched) return;
+        // Cache it so board_act / resize + sibling frames find it too.
+        cacheMcpUiHtml(ui.uri, fetched);
+        setHtml(fetched);
+      })
+      .catch(() => {
+        /* board gone / not readable — fall through to the hint */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [html, ui.uri]);
 
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
@@ -225,13 +258,15 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
   }, [ui.uri]);
 
   if (html === null) {
-    // Cold reload with no cached html for this uri (tab was closed,
-    // or the tool ran in another session). The reference is here but
-    // the payload isn't — tell the user how to get it back.
+    // Boards resolve their html from disk via the fetch effect above,
+    // so a null here is a transient loading state (or a board that was
+    // removed). Show a neutral hint rather than "re-run the tool".
+    const isBoard = ui.uri.startsWith("ui://board/");
     return (
       <div className="w-full bg-bg-elevated/60 px-3 py-4 text-[11px] text-fg-faint">
-        Interactive UI ({ui.uri}) isn’t loaded in this tab. Re-run the tool
-        to display it.
+        {isBoard
+          ? `Loading board (${ui.uri.slice("ui://board/".length)})…`
+          : `Interactive UI (${ui.uri}) isn’t loaded in this tab. Re-run the tool to display it.`}
       </div>
     );
   }
