@@ -12,6 +12,7 @@ this file is automatically maintained.
 ### Bug Fixes
 
 * **board:** fetch a board's html from disk (`/api/p/board/boards/<name>/index.html`) on a cache miss, so boards shown earlier still render in a new browser / device / origin instead of stranding on "re-run the tool" (MCP-UI html was only cached in per-tab, per-origin sessionStorage)
+* **mcp-ui:** give the interactive UI card a stable width so a short narration beside it no longer squeezes the board iframe into a narrow strip
 
 ## [0.5.5](https://github.com/tianshu-ai/tianshu/compare/v0.5.4...v0.5.5) (2026-07-18)
 

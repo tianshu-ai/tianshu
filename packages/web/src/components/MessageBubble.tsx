@@ -85,7 +85,12 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
             // separators, so the iframe and the agent's message read as
             // a single block instead of stacked, separately-bordered
             // bubbles.
-            <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 divide-y divide-border-subtle/60">
+            // Give the card an explicit target width (min of the
+            // column and 42rem) instead of `w-full`: the ancestor
+            // column is `items-start`, which shrink-wraps to content,
+            // so a short narration like “已显示。” would otherwise squeeze
+            // the card — and the iframe with it — into a narrow strip.
+            <div className="w-[42rem] max-w-full overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 divide-y divide-border-subtle/60">
               {blocks.map((b, i) =>
                 renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert, true),
               )}
@@ -286,7 +291,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
     }
     return (
-      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60">
+      <div className="flex w-[42rem] max-w-full flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 divide-y divide-border-subtle/60">
         {body}
       </div>
     );
