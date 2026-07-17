@@ -14,6 +14,7 @@ import {
   ReadFileTool,
   WriteFileTool,
   EditFileTool,
+  DeleteFileTool,
   GlobTool,
 } from "./index.js";
 
@@ -376,5 +377,53 @@ describe("host.lsp diagnostics integration", () => {
     expect(out.text).toContain("wrote");
     // No LSP block; failure was swallowed.
     expect(out.text).not.toMatch(/\[lsp\]/);
+  });
+
+  it("delete_file removes a file via the wrapper", async () => {
+    fs.writeFileSync(path.join(userHome, "gone.txt"), "bye");
+    const out = (await DeleteFileTool.execute(
+      { path: "/gone.txt" },
+      makeCtx(),
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(true);
+    expect(out.text).toContain("deleted");
+    expect(fs.existsSync(path.join(userHome, "gone.txt"))).toBe(false);
+  });
+
+  it("delete_file reports not-found for a missing path", async () => {
+    const out = (await DeleteFileTool.execute(
+      { path: "/nope.txt" },
+      makeCtx(),
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(false);
+    expect(out.text).toContain("not found");
+  });
+
+  it("delete_file refuses a non-empty directory without recursive", async () => {
+    fs.mkdirSync(path.join(userHome, "dir"));
+    fs.writeFileSync(path.join(userHome, "dir/child.txt"), "x");
+    const guarded = (await DeleteFileTool.execute(
+      { path: "/dir" },
+      makeCtx(),
+    )) as { ok: boolean; text: string };
+    expect(guarded.ok).toBe(false);
+    expect(guarded.text).toContain("not empty");
+    expect(fs.existsSync(path.join(userHome, "dir/child.txt"))).toBe(true);
+    // recursive=true clears the whole tree.
+    const forced = (await DeleteFileTool.execute(
+      { path: "/dir", recursive: true },
+      makeCtx(),
+    )) as { ok: boolean };
+    expect(forced.ok).toBe(true);
+    expect(fs.existsSync(path.join(userHome, "dir"))).toBe(false);
+  });
+
+  it("delete_file refuses to delete the workspace root", async () => {
+    const out = (await DeleteFileTool.execute(
+      { path: "/" },
+      makeCtx(),
+    )) as { ok: boolean; text: string };
+    expect(out.ok).toBe(false);
+    expect(out.text).toContain("workspace root");
   });
 });

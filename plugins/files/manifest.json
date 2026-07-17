@@ -59,6 +59,7 @@
       { "id": "read_file",             "module": "ReadFileTool", "since": "0.1.0" },
       { "id": "write_file",            "module": "WriteFileTool", "since": "0.1.0" },
       { "id": "edit_file",             "module": "EditFileTool", "since": "0.1.0" },
+      { "id": "delete_file",           "module": "DeleteFileTool", "since": "0.2.0" },
       { "id": "glob",                  "module": "GlobTool", "since": "0.1.0" },
       { "id": "tenant_config_list",    "module": "TenantConfigListTool", "since": "0.1.0" },
       { "id": "tenant_config_read",    "module": "TenantConfigReadTool", "since": "0.1.0" },
