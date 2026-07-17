@@ -32,6 +32,7 @@
 import { useEffect, useRef } from "react";
 import type { McpUiResource } from "../types/chat";
 import { useChatStore } from "../stores/chat-store";
+import { getMcpUiHtml } from "../lib/mcp-ui-cache";
 
 interface McpUiMessage {
   type: string;
@@ -42,6 +43,14 @@ interface McpUiMessage {
 export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const sendPrompt = useChatStore((s) => s.sendPrompt);
+  // The html isn't carried on the message (A1: only {uri, mimeType}
+  // is). We look it up from the per-uri cache, which the live
+  // tool_result populated (and which survives reloads via
+  // sessionStorage). If it's a cold reload in a fresh tab the html
+  // won't be there — show a hint to re-run the tool rather than a
+  // blank frame. `ui.html` is honoured too for any caller that still
+  // passes it inline.
+  const html = ui.html ?? getMcpUiHtml(ui.uri) ?? null;
 
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
@@ -124,11 +133,23 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
     return () => window.removeEventListener("message", onMessage);
   }, [sendPrompt]);
 
+  if (html === null) {
+    // Cold reload with no cached html for this uri (tab was closed,
+    // or the tool ran in another session). The reference is here but
+    // the payload isn't — tell the user how to get it back.
+    return (
+      <div className="mt-1 w-full max-w-2xl rounded-md border border-border-subtle/60 bg-bg-elevated/60 px-3 py-4 text-[11px] text-fg-faint">
+        Interactive UI ({ui.uri}) isn’t loaded in this tab. Re-run the tool
+        to display it.
+      </div>
+    );
+  }
+
   return (
     <iframe
       ref={iframeRef}
       title={ui.uri}
-      srcDoc={ui.html}
+      srcDoc={html}
       // scripts yes; same-origin NO (null origin isolates the guest
       // from host cookies/DOM). allow-forms/popups keep basic UIs
       // working; popups route through our link handler in practice.

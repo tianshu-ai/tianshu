@@ -13,7 +13,11 @@ export interface WireToolCall {
 export interface McpUiResource {
   uri: string;
   mimeType: string;
-  html: string;
+  /** Inline html. Present on the live WS event; NOT stored on the
+   *  chat message (A1: the message keeps only {uri, mimeType} and the
+   *  html is cached separately by uri). Optional so both shapes
+   *  type-check. */
+  html?: string;
 }
 
 export interface WireToolResult {
