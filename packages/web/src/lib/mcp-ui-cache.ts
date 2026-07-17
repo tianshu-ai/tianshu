@@ -43,6 +43,16 @@ export function cacheMcpUiHtml(uri: string, html: string): void {
     // sessionStorage may be full or unavailable (private mode); the
     // in-memory copy still serves this tab session until reload.
   }
+  // Notify any already-mounted frame that was showing the "not loaded"
+  // placeholder for this uri (e.g. a history row rendered before its
+  // re-run's html arrived) so it can render now without a reload.
+  try {
+    window.dispatchEvent(
+      new CustomEvent("tianshu:mcp-ui-cached", { detail: { uri } }),
+    );
+  } catch {
+    /* non-browser / SSR: no listeners to notify */
+  }
 }
 
 /** Retrieve cached html for a uri, or null if we've never seen it in

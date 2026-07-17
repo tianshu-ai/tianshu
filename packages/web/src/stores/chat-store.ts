@@ -547,12 +547,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
         } else if (s.viewingSessionId !== null) {
           return {} as Partial<ChatState>;
         }
+        // Always cache any inline UI html first, keyed by uri. This
+        // must happen even when we de-dupe the row below: on a reload /
+        // fresh service the history already has a persisted (html-less)
+        // tool row for this callId, so a re-run's live tool_result would
+        // otherwise be dropped before its html reached the cache —
+        // leaving McpUiFrame stuck on "isn't loaded in this tab".
+        for (const u of m.ui ?? []) {
+          if (u.html) cacheMcpUiHtml(u.uri, u.html);
+        }
         // De-dupe: a tool-result row for this callId already present?
         if (
           s.messages.some(
             (x) => x.role === "tool" && x.toolResult?.callId === m.callId,
           )
         ) {
+          // Row already exists; html (if any) is now cached above so the
+          // existing McpUiFrame can render it. Trigger a re-render by
+          // returning the same list reference is not enough — but the
+          // cache write + McpUiFrame's own effect keying on uri handles
+          // display on next paint. Nothing to insert.
           return {} as Partial<ChatState>;
         }
         // Insert the tool-result row right after its matching tool-call
@@ -573,10 +587,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
             name: m.name,
             ok: m.ok,
             text: m.text,
-            ui: m.ui?.map((u) => {
-              if (u.html) cacheMcpUiHtml(u.uri, u.html);
-              return { uri: u.uri, mimeType: u.mimeType };
-            }),
+            // html already cached above; keep only the lightweight ref.
+            ui: m.ui?.map((u) => ({ uri: u.uri, mimeType: u.mimeType })),
           },
           createdAt: Date.now(),
         };
