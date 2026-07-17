@@ -75,6 +75,11 @@ export interface ActivePluginEntry {
   failedReason?: string;
   /** Available iff state === "active" */
   exports?: PluginServerExports;
+  /** The tenant-scoped PluginContext handed to `activate()`. Held so
+   *  the WS-dispatch layer can invoke a plugin's ws handler with the
+   *  same ctx (broadcast / userHomeDir / log) it saw at activation.
+   *  Present iff state === "active". */
+  ctx?: PluginContext;
   /**
    * The resolved server module. Held so `invalidate()` can call
    * the plugin's `deactivate()` hook before dropping the cache;
@@ -1106,6 +1111,7 @@ export class PluginRegistry {
       dir: p.dir,
       state: "active",
       exports: exports_,
+      ctx: pluginCtx,
       module: mod,
       capabilityInfo: { provided: [], requires, missing: [] },
     };

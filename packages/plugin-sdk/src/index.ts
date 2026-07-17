@@ -23,6 +23,8 @@ export * from "./solution.js";
 export {
   McpToolset,
   textOfMcpContent,
+  extractMcpUiResources,
+  type McpUiResource,
   type McpEndpointResolver,
   type McpToolDescriptor,
   type McpToolFilter,

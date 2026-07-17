@@ -81,5 +81,58 @@ export function mergeToolTurns(messages: WireMessage[]): MergedMessage[] {
     const { toolCalls: _tc, toolResult: _tr, blocks: _b, ...rest } = m;
     out.push(rest);
   }
+  return coalesceAssistantTurns(out);
+}
+
+/**
+ * Fold a tool-only assistant turn into the assistant turn that
+ * immediately follows it, so a "call a tool → then narrate" sequence
+ * renders as ONE bubble (one TIANSHU header + timestamp) with the tool
+ * card and the narration stacked, instead of two separate bubbles.
+ *
+ * We only merge when the earlier assistant turn carries tool calls
+ * (its blocks are all toolCall / empty text) and the next row is also
+ * an assistant turn with no user/tool row in between. The merged row
+ * keeps the LATER turn's metadata (final usage/model) and concatenates
+ * blocks in author order. Conservative by design: unrelated back-to-
+ * back narration turns (no tool call in the first) are left alone.
+ */
+function coalesceAssistantTurns(rows: MergedMessage[]): MergedMessage[] {
+  const toBlocks = (m: MergedMessage): MergedAssistantBlock[] => {
+    if (m.resolvedBlocks && m.resolvedBlocks.length > 0) return m.resolvedBlocks;
+    const blocks: MergedAssistantBlock[] = [];
+    if (m.text && m.text.length > 0) blocks.push({ kind: "text", text: m.text });
+    for (const c of m.resolvedToolCalls ?? [])
+      blocks.push({ kind: "toolCall", ...c });
+    return blocks;
+  };
+  const hasToolCall = (blocks: MergedAssistantBlock[]) =>
+    blocks.some((b) => b.kind === "toolCall");
+
+  const out: MergedMessage[] = [];
+  for (const row of rows) {
+    const prev = out[out.length - 1];
+    if (
+      prev &&
+      prev.role === "assistant" &&
+      row.role === "assistant" &&
+      hasToolCall(toBlocks(prev))
+    ) {
+      // Fold this assistant turn into the previous one.
+      const mergedBlocks = [...toBlocks(prev), ...toBlocks(row)];
+      out[out.length - 1] = {
+        ...prev,
+        // Keep the later turn's metadata (final model/usage) + newest
+        // timestamp so the merged bubble reads as the completed turn.
+        meta: row.meta ?? prev.meta,
+        createdAt: row.createdAt ?? prev.createdAt,
+        text: "",
+        resolvedToolCalls: undefined,
+        resolvedBlocks: mergedBlocks,
+      };
+      continue;
+    }
+    out.push(row);
+  }
   return out;
 }

@@ -36,7 +36,11 @@ import type {
   PanelProps,
   PluginClientExports,
 } from "@tianshu-ai/plugin-sdk/client";
-import { __installOpenFileApi, useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
+import {
+  __installOpenFileApi,
+  useUiPrimitives,
+  subscribeToWsEvent,
+} from "@tianshu-ai/plugin-sdk/client";
 import { Paperclip } from "lucide-react";
 
 interface DirEntry {
@@ -171,6 +175,19 @@ function FilesPanel({ plugin }: PanelProps) {
 
   useEffect(() => {
     void fetchList(dir);
+  }, [dir, fetchList]);
+
+  // Live refresh: the files plugin broadcasts `files:workspace_changed`
+  // (wrapped as a top-level `plugin_event`) after a write / edit /
+  // upload, so the panel re-lists the current dir without a manual
+  // reload.
+  useEffect(() => {
+    return subscribeToWsEvent<{ type: string; event?: string }>(
+      "plugin_event",
+      (ev) => {
+        if (ev.event === "files:workspace_changed") void fetchList(dir);
+      },
+    );
   }, [dir, fetchList]);
 
   const sorted = useMemo(() => {

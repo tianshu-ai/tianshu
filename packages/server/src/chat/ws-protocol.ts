@@ -159,6 +159,11 @@ export type ServerMsg =
       ok: boolean;
       text: string;
       sessionId?: string;
+      /** MCP-UI resources returned by the tool (ui:// resources).
+       *  The chat UI renders each in a sandboxed iframe and bridges
+       *  the MCP-UI postMessage protocol. Absent for ordinary
+       *  text/image results. */
+      ui?: Array<{ uri: string; mimeType: string; html: string }>;
     }
   /** A compaction pass just landed. Sent for both auto-compact (
    *  triggered by pi's `shouldCompact()` against the model's
@@ -383,6 +388,31 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
         .filter((c) => c.type === "text" && typeof c.text === "string")
         .map((c) => c.text as string)
         .join("");
+      // Persisted pi-ai toolResult messages carry the raw plugin
+      // ToolResult on `details` (agent-tool-adapter stashes it), whose
+      // data.mcpUi holds any MCP-UI resources. Re-surface the
+      // lightweight {uri, mimeType} references on the wire so the chat
+      // UI re-renders the interactive iframe after a reload (the html
+      // itself is served from the per-uri sessionStorage cache). We
+      // deliberately drop the html here — it never needs to round-trip
+      // through history.
+      const details = obj.details as
+        | { data?: { mcpUi?: unknown } }
+        | undefined;
+      const mcpUi = details?.data?.mcpUi;
+      const ui =
+        Array.isArray(mcpUi) && mcpUi.length > 0
+          ? mcpUi
+              .map((u) => {
+                const r = u as { uri?: unknown; mimeType?: unknown };
+                return {
+                  uri: typeof r.uri === "string" ? r.uri : "",
+                  mimeType:
+                    typeof r.mimeType === "string" ? r.mimeType : "text/html",
+                };
+              })
+              .filter((r) => r.uri)
+          : undefined;
       return {
         ...base,
         text,
@@ -391,6 +421,7 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
           name: String(obj.toolName ?? ""),
           ok: !obj.isError,
           text,
+          ...(ui && ui.length > 0 ? { ui } : {}),
         },
       };
     }
