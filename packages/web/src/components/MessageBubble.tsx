@@ -252,12 +252,13 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
         </pre>
       )}
 
-      {/* MCP-UI resources render as interactive iframes whenever the
-          chip is expanded. Independent of the text <pre> above. */}
-      {expanded &&
-        result?.ui?.map((u, i) => (
-          <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
-        ))}
+      {/* MCP-UI resources render inline + ALWAYS visible — the whole
+          point of an interactive UI is to be seen without digging into
+          the collapsed tool detail. The tool row above stays as a thin
+          provenance marker; the text result still hides behind expand. */}
+      {result?.ui?.map((u, i) => (
+        <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
+      ))}
     </div>
   );
 }
