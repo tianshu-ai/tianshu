@@ -210,6 +210,44 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
   const running = !call.result;
   const isError = !!call.result && !call.result.ok;
   const result = call.result;
+  const uiResources = result?.ui ?? [];
+  const hasUi = uiResources.length > 0;
+
+  // A tool that returned MCP-UI renders as a self-contained card: a
+  // thin header row (status + tool name, click to reveal the raw text
+  // result) with the interactive iframe(s) directly below, all inside
+  // one bordered container. This reads as a single unit and sits
+  // naturally next to the agent's narration block in the same turn,
+  // instead of a bare chip detached from a separate iframe.
+  if (hasUi) {
+    return (
+      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex select-none items-center gap-1.5 px-3 py-1.5 text-xs text-fg-faint hover:text-fg-muted transition-colors border-b border-border-subtle/60"
+        >
+          {isError ? (
+            <XCircle size={11} className="text-rose-400/70" />
+          ) : (
+            <CheckCircle2 size={11} className="text-emerald-500/60" />
+          )}
+          <code className="font-mono text-[12px] text-link">{call.name}</code>
+          <span className="ml-auto text-[10px] text-fg-fainter">
+            {expanded ? "hide details" : "details"}
+          </span>
+        </button>
+        {expanded && result && (
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all border-b border-border-subtle/60 px-3 py-2 text-[11px] text-fg-muted">
+            {truncate(result.text, 4000)}
+          </pre>
+        )}
+        {uiResources.map((u, i) => (
+          <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col">
@@ -252,13 +290,6 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
         </pre>
       )}
 
-      {/* MCP-UI resources render inline + ALWAYS visible — the whole
-          point of an interactive UI is to be seen without digging into
-          the collapsed tool detail. The tool row above stays as a thin
-          provenance marker; the text result still hides behind expand. */}
-      {result?.ui?.map((u, i) => (
-        <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
-      ))}
     </div>
   );
 }

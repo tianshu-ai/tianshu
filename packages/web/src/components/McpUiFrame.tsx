@@ -138,7 +138,7 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
     // or the tool ran in another session). The reference is here but
     // the payload isn't — tell the user how to get it back.
     return (
-      <div className="mt-1 w-full max-w-2xl rounded-md border border-border-subtle/60 bg-bg-elevated/60 px-3 py-4 text-[11px] text-fg-faint">
+      <div className="w-full bg-bg-elevated/60 px-3 py-4 text-[11px] text-fg-faint">
         Interactive UI ({ui.uri}) isn’t loaded in this tab. Re-run the tool
         to display it.
       </div>
@@ -154,7 +154,7 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
       // from host cookies/DOM). allow-forms/popups keep basic UIs
       // working; popups route through our link handler in practice.
       sandbox="allow-scripts allow-forms allow-popups"
-      className="mt-1 w-full max-w-2xl rounded-md border border-border-subtle/60 bg-white"
+      className="w-full border-0 bg-white"
       style={{ height: 360 }}
     />
   );
