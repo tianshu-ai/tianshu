@@ -55,18 +55,36 @@ function BoardPanel(_props: PanelProps) {
     // A `files`-plugin workspace change (new/edited board files) or a
     // host-side board broadcast should refresh the list. We listen for
     // the generic plugin_event and re-fetch on anything board-ish.
-    return subscribeToWsEvent<{ type: string; event?: string }>(
-      "plugin_event",
-      (ev) => {
-        if (ev.event && /board|workspace/i.test(ev.event)) {
-          // Refresh the list AND reload the iframe: a board's own
-          // index.html may have changed, so bump the key to re-fetch
-          // the rendered content, not just the board names.
-          fetchBoards();
+    return subscribeToWsEvent<{
+      type: string;
+      event?: string;
+      payload?: { name?: string };
+    }>("plugin_event", (ev) => {
+      if (!ev.event) return;
+      // Agent asked to show a specific board (show_board): switch the
+      // panel to it so "show me board X" updates the panel, not just
+      // the chat card.
+      if (ev.event === "board:board_show") {
+        const name = ev.payload?.name;
+        if (typeof name === "string" && name) {
+          setSelected(name);
           setIframeKey((k) => k + 1);
+          // Make sure the just-shown board is in the dropdown list.
+          fetchBoards();
         }
-      },
-    );
+        return;
+      }
+      // board_act traffic is handled by the dedicated effect below;
+      // don't churn the list/iframe on every act.
+      if (ev.event.startsWith("board:board_act")) return;
+      // A files-plugin workspace change or other board-ish broadcast:
+      // refresh the list AND reload the iframe (a board's own
+      // index.html may have changed).
+      if (/board|workspace/i.test(ev.event)) {
+        fetchBoards();
+        setIframeKey((k) => k + 1);
+      }
+    });
   }, [fetchBoards]);
 
   // board_act bridge (browser side).

@@ -82,12 +82,12 @@ function readBoardHtml(userHomeDir: string, name: string): string | null {
 
 // ─── agent tool: show_board ─────────────────────────────────────
 
-function buildShowBoardTool(): AgentTool {
+function buildShowBoardTool(pluginCtx: PluginContext): AgentTool {
   return {
     schema: {
       name: "show_board",
       description:
-        "Display one of the user's boards (an HTML dashboard under board/<name>/index.html) as an interactive UI in the chat. List available boards by calling with no name. The board renders in a sandboxed iframe; its HTML is not added to your context.",
+        "Display one of the user's boards (an HTML dashboard under board/<name>/index.html) as an interactive UI in the chat AND switch the side Boards panel to it. List available boards by calling with no name. The board renders in a sandboxed iframe; its HTML is not added to your context.",
       parameters: Type.Object({
         name: Type.Optional(
           Type.String({ description: "Board name (subdirectory of board/). Omit to list boards." }),
@@ -122,6 +122,10 @@ function buildShowBoardTool(): AgentTool {
               : `Board "${name}" not found and no boards exist yet.`,
         };
       }
+      // Also switch the side Boards panel to this board, so "show me
+      // board X" updates the panel too (not just drops a fresh chat
+      // card). BoardPanel listens for board:board_show.
+      pluginCtx.broadcast("board_show", { name });
       // Return the board as an MCP-UI resource so the chat renders it
       // as an iframe (same path as any ui:// resource). Short text for
       // the model; html on data.mcpUi for the web layer. Inject the
@@ -306,7 +310,7 @@ const plugin: PluginServerModule = {
     ctx.log.info("board activated");
     return {
       tools: {
-        ShowBoardTool: buildShowBoardTool(),
+        ShowBoardTool: buildShowBoardTool(ctx),
         BoardActTool: buildBoardActTool(ctx),
       },
       routes: buildRoutes(ctx),
