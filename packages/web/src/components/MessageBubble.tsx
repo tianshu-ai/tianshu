@@ -32,6 +32,7 @@ import type {
   MergedToolCall,
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
+import McpUiFrame from "./McpUiFrame";
 
 
 
@@ -250,6 +251,13 @@ function ToolCallRow({ call }: { call: MergedToolCall }) {
           {truncate(result.text, 4000)}
         </pre>
       )}
+
+      {/* MCP-UI resources render as interactive iframes whenever the
+          chip is expanded. Independent of the text <pre> above. */}
+      {expanded &&
+        result?.ui?.map((u, i) => (
+          <McpUiFrame key={`${call.id}-ui-${i}`} ui={u} />
+        ))}
     </div>
   );
 }

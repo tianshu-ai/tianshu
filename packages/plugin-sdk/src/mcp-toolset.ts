@@ -289,9 +289,15 @@ export class McpToolset implements ToolsetProvider {
       const content = (res as { content?: unknown }).content;
       const isError = (res as { isError?: boolean }).isError === true;
       const text = textOfMcpContent(content) || "(empty response)";
-      return isError
-        ? errorResult(text, res)
-        : okResult(text, res);
+      // Surface any MCP-UI resources so the web layer can render them
+      // in a sandboxed iframe. Kept on `data.mcpUi` alongside the raw
+      // result; absent for ordinary (text/image) results.
+      const mcpUi = extractMcpUiResources(content);
+      const data =
+        mcpUi.length > 0
+          ? { raw: res, mcpUi, source: this.name }
+          : res;
+      return isError ? errorResult(text, data) : okResult(text, data);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       ctx.log.warn(
@@ -349,9 +355,65 @@ export function textOfMcpContent(content: unknown): string {
         const mime = typeof b.mimeType === "string" ? b.mimeType : "image";
         parts.push(`[${mime} image]`);
       } else if (b.type === "resource") {
-        parts.push("[resource]");
+        const r = (b as { resource?: { uri?: unknown } }).resource;
+        const uri = r && typeof r.uri === "string" ? r.uri : "";
+        // ui:// resources are interactive UI (MCP-UI); the host
+        // renders them in a sandboxed iframe. The model doesn't need
+        // the HTML — a short placeholder keeps its context clean.
+        parts.push(uri.startsWith("ui://") ? "[interactive UI]" : "[resource]");
       }
     }
   }
   return parts.join("\n\n");
+}
+
+/** An MCP-UI resource block extracted from a tool result, normalised
+ *  for the host renderer. `html` is the resource content (from `text`
+ *  or base64-decoded `blob`); the host renders it in a sandboxed
+ *  iframe and bridges the MCP-UI postMessage protocol. */
+export interface McpUiResource {
+  /** The `ui://<component>/<instance>` URI. */
+  uri: string;
+  /** Declared mime type, e.g. "text/html" or
+   *  "text/html;profile=mcp-app". */
+  mimeType: string;
+  /** HTML string to render (text passed through, blob base64-decoded). */
+  html: string;
+}
+
+/** Extract MCP-UI (`ui://`) resource blocks from a tool result's
+ *  content array. Returns [] when there are none. The host puts these
+ *  on `ToolResult.data.mcpUi` so the web layer can render them. */
+export function extractMcpUiResources(content: unknown): McpUiResource[] {
+  if (!Array.isArray(content)) return [];
+  const out: McpUiResource[] = [];
+  for (const block of content) {
+    if (!block || typeof block !== "object") continue;
+    const b = block as {
+      type?: string;
+      resource?: {
+        uri?: unknown;
+        mimeType?: unknown;
+        text?: unknown;
+        blob?: unknown;
+      };
+    };
+    if (b.type !== "resource" || !b.resource) continue;
+    const r = b.resource;
+    const uri = typeof r.uri === "string" ? r.uri : "";
+    if (!uri.startsWith("ui://")) continue;
+    const mimeType = typeof r.mimeType === "string" ? r.mimeType : "text/html";
+    let html = "";
+    if (typeof r.text === "string") {
+      html = r.text;
+    } else if (typeof r.blob === "string") {
+      try {
+        html = Buffer.from(r.blob, "base64").toString("utf8");
+      } catch {
+        html = "";
+      }
+    }
+    out.push({ uri, mimeType, html });
+  }
+  return out;
 }

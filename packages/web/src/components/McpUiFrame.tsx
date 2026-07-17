@@ -1,0 +1,140 @@
+// Renders an MCP-UI resource (ui:// ) inside a sandboxed iframe and
+// bridges the MCP-UI postMessage protocol between the guest UI and the
+// host chat.
+//
+// Protocol (legacy MCP-UI, https://mcpui.dev):
+//   guest → host  window.parent.postMessage({ type, messageId?, payload }, '*')
+//     type='tool'   payload={toolName, params}  → ask host to run a tool
+//     type='prompt' payload={prompt}            → ask host to run a prompt
+//     type='link'   payload={url}               → open a link
+//     type='notify' payload={message}           → side-effect notice (logged)
+//     type='intent' payload={intent, params}    → user intent (logged; no
+//                                                  host-defined handler yet)
+//   host → guest (only when the guest sent a messageId):
+//     { type:'ui-message-received', messageId }
+//     { type:'ui-message-response', messageId, payload:{ response | error } }
+//
+// Rendering:
+//   - text/html content is written into the iframe via `srcdoc`, run
+//     under a restrictive sandbox (scripts allowed, but NOT
+//     allow-same-origin, so the guest is a null origin and can't touch
+//     the host cookies / DOM).
+//
+// Host-action mapping (MVP):
+//   - prompt → sendPrompt(prompt)
+//   - tool   → sendPrompt(a wrapped instruction naming the tool+params).
+//     There is no "execute a tool directly, bypassing the agent" API on
+//     the web side yet; routing through the agent keeps the action
+//     visible and auditable. A direct-call path can be added later.
+//   - link   → window.open(url)
+//   - notify/intent → console only (no host side-effects wired yet).
+
+import { useEffect, useRef } from "react";
+import type { McpUiResource } from "../types/chat";
+import { useChatStore } from "../stores/chat-store";
+
+interface McpUiMessage {
+  type: string;
+  messageId?: string;
+  payload?: Record<string, unknown>;
+}
+
+export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const sendPrompt = useChatStore((s) => s.sendPrompt);
+
+  useEffect(() => {
+    const onMessage = (ev: MessageEvent) => {
+      // Only accept messages from *our* iframe's content window. With a
+      // null-origin sandbox we can't check ev.origin, so identity is by
+      // source window reference.
+      const frame = iframeRef.current;
+      if (!frame || ev.source !== frame.contentWindow) return;
+      const msg = ev.data as McpUiMessage | undefined;
+      if (!msg || typeof msg.type !== "string") return;
+
+      const ack = (payload: Record<string, unknown>) => {
+        if (!msg.messageId) return;
+        frame.contentWindow?.postMessage(
+          { type: "ui-message-response", messageId: msg.messageId, payload },
+          "*",
+        );
+      };
+      // Immediate receipt ack (before we act) — matches the spec's
+      // ui-message-received, so async guests can show "processing".
+      if (msg.messageId) {
+        frame.contentWindow?.postMessage(
+          { type: "ui-message-received", messageId: msg.messageId },
+          "*",
+        );
+      }
+
+      const p = msg.payload ?? {};
+      try {
+        switch (msg.type) {
+          case "prompt": {
+            const prompt = typeof p.prompt === "string" ? p.prompt : "";
+            if (prompt) sendPrompt(prompt);
+            ack({ response: { ok: true } });
+            break;
+          }
+          case "tool": {
+            const toolName = typeof p.toolName === "string" ? p.toolName : "";
+            const params = p.params ?? {};
+            if (toolName) {
+              // No direct tool-exec API on the web side yet; route the
+              // request through the agent as an instruction so it stays
+              // visible + auditable.
+              sendPrompt(
+                `The interactive UI requested tool \`${toolName}\` with arguments:\n\`\`\`json\n${JSON.stringify(
+                  params,
+                  null,
+                  2,
+                )}\n\`\`\`\nCall it now.`,
+              );
+            }
+            ack({ response: { ok: true } });
+            break;
+          }
+          case "link": {
+            const url = typeof p.url === "string" ? p.url : "";
+            if (url) window.open(url, "_blank", "noopener,noreferrer");
+            ack({ response: { ok: true } });
+            break;
+          }
+          case "notify":
+          case "intent": {
+            // No host-defined side effects yet — surface for debugging.
+            // eslint-disable-next-line no-console
+            console.debug("[mcp-ui] guest action", msg.type, p);
+            ack({ response: { ok: true } });
+            break;
+          }
+          default: {
+            // eslint-disable-next-line no-console
+            console.debug("[mcp-ui] unhandled guest message type", msg.type);
+          }
+        }
+      } catch (err) {
+        ack({ error: { message: err instanceof Error ? err.message : String(err) } });
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [sendPrompt]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title={ui.uri}
+      srcDoc={ui.html}
+      // scripts yes; same-origin NO (null origin isolates the guest
+      // from host cookies/DOM). allow-forms/popups keep basic UIs
+      // working; popups route through our link handler in practice.
+      sandbox="allow-scripts allow-forms allow-popups"
+      className="mt-1 w-full max-w-2xl rounded-md border border-border-subtle/60 bg-white"
+      style={{ height: 360 }}
+    />
+  );
+}

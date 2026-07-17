@@ -46,7 +46,7 @@ export type ServerEvent =
    */
   | { type: "stream_reset"; sessionId?: string }
   | { type: "tool_call"; callId: string; name: string; arguments: Record<string, unknown>; sessionId?: string }
-  | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string; sessionId?: string }
+  | { type: "tool_result"; callId: string; name: string; ok: boolean; text: string; sessionId?: string; ui?: Array<{ uri: string; mimeType: string; html: string }> }
   | {
       type: "history_compacted";
       reason: "auto" | "manual";

@@ -7,11 +7,22 @@ export interface WireToolCall {
   arguments: Record<string, unknown>;
 }
 
+/** An MCP-UI resource (ui:// ) attached to a tool result. Rendered
+ *  by ToolCallRow in a sandboxed iframe with the MCP-UI postMessage
+ *  bridge. */
+export interface McpUiResource {
+  uri: string;
+  mimeType: string;
+  html: string;
+}
+
 export interface WireToolResult {
   callId: string;
   name: string;
   ok: boolean;
   text: string;
+  /** MCP-UI resources returned by the tool, if any. */
+  ui?: McpUiResource[];
 }
 
 export interface WireAttachment {

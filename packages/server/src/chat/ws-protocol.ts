@@ -159,6 +159,11 @@ export type ServerMsg =
       ok: boolean;
       text: string;
       sessionId?: string;
+      /** MCP-UI resources returned by the tool (ui:// resources).
+       *  The chat UI renders each in a sandboxed iframe and bridges
+       *  the MCP-UI postMessage protocol. Absent for ordinary
+       *  text/image results. */
+      ui?: Array<{ uri: string; mimeType: string; html: string }>;
     }
   /** A compaction pass just landed. Sent for both auto-compact (
    *  triggered by pi's `shouldCompact()` against the model's

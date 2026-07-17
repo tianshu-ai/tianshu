@@ -551,7 +551,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           sessionId: "",
           role: "tool",
           text: "",
-          toolResult: { callId: m.callId, name: m.name, ok: m.ok, text: m.text },
+          toolResult: { callId: m.callId, name: m.name, ok: m.ok, text: m.text, ui: m.ui },
           createdAt: Date.now(),
         };
         const callIdx = s.messages.findIndex(

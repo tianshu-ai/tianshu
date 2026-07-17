@@ -1167,19 +1167,32 @@ function bridgeHarnessEventToWs(
     const te = event as unknown as {
       toolCallId: string;
       toolName: string;
-      result: { content: Array<{ type: string; text?: string }> } | undefined;
+      result:
+        | {
+            content: Array<{ type: string; text?: string }>;
+            // adapter stashes the raw plugin ToolResult here
+            // (agent-tool-adapter.ts): { ok, text, data } — where
+            // data.mcpUi holds any MCP-UI resources the tool returned.
+            details?: { data?: { mcpUi?: unknown } };
+          }
+        | undefined;
       isError?: boolean;
     };
     const blocks = te.result?.content ?? [];
     const text = blocks
       .map((c) => (c.type === "text" && typeof c.text === "string" ? c.text : ""))
       .join("");
+    // Forward any MCP-UI resources so the chat UI can render the
+    // interactive iframe. Shape validated on the web side.
+    const mcpUi = te.result?.details?.data?.mcpUi;
+    const ui = Array.isArray(mcpUi) && mcpUi.length > 0 ? mcpUi : undefined;
     send({
       type: "tool_result",
       callId: te.toolCallId,
       name: te.toolName,
       ok: !te.isError,
       text,
+      ...(ui ? { ui } : {}),
     });
     return;
   }
