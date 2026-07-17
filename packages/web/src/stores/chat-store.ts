@@ -342,7 +342,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
           );
           if (dupIdx >= 0) {
             const next = s.messages.slice();
-            next[dupIdx] = m.message;
+            // The persisted row doesn't carry the MCP-UI reference (ui
+            // isn't persisted — A1). Preserve the live row's ui so the
+            // interactive iframe survives this adoption; the html
+            // itself is already in the per-uri cache.
+            const liveUi = next[dupIdx]?.toolResult?.ui;
+            next[dupIdx] =
+              liveUi && m.message.toolResult && !m.message.toolResult.ui
+                ? {
+                    ...m.message,
+                    toolResult: { ...m.message.toolResult, ui: liveUi },
+                  }
+                : m.message;
             return { messages: next };
           }
         }
