@@ -32,6 +32,12 @@ export type PluginsConfig = Record<
 /** Fields that BOTH global and tenant configs can set. Tenant wins on conflict. */
 export interface OverridableConfig {
   defaultModel?: string;
+  /**
+   * Default language the agent should reply in, injected into the
+   * system prompt. "auto" (or unset) = match the user's language;
+   * "en" / "zh" force English / Chinese. Tenant config wins over global.
+   */
+  outputLanguage?: "auto" | "en" | "zh";
   /** Per-plugin enable/disable. Listed-but-disabled and not-listed are
    *  distinct: not listed = invisible everywhere. See ADR-0003 §4. */
   plugins?: PluginsConfig;

@@ -578,6 +578,12 @@ export interface ChatNavApi {
   /** Pin the chat area to a given session. Pass null to return
    *  to the user's webchat thread. */
   setViewingSession: (sessionId: string | null) => void;
+  /** Send a prompt to the agent as if the user typed it, going
+   *  through the host's full send path (streaming state, optimistic
+   *  echo, retry bookkeeping). Used by composer-action buttons that
+   *  kick off a preset instruction (e.g. the wiki "record" button).
+   *  Optional for backwards-compat with older hosts. */
+  sendPrompt?: (content: string) => void;
 }
 
 interface ChatNavGlobalSlot {

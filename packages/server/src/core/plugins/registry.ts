@@ -1198,10 +1198,18 @@ function makePluginContext(args: {
     pluginId,
     tenantId: ctx.tenantId,
     db: ctx.db,
-    tenantConfig: { defaultModel: ctx.config.defaultModel, branding: ctx.config.branding },
+    tenantConfig: {
+      defaultModel: ctx.config.defaultModel,
+      branding: ctx.config.branding,
+      outputLanguage: ctx.config.outputLanguage,
+    },
     // Deprecated alias kept until the next major SDK bump so v0
     // plugin code that read `ctx.config` still works.
-    config: { defaultModel: ctx.config.defaultModel, branding: ctx.config.branding },
+    config: {
+      defaultModel: ctx.config.defaultModel,
+      branding: ctx.config.branding,
+      outputLanguage: ctx.config.outputLanguage,
+    },
     log,
     workspaceDir: ctx.workspaceDir,
     userHomeDir: (userId: string) => ctx.userHomeDir(userId),
@@ -1458,6 +1466,22 @@ function registerProvidedCapabilities(
         pluginId: entry.manifest.id,
         exclusive: KNOWN_CAPABILITIES[cap].exclusive,
         value: sidecar,
+      });
+      entry.capabilityInfo.provided.push(cap);
+      continue;
+    }
+
+    // Generic path: capabilities backed by a plain value the plugin
+    // exposes via `exports.capabilityProviders[cap]` (not a sandbox /
+    // browser sidecar). Used by host-consumed capabilities a plugin
+    // provides, e.g. the wiki plugin's `wiki.ingest`.
+    const generic = entry.exports?.capabilityProviders?.[cap];
+    if (generic !== undefined && generic !== null) {
+      byCapability.set(cap, {
+        capability: cap,
+        pluginId: entry.manifest.id,
+        exclusive: KNOWN_CAPABILITIES[cap].exclusive,
+        value: generic,
       });
       entry.capabilityInfo.provided.push(cap);
       continue;

@@ -12,7 +12,7 @@
     "topBarButtons": [
       {
         "id": "toggle",
-        "icon": "Globe",
+        "icon": "LayoutDashboard",
         "tooltip": "Boards",
         "opensPanel": "board.main",
         "order": 400

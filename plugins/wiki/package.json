@@ -1,0 +1,42 @@
+{
+  "name": "@tianshu-builtin/plugin-wiki",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LLM Wiki: distil the rolling conversation (compacted segments) into an Obsidian-style knowledge vault under users/<id>/wiki/ — sources, then LLM-synthesised entities/concepts/topics. Builtin plugin (ADR-0002).",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
+    },
+    "./manifest.json": "./manifest.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "manifest.json"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/build-plugin.mjs",
+    "dev": "tsc --watch --preserveWatchOutput",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@tianshu-ai/plugin-sdk": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "lucide-react": "^1.17.0",
+    "react": "^19.0.0",
+    "react-force-graph-2d": "^1.29",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

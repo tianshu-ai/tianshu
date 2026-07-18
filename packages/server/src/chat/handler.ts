@@ -69,6 +69,7 @@ export {
   formatAvailableSkillsBlock,
   formatExecutionBiasBlock,
   formatMainAgentContextBlock,
+  formatOutputLanguageLine,
   formatPluginPromptFragments,
   formatRuntimeContextBlock,
   formatWorkerAgentContextBlock,

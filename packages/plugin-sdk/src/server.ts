@@ -68,6 +68,9 @@ export interface TenantDbHandle {
 export interface ResolvedConfigShape {
   defaultModel?: string;
   branding?: { name?: string; emoji?: string };
+  /** Default reply language for agents (Settings → Models → Output
+   *  language): "auto" | "en" | "zh". Absent/auto = match the user. */
+  outputLanguage?: "auto" | "en" | "zh";
 }
 
 export interface PluginLogger {
@@ -152,6 +155,20 @@ export interface PluginServerExports {
    * the global MCP admin page (powered by `provider.snapshot?.()`).
    */
   toolsetProviders?: Record<string, ToolsetProvider>;
+  /**
+   * Generic capability values keyed by capability name, for
+   * capabilities that aren't backed by one of the specialised
+   * exports above (sandboxes / taskSandboxPool / browser.cdp). The
+   * host registers each entry under its capability after activation,
+   * so other code (host or plugins) can look it up via
+   * `ctx.capabilities.get(name)`.
+   *
+   * Every key MUST appear in this plugin's `manifest.provides[]` and
+   * be a name in the SDK's KNOWN_CAPABILITIES registry. Example: the
+   * `wiki` plugin provides `wiki.ingest` here so the host's
+   * compaction path can file segments into the vault.
+   */
+  capabilityProviders?: Record<string, unknown>;
 }
 
 // ─── Capability registry ────────────────────────────────────────

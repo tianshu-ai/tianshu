@@ -55,6 +55,7 @@ interface ApiResponse {
   providers: Record<string, ProviderRow>;
   defaultModelId: string | null;
   defaultModel: string | null;
+  outputLanguage: "auto" | "en" | "zh";
 }
 
 // Local editable shape: providers as an ordered array (so we can add /
@@ -99,6 +100,7 @@ function toEditable(id: string, p: ProviderRow): EditableProvider {
 export default function ModelsPage() {
   const [providers, setProviders] = useState<EditableProvider[] | null>(null);
   const [defaultModelId, setDefaultModelId] = useState<string>("");
+  const [outputLanguage, setOutputLanguage] = useState<"auto" | "en" | "zh">("auto");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -124,6 +126,7 @@ export default function ModelsPage() {
       );
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
+      setOutputLanguage(j.outputLanguage ?? "auto");
       setDirty(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -206,6 +209,7 @@ export default function ModelsPage() {
         body: JSON.stringify({
           providers: body,
           defaultModelId: defaultModelId.trim(),
+          outputLanguage,
         }),
       });
       if (!r.ok) {
@@ -221,6 +225,7 @@ export default function ModelsPage() {
       );
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
+      setOutputLanguage(j.outputLanguage ?? "auto");
       setDirty(false);
       setNotice("Saved to ~/.tianshu/config.json");
     } catch (err) {
@@ -228,7 +233,7 @@ export default function ModelsPage() {
     } finally {
       setSaving(false);
     }
-  }, [providers, defaultModelId]);
+  }, [providers, defaultModelId, outputLanguage]);
 
   const totalModels = useMemo(
     () => (providers ?? []).reduce((n, p) => n + (p.models?.length ?? 0), 0),
@@ -341,6 +346,30 @@ export default function ModelsPage() {
         <p className="mt-1 text-[11px] text-fg-fainter">
           Pick from the configured models above. Add a model to a
           provider to make it selectable here.
+        </p>
+      </div>
+
+      {/* Default output language */}
+      <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
+        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+          Output language
+        </label>
+        <select
+          value={outputLanguage}
+          onChange={(e) => {
+            setOutputLanguage(e.target.value as "auto" | "en" | "zh");
+            setDirty(true);
+            setNotice(null);
+          }}
+          className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
+        >
+          <option value="auto">Auto (match the user's language)</option>
+          <option value="en">English</option>
+          <option value="zh">中文 (Chinese)</option>
+        </select>
+        <p className="mt-1 text-[11px] text-fg-fainter">
+          Default language the agent replies in. “Auto” follows whatever
+          language the user writes in.
         </p>
       </div>
 

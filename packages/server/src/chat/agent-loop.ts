@@ -43,6 +43,7 @@ import {
 } from "../core/plugins/skills.js";
 import {
   defaultSystemPrompt,
+  formatOutputLanguageLine,
   formatAvailableSkillsBlock,
   formatExecutionBiasBlock,
   formatPluginPromptFragments,
@@ -467,6 +468,9 @@ export async function runAgentLoop(
       formatRuntimeContextBlock({ tenantId: ctx.tenantId, userId }),
       workerExecutionBias ?? formatExecutionBiasBlock(),
     ];
+    // Default output language (same directive as the main agent).
+    const langLine = formatOutputLanguageLine(ctx.config.outputLanguage);
+    if (langLine) parts.splice(1, 0, langLine);
     // Worker context: only the worker's own AGENTS.md / MEMORY.md
     // bundle plus the caller's USER.md. SOUL.md is already in
     // req.systemPrompt above; tenant-shared AGENTS/SOUL/MEMORY are
