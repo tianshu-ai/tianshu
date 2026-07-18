@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.5.7](https://github.com/tianshu-ai/tianshu/compare/v0.5.6...v0.5.7) (2026-07-18)
+
+### Features
+
+* **wiki:** LLM Wiki plugin — distil the rolling conversation timeline into an Obsidian-style vault (sources + entities/concepts/topics + a daily→weekly→monthly→yearly journal), written by a background worker session ([#309](https://github.com/tianshu-ai/tianshu/pull/309))
+* **wiki:** embedding-backed semantic search with keyword fallback; mode-aware `wiki_search` (auto/semantic/keyword)
+* **wiki:** clickable wikilinks + a lazy-loaded `react-force-graph-2d` graph view in the wiki panel
+* configurable system-level default output language (auto/English/Chinese) injected into the main agent and workers, including the wiki writer
+
+### Bug Fixes
+
+* **board:** use a dashboard icon (not a globe) for the Boards topbar button
+
 ## [0.5.1](https://github.com/tianshu-ai/tianshu/compare/v0.5.0...v0.5.1) (2026-07-15)
 
 
