@@ -6,6 +6,12 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.5.9](https://github.com/tianshu-ai/tianshu/compare/v0.5.8...v0.5.9) (2026-07-19)
+
+### Bug Fixes
+
+* declare `sqlite-vec` at the package root so the published bundle resolves it — 0.5.8 shipped without it, so a global install threw `ERR_MODULE_NOT_FOUND: Cannot find package 'sqlite-vec'` on startup. 0.5.9 re-releases 0.5.8's wiki work with the dependency correctly declared.
+
 ## [0.5.8](https://github.com/tianshu-ai/tianshu/compare/v0.5.7...v0.5.8) (2026-07-19)
 
 ### Features
