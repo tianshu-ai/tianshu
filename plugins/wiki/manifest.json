@@ -43,7 +43,8 @@
       { "id": "wiki_list_pages",   "module": "WikiListPagesTool",   "since": "0.1.0" },
       { "id": "wiki_read",         "module": "WikiReadTool",        "since": "0.1.0" },
       { "id": "wiki_search",       "module": "WikiSearchTool",      "since": "0.1.0" },
-      { "id": "wiki_write_page",   "module": "WikiWritePageTool",   "since": "0.1.0" }
+      { "id": "wiki_write_page",   "module": "WikiWritePageTool",   "since": "0.1.0" },
+      { "id": "wiki_journal_write","module": "WikiJournalWriteTool","since": "0.1.0" }
     ],
     "apiRoutes": [
       { "method": "GET",  "path": "/list",   "handler": "list"   },

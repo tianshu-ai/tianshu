@@ -26,8 +26,21 @@ interface WikiPage {
   path: string;
 }
 
-const SECTION_ORDER = ["topics", "entities", "concepts", "sources"];
+const SECTION_ORDER = [
+  "journal/daily",
+  "journal/weekly",
+  "journal/monthly",
+  "journal/yearly",
+  "topics",
+  "entities",
+  "concepts",
+  "sources",
+];
 const SECTION_LABEL: Record<string, string> = {
+  "journal/daily": "Daily",
+  "journal/weekly": "Weekly",
+  "journal/monthly": "Monthly",
+  "journal/yearly": "Yearly",
   topics: "Topics",
   entities: "Entities",
   concepts: "Concepts",

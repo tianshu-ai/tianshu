@@ -18,8 +18,88 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const WIKI_DIR = "wiki";
-export const SECTIONS = ["sources", "entities", "concepts", "topics"] as const;
+// Flat synthesis sections + the time-journal levels. The journal lives
+// under wiki/journal/<level>/<period>.md; we treat "journal/<level>"
+// as a section string so the same path-safe read/write/list plumbing
+// serves both.
+export const FLAT_SECTIONS = ["sources", "entities", "concepts", "topics"] as const;
+export const JOURNAL_LEVELS = ["daily", "weekly", "monthly", "yearly"] as const;
+export const SECTIONS = [
+  ...FLAT_SECTIONS,
+  ...JOURNAL_LEVELS.map((l) => `journal/${l}` as const),
+] as const;
 export type Section = (typeof SECTIONS)[number];
+export type JournalLevel = (typeof JOURNAL_LEVELS)[number];
+
+// ─── period keys + ISO week helpers ─────────────────────────────
+
+/** Validate a period key for a journal level:
+ *    daily   YYYY-MM-DD
+ *    weekly  YYYY-Www   (ISO week)
+ *    monthly YYYY-MM
+ *    yearly  YYYY
+ */
+export function isValidPeriod(level: JournalLevel, period: string): boolean {
+  switch (level) {
+    case "daily":
+      return /^\d{4}-\d{2}-\d{2}$/.test(period);
+    case "weekly":
+      return /^\d{4}-W\d{2}$/.test(period);
+    case "monthly":
+      return /^\d{4}-\d{2}$/.test(period);
+    case "yearly":
+      return /^\d{4}$/.test(period);
+  }
+}
+
+/** ISO-8601 week number + week-year for a date (week starts Monday;
+ *  week 1 is the week containing the first Thursday). */
+export function isoWeek(d: Date): { year: number; week: number } {
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const day = date.getUTCDay() || 7; // Mon=1..Sun=7
+  date.setUTCDate(date.getUTCDate() + 4 - day); // shift to Thursday
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return { year: date.getUTCFullYear(), week };
+}
+
+/** Monday(start)..Sunday(end) date range for an ISO week key, as
+ *  YYYY-MM-DD strings. Used to label weekly journals with the real
+ *  dates they cover. */
+export function isoWeekRange(weekKey: string): { start: string; end: string } | null {
+  const m = weekKey.match(/^(\d{4})-W(\d{2})$/);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const week = Number(m[2]);
+  // Jan 4 is always in ISO week 1; find that week's Monday, then add.
+  const jan4 = new Date(Date.UTC(year, 0, 4));
+  const jan4Day = jan4.getUTCDay() || 7;
+  const week1Mon = new Date(jan4);
+  week1Mon.setUTCDate(jan4.getUTCDate() - (jan4Day - 1));
+  const mon = new Date(week1Mon);
+  mon.setUTCDate(week1Mon.getUTCDate() + (week - 1) * 7);
+  const sun = new Date(mon);
+  sun.setUTCDate(mon.getUTCDate() + 6);
+  const fmt = (x: Date) => x.toISOString().slice(0, 10);
+  return { start: fmt(mon), end: fmt(sun) };
+}
+
+/** Period key for a date at a given level. */
+export function periodFor(level: JournalLevel, d: Date): string {
+  const iso = d.toISOString();
+  switch (level) {
+    case "daily":
+      return iso.slice(0, 10);
+    case "weekly": {
+      const { year, week } = isoWeek(d);
+      return `${year}-W${String(week).padStart(2, "0")}`;
+    }
+    case "monthly":
+      return iso.slice(0, 7);
+    case "yearly":
+      return iso.slice(0, 4);
+  }
+}
 
 const NAME_RE = /^[A-Za-z0-9._\u4e00-\u9fff-]+$/;
 

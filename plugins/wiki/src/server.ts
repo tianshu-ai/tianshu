@@ -36,6 +36,7 @@ import { Type } from "typebox";
 import type { Request, Response } from "express";
 import {
   SECTIONS,
+  JOURNAL_LEVELS,
   listPages,
   readPage,
   searchPages,
@@ -46,6 +47,9 @@ import {
   readCursor,
   markIngested,
   alreadyIngested,
+  isValidPeriod,
+  isoWeekRange,
+  type JournalLevel,
 } from "./vault.js";
 import { ingestSource } from "./ingest.js";
 import {
@@ -63,10 +67,14 @@ import {
 // incrementally and distils each into pages across three dimensions.
 const RECORD_WIKI_PROMPT = [
   "You are updating the user's LLM Wiki from their conversation timeline. Work incrementally, session by session:",
-  "1. Call wiki_next_session to fetch the next unprocessed session (its transcript, spawned tasks, and produced files) plus progress.",
-  "2. Read and understand it, then distil it into wiki pages via wiki_write_page across three dimensions: project (section=entities), date/timeline (section=topics), and technology/knowledge points (section=concepts). Cross-link related pages with Obsidian [[section/slug]] wikilinks. Reuse wiki_search / wiki_list_pages / wiki_read first so you extend existing pages instead of duplicating them.",
+  "1. Call wiki_next_session to fetch the next unprocessed session (its transcript, spawned tasks, produced files) plus progress. Note the session's date.",
+  "2. Read and understand it, then record across BOTH layers:",
+  "   • THEMATIC (wiki_write_page): project → section=entities; reusable tech/knowledge points → section=concepts; a cross-time thread/undertaking (e.g. 'build the board plugin', which may span several days) → section=topics.",
+  "   • TIME (wiki_journal_write): write/update the daily entry for the session's date (level=daily, period=YYYY-MM-DD) — what was done that day, cross-linking the topics/entities/concepts it touched with [[section/slug]]. A day usually spans several topics; a topic usually spans several days — link both ways (also add the day to the topic page's timeline).",
   "3. Call wiki_session_done with that sessionId to advance the cursor.",
-  "4. Repeat. Stop when wiki_next_session reports done:true, or after ~10 sessions this run (the cursor persists, so the next run resumes where you left off). Then give a one-paragraph summary of what you recorded.",
+  "4. Repeat for a batch. When you've covered the sessions of a given ISO week / month / year, roll them up with wiki_journal_write: weekly (period YYYY-Www) from that week's dailies, monthly (YYYY-MM) from its weeks, yearly (YYYY) from its months. Roll-ups summarise and link down — don't repeat detail.",
+  "5. Stop when wiki_next_session reports done:true, or after ~10 sessions this run (the cursor persists; the next run resumes). Then give a one-paragraph summary of what you recorded.",
+  "Reuse wiki_search / wiki_list_pages / wiki_read first so you extend existing pages instead of duplicating them.",
 ].join("\n");
 
 // Wiki tools the worker is allowed to use (nothing else — it's a
@@ -79,6 +87,7 @@ const WIKI_WORKER_TOOLS = [
   "wiki_read",
   "wiki_search",
   "wiki_write_page",
+  "wiki_journal_write",
 ];
 
 // Per-user run lock: only one wiki-worker in flight at a time so two
@@ -152,10 +161,15 @@ function buildReadTool(): AgentTool {
     execute: (raw, ctx: AgentToolContext): ToolResult => {
       const p = raw as { path?: string };
       const parts = String(p.path ?? "").split("/");
-      if (parts.length !== 2) {
-        return { ok: false, text: `Invalid path "${p.path}". Use <section>/<slug>.` };
+      if (parts.length < 2) {
+        return { ok: false, text: `Invalid path "${p.path}". Use <section>/<slug> (journal: journal/<level>/<period>).` };
       }
-      const md = readPage(ctx.userHomeDir, parts[0]!, parts[1]!);
+      // Last segment is the slug; everything before is the section
+      // (so journal/daily/2026-07-18 splits into section=journal/daily,
+      // slug=2026-07-18).
+      const slug = parts[parts.length - 1]!;
+      const section = parts.slice(0, -1).join("/");
+      const md = readPage(ctx.userHomeDir, section, slug);
       if (md === null) return { ok: false, text: `Page not found: ${p.path}` };
       return { ok: true, text: md.slice(0, 16000) };
     },
@@ -350,6 +364,85 @@ function buildSessionDoneTool(): AgentTool {
   };
 }
 
+// ─── journal tool (time dimension: daily → weekly → monthly → yearly) ─
+//
+// A/幂等: each level is written/rewritten in place. daily is filled as
+// the agent processes a day's sessions; weekly/monthly/yearly are
+// recomputed by reading their child level after a batch. Journals link
+// to the topics/entities/concepts they touch, and topics link back to
+// the days they span — the time layer and the thematic layer cross-
+// reference each other.
+
+function periodLabel(level: JournalLevel, period: string): string {
+  if (level === "weekly") {
+    const r = isoWeekRange(period);
+    if (r) return `${period} (${r.start} ~ ${r.end})`;
+  }
+  return period;
+}
+
+function buildJournalWriteTool(): AgentTool {
+  return {
+    schema: {
+      name: "wiki_journal_write",
+      description:
+        "Create or overwrite a time-journal entry. Levels: daily (period YYYY-MM-DD), weekly (YYYY-Www, ISO week), monthly (YYYY-MM), yearly (YYYY). Fill `daily` as you process each day's sessions — note what was done that day and cross-link the topics/projects/concepts it touched with [[wikilinks]] (a day can span several topics; a topic can span several days). Recompute `weekly` by reading that week's dailies, `monthly` from its weeks, `yearly` from its months (roll-ups summarise, don't repeat detail; link down to the child entries). Writing is idempotent — safe to rewrite.",
+      parameters: Type.Object({
+        level: Type.String({ description: "daily | weekly | monthly | yearly" }),
+        period: Type.String({
+          description: "Period key: daily=YYYY-MM-DD, weekly=YYYY-Www, monthly=YYYY-MM, yearly=YYYY.",
+        }),
+        title: Type.Optional(Type.String({ description: "Optional title; defaults to a labelled period." })),
+        body: Type.String({ description: "Markdown body. Use [[wikilinks]] to topics/entities/concepts and child journal entries." }),
+        links: Type.Optional(
+          Type.Array(Type.String(), { description: "Related page paths, e.g. [\"topics/board-plugin\"]." }),
+        ),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolResult => {
+      const p = raw as { level?: string; period?: string; title?: string; body?: string; links?: string[] };
+      const level = String(p.level ?? "") as JournalLevel;
+      if (!JOURNAL_LEVELS.includes(level)) {
+        return { ok: false, text: `Invalid level "${p.level}". Use daily | weekly | monthly | yearly.` };
+      }
+      const period = String(p.period ?? "").trim();
+      if (!isValidPeriod(level, period)) {
+        return {
+          ok: false,
+          text: `Invalid ${level} period "${period}". Expected ${level === "daily" ? "YYYY-MM-DD" : level === "weekly" ? "YYYY-Www" : level === "monthly" ? "YYYY-MM" : "YYYY"}.`,
+        };
+      }
+      const section = `journal/${level}`;
+      const file = resolvePage(ctx.userHomeDir, section, period);
+      if (!file) return { ok: false, text: `Unsafe journal path: ${section}/${period}` };
+      const body = String(p.body ?? "").trim();
+      if (!body) return { ok: false, text: "body is required" };
+      const label = periodLabel(level, period);
+      const title = String(p.title ?? "").trim() || `${level[0]!.toUpperCase()}${level.slice(1)} · ${label}`;
+      const links = Array.isArray(p.links) ? p.links.filter((l) => typeof l === "string") : undefined;
+      const content = renderPage(
+        {
+          pageType: "journal",
+          level,
+          period,
+          periodLabel: label,
+          title,
+          updatedAt: new Date().toISOString(),
+          status: "active",
+          links,
+        },
+        `# ${title}\n\n${body}\n`,
+      );
+      try {
+        writePage(file, content);
+      } catch (err) {
+        return { ok: false, text: `write failed: ${err instanceof Error ? err.message : String(err)}` };
+      }
+      return { ok: true, text: `wrote ${section}/${period}` };
+    },
+  };
+}
+
 // ─── REST routes (mounted under /api/p/wiki/*) ──────────────────
 
 function userIdFromReq(req: Request): string {
@@ -487,6 +580,7 @@ const plugin: PluginServerModule = {
         WikiReadTool: buildReadTool(),
         WikiSearchTool: buildSearchTool(),
         WikiWritePageTool: buildWritePageTool(),
+        WikiJournalWriteTool: buildJournalWriteTool(),
       },
       routes: buildRoutes(ctx),
       capabilityProviders: { "wiki.ingest": buildIngestCapability(ctx) },
