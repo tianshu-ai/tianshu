@@ -348,6 +348,9 @@ function WikiGraphView({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+  // Clicked node awaiting confirmation (don't navigate on a stray click;
+  // show a small card with an Open button first).
+  const [picked, setPicked] = useState<{ path: string; title: string; section: string; sx: number; sy: number } | null>(null);
 
   // Loosen the layout: stronger repulsion + longer links so nodes
   // spread out (default clumps them, which is what made the graph a
@@ -363,6 +366,7 @@ function WikiGraphView({
   }, [data]);
 
   useEffect(() => {
+    setPicked(null);
     fetch(`${API_BASE}/graph`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((g: { nodes: GraphNode[]; edges: GraphEdge[] }) => {
@@ -421,7 +425,18 @@ function WikiGraphView({
             linkDirectionalParticles={0}
             cooldownTicks={140}
             d3VelocityDecay={0.3}
-            onNodeClick={(n: FGNodeAny) => onOpen((n as FGNode).path)}
+            onNodeClick={(n: FGNodeAny) => {
+              const nn = n as FGNode & { x?: number; y?: number };
+              // Convert graph coords → screen (container-relative) so the
+              // popover sits next to the clicked node.
+              let sx = size.w / 2, sy = size.h / 2;
+              try {
+                const p = fgRef.current?.graph2ScreenCoords?.(nn.x ?? 0, nn.y ?? 0);
+                if (p) { sx = p.x; sy = p.y; }
+              } catch { /* fall back to centre */ }
+              setPicked({ path: nn.path, title: nn.title, section: nn.section, sx, sy });
+            }}
+            onBackgroundClick={() => setPicked(null)}
             onEngineStop={() => { /* settle */ }}
             nodePointerAreaPaint={(n: FGNodeAny, color: string, ctx: CanvasRenderingContext2D) => {
               const nn = n as FGNode & { x?: number; y?: number };
@@ -434,7 +449,7 @@ function WikiGraphView({
               const nn = n as FGNode & { x?: number; y?: number };
               const x = nn.x ?? 0, y = nn.y ?? 0;
               const r = nodeRadius(nn.deg);
-              const isSel = nn.id === selected;
+              const isSel = nn.id === selected || nn.id === picked?.path;
               // node circle
               ctx.beginPath();
               ctx.arc(x, y, r, 0, 2 * Math.PI);
@@ -462,6 +477,46 @@ function WikiGraphView({
           />
         </Suspense>
       )}
+      {/* click-to-open popover */}
+      {picked && (
+        <div
+          className="absolute z-10 w-56 -translate-x-1/2 rounded-lg border border-border-default bg-bg-overlay p-2.5 shadow-lg"
+          style={{
+            left: Math.max(90, Math.min(size.w - 90, picked.sx)),
+            top: Math.max(8, Math.min(size.h - 90, picked.sy + 10)),
+          }}
+        >
+          <div className="mb-0.5 flex items-center gap-1.5">
+            <span
+              className="inline-block h-2 w-2 shrink-0 rounded-full"
+              style={{ backgroundColor: nodeColor(picked.section) }}
+            />
+            <span className="truncate text-[10px] uppercase tracking-wide text-fg-fainter">
+              {SECTION_LABEL[picked.section] ?? picked.section}
+            </span>
+          </div>
+          <div className="mb-2 line-clamp-2 text-[13px] font-medium text-fg-default">{picked.title}</div>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setPicked(null)}
+              className="rounded px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-hover transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                const p = picked.path;
+                setPicked(null);
+                onOpen(p);
+              }}
+              className="rounded bg-accent px-2.5 py-1 text-[11px] font-medium text-fg-on-accent hover:bg-accent-hover transition-colors"
+            >
+              Open
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* legend */}
       {data.nodes.length > 0 && (
         <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-bg-base/70 px-2 py-1 text-[10px] text-fg-muted backdrop-blur-sm">
