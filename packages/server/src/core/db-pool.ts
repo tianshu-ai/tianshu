@@ -5,10 +5,36 @@
 // recently-used DBs and reopen on demand. Reopening is cheap with WAL.
 
 import Database, { type Database as DB } from "better-sqlite3";
+import * as sqliteVec from "sqlite-vec";
 import fs from "node:fs";
 import path from "node:path";
 import { getTenantDbPath } from "./paths.js";
 import { runMigrations } from "./migrations/index.js";
+
+// sqlite-vec (vector search) is a loadable SQLite extension. We load it
+// ONCE per connection here in the pool so every tenant DB can create
+// `vec0` virtual tables (used by the wiki plugin for semantic search).
+// Loading is best-effort: if the platform prebuilt is missing, we log
+// once and continue — consumers check `db.vecAvailable` and fall back
+// (the wiki degrades to keyword/JSON search). FTS5 needs no load; it's
+// compiled into better-sqlite3.
+let warnedVecLoad = false;
+function tryLoadVec(db: DB): boolean {
+  try {
+    sqliteVec.load(db);
+    return true;
+  } catch (err) {
+    if (!warnedVecLoad) {
+      warnedVecLoad = true;
+      console.warn(
+        `[db-pool] sqlite-vec extension failed to load; vector search disabled: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+    return false;
+  }
+}
 
 export interface DbPoolOptions {
   /** Max number of concurrently-open tenant DBs. */
@@ -91,6 +117,9 @@ export class DbPool {
     db.pragma("journal_mode = WAL");
     db.pragma("foreign_keys = ON");
     db.pragma("synchronous = NORMAL");
+    // Load the vector extension and record availability on the handle
+    // so plugins can branch without re-attempting the load.
+    (db as DB & { vecAvailable?: boolean }).vecAvailable = tryLoadVec(db);
     runMigrations(db);
     return db;
   }

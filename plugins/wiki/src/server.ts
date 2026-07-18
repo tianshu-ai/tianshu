@@ -31,6 +31,7 @@ import type {
   WikiIngestResult,
   AgentLoopRunner,
   SessionInboxCapability,
+  TenantDbHandle,
 } from "@tianshu-ai/plugin-sdk";
 import { Type } from "typebox";
 import type { Request, Response } from "express";
@@ -59,6 +60,7 @@ import {
   indexPage,
   reindexAll,
   semanticSearch,
+  WikiIndex,
   type EmbeddingConfig,
 } from "./embedding.js";
 import {
@@ -208,7 +210,7 @@ function buildReadTool(): AgentTool {
   };
 }
 
-function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
+function buildSearchTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentTool {
   // The right way to phrase a query differs by backend, so the tool
   // description tells the agent which one is active and how to query it.
   const semantic = embeddingEnabled(cfg);
@@ -264,7 +266,13 @@ function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
 
       // ── semantic path (mode=semantic, or auto with embedding on) ──
       if (mode === "semantic" || (mode === "auto" && semantic)) {
-        const out = await semanticSearch(home, cfg, q, limit, minScore);
+        const out = await semanticSearch(
+          new WikiIndex(db, ctx.userId),
+          cfg,
+          q,
+          limit,
+          minScore,
+        );
         if (out.status === "ok" && out.hits.length > 0) {
           const titles = titleOf();
           const lines = out.hits.map(
@@ -313,7 +321,7 @@ function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
   };
 }
 
-function buildWritePageTool(cfg?: EmbeddingConfig): AgentTool {
+function buildWritePageTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentTool {
   return {
     available: isWikiWorker,
     schema: {
@@ -370,7 +378,7 @@ function buildWritePageTool(cfg?: EmbeddingConfig): AgentTool {
       // endpoint is VISIBLE (the page is still written either way).
       if (embeddingEnabled(cfg)) {
         const emb = await indexPage(
-          ctx.userHomeDir,
+          new WikiIndex(db, ctx.userId),
           cfg,
           `${section}/${slug}`,
           `${title}\n\n${body}`,
@@ -563,7 +571,7 @@ function periodLabel(level: JournalLevel, period: string): string {
   return period;
 }
 
-function buildJournalWriteTool(cfg?: EmbeddingConfig): AgentTool {
+function buildJournalWriteTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentTool {
   return {
     available: isWikiWorker,
     schema: {
@@ -623,7 +631,7 @@ function buildJournalWriteTool(cfg?: EmbeddingConfig): AgentTool {
       }
       if (embeddingEnabled(cfg)) {
         const emb = await indexPage(
-          ctx.userHomeDir,
+          new WikiIndex(db, ctx.userId),
           cfg,
           `${section}/${period}`,
           `${title}\n\n${body}`,
@@ -711,6 +719,12 @@ function buildRoutes(
     }
     const r = resetVault(ctx.userHomeDir(userId));
     if (!r.ok) return void res.status(500).json({ error: r.reason });
+    // Also wipe this user's rows from the semantic index (vec + FTS).
+    try {
+      new WikiIndex(ctx.db, userId).clear();
+    } catch {
+      /* best-effort */
+    }
     res.json({ ok: true, removedPages: r.removedPages });
   };
 
@@ -813,7 +827,7 @@ function buildRoutes(
     }
     running.add(key);
     try {
-      const r = await reindexAll(home, cfg, pages);
+      const r = await reindexAll(new WikiIndex(ctx.db, userId), cfg, pages);
       if (!r.ok) {
         return void res.status(502).json({
           error: `embedding failed after ${r.indexed}/${r.total}: ${r.reason}`,
@@ -863,7 +877,12 @@ const plugin: PluginServerModule = {
     const embRaw = (ctx.pluginConfig as { embedding?: unknown })?.embedding;
     const cfg =
       embRaw && typeof embRaw === "object" ? (embRaw as EmbeddingConfig) : undefined;
-    ctx.log.info(`wiki activated (embedding: ${embeddingEnabled(cfg) ? cfg!.model : "off, keyword search"})`);
+    const vecNote = ctx.db.vecAvailable ? "vec+FTS" : "FTS-only (sqlite-vec not loaded)";
+    ctx.log.info(
+      `wiki activated (embedding: ${
+        embeddingEnabled(cfg) ? `${cfg!.model}, ${vecNote}` : "off, keyword search"
+      })`,
+    );
     return {
       tools: {
         WikiNextDayTool: buildNextDayTool(ctx),
@@ -871,9 +890,9 @@ const plugin: PluginServerModule = {
         WikiListSourcesTool: buildListSourcesTool(),
         WikiListPagesTool: buildListPagesTool(),
         WikiReadTool: buildReadTool(),
-        WikiSearchTool: buildSearchTool(cfg),
-        WikiWritePageTool: buildWritePageTool(cfg),
-        WikiJournalWriteTool: buildJournalWriteTool(cfg),
+        WikiSearchTool: buildSearchTool(ctx.db, cfg),
+        WikiWritePageTool: buildWritePageTool(ctx.db, cfg),
+        WikiJournalWriteTool: buildJournalWriteTool(ctx.db, cfg),
         WikiResetTool: buildResetTool(),
       },
       routes: buildRoutes(ctx, cfg),
