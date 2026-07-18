@@ -332,6 +332,71 @@ PROVIDERS / MODELS (config.json's \`models.providers\` map):
     (cost control, slow models, etc.), respect their choice —
     don't auto-bump on their behalf, just confirm they meant it.
 
+EMBEDDING MODELS (for the wiki plugin's semantic search):
+- An embedding model is a normal entry in \`models.providers[].models[]\`
+  but with \`"mode": "embedding"\`. It is NOT selectable as a chat model
+  (the server filters mode=embedding out of the chat catalog). The wiki
+  plugin config only *picks* one by id (\`plugins.wiki.config.embeddingModelId\`
+  = "<provider>/<model>"); the base URL / key / dimensions all come from
+  the provider entry, same as chat models.
+- The provider's \`api\` decides the wire protocol the wiki uses to embed:
+  * \`openai-completions\` (and OpenAI-compatible: llama.cpp, Ollama,
+    LM Studio, most proxies) → POST \`{baseUrl}/embeddings\`,
+    Authorization: Bearer <key>, body \`{"model":"<id>","input":["..."]}\`,
+    response \`{"data":[{"embedding":[...]}]}\`.
+  * \`google-generative-ai\` → a Vertex-style embedding interface (this is
+    what self-hosted Gemini proxies expose, e.g. a gateway on
+    :6655/gemini): POST \`{baseUrl}/v1beta/models/<model>:embedContent\`
+    (note: \`:embedContent\`, and \`/v1beta\` is appended if baseUrl stops at
+    the mount), Authorization: Bearer <key>, body
+    \`{"instances":[{"content":"...","task_type":"RETRIEVAL_DOCUMENT"}]}\`,
+    response \`{"predictions":[{"embeddings":{"values":[...]}}]}\` (or
+    \`{"embeddings":[{"values":[...]}]}\`).
+- HOW TO TEST an embedding model works (do this when the wiki's "Rebuild
+  index" fails, or before telling the user it's ready):
+  1. Read the provider entry: \`config_read\` (which='global' or 'tenant'),
+     find the provider whose models[] has the mode=embedding entry. Note
+     its \`api\`, \`baseUrl\`, \`apiKey\` (may be a \`\${VAR}\` placeholder —
+     resolve it from the env; if it's a secret, \`secret_list\` shows if
+     one is set), and the model \`id\` + optional \`dimensions\`.
+  2. Fire ONE real request with \`shell_exec\` (purpose: "Test embedding
+     model"). Build the curl to match the provider's \`api\`:
+     * OpenAI-compatible:
+         curl -sS -X POST '<baseUrl>/embeddings' \\
+           -H 'Content-Type: application/json' \\
+           -H 'Authorization: Bearer <key>' \\
+           -d '{"model":"<id>","input":["connectivity test"]}'
+     * google-generative-ai (Vertex-style proxy):
+         curl -sS -X POST '<baseUrl>/v1beta/models/<id>:embedContent' \\
+           -H 'Content-Type: application/json' \\
+           -H 'Authorization: Bearer <key>' \\
+           -d '{"instances":[{"content":"connectivity test","task_type":"RETRIEVAL_DOCUMENT"}]}'
+     Add \`-w '\\nHTTP %{http_code}\\n'\` so you can see the status even on
+     success. NEVER print the raw key back to the user — refer to it as
+     "the configured key".
+  3. Interpret the result:
+     * HTTP 200 + a JSON body containing a numeric \`values\`/\`embedding\`
+       array → WORKS. Report the vector length (that's the model's
+       dimension) and tell the user to click "Rebuild index" in the wiki
+       panel.
+     * HTTP 401/403 → auth. The key is wrong for this endpoint, OR the
+       proxy wants a different scheme. Compare with the key the user's
+       WORKING chat model uses on the same proxy; the fix is almost
+       always "use the same provider/key as the working chat model".
+     * HTTP 404 → endpoint/path mismatch: wrong baseUrl, missing/extra
+       \`/v1beta\`, or wrong \`:embedContent\` vs \`:batchEmbedContents\` vs
+       \`/embeddings\` for the provider's api. Re-derive from the \`api\`.
+     * HTTP 200 but no vector in the body → the proxy's response shape is
+       unusual; capture the top-level JSON keys and report them.
+  4. Do NOT mutate config to "fix" a failing key by guessing. Diagnose,
+     tell the user exactly which field is wrong (provider/key/baseUrl/
+     api/model id) and what a working value looks like, and let them
+     confirm the correction (then \`config_write\`/\`secret_write\`).
+- \`dimensions\` is optional; leave blank to use the model default. Gemini
+  embedding models support elastic dims (e.g. 3072 default, 1536, 768);
+  smaller = smaller index, negligible quality loss for a wiki. The wiki's
+  cosine is normalised, so truncated dims are safe.
+
 WORKBOARD WORKERS (workboard plugin):
 - When the user enables workboard, the LLM worker pool starts up
   with one worker per enabled \`agent.json\` in the tenant's
