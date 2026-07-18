@@ -68,15 +68,6 @@ export interface TenantDbHandle {
 export interface ResolvedConfigShape {
   defaultModel?: string;
   branding?: { name?: string; emoji?: string };
-  /** Embedding model config for semantic features (LLM Wiki search).
-   *  Absent when the tenant hasn't configured one — consumers fall
-   *  back to keyword search. OpenAI-compatible /embeddings endpoint. */
-  embedding?: {
-    baseUrl?: string;
-    model?: string;
-    apiKey?: string;
-    dimensions?: number;
-  };
 }
 
 export interface PluginLogger {

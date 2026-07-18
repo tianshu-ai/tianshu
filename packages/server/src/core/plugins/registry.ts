@@ -53,7 +53,6 @@ import type {
 import path from "node:path";
 import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu-ai/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
-import { expandEnvPlaceholders } from "../config.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
 import {
   loadSkillsForPlugin,
@@ -1176,22 +1175,6 @@ function readPluginConfig(
   return mergePluginSecrets(raw, secrets);
 }
 
-/** Map the tenant's embedding config into the plugin-visible shape,
- *  resolving the apiKey `${VAR}` placeholder at hand-off time. Returns
- *  undefined when no embedding model is configured. */
-function embeddingForPlugin(
-  config: TenantContext["config"],
-): { baseUrl?: string; model?: string; apiKey?: string; dimensions?: number } | undefined {
-  const e = (config as { embedding?: { baseUrl?: string; model?: string; apiKey?: string; dimensions?: number } }).embedding;
-  if (!e || (!e.model && !e.baseUrl)) return undefined;
-  return {
-    baseUrl: e.baseUrl,
-    model: e.model,
-    apiKey: expandEnvPlaceholders(e.apiKey),
-    dimensions: e.dimensions,
-  };
-}
-
 function makePluginContext(args: {
   pluginId: string;
   ctx: TenantContext;
@@ -1215,18 +1198,10 @@ function makePluginContext(args: {
     pluginId,
     tenantId: ctx.tenantId,
     db: ctx.db,
-    tenantConfig: {
-      defaultModel: ctx.config.defaultModel,
-      branding: ctx.config.branding,
-      embedding: embeddingForPlugin(ctx.config),
-    },
+    tenantConfig: { defaultModel: ctx.config.defaultModel, branding: ctx.config.branding },
     // Deprecated alias kept until the next major SDK bump so v0
     // plugin code that read `ctx.config` still works.
-    config: {
-      defaultModel: ctx.config.defaultModel,
-      branding: ctx.config.branding,
-      embedding: embeddingForPlugin(ctx.config),
-    },
+    config: { defaultModel: ctx.config.defaultModel, branding: ctx.config.branding },
     log,
     workspaceDir: ctx.workspaceDir,
     userHomeDir: (userId: string) => ctx.userHomeDir(userId),

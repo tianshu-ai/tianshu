@@ -51,19 +51,10 @@ interface ProviderRow {
   hasApiKey?: boolean;
 }
 
-interface EmbeddingRow {
-  baseUrl?: string;
-  model?: string;
-  apiKey?: string; // mask sentinel on load
-  dimensions?: number;
-  hasApiKey?: boolean;
-}
-
 interface ApiResponse {
   providers: Record<string, ProviderRow>;
   defaultModelId: string | null;
   defaultModel: string | null;
-  embedding: EmbeddingRow | null;
 }
 
 // Local editable shape: providers as an ordered array (so we can add /
@@ -108,7 +99,6 @@ function toEditable(id: string, p: ProviderRow): EditableProvider {
 export default function ModelsPage() {
   const [providers, setProviders] = useState<EditableProvider[] | null>(null);
   const [defaultModelId, setDefaultModelId] = useState<string>("");
-  const [embedding, setEmbedding] = useState<EmbeddingRow>({});
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -134,7 +124,6 @@ export default function ModelsPage() {
       );
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
-      setEmbedding(j.embedding ?? {});
       setDirty(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -217,17 +206,6 @@ export default function ModelsPage() {
         body: JSON.stringify({
           providers: body,
           defaultModelId: defaultModelId.trim(),
-          embedding:
-            embedding.model?.trim() || embedding.baseUrl?.trim()
-              ? {
-                  baseUrl: embedding.baseUrl?.trim() || undefined,
-                  model: embedding.model?.trim() || undefined,
-                  // Send apiKey only when the user typed a new one; the
-                  // mask sentinel is preserved server-side otherwise.
-                  ...(embedding.apiKey !== undefined ? { apiKey: embedding.apiKey } : {}),
-                  dimensions: embedding.dimensions || undefined,
-                }
-              : null,
         }),
       });
       if (!r.ok) {
@@ -243,7 +221,6 @@ export default function ModelsPage() {
       );
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
-      setEmbedding(j.embedding ?? {});
       setDirty(false);
       setNotice("Saved to ~/.tianshu/config.json");
     } catch (err) {
@@ -251,7 +228,7 @@ export default function ModelsPage() {
     } finally {
       setSaving(false);
     }
-  }, [providers, defaultModelId, embedding]);
+  }, [providers, defaultModelId]);
 
   const totalModels = useMemo(
     () => (providers ?? []).reduce((n, p) => n + (p.models?.length ?? 0), 0),
@@ -365,70 +342,6 @@ export default function ModelsPage() {
           Pick from the configured models above. Add a model to a
           provider to make it selectable here.
         </p>
-      </div>
-
-      {/* Embedding model (semantic search for the LLM Wiki) */}
-      <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
-        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
-          Embedding model
-        </label>
-        <p className="mb-3 text-[11px] text-fg-fainter">
-          Optional. OpenAI-compatible <code>/embeddings</code> endpoint
-          (cloud, or a local server like llama.cpp / Ollama / LM Studio).
-          When set, the Wiki builds a semantic index and searches it;
-          when empty, the agent falls back to keyword search.
-        </p>
-        {(() => {
-          const upd = (patch: Partial<EmbeddingRow>) => {
-            setEmbedding((e) => ({ ...e, ...patch }));
-            setDirty(true);
-            setNotice(null);
-          };
-          return (
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-[11px] text-fg-muted">
-                Base URL
-                <input
-                  value={embedding.baseUrl ?? ""}
-                  onChange={(e) => upd({ baseUrl: e.target.value })}
-                  placeholder="https://api.openai.com/v1"
-                  className="rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[11px] text-fg-muted">
-                Model
-                <input
-                  value={embedding.model ?? ""}
-                  onChange={(e) => upd({ model: e.target.value })}
-                  placeholder="text-embedding-3-small"
-                  className="rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[11px] text-fg-muted">
-                API key
-                <input
-                  type="password"
-                  value={embedding.apiKey ?? ""}
-                  onChange={(e) => upd({ apiKey: e.target.value })}
-                  placeholder={embedding.hasApiKey ? "(stored — leave blank to keep)" : "sk-… or ${VAR}"}
-                  className="rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-[11px] text-fg-muted">
-                Dimensions (optional)
-                <input
-                  type="number"
-                  value={embedding.dimensions ?? ""}
-                  onChange={(e) =>
-                    upd({ dimensions: e.target.value ? Number(e.target.value) : undefined })
-                  }
-                  placeholder="e.g. 1536"
-                  className="rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
-                />
-              </label>
-            </div>
-          );
-        })()}
       </div>
 
       {loading && !providers && (

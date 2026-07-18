@@ -8,6 +8,42 @@
   "permissions": ["workspace.read", "workspace.write"],
   "provides": ["wiki.ingest"],
   "requires": ["host.agentLoop", "host.sessionInbox"],
+  "configSchema": {
+    "fields": [
+      {
+        "key": "embedding.baseUrl",
+        "label": "Embedding base URL",
+        "kind": "string",
+        "placeholder": "https://api.openai.com/v1",
+        "group": { "id": "embedding", "label": "Semantic search (embedding)", "description": "Optional. OpenAI-compatible /embeddings endpoint (cloud, or a local server like llama.cpp / Ollama / LM Studio). When set, the wiki builds a semantic index and searches it; when empty, search falls back to keyword." },
+        "description": "OpenAI-compatible endpoint base; the plugin POSTs <baseUrl>/embeddings."
+      },
+      {
+        "key": "embedding.model",
+        "label": "Embedding model",
+        "kind": "string",
+        "placeholder": "text-embedding-3-small",
+        "group": { "id": "embedding", "label": "Semantic search (embedding)" },
+        "description": "Model id. Leave the base URL + model empty to use keyword search."
+      },
+      {
+        "key": "embedding.apiKey",
+        "label": "Embedding API key",
+        "kind": "secret",
+        "placeholder": "sk-… (blank for keyless local servers)",
+        "group": { "id": "embedding", "label": "Semantic search (embedding)" }
+      },
+      {
+        "key": "embedding.dimensions",
+        "label": "Dimensions (optional)",
+        "kind": "number",
+        "min": 1,
+        "max": 8192,
+        "group": { "id": "embedding", "label": "Semantic search (embedding)" },
+        "description": "Optional output dimensions (sent as `dimensions` when the provider supports it)."
+      }
+    ]
+  },
   "client": { "entry": "@tianshu-builtin/plugin-wiki/client" },
   "server": { "entry": "@tianshu-builtin/plugin-wiki/server" },
   "contributes": {

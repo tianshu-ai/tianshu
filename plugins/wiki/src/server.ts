@@ -654,7 +654,12 @@ function buildIngestCapability(ctx: PluginContext): WikiIngestCapability {
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
-    const cfg = ctx.tenantConfig?.embedding as EmbeddingConfig | undefined;
+    // Embedding config is plugin-scoped (Settings → Plugins → Wiki),
+    // stored under plugins.wiki.config.embedding and delivered here via
+    // pluginConfig (the apiKey secret is merged in from secrets/).
+    const embRaw = (ctx.pluginConfig as { embedding?: unknown })?.embedding;
+    const cfg =
+      embRaw && typeof embRaw === "object" ? (embRaw as EmbeddingConfig) : undefined;
     ctx.log.info(`wiki activated (embedding: ${embeddingEnabled(cfg) ? cfg!.model : "off, keyword search"})`);
     return {
       tools: {
