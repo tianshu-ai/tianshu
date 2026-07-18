@@ -46,6 +46,14 @@ export interface OverridableConfig {
    */
   models?: ModelsCatalog;
   /**
+   * Embedding model for semantic search (currently: the LLM Wiki
+   * plugin builds a per-user vector index and searches it). When
+   * unset, features that would use it fall back to keyword search.
+   * OpenAI-compatible `/v1/embeddings` endpoint (works with cloud
+   * providers and local servers like llama.cpp / Ollama / LM Studio).
+   */
+  embedding?: EmbeddingConfig;
+  /**
    * @deprecated 2026-06-21 — never wired up in the open-source
    *   repo. The three sub-keys (count / pollMs / model) had no
    *   runtime consumers: workboard sizes its pool from the
@@ -220,6 +228,20 @@ export interface ModelResilienceConfig {
    *  first (see the `stream_reset` WS event) so text isn't duplicated.
    *  Only applies to non-abort transient failures. Default: true. */
   retryAfterContent?: boolean;
+}
+
+export interface EmbeddingConfig {
+  /** OpenAI-compatible base URL, e.g. "https://api.openai.com/v1" or
+   *  a local "http://127.0.0.1:8080/v1". The plugin POSTs
+   *  `<baseUrl>/embeddings`. */
+  baseUrl?: string;
+  /** Model id, e.g. "text-embedding-3-small" or a local model name. */
+  model?: string;
+  /** API key; supports `${VAR}` placeholders resolved at request time. */
+  apiKey?: string;
+  /** Optional expected dimensions (some providers accept a
+   *  `dimensions` param; also used to sanity-check returned vectors). */
+  dimensions?: number;
 }
 
 export interface ProviderEntry {

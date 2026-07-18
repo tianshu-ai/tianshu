@@ -55,6 +55,13 @@ import {
 } from "./vault.js";
 import { ingestSource } from "./ingest.js";
 import {
+  embeddingEnabled,
+  indexPage,
+  semanticSearch,
+  pruneIndex,
+  type EmbeddingConfig,
+} from "./embedding.js";
+import {
   listUserSessions,
   listSessionMessages,
   listSessionTasks,
@@ -188,30 +195,44 @@ function buildReadTool(): AgentTool {
   };
 }
 
-function buildSearchTool(): AgentTool {
+function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
   return {
     schema: {
       name: "wiki_search",
       description:
-        "Full-text search the user's wiki (titles + bodies). Returns matching page paths with a snippet. Use to recall prior work, decisions, people, or facts distilled from past conversations.",
+        "Search the user's wiki to recall prior work, decisions, people, or facts distilled from past conversations. Uses semantic (embedding) search when the tenant has configured an embedding model, otherwise keyword search — either way just pass a natural-language query. Returns matching page paths with titles/snippets.",
       parameters: Type.Object({
-        query: Type.String({ description: "Search text." }),
+        query: Type.String({ description: "Natural-language search text." }),
         limit: Type.Optional(Type.Number({ description: "Max results (default 20)." })),
       }),
     },
-    execute: (raw, ctx: AgentToolContext): ToolResult => {
+    execute: async (raw, ctx: AgentToolContext): Promise<ToolResult> => {
       const p = raw as { query?: string; limit?: number };
       const q = String(p.query ?? "").trim();
       if (!q) return { ok: false, text: "query is required" };
-      const hits = searchPages(ctx.userHomeDir, q, typeof p.limit === "number" ? p.limit : 20);
+      const limit = typeof p.limit === "number" ? p.limit : 20;
+
+      // Semantic first (if configured + index present); fall back to
+      // keyword when unavailable or it returns nothing useful.
+      const sem = await semanticSearch(ctx.userHomeDir, cfg, q, limit);
+      if (sem && sem.length > 0) {
+        const byPath = new Map(listPages(ctx.userHomeDir).map((pg) => [pg.path, pg.title]));
+        const lines = sem
+          .filter((h) => h.score > 0.15)
+          .map((h) => `- ${h.path} — ${byPath.get(h.path) ?? h.path} (score ${h.score.toFixed(2)})`);
+        if (lines.length > 0) {
+          return { ok: true, text: `Wiki (semantic) for "${q}" (${lines.length}):\n${lines.join("\n")}` };
+        }
+      }
+      const hits = searchPages(ctx.userHomeDir, q, limit);
       if (hits.length === 0) return { ok: true, text: `No wiki hits for "${q}".` };
       const lines = hits.map((h) => `- ${h.path} — ${h.title}\n    …${h.snippet}…`);
-      return { ok: true, text: `Wiki hits for "${q}" (${hits.length}):\n${lines.join("\n")}` };
+      return { ok: true, text: `Wiki (keyword) for "${q}" (${hits.length}):\n${lines.join("\n")}` };
     },
   };
 }
 
-function buildWritePageTool(): AgentTool {
+function buildWritePageTool(cfg?: EmbeddingConfig): AgentTool {
   return {
     available: isWikiWorker,
     schema: {
@@ -232,7 +253,7 @@ function buildWritePageTool(): AgentTool {
         ),
       }),
     },
-    execute: (raw, ctx: AgentToolContext): ToolResult => {
+    execute: async (raw, ctx: AgentToolContext): Promise<ToolResult> => {
       const p = raw as { section?: string; slug?: string; title?: string; body?: string; links?: string[] };
       const section = String(p.section ?? "");
       if (section === "sources") {
@@ -262,6 +283,10 @@ function buildWritePageTool(): AgentTool {
         writePage(file, content);
       } catch (err) {
         return { ok: false, text: `write failed: ${err instanceof Error ? err.message : String(err)}` };
+      }
+      // Embed for semantic search (best-effort; no-op without a model).
+      if (embeddingEnabled(cfg)) {
+        await indexPage(ctx.userHomeDir, cfg, `${section}/${slug}`, `${title}\n\n${body}`);
       }
       return { ok: true, text: `wrote ${section}/${slug}` };
     },
@@ -419,7 +444,7 @@ function periodLabel(level: JournalLevel, period: string): string {
   return period;
 }
 
-function buildJournalWriteTool(): AgentTool {
+function buildJournalWriteTool(cfg?: EmbeddingConfig): AgentTool {
   return {
     available: isWikiWorker,
     schema: {
@@ -438,7 +463,7 @@ function buildJournalWriteTool(): AgentTool {
         ),
       }),
     },
-    execute: (raw, ctx: AgentToolContext): ToolResult => {
+    execute: async (raw, ctx: AgentToolContext): Promise<ToolResult> => {
       const p = raw as { level?: string; period?: string; title?: string; body?: string; links?: string[] };
       const level = String(p.level ?? "") as JournalLevel;
       if (!JOURNAL_LEVELS.includes(level)) {
@@ -476,6 +501,9 @@ function buildJournalWriteTool(): AgentTool {
         writePage(file, content);
       } catch (err) {
         return { ok: false, text: `write failed: ${err instanceof Error ? err.message : String(err)}` };
+      }
+      if (embeddingEnabled(cfg)) {
+        await indexPage(ctx.userHomeDir, cfg, `${section}/${period}`, `${title}\n\n${body}`);
       }
       return { ok: true, text: `wrote ${section}/${period}` };
     },
@@ -626,7 +654,8 @@ function buildIngestCapability(ctx: PluginContext): WikiIngestCapability {
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
-    ctx.log.info("wiki activated");
+    const cfg = ctx.tenantConfig?.embedding as EmbeddingConfig | undefined;
+    ctx.log.info(`wiki activated (embedding: ${embeddingEnabled(cfg) ? cfg!.model : "off, keyword search"})`);
     return {
       tools: {
         WikiNextSessionTool: buildNextSessionTool(ctx),
@@ -634,9 +663,9 @@ const plugin: PluginServerModule = {
         WikiListSourcesTool: buildListSourcesTool(),
         WikiListPagesTool: buildListPagesTool(),
         WikiReadTool: buildReadTool(),
-        WikiSearchTool: buildSearchTool(),
-        WikiWritePageTool: buildWritePageTool(),
-        WikiJournalWriteTool: buildJournalWriteTool(),
+        WikiSearchTool: buildSearchTool(cfg),
+        WikiWritePageTool: buildWritePageTool(cfg),
+        WikiJournalWriteTool: buildJournalWriteTool(cfg),
         WikiResetTool: buildResetTool(),
       },
       routes: buildRoutes(ctx),

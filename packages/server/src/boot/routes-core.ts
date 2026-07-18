@@ -206,6 +206,7 @@ export function mountCoreRoutes(
         providers: maskProviders(providers),
         defaultModelId: cfg.models?.defaultModelId ?? null,
         defaultModel: cfg.defaultModel ?? null,
+        embedding: maskEmbedding(cfg.embedding),
       });
     } catch (err) {
       res.status(500).json({
@@ -250,11 +251,30 @@ export function mountCoreRoutes(
         if (typeof body.defaultModel === "string") {
           nextCfg.defaultModel = body.defaultModel || undefined;
         }
+        // Embedding config (top-level). Merge so a masked apiKey
+        // ("\u2022\u2022\u2022") sent back unchanged doesn't overwrite the stored key.
+        const emb = (req.body as { embedding?: unknown }).embedding;
+        if (emb === null) {
+          delete nextCfg.embedding;
+        } else if (emb && typeof emb === "object") {
+          const e = emb as { baseUrl?: unknown; model?: unknown; apiKey?: unknown; dimensions?: unknown };
+          const next: { baseUrl?: string; model?: string; apiKey?: string; dimensions?: number } = {
+            ...(cfg.embedding ?? {}),
+          };
+          if (typeof e.baseUrl === "string") next.baseUrl = e.baseUrl || undefined;
+          if (typeof e.model === "string") next.model = e.model || undefined;
+          if (typeof e.dimensions === "number") next.dimensions = e.dimensions || undefined;
+          if (typeof e.apiKey === "string" && !isMaskedSecret(e.apiKey)) {
+            next.apiKey = e.apiKey || undefined;
+          }
+          nextCfg.embedding = next;
+        }
         writeGlobalConfig(nextCfg, getTianshuHome());
         res.json({
           providers: maskProviders(parsed.value),
           defaultModelId: nextModels.defaultModelId ?? null,
           defaultModel: nextCfg.defaultModel ?? null,
+          embedding: maskEmbedding(nextCfg.embedding),
         });
       } catch (err) {
         res.status(500).json({
@@ -271,6 +291,24 @@ export function mountCoreRoutes(
 /** Return providers with every apiKey replaced by the mask sentinel
  *  (when a key is set) so the real secret never reaches the browser.
  *  Also surfaces `hasApiKey` so the UI can show "key set" state. */
+function isMaskedSecret(s: string): boolean {
+  return s === API_KEY_MASK;
+}
+
+function maskEmbedding(
+  e: { baseUrl?: string; model?: string; apiKey?: string; dimensions?: number } | undefined,
+): { baseUrl?: string; model?: string; apiKey: string; dimensions?: number; hasApiKey: boolean } | null {
+  if (!e) return null;
+  const hasKey = typeof e.apiKey === "string" && e.apiKey.length > 0;
+  return {
+    baseUrl: e.baseUrl,
+    model: e.model,
+    dimensions: e.dimensions,
+    apiKey: hasKey ? API_KEY_MASK : "",
+    hasApiKey: hasKey,
+  };
+}
+
 function maskProviders(
   providers: Record<string, ProviderEntry>,
 ): Record<string, ProviderEntry & { hasApiKey?: boolean }> {
