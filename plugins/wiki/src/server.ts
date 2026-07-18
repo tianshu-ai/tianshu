@@ -702,7 +702,24 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
   const status: PluginRouteHandler = (req: Request, res: Response) => {
     const userId = userIdFromReq(req);
     if (!userId) return void res.status(401).json({ error: "no user context" });
-    res.json({ running: running.has(runKey(ctx.tenantId, userId)) });
+    // Progress from the durable cursor: how many of the user's
+    // sessions are already recorded. Drives the ring progress on the
+    // record button while a run is in flight.
+    let total = 0, done = 0;
+    try {
+      const all = listUserSessions(ctx.db, userId);
+      total = all.length;
+      const processed = new Set(readCursor(ctx.userHomeDir(userId)).ingestedSessionIds);
+      done = all.filter((s) => processed.has(s.id)).length;
+    } catch {
+      /* best-effort */
+    }
+    res.json({
+      running: running.has(runKey(ctx.tenantId, userId)),
+      total,
+      done,
+      progress: total > 0 ? done / total : 0,
+    });
   };
 
   const graph: PluginRouteHandler = (req: Request, res: Response) => {

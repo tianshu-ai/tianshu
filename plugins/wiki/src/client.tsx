@@ -607,28 +607,36 @@ const LEGEND: Array<{ section: string; label: string; color: string }> = [
 function WikiRecordButton(_props: ComposerActionProps) {
   const nav = useChatNav();
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0); // 0..1
 
-  // Poll running state so the button reflects an in-flight update
-  // (started from any channel/tab).
+  // Poll status; faster cadence while running so the ring moves.
   useEffect(() => {
     let alive = true;
+    let id: ReturnType<typeof setTimeout>;
     const tick = () => {
       fetch(`${API_BASE}/status`, { credentials: "include" })
         .then((r) => (r.ok ? r.json() : null))
-        .then((j) => alive && j && setBusy(!!j.running))
-        .catch(() => {});
+        .then((j: { running?: boolean; progress?: number } | null) => {
+          if (!alive || !j) return;
+          setBusy(!!j.running);
+          if (typeof j.progress === "number") setProgress(j.progress);
+          id = setTimeout(tick, j.running ? 1500 : 5000);
+        })
+        .catch(() => {
+          if (alive) id = setTimeout(tick, 5000);
+        });
     };
     tick();
-    const id = setInterval(tick, 5000);
     return () => {
       alive = false;
-      clearInterval(id);
+      clearTimeout(id);
     };
   }, []);
 
   const onClick = () => {
     if (busy) return;
     setBusy(true);
+    setProgress(0);
     // Spawn the background wiki-worker (its own session; won't pollute
     // this conversation). It notifies this session when done.
     fetch(`${API_BASE}/record`, {
@@ -644,20 +652,35 @@ function WikiRecordButton(_props: ComposerActionProps) {
       .catch(() => setBusy(false));
   };
 
+  // iOS-app-install-style ring: a track circle + a progress arc that
+  // sweeps clockwise as done/total climbs, wrapping the Notebook icon.
+  const R = 10, C = 2 * Math.PI * R;
+  const pct = Math.max(0, Math.min(1, progress));
+
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={busy}
-      title={busy ? "Wiki update running…" : "Record this conversation into the wiki"}
+      title={busy ? `Wiki update running… ${Math.round(pct * 100)}%` : "Record this conversation into the wiki"}
       className={
-        "rounded p-1.5 transition-colors " +
-        (busy
-          ? "text-brand-400 animate-pulse cursor-default"
-          : "text-fg-faint hover:text-fg-default hover:bg-bg-hover")
+        "relative flex h-7 w-7 items-center justify-center rounded transition-colors " +
+        (busy ? "cursor-default text-brand-400" : "text-fg-faint hover:text-fg-default hover:bg-bg-hover")
       }
     >
-      <Notebook size={16} />
+      {busy && (
+        <svg className="absolute inset-0 -rotate-90" viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r={R} fill="none" stroke="currentColor" strokeWidth="2" strokeOpacity="0.2" />
+          <circle
+            cx="12" cy="12" r={R} fill="none" stroke="currentColor" strokeWidth="2"
+            strokeLinecap="round"
+            strokeDasharray={C}
+            strokeDashoffset={C * (1 - pct)}
+            style={{ transition: "stroke-dashoffset 0.5s ease" }}
+          />
+        </svg>
+      )}
+      <Notebook size={busy ? 12 : 16} />
     </button>
   );
 }
