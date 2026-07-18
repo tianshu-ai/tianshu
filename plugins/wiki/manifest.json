@@ -44,14 +44,16 @@
       { "id": "wiki_read",         "module": "WikiReadTool",        "since": "0.1.0" },
       { "id": "wiki_search",       "module": "WikiSearchTool",      "since": "0.1.0" },
       { "id": "wiki_write_page",   "module": "WikiWritePageTool",   "since": "0.1.0" },
-      { "id": "wiki_journal_write","module": "WikiJournalWriteTool","since": "0.1.0" }
+      { "id": "wiki_journal_write","module": "WikiJournalWriteTool","since": "0.1.0" },
+      { "id": "wiki_reset",        "module": "WikiResetTool",        "since": "0.1.0" }
     ],
     "apiRoutes": [
       { "method": "GET",  "path": "/list",   "handler": "list"   },
       { "method": "GET",  "path": "/read",   "handler": "read"   },
       { "method": "GET",  "path": "/search", "handler": "search" },
       { "method": "POST", "path": "/record", "handler": "record" },
-      { "method": "GET",  "path": "/status", "handler": "status" }
+      { "method": "GET",  "path": "/status", "handler": "status" },
+      { "method": "POST", "path": "/reset",  "handler": "reset"  }
     ]
   }
 }

@@ -6,15 +6,13 @@
 // GET /api/p/wiki/{list,read,search}. Refreshes on workspace changes.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Notebook, Search, RefreshCw, FileText } from "lucide-react";
+import { Notebook, Search, RefreshCw, FileText, Trash2 } from "lucide-react";
 import type {
   PanelProps,
   PluginClientExports,
   ComposerActionProps,
 } from "@tianshu-ai/plugin-sdk/client";
 import { useUiPrimitives, subscribeToWsEvent, useChatNav } from "@tianshu-ai/plugin-sdk/client";
-
-const API_BASE_ROOT = "/api/p/wiki";
 
 const API_BASE = "/api/p/wiki";
 
@@ -113,6 +111,28 @@ function WikiPanel(_props: PanelProps) {
         >
           <RefreshCw size={12} />
         </button>
+        <button
+          onClick={() => {
+            if (
+              !window.confirm(
+                "Wipe the entire wiki (all pages + progress) so it rebuilds from scratch? This cannot be undone.",
+              )
+            )
+              return;
+            fetch(`${API_BASE}/reset`, { method: "POST", credentials: "include" })
+              .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+              .then(() => {
+                setSelected(null);
+                setMarkdown("");
+                fetchList();
+              })
+              .catch(() => window.alert("Reset failed (a wiki update may be running)."));
+          }}
+          title="Reset wiki (wipe all pages + progress)"
+          className="rounded p-1 text-fg-faint hover:text-danger hover:bg-bg-hover transition-colors"
+        >
+          <Trash2 size={12} />
+        </button>
       </div>
 
       <div className="flex min-h-0 flex-1">
@@ -188,7 +208,7 @@ function WikiRecordButton(_props: ComposerActionProps) {
   useEffect(() => {
     let alive = true;
     const tick = () => {
-      fetch(`${API_BASE_ROOT}/status`, { credentials: "include" })
+      fetch(`${API_BASE}/status`, { credentials: "include" })
         .then((r) => (r.ok ? r.json() : null))
         .then((j) => alive && j && setBusy(!!j.running))
         .catch(() => {});
@@ -206,7 +226,7 @@ function WikiRecordButton(_props: ComposerActionProps) {
     setBusy(true);
     // Spawn the background wiki-worker (its own session; won't pollute
     // this conversation). It notifies this session when done.
-    fetch(`${API_BASE_ROOT}/record`, {
+    fetch(`${API_BASE}/record`, {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },

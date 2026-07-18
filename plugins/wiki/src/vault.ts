@@ -306,3 +306,42 @@ export function markIngested(userHome: string, sessionId: string): void {
 export function alreadyIngested(userHome: string, sessionId: string): boolean {
   return readCursor(userHome).ingestedSessionIds.includes(sessionId);
 }
+
+// ─── reset ───────────────────────────────────────────
+
+export interface ResetResult {
+  ok: boolean;
+  removedPages: number;
+  reason?: string;
+}
+
+/** Wipe the whole wiki vault for a user: every page across all
+ *  sections AND the ingest cursor, so the next run rebuilds from
+ *  scratch. Destructive + intentional (a strategy change means old
+ *  pages are stale). Confined to `<userHome>/wiki` — never touches
+ *  anything above it. */
+export function resetVault(userHome: string): ResetResult {
+  const root = wikiRoot(userHome);
+  // Count pages before removal for the confirmation message.
+  let removed = 0;
+  try {
+    removed = listPages(userHome).length;
+  } catch {
+    /* ignore */
+  }
+  // Defense in depth: only ever rm the resolved wiki dir.
+  const resolvedRoot = path.resolve(root);
+  if (!resolvedRoot.endsWith(`${path.sep}${WIKI_DIR}`)) {
+    return { ok: false, removedPages: 0, reason: "refusing to reset a non-wiki path" };
+  }
+  try {
+    fs.rmSync(resolvedRoot, { recursive: true, force: true });
+  } catch (err) {
+    return {
+      ok: false,
+      removedPages: 0,
+      reason: err instanceof Error ? err.message : String(err),
+    };
+  }
+  return { ok: true, removedPages: removed };
+}

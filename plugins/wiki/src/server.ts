@@ -49,6 +49,7 @@ import {
   alreadyIngested,
   isValidPeriod,
   isoWeekRange,
+  resetVault,
   type JournalLevel,
 } from "./vault.js";
 import { ingestSource } from "./ingest.js";
@@ -341,6 +342,28 @@ function buildNextSessionTool(ctx: PluginContext): AgentTool {
   };
 }
 
+function buildResetTool(): AgentTool {
+  return {
+    schema: {
+      name: "wiki_reset",
+      description:
+        "Wipe the ENTIRE wiki vault (all pages + the ingest progress cursor) so it can be rebuilt from scratch. Destructive and irreversible — only use when the user explicitly asks to clear/reset the wiki. Requires confirm:true.",
+      parameters: Type.Object({
+        confirm: Type.Boolean({ description: "Must be true to actually wipe the vault." }),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolResult => {
+      const p = raw as { confirm?: boolean };
+      if (p.confirm !== true) {
+        return { ok: false, text: "wiki_reset needs confirm:true — this wipes the whole wiki." };
+      }
+      const r = resetVault(ctx.userHomeDir);
+      if (!r.ok) return { ok: false, text: `reset failed: ${r.reason}` };
+      return { ok: true, text: `Wiki reset: removed ${r.removedPages} page(s) and cleared the progress cursor. Next update rebuilds from scratch.` };
+    },
+  };
+}
+
 function buildSessionDoneTool(): AgentTool {
   return {
     schema: {
@@ -480,6 +503,17 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.json({ running: running.has(runKey(ctx.tenantId, userId)) });
   };
 
+  const reset: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return void res.status(401).json({ error: "no user context" });
+    if (running.has(runKey(ctx.tenantId, userId))) {
+      return void res.status(409).json({ error: "a wiki update is running; wait for it to finish" });
+    }
+    const r = resetVault(ctx.userHomeDir(userId));
+    if (!r.ok) return void res.status(500).json({ error: r.reason });
+    res.json({ ok: true, removedPages: r.removedPages });
+  };
+
   // Kick off the background wiki-worker (host.agentLoop). Runs in its
   // OWN session (kind='worker', worker_role='wiki') so the analysis
   // never pollutes the user's conversation and can't recurse on
@@ -545,7 +579,7 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.json({ started: true });
   };
 
-  return { list, read, search, status, record };
+  return { list, read, search, status, record, reset };
 }
 
 // ─── wiki.ingest capability (host compaction hook calls this) ────
@@ -581,6 +615,7 @@ const plugin: PluginServerModule = {
         WikiSearchTool: buildSearchTool(),
         WikiWritePageTool: buildWritePageTool(),
         WikiJournalWriteTool: buildJournalWriteTool(),
+        WikiResetTool: buildResetTool(),
       },
       routes: buildRoutes(ctx),
       capabilityProviders: { "wiki.ingest": buildIngestCapability(ctx) },
