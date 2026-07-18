@@ -295,9 +295,13 @@ function cursorFile(userHome: string): string {
   return path.join(wikiRoot(userHome), ".wiki", "cursor.json");
 }
 
+// Time-cursor model: the wiki walks the user's whole message timeline
+// chronologically, one day at a time. The cursor is the created_at (ms)
+// of the last message already recorded; each run reads messages AFTER
+// it. Simple, resumable, and session-boundary-independent.
 export interface IngestCursor {
-  /** session ids already filed as sources (dedupe). */
-  ingestedSessionIds: string[];
+  /** epoch ms of the last recorded message (0 = nothing recorded). */
+  cursorMs: number;
   updatedAt: string;
 }
 
@@ -306,33 +310,24 @@ export function readCursor(userHome: string): IngestCursor {
     const raw = fs.readFileSync(cursorFile(userHome), "utf8");
     const c = JSON.parse(raw) as Partial<IngestCursor>;
     return {
-      ingestedSessionIds: Array.isArray(c.ingestedSessionIds) ? c.ingestedSessionIds : [],
+      cursorMs: typeof c.cursorMs === "number" ? c.cursorMs : 0,
       updatedAt: typeof c.updatedAt === "string" ? c.updatedAt : "",
     };
   } catch {
-    return { ingestedSessionIds: [], updatedAt: "" };
+    return { cursorMs: 0, updatedAt: "" };
   }
 }
 
-export function markIngested(userHome: string, sessionId: string): void {
-  const c = readCursor(userHome);
-  if (c.ingestedSessionIds.includes(sessionId)) return;
-  c.ingestedSessionIds.push(sessionId);
-  // Keep the list bounded — the last few hundred ids are plenty for
-  // dedupe (older segments are already filed and won't re-ingest).
-  if (c.ingestedSessionIds.length > 500) {
-    c.ingestedSessionIds = c.ingestedSessionIds.slice(-500);
-  }
-  c.updatedAt = new Date().toISOString();
+/** Advance the cursor to `ms` (only moves forward). */
+export function setCursor(userHome: string, ms: number): void {
+  const cur = readCursor(userHome);
+  if (ms <= cur.cursorMs) return;
+  const c: IngestCursor = { cursorMs: ms, updatedAt: new Date().toISOString() };
   const file = cursorFile(userHome);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
   fs.writeFileSync(tmp, JSON.stringify(c, null, 2), "utf8");
   fs.renameSync(tmp, file);
-}
-
-export function alreadyIngested(userHome: string, sessionId: string): boolean {
-  return readCursor(userHome).ingestedSessionIds.includes(sessionId);
 }
 
 // ─── link graph ─────────────────────────────────────────

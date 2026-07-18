@@ -27,6 +27,95 @@ export interface SessionRow {
   ended_at: number | null;
 }
 
+/** A message joined with the session it belongs to, for the time-
+ *  ordered cross-session walk. */
+export interface TimedMessageRow {
+  id: string;
+  session_id: string;
+  role: string;
+  content: string;
+  created_at: number;
+}
+
+/** Local-timezone day key (YYYY-MM-DD) for an epoch-ms timestamp.
+ *  Uses the host's local timezone (the deployment's "current
+ *  timezone"), NOT UTC — so a day boundary matches the operator's
+ *  wall clock. */
+export function localDay(ms: number, tz?: string): string {
+  const d = new Date(ms);
+  // en-CA gives YYYY-MM-DD; honour an explicit tz when provided.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/**
+ * All of a user's conversation messages with created_at > afterMs,
+ * across every session (user + worker/task) EXCEPT the wiki-worker's
+ * own sessions, ordered by time. This is the time-line the wiki walks:
+ * a single chronological stream, not per-session. Capped at `limit`
+ * rows so a huge backlog is paged by the caller.
+ */
+export function listMessagesAfter(
+  db: TenantDbHandle,
+  userId: string,
+  afterMs: number,
+  limit: number,
+): TimedMessageRow[] {
+  return db
+    .prepare<[string, string, number, number], TimedMessageRow>(
+      `SELECT m.id, m.session_id, m.role, m.content, m.created_at
+         FROM messages m
+         JOIN sessions s ON s.id = m.session_id
+        WHERE s.user_id = ?
+          AND (s.worker_role IS NULL OR s.worker_role <> ?)
+          AND m.created_at > ?
+        ORDER BY m.created_at ASC
+        LIMIT ?`,
+    )
+    .all(userId, WIKI_WORKER_ROLE, afterMs, limit);
+}
+
+/** Earliest + latest message time across the user's non-wiki sessions,
+ *  for progress computation. Returns {min,max} in epoch ms (0 if none). */
+export function messageTimeSpan(db: TenantDbHandle, userId: string): { min: number; max: number } {
+  const r = db
+    .prepare<[string, string], { min: number | null; max: number | null }>(
+      `SELECT MIN(m.created_at) min, MAX(m.created_at) max
+         FROM messages m
+         JOIN sessions s ON s.id = m.session_id
+        WHERE s.user_id = ?
+          AND (s.worker_role IS NULL OR s.worker_role <> ?)`,
+    )
+    .get(userId, WIKI_WORKER_ROLE);
+  return { min: r?.min ?? 0, max: r?.max ?? 0 };
+}
+
+/** Tasks whose created_at falls in [startMs, endMs], across the user's
+ *  sessions — so a day's tasks are handed over with that day's
+ *  messages. */
+export function tasksInRange(
+  db: TenantDbHandle,
+  userId: string,
+  startMs: number,
+  endMs: number,
+): TaskRow[] {
+  return db
+    .prepare<[string, number, number], TaskRow>(
+      `SELECT t.id, t.project_slug, t.title, t.description, t.status, t.result_summary,
+              t.result_files, t.session_id, t.parent_session_id, t.created_at, t.ended_at
+         FROM tasks t
+         JOIN sessions s ON s.id = t.parent_session_id
+        WHERE s.user_id = ?
+          AND t.created_at >= ? AND t.created_at <= ?
+        ORDER BY t.created_at ASC`,
+    )
+    .all(userId, startMs, endMs);
+}
+
 export interface MessageRow {
   id: string;
   role: string;

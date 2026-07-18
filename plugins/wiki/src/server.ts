@@ -45,8 +45,7 @@ import {
   writePage,
   safeSlug,
   readCursor,
-  markIngested,
-  alreadyIngested,
+  setCursor,
   isValidPeriod,
   isoWeekRange,
   resetVault,
@@ -59,31 +58,31 @@ import {
   embeddingEnabled,
   indexPage,
   semanticSearch,
-  pruneIndex,
   type EmbeddingConfig,
 } from "./embedding.js";
 import {
-  listUserSessions,
   listSessionMessages,
-  listSessionTasks,
   messageToText,
   parseResultFiles,
+  listMessagesAfter,
+  messageTimeSpan,
+  tasksInRange,
+  localDay,
   WIKI_WORKER_ROLE,
-  type SessionRow,
 } from "./sessions.js";
 
 // The instruction the wiki-worker runs. Kept here so the recording
 // strategy is easy to tweak. The worker walks the session timeline
 // incrementally and distils each into pages across three dimensions.
 const RECORD_WIKI_STEPS = [
-  "You are updating the user's LLM Wiki from their conversation timeline. Work incrementally, session by session:",
-  "1. Call wiki_next_session to fetch the next unprocessed session's RAW transcript (paginated). If the result's has_more is true, call wiki_next_session again with page:<nextPage> and keep going until you've read the whole session (has_more=false). Note the session's date.",
-  "2. Read and understand it, then record across BOTH layers:",
-  "   • THEMATIC (wiki_write_page): project → section=entities; reusable tech/knowledge points → section=concepts; a cross-time thread/undertaking (e.g. 'build the board plugin', which may span several days) → section=topics.",
-  "   • TIME (wiki_journal_write): messages are timestamped [YYYY-MM-DD HH:MM] and a single session can span MANY days — write/update a SEPARATE daily entry PER DATE that appears (level=daily, period=that YYYY-MM-DD), not one per session. Each daily notes what was done that day, cross-linking the topics/entities/concepts it touched with [[section/slug]]. A day usually spans several topics; a topic usually spans several days — link both ways (also add the day to the topic page's timeline).",
-  "3. Only after reading every page of the session, call wiki_session_done with that sessionId to advance the cursor.",
-  "4. Repeat for a batch. When you've covered the sessions of a given ISO week / month / year, roll them up with wiki_journal_write: weekly (period YYYY-Www) from that week's dailies, monthly (YYYY-MM) from its weeks, yearly (YYYY) from its months. Roll-ups summarise and link down — don't repeat detail.",
-  "5. Stop when wiki_next_session reports done:true, or after ~10 sessions this run (the cursor persists; the next run resumes). Then give a one-paragraph summary of what you recorded.",
+  "You are updating the user's LLM Wiki from their conversation timeline. Work one DAY at a time, chronologically:",
+  "1. Call wiki_next_day to fetch the next unrecorded day's raw transcript (timestamped messages, merged across all sessions) + that day's tasks + progress.",
+  "2. Read it, then record across BOTH layers for that day:",
+  "   • TIME (wiki_journal_write): write the daily entry — level=daily, period=<that YYYY-MM-DD> — noting what was done that day, cross-linking the topics/entities/concepts it touched with [[section/slug]].",
+  "   • THEMATIC (wiki_write_page): project → section=entities; reusable tech/knowledge points → section=concepts; a cross-day thread/undertaking (e.g. 'build the board plugin') → section=topics. A topic usually spans several days — add this day to the topic page's timeline and link both ways.",
+  "3. Call wiki_day_done({ throughMs }) with the throughMs from wiki_next_day to advance the cursor past that day.",
+  "4. Repeat. When you've recorded all days of an ISO week / month / year, roll them up with wiki_journal_write: weekly (YYYY-Www) from its dailies, monthly (YYYY-MM) from its weeks, yearly (YYYY) from its months. Roll-ups summarise and link down — don't repeat detail.",
+  "5. Stop when wiki_next_day reports done:true, or after ~10 days this run (the cursor persists; the next run resumes). Then give a one-paragraph summary of what you recorded.",
   "Reuse wiki_search / wiki_list_pages / wiki_read first so you extend existing pages instead of duplicating them.",
 ];
 
@@ -102,8 +101,8 @@ function recordWikiPrompt(lang: "auto" | "en" | "zh" | undefined): string {
 // Wiki tools the worker is allowed to use (nothing else — it's a
 // focused background job, not a general agent).
 const WIKI_WORKER_TOOLS = [
-  "wiki_next_session",
-  "wiki_session_done",
+  "wiki_next_day",
+  "wiki_day_done",
   "wiki_list_sources",
   "wiki_list_pages",
   "wiki_read",
@@ -374,165 +373,116 @@ function buildWritePageTool(cfg?: EmbeddingConfig): AgentTool {
   };
 }
 
-// ─── session-driven ingest tools ────────────────────────────────
+// ─── time-driven ingest tools (one DAY at a time) ──────────────
 //
-// The wiki is built by walking the user's session timeline oldest
-// first: wiki_next_session hands the agent one unprocessed session's
-// full material; the agent distils it into pages via wiki_write_page;
-// wiki_session_done advances the cursor. Progress is persisted so a
-// later run resumes from the cut-off point instead of redoing work.
+// The wiki walks the user's whole message timeline chronologically,
+// one LOCAL-TIMEZONE DAY at a time, across all sessions merged into a
+// single stream. Progress is a timestamp cursor (last recorded
+// message's created_at): wiki_next_day returns the next day's messages
+// (+ that day's tasks) after the cursor; wiki_day_done advances the
+// cursor past that day. Session boundaries are irrelevant — a day is a
+// day, which is exactly what the daily journal wants.
 
-// Paginate a session's raw transcript by character budget so a long
-// conversation is handed over in full across several pages instead of
-// being truncated. The agent reads page 0, 1, 2… until has_more=false,
-// then marks the session done.
-const PAGE_CHARS = 18000;
+// Per-day transcript char cap so a very busy day still fits the tool
+// result (we never split a day — the agent gets the whole day).
+const DAY_MAX_CHARS = 40000;
 
-/** Slice rendered message blocks into a page starting at `startIndex`,
- *  packing whole messages until the char budget is hit (always at
- *  least one message so a huge single message still makes progress). */
-function paginateBlocks(
-  blocks: string[],
-  startIndex: number,
-): { text: string; nextIndex: number; hasMore: boolean } {
-  let end = startIndex;
-  let size = 0;
-  while (end < blocks.length) {
-    const len = blocks[end]!.length + 2;
-    if (size > 0 && size + len > PAGE_CHARS) break;
-    size += len;
-    end++;
-  }
-  if (end === startIndex && startIndex < blocks.length) end = startIndex + 1;
-  return {
-    text: blocks.slice(startIndex, end).join("\n\n"),
-    nextIndex: end,
-    hasMore: end < blocks.length,
-  };
-}
+// Host local timezone — the "current timezone" days are bucketed by.
+const LOCAL_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-function sessionLabel(s: SessionRow): string {
-  // No date here on purpose: a session's messages can span many days,
-  // so the session's own created_at is a misleading "date". Day
-  // attribution comes from each message's timestamp instead.
-  const short = s.id.replace(/^sess?_/, "").replace(/^session_/, "").slice(0, 8);
-  return s.title?.trim() || short;
-}
-
-function buildNextSessionTool(ctx: PluginContext): AgentTool {
+function buildNextDayTool(ctx: PluginContext): AgentTool {
   return {
     available: isWikiWorker,
     schema: {
-      name: "wiki_next_session",
+      name: "wiki_next_day",
       description:
-        "Fetch the next unprocessed conversation session (oldest first) for the wiki — the RAW original transcript (not a compaction summary), paginated. Read this page, distil it into wiki pages with wiki_write_page / wiki_journal_write (project / date / topic dimensions, [[wikilinked]]). If has_more is true, call wiki_next_session again with page:<nextPage> to get the rest of THIS session before moving on. Only call wiki_session_done once you've read every page (has_more=false). Returns done:true when the whole timeline is processed.",
-      parameters: Type.Object({
-        page: Type.Optional(
-          Type.Number({ description: "0-based page of the current session's transcript (default 0). Use the nextPage from the previous call." }),
-        ),
-      }),
+        "Fetch the next unrecorded DAY of the user's conversation timeline (chronological, merged across all sessions), after the progress cursor. Returns that day's full raw transcript (timestamped messages) + the tasks created that day + progress. Distil it into wiki pages: a daily journal for that date (wiki_journal_write level=daily period=<that date>) plus any project/topic/concept pages (wiki_write_page), all [[wikilinked]]. Then call wiki_day_done to advance the cursor past that day. Returns done:true when the timeline is fully recorded.",
+      parameters: Type.Object({}),
     },
-    execute: (raw, tctx: AgentToolContext): ToolResult => {
-      const rp = raw as { page?: number };
-      const page = typeof rp.page === "number" && rp.page >= 0 ? Math.floor(rp.page) : 0;
+    execute: (_raw, tctx: AgentToolContext): ToolResult => {
       const userId = tctx.userId;
       const home = tctx.userHomeDir;
-      const all = listUserSessions(ctx.db, userId);
-      const processed = new Set(readCursor(home).ingestedSessionIds);
-      const total = all.length;
-      const doneCount = all.filter((s) => processed.has(s.id)).length;
-      const next = all.find((s) => !processed.has(s.id));
-      if (!next) {
+      const cursor = readCursor(home).cursorMs;
+      const span = messageTimeSpan(ctx.db, userId);
+      if (span.max === 0) {
+        return { ok: true, text: "No conversation messages to record yet.", data: { done: true } };
+      }
+      // Pull a chunk of messages after the cursor, then keep only the
+      // FIRST local-day present — that's "the next day" to record.
+      const batch = listMessagesAfter(ctx.db, userId, cursor, 2000);
+      if (batch.length === 0) {
         return {
           ok: true,
-          text: `All ${total} sessions processed. Wiki is up to date. (done ${doneCount}/${total})`,
-          data: { done: true, total, doneCount },
+          text: `All caught up — every message up to ${new Date(cursor).toISOString()} is recorded.`,
+          data: { done: true, cursorMs: cursor },
         };
       }
+      const firstDay = localDay(batch[0]!.created_at, LOCAL_TZ);
+      const dayMsgs = batch.filter((m) => localDay(m.created_at, LOCAL_TZ) === firstDay);
+      // If the 2000-row batch was ALL the same day and there may be
+      // more of that day beyond it, pull the rest of that day too so we
+      // never split a day across runs.
+      if (dayMsgs.length === batch.length && batch.length === 2000) {
+        let more = listMessagesAfter(ctx.db, userId, batch[batch.length - 1]!.created_at, 4000);
+        more = more.filter((m) => localDay(m.created_at, LOCAL_TZ) === firstDay);
+        dayMsgs.push(...more);
+      }
+      const dayStartMs = dayMsgs[0]!.created_at;
+      const dayEndMs = dayMsgs[dayMsgs.length - 1]!.created_at;
 
-      // RAW original messages (not the compaction summary), paginated
-      // by char budget so nothing is dropped from a long session.
-      //
-      // IMPORTANT: a rolling-window session can span many DAYS (its
-      // messages carry their own created_at; session.created_at is just
-      // when the row was forked). So we prefix each message with its
-      // own date+time and report the day span — the agent must split
-      // daily journals by MESSAGE date, not by the session's date.
-      const msgs = listSessionMessages(ctx.db, next.id);
-      const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-      const timeOf = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ");
-      const blocks = msgs.map(
-        (m) => `[${timeOf(m.created_at)}] ${messageToText(m.role, m.content)}`,
-      );
-      const msgDays = [...new Set(msgs.map((m) => dayOf(m.created_at)))].sort();
-      const { text: transcript, nextIndex, hasMore } = paginateBlocks(blocks, page);
-      const totalPages = (() => {
-        // rough page count for display
-        let pages = 0, i = 0;
-        while (i < blocks.length) { i = paginateBlocks(blocks, i).nextIndex; pages++; }
-        return Math.max(1, pages);
-      })();
-      const nextPage = page + 1;
-
-      // Spawned tasks only on the LAST page (once the full transcript is
-      // read), so they aren't repeated across pages.
-      let tasksSection = "";
-      if (!hasMore) {
-        const tasks = listSessionTasks(ctx.db, next.id);
-        if (tasks.length > 0) {
-          const taskBlocks = tasks.map((t) => {
-            const files = parseResultFiles(t.result_files);
-            const lines = [
-              `### Task: ${t.title} [${t.status}]`,
-              t.description ? `- brief: ${t.description}` : "",
-              t.result_summary ? `- result: ${t.result_summary}` : "",
-              files.length ? `- files: ${files.join(", ")}` : "",
-            ].filter(Boolean);
-            if (t.session_id) {
-              const wmsgs = listSessionMessages(ctx.db, t.session_id);
-              if (wmsgs.length > 0) {
-                const wt = wmsgs.map((m) => messageToText(m.role, m.content)).join("\n");
-                lines.push(`- worker transcript:\n${wt.slice(0, 6000)}`);
-              }
-            }
-            return lines.join("\n");
-          });
-          tasksSection = `\n## Spawned tasks (${tasks.length})\n${taskBlocks.join("\n\n")}`;
-        }
+      const timeOf = (ms: number) =>
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: LOCAL_TZ, hour: "2-digit", minute: "2-digit", hour12: false,
+        }).format(new Date(ms));
+      let transcript = dayMsgs
+        .map((m) => `[${timeOf(m.created_at)}] ${messageToText(m.role, m.content)}`)
+        .join("\n\n");
+      let truncatedNote = "";
+      if (transcript.length > DAY_MAX_CHARS) {
+        transcript = transcript.slice(0, DAY_MAX_CHARS) + "\n\n…[day transcript truncated]";
+        truncatedNote = " (transcript truncated — very busy day)";
       }
 
-      const footer = hasMore
-        ? `\n---\nMore of this session remains. Call wiki_next_session({ page: ${nextPage} }) for the rest BEFORE wiki_session_done.`
-        : `\n---\nThat's the full session. Distil it into wiki pages (project / date / topic, [[wikilinked]]), then call wiki_session_done({ sessionId: "${next.id}" }).`;
+      // Tasks created within this day.
+      const tasks = tasksInRange(ctx.db, userId, dayStartMs, dayEndMs);
+      let tasksSection = "";
+      if (tasks.length > 0) {
+        const blocks = tasks.map((t) => {
+          const files = parseResultFiles(t.result_files);
+          const lines = [
+            `### Task: ${t.title} [${t.status}]`,
+            t.description ? `- brief: ${t.description}` : "",
+            t.result_summary ? `- result: ${t.result_summary}` : "",
+            files.length ? `- files: ${files.join(", ")}` : "",
+          ].filter(Boolean);
+          if (t.session_id) {
+            const wmsgs = listSessionMessages(ctx.db, t.session_id);
+            if (wmsgs.length > 0) {
+              const wt = wmsgs.map((m) => messageToText(m.role, m.content)).join("\n");
+              lines.push(`- worker transcript:\n${wt.slice(0, 6000)}`);
+            }
+          }
+          return lines.join("\n");
+        });
+        tasksSection = `\n## Tasks created on ${firstDay} (${tasks.length})\n${blocks.join("\n\n")}`;
+      }
 
-      const dayNote =
-        msgDays.length > 1
-          ? `\n⚠ This session spans ${msgDays.length} days: ${msgDays.join(", ")}. Each message below is timestamped — write a SEPARATE daily journal per date (wiki_journal_write level=daily period=<that date>), not one for the session.`
-          : msgDays.length === 1
-            ? `\nAll messages are from ${msgDays[0]}.`
-            : "";
+      // Rough progress: cursor position within the message time span.
+      const denom = span.max - span.min || 1;
+      const progress = Math.max(0, Math.min(1, (dayEndMs - span.min) / denom));
 
       const parts = [
-        `Session ${next.id} (${sessionLabel(next)}) — raw transcript, page ${page + 1}/${totalPages}`,
-        `status=${next.status}${next.project_slug ? ` project=${next.project_slug}` : ""} · sessions ${doneCount}/${total} done.${dayNote}`,
-        `\n## Transcript (page ${page + 1}/${totalPages}) — each line prefixed with [YYYY-MM-DD HH:MM]\n${transcript || "(empty)"}`,
+        `Day ${firstDay} (${LOCAL_TZ}) — ${dayMsgs.length} messages${truncatedNote}`,
+        `Timeline progress ~${Math.round(progress * 100)}%.`,
+        `\n## Transcript for ${firstDay} — each line prefixed with [HH:MM]\n${transcript || "(empty)"}`,
         tasksSection,
-        footer,
+        `\n---\nRecord this day: write journal/daily/${firstDay} (wiki_journal_write level=daily period=${firstDay}) + any topic/entity/concept pages, [[wikilinked]]. Then call wiki_day_done({ throughMs: ${dayEndMs} }).`,
       ].filter(Boolean);
 
       return {
         ok: true,
         text: parts.join("\n"),
-        data: {
-          done: false,
-          sessionId: next.id,
-          total,
-          doneCount,
-          page,
-          nextPage: hasMore ? nextPage : null,
-          hasMore,
-          totalPages,
-        },
+        data: { done: false, day: firstDay, throughMs: dayEndMs, messageCount: dayMsgs.length, progress },
       };
     },
   };
@@ -561,26 +511,23 @@ function buildResetTool(): AgentTool {
   };
 }
 
-function buildSessionDoneTool(): AgentTool {
+function buildDayDoneTool(): AgentTool {
   return {
     available: isWikiWorker,
     schema: {
-      name: "wiki_session_done",
+      name: "wiki_day_done",
       description:
-        "Mark a session as processed for the wiki (advance the progress cursor) after you've written its pages. Pass the sessionId from wiki_next_session.",
+        "Advance the wiki progress cursor past a day you've finished recording. Pass throughMs from the wiki_next_day result. After this, wiki_next_day returns the following day.",
       parameters: Type.Object({
-        sessionId: Type.String({ description: "Session id that was just distilled into the wiki." }),
+        throughMs: Type.Number({ description: "The throughMs value from wiki_next_day (last message time of the day just recorded)." }),
       }),
     },
     execute: (raw, tctx: AgentToolContext): ToolResult => {
-      const p = raw as { sessionId?: string };
-      const sid = String(p.sessionId ?? "").trim();
-      if (!sid) return { ok: false, text: "sessionId is required" };
-      if (alreadyIngested(tctx.userHomeDir, sid)) {
-        return { ok: true, text: `Session ${sid} was already marked done.` };
-      }
-      markIngested(tctx.userHomeDir, sid);
-      return { ok: true, text: `Marked session ${sid} done. Call wiki_next_session for the next one.` };
+      const p = raw as { throughMs?: number };
+      const ms = typeof p.throughMs === "number" ? p.throughMs : 0;
+      if (!ms) return { ok: false, text: "throughMs is required (use the value from wiki_next_day)." };
+      setCursor(tctx.userHomeDir, ms);
+      return { ok: true, text: `Cursor advanced to ${new Date(ms).toISOString()}. Call wiki_next_day for the next day.` };
     },
   };
 }
@@ -702,23 +649,23 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
   const status: PluginRouteHandler = (req: Request, res: Response) => {
     const userId = userIdFromReq(req);
     if (!userId) return void res.status(401).json({ error: "no user context" });
-    // Progress from the durable cursor: how many of the user's
-    // sessions are already recorded. Drives the ring progress on the
-    // record button while a run is in flight.
-    let total = 0, done = 0;
+    // Progress = where the time cursor sits within the message time
+    // span. Drives the ring on the record button.
+    let progress = 0;
     try {
-      const all = listUserSessions(ctx.db, userId);
-      total = all.length;
-      const processed = new Set(readCursor(ctx.userHomeDir(userId)).ingestedSessionIds);
-      done = all.filter((s) => processed.has(s.id)).length;
+      const cursor = readCursor(ctx.userHomeDir(userId)).cursorMs;
+      const span = messageTimeSpan(ctx.db, userId);
+      if (span.max > span.min) {
+        progress = Math.max(0, Math.min(1, (cursor - span.min) / (span.max - span.min)));
+      } else if (span.max > 0 && cursor >= span.max) {
+        progress = 1;
+      }
     } catch {
       /* best-effort */
     }
     res.json({
       running: running.has(runKey(ctx.tenantId, userId)),
-      total,
-      done,
-      progress: total > 0 ? done / total : 0,
+      progress,
     });
   };
 
@@ -840,8 +787,8 @@ const plugin: PluginServerModule = {
     ctx.log.info(`wiki activated (embedding: ${embeddingEnabled(cfg) ? cfg!.model : "off, keyword search"})`);
     return {
       tools: {
-        WikiNextSessionTool: buildNextSessionTool(ctx),
-        WikiSessionDoneTool: buildSessionDoneTool(),
+        WikiNextDayTool: buildNextDayTool(ctx),
+        WikiDayDoneTool: buildDayDoneTool(),
         WikiListSourcesTool: buildListSourcesTool(),
         WikiListPagesTool: buildListPagesTool(),
         WikiReadTool: buildReadTool(),

@@ -7,14 +7,7 @@
 // synthesis (entities / concepts / topics) happens later, across many
 // sources, via the wiki_synthesize tool.
 
-import {
-  resolvePage,
-  renderPage,
-  writePage,
-  safeSlug,
-  markIngested,
-  alreadyIngested,
-} from "./vault.js";
+import { resolvePage, renderPage, writePage, safeSlug } from "./vault.js";
 
 export interface IngestSourceArgs {
   userHome: string;
@@ -35,17 +28,15 @@ export interface IngestResult {
   reason?: string;
 }
 
-/** File one compacted segment as a source page. Idempotent per session
- *  id via the ingest cursor. Best-effort: returns {ok:false, reason}
- *  instead of throwing so a compact hook never breaks the chat path. */
+/** File one compacted segment as a source page. Best-effort: returns
+ *  {ok:false, reason} instead of throwing so a compact hook never
+ *  breaks the chat path. (Dormant: the compact→wiki auto-hook is
+ *  disabled; kept behind the wiki.ingest capability for later.) */
 export function ingestSource(args: IngestSourceArgs): IngestResult {
   const { userHome, sessionId, summary } = args;
   const text = (summary ?? "").trim();
   if (!text) return { ok: false, reason: "empty summary" };
   if (!sessionId) return { ok: false, reason: "no session id" };
-  if (alreadyIngested(userHome, sessionId)) {
-    return { ok: false, reason: "already ingested" };
-  }
 
   const endedAt = args.endedAtMs ? new Date(args.endedAtMs) : new Date();
   const iso = endedAt.toISOString();
@@ -68,7 +59,6 @@ export function ingestSource(args: IngestSourceArgs): IngestResult {
   );
   try {
     writePage(file, content);
-    markIngested(userHome, sessionId);
   } catch (err) {
     return {
       ok: false,
