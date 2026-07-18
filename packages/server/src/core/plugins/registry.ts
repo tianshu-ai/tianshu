@@ -53,6 +53,7 @@ import type {
 import path from "node:path";
 import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu-ai/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
+import { findEmbeddingModel } from "../llm.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
 import {
   loadSkillsForPlugin,
@@ -1172,7 +1173,34 @@ function readPluginConfig(
   // single flat config blob; the split between config.json and
   // secrets/ is a host concern.
   const secrets = loadPluginSecrets(ctx.secretsDir, pluginId);
-  return mergePluginSecrets(raw, secrets);
+  const merged = mergePluginSecrets(raw, secrets);
+  return resolveEmbeddingModelRef(ctx, merged);
+}
+
+/** If the plugin config references an embedding model by id
+ *  (`embeddingModelId`), resolve it against the live Models catalog
+ *  and splice a fully-resolved `embedding` object into what the plugin
+ *  sees (baseUrl + model + apiKey + dimensions, env placeholders
+ *  expanded). This keeps model *configuration* in Settings → Models
+ *  while the plugin config only *selects* a model. A blank/unknown id
+ *  yields no `embedding` (the plugin falls back to keyword search). */
+function resolveEmbeddingModelRef(
+  ctx: TenantContext,
+  config: Record<string, unknown>,
+): Record<string, unknown> {
+  const id = config.embeddingModelId;
+  if (typeof id !== "string" || id.length === 0) return config;
+  const model = findEmbeddingModel(ctx.config, id);
+  if (!model) return config;
+  return {
+    ...config,
+    embedding: {
+      baseUrl: model.baseUrl,
+      model: model.model,
+      apiKey: model.apiKey,
+      ...(model.dimensions ? { dimensions: model.dimensions } : {}),
+    },
+  };
 }
 
 function makePluginContext(args: {

@@ -77,10 +77,67 @@ export function listModels(config: ResolvedConfig): ResolvedModelInfo[] {
   for (const [providerId, provider] of Object.entries(catalog.providers)) {
     if (!provider.models) continue;
     for (const m of provider.models) {
+      // Embedding models are a separate catalog (listEmbeddingModels);
+      // they are never selectable as chat/agent models.
+      if (m.mode === "embedding") continue;
       out.push(toModelInfo(providerId, provider, m));
     }
   }
   return out;
+}
+
+/** A resolved embedding model: everything the wiki (or any plugin)
+ *  needs to call an OpenAI-compatible `/embeddings` endpoint. Built
+ *  from a `mode: "embedding"` catalog entry. apiKey placeholders are
+ *  already expanded. */
+export interface ResolvedEmbeddingModel {
+  /** Full id `<provider>/<model>` — the value stored in plugin config. */
+  id: string;
+  providerId: string;
+  /** Model id passed as `model` in the /embeddings request. */
+  model: string;
+  name: string;
+  /** Provider base URL; the caller POSTs `<baseUrl>/embeddings`. */
+  baseUrl: string;
+  /** Resolved API key (env placeholders expanded). May be empty for
+   *  keyless local servers. */
+  apiKey: string;
+  /** Optional output dimensions. */
+  dimensions?: number;
+}
+
+/** Enumerate every `mode: "embedding"` model in the catalog. */
+export function listEmbeddingModels(
+  config: ResolvedConfig,
+): ResolvedEmbeddingModel[] {
+  const out: ResolvedEmbeddingModel[] = [];
+  const catalog = config.models;
+  if (!catalog) return out;
+  for (const [providerId, provider] of Object.entries(catalog.providers)) {
+    if (!provider.models) continue;
+    for (const m of provider.models) {
+      if (m.mode !== "embedding") continue;
+      out.push({
+        id: `${providerId}/${m.id}`,
+        providerId,
+        model: m.id,
+        name: m.name ?? m.id,
+        baseUrl: provider.baseUrl ?? "",
+        apiKey: expandEnvPlaceholders(provider.apiKey) ?? "",
+        dimensions: m.dimensions,
+      });
+    }
+  }
+  return out;
+}
+
+/** Resolve a single embedding model by its full id `<provider>/<model>`. */
+export function findEmbeddingModel(
+  config: ResolvedConfig,
+  fullId: string | undefined,
+): ResolvedEmbeddingModel | undefined {
+  if (!fullId) return undefined;
+  return listEmbeddingModels(config).find((m) => m.id === fullId);
 }
 
 /** Look up by full id `<provider>/<model>`. Returns undefined if missing. */

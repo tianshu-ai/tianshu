@@ -377,10 +377,11 @@ function ConfigFieldRow({
     );
   }
   if (field.kind === "select") {
+    const opts = field.options ?? [];
     const sel =
       typeof value === "string"
         ? value
-        : (field.default ?? field.options[0]?.value ?? "");
+        : (field.default ?? opts[0]?.value ?? "");
     return (
       <div className="text-[12px]">
         <label className="mb-1 block font-medium text-fg-default">
@@ -391,7 +392,7 @@ function ConfigFieldRow({
           onChange={(e) => onChange(e.target.value)}
           className={INPUT_BASE}
         >
-          {field.options.map((o) => (
+          {opts.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>
@@ -518,7 +519,7 @@ function initialValues(
       // re-loads after a save with stored credentials.
       out[f.key] = "";
     else if (f.kind === "select")
-      out[f.key] = f.default ?? f.options[0]?.value ?? "";
+      out[f.key] = f.default ?? f.options?.[0]?.value ?? "";
     else out[f.key] = f.default ?? "";
   }
   return out;

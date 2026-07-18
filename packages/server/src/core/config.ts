@@ -243,6 +243,10 @@ export interface ModelEntry {
   contextWindow?: number;
   maxTokens?: number;
   supportsImages?: boolean;
+  /** Output vector size for `mode: "embedding"` models. Sent as
+   *  `dimensions` to the /embeddings endpoint when the provider
+   *  supports it. Ignored for chat / image-gen models. */
+  dimensions?: number;
   /** Per-image byte cap before we hand it to the provider. Defaults
    *  by provider when omitted (see resolveImageMaxBytes). Override
    *  for self-hosted gateways with custom limits. */
