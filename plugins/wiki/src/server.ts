@@ -365,8 +365,21 @@ function buildWritePageTool(cfg?: EmbeddingConfig): AgentTool {
         return { ok: false, text: `write failed: ${err instanceof Error ? err.message : String(err)}` };
       }
       // Embed for semantic search (best-effort; no-op without a model).
+      // Surface a failure in the result so a misconfigured embedding
+      // endpoint is VISIBLE (the page is still written either way).
       if (embeddingEnabled(cfg)) {
-        await indexPage(ctx.userHomeDir, cfg, `${section}/${slug}`, `${title}\n\n${body}`);
+        const emb = await indexPage(
+          ctx.userHomeDir,
+          cfg,
+          `${section}/${slug}`,
+          `${title}\n\n${body}`,
+        );
+        if (!emb.ok) {
+          return {
+            ok: true,
+            text: `wrote ${section}/${slug} — ⚠️ semantic index NOT updated (embedding failed: ${emb.reason}). The page is saved but won't be semantically searchable until the embedding model is reachable.`,
+          };
+        }
       }
       return { ok: true, text: `wrote ${section}/${slug}` };
     },
@@ -608,7 +621,18 @@ function buildJournalWriteTool(cfg?: EmbeddingConfig): AgentTool {
         return { ok: false, text: `write failed: ${err instanceof Error ? err.message : String(err)}` };
       }
       if (embeddingEnabled(cfg)) {
-        await indexPage(ctx.userHomeDir, cfg, `${section}/${period}`, `${title}\n\n${body}`);
+        const emb = await indexPage(
+          ctx.userHomeDir,
+          cfg,
+          `${section}/${period}`,
+          `${title}\n\n${body}`,
+        );
+        if (!emb.ok) {
+          return {
+            ok: true,
+            text: `wrote ${section}/${period} — ⚠️ semantic index NOT updated (embedding failed: ${emb.reason}). The page is saved but won't be semantically searchable until the embedding model is reachable.`,
+          };
+        }
       }
       return { ok: true, text: `wrote ${section}/${period}` };
     },

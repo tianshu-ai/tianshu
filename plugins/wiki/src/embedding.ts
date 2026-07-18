@@ -18,6 +18,9 @@ import { wikiRoot } from "./vault.js";
 export interface EmbeddingConfig {
   baseUrl?: string;
   model?: string;
+  /** Wire protocol. `google-generative-ai` → Gemini native
+   *  `:batchEmbedContents`; anything else → OpenAI `/embeddings`. */
+  api?: string;
   apiKey?: string;
   dimensions?: number;
 }
@@ -66,6 +69,19 @@ export async function embed(
   inputs: string[],
   signal?: AbortSignal,
 ): Promise<number[][]> {
+  if (cfg.api === "google-generative-ai") {
+    return embedGemini(cfg, inputs, signal);
+  }
+  return embedOpenAI(cfg, inputs, signal);
+}
+
+/** OpenAI-compatible `/embeddings` (OpenAI, llama.cpp, Ollama /v1,
+ *  LM Studio, and any proxy speaking the same shape). */
+async function embedOpenAI(
+  cfg: EmbeddingConfig,
+  inputs: string[],
+  signal?: AbortSignal,
+): Promise<number[][]> {
   const base = (cfg.baseUrl ?? "").replace(/\/$/, "");
   const url = `${base}/embeddings`;
   const body: Record<string, unknown> = { model: cfg.model, input: inputs };
@@ -88,6 +104,55 @@ export async function embed(
     throw new Error(`embeddings returned ${data.length} vectors for ${inputs.length} inputs`);
   }
   return data.map((d) => d.embedding);
+}
+
+/** Gemini native `:batchEmbedContents`
+ *  (https://ai.google.dev/api/embeddings). baseUrl points at the
+ *  API root (e.g. https://generativelanguage.googleapis.com/v1beta,
+ *  or a proxy). The key goes in the `x-goog-api-key` header. */
+async function embedGemini(
+  cfg: EmbeddingConfig,
+  inputs: string[],
+  signal?: AbortSignal,
+): Promise<number[][]> {
+  const base = (cfg.baseUrl ?? "").replace(/\/$/, "");
+  // Model id may be bare ("gemini-embedding-001") or already prefixed
+  // ("models/gemini-embedding-001"); normalise to the `models/<id>` form.
+  const modelPath = cfg.model!.startsWith("models/")
+    ? cfg.model!
+    : `models/${cfg.model}`;
+  const url = `${base}/${modelPath}:batchEmbedContents`;
+  const body = {
+    requests: inputs.map((text) => ({
+      model: modelPath,
+      content: { parts: [{ text }] },
+      ...(cfg.dimensions ? { outputDimensionality: cfg.dimensions } : {}),
+    })),
+  };
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(cfg.apiKey ? { "x-goog-api-key": cfg.apiKey } : {}),
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `batchEmbedContents ${res.status}: ${(await res.text()).slice(0, 200)}`,
+    );
+  }
+  const json = (await res.json()) as {
+    embeddings?: Array<{ values: number[] }>;
+  };
+  const data = json.embeddings ?? [];
+  if (data.length !== inputs.length) {
+    throw new Error(
+      `batchEmbedContents returned ${data.length} vectors for ${inputs.length} inputs`,
+    );
+  }
+  return data.map((d) => d.values);
 }
 
 function cosine(a: number[], b: number[]): number {
