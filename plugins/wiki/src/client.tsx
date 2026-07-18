@@ -72,9 +72,14 @@ function WikiPanel(_props: PanelProps) {
 
   const openPage = useCallback((p: string) => {
     setSelected(p);
-    const [section, slug] = p.split("/");
+    // Last segment is the slug; everything before is the section, so a
+    // journal path "journal/daily/2026-07-18" resolves to
+    // section="journal/daily", slug="2026-07-18" (not section="journal").
+    const parts = p.split("/");
+    const slug = parts[parts.length - 1] ?? "";
+    const section = parts.slice(0, -1).join("/");
     fetch(
-      `${API_BASE}/read?section=${encodeURIComponent(section ?? "")}&slug=${encodeURIComponent(slug ?? "")}`,
+      `${API_BASE}/read?section=${encodeURIComponent(section)}&slug=${encodeURIComponent(slug)}`,
       { credentials: "include" },
     )
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
