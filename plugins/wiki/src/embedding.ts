@@ -40,15 +40,21 @@ function keyHint(key: string): string {
 
 // ─── embedding HTTP ─────────────────────────────────────────────────
 
+/** Embedding task type (Gemini distinguishes query vs document; using
+ *  the right one materially improves retrieval quality). Ignored by
+ *  OpenAI-compatible endpoints. */
+export type EmbedTask = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY";
+
 /** Call the embeddings endpoint for one or more inputs, dispatching by
  *  provider protocol. Returns one vector per input, or throws. */
 export async function embed(
   cfg: EmbeddingConfig,
   inputs: string[],
   signal?: AbortSignal,
+  task: EmbedTask = "RETRIEVAL_DOCUMENT",
 ): Promise<number[][]> {
   if (cfg.api === "google-generative-ai") {
-    return embedGemini(cfg, inputs, signal);
+    return embedGemini(cfg, inputs, signal, task);
   }
   return embedOpenAI(cfg, inputs, signal);
 }
@@ -103,6 +109,7 @@ async function embedGemini(
   cfg: EmbeddingConfig,
   inputs: string[],
   signal?: AbortSignal,
+  task: EmbedTask = "RETRIEVAL_DOCUMENT",
 ): Promise<number[][]> {
   let base = (cfg.baseUrl ?? "").replace(/\/$/, "");
   // The proxy expects a version segment; add it if the configured
@@ -114,7 +121,7 @@ async function embedGemini(
   const body = {
     instances: inputs.map((text) => ({
       content: text,
-      task_type: "RETRIEVAL_DOCUMENT",
+      task_type: task,
       ...(cfg.dimensions ? { output_dimensionality: cfg.dimensions } : {}),
     })),
   };
@@ -188,6 +195,9 @@ const VEC_TABLE = "wiki_vec";
 const FTS_TABLE = "wiki_fts";
 const META_TABLE = "wiki_index_meta";
 const RRF_K = 60; // standard RRF damping constant
+// Bump when the FTS table definition changes (e.g. tokenizer) so
+// existing installs drop + rebuild it. v1 = trigram tokenizer (CJK).
+const FTS_SCHEMA_VERSION = 1;
 
 function f32blob(vec: number[]): Buffer {
   return Buffer.from(new Float32Array(vec).buffer);
@@ -221,13 +231,28 @@ export class WikiIndex {
 
   private ftsReady(): boolean {
     try {
+      // `trigram` tokenizer: works for CJK (no whitespace word
+      // boundaries) as well as latin substrings. The default unicode61
+      // tokenizer treats "番茄钟计时器" as one token and misses
+      // "番茄钟". If an OLD unicode61 table exists (schema v<1), the
+      // meta guard in prepare() drops + recreates it.
       this.db.exec(
         `CREATE VIRTUAL TABLE IF NOT EXISTS ${FTS_TABLE} USING fts5(
-           user_id UNINDEXED, page_key UNINDEXED, body )`,
+           user_id UNINDEXED, page_key UNINDEXED, body,
+           tokenize='trigram' )`,
       );
       return true;
     } catch {
-      return false;
+      // Older SQLite without trigram? fall back to default tokenizer.
+      try {
+        this.db.exec(
+          `CREATE VIRTUAL TABLE IF NOT EXISTS ${FTS_TABLE} USING fts5(
+             user_id UNINDEXED, page_key UNINDEXED, body )`,
+        );
+        return true;
+      } catch {
+        return false;
+      }
     }
   }
 
@@ -237,12 +262,28 @@ export class WikiIndex {
    *  incomparable across models/dims). Returns false if setup failed. */
   prepare(model: string, dim: number): boolean {
     try {
-      this.ftsReady();
-      if (!this.vecAvailable) return true; // FTS-only mode
       this.db.exec(
         `CREATE TABLE IF NOT EXISTS ${META_TABLE} (
            scope TEXT PRIMARY KEY, model TEXT, dim INTEGER )`,
       );
+      // One-time migration: drop an FTS table built before the trigram
+      // switch so it gets recreated with CJK-capable tokenization.
+      const ftsMeta = this.db
+        .prepare<[], { dim: number }>(
+          `SELECT dim FROM ${META_TABLE} WHERE scope='fts'`,
+        )
+        .get();
+      if (!ftsMeta || ftsMeta.dim < FTS_SCHEMA_VERSION) {
+        this.db.exec(`DROP TABLE IF EXISTS ${FTS_TABLE}`);
+        this.db
+          .prepare(
+            `INSERT INTO ${META_TABLE}(scope,model,dim) VALUES('fts','trigram',?)
+             ON CONFLICT(scope) DO UPDATE SET model='trigram', dim=excluded.dim`,
+          )
+          .run(FTS_SCHEMA_VERSION);
+      }
+      this.ftsReady();
+      if (!this.vecAvailable) return true; // FTS-only mode
       const meta = this.db
         .prepare<[], { model: string; dim: number }>(
           `SELECT model, dim FROM ${META_TABLE} WHERE scope='vec'`,
@@ -300,7 +341,9 @@ export class WikiIndex {
     }
   }
 
-  /** Vector KNN for the current user. */
+  /** Vector KNN for the current user. Returned already sorted by
+   *  distance (best first); RRF uses the RANK, so the raw score here is
+   *  informational only. */
   private vectorHits(qvec: number[], k: number): SemanticHit[] {
     if (!this.vecAvailable) return [];
     try {
@@ -311,7 +354,7 @@ export class WikiIndex {
              ORDER BY distance`,
         )
         .all(this.userId, f32blob(qvec), k);
-      // closer distance → higher score (informational only; RRF uses rank).
+      // sqlite-vec default metric is L2; map to a monotonic [0,1] score.
       return rows.map((r) => ({ path: r.page_key, score: 1 / (1 + r.distance) }));
     } catch {
       return [];
@@ -388,9 +431,14 @@ export class WikiIndex {
 }
 
 /** Reciprocal Rank Fusion over several ranked lists (each already
- *  sorted best-first). Robust to the two lists having incomparable
- *  raw scores — fusion is on RANK, not score. */
+ *  sorted best-first). Fusion is on RANK, not raw score, so the two
+ *  lists' incomparable scales don't matter. The fused score is
+ *  NORMALISED to [0,1] (divided by the best achievable = appearing #1
+ *  in every non-empty list) so a caller-supplied minScore threshold is
+ *  meaningful and stable regardless of RRF_K or list count. */
 function rrf(lists: SemanticHit[][], limit: number): SemanticHit[] {
+  const nonEmpty = lists.filter((l) => l.length > 0);
+  const maxScore = nonEmpty.length * (1 / (RRF_K + 1));
   const acc = new Map<string, number>();
   for (const list of lists) {
     list.forEach((hit, rank) => {
@@ -398,23 +446,31 @@ function rrf(lists: SemanticHit[][], limit: number): SemanticHit[] {
     });
   }
   return [...acc.entries()]
-    .map(([path, score]) => ({ path, score }))
+    .map(([path, score]) => ({ path, score: maxScore > 0 ? score / maxScore : 0 }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit);
 }
 
-/** Turn a free-text query into a safe FTS5 MATCH expression: keep word
- *  tokens as prefix terms, OR-joined. Strips FTS5 operators/punctuation
- *  so a natural-language query can't throw a syntax error. */
+/** Turn a free-text query into a safe FTS5 MATCH expression for the
+ *  trigram tokenizer. Strips FTS5 operators, then builds OR-joined
+ *  quoted terms. With trigram tokenization each quoted term is matched
+ *  as a SUBSTRING, so this works for CJK (no whitespace boundaries):
+ *  "番茄钟计时器" stays one term and still substring-matches a page
+ *  containing "番茄钟". Latin queries split on whitespace as before.
+ *  Trigram needs ≥3 chars per term; shorter terms are dropped (they'd
+ *  match nothing under trigram anyway). */
 function toFtsQuery(query: string): string {
-  const tokens = query
-    .toLowerCase()
-    .replace(/["'\-*^:(){}\[\].,!?]/g, " ")
-    .split(/\s+/)
-    .filter((t) => t.length > 1)
-    .slice(0, 12);
-  if (tokens.length === 0) return "";
-  return tokens.map((t) => `"${t}"*`).join(" OR ");
+  const cleaned = query.replace(/["'^:(){}\[\]]/g, " ").trim().toLowerCase();
+  if (!cleaned) return "";
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  // Keep the whole phrase as a term AND each word; trigram substring
+  // matching then covers both the full query and its pieces.
+  const terms = new Set<string>();
+  if (cleaned.replace(/\s+/g, "").length >= 3) terms.add(cleaned);
+  for (const p of parts) if (p.length >= 3) terms.add(p);
+  const list = [...terms].slice(0, 12);
+  if (list.length === 0) return "";
+  return list.map((t) => `"${t.replace(/"/g, "")}"`).join(" OR ");
 }
 
 // ─── public API used by server.ts ───────────────────────────────────
@@ -482,8 +538,12 @@ export async function semanticSearch(
   if (!embeddingEnabled(cfg)) return { status: "disabled" };
   if (index.count() === 0) return { status: "empty" };
   try {
-    const [qv] = await embed(cfg, [query], signal);
+    // Embed the QUERY with RETRIEVAL_QUERY (docs used RETRIEVAL_DOCUMENT);
+    // the asymmetry is what Gemini's retrieval embeddings are trained for.
+    const [qv] = await embed(cfg, [query], signal, "RETRIEVAL_QUERY");
     if (!qv) return { status: "error", reason: "no query vector returned" };
+    // fuse() scores are normalised to [0,1] (1 = ranked #1 in every
+    // list). minScore is applied on that scale.
     const hits = index.fuse(qv, query, limit).filter((h) => h.score >= minScore);
     return { status: "ok", hits };
   } catch (err) {

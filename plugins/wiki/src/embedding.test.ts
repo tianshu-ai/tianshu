@@ -86,6 +86,22 @@ describe("WikiIndex (sqlite-vec + FTS5)", () => {
     expect(hits).not.toContain("concepts/a");
   });
 
+  it("CJK keyword match works (trigram tokenizer) and scores are normalised", () => {
+    // No query vector → pure FTS path; the Chinese page must still match
+    // a Chinese query, and the fused score must be on the [0,1] scale
+    // (not the tiny raw-RRF ~0.016 that the old threshold nuked).
+    idx.upsert(
+      "entities/board-pomodoro",
+      "番茄钟 Board 番茄钟计时器 pomodoro timer 专注",
+      fakeVec("board"),
+      4,
+    );
+    const hits = idx.fuse(undefined, "番茄钟计时器", 5);
+    expect(hits[0]?.path).toBe("entities/board-pomodoro");
+    expect(hits[0]!.score).toBeGreaterThan(0.15); // would fail pre-fix
+    expect(hits[0]!.score).toBeLessThanOrEqual(1);
+  });
+
   it("rebuilds the vector table when the dimension changes", () => {
     idx.upsert("concepts/a", "graph", fakeVec("graph"), 4);
     expect(idx.count()).toBe(1);

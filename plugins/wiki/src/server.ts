@@ -215,7 +215,7 @@ function buildSearchTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentTool {
   // description tells the agent which one is active and how to query it.
   const semantic = embeddingEnabled(cfg);
   const DEFAULT_LIMIT = 8;
-  const DEFAULT_MIN_SCORE = 0.15;
+  const DEFAULT_MIN_SCORE = 0.05;
   const description = semantic
     ? "Search the user's wiki (recall prior work, decisions, people, facts). Active mode: SEMANTIC (embedding/RAG). Phrase the query as a natural-language description of the MEANING you're after (e.g. \"how the graph visualisation library was chosen\"); exact keywords are NOT required. If results miss, rephrase the concept rather than swapping single words. `mode` defaults to auto (semantic here); pass mode:\"keyword\" to force literal matching."
     : "Search the user's wiki (recall prior work, decisions, people, facts). Active mode: KEYWORD (literal full-text — NO embedding model is configured, so semantic/RAG search is unavailable). Query with the SPECIFIC terms / names / identifiers you expect on the page (e.g. \"react-force-graph\", \"board_act\"); this is literal substring matching. Do NOT expect meaning-based retrieval. (Passing mode:\"semantic\" will error until an embedding model is configured in the plugin settings.)";
@@ -238,7 +238,7 @@ function buildSearchTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentTool {
         limit: Type.Optional(Type.Number({ description: `Max results (default ${DEFAULT_LIMIT}).` })),
         minScore: Type.Optional(
           Type.Number({
-            description: `Semantic-only: min cosine similarity [0..1] to include a hit (default ${DEFAULT_MIN_SCORE}). Lower to widen, raise to tighten.`,
+            description: `Semantic-only: min fused relevance [0..1] to include a hit (default ${DEFAULT_MIN_SCORE}; 1 = ranked top by both vector + keyword). Lower to widen, raise to tighten.`,
           }),
         ),
       }),
