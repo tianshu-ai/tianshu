@@ -136,10 +136,13 @@ export {
 export {
   buildModel,
   findModel,
+  findEmbeddingModel,
   getDefaultModel,
   listModels,
+  listEmbeddingModels,
   resolveApiKey,
   type ResolvedModelInfo,
+  type ResolvedEmbeddingModel,
 } from "./llm.js";
 
 export { buildModels, type BuildModelsOptions } from "./pi-models.js";

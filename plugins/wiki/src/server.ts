@@ -778,9 +778,12 @@ function buildIngestCapability(ctx: PluginContext): WikiIngestCapability {
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
-    // Embedding config is plugin-scoped (Settings → Plugins → Wiki),
-    // stored under plugins.wiki.config.embedding and delivered here via
-    // pluginConfig (the apiKey secret is merged in from secrets/).
+    // The embedding MODEL is configured in Settings → Models; the wiki
+    // plugin config only stores which one to use (`embeddingModelId`).
+    // The host resolves that id → a full { baseUrl, model, apiKey,
+    // dimensions } object (env placeholders expanded) and delivers it
+    // here as pluginConfig.embedding. No id / unknown id → undefined →
+    // keyword search.
     const embRaw = (ctx.pluginConfig as { embedding?: unknown })?.embedding;
     const cfg =
       embRaw && typeof embRaw === "object" ? (embRaw as EmbeddingConfig) : undefined;

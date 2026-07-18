@@ -325,6 +325,45 @@ describe("parseManifest", () => {
     expect(fields[2]!.group).toBeUndefined();
   });
 
+  it("configSchema: select accepts a dynamic optionsSource without static options", () => {
+    const m = parseManifest({
+      id: "xxx",
+      version: "1.0.0",
+      displayName: "X",
+      configSchema: {
+        fields: [
+          {
+            kind: "select",
+            key: "embeddingModelId",
+            label: "Embedding model",
+            optionsSource: "embedding-models",
+          },
+        ],
+      },
+    });
+    const f = m.configSchema!.fields[0]! as {
+      kind: string;
+      optionsSource?: string;
+      options?: unknown[];
+    };
+    expect(f.kind).toBe("select");
+    expect(f.optionsSource).toBe("embedding-models");
+    expect(f.options).toEqual([]);
+  });
+
+  it("configSchema: select without options AND without optionsSource is rejected", () => {
+    expect(() =>
+      parseManifest({
+        id: "xxx",
+        version: "1.0.0",
+        displayName: "X",
+        configSchema: {
+          fields: [{ kind: "select", key: "k", label: "L" }],
+        },
+      }),
+    ).toThrow();
+  });
+
   it("configSchema: rejects malformed group", () => {
     expect(() =>
       parseManifest({

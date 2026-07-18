@@ -365,7 +365,11 @@ function optionalConfigSchema(
           );
         }
       }
-      if (options.length === 0) {
+      const optionsSource =
+        f.optionsSource === "embedding-models" ? "embedding-models" : undefined;
+      // Static options are required UNLESS the field declares a dynamic
+      // optionsSource (the host fills options in before serving).
+      if (options.length === 0 && !optionsSource) {
         acc.issues.push(
           `configSchema.fields[${i}].options must contain at least one option`,
         );
@@ -378,6 +382,7 @@ function optionalConfigSchema(
         description: typeof f.description === "string" ? f.description : undefined,
         default: typeof f.default === "string" ? f.default : undefined,
         options,
+        ...(optionsSource ? { optionsSource } : {}),
         group,
       });
     } else {

@@ -269,7 +269,15 @@ export interface PluginConfigSecretField extends PluginConfigFieldBase {
 export interface PluginConfigSelectField extends PluginConfigFieldBase {
   kind: "select";
   default?: string;
-  options: Array<{ label: string; value: string }>;
+  /** Static option list. Optional when `optionsSource` is set — the
+   *  host then populates the options dynamically before serving the
+   *  schema to the browser. */
+  options?: Array<{ label: string; value: string }>;
+  /** Dynamic option source resolved host-side. Currently supported:
+   *  `"embedding-models"` — the configured embedding models catalog
+   *  (Settings → Models). When set, the host fills `options` from live
+   *  config and the plugin only stores the chosen model id. */
+  optionsSource?: "embedding-models";
 }
 
 export interface PluginEntryRef {

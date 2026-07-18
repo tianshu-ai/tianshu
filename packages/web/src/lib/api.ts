@@ -65,7 +65,11 @@ export type PluginConfigField =
   | (PluginConfigFieldBase & {
       kind: "select";
       default?: string;
-      options: Array<{ label: string; value: string }>;
+      // Server always populates `options` (static, or resolved from a
+      // dynamic `optionsSource` before serving). `optionsSource` is
+      // informational for the UI.
+      options?: Array<{ label: string; value: string }>;
+      optionsSource?: string;
     });
 
 export interface PluginConfigSchema {

@@ -39,6 +39,8 @@ interface ModelRow {
   maxTokens?: number;
   supportsImages?: boolean;
   mode?: string;
+  /** Output vector size for embedding models (optional). */
+  dimensions?: number;
   compat?: Record<string, unknown>;
 }
 
@@ -561,7 +563,10 @@ function ProviderCard({
               Models
             </div>
             <div className="space-y-2">
-              {models.map((m, idx) => (
+              {models.map((m, idx) => {
+                const mode = m.mode ?? "chat";
+                const isEmbedding = mode === "embedding";
+                return (
                 <div
                   key={idx}
                   className="grid grid-cols-12 items-center gap-2 rounded border border-border-subtle bg-bg-base/50 px-2 py-1.5"
@@ -570,7 +575,7 @@ function ProviderCard({
                     value={m.id}
                     onChange={(e) => setModel(idx, { id: e.target.value })}
                     placeholder="model-id"
-                    className="col-span-4 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
+                    className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                   />
                   <input
                     value={m.name ?? ""}
@@ -578,29 +583,65 @@ function ProviderCard({
                     placeholder="Display name"
                     className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                   />
-                  <input
-                    value={m.contextWindow ?? ""}
+                  <select
+                    value={mode}
                     onChange={(e) =>
                       setModel(idx, {
-                        contextWindow: e.target.value
-                          ? Number(e.target.value)
-                          : undefined,
+                        mode:
+                          e.target.value === "chat"
+                            ? undefined
+                            : e.target.value,
                       })
                     }
-                    placeholder="ctx"
-                    inputMode="numeric"
-                    className="col-span-2 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
-                  />
-                  <label className="col-span-2 flex items-center gap-1 text-[11px] text-fg-muted">
+                    className="col-span-2 rounded border border-border-default bg-bg-base px-1 py-1 text-[12px] text-fg-default focus:border-link focus:outline-none"
+                    title="Model kind"
+                  >
+                    <option value="chat">chat</option>
+                    <option value="embedding">embedding</option>
+                    <option value="image-gen">image-gen</option>
+                  </select>
+                  {isEmbedding ? (
                     <input
-                      type="checkbox"
-                      checked={!!m.reasoning}
+                      value={m.dimensions ?? ""}
                       onChange={(e) =>
-                        setModel(idx, { reasoning: e.target.checked })
+                        setModel(idx, {
+                          dimensions: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        })
                       }
+                      placeholder="dim"
+                      inputMode="numeric"
+                      title="Embedding dimensions (optional)"
+                      className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                     />
-                    reasoning
-                  </label>
+                  ) : (
+                    <>
+                      <input
+                        value={m.contextWindow ?? ""}
+                        onChange={(e) =>
+                          setModel(idx, {
+                            contextWindow: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          })
+                        }
+                        placeholder="ctx"
+                        inputMode="numeric"
+                        className="col-span-1 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
+                      />
+                      <label className="col-span-2 flex items-center gap-1 text-[11px] text-fg-muted">
+                        <input
+                          type="checkbox"
+                          checked={!!m.reasoning}
+                          onChange={(e) =>
+                            setModel(idx, { reasoning: e.target.checked })
+                          }
+                        />
+                        reason
+                      </label>
+                    </>
+                  )}
                   <button
                     type="button"
                     onClick={() => delModel(idx)}
@@ -610,7 +651,8 @@ function ProviderCard({
                     <Trash2 size={13} />
                   </button>
                 </div>
-              ))}
+                );
+              })}
               {models.length === 0 && (
                 <div className="rounded border border-dashed border-border-subtle px-3 py-3 text-center text-[11px] text-fg-fainter">
                   No models. Add one below.

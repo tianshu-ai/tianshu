@@ -400,6 +400,8 @@ function parseModelsInput(input: unknown, providerId: string): ParsedModels {
     if (typeof r.imageMaxBytes === "number" && Number.isFinite(r.imageMaxBytes))
       m.imageMaxBytes = r.imageMaxBytes;
     if (typeof r.mode === "string" && r.mode) m.mode = r.mode;
+    if (typeof r.dimensions === "number" && Number.isFinite(r.dimensions))
+      m.dimensions = r.dimensions;
     if (r.compat && typeof r.compat === "object" && !Array.isArray(r.compat))
       m.compat = r.compat as Record<string, unknown>;
     out.push(m);

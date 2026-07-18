@@ -10,6 +10,7 @@
 import express, { Router } from "express";
 import {
   GlobalOps,
+  listEmbeddingModels,
   loadTenantConfig,
   type McpServerEntry,
   McpManager,
@@ -17,6 +18,10 @@ import {
   writeTenantConfig,
   type TenantContext,
 } from "./core/index.js";
+import type {
+  PluginConfigSchema,
+  PluginConfigField,
+} from "@tianshu-ai/plugin-sdk";
 import {
   applyPluginSecretPatch,
   collectRoutesForTenant,
@@ -722,8 +727,10 @@ export async function listPluginsForTenant(
     clientEntry: e.manifest.client?.entry ?? null,
     /** Declarative form schema; UI uses this to render the config
      *  panel. Null when the plugin doesn't expose user-editable
-     *  config. */
-    configSchema: e.manifest.configSchema ?? null,
+     *  config. `select` fields with a dynamic `optionsSource` (e.g.
+     *  `embedding-models`) are populated here from live config so the
+     *  browser just renders a plain dropdown. */
+    configSchema: enrichConfigSchema(e.manifest.configSchema ?? null, tenant),
     /** Current persisted config object — same shape the plugin sees
      *  via PluginContext.pluginConfig, except `secret`-kind values
      *  are replaced with `{ __secret: true, set: <bool> }` so the
@@ -736,6 +743,42 @@ export async function listPluginsForTenant(
     },
     };
   });
+}
+
+/** Populate `select` fields that declare a dynamic `optionsSource`
+ *  with live options before the schema reaches the browser. Currently
+ *  the only source is `embedding-models` (Settings → Models). Keeps the
+ *  plugin manifest static — the plugin just stores the chosen model id. */
+function enrichConfigSchema(
+  schema: PluginConfigSchema | null,
+  tenant: TenantContext,
+): PluginConfigSchema | null {
+  if (!schema?.fields?.length) return schema;
+  const needsEmbedding = schema.fields.some(
+    (f) => f.kind === "select" && f.optionsSource === "embedding-models",
+  );
+  if (!needsEmbedding) return schema;
+
+  const embeddingOptions = listEmbeddingModels(tenant.config).map((m) => ({
+    label: m.name === m.model ? m.id : `${m.name} (${m.id})`,
+    value: m.id,
+  }));
+
+  const fields: PluginConfigField[] = schema.fields.map((f) => {
+    if (f.kind === "select" && f.optionsSource === "embedding-models") {
+      return {
+        ...f,
+        // Prepend a "keyword search only" empty choice so the user can
+        // explicitly opt out; then the configured embedding models.
+        options: [
+          { label: "— None (keyword search) —", value: "" },
+          ...embeddingOptions,
+        ],
+      };
+    }
+    return f;
+  });
+  return { ...schema, fields };
 }
 
 // Validation for the body of POST/PATCH /mcp/servers. Returns either
