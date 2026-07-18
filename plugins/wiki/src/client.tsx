@@ -495,7 +495,11 @@ function WikiGraphView({
             nodeCanvasObject={(n: FGNodeAny, ctx: CanvasRenderingContext2D, scale: number) => {
               const nn = n as FGNode & { x?: number; y?: number };
               const x = nn.x ?? 0, y = nn.y ?? 0;
-              const r = nodeRadius(nn.deg);
+              // Screen-constant radius: divide the target screen size by
+              // the zoom so nodes stay ~the same pixel size regardless of
+              // how far zoomToFit zoomed in (few nodes = high zoom, which
+              // otherwise made the circles huge).
+              const r = nodeRadius(nn.deg) / scale;
               const isPicked = nn.id === picked?.path;
               const isSel = nn.id === selected || isPicked;
               const inFocus = !focusSet || focusSet.has(nn.id);
