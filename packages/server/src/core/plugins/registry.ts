@@ -1463,6 +1463,22 @@ function registerProvidedCapabilities(
       continue;
     }
 
+    // Generic path: capabilities backed by a plain value the plugin
+    // exposes via `exports.capabilityProviders[cap]` (not a sandbox /
+    // browser sidecar). Used by host-consumed capabilities a plugin
+    // provides, e.g. the wiki plugin's `wiki.ingest`.
+    const generic = entry.exports?.capabilityProviders?.[cap];
+    if (generic !== undefined && generic !== null) {
+      byCapability.set(cap, {
+        capability: cap,
+        pluginId: entry.manifest.id,
+        exclusive: KNOWN_CAPABILITIES[cap].exclusive,
+        value: generic,
+      });
+      entry.capabilityInfo.provided.push(cap);
+      continue;
+    }
+
     return {
       ok: false,
       reason: `unknown capability "${cap}" in provides[] (KNOWN_CAPABILITIES is the single source of truth)`,

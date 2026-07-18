@@ -84,6 +84,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Mint a short-lived, single-model, single-tenant token for a sandboxed external agent (OpenCode) to reach a tianshu model through the host's transparent proxy. The sandbox never sees the real provider key or baseUrl. Used by the workboard OpenCode worker; grant() returns a token + sandbox-reachable baseUrl, revoke() invalidates it on task end.",
   },
+  "wiki.ingest": {
+    exclusive: true,
+    description:
+      "File a compacted conversation segment into the user's LLM Wiki as a source page. Provided by the `wiki` plugin; the host's compaction path calls it (best-effort, fire-and-forget) after each compact so the rolling window's distilled history accrues into an Obsidian-style knowledge vault. No-op when the wiki plugin isn't enabled.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;

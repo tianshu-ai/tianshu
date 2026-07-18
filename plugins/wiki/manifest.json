@@ -1,0 +1,42 @@
+{
+  "id": "wiki",
+  "version": "0.1.0",
+  "displayName": "Wiki",
+  "description": "LLM Wiki — distils the rolling conversation into an Obsidian-style knowledge vault. Each compacted segment is filed automatically as a source; the agent synthesises entities / concepts / topics on top. Browse + search in the side panel.",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["workspace.read", "workspace.write"],
+  "provides": ["wiki.ingest"],
+  "client": { "entry": "@tianshu-builtin/plugin-wiki/client" },
+  "server": { "entry": "@tianshu-builtin/plugin-wiki/server" },
+  "contributes": {
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "Notebook",
+        "tooltip": "Wiki",
+        "opensPanel": "wiki.main",
+        "order": 410
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "main",
+        "displayName": "Wiki",
+        "component": "WikiPanel"
+      }
+    ],
+    "tools": [
+      { "id": "wiki_list_sources", "module": "WikiListSourcesTool", "since": "0.1.0" },
+      { "id": "wiki_list_pages",   "module": "WikiListPagesTool",   "since": "0.1.0" },
+      { "id": "wiki_read",         "module": "WikiReadTool",        "since": "0.1.0" },
+      { "id": "wiki_search",       "module": "WikiSearchTool",      "since": "0.1.0" },
+      { "id": "wiki_write_page",   "module": "WikiWritePageTool",   "since": "0.1.0" }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/list",   "handler": "list"   },
+      { "method": "GET", "path": "/read",   "handler": "read"   },
+      { "method": "GET", "path": "/search", "handler": "search" }
+    ]
+  }
+}

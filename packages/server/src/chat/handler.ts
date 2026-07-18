@@ -274,6 +274,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             send,
             modelId: parsed.modelId,
             signal: aborter.signal,
+            pluginRegistry,
           }).catch((err) => {
             send({
               type: "stream_error",
@@ -787,6 +788,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           modelInfo,
           signal,
           send,
+          pluginRegistry,
         });
         if (recovered) {
           // Clean up this aborted attempt's harness wiring before we
@@ -1483,8 +1485,9 @@ async function runOverWindowForkFallback(args: {
   modelInfo: ResolvedModelInfo;
   signal: AbortSignal;
   send: (msg: ServerMsg) => void;
+  pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
 }): Promise<boolean> {
-  const { ctx, userId, session, modelInfo, signal, send } = args;
+  const { ctx, userId, session, modelInfo, signal, send, pluginRegistry } = args;
   const { messages, rows } = loadAgentHistoryForSession(ctx, session.id, {
     api: modelInfo.api,
     provider: modelInfo.providerId,
@@ -1509,6 +1512,13 @@ async function runOverWindowForkFallback(args: {
       summarisedCount: result.summarisedCount,
       keptCount: result.keptCount,
       durationMs: result.durationMs,
+    });
+    fileCompactedSegmentToWiki({
+      ctx,
+      userId,
+      pluginRegistry,
+      oldSessionId: result.oldSessionId,
+      summary: result.summary,
     });
     const page = listMessagesForUserPage(ctx, userId);
     send({
@@ -1577,14 +1587,45 @@ async function maybeAutoCompact(args: {
   onSuccessRefresh();
 }
 
+/**
+ * Best-effort: file a just-compacted conversation segment into the
+ * user's LLM Wiki as a source, via the `wiki.ingest` capability the
+ * wiki plugin provides. Fire-and-forget — never let a wiki failure
+ * touch the compaction / chat path. No-op when the wiki plugin isn't
+ * enabled for this tenant.
+ */
+function fileCompactedSegmentToWiki(args: {
+  ctx: TenantContext;
+  userId: string;
+  pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
+  oldSessionId: string;
+  summary: string;
+}): void {
+  const { ctx, userId, pluginRegistry, oldSessionId, summary } = args;
+  try {
+    const wiki = pluginRegistry?.capabilityFor<
+      import("@tianshu-ai/plugin-sdk").WikiIngestCapability
+    >(ctx.tenantId, "wiki.ingest");
+    if (!wiki) return;
+    void wiki
+      .ingestSource({ userId, sessionId: oldSessionId, summary, endedAtMs: Date.now() })
+      .catch(() => {
+        /* best-effort */
+      });
+  } catch {
+    /* wiki filing must never break compaction */
+  }
+}
+
 async function runManualCompact(args: {
   ctx: TenantContext;
   userId: string;
   send: (msg: ServerMsg) => void;
   modelId?: string;
   signal: AbortSignal;
+  pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
 }): Promise<void> {
-  const { ctx, userId, send, modelId, signal } = args;
+  const { ctx, userId, send, modelId, signal, pluginRegistry } = args;
   const session = ensureActiveSession(ctx, userId);
   const modelInfo =
     (modelId ? findModel(ctx.config, modelId) : undefined) ??
@@ -1626,6 +1667,13 @@ async function runManualCompact(args: {
       summarisedCount: result.summarisedCount,
       keptCount: result.keptCount,
       durationMs: result.durationMs,
+    });
+    fileCompactedSegmentToWiki({
+      ctx,
+      userId,
+      pluginRegistry,
+      oldSessionId: result.oldSessionId,
+      summary: result.summary,
     });
     // Push a refreshed history so the UI swaps to the new session
     // immediately (the fork ack + summary stub plus any kept tail).
