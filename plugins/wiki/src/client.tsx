@@ -55,6 +55,7 @@ function WikiPanel(_props: PanelProps) {
   const [pages, setPages] = useState<WikiPage[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string>("");
+  const [pageTitle, setPageTitle] = useState<string>("");
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [confirmReset, setConfirmReset] = useState(false);
@@ -90,7 +91,11 @@ function WikiPanel(_props: PanelProps) {
       { credentials: "include" },
     )
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-      .then((res: { markdown: string }) => setMarkdown(stripFrontmatter(res.markdown ?? "")))
+      .then((res: { markdown: string }) => {
+        const raw = res.markdown ?? "";
+        setPageTitle(frontmatterTitle(raw));
+        setMarkdown(stripFrontmatter(raw));
+      })
       .catch(() => setMarkdown("_Failed to load page._"));
   }, []);
 
@@ -179,6 +184,7 @@ function WikiPanel(_props: PanelProps) {
                   .then(() => {
                     setSelected(null);
                     setMarkdown("");
+                    setPageTitle("");
                     setConfirmReset(false);
                     fetchList();
                   })
@@ -252,6 +258,7 @@ function WikiPanel(_props: PanelProps) {
         >
           {selected ? (
             <div className="prose prose-sm prose-invert max-w-none text-[13px] [&_a]:text-link [&_a]:no-underline hover:[&_a]:underline">
+              {pageTitle && <h1 className="mb-2 text-base font-semibold text-fg-default">{pageTitle}</h1>}
               <MarkdownBlock>{renderWikilinks(markdown)}</MarkdownBlock>
             </div>
           ) : (
@@ -276,6 +283,17 @@ function renderWikilinks(md: string): string {
     const text = (label ?? path.split("/").pop() ?? path).trim();
     return `[${text}](#wiki:${path})`;
   });
+}
+
+/** Pull the `title:` out of leading YAML frontmatter (for the reader
+ *  header, since we render the body without it). */
+function frontmatterTitle(md: string): string {
+  if (!md.startsWith("---")) return "";
+  const end = md.indexOf("\n---", 3);
+  if (end < 0) return "";
+  const fm = md.slice(3, end);
+  const m = fm.match(/^title:\s*(.+)$/m);
+  return m ? m[1]!.trim().replace(/^"|"$/g, "") : "";
 }
 
 /** Drop leading YAML frontmatter for display (keep it in storage). */

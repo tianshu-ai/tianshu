@@ -64,7 +64,7 @@ export function ingestSource(args: IngestSourceArgs): IngestResult {
       endedAt: iso,
       status: "active",
     },
-    `# ${title}\n\n> Compacted conversation segment (session \`${sessionId}\`).\n\n${text}\n`,
+    `> Compacted conversation segment (session \`${sessionId}\`).\n\n${text}\n`,
   );
   try {
     writePage(file, content);

@@ -346,7 +346,7 @@ function buildWritePageTool(cfg?: EmbeddingConfig): AgentTool {
           status: "active",
           links,
         },
-        `# ${title}\n\n${body}\n`,
+        `${body}\n`,
       );
       try {
         writePage(file, content);
@@ -564,7 +564,7 @@ function buildJournalWriteTool(cfg?: EmbeddingConfig): AgentTool {
           status: "active",
           links,
         },
-        `# ${title}\n\n${body}\n`,
+        `${body}\n`,
       );
       try {
         writePage(file, content);
