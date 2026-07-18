@@ -68,6 +68,9 @@ export interface TenantDbHandle {
 export interface ResolvedConfigShape {
   defaultModel?: string;
   branding?: { name?: string; emoji?: string };
+  /** Default reply language for agents (Settings → Models → Output
+   *  language): "auto" | "en" | "zh". Absent/auto = match the user. */
+  outputLanguage?: "auto" | "en" | "zh";
 }
 
 export interface PluginLogger {

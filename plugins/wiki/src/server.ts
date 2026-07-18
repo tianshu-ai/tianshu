@@ -75,7 +75,7 @@ import {
 // The instruction the wiki-worker runs. Kept here so the recording
 // strategy is easy to tweak. The worker walks the session timeline
 // incrementally and distils each into pages across three dimensions.
-const RECORD_WIKI_PROMPT = [
+const RECORD_WIKI_STEPS = [
   "You are updating the user's LLM Wiki from their conversation timeline. Work incrementally, session by session:",
   "1. Call wiki_next_session to fetch the next unprocessed session's RAW transcript (paginated). If the result's has_more is true, call wiki_next_session again with page:<nextPage> and keep going until you've read the whole session (has_more=false). Note the session's date.",
   "2. Read and understand it, then record across BOTH layers:",
@@ -85,7 +85,19 @@ const RECORD_WIKI_PROMPT = [
   "4. Repeat for a batch. When you've covered the sessions of a given ISO week / month / year, roll them up with wiki_journal_write: weekly (period YYYY-Www) from that week's dailies, monthly (YYYY-MM) from its weeks, yearly (YYYY) from its months. Roll-ups summarise and link down — don't repeat detail.",
   "5. Stop when wiki_next_session reports done:true, or after ~10 sessions this run (the cursor persists; the next run resumes). Then give a one-paragraph summary of what you recorded.",
   "Reuse wiki_search / wiki_list_pages / wiki_read first so you extend existing pages instead of duplicating them.",
-].join("\n");
+];
+
+/** Build the record prompt, prefixing the configured output language
+ *  so wiki pages are written in it (not just the session's language). */
+function recordWikiPrompt(lang: "auto" | "en" | "zh" | undefined): string {
+  const langLine =
+    lang === "en"
+      ? "Write ALL wiki pages in English, regardless of the language used in the conversations you're reading."
+      : lang === "zh"
+        ? "\u7528\u4e2d\u6587\u5199\u6240\u6709 wiki \u9875\u9762\uff0c\u65e0\u8bba\u4f60\u9605\u8bfb\u7684\u5bf9\u8bdd\u662f\u4ec0\u4e48\u8bed\u8a00\u3002(Write all wiki pages in Chinese regardless of the conversation language.)"
+        : "Write each wiki page in the dominant language of the conversation it summarises.";
+  return [langLine, "", ...RECORD_WIKI_STEPS].join("\n");
+}
 
 // Wiki tools the worker is allowed to use (nothing else — it's a
 // focused background job, not a general agent).
@@ -739,7 +751,9 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
       try {
         const result = await runner.run({
           userId,
-          initialUserMessage: RECORD_WIKI_PROMPT,
+          initialUserMessage: recordWikiPrompt(
+            (ctx.tenantConfig as { outputLanguage?: "auto" | "en" | "zh" })?.outputLanguage,
+          ),
           workerRole: WIKI_WORKER_ROLE,
           workerSlug: WIKI_WORKER_ROLE,
           sessionTitle: "Wiki update",

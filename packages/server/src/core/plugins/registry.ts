@@ -1198,10 +1198,18 @@ function makePluginContext(args: {
     pluginId,
     tenantId: ctx.tenantId,
     db: ctx.db,
-    tenantConfig: { defaultModel: ctx.config.defaultModel, branding: ctx.config.branding },
+    tenantConfig: {
+      defaultModel: ctx.config.defaultModel,
+      branding: ctx.config.branding,
+      outputLanguage: ctx.config.outputLanguage,
+    },
     // Deprecated alias kept until the next major SDK bump so v0
     // plugin code that read `ctx.config` still works.
-    config: { defaultModel: ctx.config.defaultModel, branding: ctx.config.branding },
+    config: {
+      defaultModel: ctx.config.defaultModel,
+      branding: ctx.config.branding,
+      outputLanguage: ctx.config.outputLanguage,
+    },
     log,
     workspaceDir: ctx.workspaceDir,
     userHomeDir: (userId: string) => ctx.userHomeDir(userId),
