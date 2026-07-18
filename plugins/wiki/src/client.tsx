@@ -14,17 +14,7 @@ import type {
 } from "@tianshu-ai/plugin-sdk/client";
 import { useUiPrimitives, subscribeToWsEvent, useChatNav } from "@tianshu-ai/plugin-sdk/client";
 
-// The preset instruction the "record wiki" composer button sends to
-// the agent. Kept here (not hardcoded deep in the host) so the wiki
-// recording strategy is easy to tweak later.
-const RECORD_WIKI_PROMPT = [
-  "Update the LLM Wiki from the conversation timeline. Work incrementally, session by session:",
-  "1. Call wiki_next_session to fetch the next unprocessed session (with its transcript, spawned tasks, and produced files).",
-  "2. Read and understand it, then distil it into wiki pages with wiki_write_page across these dimensions: project (entities), date (topics/timeline), and technology/knowledge points (concepts). Cross-link related pages with [[wikilinks]].",
-  "3. Call wiki_session_done with that sessionId to advance the cursor.",
-  "4. Repeat for a few sessions if they're small; stop when wiki_next_session reports done:true or after a reasonable batch, and summarise what you recorded.",
-  "Reuse wiki_search / wiki_list_pages / wiki_read to avoid duplicating pages and to keep links consistent.",
-].join("\n");
+const API_BASE_ROOT = "/api/p/wiki";
 
 const API_BASE = "/api/p/wiki";
 
@@ -178,15 +168,56 @@ function stripFrontmatter(md: string): string {
 
 function WikiRecordButton(_props: ComposerActionProps) {
   const nav = useChatNav();
+  const [busy, setBusy] = useState(false);
+
+  // Poll running state so the button reflects an in-flight update
+  // (started from any channel/tab).
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      fetch(`${API_BASE_ROOT}/status`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((j) => alive && j && setBusy(!!j.running))
+        .catch(() => {});
+    };
+    tick();
+    const id = setInterval(tick, 5000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
   const onClick = () => {
-    if (typeof nav.sendPrompt === "function") nav.sendPrompt(RECORD_WIKI_PROMPT);
+    if (busy) return;
+    setBusy(true);
+    // Spawn the background wiki-worker (its own session; won't pollute
+    // this conversation). It notifies this session when done.
+    fetch(`${API_BASE_ROOT}/record`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: nav.viewingSessionId ?? null }),
+    })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j: { started?: boolean }) => {
+        if (!j.started) setBusy(false);
+      })
+      .catch(() => setBusy(false));
   };
+
   return (
     <button
       type="button"
       onClick={onClick}
-      title="Record this conversation into the wiki"
-      className="rounded p-1.5 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
+      disabled={busy}
+      title={busy ? "Wiki update running…" : "Record this conversation into the wiki"}
+      className={
+        "rounded p-1.5 transition-colors " +
+        (busy
+          ? "text-brand-400 animate-pulse cursor-default"
+          : "text-fg-faint hover:text-fg-default hover:bg-bg-hover")
+      }
     >
       <Notebook size={16} />
     </button>

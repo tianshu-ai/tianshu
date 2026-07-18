@@ -7,6 +7,7 @@
   "license": "Apache-2.0",
   "permissions": ["workspace.read", "workspace.write"],
   "provides": ["wiki.ingest"],
+  "requires": ["host.agentLoop", "host.sessionInbox"],
   "client": { "entry": "@tianshu-builtin/plugin-wiki/client" },
   "server": { "entry": "@tianshu-builtin/plugin-wiki/server" },
   "contributes": {
@@ -45,9 +46,11 @@
       { "id": "wiki_write_page",   "module": "WikiWritePageTool",   "since": "0.1.0" }
     ],
     "apiRoutes": [
-      { "method": "GET", "path": "/list",   "handler": "list"   },
-      { "method": "GET", "path": "/read",   "handler": "read"   },
-      { "method": "GET", "path": "/search", "handler": "search" }
+      { "method": "GET",  "path": "/list",   "handler": "list"   },
+      { "method": "GET",  "path": "/read",   "handler": "read"   },
+      { "method": "GET",  "path": "/search", "handler": "search" },
+      { "method": "POST", "path": "/record", "handler": "record" },
+      { "method": "GET",  "path": "/status", "handler": "status" }
     ]
   }
 }

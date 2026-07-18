@@ -48,23 +48,32 @@ export interface TaskRow {
   ended_at: number | null;
 }
 
+/** worker_role stamped on the wiki's own background worker sessions,
+ *  so the wiki analysis excludes itself (no self-referential loop:
+ *  analysing "the session where I analysed the wiki"). Everything
+ *  else — user conversations AND other worker/task sessions — is fair
+ *  game for the wiki. */
+export const WIKI_WORKER_ROLE = "wiki";
+
 /**
- * List a user's `kind='user'` sessions in timeline order (oldest
- * first). These are the top-level conversation windows (the rolling
- * window forks a chain via parent_id; each link is one row). We
- * include compacted + active ones — the whole timeline is fair game
- * for the wiki.
+ * List a user's sessions in timeline order (oldest first) for wiki
+ * ingest. Includes conversation windows (kind='user') AND other
+ * worker/task sessions (they carry real work worth recording) — but
+ * EXCLUDES the wiki's own background worker sessions
+ * (worker_role='wiki') to avoid a self-referential loop. Compacted +
+ * active alike; the whole timeline is fair game.
  */
 export function listUserSessions(db: TenantDbHandle, userId: string): SessionRow[] {
   return db
-    .prepare<[string], SessionRow>(
+    .prepare<[string, string], SessionRow>(
       `SELECT id, user_id, parent_id, status, kind, title, project_slug,
               compacted_summary, created_at, ended_at
          FROM sessions
-        WHERE user_id = ? AND kind = 'user'
+        WHERE user_id = ?
+          AND (worker_role IS NULL OR worker_role <> ?)
         ORDER BY created_at ASC`,
     )
-    .all(userId);
+    .all(userId, WIKI_WORKER_ROLE);
 }
 
 /** All messages in a session, chronological. */

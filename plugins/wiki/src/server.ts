@@ -29,6 +29,8 @@ import type {
   WikiIngestCapability,
   WikiIngestInput,
   WikiIngestResult,
+  AgentLoopRunner,
+  SessionInboxCapability,
 } from "@tianshu-ai/plugin-sdk";
 import { Type } from "typebox";
 import type { Request, Response } from "express";
@@ -52,8 +54,40 @@ import {
   listSessionTasks,
   messageToText,
   parseResultFiles,
+  WIKI_WORKER_ROLE,
   type SessionRow,
 } from "./sessions.js";
+
+// The instruction the wiki-worker runs. Kept here so the recording
+// strategy is easy to tweak. The worker walks the session timeline
+// incrementally and distils each into pages across three dimensions.
+const RECORD_WIKI_PROMPT = [
+  "You are updating the user's LLM Wiki from their conversation timeline. Work incrementally, session by session:",
+  "1. Call wiki_next_session to fetch the next unprocessed session (its transcript, spawned tasks, and produced files) plus progress.",
+  "2. Read and understand it, then distil it into wiki pages via wiki_write_page across three dimensions: project (section=entities), date/timeline (section=topics), and technology/knowledge points (section=concepts). Cross-link related pages with Obsidian [[section/slug]] wikilinks. Reuse wiki_search / wiki_list_pages / wiki_read first so you extend existing pages instead of duplicating them.",
+  "3. Call wiki_session_done with that sessionId to advance the cursor.",
+  "4. Repeat. Stop when wiki_next_session reports done:true, or after ~10 sessions this run (the cursor persists, so the next run resumes where you left off). Then give a one-paragraph summary of what you recorded.",
+].join("\n");
+
+// Wiki tools the worker is allowed to use (nothing else — it's a
+// focused background job, not a general agent).
+const WIKI_WORKER_TOOLS = [
+  "wiki_next_session",
+  "wiki_session_done",
+  "wiki_list_sources",
+  "wiki_list_pages",
+  "wiki_read",
+  "wiki_search",
+  "wiki_write_page",
+];
+
+// Per-user run lock: only one wiki-worker in flight at a time so two
+// clicks (or two channels) don't double-process the same sessions.
+const running = new Set<string>();
+
+function runKey(tenantId: string, userId: string): string {
+  return `${tenantId}:${userId}`;
+}
 
 // ─── agent tools ────────────────────────────────────────────────
 
@@ -347,7 +381,78 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.json({ hits: searchPages(ctx.userHomeDir(userId), q) });
   };
 
-  return { list, read, search };
+  const status: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return void res.status(401).json({ error: "no user context" });
+    res.json({ running: running.has(runKey(ctx.tenantId, userId)) });
+  };
+
+  // Kick off the background wiki-worker (host.agentLoop). Runs in its
+  // OWN session (kind='worker', worker_role='wiki') so the analysis
+  // never pollutes the user's conversation and can't recurse on
+  // itself (listUserSessions excludes worker_role='wiki'). Returns
+  // immediately; the worker notifies the requesting session via
+  // host.sessionInbox when it's done.
+  const record: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return void res.status(401).json({ error: "no user context" });
+    const key = runKey(ctx.tenantId, userId);
+    if (running.has(key)) {
+      return void res.json({ started: false, reason: "a wiki update is already running" });
+    }
+    const runner = ctx.capabilities.get<AgentLoopRunner>("host.agentLoop");
+    if (!runner) {
+      return void res.status(503).json({ error: "host.agentLoop unavailable" });
+    }
+    const parentSessionId =
+      typeof (req.body as { sessionId?: unknown })?.sessionId === "string"
+        ? (req.body as { sessionId: string }).sessionId
+        : null;
+
+    running.add(key);
+    void (async () => {
+      let summary = "";
+      let status: string = "error";
+      try {
+        const result = await runner.run({
+          userId,
+          initialUserMessage: RECORD_WIKI_PROMPT,
+          workerRole: WIKI_WORKER_ROLE,
+          workerSlug: WIKI_WORKER_ROLE,
+          sessionTitle: "Wiki update",
+          toolsAllow: WIKI_WORKER_TOOLS,
+          parentSessionId,
+          timeouts: { firstResponseMs: 0, idleMs: 0, maxRunMs: 30 * 60_000 },
+        });
+        summary = result.summary;
+        status = result.status;
+      } catch (err) {
+        summary = err instanceof Error ? err.message : String(err);
+        status = "error";
+      } finally {
+        running.delete(key);
+      }
+      // Notify the requesting session (best-effort).
+      if (parentSessionId) {
+        try {
+          const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
+          await inbox?.enqueue(parentSessionId, {
+            kind: "system_note",
+            text:
+              status === "done"
+                ? `📓 Wiki updated. ${summary}`
+                : `📓 Wiki update finished (${status}). ${summary}`,
+          });
+        } catch {
+          /* inbox is best-effort */
+        }
+      }
+    })();
+
+    res.json({ started: true });
+  };
+
+  return { list, read, search, status, record };
 }
 
 // ─── wiki.ingest capability (host compaction hook calls this) ────
