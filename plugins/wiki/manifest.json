@@ -5,9 +5,17 @@
   "description": "LLM Wiki — distils the rolling conversation into an Obsidian-style knowledge vault. Each compacted segment is filed automatically as a source; the agent synthesises entities / concepts / topics on top. Browse + search in the side panel.",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
-  "permissions": ["workspace.read", "workspace.write"],
-  "provides": ["wiki.ingest"],
-  "requires": ["host.agentLoop", "host.sessionInbox"],
+  "permissions": [
+    "workspace.read",
+    "workspace.write"
+  ],
+  "provides": [
+    "wiki.ingest"
+  ],
+  "requires": [
+    "host.agentLoop",
+    "host.sessionInbox"
+  ],
   "configSchema": {
     "fields": [
       {
@@ -15,13 +23,21 @@
         "label": "Embedding model",
         "kind": "select",
         "optionsSource": "embedding-models",
-        "group": { "id": "embedding", "label": "Semantic search (embedding)", "description": "Pick an embedding model to enable semantic search. Configure the models themselves (base URL, API key, dimensions) in Settings → Models. Leave as “None” to use keyword search." },
+        "group": {
+          "id": "embedding",
+          "label": "Semantic search (embedding)",
+          "description": "Pick an embedding model to enable semantic search. Configure the models themselves (base URL, API key, dimensions) in Settings → Models. Leave as “None” to use keyword search."
+        },
         "description": "Choose one of the embedding models configured under Settings → Models. When set, the wiki builds a semantic index and searches it; otherwise it falls back to keyword search."
       }
     ]
   },
-  "client": { "entry": "@tianshu-builtin/plugin-wiki/client" },
-  "server": { "entry": "@tianshu-builtin/plugin-wiki/server" },
+  "client": {
+    "entry": "@tianshu-builtin/plugin-wiki/client"
+  },
+  "server": {
+    "entry": "@tianshu-builtin/plugin-wiki/server"
+  },
   "contributes": {
     "topBarButtons": [
       {
@@ -49,24 +65,93 @@
       }
     ],
     "tools": [
-      { "id": "wiki_next_day",     "module": "WikiNextDayTool",     "since": "0.1.0" },
-      { "id": "wiki_day_done",     "module": "WikiDayDoneTool",     "since": "0.1.0" },
-      { "id": "wiki_list_sources", "module": "WikiListSourcesTool", "since": "0.1.0" },
-      { "id": "wiki_list_pages",   "module": "WikiListPagesTool",   "since": "0.1.0" },
-      { "id": "wiki_read",         "module": "WikiReadTool",        "since": "0.1.0" },
-      { "id": "wiki_search",       "module": "WikiSearchTool",      "since": "0.1.0" },
-      { "id": "wiki_write_page",   "module": "WikiWritePageTool",   "since": "0.1.0" },
-      { "id": "wiki_journal_write","module": "WikiJournalWriteTool","since": "0.1.0" },
-      { "id": "wiki_reset",        "module": "WikiResetTool",        "since": "0.1.0" }
+      {
+        "id": "wiki_next_day",
+        "module": "WikiNextDayTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "wiki_day_done",
+        "module": "WikiDayDoneTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "wiki_list_sources",
+        "module": "WikiListSourcesTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "wiki_list_pages",
+        "module": "WikiListPagesTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "wiki_read",
+        "module": "WikiReadTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "wiki_search",
+        "module": "WikiSearchTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "wiki_write_page",
+        "module": "WikiWritePageTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "wiki_journal_write",
+        "module": "WikiJournalWriteTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "wiki_reset",
+        "module": "WikiResetTool",
+        "since": "0.1.0"
+      }
     ],
     "apiRoutes": [
-      { "method": "GET",  "path": "/list",   "handler": "list"   },
-      { "method": "GET",  "path": "/read",   "handler": "read"   },
-      { "method": "GET",  "path": "/search", "handler": "search" },
-      { "method": "POST", "path": "/record", "handler": "record" },
-      { "method": "GET",  "path": "/status", "handler": "status" },
-      { "method": "GET",  "path": "/graph",  "handler": "graph"  },
-      { "method": "POST", "path": "/reset",  "handler": "reset"  }
+      {
+        "method": "GET",
+        "path": "/list",
+        "handler": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/read",
+        "handler": "read"
+      },
+      {
+        "method": "GET",
+        "path": "/search",
+        "handler": "search"
+      },
+      {
+        "method": "POST",
+        "path": "/record",
+        "handler": "record"
+      },
+      {
+        "method": "GET",
+        "path": "/status",
+        "handler": "status"
+      },
+      {
+        "method": "GET",
+        "path": "/graph",
+        "handler": "graph"
+      },
+      {
+        "method": "POST",
+        "path": "/reindex",
+        "handler": "reindex"
+      },
+      {
+        "method": "POST",
+        "path": "/reset",
+        "handler": "reset"
+      }
     ]
   }
 }

@@ -6,7 +6,7 @@
 // GET /api/p/wiki/{list,read,search}. Refreshes on workspace changes.
 
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2 } from "lucide-react";
+import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes } from "lucide-react";
 
 // react-force-graph-2d pulls in the whole d3-force / canvas stack, so
 // load it lazily — it only ships in a separate chunk fetched when the
@@ -61,6 +61,38 @@ function WikiPanel(_props: PanelProps) {
   const [confirmReset, setConfirmReset] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [view, setView] = useState<"list" | "graph">("list");
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexMsg, setReindexMsg] = useState<string | null>(null);
+
+  const rebuildIndex = useCallback(() => {
+    setReindexing(true);
+    setReindexMsg(null);
+    fetch(`${API_BASE}/reindex`, { method: "POST", credentials: "include" })
+      .then(async (r) => {
+        const body = (await r.json().catch(() => ({}))) as {
+          ok?: boolean;
+          indexed?: number;
+          total?: number;
+          note?: string;
+          error?: string;
+        };
+        if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
+        setReindexMsg(
+          body.note
+            ? body.note
+            : `Indexed ${body.indexed ?? 0}/${body.total ?? 0} page(s).`,
+        );
+      })
+      .catch((e: unknown) =>
+        setReindexMsg(
+          `Failed: ${e instanceof Error ? e.message : String(e)}`,
+        ),
+      )
+      .finally(() => {
+        setReindexing(false);
+        setTimeout(() => setReindexMsg(null), 6000);
+      });
+  }, []);
 
   const fetchList = useCallback(() => {
     fetch(`${API_BASE}/list`, { credentials: "include" })
@@ -143,6 +175,19 @@ function WikiPanel(_props: PanelProps) {
           <RefreshCw size={12} />
         </button>
         <button
+          onClick={rebuildIndex}
+          disabled={reindexing}
+          title="Rebuild the semantic (embedding) index from all pages"
+          className={
+            "rounded p-1 transition-colors " +
+            (reindexing
+              ? "text-brand-400"
+              : "text-fg-faint hover:text-fg-default hover:bg-bg-hover")
+          }
+        >
+          <Boxes size={12} className={reindexing ? "animate-pulse" : ""} />
+        </button>
+        <button
           onClick={() => setConfirmReset(true)}
           title="Reset wiki (wipe all pages + progress)"
           className="rounded p-1 text-fg-faint hover:text-danger hover:bg-bg-hover transition-colors"
@@ -150,6 +195,11 @@ function WikiPanel(_props: PanelProps) {
           <Trash2 size={12} />
         </button>
       </div>
+      {reindexMsg && (
+        <div className="flex-shrink-0 border-b border-border-subtle bg-bg-raised px-3 py-1 text-[11px] text-fg-muted">
+          {reindexMsg}
+        </div>
+      )}
 
       <Modal
         isOpen={confirmReset}

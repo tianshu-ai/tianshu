@@ -1,23 +1,28 @@
 // Embedding-backed semantic search for the wiki.
 //
 // When the tenant has configured an embedding model (Settings →
-// Models → Embedding), the wiki-worker embeds each page it writes and
-// stores the vectors in wiki/.wiki/embeddings.json. wiki_search then
-// embeds the query and ranks pages by cosine similarity. With no
-// embedding model configured, everything here no-ops and the caller
-// falls back to keyword search.
+// Plugins → Wiki, picking a model configured in Settings → Models), the
+// wiki-worker embeds each page it writes and stores the vector in the
+// tenant DB (sqlite-vec `vec0` table) alongside an FTS5 full-text row.
+// wiki_search then embeds the query and fuses vector KNN + FTS5 BM25
+// via Reciprocal Rank Fusion. With no embedding model configured,
+// everything here no-ops and the caller falls back to plain keyword
+// search over page files.
 //
-// OpenAI-compatible `/embeddings` endpoint — works with OpenAI, and
-// local servers (llama.cpp, Ollama, LM Studio) that expose the same
-// shape. Zero extra deps: plain fetch.
+// Embedding endpoint: OpenAI-compatible `/embeddings` (OpenAI,
+// llama.cpp, Ollama, LM Studio, proxies) OR Gemini native
+// `:batchEmbedContents` when the provider api is google-generative-ai.
+// Zero extra deps for the HTTP calls: plain fetch. Storage uses the
+// host-loaded sqlite-vec extension + SQLite's built-in FTS5.
 
-import fs from "node:fs";
-import path from "node:path";
-import { wikiRoot } from "./vault.js";
+import type { TenantDbHandle } from "@tianshu-ai/plugin-sdk";
 
 export interface EmbeddingConfig {
   baseUrl?: string;
   model?: string;
+  /** Wire protocol. `google-generative-ai` → Gemini native
+   *  `:batchEmbedContents`; anything else → OpenAI `/embeddings`. */
+  api?: string;
   apiKey?: string;
   dimensions?: number;
 }
@@ -26,42 +31,37 @@ export function embeddingEnabled(cfg?: EmbeddingConfig): cfg is EmbeddingConfig 
   return !!cfg && !!cfg.model && !!cfg.baseUrl;
 }
 
-interface IndexEntry {
-  path: string; // "<section>/<slug>"
-  vector: number[];
-  /** hash-ish of the text we embedded, to skip re-embedding unchanged pages */
-  len: number;
-  updatedAt: string;
+/** Redacted key descriptor for error messages: distinguishes "no key
+ *  sent" from "key present but rejected" without leaking the secret. */
+function keyHint(key: string): string {
+  if (!key) return "MISSING (none sent)";
+  return `present, ${key.length} chars, …${key.slice(-4)}`;
 }
 
-interface IndexFile {
-  model: string;
-  entries: IndexEntry[];
-}
+// ─── embedding HTTP ─────────────────────────────────────────────────
 
-function indexPath(userHome: string): string {
-  return path.join(wikiRoot(userHome), ".wiki", "embeddings.json");
-}
+/** Embedding task type (Gemini distinguishes query vs document; using
+ *  the right one materially improves retrieval quality). Ignored by
+ *  OpenAI-compatible endpoints. */
+export type EmbedTask = "RETRIEVAL_DOCUMENT" | "RETRIEVAL_QUERY";
 
-function readIndex(userHome: string): IndexFile | null {
-  try {
-    return JSON.parse(fs.readFileSync(indexPath(userHome), "utf8")) as IndexFile;
-  } catch {
-    return null;
-  }
-}
-
-function writeIndex(userHome: string, idx: IndexFile): void {
-  const file = indexPath(userHome);
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
-  fs.writeFileSync(tmp, JSON.stringify(idx), "utf8");
-  fs.renameSync(tmp, file);
-}
-
-/** Call the OpenAI-compatible embeddings endpoint for one or more
- *  inputs. Returns one vector per input, or throws. */
+/** Call the embeddings endpoint for one or more inputs, dispatching by
+ *  provider protocol. Returns one vector per input, or throws. */
 export async function embed(
+  cfg: EmbeddingConfig,
+  inputs: string[],
+  signal?: AbortSignal,
+  task: EmbedTask = "RETRIEVAL_DOCUMENT",
+): Promise<number[][]> {
+  if (cfg.api === "google-generative-ai") {
+    return embedGemini(cfg, inputs, signal, task);
+  }
+  return embedOpenAI(cfg, inputs, signal);
+}
+
+/** OpenAI-compatible `/embeddings` (OpenAI, llama.cpp, Ollama /v1,
+ *  LM Studio, and any proxy speaking the same shape). */
+async function embedOpenAI(
   cfg: EmbeddingConfig,
   inputs: string[],
   signal?: AbortSignal,
@@ -80,7 +80,9 @@ export async function embed(
     signal,
   });
   if (!res.ok) {
-    throw new Error(`embeddings ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    throw new Error(
+      `embeddings ${res.status} [apiKey: ${keyHint(cfg.apiKey ?? "")}]: ${(await res.text()).slice(0, 200)}`,
+    );
   }
   const json = (await res.json()) as { data?: Array<{ embedding: number[] }> };
   const data = json.data ?? [];
@@ -90,64 +92,115 @@ export async function embed(
   return data.map((d) => d.embedding);
 }
 
-function cosine(a: number[], b: number[]): number {
-  let dot = 0, na = 0, nb = 0;
-  const n = Math.min(a.length, b.length);
-  for (let i = 0; i < n; i++) {
-    dot += a[i]! * b[i]!;
-    na += a[i]! * a[i]!;
-    nb += b[i]! * b[i]!;
-  }
-  if (na === 0 || nb === 0) return 0;
-  return dot / (Math.sqrt(na) * Math.sqrt(nb));
-}
-
-/** Upsert one page's embedding into the index. Best-effort; a failure
- *  (endpoint down, bad config) is swallowed so recording never breaks
- *  — the page still gets written, it just won't be semantically
- *  searchable until a later successful embed. */
-export async function indexPage(
-  userHome: string,
+/** Gemini embedding via a Vertex-style proxy interface:
+ *    POST {baseUrl}/v1beta/models/<model>:embedContent
+ *    Authorization: Bearer <key>
+ *    { instances: [ { content: "<text>", task_type: "RETRIEVAL_DOCUMENT" } ] }
+ *  and the response carries one embedding per instance. This matches
+ *  the self-hosted `google-generative-ai` proxies people run (e.g. a
+ *  local gateway on :6655/gemini) rather than Google's public API.
+ *
+ *  Response shape varies across proxies; we accept the common ones:
+ *    { predictions: [ { embeddings: { values: [...] } } ] }   (Vertex)
+ *    { embeddings: [ { values: [...] } ] }                    (native batch)
+ *    { predictions: [ { embedding: { values } | number[] } ] }
+ *    { embedding: { values: [...] } }                         (single) */
+async function embedGemini(
   cfg: EmbeddingConfig,
-  pagePath: string,
-  text: string,
+  inputs: string[],
   signal?: AbortSignal,
-): Promise<{ ok: boolean; reason?: string }> {
-  if (!embeddingEnabled(cfg)) return { ok: false, reason: "no embedding model" };
-  const clipped = text.slice(0, 8000);
-  try {
-    const [vector] = await embed(cfg, [clipped], signal);
-    if (!vector) return { ok: false, reason: "no vector" };
-    const idx = readIndex(userHome) ?? { model: cfg.model!, entries: [] };
-    // Model changed → the old vectors are incomparable; start fresh.
-    if (idx.model !== cfg.model) {
-      idx.model = cfg.model!;
-      idx.entries = [];
-    }
-    const entry: IndexEntry = {
-      path: pagePath,
-      vector,
-      len: clipped.length,
-      updatedAt: new Date().toISOString(),
-    };
-    const at = idx.entries.findIndex((e) => e.path === pagePath);
-    if (at >= 0) idx.entries[at] = entry;
-    else idx.entries.push(entry);
-    writeIndex(userHome, idx);
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  task: EmbedTask = "RETRIEVAL_DOCUMENT",
+): Promise<number[][]> {
+  let base = (cfg.baseUrl ?? "").replace(/\/$/, "");
+  // The proxy expects a version segment; add it if the configured
+  // baseUrl stops at the mount (e.g. ".../gemini").
+  if (!/\/v\d/.test(base)) base = `${base}/v1beta`;
+  const modelId = cfg.model!.replace(/^models\//, "");
+  const url = `${base}/models/${modelId}:embedContent`;
+  const key = cfg.apiKey ?? "";
+  const body = {
+    instances: inputs.map((text) => ({
+      content: text,
+      task_type: task,
+      ...(cfg.dimensions ? { output_dimensionality: cfg.dimensions } : {}),
+    })),
+  };
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // Send the key BOTH ways: `x-goog-api-key` (Google/Gemini proxies)
+      // and `Authorization: Bearer` (OpenAI-style gateways). Harmless to
+      // send both; whichever the proxy reads wins.
+      ...(key ? { "x-goog-api-key": key, Authorization: `Bearer ${key}` } : {}),
+    },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `embedContent ${res.status} [apiKey: ${keyHint(key)}]: ${(await res.text()).slice(0, 200)}`,
+    );
   }
+  const json = (await res.json()) as Record<string, unknown>;
+  const vectors = extractGeminiVectors(json);
+  if (vectors.length !== inputs.length) {
+    throw new Error(
+      `embedContent returned ${vectors.length} vectors for ${inputs.length} inputs; response keys: ${Object.keys(json).join(",")}`,
+    );
+  }
+  return vectors;
 }
 
-/** Remove pages from the index that no longer exist (called after a
- *  reset or when pages are pruned). Best-effort. */
-export function pruneIndex(userHome: string, keepPaths: Set<string>): void {
-  const idx = readIndex(userHome);
-  if (!idx) return;
-  const before = idx.entries.length;
-  idx.entries = idx.entries.filter((e) => keepPaths.has(e.path));
-  if (idx.entries.length !== before) writeIndex(userHome, idx);
+/** Pull embedding vectors out of the several response shapes proxies
+ *  return for embedContent/predict. Returns [] if none recognised. */
+function extractGeminiVectors(json: Record<string, unknown>): number[][] {
+  const asValues = (o: unknown): number[] | null => {
+    if (Array.isArray(o) && typeof o[0] === "number") return o as number[];
+    if (o && typeof o === "object") {
+      const v = (o as { values?: unknown }).values;
+      if (Array.isArray(v) && typeof v[0] === "number") return v as number[];
+      const e = (o as { embedding?: unknown }).embedding;
+      if (e) return asValues(e);
+    }
+    return null;
+  };
+  const preds = (json as { predictions?: unknown[] }).predictions;
+  if (Array.isArray(preds)) {
+    const out = preds
+      .map((pr) => asValues((pr as { embeddings?: unknown }).embeddings ?? pr))
+      .filter((v): v is number[] => v !== null);
+    if (out.length) return out;
+  }
+  const embs = (json as { embeddings?: unknown }).embeddings;
+  if (Array.isArray(embs)) {
+    const out = embs.map(asValues).filter((v): v is number[] => v !== null);
+    if (out.length) return out;
+  }
+  const single = asValues((json as { embedding?: unknown }).embedding);
+  if (single) return [single];
+  return [];
+}
+
+// ─── SQLite-backed index (sqlite-vec + FTS5) ────────────────────────
+//
+// Vectors live in a `vec0` virtual table and page text in an FTS5
+// table, BOTH in the tenant DB (per-tenant db.sqlite), partitioned by
+// user_id. Search fuses vector KNN + FTS5 BM25 with Reciprocal Rank
+// Fusion (RRF). Degrades gracefully when sqlite-vec isn't loaded
+// (db.vecAvailable === false) → FTS5-only; and when FTS5 itself is
+// unavailable → the caller's plain keyword file scan.
+
+const VEC_TABLE = "wiki_vec";
+const FTS_TABLE = "wiki_fts";
+const META_TABLE = "wiki_index_meta";
+const RRF_K = 60; // standard RRF damping constant
+// Bump when the FTS table definition changes (e.g. tokenizer) so
+// existing installs drop + rebuild it. v1 = trigram tokenizer (CJK).
+const FTS_SCHEMA_VERSION = 1;
+
+function f32blob(vec: number[]): Buffer {
+  return Buffer.from(new Float32Array(vec).buffer);
 }
 
 export interface SemanticHit {
@@ -160,14 +213,322 @@ export interface SemanticHit {
  *  "configured but empty/failed" (fall back to keyword). */
 export type SemanticOutcome =
   | { status: "disabled" } // no embedding model configured
-  | { status: "empty" } // configured but no index yet (nothing recorded)
-  | { status: "error"; reason: string } // embed call / index read failed
+  | { status: "empty" } // configured but nothing indexed yet
+  | { status: "error"; reason: string } // embed call / index failed
   | { status: "ok"; hits: SemanticHit[] };
 
-/** Embed the query and rank indexed pages by cosine similarity.
- *  `minScore` filters weak matches. */
+/** A per-(tenant-db, user) index handle. Constructed once per request
+ *  from ctx.db + userId. Lazily ensures the schema exists. */
+export class WikiIndex {
+  constructor(
+    private readonly db: TenantDbHandle,
+    private readonly userId: string,
+  ) {}
+
+  get vecAvailable(): boolean {
+    return this.db.vecAvailable === true;
+  }
+
+  private ftsReady(): boolean {
+    try {
+      // `trigram` tokenizer: works for CJK (no whitespace word
+      // boundaries) as well as latin substrings. The default unicode61
+      // tokenizer treats "番茄钟计时器" as one token and misses
+      // "番茄钟". If an OLD unicode61 table exists (schema v<1), the
+      // meta guard in prepare() drops + recreates it.
+      this.db.exec(
+        `CREATE VIRTUAL TABLE IF NOT EXISTS ${FTS_TABLE} USING fts5(
+           user_id UNINDEXED, page_key UNINDEXED, body,
+           tokenize='trigram' )`,
+      );
+      return true;
+    } catch {
+      // Older SQLite without trigram? fall back to default tokenizer.
+      try {
+        this.db.exec(
+          `CREATE VIRTUAL TABLE IF NOT EXISTS ${FTS_TABLE} USING fts5(
+             user_id UNINDEXED, page_key UNINDEXED, body )`,
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    }
+  }
+
+  /** Ensure FTS5 (+ vec0 when available) tables exist for the current
+   *  model/dimension. If the model or dimension changed since last
+   *  time, the vector table is dropped + recreated (old vectors are
+   *  incomparable across models/dims). Returns false if setup failed. */
+  prepare(model: string, dim: number): boolean {
+    try {
+      this.db.exec(
+        `CREATE TABLE IF NOT EXISTS ${META_TABLE} (
+           scope TEXT PRIMARY KEY, model TEXT, dim INTEGER )`,
+      );
+      // One-time migration: drop an FTS table built before the trigram
+      // switch so it gets recreated with CJK-capable tokenization.
+      const ftsMeta = this.db
+        .prepare<[], { dim: number }>(
+          `SELECT dim FROM ${META_TABLE} WHERE scope='fts'`,
+        )
+        .get();
+      if (!ftsMeta || ftsMeta.dim < FTS_SCHEMA_VERSION) {
+        this.db.exec(`DROP TABLE IF EXISTS ${FTS_TABLE}`);
+        this.db
+          .prepare(
+            `INSERT INTO ${META_TABLE}(scope,model,dim) VALUES('fts','trigram',?)
+             ON CONFLICT(scope) DO UPDATE SET model='trigram', dim=excluded.dim`,
+          )
+          .run(FTS_SCHEMA_VERSION);
+      }
+      this.ftsReady();
+      if (!this.vecAvailable) return true; // FTS-only mode
+      const meta = this.db
+        .prepare<[], { model: string; dim: number }>(
+          `SELECT model, dim FROM ${META_TABLE} WHERE scope='vec'`,
+        )
+        .get();
+      if (!meta || meta.model !== model || meta.dim !== dim) {
+        // Model/dim changed → old vectors can't be compared; rebuild.
+        this.db.exec(`DROP TABLE IF EXISTS ${VEC_TABLE}`);
+        this.db.exec(
+          `CREATE VIRTUAL TABLE ${VEC_TABLE} USING vec0(
+             user_id TEXT partition key,
+             page_key TEXT,
+             embedding float[${dim}] )`,
+        );
+        this.db
+          .prepare(
+            `INSERT INTO ${META_TABLE}(scope,model,dim) VALUES('vec',?,?)
+             ON CONFLICT(scope) DO UPDATE SET model=excluded.model, dim=excluded.dim`,
+          )
+          .run(model, dim);
+      } else {
+        this.db.exec(
+          `CREATE VIRTUAL TABLE IF NOT EXISTS ${VEC_TABLE} USING vec0(
+             user_id TEXT partition key,
+             page_key TEXT,
+             embedding float[${dim}] )`,
+        );
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /** Upsert one page: replace its FTS row always, and its vector when a
+   *  vector is provided + vec is available. */
+  upsert(pageKey: string, text: string, vector?: number[], dim?: number): void {
+    if (this.ftsReady()) {
+      this.db
+        .prepare(`DELETE FROM ${FTS_TABLE} WHERE user_id=? AND page_key=?`)
+        .run(this.userId, pageKey);
+      this.db
+        .prepare(`INSERT INTO ${FTS_TABLE}(user_id,page_key,body) VALUES(?,?,?)`)
+        .run(this.userId, pageKey, text);
+    }
+    if (vector && this.vecAvailable && dim) {
+      this.db
+        .prepare(`DELETE FROM ${VEC_TABLE} WHERE user_id=? AND page_key=?`)
+        .run(this.userId, pageKey);
+      this.db
+        .prepare(
+          `INSERT INTO ${VEC_TABLE}(user_id,page_key,embedding) VALUES(?,?,?)`,
+        )
+        .run(this.userId, pageKey, f32blob(vector));
+    }
+  }
+
+  /** Vector KNN for the current user. Returned already sorted by
+   *  distance (best first); RRF uses the RANK, so the raw score here is
+   *  informational only. */
+  private vectorHits(qvec: number[], k: number): SemanticHit[] {
+    if (!this.vecAvailable) return [];
+    try {
+      const rows = this.db
+        .prepare<[string, Buffer, number], { page_key: string; distance: number }>(
+          `SELECT page_key, distance FROM ${VEC_TABLE}
+             WHERE user_id=? AND embedding MATCH ? AND k=?
+             ORDER BY distance`,
+        )
+        .all(this.userId, f32blob(qvec), k);
+      // sqlite-vec default metric is L2; map to a monotonic [0,1] score.
+      return rows.map((r) => ({ path: r.page_key, score: 1 / (1 + r.distance) }));
+    } catch {
+      return [];
+    }
+  }
+
+  /** FTS5 BM25 keyword hits for the current user. */
+  ftsHits(query: string, k: number): SemanticHit[] {
+    try {
+      const match = toFtsQuery(query);
+      if (!match) return [];
+      const rows = this.db
+        .prepare<[string, string, number], { page_key: string; s: number }>(
+          `SELECT page_key, bm25(${FTS_TABLE}) AS s FROM ${FTS_TABLE}
+             WHERE ${FTS_TABLE} MATCH ? AND user_id=?
+             ORDER BY s LIMIT ?`,
+        )
+        .all(match, this.userId, k);
+      return rows.map((r) => ({ path: r.page_key, score: -r.s }));
+    } catch {
+      return [];
+    }
+  }
+
+  removePage(pageKey: string): void {
+    try {
+      this.db
+        .prepare(`DELETE FROM ${FTS_TABLE} WHERE user_id=? AND page_key=?`)
+        .run(this.userId, pageKey);
+      if (this.vecAvailable) {
+        this.db
+          .prepare(`DELETE FROM ${VEC_TABLE} WHERE user_id=? AND page_key=?`)
+          .run(this.userId, pageKey);
+      }
+    } catch {
+      /* best-effort */
+    }
+  }
+
+  /** Wipe this user's rows from both tables (used by reset/reindex). */
+  clear(): void {
+    try {
+      this.db.prepare(`DELETE FROM ${FTS_TABLE} WHERE user_id=?`).run(this.userId);
+    } catch {
+      /* table may not exist yet */
+    }
+    try {
+      this.db.prepare(`DELETE FROM ${VEC_TABLE} WHERE user_id=?`).run(this.userId);
+    } catch {
+      /* table may not exist yet */
+    }
+  }
+
+  count(): number {
+    try {
+      const r = this.db
+        .prepare<[string], { n: number }>(
+          `SELECT COUNT(*) AS n FROM ${FTS_TABLE} WHERE user_id=?`,
+        )
+        .get(this.userId);
+      return r?.n ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Hybrid search: vector KNN ⊕ FTS5 BM25, fused with RRF. */
+  fuse(qvec: number[] | undefined, query: string, limit: number): SemanticHit[] {
+    const pool = Math.max(limit * 4, 20);
+    const vec = qvec ? this.vectorHits(qvec, pool) : [];
+    const fts = this.ftsHits(query, pool);
+    return rrf([vec, fts], limit);
+  }
+}
+
+/** Reciprocal Rank Fusion over several ranked lists (each already
+ *  sorted best-first). Fusion is on RANK, not raw score, so the two
+ *  lists' incomparable scales don't matter. The fused score is
+ *  NORMALISED to [0,1] (divided by the best achievable = appearing #1
+ *  in every non-empty list) so a caller-supplied minScore threshold is
+ *  meaningful and stable regardless of RRF_K or list count. */
+function rrf(lists: SemanticHit[][], limit: number): SemanticHit[] {
+  const nonEmpty = lists.filter((l) => l.length > 0);
+  const maxScore = nonEmpty.length * (1 / (RRF_K + 1));
+  const acc = new Map<string, number>();
+  for (const list of lists) {
+    list.forEach((hit, rank) => {
+      acc.set(hit.path, (acc.get(hit.path) ?? 0) + 1 / (RRF_K + rank + 1));
+    });
+  }
+  return [...acc.entries()]
+    .map(([path, score]) => ({ path, score: maxScore > 0 ? score / maxScore : 0 }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+}
+
+/** Turn a free-text query into a safe FTS5 MATCH expression for the
+ *  trigram tokenizer. Strips FTS5 operators, then builds OR-joined
+ *  quoted terms. With trigram tokenization each quoted term is matched
+ *  as a SUBSTRING, so this works for CJK (no whitespace boundaries):
+ *  "番茄钟计时器" stays one term and still substring-matches a page
+ *  containing "番茄钟". Latin queries split on whitespace as before.
+ *  Trigram needs ≥3 chars per term; shorter terms are dropped (they'd
+ *  match nothing under trigram anyway). */
+function toFtsQuery(query: string): string {
+  const cleaned = query.replace(/["'^:(){}\[\]]/g, " ").trim().toLowerCase();
+  if (!cleaned) return "";
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  // Keep the whole phrase as a term AND each word; trigram substring
+  // matching then covers both the full query and its pieces.
+  const terms = new Set<string>();
+  if (cleaned.replace(/\s+/g, "").length >= 3) terms.add(cleaned);
+  for (const p of parts) if (p.length >= 3) terms.add(p);
+  const list = [...terms].slice(0, 12);
+  if (list.length === 0) return "";
+  return list.map((t) => `"${t.replace(/"/g, "")}"`).join(" OR ");
+}
+
+// ─── public API used by server.ts ───────────────────────────────────
+
+/** Upsert one page's vector + FTS row. Best-effort; a failure (endpoint
+ *  down, bad config) is returned (not thrown) so recording never breaks
+ *  — the page is still written, just not yet searchable. */
+export async function indexPage(
+  index: WikiIndex,
+  cfg: EmbeddingConfig,
+  pagePath: string,
+  text: string,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!embeddingEnabled(cfg)) return { ok: false, reason: "no embedding model" };
+  const clipped = text.slice(0, 8000);
+  try {
+    const [vector] = await embed(cfg, [clipped], signal);
+    if (!vector) return { ok: false, reason: "no vector returned" };
+    if (!index.prepare(cfg.model!, vector.length)) {
+      return { ok: false, reason: "index schema setup failed" };
+    }
+    index.upsert(pagePath, clipped, vector, vector.length);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Rebuild the WHOLE index from scratch: clear this user's rows, then
+ *  embed every provided page. Used by the panel's "Rebuild index"
+ *  button. Embeds sequentially (gentle on rate limits); stops on the
+ *  FIRST failure and reports it. */
+export async function reindexAll(
+  index: WikiIndex,
+  cfg: EmbeddingConfig,
+  pages: Array<{ path: string; text: string }>,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; indexed: number; total: number; reason?: string }> {
+  if (!embeddingEnabled(cfg)) {
+    return { ok: false, indexed: 0, total: pages.length, reason: "no embedding model configured" };
+  }
+  index.clear();
+  let indexed = 0;
+  for (const p of pages) {
+    const r = await indexPage(index, cfg, p.path, p.text, signal);
+    if (!r.ok) {
+      return { ok: false, indexed, total: pages.length, reason: r.reason };
+    }
+    indexed++;
+  }
+  return { ok: true, indexed, total: pages.length };
+}
+
+/** Hybrid semantic+keyword search (RRF). Embeds the query, runs vector
+ *  KNN ⊕ FTS5, fuses. `minScore` filters weak fused matches. */
 export async function semanticSearch(
-  userHome: string,
+  index: WikiIndex,
   cfg: EmbeddingConfig | undefined,
   query: string,
   limit: number,
@@ -175,17 +536,15 @@ export async function semanticSearch(
   signal?: AbortSignal,
 ): Promise<SemanticOutcome> {
   if (!embeddingEnabled(cfg)) return { status: "disabled" };
-  const idx = readIndex(userHome);
-  if (!idx || idx.entries.length === 0) return { status: "empty" };
-  if (idx.model !== cfg.model) return { status: "empty" }; // stale index vs current model
+  if (index.count() === 0) return { status: "empty" };
   try {
-    const [qv] = await embed(cfg, [query], signal);
+    // Embed the QUERY with RETRIEVAL_QUERY (docs used RETRIEVAL_DOCUMENT);
+    // the asymmetry is what Gemini's retrieval embeddings are trained for.
+    const [qv] = await embed(cfg, [query], signal, "RETRIEVAL_QUERY");
     if (!qv) return { status: "error", reason: "no query vector returned" };
-    const hits = idx.entries
-      .map((e) => ({ path: e.path, score: cosine(qv, e.vector) }))
-      .filter((h) => h.score >= minScore)
-      .sort((a, b) => b.score - a.score)
-      .slice(0, limit);
+    // fuse() scores are normalised to [0,1] (1 = ranked #1 in every
+    // list). minScore is applied on that scale.
+    const hits = index.fuse(qv, query, limit).filter((h) => h.score >= minScore);
     return { status: "ok", hits };
   } catch (err) {
     return { status: "error", reason: err instanceof Error ? err.message : String(err) };

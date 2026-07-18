@@ -58,6 +58,11 @@ export interface TenantDbHandle {
     all(...params: P): R[];
   };
   exec(sql: string): unknown;
+  /** True when the sqlite-vec extension loaded on this connection, so
+   *  `vec0` virtual tables are available. The host loads the extension
+   *  once per connection; plugins branch on this and fall back to
+   *  keyword search when false. */
+  readonly vecAvailable?: boolean;
 }
 
 /**

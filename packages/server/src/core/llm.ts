@@ -99,6 +99,10 @@ export interface ResolvedEmbeddingModel {
   name: string;
   /** Provider base URL; the caller POSTs `<baseUrl>/embeddings`. */
   baseUrl: string;
+  /** Provider wire protocol. `google-generative-ai` uses Gemini's
+   *  native `:batchEmbedContents`; everything else assumes an
+   *  OpenAI-compatible `/embeddings` endpoint. */
+  api: string;
   /** Resolved API key (env placeholders expanded). May be empty for
    *  keyless local servers. */
   apiKey: string;
@@ -123,6 +127,10 @@ export function listEmbeddingModels(
         model: m.id,
         name: m.name ?? m.id,
         baseUrl: provider.baseUrl ?? "",
+        api:
+          (provider.api as string | undefined) ??
+          DEFAULT_API_BY_PROVIDER[providerId] ??
+          "openai-completions",
         apiKey: expandEnvPlaceholders(provider.apiKey) ?? "",
         dimensions: m.dimensions,
       });

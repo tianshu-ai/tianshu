@@ -31,6 +31,7 @@ import type {
   WikiIngestResult,
   AgentLoopRunner,
   SessionInboxCapability,
+  TenantDbHandle,
 } from "@tianshu-ai/plugin-sdk";
 import { Type } from "typebox";
 import type { Request, Response } from "express";
@@ -57,7 +58,9 @@ import { ingestSource } from "./ingest.js";
 import {
   embeddingEnabled,
   indexPage,
+  reindexAll,
   semanticSearch,
+  WikiIndex,
   type EmbeddingConfig,
 } from "./embedding.js";
 import {
@@ -207,12 +210,12 @@ function buildReadTool(): AgentTool {
   };
 }
 
-function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
+function buildSearchTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentTool {
   // The right way to phrase a query differs by backend, so the tool
   // description tells the agent which one is active and how to query it.
   const semantic = embeddingEnabled(cfg);
   const DEFAULT_LIMIT = 8;
-  const DEFAULT_MIN_SCORE = 0.15;
+  const DEFAULT_MIN_SCORE = 0.05;
   const description = semantic
     ? "Search the user's wiki (recall prior work, decisions, people, facts). Active mode: SEMANTIC (embedding/RAG). Phrase the query as a natural-language description of the MEANING you're after (e.g. \"how the graph visualisation library was chosen\"); exact keywords are NOT required. If results miss, rephrase the concept rather than swapping single words. `mode` defaults to auto (semantic here); pass mode:\"keyword\" to force literal matching."
     : "Search the user's wiki (recall prior work, decisions, people, facts). Active mode: KEYWORD (literal full-text — NO embedding model is configured, so semantic/RAG search is unavailable). Query with the SPECIFIC terms / names / identifiers you expect on the page (e.g. \"react-force-graph\", \"board_act\"); this is literal substring matching. Do NOT expect meaning-based retrieval. (Passing mode:\"semantic\" will error until an embedding model is configured in the plugin settings.)";
@@ -235,7 +238,7 @@ function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
         limit: Type.Optional(Type.Number({ description: `Max results (default ${DEFAULT_LIMIT}).` })),
         minScore: Type.Optional(
           Type.Number({
-            description: `Semantic-only: min cosine similarity [0..1] to include a hit (default ${DEFAULT_MIN_SCORE}). Lower to widen, raise to tighten.`,
+            description: `Semantic-only: min fused relevance [0..1] to include a hit (default ${DEFAULT_MIN_SCORE}; 1 = ranked top by both vector + keyword). Lower to widen, raise to tighten.`,
           }),
         ),
       }),
@@ -263,7 +266,13 @@ function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
 
       // ── semantic path (mode=semantic, or auto with embedding on) ──
       if (mode === "semantic" || (mode === "auto" && semantic)) {
-        const out = await semanticSearch(home, cfg, q, limit, minScore);
+        const out = await semanticSearch(
+          new WikiIndex(db, ctx.userId),
+          cfg,
+          q,
+          limit,
+          minScore,
+        );
         if (out.status === "ok" && out.hits.length > 0) {
           const titles = titleOf();
           const lines = out.hits.map(
@@ -312,7 +321,7 @@ function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
   };
 }
 
-function buildWritePageTool(cfg?: EmbeddingConfig): AgentTool {
+function buildWritePageTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentTool {
   return {
     available: isWikiWorker,
     schema: {
@@ -365,8 +374,21 @@ function buildWritePageTool(cfg?: EmbeddingConfig): AgentTool {
         return { ok: false, text: `write failed: ${err instanceof Error ? err.message : String(err)}` };
       }
       // Embed for semantic search (best-effort; no-op without a model).
+      // Surface a failure in the result so a misconfigured embedding
+      // endpoint is VISIBLE (the page is still written either way).
       if (embeddingEnabled(cfg)) {
-        await indexPage(ctx.userHomeDir, cfg, `${section}/${slug}`, `${title}\n\n${body}`);
+        const emb = await indexPage(
+          new WikiIndex(db, ctx.userId),
+          cfg,
+          `${section}/${slug}`,
+          `${title}\n\n${body}`,
+        );
+        if (!emb.ok) {
+          return {
+            ok: true,
+            text: `wrote ${section}/${slug} — ⚠️ semantic index NOT updated (embedding failed: ${emb.reason}). The page is saved but won't be semantically searchable until the embedding model is reachable.`,
+          };
+        }
       }
       return { ok: true, text: `wrote ${section}/${slug}` };
     },
@@ -549,7 +571,7 @@ function periodLabel(level: JournalLevel, period: string): string {
   return period;
 }
 
-function buildJournalWriteTool(cfg?: EmbeddingConfig): AgentTool {
+function buildJournalWriteTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentTool {
   return {
     available: isWikiWorker,
     schema: {
@@ -608,7 +630,18 @@ function buildJournalWriteTool(cfg?: EmbeddingConfig): AgentTool {
         return { ok: false, text: `write failed: ${err instanceof Error ? err.message : String(err)}` };
       }
       if (embeddingEnabled(cfg)) {
-        await indexPage(ctx.userHomeDir, cfg, `${section}/${period}`, `${title}\n\n${body}`);
+        const emb = await indexPage(
+          new WikiIndex(db, ctx.userId),
+          cfg,
+          `${section}/${period}`,
+          `${title}\n\n${body}`,
+        );
+        if (!emb.ok) {
+          return {
+            ok: true,
+            text: `wrote ${section}/${period} — ⚠️ semantic index NOT updated (embedding failed: ${emb.reason}). The page is saved but won't be semantically searchable until the embedding model is reachable.`,
+          };
+        }
       }
       return { ok: true, text: `wrote ${section}/${period}` };
     },
@@ -622,7 +655,10 @@ function userIdFromReq(req: Request): string {
   return ctx?.userId ?? "";
 }
 
-function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
+function buildRoutes(
+  ctx: PluginContext,
+  cfg?: EmbeddingConfig,
+): Record<string, PluginRouteHandler> {
   const list: PluginRouteHandler = (req: Request, res: Response) => {
     const userId = userIdFromReq(req);
     if (!userId) return void res.status(401).json({ error: "no user context" });
@@ -683,6 +719,12 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     }
     const r = resetVault(ctx.userHomeDir(userId));
     if (!r.ok) return void res.status(500).json({ error: r.reason });
+    // Also wipe this user's rows from the semantic index (vec + FTS).
+    try {
+      new WikiIndex(ctx.db, userId).clear();
+    } catch {
+      /* best-effort */
+    }
     res.json({ ok: true, removedPages: r.removedPages });
   };
 
@@ -753,7 +795,55 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.json({ started: true });
   };
 
-  return { list, read, search, status, record, reset, graph };
+  // Rebuild the semantic index from every existing page. Panel-only
+  // ("Rebuild index" button). No-op with a friendly message when no
+  // embedding model is configured. Guarded by the same run lock so it
+  // can't race the record worker.
+  const reindex: PluginRouteHandler = async (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return void res.status(401).json({ error: "no user context" });
+    if (!embeddingEnabled(cfg)) {
+      return void res.status(400).json({
+        error:
+          "No embedding model is configured. Pick one in Settings → Plugins → Wiki (configure the model in Settings → Models).",
+      });
+    }
+    const key = runKey(ctx.tenantId, userId);
+    if (running.has(key)) {
+      return void res
+        .status(409)
+        .json({ error: "a wiki update is running; wait for it to finish" });
+    }
+    const home = ctx.userHomeDir(userId);
+    // Collect every page's readable markdown as the embedding text.
+    const pages = listPages(home)
+      .map((p) => {
+        const md = readPage(home, p.section, p.slug);
+        return md ? { path: p.path, text: md } : null;
+      })
+      .filter((x): x is { path: string; text: string } => x !== null);
+    if (pages.length === 0) {
+      return void res.json({ ok: true, indexed: 0, total: 0, note: "no pages to index yet" });
+    }
+    running.add(key);
+    try {
+      const r = await reindexAll(new WikiIndex(ctx.db, userId), cfg, pages);
+      if (!r.ok) {
+        return void res.status(502).json({
+          error: `embedding failed after ${r.indexed}/${r.total}: ${r.reason}`,
+          indexed: r.indexed,
+          total: r.total,
+        });
+      }
+      res.json({ ok: true, indexed: r.indexed, total: r.total });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      running.delete(key);
+    }
+  };
+
+  return { list, read, search, status, record, reset, graph, reindex };
 }
 
 // ─── wiki.ingest capability (host compaction hook calls this) ────
@@ -787,7 +877,12 @@ const plugin: PluginServerModule = {
     const embRaw = (ctx.pluginConfig as { embedding?: unknown })?.embedding;
     const cfg =
       embRaw && typeof embRaw === "object" ? (embRaw as EmbeddingConfig) : undefined;
-    ctx.log.info(`wiki activated (embedding: ${embeddingEnabled(cfg) ? cfg!.model : "off, keyword search"})`);
+    const vecNote = ctx.db.vecAvailable ? "vec+FTS" : "FTS-only (sqlite-vec not loaded)";
+    ctx.log.info(
+      `wiki activated (embedding: ${
+        embeddingEnabled(cfg) ? `${cfg!.model}, ${vecNote}` : "off, keyword search"
+      })`,
+    );
     return {
       tools: {
         WikiNextDayTool: buildNextDayTool(ctx),
@@ -795,12 +890,12 @@ const plugin: PluginServerModule = {
         WikiListSourcesTool: buildListSourcesTool(),
         WikiListPagesTool: buildListPagesTool(),
         WikiReadTool: buildReadTool(),
-        WikiSearchTool: buildSearchTool(cfg),
-        WikiWritePageTool: buildWritePageTool(cfg),
-        WikiJournalWriteTool: buildJournalWriteTool(cfg),
+        WikiSearchTool: buildSearchTool(ctx.db, cfg),
+        WikiWritePageTool: buildWritePageTool(ctx.db, cfg),
+        WikiJournalWriteTool: buildJournalWriteTool(ctx.db, cfg),
         WikiResetTool: buildResetTool(),
       },
-      routes: buildRoutes(ctx),
+      routes: buildRoutes(ctx, cfg),
       capabilityProviders: { "wiki.ingest": buildIngestCapability(ctx) },
     };
   },

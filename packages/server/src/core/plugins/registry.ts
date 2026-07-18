@@ -1197,6 +1197,7 @@ function resolveEmbeddingModelRef(
     embedding: {
       baseUrl: model.baseUrl,
       model: model.model,
+      api: model.api,
       apiKey: model.apiKey,
       ...(model.dimensions ? { dimensions: model.dimensions } : {}),
     },
