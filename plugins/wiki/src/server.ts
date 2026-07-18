@@ -196,13 +196,22 @@ function buildReadTool(): AgentTool {
 }
 
 function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
+  // The right way to phrase a query differs by backend, so the tool
+  // description tells the agent which one is active and how to query it.
+  const semantic = embeddingEnabled(cfg);
+  const description = semantic
+    ? "Search the user's wiki (recall prior work, decisions, people, facts). MODE: SEMANTIC (embedding/RAG). Phrase the query as a natural-language description of the MEANING you're after (e.g. \"how the graph visualisation library was chosen\"); exact keywords are NOT required and word-for-word matches don't matter. If results miss, rephrase the concept rather than swapping single words. Returns page paths ranked by similarity score."
+    : "Search the user's wiki (recall prior work, decisions, people, facts). MODE: KEYWORD (literal full-text; no embedding model configured). Query with the SPECIFIC terms / names / identifiers you expect to appear on the page (e.g. \"react-force-graph\", \"board_act\"); this is literal substring matching, so meaning-based phrasing won't help. If results miss, try synonyms or the exact term used at the time. Returns page paths with matching snippets.";
   return {
     schema: {
       name: "wiki_search",
-      description:
-        "Search the user's wiki to recall prior work, decisions, people, or facts distilled from past conversations. Uses semantic (embedding) search when the tenant has configured an embedding model, otherwise keyword search — either way just pass a natural-language query. Returns matching page paths with titles/snippets.",
+      description,
       parameters: Type.Object({
-        query: Type.String({ description: "Natural-language search text." }),
+        query: Type.String({
+          description: semantic
+            ? "Natural-language description of the meaning you're looking for (semantic/RAG search)."
+            : "Specific keywords / names / identifiers expected on the page (literal keyword search).",
+        }),
         limit: Type.Optional(Type.Number({ description: "Max results (default 20)." })),
       }),
     },
@@ -221,13 +230,31 @@ function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
           .filter((h) => h.score > 0.15)
           .map((h) => `- ${h.path} — ${byPath.get(h.path) ?? h.path} (score ${h.score.toFixed(2)})`);
         if (lines.length > 0) {
-          return { ok: true, text: `Wiki (semantic) for "${q}" (${lines.length}):\n${lines.join("\n")}` };
+          return {
+            ok: true,
+            text:
+              `[semantic/RAG search — ranked by meaning similarity] "${q}" (${lines.length}):\n` +
+              `${lines.join("\n")}\n` +
+              `If this missed what you wanted, rephrase the concept (semantic search ignores exact keywords).`,
+          };
         }
       }
       const hits = searchPages(ctx.userHomeDir, q, limit);
-      if (hits.length === 0) return { ok: true, text: `No wiki hits for "${q}".` };
+      const header = semantic
+        ? `[keyword search — semantic found nothing, fell back to literal match] "${q}"`
+        : `[keyword search — literal substring match] "${q}"`;
+      if (hits.length === 0) {
+        return {
+          ok: true,
+          text:
+            `${header}: no hits. ` +
+            (semantic
+              ? "Try different wording, or wiki_list_pages to browse."
+              : "Try synonyms / the exact term used at the time, or wiki_list_pages to browse."),
+        };
+      }
       const lines = hits.map((h) => `- ${h.path} — ${h.title}\n    …${h.snippet}…`);
-      return { ok: true, text: `Wiki (keyword) for "${q}" (${hits.length}):\n${lines.join("\n")}` };
+      return { ok: true, text: `${header} (${hits.length}):\n${lines.join("\n")}` };
     },
   };
 }
