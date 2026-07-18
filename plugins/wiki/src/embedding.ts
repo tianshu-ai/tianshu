@@ -205,6 +205,44 @@ export async function indexPage(
   }
 }
 
+/** Rebuild the WHOLE semantic index from scratch: drop the existing
+ *  index, then embed every provided page. Used by the panel's
+ *  "Rebuild index" button so a config/proxy change can be re-applied
+ *  without re-running the record worker. Embeds sequentially (one
+ *  request per page) to stay gentle on rate limits; stops early on the
+ *  FIRST failure and reports it (so a misconfigured endpoint surfaces
+ *  immediately rather than hammering N times). */
+export async function reindexAll(
+  userHome: string,
+  cfg: EmbeddingConfig,
+  pages: Array<{ path: string; text: string }>,
+  signal?: AbortSignal,
+): Promise<{ ok: boolean; indexed: number; total: number; reason?: string }> {
+  if (!embeddingEnabled(cfg)) {
+    return { ok: false, indexed: 0, total: pages.length, reason: "no embedding model configured" };
+  }
+  // Start clean so a dimension/model change can't leave stale vectors.
+  clearIndex(userHome);
+  let indexed = 0;
+  for (const p of pages) {
+    const r = await indexPage(userHome, cfg, p.path, p.text, signal);
+    if (!r.ok) {
+      return { ok: false, indexed, total: pages.length, reason: r.reason };
+    }
+    indexed++;
+  }
+  return { ok: true, indexed, total: pages.length };
+}
+
+/** Delete the on-disk embedding index entirely. */
+export function clearIndex(userHome: string): void {
+  try {
+    fs.rmSync(indexPath(userHome), { force: true });
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Remove pages from the index that no longer exist (called after a
  *  reset or when pages are pruned). Best-effort. */
 export function pruneIndex(userHome: string, keepPaths: Set<string>): void {

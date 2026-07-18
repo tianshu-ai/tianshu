@@ -57,6 +57,7 @@ import { ingestSource } from "./ingest.js";
 import {
   embeddingEnabled,
   indexPage,
+  reindexAll,
   semanticSearch,
   type EmbeddingConfig,
 } from "./embedding.js";
@@ -646,7 +647,10 @@ function userIdFromReq(req: Request): string {
   return ctx?.userId ?? "";
 }
 
-function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
+function buildRoutes(
+  ctx: PluginContext,
+  cfg?: EmbeddingConfig,
+): Record<string, PluginRouteHandler> {
   const list: PluginRouteHandler = (req: Request, res: Response) => {
     const userId = userIdFromReq(req);
     if (!userId) return void res.status(401).json({ error: "no user context" });
@@ -777,7 +781,55 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.json({ started: true });
   };
 
-  return { list, read, search, status, record, reset, graph };
+  // Rebuild the semantic index from every existing page. Panel-only
+  // ("Rebuild index" button). No-op with a friendly message when no
+  // embedding model is configured. Guarded by the same run lock so it
+  // can't race the record worker.
+  const reindex: PluginRouteHandler = async (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return void res.status(401).json({ error: "no user context" });
+    if (!embeddingEnabled(cfg)) {
+      return void res.status(400).json({
+        error:
+          "No embedding model is configured. Pick one in Settings → Plugins → Wiki (configure the model in Settings → Models).",
+      });
+    }
+    const key = runKey(ctx.tenantId, userId);
+    if (running.has(key)) {
+      return void res
+        .status(409)
+        .json({ error: "a wiki update is running; wait for it to finish" });
+    }
+    const home = ctx.userHomeDir(userId);
+    // Collect every page's readable markdown as the embedding text.
+    const pages = listPages(home)
+      .map((p) => {
+        const md = readPage(home, p.section, p.slug);
+        return md ? { path: p.path, text: md } : null;
+      })
+      .filter((x): x is { path: string; text: string } => x !== null);
+    if (pages.length === 0) {
+      return void res.json({ ok: true, indexed: 0, total: 0, note: "no pages to index yet" });
+    }
+    running.add(key);
+    try {
+      const r = await reindexAll(home, cfg, pages);
+      if (!r.ok) {
+        return void res.status(502).json({
+          error: `embedding failed after ${r.indexed}/${r.total}: ${r.reason}`,
+          indexed: r.indexed,
+          total: r.total,
+        });
+      }
+      res.json({ ok: true, indexed: r.indexed, total: r.total });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+    } finally {
+      running.delete(key);
+    }
+  };
+
+  return { list, read, search, status, record, reset, graph, reindex };
 }
 
 // ─── wiki.ingest capability (host compaction hook calls this) ────
@@ -824,7 +876,7 @@ const plugin: PluginServerModule = {
         WikiJournalWriteTool: buildJournalWriteTool(cfg),
         WikiResetTool: buildResetTool(),
       },
-      routes: buildRoutes(ctx),
+      routes: buildRoutes(ctx, cfg),
       capabilityProviders: { "wiki.ingest": buildIngestCapability(ctx) },
     };
   },
