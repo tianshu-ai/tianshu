@@ -99,6 +99,16 @@ function runKey(tenantId: string, userId: string): string {
   return `${tenantId}:${userId}`;
 }
 
+// Write / flow tools are ONLY offered to the wiki background worker
+// (the session spawned with workerRole='wiki'), not to the main agent.
+// The main agent should only see the read/query tools day-to-day; the
+// ability to WRITE the wiki exists solely during a record run. Gated
+// per-turn via AgentTool.available so a stray config can't expose them.
+function isWikiWorker(ctx: AgentToolContext): boolean {
+  const scope = ctx.agentScope;
+  return scope?.kind === "worker" && scope.workerKind === WIKI_WORKER_ROLE;
+}
+
 // ─── agent tools ────────────────────────────────────────────────
 
 function buildListSourcesTool(): AgentTool {
@@ -202,6 +212,7 @@ function buildSearchTool(): AgentTool {
 
 function buildWritePageTool(): AgentTool {
   return {
+    available: isWikiWorker,
     schema: {
       name: "wiki_write_page",
       description:
@@ -274,6 +285,7 @@ function sessionLabel(s: SessionRow): string {
 
 function buildNextSessionTool(ctx: PluginContext): AgentTool {
   return {
+    available: isWikiWorker,
     schema: {
       name: "wiki_next_session",
       description:
@@ -344,6 +356,7 @@ function buildNextSessionTool(ctx: PluginContext): AgentTool {
 
 function buildResetTool(): AgentTool {
   return {
+    available: isWikiWorker,
     schema: {
       name: "wiki_reset",
       description:
@@ -366,6 +379,7 @@ function buildResetTool(): AgentTool {
 
 function buildSessionDoneTool(): AgentTool {
   return {
+    available: isWikiWorker,
     schema: {
       name: "wiki_session_done",
       description:
@@ -406,6 +420,7 @@ function periodLabel(level: JournalLevel, period: string): string {
 
 function buildJournalWriteTool(): AgentTool {
   return {
+    available: isWikiWorker,
     schema: {
       name: "wiki_journal_write",
       description:
