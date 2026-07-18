@@ -31,6 +31,13 @@ export function embeddingEnabled(cfg?: EmbeddingConfig): cfg is EmbeddingConfig 
   return !!cfg && !!cfg.model && !!cfg.baseUrl;
 }
 
+/** Redacted key descriptor for error messages: distinguishes "no key
+ *  sent" from "key present but rejected" without leaking the secret. */
+function keyHint(key: string): string {
+  if (!key) return "MISSING (none sent)";
+  return `present, ${key.length} chars, …${key.slice(-4)}`;
+}
+
 // ─── embedding HTTP ─────────────────────────────────────────────────
 
 /** Call the embeddings endpoint for one or more inputs, dispatching by
@@ -67,7 +74,9 @@ async function embedOpenAI(
     signal,
   });
   if (!res.ok) {
-    throw new Error(`embeddings ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    throw new Error(
+      `embeddings ${res.status} [apiKey: ${keyHint(cfg.apiKey ?? "")}]: ${(await res.text()).slice(0, 200)}`,
+    );
   }
   const json = (await res.json()) as { data?: Array<{ embedding: number[] }> };
   const data = json.data ?? [];
@@ -77,53 +86,90 @@ async function embedOpenAI(
   return data.map((d) => d.embedding);
 }
 
-/** Gemini native `:batchEmbedContents`
- *  (https://ai.google.dev/api/embeddings). baseUrl points at the
- *  API root (e.g. https://generativelanguage.googleapis.com/v1beta,
- *  or a proxy). The key goes in the `x-goog-api-key` header. */
+/** Gemini embedding via a Vertex-style proxy interface:
+ *    POST {baseUrl}/v1beta/models/<model>:embedContent
+ *    Authorization: Bearer <key>
+ *    { instances: [ { content: "<text>", task_type: "RETRIEVAL_DOCUMENT" } ] }
+ *  and the response carries one embedding per instance. This matches
+ *  the self-hosted `google-generative-ai` proxies people run (e.g. a
+ *  local gateway on :6655/gemini) rather than Google's public API.
+ *
+ *  Response shape varies across proxies; we accept the common ones:
+ *    { predictions: [ { embeddings: { values: [...] } } ] }   (Vertex)
+ *    { embeddings: [ { values: [...] } ] }                    (native batch)
+ *    { predictions: [ { embedding: { values } | number[] } ] }
+ *    { embedding: { values: [...] } }                         (single) */
 async function embedGemini(
   cfg: EmbeddingConfig,
   inputs: string[],
   signal?: AbortSignal,
 ): Promise<number[][]> {
-  const base = (cfg.baseUrl ?? "").replace(/\/$/, "");
-  // Model id may be bare ("gemini-embedding-001") or already prefixed
-  // ("models/gemini-embedding-001"); normalise to the `models/<id>` form.
-  const modelPath = cfg.model!.startsWith("models/")
-    ? cfg.model!
-    : `models/${cfg.model}`;
-  const url = `${base}/${modelPath}:batchEmbedContents`;
+  let base = (cfg.baseUrl ?? "").replace(/\/$/, "");
+  // The proxy expects a version segment; add it if the configured
+  // baseUrl stops at the mount (e.g. ".../gemini").
+  if (!/\/v\d/.test(base)) base = `${base}/v1beta`;
+  const modelId = cfg.model!.replace(/^models\//, "");
+  const url = `${base}/models/${modelId}:embedContent`;
+  const key = cfg.apiKey ?? "";
   const body = {
-    requests: inputs.map((text) => ({
-      model: modelPath,
-      content: { parts: [{ text }] },
-      ...(cfg.dimensions ? { outputDimensionality: cfg.dimensions } : {}),
+    instances: inputs.map((text) => ({
+      content: text,
+      task_type: "RETRIEVAL_DOCUMENT",
+      ...(cfg.dimensions ? { output_dimensionality: cfg.dimensions } : {}),
     })),
   };
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(cfg.apiKey ? { "x-goog-api-key": cfg.apiKey } : {}),
+      ...(key ? { Authorization: `Bearer ${key}` } : {}),
     },
     body: JSON.stringify(body),
     signal,
   });
   if (!res.ok) {
     throw new Error(
-      `batchEmbedContents ${res.status}: ${(await res.text()).slice(0, 200)}`,
+      `embedContent ${res.status} [apiKey: ${keyHint(key)}]: ${(await res.text()).slice(0, 200)}`,
     );
   }
-  const json = (await res.json()) as {
-    embeddings?: Array<{ values: number[] }>;
-  };
-  const data = json.embeddings ?? [];
-  if (data.length !== inputs.length) {
+  const json = (await res.json()) as Record<string, unknown>;
+  const vectors = extractGeminiVectors(json);
+  if (vectors.length !== inputs.length) {
     throw new Error(
-      `batchEmbedContents returned ${data.length} vectors for ${inputs.length} inputs`,
+      `embedContent returned ${vectors.length} vectors for ${inputs.length} inputs; response keys: ${Object.keys(json).join(",")}`,
     );
   }
-  return data.map((d) => d.values);
+  return vectors;
+}
+
+/** Pull embedding vectors out of the several response shapes proxies
+ *  return for embedContent/predict. Returns [] if none recognised. */
+function extractGeminiVectors(json: Record<string, unknown>): number[][] {
+  const asValues = (o: unknown): number[] | null => {
+    if (Array.isArray(o) && typeof o[0] === "number") return o as number[];
+    if (o && typeof o === "object") {
+      const v = (o as { values?: unknown }).values;
+      if (Array.isArray(v) && typeof v[0] === "number") return v as number[];
+      const e = (o as { embedding?: unknown }).embedding;
+      if (e) return asValues(e);
+    }
+    return null;
+  };
+  const preds = (json as { predictions?: unknown[] }).predictions;
+  if (Array.isArray(preds)) {
+    const out = preds
+      .map((pr) => asValues((pr as { embeddings?: unknown }).embeddings ?? pr))
+      .filter((v): v is number[] => v !== null);
+    if (out.length) return out;
+  }
+  const embs = (json as { embeddings?: unknown }).embeddings;
+  if (Array.isArray(embs)) {
+    const out = embs.map(asValues).filter((v): v is number[] => v !== null);
+    if (out.length) return out;
+  }
+  const single = asValues((json as { embedding?: unknown }).embedding);
+  if (single) return [single];
+  return [];
 }
 
 // ─── SQLite-backed index (sqlite-vec + FTS5) ────────────────────────
