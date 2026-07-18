@@ -345,7 +345,22 @@ function WikiGraphView({
 }) {
   const [data, setData] = useState<{ nodes: FGNode[]; links: FGLink[] }>({ nodes: [], links: [] });
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fgRef = useRef<any>(null);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
+
+  // Loosen the layout: stronger repulsion + longer links so nodes
+  // spread out (default clumps them, which is what made the graph a
+  // ball of overlapping circles).
+  useEffect(() => {
+    const fg = fgRef.current;
+    if (!fg || data.nodes.length === 0) return;
+    try {
+      fg.d3Force("charge")?.strength(-220);
+      fg.d3Force("link")?.distance(70);
+      fg.d3ReheatSimulation?.();
+    } catch { /* ref API not ready */ }
+  }, [data]);
 
   useEffect(() => {
     fetch(`${API_BASE}/graph`, { credentials: "include" })
@@ -377,7 +392,7 @@ function WikiGraphView({
   }, []);
 
   return (
-    <div ref={wrapRef} className="min-h-0 flex-1 overflow-hidden">
+    <div ref={wrapRef} className="relative min-h-0 flex-1 overflow-hidden">
       {data.nodes.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center text-fg-fainter">
           <Share2 size={28} className="mb-2 opacity-30" />
@@ -392,47 +407,92 @@ function WikiGraphView({
           }
         >
           <ForceGraph2D
+            ref={fgRef}
             width={size.w || undefined}
             height={size.h || undefined}
             graphData={data}
             backgroundColor="rgba(0,0,0,0)"
-            nodeRelSize={4}
-            nodeVal={(n: FGNodeAny) => 1 + ((n as FGNode).deg ?? 0)}
-            nodeColor={(n: FGNodeAny) => nodeColor((n as FGNode).section)}
-            linkColor={() => "rgba(148,163,184,0.25)"}
+            nodeRelSize={NODE_R}
+            // Keep areas modest: radius grows slowly with degree so a
+            // hub doesn't balloon over everything (nodeVal is AREA).
+            nodeVal={() => 1}
+            linkColor={() => "rgba(148,163,184,0.22)"}
             linkWidth={1}
             linkDirectionalParticles={0}
-            cooldownTicks={120}
+            cooldownTicks={140}
+            d3VelocityDecay={0.3}
             onNodeClick={(n: FGNodeAny) => onOpen((n as FGNode).path)}
-            nodeCanvasObjectMode={(n: FGNodeAny) => (n.id === selected ? "before" : "after")}
+            onEngineStop={() => { /* settle */ }}
+            nodePointerAreaPaint={(n: FGNodeAny, color: string, ctx: CanvasRenderingContext2D) => {
+              const nn = n as FGNode & { x?: number; y?: number };
+              ctx.fillStyle = color;
+              ctx.beginPath();
+              ctx.arc(nn.x ?? 0, nn.y ?? 0, nodeRadius(nn.deg), 0, 2 * Math.PI);
+              ctx.fill();
+            }}
             nodeCanvasObject={(n: FGNodeAny, ctx: CanvasRenderingContext2D, scale: number) => {
               const nn = n as FGNode & { x?: number; y?: number };
               const x = nn.x ?? 0, y = nn.y ?? 0;
-              if (nn.id === selected) {
-                const r = (1 + nn.deg) * 4 + 3;
-                ctx.beginPath();
-                ctx.arc(x, y, r / scale + 2, 0, 2 * Math.PI);
+              const r = nodeRadius(nn.deg);
+              const isSel = nn.id === selected;
+              // node circle
+              ctx.beginPath();
+              ctx.arc(x, y, r, 0, 2 * Math.PI);
+              ctx.fillStyle = nodeColor(nn.section);
+              ctx.globalAlpha = isSel ? 1 : 0.9;
+              ctx.fill();
+              ctx.globalAlpha = 1;
+              if (isSel) {
                 ctx.strokeStyle = "#fff";
-                ctx.lineWidth = 1.5 / scale;
+                ctx.lineWidth = 2 / scale;
                 ctx.stroke();
               }
-              // Labels: always for small graphs, else only when zoomed in.
-              if (data.nodes.length <= 60 || scale > 1.6) {
-                const label = nn.title.length > 24 ? nn.title.slice(0, 24) + "…" : nn.title;
-                const fs = 10 / scale;
+              // label BELOW the node, centered — only when zoomed in
+              // enough (or the graph is small), so labels don't pile up.
+              if (scale > 1.1 || data.nodes.length <= 25) {
+                const label = nn.title.length > 22 ? nn.title.slice(0, 22) + "…" : nn.title;
+                const fs = Math.max(9 / scale, 2.5);
                 ctx.font = `${fs}px sans-serif`;
-                ctx.fillStyle = "rgba(148,163,184,0.9)";
-                ctx.textAlign = "left";
-                ctx.textBaseline = "middle";
-                ctx.fillText(label, x + (1 + nn.deg) * 4 / scale + 3 / scale, y);
+                ctx.textAlign = "center";
+                ctx.textBaseline = "top";
+                ctx.fillStyle = isSel ? "rgba(226,232,240,0.95)" : "rgba(148,163,184,0.85)";
+                ctx.fillText(label, x, y + r + 1.5 / scale);
               }
             }}
           />
         </Suspense>
       )}
+      {/* legend */}
+      {data.nodes.length > 0 && (
+        <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-bg-base/70 px-2 py-1 text-[10px] text-fg-muted backdrop-blur-sm">
+          {LEGEND.map((l) => (
+            <span key={l.section} className="flex items-center gap-1">
+              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: l.color }} />
+              {l.label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
+
+// Node radius (canvas units) grows gently with link degree, capped so
+// hubs stay readable and labels have room.
+const NODE_R = 5;
+function nodeRadius(deg: number): number {
+  return NODE_R + Math.min(6, Math.sqrt(deg) * 2);
+}
+
+const LEGEND: Array<{ section: string; label: string; color: string }> = [
+  { section: "journal/daily", label: "Daily", color: SECTION_COLOR["journal/daily"]! },
+  { section: "journal/weekly", label: "Weekly", color: SECTION_COLOR["journal/weekly"]! },
+  { section: "journal/monthly", label: "Monthly", color: SECTION_COLOR["journal/monthly"]! },
+  { section: "topics", label: "Topics", color: SECTION_COLOR["topics"]! },
+  { section: "entities", label: "Entities", color: SECTION_COLOR["entities"]! },
+  { section: "concepts", label: "Concepts", color: SECTION_COLOR["concepts"]! },
+  { section: "sources", label: "Sources", color: SECTION_COLOR["sources"]! },
+];
 
 // ─── composer button: record wiki ───────────────────────────────
 
