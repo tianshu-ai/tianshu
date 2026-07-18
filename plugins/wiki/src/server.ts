@@ -80,7 +80,7 @@ const RECORD_WIKI_PROMPT = [
   "1. Call wiki_next_session to fetch the next unprocessed session's RAW transcript (paginated). If the result's has_more is true, call wiki_next_session again with page:<nextPage> and keep going until you've read the whole session (has_more=false). Note the session's date.",
   "2. Read and understand it, then record across BOTH layers:",
   "   • THEMATIC (wiki_write_page): project → section=entities; reusable tech/knowledge points → section=concepts; a cross-time thread/undertaking (e.g. 'build the board plugin', which may span several days) → section=topics.",
-  "   • TIME (wiki_journal_write): write/update the daily entry for the session's date (level=daily, period=YYYY-MM-DD) — what was done that day, cross-linking the topics/entities/concepts it touched with [[section/slug]]. A day usually spans several topics; a topic usually spans several days — link both ways (also add the day to the topic page's timeline).",
+  "   • TIME (wiki_journal_write): messages are timestamped [YYYY-MM-DD HH:MM] and a single session can span MANY days — write/update a SEPARATE daily entry PER DATE that appears (level=daily, period=that YYYY-MM-DD), not one per session. Each daily notes what was done that day, cross-linking the topics/entities/concepts it touched with [[section/slug]]. A day usually spans several topics; a topic usually spans several days — link both ways (also add the day to the topic page's timeline).",
   "3. Only after reading every page of the session, call wiki_session_done with that sessionId to advance the cursor.",
   "4. Repeat for a batch. When you've covered the sessions of a given ISO week / month / year, roll them up with wiki_journal_write: weekly (period YYYY-Www) from that week's dailies, monthly (YYYY-MM) from its weeks, yearly (YYYY) from its months. Roll-ups summarise and link down — don't repeat detail.",
   "5. Stop when wiki_next_session reports done:true, or after ~10 sessions this run (the cursor persists; the next run resumes). Then give a one-paragraph summary of what you recorded.",
@@ -400,9 +400,11 @@ function paginateBlocks(
 }
 
 function sessionLabel(s: SessionRow): string {
-  const date = new Date(s.created_at).toISOString().slice(0, 10);
+  // No date here on purpose: a session's messages can span many days,
+  // so the session's own created_at is a misleading "date". Day
+  // attribution comes from each message's timestamp instead.
   const short = s.id.replace(/^sess?_/, "").replace(/^session_/, "").slice(0, 8);
-  return `${date} · ${s.title?.trim() || short}`;
+  return s.title?.trim() || short;
 }
 
 function buildNextSessionTool(ctx: PluginContext): AgentTool {
@@ -438,8 +440,19 @@ function buildNextSessionTool(ctx: PluginContext): AgentTool {
 
       // RAW original messages (not the compaction summary), paginated
       // by char budget so nothing is dropped from a long session.
+      //
+      // IMPORTANT: a rolling-window session can span many DAYS (its
+      // messages carry their own created_at; session.created_at is just
+      // when the row was forked). So we prefix each message with its
+      // own date+time and report the day span — the agent must split
+      // daily journals by MESSAGE date, not by the session's date.
       const msgs = listSessionMessages(ctx.db, next.id);
-      const blocks = msgs.map((m) => messageToText(m.role, m.content));
+      const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+      const timeOf = (ms: number) => new Date(ms).toISOString().slice(0, 16).replace("T", " ");
+      const blocks = msgs.map(
+        (m) => `[${timeOf(m.created_at)}] ${messageToText(m.role, m.content)}`,
+      );
+      const msgDays = [...new Set(msgs.map((m) => dayOf(m.created_at)))].sort();
       const { text: transcript, nextIndex, hasMore } = paginateBlocks(blocks, page);
       const totalPages = (() => {
         // rough page count for display
@@ -480,10 +493,17 @@ function buildNextSessionTool(ctx: PluginContext): AgentTool {
         ? `\n---\nMore of this session remains. Call wiki_next_session({ page: ${nextPage} }) for the rest BEFORE wiki_session_done.`
         : `\n---\nThat's the full session. Distil it into wiki pages (project / date / topic, [[wikilinked]]), then call wiki_session_done({ sessionId: "${next.id}" }).`;
 
+      const dayNote =
+        msgDays.length > 1
+          ? `\n⚠ This session spans ${msgDays.length} days: ${msgDays.join(", ")}. Each message below is timestamped — write a SEPARATE daily journal per date (wiki_journal_write level=daily period=<that date>), not one for the session.`
+          : msgDays.length === 1
+            ? `\nAll messages are from ${msgDays[0]}.`
+            : "";
+
       const parts = [
         `Session ${next.id} (${sessionLabel(next)}) — raw transcript, page ${page + 1}/${totalPages}`,
-        `status=${next.status}${next.project_slug ? ` project=${next.project_slug}` : ""} · sessions ${doneCount}/${total} done.`,
-        `\n## Transcript (page ${page + 1}/${totalPages})\n${transcript || "(empty)"}`,
+        `status=${next.status}${next.project_slug ? ` project=${next.project_slug}` : ""} · sessions ${doneCount}/${total} done.${dayNote}`,
+        `\n## Transcript (page ${page + 1}/${totalPages}) — each line prefixed with [YYYY-MM-DD HH:MM]\n${transcript || "(empty)"}`,
         tasksSection,
         footer,
       ].filter(Boolean);
