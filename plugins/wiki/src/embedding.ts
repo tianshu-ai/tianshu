@@ -122,7 +122,10 @@ async function embedGemini(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      ...(key ? { Authorization: `Bearer ${key}` } : {}),
+      // Send the key BOTH ways: `x-goog-api-key` (Google/Gemini proxies)
+      // and `Authorization: Bearer` (OpenAI-style gateways). Harmless to
+      // send both; whichever the proxy reads wins.
+      ...(key ? { "x-goog-api-key": key, Authorization: `Bearer ${key}` } : {}),
     },
     body: JSON.stringify(body),
     signal,

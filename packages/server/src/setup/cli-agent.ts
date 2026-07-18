@@ -366,10 +366,12 @@ EMBEDDING MODELS (for the wiki plugin's semantic search):
            -H 'Content-Type: application/json' \\
            -H 'Authorization: Bearer <key>' \\
            -d '{"model":"<id>","input":["connectivity test"]}'
-     * google-generative-ai (Vertex-style proxy):
+     * google-generative-ai (Vertex-style proxy) — send the key as
+       \`x-goog-api-key\` (Gemini proxies use this); some gateways also
+       accept \`Authorization: Bearer\`, so sending both is safe:
          curl -sS -X POST '<baseUrl>/v1beta/models/<id>:embedContent' \\
            -H 'Content-Type: application/json' \\
-           -H 'Authorization: Bearer <key>' \\
+           -H 'x-goog-api-key: <key>' \\
            -d '{"instances":[{"content":"connectivity test","task_type":"RETRIEVAL_DOCUMENT"}]}'
      Add \`-w '\\nHTTP %{http_code}\\n'\` so you can see the status even on
      success. NEVER print the raw key back to the user — refer to it as
