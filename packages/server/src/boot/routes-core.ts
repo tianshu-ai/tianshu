@@ -206,6 +206,7 @@ export function mountCoreRoutes(
         providers: maskProviders(providers),
         defaultModelId: cfg.models?.defaultModelId ?? null,
         defaultModel: cfg.defaultModel ?? null,
+        outputLanguage: cfg.outputLanguage ?? "auto",
       });
     } catch (err) {
       res.status(500).json({
@@ -250,11 +251,18 @@ export function mountCoreRoutes(
         if (typeof body.defaultModel === "string") {
           nextCfg.defaultModel = body.defaultModel || undefined;
         }
+        const lang = (req.body as { outputLanguage?: unknown }).outputLanguage;
+        if (lang === "en" || lang === "zh") {
+          nextCfg.outputLanguage = lang;
+        } else if (lang === "auto" || lang === "" || lang === null) {
+          delete nextCfg.outputLanguage;
+        }
         writeGlobalConfig(nextCfg, getTianshuHome());
         res.json({
           providers: maskProviders(parsed.value),
           defaultModelId: nextModels.defaultModelId ?? null,
           defaultModel: nextCfg.defaultModel ?? null,
+          outputLanguage: nextCfg.outputLanguage ?? "auto",
         });
       } catch (err) {
         res.status(500).json({

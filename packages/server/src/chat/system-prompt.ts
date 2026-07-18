@@ -60,6 +60,16 @@ export interface MainAgentPromptOverrides {
   customFragments?: ReadonlyArray<{ id: string; title: string; body: string }>;
 }
 
+/** One-line reply-language directive for the system prompt, or ""
+ *  when set to auto/unset (let the model match the user). */
+export function formatOutputLanguageLine(
+  lang: "auto" | "en" | "zh" | undefined,
+): string {
+  if (lang === "en") return "Always reply in English, regardless of the language the user writes in.";
+  if (lang === "zh") return "\u603b\u662f\u7528\u4e2d\u6587\u56de\u590d\uff0c\u65e0\u8bba\u7528\u6237\u7528\u4ec0\u4e48\u8bed\u8a00\u63d0\u95ee\u3002(Always reply in Chinese regardless of the user's language.)";
+  return "";
+}
+
 export function defaultSystemPrompt(
   ctx: TenantContext,
   userId: string,
@@ -71,6 +81,10 @@ export function defaultSystemPrompt(
   const lines: string[] = [
     `You are ${brand}, an open-source AI assistant.`,
   ];
+
+  // Default output language (Settings → Models → Output language).
+  const langLine = formatOutputLanguageLine(ctx.config.outputLanguage);
+  if (langLine) lines.push(langLine);
 
   // Runtime context (time / timezone / host / tenant + user).
   // Injected for every main-agent prompt build so the LLM never
