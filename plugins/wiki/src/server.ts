@@ -77,11 +77,11 @@ import {
 // incrementally and distils each into pages across three dimensions.
 const RECORD_WIKI_PROMPT = [
   "You are updating the user's LLM Wiki from their conversation timeline. Work incrementally, session by session:",
-  "1. Call wiki_next_session to fetch the next unprocessed session (its transcript, spawned tasks, produced files) plus progress. Note the session's date.",
+  "1. Call wiki_next_session to fetch the next unprocessed session's RAW transcript (paginated). If the result's has_more is true, call wiki_next_session again with page:<nextPage> and keep going until you've read the whole session (has_more=false). Note the session's date.",
   "2. Read and understand it, then record across BOTH layers:",
   "   • THEMATIC (wiki_write_page): project → section=entities; reusable tech/knowledge points → section=concepts; a cross-time thread/undertaking (e.g. 'build the board plugin', which may span several days) → section=topics.",
   "   • TIME (wiki_journal_write): write/update the daily entry for the session's date (level=daily, period=YYYY-MM-DD) — what was done that day, cross-linking the topics/entities/concepts it touched with [[section/slug]]. A day usually spans several topics; a topic usually spans several days — link both ways (also add the day to the topic page's timeline).",
-  "3. Call wiki_session_done with that sessionId to advance the cursor.",
+  "3. Only after reading every page of the session, call wiki_session_done with that sessionId to advance the cursor.",
   "4. Repeat for a batch. When you've covered the sessions of a given ISO week / month / year, roll them up with wiki_journal_write: weekly (period YYYY-Www) from that week's dailies, monthly (YYYY-MM) from its weeks, yearly (YYYY) from its months. Roll-ups summarise and link down — don't repeat detail.",
   "5. Stop when wiki_next_session reports done:true, or after ~10 sessions this run (the cursor persists; the next run resumes). Then give a one-paragraph summary of what you recorded.",
   "Reuse wiki_search / wiki_list_pages / wiki_read first so you extend existing pages instead of duplicating them.",
@@ -370,7 +370,34 @@ function buildWritePageTool(cfg?: EmbeddingConfig): AgentTool {
 // wiki_session_done advances the cursor. Progress is persisted so a
 // later run resumes from the cut-off point instead of redoing work.
 
-const MAX_TRANSCRIPT_CHARS = 24000;
+// Paginate a session's raw transcript by character budget so a long
+// conversation is handed over in full across several pages instead of
+// being truncated. The agent reads page 0, 1, 2… until has_more=false,
+// then marks the session done.
+const PAGE_CHARS = 18000;
+
+/** Slice rendered message blocks into a page starting at `startIndex`,
+ *  packing whole messages until the char budget is hit (always at
+ *  least one message so a huge single message still makes progress). */
+function paginateBlocks(
+  blocks: string[],
+  startIndex: number,
+): { text: string; nextIndex: number; hasMore: boolean } {
+  let end = startIndex;
+  let size = 0;
+  while (end < blocks.length) {
+    const len = blocks[end]!.length + 2;
+    if (size > 0 && size + len > PAGE_CHARS) break;
+    size += len;
+    end++;
+  }
+  if (end === startIndex && startIndex < blocks.length) end = startIndex + 1;
+  return {
+    text: blocks.slice(startIndex, end).join("\n\n"),
+    nextIndex: end,
+    hasMore: end < blocks.length,
+  };
+}
 
 function sessionLabel(s: SessionRow): string {
   const date = new Date(s.created_at).toISOString().slice(0, 10);
@@ -384,10 +411,16 @@ function buildNextSessionTool(ctx: PluginContext): AgentTool {
     schema: {
       name: "wiki_next_session",
       description:
-        "Fetch the next unprocessed conversation session (oldest first) for the wiki, with its full transcript, the worker tasks it spawned (their summaries + produced files), and progress info (how many sessions are done / remaining). Read this, distil it into wiki pages with wiki_write_page across the project / date / topic dimensions (link related pages with [[wikilinks]]), then call wiki_session_done to advance. Returns done:true when the whole timeline is processed.",
-      parameters: Type.Object({}),
+        "Fetch the next unprocessed conversation session (oldest first) for the wiki — the RAW original transcript (not a compaction summary), paginated. Read this page, distil it into wiki pages with wiki_write_page / wiki_journal_write (project / date / topic dimensions, [[wikilinked]]). If has_more is true, call wiki_next_session again with page:<nextPage> to get the rest of THIS session before moving on. Only call wiki_session_done once you've read every page (has_more=false). Returns done:true when the whole timeline is processed.",
+      parameters: Type.Object({
+        page: Type.Optional(
+          Type.Number({ description: "0-based page of the current session's transcript (default 0). Use the nextPage from the previous call." }),
+        ),
+      }),
     },
-    execute: (_raw, tctx: AgentToolContext): ToolResult => {
+    execute: (raw, tctx: AgentToolContext): ToolResult => {
+      const rp = raw as { page?: number };
+      const page = typeof rp.page === "number" && rp.page >= 0 ? Math.floor(rp.page) : 0;
       const userId = tctx.userId;
       const home = tctx.userHomeDir;
       const all = listUserSessions(ctx.db, userId);
@@ -403,47 +436,71 @@ function buildNextSessionTool(ctx: PluginContext): AgentTool {
         };
       }
 
+      // RAW original messages (not the compaction summary), paginated
+      // by char budget so nothing is dropped from a long session.
       const msgs = listSessionMessages(ctx.db, next.id);
-      const transcriptFull = msgs.map((m) => messageToText(m.role, m.content)).join("\n\n");
-      const transcript =
-        transcriptFull.length > MAX_TRANSCRIPT_CHARS
-          ? transcriptFull.slice(-MAX_TRANSCRIPT_CHARS) + "\n\n…[older turns truncated]"
-          : transcriptFull;
+      const blocks = msgs.map((m) => messageToText(m.role, m.content));
+      const { text: transcript, nextIndex, hasMore } = paginateBlocks(blocks, page);
+      const totalPages = (() => {
+        // rough page count for display
+        let pages = 0, i = 0;
+        while (i < blocks.length) { i = paginateBlocks(blocks, i).nextIndex; pages++; }
+        return Math.max(1, pages);
+      })();
+      const nextPage = page + 1;
 
-      const tasks = listSessionTasks(ctx.db, next.id);
-      const taskBlocks: string[] = [];
-      for (const t of tasks) {
-        const files = parseResultFiles(t.result_files);
-        const lines = [
-          `### Task: ${t.title} [${t.status}]`,
-          t.description ? `- brief: ${t.description}` : "",
-          t.result_summary ? `- result: ${t.result_summary}` : "",
-          files.length ? `- files: ${files.join(", ")}` : "",
-        ].filter(Boolean);
-        // Pull the worker session's transcript too (short) if present.
-        if (t.session_id) {
-          const wmsgs = listSessionMessages(ctx.db, t.session_id);
-          if (wmsgs.length > 0) {
-            const wt = wmsgs.map((m) => messageToText(m.role, m.content)).join("\n");
-            lines.push(`- worker transcript:\n${wt.slice(0, 6000)}`);
-          }
+      // Spawned tasks only on the LAST page (once the full transcript is
+      // read), so they aren't repeated across pages.
+      let tasksSection = "";
+      if (!hasMore) {
+        const tasks = listSessionTasks(ctx.db, next.id);
+        if (tasks.length > 0) {
+          const taskBlocks = tasks.map((t) => {
+            const files = parseResultFiles(t.result_files);
+            const lines = [
+              `### Task: ${t.title} [${t.status}]`,
+              t.description ? `- brief: ${t.description}` : "",
+              t.result_summary ? `- result: ${t.result_summary}` : "",
+              files.length ? `- files: ${files.join(", ")}` : "",
+            ].filter(Boolean);
+            if (t.session_id) {
+              const wmsgs = listSessionMessages(ctx.db, t.session_id);
+              if (wmsgs.length > 0) {
+                const wt = wmsgs.map((m) => messageToText(m.role, m.content)).join("\n");
+                lines.push(`- worker transcript:\n${wt.slice(0, 6000)}`);
+              }
+            }
+            return lines.join("\n");
+          });
+          tasksSection = `\n## Spawned tasks (${tasks.length})\n${taskBlocks.join("\n\n")}`;
         }
-        taskBlocks.push(lines.join("\n"));
       }
 
+      const footer = hasMore
+        ? `\n---\nMore of this session remains. Call wiki_next_session({ page: ${nextPage} }) for the rest BEFORE wiki_session_done.`
+        : `\n---\nThat's the full session. Distil it into wiki pages (project / date / topic, [[wikilinked]]), then call wiki_session_done({ sessionId: "${next.id}" }).`;
+
       const parts = [
-        `Session ${next.id} (${sessionLabel(next)})`,
-        `status=${next.status}${next.project_slug ? ` project=${next.project_slug}` : ""} · progress ${doneCount}/${total} done, this is the next one.`,
-        next.compacted_summary ? `\n## Prior compaction summary\n${next.compacted_summary}` : "",
-        `\n## Transcript\n${transcript || "(empty)"}`,
-        tasks.length ? `\n## Spawned tasks (${tasks.length})\n${taskBlocks.join("\n\n")}` : "",
-        `\n---\nNow distil this into wiki pages (project / date / topic dimensions, [[wikilinked]]), then call wiki_session_done({ sessionId: "${next.id}" }).`,
+        `Session ${next.id} (${sessionLabel(next)}) — raw transcript, page ${page + 1}/${totalPages}`,
+        `status=${next.status}${next.project_slug ? ` project=${next.project_slug}` : ""} · sessions ${doneCount}/${total} done.`,
+        `\n## Transcript (page ${page + 1}/${totalPages})\n${transcript || "(empty)"}`,
+        tasksSection,
+        footer,
       ].filter(Boolean);
 
       return {
         ok: true,
         text: parts.join("\n"),
-        data: { done: false, sessionId: next.id, total, doneCount },
+        data: {
+          done: false,
+          sessionId: next.id,
+          total,
+          doneCount,
+          page,
+          nextPage: hasMore ? nextPage : null,
+          hasMore,
+          totalPages,
+        },
       };
     },
   };
