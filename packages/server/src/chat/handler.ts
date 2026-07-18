@@ -934,6 +934,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       harness,
       modelInfo,
       send,
+      ctx,
+      userId,
+      pluginRegistry,
       onSuccessRefresh: () => {
         // Refresh after compaction: same default page size as the
         // initial fetch. The compacted session is what the client
@@ -1549,8 +1552,11 @@ async function maybeAutoCompact(args: {
   modelInfo: ResolvedModelInfo;
   send: (msg: ServerMsg) => void;
   onSuccessRefresh: () => void;
+  ctx?: TenantContext;
+  userId?: string;
+  pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
 }): Promise<void> {
-  const { session, piSession, harness, modelInfo, send, onSuccessRefresh } = args;
+  const { session, piSession, harness, modelInfo, send, onSuccessRefresh, ctx, userId, pluginRegistry } = args;
   const decision = await tryAutoCompact({
     piSession,
     harness,
@@ -1584,6 +1590,18 @@ async function maybeAutoCompact(args: {
     durationMs: 0,
     tokensBefore: decision.tokensBefore,
   });
+  // Everyday path: file this auto-compacted segment into the wiki.
+  // (pi's harness.compact() keeps the same session id — no fork — so
+  // we key the wiki source on that session id.)
+  if (ctx && userId && decision.summary) {
+    fileCompactedSegmentToWiki({
+      ctx,
+      userId,
+      pluginRegistry,
+      oldSessionId: session.id,
+      summary: decision.summary,
+    });
+  }
   onSuccessRefresh();
 }
 
