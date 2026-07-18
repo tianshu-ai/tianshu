@@ -352,6 +352,25 @@ function WikiGraphView({
   // show a small card with an Open button first).
   const [picked, setPicked] = useState<{ path: string; title: string; section: string; sx: number; sy: number } | null>(null);
 
+  // Adjacency: focus id -> set of neighbour ids (incl. itself). Used to
+  // highlight a picked node + its neighbours + their links, dimming the
+  // rest.
+  const adjacency = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    const add = (a: string, b: string) => {
+      (m.get(a) ?? m.set(a, new Set([a])).get(a)!).add(b);
+    };
+    for (const l of data.links) {
+      add(l.source, l.target);
+      add(l.target, l.source);
+    }
+    return m;
+  }, [data.links]);
+  const focusSet = picked ? adjacency.get(picked.path) ?? new Set([picked.path]) : null;
+  // Normalise a link endpoint (object after sim, or raw id before).
+  const endId = (e: unknown): string =>
+    typeof e === "string" ? e : ((e as { id?: string })?.id ?? "");
+
   // Loosen the layout: stronger repulsion + longer links so nodes
   // spread out (default clumps them, which is what made the graph a
   // ball of overlapping circles).
@@ -420,8 +439,19 @@ function WikiGraphView({
             // Keep areas modest: radius grows slowly with degree so a
             // hub doesn't balloon over everything (nodeVal is AREA).
             nodeVal={() => 1}
-            linkColor={() => "rgba(148,163,184,0.22)"}
-            linkWidth={1}
+            linkColor={(l: FGNodeAny) => {
+              if (!focusSet) return "rgba(148,163,184,0.22)";
+              const a = endId((l as { source: unknown }).source);
+              const b = endId((l as { target: unknown }).target);
+              const on = focusSet.has(a) && focusSet.has(b) && (a === picked!.path || b === picked!.path);
+              return on ? "rgba(96,165,250,0.9)" : "rgba(148,163,184,0.06)";
+            }}
+            linkWidth={(l: FGNodeAny) => {
+              if (!focusSet) return 1;
+              const a = endId((l as { source: unknown }).source);
+              const b = endId((l as { target: unknown }).target);
+              return focusSet.has(a) && focusSet.has(b) && (a === picked!.path || b === picked!.path) ? 2 : 1;
+            }}
             linkDirectionalParticles={0}
             cooldownTicks={140}
             d3VelocityDecay={0.3}
@@ -449,12 +479,14 @@ function WikiGraphView({
               const nn = n as FGNode & { x?: number; y?: number };
               const x = nn.x ?? 0, y = nn.y ?? 0;
               const r = nodeRadius(nn.deg);
-              const isSel = nn.id === selected || nn.id === picked?.path;
-              // node circle
+              const isPicked = nn.id === picked?.path;
+              const isSel = nn.id === selected || isPicked;
+              const inFocus = !focusSet || focusSet.has(nn.id);
+              // node circle — dim nodes outside the focused neighbourhood.
               ctx.beginPath();
               ctx.arc(x, y, r, 0, 2 * Math.PI);
               ctx.fillStyle = nodeColor(nn.section);
-              ctx.globalAlpha = isSel ? 1 : 0.9;
+              ctx.globalAlpha = inFocus ? (isPicked ? 1 : 0.92) : 0.12;
               ctx.fill();
               ctx.globalAlpha = 1;
               if (isSel) {
@@ -462,9 +494,9 @@ function WikiGraphView({
                 ctx.lineWidth = 2 / scale;
                 ctx.stroke();
               }
-              // label BELOW the node, centered — only when zoomed in
-              // enough (or the graph is small), so labels don't pile up.
-              if (scale > 1.1 || data.nodes.length <= 25) {
+              // label BELOW the node, centered — shown when zoomed in, the
+              // graph is small, or the node is in the focused set.
+              if (inFocus && (scale > 1.1 || data.nodes.length <= 25 || (focusSet && focusSet.has(nn.id)))) {
                 const label = nn.title.length > 22 ? nn.title.slice(0, 22) + "…" : nn.title;
                 const fs = Math.max(9 / scale, 2.5);
                 ctx.font = `${fs}px sans-serif`;
