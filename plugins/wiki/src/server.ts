@@ -51,6 +51,7 @@ import {
   isoWeekRange,
   resetVault,
   buildGraph,
+  pageSnippet,
   type JournalLevel,
 } from "./vault.js";
 import { ingestSource } from "./ingest.js";
@@ -199,9 +200,11 @@ function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
   // The right way to phrase a query differs by backend, so the tool
   // description tells the agent which one is active and how to query it.
   const semantic = embeddingEnabled(cfg);
+  const DEFAULT_LIMIT = 8;
+  const DEFAULT_MIN_SCORE = 0.15;
   const description = semantic
-    ? "Search the user's wiki (recall prior work, decisions, people, facts). MODE: SEMANTIC (embedding/RAG). Phrase the query as a natural-language description of the MEANING you're after (e.g. \"how the graph visualisation library was chosen\"); exact keywords are NOT required and word-for-word matches don't matter. If results miss, rephrase the concept rather than swapping single words. Returns page paths ranked by similarity score."
-    : "Search the user's wiki (recall prior work, decisions, people, facts). MODE: KEYWORD (literal full-text; no embedding model configured). Query with the SPECIFIC terms / names / identifiers you expect to appear on the page (e.g. \"react-force-graph\", \"board_act\"); this is literal substring matching, so meaning-based phrasing won't help. If results miss, try synonyms or the exact term used at the time. Returns page paths with matching snippets.";
+    ? "Search the user's wiki (recall prior work, decisions, people, facts). Active mode: SEMANTIC (embedding/RAG). Phrase the query as a natural-language description of the MEANING you're after (e.g. \"how the graph visualisation library was chosen\"); exact keywords are NOT required. If results miss, rephrase the concept rather than swapping single words. `mode` defaults to auto (semantic here); pass mode:\"keyword\" to force literal matching."
+    : "Search the user's wiki (recall prior work, decisions, people, facts). Active mode: KEYWORD (literal full-text — NO embedding model is configured, so semantic/RAG search is unavailable). Query with the SPECIFIC terms / names / identifiers you expect on the page (e.g. \"react-force-graph\", \"board_act\"); this is literal substring matching. Do NOT expect meaning-based retrieval. (Passing mode:\"semantic\" will error until an embedding model is configured in the plugin settings.)";
   return {
     schema: {
       name: "wiki_search",
@@ -209,48 +212,87 @@ function buildSearchTool(cfg?: EmbeddingConfig): AgentTool {
       parameters: Type.Object({
         query: Type.String({
           description: semantic
-            ? "Natural-language description of the meaning you're looking for (semantic/RAG search)."
-            : "Specific keywords / names / identifiers expected on the page (literal keyword search).",
+            ? "Natural-language description of the meaning you're looking for (semantic), or specific terms (keyword)."
+            : "Specific keywords / names / identifiers expected on the page (literal keyword match).",
         }),
-        limit: Type.Optional(Type.Number({ description: "Max results (default 20)." })),
+        mode: Type.Optional(
+          Type.String({
+            description:
+              "auto (default: semantic if configured, else keyword) | semantic (RAG; errors if no embedding model) | keyword (literal full-text).",
+          }),
+        ),
+        limit: Type.Optional(Type.Number({ description: `Max results (default ${DEFAULT_LIMIT}).` })),
+        minScore: Type.Optional(
+          Type.Number({
+            description: `Semantic-only: min cosine similarity [0..1] to include a hit (default ${DEFAULT_MIN_SCORE}). Lower to widen, raise to tighten.`,
+          }),
+        ),
       }),
     },
     execute: async (raw, ctx: AgentToolContext): Promise<ToolResult> => {
-      const p = raw as { query?: string; limit?: number };
+      const p = raw as { query?: string; mode?: string; limit?: number; minScore?: number };
       const q = String(p.query ?? "").trim();
       if (!q) return { ok: false, text: "query is required" };
-      const limit = typeof p.limit === "number" ? p.limit : 20;
+      const mode = p.mode === "semantic" || p.mode === "keyword" ? p.mode : "auto";
+      const limit = typeof p.limit === "number" && p.limit > 0 ? Math.min(p.limit, 50) : DEFAULT_LIMIT;
+      const minScore = typeof p.minScore === "number" ? p.minScore : DEFAULT_MIN_SCORE;
+      const home = ctx.userHomeDir;
+      const titleOf = () => new Map(listPages(home).map((pg) => [pg.path, pg.title]));
 
-      // Semantic first (if configured + index present); fall back to
-      // keyword when unavailable or it returns nothing useful.
-      const sem = await semanticSearch(ctx.userHomeDir, cfg, q, limit);
-      if (sem && sem.length > 0) {
-        const byPath = new Map(listPages(ctx.userHomeDir).map((pg) => [pg.path, pg.title]));
-        const lines = sem
-          .filter((h) => h.score > 0.15)
-          .map((h) => `- ${h.path} — ${byPath.get(h.path) ?? h.path} (score ${h.score.toFixed(2)})`);
-        if (lines.length > 0) {
+      // Explicit semantic requested but no embedding model — error (A).
+      if (mode === "semantic" && !semantic) {
+        return {
+          ok: false,
+          text:
+            "Semantic search is unavailable: no embedding model is configured for the wiki. " +
+            "Either configure one in the plugin settings (Settings → Plugins → Wiki → Semantic search), " +
+            "or call wiki_search again with mode:\"keyword\" using specific terms/identifiers.",
+        };
+      }
+
+      // ── semantic path (mode=semantic, or auto with embedding on) ──
+      if (mode === "semantic" || (mode === "auto" && semantic)) {
+        const out = await semanticSearch(home, cfg, q, limit, minScore);
+        if (out.status === "ok" && out.hits.length > 0) {
+          const titles = titleOf();
+          const lines = out.hits.map(
+            (h) =>
+              `- ${h.path} — ${titles.get(h.path) ?? h.path} (score ${h.score.toFixed(2)})\n    ${pageSnippet(home, h.path)}`,
+          );
           return {
             ok: true,
             text:
-              `[semantic/RAG search — ranked by meaning similarity] "${q}" (${lines.length}):\n` +
+              `[semantic/RAG — ranked by meaning; min score ${minScore}] "${q}" (${lines.length}):\n` +
               `${lines.join("\n")}\n` +
-              `If this missed what you wanted, rephrase the concept (semantic search ignores exact keywords).`,
+              `Miss? Rephrase the concept, or lower minScore, or try mode:"keyword" with exact terms.`,
           };
         }
+        // mode=semantic: report honestly, do NOT silently fall back.
+        if (mode === "semantic") {
+          const why =
+            out.status === "empty"
+              ? "the semantic index is empty (nothing recorded into the wiki yet, or the embedding model changed)."
+              : out.status === "error"
+                ? `the embedding call failed: ${(out as { reason: string }).reason}.`
+                : `no page scored ≥ ${minScore}.`;
+          return {
+            ok: true,
+            text: `[semantic/RAG] "${q}": no results — ${why} Try lowering minScore, rephrasing, or mode:"keyword".`,
+          };
+        }
+        // auto: semantic yielded nothing → fall through to keyword below.
       }
-      const hits = searchPages(ctx.userHomeDir, q, limit);
-      const header = semantic
-        ? `[keyword search — semantic found nothing, fell back to literal match] "${q}"`
-        : `[keyword search — literal substring match] "${q}"`;
+
+      // ── keyword path ──
+      const hits = searchPages(home, q, limit);
+      const fellBack = mode === "auto" && semantic;
+      const header = fellBack
+        ? `[keyword — semantic found nothing, fell back to literal] "${q}"`
+        : `[keyword — literal substring match] "${q}"`;
       if (hits.length === 0) {
         return {
           ok: true,
-          text:
-            `${header}: no hits. ` +
-            (semantic
-              ? "Try different wording, or wiki_list_pages to browse."
-              : "Try synonyms / the exact term used at the time, or wiki_list_pages to browse."),
+          text: `${header}: no hits. Try synonyms / the exact term used at the time, or wiki_list_pages to browse.`,
         };
       }
       const lines = hits.map((h) => `- ${h.path} — ${h.title}\n    …${h.snippet}…`);

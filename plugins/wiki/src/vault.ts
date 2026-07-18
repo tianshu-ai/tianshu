@@ -216,6 +216,34 @@ export function listPages(userHome: string): ListedPage[] {
   return out;
 }
 
+/** A short body excerpt for a page (frontmatter + heading stripped),
+ *  for search results — so the agent can judge relevance without a
+ *  second read. Returns "" when the page is missing/empty. */
+export function pageSnippet(userHome: string, pagePath: string, max = 200): string {
+  const parts = pagePath.split("/");
+  const slug = parts[parts.length - 1] ?? "";
+  const section = parts.slice(0, -1).join("/");
+  const md = readPage(userHome, section, slug);
+  if (!md) return "";
+  // strip frontmatter
+  let body = md;
+  if (body.startsWith("---")) {
+    const end = body.indexOf("\n---", 3);
+    if (end >= 0) {
+      const after = body.indexOf("\n", end + 1);
+      body = after >= 0 ? body.slice(after + 1) : "";
+    }
+  }
+  // drop leading markdown heading + blockquote markers, collapse ws
+  body = body
+    .replace(/^#.*$/m, "")
+    .replace(/^>.*$/gm, "")
+    .replace(/[#*_`>[\]]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return body.length > max ? body.slice(0, max) + "…" : body;
+}
+
 /** Read one page's raw markdown (incl. frontmatter). */
 export function readPage(userHome: string, section: string, slug: string): string | null {
   const file = resolvePage(userHome, section, slug);

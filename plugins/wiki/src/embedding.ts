@@ -155,30 +155,39 @@ export interface SemanticHit {
   score: number;
 }
 
+/** Outcome of a semantic search attempt — discriminated so the caller
+ *  can tell "not configured" (mode=semantic should error) apart from
+ *  "configured but empty/failed" (fall back to keyword). */
+export type SemanticOutcome =
+  | { status: "disabled" } // no embedding model configured
+  | { status: "empty" } // configured but no index yet (nothing recorded)
+  | { status: "error"; reason: string } // embed call / index read failed
+  | { status: "ok"; hits: SemanticHit[] };
+
 /** Embed the query and rank indexed pages by cosine similarity.
- *  Returns null when semantic search isn't available (no model, empty
- *  index, or the embed call failed) so the caller can fall back to
- *  keyword search. */
+ *  `minScore` filters weak matches. */
 export async function semanticSearch(
   userHome: string,
   cfg: EmbeddingConfig | undefined,
   query: string,
   limit: number,
+  minScore: number,
   signal?: AbortSignal,
-): Promise<SemanticHit[] | null> {
-  if (!embeddingEnabled(cfg)) return null;
+): Promise<SemanticOutcome> {
+  if (!embeddingEnabled(cfg)) return { status: "disabled" };
   const idx = readIndex(userHome);
-  if (!idx || idx.entries.length === 0) return null;
-  if (idx.model !== cfg.model) return null; // stale index vs current model
+  if (!idx || idx.entries.length === 0) return { status: "empty" };
+  if (idx.model !== cfg.model) return { status: "empty" }; // stale index vs current model
   try {
     const [qv] = await embed(cfg, [query], signal);
-    if (!qv) return null;
-    const scored = idx.entries
+    if (!qv) return { status: "error", reason: "no query vector returned" };
+    const hits = idx.entries
       .map((e) => ({ path: e.path, score: cosine(qv, e.vector) }))
+      .filter((h) => h.score >= minScore)
       .sort((a, b) => b.score - a.score)
       .slice(0, limit);
-    return scored;
-  } catch {
-    return null;
+    return { status: "ok", hits };
+  } catch (err) {
+    return { status: "error", reason: err instanceof Error ? err.message : String(err) };
   }
 }
