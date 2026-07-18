@@ -307,6 +307,86 @@ export function alreadyIngested(userHome: string, sessionId: string): boolean {
   return readCursor(userHome).ingestedSessionIds.includes(sessionId);
 }
 
+// ─── link graph ─────────────────────────────────────────
+
+export interface GraphNode {
+  path: string;
+  section: string;
+  title: string;
+}
+export interface GraphEdge {
+  from: string;
+  to: string;
+}
+export interface WikiGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+// Match [[section/slug]] or [[section/slug|label]] wikilinks.
+const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
+
+/** Normalise a link target: strip leading slash, .md, whitespace. */
+function normLink(s: string): string {
+  return s.trim().replace(/^\//, "").replace(/\.md$/, "");
+}
+
+/** Extract outbound link targets from a page's raw markdown: the
+ *  frontmatter `links:` list + inline [[wikilinks]]. De-duped. */
+export function extractLinks(markdown: string): string[] {
+  const out = new Set<string>();
+  const fmEnd = markdown.startsWith("---") ? markdown.indexOf("\n---", 3) : -1;
+  if (fmEnd >= 0) {
+    const fm = markdown.slice(0, fmEnd);
+    const m = fm.match(/\nlinks:\n((?:\s*-\s*.+\n?)+)/);
+    if (m) {
+      for (const line of m[1]!.split("\n")) {
+        const v = line.replace(/^\s*-\s*/, "").trim().replace(/^"|"$/g, "");
+        if (v) out.add(normLink(v));
+      }
+    }
+  }
+  let mm: RegExpExecArray | null;
+  WIKILINK_RE.lastIndex = 0;
+  while ((mm = WIKILINK_RE.exec(markdown)) !== null) {
+    const t = mm[1]!.trim();
+    if (t) out.add(normLink(t));
+  }
+  return [...out];
+}
+
+/** Whole-vault link graph: every page a node, every resolvable
+ *  outbound link an edge (edges to missing pages dropped). */
+export function buildGraph(userHome: string): WikiGraph {
+  const pages = listPages(userHome);
+  const known = new Set(pages.map((p) => p.path));
+  const nodes: GraphNode[] = pages.map((p) => ({
+    path: p.path,
+    section: p.section,
+    title: p.title,
+  }));
+  const edges: GraphEdge[] = [];
+  const seen = new Set<string>();
+  for (const p of pages) {
+    const file = resolvePage(userHome, p.section, p.slug);
+    if (!file) continue;
+    let md: string;
+    try {
+      md = fs.readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const target of extractLinks(md)) {
+      if (!known.has(target) || target === p.path) continue;
+      const key = `${p.path}\u0000${target}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      edges.push({ from: p.path, to: target });
+    }
+  }
+  return { nodes, edges };
+}
+
 // ─── reset ───────────────────────────────────────────
 
 export interface ResetResult {

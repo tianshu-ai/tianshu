@@ -53,6 +53,7 @@
       { "method": "GET",  "path": "/search", "handler": "search" },
       { "method": "POST", "path": "/record", "handler": "record" },
       { "method": "GET",  "path": "/status", "handler": "status" },
+      { "method": "GET",  "path": "/graph",  "handler": "graph"  },
       { "method": "POST", "path": "/reset",  "handler": "reset"  }
     ]
   }

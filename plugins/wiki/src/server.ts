@@ -50,6 +50,7 @@ import {
   isValidPeriod,
   isoWeekRange,
   resetVault,
+  buildGraph,
   type JournalLevel,
 } from "./vault.js";
 import { ingestSource } from "./ingest.js";
@@ -518,6 +519,12 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.json({ running: running.has(runKey(ctx.tenantId, userId)) });
   };
 
+  const graph: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return void res.status(401).json({ error: "no user context" });
+    res.json(buildGraph(ctx.userHomeDir(userId)));
+  };
+
   const reset: PluginRouteHandler = (req: Request, res: Response) => {
     const userId = userIdFromReq(req);
     if (!userId) return void res.status(401).json({ error: "no user context" });
@@ -594,7 +601,7 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.json({ started: true });
   };
 
-  return { list, read, search, status, record, reset };
+  return { list, read, search, status, record, reset, graph };
 }
 
 // ─── wiki.ingest capability (host compaction hook calls this) ────
