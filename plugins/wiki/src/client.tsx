@@ -347,6 +347,7 @@ function WikiGraphView({
   const wrapRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fgRef = useRef<any>(null);
+  const fittedRef = useRef(false);
   const [size, setSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   // Clicked node awaiting confirmation (don't navigate on a stray click;
   // show a small card with an Open button first).
@@ -382,10 +383,18 @@ function WikiGraphView({
       fg.d3Force("link")?.distance(70);
       fg.d3ReheatSimulation?.();
     } catch { /* ref API not ready */ }
+    // Fallback fit in case onEngineStop already fired / never fires.
+    const t = setTimeout(() => {
+      if (fittedRef.current) return;
+      fittedRef.current = true;
+      try { fgRef.current?.zoomToFit?.(400, 60); } catch { /* ref not ready */ }
+    }, 700);
+    return () => clearTimeout(t);
   }, [data]);
 
   useEffect(() => {
     setPicked(null);
+    fittedRef.current = false; // re-fit after a reload
     fetch(`${API_BASE}/graph`, { credentials: "include" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
       .then((g: { nodes: GraphNode[]; edges: GraphEdge[] }) => {
@@ -467,7 +476,15 @@ function WikiGraphView({
               setPicked({ path: nn.path, title: nn.title, section: nn.section, sx, sy });
             }}
             onBackgroundClick={() => setPicked(null)}
-            onEngineStop={() => { /* settle */ }}
+            onEngineStop={() => {
+              // Fit the whole graph into view once the layout settles, so
+              // the initial zoom isn't blown up (few/spread nodes made
+              // the first render look like giant circles).
+              if (!fittedRef.current) {
+                fittedRef.current = true;
+                try { fgRef.current?.zoomToFit?.(400, 60); } catch { /* ref not ready */ }
+              }
+            }}
             nodePointerAreaPaint={(n: FGNodeAny, color: string, ctx: CanvasRenderingContext2D) => {
               const nn = n as FGNode & { x?: number; y?: number };
               ctx.fillStyle = color;
