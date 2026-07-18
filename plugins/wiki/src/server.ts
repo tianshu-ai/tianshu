@@ -41,8 +41,19 @@ import {
   renderPage,
   writePage,
   safeSlug,
+  readCursor,
+  markIngested,
+  alreadyIngested,
 } from "./vault.js";
 import { ingestSource } from "./ingest.js";
+import {
+  listUserSessions,
+  listSessionMessages,
+  listSessionTasks,
+  messageToText,
+  parseResultFiles,
+  type SessionRow,
+} from "./sessions.js";
 
 // ─── agent tools ────────────────────────────────────────────────
 
@@ -196,6 +207,115 @@ function buildWritePageTool(): AgentTool {
   };
 }
 
+// ─── session-driven ingest tools ────────────────────────────────
+//
+// The wiki is built by walking the user's session timeline oldest
+// first: wiki_next_session hands the agent one unprocessed session's
+// full material; the agent distils it into pages via wiki_write_page;
+// wiki_session_done advances the cursor. Progress is persisted so a
+// later run resumes from the cut-off point instead of redoing work.
+
+const MAX_TRANSCRIPT_CHARS = 24000;
+
+function sessionLabel(s: SessionRow): string {
+  const date = new Date(s.created_at).toISOString().slice(0, 10);
+  const short = s.id.replace(/^sess?_/, "").replace(/^session_/, "").slice(0, 8);
+  return `${date} · ${s.title?.trim() || short}`;
+}
+
+function buildNextSessionTool(ctx: PluginContext): AgentTool {
+  return {
+    schema: {
+      name: "wiki_next_session",
+      description:
+        "Fetch the next unprocessed conversation session (oldest first) for the wiki, with its full transcript, the worker tasks it spawned (their summaries + produced files), and progress info (how many sessions are done / remaining). Read this, distil it into wiki pages with wiki_write_page across the project / date / topic dimensions (link related pages with [[wikilinks]]), then call wiki_session_done to advance. Returns done:true when the whole timeline is processed.",
+      parameters: Type.Object({}),
+    },
+    execute: (_raw, tctx: AgentToolContext): ToolResult => {
+      const userId = tctx.userId;
+      const home = tctx.userHomeDir;
+      const all = listUserSessions(ctx.db, userId);
+      const processed = new Set(readCursor(home).ingestedSessionIds);
+      const total = all.length;
+      const doneCount = all.filter((s) => processed.has(s.id)).length;
+      const next = all.find((s) => !processed.has(s.id));
+      if (!next) {
+        return {
+          ok: true,
+          text: `All ${total} sessions processed. Wiki is up to date. (done ${doneCount}/${total})`,
+          data: { done: true, total, doneCount },
+        };
+      }
+
+      const msgs = listSessionMessages(ctx.db, next.id);
+      const transcriptFull = msgs.map((m) => messageToText(m.role, m.content)).join("\n\n");
+      const transcript =
+        transcriptFull.length > MAX_TRANSCRIPT_CHARS
+          ? transcriptFull.slice(-MAX_TRANSCRIPT_CHARS) + "\n\n…[older turns truncated]"
+          : transcriptFull;
+
+      const tasks = listSessionTasks(ctx.db, next.id);
+      const taskBlocks: string[] = [];
+      for (const t of tasks) {
+        const files = parseResultFiles(t.result_files);
+        const lines = [
+          `### Task: ${t.title} [${t.status}]`,
+          t.description ? `- brief: ${t.description}` : "",
+          t.result_summary ? `- result: ${t.result_summary}` : "",
+          files.length ? `- files: ${files.join(", ")}` : "",
+        ].filter(Boolean);
+        // Pull the worker session's transcript too (short) if present.
+        if (t.session_id) {
+          const wmsgs = listSessionMessages(ctx.db, t.session_id);
+          if (wmsgs.length > 0) {
+            const wt = wmsgs.map((m) => messageToText(m.role, m.content)).join("\n");
+            lines.push(`- worker transcript:\n${wt.slice(0, 6000)}`);
+          }
+        }
+        taskBlocks.push(lines.join("\n"));
+      }
+
+      const parts = [
+        `Session ${next.id} (${sessionLabel(next)})`,
+        `status=${next.status}${next.project_slug ? ` project=${next.project_slug}` : ""} · progress ${doneCount}/${total} done, this is the next one.`,
+        next.compacted_summary ? `\n## Prior compaction summary\n${next.compacted_summary}` : "",
+        `\n## Transcript\n${transcript || "(empty)"}`,
+        tasks.length ? `\n## Spawned tasks (${tasks.length})\n${taskBlocks.join("\n\n")}` : "",
+        `\n---\nNow distil this into wiki pages (project / date / topic dimensions, [[wikilinked]]), then call wiki_session_done({ sessionId: "${next.id}" }).`,
+      ].filter(Boolean);
+
+      return {
+        ok: true,
+        text: parts.join("\n"),
+        data: { done: false, sessionId: next.id, total, doneCount },
+      };
+    },
+  };
+}
+
+function buildSessionDoneTool(): AgentTool {
+  return {
+    schema: {
+      name: "wiki_session_done",
+      description:
+        "Mark a session as processed for the wiki (advance the progress cursor) after you've written its pages. Pass the sessionId from wiki_next_session.",
+      parameters: Type.Object({
+        sessionId: Type.String({ description: "Session id that was just distilled into the wiki." }),
+      }),
+    },
+    execute: (raw, tctx: AgentToolContext): ToolResult => {
+      const p = raw as { sessionId?: string };
+      const sid = String(p.sessionId ?? "").trim();
+      if (!sid) return { ok: false, text: "sessionId is required" };
+      if (alreadyIngested(tctx.userHomeDir, sid)) {
+        return { ok: true, text: `Session ${sid} was already marked done.` };
+      }
+      markIngested(tctx.userHomeDir, sid);
+      return { ok: true, text: `Marked session ${sid} done. Call wiki_next_session for the next one.` };
+    },
+  };
+}
+
 // ─── REST routes (mounted under /api/p/wiki/*) ──────────────────
 
 function userIdFromReq(req: Request): string {
@@ -255,6 +375,8 @@ const plugin: PluginServerModule = {
     ctx.log.info("wiki activated");
     return {
       tools: {
+        WikiNextSessionTool: buildNextSessionTool(ctx),
+        WikiSessionDoneTool: buildSessionDoneTool(),
         WikiListSourcesTool: buildListSourcesTool(),
         WikiListPagesTool: buildListPagesTool(),
         WikiReadTool: buildReadTool(),

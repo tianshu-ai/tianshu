@@ -7,8 +7,24 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Notebook, Search, RefreshCw, FileText } from "lucide-react";
-import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { useUiPrimitives, subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
+import type {
+  PanelProps,
+  PluginClientExports,
+  ComposerActionProps,
+} from "@tianshu-ai/plugin-sdk/client";
+import { useUiPrimitives, subscribeToWsEvent, useChatNav } from "@tianshu-ai/plugin-sdk/client";
+
+// The preset instruction the "record wiki" composer button sends to
+// the agent. Kept here (not hardcoded deep in the host) so the wiki
+// recording strategy is easy to tweak later.
+const RECORD_WIKI_PROMPT = [
+  "Update the LLM Wiki from the conversation timeline. Work incrementally, session by session:",
+  "1. Call wiki_next_session to fetch the next unprocessed session (with its transcript, spawned tasks, and produced files).",
+  "2. Read and understand it, then distil it into wiki pages with wiki_write_page across these dimensions: project (entities), date (topics/timeline), and technology/knowledge points (concepts). Cross-link related pages with [[wikilinks]].",
+  "3. Call wiki_session_done with that sessionId to advance the cursor.",
+  "4. Repeat for a few sessions if they're small; stop when wiki_next_session reports done:true or after a reasonable batch, and summarise what you recorded.",
+  "Reuse wiki_search / wiki_list_pages / wiki_read to avoid duplicating pages and to keep links consistent.",
+].join("\n");
 
 const API_BASE = "/api/p/wiki";
 
@@ -158,8 +174,30 @@ function stripFrontmatter(md: string): string {
   return md;
 }
 
+// ─── composer button: record wiki ───────────────────────────────
+
+function WikiRecordButton(_props: ComposerActionProps) {
+  const nav = useChatNav();
+  const onClick = () => {
+    if (typeof nav.sendPrompt === "function") nav.sendPrompt(RECORD_WIKI_PROMPT);
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Record this conversation into the wiki"
+      className="rounded p-1.5 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
+    >
+      <Notebook size={16} />
+    </button>
+  );
+}
+
 const exports: PluginClientExports = {
-  components: { WikiPanel },
+  components: {
+    WikiPanel: WikiPanel as PluginClientExports["components"][string],
+    WikiRecordButton: WikiRecordButton as PluginClientExports["components"][string],
+  },
 };
 
 export default exports;

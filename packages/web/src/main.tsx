@@ -62,7 +62,8 @@ __installUseTheme((): ThemeApi => {
 __installChatNav((): ChatNavApi => {
   const viewingSessionId = useChatStore((s) => s.viewingSessionId);
   const setViewingSession = useChatStore((s) => s.selectSession);
-  return { viewingSessionId, setViewingSession };
+  const sendPrompt = useChatStore((s) => s.sendPrompt);
+  return { viewingSessionId, setViewingSession, sendPrompt };
 });
 // WebSocket subscribe surface for plugins. Bridges plugin SDK's
 // subscribeToWsEvent to the host's tianshuWs.on(...) singleton so

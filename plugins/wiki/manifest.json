@@ -26,7 +26,18 @@
         "component": "WikiPanel"
       }
     ],
+    "composerActions": [
+      {
+        "id": "record",
+        "icon": "Notebook",
+        "tooltip": "Record conversation into the wiki",
+        "component": "WikiRecordButton",
+        "order": 120
+      }
+    ],
     "tools": [
+      { "id": "wiki_next_session", "module": "WikiNextSessionTool", "since": "0.1.0" },
+      { "id": "wiki_session_done", "module": "WikiSessionDoneTool", "since": "0.1.0" },
       { "id": "wiki_list_sources", "module": "WikiListSourcesTool", "since": "0.1.0" },
       { "id": "wiki_list_pages",   "module": "WikiListPagesTool",   "since": "0.1.0" },
       { "id": "wiki_read",         "module": "WikiReadTool",        "since": "0.1.0" },

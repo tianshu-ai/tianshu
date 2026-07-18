@@ -125,11 +125,6 @@ export async function branchStillOverWindow(args: {
 export interface AutoCompactDecision {
   compacted: boolean;
   tokensBefore?: number;
-  /** The compaction summary pi produced (present when compacted).
-   *  Threaded out so the chat handler can file the segment into the
-   *  LLM Wiki — the auto-compact path is the everyday one (it's what
-   *  the context-% badge crossing the threshold triggers). */
-  summary?: string;
   error?: string;
   /**
    * Structured outcome so callers can branch without string-matching
@@ -184,12 +179,7 @@ export async function tryAutoCompact(args: {
   }
   try {
     const result = await harness.compact();
-    return {
-      compacted: true,
-      tokensBefore: result.tokensBefore,
-      summary: result.summary,
-      reason: "compacted",
-    };
+    return { compacted: true, tokensBefore: result.tokensBefore, reason: "compacted" };
   } catch (err) {
     // "Nothing to compact" is the expected over-window-but-no-cut-point
     // case (see AutoCompactDecision.reason). Surface it distinctly so
