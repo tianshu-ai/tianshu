@@ -46,12 +46,14 @@ const SECTION_LABEL: Record<string, string> = {
 };
 
 function WikiPanel(_props: PanelProps) {
-  const { MarkdownBlock } = useUiPrimitives();
+  const { MarkdownBlock, Modal } = useUiPrimitives();
   const [pages, setPages] = useState<WikiPage[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string>("");
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const fetchList = useCallback(() => {
     fetch(`${API_BASE}/list`, { credentials: "include" })
@@ -112,28 +114,63 @@ function WikiPanel(_props: PanelProps) {
           <RefreshCw size={12} />
         </button>
         <button
-          onClick={() => {
-            if (
-              !window.confirm(
-                "Wipe the entire wiki (all pages + progress) so it rebuilds from scratch? This cannot be undone.",
-              )
-            )
-              return;
-            fetch(`${API_BASE}/reset`, { method: "POST", credentials: "include" })
-              .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
-              .then(() => {
-                setSelected(null);
-                setMarkdown("");
-                fetchList();
-              })
-              .catch(() => window.alert("Reset failed (a wiki update may be running)."));
-          }}
+          onClick={() => setConfirmReset(true)}
           title="Reset wiki (wipe all pages + progress)"
           className="rounded p-1 text-fg-faint hover:text-danger hover:bg-bg-hover transition-colors"
         >
           <Trash2 size={12} />
         </button>
       </div>
+
+      <Modal
+        isOpen={confirmReset}
+        onClose={() => !resetting && setConfirmReset(false)}
+        title="Reset wiki?"
+        size="sm"
+        allowMaximize={false}
+      >
+        <div className="px-4 py-3 text-[13px] text-fg-muted">
+          <p>
+            This wipes the <strong>entire wiki</strong> — every page
+            (daily / weekly / monthly / yearly journals, topics, entities,
+            concepts, sources) and the ingest progress cursor.
+          </p>
+          <p className="mt-2">
+            The next “record” run rebuilds from scratch.{" "}
+            <strong className="text-danger">This cannot be undone.</strong>
+          </p>
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              onClick={() => setConfirmReset(false)}
+              disabled={resetting}
+              className="rounded-md px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-hover transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                setResetting(true);
+                fetch(`${API_BASE}/reset`, { method: "POST", credentials: "include" })
+                  .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+                  .then(() => {
+                    setSelected(null);
+                    setMarkdown("");
+                    setConfirmReset(false);
+                    fetchList();
+                  })
+                  .catch(() =>
+                    setMarkdown("_Reset failed — a wiki update may be running. Try again after it finishes._"),
+                  )
+                  .finally(() => setResetting(false));
+              }}
+              disabled={resetting}
+              className="rounded-md bg-danger/90 px-3 py-1.5 text-xs font-medium text-white hover:bg-danger transition-colors disabled:opacity-60"
+            >
+              {resetting ? "Resetting…" : "Wipe & rebuild"}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <div className="flex min-h-0 flex-1">
         {/* page list */}
