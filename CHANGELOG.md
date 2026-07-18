@@ -6,6 +6,33 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.5.8](https://github.com/tianshu-ai/tianshu/compare/v0.5.7...v0.5.8) (2026-07-19)
+
+### Features
+
+* **wiki:** hybrid semantic search engine — sqlite-vec (`vec0`) + FTS5 (trigram, CJK-capable) in the tenant DB, fused with Reciprocal Rank Fusion, replacing the JSON cosine scan ([#311](https://github.com/tianshu-ai/tianshu/pull/311))
+* **wiki:** "Rebuild index" button in the panel to re-embed all pages on demand
+* **wiki:** configure embedding models in Settings → Models (`mode: "embedding"`); the plugin config just picks one ([#310](https://github.com/tianshu-ai/tianshu/pull/310))
+* **setup:** the setup agent can test/diagnose embedding models (both OpenAI-compatible and Gemini-proxy protocols)
+
+### Bug Fixes
+
+* **wiki:** embed via the provider's actual protocol (OpenAI `/embeddings` vs Gemini proxy `:embedContent`), send the key as both `x-goog-api-key` and Bearer, and surface embed failures instead of swallowing them
+* **wiki:** fix CJK keyword matching (trigram tokenizer) and normalise fused scores to [0,1] so `minScore` no longer discards every hit; embed queries with `RETRIEVAL_QUERY`
+
+## [0.5.7](https://github.com/tianshu-ai/tianshu/compare/v0.5.6...v0.5.7) (2026-07-18)
+
+### Features
+
+* **wiki:** LLM Wiki plugin — distil the rolling conversation timeline into an Obsidian-style vault (sources + entities/concepts/topics + a daily→weekly→monthly→yearly journal), written by a background worker session ([#309](https://github.com/tianshu-ai/tianshu/pull/309))
+* **wiki:** embedding-backed semantic search with keyword fallback; mode-aware `wiki_search`
+* **wiki:** clickable wikilinks + a lazy-loaded `react-force-graph-2d` graph view
+* configurable system-level default output language (auto/English/Chinese) injected into agents + workers
+
+### Bug Fixes
+
+* **board:** use a dashboard icon (not a globe) for the Boards topbar button
+
 ## [0.5.1](https://github.com/tianshu-ai/tianshu/compare/v0.5.0...v0.5.1) (2026-07-15)
 
 
