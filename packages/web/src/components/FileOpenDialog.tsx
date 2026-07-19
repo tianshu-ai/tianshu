@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useState, type ReactElement } from "react";
 import { Download, File as FileIcon, Loader2 } from "lucide-react";
+import { useT } from "../hooks/useT";
 import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 
 interface OpenIntent {
@@ -116,6 +117,7 @@ function rawUrl(path: string): string {
 }
 
 export default function FileOpenDialog(): ReactElement | null {
+  const t = useT();
   // Modal chrome comes from the host's shared primitive. We pass
   // `hideHeader` because this dialog has its own bespoke header
   // (filename + path + open-in-new-tab link + close button) that
@@ -155,7 +157,7 @@ export default function FileOpenDialog(): ReactElement | null {
           { credentials: "include", signal: controller.signal },
         );
         if (r.status === 404) {
-          setView({ kind: "error", message: "File not found." });
+          setView({ kind: "error", message: t("file.error.notFound") });
           return;
         }
         if (r.status === 413) {
@@ -172,7 +174,7 @@ export default function FileOpenDialog(): ReactElement | null {
         if (!r.ok) {
           setView({
             kind: "error",
-            message: `read failed: HTTP ${r.status}`,
+            message: t("file.error.readFailed", { status: r.status }),
           });
           return;
         }
@@ -247,8 +249,8 @@ export default function FileOpenDialog(): ReactElement | null {
           href={url}
           download={name}
           className="btn-ghost p-1.5"
-          title="Download"
-          aria-label="Download"
+          title={t("file.download")}
+          aria-label={t("file.download")}
         >
           <Download size={16} />
         </a>
@@ -272,8 +274,7 @@ export default function FileOpenDialog(): ReactElement | null {
         <div className="flex min-h-0 flex-1 flex-col bg-bg-base">
           {view.kind === "text" && view.truncated && (
             <div className="mx-3 mt-3 rounded border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-200">
-              Truncated at {MAX_TEXT_BYTES.toLocaleString()} bytes — use the
-              Download button to fetch the full file.
+              {t("file.truncated", { n: MAX_TEXT_BYTES.toLocaleString() })}
             </div>
           )}
           {view.kind === "error" ? (

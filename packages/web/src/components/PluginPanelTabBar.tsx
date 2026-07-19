@@ -10,6 +10,7 @@
 import { Puzzle, X } from "lucide-react";
 import { ICONS_BY_NAME } from "../lib/plugin-icons";
 import { usePluginStore } from "../stores/plugin-store";
+import { useT } from "../hooks/useT";
 
 interface ContributesTopBarButton {
   id: string;
@@ -25,6 +26,7 @@ interface ContributesShape {
 }
 
 export default function PluginPanelTabBar() {
+  const t = useT();
   const plugins = usePluginStore((s) => s.plugins);
   const openPanel = usePluginStore((s) => s.openPanel);
   const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
@@ -85,8 +87,8 @@ export default function PluginPanelTabBar() {
       <button
         type="button"
         onClick={() => setOpenPanel(null)}
-        title="Close panel"
-        aria-label="Close panel"
+        title={t("panel.tab.close")}
+        aria-label={t("panel.tab.close")}
         className="ml-1 rounded-md p-1 text-fg-faint hover:bg-bg-raised/60 hover:text-fg-muted"
       >
         <X size={16} />
