@@ -33,6 +33,7 @@ import {
   type CatalogSnapshot,
 } from "../lib/api";
 import { usePluginStore } from "../stores/plugin-store";
+import { useT } from "../hooks/useT";
 
 interface Props {
   open: boolean;
@@ -42,6 +43,7 @@ interface Props {
 type Tab = "installed" | "catalog";
 
 export default function PluginManager({ open, onClose }: Props) {
+  const t = useT();
   const plugins = usePluginStore((s) => s.plugins);
   const setPlugins = usePluginStore((s) => s.setPlugins);
   const loadPlugins = usePluginStore((s) => s.load);
@@ -140,7 +142,7 @@ export default function PluginManager({ open, onClose }: Props) {
           <div className="flex items-center gap-2">
             <Puzzle size={16} className="text-brand-400" />
             <h2 id="plugin-manager-title" className="text-sm font-semibold text-fg-default">
-              Plugin Manager
+              {t("plugin.manager.title")}
             </h2>
           </div>
           <button type="button" onClick={onClose} className="btn-ghost p-1.5" aria-label="Close">
@@ -151,7 +153,7 @@ export default function PluginManager({ open, onClose }: Props) {
         {/* Tabs */}
         <div className="flex items-center gap-1 border-b border-border-subtle px-3 pt-2">
           <TabButton active={tab === "installed"} onClick={() => setTab("installed")}>
-            Installed
+            {t("plugin.tab.installed")}
             {plugins && (
               <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[9px] text-fg-muted">
                 {plugins.length}
@@ -159,7 +161,7 @@ export default function PluginManager({ open, onClose }: Props) {
             )}
           </TabButton>
           <TabButton active={tab === "catalog"} onClick={() => setTab("catalog")}>
-            Catalog
+            {t("plugin.tab.catalog")}
             {catalog && (
               <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[9px] text-fg-muted">
                 {catalog.entries.length}
@@ -173,13 +175,13 @@ export default function PluginManager({ open, onClose }: Props) {
               onClick={() => void refreshPlugins()}
               disabled={refreshingPlugins}
               className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
-              title="Re-discover plugins on disk (after a manual install or git pull)"
+              title={t("plugin.refresh.installedTooltip")}
             >
               <RefreshCw
                 size={12}
                 className={refreshingPlugins ? "animate-spin" : ""}
               />
-              Refresh
+              {t("common.refresh")}
             </button>
           )}
           {tab === "catalog" && catalog && (
@@ -188,10 +190,10 @@ export default function PluginManager({ open, onClose }: Props) {
               onClick={refreshCatalog}
               disabled={refreshing}
               className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
-              title="Re-fetch the catalog from the registry"
+              title={t("plugin.refresh.catalogTooltip")}
             >
               <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
-              Refresh
+              {t("common.refresh")}
             </button>
           )}
         </div>
@@ -443,6 +445,7 @@ function CatalogRow({
   entry: CatalogEntry;
   alreadyInstalled: boolean;
 }) {
+  const tr = useT();
   return (
     <li className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated/50 p-3">
       <div className="min-w-0 flex-1">
@@ -483,10 +486,10 @@ function CatalogRow({
       <button
         type="button"
         disabled
-        title="Install lands in P2"
+        title={tr("plugin.catalog.installTooltip")}
         className="flex-shrink-0 cursor-not-allowed rounded-md bg-bg-raised px-3 py-1.5 text-[11px] font-medium text-fg-faint"
       >
-        {alreadyInstalled ? "Installed" : "Install"}
+        {alreadyInstalled ? tr("plugin.catalog.installed") : tr("plugin.catalog.install")}
       </button>
     </li>
   );
@@ -501,29 +504,30 @@ function SourceBadge({ source }: { source: PluginListEntry["source"] }) {
 }
 
 function StateBadge({ state }: { state: PluginState }) {
+  const t = useT();
   switch (state) {
     case "active":
       return (
         <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[9px] uppercase text-success">
-          <CheckCircle2 size={10} /> active
+          <CheckCircle2 size={10} /> {t("plugin.state.active")}
         </span>
       );
     case "disabled":
       return (
         <span className="flex items-center gap-1 rounded border border-border-default bg-bg-hover px-1.5 py-0.5 text-[9px] uppercase text-fg-muted">
-          <Pause size={10} /> disabled
+          <Pause size={10} /> {t("plugin.state.disabled")}
         </span>
       );
     case "failed":
       return (
         <span className="flex items-center gap-1 rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-[9px] uppercase text-danger">
-          <AlertTriangle size={10} /> failed
+          <AlertTriangle size={10} /> {t("plugin.state.failed")}
         </span>
       );
     case "client-bundle-missing":
       return (
         <span className="rounded border border-warning/40 bg-warning/15 px-1.5 py-0.5 text-[9px] uppercase text-warning">
-          no client bundle
+          {t("plugin.state.noClientBundle")}
         </span>
       );
   }
