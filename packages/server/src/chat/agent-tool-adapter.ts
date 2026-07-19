@@ -27,12 +27,37 @@ import type {
   AgentTool as PiAgentTool,
   AgentToolResult,
 } from "@earendil-works/pi-agent-core";
-import type { TextContent, Tool as PiTool } from "@earendil-works/pi-ai";
+import type { TextContent, ImageContent, Tool as PiTool } from "@earendil-works/pi-ai";
 import type { Toolset } from "../tools/index.js";
 
 export interface AnyToolResult {
   ok: boolean;
   text: string;
+  /** Optional images to include in the tool result so the vision
+   *  model can SEE them this turn. pi-ai's ToolResultMessage.content
+   *  is (TextContent | ImageContent)[] natively; we pass these
+   *  through. base64 is the image bytes (no data: prefix). */
+  images?: Array<{ base64: string; mimeType?: string }>;
+}
+
+/** Normalise a plugin-returned `images` field (each entry may be a
+ *  `{ base64, mimeType }` or a data: URL string) into the internal
+ *  shape. Silently drops malformed entries. */
+function extractImages(out: unknown): AnyToolResult["images"] {
+  const raw = (out as { images?: unknown } | null | undefined)?.images;
+  if (!Array.isArray(raw)) return undefined;
+  const imgs: NonNullable<AnyToolResult["images"]> = [];
+  for (const it of raw) {
+    if (typeof it === "string") {
+      const m = /^data:([^;]+);base64,(.*)$/.exec(it);
+      if (m) imgs.push({ base64: m[2]!, mimeType: m[1] });
+      else imgs.push({ base64: it });
+    } else if (it && typeof it === "object" && typeof (it as { base64?: unknown }).base64 === "string") {
+      const o = it as { base64: string; mimeType?: string };
+      imgs.push({ base64: o.base64, mimeType: typeof o.mimeType === "string" ? o.mimeType : undefined });
+    }
+  }
+  return imgs.length ? imgs : undefined;
 }
 
 /**
@@ -56,7 +81,7 @@ export function normaliseToolResult(out: unknown): AnyToolResult {
     typeof (out as { ok?: unknown }).ok === "boolean"
   ) {
     const r = out as { ok: boolean; text: string };
-    return { ok: r.ok, text: r.text };
+    return { ok: r.ok, text: r.text, images: extractImages(out) };
   }
   if (out && typeof out === "object") {
     const r = out as Record<string, unknown>;
@@ -154,8 +179,22 @@ export function adaptToolset(toolset: Toolset): AdaptedToolset {
         // Plugin tools are sync OR async; both are fine.
         const raw = await Promise.resolve(exec(args));
         const norm = normaliseToolResult(raw);
+        // Tool text first, then any images the tool returned so the
+        // vision model sees them this turn (pi ToolResultMessage.content
+        // is (Text | Image)[]). Images are opt-in per call — most tools
+        // return none, so this stays zero-overhead by default.
+        const content: (TextContent | ImageContent)[] = [
+          { type: "text", text: norm.text } as TextContent,
+        ];
+        for (const img of norm.images ?? []) {
+          content.push({
+            type: "image",
+            data: img.base64,
+            mimeType: img.mimeType ?? "image/png",
+          } as ImageContent);
+        }
         const result: AgentToolResult<unknown> = {
-          content: [{ type: "text", text: norm.text } as TextContent],
+          content,
           // Stash the raw tool result on `details` so future UI
           // bits (chat panel rendering) can introspect it without
           // re-parsing the text.

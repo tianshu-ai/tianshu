@@ -81,7 +81,11 @@ const plugin: PluginServerModule = {
     // dropped socket is pruned on the next failed send. (A future
     // core hook can call removeBySocket on close.)
 
-    const toolset = makeBridgeToolset({ registry, log: ctx.log });
+    const toolset = makeBridgeToolset({
+      registry,
+      userHomeDir: (uid: string) => ctx.userHomeDir(uid),
+      log: ctx.log,
+    });
 
     // Panel/debug: list this user's connected devices + tool counts.
     const listConnections: PluginRouteHandler = (req, res) => {
