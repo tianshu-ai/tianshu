@@ -18,6 +18,7 @@ import type {
   PluginServerModule,
   PluginRouteHandler,
   PluginWsHandler,
+  BridgeTokenCapability,
 } from "@tianshu-ai/plugin-sdk";
 import type { WebSocket } from "ws";
 import { BridgeRegistry } from "./registry.js";
@@ -95,6 +96,40 @@ const plugin: PluginServerModule = {
       res.json({ connections: conns });
     };
 
+    // Panel: everything needed to start a local bridge — the WS URL,
+    // a freshly-minted connection token, and a ready-to-run command.
+    const connectInfo: PluginRouteHandler = (req, res) => {
+      const userId = (req as { ctx?: { userId?: string } }).ctx?.userId ?? "";
+      if (!userId) return void res.status(401).json({ error: "no user context" });
+      // Derive the public wss:// URL from the incoming request so it
+      // works behind a tunnel/proxy (Cloudflare sets X-Forwarded-*).
+      const fwdProto =
+        (req.headers["x-forwarded-proto"] as string | undefined)?.split(",")[0]?.trim();
+      const host =
+        (req.headers["x-forwarded-host"] as string | undefined) ||
+        (req.headers.host as string | undefined) ||
+        "localhost";
+      const secure = fwdProto ? fwdProto === "https" : false;
+      const wsScheme = secure ? "wss" : "ws";
+      const wsUrl = `${wsScheme}://${host}/ws`;
+
+      const minter = ctx.capabilities.get<BridgeTokenCapability>("host.bridgeToken");
+      const grant = minter?.mint(userId) ?? {
+        token: "",
+        authEnabled: false,
+        expiresAt: null,
+      };
+      const tokenArg = grant.authEnabled ? ` --token ${grant.token}` : "";
+      const command = `npx @tianshu-ai/bridge --server ${wsUrl}${tokenArg}`;
+      res.json({
+        wsUrl,
+        authEnabled: grant.authEnabled,
+        token: grant.token,
+        expiresAt: grant.expiresAt,
+        command,
+      });
+    };
+
     ctx.log.info("reverse-mcp activated");
     return {
       wsHandlers: {
@@ -107,6 +142,7 @@ const plugin: PluginServerModule = {
       },
       routes: {
         listConnections,
+        connectInfo,
       },
     };
   },

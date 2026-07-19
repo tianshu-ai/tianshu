@@ -14,6 +14,7 @@ export * from "./manifest.js";
 export * from "./server.js";
 export * from "./agent-loop.js";
 export * from "./session-inbox.js";
+export * from "./bridge-token.js";
 export * from "./catalog.js";
 export * from "./opencode-proxy.js";
 export * from "./lsp.js";

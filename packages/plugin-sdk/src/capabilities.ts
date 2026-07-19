@@ -89,6 +89,11 @@ export const KNOWN_CAPABILITIES = {
     description:
       "File a compacted conversation segment into the user's LLM Wiki as a source page. Provided by the `wiki` plugin; the host's compaction path calls it (best-effort, fire-and-forget) after each compact so the rolling window's distilled history accrues into an Obsidian-style knowledge vault. No-op when the wiki plugin isn't enabled.",
   },
+  "host.bridgeToken": {
+    exclusive: true,
+    description:
+      "Mint a long-lived, revocable connection token scoped to the current tenant + user, for a local Bridge client to authenticate its inbound WebSocket (reverse-MCP). The token is a standard session credential the host's identity resolver already accepts, so no new auth path is added. When auth is disabled (dev), returns an empty token (the dev resolver needs none). Provided by the host; the reverse-mcp plugin uses it to render a ready-to-run connect command.",
+  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;
