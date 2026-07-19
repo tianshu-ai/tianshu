@@ -159,6 +159,13 @@ export interface ChatHandlerOpts {
 export function attachChatHandler(opts: ChatHandlerOpts): void {
   const { ctx, userId, socket, pluginRegistry, homeDir } = opts;
 
+  // Stamp the resolved identity on the socket so plugin WS handlers
+  // (dispatched with only (msg, socket, pluginCtx)) can trust the
+  // per-connection userId without re-running auth. Read via
+  // `(socket as { userId?: string }).userId`.
+  (socket as unknown as { userId?: string; tenantId?: string }).userId = userId;
+  (socket as unknown as { userId?: string; tenantId?: string }).tenantId = ctx.tenantId;
+
   const send = (msg: ServerMsg) => {
     if (socket.readyState !== socket.OPEN) return;
     socket.send(JSON.stringify(msg));
