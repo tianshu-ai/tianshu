@@ -86,6 +86,12 @@ function BridgePanel(_props: PanelProps) {
   // Zero-install path.
   const npxCmd = info ? `npx @tianshu-ai/local-bridge ${argsSuffix}` : "…";
   const INSTALL_CMD = "npm i -g @tianshu-ai/local-bridge";
+  // Config string for the menu-bar app's “Paste from tianshu” button.
+  const configUrl = info
+    ? `tsbridge://configure?server=${encodeURIComponent(info.wsUrl)}` +
+      (info.authEnabled && info.token ? `&token=${encodeURIComponent(info.token)}` : "") +
+      `&engine=${engine}&headless=${headless ? "1" : "0"}`
+    : "…";
 
   const fetchInfo = useCallback(() => {
     fetch(`${API_BASE}/connect-info`, { credentials: "include" })
@@ -253,6 +259,17 @@ function BridgePanel(_props: PanelProps) {
             text={npxCmd}
             copied={copiedKey === "npx"}
             onCopy={() => copy("npx", npxCmd)}
+          />
+
+          {/* Menu-bar app: copy a config string to paste into its Settings */}
+          <div className="mb-0.5 mt-2 text-[11px] text-fg-muted">
+            Menu-bar app? Copy this, then hit “Paste from tianshu” in its Settings:
+          </div>
+          <CmdBlock
+            label="config"
+            text={configUrl}
+            copied={copiedKey === "config"}
+            onCopy={() => copy("config", configUrl)}
           />
 
           {info?.authEnabled && info.expiresAt && (
