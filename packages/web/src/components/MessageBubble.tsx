@@ -298,25 +298,30 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         type="button"
         onClick={() => !running && setExpanded((v) => !v)}
         className={
-          "flex select-none items-center gap-1.5 py-0.5 text-xs transition-colors " +
+          "flex w-full select-none items-center gap-1.5 py-0.5 text-xs transition-colors " +
+          // Align with the card's other rows (text px-3.5, MCP-UI px-3)
+          // when rendered inside a unified turn card; bare otherwise.
+          (inCard ? "px-3 " : "") +
           (running ? "cursor-default text-fg-faint" : "cursor-pointer text-fg-faint hover:text-fg-muted")
         }
       >
         {running ? (
-          <Loader2 size={11} className="animate-spin text-warning" />
+          <Loader2 size={11} className="shrink-0 animate-spin text-warning" />
         ) : isError ? (
-          <XCircle size={11} className="text-rose-400/70" />
+          <XCircle size={11} className="shrink-0 text-rose-400/70" />
         ) : (
-          <CheckCircle2 size={11} className="text-emerald-500/60" />
+          <CheckCircle2 size={11} className="shrink-0 text-emerald-500/60" />
         )}
-        <code className="font-mono text-[12px] text-link">{call.name}</code>
-        <span className="font-mono text-[11px] text-fg-fainter">{summariseArgs(call.arguments)}</span>
+        <code className="shrink-0 font-mono text-[12px] text-link">{call.name}</code>
+        <span className="min-w-0 flex-1 truncate text-left font-mono text-[11px] text-fg-fainter">
+          {summariseArgs(call.arguments)}
+        </span>
         {running ? (
-          <span className="text-[11px] text-fg-fainter">running…</span>
+          <span className="shrink-0 text-[11px] text-fg-fainter">running…</span>
         ) : expanded ? (
-          <ChevronDown size={11} className="text-fg-fainter" />
+          <ChevronDown size={11} className="shrink-0 text-fg-fainter" />
         ) : (
-          <ChevronRight size={11} className="text-fg-fainter" />
+          <ChevronRight size={11} className="shrink-0 text-fg-fainter" />
         )}
       </button>
 
