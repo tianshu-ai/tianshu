@@ -23,7 +23,10 @@ export function useLocale(): Locale {
   return useSyncExternalStore(subscribeLocale, getLocale, getLocale);
 }
 
-export function useT(): (key: TranslationKey) => string {
+export function useT(): (
+  key: TranslationKey,
+  params?: Record<string, string | number>,
+) => string {
   // Re-bind translate on every locale change. Returning `translate`
   // verbatim wouldn't trigger a re-render because the function
   // identity is stable; reading the locale through the store

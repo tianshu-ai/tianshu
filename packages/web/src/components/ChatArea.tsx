@@ -7,6 +7,7 @@ import ChatInput from "./ChatInput";
 import ModelSelector from "./ModelSelector";
 import PluginManager from "./PluginManager";
 import PluginTopBarButtons from "./PluginTopBarButtons";
+import { useT } from "../hooks/useT";
 
 /**
  * Main column.
@@ -23,6 +24,7 @@ import PluginTopBarButtons from "./PluginTopBarButtons";
  * of the bundled chat shell (per ADR-0003) and stays put.
  */
 export default function ChatArea() {
+  const t = useT();
   const messages = useChatStore((s) => s.messages);
   const me = useChatStore((s) => s.me);
   const viewingSessionId = useChatStore((s) => s.viewingSessionId);
@@ -78,7 +80,7 @@ export default function ChatArea() {
             type="button"
             onClick={toggleSidebar}
             className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
-            title={sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            title={sidebarOpen ? t("chat.hideSidebar") : t("chat.showSidebar")}
           >
             {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
           </button>
@@ -94,8 +96,8 @@ export default function ChatArea() {
             type="button"
             onClick={() => setPluginManagerOpen(true)}
             className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
-            title="Plugin Manager"
-            aria-label="Open Plugin Manager"
+            title={t("chat.pluginManager")}
+            aria-label={t("chat.openPluginManager")}
           >
             <Puzzle size={16} />
           </button>
@@ -123,7 +125,7 @@ export default function ChatArea() {
                 disabled={loadingMore}
                 className="w-full rounded-lg bg-bg-raised/50 py-2 text-xs text-fg-faint hover:text-fg-muted disabled:cursor-default disabled:opacity-60"
               >
-                {loadingMore ? "Loading…" : "Load earlier messages"}
+                {loadingMore ? t("chat.loading") : t("chat.loadEarlier")}
               </button>
             )}
             {merged.map((m, i) => (
@@ -162,13 +164,15 @@ export default function ChatArea() {
                   <span className="truncate">
                     {retryNotice.rateLimited ? "⏳" : "🔁"}{" "}
                     {retryNotice.rateLimited
-                      ? "Rate limited"
+                      ? t("chat.rateLimited")
                       : retryNotice.kind === "http-401" || retryNotice.kind === "http-403"
-                        ? "Auth expired"
-                        : "Connection issue"}
-                    {" — retrying in "}
-                    {(retryNotice.delayMs / 1000).toFixed(retryNotice.delayMs < 1000 ? 1 : 0)}s{" "}
-                    (attempt {retryNotice.attempt}/{retryNotice.maxAttempts})
+                        ? t("chat.authExpired")
+                        : t("chat.connectionIssue")}
+                    {t("chat.retryIn", {
+                      s: (retryNotice.delayMs / 1000).toFixed(retryNotice.delayMs < 1000 ? 1 : 0),
+                      a: retryNotice.attempt,
+                      max: retryNotice.maxAttempts,
+                    })}
                   </span>
                 </span>
                 <button
@@ -176,24 +180,28 @@ export default function ChatArea() {
                   onClick={clearRetryNotice}
                   className="ml-3 text-[11px] uppercase tracking-wider text-sky-300/80 hover:text-white"
                 >
-                  dismiss
+                  {t("chat.dismiss")}
                 </button>
               </div>
             )}
             {compactNotice && (
               <div className="flex items-center justify-between rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
                 <span className="truncate">
-                  📌 Conversation history compacted (
-                  {compactNotice.reason === "auto" ? "auto" : "manual"}):{" "}
-                  {compactNotice.summarisedCount} earlier messages summarised,{" "}
-                  {compactNotice.keptCount} kept verbatim.
+                  {t("chat.compacted", {
+                    mode:
+                      compactNotice.reason === "auto"
+                        ? t("chat.compactAuto")
+                        : t("chat.compactManual"),
+                    summarised: compactNotice.summarisedCount,
+                    kept: compactNotice.keptCount,
+                  })}
                 </span>
                 <button
                   type="button"
                   onClick={clearCompactNotice}
                   className="ml-3 text-[11px] uppercase tracking-wider text-amber-300/80 hover:text-white"
                 >
-                  dismiss
+                  {t("chat.dismiss")}
                 </button>
               </div>
             )}
@@ -225,23 +233,17 @@ function EmptyState({
   brandEmoji: string;
   tenantId: string;
 }) {
+  const t = useT();
+  void tenantId;
   return (
     <div className="flex h-full flex-col items-center justify-center text-center">
       <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-600/20">
         <span className="text-2xl">{brandEmoji}</span>
       </div>
       <h2 className="mb-2 text-xl font-semibold text-fg-default">
-        Welcome to {brandName}
+        {t("chat.welcome", { name: brandName })}
       </h2>
-      <p className="max-w-md text-sm text-fg-faint">
-        An open AI agent platform with a sidecar browser. Day 0: messages
-        persist per-tenant in{" "}
-        <code className="mx-0.5 rounded bg-bg-raised px-1 py-0.5 text-xs text-fg-muted">
-          ~/.tianshu/tenants/{tenantId}/db.sqlite
-        </code>
-        . Tools, workspace files, browser, and worker dispatch arrive in
-        later PRs.
-      </p>
+      <p className="max-w-md text-sm text-fg-faint">{t("chat.welcomeBody")}</p>
     </div>
   );
 }
@@ -259,6 +261,7 @@ function EmptyState({
  *      different models.
  */
 function ChannelSessionFooter({ sessionId }: { sessionId: string }) {
+  const t = useT();
   // Lazy-load binding row keyed on the session: we need its
   // current modelId for the dropdown highlight and its id to PATCH.
   const [binding, setBinding] = useState<{
@@ -312,12 +315,12 @@ function ChannelSessionFooter({ sessionId }: { sessionId: string }) {
     <div className="flex flex-col items-center gap-1 border-t border-border-subtle bg-bg-elevated px-4 py-2.5">
       {binding && (
         <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
-          <span>Model:</span>
+          <span>{t("chat.model")}</span>
           <ModelSelector value={binding.modelId} onChange={onChange} />
         </div>
       )}
       <span className="text-[10.5px] text-fg-fainter">
-        Read-only · messages flow in from the channel
+        {t("chat.readOnlyChannel")}
       </span>
     </div>
   );
@@ -340,10 +343,11 @@ function AutoRetryBanner({
   reason: string | null;
   onStop: () => void;
 }) {
+  const tr = useT();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(t);
+    const iv = setInterval(() => setNow(Date.now()), 500);
+    return () => clearInterval(iv);
   }, []);
   const remainingMs = Math.max(0, nextRetryAt - now);
   const remaining = formatRemaining(remainingMs);
@@ -352,7 +356,9 @@ function AutoRetryBanner({
       <span className="flex min-w-0 items-center gap-2">
         <RotateCw className="h-3.5 w-3.5 flex-none animate-spin text-amber-300" style={{ animationDuration: "2s" }} />
         <span className="truncate">
-          Connection interrupted{reason ? ` (${reason})` : ""} — retrying in {remaining} (attempt {attempt})
+          {tr("chat.connectionInterrupted")}
+          {reason ? ` (${reason})` : ""}
+          {tr("chat.retryInShort", { remaining, a: attempt })}
         </span>
       </span>
       <button
@@ -360,7 +366,7 @@ function AutoRetryBanner({
         onClick={onStop}
         className="ml-3 flex-none rounded border border-amber-400/40 px-2 py-0.5 text-[11px] uppercase tracking-wider text-amber-100 hover:bg-amber-400/10 hover:text-white"
       >
-        stop
+        {tr("chat.stopLower")}
       </button>
     </div>
   );

@@ -6,6 +6,7 @@ import ModelSelector from "./ModelSelector";
 import PluginComposerActions from "./PluginComposerActions";
 import ComposerAttachments from "./ComposerAttachments";
 import type { WireAttachment } from "../types/chat";
+import { useT } from "../hooks/useT";
 
 /**
  * Bottom composer.
@@ -33,6 +34,7 @@ import type { WireAttachment } from "../types/chat";
  * Enter sends, Shift+Enter inserts a newline.
  */
 export default function ChatInput() {
+  const t = useT();
   const isStreaming = useChatStore((s) => s.isStreaming);
   const sendPrompt = useChatStore((s) => s.sendPrompt);
   const abort = useChatStore((s) => s.abort);
@@ -127,7 +129,7 @@ export default function ChatInput() {
             }
           }}
           rows={1}
-          placeholder="Message Tianshu — Enter to send, Shift+Enter for newline"
+          placeholder={t("chat.placeholder")}
           className="resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
         />
         <div className="flex items-center justify-between">
@@ -141,7 +143,7 @@ export default function ChatInput() {
                 type="button"
                 onClick={abort}
                 className="rounded-lg p-1.5 text-danger transition-colors hover:bg-bg-hover hover:text-danger"
-                title="Stop"
+                title={t("chat.stop")}
               >
                 <Square size={18} />
               </button>
@@ -151,12 +153,8 @@ export default function ChatInput() {
                 onClick={() => void submit()}
                 disabled={!sendAllowed}
                 className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default disabled:cursor-not-allowed disabled:opacity-30"
-                title={
-                  hasPending
-                    ? "Waiting for uploads to finish…"
-                    : "Send"
-                }
-                aria-label="Send"
+                title={hasPending ? t("chat.waitingUploads") : t("chat.send")}
+                aria-label={t("chat.send")}
               >
                 <Send size={18} />
               </button>
