@@ -374,6 +374,13 @@ export interface ToolResult {
   text: string;
   /** Optional structured payload preserved verbatim. */
   data?: unknown;
+  /** Optional images to include in the tool result so a vision model
+   *  can SEE them this turn. Each entry is base64 image bytes (no
+   *  `data:` prefix) + a mimeType. Use sparingly and on-demand: images
+   *  count against context. Prefer returning a file PATH from a
+   *  capture tool and only inlining bytes here from an explicit
+   *  "view this image" tool the agent calls when it needs to look. */
+  images?: Array<{ base64: string; mimeType?: string }>;
   /** Plugin-defined extras. Allowed but discouraged. */
   [key: string]: unknown;
 }

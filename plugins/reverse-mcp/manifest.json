@@ -1,0 +1,42 @@
+{
+  "id": "reverse-mcp",
+  "version": "0.1.0",
+  "displayName": "Local Bridge",
+  "description": "Connect software on your own machine (browser, files, shell) into tianshu. A lightweight local client dials in over the chat WebSocket and registers itself as an MCP server, so the server-side agent can call your local tools. Scoped to your own sessions — not shared across users.",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["network.external"],
+  "requires": ["host.bridgeToken"],
+  "client": { "entry": "@tianshu-builtin/plugin-reverse-mcp/client" },
+  "server": { "entry": "@tianshu-builtin/plugin-reverse-mcp/server" },
+  "contributes": {
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "Plug",
+        "tooltip": "Local Bridge",
+        "opensPanel": "reverse-mcp.main",
+        "order": 420
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "main",
+        "displayName": "Local Bridge",
+        "component": "BridgePanel"
+      }
+    ],
+    "wsMessages": [
+      { "type": "reverse_mcp_register", "handler": "onRegister" },
+      { "type": "reverse_mcp_response", "handler": "onResponse" },
+      { "type": "reverse_mcp_unregister", "handler": "onUnregister" }
+    ],
+    "toolsets": [
+      { "id": "bridge", "module": "BridgeToolset", "displayName": "Local Bridge" }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/connections", "handler": "listConnections" },
+      { "method": "GET", "path": "/connect-info", "handler": "connectInfo" }
+    ]
+  }
+}
