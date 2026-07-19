@@ -120,7 +120,7 @@ const plugin: PluginServerModule = {
         expiresAt: null,
       };
       const tokenArg = grant.authEnabled ? ` --token ${grant.token}` : "";
-      const command = `npx @tianshu-ai/bridge --server ${wsUrl}${tokenArg}`;
+      const command = `npx @tianshu-ai/local-bridge --server ${wsUrl}${tokenArg}`;
       res.json({
         wsUrl,
         authEnabled: grant.authEnabled,

@@ -2,7 +2,7 @@
 
 Authoritative contract between the tianshu server (`reverse-mcp` plugin,
 this repo) and a local bridge client (e.g.
-[`tianshu-ai/tianshu-bridge`](https://github.com/tianshu-ai/tianshu-bridge)).
+[`tianshu-ai/local-bridge`](https://github.com/tianshu-ai/local-bridge)).
 The client implements this; it does **not** import any tianshu package.
 
 ## Transport
