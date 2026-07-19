@@ -1,6 +1,6 @@
 {
   "name": "@tianshu-ai/tianshu",
-  "version": "0.5.1",
+  "version": "0.5.8",
   "description": "An open AI agent platform with a sidecar browser. Built in public.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/tianshu-ai/tianshu",
@@ -75,6 +75,7 @@
     "express": "^5.1.0",
     "fast-glob": "^3.3.3",
     "sharp": "^0.35.1",
+    "sqlite-vec": "^0.1.9",
     "vscode-jsonrpc": "^9.0.0",
     "vscode-languageserver-protocol": "^3.18.0",
     "vscode-languageserver-types": "^3.18.0",
