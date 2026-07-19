@@ -120,13 +120,18 @@ const plugin: PluginServerModule = {
         expiresAt: null,
       };
       const tokenArg = grant.authEnabled ? ` --token ${grant.token}` : "";
-      const command = `npx @tianshu-ai/local-bridge --server ${wsUrl}${tokenArg}`;
+      // Base command (no capability flags). The panel appends the
+      // capability/engine flags the user selects (e.g.
+      // `--browser-engine stealth`), so capability exposure is chosen
+      // by the user on their own machine, not toggled remotely.
+      const baseCommand = `npx @tianshu-ai/local-bridge --server ${wsUrl}${tokenArg}`;
       res.json({
         wsUrl,
         authEnabled: grant.authEnabled,
         token: grant.token,
         expiresAt: grant.expiresAt,
-        command,
+        baseCommand,
+        command: baseCommand,
       });
     };
 

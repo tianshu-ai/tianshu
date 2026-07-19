@@ -28,14 +28,31 @@ interface ConnectInfo {
   authEnabled: boolean;
   token: string;
   expiresAt: number | null;
+  baseCommand: string;
   command: string;
 }
+
+type BrowserEngine = "own" | "stealth";
 
 function BridgePanel(_props: PanelProps) {
   const [info, setInfo] = useState<ConnectInfo | null>(null);
   const [conns, setConns] = useState<Conn[]>([]);
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
+  // Capability selection (model A: the panel composes the command; the
+  // user runs it on their own machine — nothing is toggled remotely).
+  const [browserOn, setBrowserOn] = useState(true);
+  const [engine, setEngine] = useState<BrowserEngine>("own");
+
+  // Compose the final command from the base command + selected flags.
+  const command = (() => {
+    const base = info?.baseCommand ?? "…";
+    if (!info) return base;
+    const flags: string[] = [];
+    if (!browserOn) flags.push("--no-browser");
+    else if (engine === "stealth") flags.push("--browser-engine stealth");
+    return flags.length ? `${base} ${flags.join(" ")}` : base;
+  })();
 
   const fetchInfo = useCallback(() => {
     fetch(`${API_BASE}/connect-info`, { credentials: "include" })
@@ -61,12 +78,12 @@ function BridgePanel(_props: PanelProps) {
   }, [fetchInfo, fetchConns]);
 
   const copyCmd = useCallback(() => {
-    if (!info?.command) return;
-    void navigator.clipboard.writeText(info.command).then(() => {
+    if (!command || command === "…") return;
+    void navigator.clipboard.writeText(command).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
     });
-  }, [info]);
+  }, [command]);
 
   return (
     <div className="flex h-full flex-col overflow-y-auto text-fg-default">
@@ -103,6 +120,67 @@ function BridgePanel(_props: PanelProps) {
           </li>
         </ol>
 
+        {/* Capabilities to expose */}
+        <div>
+          <div className="mb-1 font-medium text-fg-default">Capabilities</div>
+          <div className="space-y-1.5">
+            {/* browser */}
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={browserOn}
+                onChange={(e) => setBrowserOn(e.target.checked)}
+              />
+              <span className="font-medium">Browser</span>
+              <span className="text-[10px] text-fg-fainter">control a local browser</span>
+            </label>
+            {browserOn && (
+              <div className="ml-6 flex flex-col gap-1">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="engine"
+                    checked={engine === "own"}
+                    onChange={() => setEngine("own")}
+                  />
+                  <span>Your own Chrome</span>
+                  <span className="text-[10px] text-fg-fainter">
+                    real cookies + fingerprint, no download
+                  </span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="engine"
+                    checked={engine === "stealth"}
+                    onChange={() => setEngine("stealth")}
+                  />
+                  <span>Stealth browser</span>
+                  <span className="text-[10px] text-fg-fainter">
+                    anti-bot-detection (CloakBrowser); ~200MB first run
+                  </span>
+                </label>
+              </div>
+            )}
+            {/* shell — coming soon */}
+            <label className="flex items-center gap-2 opacity-50">
+              <input type="checkbox" disabled />
+              <span className="font-medium">Shell</span>
+              <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-fainter">
+                Coming soon
+              </span>
+            </label>
+            {/* files — coming soon */}
+            <label className="flex items-center gap-2 opacity-50">
+              <input type="checkbox" disabled />
+              <span className="font-medium">Files</span>
+              <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-fainter">
+                Coming soon
+              </span>
+            </label>
+          </div>
+        </div>
+
         {/* Connect command */}
         <div>
           <div className="mb-1 flex items-center justify-between">
@@ -116,7 +194,7 @@ function BridgePanel(_props: PanelProps) {
             </button>
           </div>
           <pre className="overflow-x-auto rounded-md bg-bg-raised px-2 py-2 text-[11px] leading-relaxed text-fg-default">
-            {info?.command ?? "…"}
+            {command}
           </pre>
           {info?.authEnabled && info.expiresAt && (
             <p className="mt-1 text-[10px] text-fg-fainter">
