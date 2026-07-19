@@ -34,25 +34,54 @@ interface ConnectInfo {
 
 type BrowserEngine = "own" | "stealth";
 
+/** A monospace command line with a copy button. */
+function CmdBlock(props: {
+  label: string;
+  text: string;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="mb-1 flex items-stretch gap-1">
+      <pre className="flex-1 overflow-x-auto rounded-md bg-bg-raised px-2 py-1.5 text-[11px] leading-relaxed text-fg-default">
+        {props.text}
+      </pre>
+      <button
+        onClick={props.onCopy}
+        title={`Copy ${props.label}`}
+        className="flex items-center rounded px-1.5 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
+      >
+        {props.copied ? <Check size={12} /> : <Copy size={12} />}
+      </button>
+    </div>
+  );
+}
+
 function BridgePanel(_props: PanelProps) {
   const [info, setInfo] = useState<ConnectInfo | null>(null);
   const [conns, setConns] = useState<Conn[]>([]);
-  const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(true);
   // Capability selection (model A: the panel composes the command; the
   // user runs it on their own machine — nothing is toggled remotely).
   const [browserOn, setBrowserOn] = useState(true);
   const [engine, setEngine] = useState<BrowserEngine>("own");
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  // Compose the final command from the base command + selected flags.
-  const command = (() => {
-    const base = info?.baseCommand ?? "…";
-    if (!info) return base;
-    const flags: string[] = [];
-    if (!browserOn) flags.push("--no-browser");
-    else if (engine === "stealth") flags.push("--browser-engine stealth");
-    return flags.length ? `${base} ${flags.join(" ")}` : base;
+  // Common CLI args (server + token + capability flags). Both the
+  // global `tsbridge` command and the one-off `npx` form take these.
+  const argsSuffix = (() => {
+    if (!info) return "";
+    const parts = [`--server ${info.wsUrl}`];
+    if (info.authEnabled && info.token) parts.push(`--token ${info.token}`);
+    if (!browserOn) parts.push("--no-browser");
+    else if (engine === "stealth") parts.push("--browser-engine stealth");
+    return parts.join(" ");
   })();
+  // Global install path: run `tsbridge <args>` after `npm i -g`.
+  const globalCmd = info ? `tsbridge ${argsSuffix}` : "…";
+  // Zero-install path.
+  const npxCmd = info ? `npx @tianshu-ai/local-bridge ${argsSuffix}` : "…";
+  const INSTALL_CMD = "npm i -g @tianshu-ai/local-bridge";
 
   const fetchInfo = useCallback(() => {
     fetch(`${API_BASE}/connect-info`, { credentials: "include" })
@@ -77,13 +106,13 @@ function BridgePanel(_props: PanelProps) {
     });
   }, [fetchInfo, fetchConns]);
 
-  const copyCmd = useCallback(() => {
-    if (!command || command === "…") return;
-    void navigator.clipboard.writeText(command).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
+  const copy = useCallback((key: string, text: string) => {
+    if (!text || text === "…") return;
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1800);
     });
-  }, [command]);
+  }, []);
 
   return (
     <div className="flex h-full flex-col overflow-y-auto text-fg-default">
@@ -181,21 +210,36 @@ function BridgePanel(_props: PanelProps) {
           </div>
         </div>
 
-        {/* Connect command */}
+        {/* Start command — two install paths */}
         <div>
-          <div className="mb-1 flex items-center justify-between">
-            <span className="font-medium text-fg-default">Start command</span>
-            <button
-              onClick={copyCmd}
-              className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
-            >
-              {copied ? <Check size={11} /> : <Copy size={11} />}
-              {copied ? "Copied" : "Copy"}
-            </button>
+          <div className="mb-1 font-medium text-fg-default">Start command</div>
+
+          {/* Option 1: install globally, run tsbridge */}
+          <div className="mb-0.5 text-[11px] text-fg-muted">
+            Recommended — install once, then run <code>tsbridge</code>:
           </div>
-          <pre className="overflow-x-auto rounded-md bg-bg-raised px-2 py-2 text-[11px] leading-relaxed text-fg-default">
-            {command}
-          </pre>
+          <CmdBlock
+            label="install"
+            text={INSTALL_CMD}
+            copied={copiedKey === "install"}
+            onCopy={() => copy("install", INSTALL_CMD)}
+          />
+          <CmdBlock
+            label="run"
+            text={globalCmd}
+            copied={copiedKey === "global"}
+            onCopy={() => copy("global", globalCmd)}
+          />
+
+          {/* Option 2: npx, no install */}
+          <div className="mb-0.5 mt-2 text-[11px] text-fg-muted">Or run once with npx (no install):</div>
+          <CmdBlock
+            label="npx"
+            text={npxCmd}
+            copied={copiedKey === "npx"}
+            onCopy={() => copy("npx", npxCmd)}
+          />
+
           {info?.authEnabled && info.expiresAt && (
             <p className="mt-1 text-[10px] text-fg-fainter">
               Token valid until {new Date(info.expiresAt).toLocaleDateString()}.
@@ -208,6 +252,9 @@ function BridgePanel(_props: PanelProps) {
               Auth is disabled on this server — no token needed.
             </p>
           )}
+          <p className="mt-1 text-[10px] text-fg-fainter">
+            Update later with <code>tsbridge update</code>.
+          </p>
         </div>
 
         {/* Connected devices */}
