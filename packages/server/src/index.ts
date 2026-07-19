@@ -75,7 +75,9 @@ import {
   startChannelRouter,
   updateBinding,
 } from "./channels/index.js";
-import type { ChannelBindingsCapability } from "@tianshu-ai/plugin-sdk";
+import type { ChannelBindingsCapability, BridgeTokenCapability } from "@tianshu-ai/plugin-sdk";
+import { mintSession } from "./core/auth/session.js";
+import { expandEnvPlaceholders } from "./core/config.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadHostSkills, runPrompt } from "./chat/handler.js";
@@ -260,6 +262,36 @@ pluginRegistry = new PluginRegistry({
     "host.sessionInbox": (ctx): SessionInboxCapability => ({
       enqueue: (targetSessionId, message) =>
         inboxEnqueue(ctx, targetSessionId, message),
+    }),
+    // Mint a connection token for a local Bridge client (reverse-MCP).
+    // The token is a standard session credential (Bearer) the identity
+    // resolver already accepts — no new auth path. Tenant is pinned to
+    // the capability's bound ctx; the plugin passes the user id. When
+    // auth is disabled (dev), returns an empty token (dev resolver
+    // needs none).
+    "host.bridgeToken": (ctx): BridgeTokenCapability => ({
+      mint: (userId: string, ttlSec = 90 * 24 * 3600) => {
+        const auth = loadGlobalConfig().auth;
+        if (!auth?.enabled) {
+          return { token: "", authEnabled: false, expiresAt: null };
+        }
+        const secret = expandEnvPlaceholders(auth.sessionSecret) ?? "";
+        const token = mintSession(
+          {
+            sub: userId,
+            tenant: ctx.tenantId ?? "",
+            email: "",
+            provider: "bridge",
+          },
+          secret,
+          ttlSec,
+        );
+        return {
+          token,
+          authEnabled: true,
+          expiresAt: Date.now() + ttlSec * 1000,
+        };
+      },
     }),
     // OpenCode model proxy. Plugins (workboard's OpenCode worker)
     // mint a per-task, single-model token bound to THIS tenant,
