@@ -84,8 +84,8 @@ function BridgePanel(_props: PanelProps) {
   // Global install path: run `tsbridge <args>` after `npm i -g`.
   const globalCmd = info ? `tsbridge ${argsSuffix}` : "…";
   // Zero-install path.
-  const npxCmd = info ? `npx @tianshu-ai/local-bridge ${argsSuffix}` : "…";
   const INSTALL_CMD = "npm i -g @tianshu-ai/local-bridge";
+  const INSTALL_APP_CMD = "tsbridge install-app --run";
   // Config string for the menu-bar app's “Paste from tianshu” button.
   const configUrl = info
     ? `tsbridge://configure?server=${encodeURIComponent(info.wsUrl)}` +
@@ -231,13 +231,10 @@ function BridgePanel(_props: PanelProps) {
           </div>
         </div>
 
-        {/* Start command — two install paths */}
+        {/* Step 1 — prerequisite: install the CLI once */}
         <div>
-          <div className="mb-1 font-medium text-fg-default">Start command</div>
-
-          {/* Option 1: install globally, run tsbridge */}
-          <div className="mb-0.5 text-[11px] text-fg-muted">
-            Recommended — install once, then run <code>tsbridge</code>:
+          <div className="mb-1 font-medium text-fg-default">
+            Step 1 · Install the bridge (once)
           </div>
           <CmdBlock
             label="install"
@@ -245,6 +242,22 @@ function BridgePanel(_props: PanelProps) {
             copied={copiedKey === "install"}
             onCopy={() => copy("install", INSTALL_CMD)}
           />
+          <p className="text-[10px] text-fg-fainter">
+            Requires Node.js. Then pick one of the two ways below.
+          </p>
+        </div>
+
+        {/* Step 2 — choose: CLI or menu-bar app */}
+        <div>
+          <div className="mb-1 font-medium text-fg-default">Step 2 · Start it</div>
+
+          {/* Option A: run from the command line */}
+          <div className="mb-0.5 text-[11px] font-medium text-fg-default">
+            A · Command line
+          </div>
+          <div className="mb-0.5 text-[10px] text-fg-fainter">
+            Run this in a terminal (uses your current picks above):
+          </div>
           <CmdBlock
             label="run"
             text={globalCmd}
@@ -252,18 +265,22 @@ function BridgePanel(_props: PanelProps) {
             onCopy={() => copy("global", globalCmd)}
           />
 
-          {/* Option 2: npx, no install */}
-          <div className="mb-0.5 mt-2 text-[11px] text-fg-muted">Or run once with npx (no install):</div>
+          {/* Option B: macOS menu-bar app */}
+          <div className="mt-3 mb-0.5 text-[11px] font-medium text-fg-default">
+            B · Menu-bar app (macOS)
+          </div>
+          <div className="mb-0.5 text-[10px] text-fg-fainter">
+            1. Install the app:
+          </div>
           <CmdBlock
-            label="npx"
-            text={npxCmd}
-            copied={copiedKey === "npx"}
-            onCopy={() => copy("npx", npxCmd)}
+            label="install-app"
+            text={INSTALL_APP_CMD}
+            copied={copiedKey === "install-app"}
+            onCopy={() => copy("install-app", INSTALL_APP_CMD)}
           />
-
-          {/* Menu-bar app: copy a config string to paste into its Settings */}
-          <div className="mb-0.5 mt-2 text-[11px] text-fg-muted">
-            Menu-bar app? Copy this, then hit “Paste from tianshu” in its Settings:
+          <div className="mb-0.5 text-[10px] text-fg-fainter">
+            2. Copy this config, then click the menu-bar icon → Settings →
+            “Paste from tianshu”:
           </div>
           <CmdBlock
             label="config"
@@ -273,14 +290,14 @@ function BridgePanel(_props: PanelProps) {
           />
 
           {info?.authEnabled && info.expiresAt && (
-            <p className="mt-1 text-[10px] text-fg-fainter">
+            <p className="mt-2 text-[10px] text-fg-fainter">
               Token valid until {new Date(info.expiresAt).toLocaleDateString()}.
               Refresh this panel to mint a new one; the old command keeps
               working until it expires.
             </p>
           )}
           {info && !info.authEnabled && (
-            <p className="mt-1 text-[10px] text-fg-fainter">
+            <p className="mt-2 text-[10px] text-fg-fainter">
               Auth is disabled on this server — no token needed.
             </p>
           )}
