@@ -65,6 +65,7 @@ function BridgePanel(_props: PanelProps) {
   // user runs it on their own machine — nothing is toggled remotely).
   const [browserOn, setBrowserOn] = useState(true);
   const [engine, setEngine] = useState<BrowserEngine>("own");
+  const [headless, setHeadless] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Common CLI args (server + token + capability flags). Both the
@@ -74,7 +75,10 @@ function BridgePanel(_props: PanelProps) {
     const parts = [`--server ${info.wsUrl}`];
     if (info.authEnabled && info.token) parts.push(`--token ${info.token}`);
     if (!browserOn) parts.push("--no-browser");
-    else if (engine === "stealth") parts.push("--browser-engine stealth");
+    else {
+      if (engine === "stealth") parts.push("--browser-engine stealth");
+      if (headless) parts.push("--headless");
+    }
     return parts.join(" ");
   })();
   // Global install path: run `tsbridge <args>` after `npm i -g`.
@@ -187,6 +191,17 @@ function BridgePanel(_props: PanelProps) {
                   <span>Stealth browser</span>
                   <span className="text-[10px] text-fg-fainter">
                     anti-bot-detection (CloakBrowser); ~200MB first run
+                  </span>
+                </label>
+                <label className="mt-0.5 flex items-center gap-2 border-t border-border-subtle pt-1">
+                  <input
+                    type="checkbox"
+                    checked={headless}
+                    onChange={(e) => setHeadless(e.target.checked)}
+                  />
+                  <span>Headless</span>
+                  <span className="text-[10px] text-fg-fainter">
+                    no window (default: show the browser)
                   </span>
                 </label>
               </div>
