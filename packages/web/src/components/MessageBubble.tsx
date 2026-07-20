@@ -33,6 +33,7 @@ import type {
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
 import McpUiFrame from "./McpUiFrame";
+import { useT } from "../hooks/useT";
 
 
 
@@ -368,10 +369,11 @@ function truncate(s: string, max: number): string {
  *  inline so we don't need to touch tailwind.config or pull in a
  *  one-off keyframe just for this. */
 function TypingDots() {
+  const t = useT();
   return (
     <span
       className="inline-flex items-center gap-1"
-      aria-label="assistant is typing"
+      aria-label={t("chat.assistantTyping")}
     >
       <Dot delay="0ms" />
       <Dot delay="150ms" />

@@ -28,6 +28,7 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from "lucide-react";
+import { useT } from "../../hooks/useT";
 
 const API_KEY_MASK = "__stored__";
 
@@ -100,6 +101,7 @@ function toEditable(id: string, p: ProviderRow): EditableProvider {
 }
 
 export default function ModelsPage() {
+  const t = useT();
   const [providers, setProviders] = useState<EditableProvider[] | null>(null);
   const [defaultModelId, setDefaultModelId] = useState<string>("");
   const [outputLanguage, setOutputLanguage] = useState<"auto" | "en" | "zh">("auto");
@@ -157,11 +159,11 @@ export default function ModelsPage() {
     for (const p of providers) {
       const pid = p.id.trim();
       if (!pid) {
-        setError("Every provider needs an id.");
+        setError(t("models.err.providerNeedsId"));
         return;
       }
       if (ids.has(pid)) {
-        setError(`Duplicate provider id: "${pid}".`);
+        setError(t("models.err.dupProvider", { id: pid }));
         return;
       }
       ids.add(pid);
@@ -169,11 +171,11 @@ export default function ModelsPage() {
       for (const m of p.models ?? []) {
         const mid = (m.id ?? "").trim();
         if (!mid) {
-          setError(`Provider "${pid}" has a model with no id.`);
+          setError(t("models.err.modelNoId", { provider: pid }));
           return;
         }
         if (mids.has(mid)) {
-          setError(`Provider "${pid}" has duplicate model id "${mid}".`);
+          setError(t("models.err.dupModel", { provider: pid, id: mid }));
           return;
         }
         mids.add(mid);
@@ -229,7 +231,7 @@ export default function ModelsPage() {
       setDefaultModelId(j.defaultModelId ?? "");
       setOutputLanguage(j.outputLanguage ?? "auto");
       setDirty(false);
-      setNotice("Saved to ~/.tianshu/config.json");
+      setNotice(t("models.savedTo"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -266,17 +268,16 @@ export default function ModelsPage() {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
             <Boxes size={18} className="text-link" />
-            Models
+            {t("models.title")}
           </h1>
           <p className="mt-1 max-w-3xl text-[12px] text-fg-faint">
-            Provider catalog from{" "}
+            {t("models.subtitle.prefix")}{" "}
             <code className="text-fg-muted">~/.tianshu/config.json</code>{" "}
-            (<code className="text-fg-muted">models.providers</code>).
-            Editing here writes back to that file; an external edit to
-            the file shows up after Reload.{" "}
+            (<code className="text-fg-muted">models.providers</code>).{" "}
+            {t("models.subtitle.suffix")}{" "}
             {providers && (
               <span className="text-fg-muted">
-                {providers.length} provider(s), {totalModels} model(s).
+                {t("models.counts", { providers: providers.length, models: totalModels })}
               </span>
             )}
           </p>
@@ -289,7 +290,7 @@ export default function ModelsPage() {
             className="flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-hover hover:text-fg-default disabled:opacity-50"
           >
             <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
-            Reload
+            {t("common.reload")}
           </button>
           <button
             type="button"
@@ -298,7 +299,7 @@ export default function ModelsPage() {
             className="flex items-center gap-1.5 rounded-md bg-link px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
           >
             <Save size={13} />
-            {saving ? "Saving…" : "Save"}
+            {saving ? t("common.saving") : t("common.save")}
           </button>
         </div>
       </div>
@@ -319,7 +320,7 @@ export default function ModelsPage() {
       {/* Default model */}
       <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
         <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
-          Default model
+          {t("models.defaultModel")}
         </label>
         <select
           value={defaultModelId}
@@ -330,7 +331,7 @@ export default function ModelsPage() {
           }}
           className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
         >
-          <option value="">(none)</option>
+          <option value="">{t("models.none")}</option>
           {modelOptions.map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
@@ -342,19 +343,18 @@ export default function ModelsPage() {
               silently dropped. */}
           {defaultModelId &&
             !modelOptions.some((o) => o.value === defaultModelId) && (
-              <option value={defaultModelId}>{defaultModelId} (not in catalog)</option>
+              <option value={defaultModelId}>{t("models.notInCatalog", { id: defaultModelId })}</option>
             )}
         </select>
         <p className="mt-1 text-[11px] text-fg-fainter">
-          Pick from the configured models above. Add a model to a
-          provider to make it selectable here.
+          {t("models.defaultModel.hint")}
         </p>
       </div>
 
       {/* Default output language */}
       <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
         <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
-          Output language
+          {t("models.outputLanguage")}
         </label>
         <select
           value={outputLanguage}
@@ -365,19 +365,18 @@ export default function ModelsPage() {
           }}
           className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
         >
-          <option value="auto">Auto (match the user's language)</option>
+          <option value="auto">{t("models.lang.auto")}</option>
           <option value="en">English</option>
           <option value="zh">中文 (Chinese)</option>
         </select>
         <p className="mt-1 text-[11px] text-fg-fainter">
-          Default language the agent replies in. “Auto” follows whatever
-          language the user writes in.
+          {t("models.outputLanguage.hint")}
         </p>
       </div>
 
       {loading && !providers && (
         <div className="rounded-md border border-dashed border-border-subtle px-4 py-10 text-center text-[12px] text-fg-faint">
-          Loading providers…
+          {t("models.loadingProviders")}
         </div>
       )}
 
@@ -421,7 +420,7 @@ export default function ModelsPage() {
         className="mt-4 flex items-center gap-1.5 rounded-md border border-dashed border-border-default px-3 py-2 text-xs text-fg-muted hover:bg-bg-hover hover:text-fg-default"
       >
         <Plus size={14} />
-        Add provider
+        {t("models.addProvider")}
       </button>
     </div>
   );
@@ -440,6 +439,7 @@ function ProviderCard({
   onChange: (patch: Partial<EditableProvider>) => void;
   onDelete: () => void;
 }) {
+  const t = useT();
   const models = provider.models ?? [];
 
   const setModel = (idx: number, patch: Partial<ModelRow>) =>
@@ -458,22 +458,22 @@ function ProviderCard({
           type="button"
           onClick={onToggle}
           className="flex-shrink-0 text-fg-faint hover:text-fg-default"
-          aria-label={collapsed ? "Expand" : "Collapse"}
+          aria-label={collapsed ? t("models.expand") : t("models.collapse")}
         >
           {collapsed ? <ChevronRight size={15} /> : <ChevronDown size={15} />}
         </button>
         <input
           value={provider.id}
           onChange={(e) => onChange({ id: e.target.value })}
-          placeholder="provider-id"
+          placeholder={t("models.providerIdPlaceholder")}
           className="w-44 rounded border border-border-default bg-bg-base px-2 py-1 text-sm font-medium text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
         />
         <span className="text-[11px] text-fg-fainter">
-          {models.length} model(s)
+          {t("models.modelCount", { n: models.length })}
         </span>
         {provider.hasApiKey && (
           <span className="flex items-center gap-1 rounded-full bg-bg-raised px-2 py-0.5 text-[10px] text-fg-muted">
-            <KeyRound size={10} /> key set
+            <KeyRound size={10} /> {t("models.keySet")}
           </span>
         )}
         <div className="flex-1" />
@@ -482,20 +482,20 @@ function ProviderCard({
           onClick={onDelete}
           className="flex items-center gap-1 rounded-md border border-danger/60 px-2 py-1 text-[11px] font-medium text-danger hover:bg-danger hover:text-white"
         >
-          <Trash2 size={12} /> Remove
+          <Trash2 size={12} /> {t("common.remove")}
         </button>
       </div>
 
       {!collapsed && (
         <div className="space-y-4 p-3">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <Field label="API">
+            <Field label={t("models.field.api")}>
               <select
                 value={provider.api ?? ""}
                 onChange={(e) => onChange({ api: e.target.value })}
                 className="w-full rounded border border-border-default bg-bg-base px-2 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
               >
-                <option value="">(unset)</option>
+                <option value="">{t("models.unset")}</option>
                 {API_OPTIONS.map((a) => (
                   <option key={a} value={a}>
                     {a}
@@ -506,15 +506,15 @@ function ProviderCard({
                 )}
               </select>
             </Field>
-            <Field label="Group">
+            <Field label={t("models.field.group")}>
               <input
                 value={provider.group ?? ""}
                 onChange={(e) => onChange({ group: e.target.value })}
-                placeholder="Cloud / Local"
+                placeholder={t("models.groupPlaceholder")}
                 className="w-full rounded border border-border-default bg-bg-base px-2 py-1.5 text-sm text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
               />
             </Field>
-            <Field label="API key">
+            <Field label={t("models.field.apiKey")}>
               <div className="flex items-center gap-1.5">
                 <input
                   type="password"
@@ -524,8 +524,8 @@ function ProviderCard({
                   }
                   placeholder={
                     provider.hasApiKey && !provider._apiKeyEdited
-                      ? "•••• stored (leave blank to keep)"
-                      : "unset"
+                      ? t("models.apiKeyStored")
+                      : t("models.unset")
                   }
                   className="w-full rounded border border-border-default bg-bg-base px-2 py-1.5 text-sm text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                 />
@@ -539,20 +539,20 @@ function ProviderCard({
                         _apiKeyEdited: true,
                       })
                     }
-                    title="Clear the stored key"
+                    title={t("models.clearStoredKey")}
                     className="flex-shrink-0 rounded border border-border-default px-2 py-1.5 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default"
                   >
-                    Clear
+                    {t("common.clear")}
                   </button>
                 )}
               </div>
             </Field>
           </div>
-          <Field label="Base URL">
+          <Field label={t("models.field.baseUrl")}>
             <input
               value={provider.baseUrl ?? ""}
               onChange={(e) => onChange({ baseUrl: e.target.value })}
-              placeholder="https://… (optional; supports ${VAR})"
+              placeholder={t("models.baseUrlPlaceholder")}
               className="w-full rounded border border-border-default bg-bg-base px-2 py-1.5 text-sm text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
             />
           </Field>
@@ -560,7 +560,7 @@ function ProviderCard({
           {/* Models */}
           <div>
             <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
-              Models
+              {t("models.title")}
             </div>
             <div className="space-y-2">
               {models.map((m, idx) => {
@@ -574,13 +574,13 @@ function ProviderCard({
                   <input
                     value={m.id}
                     onChange={(e) => setModel(idx, { id: e.target.value })}
-                    placeholder="model-id"
+                    placeholder={t("models.modelIdPlaceholder")}
                     className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                   />
                   <input
                     value={m.name ?? ""}
                     onChange={(e) => setModel(idx, { name: e.target.value })}
-                    placeholder="Display name"
+                    placeholder={t("models.displayNamePlaceholder")}
                     className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                   />
                   <select
@@ -594,7 +594,7 @@ function ProviderCard({
                       })
                     }
                     className="col-span-2 rounded border border-border-default bg-bg-base px-1 py-1 text-[12px] text-fg-default focus:border-link focus:outline-none"
-                    title="Model kind"
+                    title={t("models.modelKind")}
                   >
                     <option value="chat">chat</option>
                     <option value="embedding">embedding</option>
@@ -610,9 +610,9 @@ function ProviderCard({
                             : undefined,
                         })
                       }
-                      placeholder="dim"
+                      placeholder={t("models.dimPlaceholder")}
                       inputMode="numeric"
-                      title="Embedding dimensions (optional)"
+                      title={t("models.dimTitle")}
                       className="col-span-3 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                     />
                   ) : (
@@ -626,7 +626,7 @@ function ProviderCard({
                               : undefined,
                           })
                         }
-                        placeholder="ctx"
+                        placeholder={t("models.ctxPlaceholder")}
                         inputMode="numeric"
                         className="col-span-1 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                       />
@@ -638,7 +638,7 @@ function ProviderCard({
                             setModel(idx, { reasoning: e.target.checked })
                           }
                         />
-                        reason
+                        {t("models.reason")}
                       </label>
                     </>
                   )}
@@ -646,7 +646,7 @@ function ProviderCard({
                     type="button"
                     onClick={() => delModel(idx)}
                     className="col-span-1 flex justify-center rounded p-1 text-danger hover:bg-danger hover:text-white"
-                    aria-label="Remove model"
+                    aria-label={t("models.removeModel")}
                   >
                     <Trash2 size={13} />
                   </button>
@@ -655,7 +655,7 @@ function ProviderCard({
               })}
               {models.length === 0 && (
                 <div className="rounded border border-dashed border-border-subtle px-3 py-3 text-center text-[11px] text-fg-fainter">
-                  No models. Add one below.
+                  {t("models.noModels")}
                 </div>
               )}
             </div>
@@ -664,7 +664,7 @@ function ProviderCard({
               onClick={addModel}
               className="mt-2 flex items-center gap-1 rounded border border-dashed border-border-default px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default"
             >
-              <Plus size={12} /> Add model
+              <Plus size={12} /> {t("models.addModel")}
             </button>
           </div>
         </div>

@@ -27,6 +27,7 @@ import {
   type PluginListEntry,
 } from "../lib/api";
 import { usePluginStore } from "../stores/plugin-store";
+import { useT } from "../hooks/useT";
 
 /**
  * Wrapper that lets a plugin's own admin page fold in this same
@@ -58,6 +59,7 @@ export function PluginConfigFormById({
 }
 
 export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
+  const tCfg = useT();
   const setPlugins = usePluginStore((s) => s.setPlugins);
   const fields = plugin.configSchema?.fields ?? [];
 
@@ -104,7 +106,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
   if (fields.length === 0) {
     return (
       <p className="text-[12px] text-fg-faint">
-        This plugin has no user-editable configuration.
+        {tCfg("plugin.config.empty")}
       </p>
     );
   }
@@ -176,7 +178,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
       <div className="flex items-center gap-2 border-t border-border-subtle pt-3">
         {savedAt && !dirty && (
           <span className="inline-flex items-center gap-1 text-[11px] text-success">
-            <CheckCircle2 size={12} /> Saved
+            <CheckCircle2 size={12} /> {tCfg("common.saved")}
           </span>
         )}
         <button
@@ -185,7 +187,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
           disabled={!dirty || busy}
           className="ml-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Reset
+          {tCfg("common.reset")}
         </button>
         <button
           type="button"
@@ -193,7 +195,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
           disabled={!dirty || busy}
           className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? <Loader2 className="inline h-3 w-3 animate-spin" /> : "Save"}
+          {busy ? <Loader2 className="inline h-3 w-3 animate-spin" /> : tCfg("common.save")}
         </button>
       </div>
     </div>
@@ -322,6 +324,7 @@ function ConfigFieldRow({
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
+  const tRow = useT();
   if (field.kind === "boolean") {
     const checked = value === true;
     return (
@@ -437,7 +440,7 @@ function ConfigFieldRow({
             value={stringValue}
             placeholder={
               isSet
-                ? "••• stored — type a new value to replace, or click Clear"
+                ? tRow("plugin.config.secret.placeholderSet")
                 : (field.placeholder ?? "")
             }
             autoComplete="new-password"
@@ -451,7 +454,7 @@ function ConfigFieldRow({
               className="shrink-0 rounded border border-border-default bg-bg-elevated px-2 py-1 text-[11px] text-fg-muted hover:border-rose-700 hover:text-danger"
               onClick={() => onChange({ __secret: true, clear: true })}
             >
-              Clear
+              {tRow("common.clear")}
             </button>
           )}
         </div>

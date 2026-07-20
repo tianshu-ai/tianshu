@@ -28,6 +28,7 @@
 import { useState } from "react";
 import { Code, Eye } from "lucide-react";
 import { CodeBlock } from "./CodeBlock.js";
+import { useT } from "../../hooks/useT";
 
 export interface HtmlPreviewProps {
   /** HTML source. */
@@ -43,6 +44,7 @@ export function HtmlPreview({
   className = "",
   initialMode = "render",
 }: HtmlPreviewProps) {
+  const tHtml = useT();
   const [mode, setMode] = useState<"render" | "source">(initialMode);
 
   return (
@@ -67,7 +69,7 @@ export function HtmlPreview({
           // null origin so it can't reach tianshu cookies.
           sandbox="allow-scripts allow-popups allow-forms allow-modals"
           className="min-h-0 w-full flex-1 border-0 bg-white"
-          title="HTML preview"
+          title={tHtml("preview.html.iframeTitle")}
         />
       ) : (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -85,6 +87,7 @@ function ModeToggle({
   mode: "render" | "source";
   onChange: (m: "render" | "source") => void;
 }) {
+  const t = useT();
   return (
     <div className="inline-flex rounded-md border border-border-subtle bg-bg-elevated/60 p-0.5 text-[11px] text-fg-muted">
       <button
@@ -95,10 +98,10 @@ function ModeToggle({
             ? "bg-bg-hover text-fg-default"
             : "hover:bg-bg-hover/60 hover:text-fg-default"
         }`}
-        title="Live preview"
+        title={t("preview.tooltip.livePreview")}
       >
         <Eye size={12} />
-        <span>Render</span>
+        <span>{t("preview.mode.render")}</span>
       </button>
       <button
         type="button"
@@ -108,10 +111,10 @@ function ModeToggle({
             ? "bg-bg-hover text-fg-default"
             : "hover:bg-bg-hover/60 hover:text-fg-default"
         }`}
-        title="View source"
+        title={t("preview.tooltip.viewSource")}
       >
         <Code size={12} />
-        <span>Source</span>
+        <span>{t("preview.mode.source")}</span>
       </button>
     </div>
   );

@@ -14,6 +14,7 @@
 import { useState } from "react";
 import { Code, Eye } from "lucide-react";
 import { CodeBlock } from "./CodeBlock.js";
+import { useT } from "../../hooks/useT";
 
 export interface ImagePreviewProps {
   /** URL the <img> renders against. Required for all image
@@ -86,6 +87,7 @@ function ModeToggle({
   mode: "render" | "source";
   onChange: (m: "render" | "source") => void;
 }) {
+  const t = useT();
   return (
     <div className="inline-flex rounded-md border border-border-subtle bg-bg-elevated/60 p-0.5 text-[11px] text-fg-muted">
       <button
@@ -96,10 +98,10 @@ function ModeToggle({
             ? "bg-bg-hover text-fg-default"
             : "hover:bg-bg-hover/60 hover:text-fg-default"
         }`}
-        title="Render"
+        title={t("preview.mode.render")}
       >
         <Eye size={12} />
-        <span>Render</span>
+        <span>{t("preview.mode.render")}</span>
       </button>
       <button
         type="button"
@@ -109,10 +111,10 @@ function ModeToggle({
             ? "bg-bg-hover text-fg-default"
             : "hover:bg-bg-hover/60 hover:text-fg-default"
         }`}
-        title="View source"
+        title={t("preview.tooltip.viewSource")}
       >
         <Code size={12} />
-        <span>Source</span>
+        <span>{t("preview.mode.source")}</span>
       </button>
     </div>
   );
