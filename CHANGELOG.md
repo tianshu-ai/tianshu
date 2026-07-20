@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.7.0](https://github.com/tianshu-ai/tianshu/compare/v0.6.0...v0.7.0) (2026-07-20)
+
+
+### Features
+
+* **plugin-i18n:** plugin-provided translations loaded by the host (+ workboard reference) ([#324](https://github.com/tianshu-ai/tianshu/issues/324)) ([fe53266](https://github.com/tianshu-ai/tianshu/commit/fe532667b44dbe77383e885f79d563ddb729dec9))
+* **web/i18n:** full Simplified-Chinese localization of the host web UI ([#323](https://github.com/tianshu-ai/tianshu/issues/323)) ([70e4e63](https://github.com/tianshu-ai/tianshu/commit/70e4e632040fce99d863bfedae716ab5eefd73d6))
+
 ## [0.6.0](https://github.com/tianshu-ai/tianshu/compare/v0.5.8...v0.6.0) (2026-07-19)
 
 
