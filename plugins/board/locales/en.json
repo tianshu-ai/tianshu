@@ -1,0 +1,9 @@
+{
+  "manifest.topBarButtons.toggle": "Boards",
+  "manifest.rightPanels.main": "Boards",
+
+  "panel.noBoards": "No boards",
+  "panel.refresh": "Refresh",
+  "panel.loading": "Loading…",
+  "panel.addHint": "Add one at board/<name>/index.html"
+}

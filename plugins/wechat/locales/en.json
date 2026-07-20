@@ -1,0 +1,50 @@
+{
+  "manifest.sidebarSections.sessions": "WeChat",
+  "manifest.adminPages.main": "WeChat",
+
+  "status.running": "Connected",
+  "status.starting": "Starting",
+  "status.idle": "Idle",
+  "status.stopped": "Stopped",
+  "status.error": "Error",
+
+  "add.title": "Add WeChat account",
+  "add.chooseModel": "Choose which model this WeChat account routes to:",
+  "add.noModels": "(no models registered)",
+  "add.default": " (default)",
+  "add.continue": "Continue → Scan QR",
+  "add.changeLater": "You can change the model later by re-scanning.",
+  "add.requestingQr": "Requesting QR code…",
+  "add.scanToAuthorise": "Scan with WeChat to authorise",
+  "add.scanSteps": "Open WeChat → Scan → Confirm",
+  "add.waitingForScan": "waiting for scan…",
+  "add.connected": "Connected",
+  "add.defaultAccountName": "WeChat account",
+  "add.loginFailed": "Login failed",
+
+  "qr.renderFailed": "QR render failed: {error}",
+  "qr.ariaLabel": "WeChat login QR",
+
+  "page.title": "WeChat",
+  "page.subtitle": "Connect your WeChat so direct messages route to your agent.",
+  "page.refresh": "Refresh",
+  "page.loading": "Loading…",
+  "page.deleteConfirm": "Disconnect this WeChat account from tianshu? Existing chat history with this account will be deleted too.",
+
+  "page.empty.title": "No WeChat connected",
+  "page.empty.desc": "Scan a QR with the WeChat app to start routing your direct messages through tianshu.",
+  "page.empty.connect": "Connect WeChat",
+
+  "page.bound.hint": "One account connected. Re-scan to switch model or refresh the token.",
+  "page.bound.rescan": "Re-scan",
+  "page.bound.defaultAccountName": "WeChat account",
+  "page.bound.modelTitle": "Model this binding routes inbound DMs to",
+  "page.bound.boundOn": "· bound {date}",
+  "page.bound.disconnect": "Disconnect",
+
+  "sidebar.untitled": "(untitled)",
+  "sidebar.dm": "DM",
+  "sidebar.group": "群",
+  "sidebar.active": "active",
+  "sidebar.wechat": "wechat"
+}

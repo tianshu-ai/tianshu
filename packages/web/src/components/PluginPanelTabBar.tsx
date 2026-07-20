@@ -8,8 +8,12 @@
 // this component is purely presentational.
 
 import { Puzzle, X } from "lucide-react";
+import { useSyncExternalStore } from "react";
 import { ICONS_BY_NAME } from "../lib/plugin-icons";
 import { usePluginStore } from "../stores/plugin-store";
+import { useT } from "../hooks/useT";
+import { getLocale, subscribeLocale } from "../lib/i18n";
+import { manifestLabelFor } from "../lib/plugin-manifest-labels";
 
 interface ContributesTopBarButton {
   id: string;
@@ -25,9 +29,13 @@ interface ContributesShape {
 }
 
 export default function PluginPanelTabBar() {
+  const t = useT();
   const plugins = usePluginStore((s) => s.plugins);
   const openPanel = usePluginStore((s) => s.openPanel);
   const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
+  // Subscribe once so both the tab labels AND the panel title
+  // (rendered when a tab is active) re-render on locale flip.
+  const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
 
   if (!plugins) return null;
 
@@ -56,7 +64,17 @@ export default function PluginPanelTabBar() {
         {tabs.map((tab) => {
           const Icon = ICONS_BY_NAME[tab.icon] ?? Puzzle;
           const active = tab.panelId !== null && tab.panelId === openPanel;
-          const label = tab.tooltip ?? tab.pluginId;
+          // Localize the tab label. Tabs correspond 1:1 with a
+          // topBarButton, so they share that button's tooltip key
+          // (`plugin.<id>.manifest.topBarButtons.<contribId>`) —
+          // the plugin only writes one translation per button.
+          const label = manifestLabelFor(
+            locale,
+            tab.pluginId,
+            "topBarButtons",
+            tab.id,
+            tab.tooltip ?? tab.pluginId,
+          );
           return (
             <button
               key={`${tab.pluginId}.${tab.id}`}
@@ -85,8 +103,8 @@ export default function PluginPanelTabBar() {
       <button
         type="button"
         onClick={() => setOpenPanel(null)}
-        title="Close panel"
-        aria-label="Close panel"
+        title={t("panel.tab.close")}
+        aria-label={t("panel.tab.close")}
         className="ml-1 rounded-md p-1 text-fg-faint hover:bg-bg-raised/60 hover:text-fg-muted"
       >
         <X size={16} />
