@@ -9,5 +9,58 @@
   "workers.empty": "No workers running. Toggle echo on under Settings → Plugins → Workboard.",
   "workers.status.busy": "busy",
   "workers.status.idle": "idle",
-  "workers.rowTitle": "Agent: {name}\nWorker type: {kind}"
+  "workers.rowTitle": "Agent: {name}\nWorker type: {kind}",
+
+  "agents.banner.title": "Read-only listing — edit on disk",
+  "agents.banner.line1": "Worker config lives at ",
+  "agents.banner.line2": ". Each worker is a directory with ",
+  "agents.banner.line3": " and an optional ",
+  "agents.banner.line4": " / ",
+  "agents.banner.line5": ". Edit the files directly, or ask the chat agent to do it via ",
+  "agents.banner.line6": ". Pool picks up changes on next activate; a fs watcher follow-up will make this live.",
+
+  "agents.heading": "Worker agents",
+  "agents.description": "Inventory the workboard pool currently sees. Filesystem rows shadow same-slug DB rows; legacy DB rows still present here haven't been edited or aren't yet picked up by the merger.",
+
+  "agents.actions.configure": "Configure",
+  "agents.actions.configureTitle": "Edit pool concurrency caps and worker type defaults",
+  "agents.actions.reload": "Reload",
+  "agents.actions.reloadTitle": "Reload",
+
+  "agents.table.state": "State",
+  "agents.table.name": "Name",
+  "agents.table.kind": "Kind",
+  "agents.table.source": "Source",
+  "agents.table.model": "Model",
+  "agents.table.slug": "Slug",
+
+  "agents.loading": "Loading…",
+  "agents.empty": "No worker agents.",
+
+  "agents.toggle.enabledTitle": "Enabled — click to disable. The pool will stop claiming new tasks for this agent.",
+  "agents.toggle.disabledTitle": "Disabled — click to enable. The pool will resume claiming tasks.",
+  "agents.toggle.enableSr": "Enable {name}",
+  "agents.toggle.disableSr": "Disable {name}",
+
+  "agents.source.builtin": "builtin",
+  "agents.source.user": "user",
+
+  "agents.detail.slot": "slot:",
+  "agents.detail.model": "model:",
+  "agents.detail.tools": "Allowed tools",
+  "agents.detail.skills": "Allowed skills",
+  "agents.detail.systemPrompt": "System prompt (SOUL.md)",
+  "agents.detail.systemPromptEmpty": "(none — worker uses the kind default)",
+
+  "agents.badge.explicit": "explicit",
+  "agents.badge.explicitTitle": "agent.json declared this list explicitly",
+  "agents.badge.effective": "effective (no restriction)",
+  "agents.badge.effectiveTitle": "agent.json has no allow-list — worker sees every entry below",
+
+  "agents.list.unknown": "(catalog not loaded — reload the page)",
+  "agents.list.empty": "(empty list — worker can call nothing)",
+
+  "agents.configDialog.title": "Workboard configuration",
+  "agents.configDialog.subtitle": "Pool caps apply on the next run acquire. Worker type defaults (echo / llm) re-activate the plugin so changes take effect on the next request.",
+  "agents.configDialog.close": "Close configure dialog"
 }

@@ -9,5 +9,58 @@
   "workers.empty": "暂无运行中的工作者。请前往 设置 → 插件 → Workboard 启用 echo。",
   "workers.status.busy": "忙碌",
   "workers.status.idle": "空闲",
-  "workers.rowTitle": "代理：{name}\n工作者类型：{kind}"
+  "workers.rowTitle": "代理：{name}\n工作者类型：{kind}",
+
+  "agents.banner.title": "只读展示 — 请在磁盘上编辑",
+  "agents.banner.line1": "工作者配置位于 ",
+  "agents.banner.line2": "。每个工作者是一个目录，包含 ",
+  "agents.banner.line3": "，以及可选的 ",
+  "agents.banner.line4": " / ",
+  "agents.banner.line5": "。可以直接编辑这些文件，也可以让聊天代理通过 ",
+  "agents.banner.line6": " 修改。工作池会在下次激活时应用变更；后续会加入文件监听以实时生效。",
+
+  "agents.heading": "工作者代理",
+  "agents.description": "展示当前 Workboard 工作池所看到的代理清单。文件系统条目会覆盖同名 slug 的数据库条目；仍显示在这里的旧数据库条目要么尚未被编辑，要么合并器还没处理。",
+
+  "agents.actions.configure": "配置",
+  "agents.actions.configureTitle": "编辑工作池并发上限和工作者类型默认值",
+  "agents.actions.reload": "刷新",
+  "agents.actions.reloadTitle": "刷新",
+
+  "agents.table.state": "状态",
+  "agents.table.name": "名称",
+  "agents.table.kind": "类型",
+  "agents.table.source": "来源",
+  "agents.table.model": "模型",
+  "agents.table.slug": "Slug",
+
+  "agents.loading": "加载中…",
+  "agents.empty": "暂无工作者代理。",
+
+  "agents.toggle.enabledTitle": "已启用 — 点击可停用。工作池将停止为该代理领取新任务。",
+  "agents.toggle.disabledTitle": "已停用 — 点击可启用。工作池将恢复为该代理领取任务。",
+  "agents.toggle.enableSr": "启用 {name}",
+  "agents.toggle.disableSr": "停用 {name}",
+
+  "agents.source.builtin": "内置",
+  "agents.source.user": "用户",
+
+  "agents.detail.slot": "配置位置：",
+  "agents.detail.model": "模型：",
+  "agents.detail.tools": "可用工具",
+  "agents.detail.skills": "可用技能",
+  "agents.detail.systemPrompt": "系统提示词（SOUL.md）",
+  "agents.detail.systemPromptEmpty": "（无 — 工作者将使用该类型的默认提示词）",
+
+  "agents.badge.explicit": "显式",
+  "agents.badge.explicitTitle": "agent.json 中显式声明了此列表",
+  "agents.badge.effective": "生效（无限制）",
+  "agents.badge.effectiveTitle": "agent.json 未设置白名单 — 工作者可访问下方所有条目",
+
+  "agents.list.unknown": "（清单未加载 — 请刷新页面）",
+  "agents.list.empty": "（列表为空 — 工作者无法调用任何项）",
+
+  "agents.configDialog.title": "Workboard 配置",
+  "agents.configDialog.subtitle": "工作池上限将在下次获取任务时生效。工作者类型默认值（echo / llm）会重新激活插件，以便在下次请求时生效。",
+  "agents.configDialog.close": "关闭配置对话框"
 }
