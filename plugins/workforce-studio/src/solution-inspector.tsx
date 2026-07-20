@@ -14,24 +14,29 @@ import type {
   SolutionEdits,
 } from "./solution-state.js";
 
+/** Translator function returned by usePluginT — passed to helpers. */
+type Translator = (key: string, params?: Record<string, string | number>) => string;
+
 export function SolutionInspector({
   selected,
   detail,
   edits,
+  t,
 }: {
   selected: string;
   detail: SolutionDetail;
   edits: SolutionEdits;
+  t: Translator;
 }): ReactElement {
   return (
     <div className="flex flex-col">
-      <InspectorSection title="Inspector">
+      <InspectorSection title={t("inspector.title")}>
         <div className="text-xs text-fg-default">
-          {contextBlurb(selected, detail, edits)}
+          {contextBlurb(selected, detail, edits, t)}
         </div>
       </InspectorSection>
 
-      <InspectorSection title="Diff vs reality">
+      <InspectorSection title={t("inspector.diff.title")}>
         {edits.diff === null ? (
           <button
             type="button"
@@ -39,11 +44,11 @@ export function SolutionInspector({
             disabled={edits.busy}
             className="rounded border border-border-subtle px-2 py-1 text-[11px] hover:bg-bg-raised disabled:opacity-50"
           >
-            Compute diff
+            {t("inspector.diff.compute")}
           </button>
         ) : edits.diff.entries.length === 0 ? (
           <div className="text-[11px] text-fg-muted">
-            No differences — solution matches reality.
+            {t("inspector.diff.none")}
           </div>
         ) : (
           <ul className="flex flex-col gap-0.5">
@@ -61,7 +66,11 @@ export function SolutionInspector({
                         : "bg-warning-fg/15 text-warning-fg"
                   }`}
                 >
-                  {e.op === "add" ? "add" : e.op === "remove" ? "rem" : "chg"}
+                  {e.op === "add"
+                    ? t("inspector.diff.op.add")
+                    : e.op === "remove"
+                      ? t("inspector.diff.op.remove")
+                      : t("inspector.diff.op.change")}
                 </span>
                 <code className="truncate">{e.path}</code>
               </li>
@@ -70,9 +79,9 @@ export function SolutionInspector({
         )}
       </InspectorSection>
 
-      <InspectorSection title="Rendered preview">
+      <InspectorSection title={t("inspector.rendered.title")}>
         <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-2.5 font-mono text-[11px] leading-relaxed text-fg-muted">
-          {renderedPreview(selected, detail, edits) || "—"}
+          {renderedPreview(selected, detail, edits) || t("inspector.rendered.empty")}
         </pre>
       </InspectorSection>
     </div>
@@ -102,38 +111,58 @@ function contextBlurb(
   selected: string,
   detail: SolutionDetail,
   edits: SolutionEdits,
+  t: Translator,
 ): string {
   if (selected === "plugins") {
-    return `Plugin set drives the available tools (${detail.availableTools.length}), skills (${detail.availableSkills.length}) and prompt fragments below. ${edits.pluginsEnabled.size} of ${detail.availablePlugins.length} enabled.`;
+    return t("inspector.blurb.plugins", {
+      tools: detail.availableTools.length,
+      skills: detail.availableSkills.length,
+      enabled: edits.pluginsEnabled.size,
+      total: detail.availablePlugins.length,
+    });
   }
   if (selected === "root" || selected === "main") {
-    return `Main agent: ${detail.mainBlocks.length} prompt blocks, ${detail.availableTools.length} tools, ${detail.availableSkills.length} skills, ${detail.spec.workers.length} workers.`;
+    return t("inspector.blurb.main", {
+      blocks: detail.mainBlocks.length,
+      tools: detail.availableTools.length,
+      skills: detail.availableSkills.length,
+      workers: detail.spec.workers.length,
+    });
   }
   if (selected === "main:tenant-prompt") {
-    return "The tenant prompt is the editable body of the main-agent system prompt for this solution.";
+    return t("inspector.blurb.tenantPrompt");
   }
   if (selected.startsWith("main:override:")) {
     const key = selected.slice("main:override:".length) as OverrideKey;
     const overridden = edits.overrides[key] !== null;
     return overridden
-      ? "Overridden for this solution. The host default is replaced by your text below."
-      : "Using the host default. Override it to customise this block for the solution.";
+      ? t("inspector.blurb.override.on")
+      : t("inspector.blurb.override.off");
   }
   if (selected.startsWith("main:fragment:")) {
-    return "A custom prompt fragment appended to the main-agent prompt.";
+    return t("inspector.blurb.fragment");
   }
   if (selected === "main:tools") {
-    return `${detail.availableTools.length} tools available · ${edits.toolsDeny.size} excluded.`;
+    return t("inspector.blurb.mainTools", {
+      tools: detail.availableTools.length,
+      excluded: edits.toolsDeny.size,
+    });
   }
   if (selected === "main:skills") {
-    return `${detail.availableSkills.length} skills available · ${edits.skillsDeny.size} excluded.`;
+    return t("inspector.blurb.mainSkills", {
+      skills: detail.availableSkills.length,
+      excluded: edits.skillsDeny.size,
+    });
   }
   if (selected === "workers") {
     const excluded = detail.spec.workers.filter((w) => {
       const e = edits.workerEdits[w.slug];
       return e ? !e.enabled : !w.enabled;
     }).length;
-    return `${detail.spec.workers.length} workers · ${excluded} excluded.`;
+    return t("inspector.blurb.workers", {
+      workers: detail.spec.workers.length,
+      excluded,
+    });
   }
   if (selected.startsWith("worker:")) {
     const rest = selected.slice("worker:".length);
@@ -142,11 +171,17 @@ function contextBlurb(
     const e = edits.workerEdits[slug];
     if (view && e) {
       const excluded = !e.enabled;
-      return `${e.name}${excluded ? " (excluded)" : ""}: ${view.availableTools.length} tools, ${view.availableSkills.length} skills. ${e.toolsDeny.size + e.skillsDeny.size} excluded.`;
+      return t("inspector.blurb.worker", {
+        name: e.name,
+        excludedTag: excluded ? t("inspector.blurb.worker.excludedTag") : "",
+        tools: view.availableTools.length,
+        skills: view.availableSkills.length,
+        excluded: e.toolsDeny.size + e.skillsDeny.size,
+      });
     }
-    return "Worker node.";
+    return t("inspector.blurb.workerNode");
   }
-  return "Select a node to inspect.";
+  return t("inspector.blurb.select");
 }
 
 // ─── rendered preview ───────────────────────────────────────────

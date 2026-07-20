@@ -21,7 +21,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent, useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, useUiPrimitives, useLocale, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/cron";
 
@@ -88,7 +88,20 @@ function cronTimeLabel(expr: string): string {
   return hour ? `${hour}:${min}` : `:${min}`;
 }
 
-const SHORT_DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const SHORT_DAY_KEYS = [
+  "weekday.sun",
+  "weekday.mon",
+  "weekday.tue",
+  "weekday.wed",
+  "weekday.thu",
+  "weekday.fri",
+  "weekday.sat",
+] as const;
+
+/** Map the host locale to a BCP-47 tag for Intl date formatting. */
+function dateLocaleTag(locale: string): string {
+  return locale === "zh" ? "zh-CN" : "en-US";
+}
 
 function sameDay(a: Date, y: number, m: number, d: number): boolean {
   return a.getFullYear() === y && a.getMonth() === m && a.getDate() === d;
@@ -98,6 +111,9 @@ function sameDay(a: Date, y: number, m: number, d: number): boolean {
 
 function CalendarPanel(_props: PanelProps) {
   const { Modal } = useUiPrimitives();
+  const { locale } = useLocale();
+  const t = usePluginT("cron");
+  const dateLoc = dateLocaleTag(locale);
   const [jobs, setJobs] = useState<ScheduledJob[]>([]);
   const [selected, setSelected] = useState(() => new Date());
   const [month, setMonth] = useState(() => {
@@ -225,12 +241,12 @@ function CalendarPanel(_props: PanelProps) {
           <button
             onClick={() => setMonth(new Date(y, m - 1, 1))}
             className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"
-            aria-label="Previous month"
+            aria-label={t("aria.prevMonth")}
           >
             <ChevronLeft size={14} />
           </button>
           <span className="text-xs font-medium text-fg-muted">
-            {new Date(y, m, 1).toLocaleString("en-US", {
+            {new Date(y, m, 1).toLocaleString(dateLoc, {
               month: "long",
               year: "numeric",
             })}
@@ -238,16 +254,16 @@ function CalendarPanel(_props: PanelProps) {
           <button
             onClick={() => setMonth(new Date(y, m + 1, 1))}
             className="p-1 rounded hover:bg-bg-hover text-fg-faint hover:text-fg-default"
-            aria-label="Next month"
+            aria-label={t("aria.nextMonth")}
           >
             <ChevronRight size={14} />
           </button>
         </div>
 
         <div className="grid grid-cols-7 mb-0.5">
-          {SHORT_DAYS.map((d) => (
-            <div key={d} className="text-center text-[10px] text-fg-fainter py-0.5">
-              {d}
+          {SHORT_DAY_KEYS.map((k) => (
+            <div key={k} className="text-center text-[10px] text-fg-fainter py-0.5">
+              {t(k)}
             </div>
           ))}
         </div>
@@ -350,7 +366,7 @@ function CalendarPanel(_props: PanelProps) {
       <div className="flex-shrink-0 flex items-center justify-between px-3 py-2.5 border-t border-border-subtle self-stretch">
         <div>
           <div className="text-[13px] font-semibold text-fg-default">
-            {selected.toLocaleDateString("en-US", {
+            {selected.toLocaleDateString(dateLoc, {
               weekday: "long",
               month: "short",
               day: "numeric",
@@ -358,8 +374,10 @@ function CalendarPanel(_props: PanelProps) {
           </div>
           <div className="text-[10px] text-fg-faint mt-0.5">
             {selectedJobs.length > 0
-              ? `${selectedJobs.length} job${selectedJobs.length > 1 ? "s" : ""}`
-              : "No jobs"}
+              ? selectedJobs.length > 1
+                ? t("agenda.jobCountMany", { n: selectedJobs.length })
+                : t("agenda.jobCountOne", { n: selectedJobs.length })
+              : t("agenda.noJobs")}
           </div>
         </div>
         {!sameDay(today, selected.getFullYear(), selected.getMonth(), selected.getDate()) && (
@@ -367,7 +385,7 @@ function CalendarPanel(_props: PanelProps) {
             onClick={goToday}
             className="text-[11px] text-fg-muted hover:text-accent px-2.5 py-1 rounded-md ring-1 ring-inset ring-border-default hover:ring-accent/50 transition-colors"
           >
-            Today
+            {t("agenda.today")}
           </button>
         )}
       </div>
@@ -380,7 +398,7 @@ function CalendarPanel(_props: PanelProps) {
         {selectedJobs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-fg-fainter">
             <Calendar size={28} className="mb-2 opacity-30" />
-            <span className="text-xs">Nothing scheduled</span>
+            <span className="text-xs">{t("agenda.nothingScheduled")}</span>
           </div>
         ) : (
           <div className="py-2">
@@ -389,7 +407,7 @@ function CalendarPanel(_props: PanelProps) {
                 j.scheduleType === "cron" && j.cronExpr
                   ? cronTimeLabel(j.cronExpr)
                   : j.runAt
-                    ? new Date(j.runAt).toLocaleTimeString("en-US", {
+                    ? new Date(j.runAt).toLocaleTimeString(dateLoc, {
                         hour: "2-digit",
                         minute: "2-digit",
                       })
@@ -423,14 +441,14 @@ function CalendarPanel(_props: PanelProps) {
                     </div>
                     <div className="text-[10px] text-fg-faint flex items-center gap-1 mt-0.5 flex-wrap">
                       {j.scheduleType === "cron" ? <Repeat size={9} /> : <Clock size={9} />}
-                      <span>{j.scheduleType === "cron" ? "Recurring" : "One-time"}</span>
+                      <span>{j.scheduleType === "cron" ? t("job.recurring") : t("job.oneTime")}</span>
                       <span className="text-fg-fainter">·</span>
                       <span
                         className={
                           j.actionType === "task" ? "text-amber-500" : "text-accent"
                         }
                       >
-                        {j.actionType === "task" ? "Task" : "Message"}
+                        {j.actionType === "task" ? t("job.task") : t("job.message")}
                       </span>
                       {j.tz && (
                         <>
@@ -441,13 +459,13 @@ function CalendarPanel(_props: PanelProps) {
                       {!j.enabled && (
                         <>
                           <span className="text-fg-fainter">·</span>
-                          <span>⏸️ disabled</span>
+                          <span>{t("job.disabled")}</span>
                         </>
                       )}
                       {isPast(j) && (
                         <>
                           <span className="text-fg-fainter">·</span>
-                          <span>executed</span>
+                          <span>{t("job.executed")}</span>
                         </>
                       )}
                     </div>
@@ -458,7 +476,7 @@ function CalendarPanel(_props: PanelProps) {
                   <button
                     onClick={() => setConfirmJob(j)}
                     className="opacity-0 group-hover:opacity-100 text-fg-fainter hover:text-danger p-1 rounded flex-shrink-0"
-                    aria-label="Delete job"
+                    aria-label={t("aria.deleteJob")}
                   >
                     <Trash2 size={12} />
                   </button>
@@ -473,27 +491,27 @@ function CalendarPanel(_props: PanelProps) {
       <Modal
         isOpen={confirmJob !== null}
         onClose={() => setConfirmJob(null)}
-        title="Delete scheduled job?"
+        title={t("delete.title")}
         size="sm"
         allowMaximize={false}
       >
         <div className="flex flex-col gap-4 p-1">
           <p className="text-sm text-fg-muted">
-            This will permanently remove{" "}
+            {t("delete.confirmPre")}
             <span className="font-medium text-fg-default">
               “{confirmJob?.title}”
             </span>
             {confirmJob?.scheduleType === "cron"
-              ? " and stop all future runs."
-              : "."}{" "}
-            This can’t be undone.
+              ? t("delete.confirmCron")
+              : t("delete.confirmOnce")}
+            {t("delete.confirmSuffix")}
           </p>
           <div className="flex justify-end gap-2">
             <button
               onClick={() => setConfirmJob(null)}
               className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover transition-colors"
             >
-              Cancel
+              {t("delete.cancel")}
             </button>
             <button
               onClick={() => {
@@ -503,7 +521,7 @@ function CalendarPanel(_props: PanelProps) {
               }}
               className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90 transition-opacity"
             >
-              Delete
+              {t("delete.delete")}
             </button>
           </div>
         </div>

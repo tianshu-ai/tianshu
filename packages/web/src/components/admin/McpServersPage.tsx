@@ -28,6 +28,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
+import { useT } from "../../hooks/useT";
 
 interface ServerEntry {
   source: "plugin" | "user";
@@ -64,6 +65,7 @@ interface ApiResponse {
 }
 
 export default function McpServersPage() {
+  const t = useT();
   const [servers, setServers] = useState<ServerEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -108,12 +110,10 @@ export default function McpServersPage() {
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
             <Server size={18} className="text-brand-400" />
-            MCP Servers
+            {t("mcp.title")}
           </h1>
           <p className="mt-1 text-[12px] text-fg-faint">
-            Model Context Protocol servers visible to this agent. Plugin-contributed
-            servers come from active plugins (read-only here — toggle the plugin to
-            enable/disable). User-configured servers are managed directly below.
+            {t("mcp.description")}
           </p>
         </div>
         {/* flex-shrink-0 + whitespace-nowrap on each button so the
@@ -127,7 +127,7 @@ export default function McpServersPage() {
             className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : undefined} />
-            Refresh
+            {t("common.refresh")}
           </button>
           <button
             type="button"
@@ -135,7 +135,7 @@ export default function McpServersPage() {
             className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500"
           >
             <Plus size={12} />
-            Add server
+            {t("mcp.addServer")}
           </button>
         </div>
       </div>
@@ -191,11 +191,13 @@ function SourceGroup({
   onChanged: () => Promise<void>;
   onError: (err: string) => void;
 }) {
-  const title = source === "plugin" ? "From plugins" : "User-configured";
+  const t = useT();
+  const title =
+    source === "plugin" ? t("mcp.group.plugin.title") : t("mcp.group.user.title");
   const subtitle =
     source === "plugin"
-      ? "Read-only — managed by the contributing plugin."
-      : "Add MCP servers (HTTP) to expand the agent's tool surface.";
+      ? t("mcp.group.plugin.subtitle")
+      : t("mcp.group.user.subtitle");
   return (
     <section>
       <div className="mb-2 flex items-end justify-between">
@@ -226,17 +228,19 @@ function SourceGroup({
 }
 
 function EmptyGroup({ source }: { source: "plugin" | "user" }) {
+  const t = useT();
   if (source === "plugin") {
     return (
       <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-faint">
-        No plugin currently contributes an MCP server.
+        {t("mcp.empty.plugin")}
       </div>
     );
   }
   return (
     <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-faint">
-      No user-configured MCP servers. Click <span className="text-fg-muted">Add server</span>{" "}
-      to point the agent at one (e.g. an MCP server you run locally or remotely).
+      {t("mcp.empty.userBefore")}{" "}
+      <span className="text-fg-muted">{t("mcp.addServer")}</span>{" "}
+      {t("mcp.empty.userAfter")}
     </div>
   );
 }
@@ -252,20 +256,29 @@ function ServerCard({
   onChanged: () => Promise<void>;
   onError: (err: string) => void;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const snap = server.snapshot;
   const tools = snap?.tools ?? [];
   const lastErr = snap?.lastError;
   const endpoint = snap?.endpoint;
-  const lastRefreshAgo = useMemo(() => {
-    if (!snap?.lastRefreshAt) return null;
+  // Inlined (not memoised) so it re-renders when the locale
+  // changes; the calc is cheap enough not to need memoisation.
+  let lastRefreshAgo: string | null = null;
+  if (snap?.lastRefreshAt) {
     const seconds = Math.round((Date.now() - snap.lastRefreshAt) / 1000);
-    if (seconds < 60) return `${seconds}s ago`;
-    const m = Math.round(seconds / 60);
-    if (m < 60) return `${m}m ago`;
-    return `${Math.round(m / 60)}h ago`;
-  }, [snap?.lastRefreshAt]);
+    if (seconds < 60) {
+      lastRefreshAgo = t("mcp.refreshedSecondsAgo", { n: seconds });
+    } else {
+      const m = Math.round(seconds / 60);
+      if (m < 60) {
+        lastRefreshAgo = t("mcp.refreshedMinutesAgo", { n: m });
+      } else {
+        lastRefreshAgo = t("mcp.refreshedHoursAgo", { n: Math.round(m / 60) });
+      }
+    }
+  }
 
   const healthy = server.enabled && !lastErr && tools.length > 0;
   const isUser = server.source === "user";
@@ -307,7 +320,7 @@ function ServerCard({
 
   const onDelete = useCallback(async () => {
     if (!isUser) return;
-    if (!confirm(`Remove MCP server "${server.displayName}"?`)) return;
+    if (!confirm(t("mcp.confirmDelete", { name: server.displayName }))) return;
     setBusy(true);
     try {
       const r = await fetch(`/api/mcp/servers/${encodeURIComponent(server.id)}`, {
@@ -321,7 +334,7 @@ function ServerCard({
     } finally {
       setBusy(false);
     }
-  }, [isUser, server.displayName, server.id, onChanged, onError]);
+  }, [isUser, server.displayName, server.id, onChanged, onError, t]);
 
   return (
     <div className="overflow-hidden rounded-md border border-border-subtle bg-bg-elevated/60">
@@ -330,14 +343,17 @@ function ServerCard({
           type="button"
           onClick={() => setOpen((v) => !v)}
           className="-my-1 -ml-1 mr-2 rounded p-1 text-fg-faint hover:bg-bg-raised/60 hover:text-fg-muted"
-          aria-label={open ? "Collapse" : "Expand"}
+          aria-label={open ? t("mcp.collapse") : t("mcp.expand")}
         >
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             {!server.enabled ? (
-              <span className="h-2 w-2 rounded-full bg-fg-fainter" title="disabled" />
+              <span
+                className="h-2 w-2 rounded-full bg-fg-fainter"
+                title={t("mcp.status.disabled")}
+              />
             ) : healthy ? (
               <CheckCircle2 size={14} className="text-success" />
             ) : (
@@ -351,38 +367,42 @@ function ServerCard({
                 isUser ? "bg-blue-950 text-link" : "bg-bg-raised text-fg-muted"
               }`}
             >
-              {isUser ? "user" : `plugin: ${server.sourceId}`}
+              {isUser
+                ? t("mcp.badge.user")
+                : t("mcp.badge.plugin", { id: server.sourceId })}
             </span>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-fg-faint">
             <span>
-              id <code className="text-fg-muted">{server.id}</code>
+              {t("mcp.meta.id")} <code className="text-fg-muted">{server.id}</code>
             </span>
             {endpoint && (
               <span>
-                endpoint <code className="text-fg-muted">{endpoint}</code>
+                {t("mcp.meta.endpoint")}{" "}
+                <code className="text-fg-muted">{endpoint}</code>
               </span>
             )}
             {snap?.prefix && snap.prefix !== "" && (
               <span>
-                prefix <code className="text-fg-muted">{snap.prefix}</code>
+                {t("mcp.meta.prefix")}{" "}
+                <code className="text-fg-muted">{snap.prefix}</code>
               </span>
             )}
-            {lastRefreshAgo && <span>refreshed {lastRefreshAgo}</span>}
+            {lastRefreshAgo && <span>{lastRefreshAgo}</span>}
             {!server.enabled && (
-              <span className="text-fg-faint">(disabled)</span>
+              <span className="text-fg-faint">{t("mcp.parenDisabled")}</span>
             )}
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
           <span className="rounded-md border border-border-default bg-bg-base px-2 py-1 text-[11px] text-fg-muted">
-            {server.toolCount} tools
+            {t("mcp.toolCount", { n: server.toolCount })}
           </span>
           <button
             type="button"
             onClick={onRefresh}
             disabled={busy}
-            title="Refresh"
+            title={t("common.refresh")}
             className="rounded p-1.5 text-fg-muted hover:bg-bg-raised/60 hover:text-fg-default disabled:opacity-50"
           >
             <RefreshCw size={12} className={busy ? "animate-spin" : undefined} />
@@ -393,7 +413,7 @@ function ServerCard({
                 type="button"
                 onClick={() => onEdit(server.userEntry!)}
                 disabled={busy}
-                title="Edit"
+                title={t("common.edit")}
                 className="rounded p-1.5 text-fg-muted hover:bg-bg-raised/60 hover:text-fg-default disabled:opacity-50"
               >
                 <Pencil size={12} />
@@ -404,13 +424,13 @@ function ServerCard({
                 disabled={busy}
                 className="rounded-md border border-border-default px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
               >
-                {server.enabled ? "Disable" : "Enable"}
+                {server.enabled ? t("common.disable") : t("common.enable")}
               </button>
               <button
                 type="button"
                 onClick={onDelete}
                 disabled={busy}
-                title="Delete"
+                title={t("common.delete")}
                 className="rounded p-1.5 text-danger hover:bg-rose-950/40 disabled:opacity-50"
               >
                 <Trash2 size={12} />
@@ -431,33 +451,36 @@ function ServerCard({
         (tools.length === 0 ? (
           <div className="px-4 py-6 text-center text-[12px] text-fg-faint">
             {endpoint
-              ? "Server is reachable but advertised no tools."
+              ? t("mcp.tools.empty.reachable")
               : !server.enabled
-                ? "Server is disabled."
+                ? t("mcp.tools.empty.disabled")
                 : server.source === "plugin"
-                  ? "Upstream not reachable yet. Plugin MCP servers usually live inside a sandbox that boots on first agent action — try running an exec/browser tool, or click Refresh after the sandbox starts."
-                  : "Endpoint unreachable. Click Refresh to re-probe."}
+                  ? t("mcp.tools.empty.pluginNotReady")
+                  : t("mcp.tools.empty.unreachable")}
           </div>
         ) : (
           <table className="w-full text-[12px]">
             <thead className="border-b border-border-subtle text-left text-[11px] uppercase tracking-wide text-fg-faint">
               <tr>
-                <th className="px-4 py-2 font-medium">Tool name</th>
-                <th className="px-4 py-2 font-medium">Upstream</th>
-                <th className="px-4 py-2 font-medium">Description</th>
+                <th className="px-4 py-2 font-medium">{t("mcp.table.toolName")}</th>
+                <th className="px-4 py-2 font-medium">{t("mcp.table.upstream")}</th>
+                <th className="px-4 py-2 font-medium">{t("mcp.table.description")}</th>
               </tr>
             </thead>
             <tbody>
-              {tools.map((t) => (
-                <tr key={t.toolName} className="border-b border-border-subtle last:border-b-0">
+              {tools.map((tool) => (
+                <tr
+                  key={tool.toolName}
+                  className="border-b border-border-subtle last:border-b-0"
+                >
                   <td className="px-4 py-2 align-top font-mono text-[11.5px] text-fg-default">
-                    {t.toolName}
+                    {tool.toolName}
                   </td>
                   <td className="px-4 py-2 align-top font-mono text-[11.5px] text-fg-faint">
-                    {t.upstream.name}
+                    {tool.upstream.name}
                   </td>
                   <td className="px-4 py-2 align-top text-fg-muted">
-                    {t.upstream.description ?? "—"}
+                    {tool.upstream.description ?? "—"}
                   </td>
                 </tr>
               ))}
@@ -481,6 +504,7 @@ function EditDialog({
   onSaved: () => Promise<void>;
   onError: (err: string) => void;
 }) {
+  const t = useT();
   const [id, setId] = useState(initial?.id ?? "");
   const [displayName, setDisplayName] = useState(initial?.displayName ?? "");
   const [url, setUrl] = useState(initial?.url ?? "");
@@ -494,7 +518,7 @@ function EditDialog({
     e.preventDefault();
     setValidationError(null);
     if (!/^[a-z0-9][a-z0-9-]{0,30}$/.test(id)) {
-      setValidationError("id must be 1-31 chars: lowercase letters, digits, dashes");
+      setValidationError(t("mcp.validation.id"));
       return;
     }
     setBusy(true);
@@ -531,7 +555,9 @@ function EditDialog({
   // form used to carry. Body uses a <form> so submitting still
   // works on Enter inside any input.
   const dialogTitle =
-    mode === "create" ? "Add MCP server" : `Edit ${initial?.displayName ?? id}`;
+    mode === "create"
+      ? t("mcp.dialog.addTitle")
+      : t("mcp.dialog.editTitle", { name: initial?.displayName ?? id });
   return (
     <Modal isOpen onClose={onClose} size="sm" title={dialogTitle}>
       <form
@@ -539,7 +565,7 @@ function EditDialog({
         className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5"
       >
 
-        <Field label="ID" hint="Lowercase letters / digits / dashes; used in URLs and tool prefixes.">
+        <Field label={t("mcp.form.id.label")} hint={t("mcp.form.id.hint")}>
           <input
             type="text"
             value={id}
@@ -551,7 +577,10 @@ function EditDialog({
           />
         </Field>
 
-        <Field label="Display name" hint="Optional; defaults to id.">
+        <Field
+          label={t("mcp.form.displayName.label")}
+          hint={t("mcp.form.displayName.hint")}
+        >
           <input
             type="text"
             value={displayName}
@@ -561,7 +590,7 @@ function EditDialog({
           />
         </Field>
 
-        <Field label="URL" hint="Streamable HTTP MCP endpoint (must include path, e.g. /mcp).">
+        <Field label={t("mcp.form.url.label")} hint={t("mcp.form.url.hint")}>
           <input
             type="url"
             value={url}
@@ -573,8 +602,8 @@ function EditDialog({
         </Field>
 
         <Field
-          label="Tool prefix"
-          hint='Prepended to every reflected tool name. Default: "<id>_". Pass empty to disable.'
+          label={t("mcp.form.prefix.label")}
+          hint={t("mcp.form.prefix.hint")}
         >
           <input
             type="text"
@@ -586,8 +615,8 @@ function EditDialog({
         </Field>
 
         <Field
-          label="Upstream Host header"
-          hint="Optional. Pin the request Host header (most MCP servers validate it; useful behind port-forwards)."
+          label={t("mcp.form.upstreamHost.label")}
+          hint={t("mcp.form.upstreamHost.hint")}
         >
           <input
             type="text"
@@ -605,7 +634,7 @@ function EditDialog({
             onChange={(e) => setEnabled(e.target.checked)}
             className="rounded border-border-default bg-bg-base"
           />
-          Enabled
+          {t("mcp.enabledCheckbox")}
         </label>
 
         {validationError && (
@@ -620,14 +649,18 @@ function EditDialog({
             onClick={onClose}
             className="rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
           <button
             type="submit"
             disabled={busy}
             className="rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500 disabled:opacity-50"
           >
-            {busy ? "Saving…" : mode === "create" ? "Add server" : "Save"}
+            {busy
+              ? t("common.saving")
+              : mode === "create"
+                ? t("mcp.addServer")
+                : t("common.save")}
           </button>
         </div>
       </form>

@@ -1,0 +1,55 @@
+{
+  "manifest.topBarButtons.toggle": "本地桥接",
+  "manifest.rightPanels.main": "本地桥接",
+
+  "cmd.copy": "复制{label}",
+
+  "panel.title": "本地桥接",
+  "panel.refresh": "刷新",
+  "panel.intro.pre": "将你本机上的软件（浏览器、文件、shell）接入天枢。在你的电脑上运行下面的命令，它会启动一个小型本地客户端，拨入并注册其工具。只有 ",
+  "panel.intro.your": "你自己",
+  "panel.intro.post": " 的会话可以使用它们。",
+
+  "panel.steps.copy": "复制下面的命令。",
+  "panel.steps.run": "在你想桥接的机器上打开终端运行它。",
+  "panel.steps.appearPre": "设备会出现在 ",
+  "panel.steps.connectedDevices": "已连接设备",
+  "panel.steps.appearPost": " 中，代理即可使用其工具。",
+
+  "panel.capabilities": "能力",
+  "panel.browser": "浏览器",
+  "panel.browserHint": "控制本地浏览器",
+  "panel.ownChrome": "你自己的 Chrome",
+  "panel.ownChromeHint": "真实 cookie + 指纹，无需下载",
+  "panel.stealth": "隐身浏览器",
+  "panel.stealthHint": "反机器人检测（CloakBrowser）；首次运行约 200MB",
+  "panel.headless": "无头模式",
+  "panel.headlessHint": "无窗口（默认：显示浏览器）",
+  "panel.shell": "Shell",
+  "panel.files": "文件",
+  "panel.comingSoon": "即将推出",
+
+  "panel.step1.title": "第 1 步 · 安装桥接（仅一次）",
+  "panel.step1.installLabel": "安装",
+  "panel.step1.requires": "需要 Node.js。然后从下面两种方式中任选其一。",
+
+  "panel.step2.title": "第 2 步 · 启动它",
+  "panel.step2.optionA": "A · 命令行",
+  "panel.step2.optionAHint": "在终端中运行以下命令（使用你上面的当前选择）：",
+  "panel.step2.runLabel": "运行",
+  "panel.step2.optionB": "B · 菜单栏应用（macOS）",
+  "panel.step2.installAppStep": "1. 安装应用：",
+  "panel.step2.installAppLabel": "安装应用",
+  "panel.step2.configStep": "2. 复制此配置，然后点击菜单栏图标 → 设置 → “从天枢粘贴”：",
+  "panel.step2.configLabel": "配置",
+
+  "panel.tokenValid": "令牌有效期至 {date}。刷新此面板可生成新令牌；旧命令在过期前仍然有效。",
+  "panel.authDisabled": "此服务器已禁用鉴权 — 无需令牌。",
+  "panel.updateLaterPre": "稍后可通过 ",
+  "panel.updateLaterPost": " 更新。",
+
+  "panel.devices.title": "已连接设备",
+  "panel.devices.loading": "加载中…",
+  "panel.devices.empty": "尚无设备连接。请运行上面的命令。",
+  "panel.devices.toolCount": "{n} 个工具"
+}

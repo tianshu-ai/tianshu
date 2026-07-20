@@ -40,6 +40,7 @@ import {
   subscribeToWsEvent,
   useChatNav,
   useUiPrimitives,
+  usePluginT,
 } from "@tianshu-ai/plugin-sdk/client";
 
 // ─── wire shapes ────────────────────────────────────────────────
@@ -83,12 +84,13 @@ async function api(path: string, init?: RequestInit): Promise<Response> {
 // ─── status pill ────────────────────────────────────────────────
 
 function StatusPill({ status, detail }: { status: BindingView["status"]; detail: string | null }) {
+  const t = usePluginT("wechat");
   const config: Record<BindingView["status"], { label: string; tone: string }> = {
-    running: { label: "Connected", tone: "bg-success/10 text-success border-success/30" },
-    starting: { label: "Starting", tone: "bg-warning/10 text-warning border-warning/30" },
-    idle: { label: "Idle", tone: "bg-bg-hover text-fg-muted border-border-default" },
-    stopped: { label: "Stopped", tone: "bg-bg-hover text-fg-muted border-border-default" },
-    error: { label: "Error", tone: "bg-danger/10 text-danger border-danger/30" },
+    running: { label: t("status.running"), tone: "bg-success/10 text-success border-success/30" },
+    starting: { label: t("status.starting"), tone: "bg-warning/10 text-warning border-warning/30" },
+    idle: { label: t("status.idle"), tone: "bg-bg-hover text-fg-muted border-border-default" },
+    stopped: { label: t("status.stopped"), tone: "bg-bg-hover text-fg-muted border-border-default" },
+    error: { label: t("status.error"), tone: "bg-danger/10 text-danger border-danger/30" },
   };
   const cfg = config[status];
   return (
@@ -111,6 +113,7 @@ interface AddModalProps {
 
 function AddAccountFlow({ onClose, onBound }: AddModalProps) {
   const { Modal } = useUiPrimitives();
+  const t = usePluginT("wechat");
   const [phase, setPhase] = useState<
     "model" | "loading" | "qr" | "scanned" | "error"
   >("model");
@@ -220,17 +223,17 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
   useEffect(() => {
     if (phase !== "scanned") return;
     onBound();
-    const t = setTimeout(onClose, 1500);
-    return () => clearTimeout(t);
+    const timer = setTimeout(onClose, 1500);
+    return () => clearTimeout(timer);
   }, [phase, onBound, onClose]);
 
   return (
-    <Modal isOpen onClose={onClose} title="Add WeChat account" size="sm">
+    <Modal isOpen onClose={onClose} title={t("add.title")} size="sm">
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6">
         {phase === "model" && (
           <>
             <div className="text-sm text-fg-muted">
-              Choose which model this WeChat account routes to:
+              {t("add.chooseModel")}
             </div>
             <select
               value={selectedModel}
@@ -238,12 +241,12 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
               className="w-full max-w-sm rounded-md border border-border-default bg-bg-elevated px-3 py-2 text-sm text-fg-default"
             >
               {models.length === 0 && (
-                <option value="">(no models registered)</option>
+                <option value="">{t("add.noModels")}</option>
               )}
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.displayName}
-                  {defaultModel === m.id ? " (default)" : ""}
+                  {defaultModel === m.id ? t("add.default") : ""}
                 </option>
               ))}
             </select>
@@ -253,43 +256,43 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
               disabled={models.length === 0 || !selectedModel}
               className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-fg-on-accent hover:bg-accent-hover disabled:opacity-50"
             >
-              Continue → Scan QR
+              {t("add.continue")}
             </button>
             <div className="text-[11px] text-fg-fainter">
-              You can change the model later by re-scanning.
+              {t("add.changeLater")}
             </div>
           </>
         )}
         {phase === "loading" && (
           <>
             <Loader2 className="h-6 w-6 animate-spin text-fg-faint" />
-            <div className="text-sm text-fg-muted">Requesting QR code…</div>
+            <div className="text-sm text-fg-muted">{t("add.requestingQr")}</div>
           </>
         )}
         {phase === "qr" && qr && (
           <>
-            <div className="text-sm text-fg-muted">Scan with WeChat to authorise</div>
+            <div className="text-sm text-fg-muted">{t("add.scanToAuthorise")}</div>
             <QrCanvas value={qr.qrCodeImageUrl} />
-            <div className="text-[11px] text-fg-faint">Open WeChat → Scan → Confirm</div>
+            <div className="text-[11px] text-fg-faint">{t("add.scanSteps")}</div>
             <div className="flex items-center gap-2 text-[11px] text-fg-fainter">
               <Loader2 className="h-3 w-3 animate-spin" />
-              waiting for scan…
+              {t("add.waitingForScan")}
             </div>
           </>
         )}
         {phase === "scanned" && bound && (
           <>
             <CheckCircle2 className="h-10 w-10 text-success" />
-            <div className="text-sm font-medium text-fg-default">Connected</div>
+            <div className="text-sm font-medium text-fg-default">{t("add.connected")}</div>
             <div className="text-xs text-fg-muted">
-              {bound.displayName ?? bound.config.username ?? "WeChat account"}
+              {bound.displayName ?? bound.config.username ?? t("add.defaultAccountName")}
             </div>
           </>
         )}
         {phase === "error" && (
           <>
             <X className="h-10 w-10 text-danger" />
-            <div className="text-sm text-fg-default">Login failed</div>
+            <div className="text-sm text-fg-default">{t("add.loginFailed")}</div>
             <div className="max-w-xs break-words text-xs text-fg-muted">{error}</div>
           </>
         )}
@@ -308,6 +311,7 @@ function sleep(ms: number): Promise<void> {
 // shows a broken-image icon. We render the URL ourselves through
 // the `qrcode` lib so the user gets an actual scannable QR.
 function QrCanvas({ value }: { value: string }) {
+  const t = usePluginT("wechat");
   const id = useId();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -332,14 +336,14 @@ function QrCanvas({ value }: { value: string }) {
   if (err) {
     return (
       <div className="flex h-56 w-56 items-center justify-center rounded-md border border-danger/30 bg-danger/10 p-3 text-center text-xs text-danger">
-        QR render failed: {err}
+        {t("qr.renderFailed", { error: err })}
       </div>
     );
   }
   return (
     <canvas
       ref={canvasRef}
-      aria-label="WeChat login QR"
+      aria-label={t("qr.ariaLabel")}
       id={`wechat-qr-${id}`}
       className="h-56 w-56 rounded-md border border-border-default bg-white p-2"
     />
@@ -349,6 +353,7 @@ function QrCanvas({ value }: { value: string }) {
 // ─── admin page ─────────────────────────────────────────────────
 
 function WeChatAdminPage(_props: AdminPageProps) {
+  const t = usePluginT("wechat");
   const [bindings, setBindings] = useState<BindingView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -377,12 +382,7 @@ function WeChatAdminPage(_props: AdminPageProps) {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (
-        !confirm(
-          "Disconnect this WeChat account from tianshu? Existing chat history with this account will be deleted too.",
-        )
-      )
-        return;
+      if (!confirm(t("page.deleteConfirm"))) return;
       try {
         const r = await api(`/bindings/${encodeURIComponent(id)}`, { method: "DELETE" });
         if (!r.ok) {
@@ -409,9 +409,9 @@ function WeChatAdminPage(_props: AdminPageProps) {
         <div className="flex items-center gap-3">
           <MessageSquare className="h-6 w-6 text-success" />
           <div>
-            <h1 className="text-lg font-semibold">WeChat</h1>
+            <h1 className="text-lg font-semibold">{t("page.title")}</h1>
             <p className="text-sm text-fg-muted">
-              Connect your WeChat so direct messages route to your agent.
+              {t("page.subtitle")}
             </p>
           </div>
         </div>
@@ -419,7 +419,7 @@ function WeChatAdminPage(_props: AdminPageProps) {
           type="button"
           onClick={() => void refresh()}
           className="rounded p-1.5 text-fg-muted hover:bg-bg-hover hover:text-fg-default"
-          title="Refresh"
+          title={t("page.refresh")}
         >
           <RefreshCw className="h-4 w-4" />
         </button>
@@ -434,7 +434,7 @@ function WeChatAdminPage(_props: AdminPageProps) {
       {bindings === null ? (
         <div className="flex items-center gap-2 text-sm text-fg-muted">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Loading…
+          {t("page.loading")}
         </div>
       ) : bindings.length === 0 ? (
         // Not yet connected. Single CTA — a wechat user can only
@@ -442,17 +442,16 @@ function WeChatAdminPage(_props: AdminPageProps) {
         // channel)) so there's no plural "Add" affordance.
         <div className="rounded-md border border-dashed border-border-default px-6 py-10 text-center">
           <MessageSquare className="mx-auto mb-3 h-8 w-8 text-fg-fainter" />
-          <div className="text-sm font-medium text-fg-default">No WeChat connected</div>
+          <div className="text-sm font-medium text-fg-default">{t("page.empty.title")}</div>
           <div className="mt-1 text-xs text-fg-muted">
-            Scan a QR with the WeChat app to start routing your direct
-            messages through tianshu.
+            {t("page.empty.desc")}
           </div>
           <button
             type="button"
             onClick={() => setAdding(true)}
             className="mt-4 inline-flex items-center gap-1.5 rounded-md bg-accent px-4 py-1.5 text-sm font-medium text-fg-on-accent hover:bg-accent-hover"
           >
-            Connect WeChat
+            {t("page.empty.connect")}
           </button>
         </div>
       ) : (
@@ -462,8 +461,7 @@ function WeChatAdminPage(_props: AdminPageProps) {
         <>
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[11px] text-fg-faint">
-            One account connected. Re-scan to switch model or refresh
-            the token.
+            {t("page.bound.hint")}
           </span>
           <button
             type="button"
@@ -471,7 +469,7 @@ function WeChatAdminPage(_props: AdminPageProps) {
             className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-2.5 py-1 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default"
           >
             <RefreshCw className="h-3 w-3" />
-            Re-scan
+            {t("page.bound.rescan")}
           </button>
         </div>
         <ul className="space-y-2">
@@ -482,7 +480,7 @@ function WeChatAdminPage(_props: AdminPageProps) {
             >
               <div>
                 <div className="text-sm font-medium text-fg-default">
-                  {b.displayName ?? b.config.username ?? "WeChat account"}
+                  {b.displayName ?? b.config.username ?? t("page.bound.defaultAccountName")}
                 </div>
                 <div className="mt-0.5 flex items-center gap-2 text-[11px] text-fg-faint">
                   <span className="font-mono">{b.id}</span>
@@ -490,19 +488,19 @@ function WeChatAdminPage(_props: AdminPageProps) {
                   {typeof b.config.modelId === "string" && b.config.modelId && (
                     <span
                       className="rounded bg-bg-hover px-1 py-px font-mono text-[10px] text-fg-muted"
-                      title="Model this binding routes inbound DMs to"
+                      title={t("page.bound.modelTitle")}
                     >
                       {String(b.config.modelId)}
                     </span>
                   )}
-                  <span>· bound {new Date(b.createdAt).toLocaleDateString()}</span>
+                  <span>{t("page.bound.boundOn", { date: new Date(b.createdAt).toLocaleDateString() })}</span>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => void handleDelete(b.id)}
                 className="rounded p-1.5 text-fg-muted hover:bg-danger/10 hover:text-danger"
-                title="Disconnect"
+                title={t("page.bound.disconnect")}
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -544,6 +542,7 @@ interface WeChatSession {
 }
 
 function WeChatSidebarSection(_props: SidebarSectionProps) {
+  const t = usePluginT("wechat");
   const [sessions, setSessions] = useState<WeChatSession[] | null>(null);
   const { viewingSessionId, setViewingSession } = useChatNav();
 
@@ -591,11 +590,11 @@ function WeChatSidebarSection(_props: SidebarSectionProps) {
   // Decode `<channel>:dm|group:<peer>` into something nicer; same
   // format the server stamps via ensureChannelSession.
   function formatLabel(title: string | null): string {
-    if (!title) return "(untitled)";
+    if (!title) return t("sidebar.untitled");
     const m = title.match(/^([^:]+):(dm|group):(.+)$/);
     if (!m) return title;
     const peer = m[3].length > 18 ? `${m[3].slice(0, 16)}…` : m[3];
-    return `${m[2] === "dm" ? "DM" : "群"} · ${peer}`;
+    return `${m[2] === "dm" ? t("sidebar.dm") : t("sidebar.group")} · ${peer}`;
   }
 
   return (
@@ -615,12 +614,12 @@ function WeChatSidebarSection(_props: SidebarSectionProps) {
             title={s.title ?? s.channelChatId}
           >
             <span className="flex-shrink-0 rounded bg-success/15 px-1 py-px text-[9px] uppercase tracking-wider text-success">
-              wechat
+              {t("sidebar.wechat")}
             </span>
             <span className="flex-1 truncate text-xs">{formatLabel(s.title)}</span>
             {active && (
               <span className="text-[9px] uppercase tracking-wider text-fg-faint">
-                active
+                {t("sidebar.active")}
               </span>
             )}
           </button>

@@ -559,6 +559,113 @@ export function useTheme(): ThemeApi {
   return fn();
 }
 
+// ─── i18n — host-managed locale + translation surface for plugins
+//
+// Design (see feat/plugin-i18n):
+//   • Each plugin ships flat JSON dictionaries at
+//     `plugins/<id>/locales/{en,zh}.json`. The host merges them
+//     into a global dict under the namespace `plugin.<id>.*` —
+//     so workboard's `workers.title` key becomes the global key
+//     `plugin.workboard.workers.title` after merge.
+//   • The host installs ONE global accessor that returns
+//     `{ locale, t(fullKey, params?) }`. `t` expects the FULL
+//     namespaced key (host UI strings and plugin strings share
+//     the same lookup surface).
+//   • Plugin components almost always want to write short keys
+//     scoped to their own plugin id — so alongside the raw
+//     `useLocale()` we expose a tiny helper `usePluginT(id)`
+//     that auto-prefixes `plugin.<id>.` before delegating to
+//     the host's `t`. Idiomatic plugin usage:
+//
+//         const t = usePluginT("workboard");
+//         return <h2>{t("workers.title")}</h2>;
+//
+// Same install-once + globalSlot pattern as useTheme /
+// useComposer / useChatNav so duplicated SDK copies in plugin
+// bundles still resolve to the host's installed hook.
+//
+// Fallback (pre-install, unit tests): `useLocale()` returns
+// `{ locale: "en", t: (k) => k }` — a plugin rendered without a
+// host still paints the raw key rather than crashing.
+//
+// `{param}` interpolation matches the host's own `translate`
+// helper: the host is expected to implement the same substitution
+// inside the `t` it installs. Keys with no matching translation
+// fall through to the raw key (again, matching host behaviour).
+
+export type PluginLocale = "en" | "zh";
+
+export interface LocaleApi {
+  /** Currently-active locale. Two values today (en / zh); the
+   *  union may grow when the host adds locales. */
+  locale: PluginLocale;
+  /** Translate a FULL namespaced key. Plugin components typically
+   *  reach `t` through `usePluginT(pluginId)` which auto-prefixes
+   *  `plugin.<id>.`; direct callers pass the full key themselves.
+   *  `{param}` placeholders in the resolved string are replaced
+   *  with the matching entry from `params`. Missing translations
+   *  fall back to the raw key so a call never renders empty. */
+  t: (key: string, params?: Record<string, string | number>) => string;
+}
+
+interface LocaleGlobalSlot {
+  __tianshuPluginSdkLocaleHook__?: () => LocaleApi;
+}
+
+function localeSlot(): LocaleGlobalSlot {
+  return globalThis as unknown as LocaleGlobalSlot;
+}
+
+/** Host-only: install the live `useLocale()` accessor. The web
+ *  bundle calls this once on bootstrap with a function that reads
+ *  the host's locale state and merged plugin dictionaries. */
+export function __installUseLocale(fn: () => LocaleApi): void {
+  localeSlot().__tianshuPluginSdkLocaleHook__ = fn;
+}
+
+/** Test helper. */
+export function __resetUseLocaleForTest(): void {
+  delete localeSlot().__tianshuPluginSdkLocaleHook__;
+}
+
+/** Hook returning the host's current locale + translator. Safe to
+ *  call outside a host (returns an identity `t` that echoes the
+ *  key back) so plugin components stay renderable in tests. */
+export function useLocale(): LocaleApi {
+  const fn = localeSlot().__tianshuPluginSdkLocaleHook__;
+  if (!fn) {
+    return {
+      locale: "en",
+      t: (k) => k,
+    };
+  }
+  return fn();
+}
+
+/**
+ * Convenience wrapper for a plugin's own component code. Returns a
+ * `t(shortKey, params?)` that auto-prefixes `plugin.<pluginId>.`
+ * before delegating to the host's installed translator.
+ *
+ * Example — inside the workboard plugin:
+ *
+ *     const t = usePluginT("workboard");
+ *     t("workers.title");         // → plugin.workboard.workers.title
+ *     t("workers.busyCount",      // → plugin.workboard.workers.busyCount
+ *       { busy: 2, total: 5 });   //   with {busy}/{total} interpolated
+ *
+ * The returned function re-derives on every render so a locale
+ * flip re-renders the consuming component (via the underlying
+ * `useLocale()` subscription).
+ */
+export function usePluginT(
+  pluginId: string,
+): (key: string, params?: Record<string, string | number>) => string {
+  const { t } = useLocale();
+  return (key: string, params?: Record<string, string | number>) =>
+    t(`plugin.${pluginId}.${key}`, params);
+}
+
 // ─── ChatNav — host-managed selection of which session the chat
 // area is currently viewing.
 //

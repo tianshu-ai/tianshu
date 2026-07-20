@@ -74,6 +74,7 @@ test-results/
 packages/server/builtinConfig/plugins/*/manifest.json
 packages/server/builtinConfig/plugins/*/skills/
 packages/server/builtinConfig/plugins/*/templates/
+packages/server/builtinConfig/plugins/*/locales/
 packages/server/builtinConfig/plugins/*/agent-seeds/
 
 # Local debugging / spike scripts — not tracked

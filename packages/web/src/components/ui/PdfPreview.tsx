@@ -13,6 +13,8 @@
 // to work cleanly. The bytes are coming from tianshu's own
 // origin anyway.
 
+import { useT } from "../../hooks/useT";
+
 export interface PdfPreviewProps {
   /** URL the browser can fetch the PDF bytes from. Typically the
    *  files plugin's GET /api/p/files/raw route. */
@@ -26,14 +28,15 @@ export interface PdfPreviewProps {
 
 export function PdfPreview({
   src,
-  title = "PDF preview",
+  title,
   className = "",
 }: PdfPreviewProps) {
+  const t = useT();
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
       <iframe
         src={src}
-        title={title}
+        title={title ?? t("preview.pdf.iframeTitle")}
         className="h-full w-full border-0 bg-white"
       />
     </div>

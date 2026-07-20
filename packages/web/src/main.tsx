@@ -25,14 +25,27 @@ import {
   __installPluginConfigForm,
   __installUiPrimitives,
   __installUseComposer,
+  __installUseLocale,
   __installUseTheme,
   __installWsEventApi,
   type ChatNavApi,
+  type LocaleApi,
   type ThemeApi,
 } from "@tianshu-ai/plugin-sdk/client";
 import { useChatStore } from "./stores/chat-store";
 import { tianshuWs } from "./lib/ws";
 import { getComposerApi } from "./stores/composer-store";
+import { useSyncExternalStore } from "react";
+import {
+  getLocale,
+  subscribeLocale,
+  translate,
+  type TranslationKey,
+} from "./lib/i18n";
+import {
+  interpolate,
+  lookupPluginString,
+} from "./lib/plugin-locales";
 import { PluginConfigFormById } from "./components/PluginConfigForm";
 import { Modal } from "./components/ui/Modal";
 import { MarkdownBlock } from "./components/ui/MarkdownBlock";
@@ -56,6 +69,43 @@ __installUseTheme((): ThemeApi => {
   const setMode = useThemeStore((s) => s.setMode);
   return { mode, resolved, setMode };
 });
+// Locale hook for plugins. Same install-once trick as useTheme:
+// the closure runs on every render of a component that calls
+// `useLocale()`, so subscribing to the locale store inside
+// re-renders the consumer when the user flips the language.
+//
+// The installed `t(fullKey, params?)`:
+//   1. Looks up plugin-namespaced keys ("plugin.<id>.<k>") in the
+//      merged plugin dictionary (see lib/plugin-locales).
+//   2. Falls back to the host's own dictionary via `translate()`
+//      for the small set of host UI strings (`auth.signOut` etc.)
+//      — same lookup surface, plugins never need to know which
+//      dictionary a key came from.
+//   3. Returns the raw key when nothing matches, matching the
+//      host's own translate() fallback shape.
+// `{param}` placeholders are interpolated after lookup.
+__installUseLocale((): LocaleApi => {
+  const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
+  return {
+    locale,
+    t: (key: string, params?: Record<string, string | number>): string => {
+      // Plugin-namespaced keys go through the merged dictionary
+      // first. `lookupPluginString` already falls back to `en`
+      // when the active locale has no entry.
+      const pluginHit = key.startsWith("plugin.")
+        ? lookupPluginString(locale, key)
+        : undefined;
+      // Fall back to the host's built-in dictionary for host UI
+      // strings sharing the same `t`. `translate` narrowly types
+      // its input; the cast is safe because unknown keys hit its
+      // own fallback chain (returns the raw key).
+      const resolved =
+        pluginHit ?? translate(key as TranslationKey);
+      return interpolate(resolved, params);
+    },
+  };
+});
+
 // Chat navigation hook for plugins (e.g. channel plugins' sidebar
 // sections). Subscribes to viewingSessionId so consumers re-render
 // when selection changes.
