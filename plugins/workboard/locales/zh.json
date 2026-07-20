@@ -1,0 +1,13 @@
+{
+  "manifest.topBarButtons.toggle": "任务板",
+  "manifest.rightPanels.main": "任务",
+  "manifest.sidebarSections.workers": "工作者",
+  "manifest.adminPages.agents": "工作者代理",
+
+  "workers.title": "工作者",
+  "workers.busyCount": "{busy}/{total} 忙碌",
+  "workers.empty": "暂无运行中的工作者。请前往 设置 → 插件 → Workboard 启用 echo。",
+  "workers.status.busy": "忙碌",
+  "workers.status.idle": "空闲",
+  "workers.rowTitle": "代理：{name}\n工作者类型：{kind}"
+}

@@ -1,0 +1,13 @@
+{
+  "manifest.topBarButtons.toggle": "Task board",
+  "manifest.rightPanels.main": "Tasks",
+  "manifest.sidebarSections.workers": "Workers",
+  "manifest.adminPages.agents": "Worker agents",
+
+  "workers.title": "Workers",
+  "workers.busyCount": "{busy}/{total} busy",
+  "workers.empty": "No workers running. Toggle echo on under Settings → Plugins → Workboard.",
+  "workers.status.busy": "busy",
+  "workers.status.idle": "idle",
+  "workers.rowTitle": "Agent: {name}\nWorker type: {kind}"
+}

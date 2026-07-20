@@ -31,6 +31,7 @@ import { ArrowLeft, ShieldCheck, Settings as SettingsIcon, LogOut } from "lucide
 import { useChatStore } from "../../stores/chat-store";
 import { usePluginStore } from "../../stores/plugin-store";
 import { resolveComponent } from "../../lib/plugin-registry";
+import { useManifestLabel } from "../../lib/plugin-manifest-labels";
 import type { AdminPageProps } from "@tianshu-ai/plugin-sdk/client";
 import { api, type PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
@@ -465,7 +466,25 @@ function AdminNavLink({ page }: { page: FlatAdminPage }) {
   const href = buildIdentityPath(
     `/admin/${page.pluginId}/${page.pageId}`,
   );
-  const label = localizeCorePageLabel(t, page);
+  // Two label strategies coexist:
+  //  - Core / auto-injected pages (pluginId === "core") are
+  //    translated via the host's central i18n dictionary keyed
+  //    on the stable pageId (localizeCorePageLabel).
+  //  - Plugin-contributed pages look up their own manifest
+  //    translation `plugin.<id>.manifest.adminPages.<pageId>`,
+  //    falling back to the manifest's English displayName.
+  // useManifestLabel is a hook, so call it unconditionally, then
+  // pick which label applies based on the page's origin.
+  const manifestLabel = useManifestLabel(
+    page.pluginId,
+    "adminPages",
+    page.pageId,
+    page.displayName,
+  );
+  const label =
+    page.pluginId === "core"
+      ? localizeCorePageLabel(t, page)
+      : manifestLabel;
   return (
     <NavLink
       to={href}

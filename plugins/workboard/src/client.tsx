@@ -48,6 +48,7 @@ import {
 import {
   subscribeToWsEvent,
   useOpenFile,
+  usePluginT,
   useUiPrimitives,
   type AdminPageProps,
   type PanelProps,
@@ -2584,6 +2585,11 @@ void WorkboardAdminPage;
 // host code; for now keeping it here keeps the contract visible.)
 
 function WorkersSidebarSection(_props: SidebarSectionProps) {
+  // usePluginT auto-prefixes `plugin.workboard.` for every key,
+  // so translation JSON keys stay short ("workers.title", not
+  // "plugin.workboard.workers.title"). See
+  // packages/plugin-sdk/src/client.ts for the mechanism.
+  const t = usePluginT("workboard");
   const [snapshot, setSnapshot] = useState<WorkerSnapshot | null>(null);
 
   const reload = useCallback(async () => {
@@ -2626,17 +2632,19 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
       <div className="mb-2 flex items-center gap-2">
         <Zap size={14} className="flex-shrink-0 text-fg-fainter" />
         <span className="flex-1 text-sm font-medium text-fg-muted">
-          Workers
+          {t("workers.title")}
         </span>
         <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[9px] text-fg-fainter">
-          {busyCount}/{realWorkers.length} busy
+          {t("workers.busyCount", {
+            busy: busyCount,
+            total: realWorkers.length,
+          })}
         </span>
       </div>
       <div className="space-y-1.5">
         {realWorkers.length === 0 ? (
           <div className="text-[10px] text-fg-fainter px-1">
-            No workers running. Toggle echo on under Settings → Plugins →
-            Workboard.
+            {t("workers.empty")}
           </div>
         ) : (
           realWorkers.map((w) => (
@@ -2662,6 +2670,7 @@ function SidebarWorkerRow({
   kind: string;
   busy: boolean;
 }) {
+  const t = usePluginT("workboard");
   // The agent's display name (set in Settings → Plugins → Worker
   // agents) is the primary identity - the user wants to know which
   // configured instance this is at a glance. The worker *kind*
@@ -2672,7 +2681,7 @@ function SidebarWorkerRow({
   return (
     <div
       className="flex cursor-default items-center gap-2 rounded py-0.5 pl-1 hover:bg-bg-hover/30"
-      title={`Agent: ${name}\nWorker type: ${kind}`}
+      title={t("workers.rowTitle", { name, kind })}
     >
       <span className="w-5 flex-shrink-0 text-center text-base">{emoji}</span>
       <div className="min-w-0 flex-1">
@@ -2690,7 +2699,7 @@ function SidebarWorkerRow({
                 : "bg-bg-raised/60 text-fg-fainter"
             }`}
           >
-            {busy ? "busy" : "idle"}
+            {busy ? t("workers.status.busy") : t("workers.status.idle")}
           </span>
         </div>
       </div>
