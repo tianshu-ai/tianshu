@@ -1,0 +1,36 @@
+{
+  "manifest.topBarButtons.toggle": "工作区文件",
+  "manifest.rightPanels.main": "文件",
+  "manifest.composerActions.attach": "附加文件",
+
+  "size.empty": "—",
+  "size.bytes": "{n} B",
+  "size.kb": "{n} KB",
+  "size.mb": "{n} MB",
+  "size.gb": "{n} GB",
+
+  "modified.empty": "—",
+  "modified.justNow": "刚刚",
+  "modified.minutesAgo": "{n}分钟前",
+  "modified.hoursAgo": "{n}小时前",
+  "modified.daysAgo": "{n}天前",
+
+  "panel.upOneLevel": "上一级",
+  "panel.filterPlaceholder": "筛选文件…",
+  "panel.refresh": "刷新",
+  "panel.toggleView": "切换视图",
+  "panel.col.name": "名称",
+  "panel.col.size": "大小",
+  "panel.col.modified": "修改时间",
+  "panel.noMatching": "没有匹配的文件",
+  "panel.emptyDir": "空目录",
+  "panel.dash": "—",
+  "panel.truncated": "列表已在 5000 个条目处截断。",
+
+  "preview.download": "下载",
+  "preview.sizeExceeds": "文件大小为 {size}，超过 {max} 的预览上限。",
+
+  "upload.attachFile": "附加文件",
+  "upload.exceedsCap": "文件超过 {mb} MB 上限",
+  "upload.noBody": "（无内容）"
+}

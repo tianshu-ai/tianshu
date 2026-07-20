@@ -31,7 +31,11 @@ import type {
   AdminPageProps,
   PluginClientExports,
 } from "@tianshu-ai/plugin-sdk/client";
+import { usePluginT } from "@tianshu-ai/plugin-sdk/client";
 import { SolutionView } from "./solution-view.js";
+
+/** Translator function returned by usePluginT — passed to helpers. */
+type Translator = (key: string, params?: Record<string, string | number>) => string;
 
 // ─── wire shapes (mirror server types via duck-typing) ──────────
 
@@ -154,20 +158,20 @@ function WorkforceStudioPage(_props: AdminPageProps): ReactElement {
   // Top-level view per ADR-0008: Solution (designtime) vs Reality
   // (runtime). Default to Reality so the first thing an operator
   // sees is what's actually running.
+  const t = usePluginT("workforce-studio");
   const [topView, setTopView] = useState<"reality" | "solution">("reality");
   return (
     <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-6">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border-subtle pb-3">
         <div>
-          <h1 className="text-xl font-semibold">Workforce Studio</h1>
+          <h1 className="text-xl font-semibold">{t("page.title")}</h1>
           <p className="mt-1 max-w-2xl text-sm text-fg-muted">
-            Design and inspect the agent system. The{" "}
-            <strong>Solution</strong> view is your declarative design;
-            the <strong>Reality</strong> view is what's running right
-            now.
+            {t("page.intro.lead")}{" "}
+            <strong>{t("page.intro.solution")}</strong> {t("page.intro.mid")}{" "}
+            <strong>{t("page.intro.reality")}</strong> {t("page.intro.tail")}
           </p>
         </div>
-        <TopViewSwitch value={topView} onChange={setTopView} />
+        <TopViewSwitch value={topView} onChange={setTopView} t={t} />
       </div>
       {topView === "reality" ? <RealityView /> : <SolutionView />}
     </div>
@@ -177,9 +181,11 @@ function WorkforceStudioPage(_props: AdminPageProps): ReactElement {
 function TopViewSwitch({
   value,
   onChange,
+  t,
 }: {
   value: "reality" | "solution";
   onChange: (next: "reality" | "solution") => void;
+  t: Translator;
 }): ReactElement {
   return (
     <div className="inline-flex overflow-hidden rounded-md border border-border-subtle text-sm">
@@ -192,7 +198,7 @@ function TopViewSwitch({
             : "bg-bg-base px-4 py-1.5 hover:bg-bg-raised"
         }
       >
-        Solution
+        {t("switch.solution")}
       </button>
       <button
         type="button"
@@ -203,7 +209,7 @@ function TopViewSwitch({
             : "bg-bg-base px-4 py-1.5 hover:bg-bg-raised"
         }
       >
-        Reality
+        {t("switch.reality")}
       </button>
     </div>
   );
@@ -212,6 +218,7 @@ function TopViewSwitch({
 // ─── reality view (the former page body) ────────────────────────
 
 function RealityView(): ReactElement {
+  const t = usePluginT("workforce-studio");
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -239,25 +246,26 @@ function RealityView(): ReactElement {
         snapshot={snapshot}
         loading={loading}
         onRefresh={() => void refresh()}
+        t={t}
       />
       {error ? (
         <div className="rounded-md border border-danger-fg/40 bg-danger-fg/5 p-4 text-sm text-danger-fg">
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle className="size-4" />
-            Failed to load snapshot
+            {t("reality.loadFailed")}
           </div>
           <div className="mt-1 font-mono text-xs opacity-80">{error}</div>
         </div>
       ) : null}
       {snapshot ? (
         <>
-          <PluginsPanel plugins={snapshot.plugins} />
-          <MainAgentPanel main={snapshot.main} />
-          <WorkersPanel workers={snapshot.workers} />
+          <PluginsPanel plugins={snapshot.plugins} t={t} />
+          <MainAgentPanel main={snapshot.main} t={t} />
+          <WorkersPanel workers={snapshot.workers} t={t} />
         </>
       ) : loading ? (
         <div className="flex items-center gap-2 text-sm text-fg-muted">
-          <Loader2 className="size-4 animate-spin" /> Loading snapshot…
+          <Loader2 className="size-4 animate-spin" /> {t("reality.loading")}
         </div>
       ) : null}
     </div>
@@ -268,10 +276,12 @@ function Header({
   snapshot,
   loading,
   onRefresh,
+  t,
 }: {
   snapshot: Snapshot | null;
   loading: boolean;
   onRefresh: () => void;
+  t: Translator;
 }): ReactElement {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -279,17 +289,21 @@ function Header({
         {snapshot ? (
           <div className="flex flex-wrap gap-3 text-xs text-fg-muted">
             <Badge>
-              tenant <code className="font-mono">{snapshot.tenantId}</code>
+              {t("header.badge.tenant")}{" "}
+              <code className="font-mono">{snapshot.tenantId}</code>
             </Badge>
             <Badge>
-              user <code className="font-mono">{snapshot.userId}</code>
+              {t("header.badge.user")}{" "}
+              <code className="font-mono">{snapshot.userId}</code>
             </Badge>
             <Badge>v{snapshot.tianshuVersion}</Badge>
             <Badge>
-              {snapshot.plugins.length} plugins ·{" "}
-              {snapshot.main.tools.length} tools ·{" "}
-              {snapshot.main.skills.length} skills ·{" "}
-              {snapshot.workers.length} workers
+              {t("header.badge.counts", {
+                plugins: snapshot.plugins.length,
+                tools: snapshot.main.tools.length,
+                skills: snapshot.main.skills.length,
+                workers: snapshot.workers.length,
+              })}
             </Badge>
           </div>
         ) : null}
@@ -306,7 +320,7 @@ function Header({
           ) : (
             <RefreshCw className="size-4" />
           )}
-          Refresh
+          {t("header.refresh")}
         </button>
         <button
           type="button"
@@ -315,7 +329,7 @@ function Header({
           className="inline-flex items-center gap-1 rounded-md bg-fg-default px-3 py-1.5 text-sm font-medium text-bg-base hover:opacity-90 disabled:opacity-50"
         >
           <Download className="size-4" />
-          Download bundle
+          {t("header.downloadBundle")}
         </button>
       </div>
     </div>
@@ -334,71 +348,74 @@ function Badge({ children }: { children: ReactNode }): ReactElement {
 // plugin came from. Picking distinct hues per bucket so a long
 // list is visually scannable; the labels are kept tiny because
 // they appear on every row.
-function OriginBadge({ origin }: { origin: Origin }): ReactElement {
-  const { label, className } = originStyle(origin);
+function OriginBadge({ origin, t }: { origin: Origin; t: Translator }): ReactElement {
+  const { label, className } = originStyle(origin, t);
   return (
     <span
       className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${className}`}
-      title={originTitle(origin)}
+      title={originTitle(origin, t)}
     >
       {label}
     </span>
   );
 }
 
-function originStyle(origin: Origin): { label: string; className: string } {
+function originStyle(
+  origin: Origin,
+  t: Translator,
+): { label: string; className: string } {
   if (origin === "core") {
     return {
-      label: "core",
+      label: t("origin.core.label"),
       className: "bg-info-fg/10 text-info-fg",
     };
   }
   if (origin === "builtin-plugin") {
     return {
-      label: "built-in",
+      label: t("origin.builtin.label"),
       className: "bg-success-fg/10 text-success-fg",
     };
   }
   // tenant-plugin
   return {
-    label: "tenant",
+    label: t("origin.tenant.label"),
     className: "bg-warning-fg/10 text-warning-fg",
   };
 }
 
-function originTitle(origin: Origin): string {
-  if (origin === "core")
-    return "Provided by the host (no plugin involved).";
-  if (origin === "builtin-plugin")
-    return "From a plugin shipped with this Tianshu install.";
-  return "From a plugin installed per-tenant.";
+function originTitle(origin: Origin, t: Translator): string {
+  if (origin === "core") return t("origin.core.title");
+  if (origin === "builtin-plugin") return t("origin.builtin.title");
+  return t("origin.tenant.title");
 }
 
 // ─── plugins ────────────────────────────────────────────────────
 
 function PluginsPanel({
   plugins,
+  t,
 }: {
   plugins: PluginInfo[];
+  t: Translator;
 }): ReactElement {
   return (
     <section className="rounded-lg border border-border-subtle bg-bg-elevated">
       <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
         <Package className="size-4 text-fg-muted" />
-        <h2 className="text-sm font-semibold">Plugins</h2>
+        <h2 className="text-sm font-semibold">{t("plugins.title")}</h2>
         <span className="ml-2 text-xs text-fg-muted">
-          {plugins.length} in this solution
+          {t("plugins.count", { n: plugins.length })}
         </span>
         <span
           className="ml-1 text-[10px] text-fg-muted"
-          title="Every plugin currently activated for this tenant. Tools, skills and prompt fragments come from these."
+          title={t("plugins.activeHintTitle")}
         >
-          (active = contributing to the agent right now)
+          {t("plugins.activeHint")}
         </span>
       </div>
       {plugins.length === 0 ? (
         <div className="px-4 py-6 text-sm text-fg-muted">
-          No plugins discovered for this tenant.
+          {t("plugins.empty")}
         </div>
       ) : (
         <ul className="divide-y divide-border-subtle">
@@ -408,7 +425,7 @@ function PluginsPanel({
                 <span className="font-medium">{p.displayName}</span>
                 <code className="text-fg-muted">{p.id}</code>
                 <span className="text-fg-muted">v{p.version}</span>
-                <OriginBadge origin={p.origin} />
+                <OriginBadge origin={p.origin} t={t} />
                 <PluginStateBadge
                   state={p.state}
                   failureReason={p.failureReason}
@@ -457,44 +474,45 @@ function PluginStateBadge({
 
 // ─── main agent ─────────────────────────────────────────────────
 
-function MainAgentPanel({ main }: { main: MainAgent }): ReactElement {
+function MainAgentPanel({ main, t }: { main: MainAgent; t: Translator }): ReactElement {
   const [view, setView] = useState<"develop" | "rendered">("develop");
   return (
     <section className="rounded-lg border border-border-subtle bg-bg-elevated">
       <div className="flex flex-wrap items-center gap-2 border-b border-border-subtle px-4 py-3">
         <Bot className="size-4 text-fg-muted" />
-        <h2 className="text-sm font-semibold">Main agent</h2>
+        <h2 className="text-sm font-semibold">{t("mainAgent.title")}</h2>
         <span className="ml-2 text-xs text-fg-muted">
-          {main.brandName} · default model{" "}
+          {main.brandName} · {t("mainAgent.defaultModel")}{" "}
           <code className="font-mono">{main.defaultModelId ?? "—"}</code>
         </span>
-        <ViewSwitch value={view} onChange={setView} />
+        <ViewSwitch value={view} onChange={setView} t={t} />
       </div>
       {view === "develop" ? (
         <div className="flex flex-col gap-4 p-4">
-          <PromptBlocks blocks={main.blocks} />
+          <PromptBlocks blocks={main.blocks} t={t} />
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <CollapsibleBlock
-              title={`Tools (${main.tools.length})`}
+              title={t("tools.title", { n: main.tools.length })}
               initiallyOpen={false}
               icon={<Wrench className="size-4" />}
             >
-              <ToolsList tools={main.tools} />
+              <ToolsList tools={main.tools} t={t} />
             </CollapsibleBlock>
             <CollapsibleBlock
-              title={`Skills (${main.skills.length})`}
+              title={t("skills.title", { n: main.skills.length })}
               initiallyOpen={false}
               icon={<Book className="size-4" />}
             >
-              <SkillsList skills={main.skills} />
+              <SkillsList skills={main.skills} t={t} />
             </CollapsibleBlock>
           </div>
         </div>
       ) : (
         <div className="p-4">
           <div className="mb-2 text-xs text-fg-muted">
-            Rendered prompt the model would receive on its next turn (
-            {formatBytes(main.systemPrompt.length)}).
+            {t("mainAgent.rendered.hint", {
+              size: formatBytes(main.systemPrompt.length),
+            })}
           </div>
           <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-[11px] leading-snug">
             {main.systemPrompt}
@@ -508,9 +526,11 @@ function MainAgentPanel({ main }: { main: MainAgent }): ReactElement {
 function ViewSwitch({
   value,
   onChange,
+  t,
 }: {
   value: "develop" | "rendered";
   onChange: (next: "develop" | "rendered") => void;
+  t: Translator;
 }): ReactElement {
   return (
     <div className="ml-auto inline-flex overflow-hidden rounded-md border border-border-subtle text-xs">
@@ -523,7 +543,7 @@ function ViewSwitch({
             : "bg-bg-base px-3 py-1 hover:bg-bg-raised"
         }
       >
-        Blocks
+        {t("view.blocks")}
       </button>
       <button
         type="button"
@@ -534,7 +554,7 @@ function ViewSwitch({
             : "bg-bg-base px-3 py-1 hover:bg-bg-raised"
         }
       >
-        Rendered
+        {t("view.rendered")}
       </button>
     </div>
   );
@@ -544,16 +564,16 @@ function ViewSwitch({
 // origin / editability badge. Non-editable blocks have a faint
 // "lock" border to make the affordance obvious before the user
 // clicks.
-function PromptBlocks({ blocks }: { blocks: PromptBlock[] }): ReactElement {
+function PromptBlocks({ blocks, t }: { blocks: PromptBlock[]; t: Translator }): ReactElement {
   if (blocks.length === 0) {
     return (
-      <div className="text-xs text-fg-muted">No prompt blocks reported.</div>
+      <div className="text-xs text-fg-muted">{t("blocks.empty")}</div>
     );
   }
   return (
     <ol className="flex flex-col gap-2">
       {blocks.map((b, idx) => (
-        <BlockCard key={`${b.kind}-${idx}`} block={b} index={idx + 1} />
+        <BlockCard key={`${b.kind}-${idx}`} block={b} index={idx + 1} t={t} />
       ))}
     </ol>
   );
@@ -562,9 +582,11 @@ function PromptBlocks({ blocks }: { blocks: PromptBlock[] }): ReactElement {
 function BlockCard({
   block,
   index,
+  t,
 }: {
   block: PromptBlock;
   index: number;
+  t: Translator;
 }): ReactElement {
   const [open, setOpen] = useState(false);
   const borderTone = block.editable
@@ -584,7 +606,7 @@ function BlockCard({
         )}
         <span className="text-[10px] text-fg-muted">#{index}</span>
         <span className="font-medium">{block.title}</span>
-        <BlockOriginBadge origin={block.origin} />
+        <BlockOriginBadge origin={block.origin} t={t} />
         <span
           className={
             block.editable
@@ -593,11 +615,11 @@ function BlockCard({
           }
           title={
             block.editable
-              ? "You can edit the underlying source."
-              : "Managed by the host or a plugin — not editable."
+              ? t("block.editable.title")
+              : t("block.readOnly.title")
           }
         >
-          {block.editable ? "editable" : "read-only"}
+          {block.editable ? t("block.editable") : t("block.readOnly")}
         </span>
         <span className="ml-auto text-[10px] text-fg-muted">
           {block.source}
@@ -619,30 +641,32 @@ function BlockCard({
 
 function BlockOriginBadge({
   origin,
+  t,
 }: {
   origin: BlockOrigin;
+  t: Translator;
 }): ReactElement {
   // Map block origins to the same buckets the tool/skill badge
   // uses. "host" / "workspace" / "tenant" don't have direct
   // tool-style equivalents; we colour them distinctly so the
   // origin column scans cleanly.
   const map: Record<BlockOrigin, { label: string; className: string }> = {
-    core: { label: "core", className: "bg-info-fg/10 text-info-fg" },
+    core: { label: t("blockOrigin.core"), className: "bg-info-fg/10 text-info-fg" },
     "builtin-plugin": {
-      label: "built-in",
+      label: t("blockOrigin.builtin"),
       className: "bg-success-fg/10 text-success-fg",
     },
     "tenant-plugin": {
-      label: "tenant plugin",
+      label: t("blockOrigin.tenantPlugin"),
       className: "bg-warning-fg/10 text-warning-fg",
     },
-    host: { label: "host", className: "bg-info-fg/10 text-info-fg" },
+    host: { label: t("blockOrigin.host"), className: "bg-info-fg/10 text-info-fg" },
     workspace: {
-      label: "workspace",
+      label: t("blockOrigin.workspace"),
       className: "bg-warning-fg/10 text-warning-fg",
     },
     tenant: {
-      label: "tenant",
+      label: t("blockOrigin.tenant"),
       className: "bg-warning-fg/10 text-warning-fg",
     },
   };
@@ -660,8 +684,10 @@ function BlockOriginBadge({
 
 function WorkersPanel({
   workers,
+  t,
 }: {
   workers: WorkerAgent[];
+  t: Translator;
 }): ReactElement {
   const [openSlug, setOpenSlug] = useState<string | null>(null);
   const sorted = useMemo(
@@ -672,12 +698,12 @@ function WorkersPanel({
     <section className="rounded-lg border border-border-subtle bg-bg-elevated">
       <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-3">
         <Users className="size-4 text-fg-muted" />
-        <h2 className="text-sm font-semibold">Workers</h2>
+        <h2 className="text-sm font-semibold">{t("workers.title")}</h2>
         <span className="ml-2 text-xs text-fg-muted">{sorted.length}</span>
       </div>
       {sorted.length === 0 ? (
         <div className="px-4 py-6 text-sm text-fg-muted">
-          No worker agents configured yet.
+          {t("workers.empty")}
         </div>
       ) : (
         <ul className="divide-y divide-border-subtle">
@@ -689,6 +715,7 @@ function WorkersPanel({
               onToggle={() =>
                 setOpenSlug((cur) => (cur === w.slug ? null : w.slug))
               }
+              t={t}
             />
           ))}
         </ul>
@@ -701,10 +728,12 @@ function WorkerRow({
   worker,
   open,
   onToggle,
+  t,
 }: {
   worker: WorkerAgent;
   open: boolean;
   onToggle: () => void;
+  t: Translator;
 }): ReactElement {
   return (
     <li className="px-4 py-3">
@@ -725,7 +754,7 @@ function WorkerRow({
           {worker.modelId ? (
             <code className="font-mono">{worker.modelId}</code>
           ) : (
-            <span>default model</span>
+            <span>{t("worker.defaultModel")}</span>
           )}
           <span
             className={
@@ -734,7 +763,7 @@ function WorkerRow({
                 : "rounded bg-fg-muted/10 px-1.5 py-0.5"
             }
           >
-            {worker.enabled ? "enabled" : "disabled"}
+            {worker.enabled ? t("worker.enabled") : t("worker.disabled")}
           </span>
           <span className="rounded bg-fg-muted/10 px-1.5 py-0.5">
             {worker.source}
@@ -742,7 +771,7 @@ function WorkerRow({
         </span>
       </button>
       {open ? (
-        <WorkerDetail worker={worker} />
+        <WorkerDetail worker={worker} t={t} />
       ) : null}
     </li>
   );
@@ -750,37 +779,39 @@ function WorkerRow({
 
 function WorkerDetail({
   worker,
+  t,
 }: {
   worker: WorkerAgent;
+  t: Translator;
 }): ReactElement {
   const [view, setView] = useState<"develop" | "rendered">("develop");
   return (
     <div className="mt-3 flex flex-col gap-3 pl-6">
       <div className="flex items-center text-xs">
-        <span className="text-fg-muted">System prompt</span>
-        <ViewSwitch value={view} onChange={setView} />
+        <span className="text-fg-muted">{t("worker.systemPrompt")}</span>
+        <ViewSwitch value={view} onChange={setView} t={t} />
       </div>
       {view === "develop" ? (
-        <PromptBlocks blocks={worker.blocks} />
+        <PromptBlocks blocks={worker.blocks} t={t} />
       ) : (
         <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-[11px] leading-snug">
-          {worker.systemPrompt.trim() || "<empty>"}
+          {worker.systemPrompt.trim() || t("worker.emptyPrompt")}
         </pre>
       )}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <CollapsibleBlock
-          title={`Tools (${worker.tools.length})`}
+          title={t("tools.title", { n: worker.tools.length })}
           initiallyOpen={false}
           icon={<Wrench className="size-4" />}
         >
-          <ToolsList tools={worker.tools} />
+          <ToolsList tools={worker.tools} t={t} />
         </CollapsibleBlock>
         <CollapsibleBlock
-          title={`Skills (${worker.skills.length})`}
+          title={t("skills.title", { n: worker.skills.length })}
           initiallyOpen={false}
           icon={<Book className="size-4" />}
         >
-          <SkillsList skills={worker.skills} />
+          <SkillsList skills={worker.skills} t={t} />
         </CollapsibleBlock>
       </div>
     </div>
@@ -821,30 +852,32 @@ function CollapsibleBlock({
   );
 }
 
-function ToolsList({ tools }: { tools: ToolEntry[] }): ReactElement {
+function ToolsList({ tools, t }: { tools: ToolEntry[]; t: Translator }): ReactElement {
   if (tools.length === 0) {
-    return <div className="text-xs text-fg-muted">None</div>;
+    return <div className="text-xs text-fg-muted">{t("tools.none")}</div>;
   }
   return (
     <ul className="max-h-72 space-y-1 overflow-auto text-xs">
-      {tools.map((t) => (
+      {tools.map((tool) => (
         <li
-          key={t.name}
+          key={tool.name}
           className="rounded border border-border-subtle bg-bg-elevated px-2 py-1.5"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <code className="font-mono text-[11px]">{t.name}</code>
-            <OriginBadge origin={t.origin} />
+            <code className="font-mono text-[11px]">{tool.name}</code>
+            <OriginBadge origin={tool.origin} t={t} />
             <span className="rounded bg-fg-muted/10 px-1 text-[10px]">
-              {t.pluginId}
+              {tool.pluginId}
             </span>
-            {t.since ? (
-              <span className="text-[10px] text-fg-muted">since {t.since}</span>
+            {tool.since ? (
+              <span className="text-[10px] text-fg-muted">
+                {t("tools.since", { v: tool.since })}
+              </span>
             ) : null}
           </div>
-          {t.description ? (
+          {tool.description ? (
             <div className="mt-0.5 text-[11px] text-fg-muted">
-              {t.description}
+              {tool.description}
             </div>
           ) : null}
         </li>
@@ -853,9 +886,9 @@ function ToolsList({ tools }: { tools: ToolEntry[] }): ReactElement {
   );
 }
 
-function SkillsList({ skills }: { skills: SkillEntry[] }): ReactElement {
+function SkillsList({ skills, t }: { skills: SkillEntry[]; t: Translator }): ReactElement {
   if (skills.length === 0) {
-    return <div className="text-xs text-fg-muted">None</div>;
+    return <div className="text-xs text-fg-muted">{t("skills.none")}</div>;
   }
   return (
     <ul className="max-h-72 space-y-1 overflow-auto text-xs">
@@ -866,13 +899,13 @@ function SkillsList({ skills }: { skills: SkillEntry[] }): ReactElement {
         >
           <div className="flex flex-wrap items-center gap-2">
             <code className="font-mono text-[11px]">{s.name}</code>
-            <OriginBadge origin={s.origin} />
+            <OriginBadge origin={s.origin} t={t} />
             <span className="rounded bg-fg-muted/10 px-1 text-[10px]">
               {s.pluginId}
             </span>
             {s.scope ? (
               <span className="rounded bg-info-fg/10 px-1 text-[10px] text-info-fg">
-                {s.scope}-only
+                {t("skills.scopeOnly", { scope: s.scope })}
               </span>
             ) : null}
             <span className="ml-auto text-[10px] text-fg-muted">

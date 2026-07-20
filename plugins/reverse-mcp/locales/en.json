@@ -1,0 +1,55 @@
+{
+  "manifest.topBarButtons.toggle": "Local Bridge",
+  "manifest.rightPanels.main": "Local Bridge",
+
+  "cmd.copy": "Copy {label}",
+
+  "panel.title": "Local Bridge",
+  "panel.refresh": "Refresh",
+  "panel.intro.pre": "Connect software on your own machine (browser, files, shell) into tianshu. Run the command below on your computer; it starts a small local client that dials in and registers its tools. Only ",
+  "panel.intro.your": "your",
+  "panel.intro.post": " sessions can use them.",
+
+  "panel.steps.copy": "Copy the command below.",
+  "panel.steps.run": "Run it in a terminal on the machine you want to bridge.",
+  "panel.steps.appearPre": "The device appears under ",
+  "panel.steps.connectedDevices": "Connected devices",
+  "panel.steps.appearPost": " and the agent can use its tools.",
+
+  "panel.capabilities": "Capabilities",
+  "panel.browser": "Browser",
+  "panel.browserHint": "control a local browser",
+  "panel.ownChrome": "Your own Chrome",
+  "panel.ownChromeHint": "real cookies + fingerprint, no download",
+  "panel.stealth": "Stealth browser",
+  "panel.stealthHint": "anti-bot-detection (CloakBrowser); ~200MB first run",
+  "panel.headless": "Headless",
+  "panel.headlessHint": "no window (default: show the browser)",
+  "panel.shell": "Shell",
+  "panel.files": "Files",
+  "panel.comingSoon": "Coming soon",
+
+  "panel.step1.title": "Step 1 · Install the bridge (once)",
+  "panel.step1.installLabel": "install",
+  "panel.step1.requires": "Requires Node.js. Then pick one of the two ways below.",
+
+  "panel.step2.title": "Step 2 · Start it",
+  "panel.step2.optionA": "A · Command line",
+  "panel.step2.optionAHint": "Run this in a terminal (uses your current picks above):",
+  "panel.step2.runLabel": "run",
+  "panel.step2.optionB": "B · Menu-bar app (macOS)",
+  "panel.step2.installAppStep": "1. Install the app:",
+  "panel.step2.installAppLabel": "install-app",
+  "panel.step2.configStep": "2. Copy this config, then click the menu-bar icon → Settings → “Paste from tianshu”:",
+  "panel.step2.configLabel": "config",
+
+  "panel.tokenValid": "Token valid until {date}. Refresh this panel to mint a new one; the old command keeps working until it expires.",
+  "panel.authDisabled": "Auth is disabled on this server — no token needed.",
+  "panel.updateLaterPre": "Update later with ",
+  "panel.updateLaterPost": ".",
+
+  "panel.devices.title": "Connected devices",
+  "panel.devices.loading": "Loading…",
+  "panel.devices.empty": "No devices connected yet. Run the command above.",
+  "panel.devices.toolCount": "{n} tool(s)"
+}

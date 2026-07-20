@@ -17,9 +17,23 @@ import type {
   PluginClientExports,
   ComposerActionProps,
 } from "@tianshu-ai/plugin-sdk/client";
-import { useUiPrimitives, subscribeToWsEvent, useChatNav } from "@tianshu-ai/plugin-sdk/client";
+import { useUiPrimitives, subscribeToWsEvent, useChatNav, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/wiki";
+
+/** Maps a wiki section id to its short translation key. Rendered
+ *  labels resolve through `t(SECTION_LABEL_KEY[section])`; the
+ *  English SECTION_LABEL below stays as a fallback for unknown ids. */
+const SECTION_LABEL_KEY: Record<string, string> = {
+  "journal/daily": "section.daily",
+  "journal/weekly": "section.weekly",
+  "journal/monthly": "section.monthly",
+  "journal/yearly": "section.yearly",
+  topics: "section.topics",
+  entities: "section.entities",
+  concepts: "section.concepts",
+  sources: "section.sources",
+};
 
 interface WikiPage {
   section: string;
@@ -52,6 +66,7 @@ const SECTION_LABEL: Record<string, string> = {
 
 function WikiPanel(_props: PanelProps) {
   const { MarkdownBlock, Modal } = useUiPrimitives();
+  const t = usePluginT("wiki");
   const [pages, setPages] = useState<WikiPage[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string>("");
@@ -80,19 +95,19 @@ function WikiPanel(_props: PanelProps) {
         setReindexMsg(
           body.note
             ? body.note
-            : `Indexed ${body.indexed ?? 0}/${body.total ?? 0} page(s).`,
+            : t("reindex.done", { indexed: body.indexed ?? 0, total: body.total ?? 0 }),
         );
       })
       .catch((e: unknown) =>
         setReindexMsg(
-          `Failed: ${e instanceof Error ? e.message : String(e)}`,
+          t("reindex.failed", { error: e instanceof Error ? e.message : String(e) }),
         ),
       )
       .finally(() => {
         setReindexing(false);
         setTimeout(() => setReindexMsg(null), 6000);
       });
-  }, []);
+  }, [t]);
 
   const fetchList = useCallback(() => {
     fetch(`${API_BASE}/list`, { credentials: "include" })
@@ -128,8 +143,8 @@ function WikiPanel(_props: PanelProps) {
         setPageTitle(frontmatterTitle(raw));
         setMarkdown(stripFrontmatter(raw));
       })
-      .catch(() => setMarkdown("_Failed to load page._"));
-  }, []);
+      .catch(() => setMarkdown(t("page.loadFailed")));
+  }, [t]);
 
   const grouped = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -151,13 +166,13 @@ function WikiPanel(_props: PanelProps) {
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="Filter pages…"
+            placeholder={t("panel.filterPlaceholder")}
             className="w-full rounded-md bg-bg-raised pl-6 pr-2 py-1 text-xs text-fg-muted placeholder:text-fg-fainter focus:outline-none"
           />
         </div>
         <button
           onClick={() => setView(view === "graph" ? "list" : "graph")}
-          title={view === "graph" ? "List view" : "Graph view"}
+          title={view === "graph" ? t("panel.listView") : t("panel.graphView")}
           className={
             "rounded p-1 transition-colors " +
             (view === "graph"
@@ -169,7 +184,7 @@ function WikiPanel(_props: PanelProps) {
         </button>
         <button
           onClick={fetchList}
-          title="Refresh"
+          title={t("panel.refresh")}
           className="rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
         >
           <RefreshCw size={12} />
@@ -177,7 +192,7 @@ function WikiPanel(_props: PanelProps) {
         <button
           onClick={rebuildIndex}
           disabled={reindexing}
-          title="Rebuild the semantic (embedding) index from all pages"
+          title={t("panel.rebuildIndex")}
           className={
             "rounded p-1 transition-colors " +
             (reindexing
@@ -189,7 +204,7 @@ function WikiPanel(_props: PanelProps) {
         </button>
         <button
           onClick={() => setConfirmReset(true)}
-          title="Reset wiki (wipe all pages + progress)"
+          title={t("panel.resetTitle")}
           className="rounded p-1 text-fg-faint hover:text-danger hover:bg-bg-hover transition-colors"
         >
           <Trash2 size={12} />
@@ -204,19 +219,17 @@ function WikiPanel(_props: PanelProps) {
       <Modal
         isOpen={confirmReset}
         onClose={() => !resetting && setConfirmReset(false)}
-        title="Reset wiki?"
+        title={t("reset.title")}
         size="sm"
         allowMaximize={false}
       >
         <div className="px-4 py-3 text-[13px] text-fg-muted">
           <p>
-            This wipes the <strong>entire wiki</strong> — every page
-            (daily / weekly / monthly / yearly journals, topics, entities,
-            concepts, sources) and the ingest progress cursor.
+            {t("reset.body1a")}<strong>{t("reset.body1b")}</strong>{t("reset.body1c")}
           </p>
           <p className="mt-2">
-            The next “record” run rebuilds from scratch.{" "}
-            <strong className="text-danger">This cannot be undone.</strong>
+            {t("reset.body2a")}
+            <strong className="text-danger">{t("reset.body2b")}</strong>
           </p>
           <div className="mt-4 flex justify-end gap-2">
             <button
@@ -224,7 +237,7 @@ function WikiPanel(_props: PanelProps) {
               disabled={resetting}
               className="rounded-md px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-hover transition-colors"
             >
-              Cancel
+              {t("reset.cancel")}
             </button>
             <button
               onClick={() => {
@@ -239,14 +252,14 @@ function WikiPanel(_props: PanelProps) {
                     fetchList();
                   })
                   .catch(() =>
-                    setMarkdown("_Reset failed — a wiki update may be running. Try again after it finishes._"),
+                    setMarkdown(t("reset.failed")),
                   )
                   .finally(() => setResetting(false));
               }}
               disabled={resetting}
               className="rounded-md bg-danger/90 px-3 py-1.5 text-xs font-medium text-white hover:bg-danger transition-colors disabled:opacity-60"
             >
-              {resetting ? "Resetting…" : "Wipe & rebuild"}
+              {resetting ? t("reset.resetting") : t("reset.wipeRebuild")}
             </button>
           </div>
         </div>
@@ -265,7 +278,10 @@ function WikiPanel(_props: PanelProps) {
           {SECTION_ORDER.filter((s) => (grouped[s]?.length ?? 0) > 0).map((s) => (
             <div key={s} className="mb-2">
               <div className="px-1.5 pb-1 text-[10px] font-medium uppercase tracking-wider text-fg-fainter">
-                {SECTION_LABEL[s] ?? s} ({grouped[s]!.length})
+                {t("list.sectionCount", {
+                  label: SECTION_LABEL_KEY[s] ? t(SECTION_LABEL_KEY[s]) : SECTION_LABEL[s] ?? s,
+                  n: grouped[s]!.length,
+                })}
               </div>
               {grouped[s]!.map((p) => (
                 <button
@@ -286,7 +302,7 @@ function WikiPanel(_props: PanelProps) {
           ))}
           {!loading && pages.length === 0 && (
             <div className="px-2 py-6 text-center text-[11px] text-fg-fainter">
-              No wiki pages yet. They accrue as the conversation is compacted.
+              {t("list.empty")}
             </div>
           )}
         </div>
@@ -314,7 +330,7 @@ function WikiPanel(_props: PanelProps) {
           ) : (
             <div className="flex h-full flex-col items-center justify-center text-fg-fainter">
               <Notebook size={28} className="mb-2 opacity-30" />
-              <span className="text-xs">{loading ? "Loading…" : "Select a page"}</span>
+              <span className="text-xs">{loading ? t("reader.loading") : t("reader.selectPage")}</span>
             </div>
           )}
         </div>
@@ -393,6 +409,7 @@ function WikiGraphView({
   selected: string | null;
   reloadKey: number;
 }) {
+  const t = usePluginT("wiki");
   const [data, setData] = useState<{ nodes: FGNode[]; links: FGLink[] }>({ nodes: [], links: [] });
   const wrapRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -478,13 +495,13 @@ function WikiGraphView({
       {data.nodes.length === 0 ? (
         <div className="flex h-full flex-col items-center justify-center text-fg-fainter">
           <Share2 size={28} className="mb-2 opacity-30" />
-          <span className="text-xs">No pages to graph yet.</span>
+          <span className="text-xs">{t("graph.empty")}</span>
         </div>
       ) : (
         <Suspense
           fallback={
             <div className="flex h-full items-center justify-center text-[11px] text-fg-fainter">
-              Loading graph…
+              {t("graph.loading")}
             </div>
           }
         >
@@ -595,7 +612,7 @@ function WikiGraphView({
               style={{ backgroundColor: nodeColor(picked.section) }}
             />
             <span className="truncate text-[10px] uppercase tracking-wide text-fg-fainter">
-              {SECTION_LABEL[picked.section] ?? picked.section}
+              {SECTION_LABEL_KEY[picked.section] ? t(SECTION_LABEL_KEY[picked.section]) : SECTION_LABEL[picked.section] ?? picked.section}
             </span>
           </div>
           <div className="mb-2 line-clamp-2 text-[13px] font-medium text-fg-default">{picked.title}</div>
@@ -604,7 +621,7 @@ function WikiGraphView({
               onClick={() => setPicked(null)}
               className="rounded px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-hover transition-colors"
             >
-              Cancel
+              {t("graph.cancel")}
             </button>
             <button
               onClick={() => {
@@ -614,7 +631,7 @@ function WikiGraphView({
               }}
               className="rounded bg-accent px-2.5 py-1 text-[11px] font-medium text-fg-on-accent hover:bg-accent-hover transition-colors"
             >
-              Open
+              {t("graph.open")}
             </button>
           </div>
         </div>
@@ -626,7 +643,7 @@ function WikiGraphView({
           {LEGEND.map((l) => (
             <span key={l.section} className="flex items-center gap-1">
               <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: l.color }} />
-              {l.label}
+              {SECTION_LABEL_KEY[l.section] ? t(SECTION_LABEL_KEY[l.section]) : l.label}
             </span>
           ))}
         </div>
@@ -655,6 +672,7 @@ const LEGEND: Array<{ section: string; label: string; color: string }> = [
 // ─── composer button: record wiki ───────────────────────────────
 
 function WikiRecordButton(_props: ComposerActionProps) {
+  const t = usePluginT("wiki");
   const nav = useChatNav();
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0); // 0..1
@@ -712,7 +730,7 @@ function WikiRecordButton(_props: ComposerActionProps) {
       type="button"
       onClick={onClick}
       disabled={busy}
-      title={busy ? `Wiki update running… ${Math.round(pct * 100)}%` : "Record this conversation into the wiki"}
+      title={busy ? t("record.running", { pct: Math.round(pct * 100) }) : t("record.record")}
       className={
         "relative flex h-7 w-7 items-center justify-center rounded transition-colors " +
         (busy ? "cursor-default text-brand-400" : "text-fg-faint hover:text-fg-default hover:bg-bg-hover")

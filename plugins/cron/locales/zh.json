@@ -1,0 +1,42 @@
+{
+  "manifest.adminPages.settings": "调度器",
+  "manifest.configGroups.schedule.label": "调度",
+  "manifest.configGroups.schedule.badge": "运行时",
+  "manifest.config.defaultTz.label": "默认时区",
+  "manifest.config.defaultTz.description": "IANA 时区（如 Asia/Shanghai），用于创建者未指定时区的 cron 任务。留空则使用服务器本地时区。仅影响 cron 类型任务；once 类型任务使用绝对时间戳。",
+  "manifest.topBarButtons.toggle": "定时任务",
+  "manifest.rightPanels.main": "日程",
+
+  "weekday.sun": "日",
+  "weekday.mon": "一",
+  "weekday.tue": "二",
+  "weekday.wed": "三",
+  "weekday.thu": "四",
+  "weekday.fri": "五",
+  "weekday.sat": "六",
+
+  "aria.prevMonth": "上个月",
+  "aria.nextMonth": "下个月",
+  "aria.deleteJob": "删除任务",
+
+  "agenda.jobCountOne": "{n} 个任务",
+  "agenda.jobCountMany": "{n} 个任务",
+  "agenda.noJobs": "无任务",
+  "agenda.today": "今天",
+  "agenda.nothingScheduled": "暂无日程",
+
+  "job.recurring": "重复",
+  "job.oneTime": "一次性",
+  "job.task": "任务",
+  "job.message": "消息",
+  "job.disabled": "⏸️ 已停用",
+  "job.executed": "已执行",
+
+  "delete.title": "删除定时任务？",
+  "delete.confirmPre": "此操作将永久移除 ",
+  "delete.confirmCron": " 并停止所有未来的运行。",
+  "delete.confirmOnce": "。",
+  "delete.confirmSuffix": " 此操作无法撤销。",
+  "delete.cancel": "取消",
+  "delete.delete": "删除"
+}
