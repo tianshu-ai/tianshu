@@ -1,5 +1,9 @@
 {
   "manifest.adminPages.settings": "维基",
+  "manifest.configGroups.embedding.label": "语义搜索（嵌入）",
+  "manifest.configGroups.embedding.description": "选择一个嵌入模型以启用语义搜索。模型本身的配置（base URL、API 密钥、维度）在“设置 → 模型”中进行。保留为“None”则使用关键词搜索。",
+  "manifest.config.embeddingModelId.label": "嵌入模型",
+  "manifest.config.embeddingModelId.description": "从“设置 → 模型”下配置的嵌入模型中选一个。设置后，wiki 会构建语义索引并搜索；否则回退到关键词搜索。",
   "manifest.topBarButtons.toggle": "Wiki",
   "manifest.rightPanels.main": "Wiki",
   "manifest.composerActions.record": "将对话记录到 Wiki",

@@ -1,5 +1,9 @@
 {
   "manifest.adminPages.settings": "Scheduler",
+  "manifest.configGroups.schedule.label": "Schedule",
+  "manifest.configGroups.schedule.badge": "runtime",
+  "manifest.config.defaultTz.label": "Default timezone",
+  "manifest.config.defaultTz.description": "IANA timezone (e.g. Asia/Shanghai) applied to cron jobs whose creator didn't specify one. Leave blank to use the server's local timezone. Only affects cron-type jobs; once-type jobs use absolute timestamps.",
   "manifest.topBarButtons.toggle": "Scheduled jobs",
   "manifest.rightPanels.main": "Schedule",
 

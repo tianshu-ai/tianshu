@@ -1,3 +1,9 @@
 {
-  "manifest.adminPages.settings": "网页搜索"
+  "manifest.adminPages.settings": "网页搜索",
+  "manifest.config.backend.label": "搜索后端",
+  "manifest.config.backend.description": "web_search 查询使用哪个托管端点。两者都无需密钥（匿名免费层）。Exa 返回高亮摘录；Parallel 返回排序结果。web_fetch 不受影响。",
+  "manifest.config.backend.option.exa": "Exa",
+  "manifest.config.backend.option.parallel": "Parallel",
+  "manifest.config.timeoutMs.label": "单次请求超时",
+  "manifest.config.timeoutMs.description": "每次 web_search / web_fetch 调用的网络超时。在慢网络上遇到超时时可调大。"
 }

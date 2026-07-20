@@ -1,5 +1,9 @@
 {
   "manifest.adminPages.settings": "调度器",
+  "manifest.configGroups.schedule.label": "调度",
+  "manifest.configGroups.schedule.badge": "运行时",
+  "manifest.config.defaultTz.label": "默认时区",
+  "manifest.config.defaultTz.description": "IANA 时区（如 Asia/Shanghai），用于创建者未指定时区的 cron 任务。留空则使用服务器本地时区。仅影响 cron 类型任务；once 类型任务使用绝对时间戳。",
   "manifest.topBarButtons.toggle": "定时任务",
   "manifest.rightPanels.main": "日程",
 

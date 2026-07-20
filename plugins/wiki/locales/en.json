@@ -1,5 +1,9 @@
 {
   "manifest.adminPages.settings": "Wiki",
+  "manifest.configGroups.embedding.label": "Semantic search (embedding)",
+  "manifest.configGroups.embedding.description": "Pick an embedding model to enable semantic search. Configure the models themselves (base URL, API key, dimensions) in Settings → Models. Leave as “None” to use keyword search.",
+  "manifest.config.embeddingModelId.label": "Embedding model",
+  "manifest.config.embeddingModelId.description": "Choose one of the embedding models configured under Settings → Models. When set, the wiki builds a semantic index and searches it; otherwise it falls back to keyword search.",
   "manifest.topBarButtons.toggle": "Wiki",
   "manifest.rightPanels.main": "Wiki",
   "manifest.composerActions.record": "Record conversation into the wiki",
