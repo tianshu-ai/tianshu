@@ -214,13 +214,22 @@ async function sendJson<T>(
   return (await r.json()) as T;
 }
 
-function fmtRelative(ms: number | null): string {
+type Translator = (key: string, params?: Record<string, string | number>) => string;
+
+function fmtRelative(ms: number | null, t?: Translator): string {
   if (!ms) return "";
   const diff = Date.now() - ms;
-  if (diff < 60_000) return "just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return `${Math.floor(diff / 86_400_000)}d ago`;
+  if (diff < 60_000) return t ? t("panel.time.justNow") : "just now";
+  if (diff < 3_600_000) {
+    const n = Math.floor(diff / 60_000);
+    return t ? t("panel.time.minutesAgo", { n }) : `${n}m ago`;
+  }
+  if (diff < 86_400_000) {
+    const n = Math.floor(diff / 3_600_000);
+    return t ? t("panel.time.hoursAgo", { n }) : `${n}h ago`;
+  }
+  const n = Math.floor(diff / 86_400_000);
+  return t ? t("panel.time.daysAgo", { n }) : `${n}d ago`;
 }
 
 function projectChipsFromSummary(
@@ -513,6 +522,7 @@ function useBoardController(opts: {
 // ─── Right panel: compact kanban ─────────────────────────────────
 
 function WorkboardPanel(_props: PanelProps) {
+  const t = usePluginT("workboard");
   const ctrl = useBoardController({ includeArchived: false, withWorker: false });
   const [projectFilter, setProjectFilter] = useState<string>("");
 
@@ -537,14 +547,14 @@ function WorkboardPanel(_props: PanelProps) {
     <div className="flex flex-col h-full bg-bg-base text-fg-default">
       <header className="flex items-center justify-between px-3 py-2 border-b border-border-subtle flex-shrink-0">
         <h2 className="flex items-center gap-1.5 font-semibold text-sm">
-          <Kanban className="w-4 h-4" /> Tasks
+          <Kanban className="w-4 h-4" /> {t("panel.title")}
         </h2>
         <button
           type="button"
           onClick={() => void ctrl.reload()}
           className="text-[10px] uppercase tracking-wide text-fg-muted hover:text-fg-default"
         >
-          Refresh
+          {t("panel.refresh")}
         </button>
       </header>
 
@@ -609,6 +619,7 @@ function WorkboardPanel(_props: PanelProps) {
 // ─── Admin page: full board ──────────────────────────────────────
 
 function WorkboardAdminPage(_props: AdminPageProps) {
+  const t = usePluginT("workboard");
   const ctrl = useBoardController({ includeArchived: false, withWorker: true });
   const [projectFilter, setProjectFilter] = useState<string>("");
   const [selected, setSelected] = useState<Task | null>(null);
@@ -650,16 +661,14 @@ function WorkboardAdminPage(_props: AdminPageProps) {
     <div className="flex flex-col h-full bg-bg-base text-fg-default">
       <header className="px-6 py-4 border-b border-border-subtle flex-shrink-0">
         <h1 className="text-xl font-semibold flex items-center gap-2">
-          <Kanban className="w-5 h-5" /> Workboard
+          <Kanban className="w-5 h-5" /> {t("panel.admin.title")}
         </h1>
         <p className="text-xs text-fg-faint mt-1 max-w-3xl">
-          Drag cards across columns. Click <Plus className="inline w-3 h-3 align-text-bottom" />{" "}
-          on a column to add a task in place. Workers in the pool claim
-          ready tasks and report back with a result summary.
+          {t("panel.admin.descPart1")}
+          <Plus className="inline w-3 h-3 align-text-bottom" />
+          {t("panel.admin.descPart2")}
           <span className="text-fg-fainter">
-            {" "}
-            v0.2 ships an echo worker (30s sleep + reflect title) so the loop is
-            visible end-to-end; real worker roles land in follow-up PRs.
+            {t("panel.admin.descPart3")}
           </span>
         </p>
       </header>
@@ -781,6 +790,7 @@ function KanbanColumn({
   onDragEnd: () => void;
   onDrop: (e: DragEvent, targetStatus: TaskStatus) => void;
 }) {
+  const t = usePluginT("workboard");
   const [showAdd, setShowAdd] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
   // Build the id→task index ONCE per render, not once per card.
@@ -813,7 +823,13 @@ function KanbanColumn({
       <header className="px-2 py-1.5 border-b border-border-subtle/60 flex items-center gap-1.5 sticky top-0">
         <span className={`w-2 h-2 rounded-full ${column.dot}`} />
         <span className={`${compact ? "text-[11px]" : "text-xs"} font-medium`}>
-          {column.label}
+          {column.status === "ready"
+            ? t("panel.column.ready")
+            : column.status === "in_progress"
+              ? t("panel.column.inProgress")
+              : column.status === "done"
+                ? t("panel.column.done")
+                : column.label}
         </span>
         <span
           className={`ml-auto ${compact ? "text-[10px]" : "text-[11px]"} text-fg-faint`}
@@ -823,7 +839,7 @@ function KanbanColumn({
         {column.status === "ready" && (
           <button
             type="button"
-            title="Add task"
+            title={t("panel.column.addTaskTitle")}
             onClick={() => setShowAdd(true)}
             className="p-0.5 text-fg-fainter hover:text-fg-default rounded"
           >
@@ -873,8 +889,8 @@ function KanbanColumn({
             }
           >
             {column.status === "ready"
-              ? "empty - click to add"
-              : "empty"}
+              ? t("panel.column.emptyClickAdd")
+              : t("panel.column.empty")}
           </li>
         )}
       </ul>
@@ -927,6 +943,7 @@ const BoardCard = memo(function BoardCard({
   onPatch: (id: string, patch: Record<string, unknown>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }) {
+  const t = usePluginT("workboard");
   const { Modal } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -981,7 +998,7 @@ const BoardCard = memo(function BoardCard({
             {task.workerAgentId && (
               <span
                 className="text-[9px] px-1 rounded bg-indigo-900/50 text-indigo-100"
-                title={`Assigned to ${task.workerAgentId} (slug)`}
+                title={t("panel.card.assigneeTitle", { slug: task.workerAgentId })}
               >
                 @{agentNames.get(task.workerAgentId) ?? task.workerAgentId}
               </span>
@@ -992,7 +1009,7 @@ const BoardCard = memo(function BoardCard({
               // records aren't blank.
               <span
                 className="text-[9px] px-1 rounded bg-bg-raised text-fg-muted"
-                title="Legacy: dispatched by kind, not pinned to a slug"
+                title={t("panel.card.legacyRoleTitle")}
               >
                 {task.workerRole}
               </span>
@@ -1011,8 +1028,12 @@ const BoardCard = memo(function BoardCard({
                 }`}
                 title={
                   meta.blocked
-                    ? `Waiting on: ${meta.pendingDeps.map((d) => d.title).join(", ")}`
-                    : `${meta.deps.length} dependenc${meta.deps.length === 1 ? "y" : "ies"} satisfied`
+                    ? t("panel.card.waitingOn", {
+                        names: meta.pendingDeps.map((d) => d.title).join(", "),
+                      })
+                    : meta.deps.length === 1
+                      ? t("panel.card.depsSatisfiedOne", { n: meta.deps.length })
+                      : t("panel.card.depsSatisfiedMany", { n: meta.deps.length })
                 }
               >
                 {meta.blocked ? (
@@ -1034,9 +1055,9 @@ const BoardCard = memo(function BoardCard({
             >
               <AlertTriangle className="w-3 h-3 mt-px shrink-0" />
               <span className="min-w-0 flex-1 break-words line-clamp-3">
-                <span className="font-medium">awaiting intervention</span>
+                <span className="font-medium">{t("panel.card.awaitingIntervention")}</span>
                 {task.interventionAt
-                  ? ` (${formatRelative(task.interventionAt)})`
+                  ? ` (${formatRelative(task.interventionAt, t)})`
                   : ""}
                 {(task.interventionReason ?? task.failureReason)
                   ? `: ${task.interventionReason ?? task.failureReason}`
@@ -1068,7 +1089,7 @@ const BoardCard = memo(function BoardCard({
                 }}
                 className="shrink-0 rounded bg-rose-600 px-1.5 py-px text-[9.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-50"
               >
-                Retry
+                {t("panel.card.retry")}
               </button>
             </div>
           )}
@@ -1080,8 +1101,9 @@ const BoardCard = memo(function BoardCard({
             >
               <AlertTriangle className="w-3 h-3 mt-px shrink-0" />
               <span className="min-w-0 flex-1 break-words line-clamp-3">
-                stalled
-                {(task.attempts ?? 0) > 0 ? ` after ${task.attempts} attempts` : ""}
+                {(task.attempts ?? 0) > 0
+                  ? t("panel.card.stalledAfter", { n: task.attempts ?? 0 })
+                  : t("panel.card.stalled")}
                 {task.failureReason ? `: ${task.failureReason}` : ""}
               </span>
               {/* Clear the `stalled` label → the pool re-claims the
@@ -1103,7 +1125,7 @@ const BoardCard = memo(function BoardCard({
                 }}
                 className="shrink-0 rounded bg-orange-600 px-1.5 py-px text-[9.5px] font-medium text-white hover:bg-orange-500 disabled:opacity-50"
               >
-                Retry
+                {t("panel.card.retry")}
               </button>
             </div>
           )}
@@ -1113,7 +1135,7 @@ const BoardCard = memo(function BoardCard({
               onClick={(e) => e.stopPropagation()}
             >
               <span className="inline-block rounded border border-yellow-500/40 bg-yellow-500/5 px-1.5 py-px text-[10px] text-yellow-200">
-                draft - pool will skip
+                {t("panel.card.draftSkip")}
               </span>
               <button
                 type="button"
@@ -1128,7 +1150,7 @@ const BoardCard = memo(function BoardCard({
                 }}
                 className="rounded border border-yellow-500/40 px-1 py-px text-[9.5px] font-medium text-yellow-100 hover:bg-yellow-500/15 disabled:opacity-50"
               >
-                Publish
+                {t("panel.card.publish")}
               </button>
             </div>
           )}
@@ -1146,7 +1168,7 @@ const BoardCard = memo(function BoardCard({
           )}
           <div className="text-[9.5px] text-fg-faint mt-0.5 flex items-center gap-1">
             <Clock className="w-2.5 h-2.5" />
-            {fmtRelative(task.endedAt ?? task.startedAt ?? task.createdAt)}
+            {fmtRelative(task.endedAt ?? task.startedAt ?? task.createdAt, t)}
           </div>
         </div>
         {hasMore && (
@@ -1164,21 +1186,21 @@ const BoardCard = memo(function BoardCard({
           onClick={(e) => e.stopPropagation()}
         >
           {task.description && (
-            <Section label="Description">
+            <Section label={t("panel.section.description")}>
               <div className="text-[10.5px] text-fg-muted whitespace-pre-line break-words max-h-48 overflow-y-auto">
                 {task.description}
               </div>
             </Section>
           )}
           {task.resultSummary && (
-            <Section label="Result">
+            <Section label={t("panel.section.result")}>
               <div className="text-[10.5px] text-success italic whitespace-pre-line break-words max-h-48 overflow-y-auto">
                 → {task.resultSummary}
               </div>
             </Section>
           )}
           {task.resultFiles.length > 0 && (
-            <Section label={`Files (${task.resultFiles.length})`}>
+            <Section label={t("panel.section.files", { n: task.resultFiles.length })}>
               <ul className="space-y-0.5">
                 {task.resultFiles.map((p) => (
                   <li key={p}>
@@ -1189,7 +1211,7 @@ const BoardCard = memo(function BoardCard({
             </Section>
           )}
           {meta.deps.length > 0 && (
-            <Section label="Depends on">
+            <Section label={t("panel.section.dependsOn")}>
               <ul className="space-y-0.5">
                 {meta.deps.map((d) => (
                   <li
@@ -1220,14 +1242,14 @@ const BoardCard = memo(function BoardCard({
           )}
           <div className="grid grid-cols-2 gap-x-3 gap-y-0 text-[9.5px] text-fg-faint pt-1">
             <div>
-              Created 
+              {t("panel.card.created")}{" "}
               <span className="text-fg-muted">
                 {new Date(task.createdAt).toLocaleString()}
               </span>
             </div>
             {task.startedAt && (
               <div>
-                Started 
+                {t("panel.card.started")}{" "}
                 <span className="text-fg-muted">
                   {new Date(task.startedAt).toLocaleString()}
                 </span>
@@ -1235,7 +1257,7 @@ const BoardCard = memo(function BoardCard({
             )}
             {task.endedAt && (
               <div>
-                Ended 
+                {t("panel.card.ended")}{" "}
                 <span className="text-fg-muted">
                   {new Date(task.endedAt).toLocaleString()}
                 </span>
@@ -1252,7 +1274,7 @@ const BoardCard = memo(function BoardCard({
       <button
         type="button"
         disabled={busy}
-        title="Delete task"
+        title={t("panel.card.deleteTaskTitle")}
         onClick={(e) => {
           e.stopPropagation();
           setConfirmingDelete(true);
@@ -1269,17 +1291,17 @@ const BoardCard = memo(function BoardCard({
         <Modal
           isOpen={confirmingDelete}
           onClose={() => setConfirmingDelete(false)}
-          title="Delete task?"
+          title={t("panel.delete.modalTitle")}
           size="sm"
           allowMaximize={false}
         >
           <div className="flex flex-col gap-4 p-1">
             <p className="text-sm text-fg-muted">
-              This will permanently delete{" "}
+              {t("panel.delete.confirmPre")}
               <span className="font-medium text-fg-default">
                 “{task.title}”
               </span>
-              . This can’t be undone.
+              {t("panel.delete.confirmPost")}
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -1287,7 +1309,7 @@ const BoardCard = memo(function BoardCard({
                 onClick={() => setConfirmingDelete(false)}
                 className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover transition-colors"
               >
-                Cancel
+                {t("panel.delete.cancel")}
               </button>
               <button
                 type="button"
@@ -1298,7 +1320,7 @@ const BoardCard = memo(function BoardCard({
                 }}
                 className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
               >
-                Delete
+                {t("panel.delete.delete")}
               </button>
             </div>
           </div>
@@ -1317,6 +1339,7 @@ const BoardCard = memo(function BoardCard({
  * background work.
  */
 function ExecutionSection({ task }: { task: Task }) {
+  const t = usePluginT("workboard");
   const [open, setOpen] = useState(false);
   const showButton = task.status === "in_progress" || Boolean(task.sessionId);
   if (!showButton) return null;
@@ -1332,11 +1355,11 @@ function ExecutionSection({ task }: { task: Task }) {
           className="inline-flex items-center gap-1.5 rounded border border-border-default px-1.5 py-0.5 text-[10px] text-fg-muted hover:border-border-strong hover:bg-bg-raised"
         >
           <ScrollText className="w-3 h-3" />
-          View transcript
+          {t("panel.execution.viewTranscript")}
           {task.status === "in_progress" && (
             <span className="flex items-center gap-1 text-warning">
               <span className="w-1 h-1 rounded-full bg-amber-400 animate-pulse" />
-              live
+              {t("panel.execution.live")}
             </span>
           )}
         </button>
@@ -1370,6 +1393,7 @@ function ExecutionDialog({
   task: Task;
   onClose: () => void;
 }) {
+  const t = usePluginT("workboard");
   const { Modal } = useUiPrimitives();
   const [entries, setEntries] = useState<HistoryEntry[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -1433,11 +1457,11 @@ function ExecutionDialog({
   // currently showing.
   useEffect(() => {
     if (task.status !== "in_progress") return;
-    const t = setInterval(() => {
+    const iv = setInterval(() => {
       if (view === "rawlog") void fetchRawLog();
       else void fetchHistory();
     }, 3000);
-    return () => clearInterval(t);
+    return () => clearInterval(iv);
   }, [task.status, view, fetchHistory, fetchRawLog]);
 
   // Auto-scroll to bottom on new entries when user is at bottom.
@@ -1494,7 +1518,7 @@ function ExecutionDialog({
                   : "text-fg-faint hover:text-fg-muted"
               }`}
             >
-              transcript
+              {t("panel.execution.transcript")}
             </button>
             <button
               type="button"
@@ -1504,9 +1528,9 @@ function ExecutionDialog({
                   ? "bg-bg-hover text-fg-default"
                   : "text-fg-faint hover:text-fg-muted"
               }`}
-              title="Raw opencode.log from the sandbox"
+              title={t("panel.execution.rawLogTitle")}
             >
-              raw log
+              {t("panel.execution.rawLog")}
             </button>
           </div>
           {view === "transcript" && sessionId && (
@@ -1516,7 +1540,7 @@ function ExecutionDialog({
             <span className="flex items-center gap-1 text-warning">
               ·
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
-              tailing
+              {t("panel.execution.tailing")}
             </span>
           )}
           <div className="ml-auto">
@@ -1527,7 +1551,7 @@ function ExecutionDialog({
               }
               disabled={view === "rawlog" ? rawLoading : loading}
               className="rounded p-1 text-fg-muted hover:bg-bg-raised hover:text-fg-default disabled:opacity-50"
-              title="Refresh"
+              title={t("panel.execution.refreshTitle")}
             >
               <RefreshCw
                 className={`h-3.5 w-3.5 ${
@@ -1551,13 +1575,13 @@ function ExecutionDialog({
           {view === "rawlog" ? (
             <>
               {rawLog === null && rawLoading && (
-                <div className="text-xs italic text-fg-faint">Loading…</div>
+                <div className="text-xs italic text-fg-faint">{t("panel.execution.loading")}</div>
               )}
               {rawLog !== null && rawLog.trim() === "" && !rawLoading && (
                 <div className="text-xs italic text-fg-faint">
                   {rawAvailable
-                    ? "No opencode log yet (task hasn't produced one, or the sandbox was torn down)."
-                    : "Raw log unavailable — this worker doesn't run in a shell sandbox."}
+                    ? t("panel.execution.rawLogEmpty")
+                    : t("panel.execution.rawLogUnavailable")}
                 </div>
               )}
               {rawLog !== null && rawLog.trim() !== "" && (
@@ -1569,13 +1593,13 @@ function ExecutionDialog({
           ) : (
             <>
               {entries === null && loading && (
-                <div className="text-xs italic text-fg-faint">Loading…</div>
+                <div className="text-xs italic text-fg-faint">{t("panel.execution.loading")}</div>
               )}
               {entries !== null && merged.length === 0 && !loading && (
                 <div className="text-xs italic text-fg-faint">
                   {task.sessionId
-                    ? "No messages yet."
-                    : "Worker hasn't started yet."}
+                    ? t("panel.execution.noMessages")
+                    : t("panel.execution.workerNotStarted")}
                 </div>
               )}
               {merged.map((row) => (
@@ -1639,7 +1663,15 @@ function mergeAssistantToolResults(
 
 /** One assistant / user turn rendered MessageBubble-style. */
 function ExecutionTurn({ row }: { row: MergedTurn }) {
+  const t = usePluginT("workboard");
   const isUser = row.role === "user";
+  const roleLabel = isUser
+    ? t("panel.turn.you")
+    : row.role === "assistant"
+      ? t("panel.turn.assistant")
+      : row.role === "system"
+        ? t("panel.turn.system")
+        : row.role;
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div
@@ -1651,7 +1683,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
           ) : (
             <Bot className="h-3 w-3 text-link" />
           )}
-          <span>{isUser ? "you" : row.role}</span>
+          <span>{roleLabel}</span>
           <span className="text-fg-fainter">·</span>
           <span className="text-fg-fainter">
             {new Date(row.createdAt).toLocaleTimeString()}
@@ -1690,6 +1722,7 @@ function ToolCallChip({
   call: HistoryToolCall;
   result?: HistoryToolResult;
 }) {
+  const t = usePluginT("workboard");
   const [expanded, setExpanded] = useState(false);
   const running = !result;
   const isError = !!result && result.ok === false;
@@ -1718,7 +1751,7 @@ function ToolCallChip({
           {summariseArgsJson(call.argsJson)}
         </span>
         {running ? (
-          <span className="text-[11px] text-fg-fainter">running…</span>
+          <span className="text-[11px] text-fg-fainter">{t("panel.tool.running")}</span>
         ) : expanded ? (
           <ChevronDown className="h-3 w-3 text-fg-fainter" />
         ) : (
@@ -1861,6 +1894,7 @@ function AddTaskRow({
   onSubmit: (input: AddTaskInput) => void;
   onCancel: () => void;
 }) {
+  const t = usePluginT("workboard");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [project, setProject] = useState("");
@@ -1875,13 +1909,13 @@ function AddTaskRow({
   }, []);
 
   const submit = () => {
-    const t = title.trim();
-    if (!t) {
+    const trimmed = title.trim();
+    if (!trimmed) {
       onCancel();
       return;
     }
     onSubmit({
-      title: t,
+      title: trimmed,
       description: description.trim() || undefined,
       project: project.trim() || undefined,
       priority: priority || undefined,
@@ -1906,12 +1940,12 @@ function AddTaskRow({
               onCancel();
             }
           }}
-          placeholder="Task title..."
+          placeholder={t("panel.addTask.titlePlaceholder")}
           className="flex-1 min-w-0 bg-bg-raised border border-border-default rounded px-2 py-1 text-[11.5px] text-fg-default outline-none focus:border-blue-500"
         />
         <button
           type="button"
-          title={showMore ? "Less" : "More fields"}
+          title={showMore ? t("panel.addTask.less") : t("panel.addTask.moreFields")}
           onClick={() => setShowMore((v) => !v)}
           className="p-0.5 text-fg-faint hover:text-fg-default"
         >
@@ -1923,7 +1957,7 @@ function AddTaskRow({
           type="button"
           onClick={onCancel}
           className="p-0.5 text-fg-faint hover:text-fg-default"
-          title="Cancel"
+          title={t("panel.addTask.cancel")}
         >
           <X className="w-3 h-3" />
         </button>
@@ -1931,16 +1965,16 @@ function AddTaskRow({
 
       {showMore && (
         <div className="space-y-2 pt-0.5">
-          <FieldRow label="Description">
+          <FieldRow label={t("panel.field.description")}>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optional notes for the worker..."
+              placeholder={t("panel.addTask.descPlaceholder")}
               rows={2}
               className="w-full bg-bg-raised border border-border-default rounded px-2 py-1 text-[11px] text-fg-default outline-none focus:border-blue-500 resize-y"
             />
           </FieldRow>
-          <FieldRow label="Project">
+          <FieldRow label={t("panel.field.project")}>
             <input
               list="workboard-add-projects"
               value={project}
@@ -1950,16 +1984,16 @@ function AddTaskRow({
             />
           </FieldRow>
           <div className="grid grid-cols-[1fr_72px] gap-2">
-            <FieldRow label="Worker">
+            <FieldRow label={t("panel.field.worker")}>
               <input
                 list="workboard-add-roles"
                 value={workerRole}
                 onChange={(e) => setWorkerRole(e.target.value)}
-                placeholder="any"
+                placeholder={t("panel.addTask.anyPlaceholder")}
                 className="w-full bg-bg-raised border border-border-default rounded px-2 py-1 text-[11px] text-fg-default outline-none focus:border-blue-500"
               />
             </FieldRow>
-            <FieldRow label="Priority">
+            <FieldRow label={t("panel.field.priority")}>
               <input
                 type="number"
                 value={priority}
@@ -1968,7 +2002,7 @@ function AddTaskRow({
               />
             </FieldRow>
           </div>
-          <FieldRow label="Depends on">
+          <FieldRow label={t("panel.field.dependsOn")}>
             <DependencyPicker
               value={dependsOn}
               onChange={setDependsOn}
@@ -1991,7 +2025,7 @@ function AddTaskRow({
 
       <div className="flex items-center gap-1 pt-1">
         <span className="text-[9.5px] text-fg-fainter truncate">
-          {showMore ? "Enter saves" : "Enter · Esc cancel"}
+          {showMore ? t("panel.addTask.enterSaves") : t("panel.addTask.enterEscCancel")}
         </span>
         <button
           type="button"
@@ -1999,7 +2033,7 @@ function AddTaskRow({
           disabled={!title.trim()}
           className="ml-auto px-2.5 py-0.5 text-[10.5px] rounded bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Add
+          {t("panel.addTask.add")}
         </button>
       </div>
     </li>
@@ -2048,6 +2082,7 @@ function DependencyPicker({
    *  on itself). */
   excludeId?: string;
 }) {
+  const t = usePluginT("workboard");
   const candidateMap = useMemo(
     () => new Map(candidates.map((t) => [t.id, t])),
     [candidates],
@@ -2074,11 +2109,11 @@ function DependencyPicker({
       {value.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {value.map((id) => {
-            const t = candidateMap.get(id);
-            const label = t
-              ? t.title
-              : `${id.slice(0, 6)}... (deleted)`;
-            const done = t?.status === "done";
+            const candTask = candidateMap.get(id);
+            const label = candTask
+              ? candTask.title
+              : t("panel.dep.deletedLabel", { id: id.slice(0, 6) });
+            const done = candTask?.status === "done";
             return (
               <span
                 key={id}
@@ -2087,7 +2122,7 @@ function DependencyPicker({
                     ? "text-success bg-success/10 border-success/30"
                     : "text-indigo-200 bg-indigo-500/15 border-indigo-500/40"
                 }`}
-                title={t ? `${t.status} · ${t.id}` : id}
+                title={candTask ? `${candTask.status} · ${candTask.id}` : id}
               >
                 {done ? (
                   <CheckCircle2 className="w-2.5 h-2.5" />
@@ -2099,7 +2134,7 @@ function DependencyPicker({
                   type="button"
                   onClick={() => remove(id)}
                   className="text-fg-muted hover:text-fg-default"
-                  title="Remove"
+                  title={t("panel.dep.remove")}
                 >
                   <X className="w-2.5 h-2.5" />
                 </button>
@@ -2123,9 +2158,9 @@ function DependencyPicker({
         <option value="">
           {filtered.length === 0
             ? value.length === 0
-              ? "(no other tasks)"
-              : "(no more candidates)"
-            : "Add prerequisite..."}
+              ? t("panel.dep.noOtherTasks")
+              : t("panel.dep.noMoreCandidates")
+            : t("panel.dep.addPrerequisite")}
         </option>
         {filtered.map((t) => (
           <option key={t.id} value={t.id}>
@@ -2152,12 +2187,13 @@ function ProjectChips({
   showAll?: boolean;
   rightExtras?: React.ReactNode;
 }) {
+  const t = usePluginT("workboard");
   return (
     <div className="flex items-center gap-1 px-2 py-1.5 border-b border-border-subtle bg-bg-base/40 overflow-x-auto scrollbar-none flex-shrink-0">
       {showAll && (
         <Chip
           active={!active}
-          label="All"
+          label={t("panel.chip.all")}
           count={chips.reduce((n, c) => n + c.count, 0)}
           onClick={() => onPick("")}
         />
@@ -2212,17 +2248,18 @@ function WorkerStatusRow({
   snapshot: WorkerSnapshot | null;
   onNudge: () => void;
 }) {
+  const t = usePluginT("workboard");
   if (!snapshot) {
     return (
       <div className="px-6 py-1.5 border-b border-border-subtle text-[11px] text-fg-faint flex-shrink-0">
-        Workers: loading...
+        {t("panel.workers.loading")}
       </div>
     );
   }
   return (
     <div className="px-6 py-1.5 border-b border-border-subtle text-[11px] flex items-center gap-2 text-fg-muted flex-wrap flex-shrink-0">
       <Hammer className="w-3 h-3 text-fg-faint" />
-      <span className="text-fg-faint">Worker types:</span>
+      <span className="text-fg-faint">{t("panel.workers.types")}</span>
       {snapshot.workers.map((w) => (
         <span
           key={w.agentId}
@@ -2243,8 +2280,9 @@ function WorkerStatusRow({
       ))}
       {snapshot.running.length > 0 && (
         <span className="text-fg-faint">
-          running {snapshot.running.length} task
-          {snapshot.running.length === 1 ? "" : "s"}
+          {snapshot.running.length === 1
+            ? t("panel.workers.runningOne")
+            : t("panel.workers.runningMany", { n: snapshot.running.length })}
         </span>
       )}
       <button
@@ -2252,7 +2290,7 @@ function WorkerStatusRow({
         onClick={onNudge}
         className="ml-auto text-[10px] uppercase tracking-wide text-fg-muted hover:text-fg-default"
       >
-        Nudge pool
+        {t("panel.workers.nudge")}
       </button>
     </div>
   );
@@ -2275,6 +2313,7 @@ function TaskModal({
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
+  const t = usePluginT("workboard");
   const { Modal } = useUiPrimitives();
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || "");
@@ -2327,7 +2366,7 @@ function TaskModal({
         <header className="px-4 py-3 border-b border-border-subtle flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <span className="text-[10px] uppercase text-fg-faint tracking-wide">
-              Task
+              {t("panel.modal.task")}
             </span>
             <span className="text-[10px] text-fg-fainter font-mono truncate">
               {task.id}
@@ -2343,10 +2382,10 @@ function TaskModal({
           {task.sandboxName && (
             <div
               className="flex items-center gap-1.5"
-              title="Microsandbox VM bound to this task. Running while the worker is active, stopped after release (disk preserved), removed when the task is deleted."
+              title={t("panel.modal.sandboxTitle")}
             >
               <span className="text-[10px] uppercase text-fg-faint tracking-wide">
-                Sandbox
+                {t("panel.modal.sandbox")}
               </span>
               <code
                 className="text-[10px] text-fg-faint font-mono truncate cursor-pointer hover:text-fg-muted"
@@ -2356,14 +2395,14 @@ function TaskModal({
                     ?.writeText(task.sandboxName)
                     .catch(() => {});
                   // Brief visual ack: bump opacity via title swap.
-                  const t = e.currentTarget;
-                  const orig = t.title;
-                  t.title = "copied";
+                  const el = e.currentTarget;
+                  const orig = el.title;
+                  el.title = "copied";
                   setTimeout(() => {
-                    t.title = orig;
+                    el.title = orig;
                   }, 800);
                 }}
-                title="Click to copy"
+                title={t("panel.modal.copyTitle")}
               >
                 {task.sandboxName}
               </code>
@@ -2374,7 +2413,7 @@ function TaskModal({
         <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
           <div>
             <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
-              Title
+              {t("panel.modal.title")}
             </label>
             <input
               value={title}
@@ -2384,7 +2423,7 @@ function TaskModal({
           </div>
           <div>
             <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
-              Description
+              {t("panel.modal.description")}
             </label>
             <textarea
               value={description}
@@ -2396,7 +2435,7 @@ function TaskModal({
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
-                Project
+                {t("panel.modal.project")}
               </label>
               <input
                 value={project}
@@ -2407,7 +2446,7 @@ function TaskModal({
             </div>
             <div>
               <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
-                Priority
+                {t("panel.modal.priority")}
               </label>
               <input
                 type="number"
@@ -2418,19 +2457,19 @@ function TaskModal({
             </div>
             <div>
               <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
-                Worker role
+                {t("panel.modal.workerRole")}
               </label>
               <input
                 value={workerRole}
                 onChange={(e) => setWorkerRole(e.target.value)}
-                placeholder="any"
+                placeholder={t("panel.modal.workerRolePlaceholder")}
                 className="w-full px-2 py-1.5 bg-bg-elevated border border-border-default rounded outline-none focus:border-blue-600"
               />
             </div>
           </div>
           <div>
             <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
-              Status
+              {t("panel.modal.status")}
             </label>
             <div className="flex flex-wrap gap-1">
               {allStatuses.map((s) => (
@@ -2452,7 +2491,7 @@ function TaskModal({
           </div>
           <div>
             <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
-              Depends on
+              {t("panel.modal.dependsOn")}
             </label>
             <DependencyPicker
               value={dependsOn}
@@ -2465,7 +2504,7 @@ function TaskModal({
           {task.resultSummary && (
             <div>
               <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
-                Result
+                {t("panel.modal.result")}
               </label>
               <div className="bg-bg-elevated border border-border-subtle rounded px-2 py-1.5 text-success italic whitespace-pre-line">
                 {task.resultSummary}
@@ -2474,14 +2513,14 @@ function TaskModal({
           )}
           <div className="grid grid-cols-3 gap-2 text-[10px] text-fg-faint border-t border-border-subtle pt-2">
             <div>
-              Created
+              {t("panel.modal.created")}
               <div className="text-fg-muted">
                 {new Date(task.createdAt).toLocaleString()}
               </div>
             </div>
             {task.startedAt && (
               <div>
-                Started
+                {t("panel.modal.started")}
                 <div className="text-fg-muted">
                   {new Date(task.startedAt).toLocaleString()}
                 </div>
@@ -2489,7 +2528,7 @@ function TaskModal({
             )}
             {task.endedAt && (
               <div>
-                Ended
+                {t("panel.modal.ended")}
                 <div className="text-fg-muted">
                   {new Date(task.endedAt).toLocaleString()}
                 </div>
@@ -2505,22 +2544,22 @@ function TaskModal({
             onClick={() => setConfirmingDelete(true)}
             className="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded border border-red-800 text-red-200 hover:bg-red-900/30 disabled:opacity-50"
           >
-            <Trash2 className="w-3 h-3" /> Delete
+            <Trash2 className="w-3 h-3" /> {t("panel.modal.delete")}
           </button>
           <Modal
             isOpen={confirmingDelete}
             onClose={() => setConfirmingDelete(false)}
-            title="Delete task?"
+            title={t("panel.delete.modalTitle")}
             size="sm"
             allowMaximize={false}
           >
             <div className="flex flex-col gap-4 p-1">
               <p className="text-sm text-fg-muted">
-                This will permanently delete{" "}
+                {t("panel.delete.confirmPre")}
                 <span className="font-medium text-fg-default">
                   “{task.title}”
                 </span>
-                . This can’t be undone.
+                {t("panel.delete.confirmPost")}
               </p>
               <div className="flex justify-end gap-2">
                 <button
@@ -2528,7 +2567,7 @@ function TaskModal({
                   onClick={() => setConfirmingDelete(false)}
                   className="text-xs px-3 py-1.5 rounded-md ring-1 ring-inset ring-border-default text-fg-muted hover:bg-bg-hover transition-colors"
                 >
-                  Cancel
+                  {t("panel.delete.cancel")}
                 </button>
                 <button
                   type="button"
@@ -2539,7 +2578,7 @@ function TaskModal({
                   }}
                   className="text-xs px-3 py-1.5 rounded-md bg-danger text-fg-on-accent font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
                 >
-                  Delete
+                  {t("panel.delete.delete")}
                 </button>
               </div>
             </div>
@@ -2549,7 +2588,7 @@ function TaskModal({
             onClick={onClose}
             className="ml-auto px-3 py-1 text-[11px] rounded border border-border-default text-fg-muted hover:bg-bg-raised"
           >
-            Cancel
+            {t("panel.modal.cancel")}
           </button>
           <button
             type="button"
@@ -2557,7 +2596,7 @@ function TaskModal({
             disabled={busy}
             className="px-3 py-1 text-[11px] rounded bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-50"
           >
-            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : t("panel.modal.save")}
           </button>
         </footer>
       </div>
@@ -2717,16 +2756,16 @@ function kindEmoji(kind: string): string {
  *  operator sees how long the task has been parked at a glance.
  *  We deliberately avoid `Intl.RelativeTimeFormat` because its
  *  output ("5 minutes ago") is too verbose for a chip. */
-function formatRelative(ms: number): string {
+function formatRelative(ms: number, t?: Translator): string {
   const delta = Math.max(0, Date.now() - ms);
   const sec = Math.round(delta / 1000);
-  if (sec < 60) return `${sec}s ago`;
+  if (sec < 60) return t ? t("panel.time.secondsAgo", { n: sec }) : `${sec}s ago`;
   const min = Math.round(sec / 60);
-  if (min < 60) return `${min}m ago`;
+  if (min < 60) return t ? t("panel.time.minutesAgo", { n: min }) : `${min}m ago`;
   const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr}h ago`;
+  if (hr < 24) return t ? t("panel.time.hoursAgo", { n: hr }) : `${hr}h ago`;
   const day = Math.round(hr / 24);
-  return `${day}d ago`;
+  return t ? t("panel.time.daysAgo", { n: day }) : `${day}d ago`;
 }
 
 const clientExports: PluginClientExports = {
