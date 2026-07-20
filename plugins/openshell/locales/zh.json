@@ -1,0 +1,38 @@
+{
+  "manifest.adminPages.policy": "网络策略",
+
+  "window.5min": "5 分钟",
+  "window.15min": "15 分钟",
+  "window.60min": "60 分钟",
+  "window.6hr": "6 小时",
+  "window.24hr": "24 小时",
+
+  "page.title": "沙箱网络策略",
+  "page.description": "OpenShell 沙箱的出站策略。下方：在所选时间窗口内被拒绝的出站请求，以及当前生效的端点允许清单。只读 — 当代理通过策略顾问提议出站、或某个任务授予权限时，规则才会变化。",
+  "page.refresh": "刷新",
+
+  "denials.title": "被拒绝的请求",
+  "denials.logUnavailable": "沙箱报告没有可用的拒绝日志（策略日志可能已关闭）。",
+  "denials.emptyPre": "在过去 ",
+  "denials.emptyPost": " 内没有被拒绝的请求。",
+  "denials.col.time": "时间",
+  "denials.col.hostPort": "主机:端口",
+  "denials.col.engine": "引擎",
+  "denials.col.binary": "程序",
+  "denials.col.reason": "原因",
+  "denials.col.action": "操作",
+  "denials.allowed": "已允许",
+  "denials.allow": "允许",
+  "denials.allowTitle": "允许 {host}:{port}",
+
+  "allowed.title": "允许策略（生效的允许清单）",
+  "allowed.allowFailed": "允许失败：{error}",
+  "allowed.loading": "正在加载策略…",
+  "allowed.col.rule": "规则",
+  "allowed.col.hostPort": "主机:端口",
+  "allowed.col.proto": "协议",
+  "allowed.col.enforce": "强制",
+  "allowed.col.binaries": "程序",
+  "allowed.noneParsed": "未解析出端点 — 显示原始策略 JSON",
+  "allowed.emptyPolicy": "（空策略）"
+}

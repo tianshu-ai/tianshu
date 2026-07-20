@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plug, Copy, Check, RefreshCw, Laptop } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/reverse-mcp";
 
@@ -41,6 +41,7 @@ function CmdBlock(props: {
   copied: boolean;
   onCopy: () => void;
 }) {
+  const t = usePluginT("reverse-mcp");
   return (
     <div className="mb-1 flex items-stretch gap-1">
       <pre className="flex-1 overflow-x-auto rounded-md bg-bg-raised px-2 py-1.5 text-[11px] leading-relaxed text-fg-default">
@@ -48,7 +49,7 @@ function CmdBlock(props: {
       </pre>
       <button
         onClick={props.onCopy}
-        title={`Copy ${props.label}`}
+        title={t("cmd.copy", { label: props.label })}
         className="flex items-center rounded px-1.5 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
       >
         {props.copied ? <Check size={12} /> : <Copy size={12} />}
@@ -58,6 +59,7 @@ function CmdBlock(props: {
 }
 
 function BridgePanel(_props: PanelProps) {
+  const t = usePluginT("reverse-mcp");
   const [info, setInfo] = useState<ConnectInfo | null>(null);
   const [conns, setConns] = useState<Conn[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,13 +130,13 @@ function BridgePanel(_props: PanelProps) {
     <div className="flex h-full flex-col overflow-y-auto text-fg-default">
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
         <Plug size={13} className="text-fg-faint" />
-        <span className="text-xs font-medium">Local Bridge</span>
+        <span className="text-xs font-medium">{t("panel.title")}</span>
         <button
           onClick={() => {
             fetchInfo();
             fetchConns();
           }}
-          title="Refresh"
+          title={t("panel.refresh")}
           className="ml-auto rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
         >
           <RefreshCw size={12} />
@@ -143,25 +145,22 @@ function BridgePanel(_props: PanelProps) {
 
       <div className="space-y-4 px-3 py-3 text-[12px]">
         <p className="leading-relaxed text-fg-muted">
-          Connect software on your own machine (browser, files, shell) into
-          tianshu. Run the command below on your computer; it starts a small
-          local client that dials in and registers its tools. Only{" "}
-          <b>your</b> sessions can use them.
+          {t("panel.intro.pre")}
+          <b>{t("panel.intro.your")}</b>{t("panel.intro.post")}
         </p>
 
         {/* Step-by-step */}
         <ol className="list-decimal space-y-1 pl-5 text-fg-muted">
-          <li>Copy the command below.</li>
-          <li>Run it in a terminal on the machine you want to bridge.</li>
+          <li>{t("panel.steps.copy")}</li>
+          <li>{t("panel.steps.run")}</li>
           <li>
-            The device appears under <b>Connected devices</b> and the agent can
-            use its tools.
+            {t("panel.steps.appearPre")}<b>{t("panel.steps.connectedDevices")}</b>{t("panel.steps.appearPost")}
           </li>
         </ol>
 
         {/* Capabilities to expose */}
         <div>
-          <div className="mb-1 font-medium text-fg-default">Capabilities</div>
+          <div className="mb-1 font-medium text-fg-default">{t("panel.capabilities")}</div>
           <div className="space-y-1.5">
             {/* browser */}
             <label className="flex items-center gap-2">
@@ -170,8 +169,8 @@ function BridgePanel(_props: PanelProps) {
                 checked={browserOn}
                 onChange={(e) => setBrowserOn(e.target.checked)}
               />
-              <span className="font-medium">Browser</span>
-              <span className="text-[10px] text-fg-fainter">control a local browser</span>
+              <span className="font-medium">{t("panel.browser")}</span>
+              <span className="text-[10px] text-fg-fainter">{t("panel.browserHint")}</span>
             </label>
             {browserOn && (
               <div className="ml-6 flex flex-col gap-1">
@@ -182,9 +181,9 @@ function BridgePanel(_props: PanelProps) {
                     checked={engine === "own"}
                     onChange={() => setEngine("own")}
                   />
-                  <span>Your own Chrome</span>
+                  <span>{t("panel.ownChrome")}</span>
                   <span className="text-[10px] text-fg-fainter">
-                    real cookies + fingerprint, no download
+                    {t("panel.ownChromeHint")}
                   </span>
                 </label>
                 <label className="flex items-center gap-2">
@@ -194,9 +193,9 @@ function BridgePanel(_props: PanelProps) {
                     checked={engine === "stealth"}
                     onChange={() => setEngine("stealth")}
                   />
-                  <span>Stealth browser</span>
+                  <span>{t("panel.stealth")}</span>
                   <span className="text-[10px] text-fg-fainter">
-                    anti-bot-detection (CloakBrowser); ~200MB first run
+                    {t("panel.stealthHint")}
                   </span>
                 </label>
                 <label className="mt-0.5 flex items-center gap-2 border-t border-border-subtle pt-1">
@@ -205,9 +204,9 @@ function BridgePanel(_props: PanelProps) {
                     checked={headless}
                     onChange={(e) => setHeadless(e.target.checked)}
                   />
-                  <span>Headless</span>
+                  <span>{t("panel.headless")}</span>
                   <span className="text-[10px] text-fg-fainter">
-                    no window (default: show the browser)
+                    {t("panel.headlessHint")}
                   </span>
                 </label>
               </div>
@@ -215,17 +214,17 @@ function BridgePanel(_props: PanelProps) {
             {/* shell — coming soon */}
             <label className="flex items-center gap-2 opacity-50">
               <input type="checkbox" disabled />
-              <span className="font-medium">Shell</span>
+              <span className="font-medium">{t("panel.shell")}</span>
               <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-fainter">
-                Coming soon
+                {t("panel.comingSoon")}
               </span>
             </label>
             {/* files — coming soon */}
             <label className="flex items-center gap-2 opacity-50">
               <input type="checkbox" disabled />
-              <span className="font-medium">Files</span>
+              <span className="font-medium">{t("panel.files")}</span>
               <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-fainter">
-                Coming soon
+                {t("panel.comingSoon")}
               </span>
             </label>
           </div>
@@ -234,32 +233,32 @@ function BridgePanel(_props: PanelProps) {
         {/* Step 1 — prerequisite: install the CLI once */}
         <div>
           <div className="mb-1 font-medium text-fg-default">
-            Step 1 · Install the bridge (once)
+            {t("panel.step1.title")}
           </div>
           <CmdBlock
-            label="install"
+            label={t("panel.step1.installLabel")}
             text={INSTALL_CMD}
             copied={copiedKey === "install"}
             onCopy={() => copy("install", INSTALL_CMD)}
           />
           <p className="text-[10px] text-fg-fainter">
-            Requires Node.js. Then pick one of the two ways below.
+            {t("panel.step1.requires")}
           </p>
         </div>
 
         {/* Step 2 — choose: CLI or menu-bar app */}
         <div>
-          <div className="mb-1 font-medium text-fg-default">Step 2 · Start it</div>
+          <div className="mb-1 font-medium text-fg-default">{t("panel.step2.title")}</div>
 
           {/* Option A: run from the command line */}
           <div className="mb-0.5 text-[11px] font-medium text-fg-default">
-            A · Command line
+            {t("panel.step2.optionA")}
           </div>
           <div className="mb-0.5 text-[10px] text-fg-fainter">
-            Run this in a terminal (uses your current picks above):
+            {t("panel.step2.optionAHint")}
           </div>
           <CmdBlock
-            label="run"
+            label={t("panel.step2.runLabel")}
             text={globalCmd}
             copied={copiedKey === "global"}
             onCopy={() => copy("global", globalCmd)}
@@ -267,23 +266,22 @@ function BridgePanel(_props: PanelProps) {
 
           {/* Option B: macOS menu-bar app */}
           <div className="mt-3 mb-0.5 text-[11px] font-medium text-fg-default">
-            B · Menu-bar app (macOS)
+            {t("panel.step2.optionB")}
           </div>
           <div className="mb-0.5 text-[10px] text-fg-fainter">
-            1. Install the app:
+            {t("panel.step2.installAppStep")}
           </div>
           <CmdBlock
-            label="install-app"
+            label={t("panel.step2.installAppLabel")}
             text={INSTALL_APP_CMD}
             copied={copiedKey === "install-app"}
             onCopy={() => copy("install-app", INSTALL_APP_CMD)}
           />
           <div className="mb-0.5 text-[10px] text-fg-fainter">
-            2. Copy this config, then click the menu-bar icon → Settings →
-            “Paste from tianshu”:
+            {t("panel.step2.configStep")}
           </div>
           <CmdBlock
-            label="config"
+            label={t("panel.step2.configLabel")}
             text={configUrl}
             copied={copiedKey === "config"}
             onCopy={() => copy("config", configUrl)}
@@ -291,29 +289,27 @@ function BridgePanel(_props: PanelProps) {
 
           {info?.authEnabled && info.expiresAt && (
             <p className="mt-2 text-[10px] text-fg-fainter">
-              Token valid until {new Date(info.expiresAt).toLocaleDateString()}.
-              Refresh this panel to mint a new one; the old command keeps
-              working until it expires.
+              {t("panel.tokenValid", { date: new Date(info.expiresAt).toLocaleDateString() })}
             </p>
           )}
           {info && !info.authEnabled && (
             <p className="mt-2 text-[10px] text-fg-fainter">
-              Auth is disabled on this server — no token needed.
+              {t("panel.authDisabled")}
             </p>
           )}
           <p className="mt-1 text-[10px] text-fg-fainter">
-            Update later with <code>tsbridge update</code>.
+            {t("panel.updateLaterPre")}<code>tsbridge update</code>{t("panel.updateLaterPost")}
           </p>
         </div>
 
         {/* Connected devices */}
         <div>
-          <div className="mb-1 font-medium text-fg-default">Connected devices</div>
+          <div className="mb-1 font-medium text-fg-default">{t("panel.devices.title")}</div>
           {loading ? (
-            <div className="text-[11px] text-fg-fainter">Loading…</div>
+            <div className="text-[11px] text-fg-fainter">{t("panel.devices.loading")}</div>
           ) : conns.length === 0 ? (
             <div className="rounded border border-dashed border-border-subtle px-3 py-3 text-center text-[11px] text-fg-fainter">
-              No devices connected yet. Run the command above.
+              {t("panel.devices.empty")}
             </div>
           ) : (
             <div className="space-y-2">
@@ -326,17 +322,17 @@ function BridgePanel(_props: PanelProps) {
                     <Laptop size={12} className="text-brand-400" />
                     <span className="font-medium">{c.label || c.deviceId}</span>
                     <span className="ml-auto text-[10px] text-fg-fainter">
-                      {c.tools.length} tool(s)
+                      {t("panel.devices.toolCount", { n: c.tools.length })}
                     </span>
                   </div>
                   {c.tools.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
-                      {c.tools.map((t) => (
+                      {c.tools.map((toolName) => (
                         <span
-                          key={t}
+                          key={toolName}
                           className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-muted"
                         >
-                          {t}
+                          {toolName}
                         </span>
                       ))}
                     </div>

@@ -4,8 +4,11 @@
 // icons; showing them in both places at once would be duplicate noise.
 
 import { Puzzle } from "lucide-react";
+import { useSyncExternalStore } from "react";
 import { ICONS_BY_NAME } from "../lib/plugin-icons";
 import { usePluginStore } from "../stores/plugin-store";
+import { getLocale, subscribeLocale } from "../lib/i18n";
+import { manifestLabelFor } from "../lib/plugin-manifest-labels";
 
 interface ContributesTopBarButton {
   id: string;
@@ -23,6 +26,8 @@ export default function PluginTopBarButtons() {
   const plugins = usePluginStore((s) => s.plugins);
   const openPanel = usePluginStore((s) => s.openPanel);
   const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
+  // Subscribe once so all buttons re-render on locale change.
+  const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
 
   // Hide once a right panel is open — its PanelTabBar takes over.
   if (openPanel !== null) return null;
@@ -48,12 +53,22 @@ export default function PluginTopBarButtons() {
             : `${b.pluginId}.${b.opensPanel}`
           : null;
         const Icon = ICONS_BY_NAME[b.icon] ?? Puzzle;
+        // Localize the tooltip: look up
+        //   plugin.<id>.manifest.topBarButtons.<contribId>
+        // and fall back to the manifest's English tooltip.
+        const label = manifestLabelFor(
+          locale,
+          b.pluginId,
+          "topBarButtons",
+          b.id,
+          b.tooltip ?? b.pluginId,
+        );
         return (
           <button
             key={fullId}
             type="button"
-            title={b.tooltip ?? b.pluginId}
-            aria-label={b.tooltip ?? b.pluginId}
+            title={label}
+            aria-label={label}
             onClick={() => {
               if (!panelTarget) return;
               setOpenPanel(panelTarget);

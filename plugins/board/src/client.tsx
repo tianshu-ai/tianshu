@@ -11,11 +11,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Globe, ChevronDown, RefreshCw } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent, sendWsMessage } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, sendWsMessage, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/board";
 
 function BoardPanel(_props: PanelProps) {
+  const t = usePluginT("board");
   const [boards, setBoards] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [iframeKey, setIframeKey] = useState(0);
@@ -185,11 +186,11 @@ function BoardPanel(_props: PanelProps) {
             />
           </div>
         ) : (
-          <span className="text-xs text-fg-faint">No boards</span>
+          <span className="text-xs text-fg-faint">{t("panel.noBoards")}</span>
         )}
         <button
           onClick={reload}
-          title="Refresh"
+          title={t("panel.refresh")}
           className="ml-auto rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
         >
           <RefreshCw size={12} />
@@ -209,10 +210,10 @@ function BoardPanel(_props: PanelProps) {
         <div className="flex flex-1 flex-col items-center justify-center text-fg-fainter">
           <Globe size={28} className="mb-2 opacity-30" />
           <span className="text-xs">
-            {loading ? "Loading…" : "No boards"}
+            {loading ? t("panel.loading") : t("panel.noBoards")}
           </span>
           <span className="mt-1 text-[10px] text-fg-fainter">
-            Add one at board/&lt;name&gt;/index.html
+            {t("panel.addHint")}
           </span>
         </div>
       )}

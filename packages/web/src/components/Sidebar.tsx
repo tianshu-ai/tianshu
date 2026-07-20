@@ -53,6 +53,7 @@ import { useLocale, useT } from "../hooks/useT";
 export default function Sidebar() {
   const me = useChatStore((s) => s.me);
   const brandName = me?.config.branding?.name ?? "Tianshu";
+  const t = useT();
 
   return (
     <aside className="flex h-full w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
@@ -87,12 +88,12 @@ export default function Sidebar() {
           enumerate channel sessions here. */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
         <div className="px-1 pb-1 pt-2 text-[10px] uppercase tracking-wider text-fg-fainter">
-          Channels
+          {t("sidebar.channels")}
         </div>
         <WebchatRow />
         <PluginSidebarSections anchor="channels" />
         <p className="px-2 pt-2 text-[10px] leading-relaxed text-fg-fainter">
-          Sessions are managed by the agent, not the user (ADR-0001 §5).
+          {t("sidebar.sessionsNote")}
         </p>
       </nav>
 

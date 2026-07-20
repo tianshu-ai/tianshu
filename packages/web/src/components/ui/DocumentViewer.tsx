@@ -31,6 +31,7 @@ import { PdfPreview } from "./PdfPreview.js";
 import { AudioPreview, VideoPreview } from "./MediaPreview.js";
 import { ImagePreview } from "./ImagePreview.js";
 import { TablePreview } from "./TablePreview.js";
+import { useT } from "../../hooks/useT";
 
 const MARKDOWN_EXTS = new Set(["md", "markdown"]);
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]);
@@ -62,6 +63,7 @@ export function DocumentViewer({
   rawUrl,
   className = "",
 }: DocumentViewerProps) {
+  const t = useT();
   if (loading) {
     return (
       <div className={`flex h-32 items-center justify-center ${className}`}>
@@ -140,14 +142,10 @@ export function DocumentViewer({
         className={`flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-8 text-center ${className}`}
       >
         <div className="text-sm font-medium text-fg-default">
-          Office preview is coming soon
+          {t("viewer.office.title")}
         </div>
         <div className="max-w-md text-[12px] leading-relaxed text-fg-faint">
-          In-browser rendering for{" "}
-          <code className="font-mono text-fg-muted">.{ext}</code> files needs a
-          server-side LibreOffice pass that hasn't shipped yet. Use the{" "}
-          <span className="text-fg-muted">Download</span> button above to open
-          this file in your local Office / LibreOffice / Pages.
+          {t("viewer.office.body", { ext })}
         </div>
         {sizeBytes != null && (
           <div className="text-[11px] text-fg-fainter">{formatSize(sizeBytes)}</div>
@@ -159,8 +157,9 @@ export function DocumentViewer({
   if (binary && !isImage) {
     return (
       <div className={`p-6 text-center text-sm text-fg-faint ${className}`}>
-        Binary file{sizeBytes != null ? ` (${formatSize(sizeBytes)})` : ""}. No
-        preview available.
+        {sizeBytes != null
+          ? t("viewer.binaryWithSize", { size: formatSize(sizeBytes) })
+          : t("viewer.binary")}
       </div>
     );
   }
@@ -168,7 +167,7 @@ export function DocumentViewer({
   if (content == null) {
     return (
       <div className={`p-6 text-center text-sm text-fg-faint ${className}`}>
-        No content.
+        {t("viewer.noContent")}
       </div>
     );
   }
