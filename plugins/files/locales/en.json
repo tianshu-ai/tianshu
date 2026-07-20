@@ -1,0 +1,36 @@
+{
+  "manifest.topBarButtons.toggle": "Workspace files",
+  "manifest.rightPanels.main": "Files",
+  "manifest.composerActions.attach": "Attach file",
+
+  "size.empty": "—",
+  "size.bytes": "{n} B",
+  "size.kb": "{n} KB",
+  "size.mb": "{n} MB",
+  "size.gb": "{n} GB",
+
+  "modified.empty": "—",
+  "modified.justNow": "Just now",
+  "modified.minutesAgo": "{n}m ago",
+  "modified.hoursAgo": "{n}h ago",
+  "modified.daysAgo": "{n}d ago",
+
+  "panel.upOneLevel": "Up one level",
+  "panel.filterPlaceholder": "Filter files...",
+  "panel.refresh": "Refresh",
+  "panel.toggleView": "Toggle view",
+  "panel.col.name": "Name",
+  "panel.col.size": "Size",
+  "panel.col.modified": "Modified",
+  "panel.noMatching": "No matching files",
+  "panel.emptyDir": "Empty directory",
+  "panel.dash": "—",
+  "panel.truncated": "Listing truncated at 5000 entries.",
+
+  "preview.download": "Download",
+  "preview.sizeExceeds": "File is {size}, exceeds the {max} preview cap.",
+
+  "upload.attachFile": "Attach file",
+  "upload.exceedsCap": "File exceeds {mb} MB cap",
+  "upload.noBody": "(no body)"
+}

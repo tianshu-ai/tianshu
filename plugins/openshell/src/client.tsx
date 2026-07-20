@@ -15,6 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminPageProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
+import { usePluginT } from "@tianshu-ai/plugin-sdk/client";
 import {
   ShieldAlert,
   ShieldCheck,
@@ -62,14 +63,15 @@ interface AllowedRule {
 }
 
 const WINDOW_OPTIONS = [
-  { label: "5 min", value: 5 },
-  { label: "15 min", value: 15 },
-  { label: "60 min", value: 60 },
-  { label: "6 hr", value: 360 },
-  { label: "24 hr", value: 1440 },
+  { key: "window.5min", value: 5 },
+  { key: "window.15min", value: 15 },
+  { key: "window.60min", value: 60 },
+  { key: "window.6hr", value: 360 },
+  { key: "window.24hr", value: 1440 },
 ];
 
 function OpenShellPolicyPage(_props: AdminPageProps) {
+  const t = usePluginT("openshell");
   const [minutes, setMinutes] = useState(60);
   const [denials, setDenials] = useState<Denial[] | null>(null);
   const [logAvailable, setLogAvailable] = useState(true);
@@ -210,14 +212,10 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
             <ShieldCheck size={18} className="text-brand-400" />
-            Sandbox Network Policy
+            {t("page.title")}
           </h1>
           <p className="mt-1 text-[12px] text-fg-faint">
-            Egress policy for the OpenShell sandbox. Below: outbound requests
-            that were <strong>denied</strong> in the selected time window, and
-            the current <strong>allow-list</strong> of endpoints in force.
-            Read-only — rules change when the agent proposes egress via the
-            policy advisor or a task grants it.
+            {t("page.description")}
           </p>
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
@@ -233,7 +231,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                 denialsLoading || allowedLoading ? "animate-spin" : undefined
               }
             />
-            Refresh
+            {t("page.refresh")}
           </button>
         </div>
       </div>
@@ -243,7 +241,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
         <div className="mb-3 flex items-center justify-between gap-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold text-fg-default">
             <ShieldAlert size={15} className="text-red-400" />
-            Denied requests
+            {t("denials.title")}
             <span className="rounded-full bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted">
               {denialCount}
             </span>
@@ -261,7 +259,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                     : "text-fg-muted hover:bg-bg-raised/50"
                 }`}
               >
-                {o.label}
+                {t(o.key)}
               </button>
             ))}
           </div>
@@ -274,17 +272,18 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
         )}
         {!denialsErr && !logAvailable && (
           <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-300">
-            The sandbox reports no denial log is available (policy logging may
-            be off).
+            {t("denials.logUnavailable")}
           </div>
         )}
         {!denialsErr && denials && denialCount === 0 && (
           <div className="rounded-md border border-border-default bg-bg-raised/30 px-3 py-6 text-center text-[12px] text-fg-faint">
             <Ban size={20} className="mx-auto mb-2 text-fg-faint/60" />
-            No denied requests in the last{" "}
-            {WINDOW_OPTIONS.find((o) => o.value === minutes)?.label ??
-              `${minutes} min`}
-            .
+            {t("denials.emptyPre")}
+            {(() => {
+              const o = WINDOW_OPTIONS.find((o) => o.value === minutes);
+              return o ? t(o.key) : `${minutes} min`;
+            })()}
+            {t("denials.emptyPost")}
           </div>
         )}
         {!denialsErr && denialCount > 0 && (
@@ -292,12 +291,12 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
             <table className="w-full text-left text-[12px]">
               <thead className="bg-bg-raised/60 text-fg-muted">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Time</th>
-                  <th className="px-3 py-2 font-medium">Host:Port</th>
-                  <th className="px-3 py-2 font-medium">Engine</th>
-                  <th className="px-3 py-2 font-medium">Binary</th>
-                  <th className="px-3 py-2 font-medium">Reason</th>
-                  <th className="px-3 py-2 text-right font-medium">Action</th>
+                  <th className="px-3 py-2 font-medium">{t("denials.col.time")}</th>
+                  <th className="px-3 py-2 font-medium">{t("denials.col.hostPort")}</th>
+                  <th className="px-3 py-2 font-medium">{t("denials.col.engine")}</th>
+                  <th className="px-3 py-2 font-medium">{t("denials.col.binary")}</th>
+                  <th className="px-3 py-2 font-medium">{t("denials.col.reason")}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t("denials.col.action")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -352,14 +351,14 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                         {resolved ? (
                           <span className="inline-flex items-center gap-1 rounded-md border border-green-500/30 bg-green-500/10 px-2 py-1 text-[11px] text-green-300">
                             <Check size={11} />
-                            Allowed
+                            {t("denials.allowed")}
                           </span>
                         ) : d.host && d.port ? (
                           <button
                             type="button"
                             onClick={() => allowDenial(d)}
                             disabled={busy}
-                            title={`Allow ${d.host}:${d.port}`}
+                            title={t("denials.allowTitle", { host: d.host, port: d.port })}
                             className="inline-flex items-center gap-1 rounded-md border border-green-500/40 px-2 py-1 text-[11px] text-green-300 hover:bg-green-500/10 disabled:opacity-50"
                           >
                             {busy ? (
@@ -367,7 +366,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                             ) : (
                               <Check size={11} />
                             )}
-                            Allow
+                            {t("denials.allow")}
                           </button>
                         ) : (
                           <span className="text-[11px] text-fg-faint">—</span>
@@ -386,11 +385,11 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
       <section>
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-fg-default">
           <ShieldCheck size={15} className="text-green-400" />
-          Allowed policy (effective allow-list)
+          {t("allowed.title")}
         </h2>
         {allowErr && (
           <div className="mb-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
-            Allow failed: {allowErr}
+            {t("allowed.allowFailed", { error: allowErr })}
           </div>
         )}
         {allowedErr && (
@@ -400,7 +399,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
         )}
         {!allowedErr && allowedLoading && !allowedRaw && (
           <div className="rounded-md border border-border-default bg-bg-raised/30 px-3 py-6 text-center text-[12px] text-fg-faint">
-            Loading policy…
+            {t("allowed.loading")}
           </div>
         )}
         {!allowedErr && allowedRules && allowedRules.length > 0 && (
@@ -408,11 +407,11 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
             <table className="w-full text-left text-[12px]">
               <thead className="bg-bg-raised/60 text-fg-muted">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Rule</th>
-                  <th className="px-3 py-2 font-medium">Host:Port</th>
-                  <th className="px-3 py-2 font-medium">Proto</th>
-                  <th className="px-3 py-2 font-medium">Enforce</th>
-                  <th className="px-3 py-2 font-medium">Binaries</th>
+                  <th className="px-3 py-2 font-medium">{t("allowed.col.rule")}</th>
+                  <th className="px-3 py-2 font-medium">{t("allowed.col.hostPort")}</th>
+                  <th className="px-3 py-2 font-medium">{t("allowed.col.proto")}</th>
+                  <th className="px-3 py-2 font-medium">{t("allowed.col.enforce")}</th>
+                  <th className="px-3 py-2 font-medium">{t("allowed.col.binaries")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -446,10 +445,10 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
           allowedRaw != null && (
             <details className="rounded-md border border-border-default bg-bg-raised/40">
               <summary className="cursor-pointer px-3 py-2 text-[12px] text-fg-muted">
-                No endpoints parsed — show raw policy JSON
+                {t("allowed.noneParsed")}
               </summary>
               <pre className="max-h-[420px] overflow-auto border-t border-border-default p-3 font-mono text-[11px] leading-relaxed text-fg-muted">
-                {allowedRaw || "(empty policy)"}
+                {allowedRaw || t("allowed.emptyPolicy")}
               </pre>
             </details>
           )}

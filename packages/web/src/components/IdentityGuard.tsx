@@ -15,6 +15,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
+import { useT } from "../hooks/useT";
 
 interface Session {
   tenantId: string;
@@ -22,6 +23,7 @@ interface Session {
 }
 
 export default function IdentityGuard({ children }: { children: ReactNode }) {
+  const t = useT();
   const params = useParams();
   const navigate = useNavigate();
   const urlTenant = params.tenantId ?? "";
@@ -69,7 +71,7 @@ export default function IdentityGuard({ children }: { children: ReactNode }) {
   }, [urlTenant, urlUser, navigate]);
 
   if (state === "checking") {
-    return <div className="p-6 text-sm text-fg-faint">Loading…</div>;
+    return <div className="p-6 text-sm text-fg-faint">{t("common.loading")}</div>;
   }
   return <>{children}</>;
 }

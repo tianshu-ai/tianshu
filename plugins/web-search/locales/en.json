@@ -1,0 +1,9 @@
+{
+  "manifest.adminPages.settings": "Web Search",
+  "manifest.config.backend.label": "Search backend",
+  "manifest.config.backend.description": "Which hosted endpoint web_search queries. Both are key-free (anonymous free tier). Exa returns highlighted excerpts; Parallel returns ranked results. web_fetch is unaffected.",
+  "manifest.config.backend.option.exa": "Exa",
+  "manifest.config.backend.option.parallel": "Parallel",
+  "manifest.config.timeoutMs.label": "Per-request timeout",
+  "manifest.config.timeoutMs.description": "Network timeout for each web_search / web_fetch call. Increase if you hit timeouts on slow networks."
+}

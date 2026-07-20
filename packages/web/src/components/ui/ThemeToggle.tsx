@@ -8,11 +8,12 @@
 
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useThemeStore, type ThemeMode } from "../../stores/theme-store";
+import { useT } from "../../hooks/useT";
 
-const OPTIONS: Array<{ value: ThemeMode; label: string; Icon: typeof Sun }> = [
-  { value: "light", label: "Light", Icon: Sun },
-  { value: "dark", label: "Dark", Icon: Moon },
-  { value: "system", label: "System", Icon: Monitor },
+const OPTIONS: Array<{ value: ThemeMode; labelKey: "theme.light" | "theme.dark" | "theme.system"; Icon: typeof Sun }> = [
+  { value: "light", labelKey: "theme.light", Icon: Sun },
+  { value: "dark", labelKey: "theme.dark", Icon: Moon },
+  { value: "system", labelKey: "theme.system", Icon: Monitor },
 ];
 
 export interface ThemeToggleProps {
@@ -23,6 +24,7 @@ export interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ compact = false, className = "" }: ThemeToggleProps) {
+  const t = useT();
   const mode = useThemeStore((s) => s.mode);
   const setMode = useThemeStore((s) => s.setMode);
   return (
@@ -34,9 +36,10 @@ export function ThemeToggle({ compact = false, className = "" }: ThemeToggleProp
         color: "var(--color-fg-muted)",
       }}
       role="group"
-      aria-label="Theme"
+      aria-label={t("theme.aria")}
     >
-      {OPTIONS.map(({ value, label, Icon }) => {
+      {OPTIONS.map(({ value, labelKey, Icon }) => {
+        const label = t(labelKey);
         const active = mode === value;
         return (
           <button

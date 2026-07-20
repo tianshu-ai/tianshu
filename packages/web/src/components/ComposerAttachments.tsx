@@ -5,6 +5,7 @@
 
 import { File as FileIcon, Loader2, X, AlertTriangle } from "lucide-react";
 import { useComposerStore } from "../stores/composer-store";
+import { useT } from "../hooks/useT";
 
 const KB = 1024;
 const MB = KB * 1024;
@@ -16,6 +17,7 @@ function formatSize(bytes: number): string {
 }
 
 export default function ComposerAttachments() {
+  const t = useT();
   const attachments = useComposerStore((s) => s.attachments);
   const remove = useComposerStore((s) => s.removeAttachment);
 
@@ -53,7 +55,7 @@ export default function ComposerAttachments() {
               type="button"
               onClick={() => remove(a.id)}
               className="ml-0.5 rounded p-0.5 text-fg-faint hover:bg-bg-hover hover:text-fg-default"
-              aria-label="remove attachment"
+              aria-label={t("attachment.remove")}
             >
               <X size={11} />
             </button>

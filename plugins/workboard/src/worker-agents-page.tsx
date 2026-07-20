@@ -23,7 +23,10 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { PluginConfigForm } from "@tianshu-ai/plugin-sdk/client";
+import {
+  PluginConfigForm,
+  usePluginT,
+} from "@tianshu-ai/plugin-sdk/client";
 
 interface WorkerAgent {
   id: string;
@@ -69,6 +72,7 @@ interface CatalogEntry {
 }
 
 export function WorkerAgentsPage(): ReactElement {
+  const t = usePluginT("workboard");
   const [agents, setAgents] = useState<WorkerAgent[]>([]);
   const [kinds, setKinds] = useState<WorkerKindDef[]>([]);
   // Effective host catalogues. Used to resolve `toolsAllow=null`
@@ -195,21 +199,22 @@ export function WorkerAgentsPage(): ReactElement {
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-4 rounded-md border border-amber-900/40 bg-amber-950/30 px-3 py-2 text-[12px] leading-relaxed text-amber-200/90">
         <div className="font-semibold text-amber-100">
-          Read-only listing — edit on disk
+          {t("agents.banner.title")}
         </div>
         <p className="mt-1 text-amber-200/70">
-          Worker config lives at{" "}
+          {t("agents.banner.line1")}
           <code className="rounded bg-amber-950/60 px-1 py-0.5 text-amber-100">
             _tenant/config/workers/&lt;slug&gt;/
           </code>
-          . Each worker is a directory with{" "}
-          <code className="text-amber-100">agent.json</code> and an optional{" "}
-          <code className="text-amber-100">SOUL.md</code> /{" "}
-          <code className="text-amber-100">skills/</code>. Edit the files
-          directly, or ask the chat agent to do it via{" "}
-          <code className="text-amber-100">tenant_config_write</code>. Pool
-          picks up changes on next activate; a fs watcher follow-up will
-          make this live.
+          {t("agents.banner.line2")}
+          <code className="text-amber-100">agent.json</code>
+          {t("agents.banner.line3")}
+          <code className="text-amber-100">SOUL.md</code>
+          {t("agents.banner.line4")}
+          <code className="text-amber-100">skills/</code>
+          {t("agents.banner.line5")}
+          <code className="text-amber-100">tenant_config_write</code>
+          {t("agents.banner.line6")}
         </p>
       </div>
 
@@ -217,12 +222,10 @@ export function WorkerAgentsPage(): ReactElement {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
             <Bot size={18} className="text-brand-400" />
-            Worker agents
+            {t("agents.heading")}
           </h1>
           <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-fg-faint">
-            Inventory the workboard pool currently sees. Filesystem rows
-            shadow same-slug DB rows; legacy DB rows still present here
-            haven't been edited or aren't yet picked up by the merger.
+            {t("agents.description")}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -230,20 +233,20 @@ export function WorkerAgentsPage(): ReactElement {
             type="button"
             onClick={() => setConfigOpen(true)}
             className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised"
-            title="Edit pool concurrency caps and worker type defaults"
+            title={t("agents.actions.configureTitle")}
           >
             <Settings size={12} />
-            Configure
+            {t("agents.actions.configure")}
           </button>
           <button
             type="button"
             onClick={() => void refresh()}
             disabled={loading}
             className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised disabled:opacity-50"
-            title="Reload"
+            title={t("agents.actions.reloadTitle")}
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-            Reload
+            {t("agents.actions.reload")}
           </button>
         </div>
       </div>
@@ -263,12 +266,12 @@ export function WorkerAgentsPage(): ReactElement {
         <table className="min-w-full divide-y divide-gray-800 text-[12px]">
           <thead className="bg-bg-elevated/60 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
             <tr>
-              <th className="px-3 py-2 text-left">State</th>
-              <th className="px-3 py-2 text-left">Name</th>
-              <th className="px-3 py-2 text-left">Kind</th>
-              <th className="px-3 py-2 text-left">Source</th>
-              <th className="px-3 py-2 text-left">Model</th>
-              <th className="px-3 py-2 text-left">Slug</th>
+              <th className="px-3 py-2 text-left">{t("agents.table.state")}</th>
+              <th className="px-3 py-2 text-left">{t("agents.table.name")}</th>
+              <th className="px-3 py-2 text-left">{t("agents.table.kind")}</th>
+              <th className="px-3 py-2 text-left">{t("agents.table.source")}</th>
+              <th className="px-3 py-2 text-left">{t("agents.table.model")}</th>
+              <th className="px-3 py-2 text-left">{t("agents.table.slug")}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
@@ -278,7 +281,7 @@ export function WorkerAgentsPage(): ReactElement {
                   colSpan={6}
                   className="px-3 py-8 text-center text-fg-faint"
                 >
-                  {loading ? "Loading…" : "No worker agents."}
+                  {loading ? t("agents.loading") : t("agents.empty")}
                 </td>
               </tr>
             ) : (
@@ -318,12 +321,14 @@ export function WorkerAgentsPage(): ReactElement {
                           } disabled:cursor-not-allowed disabled:opacity-50`}
                           title={
                             a.enabled
-                              ? "Enabled — click to disable. The pool will stop claiming new tasks for this agent."
-                              : "Disabled — click to enable. The pool will resume claiming tasks."
+                              ? t("agents.toggle.enabledTitle")
+                              : t("agents.toggle.disabledTitle")
                           }
                         >
                           <span className="sr-only">
-                            {a.enabled ? "Disable" : "Enable"} {a.name}
+                            {a.enabled
+                              ? t("agents.toggle.disableSr", { name: a.name })
+                              : t("agents.toggle.enableSr", { name: a.name })}
                           </span>
                           <span
                             className={`pointer-events-none inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
@@ -349,11 +354,11 @@ export function WorkerAgentsPage(): ReactElement {
                     <td className="px-3 py-2">
                       {a.source === "builtin" ? (
                         <span className="rounded bg-indigo-950 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
-                          builtin
+                          {t("agents.source.builtin")}
                         </span>
                       ) : (
                         <span className="rounded bg-bg-raised px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
-                          user
+                          {t("agents.source.user")}
                         </span>
                       )}
                     </td>
@@ -434,6 +439,7 @@ function AgentDetail({
   toolCatalog: CatalogEntry[] | null;
   skillCatalog: CatalogEntry[] | null;
 }): ReactElement {
+  const t = usePluginT("workboard");
   const tools = useMemo(
     () => effective(agent.toolsAllow, toolCatalog, /* applyDeny */ true),
     [agent.toolsAllow, toolCatalog],
@@ -461,14 +467,14 @@ function AgentDetail({
     <div className="mt-1 space-y-3 rounded-md border border-border-subtle bg-bg-elevated/40 p-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-fg-faint">
         <span>
-          slot:{" "}
+          {t("agents.detail.slot")}{" "}
           <code className="rounded bg-bg-raised px-1.5 py-0.5 text-fg-muted">
             {slotUri}
           </code>
         </span>
         {agent.modelId && (
           <span>
-            model:{" "}
+            {t("agents.detail.model")}{" "}
             <code className="rounded bg-bg-raised px-1.5 py-0.5 text-fg-muted">
               {agent.modelId}
             </code>
@@ -476,12 +482,12 @@ function AgentDetail({
         )}
       </div>
 
-      <DetailSection title="Allowed tools" data={tools} />
-      <DetailSection title="Allowed skills" data={skills} />
+      <DetailSection title={t("agents.detail.tools")} data={tools} />
+      <DetailSection title={t("agents.detail.skills")} data={skills} />
 
       <div>
         <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
-          System prompt (SOUL.md)
+          {t("agents.detail.systemPrompt")}
         </div>
         {agent.systemPrompt ? (
           <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-bg-base p-2 text-[11px] leading-relaxed text-fg-muted">
@@ -489,7 +495,7 @@ function AgentDetail({
           </pre>
         ) : (
           <div className="text-[11px] italic text-fg-faint">
-            (none — worker uses the kind default)
+            {t("agents.detail.systemPromptEmpty")}
           </div>
         )}
       </div>
@@ -504,23 +510,24 @@ function DetailSection({
   title: string;
   data: EffectiveList;
 }): ReactElement {
+  const t = usePluginT("workboard");
   let badge: ReactElement | null = null;
   if (data.kind === "explicit") {
     badge = (
       <span
         className="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success"
-        title="agent.json declared this list explicitly"
+        title={t("agents.badge.explicitTitle")}
       >
-        explicit
+        {t("agents.badge.explicit")}
       </span>
     );
   } else if (data.kind === "effective") {
     badge = (
       <span
         className="rounded bg-amber-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
-        title="agent.json has no allow-list — worker sees every entry below"
+        title={t("agents.badge.effectiveTitle")}
       >
-        effective (no restriction)
+        {t("agents.badge.effective")}
       </span>
     );
   }
@@ -539,11 +546,11 @@ function DetailSection({
       </div>
       {data.kind === "unknown" ? (
         <div className="text-[11px] italic text-fg-faint">
-          (catalog not loaded — reload the page)
+          {t("agents.list.unknown")}
         </div>
       ) : data.items.length === 0 ? (
         <div className="text-[11px] italic text-fg-faint">
-          (empty list — worker can call nothing)
+          {t("agents.list.empty")}
         </div>
       ) : (
         <div className="flex flex-wrap gap-1">
@@ -583,6 +590,7 @@ function ConfigureWorkboardDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const t = usePluginT("workboard");
   if (!open) return null;
   return (
     <div
@@ -596,19 +604,17 @@ function ConfigureWorkboardDialog({
         <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
           <div>
             <div className="text-sm font-medium text-fg-default">
-              Workboard configuration
+              {t("agents.configDialog.title")}
             </div>
             <div className="mt-0.5 text-[11px] text-fg-faint">
-              Pool caps apply on the next run acquire. Worker type
-              defaults (echo / llm) re-activate the plugin so
-              changes take effect on the next request.
+              {t("agents.configDialog.subtitle")}
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded p-1 text-fg-muted hover:bg-bg-raised hover:text-fg-default"
-            aria-label="Close configure dialog"
+            aria-label={t("agents.configDialog.close")}
           >
             <X size={14} />
           </button>

@@ -1,0 +1,9 @@
+{
+  "manifest.topBarButtons.toggle": "看板",
+  "manifest.rightPanels.main": "看板",
+
+  "panel.noBoards": "暂无看板",
+  "panel.refresh": "刷新",
+  "panel.loading": "加载中…",
+  "panel.addHint": "在 board/<名称>/index.html 添加一个"
+}

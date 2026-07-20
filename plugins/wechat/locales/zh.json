@@ -1,0 +1,50 @@
+{
+  "manifest.sidebarSections.sessions": "微信",
+  "manifest.adminPages.main": "微信",
+
+  "status.running": "已连接",
+  "status.starting": "启动中",
+  "status.idle": "空闲",
+  "status.stopped": "已停止",
+  "status.error": "错误",
+
+  "add.title": "添加微信账号",
+  "add.chooseModel": "选择此微信账号路由到的模型：",
+  "add.noModels": "（未注册任何模型）",
+  "add.default": "（默认）",
+  "add.continue": "继续 → 扫码",
+  "add.changeLater": "之后可通过重新扫码更换模型。",
+  "add.requestingQr": "正在请求二维码…",
+  "add.scanToAuthorise": "用微信扫码以授权",
+  "add.scanSteps": "打开微信 → 扫一扫 → 确认",
+  "add.waitingForScan": "等待扫码…",
+  "add.connected": "已连接",
+  "add.defaultAccountName": "微信账号",
+  "add.loginFailed": "登录失败",
+
+  "qr.renderFailed": "二维码渲染失败：{error}",
+  "qr.ariaLabel": "微信登录二维码",
+
+  "page.title": "微信",
+  "page.subtitle": "连接你的微信，让私信路由到你的代理。",
+  "page.refresh": "刷新",
+  "page.loading": "加载中…",
+  "page.deleteConfirm": "从天枢断开此微信账号？与该账号的现有聊天记录也会被删除。",
+
+  "page.empty.title": "尚未连接微信",
+  "page.empty.desc": "用微信 App 扫码，开始通过天枢路由你的私信。",
+  "page.empty.connect": "连接微信",
+
+  "page.bound.hint": "已连接一个账号。重新扫码可切换模型或刷新令牌。",
+  "page.bound.rescan": "重新扫码",
+  "page.bound.defaultAccountName": "微信账号",
+  "page.bound.modelTitle": "此绑定路由入站私信所用的模型",
+  "page.bound.boundOn": "· 绑定于 {date}",
+  "page.bound.disconnect": "断开连接",
+
+  "sidebar.untitled": "（未命名）",
+  "sidebar.dm": "私聊",
+  "sidebar.group": "群",
+  "sidebar.active": "使用中",
+  "sidebar.wechat": "微信"
+}

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import type { ModelListEntry } from "../lib/api";
+import { useT } from "../hooks/useT";
 
 /**
  * Pill-shaped model picker rendered inside ChatInput's footer row,
@@ -33,6 +34,7 @@ export interface ModelSelectorProps {
 }
 
 export default function ModelSelector({ value, onChange }: ModelSelectorProps = {}) {
+  const t = useT();
   const models = useChatStore((s) => s.models);
   const preferred = useChatStore((s) => s.preferredModel);
   const setPreferred = useChatStore((s) => s.setPreferredModel);
@@ -93,11 +95,12 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps = 
         ? fallbackId
         : models[0]!.id;
   const active = models.find((m) => m.id === activeId);
-  const displayName = active?.name ?? activeId.split("/").pop() ?? "Model";
+  const displayName = active?.name ?? activeId.split("/").pop() ?? t("model.fallbackName");
 
   const groups: { label: string; items: ModelListEntry[] }[] = [];
+  const otherLabel = t("model.groupOther");
   for (const m of models) {
-    const label = m.group ?? "Other";
+    const label = m.group ?? otherLabel;
     let g = groups.find((x) => x.label === label);
     if (!g) {
       g = { label, items: [] };

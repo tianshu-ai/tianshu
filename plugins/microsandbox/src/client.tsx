@@ -42,7 +42,10 @@ import type {
   PanelProps,
   PluginClientExports,
 } from "@tianshu-ai/plugin-sdk/client";
-import { PluginConfigForm } from "@tianshu-ai/plugin-sdk/client";
+import { PluginConfigForm, usePluginT } from "@tianshu-ai/plugin-sdk/client";
+
+/** Translator function returned by usePluginT — passed to helpers. */
+type Translator = (key: string, params?: Record<string, string | number>) => string;
 
 // ─── shared types + helpers ────────────────────────────────────
 
@@ -140,17 +143,25 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return parsed as T;
 }
 
-function formatRelative(iso: string): string {
-  const t = Date.parse(iso);
-  if (Number.isNaN(t)) return iso;
-  const diff = Date.now() - t;
+function formatRelative(iso: string, t?: Translator): string {
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return iso;
+  const diff = Date.now() - parsed;
   const m = Math.floor(diff / 60_000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
+  if (!t) {
+    // English fallback when no translator is provided.
+    if (m < 1) return "just now";
+    if (m < 60) return `${m}m ago`;
+    const hh = Math.floor(m / 60);
+    if (hh < 24) return `${hh}h ago`;
+    return `${Math.floor(hh / 24)}d ago`;
+  }
+  if (m < 1) return t("relative.justNow");
+  if (m < 60) return t("relative.minutesAgo", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
+  if (h < 24) return t("relative.hoursAgo", { n: h });
   const d = Math.floor(h / 24);
-  return `${d}d ago`;
+  return t("relative.daysAgo", { n: d });
 }
 
 function formatUptime(ms: number): string {
@@ -192,18 +203,16 @@ function MicroSandboxAdminPage(_props: AdminPageProps) {
   // BuildsSection bumps it after switching the in-use build
   // (with or without reset). ResetSection listens and re-fetches
   // status whenever it changes.
+  const t = usePluginT("microsandbox");
   const [refreshTick, setRefreshTick] = useState(0);
   const bumpRefresh = useCallback(() => setRefreshTick((n) => n + 1), []);
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-6 text-fg-default">
       <header className="mb-6 border-b border-border-subtle pb-4">
-        <h1 className="text-lg font-semibold text-fg-default">MicroSandbox</h1>
+        <h1 className="text-lg font-semibold text-fg-default">{t("page.title")}</h1>
         <p className="mt-1 text-[12px] leading-relaxed text-fg-faint">
-          Edit your Sandboxfile, build a new image, and switch this
-          tenant to use it. Sanity-check a fresh build via the shell's
-          preview target (“does my apt package show up on PATH?”)
-          before flipping the tenant to it.
+          {t("page.intro")}
         </p>
       </header>
 
@@ -228,6 +237,7 @@ interface SandboxfileTemplate {
 }
 
 function SandboxfileSection() {
+  const t = usePluginT("microsandbox");
   const [payload, setPayload] = useState<SandboxfilePayload | null>(null);
   const [draft, setDraft] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -278,18 +288,18 @@ function SandboxfileSection() {
 
   function loadTemplate(id: string) {
     if (!id) return;
-    const t = templates.find((x) => x.id === id);
-    if (!t) return;
+    const tpl = templates.find((x) => x.id === id);
+    if (!tpl) return;
     if (
       payload &&
       draft !== payload.content &&
       !window.confirm(
-        `You have unsaved changes. Replace the editor with the "${t.displayName}" template?`,
+        t("sandboxfile.confirmReplace", { name: tpl.displayName }),
       )
     ) {
       return;
     }
-    setDraft(t.content);
+    setDraft(tpl.content);
   }
 
   async function save() {
@@ -318,12 +328,12 @@ function SandboxfileSection() {
   return (
     <section>
       <SectionHeader
-        title="Sandboxfile"
+        title={t("sandboxfile.title")}
         description={
           payload?.exists === false
-            ? "No Sandboxfile yet. Edit and save to create one."
+            ? t("sandboxfile.desc.none")
             : payload?.path
-              ? `Saved at ${payload.path}`
+              ? t("sandboxfile.desc.saved", { path: payload.path })
               : ""
         }
         actions={
@@ -336,12 +346,12 @@ function SandboxfileSection() {
                   e.target.value = "";
                 }}
                 className="rounded-md border border-border-subtle bg-bg-elevated px-2 py-1 text-[11px] text-fg-muted hover:border-border-default focus:border-blue-700 focus:outline-none"
-                title="Replace the editor contents with a starting template"
+                title={t("sandboxfile.loadTemplate.title")}
               >
-                <option value="">Load template…</option>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id} title={t.description}>
-                    {t.displayName}
+                <option value="">{t("sandboxfile.loadTemplate")}</option>
+                {templates.map((tpl) => (
+                  <option key={tpl.id} value={tpl.id} title={tpl.description}>
+                    {tpl.displayName}
                   </option>
                 ))}
               </select>
@@ -351,10 +361,10 @@ function SandboxfileSection() {
               onClick={() => void load()}
               disabled={loading}
               className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
-              title="Reload from disk"
+              title={t("sandboxfile.reload.title")}
             >
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-              Reload
+              {t("sandboxfile.reload")}
             </button>
             <button
               type="button"
@@ -367,7 +377,7 @@ function SandboxfileSection() {
               ) : (
                 <Save size={12} />
               )}
-              Save
+              {t("sandboxfile.save")}
             </button>
           </>
         }
@@ -377,11 +387,11 @@ function SandboxfileSection() {
       {parseError && (
         <Banner
           kind="warn"
-          text={`Saved, but the file does not parse: ${parseError}`}
+          text={t("sandboxfile.parseError", { error: parseError })}
         />
       )}
       {!error && !parseError && savedAt && Date.now() - savedAt < 4000 && (
-        <Banner kind="ok" text="Saved." />
+        <Banner kind="ok" text={t("sandboxfile.savedOk")} />
       )}
 
       <textarea
@@ -392,8 +402,8 @@ function SandboxfileSection() {
         placeholder="image: python:3.12-slim&#10;cpus: 4&#10;memory_mib: 4096"
       />
       <p className="mt-2 text-[11px] leading-relaxed text-fg-faint">
-        Path: <code className="rounded bg-bg-raised px-1">{payload?.path ?? "…"}</code>.
-        v0 grammar: <code className="rounded bg-bg-raised px-1">image:</code>,{" "}
+        {t("sandboxfile.pathLabel")} <code className="rounded bg-bg-raised px-1">{payload?.path ?? "…"}</code>.
+        {" "}{t("sandboxfile.grammarLead")} <code className="rounded bg-bg-raised px-1">image:</code>,{" "}
         <code className="rounded bg-bg-raised px-1">cpus:</code>,{" "}
         <code className="rounded bg-bg-raised px-1">memory_mib:</code>, and the lists{" "}
         <code className="rounded bg-bg-raised px-1">apt</code>,{" "}
@@ -406,6 +416,7 @@ function SandboxfileSection() {
 }
 
 function BuildsSection({ onMutate }: { onMutate: () => void }) {
+  const t = usePluginT("microsandbox");
   const [data, setData] = useState<BuildsPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -508,13 +519,16 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
           } else if (evt.type === "start") {
             setBuildLog((prev) => [
               ...prev,
-              `[stream] build ${String(evt.buildId ?? "?")} started (image=${String(evt.image ?? "?")})`,
+              t("builds.stream.started", {
+                buildId: String(evt.buildId ?? "?"),
+                image: String(evt.image ?? "?"),
+              }),
             ]);
           } else if (evt.type === "done") {
             // The list reload below will surface the new entry; we
             // don't need to do anything else here.
           } else if (evt.type === "error") {
-            finalError = String(evt.message ?? "build failed");
+            finalError = String(evt.message ?? t("builds.stream.error"));
             const stderr =
               typeof evt.stderr === "string" && evt.stderr.length > 0
                 ? `\n${evt.stderr}`
@@ -577,7 +591,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
         r.reset !== null &&
         "failed" in r.reset
       ) {
-        setError(`Switched, but reset failed: ${r.reset.failed}`);
+        setError(t("builds.switchedResetFailed", { error: r.reset.failed }));
       }
       await load();
       // Tell sibling sections (Live sandbox status panel) the
@@ -593,19 +607,19 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
   return (
     <section>
       <SectionHeader
-        title="Builds"
+        title={t("builds.title")}
         description={(() => {
           const b = data?.pointers?.browser;
-          const t = data?.pointers?.task;
-          if (!b && !t) {
-            return "No build selected — the runner uses the configured default image.";
+          const tk = data?.pointers?.task;
+          if (!b && !tk) {
+            return t("builds.desc.none");
           }
-          if (b && t && b.snapshotName === t.snapshotName) {
-            return `In use (Browser + Task): ${b.snapshotName}`;
+          if (b && tk && b.snapshotName === tk.snapshotName) {
+            return t("builds.desc.both", { snapshot: b.snapshotName });
           }
           const parts: string[] = [];
-          if (b) parts.push(`Browser: ${b.snapshotName}`);
-          if (t) parts.push(`Task: ${t.snapshotName}`);
+          if (b) parts.push(t("builds.desc.browser", { snapshot: b.snapshotName }));
+          if (tk) parts.push(t("builds.desc.task", { snapshot: tk.snapshotName }));
           return parts.join(" · ");
         })()}
         actions={
@@ -617,19 +631,19 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
             >
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-              Refresh
+              {t("builds.refresh")}
             </button>
             <select
               value={basedOnSnapshot}
               onChange={(e) => setBasedOnSnapshot(e.target.value)}
               disabled={building}
               className="rounded border border-border-default bg-bg-elevated px-2 py-1 text-[11px] text-fg-default disabled:cursor-not-allowed disabled:opacity-50"
-              title="Optional: layer this build on top of an existing snapshot. Leave as 'fresh image' to use the Sandboxfile's image: line."
+              title={t("builds.basedOn.title")}
             >
-              <option value="">based on: fresh image</option>
+              <option value="">{t("builds.basedOn.fresh")}</option>
               {(data?.builds ?? []).map((b) => (
                 <option key={b.snapshotName} value={b.snapshotName}>
-                  based on: {b.buildId}
+                  {t("builds.basedOn.snapshot", { buildId: b.buildId })}
                 </option>
               ))}
             </select>
@@ -640,8 +654,8 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
               title={
                 basedOnSnapshot
-                  ? `Build on top of ${basedOnSnapshot}`
-                  : "Run apt/pip/npm/exec from your saved Sandboxfile and capture a snapshot"
+                  ? t("builds.build.titleOnTop", { snapshot: basedOnSnapshot })
+                  : t("builds.build.titleFresh")
               }
             >
               {building ? (
@@ -649,7 +663,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               ) : (
                 <Hammer size={12} />
               )}
-              Build
+              {t("builds.build")}
             </button>
           </>
         }
@@ -660,9 +674,9 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
         <Banner
           kind="info"
           text={
-            "Building… this typically takes 10-30s for a slim base image plus a few apt/pip layers. " +
+            t("builds.building") +
             (elapsedMs > 0
-              ? `(${(elapsedMs / 1000).toFixed(0)}s elapsed)`
+              ? t("builds.building.elapsed", { n: (elapsedMs / 1000).toFixed(0) })
               : "")
           }
         />
@@ -677,15 +691,17 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                 <CheckCircle2 size={11} className="text-success" />
               )}
               <span>
-                {building ? "Build in progress" : "Last build log"}
+                {building ? t("builds.log.inProgress") : t("builds.log.last")}
               </span>
               {building && elapsedMs > 0 && (
                 <span className="text-[10px] text-fg-faint">
-                  {(elapsedMs / 1000).toFixed(0)}s
+                  {t("builds.log.elapsed", { n: (elapsedMs / 1000).toFixed(0) })}
                 </span>
               )}
               <span className="text-[10px] text-fg-fainter">
-                {buildLog.length} line{buildLog.length === 1 ? "" : "s"}
+                {buildLog.length === 1
+                  ? t("builds.log.line", { n: buildLog.length })
+                  : t("builds.log.lines", { n: buildLog.length })}
               </span>
             </div>
           </div>
@@ -695,14 +711,14 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
           >
             {buildLog.length > 0
               ? buildLog.join("\n")
-              : "… waiting for first log line …"}
+              : t("builds.log.waiting")}
           </pre>
         </div>
       )}
 
       {data && data.builds.length === 0 && !building && (
         <p className="rounded-md border border-dashed border-border-subtle px-3 py-6 text-center text-[12px] text-fg-faint">
-          No builds yet. Click <strong>Build</strong> to create one from your saved Sandboxfile.
+          {t("builds.empty.lead")} <strong>{t("builds.empty.build")}</strong> {t("builds.empty.tail")}
         </p>
       )}
 
@@ -721,21 +737,21 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                     </code>
                     {(b.roles?.browser ?? b.published) && (
                       <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] uppercase text-success">
-                        <CheckCircle2 size={10} /> Browser
+                        <CheckCircle2 size={10} /> {t("builds.role.browser")}
                       </span>
                     )}
                     {b.roles?.task && (
                       <span className="flex items-center gap-1 rounded bg-sky-900/40 px-1.5 py-0.5 text-[10px] uppercase text-sky-300">
-                        <CheckCircle2 size={10} /> Task
+                        <CheckCircle2 size={10} /> {t("builds.role.task")}
                       </span>
                     )}
-                    <span className="text-[11px] text-fg-muted" title={b.basedOnSnapshot ? `layered on snapshot ${b.basedOnSnapshot}` : `image: ${b.baseImage}`}>{b.basedOnSnapshot ? `↳ ${b.basedOnSnapshot.split('-build-').pop() ?? b.basedOnSnapshot}` : b.baseImage}</span>
+                    <span className="text-[11px] text-fg-muted" title={b.basedOnSnapshot ? t("builds.layeredTitle", { snapshot: b.basedOnSnapshot }) : t("builds.imageTitle", { image: b.baseImage })}>{b.basedOnSnapshot ? `↳ ${b.basedOnSnapshot.split('-build-').pop() ?? b.basedOnSnapshot}` : b.baseImage}</span>
                     <span className="text-[10px] text-fg-fainter">
-                      {(b.durationMs / 1000).toFixed(1)}s · {formatRelative(b.builtAt)}
+                      {(b.durationMs / 1000).toFixed(1)}s · {formatRelative(b.builtAt, t)}
                     </span>
                   </div>
                   <p className="mt-1 truncate text-[11px] text-fg-faint">
-                    snapshot:{" "}
+                    {t("builds.snapshotLabel")}{" "}
                     <code className="rounded bg-bg-raised px-1 text-fg-muted">
                       {b.snapshotName}
                     </code>
@@ -759,8 +775,8 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                           className="flex items-center gap-1 px-2 py-1 text-[11px] text-emerald-200 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
                           title={
                             browserActive
-                              ? "This build is already the active Browser snapshot."
-                              : "Pin this build as the long-lived Browser sandbox snapshot. The live VM keeps running its current snapshot until you reset."
+                              ? t("builds.browserActive.title")
+                              : t("builds.useAsBrowser.title")
                           }
                         >
                           {usingId === b.buildId ? (
@@ -768,7 +784,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                           ) : (
                             <UploadCloud size={11} />
                           )}
-                          {browserActive ? "Browser \u2713" : "Use as Browser"}
+                          {browserActive ? t("builds.browserDone") : t("builds.useAsBrowser")}
                         </button>
                         {!browserActive && (
                           <button
@@ -776,10 +792,10 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                             onClick={() => void useBuild(b.buildId, "browser", true)}
                             disabled={usingId === b.buildId}
                             className="flex items-center gap-1 border-l border-border-subtle px-2 py-1 text-[11px] text-success hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
-                            title="Pin as Browser + reset the live VM so the new snapshot takes effect immediately. Adds ~10-20s for the reset."
+                            title={t("builds.andReset.title")}
                           >
                             <RotateCcw size={11} />
-                            &amp; Reset
+                            {t("builds.andReset")}
                           </button>
                         )}
                       </div>
@@ -791,8 +807,8 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                         className="flex items-center justify-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-[11px] text-sky-200 hover:bg-sky-900/30 disabled:cursor-not-allowed disabled:opacity-40"
                         title={
                           taskActive
-                            ? "This build is already the active Task snapshot."
-                            : "Pin this build as the per-task sandbox snapshot. Future per-task sandboxes will boot from it; takes effect on the next task acquire."
+                            ? t("builds.taskActive.title")
+                            : t("builds.useAsTask.title")
                         }
                       >
                         {usingId === b.buildId ? (
@@ -800,7 +816,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                         ) : (
                           <UploadCloud size={11} />
                         )}
-                        {taskActive ? "Task \u2713" : "Use as Task"}
+                        {taskActive ? t("builds.taskDone") : t("builds.useAsTask")}
                       </button>
                     </div>
                   );
@@ -809,7 +825,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               {b.logTail && (
                 <details className="mt-1.5 text-[11px]">
                   <summary className="cursor-pointer text-fg-faint hover:text-fg-muted">
-                    Log tail
+                    {t("builds.logTail")}
                   </summary>
                   <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-bg-base px-2 py-1 text-[11px] leading-relaxed text-fg-muted">
                     {b.logTail}
@@ -850,6 +866,7 @@ interface ShellEntry {
 }
 
 function ShellSection() {
+  const t = usePluginT("microsandbox");
   const [command, setCommand] = useState("");
   const [workdir, setWorkdir] = useState("/workspace");
   const [target, setTarget] = useState<string>("live");
@@ -920,7 +937,7 @@ function ShellSection() {
       const aborted =
         err instanceof DOMException && err.name === "AbortError";
       const message = aborted
-        ? "Cancelled by user. The server-side timeout (60s default) will eventually tear the preview VM down."
+        ? t("shell.cancelledMsg")
         : err instanceof Error
           ? err.message
           : String(err);
@@ -996,17 +1013,17 @@ function ShellSection() {
 
   const targetLabel =
     target === "live"
-      ? "Live sandbox"
-      : `Preview build ${target}`;
+      ? t("shell.targetLabel.live")
+      : t("shell.targetLabel.preview", { target });
 
   return (
     <section>
       <SectionHeader
-        title="Shell"
+        title={t("shell.title")}
         description={
           target === "live"
-            ? "Run a one-shot command inside the running sandbox. Defaults to bash semantics; equivalent to the agent's exec tool."
-            : "Boot a throwaway VM from the selected build's snapshot, run the command, then tear it down. Lets you sanity-check a build before switching the tenant to it. The live sandbox is not touched."
+            ? t("shell.desc.live")
+            : t("shell.desc.preview")
         }
         actions={
           <>
@@ -1014,20 +1031,20 @@ function ShellSection() {
               type="button"
               onClick={() => void loadBuilds()}
               className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
-              title="Refresh build list"
+              title={t("shell.reloadBuilds.title")}
             >
               <RefreshCw size={11} />
-              Reload builds
+              {t("shell.reloadBuilds")}
             </button>
             <button
               type="button"
               onClick={clear}
               disabled={history.length === 0}
               className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted disabled:opacity-50"
-              title="Clear command history (does not affect the sandbox)"
+              title={t("shell.clear.title")}
             >
               <Trash2 size={12} />
-              Clear
+              {t("shell.clear")}
             </button>
           </>
         }
@@ -1035,7 +1052,7 @@ function ShellSection() {
 
       {history.length === 0 && (
         <p className="mb-2 rounded-md border border-dashed border-border-subtle px-3 py-3 text-center text-[11px] text-fg-faint">
-          Try{" "}
+          {t("shell.empty.lead")}{" "}
           <code className="rounded bg-bg-raised px-1 text-fg-muted">ls /workspace</code>
           {" · "}
           <code className="rounded bg-bg-raised px-1 text-fg-muted">python3 --version</code>
@@ -1053,7 +1070,7 @@ function ShellSection() {
 
       <div className="rounded-md border border-border-subtle bg-bg-base p-2">
         <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[10px] text-fg-faint">
-          <span>target:</span>
+          <span>{t("shell.target")}</span>
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value)}
@@ -1062,22 +1079,22 @@ function ShellSection() {
                 ? "border-emerald-700/40 bg-bg-elevated"
                 : "border-amber-700/40 bg-amber-950/30"
             }`}
-            title="Run against the live sandbox or boot a throwaway preview VM from a build"
+            title={t("shell.target.selectTitle")}
           >
-            <option value="live">Live sandbox</option>
+            <option value="live">{t("shell.target.live")}</option>
             {builds.length > 0 && (
-              <optgroup label="Preview build…">
+              <optgroup label={t("shell.target.previewGroup")}>
                 {builds.map((b) => (
                   <option key={b.buildId} value={b.buildId}>
                     {b.buildId} · {b.baseImage}
-                    {b.published ? " (in use)" : ""}
+                    {b.published ? t("shell.target.inUse") : ""}
                   </option>
                 ))}
               </optgroup>
             )}
           </select>
           <span className="text-fg-fainter">·</span>
-          <span>workdir:</span>
+          <span>{t("shell.workdir")}</span>
           <input
             type="text"
             value={workdir}
@@ -1106,10 +1123,10 @@ function ShellSection() {
               type="button"
               onClick={cancel}
               className="flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-rose-500"
-              title="Abort the in-flight request. The preview VM is also torn down server-side after a server-enforced timeout (60s default)."
+              title={t("shell.cancel.title")}
             >
               <X size={12} />
-              Cancel
+              {t("shell.cancel")}
             </button>
           ) : (
             <button
@@ -1119,15 +1136,13 @@ function ShellSection() {
               className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
             >
               <Terminal size={12} />
-              Run
+              {t("shell.run")}
             </button>
           )}
         </div>
         <p className="mt-1 text-[10px] text-fg-fainter">
-          Target: <strong className="text-fg-muted">{targetLabel}</strong>{" · "}
-          Enter to run · Shift+Enter for a newline · ↑/↓ to walk
-          history. Per-call timeout 60s (max 5 min). Preview boots add
-          ~5-10s on top of the command time.
+          {t("shell.footer.target")} <strong className="text-fg-muted">{targetLabel}</strong>
+          {t("shell.footer.hints")}
         </p>
       </div>
     </section>
@@ -1135,6 +1150,7 @@ function ShellSection() {
 }
 
 function ShellEntryView({ entry }: { entry: ShellEntry }) {
+  const t = usePluginT("microsandbox");
   const { result, transportError } = entry;
   const running = result === null && transportError === null;
   const ok = result?.ok === true;
@@ -1159,13 +1175,13 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
           }`}
           title={
             entry.target === "live"
-              ? "Ran against the tenant's live sandbox"
-              : `Ran against build ${entry.target}'s snapshot in a throwaway preview VM`
+              ? t("shellEntry.live.title")
+              : t("shellEntry.preview.title", { target: entry.target })
           }
         >
-          {entry.target === "live" ? "live" : `preview ${entry.target}`}
+          {entry.target === "live" ? t("shellEntry.live") : t("shellEntry.preview", { target: entry.target })}
         </span>
-        <span className="text-[9px] text-fg-fainter">cwd:{entry.workdir}</span>
+        <span className="text-[9px] text-fg-fainter">{t("shellEntry.cwd", { workdir: entry.workdir })}</span>
         {result && (
           <span
             className={
@@ -1174,8 +1190,8 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
                 : "rounded bg-rose-900/40 px-1.5 py-0.5 text-[9px] text-danger"
             }
           >
-            exit {result.exitCode}
-            {result.timedOut && " · timed out"}
+            {t("shellEntry.exit", { code: result.exitCode })}
+            {result.timedOut && t("shellEntry.timedOut")}
             {" · "}
             {(result.durationMs / 1000).toFixed(2)}s
           </span>
@@ -1201,7 +1217,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         </div>
       )}
       {result && !result.stdout && !result.stderr && !failed && (
-        <p className="text-[10px] italic text-fg-faint">(no output)</p>
+        <p className="text-[10px] italic text-fg-faint">{t("shellEntry.noOutput")}</p>
       )}
     </div>
   );
@@ -1214,6 +1230,7 @@ function ResetSection({
   refreshTick: number;
   onMutate: () => void;
 }) {
+  const t = usePluginT("microsandbox");
   const [resetting, setResetting] = useState(false);
   const [status, setStatus] = useState<SandboxStatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1277,8 +1294,8 @@ function ResetSection({
   return (
     <section>
       <SectionHeader
-        title="Live sandbox"
-        description="Reset the running VM. After publishing a new build, reset to make it live."
+        title={t("reset.title")}
+        description={t("reset.desc")}
         actions={
           <>
             <button
@@ -1287,30 +1304,30 @@ function ResetSection({
               className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
             >
               <RefreshCw size={12} />
-              Refresh
+              {t("reset.refresh")}
             </button>
             <button
               type="button"
               onClick={() => setConfigOpen(true)}
               className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
-              title="Edit cpu / memory / timeout for both Browser and Task sandboxes"
+              title={t("reset.configure.title")}
             >
               <Settings size={12} />
-              Configure
+              {t("reset.configure")}
             </button>
             <button
               type="button"
               onClick={() => void reset()}
               disabled={resetting}
               className="flex items-center gap-1.5 rounded-md border border-rose-700/60 bg-rose-950/40 px-3 py-1.5 text-[11px] font-medium text-danger hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-50"
-              title="Stop and rebuild the VM from the published snapshot (or default image)"
+              title={t("reset.resetBtn.title")}
             >
               {resetting ? (
                 <Loader2 size={12} className="animate-spin" />
               ) : (
                 <RotateCcw size={12} />
               )}
-              Reset sandbox
+              {t("reset.resetBtn")}
             </button>
           </>
         }
@@ -1320,42 +1337,42 @@ function ResetSection({
       <div className="rounded-md border border-border-subtle bg-bg-elevated/40">
         {status && (
         <dl className="grid grid-cols-3 gap-x-4 gap-y-1.5 p-3 text-[11px]">
-          <Field label="State">
-            {status.runner === "nullable" ? "not running" : status.state}
+          <Field label={t("reset.field.state")}>
+            {status.runner === "nullable" ? t("reset.state.notRunning") : status.state}
           </Field>
-          <Field label="Runner">{status.runner}</Field>
-          <Field label="Uptime">{formatUptime(status.uptimeMs)}</Field>
+          <Field label={t("reset.field.runner")}>{status.runner}</Field>
+          <Field label={t("reset.field.uptime")}>{formatUptime(status.uptimeMs)}</Field>
           {extractMetaString(status.meta, "sandboxName") && (
-            <Field label="Sandbox">
+            <Field label={t("reset.field.sandbox")}>
               <code className="rounded bg-bg-raised px-1">
                 {extractMetaString(status.meta, "sandboxName")}
               </code>
             </Field>
           )}
           {extractMetaString(status.meta, "activeSnapshot") ? (
-            <Field label="Booted from">
+            <Field label={t("reset.field.bootedFrom")}>
               <code className="rounded bg-emerald-900/40 px-1 text-emerald-200">
-                snapshot · {extractMetaString(status.meta, "activeSnapshot")}
+                {t("reset.bootedFrom.snapshot", { name: extractMetaString(status.meta, "activeSnapshot") ?? "" })}
               </code>
             </Field>
           ) : extractMetaString(status.meta, "image") ? (
-            <Field label="Booted from">
+            <Field label={t("reset.field.bootedFrom")}>
               <code className="rounded bg-bg-raised px-1">
-                image · {extractMetaString(status.meta, "image")}
+                {t("reset.bootedFrom.image", { image: extractMetaString(status.meta, "image") ?? "" })}
               </code>
             </Field>
           ) : null}
           {extractMetaString(status.meta, "image") &&
             extractMetaString(status.meta, "activeSnapshot") && (
-              <Field label="Default image">
+              <Field label={t("reset.field.defaultImage")}>
                 <code className="rounded bg-bg-raised px-1 text-fg-muted">
                   {extractMetaString(status.meta, "image")}
                 </code>
               </Field>
             )}
           {status.liveMemory && (
-            <Field label="Memory">
-              <span title={`${formatKb(status.liveMemory.usedKb)} used · ${formatKb(status.liveMemory.availableKb)} available · ${formatKb(status.liveMemory.totalKb)} total`}>
+            <Field label={t("reset.field.memory")}>
+              <span title={t("reset.memory.title", { used: formatKb(status.liveMemory.usedKb), available: formatKb(status.liveMemory.availableKb), total: formatKb(status.liveMemory.totalKb) })}>
                 {formatKb(status.liveMemory.usedKb)}
                 <span className="text-fg-faint">
                   {" / "}
@@ -1367,7 +1384,7 @@ function ResetSection({
             </Field>
           )}
           {status.lastError && (
-            <Field label="Last error">
+            <Field label={t("reset.field.lastError")}>
               <span className="text-danger">{status.lastError}</span>
             </Field>
           )}
@@ -1406,6 +1423,7 @@ interface TaskPoolEntry {
 }
 
 function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
+  const t = usePluginT("microsandbox");
   const [entries, setEntries] = useState<TaskPoolEntry[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1435,8 +1453,8 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
   // VM, a finally hook stops it) and there's no event we can
   // subscribe to, so the polling loop keeps the panel honest.
   useEffect(() => {
-    const t = window.setInterval(() => void load(), 5_000);
-    return () => window.clearInterval(t);
+    const iv = window.setInterval(() => void load(), 5_000);
+    return () => window.clearInterval(iv);
   }, [load]);
 
   async function destroy(name: string) {
@@ -1460,11 +1478,13 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
   return (
     <section>
       <SectionHeader
-        title="Per-task sandbox pool"
+        title={t("taskPool.title")}
         description={
           total === 0
-            ? "No per-task sandboxes yet. The pool spawns one when a workboard task is picked up by a worker."
-            : `${total} sandbox${total === 1 ? "" : "es"} (${running} running)`
+            ? t("taskPool.desc.none")
+            : total === 1
+              ? t("taskPool.desc.count.one", { total, running })
+              : t("taskPool.desc.count", { total, running })
         }
         actions={
           <button
@@ -1474,7 +1494,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
             className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-            Refresh
+            {t("taskPool.refresh")}
           </button>
         }
       />
@@ -1486,11 +1506,11 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
           <table className="w-full text-[11px]">
             <thead className="bg-bg-elevated/60 text-[10px] uppercase tracking-wide text-fg-faint">
               <tr>
-                <th className="px-3 py-1.5 text-left">State</th>
-                <th className="px-3 py-1.5 text-left">Sandbox</th>
-                <th className="px-3 py-1.5 text-left">Task</th>
-                <th className="px-3 py-1.5 text-left">Created</th>
-                <th className="px-3 py-1.5 text-right">Actions</th>
+                <th className="px-3 py-1.5 text-left">{t("taskPool.col.state")}</th>
+                <th className="px-3 py-1.5 text-left">{t("taskPool.col.sandbox")}</th>
+                <th className="px-3 py-1.5 text-left">{t("taskPool.col.task")}</th>
+                <th className="px-3 py-1.5 text-left">{t("taskPool.col.created")}</th>
+                <th className="px-3 py-1.5 text-right">{t("taskPool.col.actions")}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
@@ -1502,7 +1522,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                   <td className="px-3 py-1.5 font-mono text-[10px] text-fg-muted">
                     <code
                       className="cursor-pointer hover:text-fg-default"
-                      title="Click to copy"
+                      title={t("taskPool.copyTitle")}
                       onClick={() => {
                         void navigator.clipboard
                           ?.writeText(e.sandboxName)
@@ -1517,8 +1537,8 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                   </td>
                   <td className="px-3 py-1.5 text-[10px] text-fg-faint">
                     {e.createdAt
-                      ? formatRelative(e.createdAt)
-                      : "—"}
+                      ? formatRelative(e.createdAt, t)
+                      : t("taskPool.createdEmpty")}
                   </td>
                   <td className="px-3 py-1.5 text-right">
                     <button
@@ -1528,8 +1548,8 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                       className="flex items-center gap-1 rounded border border-border-subtle px-2 py-0.5 text-[10px] text-danger hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
                       title={
                         e.poolState === "running"
-                          ? "Stop and remove this sandbox (also kills the running task)"
-                          : "Remove the sandbox image from disk"
+                          ? t("taskPool.destroy.runningTitle")
+                          : t("taskPool.destroy.title")
                       }
                     >
                       {destroying === e.sandboxName ? (
@@ -1537,7 +1557,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                       ) : (
                         <Trash2 size={10} />
                       )}
-                      {e.poolState === "orphan" ? "Forget" : "Destroy"}
+                      {e.poolState === "orphan" ? t("taskPool.forget") : t("taskPool.destroy")}
                     </button>
                   </td>
                 </tr>
@@ -1583,6 +1603,7 @@ function ConfigureSandboxDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const t = usePluginT("microsandbox");
   if (!open) return null;
   return (
     <div
@@ -1606,19 +1627,17 @@ function ConfigureSandboxDialog({
         <div className="flex shrink-0 items-center justify-between border-b border-border-subtle px-4 py-3">
           <div>
             <div className="text-sm font-medium text-fg-default">
-              Sandbox runtime parameters
+              {t("configDialog.title")}
             </div>
             <div className="mt-0.5 text-[11px] text-fg-faint">
-              Browser sandbox changes take effect on the next
-              Reset; Task sandbox changes take effect on the next
-              task acquire.
+              {t("configDialog.desc")}
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             className="rounded p-1 text-fg-muted hover:bg-bg-raised hover:text-fg-default"
-            aria-label="Close configure dialog"
+            aria-label={t("configDialog.close")}
           >
             <X size={14} />
           </button>
@@ -1755,6 +1774,7 @@ function Banner({
 // to fit the new width — X11 alone won't do that).
 
 function BrowserViewportPanel(_props: PanelProps) {
+  const t = usePluginT("microsandbox");
   const [data, setData] = useState<BrowserStatusPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -1801,7 +1821,7 @@ function BrowserViewportPanel(_props: PanelProps) {
       <div className="flex items-center justify-between border-b border-border-subtle px-4 py-2">
         <div className="flex items-center gap-2 text-sm font-medium text-fg-default">
           <Globe size={14} className="text-brand-400" />
-          Browser
+          {t("browserPanel.title")}
         </div>
       </div>
 
@@ -1818,7 +1838,7 @@ function BrowserViewportPanel(_props: PanelProps) {
       >
         {data?.ready && data.ports.vnc ? (
           <iframe
-            title="Browser viewport"
+            title={t("browserPanel.iframeTitle")}
             src={`http://localhost:${data.ports.vnc}/vnc.html?autoconnect=true&resize=scale&reconnect=true&reconnect_delay=1000`}
             // Disable iframe pointer events while the user drags
             // the chat-shell panel divider — otherwise noVNC swallows
@@ -1829,8 +1849,8 @@ function BrowserViewportPanel(_props: PanelProps) {
         ) : (
           <div className="flex h-full items-center justify-center px-6 text-center text-[12px] text-fg-faint">
             {data
-              ? data.hint ?? "Browser stack not running."
-              : "Loading…"}
+              ? data.hint ?? t("browserPanel.notRunning")
+              : t("browserPanel.loading")}
           </div>
         )}
       </div>

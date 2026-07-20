@@ -36,6 +36,7 @@ import {
   type AdminAuthProvider,
   type AdminLocalUser,
 } from "../../lib/api";
+import { useT } from "../../hooks/useT";
 
 const SECRET_MASK = "__stored__";
 
@@ -112,6 +113,7 @@ function PageShell({
   saved?: boolean;
   children: React.ReactNode;
 }) {
+  const t = useT();
   return (
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-6 flex items-center justify-between">
@@ -127,7 +129,7 @@ function PageShell({
                 onClick={onReload}
                 className="flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-sm text-fg-muted hover:text-fg-default"
               >
-                <RefreshCw size={14} /> Reload
+                <RefreshCw size={14} /> {t("common.reload")}
               </button>
             )}
             {onSave && (
@@ -137,7 +139,7 @@ function PageShell({
                 disabled={saving}
                 className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-60"
               >
-                <Save size={14} /> {saving ? "Saving…" : "Save"}
+                <Save size={14} /> {saving ? t("common.saving") : t("common.save")}
               </button>
             )}
           </div>
@@ -150,7 +152,7 @@ function PageShell({
       )}
       {saved && (
         <div className="mb-4 flex items-center gap-2 rounded-md border border-emerald-700/40 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
-          <CheckCircle2 size={14} /> Saved. The server re-arms auth on the next request.
+          <CheckCircle2 size={14} /> {t("auth.savedRearm")}
         </div>
       )}
       {children}
@@ -161,6 +163,7 @@ function PageShell({
 // ── Tab 1: Settings — master switch, session secret, registration,
 //    super-admins (read-only). PATCHes only its own fields. ──
 export function AuthSettingsPage() {
+  const t = useT();
   const [cfg, setCfg] = useState<AdminAuthConfig | null>(null);
   const [enabled, setEnabled] = useState(false);
   const [allowRegistration, setAllowRegistration] = useState(false);
@@ -209,11 +212,11 @@ export function AuthSettingsPage() {
     }
   }, [enabled, allowRegistration, sessionSecret, load]);
 
-  if (loading) return <div className="p-6 text-sm text-fg-faint">Loading…</div>;
+  if (loading) return <div className="p-6 text-sm text-fg-faint">{t("common.loading")}</div>;
 
   return (
     <PageShell
-      title="Auth · Settings"
+      title={t("auth.settings.title")}
       onReload={() => void load()}
       onSave={() => void save()}
       saving={saving}
@@ -224,10 +227,9 @@ export function AuthSettingsPage() {
       <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
         <label className="flex items-center justify-between">
           <span>
-            <span className="block text-sm font-medium text-fg-default">Require sign-in</span>
+            <span className="block text-sm font-medium text-fg-default">{t("auth.requireSignIn")}</span>
             <span className="block text-xs text-fg-faint">
-              When on, unauthenticated requests are rejected and users must log
-              in. When off, the app runs in open dev mode.
+              {t("auth.requireSignInHelp")}
             </span>
           </span>
           <input
@@ -241,12 +243,12 @@ export function AuthSettingsPage() {
         {enabled && (
           <div className="mt-4 grid gap-3 border-t border-border-subtle pt-4 sm:grid-cols-2">
             <label className="text-sm">
-              <span className="mb-1 block text-xs text-fg-faint">Session secret</span>
+              <span className="mb-1 block text-xs text-fg-faint">{t("auth.sessionSecret")}</span>
               <input
                 type="password"
                 value={sessionSecret}
                 onChange={(e) => setSessionSecret(e.target.value)}
-                placeholder={sessionSecretSet ? "(stored — type to replace)" : "set a secret or ${VAR}"}
+                placeholder={sessionSecretSet ? t("auth.sessionSecretPlaceholderStored") : t("auth.sessionSecretPlaceholder")}
                 className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-fg-default"
               />
             </label>
@@ -257,12 +259,10 @@ export function AuthSettingsPage() {
                 onChange={(e) => setAllowRegistration(e.target.checked)}
                 className="h-4 w-4 accent-brand-500"
               />
-              <span className="text-fg-default">Allow self-registration</span>
+              <span className="text-fg-default">{t("auth.allowRegistration")}</span>
             </label>
             <p className="text-xs text-fg-faint sm:col-span-2">
-              A tenant = one agent + its workers. A user is a session inside it;
-              which tenant(s) a login can enter is decided by per-tenant roles
-              (see Users), not a global rule.
+              {t("auth.tenantExplainer")}
             </p>
           </div>
         )}
@@ -270,12 +270,14 @@ export function AuthSettingsPage() {
 
       {/* Super-admins (read-only, config-declared) */}
       <section className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
-        <div className="mb-2 text-sm font-medium text-fg-default">Super-admins</div>
+        <div className="mb-2 text-sm font-medium text-fg-default">{t("auth.superAdmins")}</div>
         <p className="mb-2 text-xs text-fg-faint">
-          Global admins with all permissions across all tenants. Declared in
-          the config file (<code className="rounded bg-bg-raised px-1">auth.admins</code> by
-          OAuth email, <code className="rounded bg-bg-raised px-1">auth.superAdmins</code> for
-          local accounts). Edit <code className="rounded bg-bg-raised px-1">~/.tianshu/config.json</code>.
+          {t("auth.superAdminsHelp1")}
+          <code className="rounded bg-bg-raised px-1">auth.admins</code>
+          {t("auth.superAdminsHelp2")}
+          <code className="rounded bg-bg-raised px-1">auth.superAdmins</code>
+          {t("auth.superAdminsHelp3")}
+          <code className="rounded bg-bg-raised px-1">~/.tianshu/config.json</code>.
         </p>
         {cfg && cfg.admins.length > 0 ? (
           <ul className="flex flex-wrap gap-1.5">
@@ -286,7 +288,7 @@ export function AuthSettingsPage() {
             ))}
           </ul>
         ) : (
-          <span className="text-xs text-fg-fainter">no OAuth super-admin emails configured</span>
+          <span className="text-xs text-fg-fainter">{t("auth.noSuperAdmins")}</span>
         )}
       </section>
     </PageShell>
@@ -295,6 +297,7 @@ export function AuthSettingsPage() {
 
 // ── Tab 2: Providers — OAuth/OIDC. PATCHes only providers. ──
 export function AuthProvidersPage() {
+  const t = useT();
   const [providers, setProviders] = useState<ProviderDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -347,11 +350,11 @@ export function AuthProvidersPage() {
   const removeProvider = (i: number) =>
     setProviders((prev) => prev.filter((_, idx) => idx !== i));
 
-  if (loading) return <div className="p-6 text-sm text-fg-faint">Loading…</div>;
+  if (loading) return <div className="p-6 text-sm text-fg-faint">{t("common.loading")}</div>;
 
   return (
     <PageShell
-      title="Auth · Providers"
+      title={t("auth.providers.title")}
       onReload={() => void load()}
       onSave={() => void save()}
       saving={saving}
@@ -361,10 +364,9 @@ export function AuthProvidersPage() {
       <section className="rounded-xl border border-border-subtle bg-bg-elevated p-4">
         <div className="mb-3 flex items-center justify-between">
           <div>
-            <div className="text-sm font-medium text-fg-default">OAuth / OIDC providers</div>
+            <div className="text-sm font-medium text-fg-default">{t("auth.providers.sectionTitle")}</div>
             <div className="text-xs text-fg-faint">
-              Generic + config-driven. Give an OIDC issuer (discovery) or explicit
-              endpoints. GitHub, Google, Lark, Keycloak … are all just a config entry.
+              {t("auth.providers.sectionHelp")}
             </div>
           </div>
           <button
@@ -372,13 +374,13 @@ export function AuthProvidersPage() {
             onClick={addProvider}
             className="flex items-center gap-1.5 rounded-lg border border-border-default px-3 py-1.5 text-sm text-fg-muted hover:text-fg-default"
           >
-            <Plus size={14} /> Add
+            <Plus size={14} /> {t("common.add")}
           </button>
         </div>
 
         {providers.length === 0 && (
           <div className="rounded-md border border-border-subtle bg-bg-raised/40 px-3 py-3 text-center text-xs text-fg-faint">
-            No providers configured yet.
+            {t("auth.providers.empty")}
           </div>
         )}
 
@@ -386,29 +388,29 @@ export function AuthProvidersPage() {
           {providers.map((p, i) => (
             <div key={i} className="rounded-lg border border-border-subtle bg-bg-base p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-xs font-mono text-fg-muted">{p.id || "(new provider)"}</span>
+                <span className="text-xs font-mono text-fg-muted">{p.id || t("auth.providers.newProvider")}</span>
                 <button
                   type="button"
                   onClick={() => removeProvider(i)}
                   className="text-fg-fainter hover:text-danger"
-                  title="Remove"
+                  title={t("common.remove")}
                 >
                   <Trash2 size={14} />
                 </button>
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
-                <Field label="id" value={p.id} onChange={(v) => patchProvider(i, { id: v })} placeholder="my-sso" />
-                <Field label="display name" value={p.displayName} onChange={(v) => patchProvider(i, { displayName: v })} placeholder="Company SSO" />
-                <Field label="client id" value={p.clientId} onChange={(v) => patchProvider(i, { clientId: v })} placeholder="${OIDC_CLIENT_ID}" />
-                <Field label="client secret" type="password" value={p.clientSecret} onChange={(v) => patchProvider(i, { clientSecret: v })} placeholder="${OIDC_CLIENT_SECRET}" />
-                <Field label="issuer (OIDC discovery)" value={p.issuer} onChange={(v) => patchProvider(i, { issuer: v })} placeholder="https://sso.example.com/realms/main" />
-                <Field label="scopes" value={p.scopes} onChange={(v) => patchProvider(i, { scopes: v })} placeholder="openid email profile" />
-                <Field label="authorize url (or use issuer)" value={p.authorizeUrl} onChange={(v) => patchProvider(i, { authorizeUrl: v })} placeholder="https://github.com/login/oauth/authorize" />
-                <Field label="token url" value={p.tokenUrl} onChange={(v) => patchProvider(i, { tokenUrl: v })} placeholder="https://github.com/login/oauth/access_token" />
-                <Field label="userinfo url" value={p.userInfoUrl} onChange={(v) => patchProvider(i, { userInfoUrl: v })} placeholder="https://api.github.com/user" />
-                <Field label="claim: subject" value={p.claimsSubject} onChange={(v) => patchProvider(i, { claimsSubject: v })} placeholder="sub" />
-                <Field label="claim: email" value={p.claimsEmail} onChange={(v) => patchProvider(i, { claimsEmail: v })} placeholder="email" />
-                <Field label="claim: name" value={p.claimsName} onChange={(v) => patchProvider(i, { claimsName: v })} placeholder="name" />
+                <Field label={t("auth.provider.id")} value={p.id} onChange={(v) => patchProvider(i, { id: v })} placeholder="my-sso" />
+                <Field label={t("auth.provider.displayName")} value={p.displayName} onChange={(v) => patchProvider(i, { displayName: v })} placeholder="Company SSO" />
+                <Field label={t("auth.provider.clientId")} value={p.clientId} onChange={(v) => patchProvider(i, { clientId: v })} placeholder="${OIDC_CLIENT_ID}" />
+                <Field label={t("auth.provider.clientSecret")} type="password" value={p.clientSecret} onChange={(v) => patchProvider(i, { clientSecret: v })} placeholder="${OIDC_CLIENT_SECRET}" />
+                <Field label={t("auth.provider.issuer")} value={p.issuer} onChange={(v) => patchProvider(i, { issuer: v })} placeholder="https://sso.example.com/realms/main" />
+                <Field label={t("auth.provider.scopes")} value={p.scopes} onChange={(v) => patchProvider(i, { scopes: v })} placeholder="openid email profile" />
+                <Field label={t("auth.provider.authorizeUrl")} value={p.authorizeUrl} onChange={(v) => patchProvider(i, { authorizeUrl: v })} placeholder="https://github.com/login/oauth/authorize" />
+                <Field label={t("auth.provider.tokenUrl")} value={p.tokenUrl} onChange={(v) => patchProvider(i, { tokenUrl: v })} placeholder="https://github.com/login/oauth/access_token" />
+                <Field label={t("auth.provider.userInfoUrl")} value={p.userInfoUrl} onChange={(v) => patchProvider(i, { userInfoUrl: v })} placeholder="https://api.github.com/user" />
+                <Field label={t("auth.provider.claimSubject")} value={p.claimsSubject} onChange={(v) => patchProvider(i, { claimsSubject: v })} placeholder="sub" />
+                <Field label={t("auth.provider.claimEmail")} value={p.claimsEmail} onChange={(v) => patchProvider(i, { claimsEmail: v })} placeholder="email" />
+                <Field label={t("auth.provider.claimName")} value={p.claimsName} onChange={(v) => patchProvider(i, { claimsName: v })} placeholder="name" />
               </div>
             </div>
           ))}
@@ -420,8 +422,9 @@ export function AuthProvidersPage() {
 
 // ── Tab 3: Users — local accounts + per-tenant roles. ──
 export function AuthUsersPage() {
+  const t = useT();
   return (
-    <PageShell title="Auth · Users">
+    <PageShell title={t("auth.users.title")}>
       <LocalUsersSection />
     </PageShell>
   );
@@ -429,6 +432,7 @@ export function AuthUsersPage() {
 
 // ── Tab 4: Tenants — super-admin only. ──
 export function AuthTenantsPage() {
+  const t = useT();
   const [allowed, setAllowed] = useState<boolean | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -444,14 +448,14 @@ export function AuthTenantsPage() {
       cancelled = true;
     };
   }, []);
-  if (allowed === null) return <div className="p-6 text-sm text-fg-faint">Loading…</div>;
+  if (allowed === null) return <div className="p-6 text-sm text-fg-faint">{t("common.loading")}</div>;
   return (
-    <PageShell title="Auth · Tenants">
+    <PageShell title={t("auth.tenants.title")}>
       {allowed ? (
         <TenantsSection />
       ) : (
         <div className="rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-3 text-sm text-amber-200">
-          Tenant management is restricted to super-admins.
+          {t("auth.tenants.restricted")}
         </div>
       )}
     </PageShell>
@@ -459,6 +463,7 @@ export function AuthTenantsPage() {
 }
 
 function TenantsSection() {
+  const t = useT();
   const [tenants, setTenants] = useState<import("../../lib/api").AdminTenant[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -506,12 +511,9 @@ function TenantsSection() {
     <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <div className="text-sm font-medium text-fg-default">Tenants</div>
+          <div className="text-sm font-medium text-fg-default">{t("auth.tenants.sectionTitle")}</div>
           <div className="text-xs text-fg-faint">
-            A tenant = one agent + its workers. Super-admin only. Disabling
-            is a soft off-switch (logins can’t enter, in-flight requests are
-            rejected) — on-disk data is untouched. To really delete a tenant,
-            remove its directory under ~/.tianshu/tenants/ by hand.
+            {t("auth.tenants.sectionHelp")}
           </div>
         </div>
         <button
@@ -519,7 +521,7 @@ function TenantsSection() {
           onClick={() => setCreating(true)}
           className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
         >
-          <Plus size={15} /> Create tenant
+          <Plus size={15} /> {t("auth.tenants.create")}
         </button>
       </div>
 
@@ -531,34 +533,34 @@ function TenantsSection() {
 
       {tenants.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center text-xs text-fg-fainter">
-          No tenants.
+          {t("auth.tenants.empty")}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
-          {tenants.map((t) => (
+          {tenants.map((tn) => (
             <div
-              key={t.id}
+              key={tn.id}
               className="flex items-center justify-between rounded-lg border border-border-subtle bg-bg-base p-3"
             >
               <div className="flex items-center gap-2">
-                <span className="font-mono text-sm text-fg-default">{t.id}</span>
-                {t.disabled && (
+                <span className="font-mono text-sm text-fg-default">{tn.id}</span>
+                {tn.disabled && (
                   <span className="rounded-full border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[11px] text-amber-200">
-                    disabled
+                    {t("auth.tenants.disabledBadge")}
                   </span>
                 )}
               </div>
               <button
                 type="button"
-                onClick={() => void toggle(t.id, !t.disabled)}
+                onClick={() => void toggle(tn.id, !tn.disabled)}
                 className={
                   "rounded-md border px-2.5 py-1 text-xs " +
-                  (t.disabled
+                  (tn.disabled
                     ? "border-border-default text-fg-muted hover:bg-bg-raised hover:text-fg-default"
                     : "border-border-default text-fg-muted hover:border-amber-700/60 hover:text-amber-200")
                 }
               >
-                {t.disabled ? "Enable" : "Disable"}
+                {tn.disabled ? t("common.enable") : t("common.disable")}
               </button>
             </div>
           ))}
@@ -566,17 +568,16 @@ function TenantsSection() {
       )}
 
       {creating && (
-        <Modal isOpen onClose={() => setCreating(false)} title="Create tenant" size="sm" allowMaximize={false}>
+        <Modal isOpen onClose={() => setCreating(false)} title={t("auth.tenants.createTitle")} size="sm" allowMaximize={false}>
           <div className="flex flex-col gap-3 p-1">
             <p className="text-xs text-fg-faint">
-              Creates a new agent + workers instance (dirs, db, workspace seed).
-              Id: 2–32 chars, lowercase letters/digits/-/_, no leading _.
+              {t("auth.tenants.createHelp")}
             </p>
-            <Field label="Tenant id" value={newId} onChange={setNewId} placeholder="acme" />
+            <Field label={t("auth.tenants.idLabel")} value={newId} onChange={setNewId} placeholder="acme" />
             <div className="mt-1 flex justify-end gap-2">
-              <ModalBtn kind="ghost" onClick={() => setCreating(false)}>Cancel</ModalBtn>
+              <ModalBtn kind="ghost" onClick={() => setCreating(false)}>{t("common.cancel")}</ModalBtn>
               <ModalBtn kind="primary" disabled={newId.trim().length < 2 || busy} onClick={() => void create()}>
-                {busy ? "Creating…" : "Create"}
+                {busy ? t("common.creating") : t("common.create")}
               </ModalBtn>
             </div>
           </div>
@@ -587,6 +588,7 @@ function TenantsSection() {
 }
 
 function LocalUsersSection() {
+  const t = useT();
   const [users, setUsers] = useState<AdminLocalUser[]>([]);
   const [tenants, setTenants] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -598,9 +600,9 @@ function LocalUsersSection() {
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const [u, t] = await Promise.all([api.adminUsers(), api.adminTenants()]);
+      const [u, tn] = await Promise.all([api.adminUsers(), api.adminTenants()]);
       setUsers(u.users);
-      setTenants(t.tenants);
+      setTenants(tn.tenants);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -610,7 +612,7 @@ function LocalUsersSection() {
   }, [load]);
 
   const del = async (u: AdminLocalUser) => {
-    if (!window.confirm(`Delete user "${u.username}"? This removes all their tenant roles.`)) return;
+    if (!window.confirm(t("auth.users.confirmDelete", { name: u.username }))) return;
     await api.adminDeleteUser(u.id);
     await load();
   };
@@ -623,11 +625,9 @@ function LocalUsersSection() {
     <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <div className="text-sm font-medium text-fg-default">Local users</div>
+          <div className="text-sm font-medium text-fg-default">{t("auth.users.sectionTitle")}</div>
           <div className="text-xs text-fg-faint">
-            Username/password accounts. Roles are per tenant — a user can be
-            admin in one tenant and member in another. Super-admins override
-            these everywhere.
+            {t("auth.users.sectionHelp")}
           </div>
         </div>
         <button
@@ -635,7 +635,7 @@ function LocalUsersSection() {
           onClick={() => setCreating(true)}
           className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
         >
-          <UserPlus size={15} /> Add user
+          <UserPlus size={15} /> {t("auth.users.add")}
         </button>
       </div>
 
@@ -647,7 +647,7 @@ function LocalUsersSection() {
 
       {users.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center text-xs text-fg-fainter">
-          No local users yet. Click “Add user” to create one.
+          {t("auth.users.empty")}
         </div>
       ) : (
         <div className="flex flex-col gap-2">
@@ -664,21 +664,21 @@ function LocalUsersSection() {
                     onClick={() => setRoleUser(u)}
                     className="flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:bg-bg-raised hover:text-fg-default"
                   >
-                    <ShieldPlus size={13} /> Roles
+                    <ShieldPlus size={13} /> {t("auth.users.roles")}
                   </button>
                   <button
                     type="button"
                     onClick={() => setPwUser(u)}
                     className="flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:bg-bg-raised hover:text-fg-default"
                   >
-                    <KeyRound size={13} /> Password
+                    <KeyRound size={13} /> {t("auth.users.password")}
                   </button>
                   <button
                     type="button"
                     onClick={() => void del(u)}
                     className="flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:border-rose-700/60 hover:text-danger"
                   >
-                    <Trash2 size={13} /> Delete
+                    <Trash2 size={13} /> {t("common.delete")}
                   </button>
                 </div>
               </div>
@@ -686,10 +686,10 @@ function LocalUsersSection() {
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 {u.superAdmin ? (
                   <span className="rounded-full border border-brand-500/40 bg-brand-600/15 px-2 py-0.5 text-[11px] font-medium text-brand-300">
-                    super-admin · all tenants
+                    {t("auth.users.superAdminBadge")}
                   </span>
                 ) : u.roles.length === 0 ? (
-                  <span className="text-[11px] text-fg-fainter">no tenant roles — can’t sign in until granted one</span>
+                  <span className="text-[11px] text-fg-fainter">{t("auth.users.noRoles")}</span>
                 ) : (
                   u.roles.map((r) => (
                     <span
@@ -697,12 +697,14 @@ function LocalUsersSection() {
                       className="flex items-center gap-1.5 rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted"
                     >
                       <span className="font-mono">{r.tenantId}</span>
-                      <span className={r.role === "admin" ? "font-medium text-brand-400" : ""}>{r.role}</span>
+                      <span className={r.role === "admin" ? "font-medium text-brand-400" : ""}>
+                        {r.role === "admin" ? t("user.role.admin") : t("user.role.member")}
+                      </span>
                       <button
                         type="button"
                         onClick={() => void rmRole(u.id, r.tenantId)}
                         className="ml-0.5 text-fg-fainter hover:text-danger"
-                        title="Remove role"
+                        title={t("auth.users.removeRole")}
                       >
                         ×
                       </button>
@@ -756,6 +758,7 @@ function CreateUserModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const t = useT();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
@@ -776,16 +779,16 @@ function CreateUserModal({
   };
 
   return (
-    <Modal isOpen onClose={onClose} title="Add local user" size="sm" allowMaximize={false}>
+    <Modal isOpen onClose={onClose} title={t("auth.users.addTitle")} size="sm" allowMaximize={false}>
       <div className="flex flex-col gap-3 p-1">
         {err && <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">{err}</div>}
-        <Field label="Username" value={username} onChange={setUsername} placeholder="alice" />
-        <Field label="Password (≥6 chars)" type="password" value={password} onChange={setPassword} placeholder="••••••" />
-        <Field label="Email (optional)" value={email} onChange={setEmail} placeholder="a@b.com" />
+        <Field label={t("auth.users.usernameLabel")} value={username} onChange={setUsername} placeholder="alice" />
+        <Field label={t("auth.users.passwordLabel")} type="password" value={password} onChange={setPassword} placeholder="••••••" />
+        <Field label={t("auth.users.emailLabel")} value={email} onChange={setEmail} placeholder="a@b.com" />
         <div className="mt-1 flex justify-end gap-2">
-          <ModalBtn kind="ghost" onClick={onClose}>Cancel</ModalBtn>
+          <ModalBtn kind="ghost" onClick={onClose}>{t("common.cancel")}</ModalBtn>
           <ModalBtn kind="primary" disabled={!valid || busy} onClick={() => void submit()}>
-            {busy ? "Creating…" : "Create"}
+            {busy ? t("common.creating") : t("common.create")}
           </ModalBtn>
         </div>
       </div>
@@ -802,6 +805,7 @@ function SetPasswordModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const t = useT();
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -819,14 +823,14 @@ function SetPasswordModal({
   };
 
   return (
-    <Modal isOpen onClose={onClose} title={`Set password — ${user.username}`} size="sm" allowMaximize={false}>
+    <Modal isOpen onClose={onClose} title={t("auth.users.setPasswordTitle", { name: user.username })} size="sm" allowMaximize={false}>
       <div className="flex flex-col gap-3 p-1">
         {err && <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">{err}</div>}
-        <Field label="New password (≥6 chars)" type="password" value={password} onChange={setPassword} placeholder="••••••" />
+        <Field label={t("auth.users.newPasswordLabel")} type="password" value={password} onChange={setPassword} placeholder="••••••" />
         <div className="mt-1 flex justify-end gap-2">
-          <ModalBtn kind="ghost" onClick={onClose}>Cancel</ModalBtn>
+          <ModalBtn kind="ghost" onClick={onClose}>{t("common.cancel")}</ModalBtn>
           <ModalBtn kind="primary" disabled={password.length < 6 || busy} onClick={() => void submit()}>
-            {busy ? "Saving…" : "Set password"}
+            {busy ? t("common.saving") : t("auth.users.setPassword")}
           </ModalBtn>
         </div>
       </div>
@@ -845,6 +849,7 @@ function AssignRoleModal({
   onClose: () => void;
   onDone: () => void;
 }) {
+  const t = useT();
   const [tenantId, setTenantId] = useState(tenants[0] ?? "");
   const [role, setRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
@@ -864,18 +869,20 @@ function AssignRoleModal({
   };
 
   return (
-    <Modal isOpen onClose={onClose} title={`Tenant roles — ${user.username}`} size="sm" allowMaximize={false}>
+    <Modal isOpen onClose={onClose} title={t("auth.users.rolesTitle", { name: user.username })} size="sm" allowMaximize={false}>
       <div className="flex flex-col gap-3 p-1">
         {err && <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">{err}</div>}
         {/* Existing roles */}
         {user.roles.length > 0 && (
           <div>
-            <div className="mb-1 text-[11px] text-fg-faint">Current roles</div>
+            <div className="mb-1 text-[11px] text-fg-faint">{t("auth.users.currentRoles")}</div>
             <div className="flex flex-wrap gap-1.5">
               {user.roles.map((r) => (
                 <span key={r.tenantId} className="rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted">
                   <span className="font-mono">{r.tenantId}</span>{" "}
-                  <span className={r.role === "admin" ? "text-brand-400" : ""}>{r.role}</span>
+                  <span className={r.role === "admin" ? "text-brand-400" : ""}>
+                    {r.role === "admin" ? t("user.role.admin") : t("user.role.member")}
+                  </span>
                 </span>
               ))}
             </div>
@@ -883,37 +890,37 @@ function AssignRoleModal({
         )}
         {tenants.length === 0 ? (
           <div className="rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
-            No tenants exist yet. Create a tenant before assigning roles.
+            {t("auth.users.noTenants")}
           </div>
         ) : (
           <>
             <label className="text-sm">
-              <span className="mb-1 block text-[11px] text-fg-faint">Tenant</span>
+              <span className="mb-1 block text-[11px] text-fg-faint">{t("auth.users.tenantLabel")}</span>
               <select
                 value={tenantId}
                 onChange={(e) => setTenantId(e.target.value)}
                 className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
               >
-                {tenants.map((t) => (
-                  <option key={t} value={t}>{t}</option>
+                {tenants.map((tn) => (
+                  <option key={tn} value={tn}>{tn}</option>
                 ))}
               </select>
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-[11px] text-fg-faint">Role in this tenant</span>
+              <span className="mb-1 block text-[11px] text-fg-faint">{t("auth.users.roleInTenantLabel")}</span>
               <select
                 value={role}
                 onChange={(e) => setRole(e.target.value as "admin" | "member")}
                 className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
               >
-                <option value="member">member</option>
-                <option value="admin">admin</option>
+                <option value="member">{t("user.role.member")}</option>
+                <option value="admin">{t("user.role.admin")}</option>
               </select>
             </label>
             <div className="mt-1 flex justify-end gap-2">
-              <ModalBtn kind="ghost" onClick={onClose}>Close</ModalBtn>
+              <ModalBtn kind="ghost" onClick={onClose}>{t("common.close")}</ModalBtn>
               <ModalBtn kind="primary" disabled={!tenantId || busy} onClick={() => void submit()}>
-                {busy ? "Saving…" : "Set role"}
+                {busy ? t("common.saving") : t("auth.users.setRole")}
               </ModalBtn>
             </div>
           </>

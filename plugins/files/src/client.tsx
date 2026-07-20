@@ -40,8 +40,11 @@ import {
   __installOpenFileApi,
   useUiPrimitives,
   subscribeToWsEvent,
+  usePluginT,
 } from "@tianshu-ai/plugin-sdk/client";
 import { Paperclip } from "lucide-react";
+
+type Translator = (key: string, params?: Record<string, string | number>) => string;
 
 interface DirEntry {
   name: string;
@@ -126,25 +129,36 @@ function fileIcon(e: DirEntry) {
   return <File size={16} className="text-fg-faint" />;
 }
 
-function formatSize(bytes: number): string {
-  if (bytes === 0) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+function formatSize(bytes: number, t?: Translator): string {
+  const tr = t ?? ((_k: string, p?: Record<string, string | number>) => String(p?.n ?? "—"));
+  if (bytes === 0) return t ? t("size.empty") : "—";
+  if (bytes < 1024) return tr("size.bytes", { n: bytes });
+  if (bytes < 1024 * 1024) return tr("size.kb", { n: (bytes / 1024).toFixed(1) });
+  if (bytes < 1024 * 1024 * 1024) return tr("size.mb", { n: (bytes / (1024 * 1024)).toFixed(1) });
+  return tr("size.gb", { n: (bytes / (1024 * 1024 * 1024)).toFixed(1) });
 }
 
-function formatModified(ms: number): string {
-  if (ms === 0) return "—";
+function formatModified(ms: number, t?: Translator): string {
+  if (ms === 0) return t ? t("modified.empty") : "—";
   const diff = Date.now() - ms;
-  if (diff < 60_000) return "Just now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+  if (diff < 60_000) return t ? t("modified.justNow") : "Just now";
+  if (diff < 3_600_000) {
+    const n = Math.floor(diff / 60_000);
+    return t ? t("modified.minutesAgo", { n }) : `${n}m ago`;
+  }
+  if (diff < 86_400_000) {
+    const n = Math.floor(diff / 3_600_000);
+    return t ? t("modified.hoursAgo", { n }) : `${n}h ago`;
+  }
+  if (diff < 7 * 86_400_000) {
+    const n = Math.floor(diff / 86_400_000);
+    return t ? t("modified.daysAgo", { n }) : `${n}d ago`;
+  }
   return new Date(ms).toLocaleDateString();
 }
 
 function FilesPanel({ plugin }: PanelProps) {
+  const t = usePluginT("files");
   const [dir, setDir] = useState("/");
   const [list, setList] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -236,7 +250,7 @@ function FilesPanel({ plugin }: PanelProps) {
               type="button"
               onClick={() => navigate(dir.substring(0, dir.lastIndexOf("/")) || "/")}
               className="mr-1 shrink-0 text-fg-faint hover:text-fg-muted"
-              title="Up one level"
+              title={t("panel.upOneLevel")}
             >
               <ArrowLeft size={14} />
             </button>
@@ -273,7 +287,7 @@ function FilesPanel({ plugin }: PanelProps) {
               type="text"
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              placeholder="Filter files..."
+              placeholder={t("panel.filterPlaceholder")}
               className="w-full rounded border border-border-subtle bg-bg-elevated py-1 pl-8 pr-2 text-sm text-fg-muted placeholder:text-fg-fainter focus:border-border-strong focus:outline-none"
             />
           </div>
@@ -281,7 +295,7 @@ function FilesPanel({ plugin }: PanelProps) {
             type="button"
             onClick={() => fetchList(dir)}
             className="rounded p-1.5 text-fg-muted hover:bg-bg-raised hover:text-fg-default"
-            title="Refresh"
+            title={t("panel.refresh")}
           >
             <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
           </button>
@@ -289,7 +303,7 @@ function FilesPanel({ plugin }: PanelProps) {
             type="button"
             onClick={() => setView(view === "list" ? "grid" : "list")}
             className="rounded p-1.5 text-fg-muted hover:bg-bg-raised hover:text-fg-default"
-            title="Toggle view"
+            title={t("panel.toggleView")}
           >
             {view === "list" ? <LayoutGrid size={14} /> : <LayoutList size={14} />}
           </button>
@@ -304,21 +318,21 @@ function FilesPanel({ plugin }: PanelProps) {
             onClick={() => toggleSort("name")}
             className="flex flex-1 items-center gap-1 text-left hover:text-fg-muted"
           >
-            Name {sortKey === "name" && <ArrowUpDown size={10} />}
+            {t("panel.col.name")} {sortKey === "name" && <ArrowUpDown size={10} />}
           </button>
           <button
             type="button"
             onClick={() => toggleSort("size")}
             className="flex w-20 items-center justify-end gap-1 text-right hover:text-fg-muted"
           >
-            Size {sortKey === "size" && <ArrowUpDown size={10} />}
+            {t("panel.col.size")} {sortKey === "size" && <ArrowUpDown size={10} />}
           </button>
           <button
             type="button"
             onClick={() => toggleSort("modified")}
             className="flex w-24 items-center justify-end gap-1 text-right hover:text-fg-muted"
           >
-            Modified {sortKey === "modified" && <ArrowUpDown size={10} />}
+            {t("panel.col.modified")} {sortKey === "modified" && <ArrowUpDown size={10} />}
           </button>
         </div>
       )}
@@ -333,7 +347,7 @@ function FilesPanel({ plugin }: PanelProps) {
           <div className="p-4 text-center text-sm text-danger">{error}</div>
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-fg-fainter">
-            {filter ? "No matching files" : "Empty directory"}
+            {filter ? t("panel.noMatching") : t("panel.emptyDir")}
           </div>
         ) : view === "list" ? (
           <ul className="divide-y divide-gray-800/30">
@@ -351,10 +365,10 @@ function FilesPanel({ plugin }: PanelProps) {
                   <span className="truncate text-sm">{e.name}</span>
                 </div>
                 <span className="w-20 text-right text-xs text-fg-faint">
-                  {e.type === "file" ? formatSize(e.size) : "—"}
+                  {e.type === "file" ? formatSize(e.size, t) : t("panel.dash")}
                 </span>
                 <span className="w-24 text-right text-xs text-fg-faint">
-                  {formatModified(e.modifiedMs)}
+                  {formatModified(e.modifiedMs, t)}
                 </span>
               </li>
             ))}
@@ -380,7 +394,7 @@ function FilesPanel({ plugin }: PanelProps) {
 
         {list?.truncated && (
           <div className="px-3 py-2 text-[10px] text-warning">
-            Listing truncated at 5000 entries.
+            {t("panel.truncated")}
           </div>
         )}
       </div>
@@ -404,6 +418,7 @@ function FilePreviewModal({
   // streams binary bytes through /raw rather than inlining into
   // the JSON `read` response.
   const { Modal, DocumentViewer } = useUiPrimitives();
+  const t = usePluginT("files");
   const [data, setData] = useState<ReadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -435,7 +450,10 @@ function FilePreviewModal({
           if (r.status === 413) {
             const body = (await r.json()) as { size: number; maxBytes: number };
             throw new Error(
-              `File is ${formatSize(body.size)}, exceeds the ${formatSize(body.maxBytes)} preview cap.`,
+              t("preview.sizeExceeds", {
+                size: formatSize(body.size, t),
+                max: formatSize(body.maxBytes, t),
+              }),
             );
           }
           throw new Error(`HTTP ${r.status}`);
@@ -454,7 +472,7 @@ function FilePreviewModal({
     return () => {
       cancelled = true;
     };
-  }, [entry.path, entry.size, entry.modifiedMs, isStreamed]);
+  }, [entry.path, entry.size, entry.modifiedMs, isStreamed, t]);
 
   return (
     <Modal
@@ -470,8 +488,8 @@ function FilePreviewModal({
           href={`${API_BASE}/raw?path=${encodeURIComponent(entry.path)}`}
           download={entry.name}
           className="btn-ghost p-1.5"
-          title="Download"
-          aria-label="Download"
+          title={t("preview.download")}
+          aria-label={t("preview.download")}
         >
           <Download size={16} />
         </a>
@@ -483,7 +501,7 @@ function FilePreviewModal({
         <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-[11px] text-fg-faint">
           {fileIcon(entry)}
           <span>
-            {formatSize(entry.size)} · {formatModified(entry.modifiedMs)}
+            {formatSize(entry.size, t)} · {formatModified(entry.modifiedMs, t)}
           </span>
         </div>
         {/* No `overflow-auto` on this wrapper. DocumentViewer
@@ -528,6 +546,7 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 
 function UploadButton(props: ComposerActionProps) {
   const { composer } = props;
+  const t = usePluginT("files");
   const inputRef = useRef<HTMLInputElement>(null);
 
   // We do NOT register a draft transform anymore: image attachments
@@ -539,7 +558,7 @@ function UploadButton(props: ComposerActionProps) {
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files ? Array.from(e.target.files) : [];
     e.target.value = ""; // reset so picking the same file twice still works
-    ingestFiles(files, composer);
+    ingestFiles(files, composer, t);
   };
 
   // Clipboard paste: images/files copied to the clipboard (screenshots,
@@ -569,11 +588,11 @@ function UploadButton(props: ComposerActionProps) {
       }
       if (files.length === 0) return; // pure text paste — leave it
       e.preventDefault();
-      ingestFiles(files, composer);
+      ingestFiles(files, composer, t);
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [composer]);
+  }, [composer, t]);
 
   const click = () => inputRef.current?.click();
 
@@ -582,8 +601,8 @@ function UploadButton(props: ComposerActionProps) {
       <button
         type="button"
         onClick={click}
-        title="Attach file"
-        aria-label="Attach file"
+        title={t("upload.attachFile")}
+        aria-label={t("upload.attachFile")}
         className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
       >
         <Paperclip size={16} />
@@ -608,6 +627,7 @@ function UploadButton(props: ComposerActionProps) {
 function ingestFiles(
   files: File[],
   composer: ComposerActionProps["composer"],
+  t: Translator,
 ): void {
   for (const file of files) {
     const name =
@@ -619,7 +639,7 @@ function ingestFiles(
         name,
         size: file.size,
         status: "error",
-        error: `File exceeds ${(MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0)} MB cap`,
+        error: t("upload.exceedsCap", { mb: (MAX_UPLOAD_BYTES / 1024 / 1024).toFixed(0) }),
         mimeType: file.type || "application/octet-stream",
       });
       continue;
@@ -630,7 +650,7 @@ function ingestFiles(
       status: "uploading",
       mimeType: file.type || "application/octet-stream",
     });
-    void uploadOne(file, id, composer, name);
+    void uploadOne(file, id, composer, name, t);
   }
 }
 
@@ -652,7 +672,8 @@ async function uploadOne(
   file: File,
   attachmentId: string,
   composer: ComposerActionProps["composer"],
-  overrideName?: string,
+  overrideName: string | undefined,
+  t: Translator,
 ): Promise<void> {
   try {
     const resp = await fetch(`${API_BASE}/upload`, {
@@ -664,7 +685,7 @@ async function uploadOne(
       body: file,
     });
     if (!resp.ok) {
-      const text = await safeText(resp);
+      const text = await safeText(resp, t);
       composer.updateAttachment(attachmentId, {
         status: "error",
         error: `${resp.status}: ${text}`,
@@ -685,11 +706,11 @@ async function uploadOne(
   }
 }
 
-async function safeText(resp: Response): Promise<string> {
+async function safeText(resp: Response, t: Translator): Promise<string> {
   try {
     return (await resp.text()).slice(0, 200);
   } catch {
-    return "(no body)";
+    return t("upload.noBody");
   }
 }
 
@@ -727,6 +748,7 @@ function ImageAttachment({ attachment, rawUrl }: AttachmentRendererProps) {
 }
 
 function FileAttachment({ attachment }: AttachmentRendererProps) {
+  const t = usePluginT("files");
   const label = attachment.name ?? attachment.path;
   return (
     <div
@@ -736,7 +758,7 @@ function FileAttachment({ attachment }: AttachmentRendererProps) {
       <File size={12} className="text-fg-muted" />
       <span className="max-w-[12rem] truncate">{label}</span>
       <span className="text-[10px] text-fg-faint">
-        {formatSize(attachment.size ?? 0)}
+        {formatSize(attachment.size ?? 0, t)}
       </span>
     </div>
   );

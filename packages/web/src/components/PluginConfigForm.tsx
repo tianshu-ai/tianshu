@@ -27,6 +27,11 @@ import {
   type PluginListEntry,
 } from "../lib/api";
 import { usePluginStore } from "../stores/plugin-store";
+import { useT } from "../hooks/useT";
+import { useConfigLabels } from "../lib/plugin-manifest-labels";
+
+/** Resolver returned by useConfigLabels: (shortKey, fallback) => string. */
+type ConfigLabels = (shortKey: string, fallback: string | undefined) => string;
 
 /**
  * Wrapper that lets a plugin's own admin page fold in this same
@@ -58,6 +63,8 @@ export function PluginConfigFormById({
 }
 
 export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
+  const tCfg = useT();
+  const cfgL = useConfigLabels(plugin.id);
   const setPlugins = usePluginStore((s) => s.setPlugins);
   const fields = plugin.configSchema?.fields ?? [];
 
@@ -104,7 +111,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
   if (fields.length === 0) {
     return (
       <p className="text-[12px] text-fg-faint">
-        This plugin has no user-editable configuration.
+        {tCfg("plugin.config.empty")}
       </p>
     );
   }
@@ -125,6 +132,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
               <ConfigFieldRow
                 key={`f:${i}:${block.field.key}`}
                 field={block.field}
+                cfgL={cfgL}
                 value={values[block.field.key]}
                 onChange={(v) =>
                   setValues((prev) => ({ ...prev, [block.field.key]: v }))
@@ -152,12 +160,14 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
             <ConfigGroupCard
               key={`g:${block.group.id}`}
               group={block.group}
+              cfgL={cfgL}
               headerToggle={headerToggle}
             >
               {renderedFields.map((f) => (
                 <ConfigFieldRow
                   key={f.key}
                   field={f}
+                  cfgL={cfgL}
                   value={values[f.key]}
                   onChange={(v) =>
                     setValues((prev) => ({ ...prev, [f.key]: v }))
@@ -176,7 +186,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
       <div className="flex items-center gap-2 border-t border-border-subtle pt-3">
         {savedAt && !dirty && (
           <span className="inline-flex items-center gap-1 text-[11px] text-success">
-            <CheckCircle2 size={12} /> Saved
+            <CheckCircle2 size={12} /> {tCfg("common.saved")}
           </span>
         )}
         <button
@@ -185,7 +195,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
           disabled={!dirty || busy}
           className="ml-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          Reset
+          {tCfg("common.reset")}
         </button>
         <button
           type="button"
@@ -193,7 +203,7 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
           disabled={!dirty || busy}
           className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? <Loader2 className="inline h-3 w-3 animate-spin" /> : "Save"}
+          {busy ? <Loader2 className="inline h-3 w-3 animate-spin" /> : tCfg("common.save")}
         </button>
       </div>
     </div>
@@ -270,10 +280,12 @@ function groupFields(fields: PluginConfigField[]): RenderBlock[] {
  *  group title instead of taking its own row. */
 function ConfigGroupCard({
   group,
+  cfgL,
   headerToggle,
   children,
 }: {
   group: PluginConfigFieldGroup;
+  cfgL: ConfigLabels;
   headerToggle?: {
     field: PluginConfigField;
     value: boolean;
@@ -281,31 +293,41 @@ function ConfigGroupCard({
   } | null;
   children: React.ReactNode;
 }) {
+  const groupLabel = cfgL(`configGroups.${group.id}.label`, group.label);
+  const groupBadge = group.badge
+    ? cfgL(`configGroups.${group.id}.badge`, group.badge)
+    : undefined;
+  const groupDesc = group.description
+    ? cfgL(`configGroups.${group.id}.description`, group.description)
+    : undefined;
+  const toggleAria = headerToggle
+    ? cfgL(`config.${headerToggle.field.key}.label`, headerToggle.field.label)
+    : "";
   const empty =
     !children ||
     (Array.isArray(children) && children.every((c) => c == null || c === false));
   return (
     <section className="rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
       <header className="flex flex-wrap items-center gap-2">
-        {group.badge && (
+        {groupBadge && (
           <span className="rounded border border-border-default bg-bg-raised/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
-            {group.badge}
+            {groupBadge}
           </span>
         )}
         <h3 className="text-[13px] font-semibold text-fg-default">
-          {group.label}
+          {groupLabel}
         </h3>
         {headerToggle && (
           <ConfigToggle
             active={headerToggle.value}
             onClick={() => headerToggle.onChange(!headerToggle.value)}
-            ariaLabel={headerToggle.field.label}
+            ariaLabel={toggleAria}
           />
         )}
       </header>
-      {group.description && (
+      {groupDesc && (
         <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
-          {group.description}
+          {groupDesc}
         </p>
       )}
       {!empty && <div className="mt-3 space-y-4">{children}</div>}
@@ -315,29 +337,37 @@ function ConfigGroupCard({
 
 function ConfigFieldRow({
   field,
+  cfgL,
   value,
   onChange,
 }: {
   field: PluginConfigField;
+  cfgL: ConfigLabels;
   value: unknown;
   onChange: (v: unknown) => void;
 }) {
+  const tRow = useT();
+  // Localized field texts (fall back to the manifest strings).
+  const fLabel = cfgL(`config.${field.key}.label`, field.label);
+  const fDesc = field.description
+    ? cfgL(`config.${field.key}.description`, field.description)
+    : undefined;
   if (field.kind === "boolean") {
     const checked = value === true;
     return (
       <div className="flex items-start justify-between gap-3 text-[12px]">
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-fg-default">{field.label}</div>
-          {field.description && (
+          <div className="font-medium text-fg-default">{fLabel}</div>
+          {fDesc && (
             <p className="mt-0.5 text-[11px] leading-relaxed text-fg-faint">
-              {field.description}
+              {fDesc}
             </p>
           )}
         </div>
         <ConfigToggle
           active={checked}
           onClick={() => onChange(!checked)}
-          ariaLabel={field.label}
+          ariaLabel={fLabel}
         />
       </div>
     );
@@ -352,7 +382,7 @@ function ConfigFieldRow({
     return (
       <div className="text-[12px]">
         <label className="mb-1 block font-medium text-fg-default">
-          {field.label}
+          {fLabel}
         </label>
         <div className="flex items-center gap-2">
           <input
@@ -365,12 +395,14 @@ function ConfigFieldRow({
             className={`${INPUT_BASE} w-40`}
           />
           {field.unit && (
-            <span className="text-[11px] text-fg-faint">{field.unit}</span>
+            <span className="text-[11px] text-fg-faint">
+              {cfgL(`config.${field.key}.unit`, field.unit)}
+            </span>
           )}
         </div>
-        {field.description && (
+        {fDesc && (
           <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
-            {field.description}
+            {fDesc}
           </p>
         )}
       </div>
@@ -385,7 +417,7 @@ function ConfigFieldRow({
     return (
       <div className="text-[12px]">
         <label className="mb-1 block font-medium text-fg-default">
-          {field.label}
+          {fLabel}
         </label>
         <select
           value={sel}
@@ -394,13 +426,13 @@ function ConfigFieldRow({
         >
           {opts.map((o) => (
             <option key={o.value} value={o.value}>
-              {o.label}
+              {cfgL(`config.${field.key}.option.${o.value}`, o.label)}
             </option>
           ))}
         </select>
-        {field.description && (
+        {fDesc && (
           <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
-            {field.description}
+            {fDesc}
           </p>
         )}
       </div>
@@ -424,7 +456,7 @@ function ConfigFieldRow({
     return (
       <div className="text-[12px]">
         <label className="mb-1 block font-medium text-fg-default">
-          {field.label}
+          {fLabel}
           {isSet ? (
             <span className="ml-2 rounded bg-emerald-700/40 px-1.5 py-0.5 text-[10px] uppercase text-success">
               set
@@ -437,8 +469,10 @@ function ConfigFieldRow({
             value={stringValue}
             placeholder={
               isSet
-                ? "••• stored — type a new value to replace, or click Clear"
-                : (field.placeholder ?? "")
+                ? tRow("plugin.config.secret.placeholderSet")
+                : (field.placeholder
+                    ? cfgL(`config.${field.key}.placeholder`, field.placeholder)
+                    : "")
             }
             autoComplete="new-password"
             spellCheck={false}
@@ -451,13 +485,13 @@ function ConfigFieldRow({
               className="shrink-0 rounded border border-border-default bg-bg-elevated px-2 py-1 text-[11px] text-fg-muted hover:border-rose-700 hover:text-danger"
               onClick={() => onChange({ __secret: true, clear: true })}
             >
-              Clear
+              {tRow("common.clear")}
             </button>
           )}
         </div>
-        {field.description && (
+        {fDesc && (
           <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
-            {field.description}
+            {fDesc}
           </p>
         )}
       </div>
@@ -465,16 +499,19 @@ function ConfigFieldRow({
   }
   // string
   const s = typeof value === "string" ? value : (field.default ?? "");
+  const fPlaceholder = field.placeholder
+    ? cfgL(`config.${field.key}.placeholder`, field.placeholder)
+    : undefined;
   return (
     <div className="text-[12px]">
       <label className="mb-1 block font-medium text-fg-default">
-        {field.label}
+        {fLabel}
       </label>
       {field.multiline ? (
         <textarea
           value={s}
           rows={3}
-          placeholder={field.placeholder}
+          placeholder={fPlaceholder}
           onChange={(e) => onChange(e.target.value)}
           className={`${INPUT_BASE} resize-y`}
         />
@@ -482,14 +519,14 @@ function ConfigFieldRow({
         <input
           type="text"
           value={s}
-          placeholder={field.placeholder}
+          placeholder={fPlaceholder}
           onChange={(e) => onChange(e.target.value)}
           className={INPUT_BASE}
         />
       )}
-      {field.description && (
+      {fDesc && (
         <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
-          {field.description}
+          {fDesc}
         </p>
       )}
     </div>

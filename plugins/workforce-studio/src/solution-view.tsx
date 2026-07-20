@@ -45,11 +45,15 @@ import {
 } from "./solution-tree.js";
 import { SolutionEditor } from "./solution-editors.js";
 import { SolutionInspector } from "./solution-inspector.js";
-import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
+import { useUiPrimitives, usePluginT } from "@tianshu-ai/plugin-sdk/client";
+
+/** Translator function returned by usePluginT — passed to helpers. */
+type Translator = (key: string, params?: Record<string, string | number>) => string;
 
 // ─── main solution view ─────────────────────────────────────────
 
 export function SolutionView(): ReactElement {
+  const t = usePluginT("workforce-studio");
   const [summaries, setSummaries] = useState<SolutionSummary[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<SolutionDetail | null>(null);
@@ -91,14 +95,11 @@ export function SolutionView(): ReactElement {
   }, [selected, loadDetail]);
 
   const onExtract = useCallback(async () => {
-    const slug = window.prompt(
-      "New solution slug (lowercase, digits, - or _):",
-      "",
-    );
+    const slug = window.prompt(t("solution.prompt.newSlug"), "");
     if (!slug) return;
     setError(null);
     try {
-      const name = window.prompt("Display name:", slug) || slug;
+      const name = window.prompt(t("solution.prompt.displayName"), slug) || slug;
       await api("/solutions/extract", {
         method: "POST",
         body: JSON.stringify({ slug, name }),
@@ -108,12 +109,11 @@ export function SolutionView(): ReactElement {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [refreshList]);
+  }, [refreshList, t]);
 
   const onDelete = useCallback(
     async (slug: string) => {
-      if (!window.confirm(`Delete solution "${slug}"? This cannot be undone.`))
-        return;
+      if (!window.confirm(t("solution.confirm.delete", { slug }))) return;
       try {
         await api(`/solutions/${encodeURIComponent(slug)}`, {
           method: "DELETE",
@@ -125,7 +125,7 @@ export function SolutionView(): ReactElement {
         setError(err instanceof Error ? err.message : String(err));
       }
     },
-    [refreshList],
+    [refreshList, t],
   );
 
   // Import: read a .solution.json file, validate it, give it a
@@ -150,7 +150,7 @@ export function SolutionView(): ReactElement {
         const input = {
           ...spec,
           slug,
-          name: renamed ? `${spec.name} (imported)` : spec.name,
+          name: renamed ? `${spec.name} ${t("solution.import.suffix")}` : spec.name,
         };
         await api("/solutions/save", {
           method: "POST",
@@ -160,13 +160,13 @@ export function SolutionView(): ReactElement {
         setSelected(slug);
       } catch (err) {
         setError(
-          `Import failed: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
+          t("solution.import.failed", {
+            error: err instanceof Error ? err.message : String(err),
+          }),
         );
       }
     },
-    [refreshList, summaries],
+    [refreshList, summaries, t],
   );
 
   return (
@@ -175,7 +175,7 @@ export function SolutionView(): ReactElement {
         <div className="rounded-md border border-danger-fg/40 bg-danger-fg/5 p-3 text-sm text-danger-fg">
           <div className="flex items-center gap-2 font-medium">
             <AlertTriangle className="size-4" />
-            Solution error
+            {t("solution.error")}
           </div>
           <div className="mt-1 font-mono text-xs opacity-80">{error}</div>
         </div>
@@ -183,7 +183,7 @@ export function SolutionView(): ReactElement {
 
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-fg-muted">
-          <Loader2 className="size-4 animate-spin" /> Loading solution…
+          <Loader2 className="size-4 animate-spin" /> {t("solution.loading")}
         </div>
       ) : detail ? (
         <SolutionIDE
@@ -196,6 +196,7 @@ export function SolutionView(): ReactElement {
           onRefresh={() => void refreshList()}
           detail={detail}
           onDelete={onDelete}
+          t={t}
           onSaved={async () => {
             await refreshList();
             if (selected) await loadDetail(selected);
@@ -203,15 +204,15 @@ export function SolutionView(): ReactElement {
         />
       ) : (
         <div className="text-sm text-fg-muted">
-          No solution selected.{" "}
+          {t("solution.none.lead")}{" "}
           <button
             type="button"
             onClick={() => void onExtract()}
             className="underline"
           >
-            Extract one
+            {t("solution.none.extract")}
           </button>{" "}
-          from reality.
+          {t("solution.none.tail")}
         </div>
       )}
     </div>
@@ -230,6 +231,7 @@ function SolutionIDE({
   detail,
   onDelete,
   onSaved,
+  t,
 }: {
   summaries: SolutionSummary[] | null;
   selectedSlug: string | null;
@@ -240,6 +242,7 @@ function SolutionIDE({
   detail: SolutionDetail;
   onDelete: (slug: string) => void;
   onSaved: () => void;
+  t: Translator;
 }): ReactElement {
   const { spec, isCurrent } = detail;
   const edits = useSolutionEdits(detail, onSaved, onRefresh);
@@ -283,18 +286,15 @@ function SolutionIDE({
       {edits.activatePending ? (
         <Modal
           isOpen
-          title="Activate solution"
+          title={t("activate.modal.title")}
           size="sm"
           allowMaximize={false}
           onClose={edits.cancelActivate}
         >
           <div className="flex flex-col gap-4 p-1 text-sm text-fg-default">
             <p className="text-fg-default">
-              Make <strong>{spec.name}</strong> the live solution? Its
-              main-agent config, workers and plugin enable-set are
-              written into the running system; the agent picks them up
-              on its next turn. Any previously-active solution is
-              superseded.
+              {t("activate.modal.body.lead")} <strong>{spec.name}</strong>{" "}
+              {t("activate.modal.body.tail")}
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -302,14 +302,14 @@ function SolutionIDE({
                 onClick={edits.cancelActivate}
                 className="rounded border border-border-subtle bg-bg-elevated px-3 py-1.5 text-xs font-medium text-fg-default hover:bg-bg-raised"
               >
-                Cancel
+                {t("activate.modal.cancel")}
               </button>
               <button
                 type="button"
                 onClick={() => void edits.confirmActivate()}
                 className="inline-flex items-center gap-1 rounded bg-success-fg px-3 py-1.5 text-xs font-semibold text-bg-base hover:opacity-90"
               >
-                <Rocket className="size-3.5" /> Activate
+                <Rocket className="size-3.5" /> {t("activate.modal.confirm")}
               </button>
             </div>
           </div>
@@ -329,7 +329,7 @@ function SolutionIDE({
             type="button"
             onClick={edits.clearNotice}
             className="rounded px-1 hover:bg-bg-raised"
-            aria-label="Dismiss"
+            aria-label={t("notice.dismiss")}
           >
             ✕
           </button>
@@ -347,28 +347,33 @@ function SolutionIDE({
             <option key={s.slug} value={s.slug}>
               {s.isCurrent ? "● " : s.isActive ? "🚀 " : "📦 "}
               {s.name}
-              {s.isCurrent ? " (live mirror)" : s.isActive ? " (active)" : ""}
+              {s.isCurrent
+                ? ` ${t("ide.picker.liveMirror")}`
+                : s.isActive
+                  ? ` ${t("ide.picker.active")}`
+                  : ""}
             </option>
           ))}
         </select>
         {isCurrent ? (
           <span className="rounded bg-info-fg/10 px-1.5 py-0.5 text-[10px] text-info-fg">
-            live mirror · read-only
+            {t("ide.badge.liveMirror")}
           </span>
         ) : detail.isActive ? (
           <span className="rounded bg-success-fg/15 px-1.5 py-0.5 text-[10px] font-medium text-success-fg">
-            🚀 active (live)
+            {t("ide.badge.active")}
           </span>
         ) : null}
         {driftCount !== null ? (
           driftCount > 0 ? (
             <span className="text-[11px] text-warning-fg">
-              ⚠ differs from reality ({driftCount} change
-              {driftCount === 1 ? "" : "s"})
+              {driftCount === 1
+                ? t("ide.drift.differs.one", { n: driftCount })
+                : t("ide.drift.differs", { n: driftCount })}
             </span>
           ) : (
             <span className="text-[11px] text-success-fg">
-              ✓ matches reality
+              {t("ide.drift.matches")}
             </span>
           )
         ) : null}
@@ -378,7 +383,7 @@ function SolutionIDE({
             type="button"
             onClick={onRefresh}
             className="rounded p-1 hover:bg-bg-raised"
-            title="Refresh solutions"
+            title={t("ide.refresh.title")}
           >
             <RefreshCw className="size-3.5" />
           </button>
@@ -386,9 +391,9 @@ function SolutionIDE({
             type="button"
             onClick={onExtract}
             className="inline-flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-xs hover:bg-bg-raised"
-            title="Extract current reality into a new named solution"
+            title={t("ide.extract.title")}
           >
-            <Plus className="size-3.5" /> Extract
+            <Plus className="size-3.5" /> {t("ide.extract")}
           </button>
           {/* Import: hidden file input + trigger button. Reads a
               .solution.json and saves it as a new solution. */}
@@ -408,17 +413,17 @@ function SolutionIDE({
             type="button"
             onClick={() => importInputRef.current?.click()}
             className="inline-flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-xs hover:bg-bg-raised"
-            title="Import a solution from a .solution.json file (creates a new solution)"
+            title={t("ide.import.title")}
           >
-            <Upload className="size-3.5" /> Import
+            <Upload className="size-3.5" /> {t("ide.import")}
           </button>
           <button
             type="button"
             onClick={() => downloadSolution(detail)}
             className="inline-flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-xs hover:bg-bg-raised"
-            title="Export this solution to a .solution.json file"
+            title={t("ide.export.title")}
           >
-            <Download className="size-3.5" /> Export
+            <Download className="size-3.5" /> {t("ide.export")}
           </button>
           <button
             type="button"
@@ -426,7 +431,7 @@ function SolutionIDE({
             disabled={edits.busy}
             className="inline-flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-xs hover:bg-bg-raised disabled:opacity-50"
           >
-            <GitCompare className="size-3.5" /> Diff
+            <GitCompare className="size-3.5" /> {t("ide.diff")}
           </button>
           {!isCurrent ? (
             <>
@@ -436,7 +441,7 @@ function SolutionIDE({
                 disabled={edits.busy}
                 className="inline-flex items-center gap-1 rounded bg-fg-default px-2 py-1 text-xs font-medium text-bg-base hover:opacity-90 disabled:opacity-50"
               >
-                <Save className="size-3.5" /> Save
+                <Save className="size-3.5" /> {t("ide.save")}
               </button>
               <button
                 type="button"
@@ -447,17 +452,17 @@ function SolutionIDE({
                     ? "border-success-fg bg-success-fg/25 text-success-fg"
                     : "border-success-fg bg-success-fg/15 text-success-fg hover:bg-success-fg/25"
                 }`}
-                title="Make this the live solution: write its config into the running system + mark it active. Takes effect on the next agent turn."
+                title={t("ide.activate.title")}
               >
                 <Rocket className="size-3.5" />{" "}
-                {detail.isActive ? "Re-activate" : "Activate"}
+                {detail.isActive ? t("ide.reactivate") : t("ide.activate")}
               </button>
               <button
                 type="button"
                 onClick={() => onDelete(spec.slug)}
                 className="inline-flex items-center gap-1 rounded border border-danger-fg/40 px-2 py-1 text-xs text-danger-fg hover:bg-danger-fg/5"
               >
-                <Trash2 className="size-3.5" /> Delete
+                <Trash2 className="size-3.5" /> {t("ide.delete")}
               </button>
             </>
           ) : null}
@@ -474,6 +479,7 @@ function SolutionIDE({
             onToggleExpand={toggleExpand}
             selected={selectedNode}
             onSelect={setSelectedNode}
+            t={t}
           />
         </div>
         <div className="max-h-[72vh] overflow-y-auto bg-bg-base p-4 md:p-5">
@@ -482,6 +488,7 @@ function SolutionIDE({
             detail={detail}
             edits={edits}
             onSelect={setSelectedNode}
+            t={t}
           />
         </div>
         <div className="max-h-[72vh] overflow-y-auto border-t border-border-subtle bg-bg-elevated md:border-l md:border-t-0">
@@ -489,6 +496,7 @@ function SolutionIDE({
             selected={selectedNode}
             detail={detail}
             edits={edits}
+            t={t}
           />
         </div>
       </div>

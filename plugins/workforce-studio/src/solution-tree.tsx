@@ -15,6 +15,9 @@ import type {
   SolutionEdits,
 } from "./solution-state.js";
 
+/** Translator function returned by usePluginT — passed to helpers. */
+type Translator = (key: string, params?: Record<string, string | number>) => string;
+
 // ─── node id scheme ─────────────────────────────────────────────
 // plugins
 // main:tenant-prompt | main:override:<key> | main:fragment:<id>
@@ -38,10 +41,10 @@ interface TreeNode {
   expandable?: boolean;
 }
 
-const OVERRIDE_META: Record<OverrideKey, { icon: string; label: string }> = {
-  executionBias: { icon: "⚙", label: "Execution bias" },
-  replyStyle: { icon: "💬", label: "Reply style" },
-  userOnboarding: { icon: "👋", label: "User onboarding" },
+const OVERRIDE_META: Record<OverrideKey, { icon: string; labelKey: string }> = {
+  executionBias: { icon: "⚙", labelKey: "tree.override.executionBias" },
+  replyStyle: { icon: "💬", labelKey: "tree.override.replyStyle" },
+  userOnboarding: { icon: "👋", labelKey: "tree.override.userOnboarding" },
 };
 
 /**
@@ -53,6 +56,7 @@ export function buildTree(
   detail: SolutionDetail,
   edits: SolutionEdits,
   expanded: Set<NodeId>,
+  t: Translator,
 ): TreeNode[] {
   const { spec } = detail;
   const nodes: TreeNode[] = [];
@@ -68,7 +72,7 @@ export function buildTree(
   // plugins
   nodes.push({
     id: "plugins",
-    label: "Plugins",
+    label: t("tree.node.plugins"),
     icon: "🧩",
     depth: 1,
     count: `${edits.pluginsEnabled.size}/${detail.availablePlugins.length}`,
@@ -77,7 +81,7 @@ export function buildTree(
   // main agent (expandable, like the workers group)
   nodes.push({
     id: "main",
-    label: "Main agent",
+    label: t("tree.node.main"),
     icon: "🤖",
     depth: 1,
     expandable: true,
@@ -85,7 +89,7 @@ export function buildTree(
   if (expanded.has("main")) {
     nodes.push({
       id: "main:tenant-prompt",
-      label: "Tenant prompt",
+      label: t("tree.node.tenantPrompt"),
       icon: "📝",
       depth: 2,
     });
@@ -94,25 +98,25 @@ export function buildTree(
       const overridden = edits.overrides[key] !== null;
       nodes.push({
         id: `main:override:${key}`,
-        label: meta.label,
+        label: t(meta.labelKey),
         icon: meta.icon,
         depth: 2,
         badge: overridden
-          ? { kind: "overridden", text: "overridden" }
+          ? { kind: "overridden", text: t("tree.badge.overridden") }
           : undefined,
       });
     }
     for (const f of edits.fragments) {
       nodes.push({
         id: `main:fragment:${f.id}`,
-        label: `Custom: ${f.title || "untitled"}`,
+        label: t("tree.custom", { title: f.title || t("tree.custom.untitled") }),
         icon: "➕",
         depth: 2,
       });
     }
     nodes.push({
       id: "main:tools",
-      label: "Tools",
+      label: t("tree.node.tools"),
       icon: "🔧",
       depth: 2,
       count: `${detail.availableTools.length}`,
@@ -120,7 +124,7 @@ export function buildTree(
     });
     nodes.push({
       id: "main:skills",
-      label: "Skills",
+      label: t("tree.node.skills"),
       icon: "📚",
       depth: 2,
       count: `${detail.availableSkills.length}`,
@@ -131,7 +135,7 @@ export function buildTree(
   // workers group (expandable)
   nodes.push({
     id: "workers",
-    label: "Workers",
+    label: t("tree.node.workers"),
     icon: "👥",
     depth: 1,
     count: `${spec.workers.length}`,
@@ -150,12 +154,14 @@ export function buildTree(
         depth: 1,
         excluded,
         expandable: true,
-        badge: excluded ? { kind: "excluded", text: "excluded" } : undefined,
+        badge: excluded
+          ? { kind: "excluded", text: t("tree.badge.excluded") }
+          : undefined,
       });
       if (expanded.has(wid)) {
         nodes.push({
           id: `${wid}:soul`,
-          label: "SOUL.md",
+          label: t("tree.node.soul"),
           icon: "📝",
           depth: 2,
         });
@@ -169,16 +175,16 @@ export function buildTree(
         const ebOverridden = !!e && e.executionBias !== null;
         nodes.push({
           id: `${wid}:override:executionBias`,
-          label: "Execution bias",
+          label: t("tree.node.executionBias"),
           icon: "⚙",
           depth: 2,
           badge: ebOverridden
-            ? { kind: "overridden", text: "overridden" }
+            ? { kind: "overridden", text: t("tree.badge.overridden") }
             : undefined,
         });
         nodes.push({
           id: `${wid}:tools`,
-          label: "Tools",
+          label: t("tree.node.tools"),
           icon: "🔧",
           depth: 2,
           count: view ? `${view.availableTools.length}` : undefined,
@@ -186,7 +192,7 @@ export function buildTree(
         });
         nodes.push({
           id: `${wid}:skills`,
-          label: "Skills",
+          label: t("tree.node.skills"),
           icon: "📚",
           depth: 2,
           count: view ? `${view.availableSkills.length}` : undefined,
@@ -229,6 +235,7 @@ export function SolutionTree({
   onToggleExpand,
   selected,
   onSelect,
+  t,
 }: {
   detail: SolutionDetail;
   edits: SolutionEdits;
@@ -236,8 +243,9 @@ export function SolutionTree({
   onToggleExpand: (id: NodeId) => void;
   selected: NodeId;
   onSelect: (id: NodeId) => void;
+  t: Translator;
 }): ReactElement {
-  const nodes = buildTree(detail, edits, expanded);
+  const nodes = buildTree(detail, edits, expanded, t);
   return (
     <div className="py-2">
       {nodes.map((n) => (
@@ -248,6 +256,7 @@ export function SolutionTree({
           isExpanded={expanded.has(n.id)}
           onToggleExpand={onToggleExpand}
           onSelect={onSelect}
+          t={t}
         />
       ))}
     </div>
@@ -260,12 +269,14 @@ function TreeRow({
   isExpanded,
   onToggleExpand,
   onSelect,
+  t,
 }: {
   node: TreeNode;
   isSelected: boolean;
   isExpanded: boolean;
   onToggleExpand: (id: NodeId) => void;
   onSelect: (id: NodeId) => void;
+  t: Translator;
 }): ReactElement {
   const pad =
     node.depth === 0 ? "pl-2" : node.depth === 1 ? "pl-5" : "pl-9";
@@ -289,7 +300,7 @@ function TreeRow({
             onToggleExpand(node.id);
           }}
           className="flex size-5 shrink-0 items-center justify-center rounded text-fg-muted hover:bg-bg-base hover:text-fg-default"
-          aria-label={isExpanded ? "Collapse" : "Expand"}
+          aria-label={isExpanded ? t("tree.collapse") : t("tree.expand")}
         >
           {isExpanded ? (
             <ChevronDown className="size-3.5" />

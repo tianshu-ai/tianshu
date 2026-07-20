@@ -17,6 +17,7 @@ import { usePluginStore } from "../stores/plugin-store";
 import { resolveComponent } from "../lib/plugin-registry";
 import PluginPanelTabBar from "./PluginPanelTabBar";
 import type { PanelProps } from "@tianshu-ai/plugin-sdk/client";
+import { useT } from "../hooks/useT";
 
 interface ContributesPanel {
   id: string;
@@ -41,6 +42,7 @@ function loadStoredWidth(): number {
 }
 
 export default function PluginRightPanel() {
+  const t = useT();
   const me = useChatStore((s) => s.me);
   const openPanel = usePluginStore((s) => s.openPanel);
   const plugins = usePluginStore((s) => s.plugins);
@@ -146,8 +148,8 @@ export default function PluginRightPanel() {
       <div
         role="separator"
         aria-orientation="vertical"
-        aria-label="Resize right panel"
-        title="Drag to resize (double-click to reset)"
+        aria-label={t("panel.right.resizeAriaLabel")}
+        title={t("panel.right.resizeTooltip")}
         onMouseDown={onResizeStart}
         onDoubleClick={onResizeDoubleClick}
         className={[
