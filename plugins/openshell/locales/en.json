@@ -1,0 +1,38 @@
+{
+  "manifest.adminPages.policy": "Network Policy",
+
+  "window.5min": "5 min",
+  "window.15min": "15 min",
+  "window.60min": "60 min",
+  "window.6hr": "6 hr",
+  "window.24hr": "24 hr",
+
+  "page.title": "Sandbox Network Policy",
+  "page.description": "Egress policy for the OpenShell sandbox. Below: outbound requests that were denied in the selected time window, and the current allow-list of endpoints in force. Read-only — rules change when the agent proposes egress via the policy advisor or a task grants it.",
+  "page.refresh": "Refresh",
+
+  "denials.title": "Denied requests",
+  "denials.logUnavailable": "The sandbox reports no denial log is available (policy logging may be off).",
+  "denials.emptyPre": "No denied requests in the last ",
+  "denials.emptyPost": ".",
+  "denials.col.time": "Time",
+  "denials.col.hostPort": "Host:Port",
+  "denials.col.engine": "Engine",
+  "denials.col.binary": "Binary",
+  "denials.col.reason": "Reason",
+  "denials.col.action": "Action",
+  "denials.allowed": "Allowed",
+  "denials.allow": "Allow",
+  "denials.allowTitle": "Allow {host}:{port}",
+
+  "allowed.title": "Allowed policy (effective allow-list)",
+  "allowed.allowFailed": "Allow failed: {error}",
+  "allowed.loading": "Loading policy…",
+  "allowed.col.rule": "Rule",
+  "allowed.col.hostPort": "Host:Port",
+  "allowed.col.proto": "Proto",
+  "allowed.col.enforce": "Enforce",
+  "allowed.col.binaries": "Binaries",
+  "allowed.noneParsed": "No endpoints parsed — show raw policy JSON",
+  "allowed.emptyPolicy": "(empty policy)"
+}

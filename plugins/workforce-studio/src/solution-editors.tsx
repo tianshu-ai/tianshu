@@ -20,10 +20,13 @@ import type {
 } from "./solution-state.js";
 import { toggleInSet } from "./solution-state.js";
 
-const OVERRIDE_TITLE: Record<OverrideKey, string> = {
-  executionBias: "Execution bias",
-  replyStyle: "Reply style",
-  userOnboarding: "User onboarding",
+/** Translator function returned by usePluginT — passed to helpers. */
+type Translator = (key: string, params?: Record<string, string | number>) => string;
+
+const OVERRIDE_TITLE_KEY: Record<OverrideKey, string> = {
+  executionBias: "editor.override.executionBias",
+  replyStyle: "editor.override.replyStyle",
+  userOnboarding: "editor.override.userOnboarding",
 };
 
 /** Dispatch the selected node id to the matching editor. */
@@ -32,22 +35,24 @@ export function SolutionEditor({
   detail,
   edits,
   onSelect,
+  t,
 }: {
   selected: string;
   detail: SolutionDetail;
   edits: SolutionEdits;
   onSelect: (id: string) => void;
+  t: Translator;
 }): ReactElement {
   const isCurrent = detail.isCurrent;
 
   if (selected === "root" || selected === "main") {
-    return <MetadataEditor detail={detail} edits={edits} onSelect={onSelect} />;
+    return <MetadataEditor detail={detail} edits={edits} onSelect={onSelect} t={t} />;
   }
   if (selected === "plugins") {
-    return <PluginsEditor detail={detail} edits={edits} />;
+    return <PluginsEditor detail={detail} edits={edits} t={t} />;
   }
   if (selected === "main:tenant-prompt") {
-    return <TenantPromptEditor edits={edits} isCurrent={isCurrent} />;
+    return <TenantPromptEditor edits={edits} isCurrent={isCurrent} t={t} />;
   }
   if (selected.startsWith("main:override:")) {
     const key = selected.slice("main:override:".length) as OverrideKey;
@@ -57,50 +62,53 @@ export function SolutionEditor({
         detail={detail}
         edits={edits}
         isCurrent={isCurrent}
+        t={t}
       />
     );
   }
   if (selected.startsWith("main:fragment:")) {
     const id = selected.slice("main:fragment:".length);
-    return <FragmentEditor fragmentId={id} edits={edits} isCurrent={isCurrent} />;
+    return <FragmentEditor fragmentId={id} edits={edits} isCurrent={isCurrent} t={t} />;
   }
   if (selected === "main:tools") {
     return (
-      <EditorShell title="🔧 Tools" sub="Tools available to the main agent. Plugin / host tools are locked in; exclude tenant-owned tools you don't want.">
+      <EditorShell title={t("editor.mainTools.title")} sub={t("editor.mainTools.sub")}>
         <ResourcePicker
-          title="Tools"
+          title={t("tree.node.tools")}
           options={detail.availableTools}
           excluded={edits.toolsDeny}
           disabled={isCurrent}
           onToggle={(n) => edits.setToolsDeny((p) => toggleInSet(p, n))}
+          t={t}
         />
       </EditorShell>
     );
   }
   if (selected === "main:skills") {
     return (
-      <EditorShell title="📚 Skills" sub="Skills available to the main agent. Plugin / host skills are locked in; exclude tenant-owned skills you don't want.">
+      <EditorShell title={t("editor.mainSkills.title")} sub={t("editor.mainSkills.sub")}>
         <ResourcePicker
-          title="Skills"
+          title={t("tree.node.skills")}
           options={detail.availableSkills}
           excluded={edits.skillsDeny}
           disabled={isCurrent}
           onToggle={(n) => edits.setSkillsDeny((p) => toggleInSet(p, n))}
+          t={t}
         />
       </EditorShell>
     );
   }
   if (selected === "workers") {
-    return <WorkersOverview detail={detail} edits={edits} />;
+    return <WorkersOverview detail={detail} edits={edits} t={t} />;
   }
   if (selected.startsWith("worker:")) {
     return (
-      <WorkerNodeEditor selected={selected} detail={detail} edits={edits} />
+      <WorkerNodeEditor selected={selected} detail={detail} edits={edits} t={t} />
     );
   }
   return (
-    <EditorShell title="—" sub="Select a node from the Explorer.">
-      <div className="text-xs text-fg-muted">Nothing selected.</div>
+    <EditorShell title={t("editor.none.title")} sub={t("editor.none.sub")}>
+      <div className="text-xs text-fg-muted">{t("editor.none.body")}</div>
     </EditorShell>
   );
 }
@@ -148,17 +156,19 @@ function MetadataEditor({
   detail,
   edits,
   onSelect,
+  t,
 }: {
   detail: SolutionDetail;
   edits: SolutionEdits;
   onSelect: (id: string) => void;
+  t: Translator;
 }): ReactElement {
   const { spec, isCurrent } = detail;
   const addFragment = () => {
     const id = `frag-${Date.now()}`;
     edits.setFragments((prev) => [
       ...prev,
-      { id, title: "Custom fragment", body: "" },
+      { id, title: t("editor.metadata.fragmentTitle"), body: "" },
     ]);
     onSelect(`main:fragment:${id}`);
   };
@@ -167,12 +177,15 @@ function MetadataEditor({
       title={`📦 ${edits.name || spec.name}`}
       sub={
         spec.extractedFrom
-          ? `Extracted from tenant ${spec.extractedFrom.tenantId} · v${spec.extractedFrom.tianshuVersion}`
-          : "Hand-authored solution."
+          ? t("editor.metadata.extractedFrom", {
+              tenantId: spec.extractedFrom.tenantId,
+              version: spec.extractedFrom.tianshuVersion,
+            })
+          : t("editor.metadata.handAuthored")
       }
     >
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Field label="Name">
+        <Field label={t("editor.field.name")}>
           <input
             value={edits.name}
             disabled={isCurrent}
@@ -180,7 +193,7 @@ function MetadataEditor({
             className="w-full rounded border border-border-subtle bg-bg-base px-2 py-1 text-xs disabled:opacity-60"
           />
         </Field>
-        <Field label="Description">
+        <Field label={t("editor.field.description")}>
           <input
             value={edits.description}
             disabled={isCurrent}
@@ -190,11 +203,10 @@ function MetadataEditor({
         </Field>
       </div>
       <div className="rounded border border-info-fg/30 bg-info-fg/5 px-3 py-2 text-[11px] text-info-fg">
-        <strong>Save</strong> writes this solution to disk (no runtime
-        effect). <strong>Apply</strong> writes it into the running
-        system — main-agent prompt / skills / tools + worker files
-        take effect on the next agent turn. Plugin enable/disable is
-        not applied in this phase.
+        <strong>{t("editor.metadata.save")}</strong>{" "}
+        {t("editor.metadata.saveApplyHint")}{" "}
+        <strong>{t("editor.metadata.apply")}</strong>{" "}
+        {t("editor.metadata.applyHint")}
       </div>
       {!isCurrent ? (
         <button
@@ -202,14 +214,16 @@ function MetadataEditor({
           onClick={addFragment}
           className="self-start rounded-md border border-dashed border-border-subtle px-3 py-1.5 text-xs text-fg-muted hover:border-fg-muted hover:text-fg-default"
         >
-          + Add custom fragment
+          {t("editor.metadata.addFragment")}
         </button>
       ) : null}
       {isCurrent ? (
         <div className="rounded border border-info-fg/30 bg-info-fg/5 px-3 py-2 text-[11px] text-info-fg">
-          This is the live <strong>Current</strong> mirror — read-only.
-          Click <strong>Extract</strong> in the Solutions list to create
-          an editable named solution.
+          {t("editor.metadata.currentMirror.lead")}{" "}
+          <strong>{t("editor.metadata.currentMirror.current")}</strong>{" "}
+          {t("editor.metadata.currentMirror.mid")}{" "}
+          <strong>{t("editor.metadata.currentMirror.extract")}</strong>{" "}
+          {t("editor.metadata.currentMirror.tail")}
         </div>
       ) : null}
     </EditorShell>
@@ -221,15 +235,17 @@ function MetadataEditor({
 function PluginsEditor({
   detail,
   edits,
+  t,
 }: {
   detail: SolutionDetail;
   edits: SolutionEdits;
+  t: Translator;
 }): ReactElement {
   const isCurrent = detail.isCurrent;
   return (
     <EditorShell
-      title="🧩 Plugins"
-      sub="Which plugins this solution activates. Plugins decide what tools, skills and prompt fragments the rest of the solution can use."
+      title={t("editor.plugins.title")}
+      sub={t("editor.plugins.sub")}
     >
       <ul className="flex flex-col gap-1">
         {detail.availablePlugins.map((p) => {
@@ -247,7 +263,7 @@ function PluginsEditor({
                 {p.displayName}
               </span>
               <code className="text-[10px] text-fg-muted">{p.id}</code>
-              <OriginBadge origin={p.origin} />
+              <OriginBadge origin={p.origin} t={t} />
               {p.state !== "active" ? (
                 <span className="rounded bg-danger-fg/10 px-1.5 py-0.5 text-[10px] text-danger-fg">
                   {p.state}
@@ -266,11 +282,11 @@ function PluginsEditor({
                 }`}
                 title={
                   enabled
-                    ? "Included — click to exclude from this solution."
-                    : "Excluded — click to include."
+                    ? t("editor.plugins.included.title")
+                    : t("editor.plugins.excluded.title")
                 }
               >
-                {enabled ? "Exclude" : "Include"}
+                {enabled ? t("editor.plugins.exclude") : t("editor.plugins.include")}
               </button>
             </li>
           );
@@ -285,25 +301,23 @@ function PluginsEditor({
 function TenantPromptEditor({
   edits,
   isCurrent,
+  t,
 }: {
   edits: SolutionEdits;
   isCurrent: boolean;
+  t: Translator;
 }): ReactElement {
   return (
     <EditorShell
-      title="📝 Tenant prompt"
-      sub="The main-agent prompt text for this solution."
+      title={t("editor.tenantPrompt.title")}
+      sub={t("editor.tenantPrompt.sub")}
     >
       <textarea
         value={edits.tenantPrompt}
         disabled={isCurrent}
         onChange={(e) => edits.setTenantPrompt(e.target.value)}
         rows={18}
-        placeholder={
-          isCurrent
-            ? ""
-            : "Main-agent prompt text for this solution. Leave empty for none."
-        }
+        placeholder={isCurrent ? "" : t("editor.tenantPrompt.placeholder")}
         className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
       />
     </EditorShell>
@@ -317,11 +331,13 @@ function OverrideEditor({
   detail,
   edits,
   isCurrent,
+  t,
 }: {
   okey: OverrideKey;
   detail: SolutionDetail;
   edits: SolutionEdits;
   isCurrent: boolean;
+  t: Translator;
 }): ReactElement {
   const block = detail.mainBlocks.find((b) => b.overrideKey === okey);
   const value = edits.overrides[okey];
@@ -331,8 +347,8 @@ function OverrideEditor({
     edits.setOverrides((prev) => ({ ...prev, [okey]: next }));
   return (
     <EditorShell
-      title={`⚙ ${OVERRIDE_TITLE[okey]}`}
-      sub="Host-provided block. Override it for this solution, or keep the host default."
+      title={`⚙ ${t(OVERRIDE_TITLE_KEY[okey])}`}
+      sub={t("editor.override.sub")}
     >
       <div className="flex items-center gap-2">
         <span
@@ -342,7 +358,7 @@ function OverrideEditor({
               : "bg-fg-muted/15 text-fg-muted"
           }`}
         >
-          {isOverridden ? "overridden" : "host default"}
+          {isOverridden ? t("editor.override.overridden") : t("editor.override.hostDefault")}
         </span>
         {!isCurrent ? (
           isOverridden ? (
@@ -351,7 +367,7 @@ function OverrideEditor({
               onClick={() => set(null)}
               className="rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
             >
-              Reset to host default
+              {t("editor.override.reset")}
             </button>
           ) : (
             <button
@@ -359,7 +375,7 @@ function OverrideEditor({
               onClick={() => set(defaultText)}
               className="rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
             >
-              Override…
+              {t("editor.override.override")}
             </button>
           )
         ) : null}
@@ -387,16 +403,18 @@ function FragmentEditor({
   fragmentId,
   edits,
   isCurrent,
+  t,
 }: {
   fragmentId: string;
   edits: SolutionEdits;
   isCurrent: boolean;
+  t: Translator;
 }): ReactElement {
   const frag = edits.fragments.find((f) => f.id === fragmentId);
   if (!frag) {
     return (
-      <EditorShell title="➕ Custom fragment" sub="This fragment was removed.">
-        <div className="text-xs text-fg-muted">Fragment not found.</div>
+      <EditorShell title={t("editor.fragment.title")} sub={t("editor.fragment.removed.sub")}>
+        <div className="text-xs text-fg-muted">{t("editor.fragment.notFound")}</div>
       </EditorShell>
     );
   }
@@ -406,15 +424,15 @@ function FragmentEditor({
     );
   return (
     <EditorShell
-      title="➕ Custom fragment"
-      sub="Extra text injected into the main-agent prompt."
+      title={t("editor.fragment.title")}
+      sub={t("editor.fragment.sub")}
     >
-      <Field label="Title">
+      <Field label={t("editor.fragment.field.title")}>
         <input
           value={frag.title}
           disabled={isCurrent}
           onChange={(e) => patch({ title: e.target.value })}
-          placeholder="Fragment title"
+          placeholder={t("editor.fragment.titlePlaceholder")}
           className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1 text-xs disabled:opacity-60"
         />
       </Field>
@@ -423,7 +441,7 @@ function FragmentEditor({
         disabled={isCurrent}
         onChange={(e) => patch({ body: e.target.value })}
         rows={14}
-        placeholder="Fragment text injected into the main agent prompt…"
+        placeholder={t("editor.fragment.bodyPlaceholder")}
         className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
       />
       {!isCurrent ? (
@@ -434,7 +452,7 @@ function FragmentEditor({
           }
           className="self-start rounded border border-danger-fg/40 px-2 py-0.5 text-[10px] text-danger-fg hover:bg-danger-fg/5"
         >
-          Remove fragment
+          {t("editor.fragment.remove")}
         </button>
       ) : null}
     </EditorShell>
@@ -446,16 +464,18 @@ function FragmentEditor({
 function WorkersOverview({
   detail,
   edits,
+  t,
 }: {
   detail: SolutionDetail;
   edits: SolutionEdits;
+  t: Translator;
 }): ReactElement {
   const { spec } = detail;
   const isCurrent = detail.isCurrent;
   return (
     <EditorShell
-      title="👥 Workers"
-      sub="Include or exclude a worker here; expand it in the Explorer to edit its prompt / tools / skills. Excluded workers are dropped from the applied solution."
+      title={t("editor.workers.title")}
+      sub={t("editor.workers.sub")}
     >
       <ul className="flex flex-col gap-1">
         {spec.workers.map((w) => {
@@ -494,17 +514,17 @@ function WorkersOverview({
                 }`}
                 title={
                   excluded
-                    ? "Excluded from this solution — click to include."
-                    : "Included — click to exclude this worker from the solution."
+                    ? t("editor.workers.excluded.title")
+                    : t("editor.workers.included.title")
                 }
               >
-                {excluded ? "Include" : "Exclude"}
+                {excluded ? t("editor.workers.include") : t("editor.workers.exclude")}
               </button>
             </li>
           );
         })}
         {spec.workers.length === 0 ? (
-          <li className="text-xs text-fg-muted">No workers.</li>
+          <li className="text-xs text-fg-muted">{t("editor.workers.none")}</li>
         ) : null}
       </ul>
     </EditorShell>
@@ -517,10 +537,12 @@ function WorkerNodeEditor({
   selected,
   detail,
   edits,
+  t,
 }: {
   selected: string;
   detail: SolutionDetail;
   edits: SolutionEdits;
+  t: Translator;
 }): ReactElement {
   const isCurrent = detail.isCurrent;
   // selected = worker:<slug>[:sub]
@@ -531,8 +553,8 @@ function WorkerNodeEditor({
   const edit = edits.workerEdits[slug];
   if (!worker || !view || !edit) {
     return (
-      <EditorShell title="Worker" sub="Worker not found.">
-        <div className="text-xs text-fg-muted">No such worker.</div>
+      <EditorShell title={t("editor.worker.notFound.title")} sub={t("editor.worker.notFound.sub")}>
+        <div className="text-xs text-fg-muted">{t("editor.worker.notFound.body")}</div>
       </EditorShell>
     );
   }
@@ -543,17 +565,15 @@ function WorkerNodeEditor({
   if (sub === "soul") {
     return (
       <EditorShell
-        title={`📝 ${edit.name} — SOUL.md`}
-        sub="The worker's persona + rules."
+        title={t("editor.worker.soul.title", { name: edit.name })}
+        sub={t("editor.worker.soul.sub")}
       >
         <textarea
           value={edit.soul}
           disabled={isCurrent}
           onChange={(e) => set({ soul: e.target.value })}
           rows={18}
-          placeholder={
-            isCurrent ? "" : "Worker SOUL.md — the worker's persona + rules."
-          }
+          placeholder={isCurrent ? "" : t("editor.worker.soul.placeholder")}
           className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
         />
       </EditorShell>
@@ -574,8 +594,8 @@ function WorkerNodeEditor({
       edit.executionBias !== null && edit.executionBias !== undefined;
     return (
       <EditorShell
-        title={`⚙ ${edit.name} — Execution bias`}
-        sub="Host behaviour rules for this worker. Override to replace them just for this worker; reset to fall back to the host default."
+        title={t("editor.worker.eb.title", { name: edit.name })}
+        sub={t("editor.worker.eb.sub")}
       >
         <div className="rounded border border-border-subtle bg-bg-elevated">
           <div className="flex items-center gap-2 px-3 py-2 text-xs">
@@ -586,7 +606,7 @@ function WorkerNodeEditor({
                   : "bg-fg-muted/15 text-fg-muted"
               }`}
             >
-              {isOverridden ? "overridden" : "host default"}
+              {isOverridden ? t("editor.override.overridden") : t("editor.override.hostDefault")}
             </span>
             {!isCurrent ? (
               isOverridden ? (
@@ -595,7 +615,7 @@ function WorkerNodeEditor({
                   onClick={() => set({ executionBias: null })}
                   className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
                 >
-                  Reset to host default
+                  {t("editor.override.reset")}
                 </button>
               ) : (
                 <button
@@ -603,7 +623,7 @@ function WorkerNodeEditor({
                   onClick={() => set({ executionBias: defaultText })}
                   className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
                 >
-                  Override…
+                  {t("editor.override.override")}
                 </button>
               )
             ) : null}
@@ -628,13 +648,14 @@ function WorkerNodeEditor({
 
   if (sub === "tools") {
     return (
-      <EditorShell title={`🔧 ${edit.name} — Tools`} sub="Tools this worker may use.">
+      <EditorShell title={t("editor.worker.tools.title", { name: edit.name })} sub={t("editor.worker.tools.sub")}>
         <ResourcePicker
-          title="Tools"
+          title={t("tree.node.tools")}
           options={view.availableTools}
           excluded={edit.toolsDeny}
           disabled={isCurrent}
           onToggle={(n) => set({ toolsDeny: toggleInSet(edit.toolsDeny, n) })}
+          t={t}
         />
       </EditorShell>
     );
@@ -643,15 +664,16 @@ function WorkerNodeEditor({
   if (sub === "skills") {
     return (
       <EditorShell
-        title={`📚 ${edit.name} — Skills`}
-        sub="Skills this worker may use."
+        title={t("editor.worker.skills.title", { name: edit.name })}
+        sub={t("editor.worker.skills.sub")}
       >
         <ResourcePicker
-          title="Skills"
+          title={t("tree.node.skills")}
           options={view.availableSkills}
           excluded={edit.skillsDeny}
           disabled={isCurrent}
           onToggle={(n) => set({ skillsDeny: toggleInSet(edit.skillsDeny, n) })}
+          t={t}
         />
       </EditorShell>
     );
@@ -661,7 +683,7 @@ function WorkerNodeEditor({
   return (
     <EditorShell
       title={`${excluded ? "📋" : "🤖"} ${edit.name}`}
-      sub="Worker fields. Expand sub-nodes in the Explorer for SOUL, tools, and skills."
+      sub={t("editor.worker.root.sub")}
     >
       <div className="flex items-center gap-2">
         <code className="text-[10px] text-fg-muted">{worker.slug}</code>
@@ -677,15 +699,15 @@ function WorkerNodeEditor({
           }`}
           title={
             excluded
-              ? "Excluded from this solution — click to include."
-              : "Included — click to exclude this worker from the solution."
+              ? t("editor.worker.excluded.title")
+              : t("editor.worker.included.title")
           }
         >
-          {excluded ? "Include" : "Exclude"}
+          {excluded ? t("editor.worker.include") : t("editor.worker.exclude")}
         </button>
       </div>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        <Field label="Name">
+        <Field label={t("editor.worker.field.name")}>
           <input
             value={edit.name}
             disabled={isCurrent}
@@ -693,7 +715,7 @@ function WorkerNodeEditor({
             className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1 text-xs disabled:opacity-60"
           />
         </Field>
-        <Field label="Model id (empty = default)">
+        <Field label={t("editor.worker.field.modelId")}>
           <input
             value={edit.modelId ?? ""}
             disabled={isCurrent}
@@ -706,7 +728,7 @@ function WorkerNodeEditor({
             className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1 font-mono text-xs disabled:opacity-60"
           />
         </Field>
-        <Field label="Description">
+        <Field label={t("editor.worker.field.description")}>
           <input
             value={edit.description ?? ""}
             disabled={isCurrent}
@@ -732,23 +754,23 @@ function splitWorker(rest: string): [string, string | undefined] {
 
 // ─── shared: origin badge + resource picker (unchanged logic) ───
 
-function OriginBadge({ origin }: { origin: BlockOrigin }): ReactElement {
+function OriginBadge({ origin, t }: { origin: BlockOrigin; t: Translator }): ReactElement {
   const map: Record<BlockOrigin, { label: string; className: string }> = {
-    core: { label: "core", className: "bg-info-fg/10 text-info-fg" },
+    core: { label: t("originBadge.core"), className: "bg-info-fg/10 text-info-fg" },
     "builtin-plugin": {
-      label: "built-in",
+      label: t("originBadge.builtin"),
       className: "bg-success-fg/10 text-success-fg",
     },
     "tenant-plugin": {
-      label: "tenant plugin",
+      label: t("originBadge.tenantPlugin"),
       className: "bg-warning-fg/10 text-warning-fg",
     },
-    host: { label: "host", className: "bg-info-fg/10 text-info-fg" },
+    host: { label: t("originBadge.host"), className: "bg-info-fg/10 text-info-fg" },
     workspace: {
-      label: "workspace",
+      label: t("originBadge.workspace"),
       className: "bg-warning-fg/10 text-warning-fg",
     },
-    tenant: { label: "tenant", className: "bg-warning-fg/10 text-warning-fg" },
+    tenant: { label: t("originBadge.tenant"), className: "bg-warning-fg/10 text-warning-fg" },
   };
   const { label, className } = map[origin];
   return (
@@ -766,12 +788,14 @@ export function ResourcePicker({
   excluded,
   disabled,
   onToggle,
+  t,
 }: {
   title: string;
   options: ResourceOption[];
   excluded: Set<string>;
   disabled: boolean;
   onToggle: (name: string) => void;
+  t: Translator;
 }): ReactElement {
   const excludedCount = options.filter(
     (o) => !o.locked && excluded.has(o.name),
@@ -795,7 +819,7 @@ export function ResourcePicker({
         <span className="text-[11px] text-fg-muted">{options.length}</span>
         {excludedCount > 0 ? (
           <span className="ml-auto rounded-full bg-danger-fg/10 px-2 py-0.5 text-[10px] font-medium text-danger-fg">
-            {excludedCount} excluded
+            {t("resource.excludedCount", { n: excludedCount })}
           </span>
         ) : null}
       </div>
@@ -806,7 +830,7 @@ export function ResourcePicker({
             <div key={key}>
               <div className="sticky top-0 z-10 flex items-center gap-2 bg-bg-base/95 px-3 pb-1 pt-2 backdrop-blur">
                 <span className="text-[11px] font-semibold text-fg-default">
-                  {groupLabel(key)}
+                  {groupLabel(key, t)}
                 </span>
                 <span className="rounded-full bg-fg-muted/10 px-1.5 text-[10px] text-fg-muted">
                   {items.length}
@@ -820,6 +844,7 @@ export function ResourcePicker({
                     isExcluded={excluded.has(o.name)}
                     disabled={disabled}
                     onToggle={onToggle}
+                    t={t}
                   />
                 ))}
               </ul>
@@ -827,7 +852,7 @@ export function ResourcePicker({
           );
         })}
         {options.length === 0 ? (
-          <div className="px-3 py-3 text-xs text-fg-muted">None.</div>
+          <div className="px-3 py-3 text-xs text-fg-muted">{t("resource.none")}</div>
         ) : null}
       </div>
     </div>
@@ -839,11 +864,13 @@ function ResourceRow({
   isExcluded,
   disabled,
   onToggle,
+  t,
 }: {
   option: ResourceOption;
   isExcluded: boolean;
   disabled: boolean;
   onToggle: (name: string) => void;
+  t: Translator;
 }): ReactElement {
   return (
     <li
@@ -865,9 +892,9 @@ function ResourceRow({
       {o.locked ? (
         <span
           className="ml-auto"
-          title="Contributed by a plugin or the host — always included."
+          title={t("resource.locked.title")}
         >
-          <Lock className="size-3 text-fg-muted/50" aria-label="locked" />
+          <Lock className="size-3 text-fg-muted/50" aria-label={t("resource.locked.label")} />
         </span>
       ) : (
         <button
@@ -881,11 +908,11 @@ function ResourceRow({
           }`}
           title={
             isExcluded
-              ? "Currently excluded — click to include again."
-              : "Currently included — click to exclude from this solution."
+              ? t("resource.row.excluded.title")
+              : t("resource.row.included.title")
           }
         >
-          {isExcluded ? "Include" : "Exclude"}
+          {isExcluded ? t("resource.include") : t("resource.exclude")}
         </button>
       )}
     </li>
@@ -896,8 +923,8 @@ function groupKeyFromOrigin(origin: ResourceOption["origin"]): string {
   return origin === "core" ? "core" : "host";
 }
 
-function groupLabel(key: string): string {
-  if (key === "core") return "Core";
-  if (key === "host") return "Host";
+function groupLabel(key: string, t: Translator): string {
+  if (key === "core") return t("resource.group.core");
+  if (key === "host") return t("resource.group.host");
   return key;
 }

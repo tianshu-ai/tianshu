@@ -1,0 +1,37 @@
+{
+  "manifest.topBarButtons.toggle": "Scheduled jobs",
+  "manifest.rightPanels.main": "Schedule",
+
+  "weekday.sun": "Sun",
+  "weekday.mon": "Mon",
+  "weekday.tue": "Tue",
+  "weekday.wed": "Wed",
+  "weekday.thu": "Thu",
+  "weekday.fri": "Fri",
+  "weekday.sat": "Sat",
+
+  "aria.prevMonth": "Previous month",
+  "aria.nextMonth": "Next month",
+  "aria.deleteJob": "Delete job",
+
+  "agenda.jobCountOne": "{n} job",
+  "agenda.jobCountMany": "{n} jobs",
+  "agenda.noJobs": "No jobs",
+  "agenda.today": "Today",
+  "agenda.nothingScheduled": "Nothing scheduled",
+
+  "job.recurring": "Recurring",
+  "job.oneTime": "One-time",
+  "job.task": "Task",
+  "job.message": "Message",
+  "job.disabled": "⏸️ disabled",
+  "job.executed": "executed",
+
+  "delete.title": "Delete scheduled job?",
+  "delete.confirmPre": "This will permanently remove ",
+  "delete.confirmCron": " and stop all future runs.",
+  "delete.confirmOnce": ".",
+  "delete.confirmSuffix": " This can’t be undone.",
+  "delete.cancel": "Cancel",
+  "delete.delete": "Delete"
+}

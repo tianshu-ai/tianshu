@@ -1,0 +1,49 @@
+{
+  "manifest.topBarButtons.toggle": "Wiki",
+  "manifest.rightPanels.main": "Wiki",
+  "manifest.composerActions.record": "将对话记录到 Wiki",
+
+  "section.daily": "每日",
+  "section.weekly": "每周",
+  "section.monthly": "每月",
+  "section.yearly": "每年",
+  "section.topics": "主题",
+  "section.entities": "实体",
+  "section.concepts": "概念",
+  "section.sources": "来源",
+
+  "reindex.done": "已索引 {indexed}/{total} 个页面。",
+  "reindex.failed": "失败：{error}",
+
+  "panel.filterPlaceholder": "筛选页面…",
+  "panel.listView": "列表视图",
+  "panel.graphView": "图谱视图",
+  "panel.refresh": "刷新",
+  "panel.rebuildIndex": "从所有页面重建语义（嵌入）索引",
+  "panel.resetTitle": "重置 Wiki（清空所有页面及进度）",
+
+  "reset.title": "重置 Wiki？",
+  "reset.body1a": "这会清空 ",
+  "reset.body1b": "整个 Wiki",
+  "reset.body1c": " — 每一个页面（每日 / 每周 / 每月 / 每年日志、主题、实体、概念、来源）以及摄取进度游标。",
+  "reset.body2a": "下一次“记录”运行会从头重建。",
+  "reset.body2b": "此操作无法撤销。",
+  "reset.cancel": "取消",
+  "reset.resetting": "正在重置…",
+  "reset.wipeRebuild": "清空并重建",
+  "reset.failed": "_重置失败 — 可能有一个 Wiki 更新正在运行。请在其完成后重试。_",
+
+  "page.loadFailed": "_加载页面失败。_",
+  "list.sectionCount": "{label}（{n}）",
+  "list.empty": "尚无 Wiki 页面。随着对话被压缩，它们会逐渐累积。",
+  "reader.loading": "加载中…",
+  "reader.selectPage": "选择一个页面",
+
+  "graph.empty": "尚无可绘制的页面。",
+  "graph.loading": "正在加载图谱…",
+  "graph.cancel": "取消",
+  "graph.open": "打开",
+
+  "record.running": "Wiki 更新运行中… {pct}%",
+  "record.record": "将此对话记录到 Wiki"
+}
