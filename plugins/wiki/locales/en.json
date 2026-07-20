@@ -1,4 +1,5 @@
 {
+  "manifest.adminPages.settings": "Wiki",
   "manifest.topBarButtons.toggle": "Wiki",
   "manifest.rightPanels.main": "Wiki",
   "manifest.composerActions.record": "Record conversation into the wiki",

@@ -1,4 +1,5 @@
 {
+  "manifest.adminPages.settings": "调度器",
   "manifest.topBarButtons.toggle": "定时任务",
   "manifest.rightPanels.main": "日程",
 

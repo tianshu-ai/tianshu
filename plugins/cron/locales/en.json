@@ -1,4 +1,5 @@
 {
+  "manifest.adminPages.settings": "Scheduler",
   "manifest.topBarButtons.toggle": "Scheduled jobs",
   "manifest.rightPanels.main": "Schedule",
 
