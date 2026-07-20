@@ -1,0 +1,54 @@
+{
+  "manifest.adminPages.settings": "Wiki",
+  "manifest.configGroups.embedding.label": "Semantic search (embedding)",
+  "manifest.configGroups.embedding.description": "Pick an embedding model to enable semantic search. Configure the models themselves (base URL, API key, dimensions) in Settings → Models. Leave as “None” to use keyword search.",
+  "manifest.config.embeddingModelId.label": "Embedding model",
+  "manifest.config.embeddingModelId.description": "Choose one of the embedding models configured under Settings → Models. When set, the wiki builds a semantic index and searches it; otherwise it falls back to keyword search.",
+  "manifest.topBarButtons.toggle": "Wiki",
+  "manifest.rightPanels.main": "Wiki",
+  "manifest.composerActions.record": "Record conversation into the wiki",
+
+  "section.daily": "Daily",
+  "section.weekly": "Weekly",
+  "section.monthly": "Monthly",
+  "section.yearly": "Yearly",
+  "section.topics": "Topics",
+  "section.entities": "Entities",
+  "section.concepts": "Concepts",
+  "section.sources": "Sources",
+
+  "reindex.done": "Indexed {indexed}/{total} page(s).",
+  "reindex.failed": "Failed: {error}",
+
+  "panel.filterPlaceholder": "Filter pages…",
+  "panel.listView": "List view",
+  "panel.graphView": "Graph view",
+  "panel.refresh": "Refresh",
+  "panel.rebuildIndex": "Rebuild the semantic (embedding) index from all pages",
+  "panel.resetTitle": "Reset wiki (wipe all pages + progress)",
+
+  "reset.title": "Reset wiki?",
+  "reset.body1a": "This wipes the ",
+  "reset.body1b": "entire wiki",
+  "reset.body1c": " — every page (daily / weekly / monthly / yearly journals, topics, entities, concepts, sources) and the ingest progress cursor.",
+  "reset.body2a": "The next “record” run rebuilds from scratch. ",
+  "reset.body2b": "This cannot be undone.",
+  "reset.cancel": "Cancel",
+  "reset.resetting": "Resetting…",
+  "reset.wipeRebuild": "Wipe & rebuild",
+  "reset.failed": "_Reset failed — a wiki update may be running. Try again after it finishes._",
+
+  "page.loadFailed": "_Failed to load page._",
+  "list.sectionCount": "{label} ({n})",
+  "list.empty": "No wiki pages yet. They accrue as the conversation is compacted.",
+  "reader.loading": "Loading…",
+  "reader.selectPage": "Select a page",
+
+  "graph.empty": "No pages to graph yet.",
+  "graph.loading": "Loading graph…",
+  "graph.cancel": "Cancel",
+  "graph.open": "Open",
+
+  "record.running": "Wiki update running… {pct}%",
+  "record.record": "Record this conversation into the wiki"
+}

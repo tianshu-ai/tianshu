@@ -11,8 +11,10 @@
 import { useEffect, useState } from "react";
 import { LogIn, ShieldCheck } from "lucide-react";
 import { api, type AuthPublicConfig } from "../lib/api";
+import { useT } from "../hooks/useT";
 
 export default function LoginPage() {
+  const t = useT();
   const [cfg, setCfg] = useState<AuthPublicConfig | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -60,8 +62,8 @@ export default function LoginPage() {
           <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-600/20">
             <ShieldCheck className="text-brand-400" size={26} />
           </div>
-          <h1 className="text-lg font-semibold text-fg-default">Sign in to Tianshu</h1>
-          <p className="mt-1 text-sm text-fg-faint">Choose a provider to continue.</p>
+          <h1 className="text-lg font-semibold text-fg-default">{t("login.title")}</h1>
+          <p className="mt-1 text-sm text-fg-faint">{t("login.subtitle")}</p>
         </div>
 
         {error && (
@@ -71,16 +73,16 @@ export default function LoginPage() {
         )}
 
         {!cfg && !error && (
-          <div className="py-6 text-center text-sm text-fg-faint">Loading…</div>
+          <div className="py-6 text-center text-sm text-fg-faint">{t("login.loading")}</div>
         )}
 
         {cfg && !cfg.enabled && (
           <div className="rounded-md border border-border-subtle bg-bg-raised/50 px-3 py-3 text-center text-sm text-fg-muted">
-            Authentication is disabled.{" "}
+            {t("login.authDisabled")}{" "}
             <a href="/" className="text-link hover:underline">
-              Open the app
+              {t("login.openApp")}
             </a>
-            .
+            {t("login.openAppSuffix")}
           </div>
         )}
 
@@ -92,7 +94,7 @@ export default function LoginPage() {
                 <input
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Username"
+                  placeholder={t("login.username")}
                   autoComplete="username"
                   className="rounded-lg border border-border-default bg-bg-base px-3 py-2 text-sm text-fg-default"
                 />
@@ -100,7 +102,7 @@ export default function LoginPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
+                  placeholder={t("login.password")}
                   autoComplete={mode === "register" ? "new-password" : "current-password"}
                   className="rounded-lg border border-border-default bg-bg-base px-3 py-2 text-sm text-fg-default"
                 />
@@ -110,7 +112,7 @@ export default function LoginPage() {
                   className="flex items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-60"
                 >
                   <LogIn size={16} />
-                  {busy ? "…" : mode === "register" ? "Register & sign in" : "Sign in"}
+                  {busy ? "…" : mode === "register" ? t("login.registerAndSignIn") : t("login.signIn")}
                 </button>
                 {cfg.allowRegistration && (
                   <button
@@ -118,7 +120,7 @@ export default function LoginPage() {
                     onClick={() => setMode((m) => (m === "login" ? "register" : "login"))}
                     className="text-center text-xs text-fg-faint hover:text-fg-muted"
                   >
-                    {mode === "login" ? "No account? Register" : "Have an account? Sign in"}
+                    {mode === "login" ? t("login.noAccountRegister") : t("login.haveAccountSignIn")}
                   </button>
                 )}
               </form>
@@ -128,7 +130,7 @@ export default function LoginPage() {
             {cfg.localLogin && cfg.providers.length > 0 && (
               <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-wider text-fg-fainter">
                 <span className="h-px flex-1 bg-border-subtle" />
-                or
+                {t("login.or")}
                 <span className="h-px flex-1 bg-border-subtle" />
               </div>
             )}
@@ -143,7 +145,7 @@ export default function LoginPage() {
                     className="flex items-center justify-center gap-2 rounded-lg border border-border-default bg-bg-raised px-4 py-2.5 text-sm font-medium text-fg-default transition-colors hover:bg-bg-raised/70 hover:text-white"
                   >
                     <LogIn size={16} />
-                    Continue with {p.displayName}
+                    {t("login.continueWith", { name: p.displayName })}
                   </a>
                 ))}
               </div>

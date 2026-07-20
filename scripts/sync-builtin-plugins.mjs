@@ -31,6 +31,7 @@ const ids = fs
 let copied = 0;
 let skillsCopied = 0;
 let templatesCopied = 0;
+let localesCopied = 0;
 let agentSeedFiles = 0;
 for (const id of ids) {
   const src = path.join(pluginsDir, id, "manifest.json");
@@ -87,6 +88,27 @@ for (const id of ids) {
     }
   }
 
+  // Locales — flat `{key: text}` JSON per supported language
+  // (`en.json`, `zh.json`, ...). Ships alongside the manifest so
+  // the server can serve them to the web client, which merges
+  // them under the namespace `plugin.<id>.*` at boot. Only
+  // `<lang>.json` names are copied so unrelated files (drafts,
+  // .DS_Store, etc.) don't leak into builtinConfig.
+  const localesSrc = path.join(pluginsDir, id, "locales");
+  if (fs.existsSync(localesSrc) && fs.statSync(localesSrc).isDirectory()) {
+    const localesDst = path.join(dstDir, "locales");
+    fs.mkdirSync(localesDst, { recursive: true });
+    for (const entry of fs.readdirSync(localesSrc, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      if (entry.name.startsWith(".")) continue;
+      fs.copyFileSync(
+        path.join(localesSrc, entry.name),
+        path.join(localesDst, entry.name),
+      );
+      localesCopied++;
+    }
+  }
+
   // Agent seeds — each entry in `contributes.agentSeeds` is a
   // directory bundle copied verbatim into the tenant on first
   // plugin activation (see core/agent-seeds.ts). Mirror the
@@ -115,5 +137,5 @@ for (const id of ids) {
 
 // eslint-disable-next-line no-console
 console.log(
-  `[sync-builtin-plugins] synced ${copied} manifest(s), ${skillsCopied} skill file(s), ${templatesCopied} template file(s), and ${agentSeedFiles} agent-seed file(s) from plugins/ → builtinConfig/plugins/`,
+  `[sync-builtin-plugins] synced ${copied} manifest(s), ${skillsCopied} skill file(s), ${templatesCopied} template file(s), ${localesCopied} locale file(s), and ${agentSeedFiles} agent-seed file(s) from plugins/ → builtinConfig/plugins/`,
 );

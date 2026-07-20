@@ -29,6 +29,7 @@ import {
 import { createPortal } from "react-dom";
 import { Maximize2, Minimize2, X } from "lucide-react";
 import type { ModalProps } from "@tianshu-ai/plugin-sdk/client";
+import { useT } from "../../hooks/useT";
 
 // Width and height presets per size.
 //
@@ -68,6 +69,7 @@ export function Modal({
   allowMaximize = true,
   children,
 }: ModalProps) {
+  const t = useT();
   // Local maximize state. Re-mounts (closing + reopening the
   // modal) reset to default-size, which is the right UX for our
   // file-preview use case: every fresh open starts at the
@@ -227,8 +229,8 @@ export function Modal({
                 type="button"
                 onClick={() => setMaximized((m: boolean) => !m)}
                 className="btn-ghost shrink-0 p-1.5"
-                aria-label={maximized ? "Restore" : "Maximize"}
-                title={maximized ? "Restore" : "Maximize"}
+                aria-label={maximized ? t("modal.restore") : t("modal.maximize")}
+                title={maximized ? t("modal.restore") : t("modal.maximize")}
               >
                 {maximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
               </button>
@@ -237,7 +239,7 @@ export function Modal({
               type="button"
               onClick={onClose}
               className="btn-ghost shrink-0 p-1.5"
-              aria-label="Close"
+              aria-label={t("common.close")}
             >
               <X size={16} />
             </button>
