@@ -22,6 +22,7 @@
 //   - Empty / whitespace-only file — show "No rows."
 
 import { useEffect, useMemo, useState } from "react";
+import { useT } from "../../hooks/useT";
 
 const MAX_ROWS = 1000;
 
@@ -48,6 +49,7 @@ export function TablePreview({
   delimiter = ",",
   className = "",
 }: TablePreviewProps) {
+  const t = useT();
   const [parsed, setParsed] = useState<ParseResult | null>(null);
 
   useEffect(() => {
@@ -125,7 +127,7 @@ export function TablePreview({
 
   if (parsed.headers.length === 0 && parsed.rows.length === 0) {
     return (
-      <div className={`p-4 text-sm text-fg-faint ${className}`}>No rows.</div>
+      <div className={`p-4 text-sm text-fg-faint ${className}`}>{t("preview.table.noRows")}</div>
     );
   }
 

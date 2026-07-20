@@ -296,6 +296,53 @@ export default function AdminShell() {
   );
 }
 
+// Localize the DISPLAYED label of a nav bucket group. We map the
+// well-known host-owned group strings ("System", "Plugins") through
+// t(); anything else (a plugin inventing its own group, though the
+// flatten() step normalizes plugin groups to "Plugins") falls
+// through as-is.
+function localizeGroup(
+  t: ReturnType<typeof useT>,
+  group: string,
+): string {
+  switch (group) {
+    case "System":
+      return t("admin.group.system");
+    case "Plugins":
+      return t("admin.group.plugins");
+    default:
+      return group;
+  }
+}
+
+// Localize the DISPLAYED label of a core page. Plugin-contributed
+// page displayNames come from manifests and stay as-is. The switch
+// is keyed on the CORE_PAGES pageId (stable identifier) rather
+// than displayName (english string) so a future rename doesn't
+// silently break translation.
+function localizeCorePageLabel(
+  t: ReturnType<typeof useT>,
+  page: FlatAdminPage,
+): string {
+  if (page.pluginId !== "core") return page.displayName;
+  switch (page.pageId) {
+    case "auth":
+      return t("admin.nav.auth");
+    case "auth-providers":
+      return t("admin.nav.authProviders");
+    case "auth-users":
+      return t("admin.nav.authUsers");
+    case "auth-tenants":
+      return t("admin.nav.authTenants");
+    case "models":
+      return t("admin.nav.models");
+    case "mcp":
+      return t("admin.nav.mcp");
+    default:
+      return page.displayName;
+  }
+}
+
 function AdminSidebar({
   pages,
   userLabel,
@@ -321,6 +368,13 @@ function AdminSidebar({
     else grouped.push({ group: g, pages: [p] });
   }
 
+  const localizedRole =
+    userRole === "admin"
+      ? t("user.role.admin")
+      : userRole === "member"
+        ? t("user.role.member")
+        : null;
+
   return (
     <aside className="flex w-56 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
       <div className="flex h-14 items-center gap-2 border-b border-border-subtle px-4">
@@ -331,16 +385,14 @@ function AdminSidebar({
       <nav className="flex-1 space-y-3 overflow-y-auto p-2">
         {grouped.length === 0 && (
           <p className="px-3 py-2 text-[11px] leading-relaxed text-fg-faint">
-            No admin pages contributed yet. Enable a plugin that
-            ships <code>contributes.adminPages</code> to see entries
-            here.
+            {t("admin.emptyNav")}
           </p>
         )}
         {grouped.map((bucket, i) => (
           <div key={i}>
             {bucket.group && (
               <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">
-                {bucket.group}
+                {localizeGroup(t, bucket.group)}
               </div>
             )}
             <div className="space-y-0.5">
@@ -364,7 +416,7 @@ function AdminSidebar({
           end
         >
           <ArrowLeft size={12} />
-          Back to chat
+          {t("admin.backToChat")}
         </NavLink>
       </div>
       {userLabel && (
@@ -374,12 +426,14 @@ function AdminSidebar({
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[11px] text-fg-muted">{userLabel}</div>
-            {userRole && <div className="text-[10px] text-fg-fainter">{userRole}</div>}
+            {localizedRole && (
+              <div className="text-[10px] text-fg-fainter">{localizedRole}</div>
+            )}
           </div>
           {showLogout && (
             <button
               type="button"
-              title="Log out"
+              title={t("common.logOut")}
               onClick={async () => {
                 try {
                   await api.logout();
@@ -400,6 +454,7 @@ function AdminSidebar({
 }
 
 function AdminNavLink({ page }: { page: FlatAdminPage }) {
+  const t = useT();
   const Icon = resolveLucideIcon(page.icon);
   // Build an absolute path so the link doesn't resolve relative
   // to the current URL. With nested admin pages (`/admin/foo/bar`)
@@ -410,6 +465,7 @@ function AdminNavLink({ page }: { page: FlatAdminPage }) {
   const href = buildIdentityPath(
     `/admin/${page.pluginId}/${page.pageId}`,
   );
+  const label = localizeCorePageLabel(t, page);
   return (
     <NavLink
       to={href}
@@ -422,7 +478,7 @@ function AdminNavLink({ page }: { page: FlatAdminPage }) {
       }
     >
       {Icon && <Icon size={14} className="flex-shrink-0" />}
-      <span className="truncate">{page.displayName}</span>
+      <span className="truncate">{label}</span>
     </NavLink>
   );
 }
@@ -459,8 +515,9 @@ function AdminPageHost({ pages }: { pages: FlatAdminPage[] }) {
   if (!Component) {
     return (
       <PageError
-        title={`Component "${page.component}" not found`}
-        message={`Plugin ${page.pluginId}'s client bundle does not export ${page.component}. Did you forget to add it to PluginClientExports.components?`}
+        titleKey="admin.error.componentNotFound"
+        messageKey="admin.error.componentNotFoundBody"
+        params={{ component: page.component, pluginId: page.pluginId }}
       />
     );
   }
@@ -480,27 +537,35 @@ function AdminPageHost({ pages }: { pages: FlatAdminPage[] }) {
 }
 
 function EmptyState() {
+  const t = useT();
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center justify-center px-6 py-24 text-center text-fg-muted">
       <SettingsIcon size={32} className="mb-3 text-fg-fainter" />
       <h2 className="mb-2 text-base font-semibold text-fg-default">
-        Nothing to manage yet
+        {t("admin.empty.title")}
       </h2>
       <p className="text-sm leading-relaxed text-fg-faint">
-        The admin shell is empty until a plugin contributes an admin
-        page. Open the Plugin Manager from the chat shell to enable
-        a plugin that ships one (e.g. MicroSandbox).
+        {t("admin.empty.body")}
       </p>
     </div>
   );
 }
 
-function PageError({ title, message }: { title: string; message: string }) {
+function PageError({
+  titleKey,
+  messageKey,
+  params,
+}: {
+  titleKey: string;
+  messageKey: string;
+  params?: Record<string, string | number>;
+}) {
+  const t = useT();
   return (
     <div className="mx-auto max-w-2xl px-6 py-12">
       <div className="rounded-md border border-rose-700/50 bg-rose-950/40 p-4 text-sm text-danger">
-        <strong className="mb-1 block">{title}</strong>
-        <p className="leading-relaxed text-danger">{message}</p>
+        <strong className="mb-1 block">{t(titleKey as never, params)}</strong>
+        <p className="leading-relaxed text-danger">{t(messageKey as never, params)}</p>
       </div>
     </div>
   );
@@ -523,6 +588,7 @@ function resolveLucideIcon(name: string | undefined) {
 function PluginConfigSettingsPage({
   pluginId,
 }: AdminPageProps & { pluginId: string }) {
+  const t = useT();
   const plugins = usePluginStore((s) => s.plugins);
   const plugin = plugins?.find((p) => p.id === pluginId);
 
@@ -541,17 +607,18 @@ function PluginConfigSettingsPage({
       </div>
       {!plugin ? (
         <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-faint">
-          Plugin <code>{pluginId}</code> is not active.
+          {t("admin.pluginConfig.inactiveBefore")}
+          <code>{pluginId}</code>
+          {t("admin.pluginConfig.inactiveAfter")}
         </div>
       ) : (
         <section>
           <div className="mb-2">
             <h2 className="text-[13px] font-semibold uppercase tracking-wide text-fg-muted">
-              Configuration
+              {t("admin.pluginConfig.sectionTitle")}
             </h2>
             <p className="text-[11px] text-fg-faint">
-              Saving re-activates the plugin so changes take effect on the
-              next request.
+              {t("admin.pluginConfig.sectionHint")}
             </p>
           </div>
           <div className="rounded-md border border-border-subtle bg-bg-elevated/30 p-4">

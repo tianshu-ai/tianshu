@@ -145,7 +145,7 @@ export default function PluginManager({ open, onClose }: Props) {
               {t("plugin.manager.title")}
             </h2>
           </div>
-          <button type="button" onClick={onClose} className="btn-ghost p-1.5" aria-label="Close">
+          <button type="button" onClick={onClose} className="btn-ghost p-1.5" aria-label={t("common.close")}>
             <X size={16} />
           </button>
         </div>
@@ -544,6 +544,7 @@ function Toggle({
   disabled: boolean;
   onClick: () => void;
 }) {
+  const tTog = useT();
   return (
     <button
       type="button"
@@ -560,10 +561,10 @@ function Toggle({
         .join(" ")}
       title={
         disabled
-          ? "Plugin cannot be enabled in its current state"
+          ? tTog("plugin.toggle.disabledTooltip")
           : active
-            ? "Click to disable"
-            : "Click to enable"
+            ? tTog("plugin.toggle.disableTooltip")
+            : tTog("plugin.toggle.enableTooltip")
       }
     >
       <span

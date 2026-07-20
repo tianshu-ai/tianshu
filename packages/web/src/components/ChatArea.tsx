@@ -152,7 +152,7 @@ export default function ChatArea() {
                     onClick={clearStreamError}
                     className="ml-3 flex-none text-[11px] uppercase tracking-wider text-rose-300/80 hover:text-white"
                   >
-                    dismiss
+                    {t("chat.dismiss")}
                   </button>
                 </div>
               )
