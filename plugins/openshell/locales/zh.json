@@ -34,5 +34,7 @@
   "allowed.col.enforce": "强制",
   "allowed.col.binaries": "程序",
   "allowed.noneParsed": "未解析出端点 — 显示原始策略 JSON",
-  "allowed.emptyPolicy": "（空策略）"
+  "allowed.emptyPolicy": "（空策略）",
+  "manifest.displayName": "OpenShell（Docker）",
+  "manifest.description": "在 OpenShell 托管的 Docker 沙箱中运行 shell 命令（NVIDIA OpenShell）。作为 microsandbox 的替代方案：避开 macOS Hypervisor.framework（Apple Silicon Tahoe 上无空闲 CPU 占用），并支持网络/推理策略。MVP 仅提供 sandbox.shell；浏览器边车和按任务的池化留待后续。"
 }

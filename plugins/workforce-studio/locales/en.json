@@ -245,5 +245,7 @@
   "originBadge.tenantPlugin": "tenant plugin",
   "originBadge.host": "host",
   "originBadge.workspace": "workspace",
-  "originBadge.tenant": "tenant"
+  "originBadge.tenant": "tenant",
+  "manifest.displayName": "Workforce Studio",
+  "manifest.description": "Inspect + export the tenant's main agent and every worker agent — system prompts, available tools, skills — into a single downloadable bundle. Phase 1 is read-only: editing + import land in later phases."
 }

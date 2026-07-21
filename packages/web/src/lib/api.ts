@@ -81,6 +81,9 @@ export interface PluginListEntry {
   version: string;
   displayName: string;
   description: string | null;
+  /** Optional grouping key for the Plugin Manager UI. Null when unset
+   *  (grouped under "Other"). */
+  category: string | null;
   source: "builtin" | "tenant";
   state: PluginState;
   failedReason: string | null;

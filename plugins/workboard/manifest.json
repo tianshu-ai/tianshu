@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "Workboard",
   "description": "Kanban task board with a worker pool. The orchestrator drops tasks onto the board; workers pick them up, run them, and report back. v0.2 ships an echo worker so the full ready→in-progress→done loop is visible end-to-end; real worker runtimes (qianliyan / luban / xihe / nvwa) land in follow-up PRs as separate plugins.",
+  "category": "agents",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["workspace.read", "tenant.db"],

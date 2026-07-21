@@ -720,6 +720,7 @@ export async function listPluginsForTenant(
     version: e.manifest.version,
     displayName: e.manifest.displayName,
     description: e.manifest.description ?? null,
+    category: e.manifest.category ?? null,
     source: e.source,
     state: e.state,
     failedReason: e.failedReason ?? null,

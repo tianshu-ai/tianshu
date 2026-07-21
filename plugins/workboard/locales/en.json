@@ -202,5 +202,7 @@
   "manifest.config.llm.idleSec.unit": "s",
   "manifest.config.llm.maxRunSec.label": "Max run time",
   "manifest.config.llm.maxRunSec.description": "Total wall-clock cap for one task run, across all turns. Protects against runaway loops.",
-  "manifest.config.llm.maxRunSec.unit": "s"
+  "manifest.config.llm.maxRunSec.unit": "s",
+  "manifest.displayName": "Workboard",
+  "manifest.description": "Kanban task board with a worker pool. The orchestrator drops tasks onto the board; workers pick them up, run them, and report back. v0.2 ships an echo worker so the full ready→in-progress→done loop is visible end-to-end; real worker runtimes (qianliyan / luban / xihe / nvwa) land in follow-up PRs as separate plugins."
 }

@@ -202,5 +202,7 @@
   "manifest.config.llm.idleSec.unit": "s",
   "manifest.config.llm.maxRunSec.label": "最大运行时长",
   "manifest.config.llm.maxRunSec.description": "单次任务运行（跨所有回合）的总壁钟时间上限。防止失控循环。",
-  "manifest.config.llm.maxRunSec.unit": "s"
+  "manifest.config.llm.maxRunSec.unit": "s",
+  "manifest.displayName": "任务板",
+  "manifest.description": "带工作者池的看板任务板。编排器把任务投放到板上；工作者领取、执行并回报。v0.2 内置一个 echo 工作者，可端到端看到完整的「就绪→进行中→已完成」流程；真实工作者运行时（qianliyan / luban / xihe / nvwa）将作为独立插件在后续 PR 中登场。"
 }

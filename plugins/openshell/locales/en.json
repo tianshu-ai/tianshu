@@ -34,5 +34,7 @@
   "allowed.col.enforce": "Enforce",
   "allowed.col.binaries": "Binaries",
   "allowed.noneParsed": "No endpoints parsed — show raw policy JSON",
-  "allowed.emptyPolicy": "(empty policy)"
+  "allowed.emptyPolicy": "(empty policy)",
+  "manifest.displayName": "OpenShell (Docker)",
+  "manifest.description": "Run shell commands in OpenShell-managed Docker sandboxes (NVIDIA OpenShell). Alternative to microsandbox: avoids macOS Hypervisor.framework (no idle-CPU burn on Apple Silicon Tahoe), includes network/inference policy support. MVP provides sandbox.shell only; browser sidecar and per-task pool are tracked for follow-ups."
 }

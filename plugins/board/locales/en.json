@@ -5,5 +5,7 @@
   "panel.noBoards": "No boards",
   "panel.refresh": "Refresh",
   "panel.loading": "Loading…",
-  "panel.addHint": "Add one at board/<name>/index.html"
+  "panel.addHint": "Add one at board/<name>/index.html",
+  "manifest.displayName": "Boards",
+  "manifest.description": "Render a user's HTML dashboards as interactive UI. Drop an index.html into board/<name>/ under your workspace and the agent can show it in chat via the `show_board` tool (as an MCP-UI resource) or you can browse boards in the side panel."
 }

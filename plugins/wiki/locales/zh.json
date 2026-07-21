@@ -50,5 +50,7 @@
   "graph.open": "打开",
 
   "record.running": "Wiki 更新运行中… {pct}%",
-  "record.record": "将此对话记录到 Wiki"
+  "record.record": "将此对话记录到 Wiki",
+  "manifest.displayName": "知识库",
+  "manifest.description": "LLM 知识库——把滚动的对话提炼进 Obsidian 风格的知识仓库。每段被压缩的对话会自动归档为一条来源；代理在其之上综合出实体/概念/主题。可在侧边栏浏览与搜索。"
 }

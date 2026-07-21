@@ -38,5 +38,7 @@
   "delete.confirmOnce": "。",
   "delete.confirmSuffix": " 此操作无法撤销。",
   "delete.cancel": "取消",
-  "delete.delete": "删除"
+  "delete.delete": "删除",
+  "manifest.displayName": "定时调度",
+  "manifest.description": "定时与周期任务。可在未来某个时间点（一次性）或按 cron 计划，向聊天会话发送消息、或向任务板投放任务。支持时区。代理的 `schedule` 工具和日历面板都能管理任务。"
 }

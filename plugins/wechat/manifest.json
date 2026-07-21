@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "WeChat (微信)",
   "description": "WeChat channel backed by Tencent's iLink bot API. Scan a QR code with the WeChat app to authorise; inbound DMs from authorised users route to the agent through the channel system.",
+  "category": "channels",
   "author": "tianshu-ai",
   "license": "MIT",
   "permissions": ["network.external"],

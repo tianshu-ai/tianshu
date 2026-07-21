@@ -34,6 +34,7 @@ import {
 } from "../lib/api";
 import { usePluginStore } from "../stores/plugin-store";
 import { useT } from "../hooks/useT";
+import { usePluginMeta } from "../lib/plugin-manifest-labels";
 
 interface Props {
   open: boolean;
@@ -267,6 +268,27 @@ function TabButton({
   );
 }
 
+// Section ordering for the grouped plugin list. Plugins carry a
+// free-form `category`; we render sections in this fixed order and
+// append any unknown categories (then "other") at the end so a new
+// category still shows up without a code change.
+const CATEGORY_ORDER = [
+  "runtime",
+  "agents",
+  "knowledge",
+  "automation",
+  "channels",
+] as const;
+
+function categoryLabel(t: ReturnType<typeof useT>, key: string): string {
+  // i18n keys: plugin.category.<key>; falls back to the raw key
+  // (capitalised) so an unknown category still renders a header.
+  const label = t(`plugin.category.${key}`);
+  if (label && label !== `plugin.category.${key}`) return label;
+  if (key === "other") return t("plugin.category.other");
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 function InstalledList({
   plugins,
   pendingId,
@@ -276,6 +298,7 @@ function InstalledList({
   pendingId: string | null;
   onToggle: (p: PluginListEntry) => void;
 }) {
+  const t = useT();
   if (plugins === null) {
     return (
       <div className="flex items-center justify-center py-10 text-sm text-fg-faint">
@@ -302,43 +325,91 @@ function InstalledList({
       </div>
     );
   }
+  // Bucket plugins by category, preserving each bucket's incoming
+  // order. Known categories render first in CATEGORY_ORDER, then any
+  // other categories alphabetically, then uncategorised ("other").
+  const buckets = new Map<string, PluginListEntry[]>();
+  for (const p of plugins) {
+    const key = (p.category ?? "other").trim() || "other";
+    const arr = buckets.get(key);
+    if (arr) arr.push(p);
+    else buckets.set(key, [p]);
+  }
+  const known = CATEGORY_ORDER.filter((k) => buckets.has(k));
+  const extra = [...buckets.keys()]
+    .filter((k) => k !== "other" && !CATEGORY_ORDER.includes(k as (typeof CATEGORY_ORDER)[number]))
+    .sort();
+  const orderedKeys = [...known, ...extra, ...(buckets.has("other") ? ["other"] : [])];
+
   return (
-    <ul className="space-y-2">
-      {plugins.map((p) => (
-        <li
-          key={p.id}
-          className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated/50 p-3"
-        >
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-fg-default">{p.displayName}</span>
-              <code className="rounded bg-bg-raised px-1 py-0.5 text-[10px] text-fg-muted">
-                {p.id}
-              </code>
-              <span className="text-[10px] text-fg-fainter">v{p.version}</span>
-              <SourceBadge source={p.source} />
-              <StateBadge state={p.state} />
-            </div>
-            {p.description && (
-              <p className="mt-1 text-xs text-fg-muted">{p.description}</p>
-            )}
-            <CapabilityBadges entry={p} />
-            {p.failedReason && (
-              <div className="mt-1 flex items-start gap-1 text-[11px] text-danger">
-                <AlertTriangle size={11} className="mt-px flex-shrink-0" />
-                <span className="break-all">{p.failedReason}</span>
-              </div>
-            )}
-          </div>
-          <Toggle
-            active={p.state === "active"}
-            pending={pendingId === p.id}
-            disabled={p.state === "failed" || p.state === "client-bundle-missing"}
-            onClick={() => onToggle(p)}
-          />
-        </li>
+    <div className="space-y-4">
+      {orderedKeys.map((key) => (
+        <section key={key}>
+          <h3 className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+            {categoryLabel(t, key)}
+            <span className="text-fg-fainter">{buckets.get(key)!.length}</span>
+          </h3>
+          <ul className="space-y-2">
+            {buckets.get(key)!.map((p) => (
+              <PluginCard
+                key={p.id}
+                p={p}
+                pending={pendingId === p.id}
+                onToggle={onToggle}
+              />
+            ))}
+          </ul>
+        </section>
       ))}
-    </ul>
+    </div>
+  );
+}
+
+// One installed-plugin card. Localizes the plugin's displayName +
+// description via the plugin locale dictionary (plugin.<id>.manifest.
+// displayName / .description), falling back to the manifest string.
+function PluginCard({
+  p,
+  pending,
+  onToggle,
+}: {
+  p: PluginListEntry;
+  pending: boolean;
+  onToggle: (p: PluginListEntry) => void;
+}) {
+  const meta = usePluginMeta(p.id);
+  const displayName = meta.displayName(p.displayName);
+  const description = meta.description(p.description);
+  return (
+    <li className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated/50 p-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-fg-default">{displayName}</span>
+          <code className="rounded bg-bg-raised px-1 py-0.5 text-[10px] text-fg-muted">
+            {p.id}
+          </code>
+          <span className="text-[10px] text-fg-fainter">v{p.version}</span>
+          <SourceBadge source={p.source} />
+          <StateBadge state={p.state} />
+        </div>
+        {description && (
+          <p className="mt-1 text-xs text-fg-muted">{description}</p>
+        )}
+        <CapabilityBadges entry={p} />
+        {p.failedReason && (
+          <div className="mt-1 flex items-start gap-1 text-[11px] text-danger">
+            <AlertTriangle size={11} className="mt-px flex-shrink-0" />
+            <span className="break-all">{p.failedReason}</span>
+          </div>
+        )}
+      </div>
+      <Toggle
+        active={p.state === "active"}
+        pending={pending}
+        disabled={p.state === "failed" || p.state === "client-bundle-missing"}
+        onClick={() => onToggle(p)}
+      />
+    </li>
   );
 }
 

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "MicroSandbox",
   "description": "Per-tenant shell sandbox running on microsandbox (Apple Virtualization.framework / KVM). Provides sandbox.shell + an opt-in browser.cdp sidecar (Stealth Chromium via CloakBrowser + Playwright MCP + noVNC; lit up by a follow-up PR).",
+  "category": "runtime",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["workspace.read", "workspace.write", "process.spawn"],

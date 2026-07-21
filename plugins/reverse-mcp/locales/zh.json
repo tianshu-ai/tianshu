@@ -53,5 +53,7 @@
   "panel.devices.title": "已连接设备",
   "panel.devices.loading": "加载中…",
   "panel.devices.empty": "尚无设备连接。请运行上面的命令。",
-  "panel.devices.toolCount": "{n} 个工具"
+  "panel.devices.toolCount": "{n} 个工具",
+  "manifest.displayName": "本地桥接",
+  "manifest.description": "将你自己机器上的软件（浏览器、文件、shell）接入天枢。一个轻量本地客户端通过聊天 WebSocket 拨入并把自己注册为 MCP 服务器，从而让服务端的代理调用你本机的工具。仅限于你自己的会话——不跨用户共享。"
 }

@@ -5,5 +5,7 @@
   "manifest.config.backend.option.exa": "Exa",
   "manifest.config.backend.option.parallel": "Parallel",
   "manifest.config.timeoutMs.label": "单次请求超时",
-  "manifest.config.timeoutMs.description": "每次 web_search / web_fetch 调用的网络超时。在慢网络上遇到超时时可调大。"
+  "manifest.config.timeoutMs.description": "每次 web_search / web_fetch 调用的网络超时。在慢网络上遇到超时时可调大。",
+  "manifest.displayName": "网页搜索",
+  "manifest.description": "面向代理的免密钥网页搜索 + 单页抓取。搜索走托管端点（Exa 或 Parallel），无需 API key。web_fetch 将页面读取为 markdown，同样无需配置。"
 }

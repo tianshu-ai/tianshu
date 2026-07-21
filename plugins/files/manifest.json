@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "Workspace Files",
   "description": "Browse, read, and upload files in the tenant workspace.",
+  "category": "knowledge",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["workspace.read", "workspace.write"],

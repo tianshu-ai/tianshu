@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "Local Bridge",
   "description": "Connect software on your own machine (browser, files, shell) into tianshu. A lightweight local client dials in over the chat WebSocket and registers itself as an MCP server, so the server-side agent can call your local tools. Scoped to your own sessions — not shared across users.",
+  "category": "runtime",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["network.external"],

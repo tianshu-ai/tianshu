@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "Workforce Studio",
   "description": "Inspect + export the tenant's main agent and every worker agent — system prompts, available tools, skills — into a single downloadable bundle. Phase 1 is read-only: editing + import land in later phases.",
+  "category": "agents",
   "author": "tianshu-ai",
   "license": "MIT",
   "permissions": [],

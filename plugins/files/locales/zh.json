@@ -32,5 +32,7 @@
 
   "upload.attachFile": "附加文件",
   "upload.exceedsCap": "文件超过 {mb} MB 上限",
-  "upload.noBody": "（无内容）"
+  "upload.noBody": "（无内容）",
+  "manifest.displayName": "工作区文件",
+  "manifest.description": "浏览、读取和上传租户工作区中的文件。"
 }

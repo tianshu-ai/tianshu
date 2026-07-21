@@ -11,6 +11,14 @@ export interface PluginManifest {
   version: string;
   displayName: string;
   description?: string;
+  /**
+   * Optional grouping key for the Plugin Manager UI. Free-form
+   * string; plugins with the same value are shown under one section.
+   * Unset → grouped under "Other". Recommended values (host uses
+   * these for section ordering + i18n): "execution", "agents",
+   * "knowledge", "productivity", "channels".
+   */
+  category?: string;
   author?: string;
   license?: string;
   /**

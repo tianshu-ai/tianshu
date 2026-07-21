@@ -38,5 +38,7 @@
   "delete.confirmOnce": ".",
   "delete.confirmSuffix": " This can’t be undone.",
   "delete.cancel": "Cancel",
-  "delete.delete": "Delete"
+  "delete.delete": "Delete",
+  "manifest.displayName": "Scheduler",
+  "manifest.description": "Scheduled and recurring jobs. Fire a message into a chat session or drop a task on the workboard at a future time (once) or on a cron schedule. Timezone-aware. The agent's `schedule` tool and a calendar panel both manage jobs."
 }
