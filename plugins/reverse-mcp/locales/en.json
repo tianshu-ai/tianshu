@@ -26,6 +26,8 @@
   "panel.headless": "Headless",
   "panel.headlessHint": "no window (default: show the browser)",
   "panel.shell": "Shell",
+  "panel.shellHint": "run commands + sync files on your machine",
+  "panel.shellWarning": "Runs commands on your machine (jailed to ~/.tianshu_shell). Only enable for a server you trust.",
   "panel.files": "Files",
   "panel.comingSoon": "Coming soon",
 
