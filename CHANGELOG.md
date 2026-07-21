@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.9.0](https://github.com/tianshu-ai/tianshu/compare/v0.8.0...v0.9.0) (2026-07-21)
+
+
+### Features
+
+* **plugins:** group plugins into sections + localize name/description ([#329](https://github.com/tianshu-ai/tianshu/issues/329)) ([66318e5](https://github.com/tianshu-ai/tianshu/commit/66318e5b37d9e8fa137054831ac5a4cfb00ee7ce))
+* **plugins:** read-only plugin manager for members + WeChat binding in a panel ([#331](https://github.com/tianshu-ai/tianshu/issues/331)) ([fec72ef](https://github.com/tianshu-ai/tianshu/commit/fec72ef9b4d97747394ba3892785b001b4260839))
+
 ## [0.8.0](https://github.com/tianshu-ai/tianshu/compare/v0.7.0...v0.8.0) (2026-07-21)
 
 
