@@ -68,6 +68,7 @@ export function parseManifest(raw: unknown): PluginManifest {
 
   const description = optionalString(raw, "description", acc);
   const category = optionalString(raw, "category", acc);
+  const exclusiveGroup = optionalString(raw, "exclusiveGroup", acc);
   const author = optionalString(raw, "author", acc);
   const license = optionalString(raw, "license", acc);
   const permissions = optionalStringArray(raw, "permissions", acc);
@@ -118,6 +119,7 @@ export function parseManifest(raw: unknown): PluginManifest {
     displayName: displayName!,
     description,
     category,
+    exclusiveGroup,
     author,
     license,
     permissions,

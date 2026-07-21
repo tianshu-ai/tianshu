@@ -543,6 +543,43 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
         next.config = plainConfig;
       }
       plugins[pluginId] = next;
+
+      // Mutual exclusion. Two plugins conflict when either:
+      //  (a) their `provides[]` overlap on an exclusive capability
+      //      (e.g. sandbox.shell — only one provider allowed), or
+      //  (b) they share the same `exclusiveGroup` (e.g. the shell
+      //      backends microsandbox / openshell / reverse-mcp all use
+      //      exclusiveGroup:"shell"; Local Bridge serves shell via
+      //      reverse-MCP, not a sandbox.shell capability, so (a)
+      //      alone wouldn't catch it).
+      // When enabling a plugin, auto-disable any OTHER currently
+      // enabled plugin it conflicts with — radio-button behaviour.
+      const autoDisabled: string[] = [];
+      if (hasEnabled && willEnabled && knownEntry) {
+        const mineCaps = new Set(knownEntry.manifest.provides ?? []);
+        const myGroup = knownEntry.manifest.exclusiveGroup;
+        if (mineCaps.size > 0 || myGroup) {
+          for (const other of registry.listForTenant(tenantId)) {
+            if (other.manifest.id === pluginId) continue;
+            const capOverlap = (other.manifest.provides ?? []).some((c) =>
+              mineCaps.has(c),
+            );
+            const groupOverlap =
+              !!myGroup && other.manifest.exclusiveGroup === myGroup;
+            if (!capOverlap && !groupOverlap) continue;
+            // Only disable ones that are (or would be) enabled.
+            const otherCfg = plugins[other.manifest.id] ?? {};
+            const otherEnabled =
+              typeof otherCfg.enabled === "boolean"
+                ? otherCfg.enabled
+                : other.state === "active";
+            if (!otherEnabled) continue;
+            plugins[other.manifest.id] = { ...otherCfg, enabled: false };
+            autoDisabled.push(other.manifest.id);
+          }
+        }
+      }
+
       writeTenantConfig(tenantId, { ...cfg, plugins }, ops.homeDir);
 
       // And then persist the secret patch (if any) to the secrets/
@@ -599,6 +636,34 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
               err instanceof Error ? err.message : String(err)
             }`,
           );
+        }
+      }
+
+      // Also notify for any plugin we auto-disabled via mutual
+      // exclusion, so the agent's tool list + panels drop its
+      // contributions too.
+      if (opts.onPluginsChanged && autoDisabled.length > 0) {
+        for (const otherId of autoDisabled) {
+          const oe = registry
+            .listForTenant(tenantId)
+            .find((e) => e.manifest.id === otherId);
+          if (!oe) continue;
+          const delta: import("./chat/ws-protocol.js").PluginsChangedDelta = {
+            pluginId: otherId,
+            displayName: oe.manifest.displayName ?? otherId,
+            tools: oe.manifest.contributes?.tools?.map((t) => t.id) ?? [],
+            toolsets:
+              oe.manifest.contributes?.toolsets?.map((t) => t.id) ?? [],
+          };
+          try {
+            opts.onPluginsChanged(tenantId, req.ctx.userId, delta, "disabled");
+          } catch (err) {
+            console.warn(
+              `[plugins-routes] onPluginsChanged (auto-disable) threw: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
         }
       }
       res.json({ plugins: list });
