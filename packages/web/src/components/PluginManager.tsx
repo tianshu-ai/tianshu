@@ -35,6 +35,7 @@ import {
 import { usePluginStore } from "../stores/plugin-store";
 import { useT } from "../hooks/useT";
 import { usePluginMeta } from "../lib/plugin-manifest-labels";
+import { Modal } from "./ui/Modal";
 
 interface Props {
   open: boolean;
@@ -56,6 +57,13 @@ export default function PluginManager({ open, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Pending conflict-confirm: the plugin the user asked to enable plus
+  // the currently-active plugins that would be auto-disabled. Non-null
+  // => the confirm modal is open.
+  const [confirmConflict, setConfirmConflict] = useState<{
+    plugin: PluginListEntry;
+    conflicts: PluginListEntry[];
+  } | null>(null);
 
   // Installed tab — ensure the shared store is hydrated. The store's
   // `load()` is idempotent so opening the modal again is cheap.
@@ -96,8 +104,8 @@ export default function PluginManager({ open, onClose }: Props) {
 
   if (!open) return null;
 
-  async function toggle(p: PluginListEntry) {
-    const next = p.state !== "active";
+  // Actually flip a plugin's enabled state (no confirm).
+  async function doToggle(p: PluginListEntry, next: boolean) {
     setPendingId(p.id);
     setError(null);
     try {
@@ -108,6 +116,29 @@ export default function PluginManager({ open, onClose }: Props) {
     } finally {
       setPendingId(null);
     }
+  }
+
+  function toggle(p: PluginListEntry) {
+    const next = p.state !== "active";
+    // Enabling a plugin can auto-disable others it conflicts with
+    // (shared provided capability, or same exclusiveGroup). Surface a
+    // confirm modal listing them before we flip anything.
+    if (next) {
+      const conflicts = (plugins ?? []).filter((o) => {
+        if (o.id === p.id || o.state !== "active") return false;
+        const capOverlap = p.capabilities.provided.some((c) =>
+          o.capabilities.provided.includes(c),
+        );
+        const groupOverlap =
+          !!p.exclusiveGroup && o.exclusiveGroup === p.exclusiveGroup;
+        return capOverlap || groupOverlap;
+      });
+      if (conflicts.length > 0) {
+        setConfirmConflict({ plugin: p, conflicts });
+        return;
+      }
+    }
+    void doToggle(p, next);
   }
 
 
@@ -239,6 +270,54 @@ export default function PluginManager({ open, onClose }: Props) {
           )}
         </div>
       </div>
+
+      {/* Conflict confirm: enabling a plugin auto-disables others that
+          share a capability / exclusiveGroup. Ask first. */}
+      {confirmConflict && (
+        <Modal
+          isOpen
+          onClose={() => setConfirmConflict(null)}
+          size="sm"
+          title={t("plugin.conflict.title")}
+          allowMaximize={false}
+        >
+          <div className="px-5 py-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm text-fg-default">
+              {t("plugin.conflict.body", {
+                plugin: confirmConflict.plugin.displayName,
+              })}
+            </p>
+            <ul className="mt-2 space-y-1">
+              {confirmConflict.conflicts.map((c) => (
+                <li key={c.id} className="flex items-center gap-2 text-sm text-fg-muted">
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+                  {c.displayName}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmConflict(null)}
+                className="btn-ghost px-3 py-1.5 text-xs text-fg-muted"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const p = confirmConflict.plugin;
+                  setConfirmConflict(null);
+                  void doToggle(p, true);
+                }}
+                className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
+              >
+                {t("plugin.conflict.confirmButton")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
