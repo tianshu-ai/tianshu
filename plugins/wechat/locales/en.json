@@ -1,6 +1,7 @@
 {
   "manifest.sidebarSections.sessions": "WeChat",
-  "manifest.adminPages.main": "WeChat",
+  "manifest.topBarButtons.toggle": "WeChat",
+  "manifest.rightPanels.main": "WeChat",
 
   "status.running": "Connected",
   "status.starting": "Starting",
