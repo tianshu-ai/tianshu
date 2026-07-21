@@ -33,6 +33,7 @@ import {
   type CatalogSnapshot,
 } from "../lib/api";
 import { usePluginStore } from "../stores/plugin-store";
+import { useChatStore } from "../stores/chat-store";
 import { useT } from "../hooks/useT";
 import { usePluginMeta } from "../lib/plugin-manifest-labels";
 import { Modal } from "./ui/Modal";
@@ -52,6 +53,11 @@ export default function PluginManager({ open, onClose }: Props) {
   const refreshPlugins = usePluginStore((s) => s.refresh);
   const refreshingPlugins = usePluginStore((s) => s.refreshing);
 
+  const me = useChatStore((s) => s.me);
+  // Members can view enable state but can't mutate plugins (backend
+  // PATCH /plugins/:id is requireAdmin). No-auth / dev tenants have no
+  // provider and are treated as admin, matching the sidebar.
+  const isAdmin = !me?.provider || me?.role === "admin";
   const [tab, setTab] = useState<Tab>("installed");
   const [catalog, setCatalog] = useState<CatalogSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -119,6 +125,7 @@ export default function PluginManager({ open, onClose }: Props) {
   }
 
   function toggle(p: PluginListEntry) {
+    if (!isAdmin) return; // members can't mutate; UI is read-only
     const next = p.state !== "active";
     // Enabling a plugin can auto-disable others it conflicts with
     // (shared provided capability, or same exclusiveGroup). Surface a
@@ -201,7 +208,7 @@ export default function PluginManager({ open, onClose }: Props) {
             )}
           </TabButton>
           <div className="flex-1" />
-          {tab === "installed" && (
+          {tab === "installed" && isAdmin && (
             <button
               type="button"
               onClick={() => void refreshPlugins()}
@@ -243,6 +250,7 @@ export default function PluginManager({ open, onClose }: Props) {
               plugins={plugins}
               pendingId={pendingId}
               onToggle={toggle}
+              readOnly={!isAdmin}
             />
           ) : (
             <CatalogList catalog={catalog} installedIds={installedIds} />
@@ -372,10 +380,12 @@ function InstalledList({
   plugins,
   pendingId,
   onToggle,
+  readOnly,
 }: {
   plugins: PluginListEntry[] | null;
   pendingId: string | null;
   onToggle: (p: PluginListEntry) => void;
+  readOnly: boolean;
 }) {
   const t = useT();
   if (plugins === null) {
@@ -422,6 +432,11 @@ function InstalledList({
 
   return (
     <div className="space-y-4">
+      {readOnly && (
+        <div className="rounded-md border border-border-subtle bg-bg-raised/50 px-3 py-2 text-[11px] text-fg-muted">
+          {t("plugin.readonly.notice")}
+        </div>
+      )}
       {orderedKeys.map((key) => (
         <section key={key}>
           <h3 className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
@@ -435,6 +450,7 @@ function InstalledList({
                 p={p}
                 pending={pendingId === p.id}
                 onToggle={onToggle}
+                readOnly={readOnly}
               />
             ))}
           </ul>
@@ -451,10 +467,12 @@ function PluginCard({
   p,
   pending,
   onToggle,
+  readOnly,
 }: {
   p: PluginListEntry;
   pending: boolean;
   onToggle: (p: PluginListEntry) => void;
+  readOnly: boolean;
 }) {
   const meta = usePluginMeta(p.id);
   const displayName = meta.displayName(p.displayName);
@@ -485,7 +503,11 @@ function PluginCard({
       <Toggle
         active={p.state === "active"}
         pending={pending}
-        disabled={p.state === "failed" || p.state === "client-bundle-missing"}
+        disabled={
+          readOnly ||
+          p.state === "failed" ||
+          p.state === "client-bundle-missing"
+        }
         onClick={() => onToggle(p)}
       />
     </li>
