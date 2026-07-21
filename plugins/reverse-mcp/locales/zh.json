@@ -26,6 +26,8 @@
   "panel.headless": "无头模式",
   "panel.headlessHint": "无窗口（默认：显示浏览器）",
   "panel.shell": "Shell",
+  "panel.shellHint": "在你的机器上执行命令 + 同步文件",
+  "panel.shellWarning": "会在你的机器上执行命令（限制在 ~/.tianshu_shell 目录内）。仅在信任该服务器时启用。",
   "panel.files": "文件",
   "panel.comingSoon": "即将推出",
 

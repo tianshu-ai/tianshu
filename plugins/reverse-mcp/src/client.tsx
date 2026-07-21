@@ -68,6 +68,9 @@ function BridgePanel(_props: PanelProps) {
   const [browserOn, setBrowserOn] = useState(true);
   const [engine, setEngine] = useState<BrowserEngine>("own");
   const [headless, setHeadless] = useState(false);
+  // Shell (exec + file sync) is opt-in: off by default, mirroring the
+  // bridge CLI default. Enabling it appends --shell to the command.
+  const [shellOn, setShellOn] = useState(false);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   // Common CLI args (server + token + capability flags). Both the
@@ -81,6 +84,7 @@ function BridgePanel(_props: PanelProps) {
       if (engine === "stealth") parts.push("--browser-engine stealth");
       if (headless) parts.push("--headless");
     }
+    if (shellOn) parts.push("--shell");
     return parts.join(" ");
   })();
   // Global install path: run `tsbridge <args>` after `npm i -g`.
@@ -92,7 +96,7 @@ function BridgePanel(_props: PanelProps) {
   const configUrl = info
     ? `tsbridge://configure?server=${encodeURIComponent(info.wsUrl)}` +
       (info.authEnabled && info.token ? `&token=${encodeURIComponent(info.token)}` : "") +
-      `&engine=${engine}&headless=${headless ? "1" : "0"}`
+      `&engine=${engine}&headless=${headless ? "1" : "0"}&shell=${shellOn ? "1" : "0"}`
     : "…";
 
   const fetchInfo = useCallback(() => {
@@ -211,22 +215,20 @@ function BridgePanel(_props: PanelProps) {
                 </label>
               </div>
             )}
-            {/* shell — coming soon */}
-            <label className="flex items-center gap-2 opacity-50">
-              <input type="checkbox" disabled />
+            {/* shell — exec + file sync (opt-in). Ships sync_up/sync_down
+                too, so it covers the old "files" capability. */}
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={shellOn}
+                onChange={(e) => setShellOn(e.target.checked)}
+              />
               <span className="font-medium">{t("panel.shell")}</span>
-              <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-fainter">
-                {t("panel.comingSoon")}
-              </span>
+              <span className="text-[10px] text-fg-fainter">{t("panel.shellHint")}</span>
             </label>
-            {/* files — coming soon */}
-            <label className="flex items-center gap-2 opacity-50">
-              <input type="checkbox" disabled />
-              <span className="font-medium">{t("panel.files")}</span>
-              <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-fainter">
-                {t("panel.comingSoon")}
-              </span>
-            </label>
+            {shellOn && (
+              <div className="ml-6 text-[10px] text-warning">{t("panel.shellWarning")}</div>
+            )}
           </div>
         </div>
 
