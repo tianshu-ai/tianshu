@@ -1,6 +1,7 @@
 {
   "manifest.sidebarSections.sessions": "微信",
-  "manifest.adminPages.main": "微信",
+  "manifest.topBarButtons.toggle": "微信",
+  "manifest.rightPanels.main": "微信",
 
   "status.running": "已连接",
   "status.starting": "启动中",

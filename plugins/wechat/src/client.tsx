@@ -32,7 +32,7 @@ import {
   X,
 } from "lucide-react";
 import type {
-  AdminPageProps,
+  PanelProps,
   PluginClientExports,
   SidebarSectionProps,
 } from "@tianshu-ai/plugin-sdk/client";
@@ -352,7 +352,7 @@ function QrCanvas({ value }: { value: string }) {
 
 // ─── admin page ─────────────────────────────────────────────────
 
-function WeChatAdminPage(_props: AdminPageProps) {
+function WeChatPanel(_props: PanelProps) {
   const t = usePluginT("wechat");
   const [bindings, setBindings] = useState<BindingView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -476,34 +476,44 @@ function WeChatAdminPage(_props: AdminPageProps) {
           {bindings.map((b) => (
             <li
               key={b.id}
-              className="flex items-center justify-between rounded-md border border-border-subtle bg-bg-elevated px-4 py-3"
+              className="rounded-md border border-border-subtle bg-bg-elevated px-3 py-2.5"
             >
-              <div>
-                <div className="text-sm font-medium text-fg-default">
+              {/* Header: account name + delete, aligned. */}
+              <div className="flex items-start justify-between gap-2">
+                <div
+                  className="min-w-0 flex-1 truncate text-sm font-medium text-fg-default"
+                  title={b.displayName ?? b.config.username ?? undefined}
+                >
                   {b.displayName ?? b.config.username ?? t("page.bound.defaultAccountName")}
                 </div>
-                <div className="mt-0.5 flex items-center gap-2 text-[11px] text-fg-faint">
-                  <span className="font-mono">{b.id}</span>
-                  <StatusPill status={b.status} detail={b.statusDetail} />
-                  {typeof b.config.modelId === "string" && b.config.modelId && (
-                    <span
-                      className="rounded bg-bg-hover px-1 py-px font-mono text-[10px] text-fg-muted"
-                      title={t("page.bound.modelTitle")}
-                    >
-                      {String(b.config.modelId)}
-                    </span>
-                  )}
-                  <span>{t("page.bound.boundOn", { date: new Date(b.createdAt).toLocaleDateString() })}</span>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleDelete(b.id)}
+                  className="-mr-1 -mt-0.5 shrink-0 rounded p-1.5 text-fg-muted hover:bg-danger/10 hover:text-danger"
+                  title={t("page.bound.disconnect")}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleDelete(b.id)}
-                className="rounded p-1.5 text-fg-muted hover:bg-danger/10 hover:text-danger"
-                title={t("page.bound.disconnect")}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
+              {/* Binding id on its own line (it's long + monospace). */}
+              <div className="mt-0.5 truncate font-mono text-[10px] text-fg-faint" title={b.id}>
+                {b.id}
+              </div>
+              {/* Meta chips: status / model / date, wrapping cleanly. */}
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-fg-faint">
+                <StatusPill status={b.status} detail={b.statusDetail} />
+                {typeof b.config.modelId === "string" && b.config.modelId && (
+                  <span
+                    className="rounded bg-bg-hover px-1.5 py-px font-mono text-[10px] text-fg-muted"
+                    title={t("page.bound.modelTitle")}
+                  >
+                    {String(b.config.modelId)}
+                  </span>
+                )}
+                <span className="text-fg-fainter">
+                  {t("page.bound.boundOn", { date: new Date(b.createdAt).toLocaleDateString() })}
+                </span>
+              </div>
             </li>
           ))}
         </ul>
@@ -631,7 +641,7 @@ function WeChatSidebarSection(_props: SidebarSectionProps) {
 
 const clientExports: PluginClientExports = {
   components: {
-    WeChatAdminPage: WeChatAdminPage as PluginClientExports["components"][string],
+    WeChatPanel: WeChatPanel as PluginClientExports["components"][string],
     WeChatSidebarSection:
       WeChatSidebarSection as PluginClientExports["components"][string],
   },

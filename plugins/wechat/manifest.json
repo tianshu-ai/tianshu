@@ -18,14 +18,20 @@
         "since": "0.3.36"
       }
     ],
-    "adminPages": [
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "MessageSquare",
+        "tooltip": "WeChat",
+        "opensPanel": "wechat.main",
+        "order": 440
+      }
+    ],
+    "rightPanels": [
       {
         "id": "main",
         "displayName": "WeChat",
-        "icon": "MessageSquare",
-        "component": "WeChatAdminPage",
-        "group": "Channels",
-        "order": 100
+        "component": "WeChatPanel"
       }
     ],
     "sidebarSections": [
