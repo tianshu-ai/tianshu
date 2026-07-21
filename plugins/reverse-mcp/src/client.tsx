@@ -96,7 +96,7 @@ function BridgePanel(_props: PanelProps) {
   const configUrl = info
     ? `tsbridge://configure?server=${encodeURIComponent(info.wsUrl)}` +
       (info.authEnabled && info.token ? `&token=${encodeURIComponent(info.token)}` : "") +
-      `&engine=${engine}&headless=${headless ? "1" : "0"}&shell=${shellOn ? "1" : "0"}`
+      `&browser=${browserOn ? "1" : "0"}&engine=${engine}&headless=${headless ? "1" : "0"}&shell=${shellOn ? "1" : "0"}`
     : "…";
 
   const fetchInfo = useCallback(() => {
