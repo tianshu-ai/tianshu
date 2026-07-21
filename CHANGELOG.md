@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.8.0](https://github.com/tianshu-ai/tianshu/compare/v0.7.0...v0.8.0) (2026-07-21)
+
+
+### Features
+
+* **reverse-mcp:** Shell capability toggle in the Local Bridge panel ([#326](https://github.com/tianshu-ai/tianshu/issues/326)) ([eb0e4a7](https://github.com/tianshu-ai/tianshu/commit/eb0e4a745f093d117c9daba314af8f07031fe832))
+
+
+### Bug Fixes
+
+* **reverse-mcp:** include browser flag in the app deep-link ([#328](https://github.com/tianshu-ai/tianshu/issues/328)) ([4c513e2](https://github.com/tianshu-ai/tianshu/commit/4c513e209a673fc921f96b2e952a0e9eb5ff721a))
+
 ## [0.7.0](https://github.com/tianshu-ai/tianshu/compare/v0.6.0...v0.7.0) (2026-07-20)
 
 
