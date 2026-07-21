@@ -165,5 +165,7 @@
   "browserPanel.title": "浏览器",
   "browserPanel.iframeTitle": "浏览器视口",
   "browserPanel.notRunning": "浏览器栈未运行。",
-  "browserPanel.loading": "加载中…"
+  "browserPanel.loading": "加载中…",
+  "manifest.displayName": "MicroSandbox",
+  "manifest.description": "基于 microsandbox（Apple 虚拟化框架 / KVM）运行的按租户 shell 沙箱。提供 sandbox.shell，以及可选启用的 browser.cdp 边车（通过 CloakBrowser 的隐身 Chromium + Playwright MCP + noVNC；由后续 PR 点亮）。"
 }

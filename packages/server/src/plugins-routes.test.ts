@@ -190,6 +190,104 @@ describe("plugins HTTP routes", () => {
     expect(cfg.plugins?.beta).toEqual({ enabled: true });
   });
 
+  it("PATCH auto-disables a plugin that provides the same capability (mutual exclusion)", async () => {
+    // Two sandbox backends both provide sandbox.shell — only one may
+    // be active at a time. Manifests need a backing sandboxes[] entry
+    // for the provides validation to pass.
+    writeBuiltinManifest("sandboxa", {
+      id: "sandboxa",
+      version: "1.0.0",
+      displayName: "Sandbox A",
+      provides: ["sandbox.shell"],
+      server: { entry: "@a/server" },
+      contributes: { sandboxes: [{ id: "shell", kind: "shell", displayName: "A", module: "M" }] },
+    });
+    writeBuiltinManifest("sandboxb", {
+      id: "sandboxb",
+      version: "1.0.0",
+      displayName: "Sandbox B",
+      provides: ["sandbox.shell"],
+      server: { entry: "@b/server" },
+      contributes: { sandboxes: [{ id: "shell", kind: "shell", displayName: "B", module: "M" }] },
+    });
+    writeTenantConfig(TENANT, { plugins: { sandboxa: { enabled: true } } }, home);
+    const app = buildApp();
+
+    const res = await request(app)
+      .patch("/api/plugins/sandboxb")
+      .send({ enabled: true });
+    expect(res.status).toBe(200);
+
+    const cfg = loadTenantConfig(TENANT, home);
+    expect(cfg.plugins?.sandboxb).toEqual({ enabled: true });
+    // sandboxa auto-disabled because it double-provides sandbox.shell.
+    expect(cfg.plugins?.sandboxa).toEqual({ enabled: false });
+  });
+
+  it("PATCH auto-disables a same-exclusiveGroup plugin even without shared provides", async () => {
+    // A sandbox backend (provides sandbox.shell) and a bridge that
+    // provides NOTHING but serves shell via reverse-MCP. They share
+    // exclusiveGroup:"shell" so only one may be on at a time.
+    writeBuiltinManifest("sandboxa", {
+      id: "sandboxa",
+      version: "1.0.0",
+      displayName: "Sandbox A",
+      provides: ["sandbox.shell"],
+      exclusiveGroup: "shell",
+      server: { entry: "@a/server" },
+      contributes: { sandboxes: [{ id: "shell", kind: "shell", displayName: "A", module: "M" }] },
+    });
+    writeBuiltinManifest("bridgesh", {
+      id: "bridgesh",
+      version: "1.0.0",
+      displayName: "Bridge (shell)",
+      exclusiveGroup: "shell",
+      server: { entry: "@x/server" },
+    });
+    writeTenantConfig(TENANT, { plugins: { sandboxa: { enabled: true } } }, home);
+    const app = buildApp();
+
+    const res = await request(app)
+      .patch("/api/plugins/bridgesh")
+      .send({ enabled: true });
+    expect(res.status).toBe(200);
+
+    const cfg = loadTenantConfig(TENANT, home);
+    expect(cfg.plugins?.bridgesh).toEqual({ enabled: true });
+    // sandboxa auto-disabled: same exclusiveGroup, no shared provides.
+    expect(cfg.plugins?.sandboxa).toEqual({ enabled: false });
+  });
+
+  it("PATCH leaves non-conflicting plugins enabled (no shared provides)", async () => {
+    writeBuiltinManifest("sandboxa", {
+      id: "sandboxa",
+      version: "1.0.0",
+      displayName: "Sandbox A",
+      provides: ["sandbox.shell"],
+      server: { entry: "@a/server" },
+      contributes: { sandboxes: [{ id: "shell", kind: "shell", displayName: "A", module: "M" }] },
+    });
+    // bridge provides nothing — must NOT be disabled when a sandbox
+    // is enabled.
+    writeBuiltinManifest("bridgex", {
+      id: "bridgex",
+      version: "1.0.0",
+      displayName: "Bridge X",
+      server: { entry: "@x/server" },
+    });
+    writeTenantConfig(TENANT, { plugins: { bridgex: { enabled: true } } }, home);
+    const app = buildApp();
+
+    const res = await request(app)
+      .patch("/api/plugins/sandboxa")
+      .send({ enabled: true });
+    expect(res.status).toBe(200);
+
+    const cfg = loadTenantConfig(TENANT, home);
+    expect(cfg.plugins?.sandboxa).toEqual({ enabled: true });
+    expect(cfg.plugins?.bridgex).toEqual({ enabled: true });
+  });
+
   it("PATCH rejects bad plugin id format", async () => {
     const app = buildApp();
     const res = await request(app)

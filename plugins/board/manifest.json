@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "Boards",
   "description": "Render a user's HTML dashboards as interactive UI. Drop an index.html into board/<name>/ under your workspace and the agent can show it in chat via the `show_board` tool (as an MCP-UI resource) or you can browse boards in the side panel.",
+  "category": "automation",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["workspace.read"],

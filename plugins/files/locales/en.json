@@ -32,5 +32,7 @@
 
   "upload.attachFile": "Attach file",
   "upload.exceedsCap": "File exceeds {mb} MB cap",
-  "upload.noBody": "(no body)"
+  "upload.noBody": "(no body)",
+  "manifest.displayName": "Workspace Files",
+  "manifest.description": "Browse, read, and upload files in the tenant workspace."
 }

@@ -3,6 +3,8 @@
   "displayName": "OpenShell (Docker)",
   "version": "0.1.0",
   "description": "Run shell commands in OpenShell-managed Docker sandboxes (NVIDIA OpenShell). Alternative to microsandbox: avoids macOS Hypervisor.framework (no idle-CPU burn on Apple Silicon Tahoe), includes network/inference policy support. MVP provides sandbox.shell only; browser sidecar and per-task pool are tracked for follow-ups.",
+  "category": "runtime",
+  "exclusiveGroup": "shell",
   "license": "Apache-2.0",
   "homepage": "https://github.com/NVIDIA/OpenShell",
   "server": { "entry": "@tianshu-builtin/plugin-openshell/server" },

@@ -5,5 +5,7 @@
   "manifest.config.backend.option.exa": "Exa",
   "manifest.config.backend.option.parallel": "Parallel",
   "manifest.config.timeoutMs.label": "Per-request timeout",
-  "manifest.config.timeoutMs.description": "Network timeout for each web_search / web_fetch call. Increase if you hit timeouts on slow networks."
+  "manifest.config.timeoutMs.description": "Network timeout for each web_search / web_fetch call. Increase if you hit timeouts on slow networks.",
+  "manifest.displayName": "Web Search",
+  "manifest.description": "Key-free web search + single-page fetch for agents. Search runs against a hosted endpoint (Exa or Parallel) with no API key. web_fetch reads a page to markdown, also no config."
 }

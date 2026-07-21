@@ -87,6 +87,38 @@ export function useManifestLabel(
   return manifestLabelFor(locale, pluginId, kind, contribId, fallback);
 }
 
+// ─── plugin-level meta (displayName + description) ───────────
+//
+// The Plugin Manager lists each plugin's top-level `displayName` and
+// `description` straight from the manifest (English defaults). Localize
+// them the same way, via well-known keys the plugin author adds to
+// their locales/<lang>.json (short form):
+//
+//     manifest.displayName
+//     manifest.description
+//
+// Host prefixes with `plugin.<id>.`. Missing translations fall back to
+// the manifest string, so unlocalized plugins render unchanged.
+
+/** Returns a per-plugin resolver for the top-level displayName /
+ *  description. Subscribes to locale once. */
+export function usePluginMeta(
+  pluginId: string,
+): {
+  displayName: (fallback: string) => string;
+  description: (fallback: string | null) => string | null;
+} {
+  const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
+  return {
+    displayName: (fallback: string) =>
+      lookupPluginString(locale, `plugin.${pluginId}.manifest.displayName`) ??
+      fallback,
+    description: (fallback: string | null) =>
+      lookupPluginString(locale, `plugin.${pluginId}.manifest.description`) ??
+      fallback,
+  };
+}
+
 // ─── configSchema field / group labels ──────────────────────
 //
 // The auto-generated plugin config form (PluginConfigForm) renders

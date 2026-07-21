@@ -50,5 +50,7 @@
   "graph.open": "Open",
 
   "record.running": "Wiki update running… {pct}%",
-  "record.record": "Record this conversation into the wiki"
+  "record.record": "Record this conversation into the wiki",
+  "manifest.displayName": "Wiki",
+  "manifest.description": "LLM Wiki — distils the rolling conversation into an Obsidian-style knowledge vault. Each compacted segment is filed automatically as a source; the agent synthesises entities / concepts / topics on top. Browse + search in the side panel."
 }

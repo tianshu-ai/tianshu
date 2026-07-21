@@ -165,5 +165,7 @@
   "browserPanel.title": "Browser",
   "browserPanel.iframeTitle": "Browser viewport",
   "browserPanel.notRunning": "Browser stack not running.",
-  "browserPanel.loading": "Loading\u2026"
+  "browserPanel.loading": "Loading\u2026",
+  "manifest.displayName": "MicroSandbox",
+  "manifest.description": "Per-tenant shell sandbox running on microsandbox (Apple Virtualization.framework / KVM). Provides sandbox.shell + an opt-in browser.cdp sidecar (Stealth Chromium via CloakBrowser + Playwright MCP + noVNC; lit up by a follow-up PR)."
 }

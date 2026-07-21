@@ -81,6 +81,12 @@ export interface PluginListEntry {
   version: string;
   displayName: string;
   description: string | null;
+  /** Optional grouping key for the Plugin Manager UI. Null when unset
+   *  (grouped under "Other"). */
+  category: string | null;
+  /** Mutual-exclusion group. At most one plugin per group may be
+   *  enabled at a time. Null when unset. */
+  exclusiveGroup: string | null;
   source: "builtin" | "tenant";
   state: PluginState;
   failedReason: string | null;

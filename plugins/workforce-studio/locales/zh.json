@@ -245,5 +245,7 @@
   "originBadge.tenantPlugin": "租户插件",
   "originBadge.host": "宿主",
   "originBadge.workspace": "工作区",
-  "originBadge.tenant": "租户"
+  "originBadge.tenant": "租户",
+  "manifest.displayName": "工作队工作台",
+  "manifest.description": "检视并导出租户的主代理和每个工作者代理——系统提示词、可用工具、技能——打包成一个可下载的整体。第一阶段为只读：编辑与导入将在后续阶段实现。"
 }

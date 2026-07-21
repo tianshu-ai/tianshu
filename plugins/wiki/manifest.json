@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "displayName": "Wiki",
   "description": "LLM Wiki — distils the rolling conversation into an Obsidian-style knowledge vault. Each compacted segment is filed automatically as a source; the agent synthesises entities / concepts / topics on top. Browse + search in the side panel.",
+  "category": "knowledge",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": [

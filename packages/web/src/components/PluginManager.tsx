@@ -34,6 +34,8 @@ import {
 } from "../lib/api";
 import { usePluginStore } from "../stores/plugin-store";
 import { useT } from "../hooks/useT";
+import { usePluginMeta } from "../lib/plugin-manifest-labels";
+import { Modal } from "./ui/Modal";
 
 interface Props {
   open: boolean;
@@ -55,6 +57,13 @@ export default function PluginManager({ open, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  // Pending conflict-confirm: the plugin the user asked to enable plus
+  // the currently-active plugins that would be auto-disabled. Non-null
+  // => the confirm modal is open.
+  const [confirmConflict, setConfirmConflict] = useState<{
+    plugin: PluginListEntry;
+    conflicts: PluginListEntry[];
+  } | null>(null);
 
   // Installed tab — ensure the shared store is hydrated. The store's
   // `load()` is idempotent so opening the modal again is cheap.
@@ -95,8 +104,8 @@ export default function PluginManager({ open, onClose }: Props) {
 
   if (!open) return null;
 
-  async function toggle(p: PluginListEntry) {
-    const next = p.state !== "active";
+  // Actually flip a plugin's enabled state (no confirm).
+  async function doToggle(p: PluginListEntry, next: boolean) {
     setPendingId(p.id);
     setError(null);
     try {
@@ -107,6 +116,29 @@ export default function PluginManager({ open, onClose }: Props) {
     } finally {
       setPendingId(null);
     }
+  }
+
+  function toggle(p: PluginListEntry) {
+    const next = p.state !== "active";
+    // Enabling a plugin can auto-disable others it conflicts with
+    // (shared provided capability, or same exclusiveGroup). Surface a
+    // confirm modal listing them before we flip anything.
+    if (next) {
+      const conflicts = (plugins ?? []).filter((o) => {
+        if (o.id === p.id || o.state !== "active") return false;
+        const capOverlap = p.capabilities.provided.some((c) =>
+          o.capabilities.provided.includes(c),
+        );
+        const groupOverlap =
+          !!p.exclusiveGroup && o.exclusiveGroup === p.exclusiveGroup;
+        return capOverlap || groupOverlap;
+      });
+      if (conflicts.length > 0) {
+        setConfirmConflict({ plugin: p, conflicts });
+        return;
+      }
+    }
+    void doToggle(p, next);
   }
 
 
@@ -238,6 +270,54 @@ export default function PluginManager({ open, onClose }: Props) {
           )}
         </div>
       </div>
+
+      {/* Conflict confirm: enabling a plugin auto-disables others that
+          share a capability / exclusiveGroup. Ask first. */}
+      {confirmConflict && (
+        <Modal
+          isOpen
+          onClose={() => setConfirmConflict(null)}
+          size="sm"
+          title={t("plugin.conflict.title")}
+          allowMaximize={false}
+        >
+          <div className="px-5 py-4" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm text-fg-default">
+              {t("plugin.conflict.body", {
+                plugin: confirmConflict.plugin.displayName,
+              })}
+            </p>
+            <ul className="mt-2 space-y-1">
+              {confirmConflict.conflicts.map((c) => (
+                <li key={c.id} className="flex items-center gap-2 text-sm text-fg-muted">
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning" />
+                  {c.displayName}
+                </li>
+              ))}
+            </ul>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmConflict(null)}
+                className="btn-ghost px-3 py-1.5 text-xs text-fg-muted"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const p = confirmConflict.plugin;
+                  setConfirmConflict(null);
+                  void doToggle(p, true);
+                }}
+                className="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90"
+              >
+                {t("plugin.conflict.confirmButton")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -267,6 +347,27 @@ function TabButton({
   );
 }
 
+// Section ordering for the grouped plugin list. Plugins carry a
+// free-form `category`; we render sections in this fixed order and
+// append any unknown categories (then "other") at the end so a new
+// category still shows up without a code change.
+const CATEGORY_ORDER = [
+  "runtime",
+  "agents",
+  "knowledge",
+  "automation",
+  "channels",
+] as const;
+
+function categoryLabel(t: ReturnType<typeof useT>, key: string): string {
+  // i18n keys: plugin.category.<key>; falls back to the raw key
+  // (capitalised) so an unknown category still renders a header.
+  const label = t(`plugin.category.${key}`);
+  if (label && label !== `plugin.category.${key}`) return label;
+  if (key === "other") return t("plugin.category.other");
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 function InstalledList({
   plugins,
   pendingId,
@@ -276,6 +377,7 @@ function InstalledList({
   pendingId: string | null;
   onToggle: (p: PluginListEntry) => void;
 }) {
+  const t = useT();
   if (plugins === null) {
     return (
       <div className="flex items-center justify-center py-10 text-sm text-fg-faint">
@@ -302,43 +404,91 @@ function InstalledList({
       </div>
     );
   }
+  // Bucket plugins by category, preserving each bucket's incoming
+  // order. Known categories render first in CATEGORY_ORDER, then any
+  // other categories alphabetically, then uncategorised ("other").
+  const buckets = new Map<string, PluginListEntry[]>();
+  for (const p of plugins) {
+    const key = (p.category ?? "other").trim() || "other";
+    const arr = buckets.get(key);
+    if (arr) arr.push(p);
+    else buckets.set(key, [p]);
+  }
+  const known = CATEGORY_ORDER.filter((k) => buckets.has(k));
+  const extra = [...buckets.keys()]
+    .filter((k) => k !== "other" && !CATEGORY_ORDER.includes(k as (typeof CATEGORY_ORDER)[number]))
+    .sort();
+  const orderedKeys = [...known, ...extra, ...(buckets.has("other") ? ["other"] : [])];
+
   return (
-    <ul className="space-y-2">
-      {plugins.map((p) => (
-        <li
-          key={p.id}
-          className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated/50 p-3"
-        >
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-fg-default">{p.displayName}</span>
-              <code className="rounded bg-bg-raised px-1 py-0.5 text-[10px] text-fg-muted">
-                {p.id}
-              </code>
-              <span className="text-[10px] text-fg-fainter">v{p.version}</span>
-              <SourceBadge source={p.source} />
-              <StateBadge state={p.state} />
-            </div>
-            {p.description && (
-              <p className="mt-1 text-xs text-fg-muted">{p.description}</p>
-            )}
-            <CapabilityBadges entry={p} />
-            {p.failedReason && (
-              <div className="mt-1 flex items-start gap-1 text-[11px] text-danger">
-                <AlertTriangle size={11} className="mt-px flex-shrink-0" />
-                <span className="break-all">{p.failedReason}</span>
-              </div>
-            )}
-          </div>
-          <Toggle
-            active={p.state === "active"}
-            pending={pendingId === p.id}
-            disabled={p.state === "failed" || p.state === "client-bundle-missing"}
-            onClick={() => onToggle(p)}
-          />
-        </li>
+    <div className="space-y-4">
+      {orderedKeys.map((key) => (
+        <section key={key}>
+          <h3 className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+            {categoryLabel(t, key)}
+            <span className="text-fg-fainter">{buckets.get(key)!.length}</span>
+          </h3>
+          <ul className="space-y-2">
+            {buckets.get(key)!.map((p) => (
+              <PluginCard
+                key={p.id}
+                p={p}
+                pending={pendingId === p.id}
+                onToggle={onToggle}
+              />
+            ))}
+          </ul>
+        </section>
       ))}
-    </ul>
+    </div>
+  );
+}
+
+// One installed-plugin card. Localizes the plugin's displayName +
+// description via the plugin locale dictionary (plugin.<id>.manifest.
+// displayName / .description), falling back to the manifest string.
+function PluginCard({
+  p,
+  pending,
+  onToggle,
+}: {
+  p: PluginListEntry;
+  pending: boolean;
+  onToggle: (p: PluginListEntry) => void;
+}) {
+  const meta = usePluginMeta(p.id);
+  const displayName = meta.displayName(p.displayName);
+  const description = meta.description(p.description);
+  return (
+    <li className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated/50 p-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-fg-default">{displayName}</span>
+          <code className="rounded bg-bg-raised px-1 py-0.5 text-[10px] text-fg-muted">
+            {p.id}
+          </code>
+          <span className="text-[10px] text-fg-fainter">v{p.version}</span>
+          <SourceBadge source={p.source} />
+          <StateBadge state={p.state} />
+        </div>
+        {description && (
+          <p className="mt-1 text-xs text-fg-muted">{description}</p>
+        )}
+        <CapabilityBadges entry={p} />
+        {p.failedReason && (
+          <div className="mt-1 flex items-start gap-1 text-[11px] text-danger">
+            <AlertTriangle size={11} className="mt-px flex-shrink-0" />
+            <span className="break-all">{p.failedReason}</span>
+          </div>
+        )}
+      </div>
+      <Toggle
+        active={p.state === "active"}
+        pending={pending}
+        disabled={p.state === "failed" || p.state === "client-bundle-missing"}
+        onClick={() => onToggle(p)}
+      />
+    </li>
   );
 }
 

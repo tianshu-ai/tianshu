@@ -46,5 +46,7 @@
   "sidebar.dm": "私聊",
   "sidebar.group": "群",
   "sidebar.active": "使用中",
-  "sidebar.wechat": "微信"
+  "sidebar.wechat": "微信",
+  "manifest.displayName": "微信",
+  "manifest.description": "基于腾讯 iLink 机器人 API 的微信渠道。用微信 App 扫码授权；来自已授权用户的私信通过渠道系统路由给代理。"
 }

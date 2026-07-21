@@ -11,6 +11,26 @@ export interface PluginManifest {
   version: string;
   displayName: string;
   description?: string;
+  /**
+   * Optional grouping key for the Plugin Manager UI. Free-form
+   * string; plugins with the same value are shown under one section.
+   * Unset → grouped under "Other". Recommended values (host uses
+   * these for section ordering + i18n): "runtime", "agents",
+   * "knowledge", "automation", "channels".
+   */
+  category?: string;
+  /**
+   * Optional mutual-exclusion group. At most one plugin per group may
+   * be enabled in a tenant at a time — enabling one auto-disables the
+   * others in the same group (radio-button behaviour). Use this for
+   * interchangeable backends whose overlap isn't captured by an
+   * exclusive `provides[]` capability. Example: the shell backends
+   * (microsandbox, openshell, reverse-mcp/Local Bridge) all share
+   * `exclusiveGroup: "shell"` — only one may serve shell at a time,
+   * even though Local Bridge provides its shell via reverse-MCP
+   * rather than a `sandbox.shell` capability.
+   */
+  exclusiveGroup?: string;
   author?: string;
   license?: string;
   /**

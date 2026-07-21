@@ -26,6 +26,8 @@ function plugin(
     version: "1.0.0",
     displayName: id,
     description: null,
+    category: null,
+    exclusiveGroup: null,
     source: "builtin",
     state,
     failedReason: null,
