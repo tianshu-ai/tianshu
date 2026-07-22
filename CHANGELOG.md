@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.10.0](https://github.com/tianshu-ai/tianshu/compare/v0.9.1...v0.10.0) (2026-07-22)
+
+
+### Features
+
+* **setup:** Linux support — systemd user service + Dockerfile ([#335](https://github.com/tianshu-ai/tianshu/issues/335)) ([d4eeeba](https://github.com/tianshu-ai/tianshu/commit/d4eeebaab06feafadb0cc19885c1587eb1a603d6))
+
 ## [0.9.1](https://github.com/tianshu-ai/tianshu/compare/v0.9.0...v0.9.1) (2026-07-22)
 
 
