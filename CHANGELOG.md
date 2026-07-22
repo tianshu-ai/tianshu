@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.9.1](https://github.com/tianshu-ai/tianshu/compare/v0.9.0...v0.9.1) (2026-07-22)
+
+
+### Bug Fixes
+
+* **reverse-mcp:** keep the bridge registry alive across re-activation ([#332](https://github.com/tianshu-ai/tianshu/issues/332)) ([d4e53a7](https://github.com/tianshu-ai/tianshu/commit/d4e53a72fa0f0c530ac7f49102c8eadbd86bd085))
+* **server:** close live WebSockets on shutdown (fix zombie process after restart) ([#334](https://github.com/tianshu-ai/tianshu/issues/334)) ([0061890](https://github.com/tianshu-ai/tianshu/commit/0061890cc85b94ee947e83ac1c023147594dbd35))
+
 ## [0.9.0](https://github.com/tianshu-ai/tianshu/compare/v0.8.0...v0.9.0) (2026-07-21)
 
 
