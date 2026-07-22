@@ -306,16 +306,31 @@ function shellQuote(s: string): string {
  * container / minimal environment without a user bus.
  */
 export function userBusAvailable(): boolean {
+  // `systemctl --user is-system-running` prints a state word and
+  // exits 0 only when "running". It exits non-zero for
+  // degraded/starting/etc — but the bus still WORKS in those
+  // cases, and the printed word proves it. The two ways it means
+  // "no user systemd":
+  //   - systemctl binary missing        → sh exits 127 (via execSync)
+  //     or spawn ENOENT; either way stdout is empty.
+  //   - no user bus (containers, no login session) → stderr says
+  //     "Failed to connect to bus" and stdout is empty.
+  // So: trust STDOUT. If we got a recognisable state word back,
+  // the bus is reachable; otherwise it isn't.
   try {
-    execSync("systemctl --user is-system-running", {
-      stdio: ["ignore", "ignore", "ignore"],
+    const out = execSync("systemctl --user is-system-running 2>/dev/null", {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
     });
-    return true;
+    return /\b(running|degraded|starting|stopping|maintenance|initializing)\b/.test(
+      out,
+    );
   } catch (err) {
-    // is-system-running exits non-zero for "degraded"/"starting"
-    // too, but those still mean the bus works. Only a spawn error
-    // (systemctl missing) or "Failed to connect to bus" means no.
-    const e = err as { status?: number };
-    return typeof e.status === "number";
+    // Non-zero exit still gives us stdout on the error object.
+    const e = err as { stdout?: Buffer | string };
+    const out = e.stdout ? e.stdout.toString() : "";
+    return /\b(running|degraded|starting|stopping|maintenance|initializing)\b/.test(
+      out,
+    );
   }
 }
