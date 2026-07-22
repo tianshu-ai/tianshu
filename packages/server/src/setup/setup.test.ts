@@ -198,6 +198,47 @@ describe("runSetupWizard non-interactive", () => {
     expect(ids).toContain("gpt-5");
   });
 
+  it("writes the Qwen (DashScope) profile with the compatible-mode baseUrl", async () => {
+    await runSetupWizard({
+      nonInteractive: true,
+      provider: "qwen",
+      apiKey: "sk-dashscope-1234567890",
+      home,
+      cwd,
+    });
+    const cfg = JSON.parse(
+      fs.readFileSync(path.join(home, "config.json"), "utf8"),
+    );
+    const qwen = cfg.models.providers.qwen;
+    expect(qwen.api).toBe("openai-completions");
+    expect(qwen.baseUrl).toBe(
+      "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    );
+    expect(qwen.apiKey).toBe("sk-dashscope-1234567890");
+    expect(cfg.defaultModel).toBe("qwen/qwen3.7-plus");
+    const ids = qwen.models.map((m: { id: string }) => m.id);
+    expect(ids).toContain("qwen3.7-max");
+  });
+
+  it("lets Qwen point at the international endpoint via --base-url", async () => {
+    await runSetupWizard({
+      nonInteractive: true,
+      provider: "qwen",
+      apiKey: "sk-x-1234567890",
+      baseUrl: "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      defaultModel: "qwen/qwen3.7-max",
+      home,
+      cwd,
+    });
+    const cfg = JSON.parse(
+      fs.readFileSync(path.join(home, "config.json"), "utf8"),
+    );
+    expect(cfg.models.providers.qwen.baseUrl).toBe(
+      "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    );
+    expect(cfg.defaultModel).toBe("qwen/qwen3.7-max");
+  });
+
   it("respects --dry-run by not writing files", async () => {
     const res = await runSetupWizard({
       nonInteractive: true,

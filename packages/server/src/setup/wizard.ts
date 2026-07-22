@@ -143,6 +143,30 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
     ],
     defaultModel: "google/gemini-2.5-flash",
   },
+  {
+    // Alibaba Qwen via DashScope's OpenAI-compatible endpoint
+    // (`/compatible-mode/v1`). Uses the same openai-completions
+    // API shape, so it needs no new driver — just a distinct
+    // provider entry with the DashScope baseUrl + DASHSCOPE_API_KEY.
+    // Default baseUrl is the mainland-China (Beijing) host; users
+    // outside China should override with --base-url
+    // https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+    // (Singapore). Model ids are the DashScope OpenAI-compatible
+    // aliases; -latest tracks the newest snapshot automatically.
+    id: "qwen",
+    name: "Alibaba Qwen (DashScope)",
+    envVar: "DASHSCOPE_API_KEY",
+    api: "openai-completions",
+    baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    models: [
+      { id: "qwen3.7-max", name: "Qwen3.7 Max", reasoning: true },
+      { id: "qwen3.7-plus", name: "Qwen3.7 Plus" },
+      { id: "qwen3.6-flash", name: "Qwen3.6 Flash" },
+      { id: "qwen-max-latest", name: "Qwen Max (latest)" },
+      { id: "qwen-plus-latest", name: "Qwen Plus (latest)" },
+    ],
+    defaultModel: "qwen/qwen3.7-plus",
+  },
 ];
 
 export interface WizardResult {
@@ -240,7 +264,7 @@ export async function runSetupWizard(
   if (opts.nonInteractive) {
     if (!opts.provider) {
       throw new Error(
-        "--non-interactive requires --provider (anthropic|openai|google|skip)",
+        "--non-interactive requires --provider (anthropic|openai|google|qwen|skip)",
       );
     }
     providerId = opts.provider;
