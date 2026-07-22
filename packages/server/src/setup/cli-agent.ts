@@ -65,6 +65,7 @@ import {
 } from "../core/plugins/index.js";
 import { collectDoctorReport } from "./doctor.js";
 import * as launchd from "./launchd.js";
+import { getBackend } from "./service-backend.js";
 import { findRepoRoot } from "./repo-root.js";
 import {
   detectInstallSource,
@@ -1149,9 +1150,10 @@ export function buildTools(
       },
       execute: async (args) => {
         const repoRoot = findRepoRoot();
-        const label = launchd.resolveLabel(repoRoot);
-        const status = launchd.readStatus(label);
-        const { out, err } = launchd.logPathsFor(label);
+        const backend = getBackend() ?? launchd;
+        const label = backend.resolveLabel(repoRoot);
+        const status = backend.readStatus(label);
+        const { out, err } = backend.logPathsFor(label);
         const linesArg = Number(args.lines);
         const lines = Number.isFinite(linesArg) && linesArg > 0 ? Math.min(linesArg, 1000) : 80;
         const streamArg = String(args.stream ?? "both");
@@ -1413,10 +1415,11 @@ export function buildTools(
           });
         }
 
-        // Step 2: scan the launchd service logs for builder activity.
+        // Step 2: scan the service logs for builder activity.
         const repoRoot = findRepoRoot();
-        const label = launchd.resolveLabel(repoRoot);
-        const { out, err } = launchd.logPathsFor(label);
+        const backend = getBackend() ?? launchd;
+        const label = backend.resolveLabel(repoRoot);
+        const { out, err } = backend.logPathsFor(label);
         const stdoutLines = tailLines(out, logLines);
         const stderrLines = tailLines(err, logLines);
         // Merge and keep only builder-tagged lines (or lines

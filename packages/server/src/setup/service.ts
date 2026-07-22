@@ -2,10 +2,11 @@
 // the host's process supervisor.
 //
 // macOS: backed by launchd via launchd.ts.
-// Linux / Windows: graceful "not implemented yet — here's the
-//   command you'd run by hand" message. The wizard's
-//   start-server.ts already has the same fallback for install;
-//   we keep parity here so users get a consistent experience.
+// Linux:  backed by systemd (user scope) via systemd.ts.
+// Both go through service-backend.ts, which picks the backend by
+//   platform and exposes one uniform surface.
+// Windows / other: graceful "not implemented yet — here's the
+//   command you'd run by hand" message.
 //
 // Why these as separate commands rather than baking them into
 // `tianshu setup --wizard`:
@@ -24,8 +25,7 @@
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
-import * as launchd from "./launchd.js";
+import { getBackend, backendName } from "./service-backend.js";
 import { findRepoRoot } from "./repo-root.js";
 import { resolveServerPort as coreResolveServerPort } from "../core/urls.js";
 
@@ -78,18 +78,19 @@ const resolveServerPort = coreResolveServerPort;
 export async function runStatus(
   opts: ServiceCmdOpts = {},
 ): Promise<number> {
-  if (os.platform() !== "darwin") {
+  const backend = getBackend();
+  if (!backend) {
     console.log(
       "tianshu status: service management isn't implemented on this OS yet.",
     );
     return 1;
   }
   const repoRoot = opts.repoRoot ?? findRepoRoot();
-  const label = launchd.resolveLabel(repoRoot);
-  const status = launchd.readStatus(label);
+  const label = backend.resolveLabel(repoRoot);
+  const status = backend.readStatus(label);
   const port = resolveServerPort();
   const health = status.loaded
-    ? await launchd.probeHealth(port)
+    ? await backend.probeHealth(port)
     : { ok: false, reason: "service not loaded" };
 
   if (opts.json) {
@@ -153,34 +154,34 @@ export async function runStatus(
 export async function runStart(
   opts: ServiceCmdOpts = {},
 ): Promise<number> {
-  if (os.platform() !== "darwin") {
+  const backend = getBackend();
+  if (!backend) {
     console.log(
       "tianshu start: not implemented on this OS yet. Run `npm run dev` from the checkout.",
     );
     return 1;
   }
   const repoRoot = opts.repoRoot ?? findRepoRoot();
-  const label = launchd.resolveLabel(repoRoot);
-  const status = launchd.readStatus(label);
+  const label = backend.resolveLabel(repoRoot);
+  const status = backend.readStatus(label);
   if (!status.installed) {
-    // Migration aid: if no plist exists at the new label but
-    // an older plist (different label scheme) points at the
-    // same install path, that's a user upgrading from a
-    // version that used `ai.tianshu.dev.<hash>` for prod
-    // installs. Tell them what to do instead of refusing.
-    const orphans = launchd.findOrphanedLabels(label, repoRoot);
+    // Migration aid: if no unit/plist exists at the new label but
+    // an older one (different naming scheme) points at the same
+    // install path, that's a user upgrading. Tell them what to do
+    // instead of refusing.
+    const orphans = backend.findOrphanedLabels(label, repoRoot);
     if (orphans.length > 0) {
       console.error(
-        `Found a legacy launchd plist (${orphans[0].label}) pointing at the same install path. ` +
-          "Tianshu now uses stable label names (ai.tianshu.prod / ai.tianshu.dev) instead of hash suffixes.",
+        `Found a legacy service definition (${orphans[0].label}) pointing at the same install path. ` +
+          "Tianshu now uses stable service names instead of hash suffixes.",
       );
       console.error(
-        "Run `tianshu setup --wizard` once to migrate — it will install the new plist and bootout the old one.",
+        "Run `tianshu setup --wizard` once to migrate — it will install the new definition and remove the old one.",
       );
       return 2;
     }
     console.error(
-      `Service '${label}' isn't installed (no plist at ${status.plistPath}).`,
+      `Service '${label}' isn't installed (no definition at ${status.plistPath}).`,
     );
     console.error("Run `tianshu setup --wizard` to install.");
     return 2;
@@ -192,9 +193,9 @@ export async function runStart(
     );
     return 0;
   }
-  const r = launchd.bootstrap(status.plistPath);
+  const r = backend.bootstrap(status.plistPath);
   if (!r.ok) {
-    console.error(`launchctl bootstrap failed: ${r.stderr ?? "(unknown)"}`);
+    console.error(`${backendName()} start failed: ${r.stderr ?? "(unknown)"}`);
     return 1;
   }
   console.log(`Loaded ${label}.`);
@@ -207,7 +208,7 @@ export async function runStart(
         `\nServer didn't respond within ${deadlineMs / 1000}s. Check logs:`,
       );
       console.error(`  tianshu logs --stream=err`);
-      console.error(`  tail -f ${launchd.logPathsFor(label).err}`);
+      console.error(`  tail -f ${backend.logPathsFor(label).err}`);
       return 1;
     }
   }
@@ -228,7 +229,9 @@ async function waitWithProgress(
   const prefix = `Waiting for /api/health on :${port}...`;
   process.stdout.write(prefix);
   let lastLine = prefix.length;
-  const ok = await launchd.waitForHealth(port, deadlineMs, (elapsedMs) => {
+  const backend = getBackend();
+  if (!backend) return false;
+  const ok = await backend.waitForHealth(port, deadlineMs, (elapsedMs) => {
     const elapsedSec = Math.floor(elapsedMs / 1000);
     const totalSec = Math.floor(deadlineMs / 1000);
     const next = ` ${elapsedSec}s / ${totalSec}s`;
@@ -247,22 +250,23 @@ async function waitWithProgress(
  * use the wizard's uninstall path (TODO) to fully remove.
  */
 export async function runStop(opts: ServiceCmdOpts = {}): Promise<number> {
-  if (os.platform() !== "darwin") {
+  const backend = getBackend();
+  if (!backend) {
     console.log(
       "tianshu stop: not implemented on this OS yet. Stop your `npm run dev` process manually.",
     );
     return 1;
   }
   const repoRoot = opts.repoRoot ?? findRepoRoot();
-  const label = launchd.resolveLabel(repoRoot);
-  const status = launchd.readStatus(label);
+  const label = backend.resolveLabel(repoRoot);
+  const status = backend.readStatus(label);
   if (!status.loaded) {
     console.log(`Service '${label}' is not loaded — nothing to stop.`);
     return 0;
   }
-  const r = launchd.bootout(label);
+  const r = backend.bootout(label);
   if (!r.ok) {
-    console.error(`launchctl bootout failed: ${r.stderr ?? "(unknown)"}`);
+    console.error(`${backendName()} stop failed: ${r.stderr ?? "(unknown)"}`);
     return 1;
   }
   console.log(`Stopped ${label}.`);
@@ -287,15 +291,16 @@ export async function runStop(opts: ServiceCmdOpts = {}): Promise<number> {
  * it's just `tianshu logs` (or `tianshu logs --follow`).
  */
 export async function runLogs(opts: LogsCmdOpts = {}): Promise<number> {
-  if (os.platform() !== "darwin") {
+  const backend = getBackend();
+  if (!backend) {
     console.log(
       "tianshu logs: not implemented on this OS yet. Read the dev server's stdout directly.",
     );
     return 1;
   }
   const repoRoot = opts.repoRoot ?? findRepoRoot();
-  const label = launchd.resolveLabel(repoRoot);
-  const { out, err } = launchd.logPathsFor(label);
+  const label = backend.resolveLabel(repoRoot);
+  const { out, err } = backend.logPathsFor(label);
   const stream = opts.stream ?? "both";
   const lines = opts.lines ?? 50;
 
@@ -313,7 +318,7 @@ export async function runLogs(opts: LogsCmdOpts = {}): Promise<number> {
     console.error(`No log files found for service '${label}'.`);
     console.error(`  expected: ${err}`);
     console.error(`            ${out}`);
-    const status = launchd.readStatus(label);
+    const status = backend.readStatus(label);
     if (!status.installed) {
       console.error(
         "\nService isn't installed. Run `tianshu setup --wizard` first.",
@@ -370,26 +375,27 @@ function tailFile(filepath: string, n: number): string {
 export async function runRestart(
   opts: ServiceCmdOpts = {},
 ): Promise<number> {
-  if (os.platform() !== "darwin") {
+  const backend = getBackend();
+  if (!backend) {
     console.log("tianshu restart: not implemented on this OS yet.");
     return 1;
   }
   const repoRoot = opts.repoRoot ?? findRepoRoot();
-  const label = launchd.resolveLabel(repoRoot);
-  const status = launchd.readStatus(label);
+  const label = backend.resolveLabel(repoRoot);
+  const status = backend.readStatus(label);
   if (!status.installed) {
     console.error(`Service '${label}' isn't installed.`);
     console.error("Run `tianshu setup --wizard` to install.");
     return 2;
   }
   if (!status.loaded) {
-    // kickstart on a not-loaded service errors. Prefer the
+    // restart on a not-loaded service errors. Prefer the
     // start path (which bootstraps).
     return runStart(opts);
   }
-  const r = launchd.kickstart(label);
+  const r = backend.kickstart(label);
   if (!r.ok) {
-    console.error(`launchctl kickstart failed: ${r.stderr ?? "(unknown)"}`);
+    console.error(`${backendName()} restart failed: ${r.stderr ?? "(unknown)"}`);
     return 1;
   }
   console.log(`Restarted ${label}.`);
