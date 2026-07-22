@@ -35,9 +35,31 @@ function socketUserId(socket: WebSocket): string {
   return (socket as unknown as { userId?: string }).userId ?? "";
 }
 
+// Bridge connections are live WebSockets held in memory, keyed to the
+// socket. The plugin re-activates whenever the tenant's plugin set is
+// invalidated (any enable/disable/config PATCH, plugins refresh, etc.),
+// which used to create a FRESH empty BridgeRegistry each time — so an
+// already-connected bridge (registered into the old instance) became
+// invisible to the new toolset + /connections route, even though the
+// socket was still open and re-registering. Key the registry by tenant
+// at module scope so it SURVIVES re-activation and the live connections
+// (and their tool lists) persist. Cleared only when the process exits.
+const registriesByTenant = new Map<string, BridgeRegistry>();
+
+function registryForTenant(tenantId: string): BridgeRegistry {
+  let reg = registriesByTenant.get(tenantId);
+  if (!reg) {
+    reg = new BridgeRegistry();
+    registriesByTenant.set(tenantId, reg);
+  }
+  return reg;
+}
+
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
-    const registry = new BridgeRegistry();
+    // Reused across re-activations so live bridge connections aren't
+    // orphaned when the tenant's plugin registry is invalidated.
+    const registry = registryForTenant(ctx.tenantId);
 
     // client → server: register a device + its tools.
     const onRegister: PluginWsHandler = (msg, socket) => {
