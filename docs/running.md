@@ -161,11 +161,38 @@ falls back to telling you to run `npm run dev` directly.
 | `command not found: npm` | The unit's `PATH` doesn't include your npm | Re-run `tianshu setup --wizard` from a shell where `which npm` resolves; it captures the path into the unit. |
 | `EADDRINUSE: 3110` | Another process on the port | `tianshu doctor` confirms it; stop it or change `PORT` in `.env` and `tianshu restart`. |
 
-## Docker — TODO
+## Docker
 
-`tianshu start` (single-port production server, no vite) plus a
-Dockerfile is the next CLI milestone (PR #2 from the doctor/setup
-roadmap). Until then, the canonical way to run is one of the above.
+A multi-stage `Dockerfile` ships in the repo root. It builds the
+server + web dist and runs the single-port production server
+(`npm run serve`) — no vite, one port.
+
+```bash
+docker build -t tianshu .
+docker run -d --name tianshu \
+  -p 3110:3110 \
+  -v tianshu-data:/data \
+  tianshu
+# then open http://localhost:3110
+```
+
+Details:
+- Base: `node:22-bookworm` (build) → `node:22-bookworm-slim`
+  (runtime), same Debian release so better-sqlite3's prebuilt
+  native binary is ABI-compatible. No compiler toolchain needed.
+- `TIANSHU_HOME=/data` — tenants, sqlite dbs, and workspaces live on
+  the mounted volume, so they survive `docker rm`.
+- `TIANSHU_IGNORE_SETUP=1` — skips the interactive setup gate so the
+  container boots unattended (it bootstraps a `default` tenant + `dev`
+  user on first run). Configure providers/auth via the mounted
+  `/data` config or env as needed.
+- `HEALTHCHECK` probes `/api/health`; `docker ps` shows `healthy`
+  once it's up.
+
+Inside the container the `tianshu` CLI is available
+(`docker exec <name> node bin/tianshu.mjs status`), though service
+management (systemd) is a no-op there — containers use the process
+as PID 1, not a service manager.
 
 ## Picking the right mode
 
@@ -173,7 +200,7 @@ roadmap). Until then, the canonical way to run is one of the above.
 | --- | --- |
 | To poke at tianshu's source | `npm run dev` |
 | Permanent local instance, survives reboots | launchd plist (macOS) / systemd user unit (Linux) |
-| Run inside a container | wait for `tianshu start` + Dockerfile |
+| Run inside a container | `docker build` + `docker run` (Dockerfile in repo root) |
 | Multi-machine deploy with auth | not yet — 0.3.x roadmap |
 
 ## Related
