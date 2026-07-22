@@ -1,0 +1,20 @@
+# Keep the build context small and avoid shipping host-built
+# artifacts (they get rebuilt in the image, and host node_modules
+# may contain a macOS better-sqlite3 binary that won't run on Linux).
+.git
+node_modules
+**/node_modules
+**/dist
+packages/*/dist
+packages/web/dist
+plugins/**/dist
+.env
+.env.*
+*.log
+.DS_Store
+.vscode
+.idea
+coverage
+**/*.tsbuildinfo
+docs
+tmp

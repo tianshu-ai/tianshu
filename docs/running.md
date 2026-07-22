@@ -105,26 +105,102 @@ launchctl bootstrap gui/$UID ~/Library/LaunchAgents/ai.tianshu.dev.plist
 If you have a hashed label (multi-checkout machine), find it via
 `tianshu status` first.
 
-## Linux — systemd (TODO)
+## Linux — systemd (user scope)
 
-The same shape works under systemd; we'll write up the unit file
-once a Linux contributor wants it. Until then, run `npm run dev`
-under your favourite supervisor (systemd user service, supervisord,
-runit, …) — it's just an `npm` command in a working directory.
+On Linux the same `tianshu` CLI manages a **user-scoped systemd
+unit** — the direct analogue of the macOS launchd path. No root,
+no system-wide unit; it runs as your user with your `$HOME`.
 
-## Docker — TODO
+### Install + start
 
-`tianshu start` (single-port production server, no vite) plus a
-Dockerfile is the next CLI milestone (PR #2 from the doctor/setup
-roadmap). Until then, the canonical way to run is one of the above.
+```bash
+tianshu setup --wizard
+```
+
+The wizard picks ports, writes `.env`, drops a unit into
+`~/.config/systemd/user/`, runs `systemctl --user enable --now`,
+and waits for `/api/health`. Unit names mirror the launchd
+labels: a global npm install gets `tianshu-prod.service`; the
+first git checkout claims `tianshu-dev.service`; later checkouts
+get `tianshu-dev-<sha8>.service` so they coexist.
+
+### Day-to-day
+
+```bash
+tianshu status      # installed / loaded / pid / health
+tianshu start       # systemctl --user enable --now
+tianshu stop        # systemctl --user disable --now
+tianshu restart     # systemctl --user restart, wait for /api/health
+tianshu logs        # last 50 lines of stderr + stdout
+tianshu logs --follow
+```
+
+Logs are captured to `~/.local/state/tianshu/log/<name>.{out,err}.log`
+(via the unit's `StandardOutput=append:` / `StandardError=append:`),
+so `tianshu logs` works even without journald access. They also go
+to the journal — `journalctl --user -u tianshu-dev.service -f`.
+
+### Headless servers: keep it running after logout
+
+User services stop when your last session ends unless **lingering**
+is enabled. Enable it once:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+The wizard prints this hint after install. Without a reachable user
+systemd bus (some minimal containers / non-login shells), the wizard
+falls back to telling you to run `npm run dev` directly.
+
+### Troubleshooting
+
+| stderr says | Cause | Fix |
+| --- | --- | --- |
+| `Failed to connect to bus` | No user systemd instance (minimal container / no login session) | Run `npm run dev` under your own supervisor, or start a user session / enable linger. |
+| `command not found: npm` | The unit's `PATH` doesn't include your npm | Re-run `tianshu setup --wizard` from a shell where `which npm` resolves; it captures the path into the unit. |
+| `EADDRINUSE: 3110` | Another process on the port | `tianshu doctor` confirms it; stop it or change `PORT` in `.env` and `tianshu restart`. |
+
+## Docker
+
+A multi-stage `Dockerfile` ships in the repo root. It builds the
+server + web dist and runs the single-port production server
+(`npm run serve`) — no vite, one port.
+
+```bash
+docker build -t tianshu .
+docker run -d --name tianshu \
+  -p 3110:3110 \
+  -v tianshu-data:/data \
+  tianshu
+# then open http://localhost:3110
+```
+
+Details:
+- Base: `node:22-bookworm` (build) → `node:22-bookworm-slim`
+  (runtime), same Debian release so better-sqlite3's prebuilt
+  native binary is ABI-compatible. No compiler toolchain needed.
+- `TIANSHU_HOME=/data` — tenants, sqlite dbs, and workspaces live on
+  the mounted volume, so they survive `docker rm`.
+- `TIANSHU_IGNORE_SETUP=1` — skips the interactive setup gate so the
+  container boots unattended (it bootstraps a `default` tenant + `dev`
+  user on first run). Configure providers/auth via the mounted
+  `/data` config or env as needed.
+- `HEALTHCHECK` probes `/api/health`; `docker ps` shows `healthy`
+  once it's up.
+
+Inside the container the `tianshu` CLI is available
+(`docker exec <name> node bin/tianshu.mjs status`), though service
+management (systemd) is a no-op there — containers use the process
+as PID 1, not a service manager.
 
 ## Picking the right mode
 
 | You want… | Use |
 | --- | --- |
 | To poke at tianshu's source | `npm run dev` |
-| Permanent local instance, survives reboots | launchd plist (this guide) |
-| Run inside a container | wait for `tianshu start` + Dockerfile |
+| Permanent local instance, survives reboots | launchd plist (macOS) / systemd user unit (Linux) |
+| Run inside a container | `docker build` + `docker run` (Dockerfile in repo root) |
 | Multi-machine deploy with auth | not yet — 0.3.x roadmap |
 
 ## Related

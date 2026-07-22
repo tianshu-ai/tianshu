@@ -23,7 +23,8 @@ import fs from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import * as launchd from "./launchd.js";
+import { getBackend, backendName } from "./service-backend.js";
+import * as systemd from "./systemd.js";
 import {
   findRepoRoot,
   isTianshuCheckout,
@@ -183,17 +184,19 @@ export async function runStartServer(
       return SKIPPED;
     }
     if (action === "restart") {
-      const r = launchd.kickstart(existing.label);
+      const backend = getBackend();
+      if (!backend) return SKIPPED;
+      const r = backend.kickstart(existing.label);
       if (!r.ok) {
         p.log.error(
-          `launchctl kickstart failed: ${r.stderr ?? "(unknown)"}`,
+          `${backendName()} restart failed: ${r.stderr ?? "(unknown)"}`,
         );
         return SKIPPED;
       }
       const port = existing.serverPort ?? DEFAULT_SERVER_PORT;
       const spinner = p.spinner();
       spinner.start(`Waiting for /api/health on :${port}...`);
-      const ok = await launchd.waitForHealth(
+      const ok = await backend.waitForHealth(
         port,
         HEALTH_CHECK_DEADLINE_MS,
       );
@@ -213,8 +216,8 @@ export async function runStartServer(
     }
     // action === "reinstall" — fall through to the install flow.
     // Boot out the old service so the install path can rewrite
-    // the plist cleanly.
-    launchd.bootout(existing.label);
+    // the definition cleanly.
+    getBackend()?.bootout(existing.label);
     p.log.info(`Stopped existing '${existing.label}' to make way for reinstall.`);
   }
 
@@ -278,17 +281,14 @@ export async function runStartServer(
     p.log.success(`Wrote PORT=${serverPort} to ${envPath}`);
   }
 
-  // Cross-platform branch.
+  // Cross-platform branch. macOS → launchd, Linux → systemd (user).
   const platform = os.platform();
-  if (platform === "darwin") {
-    return startViaLaunchd({ repoRoot, serverPort, webPort });
+  if (platform === "darwin" || platform === "linux") {
+    return startViaServiceManager({ repoRoot, serverPort, webPort });
   }
   p.log.info(
     [
       `Auto-start via service manager isn't implemented yet on ${platform}.`,
-      "",
-      "On Linux the recommended path is a systemd --user unit; the template",
-      "is in docs/running.md (TODO section).",
       "",
       "For now, run the dev server in a separate terminal:",
       `  cd ${repoRoot}`,
@@ -298,36 +298,54 @@ export async function runStartServer(
   return SKIPPED;
 }
 
-interface LaunchdStartOpts {
+interface ServiceStartOpts {
   repoRoot: string;
   serverPort: number;
   webPort: number;
 }
 
-async function startViaLaunchd(
-  opts: LaunchdStartOpts,
+async function startViaServiceManager(
+  opts: ServiceStartOpts,
 ): Promise<StartServerResult> {
-  // Resolve a stable label for this install. Prod installs
-  // (npm install -g) always get `ai.tianshu.prod`; dev
-  // checkouts get `ai.tianshu.dev` or, if another checkout
-  // already claimed that, `ai.tianshu.dev.<hash8>`. See
-  // launchd.resolveLabel.
-  const label = launchd.resolveLabel(opts.repoRoot);
-  const plistPath = launchd.plistPathFor(label);
-  const { out: logFile, err: errFile } = launchd.logPathsFor(label);
+  const backend = getBackend();
+  if (!backend) return SKIPPED;
+  const isSystemd = backendName() === "systemd";
+  const kind = isSystemd ? "systemd unit" : "launchd plist";
 
-  // Clean up orphan plists left over from the previous
-  // `ai.tianshu.dev.<hash>` label scheme. We're conservative:
-  // only plists whose WorkingDirectory matches THIS install
-  // path get unloaded and removed. Plists for sibling installs
-  // (different checkout, different `npm install -g` prefix) are
-  // left alone.
-  const orphans = launchd.findOrphanedLabels(label, opts.repoRoot);
+  // On Linux, a user systemd instance is required. In containers /
+  // minimal images without a user bus, bail early with a clear
+  // message instead of a cryptic systemctl error.
+  if (isSystemd && !systemd.userBusAvailable()) {
+    p.log.warn(
+      [
+        "No user systemd instance is reachable (systemctl --user failed).",
+        "This is common in minimal containers / non-login shells.",
+        "",
+        "Run the server directly instead:",
+        `  cd ${opts.repoRoot}`,
+        "  npm run dev   # or: npm run serve",
+      ].join("\n"),
+    );
+    return SKIPPED;
+  }
+
+  // Resolve a stable label for this install. Prod installs
+  // (npm install -g) get the prod name; dev checkouts get the dev
+  // name or, if another checkout already claimed it, a hashed
+  // variant. See backend.resolveLabel.
+  const label = backend.resolveLabel(opts.repoRoot);
+  const plistPath = backend.plistPathFor(label);
+  const { out: logFile, err: errFile } = backend.logPathsFor(label);
+
+  // Clean up orphan definitions left over from an older naming
+  // scheme. Conservative: only ones whose WorkingDirectory matches
+  // THIS install path get removed; sibling installs are left alone.
+  const orphans = backend.findOrphanedLabels(label, opts.repoRoot);
   for (const orphan of orphans) {
     p.log.warn(
-      `Found legacy launchd plist ${orphan.label} pointing at the same install path. Removing.`,
+      `Found legacy ${kind} ${orphan.label} pointing at the same install path. Removing.`,
     );
-    launchd.bootout(orphan.label);
+    backend.bootout(orphan.label);
     try {
       fs.unlinkSync(orphan.plistPath);
     } catch (err) {
@@ -337,30 +355,29 @@ async function startViaLaunchd(
     }
   }
 
-  // If a plist already exists from a previous wizard run / manual
-  // install, ask before clobbering it. Most users will say yes
-  // (they want the new ports), but we want consent.
+  // If a definition already exists from a previous wizard run /
+  // manual install, ask before clobbering it.
   if (fs.existsSync(plistPath)) {
     const replace = await p.confirm({
-      message: `A launchd plist already exists at ${plistPath}. Replace it (and reload)?`,
+      message: `A ${kind} already exists at ${plistPath}. Replace it (and reload)?`,
       initialValue: true,
     });
     if (p.isCancel(replace) || replace === false) {
       p.log.info(
         [
-          "Keeping the existing plist. To control the existing service:",
-          `  tianshu start    # bootstrap if not loaded`,
-          `  tianshu restart  # kickstart -k`,
+          `Keeping the existing ${kind}. To control the existing service:`,
+          `  tianshu start    # start if not loaded`,
+          `  tianshu restart  # restart`,
           `  tianshu status   # full health view`,
         ].join("\n"),
       );
       return SKIPPED;
     }
-    // Boot out the existing service before we overwrite the plist.
-    launchd.bootout(label); // best-effort; not-loaded is fine
+    // Boot out the existing service before we overwrite it.
+    backend.bootout(label); // best-effort; not-loaded is fine
   }
 
-  const npmPath = launchd.resolveNpmPath();
+  const npmPath = backend.resolveNpmPath();
   // Pick the npm script based on where we're installed from.
   // Git checkout (devDependencies on disk) → `dev` runs the
   // full watch + rebuild pipeline. Global npm install (no
@@ -369,23 +386,23 @@ async function startViaLaunchd(
   const npmScript: "dev" | "serve" = isDevelopmentCheckout(opts.repoRoot)
     ? "dev"
     : "serve";
-  const plistBody = launchd.renderPlist(label, {
+  const plistBody = backend.renderPlist(label, {
     repoRoot: opts.repoRoot,
     serverPort: opts.serverPort,
     webPort: opts.webPort,
     npmPath,
     npmScript,
   });
-  launchd.writePlist(label, plistBody);
-  p.log.success(`Wrote launchd plist → ${plistPath}`);
+  backend.writePlist(label, plistBody);
+  p.log.success(`Wrote ${kind} → ${plistPath}`);
 
-  // Bootstrap into launchd. RunAtLoad=true means it starts now;
-  // KeepAlive on non-zero exit means it auto-restarts on crash.
-  const bootRes = launchd.bootstrap(plistPath);
+  // Load + start. On macOS: launchctl bootstrap (RunAtLoad + KeepAlive).
+  // On Linux: systemctl --user enable --now (Restart=on-failure).
+  const bootRes = backend.bootstrap(plistPath);
   if (!bootRes.ok) {
     p.log.error(
       [
-        `launchctl bootstrap failed: ${bootRes.stderr ?? "(unknown)"}`,
+        `${backendName()} start failed: ${bootRes.stderr ?? "(unknown)"}`,
         "",
         "You can retry with:",
         `  tianshu start`,
@@ -393,14 +410,23 @@ async function startViaLaunchd(
     );
     return SKIPPED;
   }
-  p.log.success(`Loaded launchd agent ${label}.`);
+  p.log.success(`Loaded ${kind} ${label}.`);
+  if (isSystemd) {
+    p.log.info(
+      [
+        "Tip: to keep the service running after you log out (headless",
+        "servers), enable lingering once:",
+        `  loginctl enable-linger ${os.userInfo().username}`,
+      ].join("\n"),
+    );
+  }
 
   // Wait for /api/health.
   const healthSpinner = p.spinner();
   healthSpinner.start(
     `Waiting for the server to come up on http://localhost:${opts.serverPort}...`,
   );
-  const ok = await launchd.waitForHealth(
+  const ok = await backend.waitForHealth(
     opts.serverPort,
     HEALTH_CHECK_DEADLINE_MS,
   );
@@ -414,7 +440,7 @@ async function startViaLaunchd(
         "",
         tailFile(errFile, 30) || "(empty)",
         "",
-        "The launchd agent is still loaded; you can:",
+        `The ${kind} is still loaded; you can:`,
         `  · check status:  tianshu status`,
         `  · tail logs:     tail -f ${logFile}`,
         `  · stop it:       tianshu stop`,
@@ -437,7 +463,7 @@ async function startViaLaunchd(
       : `http://localhost:${opts.webPort}`;
   p.log.info(
     [
-      `Tianshu is running under launchd as '${label}'.`,
+      `Tianshu is running under ${backendName()} as '${label}'.`,
       `  Web UI:  ${webUrl}`,
       `  API:     http://localhost:${opts.serverPort}/api`,
       `  Logs:    ${logFile} / ${errFile}`,
@@ -606,8 +632,10 @@ type ExistingService =
 async function detectExistingService(
   repoRoot: string,
 ): Promise<ExistingService> {
-  const label = launchd.resolveLabel(repoRoot);
-  const status = launchd.readStatus(label);
+  const backend = getBackend();
+  if (!backend) return { kind: "not-installed" };
+  const label = backend.resolveLabel(repoRoot);
+  const status = backend.readStatus(label);
 
   // Read the previously-chosen ports from the repo's .env. The
   // wizard always writes PORT/WEB_PORT there, so on a re-run
@@ -623,7 +651,7 @@ async function detectExistingService(
   // launchctl loaded != server up: launchd may have just spawned
   // npm and we're 30s into a cold build.
   if (status.loaded) {
-    const health = await launchd.probeHealth(serverPort, 1500);
+    const health = await backend.probeHealth(serverPort, 1500);
     if (health.ok) {
       return {
         kind: "healthy",
@@ -639,7 +667,7 @@ async function detectExistingService(
       plistPath: status.plistPath,
       serverPort,
       webPort,
-      statusDetail: `launchd loaded (pid ${status.pid ?? "?"}) but /api/health: ${health.reason ?? "(no response)"}`,
+      statusDetail: `${backendName()} loaded (pid ${status.pid ?? "?"}) but /api/health: ${health.reason ?? "(no response)"}`,
     };
   }
 
