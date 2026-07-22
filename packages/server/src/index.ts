@@ -1000,9 +1000,30 @@ function publishEffectivePublicUrl(): void {
   }
 }
 
+let shuttingDown = false;
 const shutdown = (signal: string) => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   // eslint-disable-next-line no-console
   console.log(`[tianshu] received ${signal}, shutting down`);
+  // Force-close every live WebSocket. `wss.close()` alone only stops
+  // ACCEPTING new sockets — it leaves existing ones open, so:
+  //  (a) `server.close()`'s callback never fires (open conns keep the
+  //      server "in use"), so this process never exits, and
+  //  (b) a connected Local Bridge stays glued to this dying process:
+  //      it keeps re-registering into the OLD process's in-memory
+  //      registry (logs show 'bridge registered') while the NEW
+  //      process — the one the UI talks to — never sees it, so its
+  //      tools vanish from the panel after a restart.
+  // Terminating the sockets makes the bridge observe a `close` and
+  // reconnect to the fresh process, re-registering there.
+  for (const client of wss.clients) {
+    try {
+      client.terminate();
+    } catch {
+      /* ignore */
+    }
+  }
   wss.close();
   server.close(() => {
     globalOps.closePool();
@@ -1010,6 +1031,10 @@ const shutdown = (signal: string) => {
     void pluginRegistry;
     process.exit(0);
   });
+  // Belt-and-braces: if server.close() still hasn't fired (a straggler
+  // keep-alive HTTP socket, etc.), force the exit so a restart never
+  // leaves a zombie old process holding connections.
+  setTimeout(() => process.exit(0), 3000).unref();
 };
 
 process.on("SIGINT", () => shutdown("SIGINT"));
