@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.11.0](https://github.com/tianshu-ai/tianshu/compare/v0.10.0...v0.11.0) (2026-07-23)
+
+
+### Features
+
+* **setup:** guided OpenAI-compatible endpoint option in the wizard ([#340](https://github.com/tianshu-ai/tianshu/issues/340)) ([1238917](https://github.com/tianshu-ai/tianshu/commit/123891739738fcc9c1ebe574446512070546d2a1))
+
+
+### Documentation
+
+* **readme:** model-first onboarding; OpenAI-compatible endpoints (Qwen/local) ([#338](https://github.com/tianshu-ai/tianshu/issues/338)) ([c703cac](https://github.com/tianshu-ai/tianshu/commit/c703cacbb7f584651ef2408b9b555903dddc58f2))
+
 ## [0.10.0](https://github.com/tianshu-ai/tianshu/compare/v0.9.1...v0.10.0) (2026-07-22)
 
 
