@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.12.0](https://github.com/tianshu-ai/tianshu/compare/v0.11.0...v0.12.0) (2026-07-23)
+
+
+### Features
+
+* **setup:** fetch the endpoint's model list for OpenAI-compatible providers ([#341](https://github.com/tianshu-ai/tianshu/issues/341)) ([773c0d0](https://github.com/tianshu-ai/tianshu/commit/773c0d07c4640bbfc208a75f135a0d1833a7bf72))
+
 ## [0.11.0](https://github.com/tianshu-ai/tianshu/compare/v0.10.0...v0.11.0) (2026-07-23)
 
 
