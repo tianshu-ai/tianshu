@@ -385,27 +385,69 @@ export async function runSetupWizard(
       //    decides what exists), so go straight to a free-text id.
       //  - Vendor providers show their model list + a custom option.
       if (needsEndpoint) {
-        const modelId = await p.text({
-          message: "Default model id (as the endpoint names it — you can change later):",
-          placeholder: "qwen-plus",
-          validate: (v) =>
-            !v || !(v as string).trim()
-              ? "Model id can't be empty (e.g. qwen-plus, or your local model's id)."
-              : undefined,
-        });
-        if (p.isCancel(modelId)) {
-          p.cancel("Setup cancelled.");
-          return {
-            configPath,
-            envPath,
-            wroteConfig: false,
-            wroteEnv: false,
-            notes: ["cancelled"],
-          };
+        // Try to pull the endpoint's own model list (GET {baseUrl}/models,
+        // the OpenAI-standard shape). If it works, let the user pick from
+        // real models instead of guessing an id. If it doesn't (endpoint
+        // has no /models, network/auth error, empty list), silently fall
+        // back to a free-text prompt.
+        const endpointUrl = baseUrl ?? profile.baseUrl;
+        let modelId: string | undefined;
+        const spin = p.spinner();
+        spin.start(`Fetching available models from ${endpointUrl} …`);
+        const fetched = await fetchOpenAiModels(endpointUrl, apiKey);
+        if (fetched.length > 0) {
+          spin.stop(`Found ${fetched.length} model(s) at the endpoint.`);
+          const MANUAL = "__manual__";
+          const pick = await p.select({
+            message: "Default model? (you can change later):",
+            options: [
+              ...fetched.map((id) => ({ value: id, label: id })),
+              { value: MANUAL, label: "type a model id manually" },
+            ],
+            maxItems: 12,
+          });
+          if (p.isCancel(pick)) {
+            p.cancel("Setup cancelled.");
+            return {
+              configPath,
+              envPath,
+              wroteConfig: false,
+              wroteEnv: false,
+              notes: ["cancelled"],
+            };
+          }
+          if (pick !== MANUAL) modelId = pick as string;
+        } else {
+          spin.stop(
+            "Couldn't list models from the endpoint — enter the id manually.",
+          );
+        }
+        // Manual entry: either the endpoint didn't list models, or the
+        // user chose to type one.
+        if (!modelId) {
+          const typed = await p.text({
+            message: "Default model id (as the endpoint names it — you can change later):",
+            placeholder: "qwen-plus",
+            validate: (v) =>
+              !v || !(v as string).trim()
+                ? "Model id can't be empty (e.g. qwen-plus, or your local model's id)."
+                : undefined,
+          });
+          if (p.isCancel(typed)) {
+            p.cancel("Setup cancelled.");
+            return {
+              configPath,
+              envPath,
+              wroteConfig: false,
+              wroteEnv: false,
+              notes: ["cancelled"],
+            };
+          }
+          modelId = (typed as string).trim();
         }
         // Written under the real "openai" provider so the id looks
         // like openai/<model> and uses the openai-completions driver.
-        defaultModel = `${configProviderId(profile.id)}/${(modelId as string).trim()}`;
+        defaultModel = `${configProviderId(profile.id)}/${modelId}`;
       } else {
       const modelChoice = await p.select({
         message: "Default model? (you can change later):",
@@ -605,6 +647,59 @@ export async function runSetupWizard(
   }
 
   return { configPath, envPath, wroteConfig, wroteEnv, notes };
+}
+
+/**
+ * Best-effort fetch of an OpenAI-compatible endpoint's model list via
+ * `GET {baseUrl}/models` (the OpenAI-standard shape:
+ * `{ data: [{ id }] }`). Returns model ids, or `[]` on any failure
+ * (no /models route, network/auth error, timeout, unexpected shape) so
+ * the caller can silently fall back to a manual prompt.
+ *
+ * baseUrl is the prefix before /chat/completions, so we append
+ * `/models` (collapsing a trailing slash). Times out fast (5s) to keep
+ * the wizard responsive.
+ */
+async function fetchOpenAiModels(
+  baseUrl: string,
+  apiKey: string | undefined,
+): Promise<string[]> {
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  if (!trimmed) return [];
+  const url = `${trimmed}/models`;
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), 5000);
+  try {
+    const headers: Record<string, string> = { Accept: "application/json" };
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const res = await fetch(url, { headers, signal: ac.signal });
+    if (!res.ok) return [];
+    const body = (await res.json()) as unknown;
+    // OpenAI shape: { data: [{ id }] }. Some servers return a bare
+    // array. Accept both.
+    const rows = Array.isArray(body)
+      ? body
+      : Array.isArray((body as { data?: unknown }).data)
+        ? (body as { data: unknown[] }).data
+        : [];
+    const ids = rows
+      .map((r) =>
+        r && typeof r === "object" && typeof (r as { id?: unknown }).id === "string"
+          ? ((r as { id: string }).id)
+          : typeof r === "string"
+            ? r
+            : null,
+      )
+      .filter((x): x is string => !!x && x.trim().length > 0);
+    // De-dupe + sort for a stable picker. Cap so a provider that lists
+    // hundreds (embeddings/rerank/tts/…) doesn't overwhelm the prompt;
+    // the manual-entry fallback still covers anything not shown.
+    return Array.from(new Set(ids)).sort().slice(0, 100);
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 function buildConfig(
