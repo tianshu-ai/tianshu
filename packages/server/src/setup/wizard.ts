@@ -143,7 +143,36 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
     ],
     defaultModel: "google/gemini-2.5-flash",
   },
+  {
+    // Any OpenAI-compatible endpoint: Alibaba Qwen (DashScope),
+    // vLLM, LM Studio, Ollama, a corporate gateway, a local
+    // llama.cpp — anything that speaks the OpenAI /chat/completions
+    // shape. Uses the openai-completions driver. There is no
+    // sensible vendor default baseUrl or model here, so the wizard
+    // MUST prompt for both (handled specially below). Written under
+    // provider id "openai" so model ids look like openai/<id> and
+    // reuse the same driver — this profile only shapes the prompts.
+    id: "openai-compatible",
+    name: "OpenAI-compatible endpoint (Qwen / vLLM / local…)",
+    envVar: "OPENAI_API_KEY",
+    api: "openai-completions",
+    baseUrl: "",
+    models: [],
+    defaultModel: "",
+  },
 ];
+
+/** Providers that need the wizard to prompt for baseUrl + model id
+ *  (no vendor default exists). */
+const REQUIRES_ENDPOINT_PROMPT = new Set(["openai-compatible"]);
+
+/** Config provider id to write for a given profile. The
+ *  openai-compatible profile is a prompt shape, not its own
+ *  driver — it lands under the real "openai" provider so its
+ *  api/models plug straight into the openai-completions path. */
+function configProviderId(profileId: string): string {
+  return profileId === "openai-compatible" ? "openai" : profileId;
+}
 
 export interface WizardResult {
   configPath: string;
@@ -240,7 +269,8 @@ export async function runSetupWizard(
   if (opts.nonInteractive) {
     if (!opts.provider) {
       throw new Error(
-        "--non-interactive requires --provider (anthropic|openai|google|skip)",
+        "--non-interactive requires --provider (anthropic|openai|google|openai-compatible|skip). " +
+          "For an OpenAI-compatible endpoint you can also just use --provider=openai with --base-url and --default-model.",
       );
     }
     providerId = opts.provider;
@@ -301,17 +331,31 @@ export async function runSetupWizard(
       }
       apiKey = k as string;
 
-      // Step 3: endpoint. Default offered first, but a corporate
-      // gateway / cloudflare proxy / local llama-server is common
-      // enough we ask. Empty input keeps the default.
+      // Step 3: endpoint.
+      //  - Vendor providers: default is offered (empty keeps it), but
+      //    a corporate gateway / proxy / local server is common enough
+      //    that we ask.
+      //  - OpenAI-compatible: there is NO sensible default, so the
+      //    baseUrl is REQUIRED (e.g. DashScope's compatible-mode/v1,
+      //    a vLLM host, http://localhost:8080/v1).
+      const needsEndpoint = REQUIRES_ENDPOINT_PROMPT.has(profile.id);
       const url = await p.text({
-        message: `API endpoint:`,
-        placeholder: profile.baseUrl,
-        defaultValue: profile.baseUrl,
+        message: needsEndpoint
+          ? "API endpoint (base URL — the prefix before /chat/completions):"
+          : "API endpoint:",
+        placeholder: needsEndpoint
+          ? "https://dashscope.aliyuncs.com/compatible-mode/v1"
+          : profile.baseUrl,
+        defaultValue: needsEndpoint ? undefined : profile.baseUrl,
         validate: (v) => {
-          if (!v) return undefined; // accept empty → default
+          const raw = (v ?? "").trim();
+          if (!raw) {
+            return needsEndpoint
+              ? "A base URL is required for an OpenAI-compatible endpoint."
+              : undefined; // vendor: empty → default
+          }
           try {
-            const u = new URL(v);
+            const u = new URL(raw);
             if (!/^https?:$/.test(u.protocol))
               return "URL must be http:// or https://";
             return undefined;
@@ -330,15 +374,39 @@ export async function runSetupWizard(
           notes: ["cancelled"],
         };
       }
-      // Treat empty / unchanged input as 'use default'.
+      // Treat empty / unchanged input as 'use default' (vendor only).
       baseUrl =
         url && (url as string).trim() && (url as string).trim() !== profile.baseUrl
           ? (url as string).trim()
           : undefined;
 
-      // Step 4: default model. If the user supplied a custom
-      // baseUrl, the canonical model ids may not exist on the
-      // proxy — give them a free-text option.
+      // Step 4: default model.
+      //  - OpenAI-compatible has no model list to offer (the endpoint
+      //    decides what exists), so go straight to a free-text id.
+      //  - Vendor providers show their model list + a custom option.
+      if (needsEndpoint) {
+        const modelId = await p.text({
+          message: "Default model id (as the endpoint names it — you can change later):",
+          placeholder: "qwen-plus",
+          validate: (v) =>
+            !v || !(v as string).trim()
+              ? "Model id can't be empty (e.g. qwen-plus, or your local model's id)."
+              : undefined,
+        });
+        if (p.isCancel(modelId)) {
+          p.cancel("Setup cancelled.");
+          return {
+            configPath,
+            envPath,
+            wroteConfig: false,
+            wroteEnv: false,
+            notes: ["cancelled"],
+          };
+        }
+        // Written under the real "openai" provider so the id looks
+        // like openai/<model> and uses the openai-completions driver.
+        defaultModel = `${configProviderId(profile.id)}/${(modelId as string).trim()}`;
+      } else {
       const modelChoice = await p.select({
         message: "Default model? (you can change later):",
         options: [
@@ -392,6 +460,7 @@ export async function runSetupWizard(
       } else {
         defaultModel = modelChoice as string;
       }
+      } // end vendor (non openai-compatible) model branch
     }
   }
 
@@ -418,7 +487,7 @@ export async function runSetupWizard(
     const verb = opts.dryRun ? "would write" : "wrote";
     if (fs.existsSync(configPath) && !opts.force) {
       notes.push(
-        `~/.tianshu/config.json already exists — kept as-is (pass --force to overwrite). Add this entry under \`models.providers\` if you want this provider added:\n${JSON.stringify(cfg.models.providers[providerId], null, 2)}`,
+        `~/.tianshu/config.json already exists — kept as-is (pass --force to overwrite). Add this entry under \`models.providers\` if you want this provider added:\n${JSON.stringify(cfg.models.providers[configProviderId(providerId)], null, 2)}`,
       );
     } else {
       if (!opts.dryRun) writeJsonAtomic(configPath, cfg);
@@ -587,7 +656,7 @@ function buildConfig(
     defaultModel,
     models: {
       providers: {
-        [profile.id]: {
+        [configProviderId(profile.id)]: {
           api: profile.api,
           baseUrl: baseUrlOverride ?? profile.baseUrl,
           apiKey: resolvedKey,

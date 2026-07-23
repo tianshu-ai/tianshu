@@ -72,10 +72,11 @@ tianshu setup
 
 A short interactive wizard. It:
 
-1. Asks which provider to use (Anthropic / OpenAI / Google).
-   Any OpenAI-compatible endpoint works too — pick OpenAI and
-   override the endpoint at the prompt (Qwen/DashScope, vLLM,
-   LM Studio, a gateway, a local llama.cpp, …).
+1. Asks which provider to use — Anthropic / OpenAI / Google, or
+   **"OpenAI-compatible endpoint"** for anything that speaks the
+   OpenAI API (Qwen/DashScope, vLLM, LM Studio, a gateway, a
+   local llama.cpp, …). Pick that and the wizard walks you through
+   the base URL and model id — no need to know the flags.
 2. Reads your API key with a hidden prompt.
 3. Writes `~/.tianshu/config.json` (settings) and `~/.tianshu/.env`
    (secret).
@@ -91,8 +92,8 @@ this is also what you run in Docker / CI:
 # Anthropic / OpenAI / Google
 tianshu setup --non-interactive --provider=anthropic --api-key=sk-***
 
-# Any OpenAI-compatible endpoint — same --provider=openai, just point
-# --base-url at it (Qwen/DashScope, vLLM, LM Studio, a gateway, …).
+# Any OpenAI-compatible endpoint — pass --base-url and --default-model.
+# (--provider=openai-compatible is an alias for --provider=openai here.)
 
 # Alibaba Qwen (DashScope), mainland-China endpoint:
 tianshu setup --non-interactive --provider=openai --api-key=sk-*** \
