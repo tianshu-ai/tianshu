@@ -80,9 +80,33 @@ A short interactive wizard. It:
 3. Writes `~/.tianshu/config.json` (settings) and `~/.tianshu/.env`
    (secret).
 
-**This is the only step you have to do by hand.** Once a model
-is wired up, the setup agent (below) drives everything else —
-search keys, sandboxes, plugins, updates.
+**Configuring a model is the only step you have to do by hand.**
+Once it's wired up, the setup agent (below) drives everything
+else — search keys, sandboxes, plugins, updates.
+
+Prefer one command (no prompts)? Use the non-interactive flavour —
+this is also what you run in Docker / CI:
+
+```bash
+# Anthropic / OpenAI / Google
+tianshu setup --non-interactive --provider=anthropic --api-key=sk-***
+
+# Any OpenAI-compatible endpoint — same --provider=openai, just point
+# --base-url at it (Qwen/DashScope, vLLM, LM Studio, a gateway, …).
+
+# Alibaba Qwen (DashScope), mainland-China endpoint:
+tianshu setup --non-interactive --provider=openai --api-key=sk-*** \
+  --base-url=https://dashscope.aliyuncs.com/compatible-mode/v1 \
+  --default-model=openai/qwen-plus
+#   outside China: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+
+# A local model server:
+tianshu setup --non-interactive --provider=openai --api-key=*** \
+  --base-url=http://localhost:8080/v1 --default-model=openai/<your-model-id>
+```
+
+> Flags use `--key=value` (an `=`, not a space). `--base-url` is the
+> prefix before `/chat/completions`, not the full endpoint URL.
 
 Once a model is configured, the wizard hands you over to the
 **setup agent** — an LLM-driven assistant running in the same
@@ -111,30 +135,6 @@ Things you can ask it right now:
 
 You can exit anytime (type *done* / Ctrl-C) and come back
 later — the agent re-reads state from disk on each invocation.
-
-Non-interactive flavour for Docker / CI (skips the
-interactive agent, only writes the provider config):
-
-```bash
-# Anthropic / OpenAI / Google
-tianshu setup --non-interactive --provider=anthropic --api-key=sk-***
-
-# Any OpenAI-compatible endpoint — same --provider=openai, just point
-# --base-url at it (Qwen/DashScope, vLLM, LM Studio, a gateway, …).
-
-# Alibaba Qwen (DashScope), mainland-China endpoint:
-tianshu setup --non-interactive --provider=openai --api-key=sk-*** \
-  --base-url=https://dashscope.aliyuncs.com/compatible-mode/v1 \
-  --default-model=openai/qwen-plus
-#   outside China: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-
-# A local model server:
-tianshu setup --non-interactive --provider=openai --api-key=*** \
-  --base-url=http://localhost:8080/v1 --default-model=openai/<your-model-id>
-```
-
-> Flags use `--key=value` (an `=`, not a space). `--base-url` is the
-> prefix before `/chat/completions`, not the full endpoint URL.
 
 ### Start the service
 
