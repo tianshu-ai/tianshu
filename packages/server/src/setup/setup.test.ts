@@ -176,7 +176,7 @@ describe("runSetupWizard non-interactive", () => {
     expect(cfg.models.providers.anthropic.api).toBe("anthropic-messages");
   });
 
-  it("adds a custom default model id to the models list when not in profile", async () => {
+  it("writes only the chosen model — not the profile's other presets", async () => {
     await runSetupWizard({
       nonInteractive: true,
       provider: "openai",
@@ -192,10 +192,27 @@ describe("runSetupWizard non-interactive", () => {
     const ids = cfg.models.providers.openai.models.map(
       (m: { id: string }) => m.id,
     );
-    expect(ids).toContain("llama-3.1-8b-on-vllm");
-    // Original profile models still present so the picker UI can
-    // offer them later.
-    expect(ids).toContain("gpt-5");
+    // Only the chosen model lands in config — no gpt-5 / gpt-5-mini
+    // clutter. The user adds more later in Settings → Models.
+    expect(ids).toEqual(["llama-3.1-8b-on-vllm"]);
+  });
+
+  it("writes only the chosen model for a vendor default too (no extra presets)", async () => {
+    await runSetupWizard({
+      nonInteractive: true,
+      provider: "openai",
+      apiKey: "sk-test-key-1234567890",
+      home,
+      cwd,
+    });
+    const cfg = JSON.parse(
+      fs.readFileSync(path.join(home, "config.json"), "utf8"),
+    );
+    const ids = cfg.models.providers.openai.models.map(
+      (m: { id: string }) => m.id,
+    );
+    // Default model is openai/gpt-5; gpt-5-mini must NOT be seeded.
+    expect(ids).toEqual(["gpt-5"]);
   });
 
   it("respects --dry-run by not writing files", async () => {

@@ -614,29 +614,27 @@ function buildConfig(
   apiKey: string | undefined,
   useEnvPlaceholder: boolean,
 ) {
-  // If the user picked a custom model id ("__custom__" branch in
-  // the wizard), it won't appear in profile.models. Add a stub
-  // entry so config.json's `models` array reflects what the user
-  // actually intends to call — otherwise the model picker UI
-  // shows a model that's defaultModel but not in the list.
+  // Only the model the user actually chose goes into config.json.
+  // We deliberately do NOT seed the profile's other canonical models
+  // (e.g. gpt-5 + gpt-5-mini): they clutter the config, and if the
+  // baseUrl points at a proxy / Qwen / vLLM / local server they don't
+  // even exist there. The user can add more later in Settings →
+  // Models. Carry the `reasoning` flag through if the chosen model is
+  // a known reasoning model in the profile.
   const slash = defaultModel.indexOf("/");
   const defaultModelId = slash > 0 ? defaultModel.slice(slash + 1) : defaultModel;
-  const knownIds = new Set(profile.models.map((m) => m.id));
-  const models = profile.models.map((m) => ({
-    id: m.id,
-    name: m.name,
-    ...(m.reasoning ? { reasoning: true } : {}),
-    contextWindow: 200000,
-    maxTokens: 8192,
-  }));
-  if (!knownIds.has(defaultModelId)) {
-    models.unshift({
-      id: defaultModelId,
-      name: defaultModelId,
-      contextWindow: 200000,
-      maxTokens: 8192,
-    });
-  }
+  const chosen = profile.models.find((m) => m.id === defaultModelId);
+  const models = defaultModelId
+    ? [
+        {
+          id: defaultModelId,
+          name: chosen?.name ?? defaultModelId,
+          ...(chosen?.reasoning ? { reasoning: true } : {}),
+          contextWindow: 200000,
+          maxTokens: 8192,
+        },
+      ]
+    : [];
   // Default: write the literal API key into config.json so
   // `config_read` and the user can both see whether a key is
   // configured. config.json is chmod 600 (writeJsonAtomic) so
