@@ -72,10 +72,16 @@ tianshu setup
 
 A short interactive wizard. It:
 
-1. Asks which provider to use (Anthropic / OpenAI / Google).
+1. Asks which provider to use (Anthropic / OpenAI / Google /
+   Qwen). Any OpenAI-compatible endpoint works too — pick
+   OpenAI and override the endpoint at the prompt.
 2. Reads your API key with a hidden prompt.
 3. Writes `~/.tianshu/config.json` (settings) and `~/.tianshu/.env`
    (secret).
+
+**This is the only step you have to do by hand.** Once a model
+is wired up, the setup agent (below) can drive everything else
+for you — search keys, sandboxes, plugins, updates.
 
 Once a model is configured, the wizard hands you over to the
 **setup agent** — an LLM-driven assistant running in the same
@@ -109,8 +115,24 @@ Non-interactive flavour for Docker / CI (skips the
 interactive agent, only writes the provider config):
 
 ```bash
+# Anthropic / OpenAI / Google
 tianshu setup --non-interactive --provider=anthropic --api-key=sk-***
+
+# Alibaba Qwen (DashScope) — mainland China endpoint by default
+tianshu setup --non-interactive --provider=qwen --api-key=sk-*** \
+  --default-model=qwen/qwen3.7-plus
+#   outside China: add --base-url=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+
+# Any OpenAI-compatible endpoint (vLLM, LM Studio, a gateway, a local llama.cpp)
+tianshu setup --non-interactive --provider=openai --api-key=*** \
+  --base-url=http://localhost:8080/v1 --default-model=openai/<your-model-id>
 ```
+
+> Flags use `--key=value` (an `=`, not a space).
+
+With a model configured, hand the rest to the setup agent —
+e.g. *"enable the web-search plugin and build my browser
+sandbox"* — instead of configuring each piece by hand.
 
 ### Start the service
 
