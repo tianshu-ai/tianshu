@@ -237,6 +237,33 @@ describe("runSetupWizard non-interactive", () => {
     ).rejects.toThrow(/--provider/);
   });
 
+  it("--provider=openai-compatible writes under the openai provider with the given baseUrl + model", async () => {
+    await runSetupWizard({
+      nonInteractive: true,
+      provider: "openai-compatible",
+      apiKey: "sk-das…7890",
+      baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      defaultModel: "openai/qwen-plus",
+      home,
+      cwd,
+    });
+    const cfg = JSON.parse(
+      fs.readFileSync(path.join(home, "config.json"), "utf8"),
+    );
+    // Lands under the real "openai" provider (shared driver), not a
+    // separate "openai-compatible" key.
+    expect(cfg.models.providers["openai-compatible"]).toBeUndefined();
+    const oc = cfg.models.providers.openai;
+    expect(oc.api).toBe("openai-completions");
+    expect(oc.baseUrl).toBe(
+      "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    );
+    expect(oc.apiKey).toBe("sk-das…7890");
+    expect(cfg.defaultModel).toBe("openai/qwen-plus");
+    const ids = oc.models.map((m: { id: string }) => m.id);
+    expect(ids).toContain("qwen-plus");
+  });
+
   it("--use-env preserves other lines in an existing .env when adding a new key", async () => {
     fs.writeFileSync(path.join(cwd, ".env"), "EXISTING_VAR=hello\n");
     await runSetupWizard({
