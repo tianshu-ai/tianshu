@@ -12,6 +12,8 @@
 // new endpoints, auth reused. The envelope is a thin wrapper around
 // standard MCP JSON-RPC so it can later move to a dedicated endpoint.
 
+import fs from "node:fs";
+import path from "node:path";
 import type {
   PluginContext,
   PluginServerExports,
@@ -161,6 +163,37 @@ const plugin: PluginServerModule = {
       });
     };
 
+    // Serve bridge screenshot files so the frontend can render <img>.
+    // GET /api/p/reverse-mcp/screenshot?path=bridge-screenshots/123.png
+    const serveScreenshot: PluginRouteHandler = (req, res) => {
+      const userId = (req as { ctx?: { userId?: string } }).ctx?.userId ?? "";
+      if (!userId) return void res.status(401).json({ error: "no user context" });
+      const relPath = req.query.path as string | undefined;
+      if (!relPath || !relPath.startsWith("bridge-screenshots/")) {
+        return void res.status(400).json({ error: "invalid path" });
+      }
+      // Prevent path traversal.
+      if (relPath.includes("..") || relPath.includes("//")) {
+        return void res.status(400).json({ error: "invalid path" });
+      }
+      const userHome = ctx.userHomeDir(userId);
+      const fullPath = path.join(userHome, relPath);
+      if (!fs.existsSync(fullPath)) {
+        return void res.status(404).json({ error: "not found" });
+      }
+      const ext = path.extname(fullPath).toLowerCase();
+      const mime: Record<string, string> = {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".gif": "image/gif",
+      };
+      res.setHeader("Content-Type", mime[ext] || "application/octet-stream");
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      fs.createReadStream(fullPath).pipe(res);
+    };
+
     ctx.log.info("reverse-mcp activated");
     return {
       wsHandlers: {
@@ -174,6 +207,7 @@ const plugin: PluginServerModule = {
       routes: {
         listConnections,
         connectInfo,
+        serveScreenshot,
       },
     };
   },

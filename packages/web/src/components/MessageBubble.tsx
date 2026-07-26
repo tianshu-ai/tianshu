@@ -327,16 +327,9 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       </button>
 
       {expanded && result && (
-        <pre
-          className={
-            "mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] " +
-            (isError
-              ? "border-rose-700/40 bg-rose-950/30 text-danger"
-              : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted")
-          }
-        >
-          {truncate(result.text, 4000)}
-        </pre>
+        <div className="mt-1 max-w-2xl">
+          <ToolResultBody text={result.text} isError={isError} />
+        </div>
       )}
 
     </div>
@@ -362,6 +355,46 @@ function shortValue(v: unknown): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "\n…(truncated)";
+}
+
+/** Regex matching bridge-screenshots paths in tool result text. */
+const SCREENSHOT_RE = /bridge-screenshots\/[\w.-]+\.(?:png|jpg|jpeg|webp|gif)/g;
+
+/** Render tool result text with inline screenshot images. */
+function ToolResultBody({ text, isError }: { text: string; isError: boolean }) {
+  const screenshots = text.match(SCREENSHOT_RE) ?? [];
+  return (
+    <>
+      {screenshots.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-2">
+          {screenshots.map((p, i) => (
+            <a
+              key={i}
+              href={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
+              target="_blank"
+              rel="noopener"
+            >
+              <img
+                src={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
+                alt={p}
+                className="max-h-48 max-w-xs rounded-md border border-border-subtle shadow-sm"
+              />
+            </a>
+          ))}
+        </div>
+      )}
+      <pre
+        className={
+          "max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] " +
+          (isError
+            ? "border-rose-700/40 bg-rose-950/30 text-danger"
+            : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted")
+        }
+      >
+        {truncate(text, 4000)}
+      </pre>
+    </>
+  );
 }
 
 /** Three-dot typing indicator. Each dot phases the same animation
