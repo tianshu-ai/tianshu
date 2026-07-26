@@ -371,6 +371,25 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     aborter?.abort();
     aborter = null;
     unregisterUserChannel();
+
+    // Notify plugins that this socket is gone. The reverse-mcp plugin
+    // needs this to remove the bridge's registered tools immediately
+    // (instead of waiting for a failed send to lazily prune).
+    if (pluginRegistry) {
+      const unregHandler = pluginRegistry.resolveWsHandler(
+        ctx.tenantId,
+        "reverse_mcp_unregister",
+      );
+      if (unregHandler) {
+        Promise.resolve(
+          unregHandler.handler(
+            { type: "reverse_mcp_unregister" },
+            socket,
+            unregHandler.entry.ctx!,
+          ),
+        ).catch(() => {/* best-effort */});
+      }
+    }
   });
 }
 
