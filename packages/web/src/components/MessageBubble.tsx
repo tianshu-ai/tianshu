@@ -244,6 +244,60 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const result = call.result;
   const uiResources = result?.ui ?? [];
   const hasUi = uiResources.length > 0;
+  const screenshots = (result?.text ?? "").match(SCREENSHOT_RE) ?? [];
+  const hasScreenshots = screenshots.length > 0;
+
+  // Screenshots render like MCP-UI: auto-visible, thin header + images.
+  if (hasScreenshots && !hasUi) {
+    const body = (
+      <>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full select-none items-center gap-1.5 px-3 py-1.5 text-xs text-fg-faint hover:text-fg-muted transition-colors"
+        >
+          {isError ? (
+            <XCircle size={11} className="text-rose-400/70" />
+          ) : (
+            <CheckCircle2 size={11} className="text-emerald-500/60" />
+          )}
+          <code className="font-mono text-[12px] text-link">{call.name}</code>
+          <span className="ml-auto text-[10px] text-fg-fainter">
+            {expanded ? "hide details" : "details"}
+          </span>
+        </button>
+        <div className="px-3 pb-2 flex flex-wrap gap-2">
+          {screenshots.map((p, i) => (
+            <a
+              key={i}
+              href={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
+              target="_blank"
+              rel="noopener"
+            >
+              <img
+                src={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
+                alt={p}
+                className="max-h-64 max-w-md rounded-md border border-border-subtle shadow-sm hover:shadow-md transition-shadow"
+              />
+            </a>
+          ))}
+        </div>
+        {expanded && result && (
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] text-fg-muted">
+            {truncate(result.text, 4000)}
+          </pre>
+        )}
+      </>
+    );
+    if (inCard) {
+      return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
+    }
+    return (
+      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60">
+        {body}
+      </div>
+    );
+  }
 
   // A tool that returned MCP-UI renders as a self-contained card: a
   // thin header row (status + tool name, click to reveal the raw text
@@ -327,9 +381,16 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       </button>
 
       {expanded && result && (
-        <div className="mt-1 max-w-2xl">
-          <ToolResultBody text={result.text} isError={isError} />
-        </div>
+        <pre
+          className={
+            "mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] " +
+            (isError
+              ? "border-rose-700/40 bg-rose-950/30 text-danger"
+              : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted")
+          }
+        >
+          {truncate(result.text, 4000)}
+        </pre>
       )}
 
     </div>
@@ -359,43 +420,6 @@ function truncate(s: string, max: number): string {
 
 /** Regex matching bridge-screenshots paths in tool result text. */
 const SCREENSHOT_RE = /bridge-screenshots\/[\w.-]+\.(?:png|jpg|jpeg|webp|gif)/g;
-
-/** Render tool result text with inline screenshot images. */
-function ToolResultBody({ text, isError }: { text: string; isError: boolean }) {
-  const screenshots = text.match(SCREENSHOT_RE) ?? [];
-  return (
-    <>
-      {screenshots.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-2">
-          {screenshots.map((p, i) => (
-            <a
-              key={i}
-              href={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
-              target="_blank"
-              rel="noopener"
-            >
-              <img
-                src={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
-                alt={p}
-                className="max-h-48 max-w-xs rounded-md border border-border-subtle shadow-sm"
-              />
-            </a>
-          ))}
-        </div>
-      )}
-      <pre
-        className={
-          "max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] " +
-          (isError
-            ? "border-rose-700/40 bg-rose-950/30 text-danger"
-            : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted")
-        }
-      >
-        {truncate(text, 4000)}
-      </pre>
-    </>
-  );
-}
 
 /** Three-dot typing indicator. Each dot phases the same animation
  *  by 150ms so it reads as "wave" rather than "blink". CSS sits
