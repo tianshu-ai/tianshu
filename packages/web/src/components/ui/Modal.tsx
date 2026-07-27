@@ -27,6 +27,21 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+
+// Stable portal container — avoids issues with body mutations
+// (extensions, scroll locking, etc.) disrupting the portal mount.
+let _portalRoot: HTMLElement | null = null;
+function getPortalRoot(): HTMLElement {
+  if (!_portalRoot) {
+    _portalRoot = document.getElementById("modal-root");
+    if (!_portalRoot) {
+      _portalRoot = document.createElement("div");
+      _portalRoot.id = "modal-root";
+      document.body.appendChild(_portalRoot);
+    }
+  }
+  return _portalRoot;
+}
 import { Maximize2, Minimize2, X } from "lucide-react";
 import type { ModalProps } from "@tianshu-ai/plugin-sdk/client";
 import { useT } from "../../hooks/useT";
@@ -263,6 +278,6 @@ export function Modal({
         <div className="flex min-h-0 flex-1 flex-col">{children}</div>
       </div>
     </div>,
-    document.body,
+    getPortalRoot(),
   );
 }

@@ -159,8 +159,4 @@ __installWsEventApi({
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("#root not found");
 
-ReactDOM.createRoot(rootEl).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+ReactDOM.createRoot(rootEl).render(<App />);
