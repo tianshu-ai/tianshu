@@ -176,6 +176,8 @@ interface ChatState {
    *  — even before stream_start — re-arms the auto-retry loop, so a
    *  turn sent right as the connection dies isn't silently lost. */
   _awaitingResponse: boolean;
+  /** Id of the optimistic user message shown immediately on send. */
+  _optimisticUserMsgId: string | null;
   /** Internal: (re)arm the exponential-backoff auto-retry loop.
    *  `reason` is a short label surfaced in the banner. */
   _beginAutoRetry: (reason: string) => void;
@@ -230,6 +232,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   _lastPrompt: null,
   _userAborted: false,
   _awaitingResponse: false,
+  _optimisticUserMsgId: null,
 
   init: () => {
     if (get()._initialized) return;
@@ -331,6 +334,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // the same message id. We never want to render the same row
         // twice.
         if (s.messages.some((x) => x.id === m.message.id)) return {} as Partial<ChatState>;
+        // Replace the optimistic user message with the persisted one.
+        if (
+          m.message.role === "user" &&
+          s._optimisticUserMsgId &&
+          s.messages.some((x) => x.id === s._optimisticUserMsgId)
+        ) {
+          const next = s.messages.map((x) =>
+            x.id === s._optimisticUserMsgId ? m.message : x,
+          );
+          return { messages: next, _optimisticUserMsgId: null };
+        }
         // Live tool rows we synthesised (toolres_<callId>) from the
         // tool_result WS event get a real persisted twin here via
         // message_added. Adopt the persisted row in place of ours
@@ -757,13 +771,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // attempt counter) and reset the abort flag. Remember the prompt so
     // auto-retry can resume it.
     resetRetryLoop();
-    set({
+    // Optimistic: show the user message immediately (before the server
+    // echoes it back via message_added). Uses a placeholder id that
+    // message_added will replace with the real persisted row.
+    const optimisticId = `_optimistic_${Date.now()}`;
+    const optimisticMsg: WireMessage = {
+      id: optimisticId,
+      sessionId: "",
+      role: "user",
+      text: trimmed,
+      createdAt: Date.now(),
+      attachments: attachments ?? undefined,
+    };
+    set((s) => ({
       _lastPrompt: { content: trimmed, attachments },
       _userAborted: false,
       _awaitingResponse: true,
+      _optimisticUserMsgId: optimisticId,
       autoRetry: null,
       streamError: null,
-    });
+      messages: [...s.messages, optimisticMsg],
+    }));
     tianshuWs.send({
       type: "prompt",
       content: trimmed,
