@@ -6,6 +6,24 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.13.0](https://github.com/tianshu-ai/tianshu/compare/v0.12.0...v0.13.0) (2026-07-27)
+
+
+### Features
+
+* **reverse-mcp:** inline screenshot display in chat ([17f600c](https://github.com/tianshu-ai/tianshu/commit/17f600cd519f1ce78b3b503c08937715b5712a78))
+
+
+### Bug Fixes
+
+* **reverse-mcp:** clean up bridge tools on socket close ([84a1956](https://github.com/tianshu-ai/tianshu/commit/84a1956f851be3cacee139904fcee50e3c928111))
+* **ui:** screenshots auto-visible like MCP-UI (no expand needed) ([d9f6c75](https://github.com/tianshu-ai/tianshu/commit/d9f6c756ad0e09193f7680db95b140b4b516bd69))
+
+
+### Documentation
+
+* **reverse-mcp:** point users to bridge-desktop app for install ([e90e314](https://github.com/tianshu-ai/tianshu/commit/e90e314ae87463c06d07f6668c96d2788b831926))
+
 ## [0.12.0](https://github.com/tianshu-ai/tianshu/compare/v0.11.0...v0.12.0) (2026-07-23)
 
 
