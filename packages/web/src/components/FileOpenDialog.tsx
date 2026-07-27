@@ -20,7 +20,7 @@
 //     the host should provide so every plugin that emits an open
 //     intent gets a consistent UX.
 
-import { useCallback, useEffect, useState, type ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactElement } from "react";
 import { Download, File as FileIcon, Loader2 } from "lucide-react";
 import { useT } from "../hooks/useT";
 import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
@@ -131,11 +131,17 @@ export default function FileOpenDialog(): ReactElement | null {
     const handler = (e: Event): void => {
       const detail = (e as CustomEvent<{ path: string }>).detail;
       if (!detail?.path) return;
+      console.log('[FileOpenDialog] open event:', detail.path);
       setIntent({ path: detail.path });
     };
     window.addEventListener("tianshu:files:open", handler);
     return () => window.removeEventListener("tianshu:files:open", handler);
   }, []);
+
+  // Debug: track renders
+  const renderCount = useRef(0);
+  renderCount.current++;
+  console.log('[FileOpenDialog] render #', renderCount.current, 'intent:', intent?.path, 'view:', view.kind);
 
   // ─── Fetch on intent ──────────────────────────────────────────
   useEffect(() => {
