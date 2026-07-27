@@ -199,7 +199,18 @@ file (\`> out.log\`) and \`read_file\` if you need the full output.
 Default working dir is the active user's home (\`/sandbox/workspace/users/<userId>\`). \
 The sandbox does NOT bind-mount the host workspace; use \`sync_up\` / \`sync_down\` to \
 move files between host and sandbox before / after running commands. \
-Pass an absolute \`workdir\` to step outside the user's home dir.`,
+Pass an absolute \`workdir\` to step outside the user's home dir.
+
+Pre-installed tools and runtimes (no need to install):
+- OS: Ubuntu 24.04, Node 22, Python 3.14, gcc/g++/make, git, curl, ssh
+- CLI: jq, yq, tree, ripgrep (rg), fd-find, fzf, bat, htop, wget, zip/unzip, sqlite3, httpie
+- Audio/Video: ffmpeg, ffprobe, sox
+- PDF/Docs: pandoc, wkhtmltopdf, ghostscript, poppler-utils (pdftotext/pdftoppm), tesseract-ocr (en+zh), imagemagick
+- Browser: chromium-browser, playwright (chromium)
+- Fonts: Noto CJK, Noto Color Emoji, Liberation
+- Node global: tsx, typescript, eslint, prettier, @remotion/cli, sharp, puppeteer, playwright, pdf-lib, exceljs, docx, pdfkit, mammoth
+- Python: numpy, scipy, pandas, polars, matplotlib, seaborn, Pillow, plotly, requests, aiohttp, beautifulsoup4, pydub, edge-tts, gtts, openpyxl, xlsxwriter, python-docx, python-pptx, pymupdf, pdfplumber, PyPDF2, reportlab, weasyprint, markdown, camelot-py, tabula-py, playwright
+- Java JRE (for tabula-py)`,
       parameters: Type.Object({
         command: Type.String({
           description:
