@@ -183,7 +183,7 @@ export function Modal({
   // ancestors clipping the modal.
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--color-bg-overlay)] p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--color-bg-overlay)] p-4"
       onMouseDown={handleBackdropClick}
       role="dialog"
       aria-modal="true"
