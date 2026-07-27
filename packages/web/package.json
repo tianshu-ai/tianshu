@@ -15,7 +15,7 @@
     "@types/papaparse": "^5.5.2",
     "lucide-react": "^1.17.0",
     "papaparse": "^5.5.4",
-    "react": "^19.0.0",
+    "react": "^19.2.8",
     "react-dom": "^19.0.0",
     "react-force-graph-2d": "^1.29.1",
     "react-markdown": "^10.1.0",
