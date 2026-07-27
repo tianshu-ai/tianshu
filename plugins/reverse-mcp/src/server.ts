@@ -160,6 +160,7 @@ const plugin: PluginServerModule = {
         expiresAt: grant.expiresAt,
         baseCommand,
         command: baseCommand,
+        desktopDownload: "https://github.com/tianshu-ai/bridge-desktop/releases/latest",
       });
     };
 

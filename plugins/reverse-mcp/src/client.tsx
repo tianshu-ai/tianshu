@@ -232,58 +232,32 @@ function BridgePanel(_props: PanelProps) {
           </div>
         </div>
 
-        {/* Step 1 — prerequisite: install the CLI once */}
+        {/* Step 1 — Download the desktop app (recommended) */}
         <div>
           <div className="mb-1 font-medium text-fg-default">
-            {t("panel.step1.title")}
+            Step 1 — Download the Desktop App
           </div>
-          <CmdBlock
-            label={t("panel.step1.installLabel")}
-            text={INSTALL_CMD}
-            copied={copiedKey === "install"}
-            onCopy={() => copy("install", INSTALL_CMD)}
-          />
-          <p className="text-[10px] text-fg-fainter">
-            {t("panel.step1.requires")}
+          <a
+            href="https://github.com/tianshu-ai/bridge-desktop/releases/latest"
+            target="_blank"
+            rel="noopener"
+            className="inline-flex items-center gap-1.5 rounded-md border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/20 transition-colors"
+          >
+            ↓ Download Tianshu Bridge
+          </a>
+          <p className="mt-1 text-[10px] text-fg-fainter">
+            Available for Windows, macOS, and Linux. No Node.js required.
           </p>
         </div>
 
-        {/* Step 2 — choose: CLI or menu-bar app */}
+        {/* Step 2 — Copy config to the app */}
         <div>
-          <div className="mb-1 font-medium text-fg-default">{t("panel.step2.title")}</div>
-
-          {/* Option A: run from the command line */}
-          <div className="mb-0.5 text-[11px] font-medium text-fg-default">
-            {t("panel.step2.optionA")}
-          </div>
+          <div className="mb-1 font-medium text-fg-default">Step 2 — Configure</div>
           <div className="mb-0.5 text-[10px] text-fg-fainter">
-            {t("panel.step2.optionAHint")}
+            Copy the config below, then paste it in the desktop app (click &quot;Paste config from clipboard&quot;).
           </div>
           <CmdBlock
-            label={t("panel.step2.runLabel")}
-            text={globalCmd}
-            copied={copiedKey === "global"}
-            onCopy={() => copy("global", globalCmd)}
-          />
-
-          {/* Option B: macOS menu-bar app */}
-          <div className="mt-3 mb-0.5 text-[11px] font-medium text-fg-default">
-            {t("panel.step2.optionB")}
-          </div>
-          <div className="mb-0.5 text-[10px] text-fg-fainter">
-            {t("panel.step2.installAppStep")}
-          </div>
-          <CmdBlock
-            label={t("panel.step2.installAppLabel")}
-            text={INSTALL_APP_CMD}
-            copied={copiedKey === "install-app"}
-            onCopy={() => copy("install-app", INSTALL_APP_CMD)}
-          />
-          <div className="mb-0.5 text-[10px] text-fg-fainter">
-            {t("panel.step2.configStep")}
-          </div>
-          <CmdBlock
-            label={t("panel.step2.configLabel")}
+            label="Config URL"
             text={configUrl}
             copied={copiedKey === "config"}
             onCopy={() => copy("config", configUrl)}
@@ -299,9 +273,27 @@ function BridgePanel(_props: PanelProps) {
               {t("panel.authDisabled")}
             </p>
           )}
-          <p className="mt-1 text-[10px] text-fg-fainter">
-            {t("panel.updateLaterPre")}<code>tsbridge update</code>{t("panel.updateLaterPost")}
-          </p>
+          {/* Alternative: CLI for advanced users */}
+          <details className="mt-3">
+            <summary className="cursor-pointer text-[10px] text-fg-fainter hover:text-fg-muted">
+              Advanced: use CLI instead
+            </summary>
+            <div className="mt-1 space-y-1">
+              <CmdBlock
+                label="Install CLI"
+                text={INSTALL_CMD}
+                copied={copiedKey === "install"}
+                onCopy={() => copy("install", INSTALL_CMD)}
+              />
+              <CmdBlock
+                label="Run"
+                text={globalCmd}
+                copied={copiedKey === "global"}
+                onCopy={() => copy("global", globalCmd)}
+              />
+              <p className="text-[10px] text-fg-fainter">Requires Node.js 18+.</p>
+            </div>
+          </details>
         </div>
 
         {/* Connected devices */}

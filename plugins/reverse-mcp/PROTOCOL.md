@@ -1,9 +1,14 @@
 # Reverse-MCP wire protocol
 
 Authoritative contract between the tianshu server (`reverse-mcp` plugin,
-this repo) and a local bridge client (e.g.
-[`tianshu-ai/local-bridge`](https://github.com/tianshu-ai/local-bridge)).
-The client implements this; it does **not** import any tianshu package.
+this repo) and a local bridge client.
+
+## Clients
+
+- **[Tianshu Bridge Desktop](https://github.com/tianshu-ai/bridge-desktop/releases)** — self-contained desktop app (Windows / macOS / Linux). Recommended for end users.
+- [`@tianshu-ai/local-bridge`](https://github.com/tianshu-ai/local-bridge) — CLI / npm package for advanced users and CI.
+
+The client implements this protocol; it does **not** import any tianshu package.
 
 ## Transport
 
