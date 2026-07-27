@@ -40,6 +40,55 @@ ARG OPENCODE_VERSION=1.17.13
 # the npm resolve. Keep in sync with OMO_VERSION in the worker.
 ARG OMO_PACKAGE=oh-my-openagent@4.15.1
 
+# --- 0. System packages + dev tools --------------------------------
+# P0: daily dev essentials
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    jq tree wget zip unzip ripgrep fd-find fzf bat htop sqlite3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# P1: audio/video + Remotion rendering
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    ffmpeg sox \
+    chromium-browser \
+    libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxrandr2 \
+    libgbm1 libasound2 libpangocairo-1.0-0 libgtk-3-0 \
+    fonts-noto-cjk fonts-noto-color-emoji fonts-liberation \
+    && rm -rf /var/lib/apt/lists/*
+
+# P1: document processing (PDF / Office / OCR)
+RUN apt-get update -qq && apt-get install -y --no-install-recommends \
+    libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress \
+    pandoc wkhtmltopdf ghostscript poppler-utils \
+    tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng \
+    imagemagick libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev librsvg2-dev \
+    default-jre-headless \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node global tools (P0 + P1)
+RUN npm install -g \
+    tsx typescript \
+    eslint prettier \
+    @remotion/cli sharp puppeteer playwright \
+    pdf-lib exceljs docx pdfkit mammoth
+
+# Playwright browsers (Chromium only, reuse system deps above)
+RUN npx playwright install --with-deps chromium
+
+# Python libraries (P0 + P1 + P2)
+RUN pip install --no-cache-dir \
+    pyyaml python-dotenv jinja2 requests aiohttp beautifulsoup4 \
+    numpy scipy pandas polars matplotlib seaborn Pillow plotly \
+    pydub edge-tts gtts \
+    openpyxl xlsxwriter python-docx python-pptx \
+    pymupdf pdfplumber PyPDF2 reportlab weasyprint \
+    markdown camelot-py[cv] tabula-py \
+    httpie playwright
+
+# yq (YAML processor) — binary install
+RUN curl -sL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_$(dpkg --print-architecture)" \
+    -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+
 # --- 1. Upgrade opencode (root global) -----------------------------
 # The base image preinstalls an older opencode at /usr/lib/node_modules.
 # Overwrite it with our pinned version so `opencode` on PATH is the
