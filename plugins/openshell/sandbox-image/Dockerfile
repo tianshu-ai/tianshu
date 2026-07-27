@@ -56,9 +56,8 @@ RUN apt-get update -qq && apt-get install -y --no-install-recommends \
     fonts-noto-cjk fonts-noto-color-emoji fonts-liberation \
     && rm -rf /var/lib/apt/lists/*
 
-# P1: document processing (PDF / Office / OCR)
+# P1: document processing (PDF / OCR — no LibreOffice for now)
 RUN apt-get update -qq && apt-get install -y --no-install-recommends \
-    libreoffice-core libreoffice-writer libreoffice-calc libreoffice-impress \
     pandoc wkhtmltopdf ghostscript poppler-utils \
     tesseract-ocr tesseract-ocr-chi-sim tesseract-ocr-eng \
     imagemagick libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev librsvg2-dev \
