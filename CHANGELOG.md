@@ -6,6 +6,28 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.14.0](https://github.com/tianshu-ai/tianshu/compare/v0.13.0...v0.14.0) (2026-07-27)
+
+
+### Features
+
+* **deps:** upgrade pi-agent-core + pi-ai to 0.82.1 ([309e63f](https://github.com/tianshu-ai/tianshu/commit/309e63f11403e4c2d73346d55ee95a29b5cef306))
+* **openshell:** list pre-installed tools in sandbox_exec description ([726182c](https://github.com/tianshu-ai/tianshu/commit/726182ce06a91d8f0ae680977c812ac011be1b12))
+* **sandbox:** install P0/P1/P2 dependencies in sandbox image ([c3b55c6](https://github.com/tianshu-ai/tianshu/commit/c3b55c679c565373e730cc5f47849fef9c53a275))
+
+
+### Bug Fixes
+
+* bump react-dom to 19.2.8 (match react version) ([e5f5abe](https://github.com/tianshu-ai/tianshu/commit/e5f5abef96cf027a812696fc7e139dcb467e60e5))
+* **chat:** optimistic user message display (instant, no wait for echo) ([88dc581](https://github.com/tianshu-ai/tianshu/commit/88dc581139714d9bd9bd70774bf62d03ae045a70))
+* exclude t from deps (locale changes don't need a re-fetch). ([4dc6dfa](https://github.com/tianshu-ai/tianshu/commit/4dc6dfaa6845f19a410c64ff43c4effb824e2745))
+* **files:** remove unstable 't' from useEffect deps (caused infinite render loop) ([4dc6dfa](https://github.com/tianshu-ai/tianshu/commit/4dc6dfaa6845f19a410c64ff43c4effb824e2745))
+* **modal:** remove backdrop-blur-sm (suspected GPU repaint flicker) ([93004cd](https://github.com/tianshu-ai/tianshu/commit/93004cda87636d03ba3567ed55a89d1fb6b80cfe))
+* **modal:** remove React.StrictMode (causes modal flicker in React 19) ([b6fa1a8](https://github.com/tianshu-ai/tianshu/commit/b6fa1a8df84566ecdb5abca6181cc75ae09edd83))
+* revert react/react-dom to 19.2.7 (modal flickering on 19.2.8) ([47f191b](https://github.com/tianshu-ai/tianshu/commit/47f191b4a0e35e7061a480c973ee174f0c71c6c8))
+* unify react/react-dom at 19.2.8 (revert failed 19.2.7 downgrade) ([f3e863f](https://github.com/tianshu-ai/tianshu/commit/f3e863f0331ddd544784a0ff4168fae6ec5227b0))
+* **viewer:** overflow-y-scroll to prevent scrollbar flicker ([3ecf64f](https://github.com/tianshu-ai/tianshu/commit/3ecf64fcbca38f4e01f4955581f8ffbf0822378f))
+
 ## [0.13.0](https://github.com/tianshu-ai/tianshu/compare/v0.12.0...v0.13.0) (2026-07-27)
 
 
