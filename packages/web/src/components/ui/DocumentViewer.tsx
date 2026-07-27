@@ -190,7 +190,7 @@ export function DocumentViewer({
   if (isMarkdown) {
     return (
       <div
-        className={`min-h-0 flex-1 overflow-auto p-4 ${className}`}
+        className={`min-h-0 flex-1 overflow-y-scroll p-4 ${className}`}
       >
         <MarkdownBlock>{content}</MarkdownBlock>
       </div>
@@ -213,7 +213,7 @@ export function DocumentViewer({
   if (codeLang) {
     return (
       <div
-        className={`min-h-0 flex-1 overflow-auto ${className}`}
+        className={`min-h-0 flex-1 overflow-y-scroll ${className}`}
       >
         <CodeBlock code={content} lang={codeLang} />
       </div>
