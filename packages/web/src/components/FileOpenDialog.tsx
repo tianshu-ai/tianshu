@@ -146,6 +146,7 @@ export default function FileOpenDialog(): ReactElement | null {
   // ─── Fetch on intent ──────────────────────────────────────────
   useEffect(() => {
     if (!intent) return;
+    console.log('[FileOpenDialog] effect fired, fetching:', intent.path);
     setView({ kind: "loading" });
     const controller = new AbortController();
     const cleaned = intent.path.replace(/^workspace:\/\/+/, "/");
