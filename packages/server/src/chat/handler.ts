@@ -102,7 +102,6 @@ import {
   registerUserSendChannel,
 } from "./active-harnesses.js";
 import { SqliteSessionStorage } from "./sqlite-session-storage.js";
-import { makeStubExecutionEnv } from "./stub-execution-env.js";
 import {
   filterSkillsForTenant,
   loadSkillsForPlugin,
@@ -689,7 +688,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // build a single-provider Models closing over this run's resolved
   // (model, apiKey). See core/pi-models.ts.
   const harness = new AgentHarness({
-    env: makeStubExecutionEnv(ctx.userHomeDir(userId)),
     session: piSession,
     tools: adapted.tools,
     systemPrompt,

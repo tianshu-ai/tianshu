@@ -171,6 +171,34 @@ export class SqliteSessionStorage
     };
   }
 
+  async getSessionName(): Promise<string | undefined> {
+    const row = this.ctx.db
+      .prepare<[string], { title: string | null }>(
+        `SELECT title FROM sessions WHERE id = ?`,
+      )
+      .get(this.sessionId);
+    return row?.title ?? undefined;
+  }
+
+  async getSessionStats(): Promise<{ messageCount: number; cachedTokens: number; uncachedTokens: number; totalTokens: number; costTotal: number }> {
+    const count = this.ctx.db
+      .prepare<[string], { cnt: number }>(
+        `SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?`,
+      )
+      .get(this.sessionId);
+    return {
+      messageCount: count?.cnt ?? 0,
+      cachedTokens: 0,
+      uncachedTokens: 0,
+      totalTokens: 0,
+      costTotal: 0,
+    };
+  }
+
+  async getPathToRootOrCompaction(leafId: string | null): Promise<SessionTreeEntry[]> {
+    return this.getPathToRoot(leafId);
+  }
+
   async getLeafId(): Promise<string | null> {
     const row = this.ctx.db
       .prepare<[string], { leaf_id: string | null }>(

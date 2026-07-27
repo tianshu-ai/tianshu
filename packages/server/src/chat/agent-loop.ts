@@ -57,7 +57,6 @@ import { loadWorkerExecutionBiasOverride } from "../core/worker-agents-fs.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
-import { makeStubExecutionEnv } from "./stub-execution-env.js";
 
 export interface AgentLoopRequest {
   ctx: TenantContext;
@@ -549,7 +548,6 @@ export async function runAgentLoop(
   // pi 0.80: harness resolves auth via a `Models` instance instead of
   // the old `getApiKeyAndHeaders` callback. See core/pi-models.ts.
   const harness = new AgentHarness({
-    env: makeStubExecutionEnv(homeDir ?? ctx.userHomeDir(userId)),
     session,
     tools: adapted.tools,
     systemPrompt,
