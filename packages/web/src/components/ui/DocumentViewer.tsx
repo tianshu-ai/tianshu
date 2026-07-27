@@ -64,7 +64,6 @@ export function DocumentViewer({
   className = "",
 }: DocumentViewerProps) {
   const t = useT();
-  console.log('[DocumentViewer] render, loading=', loading, 'content?', !!content, 'filename=', filename);
   if (loading) {
     return (
       <div className={`flex h-32 items-center justify-center ${className}`}>

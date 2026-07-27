@@ -131,22 +131,16 @@ export default function FileOpenDialog(): ReactElement | null {
     const handler = (e: Event): void => {
       const detail = (e as CustomEvent<{ path: string }>).detail;
       if (!detail?.path) return;
-      console.log('[FileOpenDialog] open event:', detail.path);
       setIntent({ path: detail.path });
     };
     window.addEventListener("tianshu:files:open", handler);
     return () => window.removeEventListener("tianshu:files:open", handler);
   }, []);
 
-  // Debug: track renders
-  const renderCount = useRef(0);
-  renderCount.current++;
-  console.log('[FileOpenDialog] render #', renderCount.current, 'intent:', intent?.path, 'view:', view.kind);
 
   // ─── Fetch on intent ──────────────────────────────────────────
   useEffect(() => {
     if (!intent) return;
-    console.log('[FileOpenDialog] effect fired, fetching:', intent.path);
     setView({ kind: "loading" });
     const controller = new AbortController();
     const cleaned = intent.path.replace(/^workspace:\/\/+/, "/");
