@@ -273,27 +273,6 @@ function BridgePanel(_props: PanelProps) {
               {t("panel.authDisabled")}
             </p>
           )}
-          {/* Alternative: CLI for advanced users */}
-          <details className="mt-3">
-            <summary className="cursor-pointer text-[10px] text-fg-fainter hover:text-fg-muted">
-              Advanced: use CLI instead
-            </summary>
-            <div className="mt-1 space-y-1">
-              <CmdBlock
-                label="Install CLI"
-                text={INSTALL_CMD}
-                copied={copiedKey === "install"}
-                onCopy={() => copy("install", INSTALL_CMD)}
-              />
-              <CmdBlock
-                label="Run"
-                text={globalCmd}
-                copied={copiedKey === "global"}
-                onCopy={() => copy("global", globalCmd)}
-              />
-              <p className="text-[10px] text-fg-fainter">Requires Node.js 18+.</p>
-            </div>
-          </details>
         </div>
 
         {/* Connected devices */}
