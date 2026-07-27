@@ -472,7 +472,8 @@ function FilePreviewModal({
     return () => {
       cancelled = true;
     };
-  }, [entry.path, entry.size, entry.modifiedMs, isStreamed, t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.path, entry.size, entry.modifiedMs, isStreamed]);
 
   return (
     <Modal
