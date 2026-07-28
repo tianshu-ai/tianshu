@@ -77,6 +77,7 @@
     "sandboxes": [
       {
         "id": "shell",
+        "displayName": "Local Bridge Shell",
         "kind": "shell",
         "module": "bridgeShell"
       }
