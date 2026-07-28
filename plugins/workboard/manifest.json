@@ -2,14 +2,27 @@
   "id": "workboard",
   "version": "0.1.0",
   "displayName": "Workboard",
-  "description": "Kanban task board with a worker pool. The orchestrator drops tasks onto the board; workers pick them up, run them, and report back. v0.2 ships an echo worker so the full ready→in-progress→done loop is visible end-to-end; real worker runtimes (qianliyan / luban / xihe / nvwa) land in follow-up PRs as separate plugins.",
+  "description": "Kanban task board with a worker pool. The orchestrator drops tasks onto the board; workers pick them up, run them, and report back. v0.2 ships an echo worker so the full ready\u2192in-progress\u2192done loop is visible end-to-end; real worker runtimes (qianliyan / luban / xihe / nvwa) land in follow-up PRs as separate plugins.",
   "category": "agents",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
-  "permissions": ["workspace.read", "tenant.db"],
-  "requires": ["host.agentLoop", "host.sessionInbox", "host.toolCatalog", "host.skillCatalog", "host.modelCatalog"],
-  "client": { "entry": "@tianshu-builtin/plugin-workboard/client" },
-  "server": { "entry": "@tianshu-builtin/plugin-workboard/server" },
+  "permissions": [
+    "workspace.read",
+    "tenant.db"
+  ],
+  "requires": [
+    "host.agentLoop",
+    "host.sessionInbox",
+    "host.toolCatalog",
+    "host.skillCatalog",
+    "host.modelCatalog"
+  ],
+  "client": {
+    "entry": "@tianshu-builtin/plugin-workboard/client"
+  },
+  "server": {
+    "entry": "@tianshu-builtin/plugin-workboard/server"
+  },
   "contributes": {
     "topBarButtons": [
       {
@@ -46,52 +59,168 @@
       }
     ],
     "tools": [
-      { "id": "task_list",                "module": "TaskListTool", "since": "0.1.0" },
-      { "id": "task_create",              "module": "TaskCreateTool", "since": "0.1.0" },
-      { "id": "task_update",              "module": "TaskUpdateTool", "since": "0.1.0" },
-      { "id": "task_move",                "module": "TaskMoveTool", "since": "0.1.0" },
-      { "id": "task_delete",              "module": "TaskDeleteTool", "since": "0.1.0" },
-      { "id": "task_get_history",         "module": "TaskGetHistoryTool", "since": "0.1.0" },
-      { "id": "task_complete",            "module": "TaskCompleteTool", "since": "0.1.0" },
-      { "id": "task_continue",            "module": "TaskContinueTool", "since": "0.1.0" },
-      { "id": "task_retry_fresh",         "module": "TaskRetryFreshTool", "since": "0.1.0" },
-      { "id": "task_extend_timeout",      "module": "TaskExtendTimeoutTool", "since": "0.1.0" },
-      { "id": "task_abort",               "module": "TaskAbortTool", "since": "0.1.0" },
-      { "id": "model_list",               "module": "ModelListTool", "since": "0.1.0" },
-      { "id": "worker_analytics",         "module": "WorkerAnalyticsTool", "since": "0.3.20" }
+      {
+        "id": "task_list",
+        "module": "TaskListTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_create",
+        "module": "TaskCreateTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_update",
+        "module": "TaskUpdateTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_move",
+        "module": "TaskMoveTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_delete",
+        "module": "TaskDeleteTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_get_history",
+        "module": "TaskGetHistoryTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_complete",
+        "module": "TaskCompleteTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_continue",
+        "module": "TaskContinueTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_retry_fresh",
+        "module": "TaskRetryFreshTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_extend_timeout",
+        "module": "TaskExtendTimeoutTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "task_abort",
+        "module": "TaskAbortTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "model_list",
+        "module": "ModelListTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "worker_analytics",
+        "module": "WorkerAnalyticsTool",
+        "since": "0.3.20"
+      }
     ],
     "skills": [
-      { "id": "workboard-howto",          "path": "skills/workboard-howto.md"          },
-      { "id": "worker-creator",           "path": "skills/worker-creator.md"           },
-      { "id": "worker-fleet",             "path": "skills/worker-fleet.md"             },
-      { "id": "large-input-large-output", "path": "skills/large-input-large-output.md" }
+      {
+        "id": "workboard-howto",
+        "path": "skills/workboard-howto.md"
+      },
+      {
+        "id": "worker-creator",
+        "path": "skills/worker-creator.md"
+      },
+      {
+        "id": "worker-fleet",
+        "path": "skills/worker-fleet.md"
+      },
+      {
+        "id": "large-input-large-output",
+        "path": "skills/large-input-large-output.md"
+      }
     ],
     "agentSeeds": [
-      { "id": "echo-demo",   "path": "agent-seeds/echo-demo"   },
-      { "id": "llm-default", "path": "agent-seeds/llm-default" }
+      {
+        "id": "echo-demo",
+        "path": "agent-seeds/echo-demo"
+      },
+      {
+        "id": "llm-default",
+        "path": "agent-seeds/llm-default"
+      }
     ],
     "systemPromptFragments": [
       {
         "id": "prefer-delegation",
-        "text": "The workboard is active in this tenant. For any non-trivial user request — anything that takes more than a few minutes, fans out into multiple steps, or has clearly separable roles (design / build / test, research / write, etc.) — your default is to DELEGATE to worker agents via `task_create` rather than execute it yourself. The `worker-fleet` skill covers task decomposition (plan / design / build / verify phases), task sizing (avoiding max_tokens stalls on monolithic tasks), worker selection (matching by capability), and brief authoring (each task description is the worker's only view of the work) — read it before designing the task graph. Reuse existing workers (run `tenant_config_list({path:\"workers\"})` first); the `worker-creator` skill covers authoring agent.json + SOUL.md when no existing worker fits. Do the work yourself directly only when (a) the user explicitly says so, (b) the request is trivial (single tool call, one-line answer, quick lookup), or (c) the user wants a synchronous reply. When in doubt, ack the plan and give the user a chance to override."
+        "text": "The workboard is active in this tenant. For any non-trivial user request \u2014 anything that takes more than a few minutes, fans out into multiple steps, or has clearly separable roles (design / build / test, research / write, etc.) \u2014 your default is to DELEGATE to worker agents via `task_create` rather than execute it yourself. The `worker-fleet` skill covers task decomposition (plan / design / build / verify phases), task sizing (avoiding max_tokens stalls on monolithic tasks), worker selection (matching by capability), and brief authoring (each task description is the worker's only view of the work) \u2014 read it before designing the task graph. Reuse existing workers (run `tenant_config_list({path:\"workers\"})` first); the `worker-creator` skill covers authoring agent.json + SOUL.md when no existing worker fits. Do the work yourself directly only when (a) the user explicitly says so, (b) the request is trivial (single tool call, one-line answer, quick lookup), or (c) the user wants a synchronous reply. When in doubt, ack the plan and give the user a chance to override."
       },
       {
         "id": "summarize-on-completion",
-        "text": "When the workboard tasks you delegated for the user's current request have all finished, your job isn't done — you owe the user a synthesised reply. Steps: (1) Call `task_list({status:\"done\"})` (or filter by labels/ids you tracked) to confirm every task you created in this turn has actually completed; if any are still running, wait or fetch their status before composing. (2) For each completed task, call `task_get_history({id})` and READ the worker's actual output — don't trust `resultSummary` alone; workers sometimes write a one-liner that hides nuance, errors, or important findings. Skim the final assistant message + any tool results that produced files. (3) Compose ONE coherent reply to the user that: covers the original goal, integrates the per-task findings into a narrative (not a bulleted dump of resultSummaries), explicitly cites every output file the workers produced (use the file's path, and where the tenant has the `files` plugin enabled use the standard file-reference markup the user's chat client understands so they can click through), and surfaces any failures / partial results honestly. (4) If a task ended in awaiting-intervention, do NOT just report the failure — either resolve it yourself (task_continue / task_retry_fresh / task_extend_timeout / task_abort) before replying, or include in the reply a concrete suggestion for what the user should choose. Keep the synthesis honest: if outputs contradict each other or a worker punted, say so; don't paper over with cheerful language."
+        "text": "When the workboard tasks you delegated for the user's current request have all finished, your job isn't done \u2014 you owe the user a synthesised reply. Steps: (1) Call `task_list({status:\"done\"})` (or filter by labels/ids you tracked) to confirm every task you created in this turn has actually completed; if any are still running, wait or fetch their status before composing. (2) For each completed task, call `task_get_history({id})` and READ the worker's actual output \u2014 don't trust `resultSummary` alone; workers sometimes write a one-liner that hides nuance, errors, or important findings. Skim the final assistant message + any tool results that produced files. (3) Compose ONE coherent reply to the user that: covers the original goal, integrates the per-task findings into a narrative (not a bulleted dump of resultSummaries), explicitly cites every output file the workers produced (use the file's path, and where the tenant has the `files` plugin enabled use the standard file-reference markup the user's chat client understands so they can click through), and surfaces any failures / partial results honestly. (4) If a task ended in awaiting-intervention, do NOT just report the failure \u2014 either resolve it yourself (task_continue / task_retry_fresh / task_extend_timeout / task_abort) before replying, or include in the reply a concrete suggestion for what the user should choose. Keep the synthesis honest: if outputs contradict each other or a worker punted, say so; don't paper over with cheerful language."
       }
     ],
     "apiRoutes": [
-      { "method": "GET",    "path": "/tasks",              "handler": "listTasks"     },
-      { "method": "POST",   "path": "/tasks",              "handler": "createTask"    },
-      { "method": "POST",   "path": "/tasks/delete",       "handler": "deleteTask"    },
-      { "method": "PATCH",  "path": "/tasks/:id",          "handler": "patchTask"     },
-      { "method": "GET",    "path": "/tasks/:id/history",  "handler": "taskHistory"   },
-      { "method": "GET",    "path": "/tasks/:id/opencode-log", "handler": "taskOpencodeLog" },
-      { "method": "GET",    "path": "/projects",           "handler": "listProjects"  },
-      { "method": "GET",    "path": "/workers/status",     "handler": "workerStatus"  },
-      { "method": "POST",   "path": "/workers/restart",    "handler": "workerRestart", "access": "admin" },
-      { "method": "GET",    "path": "/agents",             "handler": "listAgents"    },
-      { "method": "PATCH",  "path": "/agents/:slug/enabled", "handler": "setAgentEnabled", "access": "admin" }
+      {
+        "method": "GET",
+        "path": "/tasks",
+        "handler": "listTasks"
+      },
+      {
+        "method": "POST",
+        "path": "/tasks",
+        "handler": "createTask"
+      },
+      {
+        "method": "POST",
+        "path": "/tasks/delete",
+        "handler": "deleteTask"
+      },
+      {
+        "method": "PATCH",
+        "path": "/tasks/:id",
+        "handler": "patchTask"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/:id/history",
+        "handler": "taskHistory"
+      },
+      {
+        "method": "GET",
+        "path": "/tasks/:id/opencode-log",
+        "handler": "taskOpencodeLog"
+      },
+      {
+        "method": "GET",
+        "path": "/projects",
+        "handler": "listProjects"
+      },
+      {
+        "method": "GET",
+        "path": "/workers/status",
+        "handler": "workerStatus"
+      },
+      {
+        "method": "POST",
+        "path": "/workers/restart",
+        "handler": "workerRestart",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/agents",
+        "handler": "listAgents"
+      },
+      {
+        "method": "PATCH",
+        "path": "/agents/:slug/enabled",
+        "handler": "setAgentEnabled",
+        "access": "admin"
+      }
     ]
   },
   "configSchema": {
@@ -99,7 +228,7 @@
       {
         "key": "maxConcurrentRuns",
         "label": "Max concurrent worker runs (tenant)",
-        "description": "Tenant-wide cap on how many worker tasks the pool will run in parallel. 0 (default) means unlimited — each registered worker slot can claim a task. Lower this if you want to throttle total LLM / sandbox load (e.g. set to 2 so only two tasks run at once even though 5 workers are registered).",
+        "description": "Tenant-wide cap on how many worker tasks the pool will run in parallel. 0 (default) means unlimited \u2014 each registered worker slot can claim a task. Lower this if you want to throttle total LLM / sandbox load (e.g. set to 2 so only two tasks run at once even though 5 workers are registered).",
         "kind": "number",
         "default": 0,
         "min": 0,
@@ -113,7 +242,7 @@
       {
         "key": "maxConcurrentRunsPerUser",
         "label": "Max concurrent worker runs per user",
-        "description": "Per-user cap on how many of THIS user's tasks can be in flight at once. 0 (default) means unlimited. Useful in shared tenants to keep one user from monopolising the pool — e.g. tenant cap 4, per-user cap 2 means two users can each run two tasks side-by-side. Whichever cap fires first stops further claims.",
+        "description": "Per-user cap on how many of THIS user's tasks can be in flight at once. 0 (default) means unlimited. Useful in shared tenants to keep one user from monopolising the pool \u2014 e.g. tenant cap 4, per-user cap 2 means two users can each run two tasks side-by-side. Whichever cap fires first stops further claims.",
         "kind": "number",
         "default": 0,
         "min": 0,

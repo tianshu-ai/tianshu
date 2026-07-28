@@ -213,12 +213,9 @@ const plugin: PluginServerModule = {
       "sandbox.taskPool",
     );
 
-    // OpenCode worker deps: the shell sandbox runner (openshell OR
-    // bridge — whichever plugin provides sandbox.shell) + the host
-    // proxy that lets opencode reach a tianshu model.
-    const shellRunner = ctx.capabilities.get<SandboxRunner>(
-      "sandbox.shell",
-    );
+    // OpenCode worker deps resolved lazily inside the factory so
+    // activation order doesn't matter (reverse-mcp may activate after
+    // workboard and register sandbox.shell late).
     const opencodeProxy = ctx.capabilities.get<OpenCodeProxyCapability>(
       "host.opencodeProxy",
     );
@@ -249,6 +246,7 @@ const plugin: PluginServerModule = {
         });
       }
       if (a.kind === "opencode") {
+        const shellRunner = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
         if (!shellRunner) {
           ctx.log.warn(
             "workboard: opencode worker needs a sandbox.shell runner " +
@@ -485,16 +483,16 @@ const plugin: PluginServerModule = {
       // (relative to /sandbox/workspace, which is the shell
       // runner's readFile root). Only wired when a sandbox.shell
       // runner is present; best-effort — missing file -> "".
-      readOpencodeLog: shellRunner
-        ? async (taskId: string) => {
-            try {
-              const rel = `opencode/${taskId}/.oc-data/opencode/log/opencode.log`;
-              return (await shellRunner.readFile(rel)) ?? "";
-            } catch {
-              return "";
-            }
-          }
-        : undefined,
+      readOpencodeLog: async (taskId: string) => {
+        try {
+          const r = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
+          if (!r) return "";
+          const rel = `opencode/${taskId}/.oc-data/opencode/log/opencode.log`;
+          return (await r.readFile(rel)) ?? "";
+        } catch {
+          return "";
+        }
+      },
       workerKinds: WORKER_KINDS,
       // GET /agents reads through the same fs-first merge the
       // pool uses, so the admin UI sees identical inventory.
