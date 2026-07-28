@@ -246,21 +246,13 @@ const plugin: PluginServerModule = {
         });
       }
       if (a.kind === "opencode") {
-        const shellRunner = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
-        if (!shellRunner) {
-          ctx.log.warn(
-            "workboard: opencode worker needs a sandbox.shell runner " +
-              "(openshell or reverse-mcp bridge) — skipping",
-          );
-          return null;
-        }
-        const row = agentRowsById.get(a.id);
         if (!opencodeProxy) {
           ctx.log.warn(
             "workboard: opencode worker needs host.opencodeProxy — skipping",
           );
           return null;
         }
+        const row = agentRowsById.get(a.id);
         const defaultModel = row?.modelId ?? null;
         if (!defaultModel) {
           ctx.log.warn(
@@ -268,12 +260,21 @@ const plugin: PluginServerModule = {
           );
           return null;
         }
+        // Lazy shell proxy: resolved at run time so activation order
+        // with the sandbox provider plugin doesn't matter.
+        const lazyShell = new Proxy({} as SandboxRunner, {
+          get(_, prop) {
+            const real = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
+            if (!real) throw new Error("No sandbox.shell runner available. Enable openshell or connect a bridge.");
+            return (real as unknown as Record<string | symbol, unknown>)[prop];
+          },
+        });
         return new OpenCodeWorker({
           agentId: a.id,
           name: a.name,
           defaultModel,
           tenantId: ctx.tenantId,
-          shell: shellRunner,
+          shell: lazyShell,
           proxy: opencodeProxy,
           db: ctx.db,
           enableLsp: row?.enableLsp === true,
