@@ -164,6 +164,33 @@ export class BridgeSandboxRunner implements SandboxRunner {
     }
   }
 
+  /** Read a file in chunks (bridge exec truncates at 8KB). */
+  private async readFileFull(relPath: string): Promise<string> {
+    const CHUNK = 6000; // bytes per read (safe under 8KB after base64)
+    let offset = 0;
+    let result = "";
+    for (let i = 0; i < 200; i++) { // max 200 chunks = 1.2MB
+      const res = await this.callBridgeTool(undefined, "exec", {
+        command: `dd if=${JSON.stringify(relPath)} bs=1 skip=${offset} count=${CHUNK} 2>/dev/null`,
+      });
+      const content = Array.isArray(res.content)
+        ? (res.content as { text?: string }[]).map((c) => c.text ?? "").join("")
+        : "";
+      let chunk = "";
+      try {
+        const parsed = JSON.parse(content) as { stdout?: string };
+        chunk = parsed.stdout ?? "";
+      } catch {
+        chunk = content;
+      }
+      if (!chunk) break;
+      result += chunk;
+      if (chunk.length < CHUNK) break; // last chunk
+      offset += CHUNK;
+    }
+    return result;
+  }
+
   async readFile(relPath: string): Promise<string> {
     console.log(`[BridgeSandboxRunner] readFile:`, relPath);
     try {
@@ -228,22 +255,31 @@ export class BridgeSandboxRunner implements SandboxRunner {
       `opencode run --auto --format json ` +
       (resume ? `--continue ` : ``) +
       `< .prompt.txt > oc.out 2> oc.err ; ` +
-      `rc=$? ; cat oc.out ; exit $rc`;
+      `echo $? > .exitcode`;
 
     console.log(`[BridgeSandboxRunner] runOpencode cmd:`, cmd.slice(0, 200));
-    const result = await this.exec({
+    await this.exec({
       command: cmd,
       userId,
       timeoutMs: timeoutMs ?? 1200000,
     });
 
-    // Read oc.err so it shows up in the execution log.
+    // Read the FULL oc.out via base64 (exec stdout is truncated at 8KB).
+    let stdout = "";
+    let stderr = "";
+    let exitCode = 0;
     try {
-      const errContent = await this.readFile(`${workdir}/oc.err`);
-      if (errContent.trim()) {
-        result.stderr = errContent;
-      }
+      stdout = await this.readFileFull(`${workdir}/oc.out`);
     } catch { /* best-effort */ }
+    try {
+      stderr = await this.readFileFull(`${workdir}/oc.err`);
+    } catch { /* best-effort */ }
+    try {
+      const rc = await this.readFile(`${workdir}/.exitcode`);
+      exitCode = parseInt(rc.trim(), 10) || 0;
+    } catch { /* default 0 */ }
+
+    const result: ExecResult = { stdout, stderr, exitCode, durationMs: 0, timedOut: false };
 
     // 3. Collect deliverables: simple cp (avoids find+while zsh issues).
     // Copy all non-scaffolding files from workdir into .deliverables/
