@@ -109,14 +109,15 @@ export class BridgeRegistry {
 
   /** Send a JSON-RPC request to a specific connection and await the
    *  reply (or timeout). */
-  call(conn: BridgeConn, method: string, params?: Record<string, unknown>): Promise<unknown> {
+  call(conn: BridgeConn, method: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown> {
     const id = `${Date.now()}-${++this.seq}`;
     const req: RequestMsg = { type: MSG.request, id, method, params };
+    const timeout = timeoutMs ?? CALL_TIMEOUT_MS;
     return new Promise<unknown>((resolve, reject) => {
       const timer = setTimeout(() => {
         conn.pending.delete(id);
-        reject(new Error(`bridge call timed out after ${CALL_TIMEOUT_MS}ms (${method})`));
-      }, CALL_TIMEOUT_MS);
+        reject(new Error(`bridge call timed out after ${timeout}ms (${method})`));
+      }, timeout);
       conn.pending.set(id, { resolve, reject, timer });
       try {
         conn.socket.send(JSON.stringify(req));

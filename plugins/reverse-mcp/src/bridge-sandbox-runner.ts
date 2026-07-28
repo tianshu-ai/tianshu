@@ -49,6 +49,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
     userId: string | undefined,
     name: string,
     args: Record<string, unknown>,
+    callTimeoutMs?: number,
   ): Promise<Record<string, unknown>> {
     let conn = this.getConn(userId);
     if (!conn) {
@@ -65,7 +66,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
     const result = await this.registry.call(conn, "tools/call", {
       name,
       arguments: args,
-    });
+    }, callTimeoutMs);
     return (result ?? {}) as Record<string, unknown>;
   }
 
@@ -97,11 +98,14 @@ export class BridgeSandboxRunner implements SandboxRunner {
       command = command.replace(/\/sandbox\/workspace/g, ".");
 
       console.log(`[BridgeSandboxRunner] exec adapted command:`, command.slice(0, 300));
+      // Pass timeout to both the bridge tool AND the registry call
+      // so long-running commands (opencode) don't hit the 60s default.
+      const callTimeout = bridgeTimeoutMs ? bridgeTimeoutMs + 30000 : undefined;
       const result = await this.callBridgeTool(req.userId, "exec", {
         command,
         workdir: req.workdir?.replace(/\/sandbox\/workspace\/?/, "") || undefined,
         ...(bridgeTimeoutMs ? { timeout_ms: bridgeTimeoutMs } : {}),
-      });
+      }, callTimeout);
       const durationMs = Date.now() - t0;
       const content = Array.isArray(result.content) ? result.content : [];
       const rawText = content.map((c: { text?: string }) => c.text ?? "").join("\n");
