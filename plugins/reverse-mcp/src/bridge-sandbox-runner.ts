@@ -101,6 +101,9 @@ export class BridgeSandboxRunner implements SandboxRunner {
       // /sandbox/workspace is the Docker sandbox path — not relevant on bridge.
       command = command.replace(/\/sandbox\/workspace\//g, "");
       command = command.replace(/\/sandbox\/workspace/g, ".");
+      // GNU find's -printf is not available on macOS (BSD find).
+      // Replace -printf '%P\n' with portable: | sed 's|^\./||'
+      command = command.replace(/-printf\s+'%P\\n'/g, "| sed 's|^\\./||'");
 
       console.log(`[BridgeSandboxRunner] exec adapted command:`, command.slice(0, 300));
       // Pass timeout to both the bridge tool AND the registry call
