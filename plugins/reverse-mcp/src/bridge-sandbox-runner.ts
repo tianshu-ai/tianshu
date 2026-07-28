@@ -77,10 +77,29 @@ export class BridgeSandboxRunner implements SandboxRunner {
       timeoutMs: req.timeoutMs,
     });
     try {
+      // Adapt command for non-Linux (macOS bridge):
+      // 1. Replace GNU `timeout -s KILL N` (not available on macOS) —
+      //    bridge's own timeout_ms handles it.
+      // 2. Replace /sandbox/workspace paths with the shell root.
+      let command = req.command;
+      const timeoutMatch = command.match(/timeout\s+(?:-s\s+\S+\s+)?(\d+)\s+/);
+      let bridgeTimeoutMs = req.timeoutMs;
+      if (timeoutMatch) {
+        // Extract the timeout seconds and use bridge's timeout_ms instead.
+        if (!bridgeTimeoutMs) {
+          bridgeTimeoutMs = parseInt(timeoutMatch[1], 10) * 1000;
+        }
+        command = command.replace(/timeout\s+(?:-s\s+\S+\s+)?\d+\s+/, "");
+      }
+      // /sandbox/workspace is the Docker sandbox path — not relevant on bridge.
+      command = command.replace(/\/sandbox\/workspace\//g, "");
+      command = command.replace(/\/sandbox\/workspace/g, ".");
+
+      console.log(`[BridgeSandboxRunner] exec adapted command:`, command.slice(0, 300));
       const result = await this.callBridgeTool(req.userId, "exec", {
-        command: req.command,
-        workdir: req.workdir,
-        ...(req.timeoutMs ? { timeout_ms: req.timeoutMs } : {}),
+        command,
+        workdir: req.workdir?.replace(/\/sandbox\/workspace\/?/, "") || undefined,
+        ...(bridgeTimeoutMs ? { timeout_ms: bridgeTimeoutMs } : {}),
       });
       const durationMs = Date.now() - t0;
       const content = Array.isArray(result.content) ? result.content : [];
