@@ -213,14 +213,31 @@ const plugin: PluginServerModule = {
       "sandbox.taskPool",
     );
 
-    // OpenCode worker deps: the shell sandbox runner (openshell /
-    // microsandbox) + the host proxy that lets a sandboxed opencode
-    // reach a tianshu model without seeing the real key/baseUrl.
-    // Both optional — if either is missing, opencode-kind agents are
-    // skipped (factory returns null) just like a missing agentLoop.
-    const shellRunner = ctx.capabilities.get<SandboxRunner>(
-      "sandbox.shell",
-    );
+    // OpenCode worker deps: the shell runner (openshell sandbox OR
+    // local-bridge device) + the host proxy. If a bridge device is
+    // connected, prefer it (runs on the user's machine where opencode
+    // is already installed); otherwise fall back to the Docker sandbox.
+    type BridgeSandboxCap = {
+      createRunner(userId: string, deviceId: string, workdir?: string): SandboxRunner;
+      listDevices(userId: string): Array<{ deviceId: string; label?: string }>;
+    };
+    const bridgeSandbox = ctx.capabilities.get<BridgeSandboxCap>("host.bridgeSandbox");
+    const dockerRunner = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
+
+    // Resolve the shell runner for a given user: bridge if connected,
+    // else Docker sandbox.
+    function resolveShellRunner(userId: string): SandboxRunner | null {
+      if (bridgeSandbox) {
+        const devices = bridgeSandbox.listDevices(userId);
+        if (devices.length > 0) {
+          ctx.log.info(`workboard: using bridge device "${devices[0].deviceId}" for user ${userId}`);
+          return bridgeSandbox.createRunner(userId, devices[0].deviceId);
+        }
+      }
+      return dockerRunner ?? null;
+    }
+    // For backward compat in places that need a static reference:
+    const shellRunner = dockerRunner;
     const opencodeProxy = ctx.capabilities.get<OpenCodeProxyCapability>(
       "host.opencodeProxy",
     );
@@ -251,10 +268,14 @@ const plugin: PluginServerModule = {
         });
       }
       if (a.kind === "opencode") {
-        if (!shellRunner) {
+        // Resolve the runner per-agent (checks bridge first, then sandbox).
+        const row = agentRowsById.get(a.id);
+        const ownerUser = row?.ownerUserId ?? fallbackUser ?? "unknown";
+        const runner = resolveShellRunner(ownerUser);
+        if (!runner) {
           ctx.log.warn(
-            "workboard: opencode worker needs a sandbox.shell runner " +
-              "(openshell / microsandbox) — skipping",
+            "workboard: opencode worker needs a shell runner " +
+              "(bridge device or openshell sandbox) — skipping",
           );
           return null;
         }
@@ -264,7 +285,6 @@ const plugin: PluginServerModule = {
           );
           return null;
         }
-        const row = agentRowsById.get(a.id);
         const defaultModel = row?.modelId ?? null;
         if (!defaultModel) {
           ctx.log.warn(
@@ -277,7 +297,7 @@ const plugin: PluginServerModule = {
           name: a.name,
           defaultModel,
           tenantId: ctx.tenantId,
-          shell: shellRunner,
+          shell: runner,
           proxy: opencodeProxy,
           db: ctx.db,
           enableLsp: row?.enableLsp === true,
