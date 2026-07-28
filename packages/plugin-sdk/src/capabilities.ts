@@ -94,11 +94,6 @@ export const KNOWN_CAPABILITIES = {
     description:
       "Mint a long-lived, revocable connection token scoped to the current tenant + user, for a local Bridge client to authenticate its inbound WebSocket (reverse-MCP). The token is a standard session credential the host's identity resolver already accepts, so no new auth path is added. When auth is disabled (dev), returns an empty token (the dev resolver needs none). Provided by the host; the reverse-mcp plugin uses it to render a ready-to-run connect command.",
   },
-  "host.bridgeSandbox": {
-    exclusive: true,
-    description:
-      "Create a SandboxRunner backed by a connected local-bridge device. Allows workboard tasks to execute on the user's own machine (where opencode is pre-installed) instead of a Docker sandbox. Provided by the reverse-mcp plugin.",
-  },
 } as const satisfies Record<string, CapabilitySpec>;
 
 export type CapabilityName = keyof typeof KNOWN_CAPABILITIES;

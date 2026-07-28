@@ -37,7 +37,6 @@ import type {
   SandboxRunner,
   OpenCodeProxyCapability,
 } from "@tianshu-ai/plugin-sdk";
-import type { SandboxKind } from "@tianshu-ai/plugin-sdk";
 import { setAgentEnabled } from "./fs-worker-agents.js";
 import {
   EchoWorker,
@@ -214,30 +213,12 @@ const plugin: PluginServerModule = {
       "sandbox.taskPool",
     );
 
-    // OpenCode worker deps: the shell runner (openshell sandbox OR
-    // local-bridge device) + the host proxy. If a bridge device is
-    // connected, prefer it (runs on the user's machine where opencode
-    // is already installed); otherwise fall back to the Docker sandbox.
-    type BridgeSandboxCap = {
-      createRunner(userId: string, deviceId: string, workdir?: string): SandboxRunner;
-      listDevices(userId: string): Array<{ deviceId: string; label?: string }>;
-    };
-    const bridgeSandbox = ctx.capabilities.get<BridgeSandboxCap>("host.bridgeSandbox");
-    const dockerRunner = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
-
-    // Resolve the shell runner for a given user: bridge if connected,
-    // else Docker sandbox.
-    function resolveShellRunner(userId: string): SandboxRunner | null {
-      if (bridgeSandbox) {
-        const devices = bridgeSandbox.listDevices(userId);
-        if (devices.length > 0) {
-          return bridgeSandbox.createRunner(userId, devices[0].deviceId);
-        }
-      }
-      return dockerRunner ?? null;
-    }
-    // For backward compat in places that need a static reference:
-    const shellRunner = dockerRunner;
+    // OpenCode worker deps: the shell sandbox runner (openshell OR
+    // bridge — whichever plugin provides sandbox.shell) + the host
+    // proxy that lets opencode reach a tianshu model.
+    const shellRunner = ctx.capabilities.get<SandboxRunner>(
+      "sandbox.shell",
+    );
     const opencodeProxy = ctx.capabilities.get<OpenCodeProxyCapability>(
       "host.opencodeProxy",
     );
@@ -268,11 +249,10 @@ const plugin: PluginServerModule = {
         });
       }
       if (a.kind === "opencode") {
-        // Check that at least one runner backend is available.
-        if (!bridgeSandbox && !dockerRunner) {
+        if (!shellRunner) {
           ctx.log.warn(
-            "workboard: opencode worker needs a shell runner " +
-              "(bridge device or openshell sandbox) — skipping",
+            "workboard: opencode worker needs a sandbox.shell runner " +
+              "(openshell or reverse-mcp bridge) — skipping",
           );
           return null;
         }
@@ -290,37 +270,12 @@ const plugin: PluginServerModule = {
           );
           return null;
         }
-        const ownerUser = row?.ownerUserId ?? fallbackUser ?? "unknown";
-        // Lazy shell: resolves at run-time (bridge may connect after activate).
-        const lazyShell: SandboxRunner = {
-          get id() { return resolveShellRunner(ownerUser)?.id ?? "bridge-pending"; },
-          get kind() { return (resolveShellRunner(ownerUser)?.kind ?? "bridge") as SandboxKind; },
-          exec: (req) => {
-            const r = resolveShellRunner(ownerUser);
-            if (!r) throw new Error("No shell runner available (connect a bridge or start the sandbox)");
-            return r.exec(req);
-          },
-          readFile: (p) => {
-            const r = resolveShellRunner(ownerUser);
-            if (!r) throw new Error("No shell runner available");
-            return r.readFile(p);
-          },
-          writeFile: (p, c) => {
-            const r = resolveShellRunner(ownerUser);
-            if (!r) throw new Error("No shell runner available");
-            return r.writeFile(p, c);
-          },
-          workspacePath: () => resolveShellRunner(ownerUser)?.workspacePath() ?? "/workspace",
-          reset: () => resolveShellRunner(ownerUser)?.reset() ?? Promise.resolve(),
-          shutdown: () => Promise.resolve(),
-          status: () => resolveShellRunner(ownerUser)?.status() ?? Promise.resolve({ state: "stopped" as const, uptimeMs: 0 }),
-        };
         return new OpenCodeWorker({
           agentId: a.id,
           name: a.name,
           defaultModel,
           tenantId: ctx.tenantId,
-          shell: lazyShell,
+          shell: shellRunner,
           proxy: opencodeProxy,
           db: ctx.db,
           enableLsp: row?.enableLsp === true,

@@ -196,27 +196,15 @@ const plugin: PluginServerModule = {
       fs.createReadStream(fullPath).pipe(res);
     };
 
-    // Capability: let other plugins (e.g. workboard) create a
-    // BridgeSandboxRunner for a user's connected bridge device.
-    const bridgeSandboxCapability = {
-      createRunner(userId: string, deviceId: string, workdir?: string) {
-        return new BridgeSandboxRunner({
-          registry,
-          userId,
-          deviceId,
-          workdir,
-        });
-      },
-      /** List connected devices for a user (so workboard can pick one). */
-      listDevices(userId: string) {
-        return registry.forUser(userId).map((c) => ({
-          deviceId: c.deviceId,
-          label: c.label,
-          connectedAt: c.connectedAt,
-          tools: c.tools.map((t) => t.name),
-        }));
-      },
-    };
+    // Bridge-backed sandbox.shell runner. When the user has a bridge
+    // connected, exec/readFile/writeFile go to their local machine.
+    // The runner dynamically picks the first connected device for
+    // the requesting user.
+    const bridgeShellRunner = new BridgeSandboxRunner({
+      registry,
+      userId: "__dynamic__", // resolved per-call from ctx
+      deviceId: "__first__", // uses first connected device
+    });
 
     ctx.log.info("reverse-mcp activated");
     return {
@@ -233,8 +221,8 @@ const plugin: PluginServerModule = {
         connectInfo,
         serveScreenshot,
       },
-      capabilityProviders: {
-        "host.bridgeSandbox": bridgeSandboxCapability,
+      sandboxes: {
+        bridgeShell: bridgeShellRunner,
       },
     };
   },

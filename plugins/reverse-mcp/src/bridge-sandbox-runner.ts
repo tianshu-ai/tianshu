@@ -1,7 +1,11 @@
 // BridgeSandboxRunner — implements SandboxRunner by forwarding exec/file
-// operations to a connected local-bridge device. This lets the workboard
-// run opencode tasks on the user's own machine (where opencode is already
-// installed) instead of the Docker sandbox.
+// operations to a connected local-bridge device. Registered as the
+// sandbox.shell capability so the workboard (and any other consumer)
+// can run commands on the user's machine transparently.
+//
+// This runner is shared (one instance per tenant). Each exec/readFile/
+// writeFile call resolves the user from the request context and picks
+// the first connected bridge device for that user.
 
 import type {
   ExecRequest,
@@ -10,55 +14,48 @@ import type {
   SandboxKind,
   SandboxStatus,
 } from "@tianshu-ai/plugin-sdk";
-import type { BridgeRegistry, BridgeConn } from "./registry.js";
+import type { BridgeRegistry } from "./registry.js";
 
 export interface BridgeSandboxRunnerOpts {
   registry: BridgeRegistry;
+  /** Placeholder — actual userId comes from ExecRequest.userId at runtime. */
   userId: string;
   deviceId: string;
-  /** Working directory on the remote machine. Defaults to ~/.tianshu-bridge/workspace */
-  workdir?: string;
 }
 
-/**
- * A SandboxRunner backed by a local-bridge connection.
- * exec → bridge shell_exec tool
- * readFile/writeFile → bridge sync_down / sync_up (or direct file tools)
- */
 export class BridgeSandboxRunner implements SandboxRunner {
-  readonly id: string;
-  readonly kind: SandboxKind = "bridge";
+  readonly id = "reverse-mcp.bridge-shell";
+  readonly kind: SandboxKind = "shell";
 
   private registry: BridgeRegistry;
-  private userId: string;
-  private deviceId: string;
-  private workdir: string;
 
   constructor(opts: BridgeSandboxRunnerOpts) {
     this.registry = opts.registry;
-    this.userId = opts.userId;
-    this.deviceId = opts.deviceId;
-    this.workdir = opts.workdir ?? "~/.tianshu-bridge/workspace";
-    this.id = `reverse-mcp.bridge-${opts.deviceId}`;
   }
 
-  private getConn(): BridgeConn {
-    const conn = this.registry
-      .forUser(this.userId)
-      .find((c) => c.deviceId === this.deviceId);
-    if (!conn) {
-      throw new Error(
-        `Bridge device "${this.deviceId}" is not connected. Start the bridge and try again.`,
-      );
+  private getConn(userId?: string) {
+    // Find the first bridge device for the given user, or any user
+    // if userId is not specified.
+    if (userId) {
+      const conns = this.registry.forUser(userId);
+      if (conns.length > 0) return conns[0];
     }
-    return conn;
+    // Fallback: any connected device (single-user setups).
+    const all = this.registry.all?.() ?? [];
+    return all[0] ?? null;
   }
 
   private async callBridgeTool(
+    userId: string | undefined,
     name: string,
     args: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const conn = this.getConn();
+    const conn = this.getConn(userId);
+    if (!conn) {
+      throw new Error(
+        "No bridge device connected. Start the Tianshu Bridge desktop app and try again.",
+      );
+    }
     const result = await this.registry.call(conn, "tools/call", {
       name,
       arguments: args,
@@ -67,42 +64,21 @@ export class BridgeSandboxRunner implements SandboxRunner {
   }
 
   async exec(req: ExecRequest): Promise<ExecResult> {
-    const args: Record<string, unknown> = {
-      command: req.command,
-    };
-    if (req.workdir) {
-      args.cwd = req.workdir;
-    } else {
-      args.cwd = this.workdir;
-    }
-    if (req.timeoutMs) {
-      args.timeout_ms = req.timeoutMs;
-    }
-
     const t0 = Date.now();
     try {
-      const result = await this.callBridgeTool("shell_exec", args);
+      const result = await this.callBridgeTool(req.userId, "shell_exec", {
+        command: req.command,
+        cwd: req.workdir ?? "/tmp",
+        ...(req.timeoutMs ? { timeout_ms: req.timeoutMs } : {}),
+      });
       const durationMs = Date.now() - t0;
-      // bridge shell_exec returns { content: [{type:"text", text:"..."}] }
       const content = Array.isArray(result.content) ? result.content : [];
-      const text = content
-        .map((c: { text?: string }) => c.text ?? "")
-        .join("\n");
-
+      const text = content.map((c: { text?: string }) => c.text ?? "").join("\n");
       const exitCode =
-        typeof result.exit_code === "number"
-          ? result.exit_code
-          : typeof (result as { exitCode?: number }).exitCode === "number"
-            ? (result as { exitCode?: number }).exitCode!
-            : 0;
-
-      return {
-        stdout: text,
-        stderr: "",
-        exitCode,
-        durationMs,
-        timedOut: false,
-      };
+        typeof result.exit_code === "number" ? result.exit_code :
+        typeof (result as { exitCode?: number }).exitCode === "number"
+          ? (result as { exitCode?: number }).exitCode! : 0;
+      return { stdout: text, stderr: "", exitCode, durationMs, timedOut: false };
     } catch (err) {
       return {
         stdout: "",
@@ -115,50 +91,43 @@ export class BridgeSandboxRunner implements SandboxRunner {
   }
 
   async readFile(relPath: string): Promise<string> {
-    const result = await this.callBridgeTool("shell_exec", {
+    const result = await this.callBridgeTool(undefined, "shell_exec", {
       command: `cat ${JSON.stringify(relPath)}`,
-      cwd: this.workdir,
     });
     const content = Array.isArray(result.content) ? result.content : [];
     return content.map((c: { text?: string }) => c.text ?? "").join("\n");
   }
 
   async writeFile(relPath: string, content: string): Promise<void> {
-    // Use heredoc to write file content safely
     const escaped = content.replace(/'/g, "'\\''");
-    await this.callBridgeTool("shell_exec", {
-      command: `mkdir -p "$(dirname ${JSON.stringify(relPath)})" && cat > ${JSON.stringify(relPath)} << 'TIANSHU_EOF'\n${escaped}\nTIANSHU_EOF`,
-      cwd: this.workdir,
+    await this.callBridgeTool(undefined, "shell_exec", {
+      command: `mkdir -p "$(dirname ${JSON.stringify(relPath)})" && printf '%s' '${escaped}' > ${JSON.stringify(relPath)}`,
     });
   }
 
   workspacePath(): string {
-    return this.workdir;
+    return "/tmp/tianshu-bridge-workspace";
   }
 
   async reset(): Promise<void> {
-    // Clean the workspace directory
-    await this.callBridgeTool("shell_exec", {
-      command: `rm -rf ${JSON.stringify(this.workdir)} && mkdir -p ${JSON.stringify(this.workdir)}`,
-    });
+    // No-op for bridge.
   }
 
   async shutdown(): Promise<void> {
-    // Nothing to tear down — bridge connection persists.
+    // Bridge connection persists independently.
   }
 
   async status(): Promise<SandboxStatus> {
-    const conn = this.registry
-      .forUser(this.userId)
-      .find((c) => c.deviceId === this.deviceId);
-    return {
-      state: conn ? "running" : "stopped",
-      uptimeMs: conn?.connectedAt
-        ? Date.now() - new Date(conn.connectedAt).getTime()
-        : 0,
-      meta: conn
-        ? { device: conn.label ?? conn.deviceId, tools: conn.tools.length }
-        : undefined,
-    };
+    const conns = this.registry.all?.() ?? [];
+    if (conns.length > 0) {
+      return {
+        state: "running",
+        uptimeMs: conns[0].connectedAt
+          ? Date.now() - new Date(conns[0].connectedAt).getTime()
+          : 0,
+        meta: { devices: conns.length },
+      };
+    }
+    return { state: "stopped", uptimeMs: 0 };
   }
 }

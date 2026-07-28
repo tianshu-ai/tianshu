@@ -73,9 +73,17 @@
         "path": "/screenshot",
         "handler": "serveScreenshot"
       }
+    ],
+    "sandboxes": [
+      {
+        "id": "shell",
+        "kind": "shell",
+        "module": "bridgeShell"
+      }
     ]
   },
   "provides": [
-    "host.bridgeSandbox"
+    "host.bridgeToken",
+    "sandbox.shell"
   ]
 }
