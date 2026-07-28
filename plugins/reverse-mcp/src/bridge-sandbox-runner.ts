@@ -237,6 +237,14 @@ export class BridgeSandboxRunner implements SandboxRunner {
       timeoutMs: timeoutMs ?? 1200000,
     });
 
+    // Read oc.err so it shows up in the execution log.
+    try {
+      const errContent = await this.readFile(`${workdir}/oc.err`);
+      if (errContent.trim()) {
+        result.stderr = errContent;
+      }
+    } catch { /* best-effort */ }
+
     // 3. Collect deliverables: simple cp (avoids find+while zsh issues).
     // Copy all non-scaffolding files from workdir into .deliverables/
     const collectCmd =
