@@ -37,6 +37,7 @@ import type {
   SandboxRunner,
   OpenCodeProxyCapability,
 } from "@tianshu-ai/plugin-sdk";
+import type { SandboxKind } from "@tianshu-ai/plugin-sdk";
 import { setAgentEnabled } from "./fs-worker-agents.js";
 import {
   EchoWorker,
@@ -230,7 +231,6 @@ const plugin: PluginServerModule = {
       if (bridgeSandbox) {
         const devices = bridgeSandbox.listDevices(userId);
         if (devices.length > 0) {
-          ctx.log.info(`workboard: using bridge device "${devices[0].deviceId}" for user ${userId}`);
           return bridgeSandbox.createRunner(userId, devices[0].deviceId);
         }
       }
@@ -268,17 +268,15 @@ const plugin: PluginServerModule = {
         });
       }
       if (a.kind === "opencode") {
-        // Resolve the runner per-agent (checks bridge first, then sandbox).
-        const row = agentRowsById.get(a.id);
-        const ownerUser = row?.ownerUserId ?? fallbackUser ?? "unknown";
-        const runner = resolveShellRunner(ownerUser);
-        if (!runner) {
+        // Check that at least one runner backend is available.
+        if (!bridgeSandbox && !dockerRunner) {
           ctx.log.warn(
             "workboard: opencode worker needs a shell runner " +
               "(bridge device or openshell sandbox) — skipping",
           );
           return null;
         }
+        const row = agentRowsById.get(a.id);
         if (!opencodeProxy) {
           ctx.log.warn(
             "workboard: opencode worker needs host.opencodeProxy — skipping",
@@ -292,12 +290,37 @@ const plugin: PluginServerModule = {
           );
           return null;
         }
+        const ownerUser = row?.ownerUserId ?? fallbackUser ?? "unknown";
+        // Lazy shell: resolves at run-time (bridge may connect after activate).
+        const lazyShell: SandboxRunner = {
+          get id() { return resolveShellRunner(ownerUser)?.id ?? "bridge-pending"; },
+          get kind() { return (resolveShellRunner(ownerUser)?.kind ?? "bridge") as SandboxKind; },
+          exec: (req) => {
+            const r = resolveShellRunner(ownerUser);
+            if (!r) throw new Error("No shell runner available (connect a bridge or start the sandbox)");
+            return r.exec(req);
+          },
+          readFile: (p) => {
+            const r = resolveShellRunner(ownerUser);
+            if (!r) throw new Error("No shell runner available");
+            return r.readFile(p);
+          },
+          writeFile: (p, c) => {
+            const r = resolveShellRunner(ownerUser);
+            if (!r) throw new Error("No shell runner available");
+            return r.writeFile(p, c);
+          },
+          workspacePath: () => resolveShellRunner(ownerUser)?.workspacePath() ?? "/workspace",
+          reset: () => resolveShellRunner(ownerUser)?.reset() ?? Promise.resolve(),
+          shutdown: () => Promise.resolve(),
+          status: () => resolveShellRunner(ownerUser)?.status() ?? Promise.resolve({ state: "stopped" as const, uptimeMs: 0 }),
+        };
         return new OpenCodeWorker({
           agentId: a.id,
           name: a.name,
           defaultModel,
           tenantId: ctx.tenantId,
-          shell: runner,
+          shell: lazyShell,
           proxy: opencodeProxy,
           db: ctx.db,
           enableLsp: row?.enableLsp === true,
