@@ -504,13 +504,17 @@ export class OpenCodeWorker implements WorkerHandle {
         : null;
 
       // Collect deliverables (same as openshell path).
+      this.deps.log.info?.("opencode-worker(bridge): collecting deliverables", { workdir, taskId: task.id });
       await this.autoCollectDeliverables(workdir, task);
       let hostFiles = await this.stageDeliverables(workdir, task);
+      this.deps.log.info?.("opencode-worker(bridge): stageDeliverables result", { hostFiles, taskId: task.id });
       // Inline fallback: if no files but there's text output, write result.md.
       if (hostFiles.length === 0) {
         const finalText = (parsed?.text ?? "").trim();
+        this.deps.log.info?.("opencode-worker(bridge): no files, trying inline fallback", { textLen: finalText.length, taskId: task.id });
         if (finalText.length >= 40) {
           hostFiles = await this.stageInlineFallback(workdir, task, finalText);
+          this.deps.log.info?.("opencode-worker(bridge): inline fallback result", { hostFiles, taskId: task.id });
         }
       }
 
