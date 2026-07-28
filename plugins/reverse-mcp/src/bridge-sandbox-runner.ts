@@ -66,7 +66,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
   async exec(req: ExecRequest): Promise<ExecResult> {
     const t0 = Date.now();
     try {
-      const result = await this.callBridgeTool(req.userId, "shell_exec", {
+      const result = await this.callBridgeTool(req.userId, "exec", {
         command: req.command,
         cwd: req.workdir ?? "/tmp",
         ...(req.timeoutMs ? { timeout_ms: req.timeoutMs } : {}),
@@ -91,7 +91,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
   }
 
   async readFile(relPath: string): Promise<string> {
-    const result = await this.callBridgeTool(undefined, "shell_exec", {
+    const result = await this.callBridgeTool(undefined, "exec", {
       command: `cat ${JSON.stringify(relPath)}`,
     });
     const content = Array.isArray(result.content) ? result.content : [];
@@ -100,7 +100,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
 
   async writeFile(relPath: string, content: string): Promise<void> {
     const escaped = content.replace(/'/g, "'\\''");
-    await this.callBridgeTool(undefined, "shell_exec", {
+    await this.callBridgeTool(undefined, "exec", {
       command: `mkdir -p "$(dirname ${JSON.stringify(relPath)})" && printf '%s' '${escaped}' > ${JSON.stringify(relPath)}`,
     });
   }
