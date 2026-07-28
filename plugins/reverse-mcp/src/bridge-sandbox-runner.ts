@@ -102,9 +102,15 @@ export class BridgeSandboxRunner implements SandboxRunner {
       command = command.replace(/\/sandbox\/workspace\//g, "");
       command = command.replace(/\/sandbox\/workspace/g, ".");
       // GNU find's -printf is not available on macOS (BSD find).
-      // Replace any -printf '%P\n' variant with portable sed.
       if (command.includes("-printf")) {
         command = command.replace(/-printf\s+'[^']*'(\s*2>\/dev\/null)?/g, "$1 | sed 's|^\\./||'");
+      }
+      // zsh doesn't support `read -d ''` (bash null-delimiter).
+      // Replace -print0 + read -d '' with -print + read (newline-delimited).
+      if (command.includes("-print0")) {
+        command = command.replace(/-print0/g, "-print");
+        command = command.replace(/IFS=\s*read\s+-r\s+-d\s+''/g, "IFS= read -r");
+        command = command.replace(/IFS=\s*read\s+-r\s+-d\s+""/g, "IFS= read -r");
       }
 
       console.log(`[BridgeSandboxRunner] exec adapted command:`, command.slice(0, 300));
