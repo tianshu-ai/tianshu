@@ -231,11 +231,24 @@ export class BridgeSandboxRunner implements SandboxRunner {
       `rc=$? ; cat oc.out ; exit $rc`;
 
     console.log(`[BridgeSandboxRunner] runOpencode cmd:`, cmd.slice(0, 200));
-    return this.exec({
+    const result = await this.exec({
       command: cmd,
       userId,
       timeoutMs: timeoutMs ?? 1200000,
     });
+
+    // 3. Collect deliverables: simple cp (avoids find+while zsh issues).
+    // Copy all non-scaffolding files from workdir into .deliverables/
+    const collectCmd =
+      `cd ${JSON.stringify(workdir)} && mkdir -p .deliverables && ` +
+      `for f in $(find . -maxdepth 3 -type f ` +
+      `! -path './.deliverables/*' ! -path './.oc-config/*' ! -path './.oc-data/*' ! -path './opencode/*' ` +
+      `! -name opencode.json ! -name .prompt.txt ! -name oc.out ! -name oc.err ` +
+      `! -name '*.pyc' 2>/dev/null); do ` +
+      `cp "$f" .deliverables/ 2>/dev/null; done; echo DONE`;
+    await this.exec({ command: collectCmd, userId, timeoutMs: 15000 });
+
+    return result;
   }
 
   workspacePath(): string {
