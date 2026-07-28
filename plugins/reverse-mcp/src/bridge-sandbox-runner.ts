@@ -105,13 +105,11 @@ export class BridgeSandboxRunner implements SandboxRunner {
       if (command.includes("-printf")) {
         command = command.replace(/-printf\s+'[^']*'(\s*2>\/dev\/null)?/g, "$1 | sed 's|^\\./||'");
       }
-      // zsh doesn't support `read -d ''` (bash null-delimiter).
-      // Replace -print0 + read -d '' with -print + read (newline-delimited).
-      if (command.includes("-print0")) {
-        command = command.replace(/-print0/g, "-print");
-        command = command.replace(/IFS=\s*read\s+-r\s+-d\s+''/g, "IFS= read -r");
-        command = command.replace(/IFS=\s*read\s+-r\s+-d\s+""/g, "IFS= read -r");
-      }
+      // zsh doesn't support bash's `read -r -d ''` (null-delimiter).
+      // Replace -print0 with -print, and remove `-d ''` from read.
+      command = command.replace(/-print0/g, "-print");
+      command = command.replace(/read\s+-r\s+-d\s+''/g, "read -r");
+      command = command.replace(/read\s+-r\s+-d\s+""/g, "read -r");
 
       console.log(`[BridgeSandboxRunner] exec adapted command:`, command.slice(0, 300));
       // Pass timeout to both the bridge tool AND the registry call
