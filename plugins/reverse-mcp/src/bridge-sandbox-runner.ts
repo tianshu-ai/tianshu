@@ -72,13 +72,30 @@ export class BridgeSandboxRunner implements SandboxRunner {
         ...(req.timeoutMs ? { timeout_ms: req.timeoutMs } : {}),
       });
       const durationMs = Date.now() - t0;
+      // Bridge exec tool returns content[0].text as a JSON string:
+      // { ok, exit_code, stdout, stderr, truncated, duration_ms, timed_out }
       const content = Array.isArray(result.content) ? result.content : [];
-      const text = content.map((c: { text?: string }) => c.text ?? "").join("\n");
-      const exitCode =
-        typeof result.exit_code === "number" ? result.exit_code :
-        typeof (result as { exitCode?: number }).exitCode === "number"
-          ? (result as { exitCode?: number }).exitCode! : 0;
-      return { stdout: text, stderr: "", exitCode, durationMs, timedOut: false };
+      const rawText = content.map((c: { text?: string }) => c.text ?? "").join("\n");
+      try {
+        const parsed = JSON.parse(rawText) as {
+          ok?: boolean;
+          exit_code?: number;
+          stdout?: string;
+          stderr?: string;
+          duration_ms?: number;
+          timed_out?: boolean;
+        };
+        return {
+          stdout: parsed.stdout ?? "",
+          stderr: parsed.stderr ?? "",
+          exitCode: parsed.exit_code ?? 0,
+          durationMs: parsed.duration_ms ?? durationMs,
+          timedOut: parsed.timed_out ?? false,
+        };
+      } catch {
+        // If not JSON, treat the raw text as stdout.
+        return { stdout: rawText, stderr: "", exitCode: 0, durationMs, timedOut: false };
+      }
     } catch (err) {
       return {
         stdout: "",
@@ -95,7 +112,13 @@ export class BridgeSandboxRunner implements SandboxRunner {
       command: `cat ${JSON.stringify(relPath)}`,
     });
     const content = Array.isArray(result.content) ? result.content : [];
-    return content.map((c: { text?: string }) => c.text ?? "").join("\n");
+    const rawText = content.map((c: { text?: string }) => c.text ?? "").join("\n");
+    try {
+      const parsed = JSON.parse(rawText) as { stdout?: string };
+      return parsed.stdout ?? rawText;
+    } catch {
+      return rawText;
+    }
   }
 
   async writeFile(relPath: string, content: string): Promise<void> {
