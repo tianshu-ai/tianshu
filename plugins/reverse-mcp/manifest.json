@@ -83,7 +83,6 @@
     ]
   },
   "provides": [
-    "host.bridgeToken",
     "sandbox.shell"
   ]
 }
