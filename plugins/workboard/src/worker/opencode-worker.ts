@@ -478,6 +478,37 @@ export class OpenCodeWorker implements WorkerHandle {
     let grant: OpenCodeProxyGrant | null = null;
     const workdir = `opencode/${task.id}`;
 
+    // Fast path: if the runner implements runOpencode (e.g. bridge),
+    // delegate the entire opencode lifecycle to it (uses user's local
+    // config + API keys, no tianshu proxy needed).
+    if (typeof this.deps.shell.runOpencode === "function") {
+      this.deps.log.info?.("opencode-worker: using runner.runOpencode (bridge mode)", {
+        taskId: task.id,
+        model: modelId,
+      });
+      const prompt = task.description ?? task.title ?? "";
+      this.ensureSession(task);
+      const res = await this.deps.shell.runOpencode({
+        workdir,
+        prompt,
+        taskId: task.id,
+        userId: task.ownerUserId,
+        resume: (task.attempts ?? 0) > 0,
+        timeoutMs: this.deps.timeoutMs,
+        signal,
+      });
+      // Parse opencode NDJSON output
+      const events = res.stdout ? parseOpencodeEvents(res.stdout) : undefined;
+      const sessionId = events
+        ? this.writeHistory(task, events, res, true)
+        : null;
+      return {
+        status: res.exitCode === 0 ? "done" : "stalled",
+        resultSummary: events?.text?.slice(0, 200) ?? (res.exitCode === 0 ? "Completed" : `Failed (exit ${res.exitCode})`),
+        sessionId,
+      };
+    }
+
     try {
       grant = this.deps.proxy.grant(this.deps.tenantId, modelId);
       this.deps.log.info?.("opencode-worker: starting task", {

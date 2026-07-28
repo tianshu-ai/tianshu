@@ -457,6 +457,20 @@ export interface SandboxRunner {
   /** Snapshot for the status panel + `GET /api/p/<id>/status`. */
   status(): Promise<SandboxStatus>;
 
+  // ─── optional opencode execution ───────────────────────
+  /**
+   * Run opencode inside this runner. When implemented, the opencode
+   * worker delegates the entire opencode lifecycle to the runner
+   * (config, launch, output capture). This lets each runner use the
+   * appropriate strategy:
+   *   - openshell: writes proxy config, uses tianshu model
+   *   - bridge: uses user's local opencode config + API keys
+   *
+   * Returns the exec result of the opencode run (stdout = NDJSON events).
+   * If undefined, opencode-worker falls back to its built-in logic.
+   */
+  runOpencode?(opts: RunOpencodeOpts): Promise<ExecResult>;
+
   // ─── optional egress control ───────────────────────────────
   /**
    * Grant the sandbox network egress to a specific host:port.
@@ -524,6 +538,23 @@ export interface SandboxRunner {
    *  sidecar is exposed here so the host can register it under the
    *  capability without a second module entry. Otherwise undefined. */
   readonly browser?: BrowserSidecar;
+}
+
+export interface RunOpencodeOpts {
+  /** Task working directory (relative to runner workspace). */
+  workdir: string;
+  /** The task prompt (written to .prompt.txt). */
+  prompt: string;
+  /** Task ID for correlation. */
+  taskId: string;
+  /** User ID owning this task. */
+  userId: string;
+  /** Whether this is a resume (--continue). */
+  resume?: boolean;
+  /** Timeout in ms for the entire run. */
+  timeoutMs?: number;
+  /** Abort signal. */
+  signal?: AbortSignal;
 }
 
 export interface ExecRequest {

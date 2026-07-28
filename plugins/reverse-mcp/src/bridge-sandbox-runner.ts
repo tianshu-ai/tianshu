@@ -4,6 +4,7 @@
 import type {
   ExecRequest,
   ExecResult,
+  RunOpencodeOpts,
   SandboxRunner,
   SandboxKind,
   SandboxStatus,
@@ -183,6 +184,40 @@ export class BridgeSandboxRunner implements SandboxRunner {
     } catch (err) {
       console.error(`[BridgeSandboxRunner] writeFile ERROR:`, err instanceof Error ? err.message : String(err));
     }
+  }
+
+  /**
+   * Run opencode using the user's LOCAL config (no tianshu proxy).
+   * The bridge machine already has opencode installed + configured
+   * with the user's own API keys.
+   */
+  async runOpencode(opts: RunOpencodeOpts): Promise<ExecResult> {
+    const { workdir, prompt, resume, timeoutMs, userId } = opts;
+    console.log(`[BridgeSandboxRunner] runOpencode:`, { workdir, promptLen: prompt.length, resume });
+
+    // 1. Create workdir + write prompt
+    await this.exec({ command: `mkdir -p ${JSON.stringify(workdir)}`, userId });
+    // Write prompt via base64
+    const b64 = Buffer.from(prompt).toString("base64");
+    await this.exec({
+      command: `echo '${b64}' | base64 -d > ${JSON.stringify(workdir + "/.prompt.txt")}`,
+      userId,
+    });
+
+    // 2. Run opencode with user's own config (no OPENCODE_CONFIG override)
+    const cmd =
+      `cd ${JSON.stringify(workdir)} && ` +
+      `opencode run --auto --format json ` +
+      (resume ? `--continue ` : ``) +
+      `< .prompt.txt > oc.out 2> oc.err ; ` +
+      `rc=$? ; cat oc.out ; exit $rc`;
+
+    console.log(`[BridgeSandboxRunner] runOpencode cmd:`, cmd.slice(0, 200));
+    return this.exec({
+      command: cmd,
+      userId,
+      timeoutMs: timeoutMs ?? 1200000,
+    });
   }
 
   workspacePath(): string {
