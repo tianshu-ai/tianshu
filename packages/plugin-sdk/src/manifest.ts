@@ -422,7 +422,7 @@ export interface ContributesV1 {
   wsMessages?: WsMessageContribution[];
 }
 
-export type SandboxKind = "shell";
+export type SandboxKind = "shell" | "bridge";
 
 export interface SandboxContribution {
   /** Local id; surfaced as `<plugin-id>.<id>` to the world. */

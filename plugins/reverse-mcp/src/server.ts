@@ -24,6 +24,7 @@ import type {
 } from "@tianshu-ai/plugin-sdk";
 import type { WebSocket } from "ws";
 import { BridgeRegistry } from "./registry.js";
+import { BridgeSandboxRunner } from "./bridge-sandbox-runner.js";
 import { makeBridgeToolset } from "./toolset.js";
 import {
   MSG,
@@ -195,6 +196,28 @@ const plugin: PluginServerModule = {
       fs.createReadStream(fullPath).pipe(res);
     };
 
+    // Capability: let other plugins (e.g. workboard) create a
+    // BridgeSandboxRunner for a user's connected bridge device.
+    const bridgeSandboxCapability = {
+      createRunner(userId: string, deviceId: string, workdir?: string) {
+        return new BridgeSandboxRunner({
+          registry,
+          userId,
+          deviceId,
+          workdir,
+        });
+      },
+      /** List connected devices for a user (so workboard can pick one). */
+      listDevices(userId: string) {
+        return registry.forUser(userId).map((c) => ({
+          deviceId: c.deviceId,
+          label: c.label,
+          connectedAt: c.connectedAt,
+          tools: c.tools.map((t) => t.name),
+        }));
+      },
+    };
+
     ctx.log.info("reverse-mcp activated");
     return {
       wsHandlers: {
@@ -209,6 +232,9 @@ const plugin: PluginServerModule = {
         listConnections,
         connectInfo,
         serveScreenshot,
+      },
+      capabilityProviders: {
+        "host.bridgeSandbox": bridgeSandboxCapability,
       },
     };
   },
