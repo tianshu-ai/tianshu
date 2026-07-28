@@ -102,8 +102,10 @@ export class BridgeSandboxRunner implements SandboxRunner {
       command = command.replace(/\/sandbox\/workspace\//g, "");
       command = command.replace(/\/sandbox\/workspace/g, ".");
       // GNU find's -printf is not available on macOS (BSD find).
-      // Replace -printf '%P\n' with portable: | sed 's|^\./||'
-      command = command.replace(/-printf\s+'%P\\n'/g, "| sed 's|^\\./||'");
+      // Replace any -printf '%P\n' variant with portable sed.
+      if (command.includes("-printf")) {
+        command = command.replace(/-printf\s+'[^']*'(\s*2>\/dev\/null)?/g, "$1 | sed 's|^\\./||'");
+      }
 
       console.log(`[BridgeSandboxRunner] exec adapted command:`, command.slice(0, 300));
       // Pass timeout to both the bridge tool AND the registry call
