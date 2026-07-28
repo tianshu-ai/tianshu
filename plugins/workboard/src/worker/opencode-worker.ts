@@ -498,13 +498,26 @@ export class OpenCodeWorker implements WorkerHandle {
         signal,
       });
       // Parse opencode NDJSON output
-      const events = res.stdout ? parseOpencodeEvents(res.stdout) : undefined;
-      const sessionId = events
-        ? this.writeHistory(task, events, res, true)
+      const parsed = res.stdout ? parseOpencodeEvents(res.stdout) : null;
+      const sessionId = parsed
+        ? this.writeHistory(task, parsed, res, true)
         : null;
+
+      // Collect deliverables (same as openshell path).
+      await this.autoCollectDeliverables(workdir, task);
+      let hostFiles = await this.stageDeliverables(workdir, task);
+      // Inline fallback: if no files but there's text output, write result.md.
+      if (hostFiles.length === 0) {
+        const finalText = (parsed?.text ?? "").trim();
+        if (finalText.length >= 40) {
+          hostFiles = await this.stageInlineFallback(workdir, task, finalText);
+        }
+      }
+
       return {
         status: res.exitCode === 0 ? "done" : "stalled",
-        resultSummary: events?.text?.slice(0, 200) ?? (res.exitCode === 0 ? "Completed" : `Failed (exit ${res.exitCode})`),
+        resultSummary: parsed?.text?.slice(0, 200) ?? (res.exitCode === 0 ? "Completed" : `Failed (exit ${res.exitCode})`),
+        resultFiles: hostFiles,
         sessionId,
       };
     }
