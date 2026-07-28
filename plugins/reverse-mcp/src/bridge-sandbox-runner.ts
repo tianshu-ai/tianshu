@@ -15,6 +15,8 @@ export interface BridgeSandboxRunnerOpts {
   registry: BridgeRegistry;
   userId: string;
   deviceId: string;
+  /** Server-side workspace path (for syncDown to write files). */
+  serverWorkspacePath?: string;
 }
 
 export class BridgeSandboxRunner implements SandboxRunner {
@@ -23,8 +25,11 @@ export class BridgeSandboxRunner implements SandboxRunner {
 
   private registry: BridgeRegistry;
 
+  private _workspacePath: string;
+
   constructor(opts: BridgeSandboxRunnerOpts) {
     this.registry = opts.registry;
+    this._workspacePath = opts.serverWorkspacePath ?? "/tmp/tianshu-bridge-workspace";
   }
 
   private getConn(userId?: string) {
@@ -225,7 +230,56 @@ export class BridgeSandboxRunner implements SandboxRunner {
   }
 
   workspacePath(): string {
-    return "/tmp/tianshu-bridge-workspace";
+    return this._workspacePath;
+  }
+
+  /**
+   * Sync files from the bridge machine to the server workspace.
+   * Reads each file via bridge exec (cat | base64), decodes, writes locally.
+   */
+  async syncDown(
+    paths: string[] | Array<{ sandbox: string; host: string }>,
+  ): Promise<{ downloaded: string[]; skipped: Array<{ relPath: string; reason: string }> }> {
+    const pairs: Array<{ sandbox: string; host: string }> = Array.isArray(paths) && typeof paths[0] === "string"
+      ? (paths as string[]).map((p) => ({ sandbox: p, host: p }))
+      : (paths as Array<{ sandbox: string; host: string }>);
+    const downloaded: string[] = [];
+    const skipped: Array<{ relPath: string; reason: string }> = [];
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    for (const { sandbox, host } of pairs) {
+      try {
+        // Read file from bridge as base64.
+        const result = await this.callBridgeTool(undefined, "exec", {
+          command: `base64 < ${JSON.stringify(sandbox)}`,
+        });
+        const content = Array.isArray(result.content)
+          ? (result.content as { text?: string }[]).map((c) => c.text ?? "").join("")
+          : "";
+        let b64: string;
+        try {
+          const parsed = JSON.parse(content) as { stdout?: string; ok?: boolean };
+          if (!parsed.ok) { skipped.push({ relPath: host, reason: "exec failed" }); continue; }
+          b64 = parsed.stdout ?? "";
+        } catch {
+          b64 = content;
+        }
+        // Remove whitespace from base64.
+        b64 = b64.replace(/\s/g, "");
+        if (!b64) { skipped.push({ relPath: host, reason: "empty content" }); continue; }
+
+        // Write to server workspace.
+        const wsPath = this.workspacePath();
+        const fullPath = path.join(wsPath, host);
+        fs.mkdirSync(path.dirname(fullPath), { recursive: true });
+        fs.writeFileSync(fullPath, Buffer.from(b64, "base64"));
+        downloaded.push(host);
+      } catch (err) {
+        skipped.push({ relPath: host, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return { downloaded, skipped };
   }
 
   async reset(): Promise<void> {}

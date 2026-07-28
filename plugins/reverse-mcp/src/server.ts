@@ -202,8 +202,9 @@ const plugin: PluginServerModule = {
     // the requesting user.
     const bridgeShellRunner = new BridgeSandboxRunner({
       registry,
-      userId: "__dynamic__", // resolved per-call from ctx
-      deviceId: "__first__", // uses first connected device
+      userId: "__dynamic__",
+      deviceId: "__first__",
+      serverWorkspacePath: ctx.workspaceDir,
     });
 
     ctx.log.info("reverse-mcp activated");
