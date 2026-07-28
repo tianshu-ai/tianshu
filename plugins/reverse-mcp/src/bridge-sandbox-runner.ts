@@ -264,19 +264,23 @@ export class BridgeSandboxRunner implements SandboxRunner {
       timeoutMs: timeoutMs ?? 1200000,
     });
 
-    // Read the FULL oc.out via base64 (exec stdout is truncated at 8KB).
+    // Read the FULL oc.out via chunked reads (bridge exec truncates at 8KB).
     let stdout = "";
     let stderr = "";
     let exitCode = 0;
+    console.log(`[BridgeSandboxRunner] runOpencode: reading oc.out...`);
     try {
       stdout = await this.readFileFull(`${workdir}/oc.out`);
-    } catch { /* best-effort */ }
+      console.log(`[BridgeSandboxRunner] runOpencode: oc.out read OK, ${stdout.length} bytes`);
+    } catch (e) { console.log(`[BridgeSandboxRunner] runOpencode: oc.out read FAILED`, e); }
     try {
       stderr = await this.readFileFull(`${workdir}/oc.err`);
-    } catch { /* best-effort */ }
+      console.log(`[BridgeSandboxRunner] runOpencode: oc.err read OK, ${stderr.length} bytes`);
+    } catch (e) { console.log(`[BridgeSandboxRunner] runOpencode: oc.err read FAILED`, e); }
     try {
       const rc = await this.readFile(`${workdir}/.exitcode`);
       exitCode = parseInt(rc.trim(), 10) || 0;
+      console.log(`[BridgeSandboxRunner] runOpencode: exitCode=${exitCode}`);
     } catch { /* default 0 */ }
 
     const result: ExecResult = { stdout, stderr, exitCode, durationMs: 0, timedOut: false };
