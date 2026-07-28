@@ -35,15 +35,29 @@ export class BridgeSandboxRunner implements SandboxRunner {
     return all[0] ?? null;
   }
 
+  /** Wait for a bridge device to connect (up to timeoutMs). */
+  private async waitForConn(userId?: string, timeoutMs = 30000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (!this.getConn(userId)) {
+      if (Date.now() >= deadline) return;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+
   private async callBridgeTool(
     userId: string | undefined,
     name: string,
     args: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    const conn = this.getConn(userId);
+    let conn = this.getConn(userId);
+    if (!conn) {
+      console.log(`[BridgeSandboxRunner] no bridge connected, waiting up to 30s...`);
+      await this.waitForConn(userId, 30000);
+      conn = this.getConn(userId);
+    }
     if (!conn) {
       throw new Error(
-        "No bridge device connected. Start the Tianshu Bridge desktop app and try again.",
+        "No bridge device connected after 30s wait. Start the Tianshu Bridge desktop app and try again.",
       );
     }
     console.log(`[BridgeSandboxRunner] calling bridge tool "${name}" on device "${conn.deviceId}"`, JSON.stringify(args).slice(0, 300));
