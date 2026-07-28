@@ -1,11 +1,5 @@
 // BridgeSandboxRunner — implements SandboxRunner by forwarding exec/file
-// operations to a connected local-bridge device. Registered as the
-// sandbox.shell capability so the workboard (and any other consumer)
-// can run commands on the user's machine transparently.
-//
-// This runner is shared (one instance per tenant). Each exec/readFile/
-// writeFile call resolves the user from the request context and picks
-// the first connected bridge device for that user.
+// operations to a connected local-bridge device.
 
 import type {
   ExecRequest,
@@ -18,7 +12,6 @@ import type { BridgeRegistry } from "./registry.js";
 
 export interface BridgeSandboxRunnerOpts {
   registry: BridgeRegistry;
-  /** Placeholder — actual userId comes from ExecRequest.userId at runtime. */
   userId: string;
   deviceId: string;
 }
@@ -34,14 +27,11 @@ export class BridgeSandboxRunner implements SandboxRunner {
   }
 
   private getConn(userId?: string) {
-    // Find the first bridge device for the given user, or any user
-    // if userId is not specified.
     if (userId) {
       const conns = this.registry.forUser(userId);
       if (conns.length > 0) return conns[0];
     }
-    // Fallback: any connected device (single-user setups).
-    const all = this.registry.all?.() ?? [];
+    const all = this.registry.all();
     return all[0] ?? null;
   }
 
@@ -56,6 +46,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
         "No bridge device connected. Start the Tianshu Bridge desktop app and try again.",
       );
     }
+    console.log(`[BridgeSandboxRunner] calling bridge tool "${name}" on device "${conn.deviceId}"`, JSON.stringify(args).slice(0, 300));
     const result = await this.registry.call(conn, "tools/call", {
       name,
       arguments: args,
@@ -65,17 +56,22 @@ export class BridgeSandboxRunner implements SandboxRunner {
 
   async exec(req: ExecRequest): Promise<ExecResult> {
     const t0 = Date.now();
+    console.log(`[BridgeSandboxRunner] exec:`, {
+      command: req.command?.slice(0, 200),
+      workdir: req.workdir,
+      userId: req.userId,
+      timeoutMs: req.timeoutMs,
+    });
     try {
       const result = await this.callBridgeTool(req.userId, "exec", {
         command: req.command,
-        cwd: req.workdir ?? "/tmp",
+        workdir: req.workdir,
         ...(req.timeoutMs ? { timeout_ms: req.timeoutMs } : {}),
       });
       const durationMs = Date.now() - t0;
-      // Bridge exec tool returns content[0].text as a JSON string:
-      // { ok, exit_code, stdout, stderr, truncated, duration_ms, timed_out }
       const content = Array.isArray(result.content) ? result.content : [];
       const rawText = content.map((c: { text?: string }) => c.text ?? "").join("\n");
+      console.log(`[BridgeSandboxRunner] exec raw response (first 500):`, rawText.slice(0, 500));
       try {
         const parsed = JSON.parse(rawText) as {
           ok?: boolean;
@@ -85,63 +81,86 @@ export class BridgeSandboxRunner implements SandboxRunner {
           duration_ms?: number;
           timed_out?: boolean;
         };
-        return {
+        const execResult: ExecResult = {
           stdout: parsed.stdout ?? "",
           stderr: parsed.stderr ?? "",
           exitCode: parsed.exit_code ?? 0,
           durationMs: parsed.duration_ms ?? durationMs,
           timedOut: parsed.timed_out ?? false,
         };
+        console.log(`[BridgeSandboxRunner] exec parsed:`, {
+          exitCode: execResult.exitCode,
+          stdoutLen: execResult.stdout.length,
+          stderrPreview: execResult.stderr.slice(0, 200),
+          timedOut: execResult.timedOut,
+        });
+        return execResult;
       } catch {
-        // If not JSON, treat the raw text as stdout.
+        console.log(`[BridgeSandboxRunner] exec response not JSON, treating as stdout. len=${rawText.length}`);
         return { stdout: rawText, stderr: "", exitCode: 0, durationMs, timedOut: false };
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(`[BridgeSandboxRunner] exec ERROR:`, msg);
       return {
         stdout: "",
-        stderr: err instanceof Error ? err.message : String(err),
+        stderr: msg,
         exitCode: 1,
         durationMs: Date.now() - t0,
-        timedOut: String(err).includes("timed out"),
+        timedOut: msg.includes("timed out"),
       };
     }
   }
 
   async readFile(relPath: string): Promise<string> {
-    const result = await this.callBridgeTool(undefined, "exec", {
-      command: `cat ${JSON.stringify(relPath)}`,
-    });
-    const content = Array.isArray(result.content) ? result.content : [];
-    const rawText = content.map((c: { text?: string }) => c.text ?? "").join("\n");
+    console.log(`[BridgeSandboxRunner] readFile:`, relPath);
     try {
-      const parsed = JSON.parse(rawText) as { stdout?: string };
-      return parsed.stdout ?? rawText;
-    } catch {
-      return rawText;
+      const result = await this.callBridgeTool(undefined, "exec", {
+        command: `cat ${JSON.stringify(relPath)}`,
+      });
+      const content = Array.isArray(result.content) ? result.content : [];
+      const rawText = content.map((c: { text?: string }) => c.text ?? "").join("\n");
+      try {
+        const parsed = JSON.parse(rawText) as { stdout?: string; stderr?: string; ok?: boolean };
+        if (!parsed.ok) console.log(`[BridgeSandboxRunner] readFile error:`, parsed.stderr?.slice(0, 200));
+        return parsed.stdout ?? "";
+      } catch {
+        return rawText;
+      }
+    } catch (err) {
+      console.error(`[BridgeSandboxRunner] readFile ERROR:`, err instanceof Error ? err.message : String(err));
+      return "";
     }
   }
 
   async writeFile(relPath: string, content: string): Promise<void> {
-    const escaped = content.replace(/'/g, "'\\''");
-    await this.callBridgeTool(undefined, "exec", {
-      command: `mkdir -p "$(dirname ${JSON.stringify(relPath)})" && printf '%s' '${escaped}' > ${JSON.stringify(relPath)}`,
-    });
+    console.log(`[BridgeSandboxRunner] writeFile:`, relPath, `(${content.length} bytes)`);
+    // Use base64 to avoid shell escaping issues.
+    const b64 = Buffer.from(content).toString("base64");
+    try {
+      const result = await this.callBridgeTool(undefined, "exec", {
+        command: `mkdir -p "$(dirname ${JSON.stringify(relPath)})" && echo '${b64}' | base64 -d > ${JSON.stringify(relPath)}`,
+      });
+      const raw = Array.isArray(result.content) ? (result.content as {text?: string}[]).map(c => c.text ?? "").join("") : "";
+      try {
+        const p = JSON.parse(raw) as { ok?: boolean; stderr?: string };
+        if (!p.ok) console.error(`[BridgeSandboxRunner] writeFile failed:`, p.stderr?.slice(0, 200));
+        else console.log(`[BridgeSandboxRunner] writeFile OK`);
+      } catch { /* ok */ }
+    } catch (err) {
+      console.error(`[BridgeSandboxRunner] writeFile ERROR:`, err instanceof Error ? err.message : String(err));
+    }
   }
 
   workspacePath(): string {
     return "/tmp/tianshu-bridge-workspace";
   }
 
-  async reset(): Promise<void> {
-    // No-op for bridge.
-  }
-
-  async shutdown(): Promise<void> {
-    // Bridge connection persists independently.
-  }
+  async reset(): Promise<void> {}
+  async shutdown(): Promise<void> {}
 
   async status(): Promise<SandboxStatus> {
-    const conns = this.registry.all?.() ?? [];
+    const conns = this.registry.all();
     if (conns.length > 0) {
       return {
         state: "running",
