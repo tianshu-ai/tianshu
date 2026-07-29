@@ -186,9 +186,9 @@ export class BridgeSandboxRunner implements SandboxRunner {
         b64 = content.replace(/\s/g, "");
       }
       if (!b64) break;
-      const decoded = Buffer.from(b64, "base64").toString("utf-8");
-      parts.push(decoded);
-      if (decoded.length < RAW_CHUNK) break; // last chunk
+      const buf = Buffer.from(b64, "base64");
+      parts.push(buf.toString("utf-8"));
+      if (buf.length < RAW_CHUNK) break; // last chunk (compare BYTES not chars)
       offset += RAW_CHUNK;
     }
     return parts.join("");
