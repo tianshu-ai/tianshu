@@ -164,31 +164,34 @@ export class BridgeSandboxRunner implements SandboxRunner {
     }
   }
 
-  /** Read a file in chunks (bridge exec truncates at 8KB). */
+  /** Read a file in chunks via base64 (bypasses bridge 200-line cap). */
   private async readFileFull(relPath: string): Promise<string> {
-    const CHUNK = 6000; // bytes per read (safe under 8KB after base64)
+    // Read raw bytes in 5KB chunks, base64-encode each chunk.
+    // base64 of 5KB = ~6.8KB text (~91 lines of 76 chars) → under 200-line cap.
+    const RAW_CHUNK = 5000;
     let offset = 0;
-    let result = "";
-    for (let i = 0; i < 200; i++) { // max 200 chunks = 1.2MB
+    const parts: string[] = [];
+    for (let i = 0; i < 300; i++) { // max 300 chunks = 1.5MB
       const res = await this.callBridgeTool(undefined, "exec", {
-        command: `dd if=${JSON.stringify(relPath)} bs=1 skip=${offset} count=${CHUNK} 2>/dev/null`,
+        command: `dd if=${JSON.stringify(relPath)} bs=1 skip=${offset} count=${RAW_CHUNK} 2>/dev/null | base64`,
       });
       const content = Array.isArray(res.content)
         ? (res.content as { text?: string }[]).map((c) => c.text ?? "").join("")
         : "";
-      let chunk = "";
+      let b64 = "";
       try {
         const parsed = JSON.parse(content) as { stdout?: string };
-        chunk = parsed.stdout ?? "";
+        b64 = (parsed.stdout ?? "").replace(/\s/g, "");
       } catch {
-        chunk = content;
+        b64 = content.replace(/\s/g, "");
       }
-      if (!chunk) break;
-      result += chunk;
-      if (chunk.length < CHUNK) break; // last chunk
-      offset += CHUNK;
+      if (!b64) break;
+      const decoded = Buffer.from(b64, "base64").toString("utf-8");
+      parts.push(decoded);
+      if (decoded.length < RAW_CHUNK) break; // last chunk
+      offset += RAW_CHUNK;
     }
-    return result;
+    return parts.join("");
   }
 
   async readFile(relPath: string): Promise<string> {
