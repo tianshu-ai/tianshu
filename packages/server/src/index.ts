@@ -11,6 +11,10 @@
 // setup/load-env.ts for why a plain `dotenv/config` is wrong here.
 import { loadEnv } from "./setup/load-env.js";
 loadEnv();
+import { initOAuthTokenManager } from "./boot/oauth-token-manager.js";
+initOAuthTokenManager().catch((err) =>
+  console.warn(`[oauth] init failed: ${err instanceof Error ? err.message : String(err)}`),
+);
 import { getPackageVersion } from "./setup/repo-root.js";
 
 import express from "express";

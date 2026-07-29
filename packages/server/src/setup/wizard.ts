@@ -16,6 +16,12 @@ import { fileURLToPath } from "node:url";
 import * as p from "@clack/prompts";
 import { getGlobalConfigPath, getTianshuHome } from "../core/paths.js";
 import { probeDefaultModel } from "./probe-default-model.js";
+import {
+  extractGeminiCliCredentials,
+  readExistingGeminiTokens,
+  loginGeminiOAuth,
+  type GeminiOAuthTokens,
+} from "./gemini-oauth.js";
 
 /**
  * Walk up from this module's directory until we find the
@@ -133,8 +139,20 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
   },
   {
     id: "google",
-    name: "Google (Gemini)",
+    name: "Google (Gemini) — API Key",
     envVar: "GOOGLE_API_KEY",
+    api: "google-generative-ai",
+    baseUrl: "https://generativelanguage.googleapis.com",
+    models: [
+      { id: "gemini-2.5-flash", name: "Gemini 2.5 Flash" },
+      { id: "gemini-2.5-pro", name: "Gemini 2.5 Pro", reasoning: true },
+    ],
+    defaultModel: "google/gemini-2.5-flash",
+  },
+  {
+    id: "google-oauth",
+    name: "Google (Gemini) — OAuth via Gemini CLI",
+    envVar: "", // not used — OAuth tokens managed internally
     api: "google-generative-ai",
     baseUrl: "https://generativelanguage.googleapis.com",
     models: [
@@ -171,7 +189,9 @@ const REQUIRES_ENDPOINT_PROMPT = new Set(["openai-compatible"]);
  *  driver — it lands under the real "openai" provider so its
  *  api/models plug straight into the openai-completions path. */
 function configProviderId(profileId: string): string {
-  return profileId === "openai-compatible" ? "openai" : profileId;
+  if (profileId === "openai-compatible") return "openai";
+  if (profileId === "google-oauth") return "google";
+  return profileId;
 }
 
 export interface WizardResult {
@@ -311,7 +331,130 @@ export async function runSetupWizard(
       const profile = PROVIDER_PROFILES.find((p) => p.id === providerId);
       if (!profile) throw new Error(`unknown provider id: ${providerId}`);
 
-      // Step 2: API key.
+      // ── Google OAuth path: no API key, use CLI OAuth tokens ──
+      if (providerId === "google-oauth") {
+        const s = p.spinner();
+        s.start("Detecting Gemini CLI...");
+        const cliCreds = extractGeminiCliCredentials();
+        if (!cliCreds) {
+          s.stop("Gemini CLI not found.");
+          p.log.error(
+            "Install Gemini CLI first: npm install -g @google/gemini-cli\n" +
+            "Then run: gemini  (first run triggers login)\n" +
+            "Or: brew install gemini-cli",
+          );
+          return {
+            configPath,
+            envPath,
+            wroteConfig: false,
+            wroteEnv: false,
+            notes: ["Gemini CLI not found. Install it and re-run setup."],
+          };
+        }
+        s.stop("\u2713 Gemini CLI found, OAuth credentials extracted.");
+
+        // Check for existing tokens
+        let tokens: GeminiOAuthTokens | null = readExistingGeminiTokens();
+        if (tokens?.refreshToken) {
+          p.log.success(
+            `Found existing Gemini OAuth session${tokens.email ? ` (${tokens.email})` : ""}.`,
+          );
+          const reuse = await p.confirm({
+            message: "Use this existing session?",
+            initialValue: true,
+          });
+          if (p.isCancel(reuse)) {
+            p.cancel("Setup cancelled.");
+            return { configPath, envPath, wroteConfig: false, wroteEnv: false, notes: ["cancelled"] };
+          }
+          if (!reuse) tokens = null;
+        }
+
+        if (!tokens) {
+          // Run OAuth login flow
+          p.log.info("Opening browser for Google sign-in...");
+          try {
+            const { exec } = await import("node:child_process");
+            tokens = await loginGeminiOAuth(cliCreds, (url) => {
+              // Open URL in default browser
+              const cmd = process.platform === "darwin"
+                ? `open "${url}"`
+                : process.platform === "win32"
+                  ? `start "${url}"`
+                  : `xdg-open "${url}"`;
+              exec(cmd);
+            });
+          } catch (err) {
+            p.log.error(
+              `OAuth login failed: ${err instanceof Error ? err.message : String(err)}`,
+            );
+            return { configPath, envPath, wroteConfig: false, wroteEnv: false, notes: ["OAuth login failed"] };
+          }
+          p.log.success(
+            `\u2713 Logged in${tokens.email ? ` as ${tokens.email}` : ""}.`,
+          );
+        }
+
+        // Write OAuth config (special path — skip normal API key flow)
+        const modelChoice = await p.select({
+          message: "Default model?",
+          options: profile.models.map((m, idx) => ({
+            value: `google/${m.id}`,
+            label: m.name,
+            hint: idx === 0 ? "recommended" : m.reasoning ? "thinking-mode" : undefined,
+          })),
+        });
+        if (p.isCancel(modelChoice)) {
+          p.cancel("Setup cancelled.");
+          return { configPath, envPath, wroteConfig: false, wroteEnv: false, notes: ["cancelled"] };
+        }
+        defaultModel = modelChoice as string;
+
+        // Build and write config with OAuth tokens
+        const oauthConfig = {
+          defaultModel,
+          models: {
+            providers: {
+              google: {
+                api: "google-generative-ai",
+                baseUrl: "https://generativelanguage.googleapis.com",
+                apiKey: "${GOOGLE_OAUTH_TOKEN}",
+                auth: "oauth",
+                oauth: {
+                  refreshToken: tokens.refreshToken,
+                  expiresAt: tokens.expiresAt,
+                  email: tokens.email,
+                },
+                group: "Cloud",
+                models: profile.models.map((m) => ({
+                  id: m.id,
+                  name: m.name,
+                  ...(m.reasoning ? { reasoning: true } : {}),
+                  contextWindow: 1_000_000,
+                  maxTokens: 65536,
+                })),
+              },
+            },
+          },
+        };
+
+        const oauthNotes: string[] = [];
+        let oauthWroteConfig = false;
+        if (fs.existsSync(configPath) && !opts.force) {
+          oauthNotes.push(
+            `config.json exists — add this under models.providers:\n${JSON.stringify(oauthConfig.models.providers.google, null, 2)}`,
+          );
+        } else {
+          if (!opts.dryRun) writeJsonAtomic(configPath, oauthConfig);
+          oauthNotes.push(`wrote ${configPath} (Google OAuth)`);
+          oauthWroteConfig = true;
+        }
+
+        if (!opts.nonInteractive) p.outro("\u2728 Setup complete! Run: tianshu start");
+        return { configPath, envPath, wroteConfig: oauthWroteConfig, wroteEnv: false, notes: oauthNotes };
+      }
+
+      // Step 2: API key (non-OAuth providers).
       const k = await p.password({
         message: `Paste your ${profile.envVar} (input is hidden, written to .env):`,
         validate: (v) =>
