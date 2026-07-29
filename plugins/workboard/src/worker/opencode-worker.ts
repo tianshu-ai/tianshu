@@ -498,10 +498,18 @@ export class OpenCodeWorker implements WorkerHandle {
         signal,
       });
       // Parse opencode NDJSON output
+      this.deps.log.info?.("opencode-worker(bridge): parsing oc.out", { stdoutLen: res.stdout.length, firstLine: res.stdout.split("\n")[0]?.slice(0, 100), taskId: task.id });
       const parsed = res.stdout ? parseOpencodeEvents(res.stdout) : null;
-      const sessionId = parsed
-        ? this.writeHistory(task, parsed, res, true)
-        : null;
+      this.deps.log.info?.("opencode-worker(bridge): parseOpencodeEvents result", { parsed: parsed ? { textLen: parsed.text?.length, toolsCount: parsed.tools?.length, timelineCount: parsed.timeline?.length } : null, taskId: task.id });
+      let sessionId: string | null = null;
+      if (parsed) {
+        try {
+          sessionId = this.writeHistory(task, parsed, res, true);
+          this.deps.log.info?.("opencode-worker(bridge): writeHistory OK", { sessionId, taskId: task.id });
+        } catch (e) {
+          this.deps.log.warn?.("opencode-worker(bridge): writeHistory FAILED", { err: e instanceof Error ? e.message : String(e), taskId: task.id });
+        }
+      }
 
       // Collect deliverables (same as openshell path).
       this.deps.log.info?.("opencode-worker(bridge): collecting deliverables", { workdir, taskId: task.id });
