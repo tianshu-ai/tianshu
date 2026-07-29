@@ -6,6 +6,45 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.15.0](https://github.com/tianshu-ai/tianshu/compare/v0.14.0...v0.15.0) (2026-07-29)
+
+
+### Features
+
+* **bridge-runner:** implement syncDown (pull files from bridge to server) ([f7d8ba0](https://github.com/tianshu-ai/tianshu/commit/f7d8ba03c1ce6b7bca5c62a797a5cf1e77cc7d76))
+* **reverse-mcp:** BridgeSandboxRunner — run opencode on bridge host ([a79f695](https://github.com/tianshu-ai/tianshu/commit/a79f69528a2ccf7579a1c6a89dd50e2ee9088eea))
+* SandboxRunner.runOpencode() — decouple opencode execution per runner ([16b525a](https://github.com/tianshu-ai/tianshu/commit/16b525a5fd17739f04cc83fc0d04143983773d9d))
+* **workboard:** prefer bridge device over Docker sandbox for opencode ([f17fa92](https://github.com/tianshu-ai/tianshu/commit/f17fa92e51bafb7a9f165a044b711541121d3604))
+
+
+### Bug Fixes
+
+* **bridge-runner:** call 'exec' not 'shell_exec' (bridge tool name) ([6a1f79c](https://github.com/tianshu-ai/tianshu/commit/6a1f79c93d415a741a40204463cbbe8fa4f6214f))
+* **bridge-runner:** parse JSON exec result from bridge tool ([8088532](https://github.com/tianshu-ai/tianshu/commit/808853214d001022aa929bc4a6c9b3b3f93d8434))
+* **bridge-runner:** read full oc.out/oc.err via chunked dd (bypass 8KB truncation) ([cfb3aa2](https://github.com/tianshu-ai/tianshu/commit/cfb3aa295b85f84aa65ff988ad1e41eaee8e12c3))
+* **bridge-runner:** read oc.err back into result.stderr for execution log ([b229408](https://github.com/tianshu-ai/tianshu/commit/b22940890282c0b46d33a5a699ecd8326b97bfe9))
+* **bridge-runner:** readFileFull compare byte length not char length ([9b71d9e](https://github.com/tianshu-ai/tianshu/commit/9b71d9e4773d0458166d2c84b4e85f84372acecc))
+* **bridge-runner:** readFileFull via base64 chunks (bypass 200-line cap) ([b2349b8](https://github.com/tianshu-ai/tianshu/commit/b2349b80c1109b1894a24db9cba12bbc2285f328))
+* **bridge-runner:** replace -print0/read -d '' with -print/read -r (zsh compat) ([625b1dd](https://github.com/tianshu-ai/tianshu/commit/625b1dd6fb1b428177e5f06730503a63e23c2382))
+* **bridge-runner:** replace GNU find -printf with macOS-compatible sed ([017c6c8](https://github.com/tianshu-ai/tianshu/commit/017c6c8b6eefc302cb0b311ec01e041db3bb0648))
+* **bridge-runner:** robust -printf replacement (handles all variants) ([b06dc72](https://github.com/tianshu-ai/tianshu/commit/b06dc7287e5b00a23ca2bc6d8a310dbac74f2cab))
+* **bridge-runner:** simple cp for deliverables (bypass find+while zsh issue) ([ab13102](https://github.com/tianshu-ai/tianshu/commit/ab13102bcb1860838c4fe0d44a0924ce1ba1dfba))
+* **bridge-runner:** simpler -print0/read -d replacement regex ([ee564ff](https://github.com/tianshu-ai/tianshu/commit/ee564ff8026f6752b75c34a42c2bb8dd4ba518e3))
+* **bridge-runner:** strip GNU timeout + /sandbox/workspace paths (macOS compat) ([0a04b33](https://github.com/tianshu-ai/tianshu/commit/0a04b33423bec09028ff0b25dc71ef2724d82512))
+* **bridge-runner:** wait up to 30s for bridge to connect before failing ([c295aa2](https://github.com/tianshu-ai/tianshu/commit/c295aa266a8ef0546ca179889b074a0790efd60d))
+* **bridge-worker:** collect + stage deliverables after runOpencode ([226acde](https://github.com/tianshu-ai/tianshu/commit/226acde65dc1f67ca66c6dc2c2ee6684d5ca502b))
+* increase bridge call timeout for long-running commands (opencode) ([80690ee](https://github.com/tianshu-ai/tianshu/commit/80690eeffe0983616fdee98b6a0ae4bfc51dd377))
+* **reverse-mcp:** add displayName to sandboxes manifest entry ([2c63eed](https://github.com/tianshu-ai/tianshu/commit/2c63eeda6f618dd76483defbf007e3cd23ab7a44))
+* **reverse-mcp:** remove host.bridgeToken from provides (host owns it) ([b3a266b](https://github.com/tianshu-ai/tianshu/commit/b3a266b59907e1a933ca85107ee5594dfc29c798))
+* **workboard:** lazy capability get for sandbox.shell (activation order fix) ([c2afca0](https://github.com/tianshu-ai/tianshu/commit/c2afca0cfe061a9fab053e4eb1e6221e54542c5d))
+* **workboard:** lazy shell runner — opencode worker available even without Docker ([6b31b6c](https://github.com/tianshu-ai/tianshu/commit/6b31b6c69b842b8ed29a44afe21a1d93df53681a))
+* **workboard:** Proxy-based lazy shell (opencode worker always registers) ([1124a42](https://github.com/tianshu-ai/tianshu/commit/1124a42b4c36398e5d188a8e953afb2e42decafa))
+
+
+### Refactor
+
+* bridge provides sandbox.shell directly (no custom capability) ([ef2527d](https://github.com/tianshu-ai/tianshu/commit/ef2527d9e4d15975ccebca6df31e62beb6fefd05))
+
 ## [0.14.0](https://github.com/tianshu-ai/tianshu/compare/v0.13.0...v0.14.0) (2026-07-27)
 
 
