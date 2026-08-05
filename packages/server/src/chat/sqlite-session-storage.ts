@@ -361,7 +361,10 @@ export class SqliteSessionStorage
         ),
       );
     }
-    return path;
+    // Filter orphaned toolResult entries (can appear after compaction
+    // removes the assistant message containing the toolCall but keeps
+    // the toolResult). Without this, Anthropic rejects with 400.
+    return filterOrphanedToolResults(path);
   }
 
   async getEntries(): Promise<SessionTreeEntry[]> {
@@ -624,4 +627,37 @@ function safeParse(s: string): unknown {
   } catch {
     return null;
   }
+}
+
+// ─── Orphan filter ────────────────────────────────────────────────────
+/**
+ * Remove toolResult entries whose toolCallId doesn't match any toolCall
+ * in a prior assistant message. Prevents Anthropic 400 after compaction.
+ */
+function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[] {
+  const toolCallIds = new Set<string>();
+  for (const entry of path) {
+    if (entry.type !== "message") continue;
+    const msg = entry.message as { role: string; content?: unknown[] };
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
+    for (const part of msg.content) {
+      const p = part as { type?: string; id?: string };
+      if (p.type === "toolCall" && p.id) {
+        toolCallIds.add(p.id);
+      }
+    }
+  }
+  if (toolCallIds.size === 0) return path; // no tool calls at all, nothing to filter
+
+  const filtered = path.filter((entry) => {
+    if (entry.type !== "message") return true;
+    const msg = entry.message as { role: string; toolCallId?: string };
+    if (msg.role !== "toolResult") return true;
+    if (msg.toolCallId && !toolCallIds.has(msg.toolCallId)) {
+      console.log(`[storage] filtering orphaned toolResult: ${msg.toolCallId}`);
+      return false;
+    }
+    return true;
+  });
+  return filtered;
 }
