@@ -642,7 +642,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       supportsImages: modelInfo.supportsImages,
     },
   });
-  const piSession = new PiSession(storage);
+  const piSession = new PiSession(storage, {
+    entryTransforms: [filterOrphanedToolResults],
+  });
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
       attachments: originalAttachments as unknown[],
@@ -1762,4 +1764,55 @@ function makeLogger(
     warn: (msg, meta) => console.warn(`${prefix} ${msg}`, meta ?? ""),
     error: (msg, meta) => console.error(`${prefix} ${msg}`, meta ?? ""),
   };
+}
+
+// ─── Context sanitizer ────────────────────────────────────────────────
+//
+// Filters out orphaned toolResult messages whose toolCallId doesn't
+// match any tool_use in a prior assistant message. This can happen
+// after compaction summarises the assistant message containing the
+// tool_use but leaves the toolResult. Without this filter, Anthropic
+// (and others) reject the request with a 400.
+
+function filterOrphanedToolResults(
+  entries: readonly SessionTreeEntry[],
+): readonly SessionTreeEntry[] {
+  // Collect all tool_use ids from assistant messages.
+  const toolUseIds = new Set<string>();
+  for (const entry of entries) {
+    if (entry.type !== "message") continue;
+    const msg = (entry as { message: { role: string; content?: unknown[] } }).message;
+    if (msg.role !== "assistant") continue;
+    const content = msg.content;
+    if (!Array.isArray(content)) continue;
+    for (const part of content) {
+      const p = part as { type?: string; id?: string; toolCallId?: string };
+      if (p.type === "tool_use" || p.type === "tool-use") {
+        if (p.id) toolUseIds.add(p.id);
+      }
+    }
+  }
+
+  // Filter out toolResult entries whose toolCallId isn't in the set.
+  return entries.filter((entry) => {
+    if (entry.type !== "message") return true;
+    const msg = (entry as { message: { role: string; toolCallId?: string; content?: unknown[] } }).message;
+    if (msg.role !== "toolResult") return true;
+    // toolCallId is directly on the message for pi-ai's ToolResultMessage
+    if (msg.toolCallId) {
+      return toolUseIds.has(msg.toolCallId);
+    }
+    // Some formats put it in content array
+    const content = msg.content;
+    if (Array.isArray(content)) {
+      for (const part of content) {
+        const p = part as { type?: string; toolCallId?: string; tool_use_id?: string };
+        if (p.type === "tool_result" || p.type === "tool-result") {
+          const id = p.toolCallId ?? p.tool_use_id;
+          if (id && !toolUseIds.has(id)) return false;
+        }
+      }
+    }
+    return true;
+  });
 }
