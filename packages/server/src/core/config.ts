@@ -208,8 +208,13 @@ export interface CompactionConfig {
   enabled?: boolean;
   /** Tokens reserved for the summarisation prompt + output.
    *  Compaction triggers when contextTokens > contextWindow - reserveTokens.
-   *  Default: 16384. Increase to trigger earlier; decrease to use more window. */
+   *  Default: 16384. Increase to trigger earlier; decrease to use more window.
+   *  NOTE: for large context windows (>200K), prefer `triggerPercent` instead. */
   reserveTokens?: number;
+  /** Trigger compaction when context usage exceeds this percentage of the
+   *  context window (0-100). Default: 80. Takes priority over reserveTokens
+   *  when set. E.g. 80 means compact when 80% of the window is used. */
+  triggerPercent?: number;
   /** Approximate tokens of recent conversation to keep after compaction.
    *  Default: 20000. Increase to retain more recent context post-compact. */
   keepRecentTokens?: number;

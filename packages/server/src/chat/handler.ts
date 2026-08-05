@@ -778,13 +778,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // ("compact then stop"). Compacting BEFORE prompt() makes room
   // so the current turn runs normally. Silent: no history_compacted
   // event (the user is mid-send; the refresh would yank the view).
+  const compactionCfg = ctx.config.models?.compaction;
+  const compactionSettings = compactionCfg ? {
+    enabled: compactionCfg.enabled ?? true,
+    reserveTokens: compactionCfg.reserveTokens ?? 16384,
+    keepRecentTokens: compactionCfg.keepRecentTokens ?? 20000,
+    triggerPercent: compactionCfg.triggerPercent ?? 80,
+  } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80 };
+
   if (!streamErrorSent) {
-    const compactionCfg = ctx.config.models?.compaction;
-    const compactionSettings = compactionCfg ? {
-      enabled: compactionCfg.enabled ?? true,
-      reserveTokens: compactionCfg.reserveTokens ?? 16384,
-      keepRecentTokens: compactionCfg.keepRecentTokens ?? 20000,
-    } : undefined;
     const pre = await tryAutoCompact({
       piSession,
       harness,
@@ -964,6 +966,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       harness,
       modelInfo,
       send,
+      compactionSettings,
       onSuccessRefresh: () => {
         // Refresh after compaction: same default page size as the
         // initial fetch. The compacted session is what the client

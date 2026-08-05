@@ -79,6 +79,15 @@ export function shouldCompactBranch(
   }
   if (messages.length === 0) return false;
   const usage = estimateContextTokens(messages);
+
+  // If triggerPercent is set (from config), use percentage-based threshold.
+  // This works correctly for any context window size (unlike the fixed
+  // reserveTokens which is too small for large windows like 1M).
+  const triggerPct = (settings as CompactionSettings & { triggerPercent?: number }).triggerPercent;
+  if (typeof triggerPct === "number" && triggerPct > 0 && triggerPct < 100) {
+    return usage.tokens > input.contextWindow * (triggerPct / 100);
+  }
+
   return shouldCompact(usage.tokens, input.contextWindow, settings);
 }
 
