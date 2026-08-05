@@ -6,6 +6,32 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.16.0](https://github.com/tianshu-ai/tianshu/compare/v0.15.0...v0.16.0) (2026-08-05)
+
+
+### Features
+
+* compact_context tool — agent can proactively compress history ([0148a05](https://github.com/tianshu-ai/tianshu/commit/0148a054f3e9a8ebc33041d83328a8aa1f4b792d))
+* compaction config in doctor checks + setup agent knowledge ([b0bedbc](https://github.com/tianshu-ai/tianshu/commit/b0bedbce00d4199c5f48a46323f27936a49adc29))
+* configurable compaction settings (models.compaction in config.json) ([798a797](https://github.com/tianshu-ai/tianshu/commit/798a797b107fc66bac8fd675955f1ed2c2eed061))
+* Google Gemini OAuth via CLI integration ([70d84f1](https://github.com/tianshu-ai/tianshu/commit/70d84f1f88e44f3b5c12c4ea171fb4277d601b71))
+* percentage-based compaction trigger (default 80%) ([b5f7388](https://github.com/tianshu-ai/tianshu/commit/b5f7388ba17dd6a13c2ce575d3f7c76076372cf4))
+
+
+### Bug Fixes
+
+* disable filterOrphanedToolResults (incorrectly filtering all tool_results) ([2aec126](https://github.com/tianshu-ai/tianshu/commit/2aec126b5749d33b5f9e100973181d91c153133a))
+* filter orphaned tool_results from context (prevents 400 after compaction) ([cb6858b](https://github.com/tianshu-ai/tianshu/commit/cb6858b2e9a9a340fb778b326d14c71a1e2f9041))
+* filter orphans in compaction retainedTail (not just top-level entries) ([a6f2465](https://github.com/tianshu-ai/tianshu/commit/a6f246558389874146d556e3aaa9b37d05043e3e))
+* filterOrphanedToolResults now uses correct pi-ai type ('toolCall' not 'tool_use') ([3f88453](https://github.com/tianshu-ai/tianshu/commit/3f884536b1d11fa88b02da77719d2294c673880b))
+* move orphan filter to storage layer (getPathToRoot) ([ac61c9b](https://github.com/tianshu-ai/tianshu/commit/ac61c9bf7ec4a3174c4a8128726740fa20f7e1d1))
+* positional orphan filter — tool_result must follow its tool_use's assistant msg ([95d2920](https://github.com/tianshu-ai/tianshu/commit/95d292069a21ec0d15ac82802baa7591e0fe6c0c))
+
+
+### Refactor
+
+* compact_context as host-level tool (available to all agents) ([2a23bc1](https://github.com/tianshu-ai/tianshu/commit/2a23bc1c8696c7e15a31bc648de1fb602fb7fb36))
+
 ## [0.15.0](https://github.com/tianshu-ai/tianshu/compare/v0.14.0...v0.15.0) (2026-07-29)
 
 
