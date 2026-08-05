@@ -1777,7 +1777,7 @@ function makeLogger(
 function filterOrphanedToolResults(
   entries: readonly SessionTreeEntry[],
 ): readonly SessionTreeEntry[] {
-  // Collect all tool_use ids from assistant messages.
+  // Collect all toolCall ids from assistant messages.
   const toolUseIds = new Set<string>();
   for (const entry of entries) {
     if (entry.type !== "message") continue;
@@ -1794,25 +1794,23 @@ function filterOrphanedToolResults(
   }
 
   // Filter out toolResult entries whose toolCallId isn't in the set.
-  return entries.filter((entry) => {
+  let removed = 0;
+  const result = entries.filter((entry) => {
     if (entry.type !== "message") return true;
     const msg = (entry as { message: { role: string; toolCallId?: string; content?: unknown[] } }).message;
     if (msg.role !== "toolResult") return true;
     // toolCallId is directly on the message for pi-ai's ToolResultMessage
     if (msg.toolCallId) {
-      return toolUseIds.has(msg.toolCallId);
-    }
-    // Some formats put it in content array
-    const content = msg.content;
-    if (Array.isArray(content)) {
-      for (const part of content) {
-        const p = part as { type?: string; toolCallId?: string; tool_use_id?: string };
-        if (p.type === "tool_result" || p.type === "tool-result") {
-          const id = p.toolCallId ?? p.tool_use_id;
-          if (id && !toolUseIds.has(id)) return false;
-        }
+      if (!toolUseIds.has(msg.toolCallId)) {
+        removed++;
+        return false;
       }
+      return true;
     }
     return true;
   });
+  if (removed > 0) {
+    console.log(`[chat] filterOrphanedToolResults: removed ${removed} orphaned tool_result(s), kept ${result.length}/${entries.length} entries, toolUseIds=${toolUseIds.size}`);
+  }
+  return result;
 }
