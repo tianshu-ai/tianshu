@@ -779,10 +779,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // so the current turn runs normally. Silent: no history_compacted
   // event (the user is mid-send; the refresh would yank the view).
   if (!streamErrorSent) {
+    const compactionCfg = ctx.config.models?.compaction;
+    const compactionSettings = compactionCfg ? {
+      enabled: compactionCfg.enabled ?? true,
+      reserveTokens: compactionCfg.reserveTokens ?? 16384,
+      keepRecentTokens: compactionCfg.keepRecentTokens ?? 20000,
+    } : undefined;
     const pre = await tryAutoCompact({
       piSession,
       harness,
       contextWindow: modelInfo.contextWindow,
+      settings: compactionSettings,
     });
     if (pre.reason === "error") {
       // A real compact() failure (not the benign no-cut-point case).
@@ -1564,12 +1571,14 @@ async function maybeAutoCompact(args: {
   modelInfo: ResolvedModelInfo;
   send: (msg: ServerMsg) => void;
   onSuccessRefresh: () => void;
+  compactionSettings?: CompactionSettings;
 }): Promise<void> {
-  const { session, piSession, harness, modelInfo, send, onSuccessRefresh } = args;
+  const { session, piSession, harness, modelInfo, send, onSuccessRefresh, compactionSettings } = args;
   const decision = await tryAutoCompact({
     piSession,
     harness,
     contextWindow: modelInfo.contextWindow,
+    settings: compactionSettings,
   });
   if (decision.error) {
     // Auto-compact failure on the chat path: surface as a

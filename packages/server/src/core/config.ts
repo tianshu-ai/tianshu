@@ -197,6 +197,22 @@ export interface ModelsCatalog {
    *  single stream chokepoint in core/pi-models.ts, so it covers the
    *  chat handler, worker agent-loop, and compact() uniformly. */
   resilience?: ModelResilienceConfig;
+  /** Context compaction (auto-summarisation) settings. Controls when
+   *  the system summarises earlier messages to stay within the model's
+   *  context window. */
+  compaction?: CompactionConfig;
+}
+
+export interface CompactionConfig {
+  /** Master switch. Default: true. Set false to never auto-compact. */
+  enabled?: boolean;
+  /** Tokens reserved for the summarisation prompt + output.
+   *  Compaction triggers when contextTokens > contextWindow - reserveTokens.
+   *  Default: 16384. Increase to trigger earlier; decrease to use more window. */
+  reserveTokens?: number;
+  /** Approximate tokens of recent conversation to keep after compaction.
+   *  Default: 20000. Increase to retain more recent context post-compact. */
+  keepRecentTokens?: number;
 }
 
 export interface ModelResilienceConfig {

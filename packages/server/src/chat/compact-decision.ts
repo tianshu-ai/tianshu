@@ -163,8 +163,9 @@ export async function tryAutoCompact(args: {
   piSession: PiSession;
   harness: AgentHarness;
   contextWindow: number | undefined;
+  settings?: CompactionSettings;
 }): Promise<AutoCompactDecision> {
-  const { piSession, harness, contextWindow } = args;
+  const { piSession, harness, contextWindow, settings } = args;
   let branch: SessionTreeEntry[];
   try {
     branch = await piSession.getBranch();
@@ -174,7 +175,7 @@ export async function tryAutoCompact(args: {
     );
     return { compacted: false };
   }
-  if (!shouldCompactBranch({ branch, contextWindow })) {
+  if (!shouldCompactBranch({ branch, contextWindow, settings })) {
     return { compacted: false, reason: "below_threshold" };
   }
   try {
