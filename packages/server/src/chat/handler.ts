@@ -123,7 +123,7 @@ import {
   peekToolCatalogDelta,
 } from "./flush-tool-delta.js";
 import { CompactSkippedError, compactSession } from "./compact.js";
-import { Type } from "typebox";
+import { buildHostTools, getCompactRef } from "./host-tools.js";
 import {
   toWire,
   type ClientMsg,
@@ -574,6 +574,14 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
       ]
     : [];
+  const compactionCfg = ctx.config.models?.compaction;
+  const compactionSettings = compactionCfg ? {
+    enabled: compactionCfg.enabled ?? true,
+    reserveTokens: compactionCfg.reserveTokens ?? 16384,
+    keepRecentTokens: compactionCfg.keepRecentTokens ?? 20000,
+    triggerPercent: compactionCfg.triggerPercent ?? 80,
+  } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80 };
+  const hostToolsDefs = buildHostTools({ contextWindow: modelInfo.contextWindow, compactionSettings });
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {
@@ -590,35 +598,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       sessionId: session.id,
       channelSession,
     },
+    hostTools: hostToolsDefs
   });
 
-  // Inject compact_context tool — lets the agent proactively compress
-  // conversation history when it senses context is getting tight.
-  toolset.schemas.push({
-    name: "compact_context",
-    description:
-      "Compress the conversation history by summarising older messages. " +
-      "Call this when context usage is high (>70%) and you need room to continue working. " +
-      "After compaction, older messages are replaced with a concise summary while recent " +
-      "context is preserved. Returns the result of the compaction attempt.",
-    parameters: Type.Object({}),
-  });
-  toolset.executors["compact_context"] = async () => {
-    const result = await tryAutoCompact({
-      piSession,
-      harness,
-      contextWindow: modelInfo.contextWindow,
-      // Force: skip threshold check — agent decided to compact.
-      settings: { enabled: true, reserveTokens: modelInfo.contextWindow ?? 999999, keepRecentTokens: compactionSettings.keepRecentTokens },
-    });
-    if (result.compacted) {
-      return { ok: true, message: "Context compacted successfully.", tokensBefore: result.tokensBefore };
-    }
-    if (result.reason === "nothing_to_compact") {
-      return { ok: false, message: "Nothing to compact — conversation is too short or was just compacted." };
-    }
-    return { ok: false, message: result.error ?? "Compaction failed." };
-  };
+
 
   // Convert wire attachments into:
   //   * `images` — base64 ImageContent[] for vision-capable models
@@ -746,6 +729,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }),
   });
 
+  // Bind the compact tool's deferred ref now that piSession + harness exist.
+  const compactRef = getCompactRef(hostToolsDefs);
+  compactRef.piSession = piSession;
+  compactRef.harness = harness;
+
   // External abort → harness.abort()
   const onAbort = () => void harness.abort();
   signal.addEventListener("abort", onAbort, { once: true });
@@ -807,14 +795,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // ("compact then stop"). Compacting BEFORE prompt() makes room
   // so the current turn runs normally. Silent: no history_compacted
   // event (the user is mid-send; the refresh would yank the view).
-  const compactionCfg = ctx.config.models?.compaction;
-  const compactionSettings = compactionCfg ? {
-    enabled: compactionCfg.enabled ?? true,
-    reserveTokens: compactionCfg.reserveTokens ?? 16384,
-    keepRecentTokens: compactionCfg.keepRecentTokens ?? 20000,
-    triggerPercent: compactionCfg.triggerPercent ?? 80,
-  } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80 };
-
   if (!streamErrorSent) {
     const pre = await tryAutoCompact({
       piSession,

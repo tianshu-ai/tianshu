@@ -56,6 +56,7 @@ import { loadTenantSkills } from "../core/tenant-skills.js";
 import { loadWorkerExecutionBiasOverride } from "../core/worker-agents-fs.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
+import { buildHostTools, getCompactRef } from "./host-tools.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
 
 export interface AgentLoopRequest {
@@ -348,8 +349,14 @@ export async function runAgentLoop(
   const innerCtl = new AbortController();
   const onExternalAbort = () => innerCtl.abort();
   externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
+  const workerCompactionSettings = {
+    enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80,
+    ...(ctx.config.models?.compaction ?? {}),
+  };
+  const workerHostTools = buildHostTools({ contextWindow: modelInfo.contextWindow, compactionSettings: workerCompactionSettings });
   const toolset = await buildToolset({
     pluginTools,
+    hostTools: workerHostTools,
     toolContext: {
       tenantId: ctx.tenantId,
       userId,
@@ -396,6 +403,9 @@ export async function runAgentLoop(
     },
   });
   const adapted = adaptToolset(toolset);
+
+  // Bind compact_context deferred ref after harness creation (below).
+  // Workers get the same fundamental compaction ability as the main chat.
 
   // Plugin-contributed system prompt fragments (ADR-0006). Workers
   // need these for the same reason main does: when a plugin ships a
@@ -558,6 +568,11 @@ export async function runAgentLoop(
       onRetry: req.onModelRetry,
     }),
   });
+
+  // Bind compact_context deferred ref.
+  const workerCompactRef = getCompactRef(workerHostTools);
+  workerCompactRef.piSession = session;
+  workerCompactRef.harness = harness;
 
   // Watch harness events for two purposes:
   //   1. Reset the watchdog whenever something happens (timestamps

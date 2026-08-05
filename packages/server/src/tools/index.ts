@@ -39,6 +39,12 @@ export interface BuildToolsetOpts {
    *  `execute()`. Required iff `pluginTools` is non-empty. */
   toolContext: BuildToolContext;
   /**
+   * Host-level tools injected by the caller (handler / agent-loop).
+   * Always available regardless of plugins. Used for fundamental
+   * capabilities like context compaction.
+   */
+  hostTools?: Array<{ schema: Tool; executor: ToolExecutor }>;
+  /**
    * Deprecated. Used to feed a `read_skill` meta-tool; the
    * registry now mirrors host / plugin SKILL.md into the tenant
    * config tree so `tenant_config_read` reaches every skill
@@ -176,6 +182,14 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
     }
     schemas.push(tool.schema);
     executors[name] = (args) => tool.execute(args, ctx);
+  }
+
+  // Host-level tools (always available, not from plugins).
+  for (const { schema, executor } of opts.hostTools ?? []) {
+    if (!executors[schema.name]) {
+      schemas.push(schema);
+      executors[schema.name] = executor;
+    }
   }
 
   return { schemas, executors };
