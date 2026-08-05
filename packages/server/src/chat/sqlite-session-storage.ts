@@ -322,6 +322,7 @@ export class SqliteSessionStorage
   }
 
   async getPathToRoot(leafId: string | null): Promise<SessionTreeEntry[]> {
+    console.log(`[storage] getPathToRoot called, session=${this.sessionId}, leafId=${leafId?.slice(0,8)}`);
     if (!leafId) return [];
     const rows = this.ctx.db
       .prepare<[string], MessagesRow>(
