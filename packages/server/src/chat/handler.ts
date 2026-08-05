@@ -642,7 +642,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       supportsImages: modelInfo.supportsImages,
     },
   });
-  const piSession = new PiSession(storage);
+  const piSession = new PiSession(storage, {
+    entryTransforms: [filterOrphanedToolResults],
+  });
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
       attachments: originalAttachments as unknown[],
@@ -1785,7 +1787,7 @@ function filterOrphanedToolResults(
     if (!Array.isArray(content)) continue;
     for (const part of content) {
       const p = part as { type?: string; id?: string; toolCallId?: string };
-      if (p.type === "tool_use" || p.type === "tool-use") {
+      if (p.type === "toolCall") {
         if (p.id) toolUseIds.add(p.id);
       }
     }
