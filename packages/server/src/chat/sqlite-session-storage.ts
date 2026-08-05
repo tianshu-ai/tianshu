@@ -635,11 +635,12 @@ function safeParse(s: string): unknown {
  * in a prior assistant message. Prevents Anthropic 400 after compaction.
  */
 function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[] {
+  // Collect ALL toolCall ids from:
+  //   1. Top-level assistant message entries
+  //   2. retainedTail inside compaction entries
   const toolCallIds = new Set<string>();
-  for (const entry of path) {
-    if (entry.type !== "message") continue;
-    const msg = entry.message as { role: string; content?: unknown[] };
-    if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
+  function collectFromMessage(msg: { role: string; content?: unknown[] }): void {
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) return;
     for (const part of msg.content) {
       const p = part as { type?: string; id?: string };
       if (p.type === "toolCall" && p.id) {
@@ -647,17 +648,57 @@ function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[]
       }
     }
   }
-  if (toolCallIds.size === 0) return path; // no tool calls at all, nothing to filter
 
-  const filtered = path.filter((entry) => {
-    if (entry.type !== "message") return true;
-    const msg = entry.message as { role: string; toolCallId?: string };
-    if (msg.role !== "toolResult") return true;
-    if (msg.toolCallId && !toolCallIds.has(msg.toolCallId)) {
-      console.log(`[storage] filtering orphaned toolResult: ${msg.toolCallId}`);
-      return false;
+  for (const entry of path) {
+    if (entry.type === "message") {
+      collectFromMessage((entry as { message: { role: string; content?: unknown[] } }).message);
+    } else if (entry.type === "compaction") {
+      const ce = entry as { retainedTail?: Array<{ role: string; content?: unknown[] }> };
+      if (Array.isArray(ce.retainedTail)) {
+        for (const msg of ce.retainedTail) collectFromMessage(msg);
+      }
     }
-    return true;
-  });
+  }
+
+  // Now filter orphaned toolResults from both top-level entries AND retainedTails.
+  let removed = 0;
+  const filtered: SessionTreeEntry[] = [];
+  for (const entry of path) {
+    if (entry.type === "message") {
+      const msg = (entry as { message: { role: string; toolCallId?: string } }).message;
+      if (msg.role === "toolResult" && msg.toolCallId && !toolCallIds.has(msg.toolCallId)) {
+        removed++;
+        continue; // skip orphan
+      }
+      filtered.push(entry);
+    } else if (entry.type === "compaction") {
+      const ce = entry as { retainedTail?: Array<{ role: string; toolCallId?: string }> };
+      if (Array.isArray(ce.retainedTail)) {
+        const originalLen = ce.retainedTail.length;
+        const cleanTail = ce.retainedTail.filter((msg) => {
+          if (msg.role === "toolResult" && (msg as { toolCallId?: string }).toolCallId) {
+            if (!toolCallIds.has((msg as { toolCallId?: string }).toolCallId!)) {
+              removed++;
+              return false;
+            }
+          }
+          return true;
+        });
+        if (cleanTail.length !== originalLen) {
+          // Clone the entry with the cleaned tail
+          filtered.push({ ...entry, retainedTail: cleanTail } as unknown as SessionTreeEntry);
+        } else {
+          filtered.push(entry);
+        }
+      } else {
+        filtered.push(entry);
+      }
+    } else {
+      filtered.push(entry);
+    }
+  }
+  if (removed > 0) {
+    console.log(`[storage] filterOrphanedToolResults: removed ${removed} orphan(s), toolCallIds found: ${toolCallIds.size}`);
+  }
   return filtered;
 }
