@@ -636,72 +636,106 @@ function safeParse(s: string): unknown {
  * in a prior assistant message. Prevents Anthropic 400 after compaction.
  */
 function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[] {
-  // Collect ALL toolCall ids from:
-  //   1. Top-level assistant message entries
-  //   2. retainedTail inside compaction entries
-  const toolCallIds = new Set<string>();
-  function collectFromMessage(msg: { role: string; content?: unknown[] }): void {
-    if (msg.role !== "assistant" || !Array.isArray(msg.content)) return;
-    for (const part of msg.content) {
-      const p = part as { type?: string; id?: string };
-      if (p.type === "toolCall" && p.id) {
-        toolCallIds.add(p.id);
-      }
-    }
-  }
+  // Anthropic requires every tool_result to reference a tool_use from
+  // the IMMEDIATELY PRECEDING assistant message. After compaction,
+  // ordering can break this invariant. We fix it by tracking which
+  // toolCall ids are in the "current" (most recent) assistant message
+  // and dropping any toolResult that references a different one.
+  //
+  // Walk entries in order. Track the last-seen assistant's toolCall ids.
+  // Any toolResult whose toolCallId is NOT in that set gets dropped.
 
-  for (const entry of path) {
-    if (entry.type === "message") {
-      collectFromMessage((entry as { message: { role: string; content?: unknown[] } }).message);
-    } else if (entry.type === "compaction") {
-      const ce = entry as { retainedTail?: Array<{ role: string; content?: unknown[] }> };
-      if (Array.isArray(ce.retainedTail)) {
-        for (const msg of ce.retainedTail) collectFromMessage(msg);
-      }
-    }
+  // First pass: flatten the path into a linear message sequence
+  // (expanding retainedTails inline).
+  interface MsgRef {
+    role: string;
+    toolCallId?: string;
+    toolCallIds?: Set<string>; // for assistant msgs
+    entryIdx: number;
+    tailIdx?: number; // if inside a retainedTail
   }
-
-  // Now filter orphaned toolResults from both top-level entries AND retainedTails.
-  let removed = 0;
-  const filtered: SessionTreeEntry[] = [];
-  for (const entry of path) {
+  const msgs: MsgRef[] = [];
+  for (let i = 0; i < path.length; i++) {
+    const entry = path[i];
     if (entry.type === "message") {
-      const msg = (entry as { message: { role: string; toolCallId?: string } }).message;
-      if (msg.role === "toolResult" && msg.toolCallId && !toolCallIds.has(msg.toolCallId)) {
-        removed++;
-        continue; // skip orphan
-      }
-      filtered.push(entry);
-    } else if (entry.type === "compaction") {
-      const ce = entry as { retainedTail?: Array<{ role: string; toolCallId?: string }> };
-      if (Array.isArray(ce.retainedTail)) {
-        const originalLen = ce.retainedTail.length;
-        const cleanTail = ce.retainedTail.filter((msg) => {
-          if (msg.role === "toolResult" && (msg as { toolCallId?: string }).toolCallId) {
-            if (!toolCallIds.has((msg as { toolCallId?: string }).toolCallId!)) {
-              removed++;
-              return false;
-            }
-          }
-          return true;
-        });
-        if (cleanTail.length !== originalLen) {
-          // Clone the entry with the cleaned tail
-          filtered.push({ ...entry, retainedTail: cleanTail } as unknown as SessionTreeEntry);
-        } else {
-          filtered.push(entry);
+      const msg = (entry as { message: { role: string; toolCallId?: string; content?: unknown[] } }).message;
+      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        const ids = new Set<string>();
+        for (const part of msg.content) {
+          const p = part as { type?: string; id?: string };
+          if (p.type === "toolCall" && p.id) ids.add(p.id);
         }
+        msgs.push({ role: "assistant", toolCallIds: ids, entryIdx: i });
+      } else if (msg.role === "toolResult") {
+        msgs.push({ role: "toolResult", toolCallId: msg.toolCallId, entryIdx: i });
       } else {
-        filtered.push(entry);
+        msgs.push({ role: msg.role, entryIdx: i });
       }
-    } else {
-      filtered.push(entry);
+    } else if (entry.type === "compaction") {
+      const ce = entry as { retainedTail?: Array<{ role: string; toolCallId?: string; content?: unknown[] }> };
+      msgs.push({ role: "compaction", entryIdx: i });
+      if (Array.isArray(ce.retainedTail)) {
+        for (let t = 0; t < ce.retainedTail.length; t++) {
+          const msg = ce.retainedTail[t];
+          if (msg.role === "assistant" && Array.isArray(msg.content)) {
+            const ids = new Set<string>();
+            for (const part of msg.content) {
+              const p = part as { type?: string; id?: string };
+              if (p.type === "toolCall" && p.id) ids.add(p.id);
+            }
+            msgs.push({ role: "assistant", toolCallIds: ids, entryIdx: i, tailIdx: t });
+          } else if (msg.role === "toolResult") {
+            msgs.push({ role: "toolResult", toolCallId: msg.toolCallId, entryIdx: i, tailIdx: t });
+          } else {
+            msgs.push({ role: msg.role, entryIdx: i, tailIdx: t });
+          }
+        }
+      }
     }
   }
-  // Always log diagnostics for debugging
-  const toolResultCount = path.filter(e => e.type === "message" && (e as { message: { role: string } }).message.role === "toolResult").length;
-  const compactionCount = path.filter(e => e.type === "compaction").length;
-  const tailToolResults = path.filter(e => e.type === "compaction" && Array.isArray((e as { retainedTail?: unknown[] }).retainedTail)).reduce((n, e) => n + ((e as { retainedTail: Array<{ role: string }> }).retainedTail.filter(m => m.role === "toolResult").length), 0);
-  console.log(`[storage] orphanFilter: entries=${path.length} toolCallIds=${toolCallIds.size} topLevelToolResults=${toolResultCount} compactions=${compactionCount} tailToolResults=${tailToolResults} removed=${removed}`);
+
+  // Second pass: walk msgs in order, track last assistant's toolCallIds,
+  // collect indices of orphaned toolResults to remove.
+  let lastAssistantIds = new Set<string>();
+  const orphanEntryIndices = new Set<number>(); // top-level entry indices to drop
+  const orphanTailPositions: Map<number, Set<number>> = new Map(); // entryIdx -> tailIdx set
+  for (const m of msgs) {
+    if (m.role === "assistant" && m.toolCallIds) {
+      lastAssistantIds = m.toolCallIds;
+    } else if (m.role === "toolResult" && m.toolCallId) {
+      if (!lastAssistantIds.has(m.toolCallId)) {
+        // Orphan: this toolResult's id is not in the immediately preceding assistant
+        if (m.tailIdx !== undefined) {
+          if (!orphanTailPositions.has(m.entryIdx)) orphanTailPositions.set(m.entryIdx, new Set());
+          orphanTailPositions.get(m.entryIdx)!.add(m.tailIdx);
+        } else {
+          orphanEntryIndices.add(m.entryIdx);
+        }
+      }
+    }
+  }
+
+  const removed = orphanEntryIndices.size + [...orphanTailPositions.values()].reduce((n, s) => n + s.size, 0);
+  if (removed > 0) {
+    console.log(`[storage] filterOrphanedToolResults: removing ${removed} positionally-orphaned toolResult(s)`);
+  }
+  if (removed === 0) return path;
+
+  // Third pass: build filtered path
+  const filtered: SessionTreeEntry[] = [];
+  for (let i = 0; i < path.length; i++) {
+    if (orphanEntryIndices.has(i)) continue;
+    const entry = path[i];
+    const tailDrops = orphanTailPositions.get(i);
+    if (tailDrops && entry.type === "compaction") {
+      const ce = entry as { retainedTail?: unknown[] };
+      if (Array.isArray(ce.retainedTail)) {
+        const cleanTail = ce.retainedTail.filter((_: unknown, t: number) => !tailDrops.has(t));
+        filtered.push({ ...entry, retainedTail: cleanTail } as unknown as SessionTreeEntry);
+        continue;
+      }
+    }
+    filtered.push(entry);
+  }
   return filtered;
 }
