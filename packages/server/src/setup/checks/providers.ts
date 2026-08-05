@@ -324,6 +324,68 @@ export async function checkProviders(
     });
   }
 
+  // ─── Compaction config validation ───────────────────────────────
+  const compaction = config.models?.compaction as {
+    enabled?: boolean;
+    reserveTokens?: unknown;
+    keepRecentTokens?: unknown;
+  } | undefined;
+  if (compaction) {
+    if (compaction.enabled === false) {
+      lines.push({
+        severity: "ok",
+        text: "auto-compaction disabled (models.compaction.enabled=false)",
+        detail: "Conversations will not be auto-summarised. Use /compact manually if needed.",
+      });
+    } else {
+      const reserve = compaction.reserveTokens;
+      const keep = compaction.keepRecentTokens;
+      if (typeof reserve === "number" && reserve < 4096) {
+        lines.push({
+          severity: "warning",
+          text: `compaction.reserveTokens=${reserve} is very low`,
+          detail: "The summarisation prompt itself needs ~4K tokens. Values below 4096 risk failed compaction. Default is 16384.",
+        });
+      }
+      if (typeof keep === "number" && keep < 2000) {
+        lines.push({
+          severity: "warning",
+          text: `compaction.keepRecentTokens=${keep} is very low`,
+          detail: "Very little recent context will be kept after compaction. The model may lose important conversation context. Default is 20000.",
+        });
+      }
+      if (reserve === undefined && keep === undefined) {
+        lines.push({
+          severity: "ok",
+          text: "compaction configured (defaults: reserveTokens=16384, keepRecentTokens=20000)",
+        });
+      } else {
+        lines.push({
+          severity: "ok",
+          text: `compaction: reserveTokens=${reserve ?? 16384}, keepRecentTokens=${keep ?? 20000}`,
+        });
+      }
+    }
+  }
+
+  // Warn if models lack contextWindow (compaction won't trigger)
+  const modelsWithoutWindow: string[] = [];
+  for (const [pid, prov] of Object.entries(providers)) {
+    const models = (prov as { models?: Array<{ id?: string; contextWindow?: number }> }).models ?? [];
+    for (const m of models) {
+      if (!m.contextWindow || m.contextWindow <= 0) {
+        modelsWithoutWindow.push(`${pid}/${m.id ?? "?"}`);
+      }
+    }
+  }
+  if (modelsWithoutWindow.length > 0) {
+    lines.push({
+      severity: "warning",
+      text: `${modelsWithoutWindow.length} model(s) missing contextWindow`,
+      detail: `${modelsWithoutWindow.slice(0, 5).join(", ")}${modelsWithoutWindow.length > 5 ? " ..." : ""}. Auto-compaction won't trigger for these models. Set contextWindow in config.json.`,
+    });
+  }
+
   return { title: "LLM providers", lines };
 }
 

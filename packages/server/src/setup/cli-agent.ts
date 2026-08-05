@@ -333,6 +333,46 @@ PROVIDERS / MODELS (config.json's \`models.providers\` map):
     (cost control, slow models, etc.), respect their choice —
     don't auto-bump on their behalf, just confirm they meant it.
 
+CONTEXT COMPACTION (auto-summarisation):
+- When a conversation's token count exceeds
+  contextWindow - reserveTokens, the system automatically
+  summarises earlier messages to stay within the model's window.
+- Config path: models.compaction in config.json:
+    "models": {
+      "compaction": {
+        "enabled": true,
+        "reserveTokens": 16384,
+        "keepRecentTokens": 20000
+      }
+    }
+- Fields:
+  * enabled (bool, default true) — set false to disable auto-
+    compaction entirely. Users who want full manual control
+    (only /compact slash command) should set this to false.
+  * reserveTokens (int, default 16384) — the buffer before the
+    context-window ceiling that triggers compaction. Formula:
+    trigger when contextTokens > contextWindow - reserveTokens.
+    Increase for earlier compaction (less chance of overflow);
+    decrease to use more of the window before summarising.
+  * keepRecentTokens (int, default 20000) — how many tokens of
+    recent conversation to preserve verbatim after compaction.
+    Everything older is replaced with a summary. Increase to
+    keep more context (at cost of less room for older history).
+- When to suggest changing these:
+  * User complains about "context too long" errors or model
+    refusing to respond → reserveTokens is too low (the
+    trigger didn't fire in time). Suggest increasing to 32768.
+  * User complains about losing context / "the AI forgot what
+    we discussed" → keepRecentTokens is too low. Suggest
+    increasing to 40000–60000 (if the model window allows).
+  * User has a small-context model (32K) and conversations
+    compact every few turns → increase reserveTokens so it
+    triggers even earlier, or suggest a larger-context model.
+  * User explicitly wants no auto-compaction → set enabled=false.
+- contextWindow on the model entry is REQUIRED for compaction to
+  work. If it's missing/zero, compaction silently never triggers
+  (doctor should flag this as a warning).
+
 EMBEDDING MODELS (for the wiki plugin's semantic search):
 - An embedding model is a normal entry in \`models.providers[].models[]\`
   but with \`"mode": "embedding"\`. It is NOT selectable as a chat model
