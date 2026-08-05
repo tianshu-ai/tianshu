@@ -698,8 +698,10 @@ function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[]
       filtered.push(entry);
     }
   }
-  if (removed > 0) {
-    console.log(`[storage] filterOrphanedToolResults: removed ${removed} orphan(s), toolCallIds found: ${toolCallIds.size}`);
-  }
+  // Always log diagnostics for debugging
+  const toolResultCount = path.filter(e => e.type === "message" && (e as { message: { role: string } }).message.role === "toolResult").length;
+  const compactionCount = path.filter(e => e.type === "compaction").length;
+  const tailToolResults = path.filter(e => e.type === "compaction" && Array.isArray((e as { retainedTail?: unknown[] }).retainedTail)).reduce((n, e) => n + ((e as { retainedTail: Array<{ role: string }> }).retainedTail.filter(m => m.role === "toolResult").length), 0);
+  console.log(`[storage] orphanFilter: entries=${path.length} toolCallIds=${toolCallIds.size} topLevelToolResults=${toolResultCount} compactions=${compactionCount} tailToolResults=${tailToolResults} removed=${removed}`);
   return filtered;
 }
