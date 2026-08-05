@@ -642,9 +642,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       supportsImages: modelInfo.supportsImages,
     },
   });
-  const piSession = new PiSession(storage, {
-    entryTransforms: [filterOrphanedToolResults],
-  });
+  const piSession = new PiSession(storage);
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
       attachments: originalAttachments as unknown[],
