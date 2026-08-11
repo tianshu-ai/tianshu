@@ -105,6 +105,7 @@ export async function llmChat(opts: LlmChatOptions): Promise<LlmChatResult> {
       temperature: opts.temperature,
     });
     for await (const event of stream) {
+      console.log(`[llm-chat] event: ${event.type}`);
       if (event.type === "text_delta") {
         fullText += event.delta;
       } else if (event.type === "done") {
