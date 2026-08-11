@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.17.0](https://github.com/tianshu-ai/tianshu/compare/v0.16.0...v0.17.0) (2026-08-11)
+
+
+### Features
+
+* **board:** inject LLM API knowledge into agent system prompt ([5123fc2](https://github.com/tianshu-ai/tianshu/commit/5123fc23c3c8eff4c6d6a556ee8d34775dacf2e8))
+* general-purpose LLM chat API (/api/llm/chat) + board.llm() helper ([b5910c8](https://github.com/tianshu-ai/tianshu/commit/b5910c883cf31b47eb887520bc65bcb93817fb85))
+
+
+### Bug Fixes
+
+* **llm-chat:** assistant messages need content as TextContent[] array ([9a9eb10](https://github.com/tianshu-ai/tianshu/commit/9a9eb104fdd8b86010b5bd0a7c4c3232defc8ae2))
+* **llm-chat:** register API providers + debug empty response ([076cff7](https://github.com/tianshu-ai/tianshu/commit/076cff78d139ae0cb8b030362ed1dd6a654ac6ec))
+* **llm-chat:** surface stream error instead of returning empty text ([9b71ec2](https://github.com/tianshu-ai/tianshu/commit/9b71ec2ae59ee1b8ac49a1db41243fe038ac3c76))
+* **llm-chat:** swap resolveTenantConfig args (tenantId, home) ([8c9a2b8](https://github.com/tianshu-ai/tianshu/commit/8c9a2b805a1b5a37beb12b4a439fee3f61d109cc))
+* **llm-chat:** use complete() instead of streamSimple ([c7cdee4](https://github.com/tianshu-ai/tianshu/commit/c7cdee40a5f157f75e5f1b7099e104fb43930654))
+
 ## [0.16.0](https://github.com/tianshu-ai/tianshu/compare/v0.15.0...v0.16.0) (2026-08-05)
 
 
