@@ -37,11 +37,46 @@ export interface MountCoreRoutesDeps {
   listTenants: () => string[];
 }
 
+import { llmChat, type LlmChatMessage } from "../core/llm-chat.js";
+
 export function mountCoreRoutes(
   app: Express,
   deps: MountCoreRoutesDeps,
 ): void {
   const { pluginRegistry } = deps;
+
+  // ─── General-purpose LLM chat endpoint ─────────────────────────
+  // POST /api/llm/chat
+  // Body: { model?, messages: [{role, content}], system?, maxTokens?, temperature? }
+  // Returns: { ok, text, model, usage?, error? }
+  //
+  // Available to any authenticated request (board apps, plugins, etc.).
+  app.post("/api/llm/chat", async (req: Request, res: Response) => {
+    if (!req.ctx) {
+      res.status(401).json({ error: "not authenticated" });
+      return;
+    }
+    const body = req.body as {
+      model?: string;
+      messages?: LlmChatMessage[];
+      system?: string;
+      maxTokens?: number;
+      temperature?: number;
+    };
+    if (!body.messages || !Array.isArray(body.messages) || body.messages.length === 0) {
+      res.status(400).json({ error: "messages is required (non-empty array)" });
+      return;
+    }
+    const result = await llmChat({
+      tenantId: req.ctx.tenant.tenantId,
+      model: body.model,
+      messages: body.messages,
+      system: body.system,
+      maxTokens: body.maxTokens,
+      temperature: body.temperature,
+    });
+    res.json(result);
+  });
 
   app.get("/api/me", (req: Request, res: Response) => {
     if (!req.ctx) {

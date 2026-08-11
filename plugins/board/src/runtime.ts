@@ -133,6 +133,30 @@ export const BOARD_RUNTIME_SOURCE = `(function () {
     } catch (e) {}
   }
 
+  // ─── LLM helper: board.llm(messages, opts?) ─────────────────────
+  // Calls the server's /api/llm/chat endpoint.
+  // Returns: Promise<{ ok, text, model, error? }>
+  window.board = window.board || {};
+  window.board.llm = async function (messages, opts) {
+    opts = opts || {};
+    var body = { messages: messages };
+    if (opts.model) body.model = opts.model;
+    if (opts.system) body.system = opts.system;
+    if (opts.maxTokens) body.maxTokens = opts.maxTokens;
+    if (opts.temperature !== undefined) body.temperature = opts.temperature;
+    try {
+      var res = await fetch('/api/llm/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include'
+      });
+      return await res.json();
+    } catch (err) {
+      return { ok: false, text: '', error: (err && err.message) || String(err) };
+    }
+  };
+
   try { window.parent.postMessage({ type: 'tianshu:board_runtime_ready' }, '*'); } catch (e) {}
 
   // Initial report + keep reporting as the DOM changes size (timers,
