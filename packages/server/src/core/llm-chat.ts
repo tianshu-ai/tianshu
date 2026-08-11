@@ -105,7 +105,6 @@ export async function llmChat(opts: LlmChatOptions): Promise<LlmChatResult> {
       temperature: opts.temperature,
     });
     for await (const event of stream) {
-      console.log(`[llm-chat] event: ${event.type}`);
       if (event.type === "text_delta") {
         fullText += event.delta;
       } else if (event.type === "done") {
@@ -116,6 +115,9 @@ export async function llmChat(opts: LlmChatOptions): Promise<LlmChatResult> {
             }
           }
         }
+      } else if (event.type === "error") {
+        const errMsg = (event as { error?: { errorMessage?: string } }).error?.errorMessage ?? JSON.stringify(event);
+        return { ok: false, text: "", model: modelInfo.id, error: errMsg };
       }
     }
     return {
