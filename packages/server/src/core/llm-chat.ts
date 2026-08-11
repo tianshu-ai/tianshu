@@ -82,14 +82,29 @@ export async function llmChat(opts: LlmChatOptions): Promise<LlmChatResult> {
     return { ok: false, text: "", model: opts.model ?? "", error: `model not found: ${opts.model ?? "(default)"}` };
   }
 
-  // Build messages in pi-ai format
+  // Build messages in pi-ai format.
+  // pi-ai expects:
+  //   UserMessage: { role: "user", content: string | ContentPart[], timestamp }
+  //   AssistantMessage: { role: "assistant", content: TextContent[], ... }
   const messages: Message[] = [];
   let systemPrompt = opts.system ?? "";
   for (const m of opts.messages) {
     if (m.role === "system") {
       systemPrompt += (systemPrompt ? "\n" : "") + m.content;
+    } else if (m.role === "assistant") {
+      // Assistant content must be an array of TextContent objects
+      messages.push({
+        role: "assistant",
+        content: [{ text: m.content }],
+        api: "anthropic-messages",
+        provider: "unknown",
+        model: "unknown",
+        usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+        stopReason: "stop",
+        timestamp: Date.now(),
+      } as unknown as Message);
     } else {
-      messages.push({ role: m.role, content: m.content, timestamp: Date.now() } as unknown as Message);
+      messages.push({ role: "user", content: m.content, timestamp: Date.now() } as unknown as Message);
     }
   }
 
