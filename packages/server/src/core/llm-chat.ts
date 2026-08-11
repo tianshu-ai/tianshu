@@ -24,8 +24,8 @@ import {
 } from "./llm.js";
 import { resolveTenantConfig } from "./config.js";
 import { getTianshuHome } from "./paths.js";
-import { buildModels } from "./pi-models.js";
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message, Context } from "@earendil-works/pi-ai";
+import { complete } from "@earendil-works/pi-ai/compat";
 
 export interface LlmChatMessage {
   role: "system" | "user" | "assistant";
@@ -78,10 +78,6 @@ export async function llmChat(opts: LlmChatOptions): Promise<LlmChatResult> {
     return { ok: false, text: "", model: opts.model ?? "", error: `model not found: ${opts.model ?? "(default)"}` };
   }
 
-  const piModel = buildModel(modelInfo);
-  const apiKey = resolveApiKey(modelInfo);
-  const models = buildModels(piModel, apiKey);
-
   // Build messages in pi-ai format
   const messages: Message[] = [];
   let systemPrompt = opts.system ?? "";
@@ -93,37 +89,40 @@ export async function llmChat(opts: LlmChatOptions): Promise<LlmChatResult> {
     }
   }
 
+  const piModel = buildModel(modelInfo);
+  const apiKey = resolveApiKey(modelInfo);
+
+  const context: Context = {
+    messages,
+    ...(systemPrompt ? { systemPrompt } : {}),
+  };
+
   try {
-    // Use streamSimple to get the full response
-    let fullText = "";
-    const context = {
-      messages,
-      ...(systemPrompt ? { systemPrompt } : {}),
-    };
-    const stream = models.streamSimple(piModel, context, {
+    const assistant = await complete(piModel, context, {
+      apiKey,
       maxTokens: opts.maxTokens ?? 4096,
       temperature: opts.temperature,
     });
-    for await (const event of stream) {
-      if (event.type === "text_delta") {
-        fullText += event.delta;
-      } else if (event.type === "done") {
-        if (!fullText && event.message?.content) {
-          for (const part of event.message.content) {
-            if ((part as { type: string }).type === "text") {
-              fullText += (part as { text: string }).text ?? "";
-            }
-          }
+    // Extract text from assistant content
+    let fullText = "";
+    if (Array.isArray(assistant.content)) {
+      for (const part of assistant.content) {
+        if (typeof part === "string") {
+          fullText += part;
+        } else if ((part as { type?: string }).type === "text" || (part as { text?: string }).text) {
+          fullText += (part as { text: string }).text ?? "";
         }
-      } else if (event.type === "error") {
-        const errMsg = (event as { error?: { errorMessage?: string } }).error?.errorMessage ?? JSON.stringify(event);
-        return { ok: false, text: "", model: modelInfo.id, error: errMsg };
       }
     }
     return {
       ok: true,
       text: fullText,
       model: modelInfo.id,
+      usage: assistant.usage ? {
+        input: assistant.usage.input,
+        output: assistant.usage.output,
+        total: assistant.usage.totalTokens,
+      } : undefined,
     };
   } catch (err) {
     return {
