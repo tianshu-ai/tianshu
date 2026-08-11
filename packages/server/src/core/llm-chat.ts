@@ -65,7 +65,7 @@ export async function llmChat(opts: LlmChatOptions): Promise<LlmChatResult> {
 
   let config;
   try {
-    config = resolveTenantConfig(home, tenantId);
+    config = resolveTenantConfig(tenantId, home);
   } catch (err) {
     return { ok: false, text: "", model: "", error: `config error: ${err instanceof Error ? err.message : String(err)}` };
   }
