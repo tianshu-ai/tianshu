@@ -36,6 +36,12 @@
     "apiRoutes": [
       { "method": "GET", "path": "/boards",              "handler": "listBoards"  },
       { "method": "GET", "path": "/boards/:name/index.html", "handler": "serveBoard" }
+    ],
+    "systemPromptFragments": [
+      {
+        "id": "board-llm-api",
+        "text": "Board apps have a built-in LLM helper injected by the runtime. When writing a board app's JavaScript, you can call:\n\n  const result = await board.llm(messages, options?)\n\nParameters:\n  - messages: Array<{role: 'user'|'assistant'|'system', content: string}>\n  - options (optional): { model?: string, system?: string, maxTokens?: number, temperature?: number }\n\nReturns: Promise<{ ok: boolean, text: string, model: string, error?: string }>\n\nThis uses the server's configured LLM provider — no API keys needed in the board app.\nExample:\n  const res = await board.llm([{role:'user', content:'Summarize this data: ' + JSON.stringify(data)}]);\n  document.getElementById('output').textContent = res.text;\n\nThe function is available globally on `window.board.llm` in any board app served by tianshu."
+      }
     ]
   }
 }
