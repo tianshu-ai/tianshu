@@ -26,6 +26,10 @@ import { resolveTenantConfig } from "./config.js";
 import { getTianshuHome } from "./paths.js";
 import type { Message, Context } from "@earendil-works/pi-ai";
 import { complete } from "@earendil-works/pi-ai/compat";
+import { registerBuiltInApiProviders } from "@earendil-works/pi-ai/compat";
+
+// Ensure API providers (anthropic, openai, google) are registered.
+registerBuiltInApiProviders();
 
 export interface LlmChatMessage {
   role: "system" | "user" | "assistant";
@@ -109,10 +113,13 @@ export async function llmChat(opts: LlmChatOptions): Promise<LlmChatResult> {
       for (const part of assistant.content) {
         if (typeof part === "string") {
           fullText += part;
-        } else if ((part as { type?: string }).type === "text" || (part as { text?: string }).text) {
-          fullText += (part as { text: string }).text ?? "";
+        } else if ((part as { text?: string }).text) {
+          fullText += (part as { text: string }).text;
         }
       }
+    }
+    if (!fullText) {
+      console.log(`[llm-chat] empty text, assistant:`, JSON.stringify(assistant).slice(0, 500));
     }
     return {
       ok: true,
