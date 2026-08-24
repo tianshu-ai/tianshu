@@ -24,6 +24,12 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish_version:
+        description: "Version tag to publish (e.g. v0.18.1). Leave empty to only run release-please."
+        required: false
+        type: string
 
 # Job-level permissions are tighter (publish-npm narrows further).
 permissions:
@@ -52,7 +58,7 @@ jobs:
 
   publish-npm:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    if: needs.release-please.outputs.release_created == 'true' || (github.event_name == 'workflow_dispatch' && inputs.publish_version != '')
     runs-on: ubuntu-latest
     # `id-token: write` is required for npm provenance attestations
     # (publishConfig.provenance=true in package.json). `contents: read`
@@ -70,7 +76,7 @@ jobs:
           # equivalent to checking out main HEAD at this point.
           # Using the tag explicitly is safer in case another
           # push lands on main between the two jobs.
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ needs.release-please.outputs.tag_name || inputs.publish_version }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -106,8 +112,10 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Summary
+        env:
+          VERSION: ${{ needs.release-please.outputs.version || inputs.publish_version }}
         run: |
-          echo "## :rocket: Published \`@tianshu-ai/tianshu@${{ needs.release-please.outputs.version }}\` to npm" >> "$GITHUB_STEP_SUMMARY"
+          echo "## :rocket: Published \`@tianshu-ai/tianshu@${VERSION}\` to npm" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- Registry: https://www.npmjs.com/package/@tianshu-ai/tianshu/v/${{ needs.release-please.outputs.version }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Tag: \`${{ needs.release-please.outputs.tag_name }}\`" >> "$GITHUB_STEP_SUMMARY"
