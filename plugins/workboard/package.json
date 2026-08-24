@@ -35,6 +35,8 @@
     "@types/node": "^26.1.1",
     "@types/react": "^19.2.18",
     "lucide-react": "^1.17.0",
+    "@types/react": "^19.2.18",
+    "lucide-react": "^1.30.0",
     "react": "^19.2.8",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
