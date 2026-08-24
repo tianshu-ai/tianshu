@@ -270,7 +270,8 @@ async function flushSessionInbox(
     if (drained.length === 0) return;
     try {
       await harness.followUp(renderForPrompt(drained));
-      // No markDelivered here; see comment above.
+      // Rows are now 'in_flight'. markDeliveredFromMessage will
+      // transition them to 'delivered' once the message is persisted.
       return;
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -278,8 +279,9 @@ async function flushSessionInbox(
         `[session-inbox] live followUp rejected for ${sessionId}, falling back to idle runner:`,
         err instanceof Error ? err.message : err,
       );
-      // Fall through to the idle-runner path. Rows are still
-      // pending (we never called markDelivered).
+      // Reset in_flight → pending so the idle path (or next
+      // flush) can pick them up again.
+      resetInFlight(ctx, drained.map((d) => d.id));
     }
   }
 
@@ -363,32 +365,62 @@ export function drainPending(
 }
 
 /**
- * Read pending rows WITHOUT marking them delivered. Caller is
- * responsible for `markDelivered(ids)` after the side-effect
- * (e.g. `harness.followUp`) is confirmed to have succeeded.
+ * Read pending rows and atomically transition them to 'in_flight'
+ * so they won't be picked up by countPending or another flush
+ * cycle. Caller is responsible for eventual `markDelivered(ids)`
+ * after the side-effect (e.g. `harness.followUp`) is confirmed
+ * to have succeeded via `markDeliveredFromMessage`.
  *
- * If the side-effect throws and we never call markDelivered, the
- * next flush picks the rows up again — nothing is lost.
+ * If the side-effect throws, the caller should call
+ * `resetInFlight(ids)` to move them back to 'pending' so the
+ * next flush picks them up again — nothing is lost.
  *
- * The previous implementation drained-and-marked atomically,
- * which lost rows when followUp succeeded but the surrounding
- * turn never actually emitted the user message (T4 reproducer
- * 2026-06-12: row marked delivered, content never reached the
- * agent). With tentative + confirm, the worst case is a row
- * delivered twice; that's vastly preferable to silent loss.
+ * The previous implementation left rows as 'pending' during
+ * tentative drain, which caused the finally-block's countPending
+ * check to re-schedule flushes indefinitely (the "loop trigger"
+ * bug). Transitioning to 'in_flight' breaks that cycle.
  */
 export function drainPendingTentative(
   ctx: TenantContext,
   sessionId: string,
 ): DeliveredMessage[] {
-  const rows = ctx.db
-    .prepare<[string], InboxRow>(
-      `SELECT * FROM session_inbox
-       WHERE target_session_id = ? AND status = 'pending'
-       ORDER BY created_at ASC, rowid ASC`,
-    )
-    .all(sessionId);
+  const txn = ctx.db.transaction(() => {
+    const rows = ctx.db
+      .prepare<[string], InboxRow>(
+        `SELECT * FROM session_inbox
+         WHERE target_session_id = ? AND status = 'pending'
+         ORDER BY created_at ASC, rowid ASC`,
+      )
+      .all(sessionId);
+    if (rows.length > 0) {
+      const now = Date.now();
+      const update = ctx.db.prepare(
+        `UPDATE session_inbox SET status = 'in_flight', delivered_at = ? WHERE id = ?`,
+      );
+      for (const r of rows) update.run(now, r.id);
+    }
+    return rows;
+  });
+  const rows = txn();
   return rows.map(rowToDelivered);
+}
+
+/**
+ * Reset in_flight rows back to pending. Called when followUp
+ * throws so the next flush can retry delivery.
+ */
+export function resetInFlight(
+  ctx: TenantContext,
+  ids: string[],
+): void {
+  if (ids.length === 0) return;
+  const update = ctx.db.prepare(
+    `UPDATE session_inbox SET status = 'pending', delivered_at = NULL WHERE id = ? AND status = 'in_flight'`,
+  );
+  const txn = ctx.db.transaction(() => {
+    for (const id of ids) update.run(id);
+  });
+  txn();
 }
 
 /**
@@ -446,7 +478,7 @@ export function markDelivered(
   const update = ctx.db.prepare(
     `UPDATE session_inbox
      SET status = 'delivered', delivered_at = ?
-     WHERE id = ? AND status = 'pending'`,
+     WHERE id = ? AND status IN ('pending', 'in_flight')`,
   );
   const txn = ctx.db.transaction(() => {
     for (const id of ids) update.run(now, id);
