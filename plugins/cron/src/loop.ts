@@ -89,14 +89,16 @@ export class SchedulerLoop {
       actionType: job.actionType,
     });
 
+    const firedAt = formatFiredAt(now, job.tz);
+
     if (job.actionType === "message") {
-      await this.fireMessage(job);
+      await this.fireMessage(job, firedAt);
     } else if (job.actionType === "task") {
-      this.fireTask(job, now);
+      this.fireTask(job, now, firedAt);
     }
   }
 
-  private async fireMessage(job: ScheduledJob): Promise<void> {
+  private async fireMessage(job: ScheduledJob, firedAt: string): Promise<void> {
     const p = job.payload as { sessionId?: string; message?: string };
     const sessionId = p.sessionId;
     if (!sessionId) {
@@ -107,15 +109,16 @@ export class SchedulerLoop {
       this.deps.log.warn?.(`[cron] message job ${job.id} skipped — host.sessionInbox unavailable`);
       return;
     }
-    const text = String(p.message || `[Scheduled reminder] ${job.title}`);
+    const userMsg = String(p.message || `[Scheduled reminder] ${job.title}`);
+    const text = `[System] Triggered at: ${firedAt} | Job: "${job.title}" (${job.scheduleType === "cron" ? `cron: ${job.cronExpr}` : "once"})\n\n${userMsg}`;
     await this.deps.inbox.enqueue(sessionId, {
       kind: "system_note",
       text,
-      meta: { source: "cron", jobId: job.id, title: job.title },
+      meta: { source: "cron", jobId: job.id, title: job.title, firedAt },
     });
   }
 
-  private fireTask(job: ScheduledJob, now: number): void {
+  private fireTask(job: ScheduledJob, now: number, firedAt: string): void {
     const p = job.payload as {
       title?: string;
       description?: string;
@@ -157,6 +160,9 @@ export class SchedulerLoop {
     // parent_session_id so completion notifications route back. We
     // also seed depends_on / labels to empty JSON so the row is
     // complete regardless of column defaults.
+    const description = p.description
+      ? `[Triggered at: ${firedAt}]\n\n${p.description}`
+      : `[Triggered at: ${firedAt}]`;
     this.deps.db
       .prepare(
         `INSERT INTO tasks
@@ -172,7 +178,7 @@ export class SchedulerLoop {
         workerRole,
         workerAgentId,
         p.title || job.title,
-        p.description ?? null,
+        description,
         typeof p.priority === "number" ? p.priority : 0,
         parentSessionId,
         now,
@@ -187,4 +193,27 @@ export class SchedulerLoop {
 
 function errMeta(err: unknown): { err: string } {
   return { err: err instanceof Error ? err.message : String(err) };
+}
+
+/**
+ * Format the fired-at timestamp in the job's timezone (or UTC).
+ * Example: "2026-08-24 21:00:00 (Asia/Shanghai)"
+ */
+function formatFiredAt(now: number, tz?: string | null): string {
+  const d = new Date(now);
+  try {
+    const formatted = d.toLocaleString("sv-SE", {
+      timeZone: tz || "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
+    return `${formatted} (${tz || "UTC"})`;
+  } catch {
+    return `${d.toISOString()} (UTC)`;
+  }
 }
