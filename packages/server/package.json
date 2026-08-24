@@ -13,7 +13,7 @@
   "dependencies": {
     "@clack/prompts": "^1.5.1",
     "@earendil-works/pi-agent-core": "^0.82.1",
-    "@earendil-works/pi-ai": "^0.82.1",
+    "@earendil-works/pi-ai": "^0.84.2",
     "@tianshu-ai/plugin-sdk": "*",
     "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
