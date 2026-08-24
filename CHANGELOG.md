@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.18.0](https://github.com/tianshu-ai/tianshu/compare/v0.17.0...v0.18.0) (2026-08-24)
+
+
+### Features
+
+* **cron:** inject trigger timestamp into fired messages and tasks ([798f09e](https://github.com/tianshu-ai/tianshu/commit/798f09ebaf10245273ea55cc2ecf2a72ccc8983e))
+
+
+### Bug Fixes
+
+* **session-inbox:** break infinite flush loop for active harness path ([0af64ba](https://github.com/tianshu-ai/tianshu/commit/0af64ba9f4f722fd6f6513be0aa3fd92149a7069))
+
 ## [0.17.0](https://github.com/tianshu-ai/tianshu/compare/v0.16.0...v0.17.0) (2026-08-11)
 
 
