@@ -22,7 +22,7 @@ export const WIKI_DIR = "wiki";
 // under wiki/journal/<level>/<period>.md; we treat "journal/<level>"
 // as a section string so the same path-safe read/write/list plumbing
 // serves both.
-export const FLAT_SECTIONS = ["sources", "entities", "concepts", "topics"] as const;
+export const FLAT_SECTIONS = ["sources", "entities", "concepts", "topics", "knowledge"] as const;
 export const JOURNAL_LEVELS = ["daily", "weekly", "monthly", "yearly"] as const;
 export const SECTIONS = [
   ...FLAT_SECTIONS,

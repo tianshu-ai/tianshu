@@ -110,6 +110,36 @@
         "id": "wiki_reset",
         "module": "WikiResetTool",
         "since": "0.1.0"
+      },
+      {
+        "id": "wiki_kb_config",
+        "module": "WikiKbConfigTool",
+        "since": "0.2.0"
+      },
+      {
+        "id": "wiki_kb_status",
+        "module": "WikiKbStatusTool",
+        "since": "0.2.0"
+      },
+      {
+        "id": "wiki_kb_scan",
+        "module": "WikiKbScanTool",
+        "since": "0.2.0"
+      },
+      {
+        "id": "wiki_kb_read_file",
+        "module": "WikiKbReadFileTool",
+        "since": "0.2.0"
+      },
+      {
+        "id": "wiki_kb_save_knowledge",
+        "module": "WikiKbSaveKnowledgeTool",
+        "since": "0.2.0"
+      },
+      {
+        "id": "wiki_kb_mark_done",
+        "module": "WikiKbMarkDoneTool",
+        "since": "0.2.0"
       }
     ],
     "apiRoutes": [

@@ -33,6 +33,8 @@ import type {
   SessionInboxCapability,
   TenantDbHandle,
 } from "@tianshu-ai/plugin-sdk";
+import fs from "node:fs";
+import path from "node:path";
 import { Type } from "typebox";
 import type { Request, Response } from "express";
 import {
@@ -648,6 +650,322 @@ function buildJournalWriteTool(db: TenantDbHandle, cfg?: EmbeddingConfig): Agent
   };
 }
 
+// ─── knowledge base tools ───────────────────────────────────────
+
+import {
+  loadKbConfig,
+  saveKbConfig,
+  scanAndDiff,
+  getKbStatus,
+  loadIndex,
+  saveIndex,
+  fileFingerprint,
+  readTextChunks,
+  writeKnowledgePage,
+  categorizeFile,
+  KB_WORKER_ROLE,
+  buildKbScanPrompt,
+  type KbFolder,
+  type KbFileEntry,
+} from "./knowledge-base.js";
+
+function isKbWorker(ctx: AgentToolContext): boolean {
+  const scope = ctx.agentScope;
+  return scope?.kind === "worker" && scope.workerKind === KB_WORKER_ROLE;
+}
+
+function buildKbConfigTool(): AgentTool {
+  return {
+    schema: {
+      name: "wiki_kb_config",
+      description:
+        "Configure the local knowledge base folders. Actions: list (show current folders), add (add a folder path), remove (remove by path).",
+      parameters: Type.Object({
+        action: Type.String({ description: "list | add | remove" }),
+        path: Type.Optional(Type.String({ description: "Folder path (for add/remove)" })),
+        label: Type.Optional(Type.String({ description: "Optional label for the folder (for add)" })),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolResult => {
+      const p = raw as { action: string; path?: string; label?: string };
+      const config = loadKbConfig(ctx.userHomeDir);
+      switch (p.action) {
+        case "list": {
+          if (config.folders.length === 0) {
+            return { ok: true, text: "No knowledge base folders configured. Use action=add to add one." };
+          }
+          const lines = config.folders.map(
+            (f) => `- ${f.path}${f.label ? ` (${f.label})` : ""}`,
+          );
+          return { ok: true, text: `Knowledge base folders:\n${lines.join("\n")}` };
+        }
+        case "add": {
+          if (!p.path) return { ok: false, text: "path is required for action=add" };
+          const absPath = path.resolve(p.path);
+          if (!fs.existsSync(absPath)) {
+            return { ok: false, text: `Path does not exist: ${absPath}` };
+          }
+          if (config.folders.some((f) => f.path === absPath)) {
+            return { ok: false, text: `Already configured: ${absPath}` };
+          }
+          config.folders.push({ path: absPath, label: p.label });
+          saveKbConfig(ctx.userHomeDir, config);
+          return { ok: true, text: `✅ Added knowledge base folder: ${absPath}` };
+        }
+        case "remove": {
+          if (!p.path) return { ok: false, text: "path is required for action=remove" };
+          const absPath = path.resolve(p.path);
+          const before = config.folders.length;
+          config.folders = config.folders.filter((f) => f.path !== absPath);
+          if (config.folders.length === before) {
+            return { ok: false, text: `Not found in config: ${absPath}` };
+          }
+          saveKbConfig(ctx.userHomeDir, config);
+          return { ok: true, text: `✅ Removed: ${absPath}` };
+        }
+        default:
+          return { ok: false, text: `Unknown action: ${p.action}. Use list | add | remove` };
+      }
+    },
+  };
+}
+
+function buildKbStatusTool(): AgentTool {
+  return {
+    schema: {
+      name: "wiki_kb_status",
+      description: "Show knowledge base status: configured folders, file counts, indexing progress.",
+      parameters: Type.Object({}),
+    },
+    execute: (_raw, ctx: AgentToolContext): ToolResult => {
+      const status = getKbStatus(ctx.userHomeDir);
+      if (status.folders.length === 0) {
+        return { ok: true, text: "No knowledge base folders configured. Use wiki_kb_config to add folders." };
+      }
+      const lines = [
+        `Knowledge Base Status:`,
+        `  Folders: ${status.folders.length}`,
+        ...status.folders.map((f) => `    - ${f.path}${f.label ? ` (${f.label})` : ""}: ${f.fileCount} files`),
+        `  Total files: ${status.totalFiles}`,
+        `  Indexed: ${status.indexedFiles}`,
+        `  Pending: ${status.pendingFiles}`,
+        `  Last scan: ${status.lastScanAt ? new Date(status.lastScanAt).toISOString() : "never"}`,
+      ];
+      return { ok: true, text: lines.join("\n") };
+    },
+  };
+}
+
+function buildKbScanTool(ctx: PluginContext): AgentTool {
+  return {
+    schema: {
+      name: "wiki_kb_scan",
+      description:
+        "Trigger a knowledge base scan. Discovers new/changed files and starts a background worker to process them into wiki pages.",
+      parameters: Type.Object({}),
+    },
+    execute: async (_raw, toolCtx: AgentToolContext): Promise<ToolResult> => {
+      const config = loadKbConfig(toolCtx.userHomeDir);
+      if (config.folders.length === 0) {
+        return { ok: false, text: "No knowledge base folders configured. Use wiki_kb_config action=add first." };
+      }
+
+      const scan = scanAndDiff(toolCtx.userHomeDir, config);
+      if (scan.pending.length === 0) {
+        return { ok: true, text: `All ${scan.total} files are up to date. Nothing to process.` };
+      }
+
+      const key = runKey(toolCtx.tenantId ?? "default", toolCtx.userId);
+      if (running.has(key + ":kb")) {
+        return { ok: false, text: "A knowledge base scan is already running." };
+      }
+
+      // Launch a background worker to process pending files
+      const runner = ctx.capabilities.get<AgentLoopRunner>("host.agentLoop");
+      if (!runner) {
+        return { ok: false, text: "host.agentLoop capability not available — cannot run background KB worker." };
+      }
+
+      running.add(key + ":kb");
+      const prompt = buildKbScanPrompt(scan.pending);
+
+      void (async () => {
+        try {
+          await runner.run({
+            userId: toolCtx.userId,
+            workerRole: KB_WORKER_ROLE,
+            sessionTitle: `KB scan (${scan.pending.length} files)`,
+            parentSessionId: toolCtx.sessionId,
+            initialUserMessage: prompt,
+            toolsAllow: [
+              "wiki_kb_read_file",
+              "wiki_kb_save_knowledge",
+              "wiki_kb_mark_done",
+              "wiki_list_pages",
+              "wiki_search",
+              "wiki_read",
+            ],
+          });
+        } catch (err) {
+          console.warn(`[wiki-kb] scan worker failed:`, err instanceof Error ? err.message : err);
+        } finally {
+          running.delete(key + ":kb");
+        }
+      })();
+
+      return {
+        ok: true,
+        text: `✅ KB scan started. Processing ${scan.pending.length} new/changed files (${scan.indexed.length} already indexed). The wiki-kb worker will distill them into knowledge pages.`,
+      };
+    },
+  };
+}
+
+function buildKbReadFileTool(): AgentTool {
+  return {
+    schema: {
+      name: "wiki_kb_read_file",
+      description:
+        "Read a file from the knowledge base for processing. Returns the text content (for text files) or a description of what to analyze (for media files). Only available to the KB worker.",
+      parameters: Type.Object({
+        path: Type.String({ description: "Absolute path to the file" }),
+        chunk: Type.Optional(Type.Number({ description: "Chunk index (0-based) for large files. Omit for first/only chunk." })),
+      }),
+    },
+    available: isKbWorker,
+    execute: (raw, _ctx: AgentToolContext): ToolResult => {
+      const p = raw as { path: string; chunk?: number };
+      if (!fs.existsSync(p.path)) {
+        return { ok: false, text: `File not found: ${p.path}` };
+      }
+
+      const category = categorizeFile(p.path);
+      switch (category) {
+        case "text": {
+          const chunks = readTextChunks(p.path);
+          const idx = p.chunk ?? 0;
+          if (idx >= chunks.length) {
+            return { ok: false, text: `Chunk ${idx} out of range (file has ${chunks.length} chunks)` };
+          }
+          return {
+            ok: true,
+            text: chunks.length > 1
+              ? `[Chunk ${idx + 1}/${chunks.length} of ${path.basename(p.path)}]\n\n${chunks[idx]}`
+              : chunks[0]!,
+            data: { totalChunks: chunks.length, currentChunk: idx },
+          };
+        }
+        case "document":
+          return {
+            ok: true,
+            text: `[PDF file: ${path.basename(p.path)}]\nThis is a PDF document. Extract and distill the key knowledge from it. The file is at: ${p.path}`,
+            data: { category: "document", path: p.path },
+          };
+        case "audio":
+          return {
+            ok: true,
+            text: `[Audio file: ${path.basename(p.path)}]\nThis is an audio file. Transcribe and extract key knowledge from it. The file is at: ${p.path}`,
+            data: { category: "audio", path: p.path },
+          };
+        case "video":
+          return {
+            ok: true,
+            text: `[Video file: ${path.basename(p.path)}]\nThis is a video file. Extract the audio, transcribe, and distill key knowledge. The file is at: ${p.path}`,
+            data: { category: "video", path: p.path },
+          };
+        case "image":
+          return {
+            ok: true,
+            text: `[Image file: ${path.basename(p.path)}]\nThis is an image. Describe and extract any knowledge/information visible. The file is at: ${p.path}`,
+            data: { category: "image", path: p.path },
+          };
+        default:
+          return { ok: false, text: `Unsupported file type: ${p.path}` };
+      }
+    },
+  };
+}
+
+function buildKbSaveKnowledgeTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentTool {
+  return {
+    schema: {
+      name: "wiki_kb_save_knowledge",
+      description:
+        "Save extracted knowledge from a file as a wiki page under knowledge/. Only available to the KB worker.",
+      parameters: Type.Object({
+        title: Type.String({ description: "Page title (descriptive, e.g. 'Project Architecture Decisions')" }),
+        content: Type.String({ description: "The distilled knowledge content (Markdown, use [[wikilinks]])" }),
+        sourcePath: Type.String({ description: "Absolute path of the source file" }),
+        sourceRelPath: Type.String({ description: "Relative display path (from folder root)" }),
+        chunkIndex: Type.Optional(Type.Number({ description: "Chunk index (1-based) if multi-chunk" })),
+        totalChunks: Type.Optional(Type.Number({ description: "Total chunks if multi-chunk" })),
+      }),
+    },
+    available: isKbWorker,
+    execute: (raw, toolCtx: AgentToolContext): ToolResult => {
+      const p = raw as {
+        title: string;
+        content: string;
+        sourcePath: string;
+        sourceRelPath: string;
+        chunkIndex?: number;
+        totalChunks?: number;
+      };
+
+      const wikiPath = writeKnowledgePage(toolCtx.userHomeDir, {
+        title: p.title,
+        content: p.content,
+        sourcePath: p.sourcePath,
+        sourceRelPath: p.sourceRelPath,
+        chunkIndex: p.chunkIndex,
+        totalChunks: p.totalChunks,
+      });
+
+      // Update index
+      const index = loadIndex(toolCtx.userHomeDir);
+      const hash = fileFingerprint(p.sourcePath);
+      const existing = index.get(p.sourcePath);
+      index.set(p.sourcePath, {
+        absPath: p.sourcePath,
+        hash,
+        processedAt: Date.now(),
+        wikiSlug: wikiPath,
+        chunks: p.totalChunks ?? existing?.chunks ?? 1,
+      });
+      saveIndex(toolCtx.userHomeDir, index);
+
+      // Index for semantic search if configured
+      if (cfg && embeddingEnabled(cfg)) {
+        const fullContent = `# ${p.title}\n\nSource: ${p.sourceRelPath}\n\n${p.content}`;
+        void indexPage(new WikiIndex(db, toolCtx.userId), cfg, wikiPath, fullContent).catch(() => {});
+      }
+
+      return { ok: true, text: `✅ Saved knowledge page: ${wikiPath}` };
+    },
+  };
+}
+
+function buildKbMarkDoneTool(): AgentTool {
+  return {
+    schema: {
+      name: "wiki_kb_mark_done",
+      description: "Mark the KB scan as complete. Call this after processing all files. Only available to the KB worker.",
+      parameters: Type.Object({
+        processed: Type.Number({ description: "Number of files processed" }),
+        summary: Type.Optional(Type.String({ description: "Brief summary of what was indexed" })),
+      }),
+    },
+    available: isKbWorker,
+    execute: (raw, _ctx: AgentToolContext): ToolResult => {
+      const p = raw as { processed: number; summary?: string };
+      return {
+        ok: true,
+        text: `✅ KB scan complete. Processed ${p.processed} files.${p.summary ? " " + p.summary : ""}`,
+      };
+    },
+  };
+}
+
 // ─── REST routes (mounted under /api/p/wiki/*) ──────────────────
 
 function userIdFromReq(req: Request): string {
@@ -894,6 +1212,12 @@ const plugin: PluginServerModule = {
         WikiWritePageTool: buildWritePageTool(ctx.db, cfg),
         WikiJournalWriteTool: buildJournalWriteTool(ctx.db, cfg),
         WikiResetTool: buildResetTool(),
+        WikiKbConfigTool: buildKbConfigTool(),
+        WikiKbStatusTool: buildKbStatusTool(),
+        WikiKbScanTool: buildKbScanTool(ctx),
+        WikiKbReadFileTool: buildKbReadFileTool(),
+        WikiKbSaveKnowledgeTool: buildKbSaveKnowledgeTool(ctx.db, cfg),
+        WikiKbMarkDoneTool: buildKbMarkDoneTool(),
       },
       routes: buildRoutes(ctx, cfg),
       capabilityProviders: { "wiki.ingest": buildIngestCapability(ctx) },
