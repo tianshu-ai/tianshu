@@ -112,11 +112,6 @@
         "since": "0.1.0"
       },
       {
-        "id": "wiki_kb_config",
-        "module": "WikiKbConfigTool",
-        "since": "0.2.0"
-      },
-      {
         "id": "wiki_kb_status",
         "module": "WikiKbStatusTool",
         "since": "0.2.0"

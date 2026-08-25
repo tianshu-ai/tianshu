@@ -308,29 +308,26 @@ export function readTextChunks(filePath: string): string[] {
   return chunks.length > 0 ? chunks : [content.slice(0, MAX_TEXT_CHUNK_BYTES)];
 }
 
-// ─── KB config persistence ──────────────────────────────────────
+// ─── KB config ──────────────────────────────────────────────────
 
-const KB_CONFIG_FILE = "kb-config.json";
+/** The fixed local knowledge base folder name under user home. */
+export const LOCAL_KB_DIR = "localKB";
 
-function configPath(userHome: string): string {
-  return path.join(wikiRoot(userHome), KB_META_DIR, KB_CONFIG_FILE);
-}
-
+/** Resolve the KB config: always uses the fixed localKB folder. */
 export function loadKbConfig(userHome: string): KbConfig {
-  const p = configPath(userHome);
-  if (!fs.existsSync(p)) return { folders: [] };
-  try {
-    return JSON.parse(fs.readFileSync(p, "utf8")) as KbConfig;
-  } catch {
-    return { folders: [] };
-  }
+  const kbPath = path.join(userHome, LOCAL_KB_DIR);
+  return { folders: [{ path: kbPath, label: "Local Knowledge Base" }] };
 }
 
-export function saveKbConfig(userHome: string, config: KbConfig): void {
-  const p = configPath(userHome);
-  const dir = path.dirname(p);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(config, null, 2));
+/** Ensure the localKB folder exists. */
+export function ensureKbFolder(userHome: string): string {
+  const kbPath = path.join(userHome, LOCAL_KB_DIR);
+  fs.mkdirSync(kbPath, { recursive: true });
+  return kbPath;
+}
+
+export function saveKbConfig(_userHome: string, _config: KbConfig): void {
+  // No-op: config is now implicit (fixed localKB folder)
 }
 
 // ─── Status ─────────────────────────────────────────────────────

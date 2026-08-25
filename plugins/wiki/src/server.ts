@@ -654,7 +654,7 @@ function buildJournalWriteTool(db: TenantDbHandle, cfg?: EmbeddingConfig): Agent
 
 import {
   loadKbConfig,
-  saveKbConfig,
+  ensureKbFolder,
   scanAndDiff,
   getKbStatus,
   loadIndex,
@@ -667,7 +667,6 @@ import {
   cleanupBeforeReindex,
   KB_WORKER_ROLE,
   buildKbScanPrompt,
-  type KbFolder,
   type KbFileEntry,
 } from "./knowledge-base.js";
 
@@ -676,61 +675,6 @@ function isKbWorker(ctx: AgentToolContext): boolean {
   return scope?.kind === "worker" && scope.workerKind === KB_WORKER_ROLE;
 }
 
-function buildKbConfigTool(): AgentTool {
-  return {
-    schema: {
-      name: "wiki_kb_config",
-      description:
-        "Configure the local knowledge base folders. Actions: list (show current folders), add (add a folder path), remove (remove by path).",
-      parameters: Type.Object({
-        action: Type.String({ description: "list | add | remove" }),
-        path: Type.Optional(Type.String({ description: "Folder path (for add/remove)" })),
-        label: Type.Optional(Type.String({ description: "Optional label for the folder (for add)" })),
-      }),
-    },
-    execute: (raw, ctx: AgentToolContext): ToolResult => {
-      const p = raw as { action: string; path?: string; label?: string };
-      const config = loadKbConfig(ctx.userHomeDir);
-      switch (p.action) {
-        case "list": {
-          if (config.folders.length === 0) {
-            return { ok: true, text: "No knowledge base folders configured. Use action=add to add one." };
-          }
-          const lines = config.folders.map(
-            (f) => `- ${f.path}${f.label ? ` (${f.label})` : ""}`,
-          );
-          return { ok: true, text: `Knowledge base folders:\n${lines.join("\n")}` };
-        }
-        case "add": {
-          if (!p.path) return { ok: false, text: "path is required for action=add" };
-          const absPath = path.resolve(p.path);
-          if (!fs.existsSync(absPath)) {
-            return { ok: false, text: `Path does not exist: ${absPath}` };
-          }
-          if (config.folders.some((f) => f.path === absPath)) {
-            return { ok: false, text: `Already configured: ${absPath}` };
-          }
-          config.folders.push({ path: absPath, label: p.label });
-          saveKbConfig(ctx.userHomeDir, config);
-          return { ok: true, text: `✅ Added knowledge base folder: ${absPath}` };
-        }
-        case "remove": {
-          if (!p.path) return { ok: false, text: "path is required for action=remove" };
-          const absPath = path.resolve(p.path);
-          const before = config.folders.length;
-          config.folders = config.folders.filter((f) => f.path !== absPath);
-          if (config.folders.length === before) {
-            return { ok: false, text: `Not found in config: ${absPath}` };
-          }
-          saveKbConfig(ctx.userHomeDir, config);
-          return { ok: true, text: `✅ Removed: ${absPath}` };
-        }
-        default:
-          return { ok: false, text: `Unknown action: ${p.action}. Use list | add | remove` };
-      }
-    },
-  };
-}
 
 function buildKbStatusTool(): AgentTool {
   return {
@@ -740,9 +684,10 @@ function buildKbStatusTool(): AgentTool {
       parameters: Type.Object({}),
     },
     execute: (_raw, ctx: AgentToolContext): ToolResult => {
+      ensureKbFolder(ctx.userHomeDir);
       const status = getKbStatus(ctx.userHomeDir);
-      if (status.folders.length === 0) {
-        return { ok: true, text: "No knowledge base folders configured. Use wiki_kb_config to add folders." };
+      if (status.totalFiles === 0) {
+        return { ok: true, text: "Knowledge base folder (localKB/) is empty. Add files to it and run wiki_kb_scan." };
       }
       const lines = [
         `Knowledge Base Status:`,
@@ -767,10 +712,8 @@ function buildKbScanTool(ctx: PluginContext): AgentTool {
       parameters: Type.Object({}),
     },
     execute: async (_raw, toolCtx: AgentToolContext): Promise<ToolResult> => {
+      ensureKbFolder(toolCtx.userHomeDir);
       const config = loadKbConfig(toolCtx.userHomeDir);
-      if (config.folders.length === 0) {
-        return { ok: false, text: "No knowledge base folders configured. Use wiki_kb_config action=add first." };
-      }
 
       const scan = scanAndDiff(toolCtx.userHomeDir, config);
 
@@ -1231,7 +1174,6 @@ const plugin: PluginServerModule = {
         WikiWritePageTool: buildWritePageTool(ctx.db, cfg),
         WikiJournalWriteTool: buildJournalWriteTool(ctx.db, cfg),
         WikiResetTool: buildResetTool(),
-        WikiKbConfigTool: buildKbConfigTool(),
         WikiKbStatusTool: buildKbStatusTool(),
         WikiKbScanTool: buildKbScanTool(ctx),
         WikiKbReadFileTool: buildKbReadFileTool(),
