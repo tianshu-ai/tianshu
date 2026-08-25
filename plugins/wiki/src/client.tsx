@@ -44,6 +44,7 @@ interface WikiPage {
 }
 
 const SECTION_ORDER = [
+  "knowledge",
   "journal/daily",
   "journal/weekly",
   "journal/monthly",
@@ -54,6 +55,7 @@ const SECTION_ORDER = [
   "sources",
 ];
 const SECTION_LABEL: Record<string, string> = {
+  knowledge: "Knowledge Base",
   "journal/daily": "Daily",
   "journal/weekly": "Weekly",
   "journal/monthly": "Monthly",
