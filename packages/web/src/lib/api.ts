@@ -13,6 +13,7 @@ export interface Me {
   config: { branding: { name?: string; emoji?: string } | null };
   defaultModel: { id: string; name: string; provider: string } | null;
   devTenant: boolean;
+  appVersion?: string;
 }
 
 export interface ModelListEntry {

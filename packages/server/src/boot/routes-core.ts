@@ -17,6 +17,7 @@ import {
   type ModelEntry,
 } from "../core/config.js";
 import { getTianshuHome } from "../core/paths.js";
+import { getPackageVersion } from "../setup/repo-root.js";
 import { resolveTenantRole, tenantsForUser } from "../core/auth/identity.js";
 import { getUserStore } from "../core/auth/user-store.js";
 import { isTenantDisabled } from "../core/config.js";
@@ -130,6 +131,7 @@ export function mountCoreRoutes(
         : null,
       devTenant:
         tenant.tenantId === DEV_TENANT_ID && userId === DEV_USER_ID,
+      appVersion: getPackageVersion(),
     });
   });
 

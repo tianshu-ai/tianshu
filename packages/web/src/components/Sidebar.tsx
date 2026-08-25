@@ -53,6 +53,7 @@ import { useLocale, useT } from "../hooks/useT";
 export default function Sidebar() {
   const me = useChatStore((s) => s.me);
   const brandName = me?.config.branding?.name ?? "Tianshu";
+  const appVersion = me?.appVersion;
   const t = useT();
 
   return (
@@ -60,6 +61,7 @@ export default function Sidebar() {
       {/* Header */}
       <div className="flex h-12 items-center border-b border-border-subtle px-4">
         <span className="text-lg font-semibold text-fg-default">{brandName}</span>
+        {appVersion && <span className="ml-2 text-xs font-normal text-fg-muted">v{appVersion}</span>}
       </div>
 
       {/* Agents + Workers */}
