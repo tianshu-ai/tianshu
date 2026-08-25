@@ -448,7 +448,7 @@ function KnowledgeBaseTab() {
       <div className="mb-3">
         <h3 className="text-sm font-medium text-fg-default mb-1">Local Knowledge Base</h3>
         <p className="text-fg-muted">
-          Files in <code className="rounded bg-bg-raised px-1">localKB/</code> are indexed into wiki pages.
+          Files in <code className="rounded bg-bg-raised px-1">knowledgeBase/</code> are indexed into wiki pages.
         </p>
       </div>
 

@@ -693,7 +693,7 @@ function buildKbStatusTool(): AgentTool {
       ensureKbFolder(ctx.userHomeDir);
       const status = getKbStatus(ctx.userHomeDir);
       if (status.totalFiles === 0) {
-        return { ok: true, text: "Knowledge base folder (localKB/) is empty. Add files to it and run wiki_kb_scan." };
+        return { ok: true, text: "Knowledge base folder (knowledgeBase/) is empty. Add files to it and run wiki_kb_scan." };
       }
       const lines = [
         `Knowledge Base Status:`,

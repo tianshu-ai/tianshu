@@ -311,23 +311,23 @@ export function readTextChunks(filePath: string): string[] {
 // ─── KB config ──────────────────────────────────────────────────
 
 /** The fixed local knowledge base folder name under user home. */
-export const LOCAL_KB_DIR = "localKB";
+export const KB_DIR = "knowledgeBase";
 
-/** Resolve the KB config: always uses the fixed localKB folder. */
+/** Resolve the KB config: always uses the fixed knowledgeBase folder. */
 export function loadKbConfig(userHome: string): KbConfig {
-  const kbPath = path.join(userHome, LOCAL_KB_DIR);
+  const kbPath = path.join(userHome, KB_DIR);
   return { folders: [{ path: kbPath, label: "Local Knowledge Base" }] };
 }
 
-/** Ensure the localKB folder exists. */
+/** Ensure the knowledgeBase folder exists. */
 export function ensureKbFolder(userHome: string): string {
-  const kbPath = path.join(userHome, LOCAL_KB_DIR);
+  const kbPath = path.join(userHome, KB_DIR);
   fs.mkdirSync(kbPath, { recursive: true });
   return kbPath;
 }
 
 export function saveKbConfig(_userHome: string, _config: KbConfig): void {
-  // No-op: config is now implicit (fixed localKB folder)
+  // No-op: config is now implicit (fixed knowledgeBase folder)
 }
 
 // ─── Status ─────────────────────────────────────────────────────
