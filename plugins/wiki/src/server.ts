@@ -770,7 +770,7 @@ function buildKbScanTool(ctx: PluginContext): AgentTool {
             timeouts: { firstResponseMs: 0, idleMs: 0, maxRunMs: 30 * 60_000 },
           });
         } catch (err) {
-          console.warn(`[wiki-kb] scan worker failed:`, err instanceof Error ? err.message : err);
+          console.error(`[wiki-kb] scan worker FAILED:`, err instanceof Error ? err.stack : String(err));
         } finally {
           running.delete(key + ":kb");
         }
@@ -1162,10 +1162,12 @@ function buildRoutes(
     }
 
     running.add(key + ":kb");
+    console.log(`[wiki-kb] starting scan: ${scan.pending.length} files, userId=${userId}, runner=${!!runner}`);
     const prompt = buildKbScanPrompt(scan.pending);
 
     void (async () => {
       try {
+        console.log(`[wiki-kb] runner.run() called`);
         const result = await runner.run({
           userId,
           workerRole: KB_WORKER_ROLE,
@@ -1177,7 +1179,7 @@ function buildRoutes(
         });
         console.log(`[wiki-kb] scan done: ${result.status} — ${result.summary}`);
       } catch (err) {
-        console.warn(`[wiki-kb] scan worker failed:`, err instanceof Error ? err.message : err);
+        console.error(`[wiki-kb] scan worker FAILED:`, err instanceof Error ? err.stack : String(err));
       } finally {
         running.delete(key + ":kb");
       }
