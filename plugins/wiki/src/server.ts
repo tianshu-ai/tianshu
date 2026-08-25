@@ -116,6 +116,15 @@ const WIKI_WORKER_TOOLS = [
   "wiki_journal_write",
 ];
 
+const KB_WORKER_TOOLS = [
+  "wiki_kb_read_file",
+  "wiki_kb_save_knowledge",
+  "wiki_kb_mark_done",
+  "wiki_list_pages",
+  "wiki_search",
+  "wiki_read",
+];
+
 // Per-user run lock: only one wiki-worker in flight at a time so two
 // clicks (or two channels) don't double-process the same sessions.
 const running = new Set<string>();
@@ -670,10 +679,7 @@ import {
   type KbFileEntry,
 } from "./knowledge-base.js";
 
-function isKbWorker(ctx: AgentToolContext): boolean {
-  const scope = ctx.agentScope;
-  return scope?.kind === "worker" && scope.workerKind === KB_WORKER_ROLE;
-}
+
 
 
 function buildKbStatusTool(): AgentTool {
@@ -756,17 +762,12 @@ function buildKbScanTool(ctx: PluginContext): AgentTool {
           await runner.run({
             userId: toolCtx.userId,
             workerRole: KB_WORKER_ROLE,
+            workerSlug: KB_WORKER_ROLE,
             sessionTitle: `KB scan (${scan.pending.length} files)`,
             parentSessionId: toolCtx.sessionId,
             initialUserMessage: prompt,
-            toolsAllow: [
-              "wiki_kb_read_file",
-              "wiki_kb_save_knowledge",
-              "wiki_kb_mark_done",
-              "wiki_list_pages",
-              "wiki_search",
-              "wiki_read",
-            ],
+            toolsAllow: KB_WORKER_TOOLS,
+            timeouts: { firstResponseMs: 0, idleMs: 0, maxRunMs: 30 * 60_000 },
           });
         } catch (err) {
           console.warn(`[wiki-kb] scan worker failed:`, err instanceof Error ? err.message : err);
@@ -794,7 +795,6 @@ function buildKbReadFileTool(): AgentTool {
         chunk: Type.Optional(Type.Number({ description: "Chunk index (0-based) for large files. Omit for first/only chunk." })),
       }),
     },
-    available: isKbWorker,
     execute: (raw, _ctx: AgentToolContext): ToolResult => {
       const p = raw as { path: string; chunk?: number };
       if (!fs.existsSync(p.path)) {
@@ -863,7 +863,6 @@ function buildKbSaveKnowledgeTool(db: TenantDbHandle, cfg?: EmbeddingConfig): Ag
         totalChunks: Type.Optional(Type.Number({ description: "Total chunks if multi-chunk" })),
       }),
     },
-    available: isKbWorker,
     execute: (raw, toolCtx: AgentToolContext): ToolResult => {
       const p = raw as {
         title: string;
@@ -917,7 +916,6 @@ function buildKbMarkDoneTool(): AgentTool {
         summary: Type.Optional(Type.String({ description: "Brief summary of what was indexed" })),
       }),
     },
-    available: isKbWorker,
     execute: (raw, _ctx: AgentToolContext): ToolResult => {
       const p = raw as { processed: number; summary?: string };
       return {
@@ -1168,20 +1166,16 @@ function buildRoutes(
 
     void (async () => {
       try {
-        await runner.run({
+        const result = await runner.run({
           userId,
           workerRole: KB_WORKER_ROLE,
+          workerSlug: KB_WORKER_ROLE,
           sessionTitle: `KB scan (${scan.pending.length} files)`,
           initialUserMessage: prompt,
-          toolsAllow: [
-            "wiki_kb_read_file",
-            "wiki_kb_save_knowledge",
-            "wiki_kb_mark_done",
-            "wiki_list_pages",
-            "wiki_search",
-            "wiki_read",
-          ],
+          toolsAllow: KB_WORKER_TOOLS,
+          timeouts: { firstResponseMs: 0, idleMs: 0, maxRunMs: 30 * 60_000 },
         });
+        console.log(`[wiki-kb] scan done: ${result.status} — ${result.summary}`);
       } catch (err) {
         console.warn(`[wiki-kb] scan worker failed:`, err instanceof Error ? err.message : err);
       } finally {
