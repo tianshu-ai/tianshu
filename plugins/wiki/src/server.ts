@@ -755,22 +755,26 @@ function buildKbScanTool(ctx: PluginContext): AgentTool {
       }
 
       running.add(key + ":kb");
-      const prompt = buildKbScanPrompt(scan.pending);
 
       void (async () => {
+        let processed = 0;
         try {
-          await runner.run({
-            userId: toolCtx.userId,
-            workerRole: KB_WORKER_ROLE,
-            workerSlug: KB_WORKER_ROLE,
-            sessionTitle: `KB scan (${scan.pending.length} files)`,
-            parentSessionId: toolCtx.sessionId,
-            initialUserMessage: prompt,
-            toolsAllow: KB_WORKER_TOOLS,
-            timeouts: { firstResponseMs: 0, idleMs: 0, maxRunMs: 30 * 60_000 },
-          });
+          for (const file of scan.pending) {
+            const prompt = buildKbScanPrompt(file);
+            await runner.run({
+              userId: toolCtx.userId,
+              workerRole: KB_WORKER_ROLE,
+              workerSlug: KB_WORKER_ROLE,
+              sessionTitle: `KB: ${file.relPath}`,
+              parentSessionId: toolCtx.sessionId,
+              initialUserMessage: prompt,
+              toolsAllow: KB_WORKER_TOOLS,
+              timeouts: { firstResponseMs: 60_000, idleMs: 60_000, maxRunMs: 5 * 60_000 },
+            });
+            processed++;
+          }
         } catch (err) {
-          console.error(`[wiki-kb] scan worker FAILED:`, err instanceof Error ? err.stack : String(err));
+          console.error(`[wiki-kb] scan worker FAILED:`, err instanceof Error ? err.message : String(err));
         } finally {
           running.delete(key + ":kb");
         }
@@ -778,7 +782,7 @@ function buildKbScanTool(ctx: PluginContext): AgentTool {
 
       return {
         ok: true,
-        text: `✅ KB scan started. Processing ${scan.pending.length} new/changed files (${scan.indexed.length} already indexed). The wiki-kb worker will distill them into knowledge pages.`,
+        text: `✅ KB scan started. Processing ${scan.pending.length} files one at a time.`,
       };
     },
   };
@@ -1162,30 +1166,45 @@ function buildRoutes(
     }
 
     running.add(key + ":kb");
-    console.log(`[wiki-kb] starting scan: ${scan.pending.length} files, userId=${userId}, runner=${!!runner}`);
-    const prompt = buildKbScanPrompt(scan.pending);
+    console.log(`[wiki-kb] starting scan: ${scan.pending.length} files, userId=${userId}`);
 
     void (async () => {
+      let processed = 0;
+      let failed = 0;
       try {
-        console.log(`[wiki-kb] runner.run() called`);
-        const result = await runner.run({
-          userId,
-          workerRole: KB_WORKER_ROLE,
-          workerSlug: KB_WORKER_ROLE,
-          sessionTitle: `KB scan (${scan.pending.length} files)`,
-          initialUserMessage: prompt,
-          toolsAllow: KB_WORKER_TOOLS,
-          timeouts: { firstResponseMs: 0, idleMs: 0, maxRunMs: 30 * 60_000 },
-        });
-        console.log(`[wiki-kb] scan done: ${result.status} — ${result.summary}`);
-      } catch (err) {
-        console.error(`[wiki-kb] scan worker FAILED:`, err instanceof Error ? err.stack : String(err));
+        for (const file of scan.pending) {
+          try {
+            console.log(`[wiki-kb] processing: ${file.relPath} (${file.category})`);
+            const prompt = buildKbScanPrompt(file);
+            const result = await runner.run({
+              userId,
+              workerRole: KB_WORKER_ROLE,
+              workerSlug: KB_WORKER_ROLE,
+              sessionTitle: `KB: ${file.relPath}`,
+              initialUserMessage: prompt,
+              toolsAllow: KB_WORKER_TOOLS,
+              timeouts: { firstResponseMs: 60_000, idleMs: 60_000, maxRunMs: 5 * 60_000 },
+            });
+            if (result.status === "done") {
+              processed++;
+              console.log(`[wiki-kb] done: ${file.relPath}`);
+            } else {
+              // stalled is OK - it means the agent finished but didn't call task_complete
+              processed++;
+              console.log(`[wiki-kb] ${result.status}: ${file.relPath}`);
+            }
+          } catch (err) {
+            failed++;
+            console.error(`[wiki-kb] error processing ${file.relPath}:`, err instanceof Error ? err.message : err);
+          }
+        }
+        console.log(`[wiki-kb] scan complete: ${processed} processed, ${failed} failed out of ${scan.pending.length}`);
       } finally {
         running.delete(key + ":kb");
       }
     })();
 
-    res.json({ ok: true, message: `Scan started: ${scan.pending.length} files to process.` });
+    res.json({ ok: true, message: `Scan started: ${scan.pending.length} files to process (one at a time).` });
   };
 
   return { list, read, search, status, record, reset, graph, reindex, kbStatus, kbScan };
