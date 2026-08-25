@@ -10,6 +10,7 @@ is the agent's default cwd whenever you chat with it.
 | --- | --- |
 | `USER.md` | Personal preferences. The agent reads it on every conversation. |
 | `projects/<slug>/` | Your active projects — code, docs, deliverables go here. |
+| `git/` | Git repositories cloned by the agent. |
 | `uploads/` | Files you upload through the chat (PDFs, images, datasets). |
 | `tmp/` | Scratch space. The agent treats this as throwaway. |
 | `trash/` | Soft-deleted files. The agent moves things here instead of removing. |

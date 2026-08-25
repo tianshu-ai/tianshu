@@ -75,11 +75,11 @@
     "systemPromptFragments": [
       {
         "id": "workspace-layout",
-        "text": "WORKSPACE LAYOUT\nYour default working directory is the user's private home in this tenant.\n\nPersonal directories (use freely):\n  ./projects/<slug>/   active work; reports, code, deliverables go here.\n  ./uploads/           files the user uploaded for you to look at.\n  ./tmp/               scratch space; clean up after yourself.\n  ./trash/             soft-delete; move things here instead of removing them.\n  ./USER.md            personal preferences (read on demand)."
+        "text": "WORKSPACE LAYOUT\nYour default working directory is the user's private home in this tenant.\n\nPersonal directories (use freely):\n  ./projects/<slug>/   active work; reports, code, deliverables go here.\n  ./git/               git repositories cloned by the agent.\n  ./uploads/           files the user uploaded for you to look at.\n  ./tmp/               scratch space; clean up after yourself.\n  ./trash/             soft-delete; move things here instead of removing them.\n  ./USER.md            personal preferences (read on demand)."
       },
       {
         "id": "workspace-conventions",
-        "text": "Conventions:\n  - Deliverables go to ./projects/<slug>/, never the home root.\n  - When the user uploads a file, expect it under ./uploads/.\n  - Don't leave scratch artefacts in ./projects/ or the root \u2014 use ./tmp/.\n  - Other users' homes in this tenant are off-limits; you cannot reach them."
+        "text": "Conventions:\n  - Deliverables go to ./projects/<slug>/, never the home root.\n  - When cloning a git repo, clone into ./git/<repo-name>/.\n  - When the user uploads a file, expect it under ./uploads/.\n  - Don't leave scratch artefacts in ./projects/ or the root \u2014 use ./tmp/.\n  - Other users' homes in this tenant are off-limits; you cannot reach them."
       },
       {
         "id": "workspace-references",
