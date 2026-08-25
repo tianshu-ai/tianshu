@@ -425,7 +425,7 @@ export const KB_WORKER_ROLE = "wiki-kb";
 export function buildKbScanPrompt(pending: KbFileEntry[]): string {
   const fileList = pending
     .slice(0, 50) // cap per run
-    .map((f) => `- [${f.category}] ${f.relPath} (${humanSize(f.size)})`)
+    .map((f) => `- [${f.category}] ${f.absPath} (${humanSize(f.size)}, rel: ${f.relPath})`)
     .join("\n");
 
   return [
@@ -433,7 +433,7 @@ export function buildKbScanPrompt(pending: KbFileEntry[]): string {
     "Process EACH file listed below:",
     "",
     "For each file:",
-    "1. Call wiki_kb_read_file to get its content (text files) or a description prompt (media files).",
+    "1. Call wiki_kb_read_file with the ABSOLUTE path (shown first in each line) to get its content.",
     "2. Distill the key knowledge, facts, and insights from the content.",
     "3. Call wiki_kb_save_knowledge to store the distilled page with a descriptive title.",
     "4. After processing all files, call wiki_kb_mark_done to finalize.",
