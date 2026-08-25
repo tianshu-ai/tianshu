@@ -180,6 +180,8 @@ export interface ScanResult {
   pending: KbFileEntry[];
   /** Files already indexed and unchanged. */
   indexed: KbFileEntry[];
+  /** Files that were indexed but no longer exist (deleted/moved). */
+  stale: KbIndexEntry[];
   /** Total discovered. */
   total: number;
 }
@@ -194,7 +196,11 @@ export function scanAndDiff(userHome: string, config: KbConfig): ScanResult {
   const pending: KbFileEntry[] = [];
   const indexed: KbFileEntry[] = [];
 
+  // Track which indexed paths are still present
+  const seenPaths = new Set<string>();
+
   for (const file of allFiles) {
+    seenPaths.add(file.absPath);
     const existing = index.get(file.absPath);
     const hash = fileFingerprint(file.absPath);
     if (existing && existing.hash === hash) {
@@ -204,7 +210,78 @@ export function scanAndDiff(userHome: string, config: KbConfig): ScanResult {
     }
   }
 
-  return { pending, indexed, total: allFiles.length };
+  // Find stale entries: indexed but no longer on disk
+  const stale: KbIndexEntry[] = [];
+  for (const [absPath, entry] of index) {
+    if (!seenPaths.has(absPath)) {
+      stale.push(entry);
+    }
+  }
+
+  return { pending, indexed, stale, total: allFiles.length };
+}
+
+// ─── Stale cleanup ──────────────────────────────────────────────
+
+/** Remove wiki pages and index entries for files that no longer exist. */
+export function cleanupStale(
+  userHome: string,
+  stale: KbIndexEntry[],
+): { removed: string[] } {
+  const index = loadIndex(userHome);
+  const removed: string[] = [];
+
+  for (const entry of stale) {
+    // Delete the wiki page(s)
+    const pageFile = resolvePage(userHome, "knowledge", entry.wikiSlug.replace("knowledge/", ""));
+    if (pageFile && fs.existsSync(pageFile)) {
+      fs.unlinkSync(pageFile);
+      removed.push(entry.wikiSlug);
+    }
+    // If it was multi-chunk, also remove part files
+    if (entry.chunks > 1) {
+      const baseSlug = entry.wikiSlug.replace("knowledge/", "").replace(/-part\d+$/, "");
+      for (let i = 1; i <= entry.chunks; i++) {
+        const chunkFile = resolvePage(userHome, "knowledge", `${baseSlug}-part${i}`);
+        if (chunkFile && fs.existsSync(chunkFile)) {
+          fs.unlinkSync(chunkFile);
+          if (!removed.includes(`knowledge/${baseSlug}-part${i}`)) {
+            removed.push(`knowledge/${baseSlug}-part${i}`);
+          }
+        }
+      }
+    }
+    // Remove from index
+    index.delete(entry.absPath);
+  }
+
+  saveIndex(userHome, index);
+  return { removed };
+}
+
+/** Remove wiki pages for a file that's about to be re-indexed (content changed). */
+export function cleanupBeforeReindex(
+  userHome: string,
+  absPath: string,
+): void {
+  const index = loadIndex(userHome);
+  const entry = index.get(absPath);
+  if (!entry) return;
+
+  const pageFile = resolvePage(userHome, "knowledge", entry.wikiSlug.replace("knowledge/", ""));
+  if (pageFile && fs.existsSync(pageFile)) {
+    fs.unlinkSync(pageFile);
+  }
+  if (entry.chunks > 1) {
+    const baseSlug = entry.wikiSlug.replace("knowledge/", "").replace(/-part\d+$/, "");
+    for (let i = 1; i <= entry.chunks; i++) {
+      const chunkFile = resolvePage(userHome, "knowledge", `${baseSlug}-part${i}`);
+      if (chunkFile && fs.existsSync(chunkFile)) {
+        fs.unlinkSync(chunkFile);
+      }
+    }
+  }
+  // Don't remove from index here — the re-index will overwrite it
 }
 
 // ─── Content extraction helpers ─────────────────────────────────

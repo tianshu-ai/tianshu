@@ -663,6 +663,8 @@ import {
   readTextChunks,
   writeKnowledgePage,
   categorizeFile,
+  cleanupStale,
+  cleanupBeforeReindex,
   KB_WORKER_ROLE,
   buildKbScanPrompt,
   type KbFolder,
@@ -771,8 +773,25 @@ function buildKbScanTool(ctx: PluginContext): AgentTool {
       }
 
       const scan = scanAndDiff(toolCtx.userHomeDir, config);
+
+      // Clean up pages for deleted files
+      if (scan.stale.length > 0) {
+        const { removed } = cleanupStale(toolCtx.userHomeDir, scan.stale);
+        if (removed.length > 0) {
+          console.log(`[wiki-kb] cleaned ${removed.length} stale pages for deleted files`);
+        }
+      }
+
+      // Clean up old pages for files that changed (will be re-indexed)
+      for (const file of scan.pending) {
+        cleanupBeforeReindex(toolCtx.userHomeDir, file.absPath);
+      }
+
       if (scan.pending.length === 0) {
-        return { ok: true, text: `All ${scan.total} files are up to date. Nothing to process.` };
+        const staleMsg = scan.stale.length > 0
+          ? ` Cleaned ${scan.stale.length} stale entries for deleted files.`
+          : "";
+        return { ok: true, text: `All ${scan.total} files are up to date. Nothing to process.${staleMsg}` };
       }
 
       const key = runKey(toolCtx.tenantId ?? "default", toolCtx.userId);
