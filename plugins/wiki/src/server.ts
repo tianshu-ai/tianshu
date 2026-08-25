@@ -1123,7 +1123,76 @@ function buildRoutes(
     }
   };
 
-  return { list, read, search, status, record, reset, graph, reindex };
+  const kbStatus: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no_user" }); return; }
+    const userHome = ctx.userHomeDir(userId);
+    ensureKbFolder(userHome);
+    res.json(getKbStatus(userHome));
+  };
+
+  const kbScan: PluginRouteHandler = async (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) { res.status(401).json({ error: "no_user" }); return; }
+    const userHome = ctx.userHomeDir(userId);
+    ensureKbFolder(userHome);
+    const config = loadKbConfig(userHome);
+    const scan = scanAndDiff(userHome, config);
+
+    if (scan.stale.length > 0) {
+      cleanupStale(userHome, scan.stale);
+    }
+    for (const file of scan.pending) {
+      cleanupBeforeReindex(userHome, file.absPath);
+    }
+
+    if (scan.pending.length === 0) {
+      res.json({ ok: true, message: `All ${scan.total} files are up to date.` });
+      return;
+    }
+
+    const key = runKey(ctx.tenantId ?? "default", userId);
+    if (running.has(key + ":kb")) {
+      res.json({ ok: false, message: "A scan is already running." });
+      return;
+    }
+
+    const runner = ctx.capabilities.get<AgentLoopRunner>("host.agentLoop");
+    if (!runner) {
+      res.json({ ok: false, message: "Agent loop not available." });
+      return;
+    }
+
+    running.add(key + ":kb");
+    const prompt = buildKbScanPrompt(scan.pending);
+
+    void (async () => {
+      try {
+        await runner.run({
+          userId,
+          workerRole: KB_WORKER_ROLE,
+          sessionTitle: `KB scan (${scan.pending.length} files)`,
+          initialUserMessage: prompt,
+          toolsAllow: [
+            "wiki_kb_read_file",
+            "wiki_kb_save_knowledge",
+            "wiki_kb_mark_done",
+            "wiki_list_pages",
+            "wiki_search",
+            "wiki_read",
+          ],
+        });
+      } catch (err) {
+        console.warn(`[wiki-kb] scan worker failed:`, err instanceof Error ? err.message : err);
+      } finally {
+        running.delete(key + ":kb");
+      }
+    })();
+
+    res.json({ ok: true, message: `Scan started: ${scan.pending.length} files to process.` });
+  };
+
+  return { list, read, search, status, record, reset, graph, reindex, kbStatus, kbScan };
 }
 
 // ─── wiki.ingest capability (host compaction hook calls this) ────
