@@ -424,34 +424,47 @@ export const KB_WORKER_ROLE = "wiki-kb";
 
 export function buildKbScanPrompt(pending: KbFileEntry[]): string {
   const fileList = pending
-    .slice(0, 50) // cap per run
-    .map((f) => `- [${f.category}] ${f.absPath} (${humanSize(f.size)}, rel: ${f.relPath})`)
+    .map((f, i) => `${i + 1}. [${f.category}] ${f.absPath} (${humanSize(f.size)}, rel: ${f.relPath})`)
     .join("\n");
+
+  // Summary stats for planning
+  const totalSize = pending.reduce((s, f) => s + f.size, 0);
+  const byCategory: Record<string, number> = {};
+  for (const f of pending) byCategory[f.category] = (byCategory[f.category] ?? 0) + 1;
+  const categoryBreakdown = Object.entries(byCategory).map(([k, v]) => `${k}: ${v}`).join(", ");
+  const sizeBreakdown = `total ${humanSize(totalSize)}, largest: ${humanSize(Math.max(...pending.map(f => f.size)))}, smallest: ${humanSize(Math.min(...pending.map(f => f.size)))}`;
 
   return [
     "You are indexing the user's local knowledge base into their wiki.",
-    "Process EACH file listed below:",
     "",
-    "For each file:",
-    "1. Call wiki_kb_read_file with the ABSOLUTE path (shown first in each line) to get its content.",
-    "2. Distill the key knowledge, facts, and insights from the content.",
-    "3. Call wiki_kb_save_knowledge to store the distilled page with a descriptive title.",
-    "4. After processing all files, call wiki_kb_mark_done to finalize.",
+    "## File Overview",
+    `Total: ${pending.length} files (${categoryBreakdown})`,
+    `Size: ${sizeBreakdown}`,
     "",
-    "Guidelines:",
-    "- Extract KNOWLEDGE, not just summaries. Focus on facts, decisions, patterns, relationships.",
-    "- Use [[wikilinks]] to link to existing entities/concepts/topics when relevant.",
-    "- For code files: extract architecture decisions, API patterns, key algorithms.",
-    "- For documents: extract key facts, conclusions, action items.",
-    "- For audio/video transcripts: extract key points, decisions, Q&A.",
-    "- Keep each page focused on one coherent topic/file.",
-    "",
-    `Files to process (${pending.length} total):`,
     fileList,
     "",
-    pending.length > 50
-      ? `(${pending.length - 50} more files will be processed in the next run)`
-      : "",
+    "## Your Task",
+    "",
+    "Plan and execute the indexing in batches:",
+    "",
+    "1. **Plan first**: Look at the file list above. Group related files together (same project, same topic). Estimate how many you can process per batch based on size — aim for ~30KB of source text per batch. Large files (>30KB) should be read in chunks.",
+    "",
+    "2. **Process each batch**:",
+    "   a. Call wiki_kb_read_file with the ABSOLUTE path for each file in the batch. For large files, read chunk by chunk (pass chunk=0, chunk=1, etc.).",
+    "   b. After reading all files in the batch, distill the knowledge and call wiki_kb_save_knowledge for each meaningful knowledge page.",
+    "   c. Repeat for the next batch.",
+    "",
+    "3. **When all files are processed**, call wiki_kb_mark_done.",
+    "",
+    "## Guidelines",
+    "- Extract KNOWLEDGE, not just summaries. Focus on facts, decisions, patterns, relationships.",
+    "- Use [[wikilinks]] to cross-link related knowledge (e.g. [[entities/project-name]], [[concepts/api-pattern]]).",
+    "- For code files: extract architecture decisions, API patterns, key algorithms, dependencies.",
+    "- For documents: extract key facts, conclusions, action items, references.",
+    "- For audio/video transcripts: extract key points, decisions, Q&A.",
+    "- Group related small files into one knowledge page when they cover the same topic.",
+    "- Split large files into multiple focused pages by topic/section.",
+    "- Each wiki_kb_save_knowledge call should produce one coherent, focused page.",
   ].join("\n");
 }
 
