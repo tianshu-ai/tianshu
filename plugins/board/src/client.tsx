@@ -23,8 +23,8 @@ function BoardPanel(_props: PanelProps) {
   const setSelected = useCallback((v: string | null | ((prev: string | null) => string | null)) => {
     _setSelected((prev) => {
       const next = typeof v === "function" ? v(prev) : v;
-      // Persist selection to server
-      if (initialLoadDone.current) {
+      // Only persist when value actually changes
+      if (next !== prev && initialLoadDone.current) {
         fetch("/api/preferences/board.selectedBoard", {
           method: "POST", credentials: "include",
           headers: { "Content-Type": "application/json" },
