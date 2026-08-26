@@ -428,133 +428,136 @@ interface KbStatus {
 
 function IndexingTab() {
   const [kbStatus, setKbStatus] = useState<KbStatus | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [recording, setRecording] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<{ running: boolean; progress: number; lastRun?: string } | null>(null);
+  const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(true);
   const nav = useChatNav();
 
   const fetchStatus = useCallback(() => {
-    setLoading(true);
     Promise.all([
       fetch(`${API_BASE}/kb/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
       fetch(`${API_BASE}/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
-    ]).then(([kb, wiki]: [KbStatus | null, { running?: boolean; progress?: number } | null]) => {
+    ]).then(([kb, wiki]: [KbStatus | null, { running?: boolean; progress?: number; lastRun?: string } | null]) => {
       setKbStatus(kb);
-      setRecording(!!wiki?.running);
+      setSessionStatus(wiki ? { running: !!wiki.running, progress: wiki.progress ?? 0, lastRun: wiki.lastRun } : null);
+      const isRunning = !!wiki?.running || false;
+      setRunning(isRunning);
       setLoading(false);
     });
   }, []);
 
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
+  useEffect(() => {
+    fetchStatus();
+    const id = setInterval(fetchStatus, running ? 2000 : 8000);
+    return () => clearInterval(id);
+  }, [fetchStatus, running]);
 
-  const triggerKbScan = () => {
-    setScanning(true);
-    setMessage(null);
-    fetch(`${API_BASE}/kb/scan`, { method: "POST", credentials: "include" })
-      .then(async (r) => {
-        const body = await r.json().catch(() => ({})) as { ok?: boolean; message?: string };
-        setMessage(body.message ?? (body.ok ? "Scan started" : "Scan failed"));
-        setScanning(false);
-        setTimeout(fetchStatus, 2000);
-      })
-      .catch(() => { setMessage("Failed to start scan"); setScanning(false); });
+  const triggerUpdate = () => {
+    setRunning(true);
+    // Fire both in parallel
+    Promise.all([
+      fetch(`${API_BASE}/record`, {
+        method: "POST", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: nav.viewingSessionId ?? null }),
+      }).catch(() => null),
+      fetch(`${API_BASE}/kb/scan`, { method: "POST", credentials: "include" }).catch(() => null),
+    ]).then(() => {
+      setTimeout(fetchStatus, 1500);
+    });
   };
 
-  const triggerSessionRecord = () => {
-    setRecording(true);
-    setMessage(null);
-    fetch(`${API_BASE}/record`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: nav.viewingSessionId ?? null }),
-    })
-      .then(async (r) => {
-        const body = await r.json().catch(() => ({})) as { started?: boolean };
-        if (!body.started) setRecording(false);
-        setMessage(body.started ? "Recording started" : "Failed to start");
-      })
-      .catch(() => { setMessage("Failed to start recording"); setRecording(false); });
-  };
+  const isIdle = !running && !sessionStatus?.running;
+  const hasPendingKb = (kbStatus?.pendingFiles ?? 0) > 0;
+  const hasWork = hasPendingKb || isIdle; // always allow session record
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-3 text-xs">
-      {/* Session Record section */}
-      <div className="mb-4">
-        <h3 className="text-sm font-medium text-fg-default mb-1">Session History</h3>
-        <p className="text-fg-muted mb-2">
-          Record conversations into wiki pages (entities, concepts, topics, journal).
-        </p>
-        <button
-          onClick={triggerSessionRecord}
-          disabled={recording}
-          className={
-            "w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors " +
-            (recording
-              ? "bg-brand-500/20 text-brand-400 cursor-wait"
-              : "bg-brand-500 text-white hover:bg-brand-600 cursor-pointer")
-          }
-        >
-          {recording ? "Recording..." : "Record Sessions to Wiki"}
-        </button>
-      </div>
+      {/* Main action button */}
+      <button
+        onClick={triggerUpdate}
+        disabled={running || !isIdle}
+        className={
+          "w-full rounded-lg px-4 py-3 text-sm font-medium transition-all " +
+          (running
+            ? "bg-brand-500/10 text-brand-400 border border-brand-500/30 cursor-wait"
+            : "bg-brand-500 text-white hover:bg-brand-600 shadow-sm cursor-pointer")
+        }
+      >
+        {running ? (
+          <span className="flex items-center justify-center gap-2">
+            <RefreshCw size={14} className="animate-spin" />
+            Updating Wiki...
+          </span>
+        ) : (
+          <span className="flex items-center justify-center gap-2">
+            <RefreshCw size={14} />
+            Update Wiki
+          </span>
+        )}
+      </button>
 
-      {/* KB Scan section */}
-      <div className="mb-3">
-        <h3 className="text-sm font-medium text-fg-default mb-1">Knowledge Base</h3>
-        <p className="text-fg-muted mb-2">
-          Index files from <code className="rounded bg-bg-raised px-1">knowledgeBase/</code> into wiki.
-        </p>
-      </div>
-
-      {loading ? (
-        <div className="text-fg-fainter">Loading...</div>
-      ) : kbStatus ? (
-        <div className="space-y-3">
-          <div className="rounded-lg border border-border-subtle p-2 space-y-1">
-            <div className="flex justify-between">
-              <span className="text-fg-muted">Total files</span>
-              <span className="font-medium text-fg-default">{kbStatus.totalFiles}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-fg-muted">Indexed</span>
-              <span className="font-medium text-green-500">{kbStatus.indexedFiles}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-fg-muted">Pending</span>
-              <span className={"font-medium " + (kbStatus.pendingFiles > 0 ? "text-amber-500" : "text-fg-default")}>{kbStatus.pendingFiles}</span>
-            </div>
-            {kbStatus.lastScanAt && (
-              <div className="flex justify-between">
-                <span className="text-fg-muted">Last scan</span>
-                <span className="text-fg-default">{new Date(kbStatus.lastScanAt).toLocaleString()}</span>
-              </div>
-            )}
+      {/* Status cards */}
+      <div className="mt-4 space-y-2">
+        {/* Session record status */}
+        <div className="rounded-lg border border-border-subtle p-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-medium text-fg-default flex items-center gap-1.5">
+              <Notebook size={12} />
+              Sessions
+            </span>
+            <span className={"flex items-center gap-1 " + (sessionStatus?.running ? "text-brand-400" : "text-fg-fainter")}>
+              <span className={"inline-block w-1.5 h-1.5 rounded-full " + (sessionStatus?.running ? "bg-brand-400 animate-pulse" : "bg-fg-fainter")} />
+              {sessionStatus?.running ? "recording" : "idle"}
+            </span>
           </div>
-
-          <button
-            onClick={triggerKbScan}
-            disabled={scanning || kbStatus.pendingFiles === 0}
-            className={
-              "w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors " +
-              (scanning
-                ? "bg-brand-500/20 text-brand-400 cursor-wait"
-                : kbStatus.pendingFiles === 0
-                  ? "bg-bg-raised text-fg-muted cursor-default"
-                  : "bg-brand-500 text-white hover:bg-brand-600 cursor-pointer")
-            }
-          >
-            {scanning ? "Scanning..." : kbStatus.pendingFiles === 0 ? "All files indexed \u2713" : `Scan ${kbStatus.pendingFiles} pending files`}
-          </button>
+          {sessionStatus?.running && sessionStatus.progress > 0 && (
+            <div className="mt-1.5 h-1 rounded-full bg-bg-raised overflow-hidden">
+              <div
+                className="h-full bg-brand-400 rounded-full transition-all duration-500"
+                style={{ width: `${Math.round(sessionStatus.progress * 100)}%` }}
+              />
+            </div>
+          )}
+          <div className="text-fg-muted mt-1">
+            Conversations → entities, concepts, topics, journal
+          </div>
         </div>
-      ) : (
-        <div className="text-fg-fainter">Unable to load KB status.</div>
-      )}
 
-      {message && (
-        <div className="mt-3 rounded-lg bg-bg-raised p-2 text-fg-muted">{message}</div>
-      )}
+        {/* KB status */}
+        <div className="rounded-lg border border-border-subtle p-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-medium text-fg-default flex items-center gap-1.5">
+              <FileText size={12} />
+              Knowledge Base
+            </span>
+            <span className={"flex items-center gap-1 " + (running && hasPendingKb ? "text-brand-400" : "text-fg-fainter")}>
+              <span className={"inline-block w-1.5 h-1.5 rounded-full " + (running && hasPendingKb ? "bg-brand-400 animate-pulse" : "bg-fg-fainter")} />
+              {running && hasPendingKb ? "scanning" : "idle"}
+            </span>
+          </div>
+          {loading ? (
+            <div className="text-fg-fainter">Loading...</div>
+          ) : kbStatus ? (
+            <div className="mt-1 space-y-0.5">
+              <div className="flex gap-3 text-fg-muted">
+                <span>{kbStatus.totalFiles} files</span>
+                <span className="text-green-500">{kbStatus.indexedFiles} indexed</span>
+                {kbStatus.pendingFiles > 0 && <span className="text-amber-500">{kbStatus.pendingFiles} pending</span>}
+              </div>
+              {kbStatus.lastScanAt && (
+                <div className="text-fg-fainter">
+                  Last: {new Date(kbStatus.lastScanAt).toLocaleString()}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-fg-muted mt-1">
+              Place files in <code className="rounded bg-bg-raised px-1">knowledgeBase/</code>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
