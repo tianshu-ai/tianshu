@@ -223,7 +223,7 @@ function BoardPanel(_props: PanelProps) {
         </button>
       </div>
 
-      {selected ? (
+      {selected && !loading && boards.includes(selected) ? (
         <iframe
           key={iframeKey}
           ref={iframeRef}
