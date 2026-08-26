@@ -309,6 +309,30 @@ export function mountCoreRoutes(
       }
     },
   );
+
+  // ── User preferences (key-value, persisted in tenant DB) ────────
+
+  app.get("/api/preferences/:key", (req: Request, res: Response) => {
+    if (!req.ctx) { res.status(500).json({ error: "no_ctx" }); return; }
+    const { userId } = req.ctx;
+    const key = String(req.params.key);
+    const row = req.ctx.tenant.db
+      .prepare<[string, string], { value: string | null }>("SELECT value FROM user_preferences WHERE user_id = ? AND key = ?")
+      .get(userId, key);
+    res.json({ key, value: row?.value ?? null });
+  });
+
+  app.post("/api/preferences/:key", (req: Request, res: Response) => {
+    if (!req.ctx) { res.status(500).json({ error: "no_ctx" }); return; }
+    const { userId } = req.ctx;
+    const key = String(req.params.key);
+    const value = (req.body as { value?: unknown })?.value;
+    const val = value == null ? null : String(value);
+    req.ctx.tenant.db
+      .prepare("INSERT OR REPLACE INTO user_preferences (user_id, key, value) VALUES (?, ?, ?)")
+      .run(userId, key, val);
+    res.json({ ok: true });
+  });
 }
 
 // ── models-admin helpers ────────────────────────────────────────────

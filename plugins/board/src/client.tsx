@@ -18,7 +18,22 @@ const API_BASE = "/api/p/board";
 function BoardPanel(_props: PanelProps) {
   const t = usePluginT("board");
   const [boards, setBoards] = useState<string[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, _setSelected] = useState<string | null>(null);
+  const initialLoadDone = useRef(false);
+  const setSelected = useCallback((v: string | null | ((prev: string | null) => string | null)) => {
+    _setSelected((prev) => {
+      const next = typeof v === "function" ? v(prev) : v;
+      // Persist selection to server
+      if (initialLoadDone.current) {
+        fetch("/api/preferences/board.selectedBoard", {
+          method: "POST", credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: next }),
+        }).catch(() => {});
+      }
+      return next;
+    });
+  }, []);
   const [iframeKey, setIframeKey] = useState(0);
   const [loading, setLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -52,6 +67,14 @@ function BoardPanel(_props: PanelProps) {
   }, []);
 
   useEffect(() => {
+    // Load persisted board selection before first board list
+    fetch("/api/preferences/board.selectedBoard", { credentials: "include" })
+      .then((r) => r.json())
+      .then((j: { value?: string | null }) => {
+        if (j.value) _setSelected(j.value);
+      })
+      .catch(() => {})
+      .finally(() => { initialLoadDone.current = true; });
     fetchBoards();
     // A `files`-plugin workspace change (new/edited board files) or a
     // host-side board broadcast should refresh the list. We listen for
