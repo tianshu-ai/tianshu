@@ -51,6 +51,28 @@
 
   "record.running": "Wiki update running… {pct}%",
   "record.record": "Record this conversation into the wiki",
+
+  "tab.browse": "Browse",
+  "tab.indexing": "Indexing",
+  "filter.all": "All",
+  "filter.kb": "Knowledge Base",
+  "filter.session": "Sessions",
+  "section.knowledge": "Knowledge Base",
+
+  "indexing.updateWiki": "Update Wiki",
+  "indexing.updating": "Updating Wiki...",
+  "indexing.sessions": "Sessions",
+  "indexing.sessionsDesc": "Conversations → entities, concepts, topics, journal",
+  "indexing.recording": "recording",
+  "indexing.idle": "idle",
+  "indexing.scanning": "scanning",
+  "indexing.kb": "Knowledge Base",
+  "indexing.kbPlaceholder": "Place files in knowledgeBase/",
+  "indexing.files": "{n} files",
+  "indexing.indexed": "{n} indexed",
+  "indexing.pending": "{n} pending",
+  "indexing.loading": "Loading...",
+  "indexing.statusUnavailable": "Unable to load KB status.",
   "manifest.displayName": "Wiki",
   "manifest.description": "LLM Wiki — distils the rolling conversation into an Obsidian-style knowledge vault. Each compacted segment is filed automatically as a source; the agent synthesises entities / concepts / topics on top. Browse + search in the side panel."
 }

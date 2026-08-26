@@ -25,6 +25,7 @@ const API_BASE = "/api/p/wiki";
  *  labels resolve through `t(SECTION_LABEL_KEY[section])`; the
  *  English SECTION_LABEL below stays as a fallback for unknown ids. */
 const SECTION_LABEL_KEY: Record<string, string> = {
+  knowledge: "section.knowledge",
   "journal/daily": "section.daily",
   "journal/weekly": "section.weekly",
   "journal/monthly": "section.monthly",
@@ -55,7 +56,7 @@ const SECTION_ORDER = [
   "sources",
 ];
 const SECTION_LABEL: Record<string, string> = {
-  knowledge: "Knowledge Base",
+  knowledge: "knowledge",
   "journal/daily": "Daily",
   "journal/weekly": "Weekly",
   "journal/monthly": "Monthly",
@@ -175,13 +176,13 @@ function WikiPanel(_props: PanelProps) {
           onClick={() => setTab("browse")}
           className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "browse" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
         >
-          Browse
+          {t("tab.browse")}
         </button>
         <button
           onClick={() => setTab("indexing")}
           className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "indexing" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
         >
-          Indexing
+          {t("tab.indexing")}
         </button>
       </div>
 
@@ -247,7 +248,7 @@ function WikiPanel(_props: PanelProps) {
             onClick={() => setSourceFilter(f)}
             className={"rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors " + (sourceFilter === f ? "bg-brand-500/15 text-brand-400" : "text-fg-muted hover:bg-bg-hover")}
           >
-            {f === "all" ? "All" : f === "kb" ? "Knowledge Base" : "Sessions"}
+            {f === "all" ? t("filter.all") : f === "kb" ? t("filter.kb") : t("filter.session")}
           </button>
         ))}
       </div>
@@ -427,6 +428,7 @@ interface KbStatus {
 }
 
 function IndexingTab() {
+  const t = usePluginT("wiki");
   const [kbStatus, setKbStatus] = useState<KbStatus | null>(null);
   const [sessionStatus, setSessionStatus] = useState<{ running: boolean; progress: number; lastRun?: string } | null>(null);
   const [running, setRunning] = useState(false);
@@ -487,12 +489,12 @@ function IndexingTab() {
         {running ? (
           <span className="flex items-center justify-center gap-2">
             <RefreshCw size={14} className="animate-spin" />
-            Updating Wiki...
+            {t("indexing.updating")}
           </span>
         ) : (
           <span className="flex items-center justify-center gap-2">
             <RefreshCw size={14} />
-            Update Wiki
+            {t("indexing.updateWiki")}
           </span>
         )}
       </button>
@@ -504,11 +506,11 @@ function IndexingTab() {
           <div className="flex items-center justify-between mb-1">
             <span className="font-medium text-fg-default flex items-center gap-1.5">
               <Notebook size={12} />
-              Sessions
+              {t("indexing.sessions")}
             </span>
             <span className={"flex items-center gap-1 " + (sessionStatus?.running ? "text-brand-400" : "text-fg-fainter")}>
               <span className={"inline-block w-1.5 h-1.5 rounded-full " + (sessionStatus?.running ? "bg-brand-400 animate-pulse" : "bg-fg-fainter")} />
-              {sessionStatus?.running ? "recording" : "idle"}
+              {sessionStatus?.running ? t("indexing.recording") : t("indexing.idle")}
             </span>
           </div>
           {sessionStatus?.running && sessionStatus.progress > 0 && (
@@ -520,7 +522,7 @@ function IndexingTab() {
             </div>
           )}
           <div className="text-fg-muted mt-1">
-            Conversations → entities, concepts, topics, journal
+            {t("indexing.sessionsDesc")}
           </div>
         </div>
 
@@ -529,15 +531,15 @@ function IndexingTab() {
           <div className="flex items-center justify-between mb-1">
             <span className="font-medium text-fg-default flex items-center gap-1.5">
               <FileText size={12} />
-              Knowledge Base
+              {t("indexing.kb")}
             </span>
             <span className={"flex items-center gap-1 " + (running && hasPendingKb ? "text-brand-400" : "text-fg-fainter")}>
               <span className={"inline-block w-1.5 h-1.5 rounded-full " + (running && hasPendingKb ? "bg-brand-400 animate-pulse" : "bg-fg-fainter")} />
-              {running && hasPendingKb ? "scanning" : "idle"}
+              {running && hasPendingKb ? t("indexing.scanning") : t("indexing.idle")}
             </span>
           </div>
           {loading ? (
-            <div className="text-fg-fainter">Loading...</div>
+            <div className="text-fg-fainter">{t("indexing.loading")}</div>
           ) : kbStatus ? (
             <div className="mt-1 space-y-0.5">
               <div className="flex gap-3 text-fg-muted">
@@ -553,7 +555,7 @@ function IndexingTab() {
             </div>
           ) : (
             <div className="text-fg-muted mt-1">
-              Place files in <code className="rounded bg-bg-raised px-1">knowledgeBase/</code>
+              {t("indexing.kbPlaceholder")}
             </div>
           )}
         </div>

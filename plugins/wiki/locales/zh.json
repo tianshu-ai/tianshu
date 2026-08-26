@@ -51,6 +51,28 @@
 
   "record.running": "Wiki 更新运行中… {pct}%",
   "record.record": "将此对话记录到 Wiki",
+
+  "tab.browse": "浏览",
+  "tab.indexing": "索引",
+  "filter.all": "全部",
+  "filter.kb": "知识库",
+  "filter.session": "对话记录",
+  "section.knowledge": "知识库",
+
+  "indexing.updateWiki": "更新 Wiki",
+  "indexing.updating": "正在更新 Wiki...",
+  "indexing.sessions": "对话记录",
+  "indexing.sessionsDesc": "对话 → 实体、概念、主题、日志",
+  "indexing.recording": "记录中",
+  "indexing.idle": "空闲",
+  "indexing.scanning": "扫描中",
+  "indexing.kb": "知识库",
+  "indexing.kbPlaceholder": "将文件放入 knowledgeBase/ 目录",
+  "indexing.files": "{n} 个文件",
+  "indexing.indexed": "{n} 已索引",
+  "indexing.pending": "{n} 待处理",
+  "indexing.loading": "加载中...",
+  "indexing.statusUnavailable": "无法加载知识库状态。",
   "manifest.displayName": "知识库",
   "manifest.description": "LLM 知识库——把滚动的对话提炼进 Obsidian 风格的知识仓库。每段被压缩的对话会自动归档为一条来源；代理在其之上综合出实体/概念/主题。可在侧边栏浏览与搜索。"
 }
