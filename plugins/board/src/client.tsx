@@ -67,15 +67,18 @@ function BoardPanel(_props: PanelProps) {
   }, []);
 
   useEffect(() => {
-    // Load persisted board selection before first board list
+    // Load persisted board selection THEN fetch board list
+    // (avoids race where fetchBoards auto-selects before preference arrives)
     fetch("/api/preferences/board.selectedBoard", { credentials: "include" })
       .then((r) => r.json())
       .then((j: { value?: string | null }) => {
         if (j.value) _setSelected(j.value);
       })
       .catch(() => {})
-      .finally(() => { initialLoadDone.current = true; });
-    fetchBoards();
+      .finally(() => {
+        initialLoadDone.current = true;
+        fetchBoards();
+      });
     // A `files`-plugin workspace change (new/edited board files) or a
     // host-side board broadcast should refresh the list. We listen for
     // the generic plugin_event and re-fetch on anything board-ish.
