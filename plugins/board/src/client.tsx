@@ -53,10 +53,14 @@ function BoardPanel(_props: PanelProps) {
         // (last) new one. Otherwise keep the current selection if it
         // still exists, else fall back to the first board.
         setBoards((prev) => {
-          const added = list.filter((b) => !prev.includes(b));
+          const isInitialLoad = prev.length === 0;
+          const added = isInitialLoad ? [] : list.filter((b) => !prev.includes(b));
           setSelected((cur) => {
+            // New board appeared (not initial load) → switch to it
             if (added.length > 0) return added[added.length - 1];
+            // Current selection still valid → keep it
             if (cur && list.includes(cur)) return cur;
+            // Fallback to first board
             return list[0] ?? null;
           });
           return list;
