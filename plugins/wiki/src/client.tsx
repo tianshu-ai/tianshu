@@ -69,7 +69,8 @@ const SECTION_LABEL: Record<string, string> = {
 function WikiPanel(_props: PanelProps) {
   const { MarkdownBlock, Modal } = useUiPrimitives();
   const t = usePluginT("wiki");
-  const [tab, setTab] = useState<"wiki" | "kb">("wiki");
+  const [tab, setTab] = useState<"browse" | "indexing">("browse");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session">("all");
   const [pages, setPages] = useState<WikiPage[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string>("");
@@ -151,35 +152,41 @@ function WikiPanel(_props: PanelProps) {
 
   const grouped = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    const shown = q
+    let shown = q
       ? pages.filter((p) => p.title.toLowerCase().includes(q) || p.path.toLowerCase().includes(q))
       : pages;
+    // Apply source filter
+    if (sourceFilter === "kb") {
+      shown = shown.filter((p) => p.section === "knowledge");
+    } else if (sourceFilter === "session") {
+      shown = shown.filter((p) => p.section !== "knowledge");
+    }
     const by: Record<string, WikiPage[]> = {};
     for (const p of shown) (by[p.section] ??= []).push(p);
     for (const k of Object.keys(by)) by[k]!.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
     return by;
-  }, [pages, filter]);
+  }, [pages, filter, sourceFilter]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden text-fg-default">
       {/* Tab bar */}
       <div className="flex flex-shrink-0 border-b border-border-subtle">
         <button
-          onClick={() => setTab("wiki")}
-          className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "wiki" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
+          onClick={() => setTab("browse")}
+          className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "browse" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
         >
-          Wiki
+          Browse
         </button>
         <button
-          onClick={() => setTab("kb")}
-          className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "kb" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
+          onClick={() => setTab("indexing")}
+          className={"flex-1 px-3 py-1.5 text-xs font-medium transition-colors " + (tab === "indexing" ? "text-brand-400 border-b-2 border-brand-400" : "text-fg-muted hover:text-fg-default")}
         >
-          Knowledge Base
+          Indexing
         </button>
       </div>
 
-      {tab === "kb" ? (
-        <KnowledgeBaseTab />
+      {tab === "indexing" ? (
+        <IndexingTab />
       ) : (<>
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
         <Notebook size={13} className="text-fg-faint" />
@@ -231,6 +238,18 @@ function WikiPanel(_props: PanelProps) {
         >
           <Trash2 size={12} />
         </button>
+      </div>
+      {/* Source filter */}
+      <div className="flex flex-shrink-0 gap-1 border-b border-border-subtle px-3 py-1">
+        {(["all", "kb", "session"] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setSourceFilter(f)}
+            className={"rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors " + (sourceFilter === f ? "bg-brand-500/15 text-brand-400" : "text-fg-muted hover:bg-bg-hover")}
+          >
+            {f === "all" ? "All" : f === "kb" ? "Knowledge Base" : "Sessions"}
+          </button>
+        ))}
       </div>
       {reindexMsg && (
         <div className="flex-shrink-0 border-b border-border-subtle bg-bg-raised px-3 py-1 text-[11px] text-fg-muted">
@@ -407,26 +426,29 @@ interface KbStatus {
   lastScanAt: number | null;
 }
 
-function KnowledgeBaseTab() {
-  const [status, setStatus] = useState<KbStatus | null>(null);
+function IndexingTab() {
+  const [kbStatus, setKbStatus] = useState<KbStatus | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [recording, setRecording] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const nav = useChatNav();
 
   const fetchStatus = useCallback(() => {
     setLoading(true);
-    fetch(`${API_BASE}/kb/status`, { credentials: "include" })
-      .then((r) => r.json())
-      .then((data: KbStatus) => {
-        setStatus(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
+    Promise.all([
+      fetch(`${API_BASE}/kb/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
+      fetch(`${API_BASE}/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
+    ]).then(([kb, wiki]: [KbStatus | null, { running?: boolean; progress?: number } | null]) => {
+      setKbStatus(kb);
+      setRecording(!!wiki?.running);
+      setLoading(false);
+    });
   }, []);
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
-  const triggerScan = () => {
+  const triggerKbScan = () => {
     setScanning(true);
     setMessage(null);
     fetch(`${API_BASE}/kb/scan`, { method: "POST", credentials: "include" })
@@ -434,89 +456,109 @@ function KnowledgeBaseTab() {
         const body = await r.json().catch(() => ({})) as { ok?: boolean; message?: string };
         setMessage(body.message ?? (body.ok ? "Scan started" : "Scan failed"));
         setScanning(false);
-        // Refresh status after a delay
         setTimeout(fetchStatus, 2000);
       })
-      .catch(() => {
-        setMessage("Failed to start scan");
-        setScanning(false);
-      });
+      .catch(() => { setMessage("Failed to start scan"); setScanning(false); });
+  };
+
+  const triggerSessionRecord = () => {
+    setRecording(true);
+    setMessage(null);
+    fetch(`${API_BASE}/record`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: nav.viewingSessionId ?? null }),
+    })
+      .then(async (r) => {
+        const body = await r.json().catch(() => ({})) as { started?: boolean };
+        if (!body.started) setRecording(false);
+        setMessage(body.started ? "Recording started" : "Failed to start");
+      })
+      .catch(() => { setMessage("Failed to start recording"); setRecording(false); });
   };
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-3 text-xs">
+      {/* Session Record section */}
+      <div className="mb-4">
+        <h3 className="text-sm font-medium text-fg-default mb-1">Session History</h3>
+        <p className="text-fg-muted mb-2">
+          Record conversations into wiki pages (entities, concepts, topics, journal).
+        </p>
+        <button
+          onClick={triggerSessionRecord}
+          disabled={recording}
+          className={
+            "w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors " +
+            (recording
+              ? "bg-brand-500/20 text-brand-400 cursor-wait"
+              : "bg-brand-500 text-white hover:bg-brand-600 cursor-pointer")
+          }
+        >
+          {recording ? "Recording..." : "Record Sessions to Wiki"}
+        </button>
+      </div>
+
+      {/* KB Scan section */}
       <div className="mb-3">
-        <h3 className="text-sm font-medium text-fg-default mb-1">Local Knowledge Base</h3>
-        <p className="text-fg-muted">
-          Files in <code className="rounded bg-bg-raised px-1">knowledgeBase/</code> are indexed into wiki pages.
+        <h3 className="text-sm font-medium text-fg-default mb-1">Knowledge Base</h3>
+        <p className="text-fg-muted mb-2">
+          Index files from <code className="rounded bg-bg-raised px-1">knowledgeBase/</code> into wiki.
         </p>
       </div>
 
       {loading ? (
         <div className="text-fg-fainter">Loading...</div>
-      ) : status ? (
+      ) : kbStatus ? (
         <div className="space-y-3">
-          {/* Stats */}
           <div className="rounded-lg border border-border-subtle p-2 space-y-1">
             <div className="flex justify-between">
               <span className="text-fg-muted">Total files</span>
-              <span className="font-medium text-fg-default">{status.totalFiles}</span>
+              <span className="font-medium text-fg-default">{kbStatus.totalFiles}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-fg-muted">Indexed</span>
-              <span className="font-medium text-green-500">{status.indexedFiles}</span>
+              <span className="font-medium text-green-500">{kbStatus.indexedFiles}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-fg-muted">Pending</span>
-              <span className={"font-medium " + (status.pendingFiles > 0 ? "text-amber-500" : "text-fg-default")}>{status.pendingFiles}</span>
+              <span className={"font-medium " + (kbStatus.pendingFiles > 0 ? "text-amber-500" : "text-fg-default")}>{kbStatus.pendingFiles}</span>
             </div>
-            {status.lastScanAt && (
+            {kbStatus.lastScanAt && (
               <div className="flex justify-between">
                 <span className="text-fg-muted">Last scan</span>
-                <span className="text-fg-default">{new Date(status.lastScanAt).toLocaleString()}</span>
+                <span className="text-fg-default">{new Date(kbStatus.lastScanAt).toLocaleString()}</span>
               </div>
             )}
           </div>
 
-          {/* Folders */}
-          {status.folders.length > 0 && (
-            <div className="rounded-lg border border-border-subtle p-2">
-              <div className="text-fg-muted mb-1 font-medium">Folders</div>
-              {status.folders.map((f) => (
-                <div key={f.path} className="flex justify-between py-0.5">
-                  <span className="text-fg-default truncate" title={f.path}>{f.label || f.path}</span>
-                  <span className="text-fg-muted ml-2 flex-shrink-0">{f.fileCount} files</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Scan button */}
           <button
-            onClick={triggerScan}
-            disabled={scanning || status.pendingFiles === 0}
+            onClick={triggerKbScan}
+            disabled={scanning || kbStatus.pendingFiles === 0}
             className={
               "w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors " +
               (scanning
                 ? "bg-brand-500/20 text-brand-400 cursor-wait"
-                : status.pendingFiles === 0
+                : kbStatus.pendingFiles === 0
                   ? "bg-bg-raised text-fg-muted cursor-default"
                   : "bg-brand-500 text-white hover:bg-brand-600 cursor-pointer")
             }
           >
-            {scanning ? "Scanning..." : status.pendingFiles === 0 ? "All files indexed ✓" : `Scan ${status.pendingFiles} pending files`}
+            {scanning ? "Scanning..." : kbStatus.pendingFiles === 0 ? "All files indexed \u2713" : `Scan ${kbStatus.pendingFiles} pending files`}
           </button>
-
-          {message && (
-            <div className="rounded-lg bg-bg-raised p-2 text-fg-muted">{message}</div>
-          )}
         </div>
       ) : (
         <div className="text-fg-fainter">Unable to load KB status.</div>
       )}
+
+      {message && (
+        <div className="mt-3 rounded-lg bg-bg-raised p-2 text-fg-muted">{message}</div>
+      )}
     </div>
   );
 }
+
 
 // ─── graph view (react-force-graph-2d, lazy-loaded) ─────────────
 
