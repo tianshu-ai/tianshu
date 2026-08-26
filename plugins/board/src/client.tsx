@@ -66,10 +66,7 @@ function BoardPanel(_props: PanelProps) {
       .finally(() => setLoading(false));
   }, []);
 
-  const mountedRef = useRef(false);
   useEffect(() => {
-    if (mountedRef.current) return;
-    mountedRef.current = true;
     // Load persisted board selection THEN fetch board list
     fetch("/api/preferences/board.selectedBoard", { credentials: "include" })
       .then((r) => r.json())
