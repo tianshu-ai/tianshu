@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.21.4](https://github.com/tianshu-ai/tianshu/compare/v0.21.3...v0.21.4) (2026-08-27)
+
+
+### Bug Fixes
+
+* **test:** update handler tests for Loop Agent Mode prompt ([31e4286](https://github.com/tianshu-ai/tianshu/commit/31e42865b8b4ea1820f9d8c36fe171d028ce2339))
+* **test:** update workforce snapshot tests for Loop Agent Mode ([f6b3d1d](https://github.com/tianshu-ai/tianshu/commit/f6b3d1d7795b7d90496146a9e94e307361183510))
+
 ## [0.17.0](https://github.com/tianshu-ai/tianshu/compare/v0.16.0...v0.17.0) (2026-08-11)
 
 
