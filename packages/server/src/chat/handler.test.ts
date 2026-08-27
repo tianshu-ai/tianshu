@@ -114,8 +114,9 @@ describe("defaultSystemPrompt", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     // The prompt must not invite the model to invent a worker/task UX
     // before ADR-0002 implementation lands.
+    // Note: "task" may appear in Loop Agent Mode ("task is fully complete")
+    // so we only check for worker/kanban.
     expect(out.toLowerCase()).not.toContain("worker");
-    expect(out.toLowerCase()).not.toContain("task ");
     expect(out.toLowerCase()).not.toContain("kanban");
   });
 
@@ -162,8 +163,8 @@ describe("defaultSystemPrompt", () => {
   it("includes the host-level Execution Bias block", () => {
     const out = defaultSystemPrompt(fakeCtx(), "alice");
     expect(out).toContain("## Execution Bias");
-    expect(out).toContain("act in this turn");
-    expect(out).toContain("do not finish with a plan/promise");
+    expect(out).toContain("Loop Agent Mode");
+    expect(out).toContain("No plans, only results");
   });
 
   it("injects tenant context files (_tenant/AGENTS, SOUL, MEMORY) plus per-user USER.md", () => {
