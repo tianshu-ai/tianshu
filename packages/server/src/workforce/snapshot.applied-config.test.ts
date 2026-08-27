@@ -76,7 +76,7 @@ describe("buildWorkforceSnapshot — applied main-agent config", () => {
     const snap = build(ctx);
     const eb = blockText(snap.main.blocks, "execution-bias");
     expect(eb).toContain("## Execution Bias");
-    expect(eb).toContain("Actionable request: act in this turn.");
+    expect(eb).toContain("Loop Agent Mode");
     expect(blockText(snap.main.blocks, "tenant-prompt")).toBeUndefined();
     expect(blockText(snap.main.blocks, "custom-fragment")).toBeUndefined();
   });
@@ -143,7 +143,7 @@ describe("buildWorkforceSnapshot — applied main-agent config", () => {
     expect(snap.main.systemPrompt).toContain("MARKER-TENANT");
     expect(snap.main.systemPrompt).toContain("MARKER-FRAG");
     expect(snap.main.systemPrompt).not.toContain(
-      "Actionable request: act in this turn.",
+      "Loop Agent Mode",
     );
   });
 });
@@ -189,7 +189,7 @@ describe("buildWorkforceSnapshot — worker execution-bias override", () => {
     const worker = snap.workers.find((w) => w.slug === "plain");
     expect(worker).toBeDefined();
     expect(blockText(worker!.blocks, "execution-bias")).toContain(
-      "Actionable request: act in this turn.",
+      "Loop Agent Mode",
     );
   });
 });
