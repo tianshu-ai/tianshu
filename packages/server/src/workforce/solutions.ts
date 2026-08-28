@@ -1152,11 +1152,13 @@ export async function applySolution(
       fs.writeFileSync(path.join(wDir, "SOUL.md"), soul, "utf8");
     }
     // Write per-worker skill files from solution.
+    // Always clear old per-worker skills so stale files from a
+    // previous import don't linger (the solution is the source
+    // of truth for what belongs here).
+    const targetSkillsDir = path.join(wDir, "skills");
+    fs.rmSync(targetSkillsDir, { recursive: true, force: true });
     const solSkillsDir = path.join(dir, `workers/${w.slug}/skills`);
     if (fs.existsSync(solSkillsDir)) {
-      const targetSkillsDir = path.join(wDir, "skills");
-      // Clear old skills and write fresh from solution.
-      fs.rmSync(targetSkillsDir, { recursive: true, force: true });
       copyDirRecursive(solSkillsDir, targetSkillsDir);
     }
     appliedWorkers.push(w.slug);
