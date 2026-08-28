@@ -103,7 +103,13 @@ function specFromReality(
   slug: string,
   name: string,
   description: string,
-): { spec: SolutionSpec; tenantPrompt: string | null; workerPrompts: Record<string, string> } {
+): {
+  spec: SolutionSpec;
+  tenantPrompt: string | null;
+  workerPrompts: Record<string, string>;
+  workerSkills: Record<string, Array<{ relativePath: string; body: string }>>;
+  mainSkills: Array<{ relativePath: string; body: string }>;
+} {
   const snap = buildWorkforceSnapshot({
     ctx: deps.ctx,
     userId,
@@ -206,7 +212,20 @@ function specFromReality(
     },
     workers,
   };
-  return { spec, tenantPrompt, workerPrompts };
+  // Collect skill files for each worker + main agent.
+  const workerSkills: Record<string, Array<{ relativePath: string; body: string }>> = {};
+  for (const w of snap.workers) {
+    workerSkills[w.slug] = w.skills.map((s) => ({
+      relativePath: s.relativePath,
+      body: s.body,
+    }));
+  }
+  const mainSkills = snap.main.skills.map((s) => ({
+    relativePath: s.relativePath,
+    body: s.body,
+  }));
+
+  return { spec, tenantPrompt, workerPrompts, workerSkills, mainSkills };
 }
 
 // ─── persistence ───────────────────────────────────────────────
@@ -226,6 +245,11 @@ function writeSolution(
     /** Per-worker host-block override bodies, keyed by worker
      *  slug. */
     workerOverrideBodies?: Record<string, { executionBias: string | null }>;
+    /** Per-worker skill files (body keyed by skill relativePath),
+     *  keyed by worker slug. Shared skills keyed as "__shared__". */
+    workerSkills?: Record<string, Array<{ relativePath: string; body: string }>>;
+    /** Main-agent skill files. */
+    mainSkills?: Array<{ relativePath: string; body: string }>;
   },
 ): void {
   const dir = solutionDir(deps, spec.slug);
@@ -270,6 +294,27 @@ function writeSolution(
     const wob = extra?.workerOverrideBodies?.[w.slug];
     if (w.overrides?.executionBias && wob?.executionBias) {
       writeRel(w.overrides.executionBias, wob.executionBias);
+    }
+    // Per-worker skill files.
+    const wSkills = extra?.workerSkills?.[w.slug];
+    if (wSkills) {
+      for (const s of wSkills) {
+        writeRel(`workers/${w.slug}/skills/${s.relativePath}`, s.body);
+      }
+    }
+  }
+  // Shared skill files.
+  const sharedSkills = extra?.workerSkills?.["__shared__"];
+  if (sharedSkills) {
+    for (const s of sharedSkills) {
+      writeRel(`skills/${s.relativePath}`, s.body);
+    }
+  }
+  // Main-agent skill files.
+  const mainSkills = extra?.mainSkills;
+  if (mainSkills) {
+    for (const s of mainSkills) {
+      writeRel(`main-agent/skills/${s.relativePath}`, s.body);
     }
   }
   fs.writeFileSync(
@@ -619,6 +664,20 @@ function safeRead(p: string): string | null {
   }
 }
 
+/** Recursively copy a directory tree. Creates target if needed. */
+function copyDirRecursive(src: string, dest: string): void {
+  fs.mkdirSync(dest, { recursive: true });
+  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
+    const s = path.join(src, entry.name);
+    const d = path.join(dest, entry.name);
+    if (entry.isDirectory()) {
+      copyDirRecursive(s, d);
+    } else {
+      fs.copyFileSync(s, d);
+    }
+  }
+}
+
 // ─── public capability impl ────────────────────────────────────
 
 export function listSolutions(
@@ -693,7 +752,7 @@ export function extractSolution(
 ): SolutionDetail {
   const slug = args.slug || CURRENT_SLUG;
   assertValidSlug(slug);
-  const { spec, tenantPrompt, workerPrompts } = specFromReality(
+  const { spec, tenantPrompt, workerPrompts, workerSkills, mainSkills } = specFromReality(
     deps,
     userId,
     slug,
@@ -704,7 +763,10 @@ export function extractSolution(
   // it (no point writing a file we always recompute). Named
   // extractions are written to disk.
   if (slug !== CURRENT_SLUG) {
-    writeSolution(deps, spec, tenantPrompt, workerPrompts);
+    writeSolution(deps, spec, tenantPrompt, workerPrompts, {
+      workerSkills,
+      mainSkills,
+    });
   }
   // Pass the extracted tenantPrompt + workerPrompts through so the
   // block builder shows them directly (the live mirror isn't on
@@ -1037,7 +1099,23 @@ export async function applySolution(
     if (soul && soul.trim()) {
       fs.writeFileSync(path.join(wDir, "SOUL.md"), soul, "utf8");
     }
+    // Write per-worker skill files from solution.
+    const solSkillsDir = path.join(dir, `workers/${w.slug}/skills`);
+    if (fs.existsSync(solSkillsDir)) {
+      const targetSkillsDir = path.join(wDir, "skills");
+      // Clear old skills and write fresh from solution.
+      fs.rmSync(targetSkillsDir, { recursive: true, force: true });
+      copyDirRecursive(solSkillsDir, targetSkillsDir);
+    }
     appliedWorkers.push(w.slug);
+  }
+
+  // Write shared skill files from solution.
+  const solSharedSkillsDir = path.join(dir, "skills");
+  if (fs.existsSync(solSharedSkillsDir)) {
+    const sharedSkillsDir = path.join(getTenantConfigDir(tenantId, home), "skills");
+    // Don't wipe shared skills entirely — merge solution skills in.
+    copyDirRecursive(solSharedSkillsDir, sharedSkillsDir);
   }
 
   // --- Plugins (enable/disable per the solution) ---
