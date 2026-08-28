@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.23.2](https://github.com/tianshu-ai/tianshu/compare/v0.23.1...v0.23.2) (2026-08-28)
+
+
+### Bug Fixes
+
+* **snapshot:** load per-worker tenant skills in workforce snapshot ([825f1a0](https://github.com/tianshu-ai/tianshu/commit/825f1a0f4f0219c35c1df9865d2852e3477a3f38))
+
 ## [0.23.1](https://github.com/tianshu-ai/tianshu/compare/v0.23.0...v0.23.1) (2026-08-28)
 
 
