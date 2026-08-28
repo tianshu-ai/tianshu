@@ -140,6 +140,8 @@ import {
 } from "./image-fit.js";
 
 const MAX_TURNS = 16;
+/** Max auto-continuations when the model hits maxTokens (stopReason=length). */
+const MAX_CONTINUATIONS = 3;
 
 export interface ChatHandlerOpts {
   ctx: TenantContext;
@@ -884,6 +886,22 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
     }
     await harness.waitForIdle();
+
+    // Auto-continue when model was truncated by maxTokens.
+    // The PI SDK sets stopReason="length" on the last assistant message.
+    let continuations = 0;
+    while (continuations < MAX_CONTINUATIONS) {
+      const lastRow = lastAssistantRow as ChatMessage | null;
+      if (!lastRow) break;
+      try {
+        const parsed = JSON.parse(lastRow.content) as { stopReason?: string };
+        if (parsed.stopReason !== "length") break;
+      } catch { break; }
+      continuations++;
+      console.log(`[handler] auto-continue ${continuations}/${MAX_CONTINUATIONS} (stopReason=length)`);
+      await harness.followUp("Continue from where you left off. Do not repeat what you already said.");
+      await harness.waitForIdle();
+    }
   } catch (err) {
     if (err instanceof HandledTurnAbort) {
       // Intentional, already-reported bail (pre-prompt over-window
