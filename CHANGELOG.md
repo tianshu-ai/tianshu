@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.23.3](https://github.com/tianshu-ai/tianshu/compare/v0.23.2...v0.23.3) (2026-08-28)
+
+
+### Bug Fixes
+
+* **snapshot:** export raw skill files with frontmatter intact ([17a752d](https://github.com/tianshu-ai/tianshu/commit/17a752d9df6e34de5a79a8ddb9fc0d89b0597ed2))
+
 ## [0.23.2](https://github.com/tianshu-ai/tianshu/compare/v0.23.1...v0.23.2) (2026-08-28)
 
 
