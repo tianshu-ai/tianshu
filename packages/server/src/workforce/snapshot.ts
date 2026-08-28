@@ -420,7 +420,7 @@ function toSkillEntry(
     description: s.description,
     pluginId: s.source.pluginId,
     scope: s.scope,
-    relativePath: `${s.source.pluginId}/${path.basename(s.filePath)}`,
+    relativePath: `${s.source.pluginId}/${s.source.contributionId}/SKILL.md`,
     body: s.body ?? safeReadFile(s.filePath),
     origin: resolveOrigin(s.source.pluginId),
   };
