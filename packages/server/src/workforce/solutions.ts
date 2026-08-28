@@ -1335,10 +1335,18 @@ export function exportSolution(
   const actualSpec = slug === CURRENT_SLUG ? spec : (readSpec(deps, slug) ?? spec);
   const dir = solutionDir(deps, actualSpec.slug);
 
-  // Read skill files from solution dir (if persisted), else from snapshot
+  // Read skill files from solution dir (if persisted), else from snapshot.
+  // Filter out builtin plugin skills — they already exist on the target.
+  const isTenantPath = (rel: string) =>
+    rel.startsWith("tenant-");
+
   const workers = actualSpec.workers.map((w) => {
     const solSkillDir = path.join(dir, `workers/${w.slug}/skills`);
-    const skills = fs.existsSync(solSkillDir) ? collectSkillFiles(solSkillDir) : (workerSkills[w.slug] ?? []);
+    let skills = fs.existsSync(solSkillDir)
+      ? collectSkillFiles(solSkillDir)
+      : (workerSkills[w.slug] ?? []);
+    // Only keep tenant-authored skills; builtins ship with the target
+    skills = skills.filter((s) => isTenantPath(s.relativePath));
     const prompt = safeRead(path.join(dir, w.systemPromptPath ?? "")) ?? workerPrompts[w.slug] ?? null;
     // Per-worker override
     const ebPath = w.overrides?.executionBias;
@@ -1365,7 +1373,8 @@ export function exportSolution(
 
   // Main agent skills
   const solMainSkillDir = path.join(dir, "main-agent/skills");
-  const mainAgentSkills = fs.existsSync(solMainSkillDir) ? collectSkillFiles(solMainSkillDir) : mainSkills;
+  let mainAgentSkills = fs.existsSync(solMainSkillDir) ? collectSkillFiles(solMainSkillDir) : mainSkills;
+  mainAgentSkills = mainAgentSkills.filter((s) => isTenantPath(s.relativePath));
 
   // Main agent overrides + fragments
   const ov = actualSpec.mainAgent.overrides;
