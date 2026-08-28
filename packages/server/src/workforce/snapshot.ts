@@ -467,6 +467,7 @@ function toWorkerEntry(
         `[workforce-snapshot worker-skills:${r.slug}] ${f.filePath}: ${f.reason}`,
       ),
   });
+  console.log(`[workforce-snapshot] worker ${r.slug}: ${workerTenantSkills.length} tenant skills found, names: [${workerTenantSkills.map(s => s.name).join(", ")}]`);
   const workerSkillByName = new Map<string, WorkforceSkillEntry>();
   for (const s of skillsAll) workerSkillByName.set(s.name, s);
   for (const s of workerTenantSkills) {
