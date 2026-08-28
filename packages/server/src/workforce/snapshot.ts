@@ -456,11 +456,28 @@ function toWorkerEntry(
     toolsAllow === null
       ? toolsAll.slice()
       : toolsAll.filter((t) => toolsAllow.includes(t.name));
+  // Merge global skills with per-worker tenant skills so
+  // skillsAllow can find tenant-authored skills that were placed
+  // under _tenant/config/workers/<slug>/skills/.
+  const workerTenantSkills = loadTenantSkills({
+    tenantId: ctx.tenantId,
+    scope: { kind: "worker", workerKind: r.spec.kind ?? r.slug, slug: r.slug },
+    onFailure: (f) =>
+      console.warn(
+        `[workforce-snapshot worker-skills:${r.slug}] ${f.filePath}: ${f.reason}`,
+      ),
+  });
+  const workerSkillByName = new Map<string, WorkforceSkillEntry>();
+  for (const s of skillsAll) workerSkillByName.set(s.name, s);
+  for (const s of workerTenantSkills) {
+    workerSkillByName.set(s.name, toSkillEntry(s, resolveOrigin));
+  }
+  const mergedSkills = [...workerSkillByName.values()];
   const skillsAllow = spec.skillsAllow ?? null;
   const skills =
     skillsAllow === null
-      ? skillsAll.filter((s) => !s.scope || s.scope === "worker")
-      : skillsAll.filter((s) => skillsAllow.includes(s.name));
+      ? mergedSkills.filter((s) => !s.scope || s.scope === "worker")
+      : mergedSkills.filter((s) => skillsAllow.includes(s.name));
 
   // Worker block decomposition mirrors the worker prompt the
   // agent loop actually composes (see agent-loop.ts, the
