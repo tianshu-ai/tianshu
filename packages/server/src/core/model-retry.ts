@@ -667,11 +667,15 @@ export function wrapStreamFn(fn: StreamFn, deps: WrapStreamDeps): StreamFn {
             // A terminal error event: treat like a thrown error so the
             // retry decision is centralised.
             if (ev.type === "error") {
-              if (ev.reason === "aborted") {
+              if (ev.reason === "aborted" && signal?.aborted) {
+                // User-initiated abort (stop button, navigation).
+                // Don't retry — the user meant to stop.
                 out.push(ev);
                 out.end(ev.error);
                 return;
               }
+              // Transport/provider abort or other error — throw so the
+              // retry loop can decide whether to re-run.
               throw ev.error; // carries errorMessage / stopReason=error
             }
             out.push(ev);
