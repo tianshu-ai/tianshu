@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.22.0](https://github.com/tianshu-ai/tianshu/compare/v0.21.4...v0.22.0) (2026-08-28)
+
+
+### Features
+
+* **handler:** auto-continue when model hits maxTokens limit ([7dd460c](https://github.com/tianshu-ai/tianshu/commit/7dd460c17ea828ced054130972863148fabdcab2))
+
 ## [0.21.4](https://github.com/tianshu-ai/tianshu/compare/v0.21.3...v0.21.4) (2026-08-27)
 
 
