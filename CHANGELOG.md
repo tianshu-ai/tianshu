@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.23.1](https://github.com/tianshu-ai/tianshu/compare/v0.23.0...v0.23.1) (2026-08-28)
+
+
+### Bug Fixes
+
+* **snapshot:** use contributionId in skill relativePath ([9e80115](https://github.com/tianshu-ai/tianshu/commit/9e8011567186957038619a8b5e53b8e2fe3415aa))
+* **solutions:** strip pluginId prefix when writing skill files ([abd80d5](https://github.com/tianshu-ai/tianshu/commit/abd80d5bafd7a0140c132da0459b055c694d955e))
+
 ## [0.23.0](https://github.com/tianshu-ai/tianshu/compare/v0.22.0...v0.23.0) (2026-08-28)
 
 
