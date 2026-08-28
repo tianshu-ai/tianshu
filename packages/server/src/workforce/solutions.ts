@@ -213,17 +213,61 @@ function specFromReality(
     workers,
   };
   // Collect skill files for each worker + main agent.
-  const workerSkills: Record<string, Array<{ relativePath: string; body: string }>> = {};
-  for (const w of snap.workers) {
-    workerSkills[w.slug] = w.skills.map((s) => ({
-      relativePath: s.relativePath,
-      body: s.body,
-    }));
-  }
-  const mainSkills = snap.main.skills.map((s) => ({
+  // Classify skills by their actual source (pluginId) so they
+  // land in the right directory on import. Builtin plugin skills
+  // are NOT exported — they already exist on the target system.
+  const isTenantSkill = (pluginId: string) =>
+    pluginId.startsWith("tenant-");
+  const isWorkerSkill = (pluginId: string, slug: string) =>
+    pluginId === `tenant-worker-${slug}`;
+  const isMainSkill = (pluginId: string) =>
+    pluginId === "tenant-main";
+  const isSharedSkill = (pluginId: string) =>
+    pluginId === "tenant-shared";
+
+  const toEntry = (s: { relativePath: string; body: string }) => ({
     relativePath: s.relativePath,
     body: s.body,
-  }));
+  });
+
+  // Collect shared and main-scope tenant skills (deduplicated)
+  const seenShared = new Set<string>();
+  const sharedTenantSkills: Array<{ relativePath: string; body: string }> = [];
+  const seenMain = new Set<string>();
+  const mainTenantSkills: Array<{ relativePath: string; body: string }> = [];
+
+  const workerSkills: Record<string, Array<{ relativePath: string; body: string }>> = {};
+  for (const w of snap.workers) {
+    // Only per-worker tenant skills go under workers/<slug>/skills/
+    workerSkills[w.slug] = w.skills
+      .filter((s) => isWorkerSkill(s.pluginId, w.slug))
+      .map(toEntry);
+
+    // Collect shared/main skills from all workers (deduped)
+    for (const s of w.skills) {
+      if (isSharedSkill(s.pluginId) && !seenShared.has(s.name)) {
+        seenShared.add(s.name);
+        sharedTenantSkills.push(toEntry(s));
+      }
+      if (isMainSkill(s.pluginId) && !seenMain.has(s.name)) {
+        seenMain.add(s.name);
+        mainTenantSkills.push(toEntry(s));
+      }
+    }
+  }
+
+  // Main agent skills: only tenant-authored ones
+  const mainSkills = snap.main.skills
+    .filter((s) => isTenantSkill(s.pluginId))
+    .map(toEntry);
+  // Merge in any main-scope skills seen from workers but not in main
+  for (const s of mainTenantSkills) {
+    if (!mainSkills.some((m) => m.relativePath === s.relativePath)) {
+      mainSkills.push(s);
+    }
+  }
+  // Attach shared skills for export
+  workerSkills["__shared__"] = sharedTenantSkills;
 
   return { spec, tenantPrompt, workerPrompts, workerSkills, mainSkills };
 }
@@ -1317,7 +1361,7 @@ export function exportSolution(
 
   // Shared skills
   const solSharedDir = path.join(dir, "skills");
-  const sharedSkills = fs.existsSync(solSharedDir) ? collectSkillFiles(solSharedDir) : [];
+  const sharedSkills = fs.existsSync(solSharedDir) ? collectSkillFiles(solSharedDir) : (workerSkills["__shared__"] ?? []);
 
   // Main agent skills
   const solMainSkillDir = path.join(dir, "main-agent/skills");
