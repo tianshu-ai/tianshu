@@ -421,7 +421,11 @@ function toSkillEntry(
     pluginId: s.source.pluginId,
     scope: s.scope,
     relativePath: `${s.source.pluginId}/${s.source.contributionId}/SKILL.md`,
-    body: s.body ?? safeReadFile(s.filePath),
+    // Always read the raw file (with frontmatter) so the skill
+    // can be imported into another Tianshu instance. s.body is the
+    // parsed body WITHOUT frontmatter, which breaks skill loader
+    // on import ("frontmatter missing `name`").
+    body: safeReadFile(s.filePath),
     origin: resolveOrigin(s.source.pluginId),
   };
 }
