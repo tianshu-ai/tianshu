@@ -1170,6 +1170,14 @@ export async function applySolution(
     copyDirRecursive(solSharedSkillsDir, sharedSkillsDir);
   }
 
+  // Write main-agent skill files from solution.
+  const solMainSkillsDir = path.join(dir, "main-agent/skills");
+  if (fs.existsSync(solMainSkillsDir)) {
+    const mainSkillsDir = path.join(getTenantConfigDir(tenantId, home), "main", "skills");
+    fs.mkdirSync(mainSkillsDir, { recursive: true });
+    copyDirRecursive(solMainSkillsDir, mainSkillsDir);
+  }
+
   // --- Plugins (enable/disable per the solution) ---
   // Write the solution's plugin enable-set into tenant config: any
   // plugin in spec.plugins.enabled → enabled:true, every other
