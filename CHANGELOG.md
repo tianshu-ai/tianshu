@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.23.4](https://github.com/tianshu-ai/tianshu/compare/v0.23.3...v0.23.4) (2026-08-28)
+
+
+### Bug Fixes
+
+* **solutions:** classify skills by source on export/import ([325e0d6](https://github.com/tianshu-ai/tianshu/commit/325e0d69cdde55d66daa4431e45b0b87e791b38f))
+* **solutions:** double-filter skills in exportSolution ([779688b](https://github.com/tianshu-ai/tianshu/commit/779688b28e65dbb0f37170476fd8cfc34b99128f))
+
 ## [0.23.3](https://github.com/tianshu-ai/tianshu/compare/v0.23.2...v0.23.3) (2026-08-28)
 
 
