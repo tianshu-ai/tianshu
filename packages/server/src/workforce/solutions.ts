@@ -1248,3 +1248,184 @@ function computeDiff(
   }
   return entries;
 }
+
+// ─── portable export/import ────────────────────────────────────
+// Produces a self-contained JSON envelope that carries skill file
+// bodies so the solution can be imported into another Tianshu
+// instance without pre-existing skill files.
+
+interface SkillFileEntry { relativePath: string; body: string; }
+
+function collectSkillFiles(dir: string): SkillFileEntry[] {
+  const out: SkillFileEntry[] = [];
+  const walk = (d: string, prefix: string) => {
+    let entries: fs.Dirent[];
+    try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const rel = prefix ? `${prefix}/${e.name}` : e.name;
+      if (e.isDirectory()) walk(path.join(d, e.name), rel);
+      else out.push({ relativePath: rel, body: fs.readFileSync(path.join(d, e.name), "utf8") });
+    }
+  };
+  walk(dir, "");
+  return out;
+}
+
+export function exportSolution(
+  deps: StoreDeps,
+  userId: string,
+  slug: string,
+): Record<string, unknown> {
+  // Ensure solution exists on disk with latest skills
+  const { spec, tenantPrompt, workerPrompts, workerSkills, mainSkills } =
+    specFromReality(deps, userId, slug, slug, "");
+  // For non-current slugs, re-read from the solution dir
+  const actualSpec = slug === CURRENT_SLUG ? spec : (readSpec(deps, slug) ?? spec);
+  const dir = solutionDir(deps, actualSpec.slug);
+
+  // Read skill files from solution dir (if persisted), else from snapshot
+  const workers = actualSpec.workers.map((w) => {
+    const solSkillDir = path.join(dir, `workers/${w.slug}/skills`);
+    const skills = fs.existsSync(solSkillDir) ? collectSkillFiles(solSkillDir) : (workerSkills[w.slug] ?? []);
+    const prompt = safeRead(path.join(dir, w.systemPromptPath ?? "")) ?? workerPrompts[w.slug] ?? null;
+    // Per-worker override
+    const ebPath = w.overrides?.executionBias;
+    const eb = ebPath ? safeRead(path.join(dir, ebPath)) : null;
+    return {
+      slug: w.slug,
+      kind: w.kind,
+      name: w.name,
+      description: w.description,
+      modelId: w.modelId,
+      enabled: w.enabled,
+      systemPrompt: prompt,
+      toolsAllow: w.toolsAllow,
+      skillsAllow: w.skillsAllow,
+      overrides: { executionBias: eb },
+      source: w.source,
+      skills,
+    };
+  });
+
+  // Shared skills
+  const solSharedDir = path.join(dir, "skills");
+  const sharedSkills = fs.existsSync(solSharedDir) ? collectSkillFiles(solSharedDir) : [];
+
+  // Main agent skills
+  const solMainSkillDir = path.join(dir, "main-agent/skills");
+  const mainAgentSkills = fs.existsSync(solMainSkillDir) ? collectSkillFiles(solMainSkillDir) : mainSkills;
+
+  // Main agent overrides + fragments
+  const ov = actualSpec.mainAgent.overrides;
+  const ebBody = ov.executionBias ? safeRead(path.join(dir, ov.executionBias)) : null;
+  const rsBody = ov.replyStyle ? safeRead(path.join(dir, ov.replyStyle)) : null;
+  const uoBody = ov.userOnboarding ? safeRead(path.join(dir, ov.userOnboarding)) : null;
+  const fragments = actualSpec.mainAgent.customFragments.map((f) => ({
+    id: f.id,
+    title: f.title,
+    body: safeRead(path.join(dir, f.path)) ?? "",
+  }));
+
+  const tp = safeRead(path.join(dir, actualSpec.mainAgent.tenantPromptPath ?? "")) ?? tenantPrompt;
+
+  return {
+    format: "tianshu.workforce-studio.solution",
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    spec: {
+      slug: actualSpec.slug,
+      name: actualSpec.name,
+      description: actualSpec.description,
+      plugins: actualSpec.plugins,
+      mainAgent: {
+        tenantPrompt: tp,
+        skillsAllow: actualSpec.mainAgent.skillsAllow ?? null,
+        skillsDeny: actualSpec.mainAgent.skillsDeny ?? [],
+        toolsAllow: actualSpec.mainAgent.toolsAllow ?? null,
+        toolsDeny: actualSpec.mainAgent.toolsDeny ?? [],
+        overrides: { executionBias: ebBody, replyStyle: rsBody, userOnboarding: uoBody },
+        customFragments: fragments,
+        skills: mainAgentSkills,
+      },
+      workers,
+      sharedSkills,
+    },
+  };
+}
+
+export function importSolution(
+  deps: StoreDeps,
+  userId: string,
+  envelope: Record<string, unknown>,
+): SolutionDetail {
+  const spec = (envelope as { spec?: unknown }).spec;
+  if (!spec || typeof spec !== "object") throw new Error("Missing spec in import");
+  const s = spec as Record<string, unknown>;
+  const slug = String(s.slug ?? "imported");
+  const name = String(s.name ?? slug);
+  const description = String(s.description ?? "");
+  const plugins = (s.plugins ?? { enabled: [] }) as { enabled: string[] };
+  const mainAgent = s.mainAgent as Record<string, unknown> | undefined;
+  const workers = (s.workers ?? []) as Array<Record<string, unknown>>;
+  const sharedSkills = ((s.sharedSkills ?? []) as Array<{ relativePath: string; body: string }>);
+
+  // Build SolutionSpecInput
+  const input: SolutionSpecInput = {
+    slug,
+    name,
+    description,
+    plugins,
+    mainAgent: {
+      tenantPrompt: (mainAgent?.tenantPrompt as string) ?? null,
+      skillsAllow: (mainAgent?.skillsAllow as string[] | null) ?? null,
+      skillsDeny: (mainAgent?.skillsDeny as string[]) ?? [],
+      toolsAllow: (mainAgent?.toolsAllow as string[] | null) ?? null,
+      toolsDeny: (mainAgent?.toolsDeny as string[]) ?? [],
+      overrides: (mainAgent?.overrides as { executionBias: string | null; replyStyle: string | null; userOnboarding: string | null }) ?? { executionBias: null, replyStyle: null, userOnboarding: null },
+      customFragments: (mainAgent?.customFragments as Array<{ id: string; title: string; body: string }>) ?? [],
+    },
+    workers: workers.map((w) => ({
+      slug: String(w.slug),
+      kind: String(w.kind),
+      name: String(w.name),
+      description: (w.description as string | null) ?? null,
+      modelId: (w.modelId as string | null) ?? null,
+      enabled: w.enabled !== false,
+      systemPrompt: (w.systemPrompt as string | null) ?? null,
+      toolsAllow: (w.toolsAllow as string[] | null) ?? null,
+      skillsAllow: (w.skillsAllow as string[] | null) ?? null,
+      overrides: (w.overrides as { executionBias: string | null }) ?? { executionBias: null },
+      source: (w.source as "builtin" | "user") ?? "user",
+    })),
+  };
+
+  // Save via normal path
+  const detail = saveSolution(deps, userId, input);
+
+  // Now write skill files into the solution dir
+  const dir = solutionDir(deps, slug);
+  const writeRel = (rel: string, body: string) => {
+    const p = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, body, "utf8");
+  };
+
+  // Shared skills
+  for (const sk of sharedSkills) {
+    writeRel(`skills/${sk.relativePath}`, sk.body);
+  }
+  // Main agent skills
+  const mainSkills = (mainAgent?.skills ?? []) as Array<{ relativePath: string; body: string }>;
+  for (const sk of mainSkills) {
+    writeRel(`main-agent/skills/${sk.relativePath}`, sk.body);
+  }
+  // Worker skills
+  for (const w of workers) {
+    const wSkills = (w.skills ?? []) as Array<{ relativePath: string; body: string }>;
+    for (const sk of wSkills) {
+      writeRel(`workers/${w.slug}/skills/${sk.relativePath}`, sk.body);
+    }
+  }
+
+  return detail;
+}

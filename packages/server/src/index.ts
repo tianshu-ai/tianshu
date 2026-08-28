@@ -109,6 +109,8 @@ import {
   listSolutions,
   removeSolution,
   saveSolution,
+  exportSolution,
+  importSolution,
 } from "./workforce/solutions.js";
 import { enqueue as inboxEnqueue } from "./chat/session-inbox.js";
 import { installIdleRunner } from "./boot/idle-runner.js";
@@ -423,6 +425,8 @@ pluginRegistry = new PluginRegistry({
         apply: (userId, slug) => applySolution(deps, userId, slug),
         activate: (userId, slug) => activateSolution(deps, userId, slug),
         getActive: () => getActiveSlug(deps),
+        export: (userId, slug) => exportSolution(deps, userId, slug),
+        import: (userId, envelope) => importSolution(deps, userId, envelope),
       };
     },
     "host.agentLoop": (ctx) => {

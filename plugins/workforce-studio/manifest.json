@@ -31,7 +31,9 @@
       { "method": "GET", "path": "/solutions/:slug/diff", "handler": "diffSolution", "access": "admin" },
       { "method": "POST", "path": "/solutions/:slug/apply", "handler": "applySolution", "access": "admin" },
       { "method": "POST", "path": "/solutions/:slug/activate", "handler": "activateSolution", "access": "admin" },
-      { "method": "GET", "path": "/solutions-active", "handler": "getActive", "access": "admin" }
+      { "method": "GET", "path": "/solutions-active", "handler": "getActive", "access": "admin" },
+      { "method": "GET", "path": "/solutions/:slug/export", "handler": "exportSolution", "access": "admin" },
+      { "method": "POST", "path": "/solutions/import", "handler": "importSolution", "access": "admin" }
     ]
   }
 }

@@ -254,6 +254,32 @@ const plugin: PluginServerModule = {
             sendError(ctx, res, err, "getActive", userId);
           }
         },
+        exportSolution: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) { res.status(401).json({ ok: false, error: "no user context" }); return; }
+          const slug = String(req.params.slug);
+          if (!slug) { res.status(400).json({ ok: false, error: "slug required" }); return; }
+          try {
+            const envelope = solutionsCap.export(userId, slug);
+            res.setHeader("Content-Disposition", `attachment; filename="${slug}.solution.json"`);
+            res.setHeader("Content-Type", "application/json");
+            res.send(JSON.stringify(envelope, null, 2));
+          } catch (err) {
+            sendError(ctx, res, err, "exportSolution", userId);
+          }
+        },
+        importSolution: async (req: Request, res: Response) => {
+          const userId = userIdFromReq(req);
+          if (!userId) { res.status(401).json({ ok: false, error: "no user context" }); return; }
+          const envelope = req.body as Record<string, unknown>;
+          if (!envelope || !envelope.spec) { res.status(400).json({ ok: false, error: "invalid import body" }); return; }
+          try {
+            const detail = solutionsCap.import(userId, envelope);
+            res.json({ ok: true, solution: detail });
+          } catch (err) {
+            sendError(ctx, res, err, "importSolution", userId);
+          }
+        },
       },
     };
   },

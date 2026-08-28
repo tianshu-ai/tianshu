@@ -138,23 +138,21 @@ export function SolutionView(): ReactElement {
       setError(null);
       try {
         const text = await file.text();
-        const spec = parseSolutionFile(text);
+        const parsed = JSON.parse(text) as Record<string, unknown>;
+        // Support both v2 envelope (with skills) and v1 (spec-only)
+        const envelope = parsed.spec ? parsed : { format: "tianshu.workforce-studio.solution", version: 2, spec: parsed };
+        const spec = (envelope as { spec: Record<string, unknown> }).spec;
         const taken = new Set<string>([
           "current",
           ...(summaries ?? []).map((s) => s.slug),
         ]);
-        // Prefer the file's own slug; fall back to its name; keep
-        // it unique against everything already present.
-        const slug = uniqueSlug(spec.slug || spec.name, taken);
+        const slug = uniqueSlug(String(spec.slug || spec.name || "imported"), taken);
         const renamed = slug !== spec.slug;
-        const input = {
-          ...spec,
-          slug,
-          name: renamed ? `${spec.name} ${t("solution.import.suffix")}` : spec.name,
-        };
-        await api("/solutions/save", {
+        spec.slug = slug;
+        if (renamed) spec.name = `${String(spec.name)} ${t("solution.import.suffix")}`;
+        await api("/solutions/import", {
           method: "POST",
-          body: JSON.stringify(input),
+          body: JSON.stringify(envelope),
         });
         await refreshList();
         setSelected(slug);
@@ -419,7 +417,17 @@ function SolutionIDE({
           </button>
           <button
             type="button"
-            onClick={() => downloadSolution(detail)}
+            onClick={() => {
+              // Use server-side export which includes skill file bodies
+              const slug = detail.spec.slug;
+              const url = `/api/p/workforce-studio/solutions/${encodeURIComponent(slug)}/export`;
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = `${slug}.solution.json`;
+              document.body.appendChild(a);
+              a.click();
+              a.remove();
+            }}
             className="inline-flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-xs hover:bg-bg-raised"
             title={t("ide.export.title")}
           >

@@ -354,6 +354,13 @@ export interface SolutionsCapability {
   /** Slug of the currently-active solution, or null when none has
    *  been activated (fresh tenant). */
   getActive(userId: string): string | null;
+  /** Export a solution as a self-contained JSON envelope with all
+   *  skill file bodies included, suitable for importing into
+   *  another Tianshu instance. */
+  export(userId: string, slug: string): Record<string, unknown>;
+  /** Import a solution from a JSON envelope (as produced by export).
+   *  Creates the solution + writes skill files. */
+  import(userId: string, envelope: Record<string, unknown>): SolutionDetail;
 }
 
 /** Input shape for save(): the spec plus inline prompt bodies the

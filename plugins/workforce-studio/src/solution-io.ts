@@ -31,6 +31,13 @@ export const SOLUTION_FILE_VERSION = 1;
 /** The save() payload shape (mirrors SolutionSpecInput on the SDK
  *  side). Kept local + structural so this module doesn't depend on
  *  server-only types. */
+export interface SkillFile {
+  /** Relative path inside the skills dir (e.g. "my-skill/SKILL.md"). */
+  relativePath: string;
+  /** Full file body (markdown, frontmatter included). */
+  body: string;
+}
+
 export interface SolutionSpecInputLike {
   slug: string;
   name: string;
@@ -48,6 +55,8 @@ export interface SolutionSpecInputLike {
       userOnboarding: string | null;
     };
     customFragments: Array<{ id: string; title: string; body: string }>;
+    /** Main-agent skill files (body included for portability). */
+    skills?: SkillFile[];
   };
   workers: Array<{
     slug: string;
@@ -61,7 +70,11 @@ export interface SolutionSpecInputLike {
     skillsAllow: string[] | null;
     overrides?: { executionBias: string | null };
     source?: string;
+    /** Per-worker skill files (body included for portability). */
+    skills?: SkillFile[];
   }>;
+  /** Shared tenant skills (visible to all workers + main). */
+  sharedSkills?: SkillFile[];
 }
 
 export interface SolutionFileEnvelope {
