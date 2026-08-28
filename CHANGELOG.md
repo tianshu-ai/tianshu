@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.23.0](https://github.com/tianshu-ai/tianshu/compare/v0.22.0...v0.23.0) (2026-08-28)
+
+
+### Features
+
+* **workforce:** portable solution export/import with skill files ([effbf69](https://github.com/tianshu-ai/tianshu/commit/effbf69dbe4a1cf233dbed27cccd5fb69852c865))
+* **workforce:** save and restore skill files with solutions ([7a558e3](https://github.com/tianshu-ai/tianshu/commit/7a558e3e1ed860ab46c9dba4981907b4f36fcf78))
+
 ## [0.22.0](https://github.com/tianshu-ai/tianshu/compare/v0.21.4...v0.22.0) (2026-08-28)
 
 
