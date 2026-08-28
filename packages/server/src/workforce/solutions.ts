@@ -296,10 +296,11 @@ function writeSolution(
       writeRel(w.overrides.executionBias, wob.executionBias);
     }
     // Per-worker skill files.
+    // relativePath = "<pluginId>/<skillName>/SKILL.md" → strip pluginId prefix
     const wSkills = extra?.workerSkills?.[w.slug];
     if (wSkills) {
       for (const s of wSkills) {
-        writeRel(`workers/${w.slug}/skills/${s.relativePath}`, s.body);
+        writeRel(`workers/${w.slug}/skills/${stripPlugin(s.relativePath)}`, s.body);
       }
     }
   }
@@ -307,14 +308,14 @@ function writeSolution(
   const sharedSkills = extra?.workerSkills?.["__shared__"];
   if (sharedSkills) {
     for (const s of sharedSkills) {
-      writeRel(`skills/${s.relativePath}`, s.body);
+      writeRel(`skills/${stripPlugin(s.relativePath)}`, s.body);
     }
   }
   // Main-agent skill files.
   const mainSkills = extra?.mainSkills;
   if (mainSkills) {
     for (const s of mainSkills) {
-      writeRel(`main-agent/skills/${s.relativePath}`, s.body);
+      writeRel(`main-agent/skills/${stripPlugin(s.relativePath)}`, s.body);
     }
   }
   fs.writeFileSync(
@@ -654,6 +655,13 @@ function normaliseOrigin(
     return o;
   }
   return "host";
+}
+
+/** Strip pluginId prefix from skill relativePath.
+ *  "tenant-main/d2-architecture-board/SKILL.md" → "d2-architecture-board/SKILL.md" */
+function stripPlugin(rel: string): string {
+  const parts = rel.split("/");
+  return parts.length > 2 ? parts.slice(1).join("/") : rel;
 }
 
 function safeRead(p: string): string | null {
@@ -1412,18 +1420,18 @@ export function importSolution(
 
   // Shared skills
   for (const sk of sharedSkills) {
-    writeRel(`skills/${sk.relativePath}`, sk.body);
+    writeRel(`skills/${stripPlugin(sk.relativePath)}`, sk.body);
   }
   // Main agent skills
   const mainSkills = (mainAgent?.skills ?? []) as Array<{ relativePath: string; body: string }>;
   for (const sk of mainSkills) {
-    writeRel(`main-agent/skills/${sk.relativePath}`, sk.body);
+    writeRel(`main-agent/skills/${stripPlugin(sk.relativePath)}`, sk.body);
   }
   // Worker skills
   for (const w of workers) {
     const wSkills = (w.skills ?? []) as Array<{ relativePath: string; body: string }>;
     for (const sk of wSkills) {
-      writeRel(`workers/${w.slug}/skills/${sk.relativePath}`, sk.body);
+      writeRel(`workers/${w.slug}/skills/${stripPlugin(sk.relativePath)}`, sk.body);
     }
   }
 
