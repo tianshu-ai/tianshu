@@ -715,7 +715,7 @@ interface EmbeddingStatus {
 function IndexingTab() {
   const t = usePluginT("wiki");
   const [kbStatus, setKbStatus] = useState<KbStatus | null>(null);
-  const [sessionStatus, setSessionStatus] = useState<{ running: boolean; progress: number; lastRun?: string } | null>(null);
+  const [sessionStatus, setSessionStatus] = useState<{ running: boolean; progress: number; indexedDays: number; totalDays: number; pendingDays: number } | null>(null);
   const [embStatus, setEmbStatus] = useState<EmbeddingStatus | null>(null);
   const [reindexing, setReindexing] = useState(false);
   const [reindexMsg, setReindexMsg] = useState<string | null>(null);
@@ -728,9 +728,9 @@ function IndexingTab() {
       fetch(`${API_BASE}/kb/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
       fetch(`${API_BASE}/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
       fetch(`${API_BASE}/embedding-status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
-    ]).then(([kb, wiki, emb]: [KbStatus | null, { running?: boolean; progress?: number; lastRun?: string } | null, EmbeddingStatus | null]) => {
+    ]).then(([kb, wiki, emb]: [KbStatus | null, { running?: boolean; progress?: number; indexedDays?: number; totalDays?: number; pendingDays?: number } | null, EmbeddingStatus | null]) => {
       setKbStatus(kb);
-      setSessionStatus(wiki ? { running: !!wiki.running, progress: wiki.progress ?? 0, lastRun: wiki.lastRun } : null);
+      setSessionStatus(wiki ? { running: !!wiki.running, progress: wiki.progress ?? 0, indexedDays: wiki.indexedDays ?? 0, totalDays: wiki.totalDays ?? 0, pendingDays: wiki.pendingDays ?? 0 } : null);
       setEmbStatus(emb);
       const isRunning = !!wiki?.running || false;
       setRunning(isRunning);
@@ -803,17 +803,30 @@ function IndexingTab() {
               {sessionStatus?.running ? t("indexing.recording") : t("indexing.idle")}
             </span>
           </div>
-          {sessionStatus?.running && sessionStatus.progress > 0 && (
-            <div className="mt-1.5 h-1 rounded-full bg-bg-raised overflow-hidden">
-              <div
-                className="h-full bg-brand-400 rounded-full transition-all duration-500"
-                style={{ width: `${Math.round(sessionStatus.progress * 100)}%` }}
-              />
+          {/* Day counts */}
+          {sessionStatus && sessionStatus.totalDays > 0 && (
+            <div className="mt-1.5 space-y-1.5">
+              <div className="flex gap-3 text-fg-muted">
+                <span className="text-green-500">{sessionStatus.indexedDays} 天已索引</span>
+                <span>{sessionStatus.totalDays} 天总计</span>
+                {sessionStatus.pendingDays > 0 && (
+                  <span className="text-amber-500">{sessionStatus.pendingDays} 天待索引</span>
+                )}
+              </div>
+              {/* Progress bar */}
+              <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+                <div
+                  className={"h-full rounded-full transition-all duration-500 " + (sessionStatus.running ? "bg-brand-400" : "bg-green-500")}
+                  style={{ width: `${Math.round(sessionStatus.progress * 100)}%` }}
+                />
+              </div>
             </div>
           )}
-          <div className="text-fg-muted mt-1">
-            {t("indexing.sessionsDesc")}
-          </div>
+          {sessionStatus && sessionStatus.totalDays === 0 && (
+            <div className="text-fg-muted mt-1">
+              {t("indexing.sessionsDesc")}
+            </div>
+          )}
         </div>
 
         {/* KB status */}

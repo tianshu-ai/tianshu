@@ -970,13 +970,24 @@ function buildRoutes(
     // Progress = where the time cursor sits within the message time
     // span. Drives the ring on the record button.
     let progress = 0;
+    let indexedDays = 0;
+    let totalDays = 0;
+    let pendingDays = 0;
     try {
       const cursor = readCursor(ctx.userHomeDir(userId)).cursorMs;
       const span = messageTimeSpan(ctx.db, userId);
       if (span.max > span.min) {
         progress = Math.max(0, Math.min(1, (cursor - span.min) / (span.max - span.min)));
+        // Count days: total span days vs indexed days
+        const msPerDay = 86400000;
+        totalDays = Math.ceil((span.max - span.min) / msPerDay);
+        indexedDays = cursor > span.min ? Math.floor((cursor - span.min) / msPerDay) : 0;
+        pendingDays = Math.max(0, totalDays - indexedDays);
       } else if (span.max > 0 && cursor >= span.max) {
         progress = 1;
+        totalDays = 1;
+        indexedDays = 1;
+        pendingDays = 0;
       }
     } catch {
       /* best-effort */
@@ -984,6 +995,9 @@ function buildRoutes(
     res.json({
       running: running.has(runKey(ctx.tenantId, userId)),
       progress,
+      indexedDays,
+      totalDays,
+      pendingDays,
     });
   };
 
