@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.27.1](https://github.com/tianshu-ai/tianshu/compare/v0.27.0...v0.27.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* **compaction:** report actual summarised/kept message counts ([30a4204](https://github.com/tianshu-ai/tianshu/commit/30a4204a541c3e4b292be33a6cca8396ca932178))
+
 ## [0.26.0](https://github.com/tianshu-ai/tianshu/compare/v0.25.4...v0.26.0) (2026-08-29)
 
 
