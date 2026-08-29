@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.24.0](https://github.com/tianshu-ai/tianshu/compare/v0.23.7...v0.24.0) (2026-08-29)
+
+
+### Features
+
+* **handler:** auto-recover from transient abort/error ([e58ab90](https://github.com/tianshu-ai/tianshu/commit/e58ab90e27ab6212266d2ed3a7bd98d67a95a839))
+
+
+### Bug Fixes
+
+* **handler:** don't abort in-flight turn on WebSocket close ([0a2d6da](https://github.com/tianshu-ai/tianshu/commit/0a2d6da00daf4fccb8245470ca0d01a6f3294e5f))
+
 ## [0.23.7](https://github.com/tianshu-ai/tianshu/compare/v0.23.6...v0.23.7) (2026-08-28)
 
 
