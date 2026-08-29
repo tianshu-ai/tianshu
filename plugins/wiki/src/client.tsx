@@ -360,22 +360,7 @@ function WikiPanel(_props: PanelProps) {
         >
           {view === "graph" ? <List size={14} /> : <Share2 size={14} />}
         </button>
-        <button
-          onClick={() => {
-            fetchList();
-            rebuildIndex();
-          }}
-          disabled={reindexing}
-          title={t("panel.refresh")}
-          className={
-            "rounded-md p-1.5 transition-colors " +
-            (reindexing
-              ? "text-brand-400"
-              : "text-fg-faint hover:text-fg-default hover:bg-bg-hover")
-          }
-        >
-          <RefreshCw size={14} className={reindexing ? "animate-spin" : ""} />
-        </button>
+
       </div>
       {/* Source filter + stats */}
       <div className="flex flex-shrink-0 items-center gap-1 border-b border-border-subtle px-3 py-1">
