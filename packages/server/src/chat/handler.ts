@@ -603,7 +603,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         const rp = entry.manifest.contributes?.rightPanels;
         if (!rp) continue;
         for (const panel of rp) {
-          panels.push({ panelId: panel.id, pluginId: entry.manifest.id, displayName: panel.displayName });
+          const fullPanelId = panel.id.includes(".") ? panel.id : `${entry.manifest.id}.${panel.id}`;
+          panels.push({ panelId: fullPanelId, pluginId: entry.manifest.id, displayName: panel.displayName });
         }
       }
       return panels;
