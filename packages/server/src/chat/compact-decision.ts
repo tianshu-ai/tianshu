@@ -134,6 +134,10 @@ export async function branchStillOverWindow(args: {
 export interface AutoCompactDecision {
   compacted: boolean;
   tokensBefore?: number;
+  /** Approximate number of messages summarised. */
+  summarisedCount?: number;
+  /** Approximate number of messages kept verbatim. */
+  keptCount?: number;
   error?: string;
   /**
    * Structured outcome so callers can branch without string-matching
@@ -188,8 +192,22 @@ export async function tryAutoCompact(args: {
     return { compacted: false, reason: "below_threshold" };
   }
   try {
+    // Count messages before compact for the UI badge.
+    const msgsBefore = branch.filter((e) => e.type === "message").length;
     const result = await harness.compact();
-    return { compacted: true, tokensBefore: result.tokensBefore, reason: "compacted" };
+    // Count messages after compact.
+    let msgsAfter = 0;
+    try {
+      const afterBranch = await piSession.getBranch();
+      msgsAfter = afterBranch.filter((e) => e.type === "message").length;
+    } catch { /* best-effort */ }
+    return {
+      compacted: true,
+      tokensBefore: result.tokensBefore,
+      summarisedCount: Math.max(0, msgsBefore - msgsAfter),
+      keptCount: msgsAfter,
+      reason: "compacted",
+    };
   } catch (err) {
     // "Nothing to compact" is the expected over-window-but-no-cut-point
     // case (see AutoCompactDecision.reason). Surface it distinctly so

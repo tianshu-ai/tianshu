@@ -1678,12 +1678,8 @@ async function maybeAutoCompact(args: {
     // both ids point at the current one.
     oldSessionId: session.id,
     newSessionId: session.id,
-    // Pi's compact() doesn't tell us how many entries it
-    // summarised / kept. The UI uses these counts for a small
-    // "📌 N messages compressed" badge; we leave them at 0
-    // until pi exposes the figures.
-    summarisedCount: 0,
-    keptCount: 0,
+    summarisedCount: decision.summarisedCount ?? 0,
+    keptCount: decision.keptCount ?? 0,
     durationMs: 0,
     tokensBefore: decision.tokensBefore,
   });
