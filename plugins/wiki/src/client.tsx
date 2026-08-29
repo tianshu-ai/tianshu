@@ -763,182 +763,215 @@ function IndexingTab() {
   const hasPendingKb = (kbStatus?.pendingFiles ?? 0) > 0;
   const hasWork = hasPendingKb || isIdle; // always allow session record
 
-  return (
-    <div className="flex h-full flex-col overflow-y-auto p-3 text-xs">
-      {/* Main action button */}
-      <button
-        onClick={triggerUpdate}
-        disabled={running || !isIdle}
-        className={
-          "w-full rounded-lg px-4 py-3 text-sm font-medium transition-all " +
-          (running
-            ? "bg-brand-500/10 text-brand-400 border border-brand-500/30 cursor-wait"
-            : "bg-brand-500 text-white hover:bg-brand-600 shadow-sm cursor-pointer")
-        }
-      >
-        {running ? (
-          <span className="flex items-center justify-center gap-2">
-            <RefreshCw size={14} className="animate-spin" />
-            {t("indexing.updating")}
-          </span>
-        ) : (
-          <span className="flex items-center justify-center gap-2">
-            <RefreshCw size={14} />
-            {t("indexing.updateWiki")}
-          </span>
-        )}
-      </button>
+  // Compute overall progress percentage for the header ring
+  const sessionPct = sessionStatus ? Math.round(sessionStatus.progress * 100) : 0;
+  const embPct = embStatus?.enabled && embStatus.totalPages > 0
+    ? Math.round((embStatus.indexed / embStatus.totalPages) * 100) : 0;
 
-      {/* Status cards — unified layout: header(icon+title+status) → stats → progress → footer */}
-      <div className="mt-4 space-y-2">
-        {/* Session record status */}
-        <div className="rounded-lg border border-border-subtle p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="font-medium text-[12px] text-fg-default flex items-center gap-1.5">
-              <Notebook size={13} className="text-brand-400" />
-              {t("indexing.sessions")}
+  return (
+    <div className="flex h-full flex-col overflow-y-auto px-3 py-4 text-xs">
+      {/* ── Header: overall status + update button ── */}
+      <div className="flex items-center gap-3 mb-5">
+        {/* Circular progress ring */}
+        <div className="relative shrink-0 w-11 h-11">
+          <svg viewBox="0 0 36 36" className="w-full h-full -rotate-90">
+            <circle cx="18" cy="18" r="15" fill="none" strokeWidth="3" className="stroke-bg-raised" />
+            <circle cx="18" cy="18" r="15" fill="none" strokeWidth="3"
+              className={running ? "stroke-brand-400" : "stroke-green-500"}
+              strokeDasharray={`${sessionPct * 0.94} 94`}
+              strokeLinecap="round"
+            />
+          </svg>
+          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-fg-default">
+            {sessionPct}%
+          </span>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[13px] font-semibold text-fg-default">索引状态</div>
+          <div className="text-[11px] text-fg-muted mt-0.5">
+            {running ? "正在更新…" : sessionStatus?.totalDays
+              ? `${sessionStatus.indexedDays}/${sessionStatus.totalDays} 天已录入`
+              : "尚无对话记录"}
+          </div>
+        </div>
+        <button
+          onClick={triggerUpdate}
+          disabled={running || !isIdle}
+          className={
+            "shrink-0 rounded-lg px-4 py-2 text-[12px] font-medium transition-all " +
+            (running
+              ? "bg-bg-raised text-brand-400 cursor-wait"
+              : "bg-brand-500 text-white hover:bg-brand-600 shadow-sm")
+          }
+        >
+          {running ? (
+            <span className="flex items-center gap-1.5">
+              <RefreshCw size={13} className="animate-spin" />
+              更新中
             </span>
-            <span className={"flex items-center gap-1.5 text-[10px] " + (sessionStatus?.running ? "text-brand-400" : "text-fg-fainter")}>
-              <span className={"inline-block w-1.5 h-1.5 rounded-full " + (sessionStatus?.running ? "bg-brand-400 animate-pulse" : "bg-fg-fainter")} />
-              {sessionStatus?.running ? t("indexing.recording") : t("indexing.idle")}
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <RefreshCw size={13} />
+              更新 Wiki
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* ── Cards ── */}
+      <div className="space-y-3">
+
+        {/* ① Session records */}
+        <div className="rounded-xl bg-bg-raised/50 p-3.5 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand-500/10">
+              <Notebook size={14} className="text-brand-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-medium text-fg-default">{t("indexing.sessions")}</div>
+            </div>
+            <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
+              (sessionStatus?.running
+                ? "bg-brand-500/10 text-brand-400"
+                : sessionStatus && sessionStatus.pendingDays > 0
+                  ? "bg-amber-500/10 text-amber-500"
+                  : "bg-green-500/10 text-green-500")}>
+              {sessionStatus?.running ? "录入中" : sessionStatus && sessionStatus.pendingDays > 0 ? `${sessionStatus.pendingDays} 天待录` : "已完成"}
             </span>
           </div>
-          {sessionStatus && sessionStatus.totalDays > 0 ? (<>
-            <div className="flex gap-3 text-[11px]">
-              <span className="text-green-500">{sessionStatus.indexedDays} 天已索引</span>
-              <span className="text-fg-muted">{sessionStatus.totalDays} 天总计</span>
-              {sessionStatus.pendingDays > 0 && (
-                <span className="text-amber-500">{sessionStatus.pendingDays} 天待索引</span>
-              )}
+          {sessionStatus && sessionStatus.totalDays > 0 && (<>
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-green-500 font-medium">{sessionStatus.indexedDays}</span>
+              <span className="text-fg-fainter">/</span>
+              <span className="text-fg-muted">{sessionStatus.totalDays} 天</span>
             </div>
-            <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+            <div className="h-1.5 rounded-full bg-bg-default overflow-hidden">
               <div
-                className={"h-full rounded-full transition-all duration-500 " + (sessionStatus.running ? "bg-brand-400" : "bg-green-500")}
-                style={{ width: `${Math.round(sessionStatus.progress * 100)}%` }}
+                className={"h-full rounded-full transition-all duration-700 " + (sessionStatus.running ? "bg-brand-400" : "bg-green-500")}
+                style={{ width: `${sessionPct}%` }}
               />
             </div>
-          </>) : (
+          </>)}
+          {sessionStatus && sessionStatus.totalDays === 0 && (
             <div className="text-[11px] text-fg-muted">{t("indexing.sessionsDesc")}</div>
           )}
         </div>
 
-        {/* KB status */}
-        <div className="rounded-lg border border-border-subtle p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="font-medium text-[12px] text-fg-default flex items-center gap-1.5">
-              <FileText size={13} className="text-brand-400" />
-              {t("indexing.kb")}
-            </span>
-            <span className={"flex items-center gap-1.5 text-[10px] " + (running && hasPendingKb ? "text-brand-400" : "text-fg-fainter")}>
-              <span className={"inline-block w-1.5 h-1.5 rounded-full " + (running && hasPendingKb ? "bg-brand-400 animate-pulse" : "bg-fg-fainter")} />
-              {running && hasPendingKb ? t("indexing.scanning") : t("indexing.idle")}
+        {/* ② Knowledge base */}
+        <div className="rounded-xl bg-bg-raised/50 p-3.5 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-brand-500/10">
+              <FileText size={14} className="text-brand-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-medium text-fg-default">{t("indexing.kb")}</div>
+            </div>
+            <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
+              (running && hasPendingKb
+                ? "bg-brand-500/10 text-brand-400"
+                : (kbStatus?.pendingFiles ?? 0) > 0
+                  ? "bg-amber-500/10 text-amber-500"
+                  : "bg-green-500/10 text-green-500")}>
+              {running && hasPendingKb ? "扫描中" : (kbStatus?.pendingFiles ?? 0) > 0 ? `${kbStatus!.pendingFiles} 待扫` : "已完成"}
             </span>
           </div>
           {loading ? (
             <div className="text-[11px] text-fg-fainter">{t("indexing.loading")}</div>
-          ) : kbStatus ? (<>
-            <div className="flex gap-3 text-[11px]">
-              <span className="text-green-500">{kbStatus.indexedFiles} 已索引</span>
-              <span className="text-fg-muted">{kbStatus.totalFiles} 文件总计</span>
-              {kbStatus.pendingFiles > 0 && <span className="text-amber-500">{kbStatus.pendingFiles} 待索引</span>}
+          ) : kbStatus && kbStatus.totalFiles > 0 ? (<>
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-green-500 font-medium">{kbStatus.indexedFiles}</span>
+              <span className="text-fg-fainter">/</span>
+              <span className="text-fg-muted">{kbStatus.totalFiles} 文件</span>
             </div>
-            {kbStatus.totalFiles > 0 && (
-              <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
-                <div
-                  className="h-full bg-green-500 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.round((kbStatus.indexedFiles / kbStatus.totalFiles) * 100)}%` }}
-                />
-              </div>
-            )}
+            <div className="h-1.5 rounded-full bg-bg-default overflow-hidden">
+              <div
+                className="h-full bg-green-500 rounded-full transition-all duration-700"
+                style={{ width: `${kbStatus.totalFiles > 0 ? Math.round((kbStatus.indexedFiles / kbStatus.totalFiles) * 100) : 0}%` }}
+              />
+            </div>
             {kbStatus.lastScanAt && (
-              <div className="text-[10px] text-fg-fainter">
-                上次扫描: {new Date(kbStatus.lastScanAt).toLocaleString()}
-              </div>
+              <div className="text-[10px] text-fg-fainter">上次扫描 {new Date(kbStatus.lastScanAt).toLocaleString()}</div>
             )}
           </>) : (
             <div className="text-[11px] text-fg-muted">{t("indexing.kbPlaceholder")}</div>
           )}
         </div>
 
-        {/* Embedding / Semantic search status */}
-        <div className="rounded-lg border border-border-subtle p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="font-medium text-[12px] text-fg-default flex items-center gap-1.5">
-              <Sparkles size={13} className="text-brand-400" />
-              语义搜索
-            </span>
-            <span className={"flex items-center gap-1.5 text-[10px] " + (embStatus?.enabled ? "text-green-500" : "text-fg-fainter")}>
-              <span className={"inline-block w-1.5 h-1.5 rounded-full " + (embStatus?.enabled ? "bg-green-500" : "bg-fg-fainter")} />
+        {/* ③ Semantic search / Embedding */}
+        <div className="rounded-xl bg-bg-raised/50 p-3.5 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <div className={"flex items-center justify-center w-7 h-7 rounded-lg " +
+              (embStatus?.enabled ? "bg-brand-500/10" : "bg-bg-default")}>
+              <Sparkles size={14} className={embStatus?.enabled ? "text-brand-400" : "text-fg-fainter"} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-medium text-fg-default">语义搜索</div>
+            </div>
+            <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
+              (embStatus?.enabled ? "bg-green-500/10 text-green-500" : "bg-bg-default text-fg-fainter")}>
               {embStatus?.enabled ? "已启用" : "未配置"}
             </span>
           </div>
           {embStatus?.enabled ? (<>
-            <div className="flex gap-3 text-[11px]">
-              <span className="text-green-500">{embStatus.indexed} 已索引</span>
-              <span className="text-fg-muted">{embStatus.totalPages} 页面总计</span>
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-green-500 font-medium">{embStatus.indexed}</span>
+              <span className="text-fg-fainter">/</span>
+              <span className="text-fg-muted">{embStatus.totalPages} 页面</span>
               {embStatus.indexed < embStatus.totalPages && (
-                <span className="text-amber-500">{embStatus.totalPages - embStatus.indexed} 待索引</span>
+                <span className="text-amber-500 ml-1">{embStatus.totalPages - embStatus.indexed} 待索引</span>
               )}
             </div>
             {embStatus.totalPages > 0 && (
-              <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
-                <div
-                  className="h-full bg-green-500 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.round((embStatus.indexed / embStatus.totalPages) * 100)}%` }}
-                />
+              <div className="h-1.5 rounded-full bg-bg-default overflow-hidden">
+                <div className="h-full bg-green-500 rounded-full transition-all duration-700" style={{ width: `${embPct}%` }} />
               </div>
             )}
-            <div className="text-[10px] text-fg-fainter">模型: {embStatus.model}</div>
-            <button
-              onClick={() => {
-                setReindexing(true);
-                setReindexMsg(null);
-                fetch(`${API_BASE}/reindex`, { method: "POST", credentials: "include" })
-                  .then((r) => r.json())
-                  .then((body: { indexed?: number; total?: number; error?: string }) => {
-                    setReindexMsg(body.error
-                      ? `❌ ${body.error}`
-                      : `✅ 已索引 ${body.indexed ?? 0} / ${body.total ?? 0} 页面`);
-                    fetchStatus();
-                  })
-                  .catch((e: unknown) => setReindexMsg(`❌ ${e instanceof Error ? e.message : String(e)}`))
-                  .finally(() => setReindexing(false));
-              }}
-              disabled={reindexing}
-              className={
-                "w-full rounded-md px-3 py-1.5 text-[11px] font-medium transition-all " +
-                (reindexing
-                  ? "bg-brand-500/10 text-brand-400 cursor-wait"
-                  : "border border-border-subtle text-fg-muted hover:bg-bg-hover cursor-pointer")
-              }
-            >
-              {reindexing ? (
-                <span className="flex items-center justify-center gap-1.5">
-                  <RefreshCw size={12} className="animate-spin" />
-                  重建索引中…
-                </span>
-              ) : (
-                <span className="flex items-center justify-center gap-1.5">
-                  <RefreshCw size={12} />
-                  重建向量索引
-                </span>
-              )}
-            </button>
-            {reindexMsg && <div className="text-[11px] text-fg-muted">{reindexMsg}</div>}
-          </>) : (<>
+            <div className="text-[10px] text-fg-fainter">{embStatus.model}</div>
+          </>) : (
             <div className="text-[11px] text-fg-muted">
-              在设置 → 插件 → Wiki → 语义搜索中配置 Embedding 模型
+              在设置 → 插件 → Wiki 中配置 Embedding 模型
             </div>
-            <button
-              disabled
-              className="w-full rounded-md px-3 py-1.5 text-[11px] font-medium border border-border-subtle text-fg-fainter cursor-not-allowed opacity-50"
-            >
+          )}
+          {/* Reindex button — always visible */}
+          <button
+            onClick={() => {
+              if (!embStatus?.enabled) return;
+              setReindexing(true);
+              setReindexMsg(null);
+              fetch(`${API_BASE}/reindex`, { method: "POST", credentials: "include" })
+                .then((r) => r.json())
+                .then((body: { indexed?: number; total?: number; error?: string }) => {
+                  setReindexMsg(body.error
+                    ? `❌ ${body.error}`
+                    : `✅ ${body.indexed ?? 0}/${body.total ?? 0} 页面已索引`);
+                  fetchStatus();
+                })
+                .catch((e: unknown) => setReindexMsg(`❌ ${e instanceof Error ? e.message : String(e)}`))
+                .finally(() => setReindexing(false));
+            }}
+            disabled={reindexing || !embStatus?.enabled}
+            className={
+              "w-full rounded-lg px-3 py-2 text-[11px] font-medium transition-all " +
+              (!embStatus?.enabled
+                ? "bg-bg-default text-fg-fainter cursor-not-allowed"
+                : reindexing
+                  ? "bg-brand-500/10 text-brand-400 cursor-wait"
+                  : "bg-bg-default text-fg-muted hover:bg-bg-hover hover:text-fg-default cursor-pointer")
+            }
+          >
+            {reindexing ? (
+              <span className="flex items-center justify-center gap-1.5">
+                <RefreshCw size={12} className="animate-spin" />
+                重建中…
+              </span>
+            ) : (
               <span className="flex items-center justify-center gap-1.5">
                 <RefreshCw size={12} />
                 重建向量索引
               </span>
-            </button>
-          </>)}
+            )}
+          </button>
+          {reindexMsg && <div className="text-[10px] text-fg-muted text-center">{reindexMsg}</div>}
         </div>
       </div>
     </div>
