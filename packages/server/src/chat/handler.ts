@@ -910,6 +910,29 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       await harness.followUp("Continue from where you left off. Do not repeat what you already said.");
       await harness.waitForIdle();
     }
+
+    // Auto-recover from transient errors (abort, stalled).
+    // If the last assistant message has stopReason="error" or
+    // "aborted" AND the user's signal is NOT aborted (i.e. the
+    // user didn't press stop), retry the turn automatically.
+    let recoveryAttempts = 0;
+    const MAX_RECOVERY = 2;
+    while (recoveryAttempts < MAX_RECOVERY) {
+      const lastRow = lastAssistantRow as ChatMessage | null;
+      if (!lastRow) break;
+      try {
+        const parsed = JSON.parse(lastRow.content) as { stopReason?: string };
+        if (parsed.stopReason !== "error" && parsed.stopReason !== "aborted") break;
+      } catch { break; }
+      // Don't retry if user explicitly aborted
+      if (signal.aborted) break;
+      recoveryAttempts++;
+      console.log(`[handler] auto-recovery ${recoveryAttempts}/${MAX_RECOVERY} (stopReason=error/aborted, retrying)`);
+      // Brief delay before retry to let transient issues resolve
+      await new Promise((r) => setTimeout(r, 2000));
+      await harness.followUp("The previous attempt failed with a transient error. Please retry what you were doing.");
+      await harness.waitForIdle();
+    }
   } catch (err) {
     if (err instanceof HandledTurnAbort) {
       // Intentional, already-reported bail (pre-prompt over-window
