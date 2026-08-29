@@ -94,6 +94,42 @@ export function messageTimeSpan(db: TenantDbHandle, userId: string): { min: numb
   return { min: r?.min ?? 0, max: r?.max ?? 0 };
 }
 
+/** Count distinct days that have messages, and how many are before/after the cursor. */
+export function messageDayCounts(
+  db: TenantDbHandle,
+  userId: string,
+  cursorMs: number,
+): { totalDays: number; indexedDays: number; pendingDays: number } {
+  // Get all distinct dates (as YYYY-MM-DD) from messages
+  const rows = db
+    .prepare<[string, string], { d: string }>(
+      `SELECT DISTINCT date(m.created_at / 1000, 'unixepoch', 'localtime') AS d
+         FROM messages m
+         JOIN sessions s ON s.id = m.session_id
+        WHERE s.user_id = ?
+          AND (s.worker_role IS NULL OR s.worker_role <> ?)`,
+    )
+    .all(userId, WIKI_WORKER_ROLE);
+  const totalDays = rows.length;
+  // Count days whose latest message is before cursor
+  const indexedRows = db
+    .prepare<[string, string, number], { cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM (
+         SELECT date(m.created_at / 1000, 'unixepoch', 'localtime') AS d,
+                MAX(m.created_at) AS latest
+           FROM messages m
+           JOIN sessions s ON s.id = m.session_id
+          WHERE s.user_id = ?
+            AND (s.worker_role IS NULL OR s.worker_role <> ?)
+          GROUP BY d
+         HAVING latest <= ?
+       )`,
+    )
+    .get(userId, WIKI_WORKER_ROLE, cursorMs);
+  const indexedDays = indexedRows?.cnt ?? 0;
+  return { totalDays, indexedDays, pendingDays: Math.max(0, totalDays - indexedDays) };
+}
+
 /** Tasks whose created_at falls in [startMs, endMs], across the user's
  *  sessions — so a day's tasks are handed over with that day's
  *  messages. */

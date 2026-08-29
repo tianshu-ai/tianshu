@@ -71,6 +71,7 @@ import {
   parseResultFiles,
   listMessagesAfter,
   messageTimeSpan,
+  messageDayCounts,
   tasksInRange,
   localDay,
   WIKI_WORKER_ROLE,
@@ -978,17 +979,14 @@ function buildRoutes(
       const span = messageTimeSpan(ctx.db, userId);
       if (span.max > span.min) {
         progress = Math.max(0, Math.min(1, (cursor - span.min) / (span.max - span.min)));
-        // Count days: total span days vs indexed days
-        const msPerDay = 86400000;
-        totalDays = Math.ceil((span.max - span.min) / msPerDay);
-        indexedDays = cursor > span.min ? Math.floor((cursor - span.min) / msPerDay) : 0;
-        pendingDays = Math.max(0, totalDays - indexedDays);
       } else if (span.max > 0 && cursor >= span.max) {
         progress = 1;
-        totalDays = 1;
-        indexedDays = 1;
-        pendingDays = 0;
       }
+      // Count actual days with messages (not date-span approximation)
+      const dc = messageDayCounts(ctx.db, userId, cursor);
+      totalDays = dc.totalDays;
+      indexedDays = dc.indexedDays;
+      pendingDays = dc.pendingDays;
     } catch {
       /* best-effort */
     }
