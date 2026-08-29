@@ -6,7 +6,7 @@
 // GET /api/p/wiki/{list,read,search}. Refreshes on workspace changes.
 
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft, Sparkles, Clock } from "lucide-react";
+import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft, ChevronDown, Sparkles, Clock } from "lucide-react";
 
 // react-force-graph-2d pulls in the whole d3-force / canvas stack, so
 // load it lazily — it only ships in a separate chunk fetched when the
@@ -66,6 +66,11 @@ const SECTION_LABEL: Record<string, string> = {
   concepts: "Concepts",
   sources: "Sources",
 };
+/** Sections with many entries show this many initially; click "Show more" to expand. */
+const SECTION_PREVIEW_COUNT = 5;
+/** Journal sections that grow unbounded — default collapsed when > PREVIEW. */
+const JOURNAL_SECTIONS = new Set(["journal/daily", "journal/weekly", "journal/monthly", "journal/yearly"]);
+
 const SECTION_EMOJI: Record<string, string> = {
   knowledge: "📖",
   "journal/daily": "📅",
@@ -109,6 +114,10 @@ function WikiPanel(_props: PanelProps) {
   const [view, setView] = useState<"list" | "graph">("list");
   const [reindexing, setReindexing] = useState(false);
   const [reindexMsg, setReindexMsg] = useState<string | null>(null);
+  // Section collapse/expand state; journal sections default collapsed
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  // Per-section "show more" limit (starts at SECTION_PREVIEW_COUNT)
+  const [sectionLimits, setSectionLimits] = useState<Record<string, number>>({});
   // Semantic search
   const [searchMode, setSearchMode] = useState<"filter" | "semantic">("filter");
   const [searchResults, setSearchResults] = useState<Array<{ path: string; title: string; score?: number }> | null>(null);
@@ -494,18 +503,28 @@ function WikiPanel(_props: PanelProps) {
             </div>
           )}
           {/* Section groups (hide when showing semantic results) */}
-          {(searchResults === null || searchMode === "filter") && SECTION_ORDER.filter((s) => (grouped[s]?.length ?? 0) > 0).map((s) => (
+          {(searchResults === null || searchMode === "filter") && SECTION_ORDER.filter((s) => (grouped[s]?.length ?? 0) > 0).map((s) => {
+            const items = grouped[s]!;
+            const isCollapsed = collapsedSections[s] ?? false;
+            const limit = sectionLimits[s] ?? SECTION_PREVIEW_COUNT;
+            const visibleItems = isCollapsed ? [] : items.slice(0, limit);
+            const hiddenCount = isCollapsed ? items.length : Math.max(0, items.length - limit);
+            return (
             <div key={s} className="mb-1">
-              <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-fg-muted">
+              <button
+                onClick={() => setCollapsedSections((prev) => ({ ...prev, [s]: !isCollapsed }))}
+                className="flex w-full items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-fg-muted hover:text-fg-default transition-colors"
+              >
+                <ChevronDown size={12} className={"shrink-0 transition-transform " + (isCollapsed ? "-rotate-90" : "")} />
                 <span>{SECTION_EMOJI[s] ?? "\ud83d\udcc4"}</span>
                 <span>
                   {SECTION_LABEL_KEY[s] ? t(SECTION_LABEL_KEY[s]) : SECTION_LABEL[s] ?? s}
                 </span>
                 <span className="ml-auto rounded-full bg-bg-raised px-1.5 py-0.5 text-[9px] font-normal text-fg-fainter">
-                  {grouped[s]!.length}
+                  {items.length}
                 </span>
-              </div>
-              {grouped[s]!.map((p) => (
+              </button>
+              {visibleItems.map((p) => (
                 <button
                   key={p.path}
                   onClick={() => openPage(p.path)}
@@ -525,8 +544,17 @@ function WikiPanel(_props: PanelProps) {
                   <ChevronLeft size={12} className="shrink-0 rotate-180 text-fg-fainter opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
               ))}
+              {!isCollapsed && hiddenCount > 0 && (
+                <button
+                  onClick={() => setSectionLimits((prev) => ({ ...prev, [s]: limit + 20 }))}
+                  className="flex w-full items-center justify-center gap-1 rounded-md px-3 py-1.5 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default transition-colors"
+                >
+                  Show {hiddenCount} more
+                </button>
+              )}
             </div>
-          ))}
+            );
+          })}
           {!loading && pages.length === 0 && (
             <div className="px-3 py-8 text-center text-[11px] text-fg-fainter">
               {t("list.empty")}
