@@ -1,4 +1,87 @@
 {
   "name": "@tianshu-ai/tianshu",
-<<<<<<< HEAD
   "version": "0.25.0",
+  "description": "An open AI agent platform with a sidecar browser. Built in public.",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/tianshu-ai/tianshu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tianshu-ai/tianshu.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tianshu-ai/tianshu/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "tianshu": "./bin/tianshu.mjs"
+  },
+  "files": [
+    "bin/",
+    "packages/server/dist/",
+    "packages/server/package.json",
+    "packages/server/builtinConfig/",
+    "packages/web/dist/",
+    "packages/web/package.json",
+    "packages/plugin-sdk/dist/",
+    "packages/plugin-sdk/package.json",
+    "plugins/**/dist/**",
+    "plugins/**/package.json",
+    "plugins/**/manifest.json",
+    "plugins/**/skills/**",
+    "plugins/**/agent-seeds/**",
+    "plugins/**/templates/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "workspaces": [
+    "packages/plugin-sdk",
+    "packages/server",
+    "packages/web",
+    "plugins/*"
+  ],
+  "scripts": {
+    "dev": "npm run build -w packages/plugin-sdk && npm run build:plugins && npm run sync:plugins && node scripts/dev-builtins.mjs",
+    "build": "npm run build -w packages/plugin-sdk && npm run build:plugins && npm run sync:plugins && npm run build -w packages/server && npm run build -w packages/web",
+    "build:plugins": "node scripts/run-builtin-script.mjs build",
+    "test": "npm run test -w packages/plugin-sdk && npm run test:plugins && npm run sync:plugins && npm run test -w packages/server && npm run test -w packages/web",
+    "test:plugins": "node scripts/run-builtin-script.mjs test",
+    "typecheck": "tsc -p packages/plugin-sdk/tsconfig.json --noEmit && node scripts/typecheck-plugins.mjs && tsc -p packages/server/tsconfig.json --noEmit && tsc -p packages/web/tsconfig.json --noEmit",
+    "typecheck:plugins": "node scripts/typecheck-plugins.mjs",
+    "sync:plugins": "node scripts/sync-builtin-plugins.mjs",
+    "doctor": "node bin/tianshu.mjs doctor",
+    "setup": "node bin/tianshu.mjs setup",
+    "prepublishOnly": "npm run build",
+    "serve": "node bin/serve.mjs"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3",
+    "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.5.1",
+    "@earendil-works/pi-agent-core": "^0.82.1",
+    "@earendil-works/pi-ai": "^0.82.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@tianshu-ai/plugin-sdk": "*",
+    "better-sqlite3": "^12.10.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^5.1.0",
+    "fast-glob": "^3.3.3",
+    "sharp": "^0.35.1",
+    "sqlite-vec": "^0.1.9",
+    "vscode-jsonrpc": "^9.0.0",
+    "vscode-languageserver-protocol": "^3.18.0",
+    "vscode-languageserver-types": "^3.18.0",
+    "ws": "^8.18.0"
+  },
+  "bundleDependencies": [
+    "@tianshu-ai/plugin-sdk"
+  ]
+}
