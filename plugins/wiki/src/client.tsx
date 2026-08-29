@@ -746,7 +746,7 @@ function IndexingTab() {
 
   const triggerUpdate = () => {
     setRunning(true);
-    // Fire both in parallel
+    // Fire session record + KB scan + embedding reindex in parallel
     Promise.all([
       fetch(`${API_BASE}/record`, {
         method: "POST", credentials: "include",
@@ -754,6 +754,7 @@ function IndexingTab() {
         body: JSON.stringify({ sessionId: nav.viewingSessionId ?? null }),
       }).catch(() => null),
       fetch(`${API_BASE}/kb/scan`, { method: "POST", credentials: "include" }).catch(() => null),
+      fetch(`${API_BASE}/reindex`, { method: "POST", credentials: "include" }).catch(() => null),
     ]).then(() => {
       setTimeout(fetchStatus, 1500);
     });
