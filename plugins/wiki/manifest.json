@@ -187,6 +187,16 @@
         "method": "POST",
         "path": "/kb/scan",
         "handler": "kbScan"
+      },
+      {
+        "method": "GET",
+        "path": "/semantic-search",
+        "handler": "semantic-search"
+      },
+      {
+        "method": "GET",
+        "path": "/embedding-status",
+        "handler": "embedding-status"
       }
     ]
   }
