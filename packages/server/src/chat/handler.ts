@@ -595,6 +595,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     contextWindow: modelInfo.contextWindow,
     compactionSettings,
     broadcast: (event, payload) => send({ type: "plugin_event", event, payload } as ServerMsg),
+    listPanels: () => {
+      if (!pluginRegistry) return [];
+      const panels: Array<{ panelId: string; pluginId: string; displayName: string }> = [];
+      for (const entry of pluginRegistry.listForTenant(ctx.tenantId)) {
+        if (entry.state !== "active") continue;
+        const rp = entry.manifest.contributes?.rightPanels;
+        if (!rp) continue;
+        for (const panel of rp) {
+          panels.push({ panelId: panel.id, pluginId: entry.manifest.id, displayName: panel.displayName });
+        }
+      }
+      return panels;
+    },
   });
   const toolset = await buildToolset({
     pluginTools,

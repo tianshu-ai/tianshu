@@ -22,6 +22,8 @@ export interface HostToolsOpts {
   compactionSettings: CompactionSettings & { triggerPercent?: number };
   /** Callback to broadcast a WS event to the user. Used by switch_panel. */
   broadcast?: (event: string, payload: unknown) => void;
+  /** Returns available panel ids from active plugins. */
+  listPanels?: () => Array<{ panelId: string; pluginId: string; displayName: string }>;
 }
 
 /**
@@ -42,8 +44,8 @@ export function buildHostTools(opts: HostToolsOpts): Array<{ schema: Tool; execu
   // ref.piSession / ref.harness after harness creation.
   const ref: CompactToolRef = {};
   const tools: Array<{ schema: Tool; executor: ToolExecutor }> = [compactContextTool(opts, ref)];
-  if (opts.broadcast) {
-    tools.push(switchPanelTool(opts.broadcast));
+  if (opts.broadcast && opts.listPanels) {
+    tools.push(switchPanelTool(opts.broadcast, opts.listPanels));
   }
   // Attach ref to the array so the caller can grab it.
   (tools as unknown as { _compactRef: CompactToolRef })._compactRef = ref;
@@ -96,49 +98,62 @@ function compactContextTool(
 
 // ─── switch_panel ──────────────────────────────────────────────
 
-const KNOWN_PANELS: Record<string, string> = {
-  board: "board.main",
-  boards: "board.main",
-  tasks: "workboard.main",
-  workboard: "workboard.main",
-  kanban: "workboard.main",
-  wiki: "wiki.main",
-  cron: "cron.main",
-  scheduler: "cron.main",
-  files: "files.main",
-  browser: "microsandbox.browser",
-  sandbox: "microsandbox.browser",
-  bridge: "reverse-mcp.main",
-  wechat: "wechat.main",
-};
-
 function switchPanelTool(
   broadcast: (event: string, payload: unknown) => void,
+  listPanels: () => Array<{ panelId: string; pluginId: string; displayName: string }>,
 ): { schema: Tool; executor: ToolExecutor } {
   return {
     schema: {
       name: "switch_panel",
       description:
         "Switch the Tianshu UI right panel to a specific plugin tab. " +
-        "Available panels: board, tasks, wiki, cron, files, browser, bridge, wechat. " +
-        "Use 'close' to close the panel.",
+        "Pass a panel id (e.g. 'wiki.main', 'workboard.main') or a short name " +
+        "(e.g. 'wiki', 'tasks'). Use 'close' to close the panel. " +
+        "Call with panel='list' to see all available panels.",
       parameters: Type.Object({
         panel: Type.String({
           description:
-            "Panel name (board|tasks|wiki|cron|files|browser|bridge|wechat) or 'close' to hide the panel.",
+            "Panel id, short name, 'list' to list available panels, or 'close' to hide.",
         }),
       }),
     },
     executor: (args: unknown) => {
       const { panel } = args as { panel: string };
       const key = panel.toLowerCase().trim();
+
+      if (key === "list") {
+        const panels = listPanels();
+        if (panels.length === 0) return { ok: true, message: "No panels available." };
+        const list = panels.map((p) => `- ${p.panelId} (${p.displayName})`).join("\n");
+        return { ok: true, message: `Available panels:\n${list}` };
+      }
+
       if (key === "close" || key === "none" || key === "hide") {
         broadcast("ui:switch_panel", { panelId: null });
         return { ok: true, message: "Panel closed." };
       }
-      const panelId = KNOWN_PANELS[key] ?? key;
-      broadcast("ui:switch_panel", { panelId });
-      return { ok: true, message: `Switched to ${panelId}.` };
+
+      // Try exact match first, then fuzzy match by short name
+      const panels = listPanels();
+      const exact = panels.find((p) => p.panelId === key);
+      if (exact) {
+        broadcast("ui:switch_panel", { panelId: exact.panelId });
+        return { ok: true, message: `Switched to ${exact.displayName} (${exact.panelId}).` };
+      }
+      // Match by plugin id prefix or display name
+      const fuzzy = panels.find((p) =>
+        p.pluginId === key ||
+        p.displayName.toLowerCase().includes(key) ||
+        p.panelId.startsWith(key + ".")
+      );
+      if (fuzzy) {
+        broadcast("ui:switch_panel", { panelId: fuzzy.panelId });
+        return { ok: true, message: `Switched to ${fuzzy.displayName} (${fuzzy.panelId}).` };
+      }
+
+      // Fallback: try as-is (might be a custom panel id)
+      broadcast("ui:switch_panel", { panelId: key });
+      return { ok: true, message: `Switched to ${key} (unrecognized — sent as-is).` };
     },
   };
 }
