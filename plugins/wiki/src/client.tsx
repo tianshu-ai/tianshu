@@ -907,6 +907,36 @@ function IndexingTab() {
             <div className="flex-1 min-w-0">
               <div className="text-[12px] font-medium text-fg-default">语义搜索</div>
             </div>
+            {/* Reindex action — inline in header */}
+            <button
+              onClick={() => {
+                if (!embStatus?.enabled) return;
+                setReindexing(true);
+                setReindexMsg(null);
+                fetch(`${API_BASE}/reindex`, { method: "POST", credentials: "include" })
+                  .then((r) => r.json())
+                  .then((body: { indexed?: number; total?: number; error?: string }) => {
+                    setReindexMsg(body.error
+                      ? `❌ ${body.error}`
+                      : `✅ ${body.indexed ?? 0}/${body.total ?? 0} 已索引`);
+                    fetchStatus();
+                  })
+                  .catch((e: unknown) => setReindexMsg(`❌ ${e instanceof Error ? e.message : String(e)}`))
+                  .finally(() => setReindexing(false));
+              }}
+              disabled={reindexing || !embStatus?.enabled}
+              className={
+                "inline-flex items-center gap-1 text-[10px] transition-colors " +
+                (!embStatus?.enabled
+                  ? "text-fg-fainter cursor-not-allowed"
+                  : reindexing
+                    ? "text-brand-400 cursor-wait"
+                    : "text-fg-muted hover:text-fg-default cursor-pointer")
+              }
+            >
+              <RefreshCw size={10} className={reindexing ? "animate-spin" : ""} />
+              {reindexing ? "重建中" : "重建"}
+            </button>
             <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
               (embStatus?.enabled ? "bg-green-500/10 text-green-500" : "bg-bg-default text-fg-fainter")}>
               {embStatus?.enabled ? "已启用" : "未配置"}
@@ -932,36 +962,6 @@ function IndexingTab() {
               在设置 → 插件 → Wiki 中配置 Embedding 模型
             </div>
           )}
-          {/* Reindex button — always visible */}
-          <button
-            onClick={() => {
-              if (!embStatus?.enabled) return;
-              setReindexing(true);
-              setReindexMsg(null);
-              fetch(`${API_BASE}/reindex`, { method: "POST", credentials: "include" })
-                .then((r) => r.json())
-                .then((body: { indexed?: number; total?: number; error?: string }) => {
-                  setReindexMsg(body.error
-                    ? `❌ ${body.error}`
-                    : `✅ ${body.indexed ?? 0}/${body.total ?? 0} 页面已索引`);
-                  fetchStatus();
-                })
-                .catch((e: unknown) => setReindexMsg(`❌ ${e instanceof Error ? e.message : String(e)}`))
-                .finally(() => setReindexing(false));
-            }}
-            disabled={reindexing || !embStatus?.enabled}
-            className={
-              "inline-flex items-center gap-1 text-[10px] transition-colors " +
-              (!embStatus?.enabled
-                ? "text-fg-fainter cursor-not-allowed"
-                : reindexing
-                  ? "text-brand-400 cursor-wait"
-                  : "text-fg-muted hover:text-fg-default cursor-pointer")
-            }
-          >
-            <RefreshCw size={10} className={reindexing ? "animate-spin" : ""} />
-            {reindexing ? "重建中…" : "重建向量索引"}
-          </button>
           {reindexMsg && <div className="text-[10px] text-fg-muted">{reindexMsg}</div>}
         </div>
       </div>
