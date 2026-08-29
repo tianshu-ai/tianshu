@@ -798,10 +798,10 @@ function IndexingTab() {
           onClick={triggerUpdate}
           disabled={running || !isIdle}
           className={
-            "shrink-0 rounded-lg px-4 py-2 text-[12px] font-medium transition-all " +
+            "shrink-0 rounded-lg px-3.5 py-1.5 text-[11px] font-medium transition-all border " +
             (running
-              ? "bg-bg-raised text-brand-400 cursor-wait"
-              : "bg-brand-500 text-white hover:bg-brand-600 shadow-sm")
+              ? "border-brand-500/30 bg-brand-500/5 text-brand-400 cursor-wait"
+              : "border-border-subtle text-fg-muted hover:text-fg-default hover:bg-bg-hover")
           }
         >
           {running ? (
@@ -951,27 +951,18 @@ function IndexingTab() {
             }}
             disabled={reindexing || !embStatus?.enabled}
             className={
-              "w-full rounded-lg px-3 py-2 text-[11px] font-medium transition-all " +
+              "inline-flex items-center gap-1 text-[10px] transition-colors " +
               (!embStatus?.enabled
-                ? "bg-bg-default text-fg-fainter cursor-not-allowed"
+                ? "text-fg-fainter cursor-not-allowed"
                 : reindexing
-                  ? "bg-brand-500/10 text-brand-400 cursor-wait"
-                  : "bg-bg-default text-fg-muted hover:bg-bg-hover hover:text-fg-default cursor-pointer")
+                  ? "text-brand-400 cursor-wait"
+                  : "text-fg-muted hover:text-fg-default cursor-pointer")
             }
           >
-            {reindexing ? (
-              <span className="flex items-center justify-center gap-1.5">
-                <RefreshCw size={12} className="animate-spin" />
-                重建中…
-              </span>
-            ) : (
-              <span className="flex items-center justify-center gap-1.5">
-                <RefreshCw size={12} />
-                重建向量索引
-              </span>
-            )}
+            <RefreshCw size={10} className={reindexing ? "animate-spin" : ""} />
+            {reindexing ? "重建中…" : "重建向量索引"}
           </button>
-          {reindexMsg && <div className="text-[10px] text-fg-muted text-center">{reindexMsg}</div>}
+          {reindexMsg && <div className="text-[10px] text-fg-muted">{reindexMsg}</div>}
         </div>
       </div>
     </div>
