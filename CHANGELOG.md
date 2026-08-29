@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.25.4](https://github.com/tianshu-ai/tianshu/compare/v0.25.3...v0.25.4) (2026-08-29)
+
+
+### Bug Fixes
+
+* repair .release-please-manifest.json (escaped quotes) ([c8e99b0](https://github.com/tianshu-ai/tianshu/commit/c8e99b0539162e6e84a53db80fa16485b06e881d))
+
 ## [0.25.2](https://github.com/tianshu-ai/tianshu/compare/v0.25.1...v0.25.2) (2026-08-29)
 
 
