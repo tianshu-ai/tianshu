@@ -789,156 +789,145 @@ function IndexingTab() {
         )}
       </button>
 
-      {/* Status cards */}
+      {/* Status cards — unified layout: header(icon+title+status) → stats → progress → footer */}
       <div className="mt-4 space-y-2">
         {/* Session record status */}
-        <div className="rounded-lg border border-border-subtle p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-medium text-fg-default flex items-center gap-1.5">
-              <Notebook size={12} />
+        <div className="rounded-lg border border-border-subtle p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-[12px] text-fg-default flex items-center gap-1.5">
+              <Notebook size={13} className="text-brand-400" />
               {t("indexing.sessions")}
             </span>
-            <span className={"flex items-center gap-1 " + (sessionStatus?.running ? "text-brand-400" : "text-fg-fainter")}>
+            <span className={"flex items-center gap-1.5 text-[10px] " + (sessionStatus?.running ? "text-brand-400" : "text-fg-fainter")}>
               <span className={"inline-block w-1.5 h-1.5 rounded-full " + (sessionStatus?.running ? "bg-brand-400 animate-pulse" : "bg-fg-fainter")} />
               {sessionStatus?.running ? t("indexing.recording") : t("indexing.idle")}
             </span>
           </div>
-          {/* Day counts */}
-          {sessionStatus && sessionStatus.totalDays > 0 && (
-            <div className="mt-1.5 space-y-1.5">
-              <div className="flex gap-3 text-fg-muted">
-                <span className="text-green-500">{sessionStatus.indexedDays} 天已索引</span>
-                <span>{sessionStatus.totalDays} 天总计</span>
-                {sessionStatus.pendingDays > 0 && (
-                  <span className="text-amber-500">{sessionStatus.pendingDays} 天待索引</span>
-                )}
-              </div>
-              {/* Progress bar */}
-              <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
-                <div
-                  className={"h-full rounded-full transition-all duration-500 " + (sessionStatus.running ? "bg-brand-400" : "bg-green-500")}
-                  style={{ width: `${Math.round(sessionStatus.progress * 100)}%` }}
-                />
-              </div>
+          {sessionStatus && sessionStatus.totalDays > 0 ? (<>
+            <div className="flex gap-3 text-[11px]">
+              <span className="text-green-500">{sessionStatus.indexedDays} 天已索引</span>
+              <span className="text-fg-muted">{sessionStatus.totalDays} 天总计</span>
+              {sessionStatus.pendingDays > 0 && (
+                <span className="text-amber-500">{sessionStatus.pendingDays} 天待索引</span>
+              )}
             </div>
-          )}
-          {sessionStatus && sessionStatus.totalDays === 0 && (
-            <div className="text-fg-muted mt-1">
-              {t("indexing.sessionsDesc")}
+            <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+              <div
+                className={"h-full rounded-full transition-all duration-500 " + (sessionStatus.running ? "bg-brand-400" : "bg-green-500")}
+                style={{ width: `${Math.round(sessionStatus.progress * 100)}%` }}
+              />
             </div>
+          </>) : (
+            <div className="text-[11px] text-fg-muted">{t("indexing.sessionsDesc")}</div>
           )}
         </div>
 
         {/* KB status */}
-        <div className="rounded-lg border border-border-subtle p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-medium text-fg-default flex items-center gap-1.5">
-              <FileText size={12} />
+        <div className="rounded-lg border border-border-subtle p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-[12px] text-fg-default flex items-center gap-1.5">
+              <FileText size={13} className="text-brand-400" />
               {t("indexing.kb")}
             </span>
-            <span className={"flex items-center gap-1 " + (running && hasPendingKb ? "text-brand-400" : "text-fg-fainter")}>
+            <span className={"flex items-center gap-1.5 text-[10px] " + (running && hasPendingKb ? "text-brand-400" : "text-fg-fainter")}>
               <span className={"inline-block w-1.5 h-1.5 rounded-full " + (running && hasPendingKb ? "bg-brand-400 animate-pulse" : "bg-fg-fainter")} />
               {running && hasPendingKb ? t("indexing.scanning") : t("indexing.idle")}
             </span>
           </div>
           {loading ? (
-            <div className="text-fg-fainter">{t("indexing.loading")}</div>
-          ) : kbStatus ? (
-            <div className="mt-1 space-y-0.5">
-              <div className="flex gap-3 text-fg-muted">
-                <span>{kbStatus.totalFiles} files</span>
-                <span className="text-green-500">{kbStatus.indexedFiles} indexed</span>
-                {kbStatus.pendingFiles > 0 && <span className="text-amber-500">{kbStatus.pendingFiles} pending</span>}
+            <div className="text-[11px] text-fg-fainter">{t("indexing.loading")}</div>
+          ) : kbStatus ? (<>
+            <div className="flex gap-3 text-[11px]">
+              <span className="text-green-500">{kbStatus.indexedFiles} 已索引</span>
+              <span className="text-fg-muted">{kbStatus.totalFiles} 文件总计</span>
+              {kbStatus.pendingFiles > 0 && <span className="text-amber-500">{kbStatus.pendingFiles} 待索引</span>}
+            </div>
+            {kbStatus.totalFiles > 0 && (
+              <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.round((kbStatus.indexedFiles / kbStatus.totalFiles) * 100)}%` }}
+                />
               </div>
-              {kbStatus.lastScanAt && (
-                <div className="text-fg-fainter">
-                  Last: {new Date(kbStatus.lastScanAt).toLocaleString()}
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="text-fg-muted mt-1">
-              {t("indexing.kbPlaceholder")}
-            </div>
+            )}
+            {kbStatus.lastScanAt && (
+              <div className="text-[10px] text-fg-fainter">
+                上次扫描: {new Date(kbStatus.lastScanAt).toLocaleString()}
+              </div>
+            )}
+          </>) : (
+            <div className="text-[11px] text-fg-muted">{t("indexing.kbPlaceholder")}</div>
           )}
         </div>
 
         {/* Embedding / Semantic search status */}
-        <div className="rounded-lg border border-border-subtle p-3">
-          <div className="flex items-center justify-between mb-1">
-            <span className="font-medium text-fg-default flex items-center gap-1.5">
-              <Sparkles size={12} />
+        <div className="rounded-lg border border-border-subtle p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-[12px] text-fg-default flex items-center gap-1.5">
+              <Sparkles size={13} className="text-brand-400" />
               语义搜索
             </span>
-            <span className={"flex items-center gap-1 " + (embStatus?.enabled ? "text-green-500" : "text-fg-fainter")}>
+            <span className={"flex items-center gap-1.5 text-[10px] " + (embStatus?.enabled ? "text-green-500" : "text-fg-fainter")}>
               <span className={"inline-block w-1.5 h-1.5 rounded-full " + (embStatus?.enabled ? "bg-green-500" : "bg-fg-fainter")} />
               {embStatus?.enabled ? "已启用" : "未配置"}
             </span>
           </div>
-          {embStatus?.enabled ? (
-            <div className="mt-1 space-y-1.5">
-              <div className="flex gap-3 text-fg-muted">
-                <span>模型: {embStatus.model}</span>
-              </div>
-              <div className="flex gap-3 text-fg-muted">
-                <span className="text-green-500">{embStatus.indexed} 已索引</span>
-                <span>{embStatus.totalPages} 总页面</span>
-                {embStatus.indexed < embStatus.totalPages && (
-                  <span className="text-amber-500">{embStatus.totalPages - embStatus.indexed} 待索引</span>
-                )}
-              </div>
-              {/* Progress bar */}
-              {embStatus.totalPages > 0 && (
-                <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
-                  <div
-                    className="h-full bg-green-500 rounded-full transition-all duration-500"
-                    style={{ width: `${Math.round((embStatus.indexed / embStatus.totalPages) * 100)}%` }}
-                  />
-                </div>
-              )}
-              {/* Reindex button */}
-              <button
-                onClick={() => {
-                  setReindexing(true);
-                  setReindexMsg(null);
-                  fetch(`${API_BASE}/reindex`, { method: "POST", credentials: "include" })
-                    .then((r) => r.json())
-                    .then((body: { indexed?: number; total?: number; error?: string }) => {
-                      setReindexMsg(body.error
-                        ? `❌ ${body.error}`
-                        : `✅ 已索引 ${body.indexed ?? 0} / ${body.total ?? 0} 页面`);
-                      fetchStatus();
-                    })
-                    .catch((e: unknown) => setReindexMsg(`❌ ${e instanceof Error ? e.message : String(e)}`))
-                    .finally(() => setReindexing(false));
-                }}
-                disabled={reindexing}
-                className={
-                  "w-full rounded-md px-3 py-1.5 text-[11px] font-medium transition-all " +
-                  (reindexing
-                    ? "bg-brand-500/10 text-brand-400 cursor-wait"
-                    : "border border-border-subtle text-fg-muted hover:bg-bg-hover cursor-pointer")
-                }
-              >
-                {reindexing ? (
-                  <span className="flex items-center justify-center gap-1.5">
-                    <RefreshCw size={12} className="animate-spin" />
-                    重建索引中…
-                  </span>
-                ) : (
-                  <span className="flex items-center justify-center gap-1.5">
-                    <RefreshCw size={12} />
-                    重建向量索引
-                  </span>
-                )}
-              </button>
-              {reindexMsg && (
-                <div className="text-[11px] text-fg-muted">{reindexMsg}</div>
+          {embStatus?.enabled ? (<>
+            <div className="flex gap-3 text-[11px]">
+              <span className="text-green-500">{embStatus.indexed} 已索引</span>
+              <span className="text-fg-muted">{embStatus.totalPages} 页面总计</span>
+              {embStatus.indexed < embStatus.totalPages && (
+                <span className="text-amber-500">{embStatus.totalPages - embStatus.indexed} 待索引</span>
               )}
             </div>
-          ) : (
-            <div className="text-fg-muted mt-1">
-              在设置 → 插件 → Wiki → 语义搜索中配置 Embedding 模型以启用向量搜索
+            {embStatus.totalPages > 0 && (
+              <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+                <div
+                  className="h-full bg-green-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.round((embStatus.indexed / embStatus.totalPages) * 100)}%` }}
+                />
+              </div>
+            )}
+            <div className="text-[10px] text-fg-fainter">模型: {embStatus.model}</div>
+            <button
+              onClick={() => {
+                setReindexing(true);
+                setReindexMsg(null);
+                fetch(`${API_BASE}/reindex`, { method: "POST", credentials: "include" })
+                  .then((r) => r.json())
+                  .then((body: { indexed?: number; total?: number; error?: string }) => {
+                    setReindexMsg(body.error
+                      ? `❌ ${body.error}`
+                      : `✅ 已索引 ${body.indexed ?? 0} / ${body.total ?? 0} 页面`);
+                    fetchStatus();
+                  })
+                  .catch((e: unknown) => setReindexMsg(`❌ ${e instanceof Error ? e.message : String(e)}`))
+                  .finally(() => setReindexing(false));
+              }}
+              disabled={reindexing}
+              className={
+                "w-full rounded-md px-3 py-1.5 text-[11px] font-medium transition-all " +
+                (reindexing
+                  ? "bg-brand-500/10 text-brand-400 cursor-wait"
+                  : "border border-border-subtle text-fg-muted hover:bg-bg-hover cursor-pointer")
+              }
+            >
+              {reindexing ? (
+                <span className="flex items-center justify-center gap-1.5">
+                  <RefreshCw size={12} className="animate-spin" />
+                  重建索引中…
+                </span>
+              ) : (
+                <span className="flex items-center justify-center gap-1.5">
+                  <RefreshCw size={12} />
+                  重建向量索引
+                </span>
+              )}
+            </button>
+            {reindexMsg && <div className="text-[11px] text-fg-muted">{reindexMsg}</div>}
+          </>) : (
+            <div className="text-[11px] text-fg-muted">
+              在设置 → 插件 → Wiki → 语义搜索中配置 Embedding 模型
             </div>
           )}
         </div>
