@@ -370,7 +370,15 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
   });
 
   socket.on("close", () => {
-    aborter?.abort();
+    // Do NOT abort the in-flight turn on socket close. The agent
+    // may be mid-tool-call (writing files, querying DB) and aborting
+    // would lose progress. Let the turn finish naturally — results
+    // are persisted to the session and visible when the user
+    // reconnects. The `send` function below is already guarded
+    // against closed sockets (ws.readyState check).
+    //
+    // Only null out the aborter so the NEXT prompt from a new
+    // socket gets a fresh controller.
     aborter = null;
     unregisterUserChannel();
 
