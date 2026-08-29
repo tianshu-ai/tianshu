@@ -1207,7 +1207,47 @@ function buildRoutes(
     res.json({ ok: true, message: `Scan started: ${scan.pending.length} files to process (one at a time).` });
   };
 
-  return { list, read, search, status, record, reset, graph, reindex, kbStatus, kbScan };
+  // Semantic search endpoint for the browse panel
+  const semanticSearchRoute: PluginRouteHandler = async (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return void res.status(401).json({ error: "no user context" });
+    const q = String(req.query.q ?? "");
+    const limit = Math.min(20, Math.max(1, Number(req.query.limit) || 10));
+    if (!q) return void res.json({ hits: [] });
+    try {
+      const index = new WikiIndex(ctx.db, userId);
+      const result = await semanticSearch(index, cfg, q, limit, 0.15);
+      if (result.status === "disabled") {
+        // Fallback to keyword search
+        return void res.json({ hits: searchPages(ctx.userHomeDir(userId), q, limit), mode: "keyword" });
+      }
+      if (result.status === "error" || result.status === "empty") {
+        return void res.json({ hits: searchPages(ctx.userHomeDir(userId), q, limit), mode: "keyword" });
+      }
+      const home = ctx.userHomeDir(userId);
+      const hits = result.hits!.map((h) => {
+        // h.path is like "topics/ai-news-board" or "journal/daily/2026-08-29"
+        const parts = h.path.split("/");
+        const slug = parts[parts.length - 1] ?? "";
+        const section = parts.slice(0, -1).join("/");
+        // Try to get title from frontmatter
+        let title = slug;
+        try {
+          const md = readPage(home, section, slug);
+          if (md) {
+            const m = md.match(/^---[\s\S]*?^title:\s*(.+)$/m);
+            if (m) title = m[1]!.trim().replace(/^"|"$/g, "");
+          }
+        } catch { /* ok */ }
+        return { path: h.path, section, slug, title, score: h.score };
+      });
+      res.json({ hits, mode: "semantic" });
+    } catch {
+      res.json({ hits: searchPages(ctx.userHomeDir(userId), q, limit), mode: "keyword" });
+    }
+  };
+
+  return { list, read, search, "semantic-search": semanticSearchRoute, status, record, reset, graph, reindex, kbStatus, kbScan };
 }
 
 // ─── wiki.ingest capability (host compaction hook calls this) ────

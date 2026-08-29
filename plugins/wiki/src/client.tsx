@@ -6,7 +6,7 @@
 // GET /api/p/wiki/{list,read,search}. Refreshes on workspace changes.
 
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft } from "lucide-react";
+import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft, Sparkles, Clock } from "lucide-react";
 
 // react-force-graph-2d pulls in the whole d3-force / canvas stack, so
 // load it lazily — it only ships in a separate chunk fetched when the
@@ -109,6 +109,11 @@ function WikiPanel(_props: PanelProps) {
   const [view, setView] = useState<"list" | "graph">("list");
   const [reindexing, setReindexing] = useState(false);
   const [reindexMsg, setReindexMsg] = useState<string | null>(null);
+  // Semantic search
+  const [searchMode, setSearchMode] = useState<"filter" | "semantic">("filter");
+  const [searchResults, setSearchResults] = useState<Array<{ path: string; title: string; score?: number }> | null>(null);
+  const [searching, setSearching] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const rebuildIndex = useCallback(() => {
     setReindexing(true);
@@ -139,6 +144,18 @@ function WikiPanel(_props: PanelProps) {
         setTimeout(() => setReindexMsg(null), 6000);
       });
   }, [t]);
+
+  const runSemanticSearch = useCallback((q: string) => {
+    if (!q.trim()) { setSearchResults(null); return; }
+    setSearching(true);
+    fetch(`${API_BASE}/semantic-search?q=${encodeURIComponent(q)}&limit=10`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
+      .then((res: { hits: Array<{ path: string; title: string; score?: number }>; mode?: string }) => {
+        setSearchResults(res.hits ?? []);
+      })
+      .catch(() => setSearchResults([]))
+      .finally(() => setSearching(false));
+  }, []);
 
   const fetchList = useCallback(() => {
     fetch(`${API_BASE}/list`, { credentials: "include" })
@@ -178,7 +195,7 @@ function WikiPanel(_props: PanelProps) {
   }, [t]);
 
   const grouped = useMemo(() => {
-    const q = filter.trim().toLowerCase();
+    const q = searchMode === "filter" ? filter.trim().toLowerCase() : "";
     let shown = q
       ? pages.filter((p) => p.title.toLowerCase().includes(q) || p.path.toLowerCase().includes(q))
       : pages;
@@ -192,7 +209,16 @@ function WikiPanel(_props: PanelProps) {
     for (const p of shown) (by[p.section] ??= []).push(p);
     for (const k of Object.keys(by)) by[k]!.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
     return by;
-  }, [pages, filter, sourceFilter]);
+  }, [pages, filter, sourceFilter, searchMode]);
+
+  // Recently updated pages (top 5, across all sections)
+  const recentPages = useMemo(() => {
+    if (filter.trim() || searchMode === "semantic") return []; // hide when searching
+    return [...pages]
+      .filter((p) => p.updatedAt)
+      .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""))
+      .slice(0, 5);
+  }, [pages, filter, searchMode]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden text-fg-default">
@@ -218,14 +244,52 @@ function WikiPanel(_props: PanelProps) {
       {/* Search bar — full width, clean */}
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
         <div className="relative flex-1">
-          <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint" />
+          {searchMode === "semantic" ? (
+            <Sparkles size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-brand-400" />
+          ) : (
+            <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint" />
+          )}
           <input
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            placeholder={t("panel.filterPlaceholder")}
+            onChange={(e) => {
+              setFilter(e.target.value);
+              if (searchMode === "semantic") {
+                // Debounce semantic search
+                if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+                const q = e.target.value;
+                if (!q.trim()) { setSearchResults(null); return; }
+                searchTimerRef.current = setTimeout(() => runSemanticSearch(q), 400);
+              } else {
+                setSearchResults(null);
+              }
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && searchMode === "semantic" && filter.trim()) {
+                if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+                runSemanticSearch(filter);
+              }
+            }}
+            placeholder={searchMode === "semantic" ? (t("panel.semanticPlaceholder") || "Semantic search…") : t("panel.filterPlaceholder")}
             className="w-full rounded-md bg-bg-raised pl-7 pr-2 py-1.5 text-xs text-fg-muted placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-brand-400/40"
           />
         </div>
+        <button
+          onClick={() => {
+            const next = searchMode === "filter" ? "semantic" : "filter";
+            setSearchMode(next);
+            setSearchResults(null);
+            if (next === "semantic" && filter.trim()) runSemanticSearch(filter);
+          }}
+          title={searchMode === "semantic" ? "Switch to filter" : "Switch to semantic search"}
+          className={
+            "rounded-md p-1.5 transition-colors " +
+            (searchMode === "semantic"
+              ? "text-brand-400 bg-brand-500/10"
+              : "text-fg-faint hover:text-fg-default hover:bg-bg-hover")
+          }
+        >
+          <Sparkles size={14} />
+        </button>
         <button
           onClick={() => setView(view === "graph" ? "list" : "graph")}
           title={view === "graph" ? t("panel.listView") : t("panel.graphView")}
@@ -375,7 +439,62 @@ function WikiPanel(_props: PanelProps) {
       ) : (
         /* ─── Page list (full-width) ─── */
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
-          {SECTION_ORDER.filter((s) => (grouped[s]?.length ?? 0) > 0).map((s) => (
+          {/* Semantic search results */}
+          {searchMode === "semantic" && searchResults !== null && (
+            <div className="mb-2">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-fg-muted">
+                <Sparkles size={12} className="text-brand-400" />
+                <span>{searching ? "Searching…" : `${searchResults.length} result${searchResults.length !== 1 ? "s" : ""}`}</span>
+              </div>
+              {searchResults.map((h) => (
+                <button
+                  key={h.path}
+                  onClick={() => openPage(h.path)}
+                  className="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-bg-hover"
+                >
+                  <FileText size={14} className="shrink-0 text-fg-fainter group-hover:text-fg-muted" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] leading-snug text-fg-muted group-hover:text-fg-default">
+                      {h.title}
+                    </div>
+                    {h.score != null && (
+                      <div className="text-[10px] text-fg-fainter">
+                        relevance {Math.round(h.score * 100)}%
+                      </div>
+                    )}
+                  </div>
+                  <ChevronLeft size={12} className="shrink-0 rotate-180 text-fg-fainter opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+              ))}
+              {searchResults.length === 0 && !searching && (
+                <div className="px-3 py-4 text-center text-[11px] text-fg-fainter">No results</div>
+              )}
+            </div>
+          )}
+          {/* Recently updated (only when not searching) */}
+          {recentPages.length > 0 && searchResults === null && (
+            <div className="mb-1">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-fg-muted">
+                <Clock size={12} />
+                <span>Recently Updated</span>
+              </div>
+              {recentPages.map((p) => (
+                <button
+                  key={`recent-${p.path}`}
+                  onClick={() => openPage(p.path)}
+                  className="group flex w-full items-center gap-3 rounded-md px-3 py-1.5 text-left transition-colors hover:bg-bg-hover"
+                >
+                  <FileText size={14} className="shrink-0 text-fg-fainter group-hover:text-fg-muted" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[12px] leading-snug text-fg-muted group-hover:text-fg-default">{p.title}</div>
+                    <div className="text-[10px] text-fg-fainter">{p.updatedAt ? formatRelativeDate(p.updatedAt) : ""}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          {/* Section groups (hide when showing semantic results) */}
+          {(searchResults === null || searchMode === "filter") && SECTION_ORDER.filter((s) => (grouped[s]?.length ?? 0) > 0).map((s) => (
             <div key={s} className="mb-1">
               <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-fg-muted">
                 <span>{SECTION_EMOJI[s] ?? "\ud83d\udcc4"}</span>
