@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.26.0](https://github.com/tianshu-ai/tianshu/compare/v0.25.4...v0.26.0) (2026-08-29)
+
+
+### Features
+
+* **host-tools:** add switch_panel tool for agent UI control ([8bfc9ba](https://github.com/tianshu-ai/tianshu/commit/8bfc9bacfe255addbb4217b66b8305381381a989))
+
+
+### Refactor
+
+* **switch_panel:** dynamic panel discovery from plugin registry ([a6b6d9c](https://github.com/tianshu-ai/tianshu/commit/a6b6d9c3126a89077d0f9ef686363b5322ce3401))
+
 ## [0.25.4](https://github.com/tianshu-ai/tianshu/compare/v0.25.3...v0.25.4) (2026-08-29)
 
 
