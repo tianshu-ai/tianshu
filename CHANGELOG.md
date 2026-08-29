@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.25.2](https://github.com/tianshu-ai/tianshu/compare/v0.25.1...v0.25.2) (2026-08-29)
+
+
+### Bug Fixes
+
+* **session-inbox:** don't fall through to idle-runner when harness is active ([7d19fd2](https://github.com/tianshu-ai/tianshu/commit/7d19fd277251a9a4bd9b25bdd2f908ab6e8055d1))
+
 ## [0.25.1](https://github.com/tianshu-ai/tianshu/compare/v0.25.0...v0.25.1) (2026-08-29)
 
 
