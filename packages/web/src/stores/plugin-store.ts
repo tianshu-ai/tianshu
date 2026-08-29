@@ -41,6 +41,12 @@ export const usePluginStore = create<PluginState>((set, get) => ({
     } catch (err) {
       set({ error: err instanceof Error ? err.message : String(err) });
     }
+    // Restore persisted panel selection
+    try {
+      const r = await fetch("/api/preferences/ui.openPanel", { credentials: "include" });
+      const j = await r.json() as { value?: string | null };
+      if (j.value) set({ openPanel: j.value });
+    } catch { /* ignore */ }
   },
 
   async refresh() {
@@ -74,5 +80,12 @@ export const usePluginStore = create<PluginState>((set, get) => ({
 
   setOpenPanel(id) {
     set({ openPanel: id });
+    // Persist to server
+    fetch("/api/preferences/ui.openPanel", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value: id }),
+    }).catch(() => {});
   },
 }));
