@@ -56,7 +56,7 @@ const SECTION_ORDER = [
   "sources",
 ];
 const SECTION_LABEL: Record<string, string> = {
-  knowledge: "knowledge",
+  knowledge: "Knowledge",
   "journal/daily": "Daily",
   "journal/weekly": "Weekly",
   "journal/monthly": "Monthly",
@@ -66,6 +66,32 @@ const SECTION_LABEL: Record<string, string> = {
   concepts: "Concepts",
   sources: "Sources",
 };
+const SECTION_EMOJI: Record<string, string> = {
+  knowledge: "📖",
+  "journal/daily": "📅",
+  "journal/weekly": "📆",
+  "journal/monthly": "🗓️",
+  "journal/yearly": "🗓️",
+  topics: "📰",
+  entities: "👤",
+  concepts: "💡",
+  sources: "📚",
+};
+
+/** Format an ISO date string as a short relative/absolute label. */
+function formatRelativeDate(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `${diffH}h ago`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `${diffD}d ago`;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 
 function WikiPanel(_props: PanelProps) {
   const { MarkdownBlock, Modal } = useUiPrimitives();
@@ -189,68 +215,67 @@ function WikiPanel(_props: PanelProps) {
       {tab === "indexing" ? (
         <IndexingTab />
       ) : (<>
+      {/* Search bar — full width, clean */}
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
-        <Notebook size={13} className="text-fg-faint" />
         <div className="relative flex-1">
-          <Search size={11} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-fg-faint" />
+          <Search size={12} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-faint" />
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder={t("panel.filterPlaceholder")}
-            className="w-full rounded-md bg-bg-raised pl-6 pr-2 py-1 text-xs text-fg-muted placeholder:text-fg-fainter focus:outline-none"
+            className="w-full rounded-md bg-bg-raised pl-7 pr-2 py-1.5 text-xs text-fg-muted placeholder:text-fg-fainter focus:outline-none focus:ring-1 focus:ring-brand-400/40"
           />
         </div>
         <button
           onClick={() => setView(view === "graph" ? "list" : "graph")}
           title={view === "graph" ? t("panel.listView") : t("panel.graphView")}
           className={
-            "rounded p-1 transition-colors " +
+            "rounded-md p-1.5 transition-colors " +
             (view === "graph"
               ? "text-brand-400 bg-brand-500/10"
               : "text-fg-faint hover:text-fg-default hover:bg-bg-hover")
           }
         >
-          {view === "graph" ? <List size={12} /> : <Share2 size={12} />}
+          {view === "graph" ? <List size={14} /> : <Share2 size={14} />}
         </button>
         <button
-          onClick={fetchList}
-          title={t("panel.refresh")}
-          className="rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
-        >
-          <RefreshCw size={12} />
-        </button>
-        <button
-          onClick={rebuildIndex}
+          onClick={() => {
+            fetchList();
+            rebuildIndex();
+          }}
           disabled={reindexing}
-          title={t("panel.rebuildIndex")}
+          title={t("panel.refresh")}
           className={
-            "rounded p-1 transition-colors " +
+            "rounded-md p-1.5 transition-colors " +
             (reindexing
               ? "text-brand-400"
               : "text-fg-faint hover:text-fg-default hover:bg-bg-hover")
           }
         >
-          <Boxes size={12} className={reindexing ? "animate-pulse" : ""} />
-        </button>
-        <button
-          onClick={() => setConfirmReset(true)}
-          title={t("panel.resetTitle")}
-          className="rounded p-1 text-fg-faint hover:text-danger hover:bg-bg-hover transition-colors"
-        >
-          <Trash2 size={12} />
+          <RefreshCw size={14} className={reindexing ? "animate-spin" : ""} />
         </button>
       </div>
-      {/* Source filter */}
-      <div className="flex flex-shrink-0 gap-1 border-b border-border-subtle px-3 py-1">
+      {/* Source filter + stats */}
+      <div className="flex flex-shrink-0 items-center gap-1 border-b border-border-subtle px-3 py-1">
         {(["all", "kb", "session"] as const).map((f) => (
           <button
             key={f}
             onClick={() => setSourceFilter(f)}
-            className={"rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors " + (sourceFilter === f ? "bg-brand-500/15 text-brand-400" : "text-fg-muted hover:bg-bg-hover")}
+            className={"rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors " + (sourceFilter === f ? "bg-brand-500/15 text-brand-400" : "text-fg-muted hover:bg-bg-hover")}
           >
             {f === "all" ? t("filter.all") : f === "kb" ? t("filter.kb") : t("filter.session")}
           </button>
         ))}
+        <span className="ml-auto text-[10px] text-fg-fainter">
+          {pages.length} {pages.length === 1 ? "page" : "pages"}
+        </span>
+        <button
+          onClick={() => setConfirmReset(true)}
+          title={t("panel.resetTitle")}
+          className="ml-1 rounded p-1 text-fg-fainter hover:text-danger hover:bg-bg-hover transition-colors"
+        >
+          <Trash2 size={11} />
+        </button>
       </div>
       {reindexMsg && (
         <div className="flex-shrink-0 border-b border-border-subtle bg-bg-raised px-3 py-1 text-[11px] text-fg-muted">
@@ -316,34 +341,46 @@ function WikiPanel(_props: PanelProps) {
       ) : (
       <div className="flex min-h-0 flex-1">
         {/* page list */}
-        <div className="w-1/3 min-w-[140px] max-w-[220px] shrink-0 overflow-y-auto border-r border-border-subtle px-1.5 py-2">
+        <div className="w-2/5 min-w-[180px] max-w-[300px] shrink-0 overflow-y-auto border-r border-border-subtle py-1">
           {SECTION_ORDER.filter((s) => (grouped[s]?.length ?? 0) > 0).map((s) => (
-            <div key={s} className="mb-2">
-              <div className="px-1.5 pb-1 text-[10px] font-medium uppercase tracking-wider text-fg-fainter">
-                {t("list.sectionCount", {
-                  label: SECTION_LABEL_KEY[s] ? t(SECTION_LABEL_KEY[s]) : SECTION_LABEL[s] ?? s,
-                  n: grouped[s]!.length,
-                })}
+            <div key={s} className="mb-1">
+              <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-fg-muted">
+                <span>{SECTION_EMOJI[s] ?? "📄"}</span>
+                <span>
+                  {SECTION_LABEL_KEY[s] ? t(SECTION_LABEL_KEY[s]) : SECTION_LABEL[s] ?? s}
+                </span>
+                <span className="ml-auto rounded-full bg-bg-raised px-1.5 py-0.5 text-[9px] font-normal text-fg-fainter">
+                  {grouped[s]!.length}
+                </span>
               </div>
               {grouped[s]!.map((p) => (
                 <button
                   key={p.path}
                   onClick={() => openPage(p.path)}
                   className={
-                    "flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-[12px] transition-colors " +
+                    "group flex w-full flex-col gap-0.5 rounded-md px-3 py-1.5 text-left transition-colors " +
                     (selected === p.path
-                      ? "bg-brand-500/15 text-fg-default"
-                      : "text-fg-muted hover:bg-bg-hover")
+                      ? "bg-brand-500/12 border-l-2 border-brand-400 pl-[10px]"
+                      : "border-l-2 border-transparent pl-[10px] hover:bg-bg-hover")
                   }
                 >
-                  <FileText size={10} className="shrink-0 text-fg-fainter" />
-                  <span className="truncate">{p.title}</span>
+                  <span className={
+                    "truncate text-[12px] leading-tight " +
+                    (selected === p.path ? "text-fg-default font-medium" : "text-fg-muted")
+                  }>
+                    {p.title}
+                  </span>
+                  {p.updatedAt && (
+                    <span className="text-[10px] text-fg-fainter">
+                      {formatRelativeDate(p.updatedAt)}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
           ))}
           {!loading && pages.length === 0 && (
-            <div className="px-2 py-6 text-center text-[11px] text-fg-fainter">
+            <div className="px-3 py-8 text-center text-[11px] text-fg-fainter">
               {t("list.empty")}
             </div>
           )}
