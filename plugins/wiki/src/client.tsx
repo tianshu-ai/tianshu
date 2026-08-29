@@ -6,7 +6,7 @@
 // GET /api/p/wiki/{list,read,search}. Refreshes on workspace changes.
 
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft, ChevronDown, Sparkles, Clock } from "lucide-react";
+import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft, ChevronDown, Sparkles, Clock, Calendar } from "lucide-react";
 
 // react-force-graph-2d pulls in the whole d3-force / canvas stack, so
 // load it lazily — it only ships in a separate chunk fetched when the
@@ -104,11 +104,26 @@ function WikiPanel(_props: PanelProps) {
   const [tab, setTab] = useState<"browse" | "indexing">("browse");
   const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session">("all");
   const [pages, setPages] = useState<WikiPage[]>([]);
-  // Month navigation for session view (YYYY-MM string)
-  const [sessionMonth, setSessionMonth] = useState<string>(() => {
+  // Date range for session view
+  type RangePreset = "7d" | "1m" | "3m" | "all" | "custom";
+  const [rangePreset, setRangePreset] = useState<RangePreset>("1m");
+  const [customFrom, setCustomFrom] = useState<string>("");
+  const [customTo, setCustomTo] = useState<string>("");
+
+  // Compute effective date range [from, to] as YYYY-MM-DD strings
+  const dateRange = useMemo(() => {
     const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  });
+    const toStr = (d: Date) => d.toISOString().slice(0, 10);
+    const to = toStr(now);
+    if (rangePreset === "custom" && customFrom) {
+      return { from: customFrom, to: customTo || to };
+    }
+    if (rangePreset === "all") return { from: "2000-01-01", to };
+    const daysMap: Record<string, number> = { "7d": 7, "1m": 30, "3m": 90 };
+    const days = daysMap[rangePreset] ?? 30;
+    const from = new Date(now.getTime() - days * 86400000);
+    return { from: toStr(from), to };
+  }, [rangePreset, customFrom, customTo]);
   const [selected, setSelected] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string>("");
   const [pageTitle, setPageTitle] = useState<string>("");
@@ -208,24 +223,29 @@ function WikiPanel(_props: PanelProps) {
       .catch(() => setMarkdown(t("page.loadFailed")));
   }, [t]);
 
-  // Compute available months from session pages (for the month navigator)
-  const sessionMonths = useMemo(() => {
-    const months = new Set<string>();
-    for (const p of pages) {
-      if (p.section === "knowledge") continue;
-      // Extract YYYY-MM from slug or updatedAt
-      const m = p.slug.match(/^(\d{4})-(\d{2})/) ?? p.updatedAt?.match(/^(\d{4})-(\d{2})/);
-      if (m) months.add(`${m[1]}-${m[2]}`);
-      // Weekly: "2026-W35" → derive month from year+week (approximate)
-      const wm = p.slug.match(/^(\d{4})-W(\d+)/);
-      if (wm) {
-        // Approximate: week 1-4 = Jan, 5-8 = Feb, etc.
-        const mo = Math.min(12, Math.ceil(Number(wm[2]) / 4.33));
-        months.add(`${wm[1]}-${String(mo).padStart(2, "0")}`);
-      }
+  /** Extract a comparable YYYY-MM-DD date string from a page (slug or updatedAt). */
+  const pageDate = useCallback((p: WikiPage): string | null => {
+    // Daily: "2026-08-29" → exact
+    const dm = p.slug.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (dm) return dm[1]!;
+    // Weekly: "2026-W35" → approximate to Monday of that ISO week
+    const wm = p.slug.match(/^(\d{4})-W(\d+)/);
+    if (wm) {
+      const jan4 = new Date(Number(wm[1]), 0, 4);
+      const d = new Date(jan4.getTime() + (Number(wm[2]) - 1) * 7 * 86400000);
+      return d.toISOString().slice(0, 10);
     }
-    return [...months].sort().reverse();
-  }, [pages]);
+    // Monthly: "2026-08" → first of month
+    const mm = p.slug.match(/^(\d{4}-\d{2})$/);
+    if (mm) return `${mm[1]}-01`;
+    // Yearly: "2026" → Jan 1
+    const ym = p.slug.match(/^(\d{4})$/);
+    if (ym) return `${ym[1]}-01-01`;
+    // Non-journal: use updatedAt
+    const um = p.updatedAt?.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (um) return um[1]!;
+    return null;
+  }, []);
 
   const grouped = useMemo(() => {
     const q = searchMode === "filter" ? filter.trim().toLowerCase() : "";
@@ -238,30 +258,16 @@ function WikiPanel(_props: PanelProps) {
     } else if (sourceFilter === "session") {
       shown = shown.filter((p) => {
         if (p.section === "knowledge") return false;
-        // Journal sections: filter by selected month
-        if (JOURNAL_SECTIONS.has(p.section)) {
-          const m = p.slug.match(/^(\d{4})-(\d{2})/) ?? p.updatedAt?.match(/^(\d{4})-(\d{2})/);
-          if (m && `${m[1]}-${m[2]}` === sessionMonth) return true;
-          const wm = p.slug.match(/^(\d{4})-W(\d+)/);
-          if (wm) {
-            const mo = Math.min(12, Math.ceil(Number(wm[2]) / 4.33));
-            if (`${wm[1]}-${String(mo).padStart(2, "0")}` === sessionMonth) return true;
-          }
-          if (p.section === "journal/yearly" && p.slug.startsWith(sessionMonth.slice(0, 4))) return true;
-          if (p.section === "journal/monthly" && p.slug.startsWith(sessionMonth)) return true;
-          return false;
-        }
-        // Non-journal (topics/entities/concepts): filter by updatedAt month
-        const um = p.updatedAt?.match(/^(\d{4})-(\d{2})/);
-        if (um && `${um[1]}-${um[2]}` === sessionMonth) return true;
-        return false;
+        const d = pageDate(p);
+        if (!d) return true; // can't determine date, show anyway
+        return d >= dateRange.from && d <= dateRange.to;
       });
     }
     const by: Record<string, WikiPage[]> = {};
     for (const p of shown) (by[p.section] ??= []).push(p);
     for (const k of Object.keys(by)) by[k]!.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
     return by;
-  }, [pages, filter, sourceFilter, searchMode, sessionMonth]);
+  }, [pages, filter, sourceFilter, searchMode, dateRange, pageDate]);
 
   // Recently updated pages (top 5, across all sections)
   const recentPages = useMemo(() => {
@@ -393,36 +399,64 @@ function WikiPanel(_props: PanelProps) {
           <Trash2 size={11} />
         </button>
       </div>
-      {/* Month navigator (session view only) */}
+      {/* Date range selector (session view only) */}
       {sourceFilter === "session" && (
-        <div className="flex flex-shrink-0 items-center justify-between border-b border-border-subtle px-3 py-1.5">
-          <button
-            onClick={() => {
-              const idx = sessionMonths.indexOf(sessionMonth);
-              if (idx < sessionMonths.length - 1) setSessionMonth(sessionMonths[idx + 1]!);
-            }}
-            disabled={sessionMonths.indexOf(sessionMonth) >= sessionMonths.length - 1}
-            className="rounded p-1 text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30"
-          >
-            <ChevronLeft size={14} />
-          </button>
-          <span className="text-[12px] font-medium text-fg-default">
-            {(() => {
-              const [y, m] = sessionMonth.split("-");
-              const d = new Date(Number(y), Number(m) - 1);
-              return d.toLocaleDateString(undefined, { year: "numeric", month: "long" });
-            })()}
-          </span>
-          <button
-            onClick={() => {
-              const idx = sessionMonths.indexOf(sessionMonth);
-              if (idx > 0) setSessionMonth(sessionMonths[idx - 1]!);
-            }}
-            disabled={sessionMonths.indexOf(sessionMonth) <= 0}
-            className="rounded p-1 text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30"
-          >
-            <ChevronLeft size={14} className="rotate-180" />
-          </button>
+        <div className="flex flex-shrink-0 flex-col gap-1.5 border-b border-border-subtle px-3 py-2">
+          {/* Preset buttons */}
+          <div className="flex items-center gap-1">
+            <Calendar size={12} className="shrink-0 text-fg-fainter" />
+            {(["7d", "1m", "3m", "all"] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => setRangePreset(p)}
+                className={"rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors " +
+                  (rangePreset === p
+                    ? "bg-brand-500/15 text-brand-400"
+                    : "text-fg-muted hover:bg-bg-hover")}
+              >
+                {p === "7d" ? "7 天" : p === "1m" ? "1 个月" : p === "3m" ? "3 个月" : "全部"}
+              </button>
+            ))}
+            <button
+              onClick={() => {
+                setRangePreset("custom");
+                if (!customFrom) {
+                  const d = new Date();
+                  d.setDate(d.getDate() - 30);
+                  setCustomFrom(d.toISOString().slice(0, 10));
+                  setCustomTo(new Date().toISOString().slice(0, 10));
+                }
+              }}
+              className={"rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors " +
+                (rangePreset === "custom"
+                  ? "bg-brand-500/15 text-brand-400"
+                  : "text-fg-muted hover:bg-bg-hover")}
+            >
+              自定义
+            </button>
+          </div>
+          {/* Custom date inputs */}
+          {rangePreset === "custom" && (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={customFrom}
+                onChange={(e) => setCustomFrom(e.target.value)}
+                className="flex-1 rounded-md bg-bg-raised px-2 py-1 text-[11px] text-fg-muted focus:outline-none focus:ring-1 focus:ring-brand-400/40"
+              />
+              <span className="text-[10px] text-fg-fainter">–</span>
+              <input
+                type="date"
+                value={customTo}
+                onChange={(e) => setCustomTo(e.target.value)}
+                className="flex-1 rounded-md bg-bg-raised px-2 py-1 text-[11px] text-fg-muted focus:outline-none focus:ring-1 focus:ring-brand-400/40"
+              />
+            </div>
+          )}
+          {/* Range summary */}
+          <div className="text-[10px] text-fg-fainter">
+            {rangePreset === "all" ? "显示全部记录" : `${dateRange.from} – ${dateRange.to}`}
+          </div>
         </div>
       )}
       {reindexMsg && (
