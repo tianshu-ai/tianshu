@@ -266,25 +266,35 @@ async function flushSessionInbox(
   // get processed by a fresh background turn.
   const harness = getActiveHarness(sessionId);
   if (harness) {
+    console.log(`[session-inbox] active harness found for ${sessionId}, using followUp`);
     const drained = drainPendingTentative(ctx, sessionId);
     if (drained.length === 0) return;
     try {
       await harness.followUp(renderForPrompt(drained));
+      console.log(`[session-inbox] followUp queued OK for ${sessionId}`);
       // Rows are now 'in_flight'. markDeliveredFromMessage will
       // transition them to 'delivered' once the message is persisted.
       return;
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn(
-        `[session-inbox] live followUp rejected for ${sessionId}, falling back to idle runner:`,
+        `[session-inbox] live followUp rejected for ${sessionId}:`,
         err instanceof Error ? err.message : err,
       );
-      // Reset in_flight → pending so the idle path (or next
-      // flush) can pick them up again.
+      // Reset in_flight → pending so the next flush (or the
+      // handler's post-turn drain) picks them up.
       resetInFlight(ctx, drained.map((d) => d.id));
+      // Do NOT fall through to idle-runner while a harness is
+      // registered — launching a second runPrompt on the same
+      // session causes two harnesses to race and abort each
+      // other. The pending rows will be flushed when the active
+      // turn ends (handler's post-turn logic or next user prompt).
+      console.log(`[session-inbox] rows reset to pending, will retry after active turn ends`);
+      return;
     }
   }
 
+  console.log(`[session-inbox] no active harness for ${sessionId}, using idle-runner`);
   // Idle session: kick a background turn so the agent reacts
   // without waiting for the user to type. Guards:
   //   - Need an idle runner (host wires it; tests can leave it
