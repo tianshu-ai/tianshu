@@ -104,6 +104,11 @@ function WikiPanel(_props: PanelProps) {
   const [tab, setTab] = useState<"browse" | "indexing">("browse");
   const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session">("all");
   const [pages, setPages] = useState<WikiPage[]>([]);
+  // Month navigation for session view (YYYY-MM string)
+  const [sessionMonth, setSessionMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
   const [selected, setSelected] = useState<string | null>(null);
   const [markdown, setMarkdown] = useState<string>("");
   const [pageTitle, setPageTitle] = useState<string>("");
@@ -203,6 +208,25 @@ function WikiPanel(_props: PanelProps) {
       .catch(() => setMarkdown(t("page.loadFailed")));
   }, [t]);
 
+  // Compute available months from session pages (for the month navigator)
+  const sessionMonths = useMemo(() => {
+    const months = new Set<string>();
+    for (const p of pages) {
+      if (p.section === "knowledge") continue;
+      // Extract YYYY-MM from slug or updatedAt
+      const m = p.slug.match(/^(\d{4})-(\d{2})/) ?? p.updatedAt?.match(/^(\d{4})-(\d{2})/);
+      if (m) months.add(`${m[1]}-${m[2]}`);
+      // Weekly: "2026-W35" → derive month from year+week (approximate)
+      const wm = p.slug.match(/^(\d{4})-W(\d+)/);
+      if (wm) {
+        // Approximate: week 1-4 = Jan, 5-8 = Feb, etc.
+        const mo = Math.min(12, Math.ceil(Number(wm[2]) / 4.33));
+        months.add(`${wm[1]}-${String(mo).padStart(2, "0")}`);
+      }
+    }
+    return [...months].sort().reverse();
+  }, [pages]);
+
   const grouped = useMemo(() => {
     const q = searchMode === "filter" ? filter.trim().toLowerCase() : "";
     let shown = q
@@ -212,13 +236,32 @@ function WikiPanel(_props: PanelProps) {
     if (sourceFilter === "kb") {
       shown = shown.filter((p) => p.section === "knowledge");
     } else if (sourceFilter === "session") {
-      shown = shown.filter((p) => p.section !== "knowledge");
+      shown = shown.filter((p) => {
+        if (p.section === "knowledge") return false;
+        // Journal sections: filter by selected month
+        if (JOURNAL_SECTIONS.has(p.section)) {
+          const m = p.slug.match(/^(\d{4})-(\d{2})/) ?? p.updatedAt?.match(/^(\d{4})-(\d{2})/);
+          if (m && `${m[1]}-${m[2]}` === sessionMonth) return true;
+          const wm = p.slug.match(/^(\d{4})-W(\d+)/);
+          if (wm) {
+            const mo = Math.min(12, Math.ceil(Number(wm[2]) / 4.33));
+            if (`${wm[1]}-${String(mo).padStart(2, "0")}` === sessionMonth) return true;
+          }
+          if (p.section === "journal/yearly" && p.slug.startsWith(sessionMonth.slice(0, 4))) return true;
+          if (p.section === "journal/monthly" && p.slug.startsWith(sessionMonth)) return true;
+          return false;
+        }
+        // Non-journal (topics/entities/concepts): filter by updatedAt month
+        const um = p.updatedAt?.match(/^(\d{4})-(\d{2})/);
+        if (um && `${um[1]}-${um[2]}` === sessionMonth) return true;
+        return false;
+      });
     }
     const by: Record<string, WikiPage[]> = {};
     for (const p of shown) (by[p.section] ??= []).push(p);
     for (const k of Object.keys(by)) by[k]!.sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
     return by;
-  }, [pages, filter, sourceFilter, searchMode]);
+  }, [pages, filter, sourceFilter, searchMode, sessionMonth]);
 
   // Recently updated pages (top 5, across all sections)
   const recentPages = useMemo(() => {
@@ -350,6 +393,38 @@ function WikiPanel(_props: PanelProps) {
           <Trash2 size={11} />
         </button>
       </div>
+      {/* Month navigator (session view only) */}
+      {sourceFilter === "session" && (
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-border-subtle px-3 py-1.5">
+          <button
+            onClick={() => {
+              const idx = sessionMonths.indexOf(sessionMonth);
+              if (idx < sessionMonths.length - 1) setSessionMonth(sessionMonths[idx + 1]!);
+            }}
+            disabled={sessionMonths.indexOf(sessionMonth) >= sessionMonths.length - 1}
+            className="rounded p-1 text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <span className="text-[12px] font-medium text-fg-default">
+            {(() => {
+              const [y, m] = sessionMonth.split("-");
+              const d = new Date(Number(y), Number(m) - 1);
+              return d.toLocaleDateString(undefined, { year: "numeric", month: "long" });
+            })()}
+          </span>
+          <button
+            onClick={() => {
+              const idx = sessionMonths.indexOf(sessionMonth);
+              if (idx > 0) setSessionMonth(sessionMonths[idx - 1]!);
+            }}
+            disabled={sessionMonths.indexOf(sessionMonth) <= 0}
+            className="rounded p-1 text-fg-muted hover:text-fg-default hover:bg-bg-hover transition-colors disabled:opacity-30"
+          >
+            <ChevronLeft size={14} className="rotate-180" />
+          </button>
+        </div>
+      )}
       {reindexMsg && (
         <div className="flex-shrink-0 border-b border-border-subtle bg-bg-raised px-3 py-1 text-[11px] text-fg-muted">
           {reindexMsg}
@@ -481,7 +556,7 @@ function WikiPanel(_props: PanelProps) {
             </div>
           )}
           {/* Recently updated (only when not searching) */}
-          {recentPages.length > 0 && searchResults === null && (
+          {recentPages.length > 0 && searchResults === null && sourceFilter === "all" && (
             <div className="mb-1">
               <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-fg-muted">
                 <Clock size={12} />
