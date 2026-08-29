@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.25.1](https://github.com/tianshu-ai/tianshu/compare/v0.25.0...v0.25.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* repair package.json after broken rebase ([f8e1989](https://github.com/tianshu-ai/tianshu/commit/f8e1989999c2376d1e8e71a1fcbda415b97b3ec6))
+
 ## [0.24.0](https://github.com/tianshu-ai/tianshu/compare/v0.23.7...v0.24.0) (2026-08-29)
 
 
