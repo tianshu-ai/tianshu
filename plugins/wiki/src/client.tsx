@@ -6,7 +6,7 @@
 // GET /api/p/wiki/{list,read,search}. Refreshes on workspace changes.
 
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
-import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes } from "lucide-react";
+import { Notebook, Search, RefreshCw, FileText, Trash2, List, Share2, Boxes, ChevronLeft } from "lucide-react";
 
 // react-force-graph-2d pulls in the whole d3-force / canvas stack, so
 // load it lazily — it only ships in a separate chunk fetched when the
@@ -338,14 +338,47 @@ function WikiPanel(_props: PanelProps) {
           selected={selected}
           reloadKey={pages.length}
         />
+      ) : selected ? (
+        /* ─── Reader (full-width, with back nav) ─── */
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {/* Back bar */}
+          <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-2 py-1.5">
+            <button
+              onClick={() => { setSelected(null); setMarkdown(""); setPageTitle(""); }}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default transition-colors"
+            >
+              <ChevronLeft size={14} />
+              <span>{t("reader.backToList") || "Back"}</span>
+            </button>
+            {pageTitle && (
+              <span className="truncate text-[12px] font-medium text-fg-default">{pageTitle}</span>
+            )}
+          </div>
+          {/* Content */}
+          <div
+            className="min-h-0 flex-1 overflow-y-auto px-4 py-3"
+            onClick={(e) => {
+              const a = (e.target as HTMLElement).closest("a");
+              const href = a?.getAttribute("href") ?? "";
+              if (href.startsWith("#wiki:")) {
+                e.preventDefault();
+                openPage(href.slice("#wiki:".length));
+              }
+            }}
+          >
+            <div className="prose prose-sm prose-invert max-w-none text-[13px] [&_a]:text-link [&_a]:no-underline hover:[&_a]:underline">
+              {pageTitle && <h1 className="mb-3 text-lg font-semibold text-fg-default">{pageTitle}</h1>}
+              <MarkdownBlock>{renderWikilinks(markdown)}</MarkdownBlock>
+            </div>
+          </div>
+        </div>
       ) : (
-      <div className="flex min-h-0 flex-1">
-        {/* page list */}
-        <div className="w-2/5 min-w-[180px] max-w-[300px] shrink-0 overflow-y-auto border-r border-border-subtle py-1">
+        /* ─── Page list (full-width) ─── */
+        <div className="min-h-0 flex-1 overflow-y-auto py-1">
           {SECTION_ORDER.filter((s) => (grouped[s]?.length ?? 0) > 0).map((s) => (
             <div key={s} className="mb-1">
               <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-fg-muted">
-                <span>{SECTION_EMOJI[s] ?? "📄"}</span>
+                <span>{SECTION_EMOJI[s] ?? "\ud83d\udcc4"}</span>
                 <span>
                   {SECTION_LABEL_KEY[s] ? t(SECTION_LABEL_KEY[s]) : SECTION_LABEL[s] ?? s}
                 </span>
@@ -357,24 +390,20 @@ function WikiPanel(_props: PanelProps) {
                 <button
                   key={p.path}
                   onClick={() => openPage(p.path)}
-                  className={
-                    "group flex w-full flex-col gap-0.5 rounded-md px-3 py-1.5 text-left transition-colors " +
-                    (selected === p.path
-                      ? "bg-brand-500/12 border-l-2 border-brand-400 pl-[10px]"
-                      : "border-l-2 border-transparent pl-[10px] hover:bg-bg-hover")
-                  }
+                  className="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-bg-hover"
                 >
-                  <span className={
-                    "truncate text-[12px] leading-tight " +
-                    (selected === p.path ? "text-fg-default font-medium" : "text-fg-muted")
-                  }>
-                    {p.title}
-                  </span>
-                  {p.updatedAt && (
-                    <span className="text-[10px] text-fg-fainter">
-                      {formatRelativeDate(p.updatedAt)}
-                    </span>
-                  )}
+                  <FileText size={14} className="shrink-0 text-fg-fainter group-hover:text-fg-muted" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] leading-snug text-fg-muted group-hover:text-fg-default">
+                      {p.title}
+                    </div>
+                    {p.updatedAt && (
+                      <div className="text-[10px] text-fg-fainter">
+                        {formatRelativeDate(p.updatedAt)}
+                      </div>
+                    )}
+                  </div>
+                  <ChevronLeft size={12} className="shrink-0 rotate-180 text-fg-fainter opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
               ))}
             </div>
@@ -385,35 +414,6 @@ function WikiPanel(_props: PanelProps) {
             </div>
           )}
         </div>
-
-        {/* reader */}
-        <div
-          className="min-w-0 flex-1 overflow-y-auto px-4 py-3"
-          onClick={(e) => {
-            // Intercept clicks on our rewritten wikilinks (#wiki:path)
-            // and navigate in-panel instead of letting the browser
-            // treat them as anchors.
-            const a = (e.target as HTMLElement).closest("a");
-            const href = a?.getAttribute("href") ?? "";
-            if (href.startsWith("#wiki:")) {
-              e.preventDefault();
-              openPage(href.slice("#wiki:".length));
-            }
-          }}
-        >
-          {selected ? (
-            <div className="prose prose-sm prose-invert max-w-none text-[13px] [&_a]:text-link [&_a]:no-underline hover:[&_a]:underline">
-              {pageTitle && <h1 className="mb-2 text-base font-semibold text-fg-default">{pageTitle}</h1>}
-              <MarkdownBlock>{renderWikilinks(markdown)}</MarkdownBlock>
-            </div>
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center text-fg-fainter">
-              <Notebook size={28} className="mb-2 opacity-30" />
-              <span className="text-xs">{loading ? t("reader.loading") : t("reader.selectPage")}</span>
-            </div>
-          )}
-        </div>
-      </div>
       )}
       </>)}
     </div>
