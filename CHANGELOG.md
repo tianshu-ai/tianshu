@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.28.0](https://github.com/tianshu-ai/tianshu/compare/v0.27.1...v0.28.0) (2026-08-29)
+
+
+### Features
+
+* **wiki:** collapsible sections + progressive loading ([12edc3c](https://github.com/tianshu-ai/tianshu/commit/12edc3c8e58b0bc9587cfb48041213e1c36ed6b0))
+* **wiki:** date range picker for session records view ([fa13697](https://github.com/tianshu-ai/tianshu/commit/fa1369723b69740a9f5f2bac7210982e9acfeca8))
+* **wiki:** semantic search toggle + recently updated section ([8fc68a4](https://github.com/tianshu-ai/tianshu/commit/8fc68a4d2aaba55722189f9fefa087fc286fc026))
+* **wiki:** single-column navigation layout ([fdd0fd0](https://github.com/tianshu-ai/tianshu/commit/fdd0fd0f642b8c2fbc14d9dabea45a67fcd4408b))
+* **wiki:** split session/kb views with month navigator ([af7aef8](https://github.com/tianshu-ai/tianshu/commit/af7aef895a8fc7f54b9ead5c01b92637669ba1b7))
+
 ## [0.27.1](https://github.com/tianshu-ai/tianshu/compare/v0.27.0...v0.27.1) (2026-08-29)
 
 
