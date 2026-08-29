@@ -29,8 +29,23 @@ export default function PluginTopBarButtons() {
   // Subscribe once so all buttons re-render on locale change.
   const locale = useSyncExternalStore(subscribeLocale, getLocale, getLocale);
 
-  // Hide once a right panel is open — its PanelTabBar takes over.
-  if (openPanel !== null) return null;
+  // Hide once a right panel is open AND the panel can actually
+  // render. If the panel id is stale/invalid, the right panel
+  // returns null and we'd leave the user with no buttons at all.
+  if (openPanel !== null && plugins) {
+    const dot = openPanel.indexOf(".");
+    if (dot > 0) {
+      const pluginId = openPanel.slice(0, dot);
+      const localId = openPanel.slice(dot + 1);
+      const owner = plugins.find((p) => p.id === pluginId && p.state === "active");
+      const panels = (owner?.contributes as { rightPanels?: { id: string }[] } | undefined)?.rightPanels;
+      if (panels?.some((p) => p.id === localId)) {
+        return null; // panel will render, PanelTabBar takes over
+      }
+    }
+    // Panel can't render — clear the stale selection and show buttons
+    setOpenPanel(null);
+  }
   if (!plugins) return null;
 
   type FlatButton = ContributesTopBarButton & { pluginId: string };
