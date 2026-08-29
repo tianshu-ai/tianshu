@@ -1247,7 +1247,22 @@ function buildRoutes(
     }
   };
 
-  return { list, read, search, "semantic-search": semanticSearchRoute, status, record, reset, graph, reindex, kbStatus, kbScan };
+  // Embedding status for the indexing tab
+  const embeddingStatus: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return void res.status(401).json({ error: "no user context" });
+    const enabled = embeddingEnabled(cfg);
+    const indexed = enabled ? new WikiIndex(ctx.db, userId).count() : 0;
+    const totalPages = listPages(ctx.userHomeDir(userId)).length;
+    res.json({
+      enabled,
+      model: enabled ? cfg!.model : null,
+      indexed,
+      totalPages,
+    });
+  };
+
+  return { list, read, search, "semantic-search": semanticSearchRoute, status, record, reset, graph, reindex, "embedding-status": embeddingStatus, kbStatus, kbScan };
 }
 
 // ─── wiki.ingest capability (host compaction hook calls this) ────

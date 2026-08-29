@@ -705,10 +705,20 @@ interface KbStatus {
   lastScanAt: number | null;
 }
 
+interface EmbeddingStatus {
+  enabled: boolean;
+  model: string | null;
+  indexed: number;
+  totalPages: number;
+}
+
 function IndexingTab() {
   const t = usePluginT("wiki");
   const [kbStatus, setKbStatus] = useState<KbStatus | null>(null);
   const [sessionStatus, setSessionStatus] = useState<{ running: boolean; progress: number; lastRun?: string } | null>(null);
+  const [embStatus, setEmbStatus] = useState<EmbeddingStatus | null>(null);
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexMsg, setReindexMsg] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(true);
   const nav = useChatNav();
@@ -717,9 +727,11 @@ function IndexingTab() {
     Promise.all([
       fetch(`${API_BASE}/kb/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
       fetch(`${API_BASE}/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
-    ]).then(([kb, wiki]: [KbStatus | null, { running?: boolean; progress?: number; lastRun?: string } | null]) => {
+      fetch(`${API_BASE}/embedding-status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
+    ]).then(([kb, wiki, emb]: [KbStatus | null, { running?: boolean; progress?: number; lastRun?: string } | null, EmbeddingStatus | null]) => {
       setKbStatus(kb);
       setSessionStatus(wiki ? { running: !!wiki.running, progress: wiki.progress ?? 0, lastRun: wiki.lastRun } : null);
+      setEmbStatus(emb);
       const isRunning = !!wiki?.running || false;
       setRunning(isRunning);
       setLoading(false);
@@ -834,6 +846,86 @@ function IndexingTab() {
           ) : (
             <div className="text-fg-muted mt-1">
               {t("indexing.kbPlaceholder")}
+            </div>
+          )}
+        </div>
+
+        {/* Embedding / Semantic search status */}
+        <div className="rounded-lg border border-border-subtle p-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="font-medium text-fg-default flex items-center gap-1.5">
+              <Sparkles size={12} />
+              语义搜索
+            </span>
+            <span className={"flex items-center gap-1 " + (embStatus?.enabled ? "text-green-500" : "text-fg-fainter")}>
+              <span className={"inline-block w-1.5 h-1.5 rounded-full " + (embStatus?.enabled ? "bg-green-500" : "bg-fg-fainter")} />
+              {embStatus?.enabled ? "已启用" : "未配置"}
+            </span>
+          </div>
+          {embStatus?.enabled ? (
+            <div className="mt-1 space-y-1.5">
+              <div className="flex gap-3 text-fg-muted">
+                <span>模型: {embStatus.model}</span>
+              </div>
+              <div className="flex gap-3 text-fg-muted">
+                <span className="text-green-500">{embStatus.indexed} 已索引</span>
+                <span>{embStatus.totalPages} 总页面</span>
+                {embStatus.indexed < embStatus.totalPages && (
+                  <span className="text-amber-500">{embStatus.totalPages - embStatus.indexed} 待索引</span>
+                )}
+              </div>
+              {/* Progress bar */}
+              {embStatus.totalPages > 0 && (
+                <div className="h-1 rounded-full bg-bg-raised overflow-hidden">
+                  <div
+                    className="h-full bg-green-500 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.round((embStatus.indexed / embStatus.totalPages) * 100)}%` }}
+                  />
+                </div>
+              )}
+              {/* Reindex button */}
+              <button
+                onClick={() => {
+                  setReindexing(true);
+                  setReindexMsg(null);
+                  fetch(`${API_BASE}/reindex`, { method: "POST", credentials: "include" })
+                    .then((r) => r.json())
+                    .then((body: { indexed?: number; total?: number; error?: string }) => {
+                      setReindexMsg(body.error
+                        ? `❌ ${body.error}`
+                        : `✅ 已索引 ${body.indexed ?? 0} / ${body.total ?? 0} 页面`);
+                      fetchStatus();
+                    })
+                    .catch((e: unknown) => setReindexMsg(`❌ ${e instanceof Error ? e.message : String(e)}`))
+                    .finally(() => setReindexing(false));
+                }}
+                disabled={reindexing}
+                className={
+                  "w-full rounded-md px-3 py-1.5 text-[11px] font-medium transition-all " +
+                  (reindexing
+                    ? "bg-brand-500/10 text-brand-400 cursor-wait"
+                    : "border border-border-subtle text-fg-muted hover:bg-bg-hover cursor-pointer")
+                }
+              >
+                {reindexing ? (
+                  <span className="flex items-center justify-center gap-1.5">
+                    <RefreshCw size={12} className="animate-spin" />
+                    重建索引中…
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-1.5">
+                    <RefreshCw size={12} />
+                    重建向量索引
+                  </span>
+                )}
+              </button>
+              {reindexMsg && (
+                <div className="text-[11px] text-fg-muted">{reindexMsg}</div>
+              )}
+            </div>
+          ) : (
+            <div className="text-fg-muted mt-1">
+              在设置 → 插件 → Wiki → 语义搜索中配置 Embedding 模型以启用向量搜索
             </div>
           )}
         </div>
