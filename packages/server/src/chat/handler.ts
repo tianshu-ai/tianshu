@@ -591,7 +591,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     keepRecentTokens: compactionCfg.keepRecentTokens ?? 20000,
     triggerPercent: compactionCfg.triggerPercent ?? 80,
   } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80 };
-  const hostToolsDefs = buildHostTools({ contextWindow: modelInfo.contextWindow, compactionSettings });
+  const hostToolsDefs = buildHostTools({
+    contextWindow: modelInfo.contextWindow,
+    compactionSettings,
+    broadcast: (event, payload) => send({ type: "plugin_event", event, payload } as ServerMsg),
+  });
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {

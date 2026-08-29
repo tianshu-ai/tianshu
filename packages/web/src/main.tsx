@@ -50,6 +50,7 @@ import { PluginConfigFormById } from "./components/PluginConfigForm";
 import { Modal } from "./components/ui/Modal";
 import { MarkdownBlock } from "./components/ui/MarkdownBlock";
 import { DocumentViewer } from "./components/ui/DocumentViewer";
+import { usePluginStore } from "./stores/plugin-store";
 __installUseComposer(getComposerApi);
 // Plugins import `PluginConfigForm` from the SDK to fold the
 // host's auto-generated config form into their own admin pages.
@@ -129,6 +130,15 @@ __installWsEventApi({
   // Let plugins push a message up to the host (e.g. board_act
   // panels replying to a server-initiated op request).
   send: (msg) => tianshuWs.send(msg),
+});
+
+// Host-level WS event handlers: UI commands from the agent.
+// switch_panel: agent can switch the right panel tab.
+tianshuWs.on("plugin_event", (ev) => {
+  const { event, payload } = ev as { event?: string; payload?: { panelId?: string | null } };
+  if (event === "ui:switch_panel" && payload) {
+    usePluginStore.getState().setOpenPanel(payload.panelId ?? null);
+  }
 });
 
 // Bootstrap fallback for OpenFileApi.
