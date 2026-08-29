@@ -925,11 +925,20 @@ function IndexingTab() {
               )}
             </button>
             {reindexMsg && <div className="text-[11px] text-fg-muted">{reindexMsg}</div>}
-          </>) : (
+          </>) : (<>
             <div className="text-[11px] text-fg-muted">
               在设置 → 插件 → Wiki → 语义搜索中配置 Embedding 模型
             </div>
-          )}
+            <button
+              disabled
+              className="w-full rounded-md px-3 py-1.5 text-[11px] font-medium border border-border-subtle text-fg-fainter cursor-not-allowed opacity-50"
+            >
+              <span className="flex items-center justify-center gap-1.5">
+                <RefreshCw size={12} />
+                重建向量索引
+              </span>
+            </button>
+          </>)}
         </div>
       </div>
     </div>
