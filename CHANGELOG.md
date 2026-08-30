@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.29.1](https://github.com/tianshu-ai/tianshu/compare/v0.29.0...v0.29.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* **wiki:** i18n all hardcoded Chinese in Indexing tab ([f5d1a1c](https://github.com/tianshu-ai/tianshu/commit/f5d1a1c06e0500450aec34c12dfaff5fb1c2b9ef))
+
 ## [0.29.0](https://github.com/tianshu-ai/tianshu/compare/v0.28.0...v0.29.0) (2026-08-30)
 
 
