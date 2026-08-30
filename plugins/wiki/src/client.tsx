@@ -399,7 +399,7 @@ function WikiPanel(_props: PanelProps) {
                     ? "bg-brand-500/15 text-brand-400"
                     : "text-fg-muted hover:bg-bg-hover")}
               >
-                {p === "7d" ? "7 天" : p === "1m" ? "1 个月" : p === "3m" ? "3 个月" : "全部"}
+                {t(`filter.period.${p}`)}
               </button>
             ))}
             <button
@@ -440,7 +440,7 @@ function WikiPanel(_props: PanelProps) {
           )}
           {/* Range summary */}
           <div className="text-[10px] text-fg-fainter">
-            {rangePreset === "all" ? "显示全部记录" : `${dateRange.from} – ${dateRange.to}`}
+            {rangePreset === "all" ? t("filter.period.all") : `${dateRange.from} – ${dateRange.to}`}
           </div>
         </div>
       )}
@@ -787,11 +787,11 @@ function IndexingTab() {
           </span>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[13px] font-semibold text-fg-default">索引状态</div>
+          <div className="text-[13px] font-semibold text-fg-default">{t("indexing.status")}</div>
           <div className="text-[11px] text-fg-muted mt-0.5">
-            {running ? "正在更新…" : sessionStatus?.totalDays
-              ? `${sessionStatus.indexedDays}/${sessionStatus.totalDays} 天已录入`
-              : "尚无对话记录"}
+            {running ? t("indexing.statusUpdating") : sessionStatus?.totalDays
+              ? t("indexing.statusSummary", { indexed: sessionStatus.indexedDays, total: sessionStatus.totalDays })
+              : t("indexing.noSessions")}
           </div>
         </div>
         <button
@@ -807,12 +807,12 @@ function IndexingTab() {
           {running ? (
             <span className="flex items-center gap-1.5">
               <RefreshCw size={13} className="animate-spin" />
-              更新中
+              {t("indexing.updatingBtn")}
             </span>
           ) : (
             <span className="flex items-center gap-1.5">
               <RefreshCw size={13} />
-              更新 Wiki
+              {t("indexing.updateWiki")}
             </span>
           )}
         </button>
@@ -836,14 +836,14 @@ function IndexingTab() {
                 : sessionStatus && sessionStatus.pendingDays > 0
                   ? "bg-amber-500/10 text-amber-500"
                   : "bg-green-500/10 text-green-500")}>
-              {sessionStatus?.running ? "录入中" : sessionStatus && sessionStatus.pendingDays > 0 ? `${sessionStatus.pendingDays} 天待录` : "已完成"}
+              {sessionStatus?.running ? t("indexing.recording") : sessionStatus && sessionStatus.pendingDays > 0 ? t("indexing.pendingDays", { n: sessionStatus.pendingDays }) : t("indexing.done")}
             </span>
           </div>
           {sessionStatus && sessionStatus.totalDays > 0 && (<>
             <div className="flex items-center gap-2 text-[11px]">
               <span className="text-green-500 font-medium">{sessionStatus.indexedDays}</span>
               <span className="text-fg-fainter">/</span>
-              <span className="text-fg-muted">{sessionStatus.totalDays} 天</span>
+              <span className="text-fg-muted">{t("indexing.days", { n: sessionStatus.totalDays })}</span>
             </div>
             <div className="h-1.5 rounded-full bg-bg-default overflow-hidden">
               <div
@@ -872,7 +872,7 @@ function IndexingTab() {
                 : (kbStatus?.pendingFiles ?? 0) > 0
                   ? "bg-amber-500/10 text-amber-500"
                   : "bg-green-500/10 text-green-500")}>
-              {running && hasPendingKb ? "扫描中" : (kbStatus?.pendingFiles ?? 0) > 0 ? `${kbStatus!.pendingFiles} 待扫` : "已完成"}
+              {running && hasPendingKb ? t("indexing.scanningKb") : (kbStatus?.pendingFiles ?? 0) > 0 ? t("indexing.pendingKbFiles", { n: kbStatus!.pendingFiles }) : t("indexing.done")}
             </span>
           </div>
           {loading ? (
@@ -881,7 +881,7 @@ function IndexingTab() {
             <div className="flex items-center gap-2 text-[11px]">
               <span className="text-green-500 font-medium">{kbStatus.indexedFiles}</span>
               <span className="text-fg-fainter">/</span>
-              <span className="text-fg-muted">{kbStatus.totalFiles} 文件</span>
+              <span className="text-fg-muted">{t("indexing.kbFiles", { n: kbStatus.totalFiles })}</span>
             </div>
             <div className="h-1.5 rounded-full bg-bg-default overflow-hidden">
               <div
@@ -890,7 +890,7 @@ function IndexingTab() {
               />
             </div>
             {kbStatus.lastScanAt && (
-              <div className="text-[10px] text-fg-fainter">上次扫描 {new Date(kbStatus.lastScanAt).toLocaleString()}</div>
+              <div className="text-[10px] text-fg-fainter">{t("indexing.lastScan", { time: new Date(kbStatus.lastScanAt).toLocaleString() })}</div>
             )}
           </>) : (
             <div className="text-[11px] text-fg-muted">{t("indexing.kbPlaceholder")}</div>
@@ -905,7 +905,7 @@ function IndexingTab() {
               <Sparkles size={14} className={embStatus?.enabled ? "text-brand-400" : "text-fg-fainter"} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-medium text-fg-default">语义搜索</div>
+              <div className="text-[12px] font-medium text-fg-default">{t("indexing.semanticSearch")}</div>
             </div>
             {/* Reindex action — inline in header */}
             <button
@@ -918,7 +918,7 @@ function IndexingTab() {
                   .then((body: { indexed?: number; total?: number; error?: string }) => {
                     setReindexMsg(body.error
                       ? `❌ ${body.error}`
-                      : `✅ ${body.indexed ?? 0}/${body.total ?? 0} 已索引`);
+                      : t("indexing.reindexDone", { indexed: body.indexed ?? 0, total: body.total ?? 0 }));
                     fetchStatus();
                   })
                   .catch((e: unknown) => setReindexMsg(`❌ ${e instanceof Error ? e.message : String(e)}`))
@@ -935,20 +935,20 @@ function IndexingTab() {
               }
             >
               <RefreshCw size={10} className={reindexing ? "animate-spin" : ""} />
-              {reindexing ? "重建中" : "重建"}
+              {reindexing ? t("indexing.reindexing") : t("indexing.rebuild")}
             </button>
             <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
               (embStatus?.enabled ? "bg-green-500/10 text-green-500" : "bg-bg-default text-fg-fainter")}>
-              {embStatus?.enabled ? "已启用" : "未配置"}
+              {embStatus?.enabled ? t("indexing.enabled") : t("indexing.notConfigured")}
             </span>
           </div>
           {embStatus?.enabled ? (<>
             <div className="flex items-center gap-2 text-[11px]">
               <span className="text-green-500 font-medium">{embStatus.indexed}</span>
               <span className="text-fg-fainter">/</span>
-              <span className="text-fg-muted">{embStatus.totalPages} 页面</span>
+              <span className="text-fg-muted">{t("indexing.pages", { n: embStatus.totalPages })}</span>
               {embStatus.indexed < embStatus.totalPages && (
-                <span className="text-amber-500 ml-1">{embStatus.totalPages - embStatus.indexed} 待索引</span>
+                <span className="text-amber-500 ml-1">{t("indexing.pendingPages", { n: embStatus.totalPages - embStatus.indexed })}</span>
               )}
             </div>
             {embStatus.totalPages > 0 && (
@@ -959,7 +959,7 @@ function IndexingTab() {
             <div className="text-[10px] text-fg-fainter">{embStatus.model}</div>
           </>) : (
             <div className="text-[11px] text-fg-muted">
-              在设置 → 插件 → Wiki 中配置 Embedding 模型
+              {t("indexing.embNotConfigured")}
             </div>
           )}
           {reindexMsg && <div className="text-[10px] text-fg-muted">{reindexMsg}</div>}
