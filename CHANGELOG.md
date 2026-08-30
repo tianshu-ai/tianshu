@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.29.0](https://github.com/tianshu-ai/tianshu/compare/v0.28.0...v0.29.0) (2026-08-30)
+
+
+### Features
+
+* **wiki:** embedding status card in indexing tab ([6aef560](https://github.com/tianshu-ai/tianshu/commit/6aef560ff6251fccb324f1907e1e51d966c17d7b))
+* **wiki:** session indexing day counts in indexing tab ([47a3f9b](https://github.com/tianshu-ai/tianshu/commit/47a3f9ba0be08a054c5a1615c8e1b61324a8dba6))
+* **wiki:** trigger embedding reindex on Update Wiki button ([e50585f](https://github.com/tianshu-ai/tianshu/commit/e50585faa96d0527b99b1d9c0ef53c9b8ea87e81))
+
+
+### Bug Fixes
+
+* **wiki:** count actual message days instead of date-span approximation ([7d023f6](https://github.com/tianshu-ai/tianshu/commit/7d023f6f28b598eff096af2ba6424f8e1f2ec6fc))
+* **wiki:** register semantic-search and embedding-status API routes in manifest ([6edecf7](https://github.com/tianshu-ai/tianshu/commit/6edecf7e572b9841f961c72b01cf2acbcdc623ab))
+* **wiki:** separate Update Wiki and embedding reindex ([8a58cce](https://github.com/tianshu-ai/tianshu/commit/8a58cce1c2f567e281e85cd3653e7f21c5b333ba))
+
 ## [0.28.0](https://github.com/tianshu-ai/tianshu/compare/v0.27.1...v0.28.0) (2026-08-29)
 
 
