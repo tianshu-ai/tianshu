@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.30.3](https://github.com/tianshu-ai/tianshu/compare/v0.30.2...v0.30.3) (2026-08-31)
+
+
+### Bug Fixes
+
+* **web:** add min-w-0 to message wrapper to fix flex overflow ([c2dec6b](https://github.com/tianshu-ai/tianshu/commit/c2dec6b283910972a9b4f9241e91446071120e73))
+* **web:** blocks path tool calls also need min-w-0 for truncation ([399c8ac](https://github.com/tianshu-ai/tianshu/commit/399c8ac97168efe9d6147376b151193e47af65d7))
+* **web:** replace max-w-none with max-w-full to constrain prose/table width ([bfc00d5](https://github.com/tianshu-ai/tianshu/commit/bfc00d53f6f8aaa153e828f9a02295aa73308711))
+* **web:** table overflow scroll without clipping text ([891ab23](https://github.com/tianshu-ai/tianshu/commit/891ab23e0127a777442565340e23a8377f53199a))
+* **web:** table scrollbar inside bubble, not on chat container ([bdf9cdb](https://github.com/tianshu-ai/tianshu/commit/bdf9cdb64d1bce38a8e89815ae3ef99ccdacba8b))
+* **web:** tool call rows overflow — add min-w-0 + overflow-hidden ([fa8fbc3](https://github.com/tianshu-ai/tianshu/commit/fa8fbc3ca463626bfd54313a111e82b3e1beacd6))
+* **web:** ToolCallRow outer div needs w-full min-w-0 for truncation ([2f7902a](https://github.com/tianshu-ai/tianshu/commit/2f7902a0e915205d4a30bb3e122cd1af4f0bfd6f))
+* **web:** use overflow-hidden on wrapper instead of constraining prose width ([beef0a4](https://github.com/tianshu-ai/tianshu/commit/beef0a4d6cfe838b5c549294432a5e04ca223059))
+
 ## [0.30.2](https://github.com/tianshu-ai/tianshu/compare/v0.30.1...v0.30.2) (2026-08-31)
 
 
