@@ -167,14 +167,15 @@ export class BridgeSandboxRunner implements SandboxRunner {
   async readFile(relPath: string): Promise<string> {
     console.log(`[BridgeSandboxRunner] readFile:`, relPath);
     try {
-      const result = await this.callBridgeTool(undefined, "read_file", { path: relPath });
+      const result = await this.callBridgeTool(undefined, "sync_up", { paths: [relPath] });
       const parsed = this.parseBridgeResult(result);
-      if (!parsed.ok) {
-        console.log(`[BridgeSandboxRunner] readFile error:`, parsed.error);
+      const files = Array.isArray(parsed.files) ? parsed.files as Array<{ path: string; base64: string }> : [];
+      const file = files.find((f) => f.path === relPath);
+      if (!file?.base64) {
+        console.log(`[BridgeSandboxRunner] readFile: not found in sync_up result`);
         return "";
       }
-      const b64 = String(parsed.base64 ?? "");
-      return b64 ? Buffer.from(b64, "base64").toString("utf-8") : "";
+      return Buffer.from(file.base64, "base64").toString("utf-8");
     } catch (err) {
       console.error(`[BridgeSandboxRunner] readFile ERROR:`, err instanceof Error ? err.message : String(err));
       return "";
@@ -185,9 +186,8 @@ export class BridgeSandboxRunner implements SandboxRunner {
     console.log(`[BridgeSandboxRunner] writeFile:`, relPath, `(${content.length} bytes)`);
     try {
       const b64 = Buffer.from(content).toString("base64");
-      const result = await this.callBridgeTool(undefined, "write_file", {
-        path: relPath,
-        base64: b64,
+      const result = await this.callBridgeTool(undefined, "sync_down", {
+        files: [{ path: relPath, base64: b64 }],
       });
       const parsed = this.parseBridgeResult(result);
       if (!parsed.ok) {
@@ -284,7 +284,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
 
   /**
    * Sync files from the bridge machine to the server workspace.
-   * Uses the bridge's native `read_file` tool for clean binary transfer.
+   * Calls bridge's `sync_up` which reads files and returns their content.
    */
   async syncDown(
     paths: string[] | Array<{ sandbox: string; host: string }>,
@@ -297,23 +297,36 @@ export class BridgeSandboxRunner implements SandboxRunner {
     const fs = await import("node:fs");
     const path = await import("node:path");
 
-    for (const { sandbox, host } of pairs) {
-      try {
-        const result = await this.callBridgeTool(undefined, "read_file", { path: sandbox });
-        const parsed = this.parseBridgeResult(result);
-        if (!parsed.ok) {
-          skipped.push({ relPath: host, reason: String(parsed.error ?? "read_file failed") });
+    // Batch all sandbox paths into one sync_up call.
+    const sandboxPaths = pairs.map((p) => p.sandbox);
+    try {
+      const result = await this.callBridgeTool(undefined, "sync_up", { paths: sandboxPaths });
+      const parsed = this.parseBridgeResult(result);
+      const files = Array.isArray(parsed.files) ? parsed.files as Array<{ path: string; base64: string }> : [];
+      const bridgeSkipped = Array.isArray(parsed.skipped) ? parsed.skipped as Array<{ path: string; reason: string }> : [];
+
+      // Build a lookup from sandbox path → base64 content.
+      const contentMap = new Map<string, string>();
+      for (const f of files) {
+        if (f.path && f.base64) contentMap.set(f.path, f.base64);
+      }
+
+      for (const { sandbox, host } of pairs) {
+        const b64 = contentMap.get(sandbox);
+        if (!b64) {
+          const reason = bridgeSkipped.find((s) => s.path === sandbox)?.reason ?? "not found in sync_up result";
+          skipped.push({ relPath: host, reason });
           continue;
         }
-        const b64 = String(parsed.base64 ?? "");
-        if (!b64) { skipped.push({ relPath: host, reason: "empty content" }); continue; }
-
         const wsPath = this.workspacePath();
         const fullPath = path.join(wsPath, host);
         fs.mkdirSync(path.dirname(fullPath), { recursive: true });
         fs.writeFileSync(fullPath, Buffer.from(b64, "base64"));
         downloaded.push(host);
-      } catch (err) {
+      }
+    } catch (err) {
+      // If the batch call fails, mark all as skipped.
+      for (const { host } of pairs) {
         skipped.push({ relPath: host, reason: err instanceof Error ? err.message : String(err) });
       }
     }
@@ -322,7 +335,7 @@ export class BridgeSandboxRunner implements SandboxRunner {
 
   /**
    * Sync files from the server workspace to the bridge machine.
-   * Uses the bridge's native `write_file` tool for clean binary transfer.
+   * Calls bridge's `sync_down` which writes files from base64 content.
    */
   async syncUp(
     hostRelPaths: string[],
@@ -332,25 +345,41 @@ export class BridgeSandboxRunner implements SandboxRunner {
     const fs = await import("node:fs");
     const path = await import("node:path");
 
+    // Read all local files and batch into one sync_down call.
+    const filesToSend: Array<{ path: string; base64: string }> = [];
+    const failedReads: Array<{ relPath: string; reason: string }> = [];
     const wsPath = this.workspacePath();
     for (const rel of hostRelPaths) {
       try {
         const fullPath = path.join(wsPath, rel);
         const buf = fs.readFileSync(fullPath);
-        const b64 = buf.toString("base64");
-
-        const result = await this.callBridgeTool(undefined, "write_file", {
-          path: rel,
-          base64: b64,
-        });
-        const parsed = this.parseBridgeResult(result);
-        if (!parsed.ok) {
-          skipped.push({ relPath: rel, reason: String(parsed.error ?? "write_file failed") });
-          continue;
-        }
-        uploaded.push(rel);
+        filesToSend.push({ path: rel, base64: buf.toString("base64") });
       } catch (err) {
-        skipped.push({ relPath: rel, reason: err instanceof Error ? err.message : String(err) });
+        failedReads.push({ relPath: rel, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    skipped.push(...failedReads);
+
+    if (filesToSend.length > 0) {
+      try {
+        const result = await this.callBridgeTool(undefined, "sync_down", { files: filesToSend });
+        const parsed = this.parseBridgeResult(result);
+        const written = Array.isArray(parsed.written) ? parsed.written as Array<{ path: string }> : [];
+        const bridgeSkipped = Array.isArray(parsed.skipped) ? parsed.skipped as Array<{ path: string; reason: string }> : [];
+
+        const writtenSet = new Set(written.map((w) => w.path));
+        for (const f of filesToSend) {
+          if (writtenSet.has(f.path)) {
+            uploaded.push(f.path);
+          } else {
+            const reason = bridgeSkipped.find((s) => s.path === f.path)?.reason ?? "not written";
+            skipped.push({ relPath: f.path, reason });
+          }
+        }
+      } catch (err) {
+        for (const f of filesToSend) {
+          skipped.push({ relPath: f.path, reason: err instanceof Error ? err.message : String(err) });
+        }
       }
     }
     return { uploaded, skipped };
