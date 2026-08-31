@@ -577,7 +577,16 @@ export function renderForPrompt(messages: DeliveredMessage[]): string {
   const guidance = hasIntervention
     ? `${messages.length} background notification${messages.length === 1 ? "" : "s"} arrived. At least one is a task_intervention_required: read its meta + the task's history if useful, then call ONE of task_continue / task_retry_fresh / task_extend_timeout / task_abort to keep the work moving. For task_done blocks, brief acknowledge is enough.`
     : `${messages.length} background notification${messages.length === 1 ? "" : "s"} arrived while you were idle. Briefly acknowledge them in one short message (one line per notification is enough) and stop \u2014 do NOT investigate, evaluate, or take new action unless the user explicitly asks.`;
+  // Embed structured event data as a machine-readable JSON tag so
+  // toWire can extract it regardless of how the message was stored
+  // (handler path OR followUp path). The frontend reads the parsed
+  // WireMessage.inboxEvents, never this raw tag.
+  const events = extractEvents(messages);
+  const eventTag = events.length > 0
+    ? `<!--inbox-events:${JSON.stringify(events)}-->`
+    : "";
   return [
+    eventTag,
     "<system-note>",
     guidance,
     "",

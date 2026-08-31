@@ -459,7 +459,7 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
       // bubble shows their actual prose. The chip strip rendered from
       // `attachments[]` already conveys what's attached. The DB still
       // carries the marker for the agent's pi-ai context.
-      const text = stripAgentAttachmentMarkers(rawText);
+      let text = stripAgentAttachmentMarkers(rawText);
       // Attachment metadata: prefer the sibling `attachments` field
       // (server-set by SqliteSessionStorage.appendEntry for every
       // attachment, image or not). Fall back to deriving it from
@@ -495,9 +495,9 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
           : [];
       const attachments =
         stored.length > 0 ? stored : fromImageParts;
-      // Extract inbox events if present
+      // Extract inbox events: from stored JSON field OR from text tag
       const rawEvents = Array.isArray(obj.inboxEvents) ? obj.inboxEvents as Record<string, unknown>[] : [];
-      const inboxEvents: WireInboxEvent[] = rawEvents
+      let inboxEvents: WireInboxEvent[] = rawEvents
         .map((e) => ({
           kind: String(e.kind ?? "system_note"),
           source: typeof e.source === "string" ? e.source : undefined,
@@ -508,6 +508,14 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
           text: String(e.text ?? ""),
         }))
         .filter((e) => e.text.length > 0);
+      // Fallback: extract from text tag if not in JSON field
+      if (inboxEvents.length === 0) {
+        const fromText = extractInboxEventsFromText(text);
+        if (fromText) {
+          inboxEvents = fromText.events;
+          text = fromText.cleanText;
+        }
+      }
       return {
         ...base,
         text,
@@ -517,7 +525,36 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
     }
   }
   // Legacy: content is a bare string.
-  return { ...base, text: m.content };
+  const legacyEvents = extractInboxEventsFromText(m.content);
+  return {
+    ...base,
+    text: legacyEvents ? legacyEvents.cleanText : m.content,
+    inboxEvents: legacyEvents?.events,
+  };
+}
+
+/** Extract <!--inbox-events:JSON--> tag from message text. */
+function extractInboxEventsFromText(text: string): { cleanText: string; events: WireInboxEvent[] } | null {
+  const match = text.match(/<!--inbox-events:(\[.*?\])-->/);
+  if (!match) return null;
+  try {
+    const raw = JSON.parse(match[1]) as Array<Record<string, unknown>>;
+    const events: WireInboxEvent[] = raw.map((e) => ({
+      kind: String(e.kind ?? "system_note"),
+      source: typeof e.source === "string" ? e.source : undefined,
+      title: typeof e.title === "string" ? e.title : undefined,
+      firedAt: typeof e.firedAt === "string" ? e.firedAt : undefined,
+      jobId: typeof e.jobId === "string" ? e.jobId : undefined,
+      scheduleType: typeof e.scheduleType === "string" ? e.scheduleType : undefined,
+      text: String(e.text ?? ""),
+    })).filter((e) => e.text.length > 0);
+    if (events.length === 0) return null;
+    // Strip the tag from the visible text
+    const cleanText = text.replace(/<!--inbox-events:\[.*?\]-->\n?/, "");
+    return { cleanText, events };
+  } catch {
+    return null;
+  }
 }
 
 /** Pull display-only meta off a parsed pi-ai AssistantMessage.
