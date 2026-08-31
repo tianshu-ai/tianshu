@@ -164,51 +164,17 @@ export class BridgeSandboxRunner implements SandboxRunner {
     }
   }
 
-  /** Read a file in chunks via base64 (bypasses bridge 200-line cap). */
-  private async readFileFull(relPath: string): Promise<string> {
-    // Read raw bytes in 5KB chunks, base64-encode each chunk.
-    // base64 of 5KB = ~6.8KB text (~91 lines of 76 chars) → under 200-line cap.
-    const RAW_CHUNK = 5000;
-    let offset = 0;
-    const parts: string[] = [];
-    for (let i = 0; i < 300; i++) { // max 300 chunks = 1.5MB
-      const res = await this.callBridgeTool(undefined, "exec", {
-        command: `dd if=${JSON.stringify(relPath)} bs=1 skip=${offset} count=${RAW_CHUNK} 2>/dev/null | base64`,
-      });
-      const content = Array.isArray(res.content)
-        ? (res.content as { text?: string }[]).map((c) => c.text ?? "").join("")
-        : "";
-      let b64 = "";
-      try {
-        const parsed = JSON.parse(content) as { stdout?: string };
-        b64 = (parsed.stdout ?? "").replace(/\s/g, "");
-      } catch {
-        b64 = content.replace(/\s/g, "");
-      }
-      if (!b64) break;
-      const buf = Buffer.from(b64, "base64");
-      parts.push(buf.toString("utf-8"));
-      if (buf.length < RAW_CHUNK) break; // last chunk (compare BYTES not chars)
-      offset += RAW_CHUNK;
-    }
-    return parts.join("");
-  }
-
   async readFile(relPath: string): Promise<string> {
     console.log(`[BridgeSandboxRunner] readFile:`, relPath);
     try {
-      const result = await this.callBridgeTool(undefined, "exec", {
-        command: `cat ${JSON.stringify(relPath)}`,
-      });
-      const content = Array.isArray(result.content) ? result.content : [];
-      const rawText = content.map((c: { text?: string }) => c.text ?? "").join("\n");
-      try {
-        const parsed = JSON.parse(rawText) as { stdout?: string; stderr?: string; ok?: boolean };
-        if (!parsed.ok) console.log(`[BridgeSandboxRunner] readFile error:`, parsed.stderr?.slice(0, 200));
-        return parsed.stdout ?? "";
-      } catch {
-        return rawText;
+      const result = await this.callBridgeTool(undefined, "read_file", { path: relPath });
+      const parsed = this.parseBridgeResult(result);
+      if (!parsed.ok) {
+        console.log(`[BridgeSandboxRunner] readFile error:`, parsed.error);
+        return "";
       }
+      const b64 = String(parsed.base64 ?? "");
+      return b64 ? Buffer.from(b64, "base64").toString("utf-8") : "";
     } catch (err) {
       console.error(`[BridgeSandboxRunner] readFile ERROR:`, err instanceof Error ? err.message : String(err));
       return "";
@@ -217,18 +183,16 @@ export class BridgeSandboxRunner implements SandboxRunner {
 
   async writeFile(relPath: string, content: string): Promise<void> {
     console.log(`[BridgeSandboxRunner] writeFile:`, relPath, `(${content.length} bytes)`);
-    // Use base64 to avoid shell escaping issues.
-    const b64 = Buffer.from(content).toString("base64");
     try {
-      const result = await this.callBridgeTool(undefined, "exec", {
-        command: `mkdir -p "$(dirname ${JSON.stringify(relPath)})" && echo '${b64}' | base64 -d > ${JSON.stringify(relPath)}`,
+      const b64 = Buffer.from(content).toString("base64");
+      const result = await this.callBridgeTool(undefined, "write_file", {
+        path: relPath,
+        base64: b64,
       });
-      const raw = Array.isArray(result.content) ? (result.content as {text?: string}[]).map(c => c.text ?? "").join("") : "";
-      try {
-        const p = JSON.parse(raw) as { ok?: boolean; stderr?: string };
-        if (!p.ok) console.error(`[BridgeSandboxRunner] writeFile failed:`, p.stderr?.slice(0, 200));
-        else console.log(`[BridgeSandboxRunner] writeFile OK`);
-      } catch { /* ok */ }
+      const parsed = this.parseBridgeResult(result);
+      if (!parsed.ok) {
+        console.error(`[BridgeSandboxRunner] writeFile failed:`, parsed.error);
+      }
     } catch (err) {
       console.error(`[BridgeSandboxRunner] writeFile ERROR:`, err instanceof Error ? err.message : String(err));
     }
@@ -273,11 +237,11 @@ export class BridgeSandboxRunner implements SandboxRunner {
     let exitCode = 0;
     console.log(`[BridgeSandboxRunner] runOpencode: reading oc.out...`);
     try {
-      stdout = await this.readFileFull(`${workdir}/oc.out`);
+      stdout = await this.readFile(`${workdir}/oc.out`);
       console.log(`[BridgeSandboxRunner] runOpencode: oc.out read OK, ${stdout.length} bytes`);
     } catch (e) { console.log(`[BridgeSandboxRunner] runOpencode: oc.out read FAILED`, e); }
     try {
-      stderr = await this.readFileFull(`${workdir}/oc.err`);
+      stderr = await this.readFile(`${workdir}/oc.err`);
       console.log(`[BridgeSandboxRunner] runOpencode: oc.err read OK, ${stderr.length} bytes`);
     } catch (e) { console.log(`[BridgeSandboxRunner] runOpencode: oc.err read FAILED`, e); }
     try {
@@ -306,9 +270,21 @@ export class BridgeSandboxRunner implements SandboxRunner {
     return this._workspacePath;
   }
 
+  /** Parse bridge tool response JSON from content blocks. */
+  private parseBridgeResult(result: Record<string, unknown>): Record<string, unknown> {
+    const content = Array.isArray(result.content)
+      ? (result.content as { text?: string }[]).map((c) => c.text ?? "").join("")
+      : "";
+    try {
+      return JSON.parse(content) as Record<string, unknown>;
+    } catch {
+      return { ok: false, error: "unparseable response" };
+    }
+  }
+
   /**
    * Sync files from the bridge machine to the server workspace.
-   * Reads each file via bridge exec (cat | base64), decodes, writes locally.
+   * Uses read_file to pull each file's content, writes to server.
    */
   async syncDown(
     paths: string[] | Array<{ sandbox: string; host: string }>,
@@ -323,26 +299,15 @@ export class BridgeSandboxRunner implements SandboxRunner {
 
     for (const { sandbox, host } of pairs) {
       try {
-        // Read file from bridge as base64.
-        const result = await this.callBridgeTool(undefined, "exec", {
-          command: `base64 < ${JSON.stringify(sandbox)}`,
-        });
-        const content = Array.isArray(result.content)
-          ? (result.content as { text?: string }[]).map((c) => c.text ?? "").join("")
-          : "";
-        let b64: string;
-        try {
-          const parsed = JSON.parse(content) as { stdout?: string; ok?: boolean };
-          if (!parsed.ok) { skipped.push({ relPath: host, reason: "exec failed" }); continue; }
-          b64 = parsed.stdout ?? "";
-        } catch {
-          b64 = content;
+        const result = await this.callBridgeTool(undefined, "read_file", { path: sandbox });
+        const parsed = this.parseBridgeResult(result);
+        if (!parsed.ok) {
+          skipped.push({ relPath: host, reason: String(parsed.error ?? "read_file failed") });
+          continue;
         }
-        // Remove whitespace from base64.
-        b64 = b64.replace(/\s/g, "");
+        const b64 = String(parsed.base64 ?? "");
         if (!b64) { skipped.push({ relPath: host, reason: "empty content" }); continue; }
 
-        // Write to server workspace.
         const wsPath = this.workspacePath();
         const fullPath = path.join(wsPath, host);
         fs.mkdirSync(path.dirname(fullPath), { recursive: true });
@@ -353,6 +318,40 @@ export class BridgeSandboxRunner implements SandboxRunner {
       }
     }
     return { downloaded, skipped };
+  }
+
+  /**
+   * Sync files from the server workspace to the bridge machine.
+   * Uses write_file to push each file's content to the bridge.
+   */
+  async syncUp(
+    hostRelPaths: string[],
+  ): Promise<{ uploaded: string[]; skipped: Array<{ relPath: string; reason: string }> }> {
+    const uploaded: string[] = [];
+    const skipped: Array<{ relPath: string; reason: string }> = [];
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+
+    const wsPath = this.workspacePath();
+    for (const rel of hostRelPaths) {
+      try {
+        const fullPath = path.join(wsPath, rel);
+        const buf = fs.readFileSync(fullPath);
+        const result = await this.callBridgeTool(undefined, "write_file", {
+          path: rel,
+          base64: buf.toString("base64"),
+        });
+        const parsed = this.parseBridgeResult(result);
+        if (!parsed.ok) {
+          skipped.push({ relPath: rel, reason: String(parsed.error ?? "write_file failed") });
+          continue;
+        }
+        uploaded.push(rel);
+      } catch (err) {
+        skipped.push({ relPath: rel, reason: err instanceof Error ? err.message : String(err) });
+      }
+    }
+    return { uploaded, skipped };
   }
 
   async reset(): Promise<void> {}
