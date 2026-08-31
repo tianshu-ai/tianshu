@@ -264,30 +264,47 @@ body,
 }
 
 /* ═══ Classical theme visual assets ═══ */
-/* Everything is parchment — body, panels, inputs, all surfaces */
-[data-theme="classical"],
-[data-theme="classical"] body,
-[data-theme="classical"] #root > div,
-[data-theme="classical"] aside,
-[data-theme="classical"] nav,
-[data-theme="classical"] header,
-[data-theme="classical"] textarea,
-[data-theme="classical"] input {
-  background-color: transparent !important;
-}
+/* Everything is parchment — all surfaces transparent to show body texture */
 [data-theme="classical"] body {
   background: #f0e8d8 url('/classical/paper-texture.png') repeat !important;
   background-size: 600px 600px !important;
   background-blend-mode: overlay !important;
 }
+[data-theme="classical"] #root > div,
+[data-theme="classical"] header {
+  background-color: transparent !important;
+}
+/* Sidebar & right panel: semi-transparent so texture bleeds through */
+[data-theme="classical"] aside,
+[data-theme="classical"] [class*="PluginRightPanel"],
+[data-theme="classical"] [class*="border-r"],
+[data-theme="classical"] [class*="border-l"] {
+  background-color: rgba(248, 242, 230, 0.6) !important;
+}
+/* Input area: semi-transparent parchment */
+[data-theme="classical"] textarea,
+[data-theme="classical"] input[type="text"],
+[data-theme="classical"] [class*="ChatInput"] {
+  background-color: rgba(255, 250, 242, 0.7) !important;
+}
 
-/* Sidebar: ink mountains at bottom */
-[data-theme="classical"] [data-sidebar],
-[data-theme="classical"] nav {
-  background-image: var(--classical-mountains);
+/* Sidebar: ink mountains at bottom (semi-transparent) */
+[data-theme="classical"] aside {
+  position: relative;
+}
+[data-theme="classical"] aside::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background-image: url('/classical/ink-mountains.png');
   background-repeat: no-repeat;
   background-position: bottom center;
   background-size: 100% auto;
+  opacity: 0.2;
+  pointer-events: none;
 }
 
 /* Cloud divider for horizontal rules */
