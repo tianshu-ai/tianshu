@@ -14,7 +14,7 @@
     "@tailwindcss/typography": "^0.5.20",
     "@types/papaparse": "^5.5.2",
     "lucide-react": "^1.30.0",
-    "papaparse": "^5.5.4",
+    "papaparse": "^5.7.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-force-graph-2d": "^1.29.1",
