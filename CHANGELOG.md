@@ -6,6 +6,30 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.31.0](https://github.com/tianshu-ai/tianshu/compare/v0.30.3...v0.31.0) (2026-08-31)
+
+
+### Features
+
+* **web:** add '古风' classical Chinese theme (素宣暖阳) ([47760d4](https://github.com/tianshu-ai/tianshu/commit/47760d47a028bedf2794bbbe7f11e94756e4a059))
+* **web:** classical theme as default for new users ([3ad34c0](https://github.com/tianshu-ai/tianshu/commit/3ad34c0315cdcd28798f655c936942ed46291e36))
+* **web:** classical theme visual assets — Gemini-generated ([c62035e](https://github.com/tianshu-ai/tianshu/commit/c62035e4ead89ae46187f66858d3edaf31933008))
+* **web:** right panel full-height ink mountains (12% opacity, cover) ([525c178](https://github.com/tianshu-ai/tianshu/commit/525c1780f6a505947a4fd54c09ecf7909b18f5fd))
+
+
+### Bug Fixes
+
+* **web:** entire UI is parchment — all panels/inputs transparent, body carries texture ([96bed10](https://github.com/tianshu-ai/tianshu/commit/96bed1083ac0565c7909dfd3e7a022a9a1bfc3c8))
+* **web:** ink mountains only on left sidebar (aside.border-r), not right panel ([1edb6fb](https://github.com/tianshu-ai/tianshu/commit/1edb6fb1d69d1a08fe189a806381c9d28cf4bbfb))
+* **web:** inline paper texture URL + multiply blend mode for visibility ([4ae626d](https://github.com/tianshu-ai/tianshu/commit/4ae626d7ac28135631fb6ae3f4f333b9987f8de0))
+* **web:** make root layout transparent in classical theme so paper texture shows ([4427095](https://github.com/tianshu-ai/tianshu/commit/44270953567bbe67544da67c96cbc538a2c5c2f0))
+* **web:** panels semi-transparent (60%), sidebar mountains 20% opacity ([606fd71](https://github.com/tianshu-ai/tianshu/commit/606fd71a4c8f437c29e2d2aa93794537ea1b7c54))
+* **web:** paper texture as 15% opacity pseudo-element overlay ([2979ccf](https://github.com/tianshu-ai/tianshu/commit/2979ccf326ed932724d06c953ab0fc47bd59e8b8))
+* **web:** paper texture not showing — add !important to override base layer ([2512f07](https://github.com/tianshu-ai/tianshu/commit/2512f07fdf0127b44c1b6cfaf578a353e0436f9d))
+* **web:** regenerate paper texture with visible fiber structure ([1d21949](https://github.com/tianshu-ai/tianshu/commit/1d21949b15eb94301767bf35387cec16633eeba5))
+* **web:** right panel more transparent (35%) + mountains 18% opacity ([cd5afa6](https://github.com/tianshu-ai/tianshu/commit/cd5afa699e781bb5d63ffc32e184294d0417240c))
+* **web:** uniform 50% parchment transparency across all surfaces ([797eb62](https://github.com/tianshu-ai/tianshu/commit/797eb6288604b7d1ea178ff5d944a5a2fc4266d3))
+
 ## [0.30.3](https://github.com/tianshu-ai/tianshu/compare/v0.30.2...v0.30.3) (2026-08-31)
 
 
