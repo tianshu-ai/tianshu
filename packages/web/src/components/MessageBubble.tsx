@@ -141,7 +141,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
               )}
             </div>
           ) : (
-            <div className={`flex flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
+            <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
               {blocks.map((b, i) =>
                 renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert),
               )}
