@@ -113,6 +113,10 @@ export function makeBridgeToolset(args: {
         for (const t of conn.tools) {
           tools.push(buildTool(registry, userHomeDir, conn.userId, conn.deviceId, t));
         }
+        // Virtual sync tools — orchestrate read_file/write_file to copy
+        // files between server workspace and bridge. Agent sees just paths.
+        tools.push(buildSyncUpTool(registry, userHomeDir, conn.userId, conn.deviceId));
+        tools.push(buildSyncDownTool(registry, userHomeDir, conn.userId, conn.deviceId));
       }
       return tools;
     },
@@ -218,6 +222,169 @@ function buildViewImageTool(
         text: `Showing ${rel}.`,
         images: [{ base64: buf.toString("base64"), mimeType }],
       };
+    },
+  };
+}
+
+// ─── virtual sync tools (server-side orchestration) ──────────────────
+
+/** Helper: call a bridge tool and parse the JSON result. */
+async function callBridgeAndParse(
+  registry: BridgeRegistry,
+  conn: BridgeConn,
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const result = await registry.call(conn, "tools/call", { name: toolName, arguments: args });
+  const res = (result ?? {}) as ToolsCallResult;
+  const text = (res.content ?? []).map((c) => (typeof c.text === "string" ? c.text : "")).filter(Boolean).join("\n");
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { ok: false, error: "unparseable bridge response" };
+  }
+}
+
+/**
+ * sync_up: copy files from bridge → server workspace.
+ * Agent gives paths, toolset calls bridge read_file for each,
+ * writes content to server workspace. Agent sees just synced paths.
+ */
+function buildSyncUpTool(
+  registry: BridgeRegistry,
+  userHomeDir: (userId: string) => string,
+  userId: string,
+  deviceId: string,
+): AgentTool {
+  return {
+    schema: {
+      name: toolName(deviceId, "sync_up"),
+      description:
+        "Copy files from the bridge machine to the server workspace (bridge → server). " +
+        "Provide relative paths on the bridge; files are copied to the server workspace at the same paths. " +
+        `(Runs via Local Bridge device "${deviceId}".)`,
+      parameters: {
+        type: "object",
+        properties: {
+          paths: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            description: "File paths on the bridge to copy to the server workspace.",
+          },
+        },
+        required: ["paths"],
+      } as never,
+    },
+    available(ctx: AgentToolContext): boolean {
+      return ctx.userId === userId;
+    },
+    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext): Promise<ToolResult> {
+      if (ctx.userId !== userId) return errorResult("This bridge tool belongs to a different user.");
+      const conn = registry.forUser(userId).find((c) => c.deviceId === deviceId);
+      if (!conn) return errorResult(`Local Bridge device "${deviceId}" is not connected.`);
+
+      const paths = Array.isArray(rawArgs.paths) ? rawArgs.paths.map(String) : [];
+      if (paths.length === 0) return errorResult("paths is required and must be non-empty.");
+
+      const home = userHomeDir(userId);
+      const synced: string[] = [];
+      const failed: Array<{ path: string; reason: string }> = [];
+
+      for (const rel of paths) {
+        try {
+          const parsed = await callBridgeAndParse(registry, conn, "read_file", { path: rel });
+          if (!parsed.ok) {
+            failed.push({ path: rel, reason: String(parsed.error ?? "read_file failed") });
+            continue;
+          }
+          const b64 = String(parsed.base64 ?? "");
+          if (!b64) { failed.push({ path: rel, reason: "empty content" }); continue; }
+          const abs = path.join(home, rel);
+          fs.mkdirSync(path.dirname(abs), { recursive: true });
+          fs.writeFileSync(abs, Buffer.from(b64, "base64"));
+          synced.push(rel);
+        } catch (err) {
+          failed.push({ path: rel, reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
+      const text = failed.length === 0
+        ? `Synced ${synced.length} file(s) from bridge to server: ${synced.join(", ")}`
+        : `Synced ${synced.length}, failed ${failed.length}: ${failed.map((f) => `${f.path} (${f.reason})`).join(", ")}`;
+      return failed.length === 0 ? okResult(text) : errorResult(text);
+    },
+  };
+}
+
+/**
+ * sync_down: copy files from server workspace → bridge.
+ * Agent gives paths, toolset reads from server workspace,
+ * calls bridge write_file for each. Agent sees just synced paths.
+ */
+function buildSyncDownTool(
+  registry: BridgeRegistry,
+  userHomeDir: (userId: string) => string,
+  userId: string,
+  deviceId: string,
+): AgentTool {
+  return {
+    schema: {
+      name: toolName(deviceId, "sync_down"),
+      description:
+        "Copy files from the server workspace to the bridge machine (server → bridge). " +
+        "Provide relative paths in the server workspace; files are copied to the bridge at the same paths. " +
+        `(Runs via Local Bridge device "${deviceId}".)`,
+      parameters: {
+        type: "object",
+        properties: {
+          paths: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            description: "File paths in the server workspace to copy to the bridge.",
+          },
+        },
+        required: ["paths"],
+      } as never,
+    },
+    available(ctx: AgentToolContext): boolean {
+      return ctx.userId === userId;
+    },
+    async execute(rawArgs: Record<string, unknown>, ctx: AgentToolContext): Promise<ToolResult> {
+      if (ctx.userId !== userId) return errorResult("This bridge tool belongs to a different user.");
+      const conn = registry.forUser(userId).find((c) => c.deviceId === deviceId);
+      if (!conn) return errorResult(`Local Bridge device "${deviceId}" is not connected.`);
+
+      const paths = Array.isArray(rawArgs.paths) ? rawArgs.paths.map(String) : [];
+      if (paths.length === 0) return errorResult("paths is required and must be non-empty.");
+
+      const home = userHomeDir(userId);
+      const synced: string[] = [];
+      const failed: Array<{ path: string; reason: string }> = [];
+
+      for (const rel of paths) {
+        try {
+          const abs = path.join(home, rel);
+          const buf = fs.readFileSync(abs);
+          const parsed = await callBridgeAndParse(registry, conn, "write_file", {
+            path: rel,
+            base64: buf.toString("base64"),
+          });
+          if (!parsed.ok) {
+            failed.push({ path: rel, reason: String(parsed.error ?? "write_file failed") });
+            continue;
+          }
+          synced.push(rel);
+        } catch (err) {
+          failed.push({ path: rel, reason: err instanceof Error ? err.message : String(err) });
+        }
+      }
+
+      const text = failed.length === 0
+        ? `Synced ${synced.length} file(s) from server to bridge: ${synced.join(", ")}`
+        : `Synced ${synced.length}, failed ${failed.length}: ${failed.map((f) => `${f.path} (${f.reason})`).join(", ")}`;
+      return failed.length === 0 ? okResult(text) : errorResult(text);
     },
   };
 }
