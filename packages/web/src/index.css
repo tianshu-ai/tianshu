@@ -270,22 +270,13 @@ body,
   background-size: 600px 600px !important;
   background-blend-mode: overlay !important;
 }
+/* All surfaces: uniform semi-transparent parchment */
 [data-theme="classical"] #root > div,
-[data-theme="classical"] header {
-  background-color: transparent !important;
-}
-/* Sidebar & right panel: semi-transparent so texture bleeds through */
+[data-theme="classical"] header,
 [data-theme="classical"] aside,
-[data-theme="classical"] [class*="PluginRightPanel"],
-[data-theme="classical"] [class*="border-r"],
-[data-theme="classical"] [class*="border-l"] {
-  background-color: rgba(248, 242, 230, 0.6) !important;
-}
-/* Input area: semi-transparent parchment */
 [data-theme="classical"] textarea,
-[data-theme="classical"] input[type="text"],
-[data-theme="classical"] [class*="ChatInput"] {
-  background-color: rgba(255, 250, 242, 0.7) !important;
+[data-theme="classical"] input[type="text"] {
+  background-color: rgba(245, 238, 225, 0.5) !important;
 }
 
 /* Sidebar (left): ink mountains bottom half */
