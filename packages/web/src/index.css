@@ -288,7 +288,7 @@ body,
   background-color: rgba(255, 250, 242, 0.7) !important;
 }
 
-/* Sidebar (left, w-64 border-r): ink mountains at bottom */
+/* Sidebar (left): ink mountains bottom half */
 [data-theme="classical"] aside.border-r {
   position: relative;
 }
@@ -304,6 +304,22 @@ body,
   background-position: bottom center;
   background-size: 100% auto;
   opacity: 0.2;
+  pointer-events: none;
+  z-index: 0;
+}
+/* Right panel: ink mountains full height */
+[data-theme="classical"] aside.border-l {
+  position: relative;
+}
+[data-theme="classical"] aside.border-l::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: url('/classical/ink-mountains.png');
+  background-repeat: no-repeat;
+  background-position: bottom center;
+  background-size: cover;
+  opacity: 0.12;
   pointer-events: none;
   z-index: 0;
 }
