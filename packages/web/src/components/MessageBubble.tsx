@@ -397,7 +397,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   }
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col w-full min-w-0">
       <button
         type="button"
         onClick={() => !running && setExpanded((v) => !v)}
