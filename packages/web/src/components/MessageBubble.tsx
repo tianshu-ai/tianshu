@@ -18,11 +18,15 @@ import { memo, useState } from "react";
 import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
+  Bell,
   Bot,
+  Calendar,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Clock,
   Loader2,
+  Repeat,
   User,
   XCircle,
 } from "lucide-react";
@@ -44,15 +48,29 @@ import { useT } from "../hooks/useT";
 // bubbles (each of which re-parses markdown + may highlight code) are
 // skipped. Default shallow prop compare on `{ m }` is exactly right
 // here because `m` is the only prop and its identity is meaningful.
+/** Parse a system event from message text.
+ *  Pattern: [System] Triggered at: <ts> | Job: "<title>" (<type>)\n\n<body> */
+function parseSystemEvent(text: string): {
+  title: string;
+  firedAt: string;
+  scheduleType: string;
+  body: string;
+} | null {
+  const m = text.match(
+    /^\[System\] Triggered at: ([^|]+)\| Job: "([^"]+)"\s*\(([^)]+)\)\s*\n\n?(.*)$/s,
+  );
+  if (!m) return null;
+  return {
+    firedAt: m[1].trim(),
+    title: m[2].trim(),
+    scheduleType: m[3].trim(),
+    body: m[4].trim(),
+  };
+}
+
 function MessageBubbleImpl({ m }: { m: MergedMessage }) {
   const isUser = m.role === "user";
-  // MarkdownBlock comes through the plugin-sdk UiPrimitives slot so
-  // the chat bubble + the files preview + every other surface
-  // render markdown identically.
   const { MarkdownBlock } = useUiPrimitives();
-  // `prose-invert` flips Typography colors for dark backgrounds.
-  // On light theme we DON'T want it: bubbles are white, text
-  // needs to read dark. Switch class on theme.
   const isDark = useThemeStore((s) => s.resolved === "dark");
   const proseInvert = isDark ? " prose-invert" : "";
 
@@ -67,6 +85,9 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
   const hasText = m.text.length > 0;
   const calls = m.resolvedToolCalls ?? [];
   const showStreamingPlaceholder = !isUser && !hasText && calls.length === 0 && !blocks;
+
+  // Detect system event messages and render as event cards
+  const systemEvent = !isUser && hasText ? parseSystemEvent(m.text) : null;
 
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
@@ -98,6 +119,8 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
               )}
             </div>
           )
+        ) : systemEvent ? (
+          <EventCard event={systemEvent} />
         ) : (
           <>
             {hasText ? (
@@ -420,6 +443,47 @@ function truncate(s: string, max: number): string {
 
 /** Regex matching bridge-screenshots paths in tool result text. */
 const SCREENSHOT_RE = /bridge-screenshots\/[\w.-]+\.(?:png|jpg|jpeg|webp|gif)/g;
+
+/** Event card for system events (cron fires, task completions, etc.) */
+function EventCard({
+  event,
+}: {
+  event: { title: string; firedAt: string; scheduleType: string; body: string };
+}) {
+  const isCron = event.scheduleType.startsWith("cron");
+  return (
+    <div className="max-w-md overflow-hidden rounded-lg border border-amber-500/30 bg-amber-500/5">
+      {/* Header */}
+      <div className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-3.5 py-2">
+        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/20">
+          {isCron ? (
+            <Repeat size={13} className="text-amber-500" />
+          ) : (
+            <Bell size={13} className="text-amber-500" />
+          )}
+        </div>
+        <span className="text-[13px] font-semibold text-amber-600 dark:text-amber-400">
+          {event.title}
+        </span>
+        <span className="ml-auto rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
+          {isCron ? "recurring" : "one-time"}
+        </span>
+      </div>
+      {/* Body */}
+      <div className="px-3.5 py-2.5">
+        {event.body && (
+          <p className="mb-2 text-[13px] leading-relaxed text-fg-default">
+            {event.body}
+          </p>
+        )}
+        <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
+          <Clock size={11} />
+          <span>Triggered {event.firedAt}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Three-dot typing indicator. Each dot phases the same animation
  *  by 150ms so it reads as "wave" rather than "blink". CSS sits

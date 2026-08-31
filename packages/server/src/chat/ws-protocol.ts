@@ -266,6 +266,15 @@ export interface WireMessageMeta {
   /** Active model's context window at the time we serialised, so the
    *  client doesn't need to look it up. */
   contextWindow?: number;
+  /** Structured event metadata for system-injected messages (cron,
+   *  task completions, etc.). Present → render as an event card. */
+  event?: {
+    source: string;    // "cron" | "task" | ...
+    title: string;
+    firedAt?: string;  // ISO timestamp
+    jobId?: string;
+    scheduleType?: string; // "cron" | "once"
+  };
 }
 
 /** Single tool call inside an assistant message. */
