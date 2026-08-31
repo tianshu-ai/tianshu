@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.30.2](https://github.com/tianshu-ai/tianshu/compare/v0.30.1...v0.30.2) (2026-08-31)
+
+
+### Bug Fixes
+
+* **web:** add overflow-x-auto to prose blocks to prevent table/code overflow ([20de206](https://github.com/tianshu-ai/tianshu/commit/20de206b6bc6da5408215b9e861c9d7af849e5dd))
+
 ## [0.30.1](https://github.com/tianshu-ai/tianshu/compare/v0.30.0...v0.30.1) (2026-08-31)
 
 
