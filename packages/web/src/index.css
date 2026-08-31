@@ -214,6 +214,13 @@
 
   --shiki-theme-name: "github-light";
 
+  /* ── Visual assets ── */
+  --classical-paper-bg: url('/classical/paper-texture.png');
+  --classical-seal: url('/classical/seal.png');
+  --classical-mountains: url('/classical/ink-mountains.png');
+  --classical-cloud-divider: url('/classical/cloud-divider.png');
+  --classical-constellation: url('/classical/constellation.png');
+
   /* Brand palette override — cinnabar ramp. */
   --color-brand-50:  #fdf2f1;
   --color-brand-100: #f9dbd8;
@@ -254,6 +261,46 @@ body,
   ::-webkit-scrollbar-thumb:hover {
     background: var(--color-scrollbar-hover);
   }
+}
+
+/* ═══ Classical theme visual assets ═══ */
+[data-theme="classical"] body {
+  background-image: var(--classical-paper-bg);
+  background-size: 400px 400px;
+  background-repeat: repeat;
+}
+
+/* Sidebar: ink mountains at bottom */
+[data-theme="classical"] [data-sidebar],
+[data-theme="classical"] nav {
+  background-image: var(--classical-mountains);
+  background-repeat: no-repeat;
+  background-position: bottom center;
+  background-size: 100% auto;
+}
+
+/* Cloud divider for horizontal rules */
+[data-theme="classical"] hr,
+[data-theme="classical"] .divide-y > * + * {
+  border-image: var(--classical-cloud-divider) 0 0 1 0 / 0 0 2px 0 stretch;
+}
+
+/* Seal watermark on AI bubbles */
+[data-theme="classical"] .prose::after {
+  content: '';
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  background: var(--classical-seal);
+  background-size: contain;
+  background-repeat: no-repeat;
+  opacity: 0.08;
+  pointer-events: none;
+}
+[data-theme="classical"] .prose {
+  position: relative;
 }
 
 @layer components {
