@@ -94,7 +94,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
 
   return (
     <div className={isEvent ? "flex justify-end" : isUser ? "flex justify-end" : "flex justify-start"}>
-      <div className={`flex max-w-[85%] min-w-0 flex-col ${isEvent ? "items-end" : isUser ? "items-end" : "items-start"}`}>
+      <div className={`flex max-w-[85%] overflow-hidden flex-col ${isEvent ? "items-end" : isUser ? "items-end" : "items-start"}`}>
         {!isEvent && (
           <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-faint">
             {isUser ? <User size={11} /> : <Bot size={11} className="text-link" />}
@@ -152,7 +152,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
             {hasText ? (
               <div
                 className={
-                  `prose${proseInvert} prose-sm max-w-full overflow-x-auto rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed ` +
+                  `prose${proseInvert} prose-sm max-w-none overflow-x-auto rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed ` +
                   (isUser
                     ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
                     : "border-border-subtle bg-bg-elevated/60 text-fg-default")
@@ -211,7 +211,7 @@ function renderAssistantBlock(
       return (
         <div
           key={`t${i}`}
-          className={`prose${proseInvert} prose-sm max-w-full overflow-x-auto px-3.5 py-2.5 text-[14px] leading-relaxed text-fg-default`}
+          className={`prose${proseInvert} prose-sm max-w-none overflow-x-auto px-3.5 py-2.5 text-[14px] leading-relaxed text-fg-default`}
         >
           <MarkdownBlock noProse>{block.text}</MarkdownBlock>
         </div>
@@ -221,7 +221,7 @@ function renderAssistantBlock(
       <div
         key={`t${i}`}
         className={
-          `prose${proseInvert} prose-sm max-w-full overflow-x-auto rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed ` +
+          `prose${proseInvert} prose-sm max-w-none overflow-x-auto rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed ` +
           (isUser
             ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
             : "border-border-subtle bg-bg-elevated/60 text-fg-default")
