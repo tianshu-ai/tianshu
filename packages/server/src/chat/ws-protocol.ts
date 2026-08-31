@@ -331,7 +331,21 @@ export interface WireMessage {
   /** Display-only metadata for assistant messages (model, token
    *  usage, context window). Undefined for user / tool rows. */
   meta?: WireMessageMeta;
+  /** Structured inbox events attached to this message (cron fires,
+   *  recovery notes, etc.). Frontend renders these as event cards. */
+  inboxEvents?: WireInboxEvent[];
   createdAt: number;
+}
+
+/** Structured event from the session inbox for UI card rendering. */
+export interface WireInboxEvent {
+  kind: string;
+  source?: string;
+  title?: string;
+  firedAt?: string;
+  jobId?: string;
+  scheduleType?: string;
+  text: string;
 }
 
 /**
@@ -481,10 +495,24 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
           : [];
       const attachments =
         stored.length > 0 ? stored : fromImageParts;
+      // Extract inbox events if present
+      const rawEvents = Array.isArray(obj.inboxEvents) ? obj.inboxEvents as Record<string, unknown>[] : [];
+      const inboxEvents: WireInboxEvent[] = rawEvents
+        .map((e) => ({
+          kind: String(e.kind ?? "system_note"),
+          source: typeof e.source === "string" ? e.source : undefined,
+          title: typeof e.title === "string" ? e.title : undefined,
+          firedAt: typeof e.firedAt === "string" ? e.firedAt : undefined,
+          jobId: typeof e.jobId === "string" ? e.jobId : undefined,
+          scheduleType: typeof e.scheduleType === "string" ? e.scheduleType : undefined,
+          text: String(e.text ?? ""),
+        }))
+        .filter((e) => e.text.length > 0);
       return {
         ...base,
         text,
         attachments: attachments.length > 0 ? attachments : undefined,
+        inboxEvents: inboxEvents.length > 0 ? inboxEvents : undefined,
       };
     }
   }

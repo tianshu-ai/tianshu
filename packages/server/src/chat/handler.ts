@@ -95,6 +95,8 @@ import { SqliteSessionRepo } from "./sqlite-session-repo.js";
 import {
   drainPending as drainInbox,
   renderForPrompt as renderInboxForPrompt,
+  extractEvents,
+  type InboxEvent,
   markDeliveredFromMessage,
 } from "./session-inbox.js";
 import {
@@ -654,6 +656,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // you were idle, AND here's the next thing the user said".
   const inboxDelivered = drainInbox(ctx, session.id);
   const inboxPrefix = renderInboxForPrompt(inboxDelivered);
+  const inboxEvents = inboxDelivered.length > 0 ? extractEvents(inboxDelivered) : undefined;
   const promptText = inboxPrefix
     ? `${inboxPrefix}<user>\n${rawPromptText}\n</user>`
     : rawPromptText;
@@ -675,6 +678,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     storage.pendingUserAttachments = {
       attachments: originalAttachments as unknown[],
     };
+  }
+  if (inboxEvents && inboxEvents.length > 0) {
+    storage.pendingInboxEvents = inboxEvents;
   }
   void repo;
 

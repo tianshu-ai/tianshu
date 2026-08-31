@@ -48,64 +48,19 @@ import { useT } from "../hooks/useT";
 // bubbles (each of which re-parses markdown + may highlight code) are
 // skipped. Default shallow prop compare on `{ m }` is exactly right
 // here because `m` is the only prop and its identity is meaningful.
-/** Parse system event messages injected via inbox or system notes. */
+/** Derive event card type from structured inbox event data. */
 interface SystemEvent {
   type: "cron" | "recovery" | "system_upgrade" | "system_note";
   title: string;
   body: string;
   firedAt?: string;
   scheduleType?: string;
-  kind?: string;
 }
 
-function parseSystemEvent(text: string): SystemEvent | null {
-  // Pattern 1: [system note] tianshu upgraded...
-  if (text.startsWith("[system note]")) {
-    return {
-      type: "system_upgrade",
-      title: "System Update",
-      body: text.replace(/^\[system note\]\s*/, ""),
-    };
-  }
-  // Pattern 2: <system-note>...<inbox kind="..." id="...">...</inbox></system-note>
-  const inboxMatch = text.match(
-    /<system-note>[\s\S]*?<inbox\s+kind="([^"]+)"[^>]*>([\s\S]*?)<\/inbox>\s*<\/system-note>/,
-  );
-  if (inboxMatch) {
-    const kind = inboxMatch[1];
-    const content = inboxMatch[2].trim();
-    // Cron event: [System] Triggered at: <ts> | Job: "<title>" (<type>)\n\n<body>
-    const cronMatch = content.match(
-      /^\[System\] Triggered at: ([^|]+)\| Job: "([^"]+)"\s*\(([^)]+)\)\s*\n\n?(.*)$/s,
-    );
-    if (cronMatch) {
-      return {
-        type: "cron",
-        title: cronMatch[2].trim(),
-        firedAt: cronMatch[1].trim(),
-        scheduleType: cronMatch[3].trim(),
-        body: cronMatch[4].trim(),
-        kind,
-      };
-    }
-    // Recovery note
-    if (kind === "inbox_recovery_note") {
-      return {
-        type: "recovery",
-        title: "Session Recovery",
-        body: content.replace(/^\*\*[^*]+\*\*[：:]\s*/, ""),
-        kind,
-      };
-    }
-    // Generic system note
-    return {
-      type: "system_note",
-      title: "System Notification",
-      body: content,
-      kind,
-    };
-  }
-  return null;
+function deriveEventType(e: { kind: string; source?: string }): SystemEvent["type"] {
+  if (e.source === "cron") return "cron";
+  if (e.kind === "inbox_recovery_note") return "recovery";
+  return "system_note";
 }
 
 function MessageBubbleImpl({ m }: { m: MergedMessage }) {
@@ -126,10 +81,13 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
   const calls = m.resolvedToolCalls ?? [];
   const showStreamingPlaceholder = !isUser && !hasText && calls.length === 0 && !blocks;
 
-  // Detect system event messages and render as event cards
-  // These can appear as user messages (inbox prepended to prompt)
-  // or assistant messages
-  const systemEvent = hasText ? parseSystemEvent(m.text) : null;
+  // Detect structured inbox events (backend-tagged)
+  const inboxEvents = (m as unknown as Record<string, unknown>).inboxEvents as
+    | Array<{ kind: string; source?: string; title?: string; firedAt?: string; scheduleType?: string; text: string }>
+    | undefined;
+  const hasEvents = inboxEvents && inboxEvents.length > 0;
+  // Also detect [system note] prefix for upgrade messages (no inbox events)
+  const isSystemUpgrade = isUser && m.text.startsWith("[system note]");
 
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
@@ -139,8 +97,29 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
           <span>{isUser ? "you" : "tianshu"}</span>
         </div>
 
-        {systemEvent ? (
-          <EventCard event={systemEvent} />
+        {hasEvents ? (
+          <div className="flex flex-col gap-1.5">
+            {inboxEvents!.map((e, i) => (
+              <EventCard
+                key={i}
+                event={{
+                  type: deriveEventType(e),
+                  title: e.title || (e.source === "cron" ? "Scheduled Event" : "Notification"),
+                  body: e.text,
+                  firedAt: e.firedAt,
+                  scheduleType: e.scheduleType,
+                }}
+              />
+            ))}
+          </div>
+        ) : isSystemUpgrade ? (
+          <EventCard
+            event={{
+              type: "system_upgrade",
+              title: "System Update",
+              body: m.text.replace(/^\[system note\]\s*/, ""),
+            }}
+          />
         ) : blocks ? (
           blocks.some(
             (b) => b.kind === "toolCall" && (b.result?.ui?.length ?? 0) > 0,

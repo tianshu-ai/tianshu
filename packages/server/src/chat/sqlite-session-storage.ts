@@ -135,6 +135,8 @@ export class SqliteSessionStorage
    *  into its JSON content as a sibling field. Cleared after one
    *  use. */
   pendingUserAttachments: PendingUserAttachments | null = null;
+  /** Inbox events to splice onto the next persisted user message. */
+  pendingInboxEvents: unknown[] | null = null;
 
   /** Optional: when set, `getPathToRoot` reads the bytes for every
    *  `{type:"image"}` part it finds in a user message, runs them
@@ -239,6 +241,19 @@ export class SqliteSessionStorage
         message: merged as unknown as typeof entry.message,
       };
       this.pendingUserAttachments = null;
+    }
+    // Splice inbox events onto user message (same pattern).
+    if (
+      this.pendingInboxEvents &&
+      mutated.type === "message" &&
+      mutated.message.role === "user"
+    ) {
+      const m = mutated.message as unknown as Record<string, unknown>;
+      mutated = {
+        ...mutated,
+        message: { ...m, inboxEvents: this.pendingInboxEvents } as unknown as typeof mutated.message,
+      };
+      this.pendingInboxEvents = null;
     }
     const row = entryToRow(this.sessionId, mutated);
     this.ctx.db

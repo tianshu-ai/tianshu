@@ -525,6 +525,33 @@ function rowToDelivered(row: InboxRow): DeliveredMessage {
  *     acknowledge — act.
  *   - `task_stalled` is the legacy spelling of the above.
  */
+/** Structured event extracted from an inbox message for UI rendering. */
+export interface InboxEvent {
+  kind: string;         // "system_note" | "inbox_recovery_note" | ...
+  source?: string;      // "cron" | "task" | ...
+  title?: string;
+  firedAt?: string;
+  jobId?: string;
+  scheduleType?: string;
+  text: string;         // raw body text
+}
+
+/** Extract structured events from delivered inbox messages. */
+export function extractEvents(messages: DeliveredMessage[]): InboxEvent[] {
+  return messages.map((m) => {
+    const meta = (m.message.meta ?? {}) as Record<string, unknown>;
+    return {
+      kind: m.message.kind,
+      source: typeof meta.source === "string" ? meta.source : undefined,
+      title: typeof meta.title === "string" ? meta.title : undefined,
+      firedAt: typeof meta.firedAt === "string" ? meta.firedAt : undefined,
+      jobId: typeof meta.jobId === "string" ? meta.jobId : undefined,
+      scheduleType: typeof meta.scheduleType === "string" ? meta.scheduleType : undefined,
+      text: m.message.text,
+    };
+  });
+}
+
 export function renderForPrompt(messages: DeliveredMessage[]): string {
   if (messages.length === 0) return "";
   const blocks = messages.map((m) => {
