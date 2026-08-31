@@ -506,8 +506,8 @@ export function useUiPrimitives(): UiPrimitives {
 // (`bg-brand-600`) for places that need a fixed accent ramp
 // across themes (rare); prefer `bg-accent` for new code.
 
-export type ThemeMode = "light" | "dark" | "system";
-export type ResolvedTheme = "light" | "dark";
+export type ThemeMode = "light" | "dark" | "classical" | "system";
+export type ResolvedTheme = "light" | "dark" | "classical";
 
 export interface ThemeApi {
   /** What's actively painted. Always "light" or "dark"; the

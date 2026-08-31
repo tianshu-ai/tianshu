@@ -19,15 +19,15 @@
 
 import { create } from "zustand";
 
-export type ThemeMode = "light" | "dark" | "system";
-export type ResolvedTheme = "light" | "dark";
+export type ThemeMode = "light" | "dark" | "classical" | "system";
+export type ResolvedTheme = "light" | "dark" | "classical";
 
 const STORAGE_KEY = "tianshu.theme";
 
 function loadPreferredMode(): ThemeMode {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
-    if (v === "light" || v === "dark" || v === "system") return v;
+    if (v === "light" || v === "dark" || v === "classical" || v === "system") return v;
   } catch {
     /* SSR or storage-disabled environment */
   }
@@ -50,6 +50,12 @@ function systemPrefersDark(): boolean {
 function resolveTheme(mode: ThemeMode): ResolvedTheme {
   if (mode === "system") return systemPrefersDark() ? "dark" : "light";
   return mode;
+}
+
+/** Classical theme resolves as "light" for isDark checks but
+ *  uses its own data-theme attribute for CSS tokens. */
+export function isLightFamily(resolved: ResolvedTheme): boolean {
+  return resolved === "light" || resolved === "classical";
 }
 
 interface ThemeState {

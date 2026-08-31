@@ -6,13 +6,14 @@
 // them to choose one or the other means the app stops tracking
 // the OS. "system" is the right default.
 
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Scroll, Sun } from "lucide-react";
 import { useThemeStore, type ThemeMode } from "../../stores/theme-store";
 import { useT } from "../../hooks/useT";
 
-const OPTIONS: Array<{ value: ThemeMode; labelKey: "theme.light" | "theme.dark" | "theme.system"; Icon: typeof Sun }> = [
+const OPTIONS: Array<{ value: ThemeMode; labelKey: string; Icon: typeof Sun }> = [
   { value: "light", labelKey: "theme.light", Icon: Sun },
   { value: "dark", labelKey: "theme.dark", Icon: Moon },
+  { value: "classical", labelKey: "theme.classical", Icon: Scroll },
   { value: "system", labelKey: "theme.system", Icon: Monitor },
 ];
 

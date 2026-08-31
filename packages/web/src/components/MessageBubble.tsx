@@ -66,7 +66,7 @@ function deriveEventType(e: { kind: string; source?: string }): SystemEvent["typ
 function MessageBubbleImpl({ m }: { m: MergedMessage }) {
   const isUser = m.role === "user";
   const { MarkdownBlock } = useUiPrimitives();
-  const isDark = useThemeStore((s) => s.resolved === "dark");
+  const isDark = useThemeStore((s) => s.resolved === "dark");  // classical resolves as light-family
   const proseInvert = isDark ? " prose-invert" : "";
 
   // Prefer ordered `resolvedBlocks` (new wire shape, see

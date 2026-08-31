@@ -174,6 +174,59 @@
   --shiki-theme-name: "github-light";
 }
 
+/* ═══════════════════════════════════════════════════════
+ * 素宣暖阳 — Chinese classical parchment theme.
+ *
+ * Warm rice-paper tones, ink-black text, cinnabar/vermillion
+ * accents, celadon green for success states. Evokes Song
+ * dynasty calligraphy and scholarly aesthetics.
+ * ═══════════════════════════════════════════════════════ */
+[data-theme="classical"] {
+  color-scheme: light;
+
+  --color-bg-base:        #f0e8d8;          /* aged parchment — chat canvas */
+  --color-bg-elevated:    #f8f2e6;          /* warm cream — sidebar / header */
+  --color-bg-raised:      #fffaf2;          /* silk white — bubbles / cards */
+  --color-bg-hover:       #e8dcc8;          /* brushed parchment — hover */
+  --color-bg-overlay:     rgba(45 40 35 / 0.5);
+
+  --color-fg-default:     #2d2823;          /* concentrated ink */
+  --color-fg-muted:       #5c5347;          /* diluted ink */
+  --color-fg-faint:       #8a7e6e;          /* light ink wash */
+  --color-fg-fainter:     #b5a997;          /* faint ink trace */
+  --color-fg-on-accent:   #fffaf2;
+
+  --color-border-default: #d4c4a8;          /* bamboo strip */
+  --color-border-strong:  #b5a080;          /* aged wood */
+  --color-border-subtle:  #e8dcc8;          /* silk edge */
+
+  --color-accent:         #b5473b;          /* cinnabar / vermillion */
+  --color-accent-hover:   #983a30;          /* deep cinnabar */
+  --color-accent-faint:   rgba(181 71 59 / 0.08);
+
+  --color-link:           #8b6914;          /* gilded bronze */
+  --color-success:        #5a8c7d;          /* celadon glaze */
+  --color-warning:        #b48c46;          /* gilded gold */
+  --color-danger:         #b5473b;          /* cinnabar */
+
+  --color-scrollbar:        #d4c4a8;
+  --color-scrollbar-hover:  #b5a080;
+
+  --shiki-theme-name: "github-light";
+
+  /* Brand palette override — cinnabar ramp. */
+  --color-brand-50:  #fdf2f1;
+  --color-brand-100: #f9dbd8;
+  --color-brand-200: #f0b0aa;
+  --color-brand-300: #e0847b;
+  --color-brand-400: #cc5f54;
+  --color-brand-500: #b5473b;
+  --color-brand-600: #983a30;
+  --color-brand-700: #7a2e26;
+  --color-brand-800: #5f241e;
+  --color-brand-900: #451a16;
+}
+
 html,
 body,
 #root {
