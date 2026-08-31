@@ -206,7 +206,7 @@ body,
 @layer components {
   /* Markdown table styles in chat — switched to theme tokens. */
   .prose table {
-    @apply border-collapse text-sm w-full;
+    @apply border-collapse text-sm w-full block overflow-x-auto;
   }
   .prose th {
     background: var(--color-bg-raised);
