@@ -288,11 +288,11 @@ body,
   background-color: rgba(255, 250, 242, 0.7) !important;
 }
 
-/* Sidebar: ink mountains at bottom (semi-transparent) */
-[data-theme="classical"] aside {
+/* Sidebar (left, w-64 border-r): ink mountains at bottom */
+[data-theme="classical"] aside.border-r {
   position: relative;
 }
-[data-theme="classical"] aside::after {
+[data-theme="classical"] aside.border-r::after {
   content: '';
   position: absolute;
   bottom: 0;
@@ -305,6 +305,7 @@ body,
   background-size: 100% auto;
   opacity: 0.2;
   pointer-events: none;
+  z-index: 0;
 }
 
 /* Cloud divider for horizontal rules */
