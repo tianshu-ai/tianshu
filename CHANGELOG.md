@@ -6,6 +6,28 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.30.0](https://github.com/tianshu-ai/tianshu/compare/v0.29.1...v0.30.0) (2026-08-31)
+
+
+### Features
+
+* structured inbox events for event card rendering ([149fc71](https://github.com/tianshu-ai/tianshu/commit/149fc7143e77f9e104829fc51136672fc1502f6b))
+* **web:** render cron/system events as styled event cards ([132a332](https://github.com/tianshu-ai/tianshu/commit/132a3329b6a84bd1915f0f08f202c95002440988))
+
+
+### Bug Fixes
+
+* extract inbox events from text tag (covers followUp path) ([1783901](https://github.com/tianshu-ai/tianshu/commit/17839010b14a1deb3fc317cb4daae0f4ebd32424))
+* **web:** event cards hide YOU label, strip system prefix, friendly time ([64ed565](https://github.com/tianshu-ai/tianshu/commit/64ed565749ad1e1748ad30c345b226798a9fece5))
+* **web:** event cards left-aligned, not centered ([5fbe989](https://github.com/tianshu-ai/tianshu/commit/5fbe9894db12027f2857db94f92cc8d1b946ed6f))
+* **web:** event cards right-aligned with user messages ([bb57a4f](https://github.com/tianshu-ai/tianshu/commit/bb57a4f96b2b59537f15862127a3c551f7cf41c6))
+* **web:** parse all system event formats for event card rendering ([5a8d609](https://github.com/tianshu-ai/tianshu/commit/5a8d609f5e73587e4d4077a88451ca0f74a50813))
+
+
+### Refactor
+
+* bridge syncDown/syncUp use native file tools ([#403](https://github.com/tianshu-ai/tianshu/issues/403)) ([13357ac](https://github.com/tianshu-ai/tianshu/commit/13357ac8c3acbf580926a25f76b183b57866188a))
+
 ## [0.29.1](https://github.com/tianshu-ai/tianshu/compare/v0.29.0...v0.29.1) (2026-08-30)
 
 
