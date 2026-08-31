@@ -274,13 +274,14 @@ body,
 [data-theme="classical"] #root > div,
 [data-theme="classical"] header,
 [data-theme="classical"] aside,
+[data-theme="classical"] aside *,
 [data-theme="classical"] textarea,
 [data-theme="classical"] input[type="text"],
 [data-theme="classical"] .border-t,
 [data-theme="classical"] .bg-bg-elevated,
 [data-theme="classical"] .bg-bg-base,
 [data-theme="classical"] .bg-bg-raised {
-  background-color: rgba(245, 238, 225, 0.5) !important;
+  background-color: transparent !important;
 }
 
 /* Sidebar (left): ink mountains bottom half */
