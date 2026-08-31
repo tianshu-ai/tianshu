@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.30.1](https://github.com/tianshu-ai/tianshu/compare/v0.30.0...v0.30.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **deps:** bump papaparse, tailwindcss/postcss, types/react-dom, build-tooling ([657e160](https://github.com/tianshu-ai/tianshu/commit/657e1604e4bd9c2f9bcc96e9af516bca0cbe35f4))
+
 ## [0.30.0](https://github.com/tianshu-ai/tianshu/compare/v0.29.1...v0.30.0) (2026-08-31)
 
 
