@@ -48,24 +48,64 @@ import { useT } from "../hooks/useT";
 // bubbles (each of which re-parses markdown + may highlight code) are
 // skipped. Default shallow prop compare on `{ m }` is exactly right
 // here because `m` is the only prop and its identity is meaningful.
-/** Parse a system event from message text.
- *  Pattern: [System] Triggered at: <ts> | Job: "<title>" (<type>)\n\n<body> */
-function parseSystemEvent(text: string): {
+/** Parse system event messages injected via inbox or system notes. */
+interface SystemEvent {
+  type: "cron" | "recovery" | "system_upgrade" | "system_note";
   title: string;
-  firedAt: string;
-  scheduleType: string;
   body: string;
-} | null {
-  const m = text.match(
-    /^\[System\] Triggered at: ([^|]+)\| Job: "([^"]+)"\s*\(([^)]+)\)\s*\n\n?(.*)$/s,
+  firedAt?: string;
+  scheduleType?: string;
+  kind?: string;
+}
+
+function parseSystemEvent(text: string): SystemEvent | null {
+  // Pattern 1: [system note] tianshu upgraded...
+  if (text.startsWith("[system note]")) {
+    return {
+      type: "system_upgrade",
+      title: "System Update",
+      body: text.replace(/^\[system note\]\s*/, ""),
+    };
+  }
+  // Pattern 2: <system-note>...<inbox kind="..." id="...">...</inbox></system-note>
+  const inboxMatch = text.match(
+    /<system-note>[\s\S]*?<inbox\s+kind="([^"]+)"[^>]*>([\s\S]*?)<\/inbox>\s*<\/system-note>/,
   );
-  if (!m) return null;
-  return {
-    firedAt: m[1].trim(),
-    title: m[2].trim(),
-    scheduleType: m[3].trim(),
-    body: m[4].trim(),
-  };
+  if (inboxMatch) {
+    const kind = inboxMatch[1];
+    const content = inboxMatch[2].trim();
+    // Cron event: [System] Triggered at: <ts> | Job: "<title>" (<type>)\n\n<body>
+    const cronMatch = content.match(
+      /^\[System\] Triggered at: ([^|]+)\| Job: "([^"]+)"\s*\(([^)]+)\)\s*\n\n?(.*)$/s,
+    );
+    if (cronMatch) {
+      return {
+        type: "cron",
+        title: cronMatch[2].trim(),
+        firedAt: cronMatch[1].trim(),
+        scheduleType: cronMatch[3].trim(),
+        body: cronMatch[4].trim(),
+        kind,
+      };
+    }
+    // Recovery note
+    if (kind === "inbox_recovery_note") {
+      return {
+        type: "recovery",
+        title: "Session Recovery",
+        body: content.replace(/^\*\*[^*]+\*\*[：:]\s*/, ""),
+        kind,
+      };
+    }
+    // Generic system note
+    return {
+      type: "system_note",
+      title: "System Notification",
+      body: content,
+      kind,
+    };
+  }
+  return null;
 }
 
 function MessageBubbleImpl({ m }: { m: MergedMessage }) {
@@ -87,7 +127,9 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
   const showStreamingPlaceholder = !isUser && !hasText && calls.length === 0 && !blocks;
 
   // Detect system event messages and render as event cards
-  const systemEvent = !isUser && hasText ? parseSystemEvent(m.text) : null;
+  // These can appear as user messages (inbox prepended to prompt)
+  // or assistant messages
+  const systemEvent = hasText ? parseSystemEvent(m.text) : null;
 
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
@@ -97,7 +139,9 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
           <span>{isUser ? "you" : "tianshu"}</span>
         </div>
 
-        {blocks ? (
+        {systemEvent ? (
+          <EventCard event={systemEvent} />
+        ) : blocks ? (
           blocks.some(
             (b) => b.kind === "toolCall" && (b.result?.ui?.length ?? 0) > 0,
           ) ? (
@@ -119,8 +163,6 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
               )}
             </div>
           )
-        ) : systemEvent ? (
-          <EventCard event={systemEvent} />
         ) : (
           <>
             {hasText ? (
@@ -444,42 +486,96 @@ function truncate(s: string, max: number): string {
 /** Regex matching bridge-screenshots paths in tool result text. */
 const SCREENSHOT_RE = /bridge-screenshots\/[\w.-]+\.(?:png|jpg|jpeg|webp|gif)/g;
 
-/** Event card for system events (cron fires, task completions, etc.) */
-function EventCard({
-  event,
-}: {
-  event: { title: string; firedAt: string; scheduleType: string; body: string };
-}) {
-  const isCron = event.scheduleType.startsWith("cron");
+/** Event card for system events (cron fires, recovery, upgrades, etc.) */
+function EventCard({ event }: { event: SystemEvent }) {
+  const styles = {
+    cron: {
+      border: "border-amber-500/30",
+      bg: "bg-amber-500/5",
+      headerBg: "bg-amber-500/10",
+      headerBorder: "border-amber-500/20",
+      iconBg: "bg-amber-500/20",
+      iconColor: "text-amber-500",
+      titleColor: "text-amber-600 dark:text-amber-400",
+      badgeBg: "bg-amber-500/15",
+      badgeColor: "text-amber-600 dark:text-amber-400",
+    },
+    recovery: {
+      border: "border-rose-500/30",
+      bg: "bg-rose-500/5",
+      headerBg: "bg-rose-500/10",
+      headerBorder: "border-rose-500/20",
+      iconBg: "bg-rose-500/20",
+      iconColor: "text-rose-500",
+      titleColor: "text-rose-600 dark:text-rose-400",
+      badgeBg: "bg-rose-500/15",
+      badgeColor: "text-rose-600 dark:text-rose-400",
+    },
+    system_upgrade: {
+      border: "border-sky-500/30",
+      bg: "bg-sky-500/5",
+      headerBg: "bg-sky-500/10",
+      headerBorder: "border-sky-500/20",
+      iconBg: "bg-sky-500/20",
+      iconColor: "text-sky-500",
+      titleColor: "text-sky-600 dark:text-sky-400",
+      badgeBg: "bg-sky-500/15",
+      badgeColor: "text-sky-600 dark:text-sky-400",
+    },
+    system_note: {
+      border: "border-violet-500/30",
+      bg: "bg-violet-500/5",
+      headerBg: "bg-violet-500/10",
+      headerBorder: "border-violet-500/20",
+      iconBg: "bg-violet-500/20",
+      iconColor: "text-violet-500",
+      titleColor: "text-violet-600 dark:text-violet-400",
+      badgeBg: "bg-violet-500/15",
+      badgeColor: "text-violet-600 dark:text-violet-400",
+    },
+  };
+  const s = styles[event.type];
+  const isCron = event.type === "cron";
+
+  const Icon = {
+    cron: event.scheduleType?.startsWith("cron") ? Repeat : Bell,
+    recovery: XCircle,
+    system_upgrade: Bot,
+    system_note: Bell,
+  }[event.type];
+
+  const badge = {
+    cron: event.scheduleType?.startsWith("cron") ? "recurring" : "one-time",
+    recovery: "recovery",
+    system_upgrade: "upgrade",
+    system_note: "notification",
+  }[event.type];
+
   return (
-    <div className="max-w-md overflow-hidden rounded-lg border border-amber-500/30 bg-amber-500/5">
-      {/* Header */}
-      <div className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-3.5 py-2">
-        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/20">
-          {isCron ? (
-            <Repeat size={13} className="text-amber-500" />
-          ) : (
-            <Bell size={13} className="text-amber-500" />
-          )}
+    <div className={`max-w-lg overflow-hidden rounded-lg border ${s.border} ${s.bg}`}>
+      <div className={`flex items-center gap-2 border-b ${s.headerBorder} ${s.headerBg} px-3.5 py-2`}>
+        <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${s.iconBg}`}>
+          <Icon size={13} className={s.iconColor} />
         </div>
-        <span className="text-[13px] font-semibold text-amber-600 dark:text-amber-400">
+        <span className={`text-[13px] font-semibold ${s.titleColor} truncate`}>
           {event.title}
         </span>
-        <span className="ml-auto rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-600 dark:text-amber-400">
-          {isCron ? "recurring" : "one-time"}
+        <span className={`ml-auto shrink-0 rounded-full ${s.badgeBg} px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${s.badgeColor}`}>
+          {badge}
         </span>
       </div>
-      {/* Body */}
       <div className="px-3.5 py-2.5">
         {event.body && (
           <p className="mb-2 text-[13px] leading-relaxed text-fg-default">
             {event.body}
           </p>
         )}
-        <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
-          <Clock size={11} />
-          <span>Triggered {event.firedAt}</span>
-        </div>
+        {event.firedAt && (
+          <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
+            <Clock size={11} />
+            <span>{event.firedAt}</span>
+          </div>
+        )}
       </div>
     </div>
   );
