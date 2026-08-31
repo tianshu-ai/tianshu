@@ -264,29 +264,21 @@ body,
 }
 
 /* ═══ Classical theme visual assets ═══ */
+/* Everything is parchment — body, panels, inputs, all surfaces */
+[data-theme="classical"],
+[data-theme="classical"] body,
+[data-theme="classical"] #root > div,
+[data-theme="classical"] aside,
+[data-theme="classical"] nav,
+[data-theme="classical"] header,
+[data-theme="classical"] textarea,
+[data-theme="classical"] input {
+  background-color: transparent !important;
+}
 [data-theme="classical"] body {
-  background-color: #f0e8d8 !important;
-  position: relative;
-}
-[data-theme="classical"] body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  background-image: url('/classical/paper-texture.png');
-  background-size: 600px 600px;
-  background-repeat: repeat;
-  opacity: 0.15;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Layout transparent so paper texture pseudo-element shows through */
-[data-theme="classical"] #root {
-  position: relative;
-  z-index: 1;
-}
-[data-theme="classical"] #root > div {
-  background: transparent !important;
+  background: #f0e8d8 url('/classical/paper-texture.png') repeat !important;
+  background-size: 600px 600px !important;
+  background-blend-mode: overlay !important;
 }
 
 /* Sidebar: ink mountains at bottom */
