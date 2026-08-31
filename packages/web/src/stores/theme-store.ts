@@ -31,7 +31,7 @@ function loadPreferredMode(): ThemeMode {
   } catch {
     /* SSR or storage-disabled environment */
   }
-  return "system";
+  return "classical";
 }
 
 function storePreferredMode(mode: ThemeMode): void {
