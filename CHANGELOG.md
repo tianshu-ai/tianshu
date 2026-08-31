@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.32.0](https://github.com/tianshu-ai/tianshu/compare/v0.31.0...v0.32.0) (2026-08-31)
+
+
+### Features
+
+* **web:** bold ink mountains + Big Dipper golden stars ([eb31e70](https://github.com/tianshu-ai/tianshu/commit/eb31e70d4e2b21185d6caeb82cd0ab87ba749cd9))
+* **web:** new ink mountains with Big Dipper constellation + highlighted Tianshu star ([694cacf](https://github.com/tianshu-ai/tianshu/commit/694cacff6035e811dda5bca6b23efceb76459664))
+
+
+### Bug Fixes
+
+* **web:** faint minimal mountains + simple golden star dots ([05811d8](https://github.com/tianshu-ai/tianshu/commit/05811d8957abb478afb755532a0901587d1e60af))
+* **web:** mountains more transparent — sidebar 12%, right panel 10% ([3a6b42f](https://github.com/tianshu-ai/tianshu/commit/3a6b42f4d0cb9c8da0ec213127b11c8212da479a))
+* **web:** mountains opacity — sidebar 30%, right panel 20% ([a909b3a](https://github.com/tianshu-ai/tianshu/commit/a909b3a829382884ae3f54d55306e0ac8b34760c))
+* **web:** mountains opacity — sidebar 40%, right panel 30% ([fbab75a](https://github.com/tianshu-ai/tianshu/commit/fbab75a92c7a085b75721df72ef3a9dbb54e2c79))
+* **web:** revert to simple minimalist ink mountains — less detail ([0a97d38](https://github.com/tianshu-ai/tianshu/commit/0a97d38bf7158892548692f07423966dabe008f9))
+
 ## [0.31.0](https://github.com/tianshu-ai/tianshu/compare/v0.30.3...v0.31.0) (2026-08-31)
 
 
