@@ -89,13 +89,18 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
   // Also detect [system note] prefix for upgrade messages (no inbox events)
   const isSystemUpgrade = isUser && m.text.startsWith("[system note]");
 
+  // Event messages render centered with event icon, not as "YOU"
+  const isEvent = hasEvents || isSystemUpgrade;
+
   return (
-    <div className={isUser ? "flex justify-end" : "flex justify-start"}>
-      <div className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}>
-        <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-faint">
-          {isUser ? <User size={11} /> : <Bot size={11} className="text-link" />}
-          <span>{isUser ? "you" : "tianshu"}</span>
-        </div>
+    <div className={isEvent ? "flex justify-center" : isUser ? "flex justify-end" : "flex justify-start"}>
+      <div className={`flex max-w-[85%] flex-col ${isEvent ? "items-center" : isUser ? "items-end" : "items-start"}`}>
+        {!isEvent && (
+          <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-faint">
+            {isUser ? <User size={11} /> : <Bot size={11} className="text-link" />}
+            <span>{isUser ? "you" : "tianshu"}</span>
+          </div>
+        )}
 
         {hasEvents ? (
           <div className="flex flex-col gap-1.5">
@@ -105,7 +110,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
                 event={{
                   type: deriveEventType(e),
                   title: e.title || (e.source === "cron" ? "Scheduled Event" : "Notification"),
-                  body: e.text,
+                  body: stripSystemPrefix(e.text),
                   firedAt: e.firedAt,
                   scheduleType: e.scheduleType,
                 }}
@@ -465,6 +470,29 @@ function truncate(s: string, max: number): string {
 /** Regex matching bridge-screenshots paths in tool result text. */
 const SCREENSHOT_RE = /bridge-screenshots\/[\w.-]+\.(?:png|jpg|jpeg|webp|gif)/g;
 
+/** Strip the [System] Triggered at: ... prefix from cron text, keep only user message. */
+function stripSystemPrefix(text: string): string {
+  // Format: [System] Triggered at: <ts> | Job: "<title>" (<type>)\n\n<body>
+  const m = text.match(/^\[System\] Triggered at:[^\n]*\n\n(.*)$/s);
+  return m ? m[1].trim() : text;
+}
+
+/** Format UTC timestamp to friendly relative/absolute time. */
+function formatEventTime(firedAt: string): string {
+  try {
+    const d = new Date(firedAt.replace(" ", "T").replace(" (UTC)", "Z"));
+    if (isNaN(d.getTime())) return firedAt;
+    const now = Date.now();
+    const diff = now - d.getTime();
+    if (diff < 60_000) return "Just now";
+    if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m ago`;
+    if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}h ago`;
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return firedAt;
+  }
+}
+
 /** Event card for system events (cron fires, recovery, upgrades, etc.) */
 function EventCard({ event }: { event: SystemEvent }) {
   const styles = {
@@ -551,8 +579,8 @@ function EventCard({ event }: { event: SystemEvent }) {
         )}
         {event.firedAt && (
           <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
-            <Clock size={11} />
-            <span>{event.firedAt}</span>
+            <Calendar size={11} />
+            <span>{formatEventTime(event.firedAt)}</span>
           </div>
         )}
       </div>
