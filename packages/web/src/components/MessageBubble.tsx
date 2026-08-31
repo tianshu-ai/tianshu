@@ -167,7 +167,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
             ) : null}
 
             {calls.length > 0 && (
-              <div className={`mt-1.5 flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+              <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
                 {calls.map((c) => (
                   <ToolCallRow key={c.id} call={c} />
                 ))}
@@ -402,7 +402,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         type="button"
         onClick={() => !running && setExpanded((v) => !v)}
         className={
-          "flex w-full select-none items-center gap-1.5 py-0.5 text-xs transition-colors " +
+          "flex w-full min-w-0 select-none items-center gap-1.5 py-0.5 text-xs transition-colors overflow-hidden " +
           // Align with the card's other rows (text px-3.5, MCP-UI px-3)
           // when rendered inside a unified turn card; bare otherwise.
           (inCard ? "px-3 " : "") +
