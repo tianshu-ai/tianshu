@@ -268,7 +268,7 @@ body,
 [data-theme="classical"] body {
   background: #f0e8d8 url('/classical/paper-texture.png') repeat !important;
   background-size: 600px 600px !important;
-  background-blend-mode: overlay !important;
+  background-blend-mode: soft-light !important;
 }
 /* All surfaces: uniform semi-transparent parchment */
 [data-theme="classical"] #root > div,
