@@ -272,6 +272,11 @@ body,
   background-blend-mode: multiply !important;
 }
 
+/* Make layout containers transparent so body paper texture shows through */
+[data-theme="classical"] #root > div {
+  background: transparent !important;
+}
+
 /* Sidebar: ink mountains at bottom */
 [data-theme="classical"] [data-sidebar],
 [data-theme="classical"] nav {
