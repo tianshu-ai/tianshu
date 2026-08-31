@@ -66,7 +66,7 @@
   "dependencies": {
     "@clack/prompts": "^1.5.1",
     "@earendil-works/pi-agent-core": "^0.82.1",
-    "@earendil-works/pi-ai": "^0.82.1",
+    "@earendil-works/pi-ai": "^0.84.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tianshu-ai/plugin-sdk": "*",
     "better-sqlite3": "^12.10.0",
