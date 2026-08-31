@@ -184,10 +184,10 @@
 [data-theme="classical"] {
   color-scheme: light;
 
-  --color-bg-base:        #f0e8d8;          /* aged parchment — chat canvas */
-  --color-bg-elevated:    #f8f2e6;          /* warm cream — sidebar / header */
-  --color-bg-raised:      #fffaf2;          /* silk white — bubbles / cards */
-  --color-bg-hover:       #e8dcc8;          /* brushed parchment — hover */
+  --color-bg-base:        transparent;      /* transparent — body carries texture */
+  --color-bg-elevated:    transparent;      /* transparent */
+  --color-bg-raised:      rgba(255 250 242 / 0.4); /* silk white, semi-transparent for bubbles */
+  --color-bg-hover:       rgba(232 220 200 / 0.5); /* brushed parchment — hover */
   --color-bg-overlay:     rgba(45 40 35 / 0.5);
 
   --color-fg-default:     #2d2823;          /* concentrated ink */
@@ -270,17 +270,9 @@ body,
   background-size: 600px 600px !important;
   background-blend-mode: soft-light !important;
 }
-/* All surfaces: uniform semi-transparent parchment */
-[data-theme="classical"] #root > div,
-[data-theme="classical"] header,
-[data-theme="classical"] aside,
-[data-theme="classical"] aside *,
-[data-theme="classical"] textarea,
-[data-theme="classical"] input[type="text"],
-[data-theme="classical"] .border-t,
-[data-theme="classical"] .bg-bg-elevated,
-[data-theme="classical"] .bg-bg-base,
-[data-theme="classical"] .bg-bg-raised {
+/* Variables already set to transparent above — this catches any
+   inline styles or hardcoded values that bypass CSS vars. */
+[data-theme="classical"] #root > div {
   background-color: transparent !important;
 }
 
