@@ -266,13 +266,25 @@ body,
 /* ═══ Classical theme visual assets ═══ */
 [data-theme="classical"] body {
   background-color: #f0e8d8 !important;
-  background-image: url('/classical/paper-texture.png') !important;
-  background-size: 600px 600px !important;
-  background-repeat: repeat !important;
-  background-blend-mode: multiply !important;
+  position: relative;
+}
+[data-theme="classical"] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url('/classical/paper-texture.png');
+  background-size: 600px 600px;
+  background-repeat: repeat;
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 0;
 }
 
-/* Make layout containers transparent so body paper texture shows through */
+/* Layout transparent so paper texture pseudo-element shows through */
+[data-theme="classical"] #root {
+  position: relative;
+  z-index: 1;
+}
 [data-theme="classical"] #root > div {
   background: transparent !important;
 }
