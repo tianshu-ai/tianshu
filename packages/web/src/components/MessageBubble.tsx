@@ -93,8 +93,8 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
   const isEvent = hasEvents || isSystemUpgrade;
 
   return (
-    <div className={isEvent ? "flex justify-start" : isUser ? "flex justify-end" : "flex justify-start"}>
-      <div className={`flex max-w-[85%] flex-col ${isEvent ? "items-start" : isUser ? "items-end" : "items-start"}`}>
+    <div className={isEvent ? "flex justify-end" : isUser ? "flex justify-end" : "flex justify-start"}>
+      <div className={`flex max-w-[85%] flex-col ${isEvent ? "items-end" : isUser ? "items-end" : "items-start"}`}>
         {!isEvent && (
           <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-faint">
             {isUser ? <User size={11} /> : <Bot size={11} className="text-link" />}
