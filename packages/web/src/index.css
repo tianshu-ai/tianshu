@@ -298,9 +298,10 @@ body,
   pointer-events: none;
   z-index: 0;
 }
-/* Right panel: ink mountains full height */
+/* Right panel: ink mountains full height, more visible */
 [data-theme="classical"] aside.border-l {
   position: relative;
+  background-color: rgba(245, 238, 225, 0.35) !important;
 }
 [data-theme="classical"] aside.border-l::after {
   content: '';
@@ -310,7 +311,7 @@ body,
   background-repeat: no-repeat;
   background-position: bottom center;
   background-size: cover;
-  opacity: 0.12;
+  opacity: 0.18;
   pointer-events: none;
   z-index: 0;
 }
