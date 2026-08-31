@@ -265,8 +265,11 @@ body,
 
 /* ═══ Classical theme visual assets ═══ */
 [data-theme="classical"] body {
-  background: var(--color-bg-base) var(--classical-paper-bg) repeat !important;
+  background-color: #f0e8d8 !important;
+  background-image: url('/classical/paper-texture.png') !important;
   background-size: 600px 600px !important;
+  background-repeat: repeat !important;
+  background-blend-mode: multiply !important;
 }
 
 /* Sidebar: ink mountains at bottom */
