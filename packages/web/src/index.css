@@ -275,7 +275,11 @@ body,
 [data-theme="classical"] header,
 [data-theme="classical"] aside,
 [data-theme="classical"] textarea,
-[data-theme="classical"] input[type="text"] {
+[data-theme="classical"] input[type="text"],
+[data-theme="classical"] .border-t,
+[data-theme="classical"] .bg-bg-elevated,
+[data-theme="classical"] .bg-bg-base,
+[data-theme="classical"] .bg-bg-raised {
   background-color: rgba(245, 238, 225, 0.5) !important;
 }
 
@@ -286,10 +290,7 @@ body,
 [data-theme="classical"] aside.border-r::after {
   content: '';
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 50%;
+  inset: 0;
   background-image: url('/classical/ink-mountains.png');
   background-repeat: no-repeat;
   background-position: bottom center;
