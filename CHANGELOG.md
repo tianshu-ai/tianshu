@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.32.1](https://github.com/tianshu-ai/tianshu/compare/v0.32.0...v0.32.1) (2026-08-31)
+
+
+### Bug Fixes
+
+* **web:** all bg-elevated/bg-base/bg-raised surfaces transparent in classical theme ([fcb6f92](https://github.com/tianshu-ai/tianshu/commit/fcb6f9213fd8f56fca8a8d7717d3444bfb62f446))
+* **web:** paper texture blend-mode soft-light — subtler than overlay ([06e3a2b](https://github.com/tianshu-ai/tianshu/commit/06e3a2bfd618003d69f08425915ae58c4c0ef2b9))
+* **web:** set bg-base/bg-elevated to transparent in CSS variables ([dfb1bed](https://github.com/tianshu-ai/tianshu/commit/dfb1bed3cc93c2b5fba96178494c23dd2537f928))
+* **web:** sidebar all children transparent — no more white patches ([265696d](https://github.com/tianshu-ai/tianshu/commit/265696d952eb00d296a699647b0373b0c7269131))
+
 ## [0.32.0](https://github.com/tianshu-ai/tianshu/compare/v0.31.0...v0.32.0) (2026-08-31)
 
 
