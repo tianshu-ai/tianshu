@@ -52,9 +52,9 @@
    * Same values reappear under `:root` below so the cascade
    * keeps working even when @theme tokens get inlined into
    * Tailwind utilities. */
-  --color-bg-base:        #030712;          /* gray-950 */
-  --color-bg-elevated:    #111827;          /* gray-900 */
-  --color-bg-raised:      #1f2937;          /* gray-800 */
+  --color-bg-base:        transparent;
+  --color-bg-elevated:    transparent;
+  --color-bg-raised:      rgba(31 41 55 / 0.4);  /* gray-800 semi-transparent */
   --color-bg-hover:       #1f2937;
   --color-bg-overlay:     rgba(0 0 0 / 0.7);
 
@@ -90,9 +90,9 @@
 [data-theme="dark"] {
   color-scheme: dark;
 
-  --color-bg-base:        #030712;
-  --color-bg-elevated:    #111827;
-  --color-bg-raised:      #1f2937;
+  --color-bg-base:        transparent;
+  --color-bg-elevated:    transparent;
+  --color-bg-raised:      rgba(31 41 55 / 0.4);
   --color-bg-hover:       #1f2937;
   --color-bg-overlay:     rgba(0 0 0 / 0.7);
 
@@ -195,9 +195,9 @@
    *   4. Muted foreground (slate-600) hits AAA 7:1 against
    *      white; faint (slate-500) AA 4.5:1; fainter (slate-400)
    *      decorative only. */
-  --color-bg-base:        #f1f5f9;          /* slate-100 — chat canvas (the "floor") */
-  --color-bg-elevated:    #ffffff;          /* white — sidebar / header / composer (PRIMARY surfaces) */
-  --color-bg-raised:      #ffffff;          /* white — message bubbles, modals */
+  --color-bg-base:        transparent;      /* transparent — body carries texture */
+  --color-bg-elevated:    transparent;      /* transparent */
+  --color-bg-raised:      rgba(255 255 255 / 0.4); /* semi-transparent white for bubbles */
   --color-bg-hover:       #e2e8f0;          /* slate-200 — row hover */
   --color-bg-overlay:     rgba(15 23 42 / 0.4);
 
