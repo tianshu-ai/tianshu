@@ -522,18 +522,20 @@ body,
 /* Cloud wisp + seal as real DOM elements */
 .cloud-wisp-decor {
   position: absolute;
-  bottom: 10px;
-  right: 30px;
-  width: 36px;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 90%;
+  max-width: 280px;
   height: auto;
-  opacity: 0.15;
+  opacity: 0.1;
   pointer-events: none;
   z-index: 1;
 }
 .seal-decor {
   position: absolute;
-  bottom: 4px;
-  right: 4px;
+  bottom: 8px;
+  right: 10px;
   width: 20px;
   height: auto;
   opacity: 0.2;
