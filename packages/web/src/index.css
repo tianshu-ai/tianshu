@@ -139,7 +139,8 @@
 [data-theme="dark"] aside.border-r::after {
   content: '';
   position: absolute;
-  inset: 0;
+  bottom: 0; left: 0; right: 0;
+  height: 60%;
   background: url('/classical/ink-mountains-dark.png') no-repeat bottom center;
   background-size: 100% auto;
   opacity: 0.5;
@@ -240,7 +241,8 @@
 [data-theme="light"] aside.border-r::after {
   content: '';
   position: absolute;
-  inset: 0;
+  bottom: 0; left: 0; right: 0;
+  height: 60%;
   background: url('/classical/ink-mountains-light.png') no-repeat bottom center;
   background-size: 100% auto;
   opacity: 0.4;
@@ -385,7 +387,8 @@ body,
 [data-theme="classical"] aside.border-r::after {
   content: '';
   position: absolute;
-  inset: 0;
+  bottom: 0; left: 0; right: 0;
+  height: 60%;
   background-image: url('/classical/ink-mountains.png');
   background-repeat: no-repeat;
   background-position: bottom center;
