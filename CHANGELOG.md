@@ -6,6 +6,29 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.34.0](https://github.com/tianshu-ai/tianshu/compare/v0.33.2...v0.34.0) (2026-09-01)
+
+
+### Features
+
+* **web:** AI bubble decorations — accent left border + gradient bg + shadow ([d50ce7b](https://github.com/tianshu-ai/tianshu/commit/d50ce7b8b8690fd2a6a80ad96051b51aa5e59147))
+* **web:** user bubble decorations — right accent border + gradient + shadow ([2e05317](https://github.com/tianshu-ai/tianshu/commit/2e0531753a2b8960b2ef66495c66fde0a6546a52))
+
+
+### Bug Fixes
+
+* **web:** add ai-bubble class to ALL assistant bubble code paths (6 total) ([a7d5f2b](https://github.com/tianshu-ai/tianshu/commit/a7d5f2b30bac6b30c91802eb6ecfc6fe6d09298c))
+* **web:** dark border-subtle → 30% opacity, less visible divider line ([7e81b71](https://github.com/tianshu-ai/tianshu/commit/7e81b715c6508c382ed26ea025cd004a3ea46f02))
+* **web:** dark mountains retinted to match new [#0](https://github.com/tianshu-ai/tianshu/issues/0)f1724 body color ([9138e35](https://github.com/tianshu-ai/tianshu/commit/9138e35155bc42caab2c35163374509ae1fed411))
+* **web:** dark theme lightened — [#030712](https://github.com/tianshu-ai/tianshu/issues/030712) → [#0](https://github.com/tianshu-ai/tianshu/issues/0)f1724, slate palette ([229770b](https://github.com/tianshu-ai/tianshu/commit/229770b5861d471dc834f6cff29ffa6bbe5957ba))
+* **web:** revert dark to original [#030712](https://github.com/tianshu-ai/tianshu/issues/030712) + border-subtle transparent ([990ba59](https://github.com/tianshu-ai/tianshu/commit/990ba599c73005541bb6c4666e44129c02d974d7))
+* **web:** use original mountain PNGs + mix-blend-mode:multiply ([8b26704](https://github.com/tianshu-ai/tianshu/commit/8b26704944dceca083cff90dba55450b4fa2da11))
+
+
+### Reverts
+
+* undo dark theme changes back to v0.33.2 state ([cdd9127](https://github.com/tianshu-ai/tianshu/commit/cdd9127880a733923742acda3678f24f26d5ad21))
+
 ## [0.33.2](https://github.com/tianshu-ai/tianshu/compare/v0.33.1...v0.33.2) (2026-09-01)
 
 
