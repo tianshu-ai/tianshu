@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.33.1](https://github.com/tianshu-ai/tianshu/compare/v0.33.0...v0.33.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **test:** wait for inbox flush timer before closing DB in recovery-tools test ([de47466](https://github.com/tianshu-ai/tianshu/commit/de4746663aacfeb580e9e019d353396735ef8135))
+
 ## [0.33.0](https://github.com/tianshu-ai/tianshu/compare/v0.32.1...v0.33.0) (2026-09-01)
 
 
