@@ -519,7 +519,24 @@ body,
   border-left: none !important;
 }
 
-/* Cloud wisp + seal as real DOM elements */
+/* Cloud bed + seal as real DOM elements */
+.cloud-bed-decor {
+  position: absolute;
+  bottom: -12px;
+  left: -8px;
+  right: -8px;
+  width: calc(100% + 16px);
+  height: 24px;
+  object-fit: fill;
+  opacity: 0.2;
+  pointer-events: none;
+  z-index: -1;
+}
+[data-theme="dark"] .cloud-bed-decor {
+  filter: brightness(1.8);
+  opacity: 0.15;
+}
+
 .seal-decor {
   position: absolute;
   bottom: 8px;
