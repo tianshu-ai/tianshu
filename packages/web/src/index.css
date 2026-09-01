@@ -522,18 +522,19 @@ body,
 /* Cloud shelf + seal as real DOM elements */
 .cloud-shelf-decor {
   position: absolute;
-  bottom: -28px;
+  bottom: -24px;
   left: -24px;
   right: -24px;
   width: calc(100% + 48px);
-  height: 56px;
+  height: 48px;
   object-fit: cover;
   object-position: top center;
-  opacity: 0.3;
+  opacity: 0.15;
   pointer-events: none;
 }
 [data-theme="dark"] .cloud-shelf-decor {
-  opacity: 0.25;
+  opacity: 0.12;
+  filter: brightness(1.5);
 }
 [data-theme="classical"] .cloud-shelf-decor {
   filter: sepia(0.3) brightness(0.9);
