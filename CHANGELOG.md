@@ -6,6 +6,31 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.33.0](https://github.com/tianshu-ai/tianshu/compare/v0.32.1...v0.33.0) (2026-09-01)
+
+
+### Features
+
+* **web:** all themes get texture + mountains + seal + stars ([a4f4a01](https://github.com/tianshu-ai/tianshu/commit/a4f4a01eba9bab880f687ec9ae4d054139eb0742))
+* **web:** regenerate light + classical mountains matching dark theme style ([048d11e](https://github.com/tianshu-ai/tianshu/commit/048d11e59c05a79f267185e361fb2a05ad9ddfe2))
+* **web:** replace Bot icon with Tianshu classical avatar ([01467af](https://github.com/tianshu-ai/tianshu/commit/01467af79378144a14991f21ef26474c1c0c3d25))
+
+
+### Bug Fixes
+
+* **web:** all mountain PNGs converted to transparent background ([fe9cb43](https://github.com/tianshu-ai/tianshu/commit/fe9cb43f64b17fd430acc1c55a647d56f8c20fb5))
+* **web:** avatar larger — chat 20px, sidebar 24px ([3a0a749](https://github.com/tianshu-ai/tianshu/commit/3a0a749b69ede0891eab8b276c7229e31ec7bf4c))
+* **web:** convert ink mountains PNG white areas to transparent alpha ([3f18e90](https://github.com/tianshu-ai/tianshu/commit/3f18e90cfcd6503913e6bc92c3f53bcd1f495d06))
+* **web:** dark + light themes also use transparent bg variables ([27cdeab](https://github.com/tianshu-ai/tianshu/commit/27cdeabcd7dca7f749137792fbab5961b27eec8c))
+* **web:** ink mountains background tinted to parchment #f0e8d8 ([808cfec](https://github.com/tianshu-ai/tianshu/commit/808cfecd70759ce47635794307e3e01212caa967))
+* **web:** ink mountains mix-blend-mode:multiply — white areas become transparent ([0381537](https://github.com/tianshu-ai/tianshu/commit/0381537a9ccb2bff4a3cef8301c5cb645f9d9fb1))
+* **web:** regenerate seal with green-screen chroma key removal ([9325ea6](https://github.com/tianshu-ai/tianshu/commit/9325ea6916ed3d38e1c4acef1dd7d7c33c26cce2))
+* **web:** seal 20px ([76b23ba](https://github.com/tianshu-ai/tianshu/commit/76b23ba59966291ae9b7b9143dc43f6330a97db0))
+* **web:** seal back to 32px ([13176c0](https://github.com/tianshu-ai/tianshu/commit/13176c0005340ff0388ed17d2237c2e442315b46))
+* **web:** seal PNG background removed — 85% transparent ([2768836](https://github.com/tianshu-ai/tianshu/commit/276883620749d41f469da29c4b2287c7bfec0f08))
+* **web:** seal watermark larger (48px) + more visible (20% opacity) ([bfe0a4c](https://github.com/tianshu-ai/tianshu/commit/bfe0a4c9b4e31a39101453acc1ca74f6f09e6b1b))
+* **web:** sidebar mountains only bottom 60% — no color mismatch at top ([b408aa5](https://github.com/tianshu-ai/tianshu/commit/b408aa5c1d0755a8f70593a71d65a4603834a352))
+
 ## [0.32.1](https://github.com/tianshu-ai/tianshu/compare/v0.32.0...v0.32.1) (2026-08-31)
 
 
