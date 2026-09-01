@@ -97,7 +97,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
       <div className={`flex max-w-[85%] min-w-0 flex-col ${isEvent ? "items-end" : isUser ? "items-end" : "items-start"}`}>
         {!isEvent && (
           <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-faint">
-            {isUser ? <User size={11} /> : <Bot size={11} className="text-link" />}
+            {isUser ? <User size={11} /> : <img src="/classical/tianshu-avatar.png" alt="" className="h-3 w-3 rounded-full object-cover" />}
             <span>{isUser ? "you" : "tianshu"}</span>
           </div>
         )}

@@ -68,7 +68,7 @@ export default function Sidebar() {
       <div className="space-y-1 px-2 pt-2">
         {/* Main agent row — currently always selected */}
         <div className="flex cursor-pointer items-center gap-2 rounded-lg bg-bg-raised px-3 py-2 text-fg-default">
-          <Bot size={14} className="flex-shrink-0 text-link" />
+          <img src="/classical/tianshu-avatar.png" alt="" className="h-4 w-4 rounded-full object-cover flex-shrink-0" />
           <span className="text-sm font-medium">{brandName}</span>
         </div>
 
