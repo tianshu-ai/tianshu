@@ -227,13 +227,19 @@ function renderAssistantBlock(
       <div
         key={`t${i}`}
         className={
-          `prose${proseInvert} prose-sm w-full overflow-x-auto rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed ` +
+          `prose${proseInvert} prose-sm w-full overflow-x-auto rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed relative ` +
           (isUser
             ? "border-brand-400/30 bg-brand-500/10 text-fg-default user-bubble"
             : "border-border-subtle bg-bg-elevated/60 text-fg-default ai-bubble")
         }
       >
         <MarkdownBlock noProse>{block.text}</MarkdownBlock>
+        {!isUser && (
+          <>
+            <img src="/classical/cloud-wisp.png" alt="" className="cloud-wisp-decor" />
+            <img src="/classical/seal.png" alt="" className="seal-decor" />
+          </>
+        )}
       </div>
     );
   }
