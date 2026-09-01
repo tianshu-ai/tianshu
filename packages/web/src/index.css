@@ -164,11 +164,11 @@
   position: absolute;
   bottom: 8px;
   right: 8px;
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   background: url('/classical/seal.png') no-repeat;
   background-size: contain;
-  opacity: 0.06;
+  opacity: 0.2;
   pointer-events: none;
 }
 [data-theme="dark"] .prose {
@@ -265,11 +265,11 @@
   position: absolute;
   bottom: 8px;
   right: 8px;
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   background: url('/classical/seal.png') no-repeat;
   background-size: contain;
-  opacity: 0.06;
+  opacity: 0.2;
   pointer-events: none;
 }
 [data-theme="light"] .prose {
@@ -424,8 +424,8 @@ body,
   position: absolute;
   bottom: 8px;
   right: 8px;
-  width: 32px;
-  height: 32px;
+  width: 48px;
+  height: 48px;
   background: var(--classical-seal);
   background-size: contain;
   background-repeat: no-repeat;
