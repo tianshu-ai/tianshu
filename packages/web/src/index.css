@@ -526,7 +526,7 @@ body,
   right: 12px;
   width: 80px;
   height: auto;
-  opacity: 0.25;
+  opacity: 0.35;
   pointer-events: none;
   z-index: 1;
 }
@@ -541,8 +541,8 @@ body,
   z-index: 1;
 }
 [data-theme="dark"] .cloud-wisp-decor {
-  filter: invert(1) brightness(1.5);
-  opacity: 0.15;
+  filter: invert(1) brightness(2);
+  opacity: 0.35;
 }
 [data-theme="dark"] .seal-decor {
   opacity: 0.15;
