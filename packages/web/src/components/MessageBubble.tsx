@@ -135,7 +135,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
             // separators, so the iframe and the agent's message read as
             // a single block instead of stacked, separately-bordered
             // bubbles.
-            <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 divide-y divide-border-subtle/60 ai-bubble">
+            <div className="w-full max-w-2xl overflow-visible rounded-lg border border-border-subtle bg-bg-elevated/60 divide-y divide-border-subtle/60 ai-bubble">
               {blocks.map((b, i) =>
                 renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert, true),
               )}
@@ -342,7 +342,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
     }
     return (
-      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60 ai-bubble">
+      <div className="flex flex-col overflow-visible rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60 ai-bubble">
         {body}
       </div>
     );
@@ -390,7 +390,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
     }
     return (
-      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60 ai-bubble">
+      <div className="flex flex-col overflow-visible rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60 ai-bubble">
         {body}
       </div>
     );
