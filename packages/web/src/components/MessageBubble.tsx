@@ -135,7 +135,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
             // separators, so the iframe and the agent's message read as
             // a single block instead of stacked, separately-bordered
             // bubbles.
-            <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 divide-y divide-border-subtle/60">
+            <div className="w-full max-w-2xl overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 divide-y divide-border-subtle/60 ai-bubble">
               {blocks.map((b, i) =>
                 renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert, true),
               )}
@@ -161,7 +161,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
                 <MarkdownBlock noProse>{m.text}</MarkdownBlock>
               </div>
             ) : showStreamingPlaceholder ? (
-              <div className="rounded-lg border border-border-subtle bg-bg-elevated/60 px-3.5 py-2.5">
+              <div className="rounded-lg border border-border-subtle bg-bg-elevated/60 px-3.5 py-2.5 ai-bubble">
                 <TypingDots />
               </div>
             ) : null}
@@ -224,7 +224,7 @@ function renderAssistantBlock(
           `prose${proseInvert} prose-sm w-full overflow-x-auto rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed ` +
           (isUser
             ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
-            : "border-border-subtle bg-bg-elevated/60 text-fg-default")
+            : "border-border-subtle bg-bg-elevated/60 text-fg-default ai-bubble")
         }
       >
         <MarkdownBlock noProse>{block.text}</MarkdownBlock>
@@ -342,7 +342,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
     }
     return (
-      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60">
+      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60 ai-bubble">
         {body}
       </div>
     );
@@ -390,7 +390,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
     }
     return (
-      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60">
+      <div className="flex flex-col overflow-hidden rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60 ai-bubble">
         {body}
       </div>
     );
