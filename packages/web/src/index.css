@@ -164,8 +164,8 @@
   position: absolute;
   bottom: 8px;
   right: 8px;
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   background: url('/classical/seal.png') no-repeat;
   background-size: contain;
   opacity: 0.2;
@@ -265,8 +265,8 @@
   position: absolute;
   bottom: 8px;
   right: 8px;
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   background: url('/classical/seal.png') no-repeat;
   background-size: contain;
   opacity: 0.2;
@@ -424,8 +424,8 @@ body,
   position: absolute;
   bottom: 8px;
   right: 8px;
-  width: 32px;
-  height: 32px;
+  width: 20px;
+  height: 20px;
   background: var(--classical-seal);
   background-size: contain;
   background-repeat: no-repeat;
