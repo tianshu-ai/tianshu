@@ -565,6 +565,25 @@ body,
   border-left: none !important;
 }
 
+/* Cloud wisp at bottom-right of AI bubbles */
+.ai-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  right: 8px;
+  width: 48px;
+  height: 20px;
+  background: url('/classical/cloud-wisp.png') no-repeat;
+  background-size: contain;
+  opacity: 0.12;
+  pointer-events: none;
+  z-index: 1;
+}
+[data-theme="dark"] .ai-bubble::after {
+  filter: invert(1) brightness(1.5);
+  opacity: 0.08;
+}
+
 /* ── Dark ── */
 [data-theme="dark"] .ai-bubble {
   background: linear-gradient(135deg, rgba(30 41 55 / 0.7) 0%, rgba(15 23 36 / 0.5) 100%) !important;
