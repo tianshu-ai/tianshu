@@ -6,6 +6,24 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.35.0](https://github.com/tianshu-ai/tianshu/compare/v0.34.0...v0.35.0) (2026-09-01)
+
+
+### Features
+
+* **web:** cloud wisp (祥云) decoration at bottom-right of AI bubbles ([e543d15](https://github.com/tianshu-ai/tianshu/commit/e543d159d1a8fd48d401a901a8789dc5b924b061))
+* **web:** real scroll rod images on bubbles (卷轴) ([781d4ae](https://github.com/tianshu-ai/tianshu/commit/781d4aee6b70b791fbc72402a927b2e61e16dc68))
+* **web:** scroll (卷轴) style bubbles — top/bottom rod decorations ([285bf8d](https://github.com/tianshu-ai/tianshu/commit/285bf8d70e068622aa9f776b55e9020454eca267))
+
+
+### Bug Fixes
+
+* **web:** ai-bubble overflow-hidden → overflow-visible ([1abe567](https://github.com/tianshu-ai/tianshu/commit/1abe567b75e457dd185dfea9d2989da49df424e6))
+* **web:** cloud wisp + seal as real DOM elements instead of pseudo-elements ([6cce1c2](https://github.com/tianshu-ai/tianshu/commit/6cce1c2af8937918994d0b63396a6e6ac714d7f0))
+* **web:** cloud wisp bigger (80px) + more visible (25%/15%) ([c786b7c](https://github.com/tianshu-ai/tianshu/commit/c786b7c384991293297a9ba678bc6b0de5069fc8))
+* **web:** revert to left/right accent border style bubbles ([eaba8c6](https://github.com/tianshu-ai/tianshu/commit/eaba8c6d26116a4e892c98bc72fdc801729c3757))
+* **web:** scroll bubbles — thin top/bottom border lines, remove rod images ([d276099](https://github.com/tianshu-ai/tianshu/commit/d2760997b4c627feb9343ab1a7c79ab737809521))
+
 ## [0.34.0](https://github.com/tianshu-ai/tianshu/compare/v0.33.2...v0.34.0) (2026-09-01)
 
 
