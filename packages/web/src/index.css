@@ -522,11 +522,11 @@ body,
 /* Cloud wisp + seal as real DOM elements */
 .cloud-wisp-decor {
   position: absolute;
-  bottom: 4px;
-  right: 28px;
-  width: 60px;
+  bottom: 10px;
+  right: 30px;
+  width: 36px;
   height: auto;
-  opacity: 0.35;
+  opacity: 0.15;
   pointer-events: none;
   z-index: 1;
 }
@@ -542,7 +542,7 @@ body,
 }
 [data-theme="dark"] .cloud-wisp-decor {
   filter: invert(1) brightness(2);
-  opacity: 0.35;
+  opacity: 0.12;
 }
 [data-theme="dark"] .seal-decor {
   opacity: 0.15;
