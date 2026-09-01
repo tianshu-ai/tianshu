@@ -533,8 +533,7 @@ body,
   pointer-events: none;
 }
 [data-theme="dark"] .cloud-shelf-decor {
-  opacity: 0.12;
-  filter: brightness(1.5);
+  opacity: 0.15;
 }
 [data-theme="classical"] .cloud-shelf-decor {
   filter: sepia(0.3) brightness(0.9);
