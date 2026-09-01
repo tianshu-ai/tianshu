@@ -577,3 +577,28 @@ body,
   border-left-color: rgba(181 71 59 / 0.4) !important;
   box-shadow: 0 1px 4px rgba(120 80 40 / 0.08), inset 0 1px 0 rgba(255 250 240 / 0.3);
 }
+
+/* ── User bubble decorations ── */
+.user-bubble {
+  position: relative;
+  border-right: 2px solid var(--color-accent) !important;
+  border-left: none !important;
+}
+
+[data-theme="dark"] .user-bubble {
+  background: linear-gradient(135deg, rgba(76 110 245 / 0.12) 0%, rgba(30 41 55 / 0.5) 100%) !important;
+  border-right-color: rgba(76 110 245 / 0.5) !important;
+  box-shadow: 0 1px 8px rgba(0 0 0 / 0.3), inset 0 1px 0 rgba(255 255 255 / 0.03);
+}
+
+[data-theme="light"] .user-bubble {
+  background: linear-gradient(135deg, rgba(76 110 245 / 0.08) 0%, rgba(241 245 249 / 0.5) 100%) !important;
+  border-right-color: rgba(76 110 245 / 0.4) !important;
+  box-shadow: 0 1px 4px rgba(0 0 0 / 0.06), inset 0 1px 0 rgba(255 255 255 / 0.5);
+}
+
+[data-theme="classical"] .user-bubble {
+  background: linear-gradient(135deg, rgba(139 105 20 / 0.1) 0%, rgba(240 232 216 / 0.4) 100%) !important;
+  border-right-color: rgba(139 105 20 / 0.4) !important;
+  box-shadow: 0 1px 4px rgba(120 80 40 / 0.08), inset 0 1px 0 rgba(255 250 240 / 0.3);
+}
