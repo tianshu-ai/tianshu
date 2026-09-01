@@ -124,6 +124,57 @@
   --shiki-theme-name: "github-dark";
 }
 
+/* ── Dark theme decorations ── */
+[data-theme="dark"] body {
+  background: #030712 url('/classical/paper-texture-dark.png') repeat !important;
+  background-size: 600px 600px !important;
+  background-blend-mode: soft-light !important;
+}
+[data-theme="dark"] #root > div {
+  background-color: transparent !important;
+}
+[data-theme="dark"] aside.border-r {
+  position: relative;
+}
+[data-theme="dark"] aside.border-r::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/classical/ink-mountains-dark.png') no-repeat bottom center;
+  background-size: 100% auto;
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 0;
+}
+[data-theme="dark"] aside.border-l {
+  position: relative;
+}
+[data-theme="dark"] aside.border-l::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/classical/ink-mountains-dark.png') no-repeat bottom center;
+  background-size: cover;
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 0;
+}
+[data-theme="dark"] .prose::after {
+  content: '';
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  background: url('/classical/seal.png') no-repeat;
+  background-size: contain;
+  opacity: 0.06;
+  pointer-events: none;
+}
+[data-theme="dark"] .prose {
+  position: relative;
+}
+
 [data-theme="light"] {
   color-scheme: light;
 
@@ -172,6 +223,57 @@
   --color-scrollbar-hover:  #94a3b8;
 
   --shiki-theme-name: "github-light";
+}
+
+/* ── Light theme decorations ── */
+[data-theme="light"] body {
+  background: #f1f5f9 url('/classical/paper-texture-light.png') repeat !important;
+  background-size: 600px 600px !important;
+  background-blend-mode: soft-light !important;
+}
+[data-theme="light"] #root > div {
+  background-color: transparent !important;
+}
+[data-theme="light"] aside.border-r {
+  position: relative;
+}
+[data-theme="light"] aside.border-r::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/classical/ink-mountains-light.png') no-repeat bottom center;
+  background-size: 100% auto;
+  opacity: 0.4;
+  pointer-events: none;
+  z-index: 0;
+}
+[data-theme="light"] aside.border-l {
+  position: relative;
+}
+[data-theme="light"] aside.border-l::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/classical/ink-mountains-light.png') no-repeat bottom center;
+  background-size: cover;
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 0;
+}
+[data-theme="light"] .prose::after {
+  content: '';
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  background: url('/classical/seal.png') no-repeat;
+  background-size: contain;
+  opacity: 0.06;
+  pointer-events: none;
+}
+[data-theme="light"] .prose {
+  position: relative;
 }
 
 /* ═══════════════════════════════════════════════════════
