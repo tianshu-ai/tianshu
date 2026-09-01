@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.36.1](https://github.com/tianshu-ai/tianshu/compare/v0.36.0...v0.36.1) (2026-09-01)
+
+
+### Bug Fixes
+
+* **web:** bubble accent line follows border-radius (8px rounded corners) ([abbb683](https://github.com/tianshu-ai/tianshu/commit/abbb683185058aaedcf454f644b4d084808eef89))
+
 ## [0.36.0](https://github.com/tianshu-ai/tianshu/compare/v0.35.0...v0.36.0) (2026-09-01)
 
 
