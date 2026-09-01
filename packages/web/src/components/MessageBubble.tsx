@@ -155,7 +155,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
                   `prose${proseInvert} prose-sm w-full overflow-x-auto rounded-lg border px-3.5 py-2.5 text-[14px] leading-relaxed ` +
                   (isUser
                     ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
-                    : "border-border-subtle bg-bg-elevated/60 text-fg-default")
+                    : "border-border-subtle bg-bg-elevated/60 text-fg-default ai-bubble")
                 }
               >
                 <MarkdownBlock noProse>{m.text}</MarkdownBlock>
