@@ -80,7 +80,9 @@ describe("recovery-tools", () => {
       );
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    // Wait for any pending inbox flush timers to settle before closing DB.
+    await new Promise((r) => setTimeout(r, 200));
     try {
       (ctx.db as unknown as { close: () => void }).close();
     } catch {
