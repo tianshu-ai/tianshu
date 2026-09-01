@@ -522,11 +522,11 @@ body,
 /* Cloud shelf + seal as real DOM elements */
 .cloud-shelf-decor {
   position: absolute;
-  bottom: -24px;
-  left: -24px;
-  right: -24px;
-  width: calc(100% + 48px);
-  height: 48px;
+  bottom: -1px;
+  left: -16px;
+  right: -16px;
+  width: calc(100% + 32px);
+  height: 40px;
   object-fit: cover;
   object-position: top center;
   opacity: 0.15;
