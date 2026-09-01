@@ -554,63 +554,33 @@ body,
   margin: 0 !important;
 }
 
-/* ── Scroll (卷轴) bubble base ── */
+/* ── Scroll (卷轴) bubble ── */
 .ai-bubble,
 .user-bubble {
   position: relative;
   border: none !important;
-  border-radius: 4px !important;
-  margin-top: 10px !important;
-  margin-bottom: 10px !important;
+  border-top: 2px solid var(--scroll-rod-color, #6b5b47) !important;
+  border-bottom: 2px solid var(--scroll-rod-color, #6b5b47) !important;
+  border-radius: 1px !important;
 }
 
-/* Top scroll rod image */
-.ai-bubble::before,
-.user-bubble::before {
-  content: '';
-  position: absolute;
-  top: -8px;
-  left: -4px;
-  right: -4px;
-  height: 14px;
-  background: url('/classical/scroll-rod-top.png') no-repeat center;
-  background-size: 100% 100%;
-  pointer-events: none;
-  z-index: 2;
+/* ── Dark ── */
+[data-theme="dark"] {
+  --scroll-rod-color: rgba(100 130 200 / 0.35);
 }
-
-/* Bottom scroll rod image */
-.ai-bubble::after,
-.user-bubble::after {
-  content: '';
-  position: absolute;
-  bottom: -8px;
-  left: -4px;
-  right: -4px;
-  height: 14px;
-  background: url('/classical/scroll-rod-bottom.png') no-repeat center;
-  background-size: 100% 100%;
-  pointer-events: none;
-  z-index: 2;
-}
-
-/* ── Dark scroll ── */
 [data-theme="dark"] .ai-bubble {
   background: linear-gradient(180deg, rgba(30 41 55 / 0.8) 0%, rgba(15 23 36 / 0.6) 100%) !important;
   box-shadow: 0 2px 12px rgba(0 0 0 / 0.4);
-}
-[data-theme="dark"] .ai-bubble::before,
-[data-theme="dark"] .ai-bubble::after,
-[data-theme="dark"] .user-bubble::before,
-[data-theme="dark"] .user-bubble::after {
-  filter: brightness(0.6) saturate(0.5);
 }
 [data-theme="dark"] .user-bubble {
   background: linear-gradient(180deg, rgba(76 110 245 / 0.15) 0%, rgba(30 41 55 / 0.6) 100%) !important;
   box-shadow: 0 2px 12px rgba(0 0 0 / 0.4);
 }
 
-/* ── Light scroll ── */
+/* ── Light ── */
+[data-theme="light"] {
+  --scroll-rod-color: rgba(120 130 140 / 0.3);
+}
 [data-theme="light"] .ai-bubble {
   background: linear-gradient(180deg, rgba(255 255 255 / 0.8) 0%, rgba(241 245 249 / 0.6) 100%) !important;
   box-shadow: 0 1px 6px rgba(0 0 0 / 0.08);
@@ -620,7 +590,10 @@ body,
   box-shadow: 0 1px 6px rgba(0 0 0 / 0.08);
 }
 
-/* ── Classical scroll ── */
+/* ── Classical ── */
+[data-theme="classical"] {
+  --scroll-rod-color: rgba(107 91 71 / 0.5);
+}
 [data-theme="classical"] .ai-bubble {
   background: linear-gradient(180deg, rgba(245 238 225 / 0.8) 0%, rgba(240 232 216 / 0.5) 100%) !important;
   box-shadow: 0 1px 6px rgba(120 80 40 / 0.1);
