@@ -522,12 +522,13 @@ body,
 /* Cloud shelf + seal as real DOM elements */
 .cloud-shelf-decor {
   position: absolute;
-  bottom: -20px;
-  left: -20px;
-  right: -20px;
-  width: calc(100% + 40px);
-  height: 50px;
-  object-fit: fill;
+  bottom: -28px;
+  left: -24px;
+  right: -24px;
+  width: calc(100% + 48px);
+  height: 56px;
+  object-fit: cover;
+  object-position: top center;
   opacity: 0.3;
   pointer-events: none;
 }
