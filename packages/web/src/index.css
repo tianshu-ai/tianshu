@@ -520,19 +520,6 @@ body,
 }
 
 /* Cloud wisp + seal as real DOM elements */
-.cloud-wisp-decor {
-  position: absolute;
-  bottom: -8px;
-  left: 0;
-  right: 0;
-  width: 100%;
-  height: 16px;
-  object-fit: fill;
-  opacity: 0.18;
-  z-index: -1;
-  pointer-events: none;
-  z-index: 1;
-}
 .seal-decor {
   position: absolute;
   bottom: 8px;
@@ -542,10 +529,6 @@ body,
   opacity: 0.2;
   pointer-events: none;
   z-index: 1;
-}
-[data-theme="dark"] .cloud-wisp-decor {
-  filter: invert(1) brightness(2);
-  opacity: 0.15;
 }
 [data-theme="dark"] .seal-decor {
   opacity: 0.15;

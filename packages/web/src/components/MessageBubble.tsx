@@ -163,7 +163,6 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
                 </div>
                 {!isUser && (
                   <>
-                    <img src="/classical/cloud-wisp.png" alt="" className="cloud-wisp-decor" />
                     <img src="/classical/seal.png" alt="" className="seal-decor" />
                   </>
                 )}
@@ -239,7 +238,6 @@ function renderAssistantBlock(
         </div>
         {!isUser && (
           <>
-            <img src="/classical/cloud-wisp.png" alt="" className="cloud-wisp-decor" />
             <img src="/classical/seal.png" alt="" className="seal-decor" />
           </>
         )}
