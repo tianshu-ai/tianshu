@@ -289,7 +289,6 @@ body,
   background-position: bottom center;
   background-size: 100% auto;
   opacity: 0.4;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 0;
 }
@@ -307,7 +306,6 @@ body,
   background-position: bottom center;
   background-size: cover;
   opacity: 0.3;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 0;
 }
