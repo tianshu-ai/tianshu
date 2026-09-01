@@ -66,7 +66,7 @@
 
   --color-border-default: #374151;          /* gray-700 */
   --color-border-strong:  #4b5563;          /* gray-600 */
-  --color-border-subtle:  transparent;      /* hidden in dark */
+  --color-border-subtle:  #1f2937;          /* gray-800 */
 
   --color-accent:         #4c6ef5;          /* brand-600 */
   --color-accent-hover:   #4263eb;          /* brand-700 */
@@ -104,7 +104,7 @@
 
   --color-border-default: #374151;
   --color-border-strong:  #4b5563;
-  --color-border-subtle:  transparent;
+  --color-border-subtle:  #1f2937;
 
   --color-accent:         #4c6ef5;
   --color-accent-hover:   #4263eb;
@@ -143,7 +143,6 @@
   background: url('/classical/ink-mountains-dark.png') no-repeat bottom center;
   background-size: 100% auto;
   opacity: 0.5;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 0;
 }
@@ -157,7 +156,6 @@
   background: url('/classical/ink-mountains-dark.png') no-repeat bottom center;
   background-size: cover;
   opacity: 0.35;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 0;
 }
@@ -246,7 +244,6 @@
   background: url('/classical/ink-mountains-light.png') no-repeat bottom center;
   background-size: 100% auto;
   opacity: 0.4;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 0;
 }
@@ -260,7 +257,6 @@
   background: url('/classical/ink-mountains-light.png') no-repeat bottom center;
   background-size: cover;
   opacity: 0.3;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 0;
 }
@@ -395,7 +391,6 @@ body,
   background-position: bottom center;
   background-size: 100% auto;
   opacity: 0.4;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 0;
 }
@@ -413,7 +408,6 @@ body,
   background-position: bottom center;
   background-size: cover;
   opacity: 0.3;
-  mix-blend-mode: multiply;
   pointer-events: none;
   z-index: 0;
 }
