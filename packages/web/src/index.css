@@ -55,18 +55,18 @@
   --color-bg-base:        transparent;
   --color-bg-elevated:    transparent;
   --color-bg-raised:      rgba(31 41 55 / 0.4);  /* gray-800 semi-transparent */
-  --color-bg-hover:       #1f2937;
-  --color-bg-overlay:     rgba(0 0 0 / 0.7);
+  --color-bg-hover:       #1e293b;
+  --color-bg-overlay:     rgba(0 0 0 / 0.6);
 
-  --color-fg-default:     #f3f4f6;          /* gray-100 */
-  --color-fg-muted:       #d1d5db;          /* gray-300 */
-  --color-fg-faint:       #6b7280;          /* gray-500 */
-  --color-fg-fainter:     #4b5563;          /* gray-600 */
+  --color-fg-default:     #f1f5f9;          /* slate-100 */
+  --color-fg-muted:       #cbd5e1;          /* slate-300 */
+  --color-fg-faint:       #64748b;          /* slate-500 */
+  --color-fg-fainter:     #475569;          /* slate-600 */
   --color-fg-on-accent:   #ffffff;
 
-  --color-border-default: #374151;          /* gray-700 */
-  --color-border-strong:  #4b5563;          /* gray-600 */
-  --color-border-subtle:  #1f2937;          /* gray-800 */
+  --color-border-default: #334155;          /* slate-700 */
+  --color-border-strong:  #475569;          /* slate-600 */
+  --color-border-subtle:  #1e293b;          /* slate-800 */
 
   --color-accent:         #4c6ef5;          /* brand-600 */
   --color-accent-hover:   #4263eb;          /* brand-700 */
@@ -92,19 +92,19 @@
 
   --color-bg-base:        transparent;
   --color-bg-elevated:    transparent;
-  --color-bg-raised:      rgba(31 41 55 / 0.4);
-  --color-bg-hover:       #1f2937;
-  --color-bg-overlay:     rgba(0 0 0 / 0.7);
+  --color-bg-raised:      rgba(30 41 59 / 0.4);
+  --color-bg-hover:       #1e293b;
+  --color-bg-overlay:     rgba(0 0 0 / 0.6);
 
-  --color-fg-default:     #f3f4f6;
-  --color-fg-muted:       #d1d5db;
-  --color-fg-faint:       #6b7280;
-  --color-fg-fainter:     #4b5563;
+  --color-fg-default:     #f1f5f9;
+  --color-fg-muted:       #cbd5e1;
+  --color-fg-faint:       #64748b;
+  --color-fg-fainter:     #475569;
   --color-fg-on-accent:   #ffffff;
 
-  --color-border-default: #374151;
-  --color-border-strong:  #4b5563;
-  --color-border-subtle:  #1f2937;
+  --color-border-default: #334155;
+  --color-border-strong:  #475569;
+  --color-border-subtle:  #1e293b;
 
   --color-accent:         #4c6ef5;
   --color-accent-hover:   #4263eb;
@@ -126,7 +126,7 @@
 
 /* ── Dark theme decorations ── */
 [data-theme="dark"] body {
-  background: #030712 url('/classical/paper-texture-dark.png') repeat !important;
+  background: #0f1724 url('/classical/paper-texture-dark.png') repeat !important;
   background-size: 600px 600px !important;
   background-blend-mode: soft-light !important;
 }
