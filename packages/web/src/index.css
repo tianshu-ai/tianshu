@@ -66,7 +66,7 @@
 
   --color-border-default: #334155;          /* slate-700 */
   --color-border-strong:  #475569;          /* slate-600 */
-  --color-border-subtle:  #1e293b;          /* slate-800 */
+  --color-border-subtle:  rgba(30 41 59 / 0.3);  /* slate-800 subtle */
 
   --color-accent:         #4c6ef5;          /* brand-600 */
   --color-accent-hover:   #4263eb;          /* brand-700 */
@@ -104,7 +104,7 @@
 
   --color-border-default: #334155;
   --color-border-strong:  #475569;
-  --color-border-subtle:  #1e293b;
+  --color-border-subtle:  rgba(30 41 59 / 0.3);
 
   --color-accent:         #4c6ef5;
   --color-accent-hover:   #4263eb;
