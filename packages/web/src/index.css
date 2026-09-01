@@ -520,23 +520,6 @@ body,
 }
 
 /* Cloud bed + seal as real DOM elements */
-.cloud-bed-decor {
-  position: absolute;
-  bottom: -16px;
-  left: -12px;
-  right: -12px;
-  width: calc(100% + 24px);
-  height: 40px;
-  object-fit: contain;
-  object-position: bottom center;
-  opacity: 0.15;
-  pointer-events: none;
-  z-index: -1;
-}
-[data-theme="dark"] .cloud-bed-decor {
-  filter: brightness(2);
-  opacity: 0.12;
-}
 
 .seal-decor {
   position: absolute;
