@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.33.2](https://github.com/tianshu-ai/tianshu/compare/v0.33.1...v0.33.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **web:** light mountains — dark ink strokes + light gold stars on transparent bg ([4da3cda](https://github.com/tianshu-ai/tianshu/commit/4da3cdad9b8ebb50cbe2d2e89cf8c1636dd4c558))
+* **web:** light mountains opacity 40%→20% sidebar, 30%→15% right panel ([cb8b7f0](https://github.com/tianshu-ai/tianshu/commit/cb8b7f0b7292b0bb963ae45b7956ebe066d8f6f2))
+* **web:** light mountains regenerated — faint grey misty layers + gold stars ([4103846](https://github.com/tianshu-ai/tianshu/commit/4103846324cdf7f51da8916a17ca62d87376f332))
+* **web:** light theme — paper texture from classical base (with fibers), stars tinted gold ([ae6c419](https://github.com/tianshu-ai/tianshu/commit/ae6c4191de22510b7104dc02756cf9f89c8d762e))
+
 ## [0.33.1](https://github.com/tianshu-ai/tianshu/compare/v0.33.0...v0.33.1) (2026-09-01)
 
 
