@@ -522,10 +522,12 @@ body,
 /* Cloud wisp + seal as real DOM elements */
 .cloud-wisp-decor {
   position: absolute;
-  bottom: -14px;
-  right: 20px;
-  width: 60px;
-  height: auto;
+  bottom: -8px;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 16px;
+  object-fit: fill;
   opacity: 0.18;
   z-index: -1;
   pointer-events: none;
