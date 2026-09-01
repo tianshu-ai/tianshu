@@ -522,22 +522,21 @@ body,
 /* Cloud shelf + seal as real DOM elements */
 .cloud-shelf-decor {
   position: absolute;
-  bottom: -18px;
-  left: -16px;
-  right: -16px;
-  width: calc(100% + 32px);
-  height: auto;
-  max-height: 36px;
-  object-fit: contain;
-  opacity: 0.25;
+  bottom: -20px;
+  left: -20px;
+  right: -20px;
+  width: calc(100% + 40px);
+  height: 50px;
+  object-fit: fill;
+  opacity: 0.3;
   pointer-events: none;
 }
 [data-theme="dark"] .cloud-shelf-decor {
-  opacity: 0.2;
+  opacity: 0.25;
 }
 [data-theme="classical"] .cloud-shelf-decor {
   filter: sepia(0.3) brightness(0.9);
-  opacity: 0.2;
+  opacity: 0.25;
 }
 
 .seal-decor {
