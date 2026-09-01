@@ -569,19 +569,19 @@ body,
 .ai-bubble::after {
   content: '';
   position: absolute;
-  bottom: 4px;
-  right: 8px;
-  width: 48px;
-  height: 20px;
+  bottom: 6px;
+  right: 12px;
+  width: 80px;
+  height: 32px;
   background: url('/classical/cloud-wisp.png') no-repeat;
   background-size: contain;
-  opacity: 0.12;
+  opacity: 0.25;
   pointer-events: none;
   z-index: 1;
 }
 [data-theme="dark"] .ai-bubble::after {
   filter: invert(1) brightness(1.5);
-  opacity: 0.08;
+  opacity: 0.15;
 }
 
 /* ── Dark ── */
