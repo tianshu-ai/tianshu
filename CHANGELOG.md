@@ -6,6 +6,33 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.36.0](https://github.com/tianshu-ai/tianshu/compare/v0.35.0...v0.36.0) (2026-09-01)
+
+
+### Features
+
+* **web:** cloud bed decoration — clouds carrying the AI bubble ([13c6a4f](https://github.com/tianshu-ai/tianshu/commit/13c6a4fd8775036a5ccd99c420c928ecc8e33025))
+* **web:** cloud shelf — fluffy wispy clouds carrying the bubble ([452c654](https://github.com/tianshu-ai/tianshu/commit/452c654511c4cfc0af30f2b65620e133c999da20))
+
+
+### Bug Fixes
+
+* **web:** add cloud+seal to renderAssistantBlock — the actual render path ([0b976c4](https://github.com/tianshu-ai/tianshu/commit/0b976c470acf569af20e54f66105781e284bb0ca))
+* **web:** cloud bed taller (40px) + contain ratio, more natural shape ([9311af5](https://github.com/tianshu-ai/tianshu/commit/9311af5587ad31ad5b9a4b1a4ec6bd4a1b681078))
+* **web:** cloud shelf aligned to bubble bottom edge (bottom: -1px) ([ce9d3cb](https://github.com/tianshu-ai/tianshu/commit/ce9d3cb0229201ed5c612b7bdcf9c6dc141d1579))
+* **web:** cloud shelf brightened to white-blue (226,242,250), no more grey blobs ([d0a2427](https://github.com/tianshu-ai/tianshu/commit/d0a242734132a9bf6d7bdbc6487eafa88b3ae313))
+* **web:** cloud shelf full width (fill), 50px tall, extends 20px beyond edges ([5c5a6c4](https://github.com/tianshu-ai/tianshu/commit/5c5a6c43b63ae9c9115bd70a6c0497b4406c5958))
+* **web:** cloud shelf lighter — 15%/12% opacity, brighter in dark ([73ba264](https://github.com/tianshu-ai/tianshu/commit/73ba264f65e45ad7b876577f8def439a59077520))
+* **web:** cloud shelf original brightness, 20px height, top overlaps bottom border ([b0e1cb8](https://github.com/tianshu-ai/tianshu/commit/b0e1cb865f5846dca41997a37eb82c2189d0da65))
+* **web:** cloud shelf v2 — fluffier bottom edge, cropped to cloud area ([f2da0dd](https://github.com/tianshu-ai/tianshu/commit/f2da0dd88a2e657c55eccaa6b4d8a9a1edf7b742))
+* **web:** cloud wisp below bubble (bottom: -14px) — carrying the bubble ([ac8f4cb](https://github.com/tianshu-ai/tianshu/commit/ac8f4cbb5cd35e546ca97a4f1953ad2feaa299ad))
+* **web:** cloud wisp centered under bubble (carrying effect), seal inset 8/10px ([725e6c6](https://github.com/tianshu-ai/tianshu/commit/725e6c6b493aa46a211b31d278c09e3489728d83))
+* **web:** cloud wisp full width + squished (16px height) under bubble ([adc6932](https://github.com/tianshu-ai/tianshu/commit/adc6932ff2593793af975a48c1f8c0c91404cf5c))
+* **web:** cloud wisp more visible — 35% opacity, brighter in dark ([9835bff](https://github.com/tianshu-ai/tianshu/commit/9835bff4b0c56876bdbacbcc23fffa8e3871eef3))
+* **web:** cloud wisp smaller (36px) + subtler (15%/12%), offset from seal ([060590c](https://github.com/tianshu-ai/tianshu/commit/060590cc5982d58306c1e6108dd479a00eea046b))
+* **web:** move cloud+seal outside overflow-x-auto prose container ([b1b3fd8](https://github.com/tianshu-ai/tianshu/commit/b1b3fd85e25fc465509b96176e88e1c8024a605c))
+* **web:** regenerate cloud wisp (129k opaque pixels), seal flush right ([1c5c2e3](https://github.com/tianshu-ai/tianshu/commit/1c5c2e38cea583b6dee2bef2685ca57615b8bce4))
+
 ## [0.35.0](https://github.com/tianshu-ai/tianshu/compare/v0.34.0...v0.35.0) (2026-09-01)
 
 
