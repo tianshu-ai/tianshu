@@ -399,7 +399,11 @@ export class SqliteSessionStorage
       }
     }
     const filtered = filterOrphanedToolResults(path);
-    const sanitized = stripNestedOrphanToolBlocks(filtered);
+    const patched = patchDanglingToolCalls(filtered);
+    // Re-run orphan filter: patchDanglingToolCalls may have stripped
+    // toolCall blocks, turning their paired toolResults into new orphans.
+    const refiltered = filterOrphanedToolResults(patched);
+    const sanitized = stripNestedOrphanToolBlocks(refiltered);
     console.log(`[storage] getPathToRoot: ${sanitized.length} entries after filter (removed ${path.length - sanitized.length})`);
     return sanitized;
   }
@@ -774,6 +778,63 @@ function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[]
     filtered.push(entry);
   }
   return filtered;
+}
+
+/**
+ * Strip toolCall blocks from assistant messages when no matching
+ * toolResult exists anywhere in the path. This happens when a
+ * harness abort / cancel interrupts tool execution after the
+ * assistant message was persisted but before the toolResult landed.
+ * Anthropic rejects requests where tool_use has no tool_result.
+ */
+function patchDanglingToolCalls(path: SessionTreeEntry[]): SessionTreeEntry[] {
+  const allToolResultIds = new Set<string>();
+  for (const entry of path) {
+    if (entry.type !== "message") continue;
+    const msg = (entry as { message: { role: string; toolCallId?: string } }).message;
+    if (msg.role === "toolResult" && msg.toolCallId) {
+      allToolResultIds.add(msg.toolCallId);
+    }
+  }
+  // Also scan compaction retainedTails
+  for (const entry of path) {
+    if (entry.type !== "compaction") continue;
+    const ce = entry as { retainedTail?: Array<{ role: string; toolCallId?: string }> };
+    if (!Array.isArray(ce.retainedTail)) continue;
+    for (const msg of ce.retainedTail) {
+      if (msg.role === "toolResult" && msg.toolCallId) {
+        allToolResultIds.add(msg.toolCallId);
+      }
+    }
+  }
+
+  let modified = false;
+  const result = path.map((entry) => {
+    if (entry.type !== "message") return entry;
+    const msg = (entry as { message: { role: string; content?: unknown[] } }).message;
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) return entry;
+
+    const cleaned = msg.content.filter((block: unknown) => {
+      const b = block as { type?: string; id?: string };
+      if (b.type === "toolCall" && b.id && !allToolResultIds.has(b.id)) {
+        console.log(`[storage] patchDanglingToolCalls: stripping toolCall id=${b.id} (no matching toolResult) from entry=${entry.id}`);
+        modified = true;
+        return false;
+      }
+      return true;
+    });
+
+    if (cleaned.length === msg.content.length) return entry;
+    return {
+      ...entry,
+      message: { ...msg, content: cleaned },
+    } as unknown as SessionTreeEntry;
+  });
+
+  if (modified) {
+    console.log(`[storage] patchDanglingToolCalls: patched assistant entries`);
+  }
+  return result;
 }
 
 /**

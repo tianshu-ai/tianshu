@@ -1037,16 +1037,54 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // chip in `running` state forever; emit a synthetic failed
     // result so the bubble renders an error and the run can
     // visually move on.
+    //
+    // CRITICAL: also persist synthetic toolResult entries to DB.
+    // Without this, the next getPathToRoot sees assistant messages
+    // with toolCall blocks but no matching toolResult — Anthropic
+    // rejects the request with a 400 and the session enters a
+    // permanent error loop. This was the root cause of the
+    // cancel-during-tool-execution bug.
+    if (outstandingToolCalls.size > 0) {
+      console.log(`[handler] finally: ${outstandingToolCalls.size} outstanding tool call(s) to resolve: ${[...outstandingToolCalls.keys()].join(", ")}`);
+    }
     for (const [callId, info] of outstandingToolCalls) {
+      const errText = streamErrorSent
+        ? "Tool call interrupted by stream error."
+        : "Tool call did not return before the run ended.";
       send({
         type: "tool_result",
         callId,
         name: info.name,
         ok: false,
-        text: streamErrorSent
-          ? "Tool call interrupted by stream error."
-          : "Tool call did not return before the run ended.",
+        text: errText,
       });
+      // Persist to DB so the message chain stays valid for future
+      // LLM calls. storage.appendEntry handles id generation,
+      // parent_id chaining and leaf_id advancement.
+      try {
+        const entryId = await storage.createEntryId();
+        const leafId = await storage.getLeafId();
+        await storage.appendEntry({
+          type: "message",
+          id: entryId,
+          parentId: leafId,
+          timestamp: new Date().toISOString(),
+          message: {
+            role: "toolResult",
+            toolCallId: callId,
+            toolName: info.name,
+            content: [{ type: "text", text: errText } as TextContent],
+            isError: true,
+            timestamp: Date.now(),
+          } as ToolResultMessage,
+        } as SessionTreeEntry);
+      } catch (persistErr) {
+        console.warn(
+          `[handler] failed to persist synthetic toolResult for ${callId}: ${
+            persistErr instanceof Error ? persistErr.message : String(persistErr)
+          }`,
+        );
+      }
     }
     outstandingToolCalls.clear();
     unsubscribe();
