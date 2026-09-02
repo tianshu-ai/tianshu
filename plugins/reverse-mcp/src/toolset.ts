@@ -159,7 +159,7 @@ function buildTool(
         const result = await registry.call(conn, "tools/call", {
           name: desc.name,
           arguments: rawArgs,
-        });
+        }, undefined, ctx.signal);
         return renderResult((result ?? {}) as ToolsCallResult, userHomeDir(userId));
       } catch (err) {
         return errorResult(

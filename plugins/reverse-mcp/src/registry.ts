@@ -109,7 +109,13 @@ export class BridgeRegistry {
 
   /** Send a JSON-RPC request to a specific connection and await the
    *  reply (or timeout). */
-  call(conn: BridgeConn, method: string, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown> {
+  call(
+    conn: BridgeConn,
+    method: string,
+    params?: Record<string, unknown>,
+    timeoutMs?: number,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
     const id = `${Date.now()}-${++this.seq}`;
     const req: RequestMsg = { type: MSG.request, id, method, params };
     const timeout = timeoutMs ?? CALL_TIMEOUT_MS;
@@ -118,12 +124,40 @@ export class BridgeRegistry {
         conn.pending.delete(id);
         reject(new Error(`bridge call timed out after ${timeout}ms (${method})`));
       }, timeout);
-      conn.pending.set(id, { resolve, reject, timer });
+
+      // Abort signal: cancel the pending call and send a cancel
+      // notification to the bridge so it can kill the process.
+      const onAbort = () => {
+        conn.pending.delete(id);
+        clearTimeout(timer);
+        // Best-effort cancel notification to bridge
+        try {
+          conn.socket.send(JSON.stringify({
+            type: MSG.request,
+            id: `${id}-cancel`,
+            method: "$/cancel",
+            params: { requestId: id },
+          }));
+        } catch { /* socket may be gone */ }
+        reject(new Error("bridge call aborted by user"));
+      };
+      if (signal?.aborted) {
+        reject(new Error("bridge call aborted by user"));
+        return;
+      }
+      signal?.addEventListener("abort", onAbort, { once: true });
+
+      conn.pending.set(id, {
+        resolve: (v) => { signal?.removeEventListener("abort", onAbort); resolve(v); },
+        reject: (e) => { signal?.removeEventListener("abort", onAbort); reject(e); },
+        timer,
+      });
       try {
         conn.socket.send(JSON.stringify(req));
       } catch (err) {
         conn.pending.delete(id);
         clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
         reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
