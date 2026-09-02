@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.37.0](https://github.com/tianshu-ai/tianshu/compare/v0.36.1...v0.37.0) (2026-09-02)
+
+
+### Features
+
+* abort signal propagates to bridge tool calls ([5af18a8](https://github.com/tianshu-ai/tianshu/commit/5af18a8c6c0750dbdb09529931d52e80a455ffc5))
+
+
+### Bug Fixes
+
+* abort button sometimes has no effect ([ca4657c](https://github.com/tianshu-ai/tianshu/commit/ca4657ca5eaba66ece23fa75b6c822a865a71894))
+* abort immediately cancels pending tool calls ([811ffbb](https://github.com/tianshu-ai/tianshu/commit/811ffbb6bbf1b628944bb8b9ee6663b78a07d44a))
+* abort pre-check throws instead of returning tool_result ([5f40a7d](https://github.com/tianshu-ai/tianshu/commit/5f40a7d8da1f8ddc31d4824040ffdb1d1650fb24))
+* auto-purge orphaned toolResult rows from DB on Anthropic 400 ([a225620](https://github.com/tianshu-ai/tianshu/commit/a2256202f74ca1dea2f32cdf94f25f58a830786d))
+* persist synthetic toolResult on cancel to prevent orphaned toolCall corruption ([e5598f1](https://github.com/tianshu-ai/tianshu/commit/e5598f11a5f775c3155f15fee994c18c687b1565))
+* strip nested orphan toolCall blocks from toolResult content ([ccbd6e4](https://github.com/tianshu-ai/tianshu/commit/ccbd6e47e8c4a9ac34b5096f2091a22692afb104))
+
 ## [0.36.1](https://github.com/tianshu-ai/tianshu/compare/v0.36.0...v0.36.1) (2026-09-01)
 
 
