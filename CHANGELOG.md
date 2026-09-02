@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.38.1](https://github.com/tianshu-ai/tianshu/compare/v0.38.0...v0.38.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* health check uses HTTPS when SSL is configured ([6ca446b](https://github.com/tianshu-ai/tianshu/commit/6ca446b9d7108257aea4309311e318c99c006bcc))
+
 ## [0.38.0](https://github.com/tianshu-ai/tianshu/compare/v0.37.1...v0.38.0) (2026-09-02)
 
 
