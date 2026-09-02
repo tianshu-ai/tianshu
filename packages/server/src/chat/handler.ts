@@ -963,10 +963,24 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // guard). Nothing to send, nothing to recover — fall through to
       // the finally block which resolves any dangling tool chips.
     } else {
+    // Self-heal orphaned tool_result rows that cause Anthropic 400.
+    // The filterOrphanedToolResults in getPathToRoot handles reads,
+    // but we also purge the DB rows so subsequent loads are clean.
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (/tool_use_id.*tool_result|tool_result.*tool_use/i.test(errMsg)) {
+      try {
+        const purged = purgeOrphanedToolResults(ctx, session.id);
+        if (purged > 0) {
+          console.log(`[handler] purged ${purged} orphaned toolResult row(s) from session ${session.id}`);
+        }
+      } catch (purgeErr) {
+        console.warn(`[handler] purgeOrphanedToolResults failed: ${purgeErr}`);
+      }
+    }
     if (!streamErrorSent) {
       send({
         type: "stream_error",
-        reason: err instanceof Error ? err.message : String(err),
+        reason: errMsg,
       });
       streamErrorSent = true;
     }
@@ -1880,4 +1894,76 @@ function filterOrphanedToolResults(
     console.log(`[chat] filterOrphanedToolResults: removed ${removed} orphaned tool_result(s), kept ${result.length}/${entries.length} entries, toolUseIds=${toolUseIds.size}`);
   }
   return result;
+}
+
+/**
+ * Purge orphaned toolResult rows from the DB. An orphaned toolResult
+ * is one whose toolCallId doesn't match any toolCall id in any
+ * assistant message in the same session. This can happen after abort
+ * truncates an assistant message mid-stream.
+ *
+ * Returns the number of rows deleted.
+ */
+function purgeOrphanedToolResults(ctx: TenantContext, sessionId: string): number {
+  // Collect all toolCall ids from assistant messages in this session.
+  const rows = ctx.db
+    .prepare<[string], { id: string; role: string; content: string }>(
+      `SELECT id, role, content FROM messages WHERE session_id = ? ORDER BY created_at ASC`,
+    )
+    .all(sessionId);
+
+  const toolUseIds = new Set<string>();
+  const orphanRowIds: string[] = [];
+
+  for (const row of rows) {
+    if (row.role === "assistant") {
+      try {
+        const parsed = JSON.parse(row.content);
+        const content = parsed.content ?? parsed;
+        if (Array.isArray(content)) {
+          for (const part of content) {
+            if (part.type === "toolCall" && part.id) toolUseIds.add(part.id);
+          }
+        }
+      } catch { /* malformed content, skip */ }
+    }
+  }
+
+  for (const row of rows) {
+    if (row.role !== "toolResult") continue;
+    try {
+      const parsed = JSON.parse(row.content);
+      const tcId = parsed.toolCallId;
+      if (tcId && !toolUseIds.has(tcId)) {
+        orphanRowIds.push(row.id);
+      }
+    } catch { /* skip */ }
+  }
+
+  if (orphanRowIds.length === 0) return 0;
+
+  // Delete orphans and fix parent_id chain.
+  const del = ctx.db.prepare(`DELETE FROM messages WHERE id = ?`);
+  const fixParent = ctx.db.prepare(
+    `UPDATE messages SET parent_id = ? WHERE parent_id = ?`,
+  );
+  const getParent = ctx.db.prepare<[string], { parent_id: string | null }>(
+    `SELECT parent_id FROM messages WHERE id = ?`,
+  );
+
+  const tx = ctx.db.transaction(() => {
+    for (const id of orphanRowIds) {
+      const row = getParent.get(id);
+      const parentId = row?.parent_id ?? null;
+      // Repoint any children of this orphan to its parent.
+      fixParent.run(parentId, id);
+      del.run(id);
+    }
+  });
+  tx();
+
+  console.log(
+    `[handler] purgeOrphanedToolResults: deleted ${orphanRowIds.length} orphan(s) from session ${sessionId}`,
+  );
+  return orphanRowIds.length;
 }

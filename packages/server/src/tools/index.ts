@@ -183,7 +183,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
     schemas.push(tool.schema);
     executors[name] = (args) => {
       if (toolContext.signal?.aborted) {
-        return { content: [{ type: "text" as const, text: "[aborted by user]" }], isError: true };
+        throw new Error("aborted by user");
       }
       return tool.execute(args, ctx);
     };
@@ -195,7 +195,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       schemas.push(schema);
       executors[schema.name] = (args) => {
         if (toolContext.signal?.aborted) {
-          return { content: [{ type: "text" as const, text: "[aborted by user]" }], isError: true };
+          throw new Error("aborted by user");
         }
         return executor(args);
       };
