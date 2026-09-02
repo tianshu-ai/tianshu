@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.39.0](https://github.com/tianshu-ai/tianshu/compare/v0.38.1...v0.39.0) (2026-09-02)
+
+
+### Features
+
+* Neo4j graph database plugin ([4f1f2b8](https://github.com/tianshu-ai/tianshu/commit/4f1f2b85c4a21bc1f3b2a6267c521f373ad09bda))
+* **neo4j:** add neo4j_admin tool for schema management ([9e51d16](https://github.com/tianshu-ai/tianshu/commit/9e51d16fd2201d6e4fd7de28becc456d9eccad9f))
+
+
+### Bug Fixes
+
+* **neo4j:** configSchema password kind → secret ([3746dc3](https://github.com/tianshu-ai/tianshu/commit/3746dc3dd90305b37094e1aea81107f5e0f6c91e))
+
 ## [0.38.1](https://github.com/tianshu-ai/tianshu/compare/v0.38.0...v0.38.1) (2026-09-02)
 
 
