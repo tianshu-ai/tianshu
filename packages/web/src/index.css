@@ -508,6 +508,11 @@ body,
   margin: 0 !important;
 }
 
+/* ── Modal needs opaque bg (CSS vars are transparent for texture) ── */
+[data-theme="dark"] [role="dialog"] > div { background-color: #111827 !important; }
+[data-theme="light"] [role="dialog"] > div { background-color: #ffffff !important; }
+[data-theme="classical"] [role="dialog"] > div { background-color: #f5eee1 !important; }
+
 /* ── Bubble decorations ── */
 .ai-bubble {
   position: relative;
