@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.38.0](https://github.com/tianshu-ai/tianshu/compare/v0.37.1...v0.38.0) (2026-09-02)
+
+
+### Features
+
+* native SSL/TLS support via config.json ([dd702bc](https://github.com/tianshu-ai/tianshu/commit/dd702bc61e402ec7860c2a02b8f6bdee79dd85f1))
+* setup writes port to config.json as single source of truth ([9d33b7a](https://github.com/tianshu-ai/tianshu/commit/9d33b7a7f1ae4aebfa33012ace7934fdaa892f0b))
+
+
+### Bug Fixes
+
+* server.port from config.json was ignored — only env PORT worked ([03dee8b](https://github.com/tianshu-ai/tianshu/commit/03dee8b68efe2b4830eeaf5d26de6b0781a22c80))
+
 ## [0.37.1](https://github.com/tianshu-ai/tianshu/compare/v0.37.0...v0.37.1) (2026-09-02)
 
 
