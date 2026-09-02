@@ -399,8 +399,9 @@ export class SqliteSessionStorage
       }
     }
     const filtered = filterOrphanedToolResults(path);
-    console.log(`[storage] getPathToRoot: ${filtered.length} entries after filter (removed ${path.length - filtered.length})`);
-    return filtered;
+    const sanitized = stripNestedOrphanToolBlocks(filtered);
+    console.log(`[storage] getPathToRoot: ${sanitized.length} entries after filter (removed ${path.length - sanitized.length})`);
+    return sanitized;
   }
 
   async getEntries(): Promise<SessionTreeEntry[]> {
@@ -773,4 +774,64 @@ function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[]
     filtered.push(entry);
   }
   return filtered;
+}
+
+/**
+ * Strip nested toolCall/toolResult blocks from toolResult messages
+ * whose IDs don't match any toolCall in the preceding assistant message.
+ *
+ * This handles the case where a toolResult entry's content array
+ * contains embedded toolCall blocks from an aborted turn — IDs that
+ * were never in the assistant's toolCall list.
+ */
+function stripNestedOrphanToolBlocks(path: SessionTreeEntry[]): SessionTreeEntry[] {
+  // Collect all toolCall ids from assistant messages.
+  const allToolCallIds = new Set<string>();
+  for (const entry of path) {
+    if (entry.type !== "message") continue;
+    const msg = (entry as { message: { role: string; content?: unknown[] } }).message;
+    if (msg.role === "assistant" && Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        const p = part as { type?: string; id?: string };
+        if (p.type === "toolCall" && p.id) allToolCallIds.add(p.id);
+      }
+    }
+  }
+
+  let modified = false;
+  const result = path.map((entry) => {
+    if (entry.type !== "message") return entry;
+    const msg = (entry as { message: { role: string; content?: unknown[] } }).message;
+    if (msg.role !== "toolResult" || !Array.isArray(msg.content)) return entry;
+
+    // Scan content for embedded toolCall blocks with orphan IDs
+    const cleaned = msg.content.filter((block: unknown) => {
+      const b = block as { type?: string; id?: string; toolCallId?: string };
+      // Remove toolCall blocks whose ID isn't in any assistant
+      if (b.type === "toolCall" && b.id && !allToolCallIds.has(b.id)) {
+        console.log(`[storage] stripNestedOrphanToolBlocks: removing embedded toolCall id=${b.id} from toolResult entry=${entry.id}`);
+        modified = true;
+        return false;
+      }
+      // Remove toolResult blocks whose toolCallId isn't in any assistant
+      if (b.type === "toolResult" && b.toolCallId && !allToolCallIds.has(b.toolCallId)) {
+        console.log(`[storage] stripNestedOrphanToolBlocks: removing embedded toolResult ref=${b.toolCallId} from entry=${entry.id}`);
+        modified = true;
+        return false;
+      }
+      return true;
+    });
+
+    if (cleaned.length === msg.content.length) return entry;
+    // Return a patched entry with cleaned content
+    return {
+      ...entry,
+      message: { ...msg, content: cleaned },
+    } as unknown as SessionTreeEntry;
+  });
+
+  if (modified) {
+    console.log(`[storage] stripNestedOrphanToolBlocks: patched entries in path`);
+  }
+  return result;
 }
