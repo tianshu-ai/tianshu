@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.39.1](https://github.com/tianshu-ai/tianshu/compare/v0.39.0...v0.39.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **neo4j:** add neo4j-driver to root dependencies for global install ([3ad6d32](https://github.com/tianshu-ai/tianshu/commit/3ad6d320f6b91c50df8b7720980a146f6942d7a3))
+
 ## [0.39.0](https://github.com/tianshu-ai/tianshu/compare/v0.38.1...v0.39.0) (2026-09-02)
 
 
