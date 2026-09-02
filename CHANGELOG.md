@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.37.1](https://github.com/tianshu-ai/tianshu/compare/v0.37.0...v0.37.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **web:** modal gets opaque background per theme ([ac5ed55](https://github.com/tianshu-ai/tianshu/commit/ac5ed55011e5aa31d5e6a210d84b2b5e5de56913))
+
 ## [0.37.0](https://github.com/tianshu-ai/tianshu/compare/v0.36.1...v0.37.0) (2026-09-02)
 
 
