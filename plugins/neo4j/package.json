@@ -1,0 +1,32 @@
+{
+  "name": "@tianshu-builtin/plugin-neo4j",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Neo4j graph database connector for tianshu agents.",
+  "type": "module",
+  "main": "./dist/server.js",
+  "types": "./dist/server.d.ts",
+  "exports": {
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    },
+    "./manifest.json": "./manifest.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "manifest.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch"
+  },
+  "dependencies": {
+    "neo4j-driver": "^5.28.1"
+  },
+  "devDependencies": {
+    "@tianshu-ai/plugin-sdk": "*",
+    "typescript": "^5.8.0"
+  }
+}

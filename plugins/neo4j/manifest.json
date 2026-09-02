@@ -1,0 +1,51 @@
+{
+  "id": "neo4j",
+  "version": "0.1.0",
+  "displayName": "Neo4j Graph Database",
+  "description": "Connect agents to a Neo4j graph database. Query and write data with Cypher, inspect schema, and search nodes.",
+  "category": "knowledge",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["network.external"],
+  "server": { "entry": "@tianshu-builtin/plugin-neo4j/server" },
+  "contributes": {
+    "tools": [
+      { "id": "neo4j_query", "module": "Neo4jQueryTool", "since": "0.1.0" },
+      { "id": "neo4j_write", "module": "Neo4jWriteTool", "since": "0.1.0" },
+      { "id": "neo4j_schema", "module": "Neo4jSchemaTool", "since": "0.1.0" }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/status", "handler": "getStatus" }
+    ]
+  },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "uri",
+        "label": "Neo4j URI",
+        "kind": "string",
+        "default": "bolt://localhost:7687",
+        "description": "Neo4j connection URI (bolt:// or neo4j://)"
+      },
+      {
+        "key": "username",
+        "label": "Username",
+        "kind": "string",
+        "default": "neo4j"
+      },
+      {
+        "key": "password",
+        "label": "Password",
+        "kind": "password",
+        "default": ""
+      },
+      {
+        "key": "database",
+        "label": "Database",
+        "kind": "string",
+        "default": "neo4j",
+        "description": "Neo4j database name"
+      }
+    ]
+  }
+}
