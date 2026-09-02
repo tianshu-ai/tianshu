@@ -890,3 +890,25 @@ export interface ChannelAdapter {
    *  reach the hub are best-effort signals, not transactions. */
   onError(handler: (err: Error) => void): void;
 }
+
+// ── Abort helpers ──────────────────────────────────────
+
+/**
+ * Throw if the context's abort signal has fired. Call this at the
+ * start of long-running tool execute() bodies or inside loops.
+ *
+ * ```ts
+ * execute: async (args, ctx) => {
+ *   throwIfAborted(ctx);
+ *   for (const item of items) {
+ *     throwIfAborted(ctx);
+ *     await process(item);
+ *   }
+ * }
+ * ```
+ */
+export function throwIfAborted(ctx: { signal?: AbortSignal }): void {
+  if (ctx.signal?.aborted) {
+    throw new Error("aborted by user");
+  }
+}

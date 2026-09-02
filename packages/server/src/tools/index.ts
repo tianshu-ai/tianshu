@@ -181,14 +181,24 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       continue;
     }
     schemas.push(tool.schema);
-    executors[name] = (args) => tool.execute(args, ctx);
+    executors[name] = (args) => {
+      if (toolContext.signal?.aborted) {
+        return { content: [{ type: "text" as const, text: "[aborted by user]" }], isError: true };
+      }
+      return tool.execute(args, ctx);
+    };
   }
 
   // Host-level tools (always available, not from plugins).
   for (const { schema, executor } of opts.hostTools ?? []) {
     if (!executors[schema.name]) {
       schemas.push(schema);
-      executors[schema.name] = executor;
+      executors[schema.name] = (args) => {
+        if (toolContext.signal?.aborted) {
+          return { content: [{ type: "text" as const, text: "[aborted by user]" }], isError: true };
+        }
+        return executor(args);
+      };
     }
   }
 

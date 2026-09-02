@@ -876,8 +876,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
   abort: () => {
     // User stop: cancel auto-retry and mark aborted so the resulting
     // stream_error isn't treated as a transient failure.
+    // Set isStreaming=false immediately so the UI shows Send button
+    // right away — don't wait for the backend stream_end/stream_error.
     resetRetryLoop();
-    set({ _userAborted: true, autoRetry: null, _awaitingResponse: false });
+    set({ _userAborted: true, autoRetry: null, _awaitingResponse: false, isStreaming: false });
     tianshuWs.send({ type: "abort" });
   },
 

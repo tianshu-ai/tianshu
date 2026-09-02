@@ -691,7 +691,22 @@ export async function runAgentLoop(
     innerCtl.signal.addEventListener("abort", onAbort, { once: true });
 
     await harness.prompt(initialUserMessage);
-    await harness.waitForIdle();
+    // If aborted, give waitForIdle a grace period then force-resolve.
+    // Without this, a long-running tool call can block abort indefinitely.
+    if (innerCtl.signal.aborted) {
+      await Promise.race([
+        harness.waitForIdle(),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
+    } else {
+      const abortRace = new Promise<void>((resolve) => {
+        innerCtl.signal.addEventListener("abort", () => {
+          // Abort fired during waitForIdle — give 3s grace then force.
+          setTimeout(resolve, 3000);
+        }, { once: true });
+      });
+      await Promise.race([harness.waitForIdle(), abortRace]);
+    }
 
     if (timedOutReason) {
       result = {
