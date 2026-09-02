@@ -381,19 +381,21 @@ export class SqliteSessionStorage
     // removes the assistant message containing the toolCall but keeps
     // the toolResult). Without this, Anthropic rejects with 400.
     console.log(`[storage] getPathToRoot: ${path.length} entries before filter, session=${this.sessionId}`);
-    // Log all toolCall ids and toolResult ids for debugging
+    // Brute-force search for any entry containing the problematic ID pattern
     for (const entry of path) {
-      if (entry.type !== "message") continue;
-      const msg = (entry as { message: { role: string; toolCallId?: string; content?: unknown[] } }).message;
-      if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        for (const part of msg.content) {
-          const p = part as { type?: string; id?: string };
-          if (p.type === "toolCall" && p.id) {
-            console.log(`[storage]   toolCall id=${p.id} in entry=${entry.id}`);
-          }
+      const json = JSON.stringify(entry);
+      // Search for any tool_use_id / toolCallId patterns
+      const idMatches = json.match(/toolu_bdrk_[A-Za-z0-9]+/g);
+      if (idMatches) {
+        for (const id of new Set(idMatches)) {
+          const isToolCall = json.includes(`"type":"toolCall"`) && json.includes(`"id":"${id}"`);
+          const isToolResult = json.includes(`"toolCallId":"${id}"`);
+          const entryType = entry.type;
+          const role = entryType === "message" ? (entry as { message: { role: string } }).message.role : entryType;
+          if (isToolCall) console.log(`[storage]   toolCall id=${id} role=${role} entry=${entry.id}`);
+          if (isToolResult) console.log(`[storage]   toolResult ref=${id} role=${role} entry=${entry.id}`);
+          if (!isToolCall && !isToolResult) console.log(`[storage]   OTHER ref=${id} role=${role} entry=${entry.id} snippet=${json.slice(json.indexOf(id) - 30, json.indexOf(id) + 60)}`);
         }
-      } else if (msg.role === "toolResult" && msg.toolCallId) {
-        console.log(`[storage]   toolResult toolCallId=${msg.toolCallId} in entry=${entry.id}`);
       }
     }
     const filtered = filterOrphanedToolResults(path);
