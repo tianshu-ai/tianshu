@@ -967,7 +967,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // The filterOrphanedToolResults in getPathToRoot handles reads,
     // but we also purge the DB rows so subsequent loads are clean.
     const errMsg = err instanceof Error ? err.message : String(err);
+    console.log(`[handler] catch: ${errMsg.slice(0, 300)}`);
     if (/tool_use_id.*tool_result|tool_result.*tool_use/i.test(errMsg)) {
+      console.log(`[handler] detected orphaned tool_result error, session=${session.id}`);
       try {
         const purged = purgeOrphanedToolResults(ctx, session.id);
         if (purged > 0) {
@@ -1930,7 +1932,8 @@ function purgeOrphanedToolResults(ctx: TenantContext, sessionId: string): number
   }
 
   for (const row of rows) {
-    if (row.role !== "toolResult") continue;
+    // DB stores role as 'tool', content JSON has role: 'toolResult'
+    if (row.role !== "tool") continue;
     try {
       const parsed = JSON.parse(row.content);
       const tcId = parsed.toolCallId;

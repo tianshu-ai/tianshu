@@ -380,7 +380,25 @@ export class SqliteSessionStorage
     // Filter orphaned toolResult entries (can appear after compaction
     // removes the assistant message containing the toolCall but keeps
     // the toolResult). Without this, Anthropic rejects with 400.
-    return filterOrphanedToolResults(path);
+    console.log(`[storage] getPathToRoot: ${path.length} entries before filter, session=${this.sessionId}`);
+    // Log all toolCall ids and toolResult ids for debugging
+    for (const entry of path) {
+      if (entry.type !== "message") continue;
+      const msg = (entry as { message: { role: string; toolCallId?: string; content?: unknown[] } }).message;
+      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          const p = part as { type?: string; id?: string };
+          if (p.type === "toolCall" && p.id) {
+            console.log(`[storage]   toolCall id=${p.id} in entry=${entry.id}`);
+          }
+        }
+      } else if (msg.role === "toolResult" && msg.toolCallId) {
+        console.log(`[storage]   toolResult toolCallId=${msg.toolCallId} in entry=${entry.id}`);
+      }
+    }
+    const filtered = filterOrphanedToolResults(path);
+    console.log(`[storage] getPathToRoot: ${filtered.length} entries after filter (removed ${path.length - filtered.length})`);
+    return filtered;
   }
 
   async getEntries(): Promise<SessionTreeEntry[]> {
