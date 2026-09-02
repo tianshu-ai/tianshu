@@ -129,7 +129,10 @@ import {
 // Default ports differ from the closed-source predecessor (3100/5173) so
 // both projects can run side-by-side on the same dev machine without
 // fighting over ports. Override via env if you need 3100 / 5173.
-const PORT = Number.parseInt(process.env.PORT ?? "3110", 10);
+const PORT = Number.parseInt(
+  process.env.PORT ?? String(loadGlobalConfig().server?.port ?? 3110),
+  10,
+);
 const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:5183";
 
 const globalOps = new GlobalOps();
