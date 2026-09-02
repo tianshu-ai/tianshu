@@ -19,6 +19,7 @@ import { configure, verifyConnectivity, close } from "./connection.js";
 import { Neo4jQueryTool } from "./tools/query.js";
 import { Neo4jWriteTool } from "./tools/write.js";
 import { Neo4jSchemaTool } from "./tools/schema.js";
+import { Neo4jAdminTool } from "./tools/admin.js";
 
 interface Neo4jPluginConfig {
   uri?: string;
@@ -50,6 +51,7 @@ const plugin: PluginServerModule = {
         Neo4jQueryTool,
         Neo4jWriteTool,
         Neo4jSchemaTool,
+        Neo4jAdminTool,
       },
       routes: {
         getStatus: async (_req: Request, res: Response) => {

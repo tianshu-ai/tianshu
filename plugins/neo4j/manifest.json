@@ -12,7 +12,8 @@
     "tools": [
       { "id": "neo4j_query", "module": "Neo4jQueryTool", "since": "0.1.0" },
       { "id": "neo4j_write", "module": "Neo4jWriteTool", "since": "0.1.0" },
-      { "id": "neo4j_schema", "module": "Neo4jSchemaTool", "since": "0.1.0" }
+      { "id": "neo4j_schema", "module": "Neo4jSchemaTool", "since": "0.1.0" },
+      { "id": "neo4j_admin", "module": "Neo4jAdminTool", "since": "0.1.0" }
     ],
     "apiRoutes": [
       { "method": "GET", "path": "/status", "handler": "getStatus" }
