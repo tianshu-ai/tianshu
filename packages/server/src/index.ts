@@ -17,6 +17,8 @@ import express from "express";
 import { OpenCodeProxy } from "./opencode-proxy/proxy.js";
 import cors from "cors";
 import { createServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
+import { readFileSync } from "node:fs";
 
 
 import {
@@ -795,7 +797,24 @@ mountAdminAuthRoutes(app, {
   },
 });
 
-const server = createServer(app);
+// HTTPS when sslCert + sslKey are configured, else plain HTTP.
+const _sslCfg = loadGlobalConfig().server;
+const server = (_sslCfg?.sslCert && _sslCfg?.sslKey)
+  ? (() => {
+      try {
+        const opts = {
+          cert: readFileSync(_sslCfg.sslCert),
+          key: readFileSync(_sslCfg.sslKey),
+        };
+        console.log(`[tianshu] SSL enabled: cert=${_sslCfg.sslCert}`);
+        return createHttpsServer(opts, app);
+      } catch (err) {
+        console.error(`[tianshu] Failed to load SSL cert/key: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`[tianshu] Falling back to HTTP`);
+        return createServer(app);
+      }
+    })()
+  : createServer(app);
 
 // Chat over WebSocket. See boot/ws-upgrade.ts for the connection
 // handler body (identity resolution + tenant open + plugin
@@ -960,9 +979,11 @@ void channelManager.bootAll().catch((err) => {
 
 server.listen(PORT, () => {
   // eslint-disable-next-line no-console
-  console.log(`[tianshu] server listening on http://localhost:${PORT}`);
+  const _proto = (_sslCfg?.sslCert && _sslCfg?.sslKey) ? 'https' : 'http';
+  const _wsProto = _proto === 'https' ? 'wss' : 'ws';
+  console.log(`[tianshu] server listening on ${_proto}://localhost:${PORT}`);
   // eslint-disable-next-line no-console
-  console.log(`[tianshu] websocket at ws://localhost:${PORT}/ws`);
+  console.log(`[tianshu] websocket at ${_wsProto}://localhost:${PORT}/ws`);
   publishEffectivePublicUrl();
 });
 

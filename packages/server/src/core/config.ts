@@ -132,6 +132,11 @@ export interface GlobalOnlyConfig {
     corsOrigin?: string;
     publicUrl?: string;
     effectivePublicUrl?: string;
+    /** Path to SSL certificate file (.pem / .crt). When set with
+     *  `sslKey`, the server starts in HTTPS mode. */
+    sslCert?: string;
+    /** Path to SSL private key file (.key). */
+    sslKey?: string;
   };
   /**
    * OpenCode worker model proxy. Lets a sandboxed OpenCode agent
