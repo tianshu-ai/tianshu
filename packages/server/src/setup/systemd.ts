@@ -171,8 +171,9 @@ export function readStatus(unit: string): ServiceStatus {
   let pid: number | null = null;
   let lastExitStatus: number | null = null;
   try {
+    const scope = hasSystemUnit() ? "" : "--user ";
     const out = execSync(
-      `systemctl --user show ${shellQuote(unit)} --property=LoadState,ActiveState,SubState,MainPID,ExecMainStatus,ExecMainCode`,
+      `systemctl ${scope}show ${shellQuote(unit)} --property=LoadState,ActiveState,SubState,MainPID,ExecMainStatus,ExecMainCode`,
       { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
     );
     const props = new Map<string, string>();
@@ -245,9 +246,19 @@ export const renderPlist = renderUnit;
 
 // ─── systemctl wrappers (parallel launchctl bootstrap/bootout/kickstart) ──
 
-function runSystemctl(args: string): LaunchctlResult {
+/** Detect if a system-level tianshu unit exists (e.g. installed by operator). */
+function hasSystemUnit(): boolean {
   try {
-    execSync(`systemctl --user ${args}`, {
+    return fs.existsSync("/etc/systemd/system/tianshu.service");
+  } catch { return false; }
+}
+
+/** Use system-level systemctl when a system unit exists (typical for root
+ *  server installs), otherwise fall back to --user (desktop / non-root). */
+function runSystemctl(args: string): LaunchctlResult {
+  const scope = hasSystemUnit() ? "" : "--user ";
+  try {
+    execSync(`systemctl ${scope}${args}`, {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -259,8 +270,9 @@ function runSystemctl(args: string): LaunchctlResult {
 }
 
 function daemonReload(): void {
+  const scope = hasSystemUnit() ? "" : "--user ";
   try {
-    execSync("systemctl --user daemon-reload", {
+    execSync(`systemctl ${scope}daemon-reload`, {
       stdio: ["ignore", "ignore", "ignore"],
     });
   } catch {
