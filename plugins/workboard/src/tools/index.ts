@@ -260,10 +260,12 @@ function formatBoard(
       const tag = t.priority > 0 ? ` [p${t.priority}]` : "";
       const role = t.workerRole ? ` <${t.workerRole}>` : "";
       const project = t.projectSlug && t.projectSlug !== "inbox" ? ` #${t.projectSlug}` : "";
-      const deps = t.dependsOn.length > 0
+      const depsInfo = t.dependsOn.length > 0
         ? ` deps:${blockedSet.has(t.id) ? "🔒" : "✓"}${t.dependsOn.length}`
         : "";
-      lines.push(`  ${t.id} — ${t.title}${tag}${role}${project}${deps}`);
+      lines.push(`  ${t.id} — ${t.title}${tag}${role}${project}${depsInfo}`);
+      if (t.description) lines.push(`    desc: ${t.description.slice(0, 300)}`);
+      if (t.resultSummary) lines.push(`    result: ${t.resultSummary.slice(0, 500)}`);
     }
   }
   return lines.join("\n");
