@@ -939,9 +939,26 @@ export function buildTaskGetHistoryTool(deps: ToolDeps): AgentTool {
         };
       }
       const entries = readSessionHistory(deps.db, sessionId);
+      const lines = [
+        `Task: ${task.title} (${task.status})`,
+        task.failureReason ? `Failure: ${task.failureReason}` : null,
+        `Attempts: ${task.attempts}`,
+        `Session: ${sessionId}`,
+        `Entries: ${entries.length}`,
+        "",
+        ...entries.map((e) => {
+          const role = (e as { role: string }).role;
+          const text = (e as { text?: string }).text ?? "";
+          const toolName = (e as { toolName?: string }).toolName;
+          const isError = (e as { isError?: boolean }).isError;
+          if (toolName) return `[${role}] ${toolName}${isError ? " (ERROR)" : ""}: ${text.slice(0, 500)}`;
+          if (text) return `[${role}] ${text.slice(0, 1000)}`;
+          return `[${role}] (no text)`;
+        }),
+      ].filter(Boolean);
       return {
         ok: true,
-        text: `Found ${entries.length} entries from the worker session for task ${args.id}.`,
+        text: lines.join("\n"),
         data: {
           taskId: task.id,
           sessionId,
