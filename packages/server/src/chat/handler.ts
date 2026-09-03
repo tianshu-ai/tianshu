@@ -1095,7 +1095,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   // Auto-compact: pi-agent-core ships compact() but no auto-trigger.
   // After every successful turn, decide whether to fire it.
-  if (!streamErrorSent) {
+  // Also fires when the agent explicitly called compact_context mid-turn
+  // (which deferred to this post-turn hook via compactRef.requestedByAgent).
+  if (!streamErrorSent || compactRef?.requestedByAgent) {
+    if (compactRef) compactRef.requestedByAgent = false;
     await maybeAutoCompact({
       session,
       piSession,
