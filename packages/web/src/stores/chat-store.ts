@@ -675,7 +675,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         },
       })),
     );
-    tianshuWs.on("history_compacted", (m) =>
+    tianshuWs.on("history_compacted", (m) => {
       set((s) => ({
         compactNotice: {
           reason: m.reason,
@@ -687,8 +687,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // Compaction can happen mid-turn (pre-prompt fork fallback).
         // Keep isStreaming=true so the UI doesn't flash back to idle.
         isStreaming: s.isStreaming || s._awaitingResponse,
-      })),
-    );
+      }));
+      // Auto-dismiss after 5 seconds
+      setTimeout(() => {
+        if (get().compactNotice) set({ compactNotice: null });
+      }, 5000);
+    });
     tianshuWs.on("plugins_changed", (m) =>
       set((s) => {
         // Drop a compact notice line into the visible chat so the
