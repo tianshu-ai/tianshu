@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.41.0](https://github.com/tianshu-ai/tianshu/compare/v0.40.0...v0.41.0) (2026-09-03)
+
+
+### Features
+
+* **web:** block input during compaction ([b6eed72](https://github.com/tianshu-ai/tianshu/commit/b6eed724c6a09f0254e5deb233d9e4b7dc2f1294))
+
+
+### Bug Fixes
+
+* compact_context defers to post-turn when harness is busy ([e18c550](https://github.com/tianshu-ai/tianshu/commit/e18c550cfbcc4e5ee3d7278c1ca035b9d1719e12))
+* UI stays in streaming state during mid-turn compaction ([1cfc0dc](https://github.com/tianshu-ai/tianshu/commit/1cfc0dc890f648e90aa243b0d32698b1bbb04f2b))
+* **web:** /compact is a command, not a chat message ([425a84b](https://github.com/tianshu-ai/tianshu/commit/425a84b28c0f40cd64e238aca61d75aff08674dd))
+* **web:** /compact no longer stuck in streaming state after completion ([49cf4ef](https://github.com/tianshu-ai/tianshu/commit/49cf4ef2586b13603888be8f13cc1d729da91e2f))
+* **web:** auto-dismiss compact notice after 5 seconds ([5553870](https://github.com/tianshu-ai/tianshu/commit/5553870b0f68a9ceab840b55ea486a92afed4ead))
+
 ## [0.40.0](https://github.com/tianshu-ai/tianshu/compare/v0.39.1...v0.40.0) (2026-09-03)
 
 
