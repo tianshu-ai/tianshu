@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.41.1](https://github.com/tianshu-ai/tianshu/compare/v0.41.0...v0.41.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* tianshu restart uses system-level systemctl when system unit exists ([a41cb99](https://github.com/tianshu-ai/tianshu/commit/a41cb996d74f6fb1e56741abb3127e28ec48f4da))
+
 ## [0.41.0](https://github.com/tianshu-ai/tianshu/compare/v0.40.0...v0.41.0) (2026-09-03)
 
 
