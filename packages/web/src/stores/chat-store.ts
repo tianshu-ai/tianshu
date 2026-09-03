@@ -783,9 +783,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // — the server side accepts that shape.
     if (!trimmed && !hasAttachments) return;
     if (get().isStreaming || get().isCompacting) return;
-    // /compact command: set compacting state
+    // /compact is a command, not a chat message — don't show in conversation.
     if (trimmed === "/compact" || trimmed === "/compact!") {
       set({ isCompacting: true });
+      tianshuWs.send({ type: "prompt", content: trimmed });
+      return;
     }
     const modelId = get().preferredModel ?? undefined;
     // Fresh user prompt: cancel any in-flight auto-retry loop (timers +
