@@ -676,18 +676,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })),
     );
     tianshuWs.on("history_compacted", (m) => {
-      set((s) => ({
-        compactNotice: {
-          reason: m.reason,
-          summarisedCount: m.summarisedCount,
-          keptCount: m.keptCount,
-          durationMs: m.durationMs,
-        },
-        isCompacting: false,
-        // Compaction can happen mid-turn (pre-prompt fork fallback).
-        // Keep isStreaming=true so the UI doesn't flash back to idle.
-        isStreaming: s.isStreaming || s._awaitingResponse,
-      }));
+      set((s) => {
+        // Manual /compact: compaction IS the whole turn — clear everything.
+        // Mid-turn auto-compact: keep streaming alive.
+        const isManual = m.reason === "manual";
+        return {
+          compactNotice: {
+            reason: m.reason,
+            summarisedCount: m.summarisedCount,
+            keptCount: m.keptCount,
+            durationMs: m.durationMs,
+          },
+          isCompacting: false,
+          isStreaming: isManual ? false : (s.isStreaming || s._awaitingResponse),
+          _awaitingResponse: isManual ? false : s._awaitingResponse,
+        };
+      });
       // Auto-dismiss after 5 seconds
       setTimeout(() => {
         if (get().compactNotice) set({ compactNotice: null });
