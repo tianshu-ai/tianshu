@@ -103,6 +103,8 @@ interface ChatState {
    *  (e.g. user clicks Load earlier twice fast). */
   loadingMore: boolean;
   isStreaming: boolean;
+  /** True while the server is running a compaction pass. Blocks input. */
+  isCompacting: boolean;
   streamError: string | null;
   /** Last "history compacted" notice. The chat area renders this as
    *  an inline banner; user can dismiss to clear. */
@@ -217,6 +219,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   hasMoreHistory: false,
   loadingMore: false,
   isStreaming: false,
+  isCompacting: false,
   streamError: null,
   compactNotice: null,
   retryNotice: null,
@@ -616,6 +619,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         return {
           messages: alreadyHave ? withoutPlaceholder : [...withoutPlaceholder, m.message],
           isStreaming: false,
+          isCompacting: false,
           // Turn completed successfully; clear transient notices +
           // retained retry-prompt + auto-retry state.
           retryNotice: null,
@@ -638,6 +642,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       clearRetryWatchdog();
       set((st) => ({
         isStreaming: false,
+        isCompacting: false,
         streamError: m.reason,
         retryNotice: null,
         messages: st.messages.filter((x) => x.id !== STREAMING_ID),
@@ -678,6 +683,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           keptCount: m.keptCount,
           durationMs: m.durationMs,
         },
+        isCompacting: false,
         // Compaction can happen mid-turn (pre-prompt fork fallback).
         // Keep isStreaming=true so the UI doesn't flash back to idle.
         isStreaming: s.isStreaming || s._awaitingResponse,
@@ -768,7 +774,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // Allow empty text when attachments are present ("look at this")
     // — the server side accepts that shape.
     if (!trimmed && !hasAttachments) return;
-    if (get().isStreaming) return;
+    if (get().isStreaming || get().isCompacting) return;
+    // /compact command: set compacting state
+    if (trimmed === "/compact" || trimmed === "/compact!") {
+      set({ isCompacting: true });
+    }
     const modelId = get().preferredModel ?? undefined;
     // Fresh user prompt: cancel any in-flight auto-retry loop (timers +
     // attempt counter) and reset the abort flag. Remember the prompt so

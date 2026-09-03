@@ -36,6 +36,7 @@ import { useT } from "../hooks/useT";
 export default function ChatInput() {
   const t = useT();
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const isCompacting = useChatStore((s) => s.isCompacting);
   const sendPrompt = useChatStore((s) => s.sendPrompt);
   const abort = useChatStore((s) => s.abort);
 
@@ -58,6 +59,7 @@ export default function ChatInput() {
 
   const sendAllowed = (() => {
     if (isStreaming) return true; // shows Stop, always clickable
+    if (isCompacting) return false;
     if (submitting) return false;
     if (hasPending) return false;
     // Allow sending with attachments + empty text (the "I just dropped
@@ -129,7 +131,7 @@ export default function ChatInput() {
             }
           }}
           rows={1}
-          placeholder={t("chat.placeholder")}
+          placeholder={isCompacting ? t("chat.compacting") : t("chat.placeholder")}
           className="resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
         />
         <div className="flex items-center justify-between">

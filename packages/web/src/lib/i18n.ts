@@ -36,6 +36,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     // chat composer
     "chat.placeholder": "Message Tianshu — Enter to send, Shift+Enter for newline",
     "chat.stop": "Stop",
+    "chat.compacting": "Compacting history…",
     "chat.send": "Send",
     "chat.waitingUploads": "Waiting for uploads to finish…",
     "chat.hideSidebar": "Hide sidebar",
@@ -354,6 +355,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
   zh: {
     "chat.placeholder": "发消息给天枢 — Enter 发送，Shift+Enter 换行",
     "chat.stop": "停止",
+    "chat.compacting": "正在压缩上下文…",
     "chat.send": "发送",
     "chat.waitingUploads": "等待上传完成…",
     "chat.hideSidebar": "隐藏侧边栏",
