@@ -1745,6 +1745,9 @@ async function maybeAutoCompact(args: {
     tokensBefore: decision.tokensBefore,
   });
   onSuccessRefresh();
+  if ((decision.summarisedCount ?? 0) === 0) {
+    console.log(`[handler] auto-compact reported 0 summarised — compact entry written but no messages removed`);
+  }
 }
 
 async function runManualCompact(args: {
