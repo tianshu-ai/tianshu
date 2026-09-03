@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.41.2](https://github.com/tianshu-ai/tianshu/compare/v0.41.1...v0.41.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* compact summarisedCount uses getBranch (respects compaction cut points) ([4267315](https://github.com/tianshu-ai/tianshu/commit/426731523611231fd1360406bf4be89f10f44c42))
+
 ## [0.41.1](https://github.com/tianshu-ai/tianshu/compare/v0.41.0...v0.41.1) (2026-09-03)
 
 
