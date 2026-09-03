@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.40.0](https://github.com/tianshu-ai/tianshu/compare/v0.39.1...v0.40.0) (2026-09-03)
+
+
+### Features
+
+* auto-wildcard bridge tool names in solution extract ([3c5e94f](https://github.com/tianshu-ai/tianshu/commit/3c5e94f8b5284e20ca7559a6ae2051c61e18ee48))
+* toolsAllow/toolsDeny support glob wildcards ([43b28fb](https://github.com/tianshu-ai/tianshu/commit/43b28fb628f6612f1813cdd448343f03670114c4))
+* **web:** Test Connection button on plugin config form ([2ac6dd1](https://github.com/tianshu-ai/tianshu/commit/2ac6dd14465aed9de015371dbebc183153491b8e))
+
+
+### Bug Fixes
+
+* **workboard:** task_get_history shows full transcript in text field ([7c925b1](https://github.com/tianshu-ai/tianshu/commit/7c925b171f1ddf5604245a95e3cbebf85cf43f6a))
+* **workboard:** task_list includes description + resultSummary ([d9c6043](https://github.com/tianshu-ai/tianshu/commit/d9c6043e170c77953ac02f6545b620f36abe5bbc))
+
 ## [0.39.1](https://github.com/tianshu-ai/tianshu/compare/v0.39.0...v0.39.1) (2026-09-02)
 
 
