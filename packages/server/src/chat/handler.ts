@@ -1720,12 +1720,10 @@ async function maybeAutoCompact(args: {
     settings: compactionSettings,
   });
   if (decision.error) {
-    // Auto-compact failure on the chat path: surface as a
-    // stream_error so the user knows next turn may be expensive.
-    send({
-      type: "stream_error",
-      reason: `auto-compact failed: ${decision.error} (continuing without compact)`,
-    });
+    // Auto-compact failure is non-fatal: the turn already completed.
+    // Log it but don't send stream_error (that would set isStreaming=false
+    // and trigger auto-retry, which is wrong for a post-turn compaction).
+    console.warn(`[handler] auto-compact failed: ${decision.error} (non-fatal)`);
     return;
   }
   if (!decision.compacted) return;

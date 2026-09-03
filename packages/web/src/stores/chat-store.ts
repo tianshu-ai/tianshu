@@ -671,14 +671,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
       })),
     );
     tianshuWs.on("history_compacted", (m) =>
-      set({
+      set((s) => ({
         compactNotice: {
           reason: m.reason,
           summarisedCount: m.summarisedCount,
           keptCount: m.keptCount,
           durationMs: m.durationMs,
         },
-      }),
+        // Compaction can happen mid-turn (pre-prompt fork fallback).
+        // Keep isStreaming=true so the UI doesn't flash back to idle.
+        isStreaming: s.isStreaming || s._awaitingResponse,
+      })),
     );
     tianshuWs.on("plugins_changed", (m) =>
       set((s) => {
