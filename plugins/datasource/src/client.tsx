@@ -45,29 +45,30 @@ function DataSourcePanel(_props: PanelProps) {
       const ev = raw.payload ?? {};
       if (ev.source) setSelected(ev.source);
       if (ev.query) setQuery(ev.query);
-      // Auto-run after a tick so state settles
+      // Auto-run: directly fire the query
       if (ev.autoRun && ev.source && ev.query) {
-        setTimeout(() => {
-          setRunning(true);
-          const start = Date.now();
-          fetch(`${API_BASE}/query`, {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ source: ev.source, query: ev.query }),
+        const src = ev.source;
+        const q = ev.query;
+        setRunning(true);
+        setResult(null);
+        const start = Date.now();
+        fetch(`${API_BASE}/query`, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source: src, query: q }),
+        })
+          .then((r) => r.json())
+          .then((d: { error?: string; columns?: string[]; rows?: Record<string, unknown>[]; rowCount?: number }) => {
+            const durationMs = Date.now() - start;
+            if (d.error) {
+              setResult({ columns: [], rows: [], rowCount: 0, error: d.error, durationMs });
+            } else {
+              setResult({ columns: d.columns ?? [], rows: d.rows ?? [], rowCount: d.rowCount ?? 0, durationMs });
+            }
           })
-            .then((r) => r.json())
-            .then((d: { error?: string; columns?: string[]; rows?: Record<string, unknown>[]; rowCount?: number }) => {
-              const durationMs = Date.now() - start;
-              if (d.error) {
-                setResult({ columns: [], rows: [], rowCount: 0, error: d.error, durationMs });
-              } else {
-                setResult({ columns: d.columns ?? [], rows: d.rows ?? [], rowCount: d.rowCount ?? 0, durationMs });
-              }
-            })
-            .catch((err) => setResult({ columns: [], rows: [], rowCount: 0, error: String(err), durationMs: Date.now() - start }))
-            .finally(() => setRunning(false));
-        }, 100);
+          .catch((err) => setResult({ columns: [], rows: [], rowCount: 0, error: String(err), durationMs: Date.now() - start }))
+          .finally(() => setRunning(false));
       }
     });
   }, []);

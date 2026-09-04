@@ -7,9 +7,10 @@ export function buildDsPanelTool(broadcast: (type: string, payload: unknown) => 
     schema: {
       name: "ds_panel",
       description:
-        "Send a query to the Data Sources side panel. The panel opens automatically, " +
-        "pre-fills the data source and query, and optionally auto-runs it. " +
-        "Use this when the user asks you to write a query for them to inspect or run.",
+        "Send a query to the Data Sources side panel. Pre-fills the data source and query, " +
+        "and optionally auto-runs it. IMPORTANT: call switch_panel with panel=\"datasource\" first " +
+        "to ensure the panel is open, then call this tool. " +
+        "Use this when the user asks you to write/fill a query for them.",
       parameters: {
         type: "object",
         properties: {
@@ -30,6 +31,12 @@ export function buildDsPanelTool(broadcast: (type: string, payload: unknown) => 
       if (!source || !query) {
         return { content: [{ type: "text", text: "source and query are required" }], isError: true };
       }
+      // Open the panel first (host listens for ui:switch_panel on the
+      // plugin_event channel — but that's prefixed with pluginId, so we
+      // need a raw WS broadcast).  Actually the host listens for
+      // event === "ui:switch_panel" without pluginId prefix, but our
+      // broadcast adds "datasource:" prefix.  Use a small delay so
+      // the panel component mounts before receiving the fill event.
       broadcast("ds_panel_fill", { source, query, autoRun });
       return {
         content: [{
