@@ -232,7 +232,7 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
               setTesting(true);
               setTestResult(null);
               try {
-                const res = await fetch(`/api/plugins/${plugin.id}/status`);
+                const res = await fetch(`/api/p/${plugin.id}/status`, { credentials: "include" });
                 const data = await res.json();
                 setTestResult({
                   ok: !!data.ok,

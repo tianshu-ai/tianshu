@@ -62,7 +62,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
 
   // Load driver types from API (falls back to hardcoded)
   useEffect(() => {
-    fetch(`/api/plugins/datasource/types`, { credentials: "include" })
+    fetch(`/api/p/datasource/types`, { credentials: "include" })
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
         if (d?.types?.length > 0) {
@@ -128,7 +128,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
     setTestResults((prev) => ({ ...prev, [name]: { ok: false, msg: "Testing..." } }));
     try {
       // Must save first if dirty
-      const res = await fetch(`/api/plugins/datasource/test/${encodeURIComponent(name)}`, { method: "POST", credentials: "include" });
+      const res = await fetch(`/api/p/datasource/test/${encodeURIComponent(name)}`, { method: "POST", credentials: "include" });
       const data = await res.json();
       setTestResults((prev) => ({
         ...prev,

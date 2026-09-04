@@ -65,8 +65,8 @@ const plugin: PluginServerModule = {
         },
         // Test a single connection
         testConnection: async (req: Request, res: Response) => {
-          const name = (req as unknown as { params?: { name?: string } }).params?.name
-            ?? req.url.split("/").pop();
+          const name = (req.params as Record<string, string>)?.name
+            ?? req.path.split("/").pop();
           if (!name || !connections[name]) {
             res.status(404).json({ ok: false, error: `Unknown connection: ${name}` });
             return;
