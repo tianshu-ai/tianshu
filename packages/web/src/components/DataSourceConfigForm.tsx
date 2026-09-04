@@ -50,7 +50,7 @@ const INPUT =
 export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
   const t = useT();
   const setPlugins = usePluginStore((s) => s.setPlugins);
-  const types = DRIVER_TYPES;
+  const [types, setTypes] = useState<DriverType[]>(DRIVER_TYPES);
   const [connections, setConnections] = useState<Record<string, ConnectionEntry>>({});
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -58,7 +58,20 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newType, setNewType] = useState(types[0]?.id ?? "");
+  const [newType, setNewType] = useState(DRIVER_TYPES[0]?.id ?? "");
+
+  // Load driver types from API (falls back to hardcoded)
+  useEffect(() => {
+    fetch(`/api/plugins/datasource/types`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d?.types?.length > 0) {
+          setTypes(d.types);
+          setNewType((prev) => prev || d.types[0].id);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Load current config
   useEffect(() => {
