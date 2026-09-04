@@ -56,6 +56,7 @@ import {
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import type { LoadedSkill } from "../core/plugins/skills.js";
 import { loadTenantSkills } from "../core/tenant-skills.js";
+import { matchesAny } from "../core/glob-match.js";
 
 interface BuildSnapshotArgs {
   ctx: TenantContext;
@@ -459,7 +460,7 @@ function toWorkerEntry(
   const tools =
     toolsAllow === null
       ? toolsAll.slice()
-      : toolsAll.filter((t) => toolsAllow.includes(t.name));
+      : toolsAll.filter((t) => matchesAny(t.name, toolsAllow));
   // Merge global skills with per-worker tenant skills so
   // skillsAllow can find tenant-authored skills that were placed
   // under _tenant/config/workers/<slug>/skills/.

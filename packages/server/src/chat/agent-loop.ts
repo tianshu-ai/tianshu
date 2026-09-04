@@ -58,6 +58,7 @@ import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
 import { buildHostTools, getCompactRef } from "./host-tools.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
+import { matchesAny } from "../core/glob-match.js";
 
 export interface AgentLoopRequest {
   ctx: TenantContext;
@@ -275,12 +276,12 @@ export async function runAgentLoop(
     }
   }
   const allPluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
-  const allowSet = req.toolsAllow ? new Set(req.toolsAllow) : null;
-  const denySet = req.toolsDeny ? new Set(req.toolsDeny) : null;
+  const allowList = req.toolsAllow ?? null;
+  const denyList = req.toolsDeny ?? null;
   const pluginTools = allPluginTools.filter(({ tool }) => {
     const name = tool.schema.name;
-    if (allowSet && !allowSet.has(name)) return false;
-    if (denySet && denySet.has(name)) return false;
+    if (allowList && !matchesAny(name, allowList)) return false;
+    if (denyList && matchesAny(name, denyList)) return false;
     return true;
   });
   // Worker-scoped tenant skills: shared `_tenant/config/skills/`

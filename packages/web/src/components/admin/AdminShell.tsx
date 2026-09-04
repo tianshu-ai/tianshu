@@ -200,7 +200,7 @@ function flattenAdminPages(plugins: PluginListEntry[] | null): FlatAdminPage[] {
       // actually expect: "the place I configure microsandbox is
       // the microsandbox admin page".
       const hasConfig =
-        !!p.configSchema && (p.configSchema?.fields?.length ?? 0) > 0;
+        !!p.configSchema && ((p.configSchema?.fields?.length ?? 0) > 0 || !!p.configSchema?.customUI);
       const hasOwnAdminPage = pages.length > 0;
       const declaredSettings = pages.some((page) => page.id === "settings");
       if (hasConfig && !hasOwnAdminPage && !declaredSettings) {

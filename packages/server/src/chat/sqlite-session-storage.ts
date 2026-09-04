@@ -380,7 +380,32 @@ export class SqliteSessionStorage
     // Filter orphaned toolResult entries (can appear after compaction
     // removes the assistant message containing the toolCall but keeps
     // the toolResult). Without this, Anthropic rejects with 400.
-    return filterOrphanedToolResults(path);
+    console.log(`[storage] getPathToRoot: ${path.length} entries before filter, session=${this.sessionId}`);
+    // Brute-force search for any entry containing the problematic ID pattern
+    for (const entry of path) {
+      const json = JSON.stringify(entry);
+      // Search for any tool_use_id / toolCallId patterns
+      const idMatches = json.match(/toolu_bdrk_[A-Za-z0-9]+/g);
+      if (idMatches) {
+        for (const id of new Set(idMatches)) {
+          const isToolCall = json.includes(`"type":"toolCall"`) && json.includes(`"id":"${id}"`);
+          const isToolResult = json.includes(`"toolCallId":"${id}"`);
+          const entryType = entry.type;
+          const role = entryType === "message" ? (entry as { message: { role: string } }).message.role : entryType;
+          if (isToolCall) console.log(`[storage]   toolCall id=${id} role=${role} entry=${entry.id}`);
+          if (isToolResult) console.log(`[storage]   toolResult ref=${id} role=${role} entry=${entry.id}`);
+          if (!isToolCall && !isToolResult) console.log(`[storage]   OTHER ref=${id} role=${role} entry=${entry.id} snippet=${json.slice(json.indexOf(id) - 30, json.indexOf(id) + 60)}`);
+        }
+      }
+    }
+    const filtered = filterOrphanedToolResults(path);
+    const patched = patchDanglingToolCalls(filtered);
+    // Re-run orphan filter: patchDanglingToolCalls may have stripped
+    // toolCall blocks, turning their paired toolResults into new orphans.
+    const refiltered = filterOrphanedToolResults(patched);
+    const sanitized = stripNestedOrphanToolBlocks(refiltered);
+    console.log(`[storage] getPathToRoot: ${sanitized.length} entries after filter (removed ${path.length - sanitized.length})`);
+    return sanitized;
   }
 
   async getEntries(): Promise<SessionTreeEntry[]> {
@@ -753,4 +778,121 @@ function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[]
     filtered.push(entry);
   }
   return filtered;
+}
+
+/**
+ * Strip toolCall blocks from assistant messages when no matching
+ * toolResult exists anywhere in the path. This happens when a
+ * harness abort / cancel interrupts tool execution after the
+ * assistant message was persisted but before the toolResult landed.
+ * Anthropic rejects requests where tool_use has no tool_result.
+ */
+function patchDanglingToolCalls(path: SessionTreeEntry[]): SessionTreeEntry[] {
+  const allToolResultIds = new Set<string>();
+  for (const entry of path) {
+    if (entry.type !== "message") continue;
+    const msg = (entry as { message: { role: string; toolCallId?: string } }).message;
+    if (msg.role === "toolResult" && msg.toolCallId) {
+      allToolResultIds.add(msg.toolCallId);
+    }
+  }
+  // Also scan compaction retainedTails
+  for (const entry of path) {
+    if (entry.type !== "compaction") continue;
+    const ce = entry as { retainedTail?: Array<{ role: string; toolCallId?: string }> };
+    if (!Array.isArray(ce.retainedTail)) continue;
+    for (const msg of ce.retainedTail) {
+      if (msg.role === "toolResult" && msg.toolCallId) {
+        allToolResultIds.add(msg.toolCallId);
+      }
+    }
+  }
+
+  let modified = false;
+  const result = path.map((entry) => {
+    if (entry.type !== "message") return entry;
+    const msg = (entry as { message: { role: string; content?: unknown[] } }).message;
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) return entry;
+
+    const cleaned = msg.content.filter((block: unknown) => {
+      const b = block as { type?: string; id?: string };
+      if (b.type === "toolCall" && b.id && !allToolResultIds.has(b.id)) {
+        console.log(`[storage] patchDanglingToolCalls: stripping toolCall id=${b.id} (no matching toolResult) from entry=${entry.id}`);
+        modified = true;
+        return false;
+      }
+      return true;
+    });
+
+    if (cleaned.length === msg.content.length) return entry;
+    return {
+      ...entry,
+      message: { ...msg, content: cleaned },
+    } as unknown as SessionTreeEntry;
+  });
+
+  if (modified) {
+    console.log(`[storage] patchDanglingToolCalls: patched assistant entries`);
+  }
+  return result;
+}
+
+/**
+ * Strip nested toolCall/toolResult blocks from toolResult messages
+ * whose IDs don't match any toolCall in the preceding assistant message.
+ *
+ * This handles the case where a toolResult entry's content array
+ * contains embedded toolCall blocks from an aborted turn — IDs that
+ * were never in the assistant's toolCall list.
+ */
+function stripNestedOrphanToolBlocks(path: SessionTreeEntry[]): SessionTreeEntry[] {
+  // Collect all toolCall ids from assistant messages.
+  const allToolCallIds = new Set<string>();
+  for (const entry of path) {
+    if (entry.type !== "message") continue;
+    const msg = (entry as { message: { role: string; content?: unknown[] } }).message;
+    if (msg.role === "assistant" && Array.isArray(msg.content)) {
+      for (const part of msg.content) {
+        const p = part as { type?: string; id?: string };
+        if (p.type === "toolCall" && p.id) allToolCallIds.add(p.id);
+      }
+    }
+  }
+
+  let modified = false;
+  const result = path.map((entry) => {
+    if (entry.type !== "message") return entry;
+    const msg = (entry as { message: { role: string; content?: unknown[] } }).message;
+    if (msg.role !== "toolResult" || !Array.isArray(msg.content)) return entry;
+
+    // Scan content for embedded toolCall blocks with orphan IDs
+    const cleaned = msg.content.filter((block: unknown) => {
+      const b = block as { type?: string; id?: string; toolCallId?: string };
+      // Remove toolCall blocks whose ID isn't in any assistant
+      if (b.type === "toolCall" && b.id && !allToolCallIds.has(b.id)) {
+        console.log(`[storage] stripNestedOrphanToolBlocks: removing embedded toolCall id=${b.id} from toolResult entry=${entry.id}`);
+        modified = true;
+        return false;
+      }
+      // Remove toolResult blocks whose toolCallId isn't in any assistant
+      if (b.type === "toolResult" && b.toolCallId && !allToolCallIds.has(b.toolCallId)) {
+        console.log(`[storage] stripNestedOrphanToolBlocks: removing embedded toolResult ref=${b.toolCallId} from entry=${entry.id}`);
+        modified = true;
+        return false;
+      }
+      return true;
+    });
+
+    if (cleaned.length === msg.content.length) return entry;
+    // Return a patched entry with cleaned content
+    return {
+      ...entry,
+      message: { ...msg, content: cleaned },
+    } as unknown as SessionTreeEntry;
+  });
+
+  if (modified) {
+    console.log(`[storage] stripNestedOrphanToolBlocks: patched entries in path`);
+  }
+  return result;
 }

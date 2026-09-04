@@ -271,14 +271,16 @@ export async function runStartServer(
   }
 
   // Persist the ports.
+  // Write to config.json (canonical) + .env (legacy/dev compat).
+  writeServerPortToConfig(serverPort);
   writeEnvVar(envPath, "PORT", String(serverPort));
   writeEnvVar(envPath, "WEB_PORT", String(webPort));
   if (isDev) {
     p.log.success(
-      `Wrote PORT=${serverPort}, WEB_PORT=${webPort} to ${envPath}`,
+      `Wrote port=${serverPort} to config.json, PORT=${serverPort}, WEB_PORT=${webPort} to ${envPath}`,
     );
   } else {
-    p.log.success(`Wrote PORT=${serverPort} to ${envPath}`);
+    p.log.success(`Wrote server.port=${serverPort} to config.json`);
   }
 
   // Cross-platform branch. macOS → launchd, Linux → systemd (user).
@@ -567,6 +569,21 @@ async function findFreePort(start: number): Promise<number> {
     if (!(await isPortInUse(p))) return p;
   }
   return start;
+}
+
+/** Write server.port into config.json so it's the single source of truth. */
+function writeServerPortToConfig(port: number): void {
+  const home = process.env.TIANSHU_HOME ?? path.join(process.env.HOME ?? "", ".tianshu");
+  const cfgPath = path.join(home, "config.json");
+  fs.mkdirSync(home, { recursive: true });
+  let cfg: Record<string, unknown> = {};
+  try {
+    cfg = JSON.parse(fs.readFileSync(cfgPath, "utf8"));
+  } catch { /* first run or malformed — start fresh */ }
+  const server = (cfg.server ?? {}) as Record<string, unknown>;
+  server.port = port;
+  cfg.server = server;
+  fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + "\n", { mode: 0o600 });
 }
 
 function writeEnvVar(envPath: string, key: string, value: string): void {

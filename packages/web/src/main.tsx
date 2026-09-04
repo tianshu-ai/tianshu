@@ -134,10 +134,15 @@ __installWsEventApi({
 
 // Host-level WS event handlers: UI commands from the agent.
 // switch_panel: agent can switch the right panel tab.
+// Also auto-open panels when a plugin broadcasts a fill event.
 tianshuWs.on("plugin_event", (ev) => {
   const { event, payload } = ev as { event?: string; payload?: { panelId?: string | null } };
   if (event === "ui:switch_panel" && payload) {
     usePluginStore.getState().setOpenPanel(payload.panelId ?? null);
+  }
+  // Auto-open datasource panel when agent pushes a query
+  if (event === "datasource:ds_panel_fill") {
+    usePluginStore.getState().setOpenPanel("datasource.main");
   }
 });
 

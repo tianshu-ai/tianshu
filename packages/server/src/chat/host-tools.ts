@@ -33,6 +33,9 @@ export interface HostToolsOpts {
 export interface CompactToolRef {
   piSession?: PiSession;
   harness?: AgentHarness;
+  /** Set by the compact_context tool when called mid-turn.
+   *  The post-turn maybeAutoCompact checks this and forces compaction. */
+  requestedByAgent?: boolean;
 }
 
 /**
@@ -75,6 +78,7 @@ function compactContextTool(
       if (!ref.piSession || !ref.harness) {
         return { ok: false, message: "Compaction not available (session not initialized)." };
       }
+      // Try immediate compaction (works if harness is idle, e.g. during followUp gaps).
       const result = await tryAutoCompact({
         piSession: ref.piSession,
         harness: ref.harness,
@@ -90,6 +94,11 @@ function compactContextTool(
       }
       if (result.reason === "nothing_to_compact") {
         return { ok: false, message: "Nothing to compact — conversation is too short or was just compacted." };
+      }
+      // Harness busy (mid-turn): schedule compaction for right after this turn ends.
+      if (result.error && /idle|busy/i.test(result.error)) {
+        ref.requestedByAgent = true;
+        return { ok: true, message: "Compaction scheduled — will run automatically when the current turn finishes." };
       }
       return { ok: false, message: result.error ?? "Compaction failed." };
     },

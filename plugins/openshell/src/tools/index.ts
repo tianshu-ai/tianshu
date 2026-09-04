@@ -551,19 +551,19 @@ available.`,
       // the same task lands in the same folder, no agent
       // improvisation possible.
       const task = deriveTaskFolderFromCtx(ctx);
-      const projectErr = validateSlug(project, "project");
+      // When there's no project context, use "_default" so sync_down
+      // still works in ad-hoc chat sessions.
+      const effectiveProject = project || "_default";
+      const projectErr = validateSlug(effectiveProject, "project");
       if (projectErr) {
-        return {
-          ok: false,
-          error: `${projectErr}. Pass 'project' explicitly, or call from a workboard task so ctx.projectSlug is populated.`,
-        };
+        return { ok: false, error: projectErr };
       }
-      const taskErr = validateSlug(task, "task");
+      // When there's no task context (main agent chat), use "_chat" as
+      // the task folder so sync_down still works outside workboard tasks.
+      const effectiveTask = task || "_chat";
+      const taskErr = validateSlug(effectiveTask, "task");
       if (taskErr) {
-        return {
-          ok: false,
-          error: `${taskErr}. sync_down only works inside a workboard task (or a chat session bound to one) so the host can derive a stable task folder name from ctx.taskId. Ad-hoc chat sessions without a task can't stage results.`,
-        };
+        return { ok: false, error: taskErr };
       }
       const scope =
         (args as { scope?: unknown }).scope === "tenant" ? "tenant" : "user";
@@ -577,7 +577,7 @@ available.`,
       // (e.g. 'chart.png'), and the host destBaseDir +
       // sandbox-scope prefix do all the anchoring.
       const projectScoped =
-        scope === "user" ? project : undefined;
+        scope === "user" ? effectiveProject : undefined;
       const normalisedInputs = inputPaths.map((p) =>
         normaliseRelativeInput(p, ctx.userId, projectScoped),
       );
@@ -587,7 +587,7 @@ available.`,
         normalisedInputs,
         scope,
         ctx.userId,
-        project,
+        effectiveProject,
       );
       // Host destination is already anchored at
       // <userHomeDir>/projects/<project>/.results/<task>/, so the
@@ -597,7 +597,7 @@ available.`,
         sandbox: sandboxPaths[i]!,
         host,
       }));
-      const destBaseDir = projectTaskResultsDir(ctx, project, task);
+      const destBaseDir = projectTaskResultsDir(ctx, effectiveProject, effectiveTask);
       try {
         const r = await sync.syncDown(items, { destBaseDir });
         return {

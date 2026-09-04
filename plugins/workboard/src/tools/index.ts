@@ -260,10 +260,12 @@ function formatBoard(
       const tag = t.priority > 0 ? ` [p${t.priority}]` : "";
       const role = t.workerRole ? ` <${t.workerRole}>` : "";
       const project = t.projectSlug && t.projectSlug !== "inbox" ? ` #${t.projectSlug}` : "";
-      const deps = t.dependsOn.length > 0
+      const depsInfo = t.dependsOn.length > 0
         ? ` deps:${blockedSet.has(t.id) ? "🔒" : "✓"}${t.dependsOn.length}`
         : "";
-      lines.push(`  ${t.id} — ${t.title}${tag}${role}${project}${deps}`);
+      lines.push(`  ${t.id} — ${t.title}${tag}${role}${project}${depsInfo}`);
+      if (t.description) lines.push(`    desc: ${t.description.slice(0, 300)}`);
+      if (t.resultSummary) lines.push(`    result: ${t.resultSummary.slice(0, 500)}`);
     }
   }
   return lines.join("\n");
@@ -939,9 +941,26 @@ export function buildTaskGetHistoryTool(deps: ToolDeps): AgentTool {
         };
       }
       const entries = readSessionHistory(deps.db, sessionId);
+      const lines = [
+        `Task: ${task.title} (${task.status})`,
+        task.failureReason ? `Failure: ${task.failureReason}` : null,
+        `Attempts: ${task.attempts}`,
+        `Session: ${sessionId}`,
+        `Entries: ${entries.length}`,
+        "",
+        ...entries.map((e) => {
+          const role = (e as { role: string }).role;
+          const text = (e as { text?: string }).text ?? "";
+          const toolName = (e as { toolName?: string }).toolName;
+          const isError = (e as { isError?: boolean }).isError;
+          if (toolName) return `[${role}] ${toolName}${isError ? " (ERROR)" : ""}: ${text.slice(0, 500)}`;
+          if (text) return `[${role}] ${text.slice(0, 1000)}`;
+          return `[${role}] (no text)`;
+        }),
+      ].filter(Boolean);
       return {
         ok: true,
-        text: `Found ${entries.length} entries from the worker session for task ${args.id}.`,
+        text: lines.join("\n"),
         data: {
           taskId: task.id,
           sessionId,

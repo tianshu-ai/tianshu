@@ -1,0 +1,55 @@
+{
+  "id": "datasource",
+  "version": "0.1.0",
+  "displayName": "Data Sources",
+  "description": "Connect agents to databases: Neo4j, MySQL, and more. Query, write, and inspect schema across multiple data sources.",
+  "category": "knowledge",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["network.external"],
+  "client": { "entry": "@tianshu-builtin/plugin-datasource/client" },
+  "server": { "entry": "@tianshu-builtin/plugin-datasource/server" },
+  "contributes": {
+    "tools": [
+      { "id": "ds_list", "module": "DsListTool", "since": "0.1.0" },
+      { "id": "ds_query", "module": "DsQueryTool", "since": "0.1.0" },
+      { "id": "ds_execute", "module": "DsExecuteTool", "since": "0.1.0" },
+      { "id": "ds_schema", "module": "DsSchemaTool", "since": "0.1.0" },
+      { "id": "ds_panel", "module": "DsPanelTool", "since": "0.1.0" }
+    ],
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "Cylinder",
+        "tooltip": "Data Sources",
+        "opensPanel": "datasource.main",
+        "order": 500
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "main",
+        "displayName": "Data Sources",
+        "component": "DataSourcePanel"
+      }
+    ],
+    "systemPromptFragments": [
+      {
+        "id": "datasource-tools",
+        "text": "Data Source tools: ds_list (list connections), ds_query (read query), ds_execute (write query), ds_schema (inspect schema), ds_panel (push query to UI panel).\n\nWhen creating Board apps (HTML dashboards), use the injected board.ds() API to query databases directly from the board:\n\n  const { connections } = await board.dsList()\n  // connections: [{name, type, description}]\n\n  const { columns, rows, rowCount, error } = await board.ds(source, query, params?)\n  // source: data source name from dsList()\n  // query: SQL or Cypher string\n  // params: optional query parameters object\n\nExample:\n  const { rows } = await board.ds('helu-graph', 'MATCH (p:Product) RETURN p.title, p.price LIMIT 10');\n  rows.forEach(r => console.log(r['p.title']));\n\nboard.ds() and board.dsList() are available globally on window.board in any board app. No API keys needed."
+      }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/status", "handler": "getStatus" },
+      { "method": "GET", "path": "/connections", "handler": "listConnections" },
+      { "method": "GET", "path": "/types", "handler": "listTypes" },
+      { "method": "POST", "path": "/test/:name", "handler": "testConnection" },
+      { "method": "POST", "path": "/query", "handler": "runQuery" },
+      { "method": "GET", "path": "/schema/:name", "handler": "getSchema" }
+    ]
+  },
+  "configSchema": {
+    "fields": [],
+    "customUI": "datasource-connections"
+  }
+}

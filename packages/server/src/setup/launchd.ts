@@ -42,6 +42,17 @@ import os from "node:os";
 import path from "node:path";
 import { isDevelopmentCheckout } from "./repo-root.js";
 
+/** Check if SSL is configured in config.json. */
+function _hasSsl(): boolean {
+  try {
+    const home = process.env.TIANSHU_HOME ?? path.join(os.homedir(), ".tianshu");
+    const cfg = JSON.parse(fs.readFileSync(path.join(home, "config.json"), "utf8"));
+    return !!(cfg.server?.sslCert && cfg.server?.sslKey);
+  } catch { return false; }
+}
+
+
+
 export const CANONICAL_DEV_LABEL = "ai.tianshu.dev";
 export const PROD_LABEL = "ai.tianshu.prod";
 /** Back-compat alias — some callers imported the old name. */
@@ -421,9 +432,15 @@ export async function probeHealth(
   serverPort: number,
   timeoutMs = 2000,
 ): Promise<HealthResult> {
-  const url = `http://localhost:${serverPort}/api/health`;
+  // Try HTTPS when SSL is configured, else HTTP.
+  const ssl = _hasSsl();
+  const proto = ssl ? "https" : "http";
+  const url = `${proto}://localhost:${serverPort}/api/health`;
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), timeoutMs);
+  // Allow self-signed / localhost-mismatch certs for the health probe.
+  const prevTls = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  if (ssl) process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
   try {
     const res = await fetch(url, { signal: ac.signal });
     clearTimeout(t);
@@ -442,6 +459,12 @@ export async function probeHealth(
       ok: false,
       reason: err instanceof Error ? err.message : String(err),
     };
+  } finally {
+    // Restore TLS setting
+    if (ssl) {
+      if (prevTls === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      else process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTls;
+    }
   }
 }
 

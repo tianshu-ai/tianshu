@@ -192,14 +192,17 @@ export async function tryAutoCompact(args: {
     return { compacted: false, reason: "below_threshold" };
   }
   try {
-    // Count messages before compact for the UI badge.
-    const msgsBefore = branch.filter((e) => e.type === "message").length;
+    // Count entries visible to the LLM before compact (getPathToRoot
+    // already respects compaction cut points).
+    // getBranch returns the current visible branch (respects compaction
+    // cut points). Count messages the LLM would actually see.
+    const msgsBefore = branch.filter((e: { type: string }) => e.type === "message").length;
     const result = await harness.compact();
-    // Count messages after compact.
+    // After compact, getBranch starts from the new compaction entry.
     let msgsAfter = 0;
     try {
       const afterBranch = await piSession.getBranch();
-      msgsAfter = afterBranch.filter((e) => e.type === "message").length;
+      msgsAfter = afterBranch.filter((e: { type: string }) => e.type === "message").length;
     } catch { /* best-effort */ }
     return {
       compacted: true,

@@ -75,6 +75,8 @@ export type PluginConfigField =
 
 export interface PluginConfigSchema {
   fields: PluginConfigField[];
+  /** When set, PluginConfigForm renders a custom UI instead of the default field form. */
+  customUI?: string;
 }
 
 export interface PluginListEntry {

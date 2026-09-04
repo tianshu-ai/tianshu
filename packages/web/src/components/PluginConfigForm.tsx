@@ -18,8 +18,12 @@
 // the form value into a fresh nested object on submit so the
 // persisted shape matches what `PluginContext.pluginConfig` sees.
 
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
+
+const DataSourceConfigFormLazy = lazy(() =>
+  import("./DataSourceConfigForm").then((m) => ({ default: m.DataSourceConfigForm })),
+);
 import {
   api,
   type PluginConfigField,
@@ -52,9 +56,18 @@ export function PluginConfigFormById({
     (s.plugins ?? []).find((p) => p.id === pluginId) ?? null,
   );
   if (!plugin) return null;
-  if (!plugin.configSchema || (plugin.configSchema.fields?.length ?? 0) === 0) {
-    return null;
+  if (!plugin.configSchema) return null;
+  const customUI = plugin.configSchema?.customUI;
+  if (customUI === "datasource-connections") {
+    return (
+      <div className={className}>
+        <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin text-fg-faint" />}>
+          <DataSourceConfigFormLazy plugin={plugin} />
+        </Suspense>
+      </div>
+    );
   }
+  if ((plugin.configSchema.fields?.length ?? 0) === 0) return null;
   return (
     <div className={className}>
       <PluginConfigForm plugin={plugin} />
@@ -63,6 +76,18 @@ export function PluginConfigFormById({
 }
 
 export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
+  // Custom UI override: render a dedicated component instead of the generic field form.
+  if (plugin.configSchema?.customUI === "datasource-connections") {
+    return (
+      <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin text-fg-faint" />}>
+        <DataSourceConfigFormLazy plugin={plugin} />
+      </Suspense>
+    );
+  }
+  return <PluginConfigFormInner plugin={plugin} />;
+}
+
+function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
   const tCfg = useT();
   const cfgL = useConfigLabels(plugin.id);
   const setPlugins = usePluginStore((s) => s.setPlugins);
@@ -74,6 +99,8 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [testing, setTesting] = useState(false);
 
   // Re-sync if the parent reloaded with a fresh manifest/value pair
   // (e.g. another tab toggled the plugin or saved different config).
@@ -183,11 +210,47 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
           {error}
         </div>
       )}
+      {testResult && (
+        <div className={`rounded-md border px-3 py-2 text-[12px] ${
+          testResult.ok
+            ? "border-emerald-700/50 bg-emerald-950/40 text-success"
+            : "border-rose-700/50 bg-rose-950/40 text-danger"
+        }`}>
+          {testResult.ok ? "✓ " : "✗ "}{testResult.message}
+        </div>
+      )}
       <div className="flex items-center gap-2 border-t border-border-subtle pt-3">
         {savedAt && !dirty && (
           <span className="inline-flex items-center gap-1 text-[11px] text-success">
             <CheckCircle2 size={12} /> {tCfg("common.saved")}
           </span>
+        )}
+        {(plugin.contributes?.apiRoutes as Array<{ path: string }> | undefined)?.some((r) => r.path === "/status") && (
+          <button
+            type="button"
+            onClick={async () => {
+              setTesting(true);
+              setTestResult(null);
+              try {
+                const res = await fetch(`/api/p/${plugin.id}/status`, { credentials: "include" });
+                const data = await res.json();
+                setTestResult({
+                  ok: !!data.ok,
+                  message: data.ok
+                    ? `Connected to ${data.uri || plugin.id} (${data.database || ""})`
+                    : `Connection failed: ${data.error || "unknown error"}`,
+                });
+              } catch (err) {
+                setTestResult({ ok: false, message: err instanceof Error ? err.message : String(err) });
+              } finally {
+                setTesting(false);
+              }
+            }}
+            disabled={testing || dirty}
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {testing ? <Loader2 className="inline h-3 w-3 animate-spin" /> : "⚡"} Test Connection
+          </button>
         )}
         <button
           type="button"

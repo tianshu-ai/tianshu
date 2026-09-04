@@ -155,7 +155,7 @@ function specFromReality(
       // Reality reports the *effective* tool/skill sets. For an
       // extracted solution we record them as explicit allow-lists
       // so the captured solution reproduces the same surface.
-      toolsAllow: w.tools.map((t) => t.name),
+      toolsAllow: normalizeBridgeToolNames(w.tools.map((t) => t.name)),
       skillsAllow: w.skills.map((s) => s.name),
       // Fresh extract uses host defaults for every worker host
       // block — no override until the operator sets one.
@@ -1499,4 +1499,28 @@ export function importSolution(
   }
 
   return detail;
+}
+
+/**
+ * Replace device-specific bridge tool names with wildcard patterns.
+ * `bridge_myhost_exec` → `bridge_*_exec` so the solution is portable
+ * across different bridge devices / hostnames.
+ */
+function normalizeBridgeToolNames(names: string[]): string[] {
+  const BRIDGE_RE = /^bridge_[^_]+_(.+)$/;
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const name of names) {
+    const m = BRIDGE_RE.exec(name);
+    if (m) {
+      const wildcard = `bridge_*_${m[1]}`;
+      if (!seen.has(wildcard)) {
+        seen.add(wildcard);
+        result.push(wildcard);
+      }
+    } else {
+      result.push(name);
+    }
+  }
+  return result;
 }

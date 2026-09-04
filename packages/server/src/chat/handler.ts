@@ -967,7 +967,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // The filterOrphanedToolResults in getPathToRoot handles reads,
     // but we also purge the DB rows so subsequent loads are clean.
     const errMsg = err instanceof Error ? err.message : String(err);
+    console.log(`[handler] catch: ${errMsg.slice(0, 300)}`);
     if (/tool_use_id.*tool_result|tool_result.*tool_use/i.test(errMsg)) {
+      console.log(`[handler] detected orphaned tool_result error, session=${session.id}`);
       try {
         const purged = purgeOrphanedToolResults(ctx, session.id);
         if (purged > 0) {
@@ -1035,16 +1037,54 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // chip in `running` state forever; emit a synthetic failed
     // result so the bubble renders an error and the run can
     // visually move on.
+    //
+    // CRITICAL: also persist synthetic toolResult entries to DB.
+    // Without this, the next getPathToRoot sees assistant messages
+    // with toolCall blocks but no matching toolResult — Anthropic
+    // rejects the request with a 400 and the session enters a
+    // permanent error loop. This was the root cause of the
+    // cancel-during-tool-execution bug.
+    if (outstandingToolCalls.size > 0) {
+      console.log(`[handler] finally: ${outstandingToolCalls.size} outstanding tool call(s) to resolve: ${[...outstandingToolCalls.keys()].join(", ")}`);
+    }
     for (const [callId, info] of outstandingToolCalls) {
+      const errText = streamErrorSent
+        ? "Tool call interrupted by stream error."
+        : "Tool call did not return before the run ended.";
       send({
         type: "tool_result",
         callId,
         name: info.name,
         ok: false,
-        text: streamErrorSent
-          ? "Tool call interrupted by stream error."
-          : "Tool call did not return before the run ended.",
+        text: errText,
       });
+      // Persist to DB so the message chain stays valid for future
+      // LLM calls. storage.appendEntry handles id generation,
+      // parent_id chaining and leaf_id advancement.
+      try {
+        const entryId = await storage.createEntryId();
+        const leafId = await storage.getLeafId();
+        await storage.appendEntry({
+          type: "message",
+          id: entryId,
+          parentId: leafId,
+          timestamp: new Date().toISOString(),
+          message: {
+            role: "toolResult",
+            toolCallId: callId,
+            toolName: info.name,
+            content: [{ type: "text", text: errText } as TextContent],
+            isError: true,
+            timestamp: Date.now(),
+          } as ToolResultMessage,
+        } as SessionTreeEntry);
+      } catch (persistErr) {
+        console.warn(
+          `[handler] failed to persist synthetic toolResult for ${callId}: ${
+            persistErr instanceof Error ? persistErr.message : String(persistErr)
+          }`,
+        );
+      }
     }
     outstandingToolCalls.clear();
     unsubscribe();
@@ -1055,7 +1095,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   // Auto-compact: pi-agent-core ships compact() but no auto-trigger.
   // After every successful turn, decide whether to fire it.
-  if (!streamErrorSent) {
+  // Also fires when the agent explicitly called compact_context mid-turn
+  // (which deferred to this post-turn hook via compactRef.requestedByAgent).
+  if (!streamErrorSent || compactRef?.requestedByAgent) {
+    if (compactRef) compactRef.requestedByAgent = false;
     await maybeAutoCompact({
       session,
       piSession,
@@ -1680,12 +1723,10 @@ async function maybeAutoCompact(args: {
     settings: compactionSettings,
   });
   if (decision.error) {
-    // Auto-compact failure on the chat path: surface as a
-    // stream_error so the user knows next turn may be expensive.
-    send({
-      type: "stream_error",
-      reason: `auto-compact failed: ${decision.error} (continuing without compact)`,
-    });
+    // Auto-compact failure is non-fatal: the turn already completed.
+    // Log it but don't send stream_error (that would set isStreaming=false
+    // and trigger auto-retry, which is wrong for a post-turn compaction).
+    console.warn(`[handler] auto-compact failed: ${decision.error} (non-fatal)`);
     return;
   }
   if (!decision.compacted) return;
@@ -1704,6 +1745,9 @@ async function maybeAutoCompact(args: {
     tokensBefore: decision.tokensBefore,
   });
   onSuccessRefresh();
+  if ((decision.summarisedCount ?? 0) === 0) {
+    console.log(`[handler] auto-compact reported 0 summarised — compact entry written but no messages removed`);
+  }
 }
 
 async function runManualCompact(args: {
@@ -1930,7 +1974,8 @@ function purgeOrphanedToolResults(ctx: TenantContext, sessionId: string): number
   }
 
   for (const row of rows) {
-    if (row.role !== "toolResult") continue;
+    // DB stores role as 'tool', content JSON has role: 'toolResult'
+    if (row.role !== "tool") continue;
     try {
       const parsed = JSON.parse(row.content);
       const tcId = parsed.toolCallId;

@@ -6,6 +6,129 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.42.0](https://github.com/tianshu-ai/tianshu/compare/v0.41.3...v0.42.0) (2026-09-04)
+
+
+### Features
+
+* unified datasource plugin replacing neo4j plugin ([6348ef2](https://github.com/tianshu-ai/tianshu/commit/6348ef2868992d12c35865e7ca6c303b23de6ff5))
+
+## [0.41.3](https://github.com/tianshu-ai/tianshu/compare/v0.41.2...v0.41.3) (2026-09-04)
+
+
+### Bug Fixes
+
+* **openshell:** sync_down works outside workboard tasks ([06a2067](https://github.com/tianshu-ai/tianshu/commit/06a2067955018e34421e304d3208781174794327))
+
+## [0.41.2](https://github.com/tianshu-ai/tianshu/compare/v0.41.1...v0.41.2) (2026-09-03)
+
+
+### Bug Fixes
+
+* compact summarisedCount uses getBranch (respects compaction cut points) ([4267315](https://github.com/tianshu-ai/tianshu/commit/426731523611231fd1360406bf4be89f10f44c42))
+
+## [0.41.1](https://github.com/tianshu-ai/tianshu/compare/v0.41.0...v0.41.1) (2026-09-03)
+
+
+### Bug Fixes
+
+* tianshu restart uses system-level systemctl when system unit exists ([a41cb99](https://github.com/tianshu-ai/tianshu/commit/a41cb996d74f6fb1e56741abb3127e28ec48f4da))
+
+## [0.41.0](https://github.com/tianshu-ai/tianshu/compare/v0.40.0...v0.41.0) (2026-09-03)
+
+
+### Features
+
+* **web:** block input during compaction ([b6eed72](https://github.com/tianshu-ai/tianshu/commit/b6eed724c6a09f0254e5deb233d9e4b7dc2f1294))
+
+
+### Bug Fixes
+
+* compact_context defers to post-turn when harness is busy ([e18c550](https://github.com/tianshu-ai/tianshu/commit/e18c550cfbcc4e5ee3d7278c1ca035b9d1719e12))
+* UI stays in streaming state during mid-turn compaction ([1cfc0dc](https://github.com/tianshu-ai/tianshu/commit/1cfc0dc890f648e90aa243b0d32698b1bbb04f2b))
+* **web:** /compact is a command, not a chat message ([425a84b](https://github.com/tianshu-ai/tianshu/commit/425a84b28c0f40cd64e238aca61d75aff08674dd))
+* **web:** /compact no longer stuck in streaming state after completion ([49cf4ef](https://github.com/tianshu-ai/tianshu/commit/49cf4ef2586b13603888be8f13cc1d729da91e2f))
+* **web:** auto-dismiss compact notice after 5 seconds ([5553870](https://github.com/tianshu-ai/tianshu/commit/5553870b0f68a9ceab840b55ea486a92afed4ead))
+
+## [0.40.0](https://github.com/tianshu-ai/tianshu/compare/v0.39.1...v0.40.0) (2026-09-03)
+
+
+### Features
+
+* auto-wildcard bridge tool names in solution extract ([3c5e94f](https://github.com/tianshu-ai/tianshu/commit/3c5e94f8b5284e20ca7559a6ae2051c61e18ee48))
+* toolsAllow/toolsDeny support glob wildcards ([43b28fb](https://github.com/tianshu-ai/tianshu/commit/43b28fb628f6612f1813cdd448343f03670114c4))
+* **web:** Test Connection button on plugin config form ([2ac6dd1](https://github.com/tianshu-ai/tianshu/commit/2ac6dd14465aed9de015371dbebc183153491b8e))
+
+
+### Bug Fixes
+
+* **workboard:** task_get_history shows full transcript in text field ([7c925b1](https://github.com/tianshu-ai/tianshu/commit/7c925b171f1ddf5604245a95e3cbebf85cf43f6a))
+* **workboard:** task_list includes description + resultSummary ([d9c6043](https://github.com/tianshu-ai/tianshu/commit/d9c6043e170c77953ac02f6545b620f36abe5bbc))
+
+## [0.39.1](https://github.com/tianshu-ai/tianshu/compare/v0.39.0...v0.39.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **neo4j:** add neo4j-driver to root dependencies for global install ([3ad6d32](https://github.com/tianshu-ai/tianshu/commit/3ad6d320f6b91c50df8b7720980a146f6942d7a3))
+
+## [0.39.0](https://github.com/tianshu-ai/tianshu/compare/v0.38.1...v0.39.0) (2026-09-02)
+
+
+### Features
+
+* Neo4j graph database plugin ([4f1f2b8](https://github.com/tianshu-ai/tianshu/commit/4f1f2b85c4a21bc1f3b2a6267c521f373ad09bda))
+* **neo4j:** add neo4j_admin tool for schema management ([9e51d16](https://github.com/tianshu-ai/tianshu/commit/9e51d16fd2201d6e4fd7de28becc456d9eccad9f))
+
+
+### Bug Fixes
+
+* **neo4j:** configSchema password kind → secret ([3746dc3](https://github.com/tianshu-ai/tianshu/commit/3746dc3dd90305b37094e1aea81107f5e0f6c91e))
+
+## [0.38.1](https://github.com/tianshu-ai/tianshu/compare/v0.38.0...v0.38.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* health check uses HTTPS when SSL is configured ([6ca446b](https://github.com/tianshu-ai/tianshu/commit/6ca446b9d7108257aea4309311e318c99c006bcc))
+
+## [0.38.0](https://github.com/tianshu-ai/tianshu/compare/v0.37.1...v0.38.0) (2026-09-02)
+
+
+### Features
+
+* native SSL/TLS support via config.json ([dd702bc](https://github.com/tianshu-ai/tianshu/commit/dd702bc61e402ec7860c2a02b8f6bdee79dd85f1))
+* setup writes port to config.json as single source of truth ([9d33b7a](https://github.com/tianshu-ai/tianshu/commit/9d33b7a7f1ae4aebfa33012ace7934fdaa892f0b))
+
+
+### Bug Fixes
+
+* server.port from config.json was ignored — only env PORT worked ([03dee8b](https://github.com/tianshu-ai/tianshu/commit/03dee8b68efe2b4830eeaf5d26de6b0781a22c80))
+
+## [0.37.1](https://github.com/tianshu-ai/tianshu/compare/v0.37.0...v0.37.1) (2026-09-02)
+
+
+### Bug Fixes
+
+* **web:** modal gets opaque background per theme ([ac5ed55](https://github.com/tianshu-ai/tianshu/commit/ac5ed55011e5aa31d5e6a210d84b2b5e5de56913))
+
+## [0.37.0](https://github.com/tianshu-ai/tianshu/compare/v0.36.1...v0.37.0) (2026-09-02)
+
+
+### Features
+
+* abort signal propagates to bridge tool calls ([5af18a8](https://github.com/tianshu-ai/tianshu/commit/5af18a8c6c0750dbdb09529931d52e80a455ffc5))
+
+
+### Bug Fixes
+
+* abort button sometimes has no effect ([ca4657c](https://github.com/tianshu-ai/tianshu/commit/ca4657ca5eaba66ece23fa75b6c822a865a71894))
+* abort immediately cancels pending tool calls ([811ffbb](https://github.com/tianshu-ai/tianshu/commit/811ffbb6bbf1b628944bb8b9ee6663b78a07d44a))
+* abort pre-check throws instead of returning tool_result ([5f40a7d](https://github.com/tianshu-ai/tianshu/commit/5f40a7d8da1f8ddc31d4824040ffdb1d1650fb24))
+* auto-purge orphaned toolResult rows from DB on Anthropic 400 ([a225620](https://github.com/tianshu-ai/tianshu/commit/a2256202f74ca1dea2f32cdf94f25f58a830786d))
+* persist synthetic toolResult on cancel to prevent orphaned toolCall corruption ([e5598f1](https://github.com/tianshu-ai/tianshu/commit/e5598f11a5f775c3155f15fee994c18c687b1565))
+* strip nested orphan toolCall blocks from toolResult content ([ccbd6e4](https://github.com/tianshu-ai/tianshu/commit/ccbd6e47e8c4a9ac34b5096f2091a22692afb104))
+
 ## [0.36.1](https://github.com/tianshu-ai/tianshu/compare/v0.36.0...v0.36.1) (2026-09-01)
 
 

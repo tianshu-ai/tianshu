@@ -187,6 +187,8 @@ export interface PluginSetupInstall {
 export interface PluginConfigSchema {
   /** Top-level fields. Order is preserved in the UI. */
   fields: PluginConfigField[];
+  /** When set, the Settings UI renders a named custom component instead of the default field form. */
+  customUI?: string;
 }
 
 export type PluginConfigField =
