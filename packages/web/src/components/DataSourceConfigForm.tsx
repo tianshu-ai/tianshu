@@ -28,13 +28,29 @@ interface ConnectionEntry {
   [key: string]: unknown;
 }
 
+const DRIVER_TYPES: DriverType[] = [
+  { id: "neo4j", name: "Neo4j", fields: [
+    { key: "uri", label: "URI", placeholder: "bolt://localhost:7687", required: true },
+    { key: "username", label: "Username", placeholder: "neo4j", required: true },
+    { key: "password", label: "Password", secret: true, required: true },
+    { key: "database", label: "Database", placeholder: "neo4j" },
+  ]},
+  { id: "mysql", name: "MySQL", fields: [
+    { key: "host", label: "Host", placeholder: "localhost", required: true },
+    { key: "port", label: "Port", placeholder: "3306" },
+    { key: "username", label: "Username", placeholder: "root", required: true },
+    { key: "password", label: "Password", secret: true, required: true },
+    { key: "database", label: "Database", required: true },
+  ]},
+];
+
 const INPUT =
   "w-full rounded-md border border-border-default bg-bg-elevated px-3 py-1.5 text-[12px] text-fg-default outline-none placeholder:text-fg-fainter focus:border-brand-500";
 
 export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
   const t = useT();
   const setPlugins = usePluginStore((s) => s.setPlugins);
-  const [types, setTypes] = useState<DriverType[]>([]);
+  const types = DRIVER_TYPES;
   const [connections, setConnections] = useState<Record<string, ConnectionEntry>>({});
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -42,18 +58,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
   const [testResults, setTestResults] = useState<Record<string, { ok: boolean; msg: string }>>({});
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newType, setNewType] = useState("");
-
-  // Load driver types
-  useEffect(() => {
-    fetch(`/api/plugins/datasource/types`)
-      .then((r) => r.json())
-      .then((d) => {
-        setTypes(d.types ?? []);
-        if (d.types?.length > 0 && !newType) setNewType(d.types[0].id);
-      })
-      .catch(() => {});
-  }, []);
+  const [newType, setNewType] = useState(types[0]?.id ?? "");
 
   // Load current config
   useEffect(() => {
@@ -110,7 +115,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
     setTestResults((prev) => ({ ...prev, [name]: { ok: false, msg: "Testing..." } }));
     try {
       // Must save first if dirty
-      const res = await fetch(`/api/plugins/datasource/test/${encodeURIComponent(name)}`, { method: "POST" });
+      const res = await fetch(`/api/plugins/datasource/test/${encodeURIComponent(name)}`, { method: "POST", credentials: "include" });
       const data = await res.json();
       setTestResults((prev) => ({
         ...prev,
