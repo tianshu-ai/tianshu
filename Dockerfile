@@ -5,7 +5,7 @@
 # (native) compiles. We build everything (plugin-sdk, plugins,
 # server dist, web dist) here, then copy only what's needed into a
 # slim runtime image.
-FROM node:25-bookworm AS build
+FROM node:26-bookworm AS build
 
 WORKDIR /app
 
@@ -46,7 +46,7 @@ RUN npm prune --omit=dev
 # ── Runtime stage ────────────────────────────────────────────────
 # Slim base, same Debian release (bookworm) so the better-sqlite3
 # binary built above is ABI-compatible.
-FROM node:25-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 
 WORKDIR /app
 ENV NODE_ENV=production \
