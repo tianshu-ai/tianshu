@@ -36,7 +36,7 @@ function DataSourcePanel(_props: PanelProps) {
 
   // Listen for agent-pushed queries via ds_panel_fill WS event
   useEffect(() => {
-    return subscribeToWsEvent("ds_panel_fill", (raw) => {
+    return subscribeToWsEvent("datasource:ds_panel_fill", (raw) => {
       const ev = raw as unknown as { source?: string; query?: string; autoRun?: boolean };
       if (ev.source) setSelected(ev.source);
       if (ev.query) setQuery(ev.query);
