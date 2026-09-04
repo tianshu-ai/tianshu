@@ -79,6 +79,38 @@ const plugin: PluginServerModule = {
             res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
           }
         },
+        // Panel query endpoint
+        runQuery: async (req: Request, res: Response) => {
+          const body = (req as unknown as { body?: Record<string, unknown> }).body ?? {};
+          const source = String(body.source ?? "");
+          const q = String(body.query ?? "");
+          if (!source || !q) {
+            res.json({ error: "source and query are required" });
+            return;
+          }
+          try {
+            const driver = await import("./connection-pool.js").then(m => m.getDriver(source));
+            const result = await driver.query(q, (body.params ?? {}) as Record<string, unknown>);
+            res.json({ columns: result.columns, rows: result.rows.slice(0, 200), rowCount: result.rowCount });
+          } catch (err) {
+            res.json({ error: err instanceof Error ? err.message : String(err) });
+          }
+        },
+        // Panel schema endpoint
+        getSchema: async (req: Request, res: Response) => {
+          const name = (req.params as Record<string, string>)?.name ?? req.path.split("/").pop();
+          if (!name || !connections[name]) {
+            res.status(404).json({ error: `Unknown: ${name}` });
+            return;
+          }
+          try {
+            const driver = await import("./connection-pool.js").then(m => m.getDriver(name));
+            const result = await driver.schema("overview");
+            res.json({ text: result.text });
+          } catch (err) {
+            res.json({ error: err instanceof Error ? err.message : String(err) });
+          }
+        },
         // Supported driver types
         listTypes: (_req: Request, res: Response) => {
           res.json({ types: [

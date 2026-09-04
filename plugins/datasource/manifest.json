@@ -7,6 +7,7 @@
   "author": "tianshu-ai",
   "license": "Apache-2.0",
   "permissions": ["network.external"],
+  "client": { "entry": "@tianshu-builtin/plugin-datasource/client" },
   "server": { "entry": "@tianshu-builtin/plugin-datasource/server" },
   "contributes": {
     "tools": [
@@ -15,11 +16,29 @@
       { "id": "ds_execute", "module": "DsExecuteTool", "since": "0.1.0" },
       { "id": "ds_schema", "module": "DsSchemaTool", "since": "0.1.0" }
     ],
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "Database",
+        "tooltip": "Data Sources",
+        "opensPanel": "datasource.main",
+        "order": 500
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "main",
+        "displayName": "Data Sources",
+        "component": "DataSourcePanel"
+      }
+    ],
     "apiRoutes": [
       { "method": "GET", "path": "/status", "handler": "getStatus" },
       { "method": "GET", "path": "/connections", "handler": "listConnections" },
       { "method": "GET", "path": "/types", "handler": "listTypes" },
-      { "method": "POST", "path": "/test/:name", "handler": "testConnection" }
+      { "method": "POST", "path": "/test/:name", "handler": "testConnection" },
+      { "method": "POST", "path": "/query", "handler": "runQuery" },
+      { "method": "GET", "path": "/schema/:name", "handler": "getSchema" }
     ]
   },
   "configSchema": {
