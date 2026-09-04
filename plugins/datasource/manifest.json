@@ -16,18 +16,14 @@
       { "id": "ds_schema", "module": "DsSchemaTool", "since": "0.1.0" }
     ],
     "apiRoutes": [
-      { "method": "GET", "path": "/status", "handler": "getStatus" }
+      { "method": "GET", "path": "/status", "handler": "getStatus" },
+      { "method": "GET", "path": "/connections", "handler": "listConnections" },
+      { "method": "GET", "path": "/types", "handler": "listTypes" },
+      { "method": "POST", "path": "/test/:name", "handler": "testConnection" }
     ]
   },
   "configSchema": {
-    "fields": [
-      {
-        "key": "connections",
-        "label": "Data source connections (JSON object)",
-        "kind": "string",
-        "default": "{}",
-        "description": "JSON: { \"name\": { \"type\": \"neo4j|mysql\", \"uri\": \"...\", ... } }"
-      }
-    ]
+    "fields": [],
+    "customUI": "datasource-connections"
   }
 }

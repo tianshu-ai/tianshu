@@ -18,8 +18,12 @@
 // the form value into a fresh nested object on submit so the
 // persisted shape matches what `PluginContext.pluginConfig` sees.
 
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { CheckCircle2, Loader2 } from "lucide-react";
+
+const DataSourceConfigFormLazy = lazy(() =>
+  import("./DataSourceConfigForm").then((m) => ({ default: m.DataSourceConfigForm })),
+);
 import {
   api,
   type PluginConfigField,
@@ -52,9 +56,18 @@ export function PluginConfigFormById({
     (s.plugins ?? []).find((p) => p.id === pluginId) ?? null,
   );
   if (!plugin) return null;
-  if (!plugin.configSchema || (plugin.configSchema.fields?.length ?? 0) === 0) {
-    return null;
+  if (!plugin.configSchema) return null;
+  const customUI = (plugin.configSchema as { customUI?: string }).customUI;
+  if (customUI === "datasource-connections") {
+    return (
+      <div className={className}>
+        <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin text-fg-faint" />}>
+          <DataSourceConfigFormLazy plugin={plugin} />
+        </Suspense>
+      </div>
+    );
   }
+  if ((plugin.configSchema.fields?.length ?? 0) === 0) return null;
   return (
     <div className={className}>
       <PluginConfigForm plugin={plugin} />

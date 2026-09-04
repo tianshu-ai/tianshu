@@ -51,6 +51,52 @@ const plugin: PluginServerModule = {
           const allOk = Object.values(results).every((r) => r.ok);
           res.json({ ok: allOk, connections: results });
         },
+        // List connections with their types (no secrets)
+        listConnections: (_req: Request, res: Response) => {
+          const safe = Object.entries(connections).map(([name, cfg]) => ({
+            name,
+            type: cfg.type,
+            description: cfg.description ?? "",
+            // Expose non-secret fields for display
+            ...(cfg.type === "neo4j" ? { uri: (cfg as Record<string,unknown>).uri, database: (cfg as Record<string,unknown>).database } : {}),
+            ...(cfg.type === "mysql" ? { host: (cfg as Record<string,unknown>).host, port: (cfg as Record<string,unknown>).port, database: (cfg as Record<string,unknown>).database } : {}),
+          }));
+          res.json({ connections: safe });
+        },
+        // Test a single connection
+        testConnection: async (req: Request, res: Response) => {
+          const name = (req as unknown as { params?: { name?: string } }).params?.name
+            ?? req.url.split("/").pop();
+          if (!name || !connections[name]) {
+            res.status(404).json({ ok: false, error: `Unknown connection: ${name}` });
+            return;
+          }
+          try {
+            const driver = await import("./connection-pool.js").then(m => m.getDriver(name));
+            const err = await driver.ping();
+            res.json(err ? { ok: false, error: err } : { ok: true, name });
+          } catch (err) {
+            res.json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+          }
+        },
+        // Supported driver types
+        listTypes: (_req: Request, res: Response) => {
+          res.json({ types: [
+            { id: "neo4j", name: "Neo4j", fields: [
+              { key: "uri", label: "URI", placeholder: "bolt://localhost:7687", required: true },
+              { key: "username", label: "Username", placeholder: "neo4j", required: true },
+              { key: "password", label: "Password", secret: true, required: true },
+              { key: "database", label: "Database", placeholder: "neo4j" },
+            ]},
+            { id: "mysql", name: "MySQL", fields: [
+              { key: "host", label: "Host", placeholder: "localhost", required: true },
+              { key: "port", label: "Port", placeholder: "3306" },
+              { key: "username", label: "Username", placeholder: "root", required: true },
+              { key: "password", label: "Password", secret: true, required: true },
+              { key: "database", label: "Database", required: true },
+            ]},
+          ]});
+        },
       },
     };
   },
