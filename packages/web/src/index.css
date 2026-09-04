@@ -55,6 +55,7 @@
   --color-bg-base:        transparent;
   --color-bg-elevated:    transparent;
   --color-bg-raised:      rgba(31 41 55 / 0.4);  /* gray-800 semi-transparent */
+  --color-bg-surface:     #111827;           /* opaque — dropdowns, popups, inputs */
   --color-bg-hover:       #1f2937;
   --color-bg-overlay:     rgba(0 0 0 / 0.7);
 
@@ -93,6 +94,7 @@
   --color-bg-base:        transparent;
   --color-bg-elevated:    transparent;
   --color-bg-raised:      rgba(31 41 55 / 0.4);
+  --color-bg-surface:     #111827;           /* opaque — dropdowns, popups, inputs */
   --color-bg-hover:       #1f2937;
   --color-bg-overlay:     rgba(0 0 0 / 0.7);
 
@@ -182,6 +184,7 @@
   --color-bg-base:        transparent;      /* transparent — body carries texture */
   --color-bg-elevated:    transparent;      /* transparent */
   --color-bg-raised:      rgba(255 255 255 / 0.4); /* semi-transparent white for bubbles */
+  --color-bg-surface:     #ffffff;           /* opaque — dropdowns, popups, inputs */
   --color-bg-hover:       #e2e8f0;          /* slate-200 — row hover */
   --color-bg-overlay:     rgba(15 23 42 / 0.4);
 
@@ -259,6 +262,7 @@
   --color-bg-base:        transparent;      /* transparent — body carries texture */
   --color-bg-elevated:    transparent;      /* transparent */
   --color-bg-raised:      rgba(255 250 242 / 0.4); /* silk white, semi-transparent for bubbles */
+  --color-bg-surface:     #f5f0e8;           /* opaque silk — dropdowns, popups, inputs */
   --color-bg-hover:       rgba(232 220 200 / 0.5); /* brushed parchment — hover */
   --color-bg-overlay:     rgba(45 40 35 / 0.5);
 
@@ -576,4 +580,13 @@ body,
   background: linear-gradient(135deg, rgba(139 105 20 / 0.1) 0%, rgba(240 232 216 / 0.4) 100%) !important;
   border-right-color: rgba(139 105 20 / 0.4) !important;
   box-shadow: 0 1px 4px rgba(120 80 40 / 0.08), inset 0 1px 0 rgba(255 250 240 / 0.3);
+}
+
+/* Opaque backgrounds for interactive controls that must not be transparent.
+   bg-bg-raised / bg-bg-elevated are intentionally translucent for chat bubbles,
+   but dropdowns, selects, and popup menus need a solid backdrop. */
+select,
+[role="listbox"],
+[role="menu"] {
+  background-color: var(--color-bg-surface) !important;
 }

@@ -339,7 +339,7 @@ function SolutionIDE({
         <select
           value={selectedSlug ?? ""}
           onChange={(e) => onSelectSlug(e.target.value)}
-          className="rounded-md border border-border-subtle bg-bg-raised px-2 py-1 text-xs"
+          className="rounded-md border border-border-subtle bg-bg-surface px-2 py-1 text-xs"
         >
           {(summaries ?? []).map((s) => (
             <option key={s.slug} value={s.slug}>

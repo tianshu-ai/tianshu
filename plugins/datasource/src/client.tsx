@@ -359,7 +359,7 @@ function ResultTable({ result }: { result: QueryResult }) {
                   </div>
                   {/* Filter input dropdown */}
                   {filterOpen === col && (
-                    <div className="absolute left-0 top-full z-20 min-w-[160px] rounded border border-border-default p-1 shadow-lg" style={{ backgroundColor: "var(--bg-elevated, #1e1e2e)" }}>
+                    <div className="absolute left-0 top-full z-20 min-w-[160px] rounded border border-border-default bg-bg-surface p-1 shadow-lg">
                       <input
                         className="w-full rounded border border-border-default bg-bg-default px-2 py-1 text-[11px] text-fg-default outline-none placeholder:text-fg-fainter"
                         placeholder={`Filter ${col}...`}

@@ -139,7 +139,7 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps = 
         createPortal(
           <div
             ref={dropdownRef}
-            className="fixed z-[9999] max-h-80 w-64 overflow-y-auto rounded-xl border border-border-default bg-gray-900 py-1 shadow-2xl dark:bg-gray-900"
+            className="fixed z-[9999] max-h-80 w-64 overflow-y-auto rounded-xl border border-border-default bg-bg-surface py-1 shadow-2xl"
             style={{
               bottom: `calc(100vh - ${pos.top}px + 8px)`,
               right: `${pos.right}px`,
