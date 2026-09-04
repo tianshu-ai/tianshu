@@ -218,8 +218,7 @@ describe("sync_down tool", () => {
     const runner = new FakeSyncRunner();
     const r = SyncDownTool(runner);
 
-    // ctx.taskId missing → host can't derive a task folder name,
-    // and the agent has no way to supply one anymore.
+    // ctx.taskId missing → falls back to "_chat" folder, no error.
     const ctxNoTask = {
       ...fakeCtx,
       taskId: undefined,
@@ -227,9 +226,8 @@ describe("sync_down tool", () => {
     const res1 = (await r.execute(
       { paths: ["x"], project: "foo" },
       ctxNoTask,
-    )) as { ok: boolean; error: string };
-    expect(res1.ok).toBe(false);
-    expect(res1.error).toMatch(/sync_down only works inside a workboard task/);
+    )) as { ok: boolean };
+    expect(res1.ok).toBe(true);
 
     // Empty paths arg — rejected regardless of ctx.
     const res2 = (await r.execute(
@@ -238,7 +236,7 @@ describe("sync_down tool", () => {
     )) as { ok: boolean };
     expect(res2.ok).toBe(false);
 
-    // No project anywhere (neither arg nor ctx) — rejected.
+    // No project anywhere (neither arg nor ctx) → falls back to "_default".
     const ctxNoProject = {
       ...fakeCtx,
       projectSlug: undefined,
@@ -247,9 +245,7 @@ describe("sync_down tool", () => {
       { paths: ["x"], project: "" },
       ctxNoProject,
     )) as { ok: boolean };
-    expect(res3.ok).toBe(false);
-
-    expect(runner.downCalls).toHaveLength(0);
+    expect(res3.ok).toBe(true);
   });
 
   it("rejects project slugs containing path separators or traversal", async () => {
@@ -581,10 +577,9 @@ describe("sync_down tool", () => {
       } as AgentToolContext;
       const res = (await r.execute({ paths: ["out.log"] }, ctxNoProject)) as {
         ok: boolean;
-        error: string;
       };
-      expect(res.ok).toBe(false);
-      expect(res.error).toMatch(/project must be|ctx\.projectSlug/);
+      // No project → falls back to "_default", no error.
+      expect(res.ok).toBe(true);
     });
   });
 
