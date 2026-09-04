@@ -76,6 +76,18 @@ export function PluginConfigFormById({
 }
 
 export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
+  // Custom UI override: render a dedicated component instead of the generic field form.
+  if (plugin.configSchema?.customUI === "datasource-connections") {
+    return (
+      <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin text-fg-faint" />}>
+        <DataSourceConfigFormLazy plugin={plugin} />
+      </Suspense>
+    );
+  }
+  return <PluginConfigFormInner plugin={plugin} />;
+}
+
+function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
   const tCfg = useT();
   const cfgL = useConfigLabels(plugin.id);
   const setPlugins = usePluginStore((s) => s.setPlugins);
