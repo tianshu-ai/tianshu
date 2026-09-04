@@ -1,0 +1,33 @@
+{
+  "id": "datasource",
+  "version": "0.1.0",
+  "displayName": "Data Sources",
+  "description": "Connect agents to databases: Neo4j, MySQL, and more. Query, write, and inspect schema across multiple data sources.",
+  "category": "knowledge",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["network.external"],
+  "server": { "entry": "@tianshu-builtin/plugin-datasource/server" },
+  "contributes": {
+    "tools": [
+      { "id": "ds_list", "module": "DsListTool", "since": "0.1.0" },
+      { "id": "ds_query", "module": "DsQueryTool", "since": "0.1.0" },
+      { "id": "ds_execute", "module": "DsExecuteTool", "since": "0.1.0" },
+      { "id": "ds_schema", "module": "DsSchemaTool", "since": "0.1.0" }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/status", "handler": "getStatus" }
+    ]
+  },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "connections",
+        "label": "Data source connections (JSON object)",
+        "kind": "string",
+        "default": "{}",
+        "description": "JSON: { \"name\": { \"type\": \"neo4j|mysql\", \"uri\": \"...\", ... } }"
+      }
+    ]
+  }
+}
