@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.41.3](https://github.com/tianshu-ai/tianshu/compare/v0.41.2...v0.41.3) (2026-09-04)
+
+
+### Bug Fixes
+
+* **openshell:** sync_down works outside workboard tasks ([06a2067](https://github.com/tianshu-ai/tianshu/commit/06a2067955018e34421e304d3208781174794327))
+
 ## [0.41.2](https://github.com/tianshu-ai/tianshu/compare/v0.41.1...v0.41.2) (2026-09-03)
 
 
