@@ -6,6 +6,15 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.43.1](https://github.com/tianshu-ai/tianshu/compare/v0.43.0...v0.43.1) (2026-09-04)
+
+
+### Bug Fixes
+
+* add --color-bg-surface (opaque) for dropdowns, selects, popups ([d92a961](https://github.com/tianshu-ai/tianshu/commit/d92a9616d12870e694f68fd109a04938d113f1e1))
+* model selector dropdown opaque background (bg-gray-900) ([4e1fe00](https://github.com/tianshu-ai/tianshu/commit/4e1fe00f5d2472e67c987e54ee9c38a6e3e340d8))
+* workforce-studio buttons use text-bg-surface instead of text-bg-base (transparent) ([2276231](https://github.com/tianshu-ai/tianshu/commit/227623179fa644b2c092a98b1bb815322d143356))
+
 ## [0.43.0](https://github.com/tianshu-ai/tianshu/compare/v0.42.0...v0.43.0) (2026-09-04)
 
 
