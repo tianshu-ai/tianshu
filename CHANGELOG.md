@@ -6,6 +6,42 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.43.0](https://github.com/tianshu-ai/tianshu/compare/v0.42.0...v0.43.0) (2026-09-04)
+
+
+### Features
+
+* auto-open datasource panel when agent pushes ds_panel_fill event ([eb5b3db](https://github.com/tianshu-ai/tianshu/commit/eb5b3db4dda24a743eca62d422f12873dc5fae04))
+* **board:** board.ds() and board.dsList() — query databases from board apps ([7396304](https://github.com/tianshu-ai/tianshu/commit/7396304db15e32f4a87e08f8bbc0acc9467cccdf))
+* datasource plugin settings UI — proper form for connections ([de480fc](https://github.com/tianshu-ai/tianshu/commit/de480fcdf1cbcb4c2378020c1ddb969e9fff00b2))
+* **datasource:** ds_panel tool — agent pushes queries to the panel ([a181241](https://github.com/tianshu-ai/tianshu/commit/a181241308ed3b0d90bce75f5f160e3d8fadda5a))
+* **datasource:** enhanced result table — resizable columns, sort, filter ([728dffc](https://github.com/tianshu-ai/tianshu/commit/728dffc9847f7c11bc72040c0e9dd2c85a193d95))
+* **datasource:** query panel — run SQL/Cypher from the side panel ([8b0c9d1](https://github.com/tianshu-ai/tianshu/commit/8b0c9d1bc69f217ae5465e8a1c8aeb13f5bf42ac))
+
+
+### Bug Fixes
+
+* add Cylinder to plugin icon whitelist ([4f88686](https://github.com/tianshu-ai/tianshu/commit/4f88686bcb0597ecc7ae77724314ddcbfa632621))
+* configSchema.customUI preserved through manifest parser to frontend ([2a51200](https://github.com/tianshu-ai/tianshu/commit/2a5120023cafe4034b3833c58d3d2d7b3944ee11))
+* customUI check in PluginConfigForm (not just PluginConfigFormById) ([354650a](https://github.com/tianshu-ai/tianshu/commit/354650a269a7d5ee2df1a31ac5e19fa29c9c2c99))
+* datasource types API with credentials, hardcoded fallback ([0deab0b](https://github.com/tianshu-ai/tianshu/commit/0deab0b1d1c97b627f1ef697b721bced3ec39899))
+* datasource types hardcoded in frontend, test fetch with credentials ([87a0a0b](https://github.com/tianshu-ai/tianshu/commit/87a0a0b00b3bd42b775b69fd7014fdbff39ef2a4))
+* **datasource:** ds_panel autoRun works, tool hints agent to open panel first ([c2cb236](https://github.com/tianshu-ai/tianshu/commit/c2cb2365adc7c8c36f8e842d877412d720a083a6))
+* **datasource:** filter dropdown opaque background ([4009352](https://github.com/tianshu-ai/tianshu/commit/40093525212c67b78551223cff6590d47046936c))
+* **datasource:** panel icon → Cylinder ([d25bbec](https://github.com/tianshu-ai/tianshu/commit/d25bbecc4a0fc717c1e0aef83802158e4c8132e3))
+* **datasource:** panel icon → DatabaseZap ([aefe55b](https://github.com/tianshu-ai/tianshu/commit/aefe55b2b9ddfec95e2fd1a4fbd63c5f422e09c2))
+* **datasource:** subscribe to plugin_event then filter by event name ([396eb47](https://github.com/tianshu-ai/tianshu/commit/396eb4747788f9047b3c86bb9069e0c88200ad96))
+* **datasource:** WS event type prefixed with pluginId — datasource:ds_panel_fill ([4135161](https://github.com/tianshu-ai/tianshu/commit/4135161375afeeb162dfcc13ccd6a6f137c12f42))
+* disable browser autofill on datasource connection fields ([b99fd8c](https://github.com/tianshu-ai/tianshu/commit/b99fd8cbfd0b33f91223721c44ca14867a7b3a4f))
+* plugin API routes use /api/p/:pluginId not /api/plugins/:pluginId ([115b585](https://github.com/tianshu-ai/tianshu/commit/115b585e7ccd9e4010b03b442ef521236dee8905))
+* Settings page shows for plugins with customUI even if fields is empty ([e903c62](https://github.com/tianshu-ai/tianshu/commit/e903c62afd619f486b29c206e0d3dbe6315ac72d))
+* sync_down tests — no longer requires taskId or project slug ([e0277c8](https://github.com/tianshu-ai/tianshu/commit/e0277c81289d05f81005003d49469340d99bb406))
+
+
+### Refactor
+
+* move board.ds docs from board to datasource systemPromptFragments ([0796f1f](https://github.com/tianshu-ai/tianshu/commit/0796f1f4d790b15d3e6e52f58ee71d1ea9c40b4c))
+
 ## [0.42.0](https://github.com/tianshu-ai/tianshu/compare/v0.41.3...v0.42.0) (2026-09-04)
 
 
