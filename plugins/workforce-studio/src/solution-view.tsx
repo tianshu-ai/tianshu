@@ -305,7 +305,7 @@ function SolutionIDE({
               <button
                 type="button"
                 onClick={() => void edits.confirmActivate()}
-                className="inline-flex items-center gap-1 rounded bg-success-fg px-3 py-1.5 text-xs font-semibold text-bg-base hover:opacity-90"
+                className="inline-flex items-center gap-1 rounded bg-success-fg px-3 py-1.5 text-xs font-semibold text-bg-surface hover:opacity-90"
               >
                 <Rocket className="size-3.5" /> {t("activate.modal.confirm")}
               </button>
@@ -447,7 +447,7 @@ function SolutionIDE({
                 type="button"
                 onClick={() => void edits.save()}
                 disabled={edits.busy}
-                className="inline-flex items-center gap-1 rounded bg-fg-default px-2 py-1 text-xs font-medium text-bg-base hover:opacity-90 disabled:opacity-50"
+                className="inline-flex items-center gap-1 rounded bg-fg-default px-2 py-1 text-xs font-medium text-bg-surface hover:opacity-90 disabled:opacity-50"
               >
                 <Save className="size-3.5" /> {t("ide.save")}
               </button>

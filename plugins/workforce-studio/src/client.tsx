@@ -194,7 +194,7 @@ function TopViewSwitch({
         onClick={() => onChange("solution")}
         className={
           value === "solution"
-            ? "bg-fg-default px-4 py-1.5 font-medium text-bg-base"
+            ? "bg-fg-default px-4 py-1.5 font-medium text-bg-surface"
             : "bg-bg-base px-4 py-1.5 hover:bg-bg-raised"
         }
       >
@@ -205,7 +205,7 @@ function TopViewSwitch({
         onClick={() => onChange("reality")}
         className={
           value === "reality"
-            ? "bg-fg-default px-4 py-1.5 font-medium text-bg-base"
+            ? "bg-fg-default px-4 py-1.5 font-medium text-bg-surface"
             : "bg-bg-base px-4 py-1.5 hover:bg-bg-raised"
         }
       >
@@ -313,7 +313,7 @@ function Header({
           type="button"
           onClick={onRefresh}
           disabled={loading}
-          className="inline-flex items-center gap-1 rounded-md border border-border-subtle bg-bg-elevated px-3 py-1.5 text-sm hover:bg-bg-raised disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-md border border-border-subtle bg-bg-surface px-3 py-1.5 text-sm hover:bg-bg-hover disabled:opacity-50"
         >
           {loading ? (
             <Loader2 className="size-4 animate-spin" />
@@ -326,7 +326,7 @@ function Header({
           type="button"
           onClick={downloadZip}
           disabled={!snapshot}
-          className="inline-flex items-center gap-1 rounded-md bg-fg-default px-3 py-1.5 text-sm font-medium text-bg-base hover:opacity-90 disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-md bg-fg-default px-3 py-1.5 text-sm font-medium text-bg-surface hover:opacity-90 disabled:opacity-50"
         >
           <Download className="size-4" />
           {t("header.downloadBundle")}
@@ -539,7 +539,7 @@ function ViewSwitch({
         onClick={() => onChange("develop")}
         className={
           value === "develop"
-            ? "bg-fg-default px-3 py-1 text-bg-base"
+            ? "bg-fg-default px-3 py-1 text-bg-surface"
             : "bg-bg-base px-3 py-1 hover:bg-bg-raised"
         }
       >
@@ -550,7 +550,7 @@ function ViewSwitch({
         onClick={() => onChange("rendered")}
         className={
           value === "rendered"
-            ? "bg-fg-default px-3 py-1 text-bg-base"
+            ? "bg-fg-default px-3 py-1 text-bg-surface"
             : "bg-bg-base px-3 py-1 hover:bg-bg-raised"
         }
       >
