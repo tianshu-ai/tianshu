@@ -201,7 +201,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
                   className={INPUT}
                   value={String(conn.description ?? "")}
                   onChange={(e) => updateField(name, "description", e.target.value)}
-                  placeholder="Optional description"
+                  placeholder="Optional description" autoComplete="off"
                 />
               </div>
               {driverType?.fields.map((f) => (
@@ -215,6 +215,9 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
                     value={String((conn as Record<string, unknown>)[f.key] ?? "")}
                     onChange={(e) => updateField(name, f.key, e.target.value)}
                     placeholder={f.placeholder}
+                    autoComplete="off"
+                    data-1p-ignore
+                    data-lpignore="true"
                   />
                 </div>
               ))}
@@ -229,7 +232,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
             className={INPUT + " max-w-[160px]"}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Connection name"
+            placeholder="Connection name" autoComplete="off"
             autoFocus
             onKeyDown={(e) => e.key === "Enter" && addConnection()}
           />
