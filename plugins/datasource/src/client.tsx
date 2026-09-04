@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { Database, Play, Clock, ChevronDown, Table2, Loader2 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { usePluginT } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/datasource";
 
@@ -33,6 +33,39 @@ function DataSourcePanel(_props: PanelProps) {
   const [schema, setSchema] = useState<string | null>(null);
   const [showSchema, setShowSchema] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Listen for agent-pushed queries via ds_panel_fill WS event
+  useEffect(() => {
+    return subscribeToWsEvent("ds_panel_fill", (raw) => {
+      const ev = raw as unknown as { source?: string; query?: string; autoRun?: boolean };
+      if (ev.source) setSelected(ev.source);
+      if (ev.query) setQuery(ev.query);
+      // Auto-run after a tick so state settles
+      if (ev.autoRun && ev.source && ev.query) {
+        setTimeout(() => {
+          setRunning(true);
+          const start = Date.now();
+          fetch(`${API_BASE}/query`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ source: ev.source, query: ev.query }),
+          })
+            .then((r) => r.json())
+            .then((d: { error?: string; columns?: string[]; rows?: Record<string, unknown>[]; rowCount?: number }) => {
+              const durationMs = Date.now() - start;
+              if (d.error) {
+                setResult({ columns: [], rows: [], rowCount: 0, error: d.error, durationMs });
+              } else {
+                setResult({ columns: d.columns ?? [], rows: d.rows ?? [], rowCount: d.rowCount ?? 0, durationMs });
+              }
+            })
+            .catch((err) => setResult({ columns: [], rows: [], rowCount: 0, error: String(err), durationMs: Date.now() - start }))
+            .finally(() => setRunning(false));
+        }, 100);
+      }
+    });
+  }, []);
 
   // Load sources
   useEffect(() => {

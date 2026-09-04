@@ -14,7 +14,8 @@
       { "id": "ds_list", "module": "DsListTool", "since": "0.1.0" },
       { "id": "ds_query", "module": "DsQueryTool", "since": "0.1.0" },
       { "id": "ds_execute", "module": "DsExecuteTool", "since": "0.1.0" },
-      { "id": "ds_schema", "module": "DsSchemaTool", "since": "0.1.0" }
+      { "id": "ds_schema", "module": "DsSchemaTool", "since": "0.1.0" },
+      { "id": "ds_panel", "module": "DsPanelTool", "since": "0.1.0" }
     ],
     "topBarButtons": [
       {

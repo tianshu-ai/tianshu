@@ -16,6 +16,7 @@ import { DsListTool } from "./tools/list.js";
 import { DsQueryTool } from "./tools/query.js";
 import { DsExecuteTool } from "./tools/execute.js";
 import { DsSchemaTool } from "./tools/schema.js";
+import { buildDsPanelTool } from "./tools/panel.js";
 
 const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
@@ -44,6 +45,7 @@ const plugin: PluginServerModule = {
         DsQueryTool,
         DsExecuteTool,
         DsSchemaTool,
+        DsPanelTool: buildDsPanelTool((type, payload) => ctx.broadcast(type, payload)),
       },
       routes: {
         getStatus: async (_req: Request, res: Response) => {
