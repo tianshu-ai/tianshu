@@ -57,7 +57,7 @@ export function PluginConfigFormById({
   );
   if (!plugin) return null;
   if (!plugin.configSchema) return null;
-  const customUI = (plugin.configSchema as { customUI?: string }).customUI;
+  const customUI = plugin.configSchema?.customUI;
   if (customUI === "datasource-connections") {
     return (
       <div className={className}>

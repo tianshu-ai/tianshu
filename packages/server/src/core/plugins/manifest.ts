@@ -288,10 +288,11 @@ function optionalConfigSchema(
     acc.issues.push("configSchema must be an object");
     return undefined;
   }
-  const obj = raw as { fields?: unknown };
+  const obj = raw as { fields?: unknown; customUI?: unknown };
+  const customUI = typeof obj.customUI === "string" ? obj.customUI : undefined;
   if (!Array.isArray(obj.fields)) {
     acc.issues.push("configSchema.fields must be an array");
-    return { fields: [] };
+    return { fields: [], ...(customUI ? { customUI } : {}) };
   }
   const fields: PluginConfigField[] = [];
   for (let i = 0; i < obj.fields.length; i++) {
@@ -395,7 +396,7 @@ function optionalConfigSchema(
       );
     }
   }
-  return { fields };
+  return { fields, ...(customUI ? { customUI } : {}) };
 }
 
 function parseConfigFieldGroup(
