@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.42.0](https://github.com/tianshu-ai/tianshu/compare/v0.41.3...v0.42.0) (2026-09-04)
+
+
+### Features
+
+* unified datasource plugin replacing neo4j plugin ([6348ef2](https://github.com/tianshu-ai/tianshu/commit/6348ef2868992d12c35865e7ca6c303b23de6ff5))
+
 ## [0.41.3](https://github.com/tianshu-ai/tianshu/compare/v0.41.2...v0.41.3) (2026-09-04)
 
 
