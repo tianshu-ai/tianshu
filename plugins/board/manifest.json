@@ -41,6 +41,10 @@
       {
         "id": "board-llm-api",
         "text": "Board apps have a built-in LLM helper injected by the runtime. When writing a board app's JavaScript, you can call:\n\n  const result = await board.llm(messages, options?)\n\nParameters:\n  - messages: Array<{role: 'user'|'assistant'|'system', content: string}>\n  - options (optional): { model?: string, system?: string, maxTokens?: number, temperature?: number }\n\nReturns: Promise<{ ok: boolean, text: string, model: string, error?: string }>\n\nThis uses the server's configured LLM provider — no API keys needed in the board app.\nExample:\n  const res = await board.llm([{role:'user', content:'Summarize this data: ' + JSON.stringify(data)}]);\n  document.getElementById('output').textContent = res.text;\n\nThe function is available globally on `window.board.llm` in any board app served by tianshu."
+      },
+      {
+        "id": "board-ds-api",
+        "text": "Board apps have a built-in Data Source helper for querying databases (Neo4j, MySQL, etc.):\n\n  const result = await board.ds(source, query, params?)\n\nParameters:\n  - source: string — data source name (from board.dsList())\n  - query: string — SQL or Cypher query\n  - params (optional): object — query parameters\n\nReturns: Promise<{ columns: string[], rows: object[], rowCount: number, error?: string }>\n\nList available data sources:\n  const { connections } = await board.dsList()\n  // connections: [{name, type, description}]\n\nExample:\n  const { rows } = await board.ds('helu-graph', 'MATCH (p:Product) RETURN p.title LIMIT 10');\n  rows.forEach(r => console.log(r['p.title']));\n\nBoth board.ds() and board.dsList() are available globally on window.board."
       }
     ]
   }

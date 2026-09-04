@@ -157,6 +157,34 @@ export const BOARD_RUNTIME_SOURCE = `(function () {
     }
   };
 
+  // ─── Data Source helper: board.ds(source, query, params?) ──────
+  // Calls the datasource plugin's query endpoint.
+  // Returns: Promise<{ columns, rows, rowCount, error? }>
+  window.board.ds = async function (source, query, params) {
+    try {
+      var res = await fetch('/api/p/datasource/query', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ source: source, query: query, params: params || {} }),
+        credentials: 'include'
+      });
+      return await res.json();
+    } catch (err) {
+      return { columns: [], rows: [], rowCount: 0, error: (err && err.message) || String(err) };
+    }
+  };
+
+  // ─── Data Source list: board.dsList() ──────────────────────────
+  // Returns: Promise<{ connections: [{name, type, description}] }>
+  window.board.dsList = async function () {
+    try {
+      var res = await fetch('/api/p/datasource/connections', { credentials: 'include' });
+      return await res.json();
+    } catch (err) {
+      return { connections: [], error: (err && err.message) || String(err) };
+    }
+  };
+
   try { window.parent.postMessage({ type: 'tianshu:board_runtime_ready' }, '*'); } catch (e) {}
 
   // Initial report + keep reporting as the DOM changes size (timers,
