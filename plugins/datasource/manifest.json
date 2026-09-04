@@ -19,7 +19,7 @@
     "topBarButtons": [
       {
         "id": "toggle",
-        "icon": "Database",
+        "icon": "DatabaseZap",
         "tooltip": "Data Sources",
         "opensPanel": "datasource.main",
         "order": 500
