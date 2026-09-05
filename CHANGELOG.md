@@ -6,6 +6,33 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.44.0](https://github.com/tianshu-ai/tianshu/compare/v0.43.1...v0.44.0) (2026-09-05)
+
+
+### Features
+
+* **board:** fullscreen mode for board panel ([8fc4314](https://github.com/tianshu-ai/tianshu/commit/8fc43143c1c93308e90fbd57a59c947ee1f80e51))
+* doctor + setup agent improvements from 09-05 learnings ([9232b65](https://github.com/tianshu-ai/tianshu/commit/9232b65864812c209b6499a7fba42ded2c746dcd))
+* **openshell:** setup agent knows how to build tianshu sandbox image ([6f8ce3e](https://github.com/tianshu-ai/tianshu/commit/6f8ce3e9daee6e5f03e584817186848e0eb146b3))
+* **setup:** agent knows all builtin plugins, runtime mutual exclusivity ([233379c](https://github.com/tianshu-ai/tianshu/commit/233379ccbe163afc01d56c1dbc266a103b868e75))
+
+
+### Bug Fixes
+
+* **board:** chat-embedded boards get allow-same-origin for API access ([608da96](https://github.com/tianshu-ai/tianshu/commit/608da96aa2702bf8d350ace3078a2cfd6f073287))
+* **board:** fullscreen toolbar opaque background, z-index above iframe ([28841f3](https://github.com/tianshu-ai/tianshu/commit/28841f3587f94326e2ff11664a04d8ece00ae160))
+* **doctor:** only check plugin prerequisites for enabled plugins ([e9d868a](https://github.com/tianshu-ai/tianshu/commit/e9d868a4a5d671fc5f777baadcb9e541dc414a45))
+* include plugins/**/sandbox-image/** in npm package files ([8dd8f33](https://github.com/tianshu-ai/tianshu/commit/8dd8f33a2db480bd2ad0394f4cd154cf90f914e7))
+* **openshell:** Dockerfile ENTRYPOINT → CMD to not break sandbox provisioning ([d996482](https://github.com/tianshu-ai/tianshu/commit/d9964825e57bc0fb77449650a4b43c46c6278544))
+* **openshell:** include sandbox-image/ in npm package files ([6bb80e4](https://github.com/tianshu-ai/tianshu/commit/6bb80e4c280f0801e9d90627167c2bc793b513cd))
+* **openshell:** sandbox create uses /bin/bash -c true for ENTRYPOINT compat ([97388ac](https://github.com/tianshu-ai/tianshu/commit/97388ac25798b37391a821183aeda05bf1036a90))
+* **openshell:** sandbox main process must stay alive — use sleep infinity ([4ab0a5b](https://github.com/tianshu-ai/tianshu/commit/4ab0a5b238a846030848cc9a0294939b4cb10ad0))
+
+
+### Documentation
+
+* update README with datasource, board.ds, setup/doctor improvements ([f6d714a](https://github.com/tianshu-ai/tianshu/commit/f6d714ab87ea06a6c476fe74c2f7c31da2606ade))
+
 ## [0.43.1](https://github.com/tianshu-ai/tianshu/compare/v0.43.0...v0.43.1) (2026-09-04)
 
 
