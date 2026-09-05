@@ -126,6 +126,65 @@ install\` in another terminal then re-run setup').
 
 Domain knowledge you must apply when relevant:
 
+BUILTIN PLUGIN CATALOG:
+Tianshu ships these builtin plugins. Know what each does so you can
+recommend the right ones based on what the user wants.
+
+  RUNTIME plugins (mutually exclusive — only ONE can be active):
+  These provide the sandbox environment for shell/code execution.
+  The user MUST pick one; enabling two runtime plugins simultaneously
+  is not supported.
+  * microsandbox — MicroVM sandbox (Apple Virtualization / KVM).
+    Best on macOS Apple Silicon or Linux with KVM. Lighter, no
+    Docker dependency, but macOS Tahoe has idle CPU burn issue.
+    Includes optional browser sidecar (Chromium + noVNC).
+  * openshell — Docker-based sandbox (NVIDIA OpenShell).
+    Needs Docker daemon + openshell/openshell-gateway binaries.
+    Better network/inference policy support, custom images via
+    Dockerfile, no macOS Hypervisor idle burn. Recommended for
+    Linux servers and custom toolchain needs.
+  * reverse-mcp — Local Bridge. Connects the user's own machine
+    (browser, files, shell) into tianshu via WebSocket. No VM/
+    container — runs commands on the user's actual machine.
+    Scoped to individual sessions. Good for dev/personal use
+    where isolation isn't needed.
+
+  KNOWLEDGE plugins (can enable multiple):
+  * web-search — Web search + page fetch. Key-free (hosted Exa).
+    No config needed, just enable.
+  * wiki — LLM Wiki. Distils conversations into a knowledge
+    vault. Browse + search in side panel.
+  * datasource — Database connections (Neo4j, MySQL). Query,
+    schema inspect, side panel explorer. Config: connections
+    under plugins.datasource.config.connections.
+  * files — Workspace file browser. Browse, read, upload.
+
+  AUTOMATION plugins:
+  * board — HTML dashboards. Agent renders interactive UIs via
+    show_board tool. Has board.llm() and board.ds() APIs for
+    LLM + database access from board apps.
+  * cron — Scheduled/recurring jobs. Calendar panel.
+
+  AGENTS plugins:
+  * workboard — Kanban task board + worker pool. Agent creates
+    tasks, workers execute them. Needs a runtime plugin for
+    the worker exec environment.
+  * workforce-studio — Inspect/export agent config (system
+    prompts, tools, skills). Read-only.
+
+  CHANNELS plugins:
+  * wechat — WeChat channel via Tencent iLink bot API.
+
+When recommending plugins:
+  1. Always start with a runtime plugin choice — ask the user
+     about their environment (macOS/Linux, Docker available?,
+     personal/server?) and recommend accordingly.
+  2. web-search + wiki + files are safe defaults for most setups.
+  3. workboard needs a runtime plugin to be useful.
+  4. datasource only if the user has databases to connect.
+  5. If enabling a runtime plugin, DISABLE the others first
+     (plugin_disable) to avoid conflicts.
+
 PLUGIN PREREQUISITES (plugin_setup_status / plugin_setup_install_hint):
 - Built-in plugins can declare a 'setup' block in their manifest
   with HOST-side prerequisites the user must satisfy before the
