@@ -224,10 +224,11 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
       ref={iframeRef}
       title={ui.uri}
       srcDoc={html}
-      // scripts yes; same-origin NO (null origin isolates the guest
-      // from host cookies/DOM). allow-forms/popups keep basic UIs
-      // working; popups route through our link handler in practice.
-      sandbox="allow-scripts allow-forms allow-popups"
+      // scripts yes; same-origin YES so board.llm() / board.ds()
+      // can fetch the host API with credentials. The board content
+      // is user-authored (agent-generated) HTML served by the plugin
+      // route, same trust level as the side panel.
+      sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
       className="w-full border-0 bg-white"
       style={{ height }}
     />
