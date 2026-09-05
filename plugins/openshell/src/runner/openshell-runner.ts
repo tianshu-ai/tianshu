@@ -1012,9 +1012,11 @@ export class OpenShellRunner implements SandboxRunner {
     // broke provisioning in 0.4.35. Dynamic egress now goes through
     // the Policy Advisor loop (see ensurePolicyAdvisorSettings) or
     // explicit allowEgress() grants against the default policy.
-    // Images with ENTRYPOINT ["/bin/bash"] need `-c` so bash
-    // interprets "true" as a command, not a script path.
-    args.push("--", "/bin/bash", "-c", "true");
+    // The sandbox's main process must stay alive — if it exits,
+    // openshell tears down the container (MainProcessExited).
+    // `sleep infinity` keeps it running; the plugin interacts
+    // via `sandbox exec` for actual commands.
+    args.push("--", "sleep", "infinity");
     await this.cli(args);
     // mkdir the workspace root inside the sandbox so the first
     // writeFile doesn't 404. Done after create rather than via
