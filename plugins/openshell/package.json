@@ -21,6 +21,7 @@
     "dist",
     "src",
     "skills",
+    "sandbox-image",
     "manifest.json"
   ],
   "scripts": {
