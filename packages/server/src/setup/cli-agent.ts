@@ -508,6 +508,33 @@ MICROSANDBOX (sandbox-based plugins: microsandbox, browser):
   spinner every time. Only after status='errored' or
   status='stalled' + sandbox_inventory confirms no snapshot
   landed should you propose retrying build_sandbox.
+
+OPENSHELL DOCKER IMAGE BUILD (non-microsandbox path):
+- The openshell plugin ships a Dockerfile at
+  plugins/openshell/sandbox-image/Dockerfile that builds a
+  custom sandbox image with pre-installed tools (ffmpeg,
+  Chromium, Playwright, Python libs, opencode, omo).
+- To build: docker build -t tianshu/opencode-sandbox:latest
+  <path-to-plugins/openshell/sandbox-image/>
+  For npm global install the path is:
+  $(npm root -g)/@tianshu-ai/tianshu/plugins/openshell/sandbox-image/
+  For git checkout: plugins/openshell/sandbox-image/
+- After building, configure the openshell plugin to use it:
+  plugins.openshell.config.fromImage = "tianshu/opencode-sandbox:latest"
+  (via config_write, scope=tenant or global)
+- The Dockerfile extends the community base image
+  (ghcr.io/nvidia/openshell-community/sandboxes/base:latest)
+  and adds: system packages (jq, tree, ripgrep, ffmpeg, sox,
+  chromium, tesseract, pandoc, imagemagick), Node tools (tsx,
+  typescript, eslint, prettier, remotion, sharp, puppeteer,
+  playwright), Python libs (numpy, pandas, matplotlib, pydub,
+  edge-tts, pymupdf, etc.), and pre-warms the opencode + omo
+  plugin cache so task startup is instant.
+- Build takes 10-20 min first time. Docker layer cache makes
+  subsequent builds much faster.
+- Use plugin_setup_status to check if the image already exists
+  (requirement id: tianshu-sandbox-image).
+
 - Standard setup flow when sandbox_inventory shows NOTHING is
   built yet. This is a TWO-snapshot layered build, NOT one big
   monolith. Why:
