@@ -205,7 +205,7 @@ function BoardPanel(_props: PanelProps) {
         ? "fixed inset-0 z-[9999] bg-bg-base"
         : "h-full"
     }`}>
-      <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
+      <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle bg-bg-surface px-3 py-1.5 relative z-10">
         {boards.length > 0 ? (
           <div className="relative">
             <select
