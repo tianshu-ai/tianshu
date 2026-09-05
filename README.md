@@ -271,6 +271,11 @@ channels. Tianshu ships these built-in:
 | **Workboard** | The Kanban task board + worker pool. The orchestrator drops tasks onto Ready; workers pick them up, run them (with a live transcript), and report back through In-progress → Done. Supports task dependency graphs and per-worker config. |
 | **Workforce Studio** | Inspect, edit, diff, export/import, and **activate** your whole agent configuration (main agent + every worker + the enabled plugin set + prompt blocks) as a single versionable **Solution**, in a three-pane IDE. |
 | **Web Search** | Key-free `web_search` (hosted Exa / Parallel endpoint, no API key) plus a `web_fetch` tool that reads any page to markdown. |
+| **Data Sources** | Connect agents to databases — Neo4j graph, MySQL, and more. Agent tools (`ds_query`, `ds_schema`, `ds_panel`) plus a side-panel query explorer with resizable columns, sort, and filter. Board apps get `board.ds()` / `board.dsList()` for live database queries inside dashboards. |
+| **Boards** | Interactive HTML dashboards the agent builds and drops into chat or the side panel. Built-in `board.llm()` for LLM calls and `board.ds()` for database queries — no API keys needed inside board code. Fullscreen mode for data-heavy dashboards. |
+| **Scheduler (Cron)** | Scheduled and recurring jobs with a calendar panel. Fire a message into a session or drop a task on the workboard at a set time or on a cron schedule. Timezone-aware. |
+| **Wiki** | LLM-powered knowledge vault that distils conversations into an Obsidian-style wiki. Auto-files entities, concepts, and topics. Side-panel browse + semantic search. |
+| **Local Bridge** | Connect tools on your own machine (browser, files, shell) into tianshu over WebSocket. No VM needed — runs on your actual machine. Scoped to your sessions. |
 | **WeChat (微信)** | A chat channel backed by Tencent's iLink bot API — scan a QR code to authorise, then inbound DMs route to the agent through the channel system. |
 
 Manage them under **Settings → Plugins** (enable/disable + per-plugin
@@ -473,13 +478,23 @@ the full picture.
 - [x] Rate-limit-aware model retries + client auto-reconnect / resume
 - [x] Key-free `web_search` + `web_fetch`
 - [x] Worker task dependency graphs in one batch
+- [x] **Data Sources plugin** — unified multi-database connector
+      (Neo4j + MySQL), query panel with sort/filter/resize,
+      `board.ds()` API for dashboard apps
+- [x] **Board enhancements** — `board.llm()` + `board.ds()` APIs,
+      fullscreen mode, chat-embedded boards with API access
+- [x] **Setup agent improvements** — full plugin catalog knowledge,
+      runtime mutual-exclusivity enforcement, `compat` field
+      guidance, cross-arch deployment flow, China network hints
+- [x] **Doctor improvements** — `supportsDeveloperRole` compat check,
+      HOME env check, only checks enabled plugins' prerequisites
 
 **Next (0.5.x → 0.6)**
 
 - [ ] **Auth + roles** — login, and an authorization gate on the
       admin/Settings surface (see the security note above)
 - [ ] Docker image with sandbox layer baked in
-- [ ] Linux systemd user service (matches macOS launchd UX)
+- [x] Linux systemd service (`tianshu-prod.service` for npm global installs)
 - [ ] Skills marketplace (registry + install command)
 - [ ] **Orchestrator analytics**: `worker_analytics` /
       `worker_task_timeline` /
