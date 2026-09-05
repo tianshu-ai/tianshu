@@ -174,4 +174,7 @@ RUN rm -rf /sandbox/.warmup /sandbox/.config/opencode/opencode.json \
     && find /sandbox/.omo -name '*.lock' -exec rm -rf {} + 2>/dev/null || true
 
 USER sandbox
-ENTRYPOINT ["/bin/bash"]
+# No ENTRYPOINT — openshell supervisor manages the process lifecycle.
+# Setting ENTRYPOINT to bash breaks `openshell sandbox create -- true`
+# because bash interprets the command as a script path.
+CMD ["/bin/bash"]
