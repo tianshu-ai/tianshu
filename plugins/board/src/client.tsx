@@ -9,7 +9,7 @@
 // iframe path). Refreshes its list on workspace changes.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Globe, ChevronDown, RefreshCw } from "lucide-react";
+import { Globe, ChevronDown, RefreshCw, Maximize2, Minimize2 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 import { subscribeToWsEvent, sendWsMessage, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
@@ -35,6 +35,15 @@ function BoardPanel(_props: PanelProps) {
     });
   }, []);
   const [iframeKey, setIframeKey] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // Escape exits fullscreen
+  useEffect(() => {
+    if (!fullscreen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setFullscreen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fullscreen]);
   const [loading, setLoading] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   // Mirror `selected` into a ref so the board_act subscription (mounted
@@ -191,7 +200,11 @@ function BoardPanel(_props: PanelProps) {
     : "";
 
   return (
-    <div className="flex h-full flex-col overflow-hidden text-fg-default">
+    <div className={`flex flex-col overflow-hidden text-fg-default ${
+      fullscreen
+        ? "fixed inset-0 z-[9999] bg-bg-base"
+        : "h-full"
+    }`}>
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
         {boards.length > 0 ? (
           <div className="relative">
@@ -223,6 +236,13 @@ function BoardPanel(_props: PanelProps) {
           className="ml-auto rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
         >
           <RefreshCw size={12} />
+        </button>
+        <button
+          onClick={() => setFullscreen((v) => !v)}
+          title={fullscreen ? "Exit fullscreen" : "Fullscreen"}
+          className="rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
+        >
+          {fullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
         </button>
       </div>
 
