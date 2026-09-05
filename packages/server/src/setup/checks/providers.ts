@@ -25,6 +25,18 @@ export interface ProvidersCheckOpts {
 
 const PLACEHOLDER_PATTERN = /^\$\{([A-Z_][A-Z0-9_]*)(?::-(.*))?\}$/;
 
+/** True when the baseUrl points at OpenAI's own API (the only
+ *  provider that actually supports the `developer` role). */
+function isOpenAIBaseUrl(baseUrl?: string): boolean {
+  if (!baseUrl) return false;
+  try {
+    const host = new URL(baseUrl).hostname;
+    return host === "api.openai.com" || host.endsWith(".openai.com");
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The `api` values pi-ai's register-builtins.ts knows. Anything
  * outside this set throws "No API provider registered" at first
@@ -257,6 +269,24 @@ export async function checkProviders(
             detail: `docs/known-models.md records ${ref.maxTokens} for ${m.id} (verified ${ref.lastVerified}; source ${ref.source}). Bump if you want full output capacity.`,
           });
         }
+      }
+      // compat.supportsDeveloperRole check: non-OpenAI providers
+      // using openai-completions MUST set this to false, otherwise
+      // the server sends a 'developer' role message that the
+      // provider rejects with a 400.
+      const compat = (m as { compat?: { supportsDeveloperRole?: boolean } }).compat;
+      if (
+        entry.api === "openai-completions" &&
+        !isOpenAIBaseUrl(entry.baseUrl) &&
+        compat?.supportsDeveloperRole !== false
+      ) {
+        lines.push({
+          severity: "warning",
+          text: `  ${fullId}: missing compat.supportsDeveloperRole: false`,
+          detail:
+            'Non-OpenAI providers reject the "developer" message role (400 error). ' +
+            'Add "compat": { "supportsDeveloperRole": false } to this model entry.',
+        });
       }
     }
 

@@ -46,5 +46,24 @@ export function checkRuntime(): CheckGroup {
       : "Sandbox features need macOS Apple Silicon or Linux. Other platforms can run the chat surface but exec/browser tools won't work.",
   });
 
+  // HOME env — openshell-gateway and other tools need it.
+  // systemd services on Linux often don't set HOME.
+  if (!process.env.HOME) {
+    lines.push({
+      severity: "warning",
+      text: "HOME environment variable not set",
+      detail:
+        "Some tools (openshell-gateway) require HOME. " +
+        (platform === "linux"
+          ? 'If running under systemd, add Environment=HOME=/root (or the appropriate user home) to the service unit.'
+          : "Set it in your shell profile."),
+    });
+  } else {
+    lines.push({
+      severity: "ok",
+      text: `HOME=${process.env.HOME}`,
+    });
+  }
+
   return { title: "Runtime", lines };
 }

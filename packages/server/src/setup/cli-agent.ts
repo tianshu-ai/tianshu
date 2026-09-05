@@ -296,6 +296,32 @@ PROVIDERS / MODELS (config.json's \`models.providers\` map):
 - apiKey can be a literal string (default since 2026-06; lands
   in config.json which is chmod 600) or a \`\${ENV_VAR}\`
   placeholder if the user opted into --use-env mode.
+- COMPAT SETTINGS (model-level \`compat\` object):
+  Non-OpenAI providers using \`openai-completions\` api often need
+  compatibility overrides. Each model entry can carry a \`compat\`
+  object. The CRITICAL fields:
+  * \`supportsDeveloperRole: false\` — REQUIRED for any provider
+    that is NOT OpenAI itself. OpenAI recently introduced a
+    \`developer\` message role; pi-ai sends it by default. Non-
+    OpenAI providers (dashscope/Qwen, deepseek, moonshot/Kimi,
+    siliconflow, zhipu/GLM, together, groq, fireworks, local
+    llama-server, Ollama) reject it with a 400 error like
+    "developer is not one of ['system', 'assistant', 'user',
+    'tool']". Setting this to false makes pi-ai send \`system\`
+    instead.
+  * \`maxTokensField: "max_tokens"\` — some providers require the
+    legacy field name. Usually not needed for major providers.
+  * \`supportsUsageInStreaming: false\` — set when the provider
+    doesn't return usage stats in streaming responses.
+  Example for a Qwen model on dashscope:
+    { "id": "qwen3.8-max", "name": "Qwen 3.8 Max",
+      "reasoning": true, "contextWindow": 1048576,
+      "maxTokens": 65536,
+      "compat": { "supportsDeveloperRole": false } }
+  RULE: when adding ANY \`openai-completions\` provider whose
+  baseUrl is NOT \`https://api.openai.com\`, ALWAYS add
+  \`"compat": { "supportsDeveloperRole": false }\` to every
+  model entry. This is the #1 cause of 400 errors on first use.
 - Each model entry SHOULD carry \`contextWindow\` and \`maxTokens\`
   (both in tokens). Meaning:
   * \`contextWindow\` = total token budget for the request
@@ -534,6 +560,26 @@ OPENSHELL DOCKER IMAGE BUILD (non-microsandbox path):
   subsequent builds much faster.
 - Use plugin_setup_status to check if the image already exists
   (requirement id: tianshu-sandbox-image).
+- CROSS-ARCHITECTURE / REMOTE SERVER DEPLOYMENT:
+  If the build machine and the target server have different
+  architectures (e.g. Mac arm64 vs Linux x64), or Docker Hub
+  is unreachable from the target (common in China):
+  1. Build on the machine with good network:
+     docker buildx build --platform linux/amd64 \
+       -t tianshu/opencode-sandbox:latest --load \
+       plugins/openshell/sandbox-image/
+  2. Export: docker save tianshu/opencode-sandbox:latest | gzip > /tmp/sandbox.tar.gz
+  3. Transfer: scp /tmp/sandbox.tar.gz <server>:/tmp/
+  4. Load on server: docker load < /tmp/sandbox.tar.gz
+  5. Configure: config_write plugins.openshell.config.fromImage
+     = "tianshu/opencode-sandbox:latest" (scope=tenant)
+  The image is ~3-4 GB compressed.
+- CHINA NETWORK NOTES:
+  Docker Hub (docker.io) and some registries are blocked or
+  throttled from China servers. DaoCloud mirrors have allowlists
+  that reject unknown images. ghcr.io (GitHub) is usually
+  reachable. For custom images, docker save/load via scp is the
+  most reliable path.
 
 - Standard setup flow when sandbox_inventory shows NOTHING is
   built yet. This is a TWO-snapshot layered build, NOT one big
