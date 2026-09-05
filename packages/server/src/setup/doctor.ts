@@ -31,9 +31,12 @@ import {
 } from "./checks/plugin-setup.js";
 import { getBuiltinConfigDir } from "../core/plugins/discovery.js";
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { checkTenants } from "./checks/tenants.js";
 import { checkDb } from "./checks/db.js";
 import { checkAuth } from "./checks/auth.js";
+import { getTianshuHome } from "../core/paths.js";
+import { loadGlobalConfig, loadTenantConfig } from "../core/config.js";
 
 export interface DoctorOpts {
   /** When true, hit each provider's /v1/models endpoint to test
@@ -73,12 +76,13 @@ export async function collectDoctorReport(
   groups.push(checkTenants());
   groups.push(checkDb());
   groups.push(checkAuth());
-  // Per-plugin host prerequisites (manifest.setup). Plugins that
-  // don't declare a setup spec contribute nothing here. Verify
-  // probes have a 5s/command timeout so a hung daemon can't wedge
-  // the doctor; see plugin-setup.ts for the kill-on-group fix.
+  // Per-plugin host prerequisites (manifest.setup). Only check
+  // plugins that are enabled in at least one tenant — disabled
+  // plugins don't need their prerequisites satisfied.
   const pluginsRoot = path.join(getBuiltinConfigDir(), "plugins");
-  const setupSpecs = discoverPluginSetupSpecs(pluginsRoot);
+  const enabledIds = collectEnabledPluginIds();
+  const setupSpecs = discoverPluginSetupSpecs(pluginsRoot)
+    .filter((s) => enabledIds.has(s.pluginId));
   for (const spec of setupSpecs) {
     const status = await evaluatePluginSetup(
       spec.pluginId,
@@ -144,4 +148,31 @@ export async function runQuickReadinessCheck(): Promise<{
     }))
     .filter((g) => g.lines.length > 0);
   return { ok: blockers.length === 0, blockers };
+}
+
+/** Collect plugin IDs enabled in at least one tenant (or globally). */
+function collectEnabledPluginIds(): Set<string> {
+  const ids = new Set<string>();
+  try {
+    const home = getTianshuHome();
+    const globalCfg = loadGlobalConfig(home);
+    // Global plugins
+    for (const [id, entry] of Object.entries(globalCfg.plugins ?? {})) {
+      if ((entry as { enabled?: boolean }).enabled !== false) ids.add(id);
+    }
+    // Per-tenant plugins
+    const tenantsDir = path.join(home, "tenants");
+    if (fs.existsSync(tenantsDir)) {
+      for (const d of fs.readdirSync(tenantsDir, { withFileTypes: true })) {
+        if (!d.isDirectory()) continue;
+        try {
+          const tcfg = loadTenantConfig(d.name, home);
+          for (const [id, entry] of Object.entries(tcfg.plugins ?? {})) {
+            if ((entry as { enabled?: boolean }).enabled !== false) ids.add(id);
+          }
+        } catch { /* skip bad tenant config */ }
+      }
+    }
+  } catch { /* fall back to checking all */ }
+  return ids;
 }
