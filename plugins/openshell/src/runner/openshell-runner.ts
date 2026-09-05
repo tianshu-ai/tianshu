@@ -1012,7 +1012,9 @@ export class OpenShellRunner implements SandboxRunner {
     // broke provisioning in 0.4.35. Dynamic egress now goes through
     // the Policy Advisor loop (see ensurePolicyAdvisorSettings) or
     // explicit allowEgress() grants against the default policy.
-    args.push("--", "true");
+    // Images with ENTRYPOINT ["/bin/bash"] need `-c` so bash
+    // interprets "true" as a command, not a script path.
+    args.push("--", "/bin/bash", "-c", "true");
     await this.cli(args);
     // mkdir the workspace root inside the sandbox so the first
     // writeFile doesn't 404. Done after create rather than via
