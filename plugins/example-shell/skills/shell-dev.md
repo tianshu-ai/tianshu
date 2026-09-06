@@ -10,6 +10,24 @@ Write all UI files to the shell plugin's dist directory. The agent has `write_fi
 
 ## Development Workflow
 
+### 0. Check Active Plugins
+
+Before designing the UI, **always check which plugins are active**:
+
+```javascript
+const { plugins } = await api('/plugins');
+const active = new Set(plugins.filter(p => p.state === 'active').map(p => p.id));
+// Only build UI sections for active plugins:
+// active.has('workboard') → show task board
+// active.has('files')     → show file browser
+// active.has('wiki')      → show knowledge base
+// active.has('cron')      → show scheduler
+// active.has('datasource')→ show data queries
+// active.has('board')     → show dashboards
+```
+
+Never hardcode plugin assumptions. The UI must adapt to what's actually enabled.
+
 ### 1. Understand Requirements
 Ask the user:
 - What kind of UI? (dashboard, kanban, form-builder, CRM, support desk...)
@@ -71,36 +89,57 @@ function sendMessage(text) {
 }
 ```
 
-### 4. Common Patterns
+### 4. Common Patterns (only use if plugin is active)
 
-**Load tasks:**
+Always gate on the active plugins set from step 0.
+
+**Tasks (requires: workboard):**
 ```javascript
-const { tasks } = await api('/p/workboard/tasks');
+if (active.has('workboard')) {
+  const { tasks } = await api('/p/workboard/tasks');
+  const workers = await api('/p/workboard/workers/status');
+}
 ```
 
-**Load files:**
+**Files (requires: files):**
 ```javascript
-const files = await api('/p/files/list?path=/');
+if (active.has('files')) {
+  const files = await api('/p/files/list?path=/');
+}
 ```
 
-**Query data source:**
+**Data source (requires: datasource):**
 ```javascript
-const result = await api('/p/datasource/query', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ source: 'my-db', query: 'SELECT * FROM ...' })
-});
+if (active.has('datasource')) {
+  const { connections } = await api('/p/datasource/connections');
+  const result = await api('/p/datasource/query', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ source: 'my-db', query: 'SELECT * FROM ...' })
+  });
+}
 ```
 
-**Wiki pages:**
+**Wiki (requires: wiki):**
 ```javascript
-const pages = await api('/p/wiki/list');
-const page = await api('/p/wiki/read?id=' + pageId);
+if (active.has('wiki')) {
+  const pages = await api('/p/wiki/list');
+  const page = await api('/p/wiki/read?id=' + pageId);
+}
 ```
 
-**Scheduled jobs:**
+**Scheduler (requires: cron):**
 ```javascript
-const schedules = await api('/p/cron/schedules');
+if (active.has('cron')) {
+  const schedules = await api('/p/cron/schedules');
+}
+```
+
+**Boards (requires: board):**
+```javascript
+if (active.has('board')) {
+  const boards = await api('/p/board/boards');
+}
 ```
 
 ### 5. Iterate
