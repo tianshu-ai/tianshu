@@ -21,9 +21,9 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import express from "express";
 import type { PluginRegistry } from "../core/plugins/index.js";
-import { getTenantSharedDir, getUserHomeDir } from "../core/paths.js";
+import { getTenantSharedDir } from "../core/paths.js";
 
-const TENANT_URL_RE = /^\/tenants\/([^/]+)\/users\/([^/]+)/;
+const TENANT_URL_RE = /^\/tenants\/([^/]+)\//;
 
 /**
  * Mount the tenant-aware shell SPA middleware. Must be called BEFORE
@@ -49,11 +49,10 @@ export function mountShellSpa(
     if (req.path.startsWith("/ws")) return next();
     if (req.method !== "GET" && req.method !== "HEAD") return next();
 
-    // Extract tenantId and userId from URL.
+    // Extract tenantId from URL.
     const match = TENANT_URL_RE.exec(req.path);
     if (!match) return next();
     const tenantId = match[1]!;
-    const userId = match[2]!;
 
     // Look up the shell plugin for this tenant.
     let registry: PluginRegistry;
@@ -106,18 +105,16 @@ export function mountShellSpa(
     const fs = await import("node:fs");
 
     // Check for shell content in priority order:
-    //   1. User home:    <userHome>/_tenant/shell/  (write_file default)
-    //   2. Tenant shared: <tenantShared>/shell/
-    //   3. Plugin dist:   <pluginDir>/<uiShell.dist>  (placeholder)
-    const userShellDir = path.join(getUserHomeDir(tenantId, userId), "_tenant", "shell");
+    //   1. Tenant shared: <tenantShared>/shell/  (published UI)
+    //   2. Plugin dist:   <pluginDir>/<uiShell.dist>  (placeholder)
+    // Agent writes drafts to user home _tenant/shell/; the panel
+    // "Publish" action copies them here.
     const tenantShellDir = path.join(getTenantSharedDir(tenantId), "shell");
     const pluginDistDir = path.resolve(shell.dir, uiShell.dist);
 
     // Pick whichever has an index.html
     let distDir: string;
-    if (fs.existsSync(path.join(userShellDir, "index.html"))) {
-      distDir = userShellDir;
-    } else if (fs.existsSync(path.join(tenantShellDir, "index.html"))) {
+    if (fs.existsSync(path.join(tenantShellDir, "index.html"))) {
       distDir = tenantShellDir;
     } else if (fs.existsSync(path.join(pluginDistDir, "index.html"))) {
       distDir = pluginDistDir;

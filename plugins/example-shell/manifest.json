@@ -39,9 +39,32 @@
         "displayName": "Custom Shell",
         "component": "ShellPreviewPanel"
       }
+    ],
+    "apiRoutes": [
+      {
+        "method": "GET",
+        "path": "/status",
+        "handler": "getStatus",
+        "access": "member"
+      },
+      {
+        "method": "POST",
+        "path": "/publish",
+        "handler": "publish",
+        "access": "admin"
+      },
+      {
+        "method": "GET",
+        "path": "/preview",
+        "handler": "preview",
+        "access": "member"
+      }
     ]
   },
   "client": {
     "entry": "@tianshu-builtin/plugin-example-shell/client"
+  },
+  "server": {
+    "entry": "@tianshu-builtin/plugin-example-shell/server"
   }
 }
