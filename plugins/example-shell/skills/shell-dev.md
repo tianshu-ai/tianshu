@@ -160,10 +160,25 @@ After writing the initial `dist/index.html`:
 - No build step needed for single-file apps
 - For hot-reload during development, the plugin can declare `uiShell.devServer.target` in manifest.json to proxy to an external vite/webpack dev server
 
-## Key Constraints
+## Key Conventions
 
+### File Location
+- **Write to**: `_tenant/shell/index.html` (and any other assets under `_tenant/shell/`)
+- **Command**: `write_file path="_tenant/shell/index.html" content="..."`
+- **Resolves to**: `<tianshuHome>/tenants/<tenantId>/workspace/_tenant/shell/`
+- **Per-tenant**: each tenant has its own `_tenant/shell/` — different tenants can have different UIs
+- **Shared across users**: all users of the same tenant see the same shell UI
+
+### Server Loading Priority
+1. `_tenant/shell/index.html` — tenant-specific (agent writes here) ✅
+2. Plugin `dist/index.html` — built-in placeholder ("ask the agent")
+3. Neither → default `@tianshu/web` chat UI
+
+### Runtime Rules
 - **Same-origin**: API calls use session cookies automatically, no CORS issues
 - **SPA fallback**: Any URL under the tenant prefix returns `index.html` — handle routing client-side
 - **Plugin API prefix**: Plugin-specific routes are at `/api/p/<pluginId>/...`
 - **No server-side rendering**: The shell is purely client-side; the server only serves static files
 - **One shell per tenant**: If another shell plugin is active, it must be disabled first (`exclusiveGroup: "ui-shell"`)
+- **No restart needed**: After writing/updating shell files, user just refreshes the browser
+- **Check active plugins**: Always call `GET /api/plugins` first — only use plugin APIs when `state === "active"`
