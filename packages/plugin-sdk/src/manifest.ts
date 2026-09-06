@@ -67,6 +67,23 @@ export interface PluginManifest {
   server?: PluginEntryRef;
   contributes?: ContributesV1;
   /**
+   * UI Shell override (ADR-0005). When present, this plugin replaces
+   * the **entire frontend** for any tenant that enables it. The
+   * server serves the plugin's built SPA instead of the default
+   * `@tianshu/web` bundle.
+   *
+   * Constraints:
+   * - At most ONE uiShell plugin may be active per tenant. Enabling
+   *   a second one fails activation with a conflict error.
+   * - The shell SPA talks to the same `/api/*` and `/ws` endpoints;
+   *   backend behaviour is unchanged.
+   * - `contributes` (API routes, tools, etc.) still works — a shell
+   *   plugin can contribute server-side logic alongside its UI.
+   * - In dev mode, set `devServer.target` to proxy to an external
+   *   vite/webpack dev server for HMR.
+   */
+  uiShell?: PluginUiShell;
+  /**
    * Optional declarative schema for the plugin's own config
    * (`tenant config.plugins.<id>.config`). When present the host
    * exposes a config form in the Plugin Manager UI; users edit
@@ -117,6 +134,33 @@ export interface PluginManifest {
  *     it shows them to the user and waits for confirmation. The
  *     read-only `verify` commands can run silently.
  */
+export interface PluginUiShell {
+  /**
+   * Directory containing the built SPA (index.html + assets),
+   * relative to the plugin directory. The server serves these
+   * files for the tenant instead of the default web dist.
+   */
+  dist: string;
+  /**
+   * When true (default), any non-API GET request that doesn't
+   * match a static file returns index.html (standard SPA
+   * fallback). Set to false for multi-page or SSR setups where
+   * only exact file matches should be served.
+   */
+  fallbackSpa?: boolean;
+  /**
+   * Dev-mode proxy target. When set AND the plugin directory
+   * does not contain a built `dist/index.html`, the server
+   * proxies non-API requests to this URL instead of serving
+   * static files. Enables HMR with an external dev server.
+   *
+   * Only used when `process.env.NODE_ENV !== "production"`.
+   */
+  devServer?: {
+    target: string;
+  };
+}
+
 export interface PluginSetupSpec {
   /**
    * One-paragraph summary the setup agent shows before listing

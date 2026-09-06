@@ -608,6 +608,19 @@ export class PluginRegistry {
     return this.cache.get(tenantId)?.entries ?? [];
   }
 
+  /**
+   * Returns the active UI shell plugin for the given tenant, if any.
+   * At most one shell plugin can be active per tenant (enforced by
+   * exclusiveGroup or activation-time conflict check).
+   */
+  uiShellForTenant(tenantId: string): ActivePluginEntry | null {
+    const entries = this.cache.get(tenantId)?.entries ?? [];
+    for (const e of entries) {
+      if (e.state === "active" && e.manifest.uiShell) return e;
+    }
+    return null;
+  }
+
   /** For agent / other host code: read the tenant capability registry. */
   capabilityFor<T = unknown>(tenantId: string, name: CapabilityName): T | undefined {
     return this.cache.get(tenantId)?.byCapability.get(name)?.value as T | undefined;

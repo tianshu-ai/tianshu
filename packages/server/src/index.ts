@@ -120,6 +120,7 @@ import { mountChannelRoutes, toView } from "./boot/routes-channels.js";
 import { mountCoreRoutes } from "./boot/routes-core.js";
 import { installChatWebSocket } from "./boot/ws-upgrade.js";
 import { mountStaticSpa, isSpaHosted } from "./boot/static-spa.js";
+import { mountShellSpa } from "./boot/shell-spa.js";
 
 import {
   broadcastToTenant,
@@ -937,6 +938,11 @@ app.use(
     },
   }),
 );
+
+// Tenant-aware UI shell routing (ADR-0005). Shell plugins replace
+// the entire frontend for a specific tenant. Must mount BEFORE the
+// default SPA fallback so shell plugins take precedence.
+mountShellSpa(app, { getRegistry: () => pluginRegistry });
 
 // Optionally serve the pre-built web UI in the same process — see
 // boot/static-spa.ts for the body. Dev mode skips this (vite hosts);

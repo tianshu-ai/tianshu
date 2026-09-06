@@ -79,6 +79,7 @@ export function parseManifest(raw: unknown): PluginManifest {
   const contributes = optionalContributes(raw.contributes, acc);
   const configSchema = optionalConfigSchema(raw.configSchema, acc);
   const setup = optionalSetupSpec(raw.setup, acc);
+  const uiShell = optionalUiShell(raw.uiShell, acc);
 
   // ADR-0004 §3: every capability listed in `provides[]` must be
   // backed by a real contribution. Today the only derivation rule
@@ -130,7 +131,36 @@ export function parseManifest(raw: unknown): PluginManifest {
     contributes,
     configSchema,
     setup,
+    uiShell,
   };
+}
+
+/**
+ * Parse the optional `uiShell` block (ADR-0005). A plugin with this
+ * field replaces the entire frontend for any tenant that enables it.
+ */
+function optionalUiShell(
+  value: unknown,
+  acc: Acc,
+): import("@tianshu-ai/plugin-sdk").PluginUiShell | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (!isPlainObject(value)) {
+    acc.issues.push("uiShell must be an object");
+    return undefined;
+  }
+  const dist = expectString(value, "dist", acc, "uiShell");
+  if (dist == null) return undefined;
+  const fallbackSpa = value.fallbackSpa !== false; // default true
+  let devServer: { target: string } | undefined;
+  if (value.devServer !== undefined && value.devServer !== null) {
+    if (!isPlainObject(value.devServer)) {
+      acc.issues.push("uiShell.devServer must be an object");
+    } else {
+      const target = expectString(value.devServer, "target", acc, "uiShell.devServer");
+      if (target) devServer = { target };
+    }
+  }
+  return { dist, fallbackSpa, devServer };
 }
 
 /**
