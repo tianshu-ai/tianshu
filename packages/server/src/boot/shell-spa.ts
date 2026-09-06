@@ -21,6 +21,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import express from "express";
 import type { PluginRegistry } from "../core/plugins/index.js";
+import { getTenantSharedDir } from "../core/paths.js";
 
 const TENANT_URL_RE = /^\/tenants\/([^/]+)\//;
 
@@ -97,16 +98,26 @@ export function mountShellSpa(
       }
     }
 
-    // Production: serve from the plugin's dist/ directory.
+    // Resolve shell dist directory. Priority:
+    //   1. Tenant-specific: <tenantSharedDir>/shell/  (agent writes here)
+    //   2. Plugin default:  <pluginDir>/<uiShell.dist> (placeholder)
     const path = await import("node:path");
     const fs = await import("node:fs");
-    const distDir = path.resolve(shell.dir, uiShell.dist);
-    const indexPath = path.join(distDir, "index.html");
 
-    if (!fs.existsSync(indexPath)) {
-      // dist not built — fall through to default SPA.
+    const tenantShellDir = path.join(getTenantSharedDir(tenantId), "shell");
+    const pluginDistDir = path.resolve(shell.dir, uiShell.dist);
+
+    // Pick whichever has an index.html
+    let distDir: string;
+    if (fs.existsSync(path.join(tenantShellDir, "index.html"))) {
+      distDir = tenantShellDir;
+    } else if (fs.existsSync(path.join(pluginDistDir, "index.html"))) {
+      distDir = pluginDistDir;
+    } else {
+      // Neither has content — fall through to default SPA.
       return next();
     }
+    const indexPath = path.join(distDir, "index.html");
 
     // Get or create a cached express.static handler for this dist.
     const cacheKey = `${tenantId}:${shell.manifest.id}`;

@@ -6,7 +6,18 @@ This skill guides developing a custom frontend that completely replaces the defa
 
 ## File Location
 
-Write all UI files to the shell plugin's dist directory. The agent has `write_file` access to the workspace; the built files need to land in the plugin's dist path.
+Write shell UI files to the **tenant shared directory**:
+
+```
+_tenant/shell/index.html      ← main entry (required)
+_tenant/shell/app.js           ← optional
+_tenant/shell/style.css        ← optional
+_tenant/shell/assets/          ← images, fonts, etc.
+```
+
+Use `write_file path="_tenant/shell/index.html"` — this writes to the tenant's shared config area. The server checks this directory first; if no `index.html` is found, it falls back to the plugin's built-in placeholder.
+
+Each tenant has its own `_tenant/shell/` directory, so different tenants can have completely different UIs.
 
 ## Development Workflow
 
@@ -39,13 +50,13 @@ Ask the user:
 
 For **single-file** apps (recommended for v1):
 ```
-dist/
+_tenant/shell/
 └── index.html    ← entire SPA in one file (HTML + CSS + JS)
 ```
 
 For **multi-file** apps:
 ```
-dist/
+_tenant/shell/
 ├── index.html
 ├── app.js
 ├── style.css
