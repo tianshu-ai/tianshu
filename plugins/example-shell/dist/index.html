@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tianshu — Custom Shell</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0a0a0a; color: #e0e0e0;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; text-align: center; padding: 2rem;
+  }
+  .container { max-width: 560px; }
+  h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+  h1 span { color: #6c5ce7; }
+  p { color: #888; line-height: 1.6; margin-bottom: 1rem; }
+  .api-check { font-size: 0.85rem; color: #555; margin-top: 2rem; }
+  .api-check .ok { color: #00b894; }
+  .api-check .fail { color: #e17055; }
+  code { background: #1a1a2e; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1><span>⚡</span> Custom Shell Active</h1>
+  <p>
+    This tenant's UI is served by the <strong>Custom UI Shell</strong> plugin.
+    Replace this page with your own frontend — talk to the agent to get started.
+  </p>
+  <p style="color:#6c5ce7">
+    Ask the agent: <em>"Help me build a [dashboard / kanban / CRM / ...] UI"</em>
+  </p>
+  <div class="api-check" id="status">Checking API connection...</div>
+</div>
+<script>
+(async () => {
+  const el = document.getElementById('status');
+  try {
+    const r = await fetch('/api/me', { credentials: 'include' });
+    if (r.ok) {
+      const me = await r.json();
+      el.innerHTML = `<span class="ok">✓</span> Connected as <code>${me.displayName || me.userId}</code> on tenant <code>${me.tenantId}</code> — API is reachable`;
+    } else {
+      el.innerHTML = `<span class="fail">✗</span> API returned ${r.status} — <a href="/api/auth/config" style="color:#6c5ce7">check auth</a>`;
+    }
+  } catch (e) {
+    el.innerHTML = `<span class="fail">✗</span> Cannot reach API: ${e.message}`;
+  }
+})();
+</script>
+</body>
+</html>

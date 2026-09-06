@@ -23,6 +23,25 @@
         "id": "shell-dev",
         "path": "skills/shell-dev.md"
       }
+    ],
+    "topBarButtons": [
+      {
+        "id": "toggle",
+        "icon": "Palette",
+        "tooltip": "Custom UI Shell",
+        "opensPanel": "example-shell.preview",
+        "order": 450
+      }
+    ],
+    "rightPanels": [
+      {
+        "id": "preview",
+        "displayName": "Custom Shell",
+        "component": "ShellPreviewPanel"
+      }
     ]
+  },
+  "client": {
+    "entry": "@tianshu-builtin/plugin-example-shell/client"
   }
 }
