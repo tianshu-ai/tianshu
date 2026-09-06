@@ -1,0 +1,14 @@
+{
+  "id": "example-shell",
+  "version": "0.1.0",
+  "displayName": "Example Shell — Dashboard UI",
+  "description": "Demonstrates UI shell plugin: replaces the entire frontend with a dashboard-style app while using the same backend APIs.",
+  "category": "runtime",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "exclusiveGroup": "ui-shell",
+  "uiShell": {
+    "dist": "dist/",
+    "fallbackSpa": true
+  }
+}

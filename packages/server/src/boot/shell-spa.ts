@@ -58,6 +58,7 @@ export function mountShellSpa(
     try {
       registry = getRegistry();
     } catch {
+      console.log(`[shell-spa] registry not ready`);
       return next(); // registry not ready yet
     }
     const shell = registry.uiShellForTenant(tenantId);
