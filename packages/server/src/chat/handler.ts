@@ -24,12 +24,10 @@ import {
   Session as PiSession,
   estimateContextTokens,
   shouldCompact,
-  type AgentHarnessEvent,
-  type AgentHarnessOwnEvent,
   type AgentMessage,
   type CompactionSettings,
-  type SessionTreeEntry,
 } from "@earendil-works/pi-agent-core";
+import type { Entry, ProvisionedEntry } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
   Context,
@@ -673,7 +671,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       supportsImages: modelInfo.supportsImages,
     },
   });
-  const piSession = new PiSession(storage);
+  const piSession = new PiSession(storage as unknown as import("@earendil-works/pi-agent-core").SessionStorage);
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
       attachments: originalAttachments as unknown[],
@@ -733,8 +731,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // through it, replacing 0.79's `getApiKeyAndHeaders` callback. We
   // build a single-provider Models closing over this run's resolved
   // (model, apiKey). See core/pi-models.ts.
-  const harness = new AgentHarness({
-    session: piSession,
+  const { harness } = await AgentHarness.create({
+    session: piSession as unknown as import("@earendil-works/pi-agent-core").Session,
     tools: adapted.tools,
     systemPrompt,
     model: piModel,
@@ -792,7 +790,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     { name: string }
   >();
 
-  const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
+  const unsubscribe = harness.events.on("*", (event: unknown) => {
     const ev = event as { type?: string };
     if (ev.type === "tool_execution_start") {
       const tc = event as unknown as {
@@ -804,7 +802,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const te = event as unknown as { toolCallId: string };
       outstandingToolCalls.delete(te.toolCallId);
     }
-    bridgeHarnessEventToWs(event, {
+    bridgeHarnessEventToWs(event as Record<string, unknown>, {
       ctx,
       session,
       send,
@@ -913,9 +911,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       if (!resume) {
         throw new HandledTurnAbort();
       }
-      await harness.prompt(resume, images.length > 0 ? { images } : undefined);
+      await harness.prompt(resume, images.length > 0 ? images : undefined);
     } else {
-      await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
+      await harness.prompt(promptText, images.length > 0 ? images : undefined);
     }
     await harness.waitForIdle();
 
@@ -1063,12 +1061,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // parent_id chaining and leaf_id advancement.
       try {
         const entryId = await storage.createEntryId();
-        const leafId = await storage.getLeafId();
         await storage.appendEntry({
           type: "message",
           id: entryId,
-          parentId: leafId,
-          timestamp: new Date().toISOString(),
           message: {
             role: "toolResult",
             toolCallId: callId,
@@ -1077,7 +1072,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             isError: true,
             timestamp: Date.now(),
           } as ToolResultMessage,
-        } as SessionTreeEntry);
+        } as unknown as ProvisionedEntry, "main");
       } catch (persistErr) {
         console.warn(
           `[handler] failed to persist synthetic toolResult for ${callId}: ${
@@ -1265,7 +1260,7 @@ async function prepareUserInput(
  * working unchanged.
  */
 function bridgeHarnessEventToWs(
-  event: AgentHarnessEvent,
+  event: unknown,
   args: {
     ctx: TenantContext;
     session: ChatSession;
@@ -1277,7 +1272,7 @@ function bridgeHarnessEventToWs(
 ): void {
   const { ctx, session, send, wireOpts, onAssistantPersisted, onStreamError } =
     args;
-  const e = event as AgentHarnessOwnEvent | { type: string };
+  const e = event as { type: string } & Record<string, unknown>;
 
   // Pi-low-level events first (text_delta etc).
   const lowType = (event as { type: string }).type;
@@ -1900,8 +1895,8 @@ function makeLogger(
 // (and others) reject the request with a 400.
 
 function filterOrphanedToolResults(
-  entries: readonly SessionTreeEntry[],
-): readonly SessionTreeEntry[] {
+  entries: readonly Entry[],
+): readonly Entry[] {
   // Collect all toolCall ids from assistant messages.
   const toolUseIds = new Set<string>();
   for (const entry of entries) {

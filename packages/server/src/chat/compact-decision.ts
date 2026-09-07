@@ -28,8 +28,8 @@ import {
   shouldCompact,
   type AgentMessage,
   type CompactionSettings,
-  type SessionTreeEntry,
 } from "@earendil-works/pi-agent-core";
+import type { Entry } from "@earendil-works/pi-agent-core";
 
 // ─── compaction helpers ───────────────────────────────────────────────
 //
@@ -53,7 +53,7 @@ import {
 // the fork-on-explicit-request pattern.
 
 export interface ShouldCompactBranchInput {
-  branch: SessionTreeEntry[];
+  branch: Entry[];
   contextWindow: number | undefined;
   settings?: CompactionSettings;
 }
@@ -75,7 +75,7 @@ export function shouldCompactBranch(
   if (!input.contextWindow || input.contextWindow <= 0) return false;
   const messages: AgentMessage[] = [];
   for (const entry of input.branch) {
-    if (entry.type === "message") messages.push(entry.message);
+    if (entry.type === "message") messages.push((entry as { message: AgentMessage }).message);
   }
   if (messages.length === 0) return false;
   const usage = estimateContextTokens(messages);
@@ -105,7 +105,7 @@ export async function branchStillOverWindow(args: {
   contextWindow: number | undefined;
 }): Promise<boolean> {
   try {
-    const branch = await args.piSession.getBranch();
+    const branch = await args.piSession.findEntriesOnBranch();
     return shouldCompactBranch({ branch, contextWindow: args.contextWindow });
   } catch {
     return false;
@@ -179,9 +179,9 @@ export async function tryAutoCompact(args: {
   settings?: CompactionSettings;
 }): Promise<AutoCompactDecision> {
   const { piSession, harness, contextWindow, settings } = args;
-  let branch: SessionTreeEntry[];
+  let branch: Entry[];
   try {
-    branch = await piSession.getBranch();
+    branch = await piSession.findEntriesOnBranch();
   } catch (err) {
     console.warn(
       `[chat] auto-compact decision failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -198,15 +198,25 @@ export async function tryAutoCompact(args: {
     // cut points). Count messages the LLM would actually see.
     const msgsBefore = branch.filter((e: { type: string }) => e.type === "message").length;
     const result = await harness.compact();
-    // After compact, getBranch starts from the new compaction entry.
+    // After compact, find entries on branch from the new compaction entry.
     let msgsAfter = 0;
     try {
-      const afterBranch = await piSession.getBranch();
+      const afterBranch = await piSession.findEntriesOnBranch();
       msgsAfter = afterBranch.filter((e: { type: string }) => e.type === "message").length;
     } catch { /* best-effort */ }
+    // harness.compact() returns CompactionResult (a Result type in 0.84).
+    // Extract tokensBefore from the result. If it's a Result wrapper,
+    // unwrap it; otherwise use the raw shape.
+    const rawResult = result as unknown as
+      | { ok: true; value: { kind: string; entry?: { tokensBefore?: number } } }
+      | { tokensBefore?: number };
+    const tokensBefore =
+      (rawResult && "ok" in rawResult && rawResult.ok
+        ? (rawResult.value as { entry?: { tokensBefore?: number } }).entry?.tokensBefore
+        : (rawResult as { tokensBefore?: number }).tokensBefore) ?? 0;
     return {
       compacted: true,
-      tokensBefore: result.tokensBefore,
+      tokensBefore,
       summarisedCount: Math.max(0, msgsBefore - msgsAfter),
       keptCount: msgsAfter,
       reason: "compacted",

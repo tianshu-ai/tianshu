@@ -23,8 +23,6 @@
 
 import {
   AgentHarness,
-  type AgentHarnessEvent,
-  type AgentHarnessOwnEvent,
 } from "@earendil-works/pi-agent-core";
 import type { TenantContext } from "../core/index.js";
 import {
@@ -180,7 +178,7 @@ export async function runAgentLoop(
   // We catch errors from `open` rather than letting them throw,
   // so a stale id doesn't kill the run — we silently fall back
   // to fresh and log a warning.
-  let session: Awaited<ReturnType<typeof repo.create>> | null = null;
+  let session: import("@earendil-works/pi-agent-core").Session<import("./sqlite-session-storage.js").SqliteSessionMetadata> | null = null;
   let resumed = false;
   if (req.resumeSessionId) {
     try {
@@ -191,12 +189,12 @@ export async function runAgentLoop(
       // session belonging to another tenant.
       session = await repo.open({
         id: req.resumeSessionId,
-        createdAt: new Date(0).toISOString(),
+        createdAt: 0,
         tenantId: ctx.tenantId,
         userId,
         kind: "worker",
         workerRole: req.workerRole ?? null,
-        parentSessionId: req.parentSessionId ?? null,
+        parentSessionId: req.parentSessionId ?? undefined,
         title: req.sessionTitle ?? null,
       });
       resumed = true;
@@ -213,7 +211,7 @@ export async function runAgentLoop(
       userId,
       kind: "worker",
       workerRole: req.workerRole ?? null,
-      parentSessionId: req.parentSessionId ?? null,
+      parentSessionId: req.parentSessionId ?? undefined,
       title: req.sessionTitle ?? null,
     });
   }
@@ -558,8 +556,8 @@ export async function runAgentLoop(
 
   // pi 0.80: harness resolves auth via a `Models` instance instead of
   // the old `getApiKeyAndHeaders` callback. See core/pi-models.ts.
-  const harness = new AgentHarness({
-    session,
+  const { harness } = await AgentHarness.create({
+    session: session as unknown as import("@earendil-works/pi-agent-core").Session,
     tools: adapted.tools,
     systemPrompt,
     model: piModel,
@@ -572,7 +570,7 @@ export async function runAgentLoop(
 
   // Bind compact_context deferred ref.
   const workerCompactRef = getCompactRef(workerHostTools);
-  workerCompactRef.piSession = session;
+  workerCompactRef.piSession = session as unknown as import("@earendil-works/pi-agent-core").Session;
   workerCompactRef.harness = harness;
 
   // Watch harness events for two purposes:
@@ -594,10 +592,11 @@ export async function runAgentLoop(
   // chat path is naturally serial because the turn loop drains
   // before the next turn_end fires.
   let compactInFlight = false;
-  const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
+  const unsubscribe = harness.events.on("*", (event: unknown) => {
     lastEventAt = Date.now();
     sawAnyEvent = true;
-    if ((event as { type?: string }).type === "turn_end") {
+    const ev = event as { type?: string };
+    if (ev.type === "turn_end" || ev.type === "message_end") {
       assistantTurns += 1;
       // Auto-compact for workers: fire-and-forget after every
       // assistant turn. Same threshold as the chat path; the
@@ -613,7 +612,7 @@ export async function runAgentLoop(
         void (async () => {
           try {
             const r = await tryAutoCompact({
-              piSession: session!,
+              piSession: session! as unknown as import("@earendil-works/pi-agent-core").Session,
               harness,
               contextWindow: modelInfo.contextWindow,
             });
@@ -645,8 +644,9 @@ export async function runAgentLoop(
   // call would land in the DB but `completionSink.summary` stayed
   // undefined, the run terminated as `no_completion`, and the
   // pool re-queued the task forever.
-  const unhookToolResult = harness.on("tool_result", (e) => {
-    if (e.toolName !== TASK_COMPLETE_TOOL) return;
+  const unhookToolResult = harness.hooks.on("after_tool", (event: unknown) => {
+    const e = event as { toolCallId?: string; toolName?: string; input?: Record<string, unknown>; content?: unknown[]; isError?: boolean };
+    if (e.toolName !== TASK_COMPLETE_TOOL) return undefined;
     // task_complete is TERMINAL and captured ONCE. The tool result
     // text promises "the worker will exit", and the prompt tells the
     // agent so — but nothing actually stopped the turn, so an agent
@@ -660,7 +660,7 @@ export async function runAgentLoop(
       // Already captured the terminal call; ignore any stragglers.
       return undefined;
     }
-    const input = e.input as { summary?: unknown; files?: unknown };
+    const input = (e.input ?? {}) as { summary?: unknown; files?: unknown };
     if (typeof input.summary === "string") {
       completionSink.summary = input.summary;
     }
@@ -682,7 +682,7 @@ export async function runAgentLoop(
       // best-effort; waitForIdle() below still resolves the run.
     }
     return undefined;
-  });
+  }) as () => void;
 
   let result: AgentLoopResult;
   try {
@@ -692,8 +692,8 @@ export async function runAgentLoop(
     innerCtl.signal.addEventListener("abort", onAbort, { once: true });
 
     await harness.prompt(initialUserMessage);
-    // If aborted, give waitForIdle a grace period then force-resolve.
-    // Without this, a long-running tool call can block abort indefinitely.
+    // After prompt, run to completion (harness drives turns automatically).
+    // If aborted, give a grace period then force-resolve.
     if (innerCtl.signal.aborted) {
       await Promise.race([
         harness.waitForIdle(),
@@ -800,11 +800,10 @@ export async function runAgentLoop(
 async function lastAssistantText(
   session: import("@earendil-works/pi-agent-core").Session,
 ): Promise<string> {
-  const entries = await session.getEntries();
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const e = entries[i]!;
+  const entries = await session.findEntries({ type: "message", order: "newestFirst", limit: 20 });
+  for (const e of entries) {
     if (e.type !== "message") continue;
-    const m = e.message;
+    const m = (e as { message: import("@earendil-works/pi-agent-core").AgentMessage }).message;
     if (m.role !== "assistant") continue;
     for (const block of m.content as Array<{ type: string; text?: string }>) {
       if (block.type === "text" && typeof block.text === "string") {
