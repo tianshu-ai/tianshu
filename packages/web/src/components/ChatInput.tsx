@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Mic, MicOff, Send, Square } from "lucide-react";
+import { Loader2, Mic, Send, Square } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { useComposerStore } from "../stores/composer-store";
 import { useVoiceInput } from "../hooks/useVoiceInput";
@@ -12,27 +12,9 @@ import { useT } from "../hooks/useT";
 /**
  * Bottom composer.
  *
- * Visual layout mirrors the closed-source predecessor's ChatInput:
- *
- *   ┌────────────────────────────────────────────────────────┐
- *   │  [ chip chip chip … ]   (optional attachments row)     │
- *   │                                                        │
- *   │  [ textarea ………………………………………………… ]                      │
- *   │                                                        │
- *   │  [📎 ⋯ ]                              [ ModelSelector ] │
- *   │  (plugin composer actions)            [ Send / Stop  ] │
- *   │                                                        │
- *   └────────────────────────────────────────────────────────┘
- *
- * Plugin contributions decide what shows up on the left ("file attach"
- * is shipped by the `uploads` plugin; future plugins can drop in
- * voice-record, paste-image, etc. via `composerActions`).
- *
- * Send is disabled while any attachment is still uploading; transforms
- * registered by plugins (`registerDraftTransform`) run in registration
- * order on the draft just before it's sent.
- *
- * Enter sends, Shift+Enter inserts a newline.
+ * Voice input: click mic or hold Alt+V (push-to-talk).
+ * - Click: toggle record on/off
+ * - Hold Alt+V: record while held, release → transcribe
  */
 export default function ChatInput() {
   const t = useT();
@@ -49,14 +31,39 @@ export default function ChatInput() {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const pttRef = useRef(false); // push-to-talk active
 
-  // ── Voice input (in-browser Whisper via Web Worker) ────────
+  // ── Voice input (server-side ASR) ────────────────────────
   const onVoiceResult = useCallback((text: string) => {
     setDraft((prev) => (prev ? prev + " " + text : text));
   }, []);
   const { recording, toggle: toggleVoice, voiceLoading } = useVoiceInput(onVoiceResult);
 
-  // auto-resize textarea up to ~10 lines.
+  // ── Push-to-talk: Alt+V ──────────────────────────────────
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && e.key === "v" && !pttRef.current && !recording && !voiceLoading) {
+        e.preventDefault();
+        pttRef.current = true;
+        void toggleVoice(); // start recording
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if ((e.key === "v" || e.key === "Alt") && pttRef.current && recording) {
+        e.preventDefault();
+        pttRef.current = false;
+        void toggleVoice(); // stop → transcribe
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, [recording, voiceLoading, toggleVoice]);
+
+  // auto-resize textarea
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -65,20 +72,15 @@ export default function ChatInput() {
   }, [draft]);
 
   const sendAllowed = (() => {
-    if (isStreaming) return true; // shows Stop, always clickable
+    if (isStreaming) return true;
     if (isCompacting) return false;
     if (submitting) return false;
     if (hasPending) return false;
-    // Allow sending with attachments + empty text (the "I just dropped
-    // these in, look at them" gesture).
     return draft.trim().length > 0 || attachmentCount > 0;
   })();
 
   const submit = async () => {
-    if (isStreaming) {
-      abort();
-      return;
-    }
+    if (isStreaming) { abort(); return; }
     if (submitting || hasPending) return;
     const trimmed = draft.trimEnd();
     if (!trimmed && attachmentCount === 0) return;
@@ -86,23 +88,10 @@ export default function ChatInput() {
     setSubmitting(true);
     try {
       const finalText = await applyTransforms(trimmed);
-      // Collect ready attachments at the moment of send and forward
-      // them as a first-class field on the prompt. The server
-      // builds a multimodal UserMessage from this list (images go
-      // into ImageContent parts; non-images stay as references).
-      const ready = useComposerStore
-        .getState()
-        .attachments.filter((a) => a.status === "ready" && !!a.path);
+      const ready = useComposerStore.getState().attachments.filter((a) => a.status === "ready" && !!a.path);
       const wire: WireAttachment[] = ready.map((a) => ({
-        path: a.path!,
-        mimeType: a.mimeType ?? "application/octet-stream",
-        name: a.name,
-        size: a.size,
+        path: a.path!, mimeType: a.mimeType ?? "application/octet-stream", name: a.name, size: a.size,
       }));
-      // We tolerate transforms returning empty strings — there's
-      // probably no model that benefits from "" + we already gated
-      // on (text || attachments). If transforms drop everything
-      // that's their bug, not ours.
       if (finalText.trim().length > 0 || wire.length > 0) {
         sendPrompt(finalText, wire.length > 0 ? wire : undefined);
       }
@@ -113,6 +102,13 @@ export default function ChatInput() {
     }
   };
 
+  // Voice button title with shortcut hint
+  const voiceTitle = recording
+    ? t("chat.stopListening")
+    : voiceLoading
+      ? t("chat.transcribing")
+      : `${t("chat.voiceInput")} (Alt+V)`;
+
   return (
     <div className="border-t border-border-subtle bg-bg-base px-4 py-3">
       <div className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-3 focus-within:border-border-default">
@@ -122,23 +118,19 @@ export default function ChatInput() {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            // Don't send while an IME (Chinese/Japanese/Korean, etc.)
-            // is composing — Enter there confirms the candidate, not
-            // "send". e.nativeEvent.isComposing covers modern
-            // browsers; keyCode === 229 is the legacy still-composing
-            // signal some IMEs emit.
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing &&
-              e.keyCode !== 229
-            ) {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
               e.preventDefault();
               void submit();
             }
           }}
           rows={1}
-          placeholder={isCompacting ? t("chat.compacting") : t("chat.placeholder")}
+          placeholder={
+            recording
+              ? t("chat.recording")
+              : isCompacting
+                ? t("chat.compacting")
+                : t("chat.placeholder")
+          }
           className="resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
         />
         <div className="flex items-center justify-between">
@@ -152,28 +144,25 @@ export default function ChatInput() {
                 type="button"
                 onClick={() => void toggleVoice()}
                 disabled={voiceLoading}
-                className={`rounded-lg p-1.5 transition-colors ${
+                className={`relative rounded-lg p-1.5 transition-colors ${
                   recording
-                    ? "text-danger animate-pulse bg-danger/10"
+                    ? "text-danger bg-danger/10"
                     : voiceLoading
                       ? "text-fg-faint opacity-50 cursor-wait"
                       : "text-fg-muted hover:bg-bg-hover hover:text-fg-default"
                 }`}
-                title={
-                  recording
-                    ? t("chat.stopListening")
-                    : voiceLoading
-                      ? t("chat.transcribing")
-                      : t("chat.voiceInput")
-                }
+                title={voiceTitle}
                 aria-label={t("chat.voiceInput")}
               >
                 {voiceLoading ? (
                   <Loader2 size={18} className="animate-spin" />
-                ) : recording ? (
-                  <MicOff size={18} />
                 ) : (
-                  <Mic size={18} />
+                  <>
+                    <Mic size={18} />
+                    {recording && (
+                      <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-danger animate-pulse" />
+                    )}
+                  </>
                 )}
               </button>
             )}
