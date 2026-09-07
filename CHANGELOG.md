@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.46.1](https://github.com/tianshu-ai/tianshu/compare/v0.46.0...v0.46.1) (2026-09-07)
+
+
+### Bug Fixes
+
+* use TIANSHU_HOME/models for ASR model storage ([6bc27e3](https://github.com/tianshu-ai/tianshu/commit/6bc27e3ba438d639d264d324db6f9d8374fedb41))
+
 ## [0.46.0](https://github.com/tianshu-ai/tianshu/compare/v0.45.0...v0.46.0) (2026-09-07)
 
 
