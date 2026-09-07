@@ -54,8 +54,7 @@ export default function ChatInput() {
   const onVoiceResult = useCallback((text: string) => {
     setDraft((prev) => (prev ? prev + " " + text : text));
   }, []);
-  const { recording, status: voiceStatus, toggle: toggleVoice } = useVoiceInput(onVoiceResult);
-  const voiceLoading = voiceStatus === "loading" || voiceStatus === "transcribing";
+  const { recording, toggle: toggleVoice, voiceLoading } = useVoiceInput(onVoiceResult);
 
   // auto-resize textarea up to ~10 lines.
   useEffect(() => {

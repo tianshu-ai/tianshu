@@ -756,6 +756,10 @@ mountPublicAuthRoutes(app, {
 
 // Everything below /api/* needs a tenant context. The chain is built
 // per-request from the live auth config (see resolvePublicUrl comment).
+// ─── ASR (before auth) ─────────────────────────────────
+import { mountAsrRoute } from "./boot/asr.js";
+mountAsrRoute(app);
+
 // ─── HF Model Proxy (before auth) ─────────────────────────
 // Proxies model file requests to HuggingFace mirror so the browser
 // can download ONNX models (Whisper etc.) without CORS or GFW issues.

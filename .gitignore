@@ -83,3 +83,6 @@ spike-*.mjs
 test-*.mjs
 /scripts/diagnose-*.mjs
 !plugins/custom-ui/dist/
+
+# ASR models (large binary files)
+models/
