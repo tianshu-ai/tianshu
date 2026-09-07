@@ -109,6 +109,20 @@ for (const id of ids) {
     }
   }
 
+  // Shell plugin dist — plugins with a `uiShell` field in their
+  // manifest ship a built SPA in `dist/` that the server serves
+  // for tenants that enable the plugin. Copy the entire dist/ tree
+  // so it's available at `<manifest-dir>/<uiShell.dist>`.
+  const manifest = JSON.parse(fs.readFileSync(src, "utf8"));
+  if (manifest.uiShell?.dist) {
+    const shellDistSrc = path.join(pluginsDir, id, manifest.uiShell.dist);
+    if (fs.existsSync(shellDistSrc) && fs.statSync(shellDistSrc).isDirectory()) {
+      const shellDistDst = path.join(dstDir, manifest.uiShell.dist);
+      fs.rmSync(shellDistDst, { recursive: true, force: true });
+      fs.cpSync(shellDistSrc, shellDistDst, { recursive: true });
+    }
+  }
+
   // Agent seeds — each entry in `contributes.agentSeeds` is a
   // directory bundle copied verbatim into the tenant on first
   // plugin activation (see core/agent-seeds.ts). Mirror the
