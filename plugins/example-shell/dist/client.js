@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState, useEffect, useCallback } from "react";
-import { Eye, EyeOff, ExternalLink, Palette, Upload, RefreshCw, FileCode, CheckCircle } from "lucide-react";
+import { Eye, EyeOff, ExternalLink, Brush, Upload, RefreshCw, FileCode, CheckCircle } from "lucide-react";
 
 const PLUGIN_ID = "example-shell";
 const API = "/api";
@@ -85,7 +85,7 @@ function ShellPreviewPanel(_props) {
       _jsxs("div", {
         className: "border-b border-border-subtle px-3 py-2 flex items-center gap-2",
         children: [
-          _jsx(Palette, { size: 14, className: "text-fg-muted" }),
+          _jsx(Brush, { size: 14, className: "text-fg-muted" }),
           _jsx("span", { className: "text-xs font-medium text-fg-default", children: "Custom UI Shell" }),
           _jsx("div", { className: "ml-auto" }),
           _jsx("button", {
