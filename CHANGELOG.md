@@ -6,6 +6,44 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.45.0](https://github.com/tianshu-ai/tianshu/compare/v0.44.0...v0.45.0) (2026-09-07)
+
+
+### Features
+
+* adapt to @earendil-works/pi-agent-core 0.84.4 breaking changes ([c6ca47c](https://github.com/tianshu-ai/tianshu/commit/c6ca47cc6e9fb440788d3bafe2cc3901408f7835))
+* api-reference skill — complete REST API docs for custom shell ([32d093c](https://github.com/tianshu-ai/tianshu/commit/32d093c05f897890cea261e4fb6b30d0a603c2b4))
+* auto-inject shell session — no manual API call needed ([2d92dfa](https://github.com/tianshu-ai/tianshu/commit/2d92dfabb7f4e2a2280197474d5b24192a5f66bc))
+* dedicated shell session — isolate shell UI conversations ([5a7c435](https://github.com/tianshu-ai/tianshu/commit/5a7c435444ece47dbc7be9ad39d8b8dc275a2c79))
+* dual entry — /tenants (native) + /shell/tenants (custom UI) ([5779f4a](https://github.com/tianshu-ai/tianshu/commit/5779f4a3ebc6beb4cb9671f2a74996802d71b192))
+* show shell session in native UI sidebar ([63a2121](https://github.com/tianshu-ai/tianshu/commit/63a2121c5f2455f871abd4fe40a2803ac517fb8e))
+* ws-protocol skill — complete WebSocket chat protocol reference ([bd46f52](https://github.com/tianshu-ai/tianshu/commit/bd46f5240da115829254e272e90f60f435d1f4bd))
+
+
+### Bug Fixes
+
+* add YAML frontmatter to shell plugin skills ([6b1fabc](https://github.com/tianshu-ai/tianshu/commit/6b1fabce1ee895bed3a23fab1e8b5a1bcea7da90))
+* correct plugin-sdk import path in custom-ui client ([26c9140](https://github.com/tianshu-ai/tianshu/commit/26c9140e8779457aab0067af2c87dbb3115bcace))
+* correct WS protocol docs — type:'prompt' not type:'chat' ([9a1b18c](https://github.com/tianshu-ai/tianshu/commit/9a1b18c40314830f1aa7ac9af878ebd309a42283))
+* guard harness.abort() against HarnessNotImplemented ([45ecc53](https://github.com/tianshu-ai/tianshu/commit/45ecc5330344597c5e0c7c02253f9775c8c0859d))
+* proxy /tenants HTML requests to backend in dev mode ([7dbd38c](https://github.com/tianshu-ai/tianshu/commit/7dbd38cdef3a2df3c4bf1be0f1b20f4132a4ae75))
+* replace symlinks with sync script for shell plugin dist/ ([7384757](https://github.com/tianshu-ai/tianshu/commit/73847570d23c5c7f7ed23f466d5890954f373feb))
+* revert to harness.subscribe()/on() — events.on/hooks.on not implemented ([cce1558](https://github.com/tianshu-ai/tianshu/commit/cce15583c261b4293c9b4fd90417bb7562c0c6d9))
+* shell plugin category runtime → ui ([cd11cc6](https://github.com/tianshu-ai/tianshu/commit/cd11cc6aee0fc4932df78013307874fa4d9da5e4))
+* shell session auto-creation — use registry ctx instead of getTenantContext ([c0905a1](https://github.com/tianshu-ai/tianshu/commit/c0905a1cbd4f6798fe98b778760c0f44f696fd2f))
+
+
+### Reverts
+
+* pin pi-agent-core/pi-ai back to 0.82.1 ([ed94725](https://github.com/tianshu-ai/tianshu/commit/ed94725a82bde36b5d76762cd710ed020c53ec70))
+
+
+### Documentation
+
+* add session model docs to ws-protocol skill ([75fb5ac](https://github.com/tianshu-ai/tianshu/commit/75fb5ac72053c76921d95db63c680ca70637cd27))
+* clarify history rendering in ws-protocol skill ([9203a7c](https://github.com/tianshu-ai/tianshu/commit/9203a7c83fe5dfbeb74743b26fec13c931d4ae9f))
+* session isolation checklist in shell-dev skill ([7ba72b4](https://github.com/tianshu-ai/tianshu/commit/7ba72b4db427d373961f9e37c49dbf68584fcfd3))
+
 ## [0.44.0](https://github.com/tianshu-ai/tianshu/compare/v0.43.1...v0.44.0) (2026-09-07)
 
 
