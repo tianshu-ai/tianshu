@@ -34,20 +34,9 @@ import fs from "node:fs";
 import path from "node:path";
 import type {
   AgentMessage,
-} from "@earendil-works/pi-agent-core";
-import type {
-  Entry,
-  EntryQuery,
-  BranchBounds,
-  LaneRecord,
-  NewRecord,
-  OperationStartedRecord,
-  ProvisionedEntry,
-  RecordQuery,
   SessionMetadata,
   SessionStorage,
-  SessionStats,
-  LogItem,
+  SessionTreeEntry,
 } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
@@ -114,7 +103,7 @@ export interface SqliteSessionMetadata extends SessionMetadata {
   /** Optional worker role tag (e.g. "llm"). */
   workerRole: string | null;
   /** Parent session id (for forks). */
-  parentSessionId?: string;
+  parentSessionId: string | null;
   /** Session display title. */
   title: string | null;
 }
@@ -141,8 +130,6 @@ export interface PendingUserAttachments {
 export class SqliteSessionStorage
   implements SessionStorage<SqliteSessionMetadata>
 {
-  /** Internal monotonic counter used to assign seq to entries/records. */
-  private _seqCounter = 0;
   /** Optional: when set, the next user-role message persisted
    *  through `appendEntry` gets the `attachments` array spliced
    *  into its JSON content as a sibling field. Cleared after one
@@ -176,17 +163,17 @@ export class SqliteSessionStorage
     if (!row) throw new Error(`session not found: ${this.sessionId}`);
     return {
       id: row.id,
-      createdAt: row.created_at,
+      createdAt: new Date(row.created_at).toISOString(),
       tenantId: this.ctx.tenantId,
       userId: row.user_id,
       kind: row.kind as SqliteSessionMetadata["kind"],
       workerRole: row.worker_role,
-      parentSessionId: row.parent_id ?? undefined,
+      parentSessionId: row.parent_id,
       title: row.title,
     };
   }
 
-  async getName(): Promise<string | undefined> {
+  async getSessionName(): Promise<string | undefined> {
     const row = this.ctx.db
       .prepare<[string], { title: string | null }>(
         `SELECT title FROM sessions WHERE id = ?`,
@@ -195,15 +182,7 @@ export class SqliteSessionStorage
     return row?.title ?? undefined;
   }
 
-  async setName(name: string | undefined): Promise<void> {
-    this.ctx.db
-      .prepare<[string | null, string], unknown>(
-        `UPDATE sessions SET title = ? WHERE id = ?`,
-      )
-      .run(name ?? null, this.sessionId);
-  }
-
-  async getStats(): Promise<SessionStats> {
+  async getSessionStats(): Promise<{ messageCount: number; cachedTokens: number; uncachedTokens: number; totalTokens: number; costTotal: number }> {
     const count = this.ctx.db
       .prepare<[string], { cnt: number }>(
         `SELECT COUNT(*) as cnt FROM messages WHERE session_id = ?`,
@@ -218,17 +197,8 @@ export class SqliteSessionStorage
     };
   }
 
-  async getLanes(): Promise<{ lane: string; leafId: string | null }[]> {
-    const leafId = await this.getLeafId();
-    return [{ lane: "main", leafId }];
-  }
-
-  async createLane(_lane: string, _at: string | null): Promise<void> {
-    // Single-lane: no-op
-  }
-
-  async moveLane(_lane: string, to: string | null): Promise<void> {
-    await this.setLeafId(to);
+  async getPathToRootOrCompaction(leafId: string | null): Promise<SessionTreeEntry[]> {
+    return this.getPathToRoot(leafId);
   }
 
   async getLeafId(): Promise<string | null> {
@@ -248,92 +218,44 @@ export class SqliteSessionStorage
       .run(leafId, this.sessionId);
   }
 
-  async getLabel(id: string): Promise<string | undefined> {
-    // Labels are stored as their own entries (`entry_type='label'`)
-    // and reference the labelled entry via `targetId`. The most
-    // recent label wins.
-    const rows = this.ctx.db
-      .prepare<[string], MessagesRow>(
-        `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
-         FROM messages WHERE session_id = ? AND entry_type = 'label'
-         ORDER BY created_at DESC, rowid DESC`,
-      )
-      .all(this.sessionId);
-    for (const r of rows) {
-      const entry = rowToEntry(r);
-      if ((entry.type as string) === "label" && (entry as unknown as { targetId?: string }).targetId === id) {
-        return (entry as unknown as { label?: string }).label ?? undefined;
-      }
-    }
-    return undefined;
-  }
-
-  async setLabel(id: string, label: string | undefined): Promise<void> {
-    // Store as a label entry
-    const entryId = await this.createEntryId();
-    const leafId = await this.getLeafId();
-    const entry: ProvisionedEntry = {
-      type: "custom" as Entry["type"],
-      id: entryId,
-      customType: "label",
-      data: { targetId: id, label },
-    } as unknown as ProvisionedEntry;
-    await this.appendEntry(entry, "main");
-    void leafId; // suppress unused
-  }
-
   async createEntryId(): Promise<string> {
     return `msg_${randomUUID()}`;
   }
 
-  private nextSeq(): number {
-    return ++this._seqCounter;
-  }
-
-  async appendEntry<TEntry extends Entry>(entry: ProvisionedEntry<TEntry>, _lane: string): Promise<TEntry> {
+  async appendEntry(entry: SessionTreeEntry): Promise<void> {
     // If the chat handler stashed attachments for this turn,
     // splice them onto the first user message we persist.
-    let mutated: ProvisionedEntry<TEntry> = entry;
+    let mutated = entry;
     if (
       this.pendingUserAttachments &&
       entry.type === "message" &&
-      (entry as unknown as { message: { role: string } }).message.role === "user"
+      entry.message.role === "user"
     ) {
-      const m = (entry as unknown as { message: Record<string, unknown> }).message;
+      const m = entry.message as unknown as Record<string, unknown>;
       const merged = {
         ...m,
         attachments: this.pendingUserAttachments.attachments,
       };
       mutated = {
         ...entry,
-        message: merged as unknown as (typeof entry & { type: "message" })["message" & keyof typeof entry],
-      } as unknown as ProvisionedEntry<TEntry>;
+        message: merged as unknown as typeof entry.message,
+      };
       this.pendingUserAttachments = null;
     }
     // Splice inbox events onto user message (same pattern).
     if (
       this.pendingInboxEvents &&
       mutated.type === "message" &&
-      (mutated as unknown as { message: { role: string } }).message.role === "user"
+      mutated.message.role === "user"
     ) {
-      const m = (mutated as unknown as { message: Record<string, unknown> }).message;
+      const m = mutated.message as unknown as Record<string, unknown>;
       mutated = {
         ...mutated,
-        message: { ...m, inboxEvents: this.pendingInboxEvents },
-      } as unknown as ProvisionedEntry<TEntry>;
+        message: { ...m, inboxEvents: this.pendingInboxEvents } as unknown as typeof mutated.message,
+      };
       this.pendingInboxEvents = null;
     }
-    const leafId = await this.getLeafId();
-    const seq = this.nextSeq();
-    const now = Date.now();
-    // Synthesise the full entry with seq, parentId, timestamp
-    const fullEntry = {
-      ...mutated,
-      seq,
-      parentId: leafId,
-      timestamp: now,
-    } as unknown as TEntry;
-    const row = entryToRow(this.sessionId, fullEntry as unknown as Entry);
+    const row = entryToRow(this.sessionId, mutated);
     this.ctx.db
       .prepare<
         [
@@ -363,66 +285,15 @@ export class SqliteSessionStorage
         row.created_at,
       );
     // Advance the leaf so the next appendMessage call picks this
-    // row as its parent.
-    await this.setLeafId(fullEntry.id);
-    return fullEntry;
+    // row as its parent. Pi's Session class reads the leafId at
+    // turn-start time but never writes it back — the storage owns
+    // that responsibility. Without this, every entry in a turn
+    // gets the SAME parent (the leaf at turn-start), which makes
+    // path-to-root walk only return one entry.
+    await this.setLeafId(mutated.id);
   }
 
-  async appendRecord<TRecord extends LaneRecord>(
-    record: NewRecord<TRecord>,
-  ): Promise<TRecord> {
-    // Lane records are an operational log. We don't persist them to
-    // SQLite (they're ephemeral runtime state in pi's harness). Return
-    // the record with synthesised seq/timestamp so the caller can
-    // proceed.
-    return {
-      ...record,
-      seq: this.nextSeq(),
-      timestamp: Date.now(),
-    } as unknown as TRecord;
-  }
-
-  async findEntriesOnBranch(
-    _query: EntryQuery & BranchBounds & { start: string },
-  ): Promise<Entry[]> {
-    // Walk the branch from `start` toward root, applying query filters.
-    // For now, delegate to the path-to-root walker and filter.
-    const path = await this.getPathToRoot(_query.start);
-    let entries: Entry[] = path as unknown as Entry[];
-    if (_query.type) {
-      entries = entries.filter((e) => e.type === _query.type);
-    }
-    if (_query.stopAtType) {
-      const idx = entries.findIndex((e) => e.type === _query.stopAtType);
-      if (idx >= 0) entries = entries.slice(idx);
-    }
-    if (_query.limit) {
-      entries = entries.slice(0, _query.limit);
-    }
-    return entries;
-  }
-
-  async findRecords<K extends LaneRecord["type"]>(
-    _query?: RecordQuery & { type?: K },
-  ): Promise<Extract<LaneRecord, { type: K }>[]> {
-    // Lane records are not persisted to SQLite.
-    return [] as Extract<LaneRecord, { type: K }>[];
-  }
-
-  async findOpenOperations(
-    _lane: string,
-    _options?: { limit?: number },
-  ): Promise<OperationStartedRecord[]> {
-    return [];
-  }
-
-  async getLog(
-    _options?: { afterSeq?: number; limit?: number },
-  ): Promise<LogItem[]> {
-    return [];
-  }
-
-  async getEntry(id: string): Promise<Entry | undefined> {
+  async getEntry(id: string): Promise<SessionTreeEntry | undefined> {
     const row = this.ctx.db
       .prepare<[string, string], MessagesRow>(
         `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
@@ -432,34 +303,40 @@ export class SqliteSessionStorage
     return row ? rowToEntry(row) : undefined;
   }
 
-  async findEntries(
-    query?: EntryQuery,
-  ): Promise<Entry[]> {
-    if (query?.type) {
-      const rows = this.ctx.db
-        .prepare<[string, string], MessagesRow>(
-          `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
-           FROM messages WHERE session_id = ? AND entry_type = ?
-           ORDER BY created_at ASC, rowid ASC`,
-        )
-        .all(this.sessionId, query.type);
-      let entries = rows.map(rowToEntry);
-      if (query.limit) entries = entries.slice(0, query.limit);
-      return entries;
-    }
+  async findEntries<TType extends SessionTreeEntry["type"]>(
+    type: TType,
+  ): Promise<Array<Extract<SessionTreeEntry, { type: TType }>>> {
+    const rows = this.ctx.db
+      .prepare<[string, string], MessagesRow>(
+        `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
+         FROM messages WHERE session_id = ? AND entry_type = ?
+         ORDER BY created_at ASC, rowid ASC`,
+      )
+      .all(this.sessionId, type);
+    return rows.map((r) => rowToEntry(r) as never);
+  }
+
+  async getLabel(id: string): Promise<string | undefined> {
+    // Labels are stored as their own entries (`entry_type='label'`)
+    // and reference the labelled entry via `targetId`. The most
+    // recent label wins.
     const rows = this.ctx.db
       .prepare<[string], MessagesRow>(
         `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
-         FROM messages WHERE session_id = ?
-         ORDER BY created_at ASC, rowid ASC`,
+         FROM messages WHERE session_id = ? AND entry_type = 'label'
+         ORDER BY created_at DESC, rowid DESC`,
       )
       .all(this.sessionId);
-    let entries = rows.map(rowToEntry);
-    if (query?.limit) entries = entries.slice(0, query.limit);
-    return entries;
+    for (const r of rows) {
+      const entry = rowToEntry(r);
+      if (entry.type === "label" && entry.targetId === id) {
+        return entry.label ?? undefined;
+      }
+    }
+    return undefined;
   }
 
-  async getPathToRoot(leafId: string | null): Promise<Entry[]> {
+  async getPathToRoot(leafId: string | null): Promise<SessionTreeEntry[]> {
     console.log(`[storage] getPathToRoot called, session=${this.sessionId}, leafId=${leafId?.slice(0,8)}`);
     if (!leafId) return [];
     const rows = this.ctx.db
@@ -470,7 +347,7 @@ export class SqliteSessionStorage
       )
       .all(this.sessionId);
     const byId = new Map(rows.map((r) => [r.id, r] as const));
-    let path: Entry[] = [];
+    let path: SessionTreeEntry[] = [];
     let cursor: string | null = leafId;
     const guard = new Set<string>();
     while (cursor) {
@@ -491,11 +368,11 @@ export class SqliteSessionStorage
       const inflate = this.imageInflate;
       path = await Promise.all(
         path.map(async (entry) =>
-          entry.type === "message" && (entry as { message: AgentMessage }).message.role === "user"
+          entry.type === "message" && entry.message.role === "user"
             ? {
                 ...entry,
-                message: await inflateUserImages((entry as { message: AgentMessage }).message, inflate),
-              } as unknown as Entry
+                message: await inflateUserImages(entry.message, inflate),
+              }
             : entry,
         ),
       );
@@ -530,13 +407,24 @@ export class SqliteSessionStorage
     console.log(`[storage] getPathToRoot: ${sanitized.length} entries after filter (removed ${path.length - sanitized.length})`);
     return sanitized;
   }
+
+  async getEntries(): Promise<SessionTreeEntry[]> {
+    const rows = this.ctx.db
+      .prepare<[string], MessagesRow>(
+        `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
+         FROM messages WHERE session_id = ?
+         ORDER BY created_at ASC, rowid ASC`,
+      )
+      .all(this.sessionId);
+    return rows.map(rowToEntry);
+  }
 }
 
 // ─── row ↔ entry conversion ─────────────────────────────────────
 
 function entryToRow(
   sessionId: string,
-  entry: Entry,
+  entry: SessionTreeEntry,
 ): {
   id: string;
   session_id: string;
@@ -547,7 +435,7 @@ function entryToRow(
   entry_details: string | null;
   created_at: number;
 } {
-  const created_at = typeof entry.timestamp === "number" ? entry.timestamp : (Date.parse(String(entry.timestamp)) || Date.now());
+  const created_at = Date.parse(entry.timestamp) || Date.now();
   if (entry.type === "message") {
     const m = entry.message;
     const role: MessagesRow["role"] =
@@ -587,16 +475,15 @@ function entryToRow(
   };
 }
 
-function rowToEntry(row: MessagesRow): Entry {
+function rowToEntry(row: MessagesRow): SessionTreeEntry {
   const base = {
     id: row.id,
     parentId: row.parent_id,
-    seq: 0,
-    timestamp: row.created_at,
+    timestamp: new Date(row.created_at).toISOString(),
   };
   if (row.entry_type === "message") {
     const message = parseMessage(row.content, row.role);
-    return { type: "message", ...base, message } as unknown as Entry;
+    return { type: "message", ...base, message };
   }
   const parsed = row.entry_details ? safeParse(row.entry_details) : null;
   const details =
@@ -605,7 +492,7 @@ function rowToEntry(row: MessagesRow): Entry {
       : {};
   // Cast through unknown — the `details` JSON keys have to line up
   // with the typed entry's fields (we control the writer).
-  return { type: row.entry_type, ...base, ...details } as unknown as Entry;
+  return { type: row.entry_type, ...base, ...details } as unknown as SessionTreeEntry;
 }
 
 function parseMessage(content: string, role: MessagesRow["role"]): AgentMessage {
@@ -788,7 +675,7 @@ function safeParse(s: string): unknown {
  * Remove toolResult entries whose toolCallId doesn't match any toolCall
  * in a prior assistant message. Prevents Anthropic 400 after compaction.
  */
-function filterOrphanedToolResults(path: Entry[]): Entry[] {
+function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[] {
   // Anthropic requires every tool_result to reference a tool_use from
   // the IMMEDIATELY PRECEDING assistant message. After compaction,
   // ordering can break this invariant. We fix it by tracking which
@@ -851,7 +738,7 @@ function filterOrphanedToolResults(path: Entry[]): Entry[] {
   // collect indices of orphaned toolResults to remove.
   let lastAssistantIds = new Set<string>();
   const orphanEntryIndices = new Set<number>(); // top-level entry indices to drop
-  const orphanTailPositions: Map<number, Set<number>> = new Map();
+  const orphanTailPositions: Map<number, Set<number>> = new Map(); // entryIdx -> tailIdx set
   for (const m of msgs) {
     if (m.role === "assistant" && m.toolCallIds) {
       lastAssistantIds = m.toolCallIds;
@@ -875,7 +762,7 @@ function filterOrphanedToolResults(path: Entry[]): Entry[] {
   if (removed === 0) return path;
 
   // Third pass: build filtered path
-  const filtered: Entry[] = [];
+  const filtered: SessionTreeEntry[] = [];
   for (let i = 0; i < path.length; i++) {
     if (orphanEntryIndices.has(i)) continue;
     const entry = path[i];
@@ -884,7 +771,7 @@ function filterOrphanedToolResults(path: Entry[]): Entry[] {
       const ce = entry as { retainedTail?: unknown[] };
       if (Array.isArray(ce.retainedTail)) {
         const cleanTail = ce.retainedTail.filter((_: unknown, t: number) => !tailDrops.has(t));
-        filtered.push({ ...entry, retainedTail: cleanTail } as unknown as Entry);
+        filtered.push({ ...entry, retainedTail: cleanTail } as unknown as SessionTreeEntry);
         continue;
       }
     }
@@ -900,7 +787,7 @@ function filterOrphanedToolResults(path: Entry[]): Entry[] {
  * assistant message was persisted but before the toolResult landed.
  * Anthropic rejects requests where tool_use has no tool_result.
  */
-function patchDanglingToolCalls(path: Entry[]): Entry[] {
+function patchDanglingToolCalls(path: SessionTreeEntry[]): SessionTreeEntry[] {
   const allToolResultIds = new Set<string>();
   for (const entry of path) {
     if (entry.type !== "message") continue;
@@ -941,7 +828,7 @@ function patchDanglingToolCalls(path: Entry[]): Entry[] {
     return {
       ...entry,
       message: { ...msg, content: cleaned },
-    } as unknown as Entry;
+    } as unknown as SessionTreeEntry;
   });
 
   if (modified) {
@@ -958,7 +845,7 @@ function patchDanglingToolCalls(path: Entry[]): Entry[] {
  * contains embedded toolCall blocks from an aborted turn — IDs that
  * were never in the assistant's toolCall list.
  */
-function stripNestedOrphanToolBlocks(path: Entry[]): Entry[] {
+function stripNestedOrphanToolBlocks(path: SessionTreeEntry[]): SessionTreeEntry[] {
   // Collect all toolCall ids from assistant messages.
   const allToolCallIds = new Set<string>();
   for (const entry of path) {
@@ -1001,7 +888,7 @@ function stripNestedOrphanToolBlocks(path: Entry[]): Entry[] {
     return {
       ...entry,
       message: { ...msg, content: cleaned },
-    } as unknown as Entry;
+    } as unknown as SessionTreeEntry;
   });
 
   if (modified) {

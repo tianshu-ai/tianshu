@@ -60,7 +60,7 @@ function assistantWithUsage(totalTokens: number): SessionTreeEntry {
 // exercise the pi-0.80 `reason` mapping the over-window fork
 // fallback depends on.
 function fakePiSession(branch: SessionTreeEntry[]): never {
-  return { findEntriesOnBranch: async () => branch } as never;
+  return { getBranch: async () => branch } as never;
 }
 function fakeHarness(compact: () => Promise<unknown>): never {
   return { compact } as never;

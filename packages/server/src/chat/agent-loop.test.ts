@@ -43,6 +43,12 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
 
   class FakeHarness {
     private listeners: Array<(e: AgentHarnessEvent) => void> = [];
+    // pi-agent-core dispatches some events (notably tool_result) on
+    // a separate hook channel via `harness.on(type, handler)`. The
+    // real harness's `subscribe(...)` listener never sees those.
+    // Mirror that split here so tests catch any regression where
+    // server code goes back to listening on subscribe and silently
+    // misses tool_result.
     private hookHandlers = new Map<
       string,
       Array<(e: AgentHarnessEvent) => unknown>
@@ -73,6 +79,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     async prompt(_text: string): Promise<void> {
       const emit = (e: AgentHarnessEvent) => {
         const t = (e as { type?: string }).type;
+        // Hook-channel events (tool_call / tool_result / context /
+        // session_before_compact / etc.) go to `on(type, ...)`
+        // handlers, NOT subscribe.
         if (t === "tool_result" || t === "tool_call") {
           for (const h of this.hookHandlers.get(t) ?? []) h(e);
           return;
@@ -93,7 +102,10 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       }
       emit({ type: "agent_end", messages: [] } as AgentHarnessEvent);
     }
-    async waitForIdle() {}
+    async waitForIdle() {
+      // pi calls turn_end internally; we already ran prompt to
+      // completion, so resolve immediately.
+    }
     async abort() {
       this.aborted = true;
       __abortAcked = true;

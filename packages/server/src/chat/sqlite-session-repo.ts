@@ -26,14 +26,11 @@
 import { randomUUID } from "node:crypto";
 import type {
   Session,
+  SessionForkOptions,
   SessionRepo,
+  SessionTreeEntry,
 } from "@earendil-works/pi-agent-core";
 import { Session as PiSession } from "@earendil-works/pi-agent-core";
-import type {
-  Entry,
-  ForkOptions,
-  ProvisionedEntry,
-} from "@earendil-works/pi-agent-core";
 import type { TenantContext } from "../core/index.js";
 import {
   SqliteSessionStorage,
@@ -46,7 +43,7 @@ export interface SqliteSessionCreateOptions {
   userId: string;
   kind?: "user" | "worker" | "system";
   workerRole?: string | null;
-  parentSessionId?: string;
+  parentSessionId?: string | null;
   title?: string | null;
 }
 
@@ -98,7 +95,7 @@ export class SqliteSessionRepo
         options.title ?? null,
         now,
       );
-    return new PiSession(new SqliteSessionStorage(this.ctx, id)) as Session<SqliteSessionMetadata>;
+    return new PiSession(new SqliteSessionStorage(this.ctx, id));
   }
 
   async open(
@@ -114,7 +111,7 @@ export class SqliteSessionRepo
     if (!row) {
       throw new Error(`session not found: ${metadata.id}`);
     }
-    return new PiSession(new SqliteSessionStorage(this.ctx, metadata.id)) as Session<SqliteSessionMetadata>;
+    return new PiSession(new SqliteSessionStorage(this.ctx, metadata.id));
   }
 
   async list(
@@ -152,12 +149,12 @@ export class SqliteSessionRepo
       .all(...params);
     return rows.map((r) => ({
       id: r.id,
-      createdAt: r.created_at,
+      createdAt: new Date(r.created_at).toISOString(),
       tenantId: this.ctx.tenantId,
       userId: r.user_id,
       kind: r.kind as SqliteSessionMetadata["kind"],
       workerRole: r.worker_role,
-      parentSessionId: r.parent_id ?? undefined,
+      parentSessionId: r.parent_id,
       title: r.title,
     }));
   }
@@ -177,7 +174,7 @@ export class SqliteSessionRepo
 
   async fork(
     source: SqliteSessionMetadata,
-    options: ForkOptions & SqliteSessionCreateOptions,
+    options: SessionForkOptions & SqliteSessionCreateOptions,
   ): Promise<Session<SqliteSessionMetadata>> {
     // Build the entry-id chain to copy: walk parent's path-to-root,
     // truncate at options.entryId per options.position.
@@ -185,7 +182,7 @@ export class SqliteSessionRepo
     const parentLeaf = await sourceStorage.getLeafId();
     const path = await sourceStorage.getPathToRoot(parentLeaf);
 
-    const cutEntries = sliceForFork(path, options as { entryId?: string; position?: "before" | "at" });
+    const cutEntries = sliceForFork(path, options);
 
     const child = await this.create({
       ...options,
@@ -204,11 +201,8 @@ export class SqliteSessionRepo
     let prev: string | null = null;
     for (const entry of cutEntries) {
       const id = await childStorage.createEntryId();
-      // Strip seq/parentId/timestamp from the source entry so appendEntry
-      // can provision them fresh for the child session.
-      const { seq: _s, parentId: _p, timestamp: _t, ...rest } = entry as unknown as Entry & { seq: number };
-      const provisioned = { ...rest, id } as unknown as ProvisionedEntry;
-      await childStorage.appendEntry(provisioned, "main");
+      const cloned = { ...entry, id, parentId: prev } as SessionTreeEntry;
+      await childStorage.appendEntry(cloned);
       prev = id;
     }
     if (prev) await childStorage.setLeafId(prev);
@@ -217,9 +211,9 @@ export class SqliteSessionRepo
 }
 
 function sliceForFork(
-  path: Entry[],
-  options: { entryId?: string; position?: "before" | "at" },
-): Entry[] {
+  path: SessionTreeEntry[],
+  options: SessionForkOptions,
+): SessionTreeEntry[] {
   if (!options.entryId) return path;
   const idx = path.findIndex((e) => e.id === options.entryId);
   if (idx < 0) return path;

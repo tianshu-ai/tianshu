@@ -80,9 +80,6 @@ export function makeStubExecutionEnv(cwd: string): ExecutionEnv {
     async remove() {
       return fileErr("filesystem ops not supported in this harness");
     },
-    async renameFile() {
-      return fileErr("filesystem ops not supported in this harness");
-    },
     async createTempDir() {
       return fileErr("filesystem ops not supported in this harness");
     },

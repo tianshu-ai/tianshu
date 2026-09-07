@@ -24,10 +24,12 @@ import {
   Session as PiSession,
   estimateContextTokens,
   shouldCompact,
+  type AgentHarnessEvent,
+  type AgentHarnessOwnEvent,
   type AgentMessage,
   type CompactionSettings,
+  type SessionTreeEntry,
 } from "@earendil-works/pi-agent-core";
-import type { Entry, ProvisionedEntry } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
   Context,
@@ -671,7 +673,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       supportsImages: modelInfo.supportsImages,
     },
   });
-  const piSession = new PiSession(storage as unknown as import("@earendil-works/pi-agent-core").SessionStorage);
+  const piSession = new PiSession(storage);
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
       attachments: originalAttachments as unknown[],
@@ -731,9 +733,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // through it, replacing 0.79's `getApiKeyAndHeaders` callback. We
   // build a single-provider Models closing over this run's resolved
   // (model, apiKey). See core/pi-models.ts.
-  // @ts-expect-error pi-agent-core 0.84 d.ts marks constructor private but it works at runtime
   const harness = new AgentHarness({
-    session: piSession as unknown as import("@earendil-works/pi-agent-core").Session,
+    session: piSession,
     tools: adapted.tools,
     systemPrompt,
     model: piModel,
@@ -768,10 +769,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   compactRef.harness = harness;
 
   // External abort → harness.abort()
-  // Note: pi-agent-core 0.84 may throw HarnessNotImplemented for
-  // abort(); swallow it gracefully since the signal already cancelled
-  // the run and the harness will be discarded.
-  const onAbort = () => void harness.abort().catch(() => {});
+  const onAbort = () => void harness.abort();
   signal.addEventListener("abort", onAbort, { once: true });
 
   // Register this harness in the process-local registry so the
@@ -794,7 +792,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     { name: string }
   >();
 
-  const unsubscribe = (harness as any).subscribe((event: unknown) => {
+  const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
     const ev = event as { type?: string };
     if (ev.type === "tool_execution_start") {
       const tc = event as unknown as {
@@ -806,7 +804,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const te = event as unknown as { toolCallId: string };
       outstandingToolCalls.delete(te.toolCallId);
     }
-    bridgeHarnessEventToWs(event as Record<string, unknown>, {
+    bridgeHarnessEventToWs(event, {
       ctx,
       session,
       send,
@@ -815,7 +813,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         lastAssistantRow = row;
         assistantTurns++;
         if (assistantTurns >= MAX_TURNS) {
-          void harness.abort().catch(() => {});
+          void harness.abort();
         }
       },
       onStreamError: () => {
@@ -915,9 +913,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       if (!resume) {
         throw new HandledTurnAbort();
       }
-      await harness.prompt(resume, images.length > 0 ? images : undefined);
+      await harness.prompt(resume, images.length > 0 ? { images } : undefined);
     } else {
-      await harness.prompt(promptText, images.length > 0 ? images : undefined);
+      await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
     }
     await harness.waitForIdle();
 
@@ -1065,9 +1063,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // parent_id chaining and leaf_id advancement.
       try {
         const entryId = await storage.createEntryId();
+        const leafId = await storage.getLeafId();
         await storage.appendEntry({
           type: "message",
           id: entryId,
+          parentId: leafId,
+          timestamp: new Date().toISOString(),
           message: {
             role: "toolResult",
             toolCallId: callId,
@@ -1076,7 +1077,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             isError: true,
             timestamp: Date.now(),
           } as ToolResultMessage,
-        } as unknown as ProvisionedEntry, "main");
+        } as SessionTreeEntry);
       } catch (persistErr) {
         console.warn(
           `[handler] failed to persist synthetic toolResult for ${callId}: ${
@@ -1264,7 +1265,7 @@ async function prepareUserInput(
  * working unchanged.
  */
 function bridgeHarnessEventToWs(
-  event: unknown,
+  event: AgentHarnessEvent,
   args: {
     ctx: TenantContext;
     session: ChatSession;
@@ -1276,7 +1277,7 @@ function bridgeHarnessEventToWs(
 ): void {
   const { ctx, session, send, wireOpts, onAssistantPersisted, onStreamError } =
     args;
-  const e = event as { type: string } & Record<string, unknown>;
+  const e = event as AgentHarnessOwnEvent | { type: string };
 
   // Pi-low-level events first (text_delta etc).
   const lowType = (event as { type: string }).type;
@@ -1899,8 +1900,8 @@ function makeLogger(
 // (and others) reject the request with a 400.
 
 function filterOrphanedToolResults(
-  entries: readonly Entry[],
-): readonly Entry[] {
+  entries: readonly SessionTreeEntry[],
+): readonly SessionTreeEntry[] {
   // Collect all toolCall ids from assistant messages.
   const toolUseIds = new Set<string>();
   for (const entry of entries) {
