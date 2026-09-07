@@ -157,8 +157,11 @@ export function mountAsrRoute(app: Express): void {
   });
 
   // Lightweight check — frontend hides mic button when ASR is unavailable
-  app.get("/api/transcribe/status", (_req: Request, res: Response) => {
-    res.json({ available: !!recognizer });
+  app.get("/api/transcribe/status", async (_req: Request, res: Response) => {
+    // Check if sherpa-onnx-node is installed
+    let runtimeInstalled = true;
+    try { await import("sherpa-onnx-node"); } catch { runtimeInstalled = false; }
+    res.json({ available: !!recognizer, runtimeInstalled });
   });
 
   app.post("/api/transcribe", async (req: Request, res: Response) => {

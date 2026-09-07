@@ -24,6 +24,15 @@ export function useVoiceInput(onResult: (text: string) => void) {
       .then((r) => r.json())
       .then((d) => setAvailable(!!d.available))
       .catch(() => setAvailable(false));
+    // Re-check periodically (model might be activated while page is open)
+    const interval = setInterval(() => {
+      fetch("/api/transcribe/status", { credentials: "include" })
+        .then((r) => r.json())
+        .then((d) => setAvailable(!!d.available))
+        .catch(() => {});
+    }, 10000);
+    return () => {
+      clearInterval(interval);
     fetch("/api/preferences/asr.shortcut", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { if (d.value) setShortcut(d.value); })

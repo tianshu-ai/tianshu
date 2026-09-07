@@ -21,10 +21,15 @@ export default function AsrModelsPage() {
   const [loading, setLoading] = useState(true);
   const [shortcut, setShortcut] = useState("ctrl+shift+m");
   const [recordingKey, setRecordingKey] = useState(false);
+  const [runtimeInstalled, setRuntimeInstalled] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Load shortcut preference
+  // Load shortcut preference + runtime status
   useEffect(() => {
+    fetch("/api/transcribe/status", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setRuntimeInstalled(d.runtimeInstalled !== false))
+      .catch(() => {});
     fetch("/api/preferences/asr.shortcut", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { if (d.value) setShortcut(d.value); })
@@ -102,6 +107,18 @@ export default function AsrModelsPage() {
           {t("common.reload")}
         </button>
       </div>
+
+      {/* Runtime install hint */}
+      {!runtimeInstalled && (
+        <div className="flex items-start gap-2 rounded-md border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
+          <AlertCircle size={15} className="mt-0.5 flex-shrink-0" />
+          <div>
+            <p className="font-medium">{t("asr.runtimeMissing")}</p>
+            <p className="mt-0.5 text-xs text-amber-300/80">{t("asr.runtimeInstallHint")}</p>
+            <code className="mt-1 block rounded bg-black/30 px-2 py-1 text-xs font-mono text-amber-100">npm install sherpa-onnx-node</code>
+          </div>
+        </div>
+      )}
 
       {/* Model list */}
       <div className="space-y-2">
