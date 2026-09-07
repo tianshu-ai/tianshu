@@ -89,7 +89,7 @@ export default function AsrModelsPage() {
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm text-fg-default">{m.name}</span>
+                  <span className="font-medium text-sm text-fg-default">{t(`asr.model.${m.id}.name`) !== `asr.model.${m.id}.name` ? t(`asr.model.${m.id}.name`) : m.name}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-raised text-fg-faint">{m.size}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-raised text-fg-faint">{m.lang}</span>
                   {m.installed && (
@@ -98,7 +98,7 @@ export default function AsrModelsPage() {
                     </span>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-fg-muted">{m.description}</p>
+                <p className="mt-1 text-xs text-fg-muted">{t(`asr.model.${m.id}.desc`)}</p>
 
                 {m.downloadProgress && (m.downloadProgress.status === "downloading" || m.downloadProgress.status === "extracting") && (
                   <div className="mt-2">
