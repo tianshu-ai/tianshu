@@ -9,6 +9,16 @@
 
 import { type Express, type Request, type Response } from "express";
 import { execSync } from "node:child_process";
+
+/** Resolve ffmpeg binary: ffmpeg-static (bundled) → system PATH */
+function getFfmpegPath(): string {
+  try {
+    // @ts-ignore
+    const staticPath = require("ffmpeg-static");
+    if (staticPath && fs.existsSync(staticPath)) return staticPath;
+  } catch {}
+  return "ffmpeg"; // fallback to system PATH
+}
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -129,8 +139,9 @@ async function initRecognizer(): Promise<boolean> {
  */
 function convertToWav(inputPath: string): string {
   const wavPath = inputPath + ".wav";
+  const ffmpeg = getFfmpegPath();
   execSync(
-    `ffmpeg -y -i "${inputPath}" -ar 16000 -ac 1 -f wav "${wavPath}" 2>/dev/null`,
+    `"${ffmpeg}" -y -i "${inputPath}" -ar 16000 -ac 1 -f wav "${wavPath}" 2>/dev/null`,
   );
   return wavPath;
 }

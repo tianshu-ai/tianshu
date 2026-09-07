@@ -1,6 +1,6 @@
 {
   "name": "@tianshu-ai/tianshu",
-  "version": "0.46.4",
+  "version": "0.46.5",
   "description": "An open AI agent platform with a sidecar browser. Built in public.",
   "license": "Apache-2.0",
   "homepage": "https://github.com/tianshu-ai/tianshu",
@@ -84,7 +84,8 @@
     "neo4j-driver": "^5.28.1",
     "mysql2": "^3.14.0",
     "unbzip2-stream": "^1.4.3",
-    "tar-fs": "^3.0.9"
+    "tar-fs": "^3.0.9",
+    "ffmpeg-static": "^5.2.0"
   },
   "bundleDependencies": [
     "@tianshu-ai/plugin-sdk"
