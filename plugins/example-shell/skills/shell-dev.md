@@ -1,3 +1,8 @@
+---
+name: shell-dev
+description: How to build a custom frontend for a tenant — file location, scaffolding, active plugin checks, development workflow.
+---
+
 # Custom UI Shell Development
 
 ## Overview

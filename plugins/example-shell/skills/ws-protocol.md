@@ -1,3 +1,8 @@
+---
+name: ws-protocol
+description: Complete WebSocket protocol for real-time chat — message types, streaming events, tool calls, history pagination, and working code example.
+---
+
 # Tianshu WebSocket Chat Protocol
 
 Complete reference for the `/ws` WebSocket protocol. Custom shell UIs use this to communicate with the Tianshu agent in real-time.

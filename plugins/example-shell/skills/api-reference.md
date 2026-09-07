@@ -1,3 +1,8 @@
+---
+name: api-reference
+description: Complete REST API reference for custom shell UIs — core APIs, plugin APIs with request/response examples, admin APIs.
+---
+
 # Tianshu REST API Reference
 
 Complete reference for all REST APIs available to custom shell UIs. All endpoints require authentication via session cookie (same-origin requests carry it automatically).
