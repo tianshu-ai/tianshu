@@ -102,12 +102,14 @@ export default function ChatInput() {
     }
   };
 
-  // Voice button title with shortcut hint
+  // Voice button title with platform-aware shortcut hint
+  const isMac = navigator.platform?.startsWith("Mac") || navigator.userAgent?.includes("Mac");
+  const shortcut = isMac ? "⌥V" : "Alt+V";
   const voiceTitle = recording
     ? t("chat.stopListening")
     : voiceLoading
       ? t("chat.transcribing")
-      : `${t("chat.voiceInput")} (Alt+V)`;
+      : `${t("chat.voiceInput")} (${shortcut})`;
 
   return (
     <div className="border-t border-border-subtle bg-bg-base px-4 py-3">
