@@ -765,7 +765,7 @@ app.use(async (req, res, next) => {
   if (!req.path.startsWith(HF_PROXY_PREFIX)) return next();
   const hfPath = req.path.slice(HF_PROXY_PREFIX.length);
   if (!hfPath) return res.status(400).json({ error: "missing path" });
-  const hfBase = process.env.HF_MIRROR || "https://hf-api.gitee.com";
+  const hfBase = process.env.HF_MIRROR || "https://huggingface.co";
   const url = `${hfBase}/${hfPath}`;
   try {
     const upstream = await fetch(url);
@@ -778,8 +778,13 @@ app.use(async (req, res, next) => {
     const cl = upstream.headers.get("content-length");
     if (cl) res.setHeader("Content-Length", cl);
     res.setHeader("Cache-Control", "public, max-age=604800, immutable");
-    const buf = Buffer.from(await upstream.arrayBuffer());
-    res.send(buf);
+    // Stream large files (ONNX models can be 100MB+)
+    if (upstream.body) {
+      const { Readable } = await import("node:stream");
+      Readable.fromWeb(upstream.body as import("node:stream/web").ReadableStream).pipe(res);
+    } else {
+      res.end();
+    }
   } catch (e) {
     res.status(502).json({ error: `HF proxy: ${e}` });
   }
