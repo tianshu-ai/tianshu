@@ -1,0 +1,6 @@
+{
+  "manifest.displayName": "数据源",
+  "manifest.description": "将代理连接到数据库：Neo4j、MySQL 等。跨多个数据源执行查询、写入和 Schema 检查。",
+  "manifest.topBarButtons.toggle": "数据源",
+  "manifest.rightPanels.main": "数据源"
+}

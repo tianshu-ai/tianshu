@@ -1,0 +1,6 @@
+{
+  "manifest.displayName": "Data Sources",
+  "manifest.description": "Connect agents to databases: Neo4j, MySQL, and more. Query, write, and inspect schema across multiple data sources.",
+  "manifest.topBarButtons.toggle": "Data Sources",
+  "manifest.rightPanels.main": "Data Sources"
+}
