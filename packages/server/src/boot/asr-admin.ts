@@ -187,6 +187,7 @@ export function mountAsrAdminRoutes(app: Express): void {
 
       ds.status = "done";
       ds.progress = ds.total;
+      downloads.delete(model.id); // clear so frontend stops showing progress
       console.log(`[asr-admin] model ${model.id} installed`);
       // Auto-activate if it's the first model, then hot-reload
       if (!getActiveModelId()) {
