@@ -113,6 +113,7 @@ import { loadTenantSkills } from "../core/tenant-skills.js";
 import { fileURLToPath } from "node:url";
 import {
   ensureActiveSession,
+  findSessionById,
   listMessagesForSessionPage,
   listMessagesForUser,
   listMessagesForUserPage,
@@ -294,6 +295,11 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           });
           return;
         }
+        // Resolve an explicit session when the client provides sessionId
+        // (e.g. shell plugins with their own dedicated session).
+        const explicitSession = parsed.sessionId
+          ? findSessionById(ctx, userId, parsed.sessionId)
+          : undefined;
         runPrompt({
           ctx,
           userId,
@@ -304,6 +310,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           signal: aborter.signal,
           pluginRegistry,
           homeDir,
+          session: explicitSession,
         }).catch((err) => {
           send({
             type: "stream_error",

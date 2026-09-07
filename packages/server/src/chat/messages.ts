@@ -609,6 +609,35 @@ export function listMessagesForUserPage(
   };
 }
 
+/**
+ * Find a session by id, scoped to a specific user. Returns undefined
+ * if the session doesn't exist or belongs to a different user.
+ */
+export function findSessionById(
+  ctx: TenantContext,
+  userId: string,
+  sessionId: string,
+): ChatSession | undefined {
+  const row = ctx.db
+    .prepare<
+      [string, string],
+      {
+        id: string;
+        user_id: string;
+        parent_id: string | null;
+        status: string;
+        kind: string;
+        title: string | null;
+        created_at: number;
+      }
+    >(
+      `SELECT id, user_id, parent_id, status, kind, title, created_at
+       FROM sessions WHERE id = ? AND user_id = ?`,
+    )
+    .get(sessionId, userId);
+  return row ? rowToSession(row) : undefined;
+}
+
 function rowToSession(r: {
   id: string;
   user_id: string;

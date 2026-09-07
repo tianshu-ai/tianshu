@@ -20,7 +20,8 @@ Authentication uses the same session cookie as HTTP — no extra token needed wh
 
 Each `(tenant, user)` pair has one active **user session** (kind='user'). The server creates it automatically on first WS connection (`ensureActiveSession`). Key points:
 
-- **One active session per user** — all `prompt` messages go to this session. There's no way to create or switch sessions via the WS protocol.
+- **Default: one active session per user** — `prompt` messages without `sessionId` go to the user's default session.
+- **Dedicated shell session** — call `POST /api/p/example-shell/session` to create a shell-specific session. Pass the returned `sessionId` in `prompt` and `history` messages to keep shell conversations separate from the default chat.
 - **Session persists across reconnects** — closing and reopening the WS doesn't create a new session. Messages are persisted in the DB.
 - **History is session-scoped** — `history` and `history_more` default to the active session. Pass `sessionId` to read a specific session (e.g. channel sessions from the sidebar).
 - **Channel sessions** — messages from WeChat/Telegram/etc. create separate sessions with `kind='channel'`. List them via `GET /api/channel-sessions`.
@@ -41,6 +42,7 @@ Server responds with `connected` event containing `tenantId` and `userId`. Send 
   "type": "prompt",
   "content": "Help me analyze this data",
   "modelId": "anthropic/claude-sonnet-4-6",
+  "sessionId": "shell_ul_xxx",
   "attachments": [
     { "path": "/uploads/data.csv", "mimeType": "text/csv", "name": "data.csv" }
   ]
@@ -48,6 +50,7 @@ Server responds with `connected` event containing `tenantId` and `userId`. Send 
 ```
 - `content` (required): the user's message text
 - `modelId` (optional): override the default model for this turn
+- `sessionId` (optional): route to a specific session (e.g. the shell's dedicated session). Without this, goes to the user's default active session.
 - `attachments` (optional): files staged in the composer. Paths are user-home-relative (start with `/`)
 
 ### `history` — Load message history
@@ -151,6 +154,16 @@ Each message in `history`, `message_added`, `stream_end` has this shape:
 ```javascript
 let ws;
 let streamingText = '';
+let shellSessionId = null;
+
+// Step 1: Create/get a dedicated shell session
+async function initSession() {
+  const res = await fetch('/api/p/example-shell/session', {
+    method: 'POST', credentials: 'include'
+  });
+  const data = await res.json();
+  shellSessionId = data.sessionId;  // e.g. "shell_ul_xxx"
+}
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -158,7 +171,8 @@ function connect() {
 
   ws.onopen = () => {
     ws.send(JSON.stringify({ type: 'hello' }));
-    ws.send(JSON.stringify({ type: 'history', limit: 50 }));
+    // Load history for the shell session specifically
+    ws.send(JSON.stringify({ type: 'history', limit: 50, sessionId: shellSessionId }));
   };
 
   ws.onmessage = (evt) => {
@@ -212,12 +226,14 @@ function connect() {
 
 function sendMessage(text) {
   if (ws?.readyState !== WebSocket.OPEN) return;
-  ws.send(JSON.stringify({ type: 'prompt', content: text }));
+  // Route to the shell's dedicated session
+  ws.send(JSON.stringify({ type: 'prompt', content: text, sessionId: shellSessionId }));
 }
 
 function abortRun() {
   ws?.send(JSON.stringify({ type: 'abort' }));
 }
 
-connect();
+// Boot: create session first, then connect WS
+initSession().then(connect);
 ```

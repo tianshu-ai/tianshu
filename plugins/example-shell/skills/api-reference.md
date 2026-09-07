@@ -355,6 +355,15 @@ Inspect data source schema (tables, labels, properties).
 ### Custom UI Shell (`example-shell` plugin)
 
 ```
+POST /api/p/example-shell/session
+```
+Create (or get) a dedicated session for the shell UI. Call this before connecting the WebSocket so prompts and history are isolated from the default chat session.
+```json
+{ "sessionId": "shell_ul_xxx", "created": true }
+```
+Use the returned `sessionId` in WS `prompt` and `history` messages.
+
+```
 GET  /api/p/example-shell/status
 ```
 Draft and published shell state.

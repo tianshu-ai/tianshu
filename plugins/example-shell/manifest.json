@@ -66,6 +66,12 @@
         "path": "/preview",
         "handler": "preview",
         "access": "member"
+      },
+      {
+        "method": "POST",
+        "path": "/session",
+        "handler": "ensureSession",
+        "access": "member"
       }
     ]
   },

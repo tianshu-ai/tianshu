@@ -43,6 +43,12 @@ export type ClientMsg =
       /** Optional model id (e.g. 'anthropic/claude-sonnet-4-6'). When
        *  absent the server falls back to config.defaultModel. */
       modelId?: string;
+      /** Optional session id. When provided, the prompt is routed to
+       *  this specific session instead of the user's default active
+       *  session. The session must already exist and belong to this
+       *  user. Use this for shell plugins that maintain their own
+       *  dedicated session. */
+      sessionId?: string;
       /**
        * Files staged in the composer (per ADR-0003 §12).
        *

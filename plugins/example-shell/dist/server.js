@@ -100,7 +100,38 @@ function buildRoutes(ctx) {
     res.send(fs.readFileSync(indexPath));
   };
 
-  return { getStatus, publish, preview };
+  // POST /api/p/example-shell/session
+  // Ensure a dedicated shell session exists for this user.
+  // Returns the sessionId to use with WS prompt messages.
+  const ensureSession = (req, res) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return res.status(401).json({ error: "no user context" });
+
+    const sessionId = `shell_${userId}`;
+
+    // Check if it already exists
+    const existing = ctx.db
+      .prepare(`SELECT id, status FROM sessions WHERE id = ? AND user_id = ?`)
+      .get(sessionId, userId);
+
+    if (existing) {
+      return res.json({ sessionId, created: false });
+    }
+
+    // Create a dedicated session for the shell UI
+    const now = Date.now();
+    ctx.db
+      .prepare(
+        `INSERT INTO sessions (id, user_id, status, kind, created_at, title)
+         VALUES (?, ?, 'active', 'user', ?, ?)`,
+      )
+      .run(sessionId, userId, now, 'Custom Shell');
+
+    ctx.log.info(`shell session created: ${sessionId} for user ${userId}`);
+    return res.json({ sessionId, created: true });
+  };
+
+  return { getStatus, publish, preview, ensureSession };
 }
 
 function listFilesRecursive(dir) {
