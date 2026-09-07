@@ -12,6 +12,9 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let recognizer: any = null;
 
@@ -31,7 +34,7 @@ function getModelDir(): string | null {
   return null;
 }
 
-function initRecognizer(): boolean {
+async function initRecognizer(): Promise<boolean> {
   if (recognizer) return true;
   const modelDir = getModelDir();
   if (!modelDir) {
@@ -39,7 +42,7 @@ function initRecognizer(): boolean {
     return false;
   }
   try {
-    const { OfflineRecognizer } = require("sherpa-onnx-node");
+    const { OfflineRecognizer } = await import("sherpa-onnx-node");
     recognizer = new OfflineRecognizer({
       modelConfig: {
         paraformer: { model: path.join(modelDir, "model.int8.onnx") },
@@ -84,10 +87,10 @@ function readWavSamples(wavPath: string): { samples: Float32Array; sampleRate: n
 
 export function mountAsrRoute(app: Express): void {
   // Try to init at mount time (lazy — won't block if model missing)
-  const ready = initRecognizer();
+  const ready = await initRecognizer();
 
   app.post("/api/transcribe", async (req: Request, res: Response) => {
-    if (!recognizer && !initRecognizer()) {
+    if (!recognizer && !(await initRecognizer())) {
       res.status(503).json({ error: "ASR model not loaded" });
       return;
     }
