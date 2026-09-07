@@ -15,8 +15,10 @@
 
 import { pipeline, env, type AutomaticSpeechRecognitionPipeline } from "@huggingface/transformers";
 
-// Use Gitee's HF mirror for China users (official, stable, no redirect).
-env.remoteHost = "https://hf-api.gitee.com/";
+// Route model downloads through tianshu's own /api/hf-proxy/ endpoint.
+// The server proxies to HF or a configured mirror (HF_MIRROR env var),
+// solving both CORS and GFW issues. Cached with immutable headers.
+env.remoteHost = `${self.location.origin}/api/hf-proxy/`;
 
 let transcriber: AutomaticSpeechRecognitionPipeline | null = null;
 

@@ -333,6 +333,34 @@ export function mountCoreRoutes(
       .run(userId, key, val);
     res.json({ ok: true });
   });
+
+  // ─── HF Model Proxy ─────────────────────────────────────
+  // Proxies model file requests to HuggingFace (or configured mirror)
+  // so the browser can download ONNX models without CORS issues.
+  const HF_PROXY_PREFIX = "/api/hf-proxy/";
+  app.use(async (req: Request, res: Response, next: express.NextFunction) => {
+    if (!req.path.startsWith(HF_PROXY_PREFIX)) return next();
+    const hfPath = req.path.slice(HF_PROXY_PREFIX.length);
+    if (!hfPath) return res.status(400).json({ error: "missing path" });
+    const hfBase = process.env.HF_MIRROR || "https://hf-api.gitee.com";
+    const url = `${hfBase}/${hfPath}`;
+    try {
+      const upstream = await fetch(url);
+      if (!upstream.ok) {
+        res.status(upstream.status).send(upstream.statusText);
+        return;
+      }
+      const ct = upstream.headers.get("content-type");
+      if (ct) res.setHeader("Content-Type", ct);
+      const cl = upstream.headers.get("content-length");
+      if (cl) res.setHeader("Content-Length", cl);
+      res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+      const buf = Buffer.from(await upstream.arrayBuffer());
+      res.send(buf);
+    } catch (e) {
+      res.status(502).json({ error: `HF proxy: ${e}` });
+    }
+  });
 }
 
 // ── models-admin helpers ────────────────────────────────────────────
@@ -469,3 +497,4 @@ function parseModelsInput(input: unknown, providerId: string): ParsedModels {
   }
   return { value: out };
 }
+
