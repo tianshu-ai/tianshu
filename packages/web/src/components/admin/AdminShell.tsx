@@ -36,6 +36,7 @@ import type { AdminPageProps } from "@tianshu-ai/plugin-sdk/client";
 import { api, type PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
 import { buildIdentityPath, clearIdentityCookie } from "../../dev-identity";
+import AsrModelsPage from "./AsrModelsPage";
 import McpServersPage from "./McpServersPage";
 import ModelsPage from "./ModelsPage";
 import {
@@ -155,6 +156,19 @@ const CORE_PAGES: FlatAdminPage[] = [
     coreComponent: McpServersPage as unknown as React.ComponentType<AdminPageProps>,
     group: "System",
     order: 6,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "asr",
+    displayName: "语音识别",
+    icon: "Mic",
+    kind: "core",
+    component: "AsrModelsPage",
+    coreComponent: AsrModelsPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "System",
+    order: 7,
     clientEntry: null,
   },
 ];

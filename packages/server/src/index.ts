@@ -828,6 +828,10 @@ mountChannelRoutes(app);
 // worker-agents allow-list pickers consume these.
 mountCoreRoutes(app, { pluginRegistry, listTenants: () => globalOps.list() });
 
+// ASR model admin routes
+import { mountAsrAdminRoutes } from "./boot/asr-admin.js";
+mountAsrAdminRoutes(app);
+
 // Admin auth routes (after the wall): GET/PATCH /api/admin/auth,
 // guarded by requireAdmin. Writes to config.json; the resolver chain
 // getter above re-reads on the next request so no restart is needed.
