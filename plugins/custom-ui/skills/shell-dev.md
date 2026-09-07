@@ -226,7 +226,16 @@ After writing the initial `dist/index.html`:
 
 ### Runtime Rules
 - **Same-origin**: API calls use session cookies automatically, no CORS issues
-- **SPA fallback**: Any URL under the tenant prefix returns `index.html` — handle routing client-side
+- **SPA fallback**: Any URL under `/shell/tenants/...` returns `index.html` — handle routing client-side
+
+### URL Entry Points
+
+| URL | What it serves |
+|---|---|
+| `/tenants/<tenantId>/users/<userId>` | Native UI (always available) |
+| `/shell/tenants/<tenantId>/users/<userId>` | Custom shell UI (when plugin active + shell published) |
+
+Both can be used simultaneously. The native UI sidebar shows a "Custom Shell" link when shell sessions have messages.
 - **Plugin API prefix**: Plugin-specific routes are at `/api/p/<pluginId>/...`
 - **No server-side rendering**: The shell is purely client-side; the server only serves static files
 - **One shell per tenant**: If another shell plugin is active, it must be disabled first (`exclusiveGroup: "ui-shell"`)

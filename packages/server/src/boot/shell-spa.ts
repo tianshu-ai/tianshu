@@ -7,7 +7,8 @@
 //
 // Routing logic:
 //
-//   GET /tenants/:tenantId/...  (not /api/, not /ws)
+//   GET /shell/tenants/:tenantId/...  — custom shell UI
+//   GET /tenants/:tenantId/...         — native UI (untouched)
 //     → resolve tenantId
 //     → look up active shell plugin for that tenant
 //     → found? serve from plugin's dist/ (with SPA fallback if configured)
@@ -23,7 +24,9 @@ import express from "express";
 import type { PluginRegistry } from "../core/plugins/index.js";
 import { getTenantSharedDir } from "../core/paths.js";
 
-const TENANT_URL_RE = /^\/tenants\/([^/]+)\//;
+// Shell UI lives under /shell/tenants/:tenantId/... so it doesn't
+// hijack the native UI at /tenants/:tenantId/...
+const SHELL_URL_RE = /^\/shell\/tenants\/([^/]+)\//;
 
 /**
  * Mount the tenant-aware shell SPA middleware. Must be called BEFORE
@@ -50,7 +53,7 @@ export function mountShellSpa(
     if (req.method !== "GET" && req.method !== "HEAD") return next();
 
     // Extract tenantId from URL.
-    const match = TENANT_URL_RE.exec(req.path);
+    const match = SHELL_URL_RE.exec(req.path);
     if (!match) return next();
     const tenantId = match[1]!;
 
