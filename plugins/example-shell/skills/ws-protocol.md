@@ -16,6 +16,17 @@ const ws = new WebSocket(`${proto}//${location.host}/ws`);
 
 Authentication uses the same session cookie as HTTP — no extra token needed when the shell is served from the same origin.
 
+## Session Model
+
+Each `(tenant, user)` pair has one active **user session** (kind='user'). The server creates it automatically on first WS connection (`ensureActiveSession`). Key points:
+
+- **One active session per user** — all `prompt` messages go to this session. There's no way to create or switch sessions via the WS protocol.
+- **Session persists across reconnects** — closing and reopening the WS doesn't create a new session. Messages are persisted in the DB.
+- **History is session-scoped** — `history` and `history_more` default to the active session. Pass `sessionId` to read a specific session (e.g. channel sessions from the sidebar).
+- **Channel sessions** — messages from WeChat/Telegram/etc. create separate sessions with `kind='channel'`. List them via `GET /api/channel-sessions`.
+- **Worker sessions** — workboard tasks run in ephemeral `kind='worker'` sessions. These are not directly accessible from the shell UI.
+- **Compaction** — when the conversation gets too long, the server automatically summarizes older messages (`history_compacted` event). The session id may change after compaction.
+
 ## Client → Server Messages
 
 ### `hello` — Request identity confirmation
