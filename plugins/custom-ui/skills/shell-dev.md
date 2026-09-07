@@ -70,13 +70,14 @@ _tenant/shell/
 
 ### 3. Essential Boilerplate
 
-Every shell must handle:
+The server injects `window.__TIANSHU_SHELL__` into every shell page with identity and a dedicated session id. Every shell must use this:
 
 ```javascript
-// 1. Extract identity from URL
-const m = location.pathname.match(/\/tenants\/([^/]+)\/users\/([^/]+)/);
-const tenantId = m?.[1];
-const userId = m?.[2];
+// 1. Read server-injected config (auto-available, no API call needed)
+const SHELL = window.__TIANSHU_SHELL__ || {};
+const { tenantId, userId, sessionId, pluginId } = SHELL;
+// sessionId is a dedicated session for this shell (e.g. "shell_demo_ul_xxx")
+// It's auto-created by the server — conversations here are separate from webchat.
 
 // 2. API helper (session cookie is automatic)
 async function api(path, opts = {}) {
@@ -85,35 +86,38 @@ async function api(path, opts = {}) {
   return res.json();
 }
 
-// 3. WebSocket for real-time
+// 3. WebSocket for real-time chat
 const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
 const ws = new WebSocket(`${proto}//${location.host}/ws`);
+
+ws.addEventListener('open', () => {
+  ws.send(JSON.stringify({ type: 'hello' }));
+  // Load history for the shell's dedicated session
+  ws.send(JSON.stringify({ type: 'history', sessionId, limit: 50 }));
+});
+
 ws.onmessage = (e) => {
   const msg = JSON.parse(e.data);
   switch (msg.type) {
-    case 'connected': /* identity confirmed */ break;
-    case 'message_added': /* new chat message */ break;
-    case 'stream_delta': /* LLM streaming chunk */ break;
-    case 'stream_end': /* streaming done */ break;
-    case 'plugin_event': /* task updates, etc. */ break;
+    case 'connected':     /* identity confirmed */ break;
+    case 'history':       /* msg.messages[] — render chat history */ break;
+    case 'stream_start':  /* new assistant response starting */ break;
+    case 'stream_delta':  /* msg.delta — append to streaming bubble */ break;
+    case 'stream_end':    /* msg.message — final complete message */ break;
+    case 'stream_error':  /* msg.reason — show error */ break;
+    case 'tool_call':     /* msg.name — show tool in-progress */ break;
+    case 'tool_result':   /* msg.text, msg.ok — show tool result */ break;
+    case 'plugin_event':  /* task updates, etc. */ break;
   }
 };
 
-// 4. Send user message (triggers agent run)
+// 4. Send user message — always include sessionId!
 function sendMessage(text) {
-  ws.send(JSON.stringify({ type: 'prompt', content: text }));
-}
-
-// 5. Request identity confirmation on connect
-ws.addEventListener('open', () => {
-  ws.send(JSON.stringify({ type: 'hello' }));
-});
-
-// 6. Load message history
-function loadHistory(sessionId) {
-  ws.send(JSON.stringify({ type: 'history', sessionId, limit: 50 }));
+  ws.send(JSON.stringify({ type: 'prompt', content: text, sessionId }));
 }
 ```
+
+**Critical**: Always pass `sessionId` in `prompt` and `history` messages. Without it, messages go to the default webchat session instead of the shell's dedicated session.
 
 ### 4. Common Patterns (only use if plugin is active)
 

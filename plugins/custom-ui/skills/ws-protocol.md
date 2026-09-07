@@ -154,16 +154,12 @@ Each message in `history`, `message_added`, `stream_end` has this shape:
 ```javascript
 let ws;
 let streamingText = '';
-let shellSessionId = null;
 
-// Step 1: Create/get a dedicated shell session
-async function initSession() {
-  const res = await fetch('/api/p/custom-ui/session', {
-    method: 'POST', credentials: 'include'
-  });
-  const data = await res.json();
-  shellSessionId = data.sessionId;  // e.g. "shell_ul_xxx"
-}
+// The server injects window.__TIANSHU_SHELL__ into the HTML with:
+//   { tenantId, userId, sessionId, pluginId }
+// This gives the shell its dedicated session automatically.
+const SHELL = window.__TIANSHU_SHELL__ || {};
+const shellSessionId = SHELL.sessionId; // e.g. "shell_demo_ul_xxx"
 
 function connect() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -171,7 +167,7 @@ function connect() {
 
   ws.onopen = () => {
     ws.send(JSON.stringify({ type: 'hello' }));
-    // Load history for the shell session specifically
+    // Load history for the shell's dedicated session
     ws.send(JSON.stringify({ type: 'history', limit: 50, sessionId: shellSessionId }));
   };
 
@@ -234,6 +230,6 @@ function abortRun() {
   ws?.send(JSON.stringify({ type: 'abort' }));
 }
 
-// Boot: create session first, then connect WS
-initSession().then(connect);
+// Boot: session is auto-created by the server, just connect
+connect();
 ```

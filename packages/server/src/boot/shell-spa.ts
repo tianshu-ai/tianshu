@@ -138,9 +138,37 @@ export function mountShellSpa(
     staticHandler(req, res, () => {
       // File not found in dist/ — SPA fallback?
       if (uiShell.fallbackSpa !== false) {
-        // Serve index.html for SPA routing.
-        const indexBuf = fs.readFileSync(indexPath);
-        res.type("html").send(indexBuf);
+        // Serve index.html for SPA routing, with injected session config.
+        let html = fs.readFileSync(indexPath, "utf8");
+        // Inject a global config object so the shell UI knows its
+        // identity and dedicated session id without extra API calls.
+        const userMatch = req.path.match(/\/users\/([^/]+)/);
+        const pageUserId = userMatch?.[1] ?? "unknown";
+        const shellSessionId = `shell_${tenantId}_${pageUserId}`;
+        // Auto-create the dedicated shell session if it doesn't exist.
+        // This runs on every index.html serve but the INSERT OR IGNORE
+        // makes it idempotent.
+        try {
+          const { getTenantContext } = await import("../core/index.js");
+          const tctx = getTenantContext(tenantId);
+          tctx.db.prepare(
+            `INSERT OR IGNORE INTO sessions (id, user_id, status, kind, created_at, title)
+             VALUES (?, ?, 'active', 'user', ?, 'Custom Shell')`,
+          ).run(shellSessionId, pageUserId, Date.now());
+        } catch { /* best-effort; the /session API is the fallback */ }
+        const configScript = `<script>window.__TIANSHU_SHELL__=${JSON.stringify({
+          tenantId,
+          userId: req.path.match(/\/users\/([^/]+)/)?.[1] ?? null,
+          sessionId: shellSessionId,
+          pluginId: shell.manifest.id,
+        })};</script>`;
+        // Inject before </head> or at the start of <body>
+        if (html.includes("</head>")) {
+          html = html.replace("</head>", configScript + "</head>");
+        } else {
+          html = configScript + html;
+        }
+        res.type("html").send(html);
       } else {
         // Not a SPA; the file genuinely doesn't exist.
         next();
