@@ -125,6 +125,8 @@ stream_start → stream_delta* → stream_end
 
 ## WireMessage Shape
 
+⚠️ **The message body field is `text`, NOT `content`!** The `content` field is only used in client→server `prompt` messages. Server→client messages always use `text`.
+
 Each message in `history`, `message_added`, `stream_end` has this shape:
 
 ```typescript
@@ -178,8 +180,15 @@ function connect() {
         // Identity confirmed: msg.tenantId, msg.userId
         break;
       case 'history':
-        // Render msg.messages (ascending order)
-        msg.messages.forEach(m => renderMessage(m));
+        // msg.messages is an array of WireMessage, ascending order (oldest first)
+        // Each has: { id, sessionId, role, text, toolCalls?, blocks?, meta?, createdAt }
+        // role is 'user' | 'assistant' | 'toolResult'
+        // Use `.text` (NOT `.content`) for the human-readable message body
+        msg.messages.forEach(m => {
+          if (m.role === 'user') renderUserMessage(m.text);
+          else if (m.role === 'assistant' && m.text) renderAssistantMessage(m.text);
+          // toolResult messages can be skipped or rendered as tool chips
+        });
         break;
       case 'message_added':
         // New message: msg.message (could be user echo or system)
