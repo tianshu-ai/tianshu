@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Send, Square } from "lucide-react";
+import { Mic, MicOff, Send, Square } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { useComposerStore } from "../stores/composer-store";
 import ModelSelector from "./ModelSelector";
@@ -47,7 +47,51 @@ export default function ChatInput() {
 
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [listening, setListening] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
+
+  // ── Voice input (Web Speech API) ──────────────────────────
+  const speechSupported =
+    typeof window !== "undefined" &&
+    !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  const toggleListening = () => {
+    if (listening) {
+      recognitionRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const recognition = new SR();
+    recognition.lang = navigator.language || "zh-CN";
+    recognition.interimResults = true;
+    recognition.continuous = true;
+
+    let finalText = draft;
+    recognition.onresult = (e: SpeechRecognitionEvent) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const transcript = e.results[i][0].transcript;
+        if (e.results[i].isFinal) {
+          finalText += transcript;
+          setDraft(finalText);
+        } else {
+          interim += transcript;
+        }
+      }
+      if (interim) {
+        setDraft(finalText + interim);
+      }
+    };
+    recognition.onerror = () => setListening(false);
+    recognition.onend = () => setListening(false);
+
+    recognition.start();
+    recognitionRef.current = recognition;
+    setListening(true);
+  };
 
   // auto-resize textarea up to ~10 lines.
   useEffect(() => {
@@ -140,6 +184,21 @@ export default function ChatInput() {
           </div>
           <div className="flex items-center gap-2">
             <ModelSelector />
+            {speechSupported && !isStreaming && (
+              <button
+                type="button"
+                onClick={toggleListening}
+                className={`rounded-lg p-1.5 transition-colors ${
+                  listening
+                    ? "text-danger animate-pulse bg-danger/10"
+                    : "text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+                }`}
+                title={listening ? t("chat.stopListening") : t("chat.voiceInput")}
+                aria-label={listening ? t("chat.stopListening") : t("chat.voiceInput")}
+              >
+                {listening ? <MicOff size={18} /> : <Mic size={18} />}
+              </button>
+            )}
             {isStreaming ? (
               <button
                 type="button"
