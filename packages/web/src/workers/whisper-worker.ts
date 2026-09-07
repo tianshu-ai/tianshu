@@ -13,7 +13,11 @@
  *   Main → Worker:  { type: "load" }  // pre-load model
  */
 
-import { pipeline, type AutomaticSpeechRecognitionPipeline } from "@huggingface/transformers";
+import { pipeline, env, type AutomaticSpeechRecognitionPipeline } from "@huggingface/transformers";
+
+// Use HF mirror for China users (hf-mirror.com is the most popular mirror).
+// Falls back to official HF if the mirror is unreachable.
+env.remoteHost = "https://hf-mirror.com/";
 
 let transcriber: AutomaticSpeechRecognitionPipeline | null = null;
 
