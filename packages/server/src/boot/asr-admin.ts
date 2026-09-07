@@ -200,7 +200,7 @@ export function mountAsrAdminRoutes(app: Express): void {
   });
 
   // Delete model
-  app.delete("/api/admin/asr/models/:id", (req: Request, res: Response) => {
+  app.delete("/api/admin/asr/models/:id", async (req: Request, res: Response) => {
     const did = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const model = MODELS.find((m) => m.id === did);
     if (!model) return res.status(404).json({ error: "unknown model" });
@@ -209,6 +209,11 @@ export function mountAsrAdminRoutes(app: Express): void {
       fs.rmSync(dir, { recursive: true, force: true });
     }
     downloads.delete(model.id);
+    // If deleting the active model, clear selection and unload
+    if (getActiveModelId() === model.id) {
+      setActiveModelId(null);
+      await reloadAsrModel(); // will find nothing → recognizer = null
+    }
     res.json({ ok: true });
   });
 }
