@@ -119,6 +119,37 @@ function sendMessage(text) {
 
 **Critical**: Always pass `sessionId` in `prompt` and `history` messages. Without it, messages go to the default webchat session instead of the shell's dedicated session.
 
+### 4. Session Isolation Checklist
+
+Every custom shell UI **must** follow this pattern to avoid leaking messages into the webchat session:
+
+1. **Read the injected config** — `window.__TIANSHU_SHELL__` is injected by the server into `</head>`. It contains `{ tenantId, userId, sessionId, pluginId }`. The `sessionId` is a dedicated session auto-created by the server (e.g. `shell_demo_ul_xxx`).
+2. **Pass `sessionId` in EVERY `prompt` message** — `{ type: 'prompt', content: text, sessionId: shellSid }`. Without this, the message goes to the default webchat session.
+3. **Pass `sessionId` in EVERY `history` message** — `{ type: 'history', limit: 50, sessionId: shellSid }`. Without this, you load webchat history instead of shell history.
+4. **Send `hello` on connect** — `{ type: 'hello' }` triggers the `connected` event with identity confirmation.
+5. **Do NOT use query params on the WS URL** — `ws://host/ws?sessionId=xxx` does nothing. Session routing is done via the JSON message fields.
+6. **Do NOT generate random session ids** — The server creates the session in the DB. Random/localStorage ids won't match any real session.
+
+```javascript
+// ✅ Correct pattern
+const SHELL = window.__TIANSHU_SHELL__ || {};
+const shellSid = SHELL.sessionId;
+
+ws.onopen = () => {
+  ws.send(JSON.stringify({ type: 'hello' }));
+  ws.send(JSON.stringify({ type: 'history', limit: 50, sessionId: shellSid }));
+};
+
+function sendMessage(text) {
+  ws.send(JSON.stringify({ type: 'prompt', content: text, sessionId: shellSid }));
+}
+
+// ❌ Wrong — these all break session isolation:
+// ws.send(JSON.stringify({ type: 'prompt', content: text }));  // no sessionId → webchat
+// new WebSocket(`ws://host/ws?sessionId=${id}`);  // query params ignored
+// const id = 'shell_' + Math.random();  // random id doesn't exist in DB
+```
+
 ### 4. Common Patterns (only use if plugin is active)
 
 Always gate on the active plugins set from step 0.
