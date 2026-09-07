@@ -149,12 +149,14 @@ export function mountShellSpa(
         // This runs on every index.html serve but the INSERT OR IGNORE
         // makes it idempotent.
         try {
-          const { getTenantContext } = await import("../core/index.js");
-          const tctx = getTenantContext(tenantId);
-          tctx.db.prepare(
-            `INSERT OR IGNORE INTO sessions (id, user_id, status, kind, created_at, title)
-             VALUES (?, ?, 'active', 'user', ?, 'Custom Shell')`,
-          ).run(shellSessionId, pageUserId, Date.now());
+          const entries = registry.listForTenant(tenantId);
+          const shellEntry = entries.find(e => e.manifest.id === shell.manifest.id && e.ctx);
+          if (shellEntry?.ctx) {
+            shellEntry.ctx.db.prepare(
+              `INSERT OR IGNORE INTO sessions (id, user_id, status, kind, created_at, title)
+               VALUES (?, ?, 'active', 'user', ?, 'Custom Shell')`,
+            ).run(shellSessionId, pageUserId, Date.now());
+          }
         } catch { /* best-effort; the /session API is the fallback */ }
         const configScript = `<script>window.__TIANSHU_SHELL__=${JSON.stringify({
           tenantId,
