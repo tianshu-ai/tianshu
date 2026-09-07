@@ -19,6 +19,7 @@ interface ModelDef {
   size: string;
   url: string;
   dir: string;
+  tokens: string;
   description: string;
 }
 
@@ -30,6 +31,7 @@ const MODELS: ModelDef[] = [
     size: "74 MB",
     url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-paraformer-zh-small-2024-03-09.tar.bz2",
     dir: "sherpa-onnx-paraformer-zh-small-2024-03-09",
+    tokens: "tokens.txt",
     description: "",
   },
   {
@@ -39,6 +41,7 @@ const MODELS: ModelDef[] = [
     size: "950 MB",
     url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-paraformer-zh-2024-03-09.tar.bz2",
     dir: "sherpa-onnx-paraformer-zh-2024-03-09",
+    tokens: "tokens.txt",
     description: "",
   },
   {
@@ -48,6 +51,7 @@ const MODELS: ModelDef[] = [
     size: "~1 GB",
     url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
     dir: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+    tokens: "tokens.txt",
     description: "",
   },
   {
@@ -57,6 +61,7 @@ const MODELS: ModelDef[] = [
     size: "110 MB",
     url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2",
     dir: "sherpa-onnx-whisper-tiny",
+    tokens: "tiny-tokens.txt",
     description: "",
   },
 ];
@@ -93,7 +98,7 @@ function getModelsDir(): string {
 
 function isInstalled(model: ModelDef): boolean {
   const modelsDir = getModelsDir();
-  return fs.existsSync(path.join(modelsDir, model.dir, "tokens.txt"));
+  return fs.existsSync(path.join(modelsDir, model.dir, model.tokens));
 }
 
 function getActiveModelId(): string | null {

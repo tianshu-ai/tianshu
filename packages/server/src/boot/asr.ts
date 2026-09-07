@@ -40,11 +40,11 @@ interface ModelCandidate {
   tokens: string;
 }
 
-const MODEL_CANDIDATES: { dirName: string; type: ModelCandidate["type"]; model: string }[] = [
-  { dirName: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17", type: "senseVoice", model: "model.int8.onnx" },
-  { dirName: "sherpa-onnx-paraformer-zh-2024-03-09", type: "paraformer", model: "model.int8.onnx" },
-  { dirName: "sherpa-onnx-paraformer-zh-small-2024-03-09", type: "paraformer", model: "model.int8.onnx" },
-  { dirName: "sherpa-onnx-whisper-tiny", type: "whisper", model: "tiny-encoder.int8.onnx" },
+const MODEL_CANDIDATES: { dirName: string; type: ModelCandidate["type"]; model: string; tokens: string }[] = [
+  { dirName: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17", type: "senseVoice", model: "model.int8.onnx", tokens: "tokens.txt" },
+  { dirName: "sherpa-onnx-paraformer-zh-2024-03-09", type: "paraformer", model: "model.int8.onnx", tokens: "tokens.txt" },
+  { dirName: "sherpa-onnx-paraformer-zh-small-2024-03-09", type: "paraformer", model: "model.int8.onnx", tokens: "tokens.txt" },
+  { dirName: "sherpa-onnx-whisper-tiny", type: "whisper", model: "tiny-encoder.int8.onnx", tokens: "tiny-tokens.txt" },
 ];
 
 function getModelsRoots(): string[] {
@@ -70,7 +70,7 @@ function findBestModel(): ModelCandidate | null {
     if (pick) {
       const dir = path.join(modelsRoot, pick.dirName);
       if (fs.existsSync(path.join(dir, pick.model))) {
-        return { dir, type: pick.type, model: pick.model, tokens: "tokens.txt" };
+        return { dir, type: pick.type, model: pick.model, tokens: pick.tokens };
       }
     }
   }
@@ -78,8 +78,8 @@ function findBestModel(): ModelCandidate | null {
   // Fallback: auto-select best available
   for (const c of MODEL_CANDIDATES) {
     const dir = path.join(modelsRoot, c.dirName);
-    if (fs.existsSync(path.join(dir, c.model)) && fs.existsSync(path.join(dir, "tokens.txt"))) {
-      return { dir, type: c.type, model: c.model, tokens: "tokens.txt" };
+    if (fs.existsSync(path.join(dir, c.model)) && fs.existsSync(path.join(dir, c.tokens))) {
+      return { dir, type: c.type, model: c.model, tokens: c.tokens };
     }
   }
   return null;
