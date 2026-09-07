@@ -756,6 +756,35 @@ mountPublicAuthRoutes(app, {
 
 // Everything below /api/* needs a tenant context. The chain is built
 // per-request from the live auth config (see resolvePublicUrl comment).
+// ─── HF Model Proxy (before auth) ─────────────────────────
+// Proxies model file requests to HuggingFace mirror so the browser
+// can download ONNX models (Whisper etc.) without CORS or GFW issues.
+// No auth required — model files are public.
+const HF_PROXY_PREFIX = "/api/hf-proxy/";
+app.use(async (req, res, next) => {
+  if (!req.path.startsWith(HF_PROXY_PREFIX)) return next();
+  const hfPath = req.path.slice(HF_PROXY_PREFIX.length);
+  if (!hfPath) return res.status(400).json({ error: "missing path" });
+  const hfBase = process.env.HF_MIRROR || "https://hf-api.gitee.com";
+  const url = `${hfBase}/${hfPath}`;
+  try {
+    const upstream = await fetch(url);
+    if (!upstream.ok) {
+      res.status(upstream.status).send(upstream.statusText);
+      return;
+    }
+    const ct = upstream.headers.get("content-type");
+    if (ct) res.setHeader("Content-Type", ct);
+    const cl = upstream.headers.get("content-length");
+    if (cl) res.setHeader("Content-Length", cl);
+    res.setHeader("Cache-Control", "public, max-age=604800, immutable");
+    const buf = Buffer.from(await upstream.arrayBuffer());
+    res.send(buf);
+  } catch (e) {
+    res.status(502).json({ error: `HF proxy: ${e}` });
+  }
+});
+
 app.use(
   "/api",
   tenantMiddleware({
