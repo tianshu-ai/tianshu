@@ -162,7 +162,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     pluginId: "core",
     pluginDisplayName: "Tianshu",
     pageId: "asr",
-    displayName: "语音识别",
+    displayName: "Speech Recognition",
     icon: "Mic",
     kind: "core",
     component: "AsrModelsPage",
@@ -353,6 +353,8 @@ function localizeCorePageLabel(
       return t("admin.nav.models");
     case "mcp":
       return t("admin.nav.mcp");
+    case "asr":
+      return t("admin.nav.asr");
     default:
       return page.displayName;
   }
