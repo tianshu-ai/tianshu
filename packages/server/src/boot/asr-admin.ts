@@ -85,16 +85,30 @@ function isInstalled(model: ModelDef): boolean {
   return fs.existsSync(path.join(modelsDir, model.dir, "tokens.txt"));
 }
 
+function getActiveModelId(): string | null {
+  try {
+    return fs.readFileSync(path.join(getModelsDir(), "active-asr-model.txt"), "utf8").trim() || null;
+  } catch { return null; }
+}
+
+function setActiveModelId(id: string | null): void {
+  const p = path.join(getModelsDir(), "active-asr-model.txt");
+  if (id) fs.writeFileSync(p, id, "utf8");
+  else try { fs.unlinkSync(p); } catch {}
+}
+
 export function mountAsrAdminRoutes(app: Express): void {
   // List models
   app.get("/api/admin/asr/models", (_req: Request, res: Response) => {
+    const activeId = getActiveModelId();
     const list = MODELS.map((m) => ({
       ...m,
       installed: isInstalled(m),
+      active: m.id === activeId,
       downloading: downloads.get(m.id)?.status === "downloading" || downloads.get(m.id)?.status === "extracting",
       downloadProgress: downloads.get(m.id) ?? null,
     }));
-    res.json({ models: list, modelsDir: getModelsDir() });
+    res.json({ models: list, activeModelId: activeId, modelsDir: getModelsDir() });
   });
 
   // Download a model
@@ -163,6 +177,16 @@ export function mountAsrAdminRoutes(app: Express): void {
     const state = downloads.get(sid);
     if (!state) return res.json({ status: "idle" });
     res.json(state);
+  });
+
+  // Activate model
+  app.post("/api/admin/asr/models/:id/activate", (req: Request, res: Response) => {
+    const paramId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const model = MODELS.find((m) => m.id === paramId);
+    if (!model) return res.status(404).json({ error: "unknown model" });
+    if (!isInstalled(model)) return res.status(400).json({ error: "model not installed" });
+    setActiveModelId(model.id);
+    res.json({ ok: true, activeModelId: model.id });
   });
 
   // Delete model

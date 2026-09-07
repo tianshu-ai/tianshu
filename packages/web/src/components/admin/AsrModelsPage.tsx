@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, Trash2, CheckCircle, Loader2, Mic, AlertCircle } from "lucide-react";
+import { Download, Trash2, CheckCircle, Loader2, Mic, AlertCircle, CircleDot } from "lucide-react";
 import { useT } from "../../hooks/useT";
 
 interface ModelInfo {
@@ -9,6 +9,7 @@ interface ModelInfo {
   size: string;
   description: string;
   installed: boolean;
+  active: boolean;
   downloading: boolean;
   downloadProgress: { progress: number; total: number; status: string; error?: string } | null;
 }
@@ -35,6 +36,13 @@ export default function AsrModelsPage() {
     pollRef.current = setInterval(refresh, 2000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [refresh]);
+
+  const activate = async (id: string) => {
+    await fetch(`/api/admin/asr/models/${id}/activate`, {
+      method: "POST", credentials: "include",
+    });
+    refresh();
+  };
 
   const download = async (id: string) => {
     await fetch(`/api/admin/asr/models/${id}/download`, {
@@ -85,8 +93,8 @@ export default function AsrModelsPage() {
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-raised text-fg-faint">{m.size}</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-raised text-fg-faint">{m.lang}</span>
                   {m.installed && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/20 text-green-500 flex items-center gap-0.5">
-                      <CheckCircle size={10} /> {t("asr.installed")}
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${m.active ? "bg-blue-500/20 text-blue-400" : "bg-green-500/20 text-green-500"}`}>
+                      {m.active ? <><CircleDot size={10} /> {t("asr.active")}</> : <><CheckCircle size={10} /> {t("asr.installed")}</>}
                     </span>
                   )}
                 </div>
@@ -126,13 +134,22 @@ export default function AsrModelsPage() {
 
               <div className="flex items-center gap-2 shrink-0">
                 {m.installed ? (
-                  <button
-                    onClick={() => remove(m.id)}
-                    className="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-colors"
-                  >
-                    <Trash2 size={13} className="inline mr-1" />
-                    {t("asr.delete")}
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {!m.active && (
+                      <button
+                        onClick={() => activate(m.id)}
+                        className="rounded-lg px-3 py-1.5 text-xs text-blue-400 hover:bg-blue-500/10 border border-blue-500/20 transition-colors"
+                      >
+                        {t("asr.activate")}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => remove(m.id)}
+                      className="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-colors"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 ) : m.downloading ? (
                   <button disabled className="rounded-lg px-3 py-1.5 text-xs text-blue-400 opacity-60 cursor-wait">
                     <Loader2 size={13} className="inline mr-1 animate-spin" />
