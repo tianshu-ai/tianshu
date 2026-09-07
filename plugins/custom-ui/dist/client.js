@@ -2,7 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState, useEffect, useCallback } from "react";
 import { Eye, EyeOff, ExternalLink, Paintbrush, Upload, RefreshCw, FileCode, CheckCircle } from "lucide-react";
 
-import { useChatNav, subscribeToWsEvent } from "@tianshu/plugin-sdk/client";
+import { useChatNav, subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
 
 const PLUGIN_ID = "custom-ui";
 const API = "/api";
