@@ -18,6 +18,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let recognizer: any = null;
 
+/** Force reload the recognizer (called when admin activates a model). */
+export async function reloadAsrModel(): Promise<boolean> {
+  recognizer = null;
+  return initRecognizer();
+}
+
 // Model preference order: best quality first
 interface ModelCandidate {
   dir: string;

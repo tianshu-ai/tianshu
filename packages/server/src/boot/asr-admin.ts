@@ -6,6 +6,7 @@
  */
 
 import { type Express, type Request, type Response } from "express";
+import { reloadAsrModel } from "./asr.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -162,6 +163,13 @@ export function mountAsrAdminRoutes(app: Express): void {
       ds.status = "done";
       ds.progress = ds.total;
       console.log(`[asr-admin] model ${model.id} installed`);
+      // Auto-activate if it's the first model, then hot-reload
+      if (!getActiveModelId()) {
+        setActiveModelId(model.id);
+      }
+      if (getActiveModelId() === model.id) {
+        await reloadAsrModel();
+      }
     } catch (e) {
       const ds = downloads.get(model.id)!;
       ds.status = "error";
@@ -180,13 +188,15 @@ export function mountAsrAdminRoutes(app: Express): void {
   });
 
   // Activate model
-  app.post("/api/admin/asr/models/:id/activate", (req: Request, res: Response) => {
+  app.post("/api/admin/asr/models/:id/activate", async (req: Request, res: Response) => {
     const paramId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const model = MODELS.find((m) => m.id === paramId);
     if (!model) return res.status(404).json({ error: "unknown model" });
     if (!isInstalled(model)) return res.status(400).json({ error: "model not installed" });
     setActiveModelId(model.id);
-    res.json({ ok: true, activeModelId: model.id });
+    // Hot-reload the recognizer so it takes effect immediately
+    const loaded = await reloadAsrModel();
+    res.json({ ok: true, activeModelId: model.id, loaded });
   });
 
   // Delete model
