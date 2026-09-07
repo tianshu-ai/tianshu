@@ -6,6 +6,40 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.46.0](https://github.com/tianshu-ai/tianshu/compare/v0.45.0...v0.46.0) (2026-09-07)
+
+
+### Features
+
+* ASR model management admin page ([cdf361b](https://github.com/tianshu-ai/tianshu/commit/cdf361bc06c8cff981b3e87ec44addf2a17ebbed))
+* auto-select best installed ASR model ([455db84](https://github.com/tianshu-ai/tianshu/commit/455db84cb8abc8e04f0c5f85e0c1cfa4d20cf23b))
+* customizable push-to-talk shortcut ([4ba743e](https://github.com/tianshu-ai/tianshu/commit/4ba743ef676514272044f7b8072cb61229efa1dc))
+* hide mic button when no ASR model is active ([f9bcfe9](https://github.com/tianshu-ai/tianshu/commit/f9bcfe9995c00b43969bb2163d7ca195885ee662))
+* in-browser Whisper voice input (no external API) ([8b46aba](https://github.com/tianshu-ai/tianshu/commit/8b46abafdc7982303f92d1221643e4dd1cf1b5e6))
+* manual ASR model selection ([fa34f39](https://github.com/tianshu-ai/tianshu/commit/fa34f390ec80af1977d096750485cb73294469e3))
+* push-to-talk Alt+V + voice UX improvements ([22aa87e](https://github.com/tianshu-ai/tianshu/commit/22aa87e43cb4013c101c9d3d140e0bd171fdf56b))
+* server-side ASR with sherpa-onnx-node (no Python, no cloud) ([a10ed26](https://github.com/tianshu-ai/tianshu/commit/a10ed266dd7809f986be72cae5dfd0a11505793d))
+* use hf-mirror.com for Whisper model download ([a62847e](https://github.com/tianshu-ai/tianshu/commit/a62847ead5061fb6c902d0d1b6b8c3d31e5b3035))
+* voice input — microphone button in composer ([c43f510](https://github.com/tianshu-ai/tianshu/commit/c43f510e818d89d19e190cc3ae2be63380b0c668))
+
+
+### Bug Fixes
+
+* add React keys in ShellSidebarSection children ([4cd0533](https://github.com/tianshu-ai/tianshu/commit/4cd0533dd892556a157ecde6cadaeb1c791d1be4))
+* asr.ts TS errors — ts-ignore sherpa-onnx-node, async fire-and-forget init ([767811a](https://github.com/tianshu-ai/tianshu/commit/767811aad2a3de7e12d9b635dffc2c837c447d42))
+* broaden ASR model path search for monorepo layout ([dc3b5c5](https://github.com/tianshu-ai/tianshu/commit/dc3b5c5b33f3933cf6cacfb97f4c8e214c664846))
+* change push-to-talk to Ctrl+Shift+M (⌥V types √ on Mac) ([5030ef5](https://github.com/tianshu-ai/tianshu/commit/5030ef54c25406bc5b47c5120b00006fd50ee156))
+* correct model download sizes (actual tarball sizes from GitHub) ([488bee4](https://github.com/tianshu-ai/tianshu/commit/488bee41fab7f2581681e6f1ec594b87bba39a28))
+* ESM compat — replace __dirname/require with import.meta.url/dynamic import ([eb5f326](https://github.com/tianshu-ai/tianshu/commit/eb5f3269fec6dc547d4139530abdd23431028f23))
+* handle CJS/ESM interop for sherpa-onnx-node dynamic import ([3091378](https://github.com/tianshu-ai/tianshu/commit/3091378388de7ee3a50f0003ebf75dbd603292ba))
+* HF model proxy — use middleware instead of wildcard route ([9125b09](https://github.com/tianshu-ai/tianshu/commit/9125b09d427edf3b0960e2affe13395924ff5415))
+* HF proxy — use huggingface.co with streaming ([7a1c5b6](https://github.com/tianshu-ai/tianshu/commit/7a1c5b68843bb3cd91b4a589291c64beaab958f4))
+* hot-reload ASR model on activate/download ([60326eb](https://github.com/tianshu-ai/tianshu/commit/60326ebe795918c795f0dabe033c8ba2a11e3c8e))
+* move HF proxy before auth middleware ([b62a1ed](https://github.com/tianshu-ai/tianshu/commit/b62a1edecba9de64d830a14cb0a0ffd52b9114c5))
+* show ⌥V on Mac, Alt+V on others; simplify recording hint ([b831877](https://github.com/tianshu-ai/tianshu/commit/b831877f3f7c7c351743280fdd76d7a8e754c7cf))
+* switch to Gitee HF mirror (hf-mirror.com redirects back to HF) ([e81af09](https://github.com/tianshu-ai/tianshu/commit/e81af093edef66a74b8e0efeab693d3668cf3f83))
+* unload recognizer when deleting active model ([9a5eea7](https://github.com/tianshu-ai/tianshu/commit/9a5eea7df98859634de11b94dc21cb6aac497c72))
+
 ## [0.45.0](https://github.com/tianshu-ai/tianshu/compare/v0.44.0...v0.45.0) (2026-09-07)
 
 
