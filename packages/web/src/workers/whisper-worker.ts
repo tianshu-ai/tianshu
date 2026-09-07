@@ -15,9 +15,8 @@
 
 import { pipeline, env, type AutomaticSpeechRecognitionPipeline } from "@huggingface/transformers";
 
-// Use HF mirror for China users (hf-mirror.com is the most popular mirror).
-// Falls back to official HF if the mirror is unreachable.
-env.remoteHost = "https://hf-mirror.com/";
+// Use Gitee's HF mirror for China users (official, stable, no redirect).
+env.remoteHost = "https://hf-api.gitee.com/";
 
 let transcriber: AutomaticSpeechRecognitionPipeline | null = null;
 
