@@ -42,6 +42,7 @@ async function initRecognizer(): Promise<boolean> {
     return false;
   }
   try {
+    // @ts-ignore — no type declarations for sherpa-onnx-node
     const { OfflineRecognizer } = await import("sherpa-onnx-node");
     recognizer = new OfflineRecognizer({
       modelConfig: {
@@ -86,8 +87,10 @@ function readWavSamples(wavPath: string): { samples: Float32Array; sampleRate: n
 }
 
 export function mountAsrRoute(app: Express): void {
-  // Try to init at mount time (lazy — won't block if model missing)
-  const ready = await initRecognizer();
+  // Try to init at mount time (fire-and-forget, won't block boot)
+  initRecognizer().then((ok) => {
+    if (ok) console.log("[asr] POST /api/transcribe ready");
+  });
 
   app.post("/api/transcribe", async (req: Request, res: Response) => {
     if (!recognizer && !(await initRecognizer())) {
@@ -131,7 +134,4 @@ export function mountAsrRoute(app: Express): void {
     });
   });
 
-  if (ready) {
-    console.log("[asr] POST /api/transcribe ready");
-  }
 }
