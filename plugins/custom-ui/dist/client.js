@@ -298,8 +298,8 @@ function ShellSidebarSection() {
         : "text-fg-muted hover:bg-bg-hover hover:text-fg-default"
     }`,
     children: [
-      _jsx(Paintbrush, { size: 13, className: active ? "text-accent" : "text-fg-faint" }),
-      _jsx("span", { className: "truncate", children: session.title || "Custom Shell" }),
+      _jsx(Paintbrush, { key: "icon", size: 13, className: active ? "text-accent" : "text-fg-faint" }),
+      _jsx("span", { key: "label", className: "truncate", children: session.title || "Custom Shell" }),
     ],
   });
 }
