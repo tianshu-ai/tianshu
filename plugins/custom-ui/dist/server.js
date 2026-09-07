@@ -17,7 +17,7 @@ function userIdFromReq(req) {
 }
 
 function buildRoutes(ctx) {
-  // GET /api/p/example-shell/status
+  // GET /api/p/custom-ui/status
   // Returns draft and published shell state for this user/tenant.
   const getStatus = (req, res) => {
     const userId = userIdFromReq(req);
@@ -53,7 +53,7 @@ function buildRoutes(ctx) {
     });
   };
 
-  // POST /api/p/example-shell/publish
+  // POST /api/p/custom-ui/publish
   // Copy user's draft shell to tenant shared dir (goes live).
   const publish = (req, res) => {
     const userId = userIdFromReq(req);
@@ -83,7 +83,7 @@ function buildRoutes(ctx) {
     res.json({ ok: true, files });
   };
 
-  // GET /api/p/example-shell/preview
+  // GET /api/p/custom-ui/preview
   // Serve the user's draft index.html for iframe preview.
   const preview = (req, res) => {
     const userId = userIdFromReq(req);
@@ -100,7 +100,7 @@ function buildRoutes(ctx) {
     res.send(fs.readFileSync(indexPath));
   };
 
-  // POST /api/p/example-shell/session
+  // POST /api/p/custom-ui/session
   // Ensure a dedicated shell session exists for this user.
   // Returns the sessionId to use with WS prompt messages.
   const ensureSession = (req, res) => {
@@ -163,7 +163,7 @@ function copyDirRecursive(src, dest) {
 
 const plugin = {
   activate(ctx) {
-    ctx.log.info("example-shell activated");
+    ctx.log.info("custom-ui activated");
     return {
       routes: buildRoutes(ctx),
     };

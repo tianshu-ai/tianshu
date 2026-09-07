@@ -82,4 +82,4 @@ probe-*.mjs
 spike-*.mjs
 test-*.mjs
 /scripts/diagnose-*.mjs
-!plugins/example-shell/dist/
+!plugins/custom-ui/dist/

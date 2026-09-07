@@ -21,7 +21,7 @@ Authentication uses the same session cookie as HTTP — no extra token needed wh
 Each `(tenant, user)` pair has one active **user session** (kind='user'). The server creates it automatically on first WS connection (`ensureActiveSession`). Key points:
 
 - **Default: one active session per user** — `prompt` messages without `sessionId` go to the user's default session.
-- **Dedicated shell session** — call `POST /api/p/example-shell/session` to create a shell-specific session. Pass the returned `sessionId` in `prompt` and `history` messages to keep shell conversations separate from the default chat.
+- **Dedicated shell session** — call `POST /api/p/custom-ui/session` to create a shell-specific session. Pass the returned `sessionId` in `prompt` and `history` messages to keep shell conversations separate from the default chat.
 - **Session persists across reconnects** — closing and reopening the WS doesn't create a new session. Messages are persisted in the DB.
 - **History is session-scoped** — `history` and `history_more` default to the active session. Pass `sessionId` to read a specific session (e.g. channel sessions from the sidebar).
 - **Channel sessions** — messages from WeChat/Telegram/etc. create separate sessions with `kind='channel'`. List them via `GET /api/channel-sessions`.
@@ -158,7 +158,7 @@ let shellSessionId = null;
 
 // Step 1: Create/get a dedicated shell session
 async function initSession() {
-  const res = await fetch('/api/p/example-shell/session', {
+  const res = await fetch('/api/p/custom-ui/session', {
     method: 'POST', credentials: 'include'
   });
   const data = await res.json();

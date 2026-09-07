@@ -352,10 +352,10 @@ GET  /api/p/datasource/schema/:name
 ```
 Inspect data source schema (tables, labels, properties).
 
-### Custom UI Shell (`example-shell` plugin)
+### Custom UI Shell (`custom-ui` plugin)
 
 ```
-POST /api/p/example-shell/session
+POST /api/p/custom-ui/session
 ```
 Create (or get) a dedicated session for the shell UI. Call this before connecting the WebSocket so prompts and history are isolated from the default chat session.
 ```json
@@ -364,7 +364,7 @@ Create (or get) a dedicated session for the shell UI. Call this before connectin
 Use the returned `sessionId` in WS `prompt` and `history` messages.
 
 ```
-GET  /api/p/example-shell/status
+GET  /api/p/custom-ui/status
 ```
 Draft and published shell state.
 ```json
@@ -375,7 +375,7 @@ Draft and published shell state.
 ```
 
 ```
-POST /api/p/example-shell/publish
+POST /api/p/custom-ui/publish
 ```
 Copy draft shell to tenant shared dir (goes live for all users).
 ```json
@@ -383,7 +383,7 @@ Copy draft shell to tenant shared dir (goes live for all users).
 ```
 
 ```
-GET  /api/p/example-shell/preview
+GET  /api/p/custom-ui/preview
 ```
 Serve the draft `index.html` for iframe preview.
 

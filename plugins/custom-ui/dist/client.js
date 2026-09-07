@@ -2,7 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState, useEffect, useCallback } from "react";
 import { Eye, EyeOff, ExternalLink, Paintbrush, Upload, RefreshCw, FileCode, CheckCircle } from "lucide-react";
 
-const PLUGIN_ID = "example-shell";
+const PLUGIN_ID = "custom-ui";
 const API = "/api";
 const SHELL_API = `${API}/p/${PLUGIN_ID}`;
 

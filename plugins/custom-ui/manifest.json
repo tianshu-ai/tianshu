@@ -1,5 +1,5 @@
 {
-  "id": "example-shell",
+  "id": "custom-ui",
   "version": "0.1.0",
   "displayName": "Custom UI Shell",
   "description": "Enables tenant-level UI customisation. When enabled, the agent can help users design and build a completely custom frontend that replaces the default chat UI, while talking to the same backend APIs.",
@@ -37,7 +37,7 @@
         "id": "toggle",
         "icon": "Paintbrush",
         "tooltip": "Custom UI Shell",
-        "opensPanel": "example-shell.preview",
+        "opensPanel": "custom-ui.preview",
         "order": 450
       }
     ],
@@ -76,9 +76,9 @@
     ]
   },
   "client": {
-    "entry": "@tianshu-builtin/plugin-example-shell/client"
+    "entry": "@tianshu-builtin/plugin-custom-ui/client"
   },
   "server": {
-    "entry": "@tianshu-builtin/plugin-example-shell/server"
+    "entry": "@tianshu-builtin/plugin-custom-ui/server"
   }
 }
