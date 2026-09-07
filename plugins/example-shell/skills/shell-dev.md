@@ -94,9 +94,19 @@ ws.onmessage = (e) => {
   }
 };
 
-// 4. Send chat message
+// 4. Send user message (triggers agent run)
 function sendMessage(text) {
-  ws.send(JSON.stringify({ type: 'chat', text }));
+  ws.send(JSON.stringify({ type: 'prompt', content: text }));
+}
+
+// 5. Request identity confirmation on connect
+ws.addEventListener('open', () => {
+  ws.send(JSON.stringify({ type: 'hello' }));
+});
+
+// 6. Load message history
+function loadHistory(sessionId) {
+  ws.send(JSON.stringify({ type: 'history', sessionId, limit: 50 }));
 }
 ```
 
