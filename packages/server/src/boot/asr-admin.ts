@@ -9,10 +9,9 @@ import { type Express, type Request, type Response } from "express";
 import { reloadAsrModel } from "./asr.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { pipeline } from "node:stream/promises";
-import { Readable } from "node:stream";
 import { createWriteStream } from "node:fs";
 import { execSync } from "node:child_process";
+import { getTianshuHome } from "../core/paths.js";
 
 interface ModelDef {
   id: string;
@@ -67,18 +66,12 @@ const MODELS: ModelDef[] = [
 const downloads = new Map<string, { progress: number; total: number; status: "downloading" | "extracting" | "done" | "error"; error?: string }>();
 
 function getModelsDir(): string {
-  // Try monorepo root first, then cwd
-  for (const base of [
-    path.resolve(process.cwd(), "..", ".."),
-    process.cwd(),
-  ]) {
-    const dir = path.join(base, "models");
-    if (fs.existsSync(dir)) return dir;
+  // Primary: <TIANSHU_HOME>/models (works for both dev and production)
+  const homeDir = path.join(getTianshuHome(), "models");
+  if (!fs.existsSync(homeDir)) {
+    fs.mkdirSync(homeDir, { recursive: true });
   }
-  // Create at monorepo root
-  const dir = path.resolve(process.cwd(), "..", "..", "models");
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  return homeDir;
 }
 
 function isInstalled(model: ModelDef): boolean {

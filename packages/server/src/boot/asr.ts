@@ -12,9 +12,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { fileURLToPath } from "node:url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { getTianshuHome } from "../core/paths.js";
 
 let recognizer: any = null;
 
@@ -41,48 +39,37 @@ const MODEL_CANDIDATES: { dirName: string; type: ModelCandidate["type"]; model: 
 
 function getModelsRoots(): string[] {
   return [
-    path.join(process.cwd(), "models"),
-    path.join(process.cwd(), "..", "..", "models"),
-    path.join(process.cwd(), "..", "models"),
-    path.resolve(__dirname, "..", "..", "..", "..", "models"),
+    path.join(getTianshuHome(), "models"),
   ];
 }
 
 function findBestModel(): ModelCandidate | null {
-  const roots = getModelsRoots();
+  const modelsRoot = getModelsRoots()[0];
 
   // Check if admin selected a specific model
-  for (const root of roots) {
-    const activeFile = path.join(root, "active-asr-model.txt");
-    if (fs.existsSync(activeFile)) {
-      const activeId = fs.readFileSync(activeFile, "utf8").trim();
-      const selected = MODEL_CANDIDATES.find((c) => c.dirName.includes(activeId) || activeId.includes(c.dirName.split("-202")[0]));
-      // Match by id from admin page
-      const byId: Record<string, typeof MODEL_CANDIDATES[0]> = {
-        "paraformer-zh-small": MODEL_CANDIDATES[2],
-        "paraformer-zh": MODEL_CANDIDATES[1],
-        "sense-voice-zh": MODEL_CANDIDATES[0],
-        "whisper-tiny": MODEL_CANDIDATES[3],
-      };
-      const pick = byId[activeId] ?? selected;
-      if (pick) {
-        for (const root2 of roots) {
-          const dir = path.join(root2, pick.dirName);
-          if (fs.existsSync(path.join(dir, pick.model))) {
-            return { dir, type: pick.type, model: pick.model, tokens: "tokens.txt" };
-          }
-        }
+  const activeFile = path.join(modelsRoot, "active-asr-model.txt");
+  if (fs.existsSync(activeFile)) {
+    const activeId = fs.readFileSync(activeFile, "utf8").trim();
+    const byId: Record<string, typeof MODEL_CANDIDATES[0]> = {
+      "paraformer-zh-small": MODEL_CANDIDATES[2],
+      "paraformer-zh": MODEL_CANDIDATES[1],
+      "sense-voice-zh": MODEL_CANDIDATES[0],
+      "whisper-tiny": MODEL_CANDIDATES[3],
+    };
+    const pick = byId[activeId];
+    if (pick) {
+      const dir = path.join(modelsRoot, pick.dirName);
+      if (fs.existsSync(path.join(dir, pick.model))) {
+        return { dir, type: pick.type, model: pick.model, tokens: "tokens.txt" };
       }
     }
   }
 
   // Fallback: auto-select best available
   for (const c of MODEL_CANDIDATES) {
-    for (const root of roots) {
-      const dir = path.join(root, c.dirName);
-      if (fs.existsSync(path.join(dir, c.model)) && fs.existsSync(path.join(dir, "tokens.txt"))) {
-        return { dir, type: c.type, model: c.model, tokens: "tokens.txt" };
-      }
+    const dir = path.join(modelsRoot, c.dirName);
+    if (fs.existsSync(path.join(dir, c.model)) && fs.existsSync(path.join(dir, "tokens.txt"))) {
+      return { dir, type: c.type, model: c.model, tokens: "tokens.txt" };
     }
   }
   return null;
