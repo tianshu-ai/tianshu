@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Download, Trash2, CheckCircle, Loader2, Mic, AlertCircle, CircleDot } from "lucide-react";
+import { Download, Trash2, CheckCircle, Loader2, Mic, AlertCircle, CircleDot, RefreshCw } from "lucide-react";
 import { useT } from "../../hooks/useT";
 
 interface ModelInfo {
@@ -33,144 +33,168 @@ export default function AsrModelsPage() {
 
   useEffect(() => {
     refresh();
+    // Poll while any download is active
     pollRef.current = setInterval(refresh, 2000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [refresh]);
 
   const activate = async (id: string) => {
-    await fetch(`/api/admin/asr/models/${id}/activate`, {
-      method: "POST", credentials: "include",
-    });
+    await fetch(`/api/admin/asr/models/${id}/activate`, { method: "POST", credentials: "include" });
     refresh();
   };
 
   const download = async (id: string) => {
-    await fetch(`/api/admin/asr/models/${id}/download`, {
-      method: "POST", credentials: "include",
-    });
+    await fetch(`/api/admin/asr/models/${id}/download`, { method: "POST", credentials: "include" });
     refresh();
   };
 
   const remove = async (id: string) => {
     if (!confirm(t("asr.deleteConfirm"))) return;
-    await fetch(`/api/admin/asr/models/${id}`, {
-      method: "DELETE", credentials: "include",
-    });
+    await fetch(`/api/admin/asr/models/${id}`, { method: "DELETE", credentials: "include" });
     refresh();
   };
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-64 text-fg-faint text-sm">Loading...</div>;
-  }
+  const installedCount = models.filter((m) => m.installed).length;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold text-fg-default flex items-center gap-2">
-          <Mic size={20} />
-          {t("asr.title")}
-        </h2>
-        <p className="mt-1 text-sm text-fg-muted">{t("asr.subtitle")}</p>
-        <p className="mt-1 text-xs text-fg-faint font-mono">{modelsDir}</p>
+    <div className="mx-auto max-w-5xl p-6">
+      {/* Header — matches ModelsPage / AuthPage pattern */}
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
+            <Mic size={18} className="text-link" />
+            {t("asr.title")}
+          </h1>
+          <p className="mt-1 max-w-3xl text-[12px] text-fg-faint">
+            {t("asr.subtitle")}{" "}
+            <span className="text-fg-muted">
+              {installedCount}/{models.length} {t("asr.installed").toLowerCase()}
+            </span>
+          </p>
+          <p className="mt-0.5 text-[11px] text-fg-fainter font-mono">{modelsDir}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => { setLoading(true); refresh(); }}
+          disabled={loading}
+          className="flex items-center gap-1.5 rounded-md border border-border-default px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-hover hover:text-fg-default disabled:opacity-50"
+        >
+          <RefreshCw size={13} className={loading ? "animate-spin" : ""} />
+          {t("common.reload")}
+        </button>
       </div>
 
-      <div className="space-y-3">
-        {models.map((m) => (
-          <div
-            key={m.id}
-            className={`rounded-xl border p-4 transition-colors ${
-              m.installed
-                ? "border-green-500/30 bg-green-500/5"
-                : m.downloading
-                  ? "border-blue-500/30 bg-blue-500/5"
-                  : "border-border-subtle bg-bg-surface"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-4">
+      {/* Model list */}
+      <div className="space-y-2">
+        {models.map((m) => {
+          const nameKey = `asr.model.${m.id}.name`;
+          const descKey = `asr.model.${m.id}.desc`;
+          const translatedName = t(nameKey) !== nameKey ? t(nameKey) : m.name;
+          const translatedDesc = t(descKey) !== descKey ? t(descKey) : m.description;
+          const dp = m.downloadProgress;
+          const isActive = m.installed && m.active;
+
+          return (
+            <div
+              key={m.id}
+              className={`flex items-center gap-4 rounded-md border px-4 py-3 ${
+                isActive
+                  ? "border-link/30 bg-link/5"
+                  : m.installed
+                    ? "border-emerald-700/30 bg-emerald-950/10"
+                    : m.downloading
+                      ? "border-blue-700/30 bg-blue-950/10"
+                      : "border-border-subtle bg-bg-surface"
+              }`}
+            >
+              {/* Left: info */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm text-fg-default">{t(`asr.model.${m.id}.name`) !== `asr.model.${m.id}.name` ? t(`asr.model.${m.id}.name`) : m.name}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-raised text-fg-faint">{m.size}</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-bg-raised text-fg-faint">{m.lang}</span>
-                  {m.installed && (
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${m.active ? "bg-blue-500/20 text-blue-400" : "bg-green-500/20 text-green-500"}`}>
-                      {m.active ? <><CircleDot size={10} /> {t("asr.active")}</> : <><CheckCircle size={10} /> {t("asr.installed")}</>}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-fg-default">{translatedName}</span>
+                  <span className="text-[10px] rounded border border-border-subtle px-1.5 py-0.5 text-fg-faint">{m.size}</span>
+                  <span className="text-[10px] rounded border border-border-subtle px-1.5 py-0.5 text-fg-faint">{m.lang}</span>
+                  {isActive && (
+                    <span className="text-[10px] rounded bg-link/20 px-1.5 py-0.5 text-link flex items-center gap-0.5">
+                      <CircleDot size={9} /> {t("asr.active")}
+                    </span>
+                  )}
+                  {m.installed && !isActive && (
+                    <span className="text-[10px] rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-400 flex items-center gap-0.5">
+                      <CheckCircle size={9} /> {t("asr.installed")}
                     </span>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-fg-muted">{t(`asr.model.${m.id}.desc`)}</p>
+                <p className="mt-0.5 text-[11px] text-fg-faint">{translatedDesc}</p>
 
-                {m.downloadProgress && (m.downloadProgress.status === "downloading" || m.downloadProgress.status === "extracting") && (
-                  <div className="mt-2">
-                    <div className="flex items-center gap-2 text-xs text-blue-400">
-                      <Loader2 size={12} className="animate-spin" />
-                      {m.downloadProgress.status === "extracting"
+                {/* Progress bar */}
+                {dp && (dp.status === "downloading" || dp.status === "extracting") && (
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <Loader2 size={11} className="animate-spin text-link" />
+                    <span className="text-[11px] text-link">
+                      {dp.status === "extracting"
                         ? t("asr.extracting")
-                        : m.downloadProgress.total > 0
+                        : dp.total > 0
                           ? t("asr.downloadingProgress")
-                              .replace("{current}", String(Math.round(m.downloadProgress.progress / 1024 / 1024)))
-                              .replace("{total}", String(Math.round(m.downloadProgress.total / 1024 / 1024)))
-                          : `${t("asr.downloading")}...`
-                      }
-                    </div>
-                    {m.downloadProgress.total > 0 && m.downloadProgress.status === "downloading" && (
-                      <div className="mt-1 h-1.5 rounded-full bg-bg-raised overflow-hidden">
-                        <div
-                          className="h-full bg-blue-500 rounded-full transition-all"
-                          style={{ width: `${Math.round((m.downloadProgress.progress / m.downloadProgress.total) * 100)}%` }}
-                        />
+                              .replace("{current}", String(Math.round(dp.progress / 1048576)))
+                              .replace("{total}", String(Math.round(dp.total / 1048576)))
+                          : `${t("asr.downloading")}...`}
+                    </span>
+                    {dp.total > 0 && dp.status === "downloading" && (
+                      <div className="flex-1 h-1 rounded-full bg-bg-raised overflow-hidden">
+                        <div className="h-full bg-link rounded-full transition-all" style={{ width: `${Math.round((dp.progress / dp.total) * 100)}%` }} />
                       </div>
                     )}
                   </div>
                 )}
-
-                {m.downloadProgress?.status === "error" && (
-                  <div className="mt-2 flex items-center gap-1 text-xs text-red-400">
-                    <AlertCircle size={12} />
-                    {t("asr.downloadFailed")}: {m.downloadProgress.error?.slice(0, 80)}
+                {dp?.status === "error" && (
+                  <div className="mt-1 flex items-center gap-1 text-[11px] text-danger">
+                    <AlertCircle size={11} /> {t("asr.downloadFailed")}: {dp.error?.slice(0, 60)}
                   </div>
                 )}
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              {/* Right: actions */}
+              <div className="flex items-center gap-1.5 shrink-0">
                 {m.installed ? (
-                  <div className="flex items-center gap-1.5">
-                    {!m.active && (
+                  <>
+                    {!isActive && (
                       <button
                         onClick={() => activate(m.id)}
-                        className="rounded-lg px-3 py-1.5 text-xs text-blue-400 hover:bg-blue-500/10 border border-blue-500/20 transition-colors"
+                        className="rounded-md px-3 py-1.5 text-xs text-link hover:bg-link/10 border border-link/20 transition-colors"
                       >
                         {t("asr.activate")}
                       </button>
                     )}
                     <button
                       onClick={() => remove(m.id)}
-                      className="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10 border border-red-500/20 transition-colors"
+                      className="rounded-md p-1.5 text-fg-faint hover:text-danger hover:bg-danger/10 transition-colors"
+                      title={t("asr.delete")}
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={14} />
                     </button>
-                  </div>
+                  </>
                 ) : m.downloading ? (
-                  <button disabled className="rounded-lg px-3 py-1.5 text-xs text-blue-400 opacity-60 cursor-wait">
-                    <Loader2 size={13} className="inline mr-1 animate-spin" />
+                  <button disabled className="rounded-md px-3 py-1.5 text-xs text-link opacity-50 cursor-wait border border-link/20">
+                    <Loader2 size={12} className="inline mr-1 animate-spin" />
                     {t("asr.downloading")}
                   </button>
                 ) : (
                   <button
                     onClick={() => download(m.id)}
-                    className="rounded-lg px-3 py-1.5 text-xs text-blue-400 hover:bg-blue-500/10 border border-blue-500/20 transition-colors"
+                    className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-hover hover:text-fg-default border border-border-default transition-colors"
                   >
-                    <Download size={13} className="inline mr-1" />
+                    <Download size={13} />
                     {t("asr.download")}
                   </button>
                 )}
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      <div className="rounded-lg border border-border-subtle bg-bg-surface p-4 text-xs text-fg-muted space-y-1">
+      {/* Footer note */}
+      <div className="mt-6 rounded-md border border-border-subtle bg-bg-surface px-4 py-3 text-[11px] text-fg-faint space-y-0.5">
         <p><strong>{t("asr.howItWorks")}:</strong> {t("asr.howItWorksDesc")}</p>
         <p><strong>{t("asr.dependency")}:</strong> {t("asr.dependencyDesc")}</p>
         <p><strong>{t("asr.crossPlatform")}:</strong> {t("asr.crossPlatformDesc")}</p>
