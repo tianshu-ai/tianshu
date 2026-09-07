@@ -9,8 +9,7 @@ import { type Express, type Request, type Response } from "express";
 import { reloadAsrModel } from "./asr.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { createWriteStream } from "node:fs";
-import { execSync } from "node:child_process";
+import { createReadStream, createWriteStream } from "node:fs";
 import { getTianshuHome } from "../core/paths.js";
 
 interface ModelDef {
@@ -165,10 +164,20 @@ export function mountAsrAdminRoutes(app: Express): void {
       fileStream.end();
       await new Promise<void>((resolve) => fileStream.on("finish", resolve));
 
-      // Extract
+      // Extract .tar.bz2 using pure Node.js (no system bzip2 needed)
       const ds = downloads.get(model.id)!;
       ds.status = "extracting";
-      execSync(`tar xjf "${tarPath}" -C "${modelsDir}"`, { timeout: 120_000 });
+      // @ts-ignore
+      const bz2 = (await import("unbzip2-stream")).default;
+      // @ts-ignore
+      const tar = await import("tar-fs");
+      await new Promise<void>((resolve, reject) => {
+        createReadStream(tarPath)
+          .pipe(bz2())
+          .pipe(tar.extract(modelsDir))
+          .on("finish", resolve)
+          .on("error", reject);
+      });
       fs.unlinkSync(tarPath);
 
       ds.status = "done";
