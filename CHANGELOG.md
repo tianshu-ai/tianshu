@@ -6,6 +6,47 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.44.0](https://github.com/tianshu-ai/tianshu/compare/v0.43.1...v0.44.0) (2026-09-07)
+
+
+### Features
+
+* **board:** fullscreen mode for board panel ([8fc4314](https://github.com/tianshu-ai/tianshu/commit/8fc43143c1c93308e90fbd57a59c947ee1f80e51))
+* doctor + setup agent improvements from 09-05 learnings ([9232b65](https://github.com/tianshu-ai/tianshu/commit/9232b65864812c209b6499a7fba42ded2c746dcd))
+* example-shell plugin — demo Dashboard UI replacing default frontend ([18c284e](https://github.com/tianshu-ai/tianshu/commit/18c284e1a3d4cfabecf05a58ff6d33777b0878c3))
+* **openshell:** setup agent knows how to build tianshu sandbox image ([6f8ce3e](https://github.com/tianshu-ai/tianshu/commit/6f8ce3e9daee6e5f03e584817186848e0eb146b3))
+* per-tenant shell directory — agent writes to _tenant/shell/ ([b419f19](https://github.com/tianshu-ai/tianshu/commit/b419f195b101b777df1d9cc5641e7d99e159d816))
+* **setup:** agent knows all builtin plugins, runtime mutual exclusivity ([233379c](https://github.com/tianshu-ai/tianshu/commit/233379ccbe163afc01d56c1dbc266a103b868e75))
+* shell plugin preview panel in default UI ([4f03b92](https://github.com/tianshu-ai/tianshu/commit/4f03b92ed174668234a3adcdf79246683da6da77))
+* shell publish workflow — draft → preview → publish ([4a3c56c](https://github.com/tianshu-ai/tianshu/commit/4a3c56cbd806e71ca36d1b7267a2bce66d556fc7))
+* UI shell plugins — tenant-level full frontend override (ADR-0005) ([0dc6126](https://github.com/tianshu-ai/tianshu/commit/0dc6126c7a0cfd1f424dc067c5ab3c039d1422ca))
+
+
+### Bug Fixes
+
+* add Paintbrush to plugin icon whitelist ([c032883](https://github.com/tianshu-ai/tianshu/commit/c032883e6543f8aa820d6312f3922db710364a23))
+* **board:** chat-embedded boards get allow-same-origin for API access ([608da96](https://github.com/tianshu-ai/tianshu/commit/608da96aa2702bf8d350ace3078a2cfd6f073287))
+* **board:** fullscreen toolbar opaque background, z-index above iframe ([28841f3](https://github.com/tianshu-ai/tianshu/commit/28841f3587f94326e2ff11664a04d8ece00ae160))
+* **doctor:** only check plugin prerequisites for enabled plugins ([e9d868a](https://github.com/tianshu-ai/tianshu/commit/e9d868a4a5d671fc5f777baadcb9e541dc414a45))
+* include plugins/**/sandbox-image/** in npm package files ([8dd8f33](https://github.com/tianshu-ai/tianshu/commit/8dd8f33a2db480bd2ad0394f4cd154cf90f914e7))
+* **openshell:** Dockerfile ENTRYPOINT → CMD to not break sandbox provisioning ([d996482](https://github.com/tianshu-ai/tianshu/commit/d9964825e57bc0fb77449650a4b43c46c6278544))
+* **openshell:** include sandbox-image/ in npm package files ([6bb80e4](https://github.com/tianshu-ai/tianshu/commit/6bb80e4c280f0801e9d90627167c2bc793b513cd))
+* **openshell:** sandbox create uses /bin/bash -c true for ENTRYPOINT compat ([97388ac](https://github.com/tianshu-ai/tianshu/commit/97388ac25798b37391a821183aeda05bf1036a90))
+* **openshell:** sandbox main process must stay alive — use sleep infinity ([4ab0a5b](https://github.com/tianshu-ai/tianshu/commit/4ab0a5b238a846030848cc9a0294939b4cb10ad0))
+* shell lookup checks user home _tenant/shell/ first ([daf94d0](https://github.com/tianshu-ai/tianshu/commit/daf94d08b23d5be461008308c756a7ad6f40c6d6))
+* shell plugin APIs gated on active plugin state ([3e51947](https://github.com/tianshu-ai/tianshu/commit/3e519472418cde86768a4ca95eeed8d096d46fd8))
+
+
+### Documentation
+
+* unify shell file conventions in prompt + skill ([2af09e6](https://github.com/tianshu-ai/tianshu/commit/2af09e6a5325f16a153a8a817ae08c54fc297a47))
+* update README with datasource, board.ds, setup/doctor improvements ([f6d714a](https://github.com/tianshu-ai/tianshu/commit/f6d714ab87ea06a6c476fe74c2f7c31da2606ade))
+
+
+### Refactor
+
+* example-shell → scaffold + agent knowledge injection ([3c68f72](https://github.com/tianshu-ai/tianshu/commit/3c68f727044c8d539d88532b715ddbbeaf27e0c1))
+
 ## [0.43.1](https://github.com/tianshu-ai/tianshu/compare/v0.43.0...v0.43.1) (2026-09-04)
 
 
