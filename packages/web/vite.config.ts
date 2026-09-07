@@ -18,6 +18,20 @@ export default defineConfig({
     proxy: {
       "/api": `http://localhost:${serverPort}`,
       "/ws": { target: `ws://localhost:${serverPort}`, ws: true },
+      // When the custom-ui shell plugin is active, the server serves
+      // a custom index.html at /tenants/... with injected config.
+      // This bypass rule lets the Vite dev server proxy tenant pages
+      // to the backend when the shell is published. The server
+      // returns 404 if no shell is active, and Vite falls through
+      // to its own SPA handler.
+      "/tenants": {
+        target: `http://localhost:${serverPort}`,
+        bypass(req) {
+          // Only proxy HTML page requests (not HMR, assets, etc.)
+          const accept = req.headers.accept || "";
+          if (!accept.includes("text/html")) return req.url;
+        },
+      },
     },
   },
 });
