@@ -160,6 +160,7 @@ export function mountAsrRoute(app: Express): void {
   app.get("/api/transcribe/status", async (_req: Request, res: Response) => {
     // Check if sherpa-onnx-node is installed
     let runtimeInstalled = true;
+    // @ts-ignore
     try { await import("sherpa-onnx-node"); } catch { runtimeInstalled = false; }
     res.json({ available: !!recognizer, runtimeInstalled });
   });

@@ -31,13 +31,12 @@ export function useVoiceInput(onResult: (text: string) => void) {
         .then((d) => setAvailable(!!d.available))
         .catch(() => {});
     }, 10000);
-    return () => {
-      clearInterval(interval);
     fetch("/api/preferences/asr.shortcut", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { if (d.value) setShortcut(d.value); })
       .catch(() => {});
     return () => {
+      clearInterval(interval);
       recorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
     };
   }, []);
