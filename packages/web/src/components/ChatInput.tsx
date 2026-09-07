@@ -42,17 +42,18 @@ export default function ChatInput() {
   // ── Push-to-talk: Alt+V ──────────────────────────────────
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.altKey && e.key === "v" && !pttRef.current && !recording && !voiceLoading) {
+      // Ctrl+Shift+M: push-to-talk (hold to record)
+      if (e.ctrlKey && e.shiftKey && e.key === "M" && !pttRef.current && !recording && !voiceLoading) {
         e.preventDefault();
         pttRef.current = true;
-        void toggleVoice(); // start recording
+        void toggleVoice();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if ((e.key === "v" || e.key === "Alt") && pttRef.current && recording) {
+      if ((e.key === "M" || e.key === "Control" || e.key === "Shift") && pttRef.current && recording) {
         e.preventDefault();
         pttRef.current = false;
-        void toggleVoice(); // stop → transcribe
+        void toggleVoice();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -104,7 +105,7 @@ export default function ChatInput() {
 
   // Voice button title with platform-aware shortcut hint
   const isMac = navigator.platform?.startsWith("Mac") || navigator.userAgent?.includes("Mac");
-  const shortcut = isMac ? "⌥V" : "Alt+V";
+  const shortcut = isMac ? "⌃⇧M" : "Ctrl+Shift+M";
   const voiceTitle = recording
     ? t("chat.stopListening")
     : voiceLoading
