@@ -163,6 +163,11 @@ export function mountAsrRoute(app: Express): void {
     if (ok) console.log("[asr] POST /api/transcribe ready");
   });
 
+  // Lightweight check — frontend hides mic button when ASR is unavailable
+  app.get("/api/transcribe/status", (_req: Request, res: Response) => {
+    res.json({ available: !!recognizer });
+  });
+
   app.post("/api/transcribe", async (req: Request, res: Response) => {
     if (!recognizer && !(await initRecognizer())) {
       res.status(503).json({ error: "ASR model not loaded" });

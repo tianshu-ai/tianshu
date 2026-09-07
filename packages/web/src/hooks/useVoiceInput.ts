@@ -12,11 +12,16 @@ type Status = "idle" | "recording" | "transcribing" | "error";
 export function useVoiceInput(onResult: (text: string) => void) {
   const [recording, setRecording] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
+  const [available, setAvailable] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  // Cleanup on unmount
+  // Check server ASR availability on mount
   useEffect(() => {
+    fetch("/api/transcribe/status", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => setAvailable(!!d.available))
+      .catch(() => setAvailable(false));
     return () => {
       recorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
     };
@@ -82,5 +87,5 @@ export function useVoiceInput(onResult: (text: string) => void) {
 
   const voiceLoading = status === "transcribing";
 
-  return { recording, status, toggle, voiceLoading };
+  return { recording, status, toggle, voiceLoading, available };
 }

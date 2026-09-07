@@ -37,13 +37,13 @@ export default function ChatInput() {
   const onVoiceResult = useCallback((text: string) => {
     setDraft((prev) => (prev ? prev + " " + text : text));
   }, []);
-  const { recording, toggle: toggleVoice, voiceLoading } = useVoiceInput(onVoiceResult);
+  const { recording, toggle: toggleVoice, voiceLoading, available: asrAvailable } = useVoiceInput(onVoiceResult);
 
   // ── Push-to-talk: Alt+V ──────────────────────────────────
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       // Ctrl+Shift+M: push-to-talk (hold to record)
-      if (e.ctrlKey && e.shiftKey && e.key === "M" && !pttRef.current && !recording && !voiceLoading) {
+      if (e.ctrlKey && e.shiftKey && e.key === "M" && asrAvailable && !pttRef.current && !recording && !voiceLoading) {
         e.preventDefault();
         pttRef.current = true;
         void toggleVoice();
@@ -142,7 +142,7 @@ export default function ChatInput() {
           </div>
           <div className="flex items-center gap-2">
             <ModelSelector />
-            {!isStreaming && (
+            {!isStreaming && asrAvailable && (
               <button
                 type="button"
                 onClick={() => void toggleVoice()}
