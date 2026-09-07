@@ -16,12 +16,18 @@ export function useVoiceInput(onResult: (text: string) => void) {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  // Check server ASR availability on mount
+  const [shortcut, setShortcut] = useState("ctrl+shift+m");
+
+  // Check server ASR availability + load shortcut preference
   useEffect(() => {
     fetch("/api/transcribe/status", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => setAvailable(!!d.available))
       .catch(() => setAvailable(false));
+    fetch("/api/preferences/asr.shortcut", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (d.value) setShortcut(d.value); })
+      .catch(() => {});
     return () => {
       recorderRef.current?.stream?.getTracks().forEach((t) => t.stop());
     };
@@ -87,5 +93,5 @@ export function useVoiceInput(onResult: (text: string) => void) {
 
   const voiceLoading = status === "transcribing";
 
-  return { recording, status, toggle, voiceLoading, available };
+  return { recording, status, toggle, voiceLoading, available, shortcut, setShortcut };
 }

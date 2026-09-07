@@ -37,20 +37,36 @@ export default function ChatInput() {
   const onVoiceResult = useCallback((text: string) => {
     setDraft((prev) => (prev ? prev + " " + text : text));
   }, []);
-  const { recording, toggle: toggleVoice, voiceLoading, available: asrAvailable } = useVoiceInput(onVoiceResult);
+  const { recording, toggle: toggleVoice, voiceLoading, available: asrAvailable, shortcut } = useVoiceInput(onVoiceResult);
 
   // ── Push-to-talk: Alt+V ──────────────────────────────────
   useEffect(() => {
+    // Parse shortcut like "ctrl+shift+m" into modifier checks
+    const parts = shortcut.toLowerCase().split("+").map((s) => s.trim());
+    const needCtrl = parts.includes("ctrl");
+    const needShift = parts.includes("shift");
+    const needAlt = parts.includes("alt");
+    const needMeta = parts.includes("meta") || parts.includes("cmd");
+    const mainKey = parts.find((p) => !["ctrl", "shift", "alt", "meta", "cmd"].includes(p)) || "m";
+
+    const matchesShortcut = (e: KeyboardEvent) =>
+      e.key.toLowerCase() === mainKey &&
+      e.ctrlKey === needCtrl &&
+      e.shiftKey === needShift &&
+      e.altKey === needAlt &&
+      e.metaKey === needMeta;
+
     const onKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+Shift+M: push-to-talk (hold to record)
-      if (e.ctrlKey && e.shiftKey && e.key === "M" && asrAvailable && !pttRef.current && !recording && !voiceLoading) {
+      if (matchesShortcut(e) && asrAvailable && !pttRef.current && !recording && !voiceLoading) {
         e.preventDefault();
         pttRef.current = true;
         void toggleVoice();
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      if ((e.key === "M" || e.key === "Control" || e.key === "Shift") && pttRef.current && recording) {
+      if (pttRef.current && recording &&
+        (e.key.toLowerCase() === mainKey || e.key === "Control" || e.key === "Shift" || e.key === "Alt" || e.key === "Meta")
+      ) {
         e.preventDefault();
         pttRef.current = false;
         void toggleVoice();
@@ -62,7 +78,7 @@ export default function ChatInput() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
     };
-  }, [recording, voiceLoading, toggleVoice]);
+  }, [recording, voiceLoading, toggleVoice, shortcut, asrAvailable]);
 
   // auto-resize textarea
   useEffect(() => {
@@ -103,14 +119,20 @@ export default function ChatInput() {
     }
   };
 
-  // Voice button title with platform-aware shortcut hint
+  // Voice button title with shortcut hint
   const isMac = navigator.platform?.startsWith("Mac") || navigator.userAgent?.includes("Mac");
-  const shortcut = isMac ? "⌃⇧M" : "Ctrl+Shift+M";
+  const displayShortcut = shortcut
+    .replace(/ctrl/i, isMac ? "⌃" : "Ctrl")
+    .replace(/shift/i, isMac ? "⇧" : "Shift")
+    .replace(/alt/i, isMac ? "⌥" : "Alt")
+    .replace(/meta|cmd/i, isMac ? "⌘" : "Win")
+    .replace(/\+/g, isMac ? "" : "+")
+    .toUpperCase();
   const voiceTitle = recording
     ? t("chat.stopListening")
     : voiceLoading
       ? t("chat.transcribing")
-      : `${t("chat.voiceInput")} (${shortcut})`;
+      : `${t("chat.voiceInput")} (${displayShortcut})`;
 
   return (
     <div className="border-t border-border-subtle bg-bg-base px-4 py-3">

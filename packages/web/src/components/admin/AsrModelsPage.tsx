@@ -19,7 +19,26 @@ export default function AsrModelsPage() {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [modelsDir, setModelsDir] = useState("");
   const [loading, setLoading] = useState(true);
+  const [shortcut, setShortcut] = useState("ctrl+shift+m");
+  const [recordingKey, setRecordingKey] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Load shortcut preference
+  useEffect(() => {
+    fetch("/api/preferences/asr.shortcut", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (d.value) setShortcut(d.value); })
+      .catch(() => {});
+  }, []);
+
+  const saveShortcut = async (value: string) => {
+    setShortcut(value);
+    await fetch("/api/preferences/asr.shortcut", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value }),
+    });
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -191,6 +210,43 @@ export default function AsrModelsPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* Shortcut config */}
+      <div className="mt-6 rounded-md border border-border-subtle bg-bg-surface px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-fg-default">{t("asr.shortcutLabel")}</p>
+            <p className="text-[11px] text-fg-faint mt-0.5">{t("asr.shortcutHint")}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              readOnly
+              value={recordingKey ? t("asr.pressKeys") : shortcut}
+              onFocus={() => setRecordingKey(true)}
+              onBlur={() => setRecordingKey(false)}
+              onKeyDown={(e) => {
+                if (!recordingKey) return;
+                e.preventDefault();
+                const parts: string[] = [];
+                if (e.ctrlKey) parts.push("ctrl");
+                if (e.metaKey) parts.push("meta");
+                if (e.altKey) parts.push("alt");
+                if (e.shiftKey) parts.push("shift");
+                const key = e.key.toLowerCase();
+                if (!["control", "shift", "alt", "meta"].includes(key)) {
+                  parts.push(key);
+                  const combo = parts.join("+");
+                  saveShortcut(combo);
+                  setRecordingKey(false);
+                  (e.target as HTMLInputElement).blur();
+                }
+              }}
+              className="w-48 rounded-md border border-border-default bg-bg-base px-3 py-1.5 text-xs text-fg-default text-center font-mono focus:border-link focus:outline-none cursor-pointer"
+            />
+          </div>
+        </div>
       </div>
 
       {/* Footer note */}
