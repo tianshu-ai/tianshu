@@ -112,11 +112,25 @@ export default function AsrModelsPage() {
       {!runtimeInstalled && (
         <div className="flex items-start gap-2 rounded-md border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
           <AlertCircle size={15} className="mt-0.5 flex-shrink-0" />
-          <div>
+          <div className="flex-1">
             <p className="font-medium">{t("asr.runtimeMissing")}</p>
             <p className="mt-0.5 text-xs text-amber-300/80">{t("asr.runtimeInstallHint")}</p>
-            <code className="mt-1 block rounded bg-black/30 px-2 py-1 text-xs font-mono text-amber-100">npm install sherpa-onnx-node</code>
           </div>
+          <button
+            onClick={async () => {
+              await fetch("/api/admin/asr/install-runtime", { method: "POST", credentials: "include" });
+              // Poll until installed
+              const poll = setInterval(async () => {
+                const r = await fetch("/api/transcribe/status", { credentials: "include" }).then(r => r.json());
+                if (r.runtimeInstalled) { clearInterval(poll); setRuntimeInstalled(true); }
+              }, 3000);
+              setTimeout(() => clearInterval(poll), 120_000);
+            }}
+            className="shrink-0 rounded-md px-3 py-1.5 text-xs font-medium bg-amber-500/20 text-amber-100 hover:bg-amber-500/30 border border-amber-500/30 transition-colors"
+          >
+            <Download size={13} className="inline mr-1" />
+            {t("asr.installRuntime")}
+          </button>
         </div>
       )}
 

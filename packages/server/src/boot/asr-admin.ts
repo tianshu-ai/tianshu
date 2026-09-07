@@ -65,6 +65,24 @@ const MODELS: ModelDef[] = [
 // Download state
 const downloads = new Map<string, { progress: number; total: number; status: "downloading" | "extracting" | "done" | "error"; error?: string }>();
 
+/** Walk up from server dist to find the top-level package.json with the bin field. */
+function findPackageRoot(): string | null {
+  let dir = path.resolve(import.meta.dirname ?? process.cwd());
+  for (let i = 0; i < 10; i++) {
+    const pkg = path.join(dir, "package.json");
+    if (fs.existsSync(pkg)) {
+      try {
+        const json = JSON.parse(fs.readFileSync(pkg, "utf8"));
+        if (json.bin?.tianshu || json.name === "@tianshu-ai/tianshu") return dir;
+      } catch {}
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return process.cwd();
+}
+
 function getModelsDir(): string {
   // Primary: <TIANSHU_HOME>/models (works for both dev and production)
   const homeDir = path.join(getTianshuHome(), "models");
@@ -178,6 +196,30 @@ export function mountAsrAdminRoutes(app: Express): void {
     const state = downloads.get(sid);
     if (!state) return res.json({ status: "idle" });
     res.json(state);
+  });
+
+  // Install sherpa-onnx-node runtime
+  app.post("/api/admin/asr/install-runtime", async (_req: Request, res: Response) => {
+    try {
+      // Find the tianshu package root (where package.json lives)
+      const pkgRoot = findPackageRoot();
+      if (!pkgRoot) {
+        res.status(500).json({ error: "Cannot find tianshu package root" });
+        return;
+      }
+      res.json({ ok: true, message: "installing" });
+      // Run in background — don't block the response
+      const { exec } = await import("node:child_process");
+      exec(`npm install sherpa-onnx-node`, { cwd: pkgRoot, timeout: 120_000 }, (err) => {
+        if (err) {
+          console.error("[asr-admin] runtime install failed:", err.message);
+        } else {
+          console.log("[asr-admin] sherpa-onnx-node installed successfully");
+        }
+      });
+    } catch (e) {
+      res.status(500).json({ error: String(e) });
+    }
   });
 
   // Activate model
