@@ -43,7 +43,8 @@ async function initRecognizer(): Promise<boolean> {
   }
   try {
     // @ts-ignore — no type declarations for sherpa-onnx-node
-    const { OfflineRecognizer } = await import("sherpa-onnx-node");
+    const mod = await import("sherpa-onnx-node");
+    const OfflineRecognizer = mod.OfflineRecognizer ?? mod.default?.OfflineRecognizer;
     recognizer = new OfflineRecognizer({
       modelConfig: {
         paraformer: { model: path.join(modelDir, "model.int8.onnx") },
