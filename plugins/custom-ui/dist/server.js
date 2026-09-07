@@ -122,8 +122,8 @@ function buildRoutes(ctx) {
     const now = Date.now();
     ctx.db
       .prepare(
-        `INSERT INTO sessions (id, user_id, status, kind, created_at, title)
-         VALUES (?, ?, 'active', 'user', ?, ?)`,
+        `INSERT INTO sessions (id, user_id, status, kind, created_at, title, channel_id)
+         VALUES (?, ?, 'active', 'user', ?, ?, 'custom-ui')`,
       )
       .run(sessionId, userId, now, 'Custom Shell');
 

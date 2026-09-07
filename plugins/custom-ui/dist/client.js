@@ -2,6 +2,8 @@ import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState, useEffect, useCallback } from "react";
 import { Eye, EyeOff, ExternalLink, Paintbrush, Upload, RefreshCw, FileCode, CheckCircle } from "lucide-react";
 
+import { useChatNav, subscribeToWsEvent } from "@tianshu/plugin-sdk/client";
+
 const PLUGIN_ID = "custom-ui";
 const API = "/api";
 const SHELL_API = `${API}/p/${PLUGIN_ID}`;
@@ -259,7 +261,50 @@ function formatSize(bytes) {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 }
 
+/**
+ * Sidebar section: shows the shell session when it has messages.
+ * Clicking it switches the chat view to the shell session transcript.
+ */
+function ShellSidebarSection() {
+  const [session, setSession] = useState(null);
+  const { viewingSessionId, setViewingSession } = useChatNav();
+
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/channel-sessions`, { credentials: "include" });
+      const data = await res.json();
+      const shell = (data.sessions || []).find(s => s.channelId === "custom-ui");
+      setSession(shell || null);
+    } catch { /* best-effort */ }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const off = subscribeToWsEvent("channel_session_changed", (ev) => {
+      if (ev.channelId === "custom-ui") refresh();
+    });
+    return off;
+  }, [refresh]);
+
+  if (!session) return null;
+
+  const active = viewingSessionId === session.id;
+
+  return _jsx("button", {
+    onClick: () => setViewingSession(active ? null : session.id),
+    className: `w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-colors ${
+      active
+        ? "bg-bg-selected text-fg-default border-l-2 border-accent"
+        : "text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+    }`,
+    children: [
+      _jsx(Paintbrush, { size: 13, className: active ? "text-accent" : "text-fg-faint" }),
+      _jsx("span", { className: "truncate", children: session.title || "Custom Shell" }),
+    ],
+  });
+}
+
 const exports = {
-  components: { ShellPreviewPanel },
+  components: { ShellPreviewPanel, ShellSidebarSection },
 };
 export default exports;

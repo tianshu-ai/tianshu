@@ -73,6 +73,15 @@
         "handler": "ensureSession",
         "access": "member"
       }
+    ],
+    "sidebarSections": [
+      {
+        "id": "shell-session",
+        "displayName": "Custom Shell",
+        "component": "ShellSidebarSection",
+        "after": "channels",
+        "order": 50
+      }
     ]
   },
   "client": {

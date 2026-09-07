@@ -153,8 +153,8 @@ export function mountShellSpa(
           const shellEntry = entries.find(e => e.manifest.id === shell.manifest.id && e.ctx);
           if (shellEntry?.ctx) {
             shellEntry.ctx.db.prepare(
-              `INSERT OR IGNORE INTO sessions (id, user_id, status, kind, created_at, title)
-               VALUES (?, ?, 'active', 'user', ?, 'Custom Shell')`,
+              `INSERT OR IGNORE INTO sessions (id, user_id, status, kind, created_at, title, channel_id)
+               VALUES (?, ?, 'active', 'user', ?, 'Custom Shell', 'custom-ui')`,
             ).run(shellSessionId, pageUserId, Date.now());
           }
         } catch { /* best-effort; the /session API is the fallback */ }
