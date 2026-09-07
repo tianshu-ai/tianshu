@@ -767,7 +767,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   compactRef.harness = harness;
 
   // External abort → harness.abort()
-  const onAbort = () => void harness.abort();
+  // Note: pi-agent-core 0.84 may throw HarnessNotImplemented for
+  // abort(); swallow it gracefully since the signal already cancelled
+  // the run and the harness will be discarded.
+  const onAbort = () => void harness.abort().catch(() => {});
   signal.addEventListener("abort", onAbort, { once: true });
 
   // Register this harness in the process-local registry so the
@@ -811,7 +814,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         lastAssistantRow = row;
         assistantTurns++;
         if (assistantTurns >= MAX_TURNS) {
-          void harness.abort();
+          void harness.abort().catch(() => {});
         }
       },
       onStreamError: () => {

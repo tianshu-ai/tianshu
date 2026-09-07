@@ -677,7 +677,7 @@ export async function runAgentLoop(
     // right after the terminal call, so exactly one task_complete
     // decides the outcome.
     try {
-      harness.abort();
+      harness.abort().catch(() => {});
     } catch {
       // best-effort; waitForIdle() below still resolves the run.
     }
@@ -688,7 +688,7 @@ export async function runAgentLoop(
   try {
     // Wire the abort signal: when innerCtl aborts (timeout / turn
     // cap / external), tell the harness.
-    const onAbort = () => void harness.abort();
+    const onAbort = () => void harness.abort().catch(() => {});
     innerCtl.signal.addEventListener("abort", onAbort, { once: true });
 
     await harness.prompt(initialUserMessage);
