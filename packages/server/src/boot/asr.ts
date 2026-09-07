@@ -17,9 +17,13 @@ let recognizer: any = null;
 
 function getModelDir(): string | null {
   // Look for the model in several locations
+  const base = "sherpa-onnx-paraformer-zh-small-2024-03-09";
   const candidates = [
-    path.join(process.cwd(), "models", "sherpa-onnx-paraformer-zh-small-2024-03-09"),
-    path.join(process.cwd(), "..", "..", "models", "sherpa-onnx-paraformer-zh-small-2024-03-09"),
+    path.join(process.cwd(), "models", base),
+    path.join(process.cwd(), "..", "..", "models", base),
+    path.join(process.cwd(), "..", "models", base),
+    // Absolute fallback for monorepo root
+    path.resolve(__dirname, "..", "..", "..", "..", "models", base),
   ];
   for (const dir of candidates) {
     if (fs.existsSync(path.join(dir, "model.int8.onnx"))) return dir;
