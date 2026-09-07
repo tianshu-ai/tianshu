@@ -48,66 +48,33 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       Array<(e: AgentHarnessEvent) => unknown>
     >();
     private aborted = false;
-
-    // New API surface mirrors production code's usage:
-    //   harness.events.on("*", listener)  → subscribe-style
-    //   harness.hooks.on("after_tool", handler)  → hook-style
-    events = {
-      on: (_type: string, listener: (e: AgentHarnessEvent) => void) => {
-        this.listeners.push(listener);
-        return () => {
-          this.listeners = this.listeners.filter((l) => l !== listener);
-        };
-      },
-    };
-    hooks = {
-      on: (type: string, handler: (e: AgentHarnessEvent) => unknown) => {
-        const arr = this.hookHandlers.get(type) ?? [];
-        arr.push(handler);
-        this.hookHandlers.set(type, arr);
-        return () => {
-          const next = (this.hookHandlers.get(type) ?? []).filter(
-            (h) => h !== handler,
-          );
-          this.hookHandlers.set(type, next);
-        };
-      },
-    };
-
     constructor(options: unknown) {
-      // Re-bind events/hooks since class field initializers run
-      // before `this` is fully available in some runtimes.
-      this.events = {
-        on: (_type: string, listener: (e: AgentHarnessEvent) => void) => {
-          this.listeners.push(listener);
-          return () => {
-            this.listeners = this.listeners.filter((l) => l !== listener);
-          };
-        },
-      };
-      this.hooks = {
-        on: (type: string, handler: (e: AgentHarnessEvent) => unknown) => {
-          const arr = this.hookHandlers.get(type) ?? [];
-          arr.push(handler);
-          this.hookHandlers.set(type, arr);
-          return () => {
-            const next = (this.hookHandlers.get(type) ?? []).filter(
-              (h) => h !== handler,
-            );
-            this.hookHandlers.set(type, next);
-          };
-        },
-      };
       const sp = (options as { systemPrompt?: string } | undefined)
         ?.systemPrompt;
       __lastSystemPrompt = sp;
     }
+    subscribe(listener: (e: AgentHarnessEvent) => void) {
+      this.listeners.push(listener);
+      return () => {
+        this.listeners = this.listeners.filter((l) => l !== listener);
+      };
+    }
+    on(type: string, handler: (e: AgentHarnessEvent) => unknown) {
+      const arr = this.hookHandlers.get(type) ?? [];
+      arr.push(handler);
+      this.hookHandlers.set(type, arr);
+      return () => {
+        const next = (this.hookHandlers.get(type) ?? []).filter(
+          (h) => h !== handler,
+        );
+        this.hookHandlers.set(type, next);
+      };
+    }
     async prompt(_text: string): Promise<void> {
       const emit = (e: AgentHarnessEvent) => {
         const t = (e as { type?: string }).type;
-        // Hook-channel events go to hooks.on handlers, NOT events.on.
-        if (t === "tool_result" || t === "tool_call" || t === "after_tool") {
-          for (const h of this.hookHandlers.get("after_tool") ?? []) h(e);
+        if (t === "tool_result" || t === "tool_call") {
+          for (const h of this.hookHandlers.get(t) ?? []) h(e);
           return;
         }
         for (const l of this.listeners) l(e);
@@ -130,12 +97,6 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     async abort() {
       this.aborted = true;
       __abortAcked = true;
-    }
-
-    // Static factory — production code uses `await AgentHarness.create(...)`
-    static async create(options: unknown) {
-      const h = new FakeHarness(options);
-      return { harness: h };
     }
   }
 

@@ -556,7 +556,8 @@ export async function runAgentLoop(
 
   // pi 0.80: harness resolves auth via a `Models` instance instead of
   // the old `getApiKeyAndHeaders` callback. See core/pi-models.ts.
-  const { harness } = await AgentHarness.create({
+  // @ts-expect-error pi-agent-core 0.84 d.ts marks constructor private but it works at runtime
+  const harness = new AgentHarness({
     session: session as unknown as import("@earendil-works/pi-agent-core").Session,
     tools: adapted.tools,
     systemPrompt,
@@ -592,7 +593,7 @@ export async function runAgentLoop(
   // chat path is naturally serial because the turn loop drains
   // before the next turn_end fires.
   let compactInFlight = false;
-  const unsubscribe = harness.events.on("*", (event: unknown) => {
+  const unsubscribe = (harness as any).subscribe((event: unknown) => {
     lastEventAt = Date.now();
     sawAnyEvent = true;
     const ev = event as { type?: string };
@@ -644,7 +645,7 @@ export async function runAgentLoop(
   // call would land in the DB but `completionSink.summary` stayed
   // undefined, the run terminated as `no_completion`, and the
   // pool re-queued the task forever.
-  const unhookToolResult = harness.hooks.on("after_tool", (event: unknown) => {
+  const unhookToolResult = (harness as any).on("tool_result", (event: unknown) => {
     const e = event as { toolCallId?: string; toolName?: string; input?: Record<string, unknown>; content?: unknown[]; isError?: boolean };
     if (e.toolName !== TASK_COMPLETE_TOOL) return undefined;
     // task_complete is TERMINAL and captured ONCE. The tool result

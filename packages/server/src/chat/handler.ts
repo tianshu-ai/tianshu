@@ -731,7 +731,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // through it, replacing 0.79's `getApiKeyAndHeaders` callback. We
   // build a single-provider Models closing over this run's resolved
   // (model, apiKey). See core/pi-models.ts.
-  const { harness } = await AgentHarness.create({
+  // @ts-expect-error pi-agent-core 0.84 d.ts marks constructor private but it works at runtime
+  const harness = new AgentHarness({
     session: piSession as unknown as import("@earendil-works/pi-agent-core").Session,
     tools: adapted.tools,
     systemPrompt,
@@ -793,7 +794,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     { name: string }
   >();
 
-  const unsubscribe = harness.events.on("*", (event: unknown) => {
+  const unsubscribe = (harness as any).subscribe((event: unknown) => {
     const ev = event as { type?: string };
     if (ev.type === "tool_execution_start") {
       const tc = event as unknown as {
