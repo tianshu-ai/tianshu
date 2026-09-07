@@ -18,41 +18,80 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let recognizer: any = null;
 
-function getModelDir(): string | null {
-  // Look for the model in several locations
-  const base = "sherpa-onnx-paraformer-zh-small-2024-03-09";
-  const candidates = [
-    path.join(process.cwd(), "models", base),
-    path.join(process.cwd(), "..", "..", "models", base),
-    path.join(process.cwd(), "..", "models", base),
-    // Absolute fallback for monorepo root
-    path.resolve(__dirname, "..", "..", "..", "..", "models", base),
+// Model preference order: best quality first
+interface ModelCandidate {
+  dir: string;
+  type: "senseVoice" | "paraformer" | "whisper";
+  model: string;  // relative to dir
+  tokens: string;
+}
+
+const MODEL_CANDIDATES: { dirName: string; type: ModelCandidate["type"]; model: string }[] = [
+  { dirName: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17", type: "senseVoice", model: "model.int8.onnx" },
+  { dirName: "sherpa-onnx-paraformer-zh-2024-03-09", type: "paraformer", model: "model.int8.onnx" },
+  { dirName: "sherpa-onnx-paraformer-zh-small-2024-03-09", type: "paraformer", model: "model.int8.onnx" },
+  { dirName: "sherpa-onnx-whisper-tiny", type: "whisper", model: "tiny-encoder.int8.onnx" },
+];
+
+function findBestModel(): ModelCandidate | null {
+  const modelsRoots = [
+    path.join(process.cwd(), "models"),
+    path.join(process.cwd(), "..", "..", "models"),
+    path.join(process.cwd(), "..", "models"),
+    path.resolve(__dirname, "..", "..", "..", "..", "models"),
   ];
-  for (const dir of candidates) {
-    if (fs.existsSync(path.join(dir, "model.int8.onnx"))) return dir;
+  for (const c of MODEL_CANDIDATES) {
+    for (const root of modelsRoots) {
+      const dir = path.join(root, c.dirName);
+      if (fs.existsSync(path.join(dir, c.model)) && fs.existsSync(path.join(dir, "tokens.txt"))) {
+        return { dir, type: c.type, model: c.model, tokens: "tokens.txt" };
+      }
+    }
   }
   return null;
 }
 
 async function initRecognizer(): Promise<boolean> {
   if (recognizer) return true;
-  const modelDir = getModelDir();
-  if (!modelDir) {
-    console.warn("[asr] paraformer model not found — transcribe endpoint disabled");
+  const best = findBestModel();
+  if (!best) {
+    console.warn("[asr] no ASR model found — transcribe endpoint disabled. Download one from Settings → 语音识别.");
     return false;
   }
   try {
     // @ts-ignore — no type declarations for sherpa-onnx-node
     const mod = await import("sherpa-onnx-node");
     const OfflineRecognizer = mod.OfflineRecognizer ?? mod.default?.OfflineRecognizer;
-    recognizer = new OfflineRecognizer({
-      modelConfig: {
-        paraformer: { model: path.join(modelDir, "model.int8.onnx") },
-        tokens: path.join(modelDir, "tokens.txt"),
+
+    // Build config based on model type
+    const modelPath = path.join(best.dir, best.model);
+    const tokensPath = path.join(best.dir, best.tokens);
+    let modelConfig: Record<string, unknown>;
+
+    if (best.type === "senseVoice") {
+      modelConfig = {
+        senseVoice: { model: modelPath, language: "auto", useInverseTextNormalization: 1 },
+        tokens: tokensPath,
         numThreads: 4,
-      },
-    });
-    console.log("[asr] paraformer-zh-small loaded from", modelDir);
+      };
+    } else if (best.type === "whisper") {
+      const decoderPath = modelPath.replace("encoder", "decoder");
+      modelConfig = {
+        whisper: { encoder: modelPath, decoder: decoderPath, language: "zh" },
+        tokens: tokensPath,
+        numThreads: 4,
+      };
+    } else {
+      // paraformer
+      modelConfig = {
+        paraformer: { model: modelPath },
+        tokens: tokensPath,
+        numThreads: 4,
+      };
+    }
+
+    recognizer = new OfflineRecognizer({ modelConfig });
+    console.log(`[asr] loaded ${best.type} from ${best.dir}`);
     return true;
   } catch (e) {
     console.warn("[asr] failed to load sherpa-onnx:", e);
