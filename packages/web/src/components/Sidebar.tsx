@@ -390,12 +390,15 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const t = useT();
   const [oldPw, setOldPw] = useState("");
   const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
   const submit = async () => {
     if (newPw.length < 6) { setError(t("user.pwTooShort")); return; }
+    if (newPw !== confirmPw) { setError(t("user.pwMismatch")); return; }
+    if (newPw === oldPw) { setError(t("user.pwSameAsOld")); return; }
     setBusy(true); setError(null);
     try {
       const res = await fetch("/api/me/password", {
@@ -444,15 +447,29 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
               <input
                 type="password"
                 value={newPw} onChange={(e) => setNewPw(e.target.value)}
+                className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
+              />
+              {newPw.length > 0 && newPw.length < 6 && (
+                <span className="text-[10px] text-danger mt-0.5 block">{t("user.pwTooShort")}</span>
+              )}
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-[11px] text-fg-faint">{t("user.confirmPassword")}</span>
+              <input
+                type="password"
+                value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
                 className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
               />
+              {confirmPw.length > 0 && confirmPw !== newPw && (
+                <span className="text-[10px] text-danger mt-0.5 block">{t("user.pwMismatch")}</span>
+              )}
             </label>
             <div className="mt-1 flex justify-end gap-2">
               <button onClick={onClose}
                 className="rounded-lg px-3 py-1.5 text-sm font-medium border border-border-default text-fg-muted hover:text-fg-default disabled:opacity-50"
               >{t("common.cancel")}</button>
-              <button onClick={() => void submit()} disabled={busy || !oldPw || !newPw}
+              <button onClick={() => void submit()} disabled={busy || !oldPw || newPw.length < 6 || newPw !== confirmPw}
                 className="rounded-lg px-3 py-1.5 text-sm font-medium bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-50"
               >{busy ? t("common.saving") : t("common.save")}</button>
             </div>
