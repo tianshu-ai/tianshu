@@ -616,10 +616,7 @@ function LocalUsersSection() {
     await api.adminDeleteUser(u.id);
     await load();
   };
-  const rmRole = async (id: string, tenantId: string) => {
-    await api.adminRemoveRole(id, tenantId);
-    await load();
-  };
+
 
   return (
     <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
@@ -688,28 +685,14 @@ function LocalUsersSection() {
                   <span className="rounded-full border border-brand-500/40 bg-brand-600/15 px-2 py-0.5 text-[11px] font-medium text-brand-300">
                     {t("auth.users.superAdminBadge")}
                   </span>
-                ) : u.roles.length === 0 ? (
-                  <span className="text-[11px] text-fg-fainter">{t("auth.users.noRoles")}</span>
                 ) : (
-                  u.roles.map((r) => (
-                    <span
-                      key={r.tenantId}
-                      className="flex items-center gap-1.5 rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted"
-                    >
-                      <span className="font-mono">{r.tenantId}</span>
-                      <span className={r.role === "admin" ? "font-medium text-brand-400" : ""}>
-                        {r.role === "admin" ? t("user.role.admin") : t("user.role.member")}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => void rmRole(u.id, r.tenantId)}
-                        className="ml-0.5 text-fg-fainter hover:text-danger"
-                        title={t("auth.users.removeRole")}
-                      >
-                        ×
-                      </button>
+                  <span
+                    className="flex items-center gap-1.5 rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted"
+                  >
+                    <span className={u.role === "admin" ? "font-medium text-brand-400" : ""}>
+                      {u.role === "admin" ? t("user.role.admin") : t("user.role.member")}
                     </span>
-                  ))
+                  </span>
                 )}
               </div>
             </div>
@@ -840,27 +823,24 @@ function SetPasswordModal({
 
 function AssignRoleModal({
   user,
-  tenants,
   onClose,
   onDone,
 }: {
   user: AdminLocalUser;
-  tenants: string[];
+  tenants?: string[]; // kept for compat, ignored
   onClose: () => void;
   onDone: () => void;
 }) {
   const t = useT();
-  const [tenantId, setTenantId] = useState(tenants[0] ?? "");
-  const [role, setRole] = useState<"admin" | "member">("member");
+  const [role, setRole] = useState<"admin" | "member">(user.role);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const submit = async () => {
-    if (!tenantId) return;
     setBusy(true);
     setErr(null);
     try {
-      await api.adminSetRole(user.id, tenantId, role);
+      await api.adminSetRole(user.id, role);
       onDone();
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
@@ -872,59 +852,23 @@ function AssignRoleModal({
     <Modal isOpen onClose={onClose} title={t("auth.users.rolesTitle", { name: user.username })} size="sm" allowMaximize={false}>
       <div className="flex flex-col gap-3 p-1">
         {err && <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">{err}</div>}
-        {/* Existing roles */}
-        {user.roles.length > 0 && (
-          <div>
-            <div className="mb-1 text-[11px] text-fg-faint">{t("auth.users.currentRoles")}</div>
-            <div className="flex flex-wrap gap-1.5">
-              {user.roles.map((r) => (
-                <span key={r.tenantId} className="rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted">
-                  <span className="font-mono">{r.tenantId}</span>{" "}
-                  <span className={r.role === "admin" ? "text-brand-400" : ""}>
-                    {r.role === "admin" ? t("user.role.admin") : t("user.role.member")}
-                  </span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-        {tenants.length === 0 ? (
-          <div className="rounded-md border border-amber-700/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
-            {t("auth.users.noTenants")}
-          </div>
-        ) : (
-          <>
-            <label className="text-sm">
-              <span className="mb-1 block text-[11px] text-fg-faint">{t("auth.users.tenantLabel")}</span>
-              <select
-                value={tenantId}
-                onChange={(e) => setTenantId(e.target.value)}
-                className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
-              >
-                {tenants.map((tn) => (
-                  <option key={tn} value={tn}>{tn}</option>
-                ))}
-              </select>
-            </label>
-            <label className="text-sm">
-              <span className="mb-1 block text-[11px] text-fg-faint">{t("auth.users.roleInTenantLabel")}</span>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value as "admin" | "member")}
-                className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
-              >
-                <option value="member">{t("user.role.member")}</option>
-                <option value="admin">{t("user.role.admin")}</option>
-              </select>
-            </label>
-            <div className="mt-1 flex justify-end gap-2">
-              <ModalBtn kind="ghost" onClick={onClose}>{t("common.close")}</ModalBtn>
-              <ModalBtn kind="primary" disabled={!tenantId || busy} onClick={() => void submit()}>
-                {busy ? t("common.saving") : t("auth.users.setRole")}
-              </ModalBtn>
-            </div>
-          </>
-        )}
+        <label className="text-sm">
+          <span className="mb-1 block text-[11px] text-fg-faint">{t("auth.users.roleInTenantLabel")}</span>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as "admin" | "member")}
+            className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
+          >
+            <option value="member">{t("user.role.member")}</option>
+            <option value="admin">{t("user.role.admin")}</option>
+          </select>
+        </label>
+        <div className="mt-1 flex justify-end gap-2">
+          <ModalBtn kind="ghost" onClick={onClose}>{t("common.close")}</ModalBtn>
+          <ModalBtn kind="primary" disabled={busy} onClick={() => void submit()}>
+            {busy ? t("common.saving") : t("auth.users.setRole")}
+          </ModalBtn>
+        </div>
       </div>
     </Modal>
   );

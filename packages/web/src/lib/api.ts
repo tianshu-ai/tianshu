@@ -269,16 +269,11 @@ export const api = {
     patchJson<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(id)}/password`, { password }),
   adminDeleteUser: (id: string) =>
     mutateJson<{ ok: boolean }>(`/api/admin/users/${encodeURIComponent(id)}`, "DELETE"),
-  adminSetRole: (id: string, tenantId: string, role: "admin" | "member") =>
+  adminSetRole: (id: string, role: "admin" | "member") =>
     mutateJson<{ ok: boolean }>(
-      `/api/admin/users/${encodeURIComponent(id)}/roles/${encodeURIComponent(tenantId)}`,
+      `/api/admin/users/${encodeURIComponent(id)}/role`,
       "PUT",
       { role },
-    ),
-  adminRemoveRole: (id: string, tenantId: string) =>
-    mutateJson<{ ok: boolean }>(
-      `/api/admin/users/${encodeURIComponent(id)}/roles/${encodeURIComponent(tenantId)}`,
-      "DELETE",
     ),
   /** Admin: full auth config (secrets redacted to *Set booleans). */
   adminAuth: () => getJson<AdminAuthConfig>("/api/admin/auth"),
@@ -309,9 +304,9 @@ export interface AdminLocalUser {
   username: string;
   email: string | null;
   createdAt: number;
-  roles: Array<{ tenantId: string; role: "admin" | "member" }>;
-  /** Config-declared super-admin: all permissions across all tenants
-   *  (empty `roles` is expected — authority comes from config). */
+  /** Role in the CURRENT tenant (API is now tenant-scoped). */
+  role: "admin" | "member";
+  /** Config-declared super-admin. */
   superAdmin: boolean;
 }
 
