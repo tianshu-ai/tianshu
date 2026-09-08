@@ -64,6 +64,9 @@ export async function mountStaticSpa(app: Express): Promise<boolean> {
       if (req.path === "/api") return next();
       if (req.path.startsWith("/ws")) return next();
       if (req.method !== "GET" && req.method !== "HEAD") return next();
+      // Don't serve index.html for asset requests — stale hashes
+      // from a previous build should 404, not return HTML.
+      if (req.path.startsWith("/assets/")) return next();
       // Anything else \u2014 /, /tenants/x/users/y/, /admin/foo \u2014 gets
       // index.html. The SPA's router handles it.
       res.type("html").send(indexHtml);
