@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useState, useEffect, useCallback } from "react";
-import { Eye, EyeOff, ExternalLink, Paintbrush, Upload, RefreshCw, FileCode, CheckCircle } from "lucide-react";
+import { Eye, EyeOff, ExternalLink, Maximize2, Minimize2, Paintbrush, Upload, RefreshCw, FileCode, CheckCircle } from "lucide-react";
 
 import { useChatNav, subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
 
@@ -17,6 +17,7 @@ function ShellPreviewPanel(_props) {
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
   const [previewKey, setPreviewKey] = useState(0);
+  const [fullPreview, setFullPreview] = useState(false);
   const [shellUrl, setShellUrl] = useState(null);
 
   // Fetch identity to build shell URL
@@ -187,21 +188,40 @@ function ShellPreviewPanel(_props) {
 
       // Preview iframe (draft)
       hasDraft && _jsxs("div", {
-        className: "mx-3 mt-3",
+        className: fullPreview
+          ? "fixed inset-0 z-50 flex flex-col bg-bg-base"
+          : "mx-3 mt-3",
         children: [
-          _jsx("div", {
-            className: "text-[11px] font-medium text-fg-muted mb-1.5",
-            children: "Draft Preview",
+          _jsxs("div", {
+            className: fullPreview
+              ? "flex items-center justify-between px-3 py-2 border-b border-border-subtle"
+              : "flex items-center justify-between mb-1.5",
+            children: [
+              _jsx("span", {
+                className: "text-[11px] font-medium text-fg-muted",
+                children: "Draft Preview",
+              }),
+              _jsx("button", {
+                onClick: () => setFullPreview(f => !f),
+                className: "rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors",
+                title: fullPreview ? "Exit fullscreen" : "Fullscreen preview",
+                children: fullPreview ? _jsx(Minimize2, { size: 13 }) : _jsx(Maximize2, { size: 13 }),
+              }),
+            ],
           }),
           _jsx("div", {
-            className: "rounded-lg border border-border-subtle overflow-hidden bg-white",
-            style: { height: "240px" },
+            className: fullPreview
+              ? "flex-1 overflow-hidden"
+              : "rounded-lg border border-border-subtle overflow-hidden bg-white",
+            style: fullPreview ? {} : { height: "240px" },
             children: _jsx("iframe", {
               src: `${SHELL_API}/preview`,
               title: "Shell Preview",
               sandbox: "allow-scripts allow-forms allow-same-origin",
               className: "w-full h-full border-0",
-              style: { transform: "scale(0.5)", transformOrigin: "top left", width: "200%", height: "200%" },
+              style: fullPreview
+                ? {}
+                : { transform: "scale(0.5)", transformOrigin: "top left", width: "200%", height: "200%" },
             }, previewKey),
           }),
         ],
