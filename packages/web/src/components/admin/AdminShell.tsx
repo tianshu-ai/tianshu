@@ -89,7 +89,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "AuthSettingsPage",
     coreComponent: AuthSettingsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "System",
+    group: "Platform",
     order: 1,
     clientEntry: null,
   },
@@ -102,7 +102,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "AuthProvidersPage",
     coreComponent: AuthProvidersPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "System",
+    group: "Platform",
     order: 2,
     clientEntry: null,
   },
@@ -115,7 +115,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "AuthUsersPage",
     coreComponent: AuthUsersPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "System",
+    group: "Platform",
     order: 3,
     clientEntry: null,
   },
@@ -128,7 +128,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "AuthTenantsPage",
     coreComponent: AuthTenantsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "System",
+    group: "Platform",
     order: 4,
     clientEntry: null,
   },
@@ -141,7 +141,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "ModelsPage",
     coreComponent: ModelsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "System",
+    group: "Tenant",
     order: 5,
     clientEntry: null,
   },
@@ -154,7 +154,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "McpServersPage",
     coreComponent: McpServersPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "System",
+    group: "Tenant",
     order: 6,
     clientEntry: null,
   },
@@ -167,7 +167,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "AsrModelsPage",
     coreComponent: AsrModelsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "System",
+    group: "Tenant",
     order: 7,
     clientEntry: null,
   },
@@ -321,8 +321,10 @@ function localizeGroup(
   group: string,
 ): string {
   switch (group) {
-    case "System":
-      return t("admin.group.system");
+    case "Platform":
+      return t("admin.group.platform");
+    case "Tenant":
+      return t("admin.group.tenant");
     case "Plugins":
       return t("admin.group.plugins");
     default:

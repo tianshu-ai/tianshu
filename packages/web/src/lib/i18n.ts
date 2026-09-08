@@ -338,7 +338,8 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "sidebar.channels": "Channels",
     "sidebar.sessionsNote": "Sessions are managed by the agent, not the user (ADR-0001 §5).",
     // admin shell nav
-    "admin.group.system": "System",
+    "admin.group.platform": "Platform",
+    "admin.group.tenant": "Tenant",
     "admin.group.plugins": "Plugins",
     "admin.nav.auth": "Auth",
     "admin.nav.authProviders": "Providers",
@@ -705,7 +706,8 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "sidebar.channels": "渠道",
     "sidebar.sessionsNote": "会话由 Agent 管理，用户无需干预（ADR-0001 §5）。",
     // admin shell nav
-    "admin.group.system": "系统",
+    "admin.group.platform": "平台管理",
+    "admin.group.tenant": "租户设置",
     "admin.group.plugins": "插件",
     "admin.nav.auth": "鉴权",
     "admin.nav.authProviders": "登录提供方",
