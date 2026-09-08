@@ -126,6 +126,9 @@ import {
   peekToolCatalogDelta,
 } from "./flush-tool-delta.js";
 import { CompactSkippedError, compactSession } from "./compact.js";
+import { loadGlobalConfig } from "../core/config.js";
+import { getUserStore } from "../core/auth/user-store.js";
+import { resolveTenantRole } from "../core/auth/identity.js";
 import { buildHostTools, getCompactRef } from "./host-tools.js";
 import {
   toWire,
@@ -620,7 +623,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     },
   });
   // Resolve user role for tool-level access control
-  const userRole = resolveUserRole(ctx, userId);
+  const authCfg = loadGlobalConfig().auth ?? {};
+  const userRole: "admin" | "member" = authCfg.enabled
+    ? resolveTenantRole(authCfg, getUserStore(), { userId, tenantId: ctx.tenantId })
+    : "admin";
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {
@@ -2020,19 +2026,4 @@ function purgeOrphanedToolResults(ctx: TenantContext, sessionId: string): number
   return orphanRowIds.length;
 }
 
-/** Resolve the user's role in the current tenant for tool access control. */
-function resolveUserRole(ctx: TenantContext, userId: string): "admin" | "member" {
-  try {
-    const { loadGlobalConfig } = require("../core/config.js");
-    const { getUserStore } = require("../core/auth/user-store.js");
-    const { resolveTenantRole } = require("../core/auth/identity.js");
-    const authCfg = loadGlobalConfig().auth ?? {};
-    if (!authCfg.enabled) return "admin"; // dev mode
-    return resolveTenantRole(authCfg, getUserStore(), {
-      userId,
-      tenantId: ctx.tenantId,
-    });
-  } catch {
-    return "member"; // safe default
-  }
-}
+
