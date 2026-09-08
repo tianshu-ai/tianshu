@@ -506,6 +506,9 @@ export interface ToolContribution {
    * transition — absent means "assume it has existed forever".
    */
   since?: string;
+  /** Access level. "admin" = only tenant admins can invoke this tool
+   *  via the agent. Default "member" (any user). */
+  access?: "member" | "admin";
 }
 
 export interface ToolsetContribution {

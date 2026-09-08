@@ -691,8 +691,8 @@ export class PluginRegistry {
     return out;
   }
 
-  toolsForTenant(tenantId: string): Array<{ pluginId: string; tool: AgentTool }> {
-    const out: Array<{ pluginId: string; tool: AgentTool }> = [];
+  toolsForTenant(tenantId: string): Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin" }> {
+    const out: Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin" }> = [];
     const cached = this.cache.get(tenantId);
     if (!cached) return out;
 
@@ -731,7 +731,7 @@ export class PluginRegistry {
           delete e.exports;
           continue;
         }
-        out.push({ pluginId: e.manifest.id, tool });
+        out.push({ pluginId: e.manifest.id, tool, access: t.access });
       }
       // (2) Dynamic toolset providers: each provider's listTools()
       // is read every turn so MCP servers can come/go without a

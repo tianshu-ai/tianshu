@@ -34,7 +34,7 @@ export interface Toolset {
 
 export interface BuildToolsetOpts {
   /** Plugin tools collected from `pluginRegistry.toolsForTenant`. */
-  pluginTools: Array<{ pluginId: string; tool: AgentTool }>;
+  pluginTools: Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin" }>;
   /** Context passed to each plugin tool's `available()` and
    *  `execute()`. Required iff `pluginTools` is non-empty. */
   toolContext: BuildToolContext;
@@ -70,6 +70,9 @@ export interface BuildToolContext {
     | { kind: "main" }
     | { kind: "worker"; workerKind: string; slug?: string };
   log: PluginLogger;
+  /** Role of the user in the current tenant. Used to enforce
+   *  tool-level access control (manifest tools[].access). */
+  userRole?: "admin" | "member";
   /**
    * Session this toolset belongs to. Plumbed through to every
    * tool's `AgentToolContext.sessionId` so plugins can attribute
@@ -141,7 +144,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
 
   const agentScope = toolContext.agentScope ?? { kind: "main" as const };
 
-  for (const { pluginId, tool } of pluginTools) {
+  for (const { pluginId, tool, access: toolAccess } of pluginTools) {
     const ctx: AgentToolContext = {
       pluginId,
       tenantId: toolContext.tenantId,
@@ -181,9 +184,13 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       continue;
     }
     schemas.push(tool.schema);
+    const effectiveAccess = toolAccess ?? "member";
     executors[name] = (args) => {
       if (toolContext.signal?.aborted) {
         throw new Error("aborted by user");
+      }
+      if (effectiveAccess === "admin" && toolContext.userRole === "member") {
+        return { content: [{ type: "text" as const, text: "Permission denied: this tool requires admin role." }] };
       }
       return tool.execute(args, ctx);
     };

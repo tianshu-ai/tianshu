@@ -619,6 +619,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       return panels;
     },
   });
+  // Resolve user role for tool-level access control
+  const userRole = resolveUserRole(ctx, userId);
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {
@@ -627,13 +629,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       capabilities: hostCaps,
       userHomeDir: userHome,
       tenantHomeDir: requireHomeDir(homeDir, ctx, "runPrompt"),
-      // Main chat agent. Drives `tenant_config_write` boundary in
-      // the files plugin: main may write to `main/skills/` and
-      // shared `skills/`.
       agentScope: { kind: "main" },
       log: makeLogger(ctx.tenantId, userId, send),
       sessionId: session.id,
       channelSession,
+      userRole,
     },
     hostTools: hostToolsDefs
   });
@@ -2018,4 +2018,21 @@ function purgeOrphanedToolResults(ctx: TenantContext, sessionId: string): number
     `[handler] purgeOrphanedToolResults: deleted ${orphanRowIds.length} orphan(s) from session ${sessionId}`,
   );
   return orphanRowIds.length;
+}
+
+/** Resolve the user's role in the current tenant for tool access control. */
+function resolveUserRole(ctx: TenantContext, userId: string): "admin" | "member" {
+  try {
+    const { loadGlobalConfig } = require("../core/config.js");
+    const { getUserStore } = require("../core/auth/user-store.js");
+    const { resolveTenantRole } = require("../core/auth/identity.js");
+    const authCfg = loadGlobalConfig().auth ?? {};
+    if (!authCfg.enabled) return "admin"; // dev mode
+    return resolveTenantRole(authCfg, getUserStore(), {
+      userId,
+      tenantId: ctx.tenantId,
+    });
+  } catch {
+    return "member"; // safe default
+  }
 }

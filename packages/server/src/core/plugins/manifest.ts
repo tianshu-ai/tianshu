@@ -628,7 +628,9 @@ function parseTool(raw: unknown, ctx: string, acc: Acc): ToolContribution | null
   const id = expectString(raw, "id", acc, ctx);
   const moduleKey = expectString(raw, "module", acc, ctx);
   if (id == null || moduleKey == null) return null;
-  return { id, module: moduleKey };
+  const rawAccess = isPlainObject(raw) ? (raw as { access?: unknown }).access : undefined;
+  const access: "member" | "admin" = rawAccess === "admin" ? "admin" : "member";
+  return { id, module: moduleKey, access };
 }
 
 function parseChannel(
