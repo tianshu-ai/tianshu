@@ -6,9 +6,16 @@
   "category": "knowledge",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
-  "permissions": ["workspace.read", "workspace.write"],
-  "client": { "entry": "@tianshu-builtin/plugin-files/client" },
-  "server": { "entry": "@tianshu-builtin/plugin-files/server" },
+  "permissions": [
+    "workspace.read",
+    "workspace.write"
+  ],
+  "client": {
+    "entry": "@tianshu-builtin/plugin-files/client"
+  },
+  "server": {
+    "entry": "@tianshu-builtin/plugin-files/server"
+  },
   "contributes": {
     "topBarButtons": [
       {
@@ -50,27 +57,97 @@
       }
     ],
     "apiRoutes": [
-      { "method": "GET",  "path": "/list",   "handler": "list"   },
-      { "method": "GET",  "path": "/read",   "handler": "read"   },
-      { "method": "GET",  "path": "/raw",    "handler": "raw"    },
-      { "method": "POST", "path": "/upload", "handler": "upload" }
+      {
+        "method": "GET",
+        "path": "/list",
+        "handler": "list"
+      },
+      {
+        "method": "GET",
+        "path": "/read",
+        "handler": "read"
+      },
+      {
+        "method": "GET",
+        "path": "/raw",
+        "handler": "raw"
+      },
+      {
+        "method": "POST",
+        "path": "/upload",
+        "handler": "upload"
+      }
     ],
     "tools": [
-      { "id": "list_dir",              "module": "ListDirTool", "since": "0.1.0" },
-      { "id": "read_file",             "module": "ReadFileTool", "since": "0.1.0" },
-      { "id": "write_file",            "module": "WriteFileTool", "since": "0.1.0" },
-      { "id": "edit_file",             "module": "EditFileTool", "since": "0.1.0" },
-      { "id": "delete_file",           "module": "DeleteFileTool", "since": "0.2.0" },
-      { "id": "glob",                  "module": "GlobTool", "since": "0.1.0" },
-      { "id": "tenant_config_list",    "module": "TenantConfigListTool", "since": "0.1.0" },
-      { "id": "tenant_config_read",    "module": "TenantConfigReadTool", "since": "0.1.0" },
-      { "id": "tenant_config_write",   "module": "TenantConfigWriteTool", "since": "0.1.0" },
-      { "id": "tenant_config_edit",    "module": "TenantConfigEditTool", "since": "0.1.0" },
-      { "id": "tenant_config_delete",  "module": "TenantConfigDeleteTool", "since": "0.1.0" },
-      { "id": "tenant_config_glob",    "module": "TenantConfigGlobTool", "since": "0.1.0" }
+      {
+        "id": "list_dir",
+        "module": "ListDirTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "read_file",
+        "module": "ReadFileTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "write_file",
+        "module": "WriteFileTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "edit_file",
+        "module": "EditFileTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "delete_file",
+        "module": "DeleteFileTool",
+        "since": "0.2.0"
+      },
+      {
+        "id": "glob",
+        "module": "GlobTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "tenant_config_list",
+        "module": "TenantConfigListTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "tenant_config_read",
+        "module": "TenantConfigReadTool",
+        "since": "0.1.0"
+      },
+      {
+        "id": "tenant_config_write",
+        "module": "TenantConfigWriteTool",
+        "since": "0.1.0",
+        "access": "admin"
+      },
+      {
+        "id": "tenant_config_edit",
+        "module": "TenantConfigEditTool",
+        "since": "0.1.0",
+        "access": "admin"
+      },
+      {
+        "id": "tenant_config_delete",
+        "module": "TenantConfigDeleteTool",
+        "since": "0.1.0",
+        "access": "admin"
+      },
+      {
+        "id": "tenant_config_glob",
+        "module": "TenantConfigGlobTool",
+        "since": "0.1.0"
+      }
     ],
     "skills": [
-      { "id": "workspace-layout", "path": "skills/files-workspace-layout.md" }
+      {
+        "id": "workspace-layout",
+        "path": "skills/files-workspace-layout.md"
+      }
     ],
     "systemPromptFragments": [
       {
@@ -79,7 +156,7 @@
       },
       {
         "id": "workspace-conventions",
-        "text": "Conventions:\n  - Deliverables go to ./projects/<slug>/, never the home root.\n  - When cloning a git repo, clone into ./git/<repo-name>/.\n  - When the user uploads a file, expect it under ./uploads/.\n  - Don't leave scratch artefacts in ./projects/ or the root \u2014 use ./tmp/.\n  - Other users' homes in this tenant are off-limits; you cannot reach them."
+        "text": "Conventions:\n  - Deliverables go to ./projects/<slug>/, never the home root.\n  - When cloning a git repo, clone into ./git/<repo-name>/.\n  - When the user uploads a file, expect it under ./uploads/.\n  - Don't leave scratch artefacts in ./projects/ or the root — use ./tmp/.\n  - Other users' homes in this tenant are off-limits; you cannot reach them."
       },
       {
         "id": "workspace-references",
@@ -91,11 +168,11 @@
       },
       {
         "id": "edit-old-text-uniqueness",
-        "text": "- Each `edit_file` `old_text` must appear exactly once in the file. Keep `old_text` as small as possible while still being unique \u2014 don't pad with large unchanged regions to \"connect\" two distant changes; emit two separate edits in the same `edits[]` batch instead."
+        "text": "- Each `edit_file` `old_text` must appear exactly once in the file. Keep `old_text` as small as possible while still being unique — don't pad with large unchanged regions to \"connect\" two distant changes; emit two separate edits in the same `edits[]` batch instead."
       },
       {
         "id": "read-before-edit",
-        "text": "- Before `edit_file` (or `write_file` overwrite) on a file you haven't seen yet in this session, call `read_file` once. The host tracks reads per session, so a single full-file read covers any number of follow-up `edit_file` / `write_file` calls on that same path \u2014 don't re-read between edits. Files you just created with `write_file` count as already-read; you can `edit_file` them right away without reading first."
+        "text": "- Before `edit_file` (or `write_file` overwrite) on a file you haven't seen yet in this session, call `read_file` once. The host tracks reads per session, so a single full-file read covers any number of follow-up `edit_file` / `write_file` calls on that same path — don't re-read between edits. Files you just created with `write_file` count as already-read; you can `edit_file` them right away without reading first."
       }
     ]
   }
