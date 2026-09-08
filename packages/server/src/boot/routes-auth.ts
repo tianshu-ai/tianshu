@@ -667,6 +667,7 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
       res.status(404).json({ error: "user_not_found" });
       return;
     }
+    if (guardSuperAdmin(req, res, userId)) return;
     const password = (req.body as { password?: string }).password ?? "";
     if (password.length < 6) {
       res.status(400).json({ error: "weak_password" });
@@ -678,6 +679,23 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
 
   // Remove user from current tenant. Removes the tenant role;
   // the user account itself is kept (they may belong to other tenants).
+  /** Block non-super-admins from modifying super-admin accounts. */
+  function guardSuperAdmin(req: Request, res: Response, userId: string): boolean {
+    const cfg = currentAuth();
+    const target = getUserStore().getById(userId);
+    if (target && isSuperAdmin(cfg, { username: target.username, email: target.email })) {
+      const meta = req.ctx?.identityMeta ?? {};
+      if (!isSuperAdmin(cfg, {
+        email: meta.email,
+        username: meta.provider === "local" ? meta.name : undefined,
+      })) {
+        res.status(403).json({ error: "cannot_modify_super_admin" });
+        return true; // blocked
+      }
+    }
+    return false;
+  }
+
   app.delete("/api/admin/users/:id", requireAdmin, (req: Request, res: Response) => {
     const userId = String(req.params.id);
     const currentTenant = req.ctx!.tenant.tenantId;
@@ -685,12 +703,11 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
       res.status(404).json({ error: "user_not_found" });
       return;
     }
+    if (guardSuperAdmin(req, res, userId)) return;
     getUserStore().removeRole(userId, currentTenant);
     res.json({ ok: true, removed: "role", tenantId: currentTenant });
   });
 
-  // Set / remove a user's role in a tenant.
-  // Set a user's role in the CURRENT tenant.
   app.put("/api/admin/users/:id/role", requireAdmin, (req: Request, res: Response) => {
     const userId = String(req.params.id);
     const currentTenant = req.ctx!.tenant.tenantId;
@@ -698,6 +715,7 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
       res.status(404).json({ error: "user_not_found" });
       return;
     }
+    if (guardSuperAdmin(req, res, userId)) return;
     const role = (req.body as { role?: string }).role;
     if (role !== "admin" && role !== "member") {
       res.status(400).json({ error: "invalid_role" });
