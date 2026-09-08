@@ -115,8 +115,8 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "AuthUsersPage",
     coreComponent: AuthUsersPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Platform",
-    order: 3,
+    group: "Tenant",
+    order: 1,
     clientEntry: null,
   },
   {

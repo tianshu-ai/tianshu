@@ -591,36 +591,37 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
   });
 
   // List local users with their per-tenant roles.
+  // Always scoped to the current tenant — no cross-tenant user listing.
+  // Super admins switch tenant first to manage another tenant's users.
   app.get("/api/admin/users", requireAdmin, (req: Request, res: Response) => {
     const cfg = currentAuth();
     const store = getUserStore();
-    const meta = req.ctx?.identityMeta ?? {};
-    const isSuperReq = isSuperAdmin(cfg, {
-      email: meta.email,
-      username: meta.provider === "local" ? meta.name : undefined,
-    });
-    const currentTenant = req.ctx?.tenant.tenantId;
+    const currentTenant = req.ctx!.tenant.tenantId;
 
-    let users = store.list().map((u) => ({
-      id: u.id,
-      username: u.username,
-      email: u.email,
-      createdAt: u.createdAt,
-      roles: store.rolesForUser(u.id),
-      superAdmin: isSuperAdmin(cfg, { username: u.username, email: u.email }),
-    }));
-
-    // Tenant admin: only see users who have a role in the current tenant
-    if (!isSuperReq && currentTenant) {
-      users = users.filter((u) =>
-        u.superAdmin || u.roles.some((r) => r.tenantId === currentTenant),
-      );
-    }
-    res.json({ users });
+    const users = store.list()
+      .filter((u) => {
+        // Include if user has a role in this tenant OR is a super-admin
+        const hasRole = store.rolesForUser(u.id).some((r) => r.tenantId === currentTenant);
+        const isSuper = isSuperAdmin(cfg, { username: u.username, email: u.email });
+        return hasRole || isSuper;
+      })
+      .map((u) => {
+        const allRoles = store.rolesForUser(u.id);
+        const tenantRole = allRoles.find((r) => r.tenantId === currentTenant);
+        return {
+          id: u.id,
+          username: u.username,
+          email: u.email,
+          createdAt: u.createdAt,
+          role: tenantRole?.role ?? "member",
+          superAdmin: isSuperAdmin(cfg, { username: u.username, email: u.email }),
+        };
+      });
+    res.json({ users, tenantId: currentTenant });
   });
 
-  // Create a local user — super-admin only (global operation).
-  app.post("/api/admin/users", requireSuperAdmin, (req: Request, res: Response) => {
+  // Create a local user and assign to the current tenant.
+  app.post("/api/admin/users", requireAdmin, (req: Request, res: Response) => {
     const body = req.body as { username?: string; password?: string; email?: string };
     const username = (body.username ?? "").trim();
     const password = body.password ?? "";
@@ -634,12 +635,14 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
       return;
     }
     const user = store.createUser(username, password, body.email);
-    res.json({ ok: true, id: user.id });
+    // Auto-assign to the current tenant as member
+    const currentTenant = req.ctx!.tenant.tenantId;
+    store.setRole(user.id, currentTenant, "member");
+    res.json({ ok: true, id: user.id, tenantId: currentTenant });
   });
 
-  // Reset a user's password.
-  // Change password — super-admin only.
-  app.patch("/api/admin/users/:id/password", requireSuperAdmin, (req: Request, res: Response) => {
+  // Reset a user's password — tenant admin can reset for users in their tenant.
+  app.patch("/api/admin/users/:id/password", requireAdmin, (req: Request, res: Response) => {
     const password = (req.body as { password?: string }).password ?? "";
     if (password.length < 6) {
       res.status(400).json({ error: "weak_password" });
@@ -654,32 +657,27 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
     res.json({ ok: true });
   });
 
-  // Delete a user.
-  // Delete user — super-admin only.
-  app.delete("/api/admin/users/:id", requireSuperAdmin, (req: Request, res: Response) => {
-    getUserStore().deleteUser(String(req.params.id));
-    res.json({ ok: true });
+  // Remove user from current tenant. Removes the tenant role;
+  // the user account itself is kept (they may belong to other tenants).
+  app.delete("/api/admin/users/:id", requireAdmin, (req: Request, res: Response) => {
+    const store = getUserStore();
+    const userId = String(req.params.id);
+    if (!store.getById(userId)) {
+      res.status(404).json({ error: "user_not_found" });
+      return;
+    }
+    const currentTenant = req.ctx!.tenant.tenantId;
+    store.removeRole(userId, currentTenant);
+    res.json({ ok: true, removed: "role", tenantId: currentTenant });
   });
 
   // Set / remove a user's role in a tenant.
-  app.put("/api/admin/users/:id/roles/:tenantId", requireAdmin, (req: Request, res: Response) => {
-    const cfg = currentAuth();
-    const meta = req.ctx?.identityMeta ?? {};
-    const isSuperReq = isSuperAdmin(cfg, {
-      email: meta.email,
-      username: meta.provider === "local" ? meta.name : undefined,
-    });
-    const targetTenant = String(req.params.tenantId);
-
-    // Tenant admin can only manage roles in their own tenant
-    if (!isSuperReq && targetTenant !== req.ctx?.tenant.tenantId) {
-      res.status(403).json({ error: "cross_tenant_forbidden" });
-      return;
-    }
-
+  // Set a user's role in the CURRENT tenant.
+  app.put("/api/admin/users/:id/role", requireAdmin, (req: Request, res: Response) => {
     const role = (req.body as { role?: string }).role;
     const store = getUserStore();
-    if (!store.getById(String(req.params.id))) {
+    const userId = String(req.params.id);
+    if (!store.getById(userId)) {
       res.status(404).json({ error: "user_not_found" });
       return;
     }
@@ -687,24 +685,8 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
       res.status(400).json({ error: "invalid_role" });
       return;
     }
-    store.setRole(String(req.params.id), targetTenant, role as TenantRole);
-    res.json({ ok: true });
-  });
-
-  app.delete("/api/admin/users/:id/roles/:tenantId", requireAdmin, (req: Request, res: Response) => {
-    const cfg = currentAuth();
-    const meta = req.ctx?.identityMeta ?? {};
-    const isSuperReq = isSuperAdmin(cfg, {
-      email: meta.email,
-      username: meta.provider === "local" ? meta.name : undefined,
-    });
-    const targetTenant = String(req.params.tenantId);
-
-    if (!isSuperReq && targetTenant !== req.ctx?.tenant.tenantId) {
-      res.status(403).json({ error: "cross_tenant_forbidden" });
-      return;
-    }
-    getUserStore().removeRole(String(req.params.id), targetTenant);
-    res.json({ ok: true });
+    const currentTenant = req.ctx!.tenant.tenantId;
+    store.setRole(userId, currentTenant, role as TenantRole);
+    res.json({ ok: true, tenantId: currentTenant });
   });
 }
