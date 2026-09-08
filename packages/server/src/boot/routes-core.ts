@@ -21,7 +21,7 @@ import { getPackageVersion } from "../setup/repo-root.js";
 import { isSuperAdmin, resolveTenantRole, tenantsForUser } from "../core/auth/identity.js";
 import { getUserStore } from "../core/auth/user-store.js";
 import { isTenantDisabled } from "../core/config.js";
-import { requireAdmin } from "./routes-auth.js";
+import { requireAdmin, requireSuperAdmin } from "./routes-auth.js";
 
 // Sentinel the client echoes back for an apiKey field it did NOT
 // change. Lets the UI edit other fields (or reorder models) without
@@ -238,7 +238,7 @@ export function mountCoreRoutes(
   // external edit to config.json shows up on the next GET with no
   // restart, and a PUT here is visible to the next model resolution.
 
-  app.get("/api/admin/models/providers", requireAdmin, (req: Request, res: Response) => {
+  app.get("/api/admin/models/providers", requireSuperAdmin, (req: Request, res: Response) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
@@ -262,7 +262,7 @@ export function mountCoreRoutes(
 
   app.put(
     "/api/admin/models/providers",
-    requireAdmin,
+    requireSuperAdmin,
     express.json({ limit: "1mb" }),
     (req: Request, res: Response) => {
       if (!req.ctx) {

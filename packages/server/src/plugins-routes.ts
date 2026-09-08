@@ -30,7 +30,7 @@ import {
   redactSecretsInConfig,
 } from "./core/plugins/index.js";
 import { CatalogClient } from "./catalog.js";
-import { requireAdmin, isAdminRequest } from "./boot/routes-auth.js";
+import { requireAdmin, requireSuperAdmin, isAdminRequest } from "./boot/routes-auth.js";
 
 const PLUGIN_ID_RE = /^[a-z0-9][a-z0-9-]{1,30}$/;
 
@@ -211,7 +211,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
         next(err);
       }
     });
-    r.post("/plugins/catalog/refresh", requireAdmin, async (_req, res, next) => {
+    r.post("/plugins/catalog/refresh", requireSuperAdmin, async (_req, res, next) => {
       try {
         catalog.invalidate();
         const snap = await catalog.get({ force: true });
@@ -272,7 +272,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
-  r.post("/mcp/servers", requireAdmin, express.json(), async (req, res, next) => {
+  r.post("/mcp/servers", requireSuperAdmin, express.json(), async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
@@ -312,7 +312,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
-  r.patch("/mcp/servers/:id", requireAdmin, express.json(), async (req, res, next) => {
+  r.patch("/mcp/servers/:id", requireSuperAdmin, express.json(), async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
@@ -353,7 +353,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
     }
   });
 
-  r.delete("/mcp/servers/:id", requireAdmin, async (req, res, next) => {
+  r.delete("/mcp/servers/:id", requireSuperAdmin, async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
@@ -384,7 +384,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
   // both user-configured and plugin-contributed servers — the
   // admin UI doesn't know (or care) which is which, only that a
   // "Refresh" click should re-probe the upstream.
-  r.post("/mcp/servers/:id/refresh", requireAdmin, async (req, res, next) => {
+  r.post("/mcp/servers/:id/refresh", requireSuperAdmin, async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
@@ -417,7 +417,7 @@ export function buildPluginsRouter(opts: PluginsRouterOpts): Router {
   // any time the on-disk plugin set changed without a config edit.
   // PATCH /plugins/:id already invalidates the registry; this route
   // is for the no-config-change case.
-  r.post("/plugins/refresh", requireAdmin, async (req, res, next) => {
+  r.post("/plugins/refresh", requireSuperAdmin, async (req, res, next) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;

@@ -475,7 +475,7 @@ export function requireSuperAdmin(req: Request, res: Response, next: NextFunctio
 /** Mount the ADMIN auth routes (after the tenant wall). */
 export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
   // Read current auth config (secrets redacted).
-  app.get("/api/admin/auth", requireAdmin, (req: Request, res: Response) => {
+  app.get("/api/admin/auth", requireSuperAdmin, (req: Request, res: Response) => {
     const cfg = currentAuth();
     // Is the CURRENT viewer a config super-admin? Drives whether the
     // tenant-management section (super-admin-only) is shown.
@@ -510,7 +510,7 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
   // Patch auth config. Accepts a partial: enabled, providers, admins,
   // tenantStrategy, singleTenant, sessionSecret. Writes config.json
   // (mode 0600 via writeGlobalConfig) then re-arms the chain.
-  app.patch("/api/admin/auth", requireAdmin, (req: Request, res: Response) => {
+  app.patch("/api/admin/auth", requireSuperAdmin, (req: Request, res: Response) => {
     const global = loadGlobalConfig();
     const prev = global.auth ?? {};
     const body = req.body as Partial<AuthConfig>;
@@ -541,7 +541,7 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
   // List existing tenants + their disabled state. requireAdmin (not
   // super) so the role-assignment picker can read it; mutations below
   // are super-admin only.
-  app.get("/api/admin/tenants", requireAdmin, (_req: Request, res: Response) => {
+  app.get("/api/admin/tenants", requireSuperAdmin, (_req: Request, res: Response) => {
     const disabled = new Set(loadGlobalConfig().disabledTenants ?? []);
     const ids = deps.listTenants();
     res.json({
