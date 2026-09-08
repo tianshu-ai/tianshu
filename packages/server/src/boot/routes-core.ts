@@ -231,7 +231,7 @@ export function mountCoreRoutes(
   // external edit to config.json shows up on the next GET with no
   // restart, and a PUT here is visible to the next model resolution.
 
-  app.get("/api/admin/models/providers", (req: Request, res: Response) => {
+  app.get("/api/admin/models/providers", requireAdmin, (req: Request, res: Response) => {
     if (!req.ctx) {
       res.status(500).json({ error: "no_ctx" });
       return;
