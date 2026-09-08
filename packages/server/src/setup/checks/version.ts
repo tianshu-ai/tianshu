@@ -21,7 +21,7 @@
 // fetch failure is logged as a single ok line ("couldn't check
 // for updates"), never blocks doctor.
 
-import { CheckGroup } from "../render.js";
+import type { CheckGroup } from "../render.js";
 import {
   detectInstallSource,
   fetchDistTag,

@@ -15,7 +15,7 @@
 // HTTP probe has a 2s timeout so doctor stays fast.
 
 import net from "node:net";
-import { CheckGroup } from "../render.js";
+import type { CheckGroup } from "../render.js";
 import { loadGlobalConfig } from "../../core/config.js";
 import {
   detectInstallMode,

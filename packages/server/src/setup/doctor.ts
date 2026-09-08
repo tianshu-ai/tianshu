@@ -12,8 +12,8 @@
 //     boot when LLM provider is missing or config is unparseable.
 
 import * as p from "@clack/prompts";
+import type { CheckGroup } from "./render.js";
 import {
-  CheckGroup,
   renderGroup,
   renderOutro,
   tallyGroups,

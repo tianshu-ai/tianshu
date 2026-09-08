@@ -8,7 +8,7 @@
 // secret VALUES — only whether they resolve to something non-empty.
 
 import fs from "node:fs";
-import { CheckGroup } from "../render.js";
+import type { CheckGroup } from "../render.js";
 import {
   loadGlobalConfig,
   expandEnvPlaceholders,

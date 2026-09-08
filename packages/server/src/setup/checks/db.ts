@@ -7,7 +7,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { CheckGroup } from "../render.js";
+import type { CheckGroup } from "../render.js";
 import { GlobalOps } from "../../core/global-ops.js";
 import { getTenantsRoot, getTianshuHome } from "../../core/paths.js";
 

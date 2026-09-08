@@ -22,7 +22,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { CheckGroup } from "../render.js";
+import type { CheckGroup } from "../render.js";
 import { getBuiltinConfigDir } from "../../core/plugins/discovery.js";
 import {
   loadGlobalConfig,

@@ -11,7 +11,7 @@ import {
   type GlobalConfig,
   type ProviderEntry,
 } from "../../core/config.js";
-import { CheckGroup } from "../render.js";
+import type { CheckGroup } from "../render.js";
 import { loadKnownModels } from "./known-models.js";
 
 export interface ProvidersCheckOpts {

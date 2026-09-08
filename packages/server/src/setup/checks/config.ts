@@ -6,7 +6,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { CheckGroup } from "../render.js";
+import type { CheckGroup } from "../render.js";
 import { getGlobalConfigPath, getTianshuHome } from "../../core/paths.js";
 
 export interface ConfigCheckOpts {

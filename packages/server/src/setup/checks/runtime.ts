@@ -4,7 +4,7 @@
 // `tianshu doctor`.
 
 import os from "node:os";
-import { CheckGroup } from "../render.js";
+import type { CheckGroup } from "../render.js";
 
 const MIN_NODE_MAJOR = 22;
 

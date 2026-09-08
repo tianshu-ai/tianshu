@@ -20,7 +20,7 @@
 // completely different command), making the recommendation
 // actively harmful.
 
-import { CheckGroup } from "../render.js";
+import type { CheckGroup } from "../render.js";
 
 export interface SandboxCheckOpts {
   /** Run a real boot + exec rather than the import-presence probe. */
