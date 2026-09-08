@@ -137,6 +137,12 @@ export function mountUsageRoutes(
           userId,
           ...t,
         })).sort((a, b) => b.total - a.total),
+        byUserModel: rows.map((r) => ({
+          userId: r.user_id,
+          model: r.model,
+          totalTokens: r.total_tokens,
+          messageCount: r.msg_count,
+        })),
         totals: {
           inputTokens: rows.reduce((s, r) => s + r.input_tokens, 0),
           outputTokens: rows.reduce((s, r) => s + r.output_tokens, 0),

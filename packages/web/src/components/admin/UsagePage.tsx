@@ -12,9 +12,11 @@ import { useChatStore } from "../../stores/chat-store";
 type DailyUsage = Record<string, number | string>;
 interface ModelUsage { model: string; totalTokens: number; messageCount: number }
 interface UserUsage { userId: string; input: number; output: number; total: number; messages: number }
+interface UserModelUsage { userId: string; model: string; totalTokens: number; messageCount: number }
 interface UsageData {
   tenantId: string; days: number;
   daily: DailyUsage[]; models: string[]; byModel: ModelUsage[]; byUser: UserUsage[];
+  byUserModel: UserModelUsage[];
   totals: { inputTokens: number; outputTokens: number; totalTokens: number; messageCount: number };
 }
 
@@ -213,29 +215,44 @@ export default function UsagePage() {
               </div>
             )}
 
-            {/* User breakdown */}
+            {/* User breakdown — stacked bar per model */}
             {data.byUser.length > 0 && (
               <div className="rounded-md border border-border-subtle bg-bg-surface p-4">
                 <div className="text-xs text-fg-faint mb-3">{t("usage.perUser")}</div>
                 <div className="space-y-3">
-                  {data.byUser.map((u) => (
-                    <div key={u.userId}>
-                      <div className="flex items-center justify-between text-[11px] mb-1">
-                        <span className="text-fg-default font-mono truncate">{u.userId.slice(0, 16)}</span>
-                        <span className="text-fg-muted shrink-0 ml-2">{fmt(u.total)}</span>
+                  {data.byUser.map((u) => {
+                    const userModels = (data.byUserModel ?? []).filter((um) => um.userId === u.userId);
+                    return (
+                      <div key={u.userId}>
+                        <div className="flex items-center justify-between text-[11px] mb-1">
+                          <span className="text-fg-default font-mono truncate">{u.userId.slice(0, 16)}</span>
+                          <span className="text-fg-muted shrink-0 ml-2">{fmt(u.total)}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-bg-raised overflow-hidden flex">
+                          {userModels.map((um) => (
+                            <div
+                              key={um.model}
+                              className="h-full first:rounded-l-full last:rounded-r-full transition-all"
+                              style={{
+                                width: `${(um.totalTokens / userMax) * 100}%`,
+                                backgroundColor: modelColorMap.get(um.model) ?? COLORS[0],
+                              }}
+                              title={`${um.model}: ${fmt(um.totalTokens)}`}
+                            />
+                          ))}
+                        </div>
+                        <div className="flex gap-2 mt-0.5 flex-wrap">
+                          {userModels.map((um) => (
+                            <span key={um.model} className="text-[9px] text-fg-fainter flex items-center gap-1">
+                              <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: modelColorMap.get(um.model) ?? COLORS[0] }} />
+                              {um.model}: {fmt(um.totalTokens)}
+                            </span>
+                          ))}
+                          <span className="text-[9px] text-fg-fainter">{u.messages} {t("usage.msgs")}</span>
+                        </div>
                       </div>
-                      <div className="h-2 rounded-full bg-bg-raised overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${(u.total / userMax) * 100}%`,
-                            backgroundColor: "#4263eb",
-                          }}
-                        />
-                      </div>
-                      <div className="text-[9px] text-fg-fainter mt-0.5">{u.messages} {t("usage.msgs")}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
