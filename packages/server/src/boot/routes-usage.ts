@@ -77,14 +77,50 @@ export function mountUsageRoutes(
         userTotals.set(r.user_id, existing);
       }
 
+      // Daily breakdown for trend chart
+      const dailyRows = db.prepare<[number], {
+        day: string; input_tokens: number; output_tokens: number; total_tokens: number; msg_count: number;
+      }>(`
+        SELECT
+          date(m.created_at/1000, 'unixepoch') as day,
+          COALESCE(SUM(json_extract(m.content, '$.usage.input')), 0) as input_tokens,
+          COALESCE(SUM(json_extract(m.content, '$.usage.output')), 0) as output_tokens,
+          COALESCE(SUM(json_extract(m.content, '$.usage.totalTokens')), 0) as total_tokens,
+          COUNT(*) as msg_count
+        FROM messages m
+        WHERE m.role = 'assistant' AND m.created_at > ?
+          AND m.content LIKE '{%' AND json_valid(m.content)
+          AND json_extract(m.content, '$.usage') IS NOT NULL
+        GROUP BY day ORDER BY day
+      `).all(sinceMs);
+
+      // Model breakdown
+      const modelRows = db.prepare<[number], {
+        model: string; total_tokens: number; msg_count: number;
+      }>(`
+        SELECT
+          COALESCE(json_extract(m.content, '$.model'), 'unknown') as model,
+          COALESCE(SUM(json_extract(m.content, '$.usage.totalTokens')), 0) as total_tokens,
+          COUNT(*) as msg_count
+        FROM messages m
+        WHERE m.role = 'assistant' AND m.created_at > ?
+          AND m.content LIKE '{%' AND json_valid(m.content)
+          AND json_extract(m.content, '$.usage') IS NOT NULL
+        GROUP BY model ORDER BY total_tokens DESC
+      `).all(sinceMs);
+
       res.json({
         tenantId,
         days,
-        byUserModel: rows.map((r) => ({
-          userId: r.user_id,
-          model: r.model,
+        daily: dailyRows.map((r) => ({
+          day: r.day,
           inputTokens: r.input_tokens,
           outputTokens: r.output_tokens,
+          totalTokens: r.total_tokens,
+          messageCount: r.msg_count,
+        })),
+        byModel: modelRows.map((r) => ({
+          model: r.model,
           totalTokens: r.total_tokens,
           messageCount: r.msg_count,
         })),
