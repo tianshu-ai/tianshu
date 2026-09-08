@@ -43,7 +43,20 @@ export default function UsagePage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const dailyMax = data?.daily.reduce((m, d) => Math.max(m, d.totalTokens), 0) ?? 1;
+  // Fill in missing days with zeros so the chart has no gaps
+  const filledDaily = (() => {
+    if (!data?.daily.length) return [];
+    const map = new Map(data.daily.map((d) => [d.day, d]));
+    const result: DailyUsage[] = [];
+    const end = new Date();
+    const start = new Date(end.getTime() - (data.days - 1) * 86400_000);
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const key = d.toISOString().slice(0, 10);
+      result.push(map.get(key) ?? { day: key, inputTokens: 0, outputTokens: 0, totalTokens: 0, messageCount: 0 });
+    }
+    return result;
+  })();
+  const dailyMax = filledDaily.reduce((m, d) => Math.max(m, d.totalTokens), 0) || 1;
   const userMax = data?.byUser.reduce((m, u) => Math.max(m, u.total), 0) ?? 1;
   const modelTotal = data?.byModel.reduce((s, m) => s + m.totalTokens, 0) ?? 1;
 
@@ -104,13 +117,13 @@ export default function UsagePage() {
             <div className="mb-6 rounded-md border border-border-subtle bg-bg-surface p-4">
               <div className="text-xs text-fg-faint mb-3">{t("usage.dailyTrend")}</div>
               <div className="flex items-end gap-[2px] h-32">
-                {data.daily.map((d) => {
+                {filledDaily.map((d) => {
                   // Use sqrt scale so small days aren't invisible next to large spikes
                   const ratio = dailyMax > 0 ? d.totalTokens / dailyMax : 0;
                   const pct = Math.sqrt(ratio) * 100;
                   return (
                     <div key={d.day} className="flex-1 flex flex-col justify-end group relative">
-                      <div className="bg-link rounded-t-sm" style={{ height: `${Math.max(pct, 3)}%` }} />
+                      <div className={`rounded-t-sm ${d.totalTokens > 0 ? 'bg-link' : ''}`} style={{ height: d.totalTokens > 0 ? `${Math.max(pct, 4)}%` : '0%' }} />
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-bg-surface border border-border-default rounded px-2 py-1 text-[10px] text-fg-default whitespace-nowrap shadow-lg z-10">
                         <div className="font-medium">{d.day}</div>
                         <div>{fmt(d.totalTokens)} tokens</div>
@@ -121,8 +134,8 @@ export default function UsagePage() {
                 })}
               </div>
               <div className="flex justify-between mt-1 text-[9px] text-fg-fainter">
-                <span>{data.daily[0]?.day}</span>
-                <span>{data.daily[data.daily.length - 1]?.day}</span>
+                <span>{filledDaily[0]?.day}</span>
+                <span>{filledDaily[filledDaily.length - 1]?.day}</span>
               </div>
             </div>
           )}
