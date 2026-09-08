@@ -400,6 +400,16 @@ export function bootstrapSuperAdmins(cfg: AuthConfig): void {
  * CURRENT tenant? In dev mode (auth disabled) everyone is de-facto admin.
  * Shared by requireAdmin and the plugin-route access enforcement.
  */
+/** Check if a user belongs to the current tenant (has a role or is super-admin). */
+function isUserInTenant(userId: string, tenantId: string): boolean {
+  const store = getUserStore();
+  const user = store.getById(userId);
+  if (!user) return false;
+  const cfg = currentAuth();
+  if (isSuperAdmin(cfg, { username: user.username, email: user.email })) return true;
+  return store.rolesForUser(userId).some((r) => r.tenantId === tenantId);
+}
+
 export function isAdminRequest(req: Request): boolean {
   const cfg = currentAuth();
   if (!cfg.enabled) return true; // dev mode
@@ -641,52 +651,51 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
     res.json({ ok: true, id: user.id, tenantId: currentTenant });
   });
 
-  // Reset a user's password — tenant admin can reset for users in their tenant.
+  // Reset a user's password — only for users in the current tenant.
   app.patch("/api/admin/users/:id/password", requireAdmin, (req: Request, res: Response) => {
+    const userId = String(req.params.id);
+    const currentTenant = req.ctx!.tenant.tenantId;
+    if (!isUserInTenant(userId, currentTenant)) {
+      res.status(404).json({ error: "user_not_found" });
+      return;
+    }
     const password = (req.body as { password?: string }).password ?? "";
     if (password.length < 6) {
       res.status(400).json({ error: "weak_password" });
       return;
     }
-    const store = getUserStore();
-    if (!store.getById(String(req.params.id))) {
-      res.status(404).json({ error: "user_not_found" });
-      return;
-    }
-    store.setPassword(String(req.params.id), password);
+    getUserStore().setPassword(userId, password);
     res.json({ ok: true });
   });
 
   // Remove user from current tenant. Removes the tenant role;
   // the user account itself is kept (they may belong to other tenants).
   app.delete("/api/admin/users/:id", requireAdmin, (req: Request, res: Response) => {
-    const store = getUserStore();
     const userId = String(req.params.id);
-    if (!store.getById(userId)) {
+    const currentTenant = req.ctx!.tenant.tenantId;
+    if (!isUserInTenant(userId, currentTenant)) {
       res.status(404).json({ error: "user_not_found" });
       return;
     }
-    const currentTenant = req.ctx!.tenant.tenantId;
-    store.removeRole(userId, currentTenant);
+    getUserStore().removeRole(userId, currentTenant);
     res.json({ ok: true, removed: "role", tenantId: currentTenant });
   });
 
   // Set / remove a user's role in a tenant.
   // Set a user's role in the CURRENT tenant.
   app.put("/api/admin/users/:id/role", requireAdmin, (req: Request, res: Response) => {
-    const role = (req.body as { role?: string }).role;
-    const store = getUserStore();
     const userId = String(req.params.id);
-    if (!store.getById(userId)) {
+    const currentTenant = req.ctx!.tenant.tenantId;
+    if (!isUserInTenant(userId, currentTenant)) {
       res.status(404).json({ error: "user_not_found" });
       return;
     }
+    const role = (req.body as { role?: string }).role;
     if (role !== "admin" && role !== "member") {
       res.status(400).json({ error: "invalid_role" });
       return;
     }
-    const currentTenant = req.ctx!.tenant.tenantId;
-    store.setRole(userId, currentTenant, role as TenantRole);
+    getUserStore().setRole(userId, currentTenant, role as TenantRole);
     res.json({ ok: true, tenantId: currentTenant });
   });
 }
