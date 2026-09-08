@@ -43,14 +43,22 @@ export default function UsagePage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Fill in missing days with zeros so the chart has no gaps
+  // Fill in missing days with zeros so the chart has no gaps.
+  // Use the actual date range from the API data to avoid timezone mismatches.
   const filledDaily = (() => {
     if (!data?.daily.length) return [];
     const map = new Map(data.daily.map((d) => [d.day, d]));
     const result: DailyUsage[] = [];
-    const end = new Date();
-    const start = new Date(end.getTime() - (data.days - 1) * 86400_000);
-    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    // Derive range from the API's first/last day, then extend to cover full period
+    const sorted = [...data.daily].sort((a, b) => a.day.localeCompare(b.day));
+    const firstDay = sorted[0].day;
+    const lastDay = sorted[sorted.length - 1].day;
+    // Walk from (lastDay - days) to lastDay using simple string date math
+    const endDate = new Date(lastDay + "T12:00:00Z"); // noon UTC to avoid DST issues
+    const startDate = new Date(endDate.getTime() - (data.days - 1) * 86400_000);
+    // Use the earlier of API first day and computed start
+    const actualStart = new Date(Math.min(new Date(firstDay + "T12:00:00Z").getTime(), startDate.getTime()));
+    for (let d = new Date(actualStart); d <= endDate; d.setUTCDate(d.getUTCDate() + 1)) {
       const key = d.toISOString().slice(0, 10);
       result.push(map.get(key) ?? { day: key, inputTokens: 0, outputTokens: 0, totalTokens: 0, messageCount: 0 });
     }
@@ -113,7 +121,7 @@ export default function UsagePage() {
           </div>
 
           {/* Daily trend chart */}
-          {data.daily.length > 0 && (
+          {filledDaily.length > 0 && (
             <div className="mb-6 rounded-md border border-border-subtle bg-bg-surface p-4">
               <div className="text-xs text-fg-faint mb-3">{t("usage.dailyTrend")}</div>
               <div className="flex items-end gap-[2px] h-32">
