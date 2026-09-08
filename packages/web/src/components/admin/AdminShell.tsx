@@ -31,7 +31,7 @@ import { ArrowLeft, ShieldCheck, Settings as SettingsIcon, LogOut } from "lucide
 import { useChatStore } from "../../stores/chat-store";
 import { usePluginStore } from "../../stores/plugin-store";
 import { resolveComponent } from "../../lib/plugin-registry";
-import { useManifestLabel } from "../../lib/plugin-manifest-labels";
+import { useManifestLabel, usePluginMeta } from "../../lib/plugin-manifest-labels";
 import type { AdminPageProps } from "@tianshu-ai/plugin-sdk/client";
 import { api, type PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
@@ -497,10 +497,14 @@ function AdminNavLink({ page }: { page: FlatAdminPage }) {
     page.pageId,
     page.displayName,
   );
+  // Auto-injected plugin settings pages: translate the plugin's displayName
+  const pluginMeta = usePluginMeta(page.pluginId);
   const label =
-    page.pluginId === "core"
+    page.pluginId === "core" && page.pageId !== "settings"
       ? localizeCorePageLabel(t, page)
-      : manifestLabel;
+      : page.pageId === "settings" && page.pluginId !== "core"
+        ? pluginMeta.displayName(page.displayName)
+        : manifestLabel;
   return (
     <NavLink
       to={href}
@@ -626,17 +630,18 @@ function PluginConfigSettingsPage({
   const t = useT();
   const plugins = usePluginStore((s) => s.plugins);
   const plugin = plugins?.find((p) => p.id === pluginId);
+  const meta = usePluginMeta(pluginId);
 
   return (
     <div className="mx-auto max-w-5xl p-6">
       <div className="mb-6">
         <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
           <SettingsIcon size={18} className="text-brand-400" />
-          {plugin ? plugin.displayName : pluginId}
+          {plugin ? meta.displayName(plugin.displayName) : pluginId}
         </h1>
         {plugin?.description && (
           <p className="mt-1 max-w-3xl text-[12px] text-fg-faint">
-            {plugin.description}
+            {meta.description(plugin.description)}
           </p>
         )}
       </div>
