@@ -622,11 +622,20 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       return panels;
     },
   });
-  // Resolve user role for tool-level access control
+  // Resolve user role for tool-level access control.
+  // resolveTenantRole needs email/username for super-admin check.
   const authCfg = loadGlobalConfig().auth ?? {};
-  const userRole: "admin" | "member" = authCfg.enabled
-    ? resolveTenantRole(authCfg, getUserStore(), { userId, tenantId: ctx.tenantId })
-    : "admin";
+  let userRole: "admin" | "member" = "admin";
+  if (authCfg.enabled) {
+    const store = getUserStore();
+    const userRecord = store.getById(userId);
+    userRole = resolveTenantRole(authCfg, store, {
+      userId,
+      tenantId: ctx.tenantId,
+      email: userRecord?.email,
+      username: userRecord?.username,
+    });
+  }
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {
