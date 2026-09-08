@@ -300,9 +300,26 @@ export function bootout(unit: string): LaunchctlResult {
   return r;
 }
 
-/** `systemctl --user restart <unit>` — restart. */
+/** Restart a unit reliably: stop → kill stragglers → start.
+ *  Plain `systemctl restart` can leave the old process alive if it
+ *  doesn't respond to SIGTERM quickly enough. */
 export function kickstart(unit: string): LaunchctlResult {
-  return runSystemctl(`restart ${shellQuote(path.basename(unit))}`);
+  const name = path.basename(unit);
+  // Stop the unit (sends SIGTERM, then SIGKILL after TimeoutStopSec)
+  runSystemctl(`stop ${shellQuote(name)}`);
+  // Give it a moment, then kill any stragglers on the port
+  try {
+    const { execSync } = require("node:child_process") as typeof import("node:child_process");
+    execSync("sleep 1", { stdio: "ignore" });
+    // Kill any remaining node processes from the old service
+    execSync(
+      `pkill -9 -f 'serve\.mjs.*tianshu' 2>/dev/null || true`,
+      { stdio: "ignore", timeout: 3000 },
+    );
+    execSync("sleep 1", { stdio: "ignore" });
+  } catch { /* best effort */ }
+  // Start fresh
+  return runSystemctl(`start ${shellQuote(name)}`);
 }
 
 // ─── util ────────────────────────────────────────────────────────
