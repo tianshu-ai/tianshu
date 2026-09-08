@@ -418,7 +418,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}
     >
       <div
-        className="w-80 rounded-xl border border-border-default bg-bg-elevated p-5 shadow-xl"
+        className="w-80 rounded-xl border border-border-default bg-bg-base p-5 shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-sm font-semibold text-fg-default mb-4">{t("user.changePassword")}</h3>
