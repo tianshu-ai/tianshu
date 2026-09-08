@@ -186,11 +186,22 @@ export async function runStart(
     console.error("Run `tianshu setup --wizard` to install.");
     return 2;
   }
-  if (status.loaded) {
+  if (status.loaded && status.pid) {
+    // Already loaded AND running — tell user to restart instead
     console.log(
-      `Service '${label}' is already loaded (pid ${status.pid ?? "?"}). ` +
+      `Service '${label}' is already running (pid ${status.pid}). ` +
         "Use `tianshu restart` to bounce it.",
     );
+    return 0;
+  }
+  // Loaded but not running (e.g. after stop) — just start it
+  if (status.loaded && !status.pid) {
+    const r = backend.kickstart(status.plistPath);
+    if (!r.ok) {
+      console.error(`${backendName()} start failed: ${r.stderr ?? "(unknown)"}`);
+      return 1;
+    }
+    console.log(`Started ${label}.`);
     return 0;
   }
   const r = backend.bootstrap(status.plistPath);
