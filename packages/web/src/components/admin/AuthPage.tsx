@@ -28,6 +28,7 @@ import {
   KeyRound,
   UserPlus,
   ShieldPlus,
+  UserCog,
 } from "lucide-react";
 import { Modal } from "../ui/Modal";
 import {
@@ -422,12 +423,7 @@ export function AuthProvidersPage() {
 
 // ── Tab 3: Users — local accounts + per-tenant roles. ──
 export function AuthUsersPage() {
-  const t = useT();
-  return (
-    <PageShell title={t("auth.users.title")}>
-      <LocalUsersSection />
-    </PageShell>
-  );
+  return <LocalUsersSection />;
 }
 
 // ── Tab 4: Tenants — super-admin only. ──
@@ -619,81 +615,88 @@ function LocalUsersSection() {
 
 
   return (
-    <section className="mb-6 rounded-xl border border-border-subtle bg-bg-elevated p-4">
-      <div className="mb-3 flex items-center justify-between">
+    <div className="mx-auto max-w-5xl p-6">
+      {/* Header — matches ModelsPage / AsrModelsPage */}
+      <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <div className="text-sm font-medium text-fg-default">{t("auth.users.sectionTitle")}</div>
-          <div className="text-xs text-fg-faint">
-            {t("auth.users.sectionHelp")}
-          </div>
+          <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
+            <UserCog size={18} className="text-link" />
+            {t("auth.users.title")}
+          </h1>
+          <p className="mt-1 max-w-3xl text-[12px] text-fg-faint">
+            {t("auth.users.sectionHelp")}{" "}
+            <span className="text-fg-muted">{users.length} {t("auth.users.count")}</span>
+          </p>
         </div>
         <button
           type="button"
           onClick={() => setCreating(true)}
-          className="flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-500"
+          className="flex items-center gap-1.5 rounded-md bg-link px-3 py-1.5 text-xs font-medium text-white hover:opacity-90"
         >
-          <UserPlus size={15} /> {t("auth.users.add")}
+          <UserPlus size={13} /> {t("auth.users.add")}
         </button>
       </div>
 
       {err && (
-        <div className="mb-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">
+        <div className="mb-4 flex items-start gap-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-danger">
           {err}
         </div>
       )}
 
       {users.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center text-xs text-fg-fainter">
+        <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-fainter">
           {t("auth.users.empty")}
         </div>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="space-y-2">
           {users.map((u) => (
-            <div key={u.id} className="rounded-lg border border-border-subtle bg-bg-base p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-fg-default">{u.username}</div>
-                  {u.email && <div className="truncate text-xs text-fg-faint">{u.email}</div>}
-                </div>
-                <div className="flex shrink-0 items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setRoleUser(u)}
-                    className="flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:bg-bg-raised hover:text-fg-default"
-                  >
-                    <ShieldPlus size={13} /> {t("auth.users.roles")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPwUser(u)}
-                    className="flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:bg-bg-raised hover:text-fg-default"
-                  >
-                    <KeyRound size={13} /> {t("auth.users.password")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void del(u)}
-                    className="flex items-center gap-1 rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:border-rose-700/60 hover:text-danger"
-                  >
-                    <Trash2 size={13} /> {t("common.delete")}
-                  </button>
-                </div>
-              </div>
-              {/* Per-tenant roles */}
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {u.superAdmin ? (
-                  <span className="rounded-full border border-brand-500/40 bg-brand-600/15 px-2 py-0.5 text-[11px] font-medium text-brand-300">
-                    {t("auth.users.superAdminBadge")}
-                  </span>
-                ) : (
-                  <span
-                    className="flex items-center gap-1.5 rounded-full border border-border-default bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted"
-                  >
-                    <span className={u.role === "admin" ? "font-medium text-brand-400" : ""}>
+            <div key={u.id} className="flex items-center gap-4 rounded-md border border-border-subtle bg-bg-surface px-4 py-3">
+              {/* Left: user info + role badge */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-medium text-fg-default">{u.username}</span>
+                  {u.email && <span className="text-[11px] text-fg-faint">{u.email}</span>}
+                  {u.superAdmin ? (
+                    <span className="text-[10px] rounded bg-link/20 px-1.5 py-0.5 text-link">
+                      {t("auth.users.superAdminBadge")}
+                    </span>
+                  ) : (
+                    <span className={`text-[10px] rounded px-1.5 py-0.5 ${
+                      u.role === "admin"
+                        ? "bg-link/20 text-link"
+                        : "bg-bg-raised text-fg-faint"
+                    }`}>
                       {u.role === "admin" ? t("user.role.admin") : t("user.role.member")}
                     </span>
-                  </span>
-                )}
+                  )}
+                </div>
+              </div>
+              {/* Right: action buttons — icon only, compact */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setRoleUser(u)}
+                  className="rounded-md p-1.5 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
+                  title={t("auth.users.roles")}
+                >
+                  <ShieldPlus size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPwUser(u)}
+                  className="rounded-md p-1.5 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
+                  title={t("auth.users.password")}
+                >
+                  <KeyRound size={14} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void del(u)}
+                  className="rounded-md p-1.5 text-fg-faint hover:text-danger hover:bg-danger/10 transition-colors"
+                  title={t("common.delete")}
+                >
+                  <Trash2 size={14} />
+                </button>
               </div>
             </div>
           ))}
@@ -730,7 +733,7 @@ function LocalUsersSection() {
           }}
         />
       )}
-    </section>
+    </div>
   );
 }
 
