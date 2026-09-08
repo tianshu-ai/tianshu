@@ -6,6 +6,7 @@
  */
 
 import { type Express, type Request, type Response } from "express";
+import { requireAdmin } from "./routes-auth.js";
 import { reloadAsrModel } from "./asr.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -114,8 +115,8 @@ function setActiveModelId(id: string | null): void {
 }
 
 export function mountAsrAdminRoutes(app: Express): void {
-  // List models
-  app.get("/api/admin/asr/models", (_req: Request, res: Response) => {
+  // All ASR admin routes require admin role
+  app.get("/api/admin/asr/models", requireAdmin, (_req: Request, res: Response) => {
     const activeId = getActiveModelId();
     const list = MODELS.map((m) => ({
       ...m,
@@ -128,7 +129,7 @@ export function mountAsrAdminRoutes(app: Express): void {
   });
 
   // Download a model
-  app.post("/api/admin/asr/models/:id/download", async (req: Request, res: Response) => {
+  app.post("/api/admin/asr/models/:id/download", requireAdmin, async (req: Request, res: Response) => {
     const paramId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const model = MODELS.find((m) => m.id === paramId);
     if (!model) return res.status(404).json({ error: "unknown model" });
@@ -206,7 +207,7 @@ export function mountAsrAdminRoutes(app: Express): void {
   });
 
   // Download progress
-  app.get("/api/admin/asr/models/:id/status", (req: Request, res: Response) => {
+  app.get("/api/admin/asr/models/:id/status", requireAdmin, (req: Request, res: Response) => {
     const sid = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const state = downloads.get(sid);
     if (!state) return res.json({ status: "idle" });
@@ -214,7 +215,7 @@ export function mountAsrAdminRoutes(app: Express): void {
   });
 
   // Install sherpa-onnx-node runtime
-  app.post("/api/admin/asr/install-runtime", async (_req: Request, res: Response) => {
+  app.post("/api/admin/asr/install-runtime", requireAdmin, async (_req: Request, res: Response) => {
     try {
       // Find the tianshu package root (where package.json lives)
       const pkgRoot = findPackageRoot();
@@ -238,7 +239,7 @@ export function mountAsrAdminRoutes(app: Express): void {
   });
 
   // Activate model
-  app.post("/api/admin/asr/models/:id/activate", async (req: Request, res: Response) => {
+  app.post("/api/admin/asr/models/:id/activate", requireAdmin, async (req: Request, res: Response) => {
     const paramId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const model = MODELS.find((m) => m.id === paramId);
     if (!model) return res.status(404).json({ error: "unknown model" });
@@ -250,7 +251,7 @@ export function mountAsrAdminRoutes(app: Express): void {
   });
 
   // Delete model
-  app.delete("/api/admin/asr/models/:id", async (req: Request, res: Response) => {
+  app.delete("/api/admin/asr/models/:id", requireAdmin, async (req: Request, res: Response) => {
     const did = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
     const model = MODELS.find((m) => m.id === did);
     if (!model) return res.status(404).json({ error: "unknown model" });

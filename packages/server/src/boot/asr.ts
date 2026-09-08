@@ -177,6 +177,11 @@ export function mountAsrRoute(app: Express): void {
   });
 
   app.post("/api/transcribe", async (req: Request, res: Response) => {
+    // Require authentication — reject anonymous requests
+    if (!req.ctx) {
+      res.status(401).json({ error: "authentication required" });
+      return;
+    }
     if (!recognizer && !(await initRecognizer())) {
       res.status(503).json({ error: "ASR model not loaded" });
       return;

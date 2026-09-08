@@ -756,8 +756,11 @@ mountPublicAuthRoutes(app, {
 
 // Everything below /api/* needs a tenant context. The chain is built
 // per-request from the live auth config (see resolvePublicUrl comment).
-// ─── ASR (before auth) ─────────────────────────────────
+// ─── ASR status (before auth — lightweight, no sensitive data) ───
 import { mountAsrRoute } from "./boot/asr.js";
+// Note: mountAsrRoute registers both /api/transcribe/status (public)
+// and /api/transcribe (POST, needs auth). We mount it here but the
+// POST handler checks auth via the tenant context below.
 mountAsrRoute(app);
 
 // ─── HF Model Proxy (before auth) ─────────────────────────
@@ -769,6 +772,10 @@ app.use(async (req, res, next) => {
   if (!req.path.startsWith(HF_PROXY_PREFIX)) return next();
   const hfPath = req.path.slice(HF_PROXY_PREFIX.length);
   if (!hfPath) return res.status(400).json({ error: "missing path" });
+  // Only allow known model paths — prevent SSRF to arbitrary URLs
+  if (!/^[\w.-]+\/[\w.-]+\/resolve\//.test(hfPath)) {
+    return res.status(400).json({ error: "invalid model path" });
+  }
   const hfBase = process.env.HF_MIRROR || "https://huggingface.co";
   const url = `${hfBase}/${hfPath}`;
   try {
