@@ -59,6 +59,8 @@ export function mountUsageRoutes(
         JOIN sessions s ON m.session_id = s.id
         WHERE m.role = 'assistant'
           AND m.created_at > ?
+          AND m.content LIKE '{%'
+          AND json_valid(m.content)
           AND json_extract(m.content, '$.usage') IS NOT NULL
         GROUP BY s.user_id, json_extract(m.content, '$.model')
         ORDER BY total_tokens DESC
@@ -118,6 +120,8 @@ export function mountUsageRoutes(
           FROM messages m
           WHERE m.role = 'assistant'
             AND m.created_at > ?
+            AND m.content LIKE '{%'
+            AND json_valid(m.content)
             AND json_extract(m.content, '$.usage') IS NOT NULL
         `).get(sinceMs);
         return { tenantId: tid, totalTokens: row?.total_tokens ?? 0, messageCount: row?.msg_count ?? 0 };
