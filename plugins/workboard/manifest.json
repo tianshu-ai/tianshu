@@ -67,26 +67,22 @@
       {
         "id": "task_create",
         "module": "TaskCreateTool",
-        "since": "0.1.0",
-        "access": "admin"
+        "since": "0.1.0"
       },
       {
         "id": "task_update",
         "module": "TaskUpdateTool",
-        "since": "0.1.0",
-        "access": "admin"
+        "since": "0.1.0"
       },
       {
         "id": "task_move",
         "module": "TaskMoveTool",
-        "since": "0.1.0",
-        "access": "admin"
+        "since": "0.1.0"
       },
       {
         "id": "task_delete",
         "module": "TaskDeleteTool",
-        "since": "0.1.0",
-        "access": "admin"
+        "since": "0.1.0"
       },
       {
         "id": "task_get_history",
@@ -96,32 +92,27 @@
       {
         "id": "task_complete",
         "module": "TaskCompleteTool",
-        "since": "0.1.0",
-        "access": "admin"
+        "since": "0.1.0"
       },
       {
         "id": "task_continue",
         "module": "TaskContinueTool",
-        "since": "0.1.0",
-        "access": "admin"
+        "since": "0.1.0"
       },
       {
         "id": "task_retry_fresh",
         "module": "TaskRetryFreshTool",
-        "since": "0.1.0",
-        "access": "admin"
+        "since": "0.1.0"
       },
       {
         "id": "task_extend_timeout",
         "module": "TaskExtendTimeoutTool",
-        "since": "0.1.0",
-        "access": "admin"
+        "since": "0.1.0"
       },
       {
         "id": "task_abort",
         "module": "TaskAbortTool",
-        "since": "0.1.0",
-        "access": "admin"
+        "since": "0.1.0"
       },
       {
         "id": "model_list",
@@ -181,20 +172,17 @@
       {
         "method": "POST",
         "path": "/tasks",
-        "handler": "createTask",
-        "access": "admin"
+        "handler": "createTask"
       },
       {
         "method": "POST",
         "path": "/tasks/delete",
-        "handler": "deleteTask",
-        "access": "admin"
+        "handler": "deleteTask"
       },
       {
         "method": "PATCH",
         "path": "/tasks/:id",
-        "handler": "patchTask",
-        "access": "admin"
+        "handler": "patchTask"
       },
       {
         "method": "GET",
