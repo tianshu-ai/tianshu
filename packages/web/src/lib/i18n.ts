@@ -793,7 +793,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "model.fallbackName": "模型",
     "model.groupOther": "其他",
     "lang.label": "语言",
-    "user.role.member": "成员",
+    "user.role.member": "普通用户",
     "user.role.admin": "管理员",
     "user.role.dev": "开发者",
     "user.theme": "主题",
