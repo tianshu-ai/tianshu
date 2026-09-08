@@ -141,7 +141,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "ModelsPage",
     coreComponent: ModelsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Tenant",
+    group: "Platform",
     order: 5,
     clientEntry: null,
   },
@@ -154,7 +154,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "McpServersPage",
     coreComponent: McpServersPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Tenant",
+    group: "Platform",
     order: 6,
     clientEntry: null,
   },
@@ -167,7 +167,7 @@ const CORE_PAGES: FlatAdminPage[] = [
     kind: "core",
     component: "AsrModelsPage",
     coreComponent: AsrModelsPage as unknown as React.ComponentType<AdminPageProps>,
-    group: "Tenant",
+    group: "Platform",
     order: 7,
     clientEntry: null,
   },
@@ -178,7 +178,7 @@ const CORE_PAGES: FlatAdminPage[] = [
  *  plugin pages so a plugin can't escape the Plugins section by
  *  inventing its own top-level label. (Core / host-shipped pages
  *  keep their own groups: Agent for MCP, etc.) */
-const PLUGIN_GROUP = "Plugins";
+const PLUGIN_GROUP = "Tenant";
 
 function flattenAdminPages(plugins: PluginListEntry[] | null): FlatAdminPage[] {
   const out: FlatAdminPage[] = [...CORE_PAGES];
