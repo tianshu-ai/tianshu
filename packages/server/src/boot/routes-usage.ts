@@ -98,7 +98,8 @@ export function mountUsageRoutes(
         },
       });
     } catch (e) {
-      res.status(500).json({ error: `query failed: ${e}` });
+      console.error(`[usage] query failed for tenant ${tenantId}:`, e);
+      res.status(500).json({ error: `query failed: ${e instanceof Error ? e.message : String(e)}` });
     }
   });
 

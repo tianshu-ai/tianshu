@@ -30,12 +30,14 @@ export default function UsagePage() {
   const [data, setData] = useState<UsageData | null>(null);
   const [days, setDays] = useState(30);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetch(`/api/admin/usage?days=${days}`, { credentials: "include" });
-      if (res.ok) setData(await res.json());
+      if (res.ok) { setData(await res.json()); setError(null); }
+      else { const d = await res.json().catch(() => ({})); setError(d.error || `HTTP ${res.status}`); }
     } catch { /* ignore */ }
     finally { setLoading(false); }
   }, [days]);
@@ -76,6 +78,10 @@ export default function UsagePage() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-sm text-danger">{error}</div>
+      )}
 
       {/* Totals */}
       {data && (
