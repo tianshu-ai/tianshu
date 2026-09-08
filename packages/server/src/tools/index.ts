@@ -184,13 +184,13 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       continue;
     }
     schemas.push(tool.schema);
+    // Skip admin-only tools for member users — don't even expose to LLM
     const effectiveAccess = toolAccess ?? "member";
+    if (effectiveAccess === "admin" && toolContext.userRole === "member") continue;
+
     executors[name] = (args) => {
       if (toolContext.signal?.aborted) {
         throw new Error("aborted by user");
-      }
-      if (effectiveAccess === "admin" && toolContext.userRole === "member") {
-        return { content: [{ type: "text" as const, text: "Permission denied: this tool requires admin role." }] };
       }
       return tool.execute(args, ctx);
     };
