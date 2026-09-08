@@ -78,21 +78,35 @@ export function mountUsageRoutes(
       }
 
       // Daily breakdown for trend chart
-      const dailyRows = db.prepare<[number], {
-        day: string; input_tokens: number; output_tokens: number; total_tokens: number; msg_count: number;
+      // Daily breakdown grouped by model for stacked bar chart
+      const dailyModelRows = db.prepare<[number], {
+        day: string; model: string; total_tokens: number; msg_count: number;
       }>(`
         SELECT
           date(m.created_at/1000, 'unixepoch') as day,
-          COALESCE(SUM(json_extract(m.content, '$.usage.input')), 0) as input_tokens,
-          COALESCE(SUM(json_extract(m.content, '$.usage.output')), 0) as output_tokens,
+          COALESCE(json_extract(m.content, '$.model'), 'unknown') as model,
           COALESCE(SUM(json_extract(m.content, '$.usage.totalTokens')), 0) as total_tokens,
           COUNT(*) as msg_count
         FROM messages m
         WHERE m.role = 'assistant' AND m.created_at > ?
           AND m.content LIKE '{%' AND json_valid(m.content)
           AND json_extract(m.content, '$.usage') IS NOT NULL
-        GROUP BY day ORDER BY day
+        GROUP BY day, model ORDER BY day
       `).all(sinceMs);
+
+      // Pivot: each day becomes { day, totalTokens, [model1]: tokens, [model2]: tokens, ... }
+      const dayMap = new Map<string, Record<string, number>>();
+      const allModels = new Set<string>();
+      for (const r of dailyModelRows) {
+        allModels.add(r.model);
+        const entry = dayMap.get(r.day) ?? { totalTokens: 0 };
+        entry[r.model] = (entry[r.model] ?? 0) + r.total_tokens;
+        entry.totalTokens = (entry.totalTokens ?? 0) + r.total_tokens;
+        dayMap.set(r.day, entry);
+      }
+      const dailyRows = Array.from(dayMap.entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, data]) => ({ day, ...data }));
 
       // Model breakdown
       const modelRows = db.prepare<[number], {
@@ -112,13 +126,8 @@ export function mountUsageRoutes(
       res.json({
         tenantId,
         days,
-        daily: dailyRows.map((r) => ({
-          day: r.day,
-          inputTokens: r.input_tokens,
-          outputTokens: r.output_tokens,
-          totalTokens: r.total_tokens,
-          messageCount: r.msg_count,
-        })),
+        daily: dailyRows,
+        models: Array.from(allModels),
         byModel: modelRows.map((r) => ({
           model: r.model,
           totalTokens: r.total_tokens,

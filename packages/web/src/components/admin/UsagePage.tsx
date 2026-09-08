@@ -8,12 +8,13 @@ import { useT } from "../../hooks/useT";
 import { useChatStore } from "../../stores/chat-store";
 
 // ── Types ──────────────────────────────────────────────────────────
-interface DailyUsage { day: string; inputTokens: number; outputTokens: number; totalTokens: number; messageCount: number }
+// Daily data is pivoted: { day, totalTokens, [model1]: number, [model2]: number, ... }
+type DailyUsage = Record<string, number | string>;
 interface ModelUsage { model: string; totalTokens: number; messageCount: number }
 interface UserUsage { userId: string; input: number; output: number; total: number; messages: number }
 interface UsageData {
   tenantId: string; days: number;
-  daily: DailyUsage[]; byModel: ModelUsage[]; byUser: UserUsage[];
+  daily: DailyUsage[]; models: string[]; byModel: ModelUsage[]; byUser: UserUsage[];
   totals: { inputTokens: number; outputTokens: number; totalTokens: number; messageCount: number };
 }
 
@@ -50,18 +51,30 @@ export default function UsagePage() {
   // Fill missing days
   const filledDaily = useMemo(() => {
     if (!data?.daily.length) return [];
-    const map = new Map(data.daily.map((d) => [d.day, d]));
+    const map = new Map(data.daily.map((d) => [String(d.day), d]));
     const result: DailyUsage[] = [];
-    const sorted = [...data.daily].sort((a, b) => a.day.localeCompare(b.day));
-    const endDate = new Date(sorted[sorted.length - 1].day + "T12:00:00Z");
+    const sorted = [...data.daily].sort((a, b) => String(a.day).localeCompare(String(b.day)));
+    const endDate = new Date(String(sorted[sorted.length - 1].day) + "T12:00:00Z");
     const startDate = new Date(endDate.getTime() - (data.days - 1) * 86400_000);
-    const actualStart = new Date(Math.min(new Date(sorted[0].day + "T12:00:00Z").getTime(), startDate.getTime()));
+    const actualStart = new Date(Math.min(new Date(String(sorted[0].day) + "T12:00:00Z").getTime(), startDate.getTime()));
+    // Build a zero-entry with all models set to 0
+    const zeroEntry = (): DailyUsage => {
+      const e: DailyUsage = { day: "", totalTokens: 0 };
+      for (const m of data.models ?? []) e[m] = 0;
+      return e;
+    };
     for (let d = new Date(actualStart); d <= endDate; d.setUTCDate(d.getUTCDate() + 1)) {
       const key = d.toISOString().slice(0, 10);
-      const entry = map.get(key);
-      result.push(entry ?? { day: key, inputTokens: 0, outputTokens: 0, totalTokens: 0, messageCount: 0 });
+      result.push(map.get(key) ?? { ...zeroEntry(), day: key });
     }
     return result;
+  }, [data]);
+
+  // Build model→color map (shared between pie chart and bar chart)
+  const modelColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (data?.models ?? []).forEach((m, i) => map.set(m, COLORS[i % COLORS.length]));
+    return map;
   }, [data]);
 
   const userMax = data?.byUser.reduce((m, u) => Math.max(m, u.total), 0) ?? 1;
@@ -146,7 +159,16 @@ export default function UsagePage() {
                     labelStyle={{ color: "var(--color-fg-default, #fff)", fontWeight: 600 }}
                     formatter={(value) => [fmt(Number(value)), "Tokens"]}
                   />
-                  <Bar dataKey="totalTokens" fill="#4263eb" radius={[3, 3, 0, 0]} />
+                  {(data?.models ?? []).map((model, i, arr) => (
+                    <Bar
+                      key={model}
+                      dataKey={model}
+                      stackId="a"
+                      fill={modelColorMap.get(model) ?? "#4263eb"}
+                      radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0}
+                    />
+                  ))}
+                  <Legend formatter={(value: string) => <span style={{ fontSize: 11 }}>{value}</span>} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -170,8 +192,8 @@ export default function UsagePage() {
                       outerRadius={75}
                       paddingAngle={2}
                     >
-                      {data.byModel.map((_, i) => (
-                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                      {data.byModel.map((m) => (
+                        <Cell key={m.model} fill={modelColorMap.get(m.model) ?? COLORS[0]} />
                       ))}
                     </Pie>
                     <Tooltip
