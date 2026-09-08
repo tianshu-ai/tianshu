@@ -37,6 +37,7 @@ import { api, type PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
 import { buildIdentityPath, clearIdentityCookie } from "../../dev-identity";
 import AsrModelsPage from "./AsrModelsPage";
+import UsagePage from "./UsagePage";
 import McpServersPage from "./McpServersPage";
 import ModelsPage from "./ModelsPage";
 import {
@@ -169,6 +170,19 @@ const CORE_PAGES: FlatAdminPage[] = [
     coreComponent: AsrModelsPage as unknown as React.ComponentType<AdminPageProps>,
     group: "Platform",
     order: 7,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "usage",
+    displayName: "Usage",
+    icon: "BarChart3",
+    kind: "core",
+    component: "UsagePage",
+    coreComponent: UsagePage as unknown as React.ComponentType<AdminPageProps>,
+    group: "Platform",
+    order: 8,
     clientEntry: null,
   },
 ];
@@ -363,6 +377,8 @@ function localizeCorePageLabel(
       return t("admin.nav.mcp");
     case "asr":
       return t("admin.nav.asr");
+    case "usage":
+      return t("admin.nav.usage");
     default:
       return page.displayName;
   }

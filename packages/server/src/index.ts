@@ -839,6 +839,14 @@ mountCoreRoutes(app, { pluginRegistry, listTenants: () => globalOps.list() });
 import { mountAsrAdminRoutes } from "./boot/asr-admin.js";
 mountAsrAdminRoutes(app);
 
+import { mountUsageRoutes } from "./boot/routes-usage.js";
+mountUsageRoutes(app, {
+  listTenants: () => globalOps.list(),
+  getTenantDb: (tid) => {
+    try { return globalOps.open(tid).db; } catch { return null; }
+  },
+});
+
 // Admin auth routes (after the wall): GET/PATCH /api/admin/auth,
 // guarded by requireAdmin. Writes to config.json; the resolver chain
 // getter above re-reads on the next request so no restart is needed.
