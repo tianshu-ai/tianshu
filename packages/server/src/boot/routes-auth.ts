@@ -608,11 +608,19 @@ export function mountAdminAuthRoutes(app: Express, deps: RoutesAuthDeps): void {
     const store = getUserStore();
     const currentTenant = req.ctx!.tenant.tenantId;
 
+    const meta = req.ctx?.identityMeta ?? {};
+    const callerIsSuper = isSuperAdmin(cfg, {
+      email: meta.email,
+      username: meta.provider === "local" ? meta.name : undefined,
+    });
+
     const users = store.list()
       .filter((u) => {
-        // Include if user has a role in this tenant OR is a super-admin
-        const hasRole = store.rolesForUser(u.id).some((r) => r.tenantId === currentTenant);
         const isSuper = isSuperAdmin(cfg, { username: u.username, email: u.email });
+        // Super-admins only visible to other super-admins
+        if (isSuper && !callerIsSuper) return false;
+        // Include if user has a role in this tenant
+        const hasRole = store.rolesForUser(u.id).some((r) => r.tenantId === currentTenant);
         return hasRole || isSuper;
       })
       .map((u) => {
