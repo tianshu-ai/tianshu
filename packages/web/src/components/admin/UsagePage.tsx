@@ -130,7 +130,7 @@ export default function UsagePage() {
                   const ratio = dailyMax > 0 ? d.totalTokens / dailyMax : 0;
                   const pct = Math.sqrt(ratio) * 100;
                   return (
-                    <div key={d.day} className="flex-1 flex flex-col justify-end group relative">
+                    <div key={d.day} className="flex-1 flex flex-col justify-end group relative min-h-full">
                       <div className={`rounded-t-sm ${d.totalTokens > 0 ? 'bg-link' : ''}`} style={{ height: d.totalTokens > 0 ? `${Math.max(pct, 4)}%` : '0%' }} />
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-bg-surface border border-border-default rounded px-2 py-1 text-[10px] text-fg-default whitespace-nowrap shadow-lg z-10">
                         <div className="font-medium">{d.day}</div>
