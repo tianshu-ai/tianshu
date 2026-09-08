@@ -86,17 +86,15 @@ export default function UsagePage() {
       {data && (
         <>
           {/* Stat cards */}
-          <div className="mb-6 grid grid-cols-4 gap-3">
+          <div className="mb-6 grid grid-cols-3 gap-3">
             {[
-              { label: t("usage.totalTokens"), value: fmt(data.totals.totalTokens), sub: "" },
-              { label: t("usage.inputTokens"), value: fmt(data.totals.inputTokens), sub: `${Math.round(data.totals.inputTokens / Math.max(data.totals.totalTokens, 1) * 100)}%` },
-              { label: t("usage.outputTokens"), value: fmt(data.totals.outputTokens), sub: `${Math.round(data.totals.outputTokens / Math.max(data.totals.totalTokens, 1) * 100)}%` },
-              { label: t("usage.messages"), value: String(data.totals.messageCount), sub: `~${fmt(Math.round(data.totals.totalTokens / Math.max(data.totals.messageCount, 1)))}/${t("usage.perMsg")}` },
+              { label: t("usage.totalTokens"), value: fmt(data.totals.totalTokens) },
+              { label: t("usage.messages"), value: String(data.totals.messageCount) },
+              { label: t("usage.avgPerMsg"), value: `~${fmt(Math.round(data.totals.totalTokens / Math.max(data.totals.messageCount, 1)))}` },
             ].map((s) => (
               <div key={s.label} className="rounded-md border border-border-subtle bg-bg-surface px-4 py-3">
                 <div className="text-xl font-semibold text-fg-default">{s.value}</div>
                 <div className="text-[11px] text-fg-faint mt-0.5">{s.label}</div>
-                {s.sub && <div className="text-[10px] text-fg-fainter mt-0.5">{s.sub}</div>}
               </div>
             ))}
           </div>
@@ -107,13 +105,10 @@ export default function UsagePage() {
               <div className="text-xs text-fg-faint mb-3">{t("usage.dailyTrend")}</div>
               <div className="flex items-end gap-[2px] h-32">
                 {data.daily.map((d) => {
-                  const inputPct = dailyMax > 0 ? (d.inputTokens / dailyMax) * 100 : 0;
-                  const outputPct = dailyMax > 0 ? (d.outputTokens / dailyMax) * 100 : 0;
+                  const pct = dailyMax > 0 ? (d.totalTokens / dailyMax) * 100 : 0;
                   return (
-                    <div key={d.day} className="flex-1 flex flex-col justify-end group relative" title={`${d.day}\n${fmt(d.totalTokens)} tokens · ${d.messageCount} msgs`}>
-                      <div className="bg-blue-500/40 rounded-t-sm" style={{ height: `${inputPct}%` }} />
-                      <div className="bg-blue-500 rounded-t-sm" style={{ height: `${outputPct}%` }} />
-                      {/* Tooltip on hover */}
+                    <div key={d.day} className="flex-1 flex flex-col justify-end group relative">
+                      <div className="bg-link rounded-t-sm min-h-[2px]" style={{ height: `${Math.max(pct, 1)}%` }} />
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-bg-surface border border-border-default rounded px-2 py-1 text-[10px] text-fg-default whitespace-nowrap shadow-lg z-10">
                         <div className="font-medium">{d.day}</div>
                         <div>{fmt(d.totalTokens)} tokens</div>
@@ -126,10 +121,6 @@ export default function UsagePage() {
               <div className="flex justify-between mt-1 text-[9px] text-fg-fainter">
                 <span>{data.daily[0]?.day}</span>
                 <span>{data.daily[data.daily.length - 1]?.day}</span>
-              </div>
-              <div className="flex items-center gap-4 mt-2 text-[10px] text-fg-faint">
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500/40" />{t("usage.inputTokens")}</span>
-                <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-blue-500" />{t("usage.outputTokens")}</span>
               </div>
             </div>
           )}
@@ -175,15 +166,10 @@ export default function UsagePage() {
                         <span className="text-fg-default font-mono truncate">{u.userId.slice(0, 16)}</span>
                         <span className="text-fg-muted shrink-0 ml-2">{fmt(u.total)}</span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-bg-raised overflow-hidden flex">
-                        <div className="bg-blue-500/50 rounded-l-full" style={{ width: `${(u.input / userMax) * 100}%` }} />
-                        <div className="bg-blue-500" style={{ width: `${(u.output / userMax) * 100}%` }} />
+                      <div className="h-1.5 rounded-full bg-bg-raised overflow-hidden">
+                        <div className="h-full bg-link rounded-full" style={{ width: `${(u.total / userMax) * 100}%` }} />
                       </div>
-                      <div className="flex gap-3 mt-0.5 text-[9px] text-fg-fainter">
-                        <span>{t("usage.in")}: {fmt(u.input)}</span>
-                        <span>{t("usage.out")}: {fmt(u.output)}</span>
-                        <span>{u.messages} {t("usage.msgs")}</span>
-                      </div>
+                      <div className="text-[9px] text-fg-fainter mt-0.5">{u.messages} {t("usage.msgs")}</div>
                     </div>
                   ))}
                 </div>
