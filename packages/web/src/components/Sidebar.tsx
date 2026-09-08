@@ -118,8 +118,8 @@ function SidebarFooter() {
   const userId = me?.userId ?? "…";
   const displayName = me?.displayName ?? userId;
   const initial = displayName.slice(0, 1).toUpperCase();
-  const roleText =
-    me?.role ?? (me?.devTenant ? t("user.role.dev") : t("user.role.member"));
+  const roleKey = me?.role === "admin" ? "user.role.admin" : me?.devTenant ? "user.role.dev" : "user.role.member";
+  const roleText = t(roleKey);
   const subline = `${roleText} · ${me?.tenantId ?? ""}`;
   const canLogout = !!me?.provider;
   const [changingPw, setChangingPw] = useState(false);
