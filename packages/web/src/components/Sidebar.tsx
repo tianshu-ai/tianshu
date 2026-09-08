@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Globe,
   Hash,
+  KeyRound,
   ShieldCheck,
   LogOut,
   Building2,
@@ -121,6 +122,7 @@ function SidebarFooter() {
     me?.role ?? (me?.devTenant ? t("user.role.dev") : t("user.role.member"));
   const subline = `${roleText} · ${me?.tenantId ?? ""}`;
   const canLogout = !!me?.provider;
+  const [changingPw, setChangingPw] = useState(false);
   // Admin entry: in dev mode (no session/provider) everyone is de-facto
   // admin; in auth mode only tenant-admins / super-admins. Members don't
   // see it (the settings write routes 403 them anyway).
@@ -340,9 +342,20 @@ function SidebarFooter() {
             <ThemeToggle compact />
           </div>
 
-          {/* Sign out — only when signed in via a real session
-           *  (auth mode). Clears the cookie then full-reloads; the
-           *  api client bounces to /login on the resulting 401. */}
+          {/* Change password */}
+          {canLogout && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setMenuOpen(false); setChangingPw(true); }}
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-fg-default hover:bg-bg-raised"
+            >
+              <KeyRound size={14} />
+              <span>{t("user.changePassword")}</span>
+            </button>
+          )}
+
+          {/* Sign out */}
           {canLogout && (
             <button
               type="button"
@@ -366,6 +379,70 @@ function SidebarFooter() {
           )}
         </div>
       )}
+
+      {/* Change password modal */}
+      {changingPw && <ChangePasswordModal onClose={() => setChangingPw(false)} />}
+    </div>
+  );
+}
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const t = useT();
+  const [oldPw, setOldPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+
+  const submit = async () => {
+    if (newPw.length < 6) { setError(t("user.pwTooShort")); return; }
+    setBusy(true); setError(null);
+    try {
+      const res = await fetch("/api/me/password", {
+        method: "PATCH", credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error === "wrong_password" ? t("user.wrongPassword") : data.error); setBusy(false); return; }
+      setDone(true);
+      setTimeout(onClose, 1200);
+    } catch (e) {
+      setError(String(e)); setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="w-80 rounded-xl border border-border-subtle bg-bg-elevated p-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-sm font-semibold text-fg-default mb-3">{t("user.changePassword")}</h3>
+        {done ? (
+          <div className="text-sm text-success text-center py-4">{t("user.pwChanged")}</div>
+        ) : (
+          <div className="space-y-2">
+            {error && <div className="text-xs text-danger">{error}</div>}
+            <input
+              type="password" autoFocus
+              placeholder={t("user.oldPassword")}
+              value={oldPw} onChange={(e) => setOldPw(e.target.value)}
+              className="w-full rounded-md border border-border-default bg-bg-base px-3 py-1.5 text-sm text-fg-default placeholder:text-fg-faint focus:border-link focus:outline-none"
+            />
+            <input
+              type="password"
+              placeholder={t("user.newPassword")}
+              value={newPw} onChange={(e) => setNewPw(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
+              className="w-full rounded-md border border-border-default bg-bg-base px-3 py-1.5 text-sm text-fg-default placeholder:text-fg-faint focus:border-link focus:outline-none"
+            />
+            <div className="flex justify-end gap-2 pt-1">
+              <button onClick={onClose} className="rounded-md px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-hover">{t("common.cancel")}</button>
+              <button onClick={() => void submit()} disabled={busy || !oldPw || !newPw}
+                className="rounded-md bg-link px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
+              >{busy ? t("common.saving") : t("common.save")}</button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
