@@ -413,44 +413,48 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="w-80 rounded-lg border border-border-default bg-bg-elevated p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-base font-semibold text-fg-default mb-4">{t("user.changePassword")}</h3>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--color-bg-overlay)] p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-80 rounded-xl border border-border-default bg-bg-elevated p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-semibold text-fg-default mb-4">{t("user.changePassword")}</h3>
         {done ? (
-          <div className="text-sm text-emerald-500 text-center py-6">✅ {t("user.pwChanged")}</div>
+          <div className="text-sm text-emerald-500 text-center py-6">{t("user.pwChanged")}</div>
         ) : (
-          <div className="space-y-3">
+          <div className="flex flex-col gap-3">
             {error && (
-              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-danger">
+              <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">
                 {error}
               </div>
             )}
-            <div>
-              <label className="block text-[11px] text-fg-muted mb-1">{t("user.oldPassword")}</label>
+            <label className="text-sm">
+              <span className="mb-1 block text-[11px] text-fg-faint">{t("user.oldPassword")}</span>
               <input
                 type="password" autoFocus
                 value={oldPw} onChange={(e) => setOldPw(e.target.value)}
-                className="w-full rounded-md border border-border-default bg-bg-base px-3 py-2 text-sm text-fg-default focus:border-link focus:outline-none focus:ring-1 focus:ring-link/30"
+                className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
               />
-            </div>
-            <div>
-              <label className="block text-[11px] text-fg-muted mb-1">{t("user.newPassword")}</label>
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-[11px] text-fg-faint">{t("user.newPassword")}</span>
               <input
                 type="password"
                 value={newPw} onChange={(e) => setNewPw(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && !busy && submit()}
-                className="w-full rounded-md border border-border-default bg-bg-base px-3 py-2 text-sm text-fg-default focus:border-link focus:outline-none focus:ring-1 focus:ring-link/30"
+                className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-[13px] text-fg-default"
               />
-            </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button onClick={onClose} className="rounded-md border border-border-default px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-hover">
-                {t("common.cancel")}
-              </button>
+            </label>
+            <div className="mt-1 flex justify-end gap-2">
+              <button onClick={onClose}
+                className="rounded-lg px-3 py-1.5 text-sm font-medium border border-border-default text-fg-muted hover:text-fg-default disabled:opacity-50"
+              >{t("common.cancel")}</button>
               <button onClick={() => void submit()} disabled={busy || !oldPw || !newPw}
-                className="rounded-md bg-link px-3 py-1.5 text-xs font-medium text-white hover:opacity-90 disabled:opacity-40"
-              >
-                {busy ? t("common.saving") : t("common.save")}
-              </button>
+                className="rounded-lg px-3 py-1.5 text-sm font-medium bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-50"
+              >{busy ? t("common.saving") : t("common.save")}</button>
             </div>
           </div>
         )}
