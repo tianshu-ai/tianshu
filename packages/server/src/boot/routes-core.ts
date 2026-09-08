@@ -312,6 +312,29 @@ export function mountCoreRoutes(
 
   // ── User preferences (key-value, persisted in tenant DB) ────────
 
+  // ── Change own password (any logged-in user) ─────────────
+  app.patch("/api/me/password", (req: Request, res: Response) => {
+    if (!req.ctx) { res.status(401).json({ error: "not_authenticated" }); return; }
+    const { userId } = req.ctx;
+    const body = req.body as { oldPassword?: string; newPassword?: string };
+    const oldPw = body.oldPassword ?? "";
+    const newPw = body.newPassword ?? "";
+    if (newPw.length < 6) {
+      res.status(400).json({ error: "weak_password", detail: "password ≥6" });
+      return;
+    }
+    const store = getUserStore();
+    const user = store.getById(userId);
+    if (!user) { res.status(404).json({ error: "user_not_found" }); return; }
+    // Verify old password via authenticate (username + password)
+    if (!store.authenticate(user.username, oldPw)) {
+      res.status(403).json({ error: "wrong_password" });
+      return;
+    }
+    store.setPassword(userId, newPw);
+    res.json({ ok: true });
+  });
+
   app.get("/api/preferences/:key", (req: Request, res: Response) => {
     if (!req.ctx) { res.status(500).json({ error: "no_ctx" }); return; }
     const { userId } = req.ctx;
