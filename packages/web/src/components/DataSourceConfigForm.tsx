@@ -28,19 +28,21 @@ interface ConnectionEntry {
   [key: string]: unknown;
 }
 
+// Field labels use i18n keys like ds.field.uri, ds.field.username etc.
+// Resolved at render time via t().
 const DRIVER_TYPES: DriverType[] = [
   { id: "neo4j", name: "Neo4j", fields: [
-    { key: "uri", label: "URI", placeholder: "bolt://localhost:7687", required: true },
-    { key: "username", label: "Username", placeholder: "neo4j", required: true },
-    { key: "password", label: "Password", secret: true, required: true },
-    { key: "database", label: "Database", placeholder: "neo4j" },
+    { key: "uri", label: "ds.field.uri", placeholder: "bolt://localhost:7687", required: true },
+    { key: "username", label: "ds.field.username", placeholder: "neo4j", required: true },
+    { key: "password", label: "ds.field.password", secret: true, required: true },
+    { key: "database", label: "ds.field.database", placeholder: "neo4j" },
   ]},
   { id: "mysql", name: "MySQL", fields: [
-    { key: "host", label: "Host", placeholder: "localhost", required: true },
-    { key: "port", label: "Port", placeholder: "3306" },
-    { key: "username", label: "Username", placeholder: "root", required: true },
-    { key: "password", label: "Password", secret: true, required: true },
-    { key: "database", label: "Database", required: true },
+    { key: "host", label: "ds.field.host", placeholder: "localhost", required: true },
+    { key: "port", label: "ds.field.port", placeholder: "3306" },
+    { key: "username", label: "ds.field.username", placeholder: "root", required: true },
+    { key: "password", label: "ds.field.password", secret: true, required: true },
+    { key: "database", label: "ds.field.database", required: true },
   ]},
 ];
 
@@ -125,14 +127,14 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
   }
 
   async function testConnection(name: string) {
-    setTestResults((prev) => ({ ...prev, [name]: { ok: false, msg: "Testing..." } }));
+    setTestResults((prev) => ({ ...prev, [name]: { ok: false, msg: t("ds.testing") } }));
     try {
       // Must save first if dirty
       const res = await fetch(`/api/p/datasource/test/${encodeURIComponent(name)}`, { method: "POST", credentials: "include" });
       const data = await res.json();
       setTestResults((prev) => ({
         ...prev,
-        [name]: { ok: !!data.ok, msg: data.ok ? "Connected" : data.error || "Failed" },
+        [name]: { ok: !!data.ok, msg: data.ok ? t("ds.connected") : data.error || t("ds.failed") },
       }));
     } catch (err) {
       setTestResults((prev) => ({
@@ -207,7 +209,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
               {driverType?.fields.map((f) => (
                 <div key={f.key}>
                   <label className="mb-0.5 block text-[11px] text-fg-faint">
-                    {f.label}{f.required ? " *" : ""}
+                    {t(f.label)}{f.required ? " *" : ""}
                   </label>
                   <input
                     className={INPUT}
