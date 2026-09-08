@@ -38,6 +38,7 @@ import {
   type AdminLocalUser,
 } from "../../lib/api";
 import { useT } from "../../hooks/useT";
+import { useChatStore } from "../../stores/chat-store";
 
 const SECRET_MASK = "__stored__";
 
@@ -585,20 +586,17 @@ function TenantsSection() {
 
 function LocalUsersSection() {
   const t = useT();
+  const me = useChatStore((s) => s.me);
   const [users, setUsers] = useState<AdminLocalUser[]>([]);
-  const [tenants, setTenants] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
-  // Which modal is open (null = none). Buttons open these; no window.prompt.
   const [creating, setCreating] = useState(false);
   const [pwUser, setPwUser] = useState<AdminLocalUser | null>(null);
-  const [roleUser, setRoleUser] = useState<AdminLocalUser | null>(null);
 
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const [u, tn] = await Promise.all([api.adminUsers(), api.adminTenants()]);
+      const u = await api.adminUsers();
       setUsers(u.users);
-      setTenants(tn.tenants);
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e));
     }
@@ -610,6 +608,12 @@ function LocalUsersSection() {
   const del = async (u: AdminLocalUser) => {
     if (!window.confirm(t("auth.users.confirmDelete", { name: u.username }))) return;
     await api.adminDeleteUser(u.id);
+    await load();
+  };
+
+  const toggleRole = async (u: AdminLocalUser) => {
+    const newRole = u.role === "admin" ? "member" : "admin";
+    await api.adminSetRole(u.id, newRole);
     await load();
   };
 
@@ -671,16 +675,18 @@ function LocalUsersSection() {
                   )}
                 </div>
               </div>
-              {/* Right: action buttons — icon only, compact */}
+              {/* Right: actions */}
               <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setRoleUser(u)}
-                  className="rounded-md p-1.5 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors"
-                  title={t("auth.users.roles")}
-                >
-                  <ShieldPlus size={14} />
-                </button>
+                {/* Toggle role — disabled for self and super-admins */}
+                {!u.superAdmin && u.id !== me?.userId && (
+                  <button
+                    type="button"
+                    onClick={() => void toggleRole(u)}
+                    className="rounded-md px-2.5 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-bg-hover border border-border-default transition-colors"
+                  >
+                    {u.role === "admin" ? t("auth.users.demote") : t("auth.users.promote")}
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setPwUser(u)}
@@ -689,14 +695,16 @@ function LocalUsersSection() {
                 >
                   <KeyRound size={14} />
                 </button>
-                <button
-                  type="button"
-                  onClick={() => void del(u)}
-                  className="rounded-md p-1.5 text-fg-faint hover:text-danger hover:bg-danger/10 transition-colors"
-                  title={t("common.delete")}
-                >
-                  <Trash2 size={14} />
-                </button>
+                {u.id !== me?.userId && (
+                  <button
+                    type="button"
+                    onClick={() => void del(u)}
+                    className="rounded-md p-1.5 text-fg-faint hover:text-danger hover:bg-danger/10 transition-colors"
+                    title={t("common.delete")}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -721,18 +729,7 @@ function LocalUsersSection() {
           onDone={() => setPwUser(null)}
         />
       )}
-      {/* Assign-role modal */}
-      {roleUser && (
-        <AssignRoleModal
-          user={roleUser}
-          tenants={tenants}
-          onClose={() => setRoleUser(null)}
-          onDone={() => {
-            setRoleUser(null);
-            void load();
-          }}
-        />
-      )}
+
     </div>
   );
 }
