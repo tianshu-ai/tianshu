@@ -17,6 +17,19 @@ function ShellPreviewPanel(_props) {
   const [publishing, setPublishing] = useState(false);
   const [publishResult, setPublishResult] = useState(null);
   const [previewKey, setPreviewKey] = useState(0);
+  const [shellUrl, setShellUrl] = useState(null);
+
+  // Fetch identity to build shell URL
+  useEffect(() => {
+    fetch("/api/me", { credentials: "include" })
+      .then(r => r.json())
+      .then(d => {
+        if (d.tenantId && d.userId) {
+          setShellUrl("/shell/tenants/" + d.tenantId + "/users/" + d.userId);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const loadStatus = useCallback(async () => {
     try {
@@ -90,6 +103,13 @@ function ShellPreviewPanel(_props) {
           _jsx(Paintbrush, { size: 14, className: "text-fg-muted" }),
           _jsx("span", { className: "text-xs font-medium text-fg-default", children: "Custom UI Shell" }),
           _jsx("div", { className: "ml-auto" }),
+          shellUrl && hasPublished && _jsx("a", {
+            href: shellUrl,
+            target: "_blank",
+            rel: "noopener",
+            className: "flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-link hover:bg-link/10 border border-link/20 transition-colors",
+            children: [_jsx(ExternalLink, { key: "ic", size: 11 }), "Open Shell"],
+          }),
           _jsx("button", {
             onClick: () => { loadStatus(); setPreviewKey(k => k + 1); },
             className: "rounded p-1 text-fg-faint hover:text-fg-default hover:bg-bg-hover transition-colors",
