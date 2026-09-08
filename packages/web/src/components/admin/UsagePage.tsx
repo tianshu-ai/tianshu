@@ -1,8 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { BarChart3, RefreshCw } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, Legend,
+} from "recharts";
 import { useT } from "../../hooks/useT";
 import { useChatStore } from "../../stores/chat-store";
 
+// ── Types ──────────────────────────────────────────────────────────
 interface DailyUsage { day: string; inputTokens: number; outputTokens: number; totalTokens: number; messageCount: number }
 interface ModelUsage { model: string; totalTokens: number; messageCount: number }
 interface UserUsage { userId: string; input: number; output: number; total: number; messages: number }
@@ -12,17 +17,16 @@ interface UsageData {
   totals: { inputTokens: number; outputTokens: number; totalTokens: number; messageCount: number };
 }
 
+// ── Helpers ────────────────────────────────────────────────────────
 function fmt(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
 }
 
-const MODEL_COLORS = [
-  "bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-purple-500",
-  "bg-rose-500", "bg-cyan-500", "bg-pink-500", "bg-indigo-500",
-];
+const COLORS = ["#4263eb", "#12b886", "#f59f00", "#ae3ec9", "#fa5252", "#20c997", "#e64980", "#4c6ef5"];
 
+// ── Component ──────────────────────────────────────────────────────
 export default function UsagePage() {
   const t = useT();
   const me = useChatStore((s) => s.me);
@@ -43,30 +47,24 @@ export default function UsagePage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Fill in missing days with zeros so the chart has no gaps.
-  // Use the actual date range from the API data to avoid timezone mismatches.
-  const filledDaily = (() => {
+  // Fill missing days
+  const filledDaily = useMemo(() => {
     if (!data?.daily.length) return [];
     const map = new Map(data.daily.map((d) => [d.day, d]));
     const result: DailyUsage[] = [];
-    // Derive range from the API's first/last day, then extend to cover full period
     const sorted = [...data.daily].sort((a, b) => a.day.localeCompare(b.day));
-    const firstDay = sorted[0].day;
-    const lastDay = sorted[sorted.length - 1].day;
-    // Walk from (lastDay - days) to lastDay using simple string date math
-    const endDate = new Date(lastDay + "T12:00:00Z"); // noon UTC to avoid DST issues
+    const endDate = new Date(sorted[sorted.length - 1].day + "T12:00:00Z");
     const startDate = new Date(endDate.getTime() - (data.days - 1) * 86400_000);
-    // Use the earlier of API first day and computed start
-    const actualStart = new Date(Math.min(new Date(firstDay + "T12:00:00Z").getTime(), startDate.getTime()));
+    const actualStart = new Date(Math.min(new Date(sorted[0].day + "T12:00:00Z").getTime(), startDate.getTime()));
     for (let d = new Date(actualStart); d <= endDate; d.setUTCDate(d.getUTCDate() + 1)) {
       const key = d.toISOString().slice(0, 10);
-      result.push(map.get(key) ?? { day: key, inputTokens: 0, outputTokens: 0, totalTokens: 0, messageCount: 0 });
+      const entry = map.get(key);
+      result.push(entry ?? { day: key, inputTokens: 0, outputTokens: 0, totalTokens: 0, messageCount: 0 });
     }
     return result;
-  })();
-  const dailyMax = filledDaily.reduce((m, d) => Math.max(m, d.totalTokens), 0) || 1;
+  }, [data]);
+
   const userMax = data?.byUser.reduce((m, u) => Math.max(m, u.total), 0) ?? 1;
-  const modelTotal = data?.byModel.reduce((s, m) => s + m.totalTokens, 0) ?? 1;
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -120,61 +118,76 @@ export default function UsagePage() {
             ))}
           </div>
 
-          {/* Daily trend chart */}
+          {/* Daily trend — Recharts BarChart */}
           {filledDaily.length > 0 && (
             <div className="mb-6 rounded-md border border-border-subtle bg-bg-surface p-4">
               <div className="text-xs text-fg-faint mb-3">{t("usage.dailyTrend")}</div>
-              <div className="flex items-end gap-[2px] h-32">
-                {filledDaily.map((d) => {
-                  // Use sqrt scale so small days aren't invisible next to large spikes
-                  const ratio = dailyMax > 0 ? d.totalTokens / dailyMax : 0;
-                  const pct = Math.sqrt(ratio) * 100;
-                  return (
-                    <div key={d.day} className="flex-1 flex flex-col justify-end group relative min-h-full">
-                      <div className={`rounded-t-sm ${d.totalTokens > 0 ? 'bg-link' : ''}`} style={{ height: d.totalTokens > 0 ? `${Math.max(pct, 4)}%` : '0%' }} />
-                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-bg-surface border border-border-default rounded px-2 py-1 text-[10px] text-fg-default whitespace-nowrap shadow-lg z-10">
-                        <div className="font-medium">{d.day}</div>
-                        <div>{fmt(d.totalTokens)} tokens</div>
-                        <div className="text-fg-faint">{d.messageCount} {t("usage.msgs")}</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="flex justify-between mt-1 text-[9px] text-fg-fainter">
-                <span>{filledDaily[0]?.day}</span>
-                <span>{filledDaily[filledDaily.length - 1]?.day}</span>
-              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={filledDaily} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #333)" vertical={false} />
+                  <XAxis
+                    dataKey="day"
+                    tick={{ fontSize: 10, fill: "var(--color-fg-faint, #888)" }}
+                    tickFormatter={(v: string) => v.slice(5)} // "MM-DD"
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: "var(--color-fg-faint, #888)" }}
+                    tickFormatter={(v: number) => fmt(v)}
+                    width={50}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "var(--color-bg-surface, #1a1a2e)",
+                      border: "1px solid var(--color-border-default, #444)",
+                      borderRadius: 6,
+                      fontSize: 12,
+                    }}
+                    labelStyle={{ color: "var(--color-fg-default, #fff)", fontWeight: 600 }}
+                    formatter={(value) => [fmt(Number(value)), "Tokens"]}
+                  />
+                  <Bar dataKey="totalTokens" fill="#4263eb" radius={[3, 3, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           )}
 
-          {/* Model breakdown + User breakdown side by side */}
+          {/* Model + User panels */}
           <div className="grid grid-cols-2 gap-4 mb-6">
-            {/* Model breakdown */}
+            {/* Model breakdown — PieChart */}
             {data.byModel.length > 0 && (
               <div className="rounded-md border border-border-subtle bg-bg-surface p-4">
                 <div className="text-xs text-fg-faint mb-3">{t("usage.byModel")}</div>
-                {/* Donut-style horizontal bar */}
-                <div className="h-3 rounded-full bg-bg-raised overflow-hidden flex mb-3">
-                  {data.byModel.map((m, i) => (
-                    <div
-                      key={m.model}
-                      className={`${MODEL_COLORS[i % MODEL_COLORS.length]} first:rounded-l-full last:rounded-r-full`}
-                      style={{ width: `${(m.totalTokens / modelTotal) * 100}%` }}
-                      title={`${m.model}: ${fmt(m.totalTokens)}`}
+                <ResponsiveContainer width="100%" height={200}>
+                  <PieChart>
+                    <Pie
+                      data={data.byModel}
+                      dataKey="totalTokens"
+                      nameKey="model"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={45}
+                      outerRadius={75}
+                      paddingAngle={2}
+                    >
+                      {data.byModel.map((_, i) => (
+                        <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "var(--color-bg-surface, #1a1a2e)",
+                        border: "1px solid var(--color-border-default, #444)",
+                        borderRadius: 6,
+                        fontSize: 12,
+                      }}
+                      formatter={(value) => [fmt(Number(value)), "Tokens"]}
                     />
-                  ))}
-                </div>
-                <div className="space-y-1.5">
-                  {data.byModel.map((m, i) => (
-                    <div key={m.model} className="flex items-center gap-2 text-[11px]">
-                      <span className={`w-2.5 h-2.5 rounded-sm shrink-0 ${MODEL_COLORS[i % MODEL_COLORS.length]}`} />
-                      <span className="text-fg-default truncate flex-1">{m.model}</span>
-                      <span className="text-fg-muted shrink-0">{fmt(m.totalTokens)}</span>
-                      <span className="text-fg-fainter shrink-0 w-10 text-right">{Math.round(m.totalTokens / modelTotal * 100)}%</span>
-                    </div>
-                  ))}
-                </div>
+                    <Legend
+                      formatter={(value: string) => <span style={{ fontSize: 11 }}>{value}</span>}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
               </div>
             )}
 
@@ -182,15 +195,21 @@ export default function UsagePage() {
             {data.byUser.length > 0 && (
               <div className="rounded-md border border-border-subtle bg-bg-surface p-4">
                 <div className="text-xs text-fg-faint mb-3">{t("usage.perUser")}</div>
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {data.byUser.map((u) => (
                     <div key={u.userId}>
-                      <div className="flex items-center justify-between text-[11px] mb-0.5">
+                      <div className="flex items-center justify-between text-[11px] mb-1">
                         <span className="text-fg-default font-mono truncate">{u.userId.slice(0, 16)}</span>
                         <span className="text-fg-muted shrink-0 ml-2">{fmt(u.total)}</span>
                       </div>
-                      <div className="h-1.5 rounded-full bg-bg-raised overflow-hidden">
-                        <div className="h-full bg-link rounded-full" style={{ width: `${(u.total / userMax) * 100}%` }} />
+                      <div className="h-2 rounded-full bg-bg-raised overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${(u.total / userMax) * 100}%`,
+                            backgroundColor: "#4263eb",
+                          }}
+                        />
                       </div>
                       <div className="text-[9px] text-fg-fainter mt-0.5">{u.messages} {t("usage.msgs")}</div>
                     </div>

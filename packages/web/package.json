@@ -20,6 +20,7 @@
     "react-force-graph-2d": "^1.29.1",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.3",
+    "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1",
     "shiki": "^4.4.2",
     "zustand": "^5.0.14"
