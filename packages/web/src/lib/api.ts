@@ -8,6 +8,8 @@ export interface Me {
   email?: string | null;
   provider?: string | null;
   role?: "admin" | "member";
+  /** Config-level super-admin (all permissions, all tenants). */
+  superAdmin?: boolean;
   /** Tenants this user may enter (for the tenant switcher). */
   tenants?: string[];
   config: { branding: { name?: string; emoji?: string } | null };

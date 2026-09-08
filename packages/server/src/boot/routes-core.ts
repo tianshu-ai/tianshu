@@ -18,7 +18,7 @@ import {
 } from "../core/config.js";
 import { getTianshuHome } from "../core/paths.js";
 import { getPackageVersion } from "../setup/repo-root.js";
-import { resolveTenantRole, tenantsForUser } from "../core/auth/identity.js";
+import { isSuperAdmin, resolveTenantRole, tenantsForUser } from "../core/auth/identity.js";
 import { getUserStore } from "../core/auth/user-store.js";
 import { isTenantDisabled } from "../core/config.js";
 import { requireAdmin } from "./routes-auth.js";
@@ -117,6 +117,12 @@ export function mountCoreRoutes(
           isTenantDisabled,
         )
       : [tenant.tenantId];
+    const superAdmin = authCfg.enabled
+      ? isSuperAdmin(authCfg, {
+          email: meta.email,
+          username: meta.provider === "local" ? meta.name : undefined,
+        })
+      : true; // dev mode
     res.json({
       tenantId: tenant.tenantId,
       userId,
@@ -124,6 +130,7 @@ export function mountCoreRoutes(
       email: meta.email ?? null,
       provider: meta.provider ?? null,
       role,
+      superAdmin,
       tenants,
       config: { branding: tenant.config.branding ?? null },
       defaultModel: def

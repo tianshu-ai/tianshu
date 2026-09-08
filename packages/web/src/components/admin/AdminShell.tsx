@@ -269,7 +269,13 @@ export default function AdminShell() {
     void loadPlugins();
   }, [init, loadPlugins]);
 
-  const pages = useMemo(() => flattenAdminPages(plugins), [plugins]);
+  const isSuperAdmin = me?.superAdmin ?? false;
+  const pages = useMemo(() => {
+    const all = flattenAdminPages(plugins);
+    // Tenant admins can't see Platform settings
+    if (!isSuperAdmin) return all.filter((p) => p.group !== "Platform");
+    return all;
+  }, [plugins, isSuperAdmin]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-base text-fg-default">
