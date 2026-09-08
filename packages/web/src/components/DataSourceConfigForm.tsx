@@ -147,7 +147,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
   return (
     <div className="space-y-4">
       {names.length === 0 && !adding && (
-        <p className="text-[12px] text-fg-faint">No data sources configured.</p>
+        <p className="text-[12px] text-fg-faint">{t("ds.noConnections")}</p>
       )}
 
       {names.map((name) => {
@@ -173,9 +173,9 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
                   onClick={() => testConnection(name)}
                   disabled={dirty}
                   className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-raised disabled:opacity-40"
-                  title={dirty ? "Save first" : "Test connection"}
+                  title={dirty ? t("ds.saveFirst") : t("ds.testConnection")}
                 >
-                  <Zap size={12} /> Test
+                  <Zap size={12} /> {t("ds.test")}
                 </button>
                 <button
                   type="button"
@@ -196,12 +196,12 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="mb-0.5 block text-[11px] text-fg-faint">Description</label>
+                <label className="mb-0.5 block text-[11px] text-fg-faint">{t("ds.description")}</label>
                 <input
                   className={INPUT}
                   value={String(conn.description ?? "")}
                   onChange={(e) => updateField(name, "description", e.target.value)}
-                  placeholder="Optional description" autoComplete="off"
+                  placeholder={t("ds.descriptionPlaceholder")} autoComplete="off"
                 />
               </div>
               {driverType?.fields.map((f) => (
@@ -232,7 +232,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
             className={INPUT + " max-w-[160px]"}
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Connection name" autoComplete="off"
+            placeholder={t("ds.connectionName")} autoComplete="off"
             autoFocus
             onKeyDown={(e) => e.key === "Enter" && addConnection()}
           />
@@ -251,14 +251,14 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
             disabled={!newName.trim()}
             className="rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500 disabled:opacity-40"
           >
-            Add
+            {t("ds.add")}
           </button>
           <button
             type="button"
             onClick={() => setAdding(false)}
             className="text-[12px] text-fg-faint hover:text-fg-default"
           >
-            Cancel
+            {t("common.cancel")}
           </button>
         </div>
       ) : (
@@ -267,7 +267,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
           onClick={() => setAdding(true)}
           className="inline-flex items-center gap-1 rounded-md border border-dashed border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised"
         >
-          <Plus size={12} /> Add Data Source
+          <Plus size={12} /> {t("ds.addDataSource")}
         </button>
       )}
 
