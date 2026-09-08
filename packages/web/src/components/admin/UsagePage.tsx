@@ -105,10 +105,12 @@ export default function UsagePage() {
               <div className="text-xs text-fg-faint mb-3">{t("usage.dailyTrend")}</div>
               <div className="flex items-end gap-[2px] h-32">
                 {data.daily.map((d) => {
-                  const pct = dailyMax > 0 ? (d.totalTokens / dailyMax) * 100 : 0;
+                  // Use sqrt scale so small days aren't invisible next to large spikes
+                  const ratio = dailyMax > 0 ? d.totalTokens / dailyMax : 0;
+                  const pct = Math.sqrt(ratio) * 100;
                   return (
                     <div key={d.day} className="flex-1 flex flex-col justify-end group relative">
-                      <div className="bg-link rounded-t-sm min-h-[2px]" style={{ height: `${Math.max(pct, 1)}%` }} />
+                      <div className="bg-link rounded-t-sm" style={{ height: `${Math.max(pct, 3)}%` }} />
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-bg-surface border border-border-default rounded px-2 py-1 text-[10px] text-fg-default whitespace-nowrap shadow-lg z-10">
                         <div className="font-medium">{d.day}</div>
                         <div>{fmt(d.totalTokens)} tokens</div>
