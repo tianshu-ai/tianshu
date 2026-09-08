@@ -695,7 +695,7 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "auth.users.add": "添加用户",
     "auth.users.count": "个用户",
     "auth.users.promote": "设为管理员",
-    "auth.users.demote": "设为成员",
+    "auth.users.demote": "设为普通用户",
     "auth.users.addTitle": "添加本地用户",
     "auth.users.empty": "还没有本地用户。点击“添加用户”创建一个。",
     "auth.users.confirmDelete": "删除用户 \"{name}\"？这会移除他在所有租户的角色。",
