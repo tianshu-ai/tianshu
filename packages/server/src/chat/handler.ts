@@ -792,12 +792,16 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // turn) tool results with a short placeholder. The original data is
   // preserved in the session tree — pruning only affects the transient
   // message array the model sees.
-  harness.on("context", ({ messages }) => {
-    const pruned = pruneOldToolResults(messages, toolResultCfg);
+  // Tool-result aging: directly patch the harness's internal handlers map
+  // to intercept the "context" hook event that transformContext fires.
+  // Tool-result aging: hook into harness's "context" event.
+  // @ts-expect-error — harness.on type doesn't expose "context" in generic
+  const unsubscribePrune = harness.on("context", (event: { messages: Array<{ role: string; content?: unknown }> }) => {
+    const pruned = pruneOldToolResults(event.messages, toolResultCfg);
     if (pruned > 0) {
       console.log(`[handler] pruned ${pruned} old tool result(s) from context`);
     }
-    return { messages };
+    return { messages: event.messages };
   });
 
   // Bind the compact tool's deferred ref now that piSession + harness exist.
@@ -907,6 +911,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           // re-enter, so we don't leave a dangling subscription /
           // registry entry for a turn we're abandoning.
           unsubscribe();
+          unsubscribePrune();
           unregisterHarness();
           signal.removeEventListener("abort", onAbort);
           if (storage) storage.pendingUserAttachments = null;
@@ -1125,6 +1130,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }
     outstandingToolCalls.clear();
     unsubscribe();
+    unsubscribePrune();
     unregisterHarness();
     signal.removeEventListener("abort", onAbort);
     if (storage) storage.pendingUserAttachments = null;
