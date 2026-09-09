@@ -179,10 +179,17 @@ export default function UsagePage() {
                       fill={modelColorMap.get(model) ?? "#4263eb"}
                       radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0}
                       cursor="pointer"
-                      onClick={((entry: { day?: string; totalTokens?: number }) => {
-                        if (entry?.day && Number(entry?.totalTokens ?? 0) > 0) {
-                          setDrillDay(entry.day);
+                      onClick={((data: unknown, _idx: unknown, e: unknown) => {
+                        // recharts Bar onClick: (data, index, event)
+                        // data is BarRectangleItem with payload on .payload or directly
+                        const d = data as Record<string, unknown> | null;
+                        const payload = (d?.payload ?? d) as Record<string, unknown> | null;
+                        const day = payload?.day;
+                        if (day && typeof day === "string") {
+                          setDrillDay(day);
                         }
+                        // Stop event from bubbling
+                        if (e && typeof (e as Event).stopPropagation === "function") (e as Event).stopPropagation();
                       }) as unknown as import("recharts").BarProps["onClick"]}
                     />
                   ))}
