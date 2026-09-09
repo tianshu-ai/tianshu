@@ -179,12 +179,11 @@ export default function UsagePage() {
                       fill={modelColorMap.get(model) ?? "#4263eb"}
                       radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0}
                       cursor="pointer"
-                      onClick={(entry: Record<string, unknown>) => {
-                        const day = entry?.day;
-                        if (day && typeof day === "string" && Number(entry?.totalTokens ?? 0) > 0) {
-                          setDrillDay(day);
+                      onClick={((entry: { day?: string; totalTokens?: number }) => {
+                        if (entry?.day && Number(entry?.totalTokens ?? 0) > 0) {
+                          setDrillDay(entry.day);
                         }
-                      }}
+                      }) as unknown as import("recharts").BarProps["onClick"]}
                     />
                   ))}
                   <Legend formatter={(value: string) => <span style={{ fontSize: 11 }}>{value}</span>} />
