@@ -167,7 +167,7 @@ export default function UsagePage() {
                           {payload.value.slice(5)}
                         </text>
                       );
-                    }}
+                    }) as unknown as import("recharts").XAxisProps["tick"]}
                     interval="preserveStartEnd"
                   />
                   <YAxis
