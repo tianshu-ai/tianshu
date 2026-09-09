@@ -152,7 +152,8 @@ export default function UsagePage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #333)" vertical={false} />
                   <XAxis
                     dataKey="day"
-                    tick={({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => {
+                    tick={((props: Record<string, unknown>) => {
+                      const { x, y, payload } = props as { x: number; y: number; payload: { value: string } };
                       const hasData = filledDaily.find((d) => String(d.day) === payload.value && Number(d.totalTokens) > 0);
                       return (
                         <text
