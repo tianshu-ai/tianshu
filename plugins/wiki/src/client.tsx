@@ -171,8 +171,10 @@ function WikiPanel(_props: PanelProps) {
       .finally(() => {
         setReindexing(false);
         setTimeout(() => setReindexMsg(null), 6000);
+        // Refresh the page list so newly indexed docs appear immediately
+        fetchList();
       });
-  }, [t]);
+  }, [t, fetchList]);
 
   const runSemanticSearch = useCallback((q: string) => {
     if (!q.trim()) { setSearchResults(null); return; }
