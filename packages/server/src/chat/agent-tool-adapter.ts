@@ -29,7 +29,9 @@ import type {
 } from "@earendil-works/pi-agent-core";
 import type { TextContent, ImageContent, Tool as PiTool } from "@earendil-works/pi-ai";
 import type { Toolset } from "../tools/index.js";
-import { truncateToolResult, type ToolResultConfig } from "./tool-result-truncation.js";
+// Write-time truncation removed: current-turn tool results should
+// not be truncated. See tool-result-truncation.ts for the aging
+// layer that prunes OLD results in the context hook.
 
 export interface AnyToolResult {
   ok: boolean;
@@ -104,7 +106,7 @@ export interface AdaptedToolset {
   executors: Toolset["executors"];
 }
 
-export function adaptToolset(toolset: Toolset, toolResultConfig?: ToolResultConfig): AdaptedToolset {
+export function adaptToolset(toolset: Toolset): AdaptedToolset {
   // Per-toolset truncation counter. The toolset is freshly built
   // per agent loop run (chat handler / worker pool), so this map
   // covers "this agent's lifetime" — the natural granularity
@@ -180,9 +182,11 @@ export function adaptToolset(toolset: Toolset, toolResultConfig?: ToolResultConf
         // Plugin tools are sync OR async; both are fine.
         const raw = await Promise.resolve(exec(args));
         const norm = normaliseToolResult(raw);
-        // Write-time truncation: cap tool result text before it enters
-        // the session tree. Middle-truncate keeps head + tail.
-        norm.text = truncateToolResult(norm.text, toolResultConfig);
+        // NOTE: we do NOT truncate at write time. The current turn's
+        // tool results must be seen in full by the model so it can
+        // act on complete information. Truncation/aging of OLD tool
+        // results happens in the harness "context" hook (handler.ts)
+        // before subsequent LLM calls — see pruneOldToolResults().
         // Tool text first, then any images the tool returned so the
         // vision model sees them this turn (pi ToolResultMessage.content
         // is (Text | Image)[]). Images are opt-in per call — most tools

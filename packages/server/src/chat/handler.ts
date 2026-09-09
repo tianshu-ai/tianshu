@@ -738,7 +738,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       : toolset;
 
   const toolResultCfg = ctx.config.models?.toolResults;
-  const adapted = adaptToolset(effectiveToolset, toolResultCfg);
+  const adapted = adaptToolset(effectiveToolset);
   const systemPrompt = defaultSystemPrompt(
     ctx,
     userId,

@@ -403,7 +403,7 @@ export async function runAgentLoop(
       signal: innerCtl.signal,
     },
   });
-  const adapted = adaptToolset(toolset, ctx.config.models?.toolResults);
+  const adapted = adaptToolset(toolset);
 
   // Bind compact_context deferred ref after harness creation (below).
   // Workers get the same fundamental compaction ability as the main chat.

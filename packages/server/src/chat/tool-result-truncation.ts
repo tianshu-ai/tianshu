@@ -137,34 +137,52 @@ export function pruneOldToolResults(
 
   if (toolEntries.length === 0) return 0;
 
-  // Walk from newest to oldest, accumulating text. Once we exceed
-  // the budget, everything older gets pruned.
+  // Walk from newest to oldest, accumulating text. Two thresholds:
+  //   1. Over budget → full prune (replace with short placeholder)
+  //   2. Not protected → middle-truncate (keep head+tail, gentler)
+  // The most recent `protectRecent` entries are untouched.
+  const maxResultChars = config?.maxResultChars ?? DEFAULTS.maxResultChars;
   let cumulative = 0;
-  let pruneFromIdx = -1; // index into toolEntries
+  let pruneFromIdx = -1; // index into toolEntries: everything ≤ this gets full-pruned
+  let truncateFromIdx = -1; // everything between truncateFromIdx+1..pruneFromIdx gets middle-truncated
 
   for (let i = toolEntries.length - 1; i >= 0; i--) {
-    // Protect the N most recent tool results.
     const reversePos = toolEntries.length - 1 - i;
-    if (reversePos < protectRecent) {
-      cumulative += toolEntries[i]!.textLength;
-      continue;
-    }
     cumulative += toolEntries[i]!.textLength;
-    if (cumulative > budget) {
+    if (reversePos < protectRecent) continue;
+    if (pruneFromIdx < 0 && cumulative > budget) {
       pruneFromIdx = i;
       break;
     }
+    // Mark the boundary where middle-truncation kicks in
+    if (truncateFromIdx < 0) truncateFromIdx = i;
   }
 
-  if (pruneFromIdx < 0) return 0;
-
-  // Replace text in all tool entries from 0..pruneFromIdx (inclusive).
   let pruned = 0;
-  for (let i = 0; i <= pruneFromIdx; i++) {
-    const entry = toolEntries[i]!;
-    const msg = messages[entry.index]!;
-    replaceToolText(msg, PRUNED_MARKER);
-    pruned++;
+
+  // Full-prune old entries (beyond budget)
+  if (pruneFromIdx >= 0) {
+    for (let i = 0; i <= pruneFromIdx; i++) {
+      const entry = toolEntries[i]!;
+      const msg = messages[entry.index]!;
+      replaceToolText(msg, PRUNED_MARKER);
+      pruned++;
+    }
+  }
+
+  // Middle-truncate entries between prune boundary and protected zone.
+  // These are "aging" results: not yet fully pruned, but large ones
+  // get trimmed to save context space.
+  if (maxResultChars > 0) {
+    const startIdx = (pruneFromIdx >= 0 ? pruneFromIdx + 1 : 0);
+    const endIdx = truncateFromIdx >= 0 ? truncateFromIdx : -1;
+    for (let i = startIdx; i <= endIdx; i++) {
+      const entry = toolEntries[i]!;
+      if (entry.textLength <= maxResultChars) continue;
+      const msg = messages[entry.index]!;
+      middleTruncateToolText(msg, maxResultChars);
+      pruned++;
+    }
   }
 
   return pruned;
@@ -185,6 +203,24 @@ function extractToolTextLength(msg: PrunableMessage): number {
     return len;
   }
   return 0;
+}
+
+function middleTruncateToolText(msg: PrunableMessage, maxChars: number): void {
+  const content = msg.content;
+  if (typeof content === "string") {
+    (msg as { content: string }).content = truncateToolResult(content, { maxResultChars: maxChars });
+    return;
+  }
+  if (Array.isArray(content)) {
+    for (const block of content) {
+      if (block && typeof block === "object" && "text" in block && typeof (block as { text: string }).text === "string") {
+        const t = (block as { text: string }).text;
+        if (t.length > maxChars) {
+          (block as { text: string }).text = truncateToolResult(t, { maxResultChars: maxChars });
+        }
+      }
+    }
+  }
 }
 
 function replaceToolText(msg: PrunableMessage, replacement: string): void {
