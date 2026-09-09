@@ -144,6 +144,9 @@ function WikiPanel(_props: PanelProps) {
   const [searching, setSearching] = useState(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Declared before rebuildIndex so the closure can reference it
+  const fetchListRef = useRef<() => void>(() => {});
+
   const rebuildIndex = useCallback(() => {
     setReindexing(true);
     setReindexMsg(null);
@@ -172,9 +175,9 @@ function WikiPanel(_props: PanelProps) {
         setReindexing(false);
         setTimeout(() => setReindexMsg(null), 6000);
         // Refresh the page list so newly indexed docs appear immediately
-        fetchList();
+        fetchListRef.current();
       });
-  }, [t, fetchList]);
+  }, [t]);
 
   const runSemanticSearch = useCallback((q: string) => {
     if (!q.trim()) { setSearchResults(null); return; }
@@ -195,6 +198,7 @@ function WikiPanel(_props: PanelProps) {
       .catch(() => setPages([]))
       .finally(() => setLoading(false));
   }, []);
+  fetchListRef.current = fetchList;
 
   useEffect(() => {
     fetchList();
