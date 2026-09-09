@@ -1213,6 +1213,8 @@ function buildRoutes(
         console.log(`[wiki-kb] scan complete: ${processed} processed, ${failed} failed out of ${scan.pending.length}`);
       } finally {
         running.delete(key + ":kb");
+        // Notify connected clients so the browse panel refreshes
+        ctx.broadcast("plugin_event", { event: "wiki:kb_scan_done", processed, failed });
       }
     })();
 
