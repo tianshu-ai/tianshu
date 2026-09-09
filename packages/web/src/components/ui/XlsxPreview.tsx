@@ -90,6 +90,7 @@ export function XlsxPreview({ src, className = "" }: XlsxPreviewProps) {
           border-collapse: collapse;
           font-size: 12px;
           font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+          color: var(--color-fg-default, #e0e0e0);
         }
         .xlsx-preview-table td, .xlsx-preview-table th {
           border: 1px solid var(--color-border-subtle, #333);
@@ -98,10 +99,12 @@ export function XlsxPreview({ src, className = "" }: XlsxPreviewProps) {
           max-width: 300px;
           overflow: hidden;
           text-overflow: ellipsis;
+          color: var(--color-fg-default, #e0e0e0);
         }
         .xlsx-preview-table th {
           background: var(--color-bg-raised, #1a1a2e);
           font-weight: 600;
+          color: var(--color-fg-default, #e0e0e0);
         }
         .xlsx-preview-table tr:nth-child(even) td {
           background: var(--color-bg-surface, rgba(255,255,255,0.02));
