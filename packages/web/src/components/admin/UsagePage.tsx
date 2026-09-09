@@ -152,8 +152,21 @@ export default function UsagePage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #333)" vertical={false} />
                   <XAxis
                     dataKey="day"
-                    tick={{ fontSize: 10, fill: "var(--color-fg-faint, #888)" }}
-                    tickFormatter={(v: string) => v.slice(5)} // "MM-DD"
+                    tick={({ x, y, payload }: { x: number; y: number; payload: { value: string } }) => {
+                      const hasData = filledDaily.find((d) => String(d.day) === payload.value && Number(d.totalTokens) > 0);
+                      return (
+                        <text
+                          x={x} y={y + 12}
+                          textAnchor="middle"
+                          fontSize={10}
+                          fill={hasData ? "var(--color-link, #4263eb)" : "var(--color-fg-faint, #888)"}
+                          style={hasData ? { cursor: "pointer", textDecoration: "none" } : undefined}
+                          onClick={hasData ? () => setDrillDay(payload.value) : undefined}
+                        >
+                          {payload.value.slice(5)}
+                        </text>
+                      );
+                    }}
                     interval="preserveStartEnd"
                   />
                   <YAxis
@@ -179,18 +192,6 @@ export default function UsagePage() {
                       fill={modelColorMap.get(model) ?? "#4263eb"}
                       radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0}
                       cursor="pointer"
-                      onClick={((data: unknown, _idx: unknown, e: unknown) => {
-                        // recharts Bar onClick: (data, index, event)
-                        // data is BarRectangleItem with payload on .payload or directly
-                        const d = data as Record<string, unknown> | null;
-                        const payload = (d?.payload ?? d) as Record<string, unknown> | null;
-                        const day = payload?.day;
-                        if (day && typeof day === "string") {
-                          setDrillDay(day);
-                        }
-                        // Stop event from bubbling
-                        if (e && typeof (e as Event).stopPropagation === "function") (e as Event).stopPropagation();
-                      }) as unknown as import("recharts").BarProps["onClick"]}
                     />
                   ))}
                   <Legend formatter={(value: string) => <span style={{ fontSize: 11 }}>{value}</span>} />
