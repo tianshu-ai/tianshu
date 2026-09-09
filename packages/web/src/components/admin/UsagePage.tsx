@@ -148,14 +148,7 @@ export default function UsagePage() {
             <div className="mb-6 rounded-md border border-border-subtle bg-bg-surface p-4">
               <div className="text-xs text-fg-faint mb-3">{t("usage.dailyTrend")}</div>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={filledDaily} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
-                  onClick={(state: Record<string, unknown> | null) => {
-                    const ap = state?.activePayload as Array<{ payload?: { day?: string } }> | undefined;
-                    const day = ap?.[0]?.payload?.day;
-                    if (day) setDrillDay(day);
-                  }}
-                  style={{ cursor: "pointer" }}
-                >
+                <BarChart data={filledDaily} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #333)" vertical={false} />
                   <XAxis
                     dataKey="day"
@@ -190,6 +183,18 @@ export default function UsagePage() {
                   <Legend formatter={(value: string) => <span style={{ fontSize: 11 }}>{value}</span>} />
                 </BarChart>
               </ResponsiveContainer>
+              {/* Clickable date row below chart */}
+              <div className="flex gap-0.5 mt-1 overflow-x-auto px-[50px]">
+                {filledDaily.filter((d) => Number(d.totalTokens) > 0).map((d) => (
+                  <button
+                    key={String(d.day)}
+                    onClick={() => setDrillDay(String(d.day))}
+                    className="text-[9px] text-link hover:underline px-1 py-0.5 rounded hover:bg-bg-hover whitespace-nowrap"
+                  >
+                    {String(d.day).slice(5)}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
