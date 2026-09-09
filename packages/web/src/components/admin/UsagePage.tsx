@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { useT } from "../../hooks/useT";
 import { useChatStore } from "../../stores/chat-store";
+import UsageMessageList from "./UsageMessageList";
 
 // ── Types ──────────────────────────────────────────────────────────
 // Daily data is pivoted: { day, totalTokens, [model1]: number, [model2]: number, ... }
@@ -80,6 +81,15 @@ export default function UsagePage() {
   }, [data]);
 
   const userMax = data?.byUser.reduce((m, u) => Math.max(m, u.total), 0) ?? 1;
+  const [drillDay, setDrillDay] = useState<string | null>(null);
+
+  if (drillDay) {
+    return (
+      <div className="mx-auto max-w-5xl p-6">
+        <UsageMessageList day={drillDay} onBack={() => setDrillDay(null)} />
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -138,7 +148,14 @@ export default function UsagePage() {
             <div className="mb-6 rounded-md border border-border-subtle bg-bg-surface p-4">
               <div className="text-xs text-fg-faint mb-3">{t("usage.dailyTrend")}</div>
               <ResponsiveContainer width="100%" height={200}>
-                <BarChart data={filledDaily} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <BarChart data={filledDaily} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}
+                  onClick={(state: Record<string, unknown> | null) => {
+                    const ap = state?.activePayload as Array<{ payload?: { day?: string } }> | undefined;
+                    const day = ap?.[0]?.payload?.day;
+                    if (day) setDrillDay(day);
+                  }}
+                  style={{ cursor: "pointer" }}
+                >
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #333)" vertical={false} />
                   <XAxis
                     dataKey="day"
