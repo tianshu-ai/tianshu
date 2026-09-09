@@ -206,6 +206,23 @@ export interface ModelsCatalog {
    *  the system summarises earlier messages to stay within the model's
    *  context window. */
   compaction?: CompactionConfig;
+  /** Tool-result truncation & aging settings. Controls how large tool
+   *  results are handled to reduce context bloat. */
+  toolResults?: ToolResultConfig;
+}
+
+export interface ToolResultConfig {
+  /** Max characters per tool result at write time. Default: 30000.
+   *  Results exceeding this are middle-truncated. Set 0 to disable. */
+  maxResultChars?: number;
+  /** Characters to keep from head of truncated result. Default: 40% of max. */
+  headChars?: number;
+  /** Characters to keep from tail of truncated result. Default: 40% of max. */
+  tailChars?: number;
+  /** Number of most recent tool results protected from aging. Default: 6. */
+  pruneProtectRecent?: number;
+  /** Cumulative char budget for tool results. Older results pruned when exceeded. Default: 80000. */
+  pruneBudgetChars?: number;
 }
 
 export interface CompactionConfig {

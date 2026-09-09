@@ -90,6 +90,7 @@ import {
 import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildToolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
+import { pruneOldToolResults } from "./tool-result-truncation.js";
 import { dumpSystemPrompt } from "./dump-system-prompt.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
 import {
@@ -736,7 +737,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         }
       : toolset;
 
-  const adapted = adaptToolset(effectiveToolset);
+  const toolResultCfg = ctx.config.models?.toolResults;
+  const adapted = adaptToolset(effectiveToolset, toolResultCfg);
   const systemPrompt = defaultSystemPrompt(
     ctx,
     userId,
@@ -783,6 +785,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         });
       },
     }),
+  });
+
+  // ── Tool-result aging: prune old tool results before each LLM call ──
+  // This reduces context bloat by replacing old (far from the current
+  // turn) tool results with a short placeholder. The original data is
+  // preserved in the session tree — pruning only affects the transient
+  // message array the model sees.
+  harness.on("context", ({ messages }) => {
+    const pruned = pruneOldToolResults(messages, toolResultCfg);
+    if (pruned > 0) {
+      console.log(`[handler] pruned ${pruned} old tool result(s) from context`);
+    }
+    return { messages };
   });
 
   // Bind the compact tool's deferred ref now that piSession + harness exist.
