@@ -12,7 +12,7 @@ import UsageMessageList from "./UsageMessageList";
 // Daily data is pivoted: { day, totalTokens, [model1]: number, [model2]: number, ... }
 type DailyUsage = Record<string, number | string>;
 interface ModelUsage { model: string; totalTokens: number; messageCount: number }
-interface UserUsage { userId: string; input: number; output: number; total: number; messages: number }
+interface UserUsage { userId: string; displayName?: string; input: number; output: number; total: number; messages: number }
 interface UserModelUsage { userId: string; model: string; totalTokens: number; messageCount: number }
 interface UsageData {
   tenantId: string; days: number;
@@ -243,7 +243,7 @@ export default function UsagePage() {
                     return (
                       <div key={u.userId}>
                         <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className="text-fg-default font-mono truncate">{u.userId.slice(0, 16)}</span>
+                          <span className="text-fg-default truncate">{u.displayName || <span className="font-mono">{u.userId.slice(0, 16)}</span>}</span>
                           <span className="text-fg-muted shrink-0 ml-2">{fmt(u.total)}</span>
                         </div>
                         <div className="h-2 rounded-full bg-bg-raised overflow-hidden flex">

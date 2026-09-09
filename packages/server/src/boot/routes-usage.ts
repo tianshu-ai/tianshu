@@ -66,6 +66,14 @@ export function mountUsageRoutes(
         ORDER BY total_tokens DESC
       `).all(sinceMs);
 
+      // Resolve user display names
+      const userNames = new Map<string, string>();
+      try {
+        const nameRows = db.prepare(`SELECT id, display_name FROM users WHERE display_name IS NOT NULL AND display_name != ''`)
+          .all() as Array<{ id: string; display_name: string }>;
+        for (const nr of nameRows) userNames.set(nr.id, nr.display_name);
+      } catch { /* best effort */ }
+
       // Also get per-user totals
       const userTotals = new Map<string, { input: number; output: number; total: number; messages: number }>();
       for (const r of rows) {
@@ -135,6 +143,7 @@ export function mountUsageRoutes(
         })),
         byUser: Array.from(userTotals.entries()).map(([userId, t]) => ({
           userId,
+          displayName: userNames.get(userId) || undefined,
           ...t,
         })).sort((a, b) => b.total - a.total),
         byUserModel: rows.map((r) => ({
