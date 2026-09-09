@@ -105,6 +105,16 @@
         "since": "0.2.0"
       },
       {
+        "id": "copy_file",
+        "module": "CopyFileTool",
+        "since": "0.48.7"
+      },
+      {
+        "id": "move_file",
+        "module": "MoveFileTool",
+        "since": "0.48.7"
+      },
+      {
         "id": "glob",
         "module": "GlobTool",
         "since": "0.1.0"
@@ -156,7 +166,7 @@
       },
       {
         "id": "workspace-conventions",
-        "text": "Conventions:\n  - Deliverables go to ./projects/<slug>/, never the home root.\n  - When cloning a git repo, clone into ./git/<repo-name>/.\n  - When the user uploads a file, expect it under ./uploads/.\n  - Don't leave scratch artefacts in ./projects/ or the root — use ./tmp/.\n  - Other users' homes in this tenant are off-limits; you cannot reach them."
+        "text": "Conventions:\n  - Deliverables go to ./projects/<slug>/, never the home root.\n  - When cloning a git repo, clone into ./git/<repo-name>/.\n  - When the user uploads a file, expect it under ./uploads/.\n  - Don't leave scratch artefacts in ./projects/ or the root \u2014 use ./tmp/.\n  - Other users' homes in this tenant are off-limits; you cannot reach them."
       },
       {
         "id": "workspace-references",
@@ -168,11 +178,11 @@
       },
       {
         "id": "edit-old-text-uniqueness",
-        "text": "- Each `edit_file` `old_text` must appear exactly once in the file. Keep `old_text` as small as possible while still being unique — don't pad with large unchanged regions to \"connect\" two distant changes; emit two separate edits in the same `edits[]` batch instead."
+        "text": "- Each `edit_file` `old_text` must appear exactly once in the file. Keep `old_text` as small as possible while still being unique \u2014 don't pad with large unchanged regions to \"connect\" two distant changes; emit two separate edits in the same `edits[]` batch instead."
       },
       {
         "id": "read-before-edit",
-        "text": "- Before `edit_file` (or `write_file` overwrite) on a file you haven't seen yet in this session, call `read_file` once. The host tracks reads per session, so a single full-file read covers any number of follow-up `edit_file` / `write_file` calls on that same path — don't re-read between edits. Files you just created with `write_file` count as already-read; you can `edit_file` them right away without reading first."
+        "text": "- Before `edit_file` (or `write_file` overwrite) on a file you haven't seen yet in this session, call `read_file` once. The host tracks reads per session, so a single full-file read covers any number of follow-up `edit_file` / `write_file` calls on that same path \u2014 don't re-read between edits. Files you just created with `write_file` count as already-read; you can `edit_file` them right away without reading first."
       }
     ]
   }
