@@ -31,6 +31,9 @@ import { PdfPreview } from "./PdfPreview.js";
 import { AudioPreview, VideoPreview } from "./MediaPreview.js";
 import { ImagePreview } from "./ImagePreview.js";
 import { TablePreview } from "./TablePreview.js";
+import { DocxPreview } from "./DocxPreview.js";
+import { XlsxPreview } from "./XlsxPreview.js";
+import { PptxPreview } from "./PptxPreview.js";
 import { useT } from "../../hooks/useT";
 
 const MARKDOWN_EXTS = new Set(["md", "markdown"]);
@@ -122,19 +125,23 @@ export function DocumentViewer({
     }
   }
 
-  // Office surfaces: docx / xlsx / pptx (+ legacy doc/xls/ppt and
-  // OpenDocument odt/ods/odp). We don't render these yet — doing it
-  // right requires a server-side LibreOffice path, which is its own
-  // PR. For now we show a friendly placeholder so users aren't left
-  // with a generic "Binary file". The Download button (Modal
-  // headerAction) is still right above.
-  const OFFICE_EXTS = new Set([
-    "doc", "docx", "dot", "dotx",
-    "xls", "xlsx", "xlsm", "xlsb",
-    "ppt", "pptx", "pps", "ppsx",
-    "odt", "ods", "odp", "odg",
-    "rtf",
-  ]);
+  // Office Open XML: docx / xlsx / pptx — pure frontend preview
+  const isDocx = ext === "docx" || ext === "doc" || ext === "dot" || ext === "dotx";
+  const isXlsx = ext === "xlsx" || ext === "xls" || ext === "xlsm" || ext === "xlsb";
+  const isPptx = ext === "pptx" || ext === "ppt" || ext === "pps" || ext === "ppsx";
+
+  if (isDocx && rawUrl) {
+    return <DocxPreview src={rawUrl} className={className} />;
+  }
+  if (isXlsx && rawUrl) {
+    return <XlsxPreview src={rawUrl} className={className} />;
+  }
+  if (isPptx && rawUrl) {
+    return <PptxPreview src={rawUrl} className={className} />;
+  }
+
+  // Other office formats (OpenDocument, RTF) — no preview yet
+  const OFFICE_EXTS = new Set(["odt", "ods", "odp", "odg", "rtf"]);
   const isOffice = OFFICE_EXTS.has(ext);
   if (isOffice) {
     return (
