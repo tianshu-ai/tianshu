@@ -303,7 +303,7 @@ function WikiPanel(_props: PanelProps) {
       </div>
 
       {tab === "indexing" ? (
-        <IndexingTab />
+        <IndexingTab onIndexed={fetchList} />
       ) : (<>
       {/* Search bar — full width, clean */}
       <div className="flex flex-shrink-0 items-center gap-2 border-b border-border-subtle px-3 py-1.5">
@@ -718,7 +718,7 @@ interface EmbeddingStatus {
   totalPages: number;
 }
 
-function IndexingTab() {
+function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
   const t = usePluginT("wiki");
   const [kbStatus, setKbStatus] = useState<KbStatus | null>(null);
   const [sessionStatus, setSessionStatus] = useState<{ running: boolean; progress: number; indexedDays: number; totalDays: number; pendingDays: number } | null>(null);
@@ -761,7 +761,10 @@ function IndexingTab() {
       }).catch(() => null),
       fetch(`${API_BASE}/kb/scan`, { method: "POST", credentials: "include" }).catch(() => null),
     ]).then(() => {
-      setTimeout(fetchStatus, 1500);
+      setTimeout(() => {
+        fetchStatus();
+        onIndexed?.();
+      }, 1500);
     });
   };
 
@@ -926,6 +929,7 @@ function IndexingTab() {
                       ? `❌ ${body.error}`
                       : t("indexing.reindexDone", { indexed: body.indexed ?? 0, total: body.total ?? 0 }));
                     fetchStatus();
+                    onIndexed?.();
                   })
                   .catch((e: unknown) => setReindexMsg(`❌ ${e instanceof Error ? e.message : String(e)}`))
                   .finally(() => setReindexing(false));
