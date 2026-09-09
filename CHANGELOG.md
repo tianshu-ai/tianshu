@@ -6,6 +6,82 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.47.0](https://github.com/tianshu-ai/tianshu/compare/v0.46.1...v0.47.0) (2026-09-09)
+
+
+### Features
+
+* add copy_file and move_file workspace tools ([ab308d5](https://github.com/tianshu-ai/tianshu/commit/ab308d54ea0a3fa6115c819af35055fb60aae433))
+* add docx/xlsx/pptx preview in workspace file viewer ([2b84f41](https://github.com/tianshu-ai/tianshu/commit/2b84f413f3eecbee8fdbdfcc72d2ac142d3ae281))
+* change password from user menu (sidebar footer) ([bf26101](https://github.com/tianshu-ai/tianshu/commit/bf26101cc1d0b1a7c083240fbab27820ebb324b4))
+* enhanced usage analytics — daily chart, model breakdown, tooltips ([82488a7](https://github.com/tianshu-ai/tianshu/commit/82488a70d8aa0df6686f11b20208c0ccefc3a498))
+* fullscreen preview toggle for draft shell ([c407813](https://github.com/tianshu-ai/tianshu/commit/c407813d81dbb37ea1084f0fc01ddbf840ec5342))
+* one-click install sherpa-onnx-node from admin page ([8156822](https://github.com/tianshu-ai/tianshu/commit/8156822e698091d1e4667699e274cf36cd1c17d4))
+* Open Shell link in custom-ui preview panel ([a8dd2ba](https://github.com/tianshu-ai/tianshu/commit/a8dd2bafec310a2cfadc3634ea3e7729cb82d6ce))
+* password change validation — confirm + inline hints ([172cf56](https://github.com/tianshu-ai/tianshu/commit/172cf56d817345e6a6218bafbb6272602c4b6c33))
+* PATCH /api/me/password — members can change own password ([e8e1f7b](https://github.com/tianshu-ai/tianshu/commit/e8e1f7b73af129266c6a05e17143e89a948e8f7f))
+* split settings into Platform / Tenant / Plugins groups ([e52c91c](https://github.com/tianshu-ai/tianshu/commit/e52c91cedc037467fb3a959b2b5cb9bdf771c3ed))
+* stacked bar chart by model in daily trend ([6ab4c39](https://github.com/tianshu-ai/tianshu/commit/6ab4c39e7f876937507add0267ef3d606aec7378))
+* token usage analytics page (super-admin only) ([474f265](https://github.com/tianshu-ai/tianshu/commit/474f265710ef8c81ec8242aaef3071ef2a007160))
+* tool-result truncation + aging to reduce context bloat ([259d2d4](https://github.com/tianshu-ai/tianshu/commit/259d2d46772246dc44c9171df36d2a84f47d8709))
+* usage drill-down — click day → message list → message detail ([4dcbb3e](https://github.com/tianshu-ai/tianshu/commit/4dcbb3e693a826fb88a1de56b1a867708c3db45d))
+* usage page with recharts — bar chart + pie chart ([cf625e1](https://github.com/tianshu-ai/tianshu/commit/cf625e1d5bc19c3076a9ee4e1775fb8667f4801a))
+* user breakdown shows per-model stacked bars with color dots ([4273887](https://github.com/tianshu-ai/tianshu/commit/427388797081c044e25420c710df9583fceadf84))
+
+
+### Bug Fixes
+
+* adapt Users page to tenant-scoped API response ([09d193d](https://github.com/tianshu-ai/tianshu/commit/09d193d7c603c4cd6c7d0e8a3dd6148445591c7a))
+* add clickable date links below daily chart for drill-down ([7f2cb35](https://github.com/tianshu-ai/tianshu/commit/7f2cb35173196288ccd715ebf5e16b0e7e22d0aa))
+* Bar onClick reads day from payload — recharts BarRectangleItem wraps data in .payload ([806b5d7](https://github.com/tianshu-ai/tianshu/commit/806b5d72d6cefb28104d190d6c4bc990806e51df))
+* broadcast wiki:kb_scan_done when async KB scan finishes ([92cc0fb](https://github.com/tianshu-ai/tianshu/commit/92cc0fbf4e6ddb7353066b985dee29c6f84631ae))
+* clear download progress after extraction completes ([dfb78e0](https://github.com/tianshu-ai/tianshu/commit/dfb78e0f87ed7b578e7e314224f44093cc25c201))
+* clickable X-axis labels for drill-down (colored + cursor) ([6106fe2](https://github.com/tianshu-ai/tianshu/commit/6106fe2cea625dbedcb37c39b3ba305b06472046))
+* close tick function cast properly ([8296fc1](https://github.com/tianshu-ai/tianshu/commit/8296fc1eacaaa301866bb50bae4f0fe5fdcdb0e9))
+* correct Bar onClick type cast ([cd0b5bc](https://github.com/tianshu-ai/tianshu/commit/cd0b5bc27dc0791f2310c8a3e195e437e41c7ec3))
+* correct settings grouping — Models/MCP/ASR are platform-level ([6db8b22](https://github.com/tianshu-ai/tianshu/commit/6db8b225209d5db9a773534efbe251019e295486))
+* correct XAxis tick type ([79032f3](https://github.com/tianshu-ai/tianshu/commit/79032f35b333c560815124ea11d9037d0e4b39dc))
+* daily chart bars invisible — parent flex items need min-h-full ([8f052ec](https://github.com/tianshu-ai/tianshu/commit/8f052ec38cab991ac7adf5689251fdeb2ab80ce9))
+* daily chart date fill uses UTC to match SQLite dates ([02088df](https://github.com/tianshu-ai/tianshu/commit/02088df35708faf951dd809bb96122fbefafa238))
+* daily chart uses sqrt scale to prevent spike flattening ([334e953](https://github.com/tianshu-ai/tianshu/commit/334e953e838d750a14d637c7999e741d485605ef))
+* drill-down triggers on bar click, remove ugly date links ([088fb5d](https://github.com/tianshu-ai/tianshu/commit/088fb5d7c5aab18abd35a8f31bc8613a0e0058db))
+* fill missing days with zeros in daily chart ([7877421](https://github.com/tianshu-ai/tianshu/commit/7877421623a4fd8d408a22979456ab6669b3589b))
+* guard json_extract with json_valid() for malformed messages ([921eea2](https://github.com/tianshu-ai/tianshu/commit/921eea22d3962f70f44ccb1e38ce9c4a9384120c))
+* pass email/username to resolveTenantRole for super-admin detection ([b110bd4](https://github.com/tianshu-ai/tianshu/commit/b110bd425cfdfefe64e42851cc6fda275787445e))
+* password modal bg-bg-surface (opaque in all themes) ([657f1c7](https://github.com/tianshu-ai/tianshu/commit/657f1c7f3102b2dae2209f73822f9288d8411973))
+* password modal uses opaque bg-bg-base background ([233893d](https://github.com/tianshu-ai/tianshu/commit/233893dd84c9a9fac51940ae5a31e96fd368a773))
+* pure Node.js tar.bz2 extraction (no system bzip2 needed) ([cae9e68](https://github.com/tianshu-ai/tianshu/commit/cae9e68604710ee4e82724823a29ff1b8ab487f9))
+* refresh wiki page list after reindex completes ([97809c7](https://github.com/tianshu-ai/tianshu/commit/97809c79e4181c66c2e2a93035f1b4a059833468))
+* register copy_file and move_file in files plugin manifest ([94cc3d4](https://github.com/tianshu-ai/tianshu/commit/94cc3d44195dbd57905d3681e49d7f9cb649a30c))
+* reliable restart — stop + kill stragglers + start ([41da327](https://github.com/tianshu-ai/tianshu/commit/41da32777a589a5fd2dc06bb716fe7b2748a7110))
+* remove duplicate common.cancel i18n keys ([0008264](https://github.com/tianshu-ai/tianshu/commit/00082644b29b04c2a405f1b2b9044b29b8f696a5))
+* remove write-time truncation — only prune/truncate OLD tool results ([e81c1bb](https://github.com/tianshu-ai/tianshu/commit/e81c1bb8006c4b40481d0bdc2c72c3e4b9a0a824))
+* resolveUserRole was using require() in ESM — always returned member ([6401f64](https://github.com/tianshu-ai/tianshu/commit/6401f6446080ed29166cd2085589a1a4928d53b0))
+* revert to working Bar onClick — restore original 088fb5d approach ([4ec0e40](https://github.com/tianshu-ai/tianshu/commit/4ec0e40a93af5e9f68315860f8d72e300685c9ee))
+* sherpa-onnx-node as optionalDependency + install hint ([c743c9d](https://github.com/tianshu-ai/tianshu/commit/c743c9d141f1b84cf6afb65e1cb1b54ec5b70862))
+* show user display names instead of UIDs in usage page ([d66a5f0](https://github.com/tianshu-ai/tianshu/commit/d66a5f0e318c8da065c1e756b4b3e42d50a42bce))
+* SPA fallback skips /assets/ — stale hashes get 404 not HTML ([4e1efed](https://github.com/tianshu-ai/tianshu/commit/4e1efed57203bc66a7856bec58a68ba57c2e2613))
+* task tools/APIs back to member — only worker/agent mgmt is admin ([9776bfe](https://github.com/tianshu-ai/tianshu/commit/9776bfe3cff2804708c05218b5bc37fa40923ca0))
+* tianshu start works after stop (loaded but not running) ([7f35761](https://github.com/tianshu-ai/tianshu/commit/7f35761d57da556d9b753738c0f314fc9a02cb24))
+* TS errors in useVoiceInput and asr status endpoint ([349faa4](https://github.com/tianshu-ai/tianshu/commit/349faa44acd3f7763a7de9fcf35d517189963c91))
+* usage chart uses totalTokens (input/output fields unreliable) ([e9f5a3f](https://github.com/tianshu-ai/tianshu/commit/e9f5a3f9069ab3212c0c3b06cfdefb6b5b4a7a2b))
+* usage page shows error details instead of silent empty state ([cff1607](https://github.com/tianshu-ai/tianshu/commit/cff160723b8685e262a7d192d43d40a99262fb25))
+* use harness.on for context hook, remove require() that crashes ESM ([5829042](https://github.com/tianshu-ai/tianshu/commit/58290428dd2fe2db74d35178cb073b4d2ce62c56))
+* use import type for CheckGroup to fix tsx ESM crash on startup ([b7a4b0d](https://github.com/tianshu-ai/tianshu/commit/b7a4b0d26cac4b0da847d8bd4a22b651c4c10703))
+* use ref to break circular dependency between rebuildIndex and fetchList ([ff1da9f](https://github.com/tianshu-ai/tianshu/commit/ff1da9f01d4b6b2d958e11709e1f44667b601309))
+* wiki browse tab auto-refreshes after indexing completes ([62c3451](https://github.com/tianshu-ai/tianshu/commit/62c345178202302c40ea57bd14899fbbd47db389))
+* xlsx preview text invisible on dark theme ([db74853](https://github.com/tianshu-ai/tianshu/commit/db7485333da989e3d858cdd903d67f1191c3beff))
+
+
+### Performance
+
+* lower compaction triggerPercent from 80% to 50% ([37ff3dc](https://github.com/tianshu-ai/tianshu/commit/37ff3dc36c9cbb6ba5f384978935b14c0977f5c0))
+
+
+### Refactor
+
+* tenant-scoped user management ([5915d10](https://github.com/tianshu-ai/tianshu/commit/5915d104c573e2138ad0445a1de6e56ef61a591e))
+
 ## [0.46.1](https://github.com/tianshu-ai/tianshu/compare/v0.46.0...v0.46.1) (2026-09-07)
 
 
