@@ -27,6 +27,8 @@ import { readFileSchema, executeReadFile } from "./read-file.js";
 import { writeFileSchema, executeWriteFile } from "./write-file.js";
 import { editFileSchema, executeEditFile } from "./edit-file.js";
 import { deleteFileSchema, executeDeleteFile } from "./delete-file.js";
+import { copyFileSchema, executeCopyFile } from "./copy-file.js";
+import { moveFileSchema, executeMoveFile } from "./move-file.js";
 import { globSchema, executeGlob } from "./glob.js";
 import {
   tenantConfigListSchema,
@@ -188,6 +190,24 @@ export const DeleteFileTool: AgentTool = {
     executeDeleteFile(
       ctx.userHomeDir,
       args as { path: string; recursive?: boolean },
+    ),
+};
+
+export const CopyFileTool: AgentTool = {
+  schema: copyFileSchema(),
+  execute: (args, ctx: AgentToolContext) =>
+    executeCopyFile(
+      ctx.userHomeDir,
+      args as { source: string; destination: string; overwrite?: boolean },
+    ),
+};
+
+export const MoveFileTool: AgentTool = {
+  schema: moveFileSchema(),
+  execute: (args, ctx: AgentToolContext) =>
+    executeMoveFile(
+      ctx.userHomeDir,
+      args as { source: string; destination: string; overwrite?: boolean },
     ),
 };
 
