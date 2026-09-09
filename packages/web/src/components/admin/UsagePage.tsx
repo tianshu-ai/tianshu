@@ -152,22 +152,8 @@ export default function UsagePage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border-subtle, #333)" vertical={false} />
                   <XAxis
                     dataKey="day"
-                    tick={((props: Record<string, unknown>) => {
-                      const { x, y, payload } = props as { x: number; y: number; payload: { value: string } };
-                      const hasData = filledDaily.find((d) => String(d.day) === payload.value && Number(d.totalTokens) > 0);
-                      return (
-                        <text
-                          x={x} y={y + 12}
-                          textAnchor="middle"
-                          fontSize={10}
-                          fill={hasData ? "var(--color-link, #4263eb)" : "var(--color-fg-faint, #888)"}
-                          style={hasData ? { cursor: "pointer", textDecoration: "none" } : undefined}
-                          onClick={hasData ? () => setDrillDay(payload.value) : undefined}
-                        >
-                          {payload.value.slice(5)}
-                        </text>
-                      );
-                    }) as unknown as import("recharts").XAxisProps["tick"]}
+                    tick={{ fontSize: 10, fill: "var(--color-fg-faint, #888)" }}
+                    tickFormatter={(v: string) => v.slice(5)}
                     interval="preserveStartEnd"
                   />
                   <YAxis
@@ -193,6 +179,12 @@ export default function UsagePage() {
                       fill={modelColorMap.get(model) ?? "#4263eb"}
                       radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0}
                       cursor="pointer"
+                      onClick={((entry: Record<string, unknown>) => {
+                        const day = entry?.day;
+                        if (day && typeof day === "string" && Number(entry?.totalTokens ?? 0) > 0) {
+                          setDrillDay(day);
+                        }
+                      }) as unknown as import("recharts").BarProps["onClick"]}
                     />
                   ))}
                   <Legend formatter={(value: string) => <span style={{ fontSize: 11 }}>{value}</span>} />
