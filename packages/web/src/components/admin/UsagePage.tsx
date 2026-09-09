@@ -178,23 +178,19 @@ export default function UsagePage() {
                       stackId="a"
                       fill={modelColorMap.get(model) ?? "#4263eb"}
                       radius={i === arr.length - 1 ? [3, 3, 0, 0] : 0}
+                      cursor="pointer"
+                      onClick={(entry: Record<string, unknown>) => {
+                        const day = entry?.day;
+                        if (day && typeof day === "string" && Number(entry?.totalTokens ?? 0) > 0) {
+                          setDrillDay(day);
+                        }
+                      }}
                     />
                   ))}
                   <Legend formatter={(value: string) => <span style={{ fontSize: 11 }}>{value}</span>} />
                 </BarChart>
               </ResponsiveContainer>
-              {/* Clickable date row below chart */}
-              <div className="flex gap-0.5 mt-1 overflow-x-auto px-[50px]">
-                {filledDaily.filter((d) => Number(d.totalTokens) > 0).map((d) => (
-                  <button
-                    key={String(d.day)}
-                    onClick={() => setDrillDay(String(d.day))}
-                    className="text-[9px] text-link hover:underline px-1 py-0.5 rounded hover:bg-bg-hover whitespace-nowrap"
-                  >
-                    {String(d.day).slice(5)}
-                  </button>
-                ))}
-              </div>
+
             </div>
           )}
 
