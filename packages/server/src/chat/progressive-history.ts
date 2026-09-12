@@ -33,6 +33,7 @@ import type {
 } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
+  UserMessage,
   ToolCall,
   ToolResultMessage,
   TextContent,
@@ -184,6 +185,41 @@ function stubAssistantToolCalls(msg: AssistantMessage): AssistantMessage {
 }
 
 /**
+ * Prefix an old-region UserMessage with `[turn N]` so the agent can
+ * see its absolute turn number when it wants to call recall_range.
+ * Only real user turns get this — injected system notices are already
+ * filtered out by isRealUserTurn.
+ *
+ * Non-destructive: the original text is preserved verbatim after the
+ * marker. If content is a plain string (legacy), we wrap it in a
+ * TextContent array. If it's already a mixed content array, we prepend
+ * one small TextContent block — that keeps other block types (images,
+ * tool blocks the SDK might add later) intact.
+ */
+function prefixUserWithTurnNumber(
+  msg: UserMessage,
+  turnNumber: number,
+): UserMessage {
+  const marker: TextContent = {
+    type: "text",
+    text: `[turn ${turnNumber}]`,
+  };
+  if (typeof msg.content === "string") {
+    // Legacy shape — upgrade to array. The runtime treats string and
+    // array as equivalent input at the provider layer.
+    return {
+      ...msg,
+      content: [marker, { type: "text", text: msg.content }],
+    };
+  }
+  if (!Array.isArray(msg.content)) return msg;
+  return {
+    ...msg,
+    content: [marker, ...msg.content],
+  };
+}
+
+/**
  * Rewrite a ToolResultMessage into a stub. We MUST preserve the
  * role="toolResult" shape (Anthropic / OpenAI require tool_use blocks
  * to be paired with tool_result blocks in the same request), so we
@@ -231,22 +267,79 @@ export function progressiveHistoryTransform(
     }
 
     const result: SessionTreeEntry[] = [];
+    // Walk once to compute the absolute turn number for each real
+    // user MessageEntry (1-indexed, spanning both old and new region).
+    // Only real user turns advance the counter; system-injected user
+    // notices are numbered 0 (never referenced).
+    let userTurnCounter = 0;
+    let metaInserted = false;
+
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i]!;
+      const isRealUser = isRealUserTurn(e);
+      if (isRealUser) userTurnCounter++;
+
       if (i >= boundary) {
-        // Recent region: verbatim
+        // Recent region: verbatim (agent already has the context in
+        // full; adding turn markers would only add noise).
         result.push(e);
         continue;
       }
+
+      // --- Old region ---
+      // The first time we see a MessageEntry in the old region,
+      // insert a `[system note]`-prefixed UserMessage explaining
+      // what follows. Two design points:
+      //   1. It's placed IMMEDIATELY BEFORE the first stubbed
+      //      message (not at branch head) so non-message entries
+      //      like `compaction` stay at their original position.
+      //   2. We reuse the `[system note]` prefix so isRealUserTurn
+      //      excludes it from turn counting — if this transform
+      //      runs on already-transformed output, the note is a
+      //      no-op.
+      const isMessageEntry = e.type === "message";
+      if (!metaInserted && isMessageEntry) {
+        metaInserted = true;
+        const metaMsg: UserMessage = {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text:
+                `[system note] Progressive-history disclosure engaged: ` +
+                `turns 1–${userTurns - recentTurns} below are archived. ` +
+                `Each user message is tagged with its absolute turn number ([turn N]); ` +
+                `tool call arguments and tool result bodies are elided — ` +
+                `call recall_tool_call(id) for a single call's original args + output, ` +
+                `or recall_range(from, to) for a user-turn range's full transcript. ` +
+                `The last ${recentTurns} turns are unchanged.`,
+            },
+          ],
+          timestamp: 0,
+        };
+        result.push({
+          id: `progressive-history-meta-${e.id}`,
+          parentId: null,
+          timestamp: new Date(0).toISOString(),
+          type: "message",
+          message: metaMsg,
+        } as MessageEntry);
+      }
+
       // Old region: rewrite messages, pass through everything else.
-      if (e.type !== "message") {
+      if (!isMessageEntry) {
         result.push(e);
         continue;
       }
       const m = e.message;
       if (m.role === "user") {
-        // User verbatim
-        result.push(e);
+        if (isRealUser) {
+          const tagged = prefixUserWithTurnNumber(m, userTurnCounter);
+          result.push({ ...e, message: tagged } as MessageEntry);
+        } else {
+          // System-injected notice — pass through unchanged.
+          result.push(e);
+        }
       } else if (m.role === "assistant") {
         const rewritten = stubAssistantToolCalls(m);
         if (rewritten === m) {

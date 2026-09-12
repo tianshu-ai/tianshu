@@ -208,29 +208,89 @@ describe("progressiveHistoryTransform", () => {
     expect(toolResults).toBe(15);
   });
 
-  it("keeps user messages verbatim in both regions", () => {
+  it("keeps user text verbatim; tags old-region turns with [turn N]", () => {
+    // Old-region real user messages get `[turn N]` prepended as a
+    // separate TextContent block. Their original text remains
+    // untouched (as a second TextContent). Recent-region user
+    // messages stay verbatim without a marker.
     const branch = fakeBranch(20);
     const transform = progressiveHistoryTransform({
       minTurnsToEngage: 15,
       recentTurnsToKeep: 5,
     });
     const out = Array.from(transform(branch));
+
+    // Split output into (before-boundary, after-boundary) so we can
+    // check each region's user-message shape independently. We look
+    // for the meta [system note] to find the old region start.
     let userSeen = 0;
+    let tagged = 0;
+    let taggedTurnsSeen: number[] = [];
+    let untaggedOriginals = 0;
     for (const e of out) {
       if (e.type !== "message" || e.message.role !== "user") continue;
-      userSeen++;
       const c = e.message.content;
-      expect(Array.isArray(c)).toBe(true);
-      // Content must still be the original text (no stub replacement).
-      const first = Array.isArray(c) ? c[0] : null;
-      expect(first?.type === "text" && first.text.startsWith("user msg ")).toBe(true);
+      if (!Array.isArray(c)) continue;
+      const first = c[0];
+      const firstText = first?.type === "text" ? first.text : "";
+      // Skip our own meta note (starts with `[system note] Progressive`).
+      if (firstText.startsWith("[system note]")) continue;
+      userSeen++;
+      const turnMatch = firstText.match(/^\[turn (\d+)\]$/);
+      if (turnMatch) {
+        tagged++;
+        taggedTurnsSeen.push(parseInt(turnMatch[1]!, 10));
+        // The second block must be the ORIGINAL text, verbatim.
+        const second = c[1];
+        expect(second?.type).toBe("text");
+        expect(second?.type === "text" && second.text.startsWith("user msg ")).toBe(true);
+      } else {
+        // Untagged user: this is the recent-region shape; the first
+        // block should be the original `user msg N` text.
+        expect(firstText.startsWith("user msg ")).toBe(true);
+        untaggedOriginals++;
+      }
     }
     expect(userSeen).toBe(20);
+    expect(tagged).toBe(15);            // old region has 15 tagged turns
+    expect(untaggedOriginals).toBe(5);  // recent region has 5 verbatim turns
+    // Tagged turn numbers should be exactly 1..15.
+    expect(taggedTurnsSeen).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+  });
+
+  it("prepends a [system note] meta message before old region", () => {
+    const branch = fakeBranch(20);
+    const out = Array.from(
+      progressiveHistoryTransform({
+        minTurnsToEngage: 15,
+        recentTurnsToKeep: 5,
+      })(branch),
+    );
+    // Meta must be present exactly once, in the OLD region (before
+    // the recent turns), and must NOT be counted as a real turn (its
+    // prefix triggers isRealUserTurn's system-notice filter).
+    let metas: string[] = [];
+    for (const e of out) {
+      if (e.type !== "message" || e.message.role !== "user") continue;
+      const c = e.message.content;
+      if (!Array.isArray(c)) continue;
+      const first = c[0];
+      if (first?.type === "text" && first.text.startsWith("[system note] Progressive-history")) {
+        metas.push(first.text);
+      }
+    }
+    expect(metas.length).toBe(1);
+    expect(metas[0]).toContain("turns 1–15");
+    expect(metas[0]).toContain("recall_tool_call");
+    expect(metas[0]).toContain("recall_range");
   });
 
   it("passes non-message entries through unchanged", () => {
+    // A leading compaction entry must remain at position 0. Our
+    // meta [system note] is inserted BEFORE the first MessageEntry
+    // in the old region, not at branch head, so it must appear at
+    // position 1 (right after the compaction).
     const branch: SessionTreeEntry[] = [];
-    // Prepend a compaction entry
     branch.push({
       id: "compaction_1",
       parentId: null,
@@ -242,9 +302,18 @@ describe("progressiveHistoryTransform", () => {
     branch.push(...fakeBranch(20));
     const transform = progressiveHistoryTransform({ minTurnsToEngage: 15, recentTurnsToKeep: 5 });
     const out = Array.from(transform(branch));
+
     expect(out[0]?.type).toBe("compaction");
     if (out[0]?.type === "compaction") {
       expect(out[0].summary).toBe("earlier gist");
+    }
+    // Meta note lives at position 1 (before first old-region message).
+    expect(out[1]?.type).toBe("message");
+    if (out[1]?.type === "message" && out[1].message.role === "user") {
+      const c = out[1].message.content;
+      expect(Array.isArray(c)).toBe(true);
+      const first = Array.isArray(c) ? c[0] : null;
+      expect(first?.type === "text" && first.text.startsWith("[system note] Progressive-history")).toBe(true);
     }
   });
 
