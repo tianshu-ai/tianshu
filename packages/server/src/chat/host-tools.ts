@@ -14,8 +14,10 @@
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
 import type { AgentHarness, Session as PiSession, CompactionSettings } from "@earendil-works/pi-agent-core";
+import type { AgentTool } from "@tianshu-ai/plugin-sdk";
 import { tryAutoCompact } from "./compact-decision.js";
 import type { ToolExecutor } from "../tools/index.js";
+import { buildRecallToolCallTool, buildRecallRangeTool } from "./host-tools/recall-tools.js";
 
 export interface HostToolsOpts {
   contextWindow: number | undefined;
@@ -24,6 +26,12 @@ export interface HostToolsOpts {
   broadcast?: (event: string, payload: unknown) => void;
   /** Returns available panel ids from active plugins. */
   listPanels?: () => Array<{ panelId: string; pluginId: string; displayName: string }>;
+  /** Opens the tenant DB for the recall_* tools. Optional: when absent,
+   *  the recall tools are skipped (unit tests / non-chat contexts). */
+  openTenant?: (tenantId: string) => {
+    db: import("better-sqlite3").Database;
+    tenantId: string;
+  };
 }
 
 /**
@@ -53,6 +61,27 @@ export function buildHostTools(opts: HostToolsOpts): Array<{ schema: Tool; execu
   // Attach ref to the array so the caller can grab it.
   (tools as unknown as { _compactRef: CompactToolRef })._compactRef = ref;
   return tools;
+}
+
+/**
+ * Progressive-history recall tools (paired with `progressive-history.ts`).
+ *
+ * Returned as `AgentTool[]` (not the raw hostTools shape) because they
+ * need an AgentToolContext to reach tenant.db + sessionId. Callers pass
+ * them into `buildToolset` via `pluginTools` (with a synthetic pluginId
+ * of `_host`) rather than `hostTools` — that reuses the same
+ * tenant/session/log wiring plugin tools already get.
+ */
+export function buildRecallHostTools(deps: {
+  openTenant: (tenantId: string) => {
+    db: import("better-sqlite3").Database;
+    tenantId: string;
+  };
+}): AgentTool[] {
+  return [
+    buildRecallToolCallTool(deps),
+    buildRecallRangeTool(deps),
+  ];
 }
 
 /** Extract the CompactToolRef from a hostTools array. */
