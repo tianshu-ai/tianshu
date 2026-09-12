@@ -254,6 +254,94 @@ describe("progressiveHistoryTransform", () => {
     expect(stubs).toBe(0);
   });
 
+  it("skips [plugin-system] injected user notices when counting turns", () => {
+    // Simulate what tianshu's plugin-enable/disable path writes to the
+    // session as a role='user' notice. The transform must NOT treat it
+    // as a real user turn, otherwise the recent/old boundary drifts.
+    const branch: SessionTreeEntry[] = [];
+    // First entry: a system-injected "user" notice (like the one that
+    // caused the real 6068e0e1 bug on 2026-09-12).
+    const systemNotice: UserMessage = {
+      role: "user",
+      content: [{
+        type: "text",
+        text:
+          '[plugin-system] Plugin "Custom UI Shell" (custom-ui) was just ENABLED. ' +
+          "Newly available — no agent-facing surface. Use these when they help.",
+      }],
+      timestamp: Date.now(),
+    };
+    branch.push({
+      id: nextId(),
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: systemNotice,
+    });
+    // Now append 20 real user turns.
+    branch.push(...fakeBranch(20));
+
+    const transform = progressiveHistoryTransform({
+      minTurnsToEngage: 15,
+      recentTurnsToKeep: 5,
+    });
+    const out = Array.from(transform(branch));
+
+    // The [plugin-system] notice should NOT count toward turn total.
+    // With 20 real turns and recentTurnsToKeep=5, exactly 5 turns
+    // should have their toolCalls intact (in the recent region).
+    let recentToolCallsSeen = 0;
+    for (const e of out) {
+      if (e.type !== "message" || e.message.role !== "assistant") continue;
+      const c = e.message.content;
+      if (!Array.isArray(c)) continue;
+      for (const p of c) if (p.type === "toolCall") recentToolCallsSeen++;
+    }
+    expect(recentToolCallsSeen).toBe(5);
+
+    // And the notice itself must still be present verbatim.
+    const notice = out.find(
+      (e) =>
+        e.type === "message" &&
+        e.message.role === "user" &&
+        Array.isArray(e.message.content) &&
+        e.message.content.some(
+          (p) => p.type === "text" && typeof p.text === "string" && p.text.startsWith("[plugin-system]"),
+        ),
+    );
+    expect(notice).toBeDefined();
+  });
+
+  it("skips [system note] injected user notices when counting turns", () => {
+    // Same pattern as above, but with the tool-catalog-refresh prefix.
+    const branch: SessionTreeEntry[] = [];
+    const upgradeNotice: UserMessage = {
+      role: "user",
+      content: [{
+        type: "text",
+        text: "[system note] tianshu upgraded from 0.48.7 to 0.48.8 while this conversation was open. New tool available: ...",
+      }],
+      timestamp: Date.now(),
+    };
+    branch.push({
+      id: nextId(),
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: upgradeNotice,
+    });
+    // 14 real turns — with the notice miscounted this would engage the
+    // transform (15 total). Correct behavior: 14 real, transform no-op.
+    branch.push(...fakeBranch(14));
+
+    const transform = progressiveHistoryTransform({
+      minTurnsToEngage: 15,
+      recentTurnsToKeep: 5,
+    });
+    const out = transform(branch);
+    expect(out).toBe(branch); // same reference — no-op
+  });
+
   it("preserves assistant text alongside stubbed tool calls", () => {
     // Older assistants that mix text + toolCall should keep the text.
     const mixed: MessageEntry = assistantEntry([

@@ -52,6 +52,24 @@ interface MessageRow {
 }
 
 /**
+ * True when a DB row represents a real user-authored JSON message —
+ * i.e. `role='user'` AND `content` parses as an `AgentMessage`-shaped
+ * JSON blob. Tianshu injects transient plain-text notes under
+ * `role='user'` for plugin enable/disable notifications, tool-catalog
+ * refresh notes, and session-recovery status. Those rows should NOT
+ * count as user turns for the purposes of turn-range recall.
+ */
+function isRealUserJson(row: MessageRow): boolean {
+  if (row.role !== "user") return false;
+  try {
+    const j = JSON.parse(row.content) as { role?: unknown };
+    return j != null && typeof j === "object" && j.role === "user";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Extract text and arguments blocks from a stored JSON message row.
  * Each row's `content` column is a JSON blob shaped like an
  * AgentMessage (see sqlite-session-storage.ts).
@@ -381,16 +399,24 @@ export function buildRecallRangeTool(deps: RecallToolsDeps): AgentTool {
       }
 
       // Walk messages; assign turnIdx to each row based on the number
-      // of user messages seen so far (a user message opens a new turn).
+      // of REAL user messages seen so far (a real user JSON message
+      // opens a new turn). Plugin-notification / recovery-injected
+      // plain-text rows under role='user' are skipped for turn-counting
+      // but still returned when they fall within the recalled span.
       const chunks: string[] = [];
       let turnIdx = 0;
       let capturedBytes = 0;
       const MAX_BYTES = 200_000; // hard ceiling to protect the context
       let truncated = false;
       for (const row of rows) {
-        if (row.role === "user") turnIdx++;
+        if (isRealUserJson(row)) turnIdx++;
+        // Only start capturing once we're inside the requested range.
+        // Injected plain-text notes that appear BEFORE turn 1 (e.g. a
+        // plugin-enable notice written to the session before the first
+        // real user prompt) are silently skipped.
         if (turnIdx < fromTurn) continue;
         if (turnIdx > toTurn) break;
+        if (turnIdx === 0) continue; // safety: never emit rows preceding turn 1
         const chunk = formatMessageForRecall(row, turnIdx);
         if (capturedBytes + chunk.length > MAX_BYTES) {
           truncated = true;

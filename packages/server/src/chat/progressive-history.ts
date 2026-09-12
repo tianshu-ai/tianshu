@@ -54,20 +54,71 @@ const DEFAULTS = {
 } as const;
 
 /**
+ * Prefixes tianshu uses when injecting a transient plain-text notice
+ * into the session as a `role: "user"` message (plugin enable/disable,
+ * tool-catalog refresh, session-recovery status, etc.). These are
+ * NOT user-authored turns and must not open a turn boundary for the
+ * progressive-history transform — otherwise "turn N" starts drifting
+ * off by however many system notes were injected, and the transform's
+ * old/new region split lands in the wrong place.
+ *
+ * If you add another injection site elsewhere in the codebase, add its
+ * prefix here so recall_range and this transform stay in agreement.
+ */
+const SYSTEM_INJECTED_USER_PREFIXES = [
+  "[plugin-system]",
+  "[system note]",
+];
+
+/** True when a MessageEntry is a real user-authored turn (as opposed
+ *  to a tianshu-injected `role: "user"` system notice). */
+function isRealUserTurn(entry: SessionTreeEntry): boolean {
+  if (entry.type !== "message") return false;
+  const m = entry.message;
+  if (m.role !== "user") return false;
+  // Grab the first text chunk of the message and test its prefix.
+  // Tianshu's SqliteSessionStorage.parseMessage wraps legacy plain-text
+  // rows as `content: [{type:"text", text:"..."}]`, so this reaches
+  // both the legacy shape and the modern one.
+  let firstText: string | null = null;
+  if (typeof m.content === "string") {
+    firstText = m.content;
+  } else if (Array.isArray(m.content)) {
+    for (const p of m.content) {
+      if (p && typeof p === "object" && "type" in p && (p as { type: string }).type === "text") {
+        const t = (p as { text?: unknown }).text;
+        if (typeof t === "string") {
+          firstText = t;
+          break;
+        }
+      }
+    }
+  }
+  if (firstText === null) return true; // no text — treat as real turn conservatively
+  const head = firstText.trimStart();
+  for (const prefix of SYSTEM_INJECTED_USER_PREFIXES) {
+    if (head.startsWith(prefix)) return false;
+  }
+  return true;
+}
+
+/**
  * Count the user turns represented by a branch. A "user turn" is
- * any MessageEntry whose role is "user".
+ * any MessageEntry that passes `isRealUserTurn` — tianshu-injected
+ * `role: "user"` system notices don't count.
  */
 function countUserTurns(entries: readonly SessionTreeEntry[]): number {
   let n = 0;
   for (const e of entries) {
-    if (e.type === "message" && e.message.role === "user") n++;
+    if (isRealUserTurn(e)) n++;
   }
   return n;
 }
 
 /**
- * Find the index of the Nth-most-recent user MessageEntry (0-indexed
- * from the end). If N exceeds the number of user turns, returns 0.
+ * Find the index of the Nth-most-recent real user MessageEntry
+ * (0-indexed from the end). If N exceeds the number of user turns,
+ * returns 0. System-injected user notices are skipped.
  *
  * Used to split the branch into (older, recent) at a user-turn boundary.
  */
@@ -78,7 +129,7 @@ function indexOfNthRecentUserTurn(
   let seen = 0;
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i]!;
-    if (e.type === "message" && e.message.role === "user") {
+    if (isRealUserTurn(e)) {
       seen++;
       if (seen === n) return i;
     }
