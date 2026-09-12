@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.49.1](https://github.com/tianshu-ai/tianshu/compare/v0.49.0...v0.49.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* **chat:** use prompt() not followUp() for auto-continue/recovery ([802e208](https://github.com/tianshu-ai/tianshu/commit/802e2085f9fe0021e0d9ebcb05d51b52fe5f21e7))
+
 ## [0.49.0](https://github.com/tianshu-ai/tianshu/compare/v0.48.8...v0.49.0) (2026-09-12)
 
 
