@@ -130,7 +130,8 @@ import { CompactSkippedError, compactSession } from "./compact.js";
 import { loadGlobalConfig } from "../core/config.js";
 import { getUserStore } from "../core/auth/user-store.js";
 import { resolveTenantRole } from "../core/auth/identity.js";
-import { buildHostTools, getCompactRef } from "./host-tools.js";
+import { buildHostTools, buildRecallHostTools, getCompactRef } from "./host-tools.js";
+import { progressiveHistoryTransform } from "./progressive-history.js";
 import {
   toWire,
   type ClientMsg,
@@ -519,6 +520,28 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }
   }
   const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
+  // Progressive-history recall tools. Injected as pseudo-plugin tools
+  // under pluginId="_host" so they share the AgentToolContext wiring
+  // (tenantId, sessionId, log). Paired with progressiveHistoryTransform
+  // below: the transform stubs older tool_call args + tool_result bodies
+  // in the model's context; these tools bring the full text back on
+  // demand by reading straight from tianshu's messages table.
+  // recall_* tools only read from the current tenant's DB (a session
+  // never spans tenants). Reject any cross-tenant lookup up front
+  // rather than opening some other pool the handler can't reach.
+  const recallTools = buildRecallHostTools({
+    openTenant: (tenantId) => {
+      if (tenantId !== ctx.tenantId) {
+        throw new Error(
+          `recall_*: cross-tenant lookup not permitted (want=${tenantId} current=${ctx.tenantId})`,
+        );
+      }
+      return { db: ctx.db, tenantId: ctx.tenantId };
+    },
+  });
+  for (const t of recallTools) {
+    pluginTools.push({ pluginId: "_host", tool: t });
+  }
   // Skill priority (later wins on the dedup key, which is the
   // directory name for tenant skills and the contribution id for
   // host/plugin skills): host+plugin (mirrored) → tenant scope.
@@ -696,7 +719,20 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       supportsImages: modelInfo.supportsImages,
     },
   });
-  const piSession = new PiSession(storage);
+  // Progressive-history transform: for sessions with >= 15 user turns,
+  // rewrite older tool_call + tool_result entries into short stubs. The
+  // agent can pull the full text back via recall_tool_call / recall_range.
+  // Short sessions pass through unchanged.
+  const progressiveCfg = ctx.config.models?.progressiveHistory ?? {};
+  const piSession = new PiSession(storage, {
+    entryTransforms: progressiveCfg.enabled === false
+      ? []
+      : [progressiveHistoryTransform({
+          minTurnsToEngage: progressiveCfg.minTurnsToEngage ?? 15,
+          recentTurnsToKeep: progressiveCfg.recentTurnsToKeep ?? 5,
+          debug: progressiveCfg.debug === true,
+        })],
+  });
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
       attachments: originalAttachments as unknown[],

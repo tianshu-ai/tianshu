@@ -209,6 +209,25 @@ export interface ModelsCatalog {
   /** Tool-result truncation & aging settings. Controls how large tool
    *  results are handled to reduce context bloat. */
   toolResults?: ToolResultConfig;
+  /** Progressive history disclosure. Long sessions replay all older
+   *  tool_call arguments + tool_result bodies verbatim on every turn,
+   *  which is expensive on long-running sessions. When enabled, older
+   *  turns are rendered with tool calls + results elided down to short
+   *  stubs; the agent can recover full text on demand via the
+   *  `recall_tool_call` / `recall_range` host tools. */
+  progressiveHistory?: ProgressiveHistoryConfig;
+}
+
+export interface ProgressiveHistoryConfig {
+  /** Master switch. Default: true (short sessions still pass through
+   *  unchanged; the minTurnsToEngage gate handles that). */
+  enabled?: boolean;
+  /** User-turn count below which the transform is a no-op. Default 15. */
+  minTurnsToEngage?: number;
+  /** How many recent user turns to keep verbatim. Default 5. */
+  recentTurnsToKeep?: number;
+  /** Log a one-liner every time the transform runs. Default false. */
+  debug?: boolean;
 }
 
 export interface ToolResultConfig {
