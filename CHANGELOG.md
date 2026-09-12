@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.49.0](https://github.com/tianshu-ai/tianshu/compare/v0.48.8...v0.49.0) (2026-09-12)
+
+
+### Features
+
+* **chat:** progressive-history disclosure for long sessions ([c6d5ae1](https://github.com/tianshu-ai/tianshu/commit/c6d5ae15ad3b5ca120746992f099d8b96d300f24))
+* **chat:** tag old-region user turns with absolute turn numbers ([32463d9](https://github.com/tianshu-ai/tianshu/commit/32463d9c43db98bfc8714c84faab5937b8d7f41b))
+
+
+### Bug Fixes
+
+* **chat:** keep tool_use blocks intact when stubbing old tool calls ([cbf9791](https://github.com/tianshu-ai/tianshu/commit/cbf9791fe4efad986acd5c6105991ad3a1834827))
+* **chat:** skip tianshu-injected pseudo-user messages when counting turns ([287f378](https://github.com/tianshu-ai/tianshu/commit/287f37846f650dc3ff4e5a8f1671e909a7797f9a))
+* update release-please manifest to 0.48.8 ([dbaac3a](https://github.com/tianshu-ai/tianshu/commit/dbaac3a5ebc56fd0c349ffc47d691220faf94eda))
+
 ## [0.46.1](https://github.com/tianshu-ai/tianshu/compare/v0.46.0...v0.46.1) (2026-09-07)
 
 
