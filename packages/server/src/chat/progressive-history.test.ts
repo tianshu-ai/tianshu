@@ -142,30 +142,43 @@ describe("progressiveHistoryTransform", () => {
     expect(recentToolCallsSeen).toBe(5); // one per recent turn
   });
 
-  it("replaces old assistant toolCalls with text stubs", () => {
+  it("shrinks old assistant toolCall arguments to a marker but keeps the block", () => {
+    // We must NOT drop tool_use blocks or convert them to text — the
+    // provider (Anthropic/OpenAI) requires tool_use ↔ tool_result to
+    // be paired, and breaking that pairing yields `400 status code
+    // (no body)`. So old toolCalls keep type="toolCall", id, name;
+    // only `arguments` gets replaced with a stub marker.
     const branch = fakeBranch(20);
     const transform = progressiveHistoryTransform({
       minTurnsToEngage: 15,
       recentTurnsToKeep: 5,
     });
     const out = Array.from(transform(branch));
-    // Old region = first 15 turns = 60 entries.
     const oldRegion = out.slice(0, 60);
-    // Count assistant messages that still carry a toolCall part in
-    // the old region — should be zero after transformation.
-    let oldToolCallsRemaining = 0;
-    let stubs = 0;
+
+    let oldStubbedCalls = 0;
+    let oldFullCalls = 0;
     for (const e of oldRegion) {
       if (e.type !== "message" || e.message.role !== "assistant") continue;
       const c = e.message.content;
       if (!Array.isArray(c)) continue;
       for (const p of c) {
-        if (p.type === "toolCall") oldToolCallsRemaining++;
-        if (p.type === "text" && /^\[archived call:/.test(p.text)) stubs++;
+        if (p.type !== "toolCall") continue;
+        const args = p.arguments as Record<string, unknown> | undefined;
+        // Structural fields preserved.
+        expect(p.id).toMatch(/^tc_\d+$/);
+        expect(typeof p.name).toBe("string");
+        if (args && args.__archived === true) {
+          oldStubbedCalls++;
+          expect(typeof args.hint).toBe("string");
+          expect(String(args.hint)).toContain(p.id);
+        } else {
+          oldFullCalls++;
+        }
       }
     }
-    expect(oldToolCallsRemaining).toBe(0);
-    expect(stubs).toBe(15); // one per old turn
+    expect(oldStubbedCalls).toBe(15); // one per old turn
+    expect(oldFullCalls).toBe(0);     // no full arguments left in old region
   });
 
   it("replaces old tool results with short stubs, preserving role/id", () => {
@@ -289,15 +302,24 @@ describe("progressiveHistoryTransform", () => {
 
     // The [plugin-system] notice should NOT count toward turn total.
     // With 20 real turns and recentTurnsToKeep=5, exactly 5 turns
-    // should have their toolCalls intact (in the recent region).
-    let recentToolCallsSeen = 0;
+    // should have their toolCalls left with original arguments (in
+    // the recent region). The 15 old turns' toolCalls stay as blocks
+    // but with archived-marker arguments.
+    let recentFullArgs = 0;
+    let oldArchivedArgs = 0;
     for (const e of out) {
       if (e.type !== "message" || e.message.role !== "assistant") continue;
       const c = e.message.content;
       if (!Array.isArray(c)) continue;
-      for (const p of c) if (p.type === "toolCall") recentToolCallsSeen++;
+      for (const p of c) {
+        if (p.type !== "toolCall") continue;
+        const args = p.arguments as Record<string, unknown> | undefined;
+        if (args && args.__archived === true) oldArchivedArgs++;
+        else recentFullArgs++;
+      }
     }
-    expect(recentToolCallsSeen).toBe(5);
+    expect(recentFullArgs).toBe(5);
+    expect(oldArchivedArgs).toBe(15);
 
     // And the notice itself must still be present verbatim.
     const notice = out.find(
@@ -343,7 +365,8 @@ describe("progressiveHistoryTransform", () => {
   });
 
   it("preserves assistant text alongside stubbed tool calls", () => {
-    // Older assistants that mix text + toolCall should keep the text.
+    // Older assistants that mix text + toolCall should keep the text
+    // AND keep the toolCall block (with archived arguments).
     const mixed: MessageEntry = assistantEntry([
       { type: "text", text: "let me check that" },
       { type: "toolCall", id: "tc_mixed", name: "web_fetch", arguments: { url: "x" } },
@@ -372,17 +395,25 @@ describe("progressiveHistoryTransform", () => {
     );
     expect(found).toBeDefined();
     if (found?.type === "message" && found.message.role === "assistant") {
-      const c = found.message.content as Array<{ type: string; text?: string }>;
+      const c = found.message.content as Array<{
+        type: string;
+        text?: string;
+        id?: string;
+        name?: string;
+        arguments?: Record<string, unknown>;
+      }>;
       // Original text preserved.
       const hasText = c.some((p) => p.type === "text" && p.text === "let me check that");
-      // Tool call replaced with archived stub, not present as toolCall.
-      const hasStub = c.some(
-        (p) => p.type === "text" && typeof p.text === "string" && /^\[archived call:.*tc_mixed/.test(p.text),
-      );
-      const hasRawToolCall = c.some((p) => p.type === "toolCall");
+      // ToolCall block is STILL present (with stubbed args) so
+      // tool_use ↔ tool_result pairing is preserved.
+      const toolCall = c.find((p) => p.type === "toolCall" && p.id === "tc_mixed");
       expect(hasText).toBe(true);
-      expect(hasStub).toBe(true);
-      expect(hasRawToolCall).toBe(false);
+      expect(toolCall).toBeDefined();
+      expect(toolCall?.name).toBe("web_fetch");
+      expect(toolCall?.arguments?.__archived).toBe(true);
+      expect(String(toolCall?.arguments?.hint)).toContain("tc_mixed");
+      // Original url arg gone.
+      expect(toolCall?.arguments?.url).toBeUndefined();
     }
   });
 });

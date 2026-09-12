@@ -138,12 +138,19 @@ function indexOfNthRecentUserTurn(
 }
 
 /**
- * Rewrite an AssistantMessage: keep text/thinking verbatim, replace
- * each ToolCall with a compact stub.
+ * Rewrite an AssistantMessage: keep text/thinking verbatim, and
+ * shrink each ToolCall's arguments to a placeholder marker.
  *
- * Stub format: `TextContent` blob "[archived call: <name>(id=<id>)]".
- * That's enough for the model to know a call happened AND to recall
- * it by id if it needs the arguments or result.
+ * IMPORTANT: we CANNOT delete the ToolCall block or convert it to
+ * text — Anthropic (and OpenAI) require every `tool_use` block in
+ * an assistant message to be paired with a matching `tool_result`
+ * block in a subsequent user/tool message. Breaking that invariant
+ * yields `400 status code (no body)` from the provider.
+ *
+ * So the structural shape stays intact (same id, same name, same
+ * type="toolCall") and only the `arguments` payload is elided.
+ * A short text hint prefix in the assistant message tells the model
+ * "this call is archived; use recall_tool_call to get the real args".
  */
 function stubAssistantToolCalls(msg: AssistantMessage): AssistantMessage {
   const content = msg.content;
@@ -160,11 +167,15 @@ function stubAssistantToolCalls(msg: AssistantMessage): AssistantMessage {
   const newContent: (TextContent | ThinkingContent | ToolCall)[] = [];
   for (const p of content) {
     if (p.type === "toolCall") {
-      const stub: TextContent = {
-        type: "text",
-        text: `[archived call: ${p.name}(id=${p.id})]`,
+      // Preserve id + name + type="toolCall" so the provider still
+      // sees a valid tool_use block; shrink arguments to a marker.
+      const stubbed: ToolCall = {
+        type: "toolCall",
+        id: p.id,
+        name: p.name,
+        arguments: { __archived: true, hint: `call recall_tool_call("${p.id}") for original args` },
       };
-      newContent.push(stub);
+      newContent.push(stubbed);
     } else {
       newContent.push(p);
     }
