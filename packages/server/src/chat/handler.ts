@@ -999,6 +999,14 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
     // Auto-continue when model was truncated by maxTokens.
     // The PI SDK sets stopReason="length" on the last assistant message.
+    //
+    // IMPORTANT: we use `prompt()` here (not `followUp()`). pi's
+    // strict state machine only accepts `followUp()` while the turn
+    // is still running — after `waitForIdle()` returns, phase is
+    // "idle" and followUp throws AgentHarnessError("invalid_state",
+    // "Cannot follow up while idle"). Only `prompt()` can start the
+    // next turn from idle. The visible effect is identical: one new
+    // user message + one new assistant reply.
     let continuations = 0;
     while (continuations < MAX_CONTINUATIONS) {
       const lastRow = lastAssistantRow as ChatMessage | null;
@@ -1009,7 +1017,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       } catch { break; }
       continuations++;
       console.log(`[handler] auto-continue ${continuations}/${MAX_CONTINUATIONS} (stopReason=length)`);
-      await harness.followUp("Continue from where you left off. Do not repeat what you already said.");
+      await harness.prompt("Continue from where you left off. Do not repeat what you already said.");
       await harness.waitForIdle();
     }
 
@@ -1017,6 +1025,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // If the last assistant message has stopReason="error" or
     // "aborted" AND the user's signal is NOT aborted (i.e. the
     // user didn't press stop), retry the turn automatically.
+    //
+    // Same API note as above: use `prompt()`, not `followUp()`.
+    // `followUp()` was the original implementation and caused a
+    // recovery-cascade loop — provider fails → waitForIdle returns
+    // → followUp throws "Cannot follow up while idle" → outer catch
+    // spawns a recovery agent → recovery agent runs to completion
+    // with no emitted result → session stalls with status=stalled
+    // reason=no_completion, and the user has to type manually to
+    // unstick it.
     let recoveryAttempts = 0;
     const MAX_RECOVERY = 2;
     while (recoveryAttempts < MAX_RECOVERY) {
@@ -1032,7 +1049,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       console.log(`[handler] auto-recovery ${recoveryAttempts}/${MAX_RECOVERY} (stopReason=error/aborted, retrying)`);
       // Brief delay before retry to let transient issues resolve
       await new Promise((r) => setTimeout(r, 2000));
-      await harness.followUp("The previous attempt failed with a transient error. Please retry what you were doing.");
+      await harness.prompt("The previous attempt failed with a transient error. Please retry what you were doing.");
       await harness.waitForIdle();
     }
   } catch (err) {
@@ -1057,12 +1074,32 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         console.warn(`[handler] purgeOrphanedToolResults failed: ${purgeErr}`);
       }
     }
+
+    // pi harness state-machine errors are NOT provider failures —
+    // they mean tianshu called the wrong API for the current phase.
+    // Historically "Cannot follow up while idle" would spawn a
+    // recovery agent that then stalled with no_completion, forcing
+    // the user to manually type a message to unstick the session.
+    // Now these bubble up as a normal stream_error so the transcript
+    // stays consistent, but they do NOT trigger a recovery-agent
+    // spawn: the outer while(recoveryAttempts) loop already retried
+    // with the correct API, and the state error means it wasn't
+    // even a provider issue.
+    const isPiStateError =
+      /Cannot follow up while idle|Cannot steer while idle|AgentHarness is busy|invalid_state/i.test(
+        errMsg,
+      );
     if (!streamErrorSent) {
       send({
         type: "stream_error",
         reason: errMsg,
       });
       streamErrorSent = true;
+    }
+    if (isPiStateError) {
+      console.log(
+        `[handler] pi state-error; skipping recovery-agent spawn (session=${session.id})`,
+      );
     }
     // Self-recovery: spawn a recovery agent in an isolated
     // session so it can diagnose what crashed + nudge this
@@ -1074,7 +1111,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // bootstrap, but it's defined as optional on the request type
     // — if some test path doesn't provide one, skip the recovery
     // attempt rather than crashing in the catch block.
-    if (pluginRegistry) {
+    if (pluginRegistry && !isPiStateError) {
       try {
         const { spawnSessionRecovery } = await import(
           "./recovery-agent.js"
