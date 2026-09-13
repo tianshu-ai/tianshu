@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.50.1](https://github.com/tianshu-ai/tianshu/compare/v0.50.0...v0.50.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **chat:** name the failing tool in auto-recovery retry prompt ([6828eea](https://github.com/tianshu-ai/tianshu/commit/6828eeae6f5645b7ac54509988ee47bace7c794f))
+
 ## [0.50.0](https://github.com/tianshu-ai/tianshu/compare/v0.49.1...v0.50.0) (2026-09-13)
 
 
