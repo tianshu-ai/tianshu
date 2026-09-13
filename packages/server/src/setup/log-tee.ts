@@ -237,6 +237,51 @@ export function installLogTee(): void {
   // file lives. Goes through the original writer directly to avoid
   // being teed to a file that was just announced.
   origStdoutWrite(`[log-tee] server logs \u2192 ${path} (keep ${resolveKeepDays()} days)\n`);
+
+  // Event-loop heartbeat. Fires every 100ms and writes a single
+  // line straight to the current log file. When the event loop
+  // is healthy the log has one heartbeat every ~100ms; when it
+  // stalls (a synchronous CPU chunk, a blocking fs call, GC
+  // pause, etc.) the gap between consecutive heartbeat lines
+  // reveals exactly how long the process was frozen — and the
+  // surrounding non-heartbeat lines say WHICH request caused it.
+  //
+  // Motivation (Yu, 2026-09-13 24:05): the server log showed
+  // ~2 minutes of total silence between the last plugin
+  // activation and the auto-recovery line, with the client-side
+  // bridge log showing the tool ran to completion. Classic
+  // event-loop stall, but there was no way to tell WHERE in
+  // the request path we stopped responding. Heartbeats make
+  // the next occurrence self-locating.
+  //
+  // Overhead: one 100ms setInterval + one small appendFileSync
+  // per tick. On a healthy loop that's ~40 bytes every 100ms
+  // ≈ 34 KB/day of heartbeat noise; the same log rotation
+  // cleans it up on the 7-day cadence.
+  //
+  // Opt out with TIANSHU_HEARTBEAT_DISABLE=1 if the noise ever
+  // becomes a problem for a specific investigation.
+  if (process.env.TIANSHU_HEARTBEAT_DISABLE !== "1") {
+    const heartbeatIntervalMs = Math.max(50, Number(process.env.TIANSHU_HEARTBEAT_MS) || 100);
+    let hbSeq = 0;
+    const timer = setInterval(() => {
+      // Write straight through appendFileSync — do NOT go through
+      // the tee'd stdout/stderr (would double-echo to terminal
+      // and drown out real log lines). On event-loop stall this
+      // very call also stalls, but that's precisely the point:
+      // when the loop resumes, all queued heartbeats flush in
+      // order and the missing timestamps prove the stall length.
+      if (!state) return;
+      try {
+        appendFileSync(state.currentPath, `[heartbeat] seq=${hbSeq++} ${new Date().toISOString()}\n`);
+      } catch {
+        // Log dir gone away, disk full, permission changed —
+        // never crash on log-write failure.
+      }
+    }, heartbeatIntervalMs);
+    // Never let the heartbeat keep the process alive on its own.
+    timer.unref?.();
+  }
 }
 
 /** Exposed for tests: what file path is currently active. */
