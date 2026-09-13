@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.50.3](https://github.com/tianshu-ai/tianshu/compare/v0.50.2...v0.50.3) (2026-09-13)
+
+
+### Bug Fixes
+
+* **chat:** mine assistant JSON for tool names when recovery Map is empty ([750ce9e](https://github.com/tianshu-ai/tianshu/commit/750ce9efe97756afa3de4d22fb30abc35be0476c))
+
 ## [0.50.2](https://github.com/tianshu-ai/tianshu/compare/v0.50.1...v0.50.2) (2026-09-13)
 
 
