@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.50.0](https://github.com/tianshu-ai/tianshu/compare/v0.49.1...v0.50.0) (2026-09-13)
+
+
+### Features
+
+* **tools:** wrap every tool executor with an actionable error guard ([300ce9e](https://github.com/tianshu-ai/tianshu/commit/300ce9e437602eef1f13f87adba5fcf0aa5c4f48))
+
 ## [0.49.1](https://github.com/tianshu-ai/tianshu/compare/v0.49.0...v0.49.1) (2026-09-12)
 
 
