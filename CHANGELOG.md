@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.50.2](https://github.com/tianshu-ai/tianshu/compare/v0.50.1...v0.50.2) (2026-09-13)
+
+
+### Performance
+
+* **storage:** gate verbose getPathToRoot logging behind env flag ([0f130af](https://github.com/tianshu-ai/tianshu/commit/0f130afae5ba5700214abaeb35b7cdaec6d20a26))
+
 ## [0.50.1](https://github.com/tianshu-ai/tianshu/compare/v0.50.0...v0.50.1) (2026-09-13)
 
 
