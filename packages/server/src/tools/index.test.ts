@@ -103,4 +103,108 @@ describe("buildToolset", () => {
     expect(ts.schemas).toHaveLength(1);
     expect(warnCount).toBe(1);
   });
+
+  describe("tool error-guard wrapper", () => {
+    it("catches a plugin-tool throw and rethrows with an actionable message", async () => {
+      const throwing: AgentTool = {
+        schema: {
+          name: "bridge_myhost_exec",
+          description: "x",
+          parameters: Type.Object({}),
+        },
+        execute: () => {
+          throw new Error("ECONNRESET: bridge socket closed");
+        },
+      };
+      let warned: string | undefined;
+      const log = {
+        ...noopLog,
+        warn: (msg: string) => {
+          warned = msg;
+        },
+      };
+      const ts = await buildToolset({
+        pluginTools: [{ pluginId: "bridge", tool: throwing }],
+        toolContext: { ...fakeContext, log },
+      });
+      const exec = ts.executors.bridge_myhost_exec!;
+      await expect(exec({})).rejects.toThrow(/bridge_myhost_exec failed:.*ECONNRESET/);
+      await expect(exec({})).rejects.toThrow(/bridge connection may have dropped/);
+      expect(warned).toBeDefined();
+      expect(warned).toContain("[tool-guard]");
+      expect(warned).toContain("bridge:bridge_myhost_exec");
+    });
+
+    it("catches an async rejection from a plugin tool", async () => {
+      const rejecting: AgentTool = {
+        schema: {
+          name: "bridge_win_exec",
+          description: "x",
+          parameters: Type.Object({}),
+        },
+        execute: async () => {
+          await Promise.resolve();
+          throw new Error("exited with code 1");
+        },
+      };
+      const ts = await buildToolset({
+        pluginTools: [{ pluginId: "bridge", tool: rejecting }],
+        toolContext: fakeContext,
+      });
+      const exec = ts.executors.bridge_win_exec!;
+      // Non-zero exit code path: hint should mention reading output.
+      await expect(exec({})).rejects.toThrow(/exited with code 1/);
+      await expect(exec({})).rejects.toThrow(/exited non-zero/);
+    });
+
+    it("lets successful tool results pass through untouched", async () => {
+      const ts = await buildToolset({
+        pluginTools: [{ pluginId: "p", tool: fakeTool("okTool") }],
+        toolContext: fakeContext,
+      });
+      const exec = ts.executors.okTool!;
+      const result = await exec({});
+      expect(result).toEqual({ ok: true, text: "okTool" });
+    });
+
+    it("respects the abort signal before invoking the tool", async () => {
+      const controller = new AbortController();
+      controller.abort();
+      const tool: AgentTool = {
+        schema: {
+          name: "neverCalled",
+          description: "x",
+          parameters: Type.Object({}),
+        },
+        execute: () => {
+          throw new Error("should not run");
+        },
+      };
+      const ts = await buildToolset({
+        pluginTools: [{ pluginId: "p", tool }],
+        toolContext: { ...fakeContext, signal: controller.signal },
+      });
+      await expect(ts.executors.neverCalled!({})).rejects.toThrow(/aborted by user/);
+    });
+
+    it("wraps host tools the same way", async () => {
+      const ts = await buildToolset({
+        pluginTools: [],
+        toolContext: fakeContext,
+        hostTools: [
+          {
+            schema: {
+              name: "host_broken",
+              description: "x",
+              parameters: Type.Object({}),
+            },
+            executor: () => {
+              throw new Error("internal glitch");
+            },
+          },
+        ],
+      });
+      await expect(ts.executors.host_broken!({})).rejects.toThrow(/host_broken failed:.*internal glitch/);
+    });
+  });
 });

@@ -25,6 +25,89 @@ import type { LoadedSkill } from "../core/plugins/skills.js";
 export type ToolResult = unknown;
 export type ToolExecutor = (args: Record<string, unknown>) => Promise<ToolResult> | ToolResult;
 
+/**
+ * Wrap a raw tool executor with a safety net that:
+ *   1. Honors an aborted signal before invoking the tool.
+ *   2. Catches any throw / promise rejection from the tool body
+ *      — including from inner async code paths the caller might
+ *      have overlooked — and rethrows a normalized error message
+ *      that reads as "tool X failed: <cause>. You may retry with
+ *      different arguments or take an alternative approach."
+ *
+ * Why not just let pi handle it? pi-agent-core's executePreparedToolCall
+ * already catches sync/async throws and turns them into a
+ * `{ result: ErrorToolResult, isError: true }` for the agent — but
+ * the resulting `tool_result` content is just the bare Error.message,
+ * which for cases like bridge exec / network SSH failures reads as
+ * something opaque like "ECONNRESET" or "aborted" and the agent
+ * doesn't always realize the sensible next move is "try again" or
+ * "tell the user what failed".
+ *
+ * This wrapper does NOT swallow the error — it re-throws. pi still
+ * takes the standard path (isError=true tool_result gets sent back
+ * to the model). We only enrich the message so the model has
+ * enough context to decide what to do next instead of stalling.
+ */
+function wrapExecutorWithErrorGuard(
+  toolName: string,
+  origin: string,
+  toolContext: { signal?: AbortSignal; log: PluginLogger },
+  raw: (args: Record<string, unknown>) => Promise<ToolResult> | ToolResult,
+): ToolExecutor {
+  return async (args) => {
+    if (toolContext.signal?.aborted) {
+      throw new Error("aborted by user");
+    }
+    try {
+      // Await here (rather than returning the Promise directly) so
+      // async rejections land in our catch block, not on the caller.
+      return await raw(args);
+    } catch (err) {
+      const causeMessage = err instanceof Error ? err.message : String(err);
+      const causeStack = err instanceof Error && err.stack ? err.stack : undefined;
+      // Detailed context in the server log — the agent doesn't need
+      // stack traces, but a human debugging bridge/tool crashes does.
+      toolContext.log.warn(
+        `[tool-guard] ${origin}:${toolName} threw: ${causeMessage}${
+          causeStack ? `\n${causeStack.split("\n").slice(0, 6).join("\n")}` : ""
+        }`,
+      );
+      // Rethrow with an agent-actionable message. pi's tool-loop
+      // catches this and returns it as isError=true tool_result,
+      // so the model sees this text as its next input.
+      const guidance = deriveRecoveryHint(toolName, causeMessage);
+      throw new Error(
+        `${toolName} failed: ${causeMessage}. ${guidance}`,
+      );
+    }
+  };
+}
+
+/**
+ * Best-effort tool-specific guidance strings that tell the agent
+ * what a plausible recovery move looks like. Keeps the message
+ * short (<200 chars) so it doesn't dominate the tool_result.
+ */
+function deriveRecoveryHint(toolName: string, causeMessage: string): string {
+  const lower = causeMessage.toLowerCase();
+  // Bridge exec / SSH / remote tools — usually transient network
+  // or process-crash failures.
+  if (/^bridge_.*_exec$|bridge_.*_shell$/i.test(toolName)) {
+    if (/econnrefused|econnreset|etimedout|network|socket|hang up|closed/i.test(lower)) {
+      return "The bridge connection may have dropped. You may retry the command once; if it still fails, tell the user the bridge is unreachable and stop retrying.";
+    }
+    if (/exit(ed)? .*(1|127|130|137)|non-zero exit|failed with code/i.test(lower)) {
+      return "The command completed but exited non-zero. Read the output above (if any) to decide whether to fix the arguments, run a different command, or report the failure to the user.";
+    }
+    return "Retry once with the same or corrected arguments; if it fails a second time, describe the failure to the user rather than looping.";
+  }
+  if (/aborted by user/i.test(lower)) {
+    return "The user cancelled this turn. Stop working and wait for the next user message.";
+  }
+  // Generic default — don't over-promise a fix.
+  return "You may retry with different arguments or take an alternative approach; do not repeat the exact same call more than twice in a row.";
+}
+
 export interface Toolset {
   /** pi-ai Tool schemas to pass to streamSimple/agent loop. */
   schemas: Tool[];
@@ -188,24 +271,24 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
     const effectiveAccess = toolAccess ?? "member";
     if (effectiveAccess === "admin" && toolContext.userRole === "member") continue;
 
-    executors[name] = (args) => {
-      if (toolContext.signal?.aborted) {
-        throw new Error("aborted by user");
-      }
-      return tool.execute(args, ctx);
-    };
+    executors[name] = wrapExecutorWithErrorGuard(
+      name,
+      pluginId,
+      toolContext,
+      (args) => tool.execute(args, ctx),
+    );
   }
 
   // Host-level tools (always available, not from plugins).
   for (const { schema, executor } of opts.hostTools ?? []) {
     if (!executors[schema.name]) {
       schemas.push(schema);
-      executors[schema.name] = (args) => {
-        if (toolContext.signal?.aborted) {
-          throw new Error("aborted by user");
-        }
-        return executor(args);
-      };
+      executors[schema.name] = wrapExecutorWithErrorGuard(
+        schema.name,
+        "host",
+        toolContext,
+        (args) => executor(args),
+      );
     }
   }
 
