@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.51.0](https://github.com/tianshu-ai/tianshu/compare/v0.50.3...v0.51.0) (2026-09-13)
+
+
+### Features
+
+* **server:** rolling-file log tee under ~/.tianshu/logs ([5ad11ae](https://github.com/tianshu-ai/tianshu/commit/5ad11aeb68b77577e66cb2062354adbade3f61e1))
+
 ## [0.50.3](https://github.com/tianshu-ai/tianshu/compare/v0.50.2...v0.50.3) (2026-09-13)
 
 
