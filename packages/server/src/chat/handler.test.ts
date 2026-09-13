@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from "vitest";
 import {
+  buildAutoRecoveryPrompt,
   defaultSystemPrompt,
   substituteUserIdPlaceholders,
 } from "./handler.js";
@@ -309,5 +310,54 @@ describe("substituteUserIdPlaceholders", () => {
   it("returns the prompt unchanged when userId is empty", () => {
     const text = "users/<self>/USER.md";
     expect(substituteUserIdPlaceholders(text, "")).toBe(text);
+  });
+});
+
+describe("buildAutoRecoveryPrompt", () => {
+  it("falls back to a generic retry hint when no tool call was in flight", () => {
+    const prompt = buildAutoRecoveryPrompt(new Map());
+    // Should mention retry once, and warn against looping.
+    expect(prompt).toMatch(/[Rr]etry/);
+    expect(prompt).toMatch(/looping|describe the failure to the user/i);
+    // Must NOT invent a tool name.
+    expect(prompt).not.toMatch(/tool call\(s\) were still in flight/);
+  });
+
+  it("names the outstanding tool when exactly one is in flight", () => {
+    // Real-world scenario: bridge exec disconnects mid-command.
+    const outstanding = new Map<string, { name: string }>([
+      ["toolu_bdrk_1", { name: "bridge_f5y2g6f2nr_exec" }],
+    ]);
+    const prompt = buildAutoRecoveryPrompt(outstanding);
+    // Names the tool inline so the agent can reason about the failure.
+    expect(prompt).toContain("bridge_f5y2g6f2nr_exec");
+    // Steers away from a blind re-issue.
+    expect(prompt).toMatch(/Do NOT blindly re-issue/);
+    // Suggests a probe / user-facing bailout path.
+    expect(prompt).toMatch(/probe environment state|health check/i);
+    expect(prompt).toMatch(/tell the user what failed/i);
+  });
+
+  it("deduplicates tool names when the same tool was called multiple times", () => {
+    const outstanding = new Map<string, { name: string }>([
+      ["toolu_a", { name: "bridge_win_exec" }],
+      ["toolu_b", { name: "bridge_win_exec" }],
+      ["toolu_c", { name: "bridge_win_exec" }],
+    ]);
+    const prompt = buildAutoRecoveryPrompt(outstanding);
+    // Tool name should appear once for the human-readable list, not
+    // three times.
+    const occurrences = prompt.match(/bridge_win_exec/g)?.length ?? 0;
+    expect(occurrences).toBe(1);
+  });
+
+  it("lists multiple distinct tools", () => {
+    const outstanding = new Map<string, { name: string }>([
+      ["toolu_a", { name: "bridge_win_exec" }],
+      ["toolu_b", { name: "web_fetch" }],
+    ]);
+    const prompt = buildAutoRecoveryPrompt(outstanding);
+    expect(prompt).toContain("bridge_win_exec");
+    expect(prompt).toContain("web_fetch");
   });
 });

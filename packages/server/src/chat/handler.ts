@@ -1034,6 +1034,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // with no emitted result → session stalls with status=stalled
     // reason=no_completion, and the user has to type manually to
     // unstick it.
+    //
+    // Prompt content matters: earlier versions sent a bare "The
+    // previous attempt failed with a transient error. Please retry
+    // what you were doing." — which for the bridge_*_exec / other
+    // long-running tool families caused an endless blind-retry loop
+    // (bridge disconnected → tool_call never returns → provider
+    // aborts → recovery re-fires the exact same tool call → bridge
+    // still not back → abort again → stalled toolCall garbage
+    // accumulates in the branch). We now inject the outstanding
+    // tool-call names into the retry prompt so the agent has enough
+    // context to probe environment state before re-issuing the same
+    // call — and to bail out and tell the user if the tool is
+    // fundamentally unavailable.
     let recoveryAttempts = 0;
     const MAX_RECOVERY = 2;
     while (recoveryAttempts < MAX_RECOVERY) {
@@ -1049,7 +1062,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       console.log(`[handler] auto-recovery ${recoveryAttempts}/${MAX_RECOVERY} (stopReason=error/aborted, retrying)`);
       // Brief delay before retry to let transient issues resolve
       await new Promise((r) => setTimeout(r, 2000));
-      await harness.prompt("The previous attempt failed with a transient error. Please retry what you were doing.");
+      const retryPrompt = buildAutoRecoveryPrompt(outstandingToolCalls);
+      await harness.prompt(retryPrompt);
       await harness.waitForIdle();
     }
   } catch (err) {
@@ -1546,6 +1560,59 @@ function bridgeHarnessEventToWs(
   if (lowType === "settled") {
     return;
   }
+}
+
+/**
+ * Build the retry prompt for the auto-recovery loop after a
+ * transient provider error / abort.
+ *
+ * Bare "please retry" caused endless blind-retry loops when the
+ * failing tool was itself the reason for the abort (e.g. a bridge
+ * disconnected while a `bridge_*_exec` call was in flight, so the
+ * tool_call never returned a tool_result, provider timed out, we
+ * blindly told the agent to "retry what you were doing", the agent
+ * re-fired the same tool call, and the whole cycle repeated).
+ *
+ * When we have outstanding tool_call names, name them explicitly
+ * and steer the agent toward an environment probe / user-facing
+ * failure report instead of re-issuing the exact same call.
+ *
+ * Exported so it can be unit-tested; not intended for external
+ * callers.
+ */
+export function buildAutoRecoveryPrompt(
+  outstandingToolCalls: ReadonlyMap<string, { name: string }>,
+): string {
+  const outstanding = [...outstandingToolCalls.values()];
+  if (outstanding.length === 0) {
+    return (
+      "The previous attempt failed with a transient error before any " +
+      "tool call could complete. Retry what you were doing — if it " +
+      "fails a second time, describe the failure to the user rather " +
+      "than looping."
+    );
+  }
+  const uniqueNames = [...new Set(outstanding.map((tc) => tc.name))];
+  const namesInline =
+    uniqueNames.length === 1
+      ? `\`${uniqueNames[0]}\``
+      : uniqueNames.map((n) => `\`${n}\``).join(", ");
+  return (
+    `The previous turn ended with a transient error / abort while the ` +
+    `following tool call(s) were still in flight and never returned ` +
+    `a tool_result: ${namesInline}. This usually means the tool's ` +
+    `backend became unreachable mid-call — e.g. a bridge disconnected, ` +
+    `an SSH session dropped, a remote process crashed, or the network ` +
+    `stalled. Do NOT blindly re-issue the same call as your first ` +
+    `move; that just re-triggers the same failure and leaves more ` +
+    `orphaned tool_call entries in the history. Instead: (1) probe ` +
+    `environment state with a small, safe call first (e.g. a trivial ` +
+    `command, a directory listing, or a health check on the same ` +
+    `bridge/tool); (2) if the probe succeeds, resume with corrected ` +
+    `arguments; (3) if the probe fails or the tool is fundamentally ` +
+    `unavailable, stop retrying and tell the user what failed so they ` +
+    `can fix the environment.`
+  );
 }
 
 /** Read the most recently persisted message of a given role from
