@@ -1062,7 +1062,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       console.log(`[handler] auto-recovery ${recoveryAttempts}/${MAX_RECOVERY} (stopReason=error/aborted, retrying)`);
       // Brief delay before retry to let transient issues resolve
       await new Promise((r) => setTimeout(r, 2000));
-      const retryPrompt = buildAutoRecoveryPrompt(outstandingToolCalls);
+      // Pass the full assistant JSON as the second-tier data source:
+      // pi emits tool_execution_start/end in pairs even on aborts, so
+      // outstandingToolCalls is nearly always empty by the time we
+      // land here. The persisted assistant content still carries the
+      // toolCall blocks that were being invoked — that's what actually
+      // identifies the failing tool in Yu's bridge-disconnect scenario.
+      const retryPrompt = buildAutoRecoveryPrompt(
+        outstandingToolCalls,
+        lastRow?.content,
+      );
+      console.log(
+        `[handler] auto-recovery prompt (first 200 chars): ${retryPrompt.slice(0, 200)}`,
+      );
       await harness.prompt(retryPrompt);
       await harness.waitForIdle();
     }
@@ -1573,18 +1585,45 @@ function bridgeHarnessEventToWs(
  * blindly told the agent to "retry what you were doing", the agent
  * re-fired the same tool call, and the whole cycle repeated).
  *
- * When we have outstanding tool_call names, name them explicitly
- * and steer the agent toward an environment probe / user-facing
- * failure report instead of re-issuing the exact same call.
+ * When we can identify the tool(s) that were being called, name
+ * them explicitly and steer the agent toward an environment probe /
+ * user-facing failure report instead of re-issuing the exact same
+ * call.
+ *
+ * DATA SOURCES (in preference order):
+ *
+ *   1. `outstandingToolCalls`: a Map handler.ts maintains from
+ *      pi's `tool_execution_start` / `tool_execution_end` events.
+ *      Reliable ONLY when execution never got to _end. In practice
+ *      pi emits both events as a pair even on aborts, so this map
+ *      is almost always empty by the time we get here.
+ *
+ *   2. `lastAssistantMessageContent`: the full JSON body of the
+ *      just-persisted failing assistant message. It contains the
+ *      `toolCall` blocks the model was trying to invoke, so we
+ *      can name them even when the harness already flushed its
+ *      execution-end events. This is the source that actually
+ *      catches the bridge-disconnect / mid-call abort scenario
+ *      Yu reported.
  *
  * Exported so it can be unit-tested; not intended for external
  * callers.
  */
 export function buildAutoRecoveryPrompt(
   outstandingToolCalls: ReadonlyMap<string, { name: string }>,
+  lastAssistantMessageContent?: string,
 ): string {
+  // Prefer the outstanding map when it has anything at all.
   const outstanding = [...outstandingToolCalls.values()];
-  if (outstanding.length === 0) {
+  let uniqueNames: string[] = [];
+  if (outstanding.length > 0) {
+    uniqueNames = [...new Set(outstanding.map((tc) => tc.name))];
+  } else if (lastAssistantMessageContent) {
+    // Fallback: mine the assistant JSON for toolCall block names.
+    uniqueNames = extractToolCallNames(lastAssistantMessageContent);
+  }
+
+  if (uniqueNames.length === 0) {
     return (
       "The previous attempt failed with a transient error before any " +
       "tool call could complete. Retry what you were doing — if it " +
@@ -1592,27 +1631,51 @@ export function buildAutoRecoveryPrompt(
       "than looping."
     );
   }
-  const uniqueNames = [...new Set(outstanding.map((tc) => tc.name))];
+
   const namesInline =
     uniqueNames.length === 1
       ? `\`${uniqueNames[0]}\``
       : uniqueNames.map((n) => `\`${n}\``).join(", ");
   return (
     `The previous turn ended with a transient error / abort while the ` +
-    `following tool call(s) were still in flight and never returned ` +
-    `a tool_result: ${namesInline}. This usually means the tool's ` +
-    `backend became unreachable mid-call — e.g. a bridge disconnected, ` +
-    `an SSH session dropped, a remote process crashed, or the network ` +
-    `stalled. Do NOT blindly re-issue the same call as your first ` +
-    `move; that just re-triggers the same failure and leaves more ` +
-    `orphaned tool_call entries in the history. Instead: (1) probe ` +
-    `environment state with a small, safe call first (e.g. a trivial ` +
-    `command, a directory listing, or a health check on the same ` +
-    `bridge/tool); (2) if the probe succeeds, resume with corrected ` +
-    `arguments; (3) if the probe fails or the tool is fundamentally ` +
-    `unavailable, stop retrying and tell the user what failed so they ` +
-    `can fix the environment.`
+    `following tool call(s) were being invoked: ${namesInline}. This ` +
+    `usually means the tool's backend became unreachable mid-call — ` +
+    `e.g. a bridge disconnected, an SSH session dropped, a remote ` +
+    `process crashed, or the network stalled. Do NOT blindly re-issue ` +
+    `the same call as your first move; that just re-triggers the same ` +
+    `failure and leaves more orphaned tool_call entries in the history. ` +
+    `Instead: (1) probe environment state with a small, safe call first ` +
+    `(e.g. a trivial command, a directory listing, or a health check ` +
+    `on the same bridge/tool); (2) if the probe succeeds, resume with ` +
+    `corrected arguments; (3) if the probe fails or the tool is ` +
+    `fundamentally unavailable, stop retrying and tell the user what ` +
+    `failed so they can fix the environment.`
   );
+}
+
+/**
+ * Extract unique `toolCall` block names from a persisted assistant
+ * message JSON. Best-effort — returns [] on any parse failure so
+ * the caller can fall back to the generic retry prompt.
+ *
+ * Exported for tests only.
+ */
+export function extractToolCallNames(assistantMessageJson: string): string[] {
+  try {
+    const parsed = JSON.parse(assistantMessageJson) as {
+      content?: Array<{ type?: string; name?: string }>;
+    };
+    if (!Array.isArray(parsed?.content)) return [];
+    const names: string[] = [];
+    for (const block of parsed.content) {
+      if (block && block.type === "toolCall" && typeof block.name === "string") {
+        names.push(block.name);
+      }
+    }
+    return [...new Set(names)];
+  } catch {
+    return [];
+  }
 }
 
 /** Read the most recently persisted message of a given role from

@@ -10,6 +10,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildAutoRecoveryPrompt,
   defaultSystemPrompt,
+  extractToolCallNames,
   substituteUserIdPlaceholders,
 } from "./handler.js";
 import type { TenantContext } from "../core/index.js";
@@ -359,5 +360,87 @@ describe("buildAutoRecoveryPrompt", () => {
     const prompt = buildAutoRecoveryPrompt(outstanding);
     expect(prompt).toContain("bridge_win_exec");
     expect(prompt).toContain("web_fetch");
+  });
+
+  it("falls back to mining tool names from the last assistant JSON", () => {
+    // The scenario that actually happens: pi emits tool_execution_end
+    // in pairs with _start even on aborts, so the map is empty by the
+    // time we hit the recovery loop. The persisted assistant message
+    // JSON still has the toolCall blocks though.
+    const assistantJson = JSON.stringify({
+      role: "assistant",
+      content: [
+        { type: "text", text: "Let me check that." },
+        {
+          type: "toolCall",
+          id: "toolu_bdrk_bridge_1",
+          name: "bridge_f5y2g6f2nr_exec",
+          arguments: { command: "ls" },
+        },
+      ],
+      stopReason: "aborted",
+    });
+    const prompt = buildAutoRecoveryPrompt(new Map(), assistantJson);
+    expect(prompt).toContain("bridge_f5y2g6f2nr_exec");
+    expect(prompt).toMatch(/Do NOT blindly re-issue/);
+  });
+
+  it("still falls through to the generic hint if the assistant JSON has no toolCalls", () => {
+    const textOnly = JSON.stringify({
+      role: "assistant",
+      content: [{ type: "text", text: "hi" }],
+      stopReason: "error",
+    });
+    const prompt = buildAutoRecoveryPrompt(new Map(), textOnly);
+    expect(prompt).toMatch(/[Rr]etry/);
+    expect(prompt).not.toMatch(/tool call\(s\) were being invoked/);
+  });
+
+  it("is resilient to malformed assistant JSON", () => {
+    const prompt = buildAutoRecoveryPrompt(new Map(), "{not-valid-json");
+    // Falls back to generic hint rather than throwing.
+    expect(prompt).toMatch(/[Rr]etry/);
+  });
+});
+
+describe("extractToolCallNames", () => {
+  it("pulls out toolCall block names from an assistant message JSON", () => {
+    const json = JSON.stringify({
+      content: [
+        { type: "text", text: "looking" },
+        { type: "toolCall", id: "a", name: "bridge_x_exec", arguments: {} },
+        { type: "toolCall", id: "b", name: "web_fetch", arguments: {} },
+      ],
+    });
+    expect(extractToolCallNames(json)).toEqual(["bridge_x_exec", "web_fetch"]);
+  });
+
+  it("deduplicates repeated tool names", () => {
+    const json = JSON.stringify({
+      content: [
+        { type: "toolCall", id: "a", name: "bridge_x_exec", arguments: {} },
+        { type: "toolCall", id: "b", name: "bridge_x_exec", arguments: {} },
+      ],
+    });
+    expect(extractToolCallNames(json)).toEqual(["bridge_x_exec"]);
+  });
+
+  it("returns [] on malformed JSON", () => {
+    expect(extractToolCallNames("not json")).toEqual([]);
+  });
+
+  it("returns [] when content is missing or not an array", () => {
+    expect(extractToolCallNames(JSON.stringify({}))).toEqual([]);
+    expect(extractToolCallNames(JSON.stringify({ content: "str" }))).toEqual([]);
+  });
+
+  it("ignores non-toolCall blocks", () => {
+    const json = JSON.stringify({
+      content: [
+        { type: "text", text: "hi" },
+        { type: "thinking", text: "..." },
+      ],
+    });
+    expect(extractToolCallNames(json)).toEqual([]);
   });
 });
