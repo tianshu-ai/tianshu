@@ -1,3 +1,25 @@
+/**
+ * DEBUG LOGGING GATE
+ *
+ * This file used to unconditionally console.log every getPathToRoot
+ * call plus one line per entry in the branch (200+ lines per
+ * request on a 44-turn session). At scale this saturated stdout,
+ * blocked the Node.js event loop, and produced the observed
+ * "tianshu server hung for 44s" symptom Yu reported 2026-09-13:
+ * during the hang, local-bridge WebSocket clients accumulated
+ * ECONNREFUSED / "no response for 900+s" → "assuming dead link".
+ *
+ * All storage debug logs are now gated behind TIANSHU_STORAGE_DEBUG=1.
+ * The scan-and-log loop inside getPathToRoot (which JSON.stringified
+ * every entry to find toolu_bdrk_* ids for the log line) is also
+ * skipped entirely when the gate is off — the CPU cost was itself
+ * part of the hang, not just the log I/O.
+ */
+const STORAGE_DEBUG = process.env.TIANSHU_STORAGE_DEBUG === "1";
+function dbg(msg: string): void {
+  if (STORAGE_DEBUG) console.log(msg);
+}
+
 // SQLite-backed implementation of pi-agent-core's
 // `SessionStorage<TMetadata>` interface.
 //
@@ -337,7 +359,7 @@ export class SqliteSessionStorage
   }
 
   async getPathToRoot(leafId: string | null): Promise<SessionTreeEntry[]> {
-    console.log(`[storage] getPathToRoot called, session=${this.sessionId}, leafId=${leafId?.slice(0,8)}`);
+    dbg(`[storage] getPathToRoot called, session=${this.sessionId}, leafId=${leafId?.slice(0, 8)}`);
     if (!leafId) return [];
     const rows = this.ctx.db
       .prepare<[string], MessagesRow>(
@@ -380,21 +402,32 @@ export class SqliteSessionStorage
     // Filter orphaned toolResult entries (can appear after compaction
     // removes the assistant message containing the toolCall but keeps
     // the toolResult). Without this, Anthropic rejects with 400.
-    console.log(`[storage] getPathToRoot: ${path.length} entries before filter, session=${this.sessionId}`);
-    // Brute-force search for any entry containing the problematic ID pattern
-    for (const entry of path) {
-      const json = JSON.stringify(entry);
-      // Search for any tool_use_id / toolCallId patterns
-      const idMatches = json.match(/toolu_bdrk_[A-Za-z0-9]+/g);
-      if (idMatches) {
-        for (const id of new Set(idMatches)) {
-          const isToolCall = json.includes(`"type":"toolCall"`) && json.includes(`"id":"${id}"`);
-          const isToolResult = json.includes(`"toolCallId":"${id}"`);
-          const entryType = entry.type;
-          const role = entryType === "message" ? (entry as { message: { role: string } }).message.role : entryType;
-          if (isToolCall) console.log(`[storage]   toolCall id=${id} role=${role} entry=${entry.id}`);
-          if (isToolResult) console.log(`[storage]   toolResult ref=${id} role=${role} entry=${entry.id}`);
-          if (!isToolCall && !isToolResult) console.log(`[storage]   OTHER ref=${id} role=${role} entry=${entry.id} snippet=${json.slice(json.indexOf(id) - 30, json.indexOf(id) + 60)}`);
+    if (STORAGE_DEBUG) {
+      dbg(`[storage] getPathToRoot: ${path.length} entries before filter, session=${this.sessionId}`);
+      // Brute-force scan for tool-call id patterns — only useful
+      // when actively debugging orphaned-tool issues. Do NOT run
+      // this unconditionally: on a 200+ entry branch it
+      // JSON.stringify()'s every entry twice and dominates CPU.
+      for (const entry of path) {
+        const json = JSON.stringify(entry);
+        const idMatches = json.match(/toolu_bdrk_[A-Za-z0-9]+/g);
+        if (idMatches) {
+          for (const id of new Set(idMatches)) {
+            const isToolCall = json.includes(`"type":"toolCall"`) && json.includes(`"id":"${id}"`);
+            const isToolResult = json.includes(`"toolCallId":"${id}"`);
+            const entryType = entry.type;
+            const role =
+              entryType === "message" ? (entry as { message: { role: string } }).message.role : entryType;
+            if (isToolCall) dbg(`[storage]   toolCall id=${id} role=${role} entry=${entry.id}`);
+            if (isToolResult) dbg(`[storage]   toolResult ref=${id} role=${role} entry=${entry.id}`);
+            if (!isToolCall && !isToolResult)
+              dbg(
+                `[storage]   OTHER ref=${id} role=${role} entry=${entry.id} snippet=${json.slice(
+                  json.indexOf(id) - 30,
+                  json.indexOf(id) + 60,
+                )}`,
+              );
+          }
         }
       }
     }
@@ -404,7 +437,9 @@ export class SqliteSessionStorage
     // toolCall blocks, turning their paired toolResults into new orphans.
     const refiltered = filterOrphanedToolResults(patched);
     const sanitized = stripNestedOrphanToolBlocks(refiltered);
-    console.log(`[storage] getPathToRoot: ${sanitized.length} entries after filter (removed ${path.length - sanitized.length})`);
+    dbg(
+      `[storage] getPathToRoot: ${sanitized.length} entries after filter (removed ${path.length - sanitized.length})`,
+    );
     return sanitized;
   }
 
@@ -757,7 +792,7 @@ function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[]
 
   const removed = orphanEntryIndices.size + [...orphanTailPositions.values()].reduce((n, s) => n + s.size, 0);
   if (removed > 0) {
-    console.log(`[storage] filterOrphanedToolResults: removing ${removed} positionally-orphaned toolResult(s)`);
+    dbg(`[storage] filterOrphanedToolResults: removing ${removed} positionally-orphaned toolResult(s)`);
   }
   if (removed === 0) return path;
 
@@ -817,7 +852,7 @@ function patchDanglingToolCalls(path: SessionTreeEntry[]): SessionTreeEntry[] {
     const cleaned = msg.content.filter((block: unknown) => {
       const b = block as { type?: string; id?: string };
       if (b.type === "toolCall" && b.id && !allToolResultIds.has(b.id)) {
-        console.log(`[storage] patchDanglingToolCalls: stripping toolCall id=${b.id} (no matching toolResult) from entry=${entry.id}`);
+        dbg(`[storage] patchDanglingToolCalls: stripping toolCall id=${b.id} (no matching toolResult) from entry=${entry.id}`);
         modified = true;
         return false;
       }
@@ -832,7 +867,7 @@ function patchDanglingToolCalls(path: SessionTreeEntry[]): SessionTreeEntry[] {
   });
 
   if (modified) {
-    console.log(`[storage] patchDanglingToolCalls: patched assistant entries`);
+    dbg(`[storage] patchDanglingToolCalls: patched assistant entries`);
   }
   return result;
 }
@@ -870,13 +905,13 @@ function stripNestedOrphanToolBlocks(path: SessionTreeEntry[]): SessionTreeEntry
       const b = block as { type?: string; id?: string; toolCallId?: string };
       // Remove toolCall blocks whose ID isn't in any assistant
       if (b.type === "toolCall" && b.id && !allToolCallIds.has(b.id)) {
-        console.log(`[storage] stripNestedOrphanToolBlocks: removing embedded toolCall id=${b.id} from toolResult entry=${entry.id}`);
+        dbg(`[storage] stripNestedOrphanToolBlocks: removing embedded toolCall id=${b.id} from toolResult entry=${entry.id}`);
         modified = true;
         return false;
       }
       // Remove toolResult blocks whose toolCallId isn't in any assistant
       if (b.type === "toolResult" && b.toolCallId && !allToolCallIds.has(b.toolCallId)) {
-        console.log(`[storage] stripNestedOrphanToolBlocks: removing embedded toolResult ref=${b.toolCallId} from entry=${entry.id}`);
+        dbg(`[storage] stripNestedOrphanToolBlocks: removing embedded toolResult ref=${b.toolCallId} from entry=${entry.id}`);
         modified = true;
         return false;
       }
@@ -892,7 +927,7 @@ function stripNestedOrphanToolBlocks(path: SessionTreeEntry[]): SessionTreeEntry
   });
 
   if (modified) {
-    console.log(`[storage] stripNestedOrphanToolBlocks: patched entries in path`);
+    dbg(`[storage] stripNestedOrphanToolBlocks: patched entries in path`);
   }
   return result;
 }
