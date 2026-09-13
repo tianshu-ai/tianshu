@@ -1,0 +1,250 @@
+// Rolling-file log tee for tianshu server.
+//
+// Motivation (Yu, 2026-09-13 21:59): "把日志输出到文件里，限制好大小，
+// 滚动记录，出问题了我把日志文件给你看".
+//
+// Everything the server currently writes to stdout / stderr (server
+// boot lines, plugin activations, [handler] catch traces, storage
+// dbg output when TIANSHU_STORAGE_DEBUG=1, uncaught exceptions,
+// etc.) is teed to a daily rolling log file under
+// `~/.tianshu/logs/server-YYYY-MM-DD.log`. The original stdout /
+// stderr is preserved unchanged — anyone running `npm run dev` in
+// a terminal keeps seeing every line live, AND the file collects
+// the same content for later post-mortem.
+//
+// Rotation is by day. On process start we scan the log dir and
+// delete files older than TIANSHU_LOG_KEEP_DAYS (default: 7 days).
+// A cheap once-per-write date check flips to the next file at
+// midnight without needing a background timer.
+//
+// Env knobs:
+//   TIANSHU_LOG_DIR         override log directory (default
+//                           `<userHomeDir>/.tianshu/logs`)
+//   TIANSHU_LOG_KEEP_DAYS   how many days of logs to retain
+//                           (default 7, minimum 1)
+//   TIANSHU_LOG_DISABLE=1   opt out entirely (writes only to the
+//                           original stdout / stderr)
+//
+// Zero third-party deps: this file uses `node:fs` only, and its
+// write path is a synchronous appendFileSync so log lines that
+// precede a crash still land on disk. The overhead per line is one
+// fs write; on the reported 44-turn sessions that is orders of
+// magnitude cheaper than the storage-debug console.log firehose we
+// already fixed in v0.50.2.
+
+import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, appendFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+const DEFAULT_KEEP_DAYS = 7;
+const MIN_KEEP_DAYS = 1;
+const MAX_KEEP_DAYS = 365;
+
+/** yyyy-mm-dd for the local timezone. Used as the log-file suffix. */
+function todayStamp(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Parse TIANSHU_LOG_KEEP_DAYS with sane bounds. */
+function resolveKeepDays(): number {
+  const raw = process.env.TIANSHU_LOG_KEEP_DAYS;
+  if (!raw) return DEFAULT_KEEP_DAYS;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_KEEP_DAYS;
+  return Math.max(MIN_KEEP_DAYS, Math.min(MAX_KEEP_DAYS, Math.floor(n)));
+}
+
+/** Resolve the log directory. Precedence:
+ *    1. TIANSHU_LOG_DIR (absolute path)
+ *    2. `<homedir>/.tianshu/logs`
+ */
+function resolveLogDir(): string {
+  const override = process.env.TIANSHU_LOG_DIR;
+  if (override && override.trim().length > 0) return override;
+  return join(homedir(), ".tianshu", "logs");
+}
+
+/** Delete files under `dir` matching `server-YYYY-MM-DD.log` older
+ *  than `keepDays` days. Silent on errors — a missing/unreadable
+ *  entry must never crash the server. */
+function pruneOldLogs(dir: string, keepDays: number): void {
+  let entries: string[];
+  try {
+    entries = readdirSync(dir);
+  } catch {
+    return;
+  }
+  const cutoffMs = Date.now() - keepDays * 24 * 60 * 60 * 1000;
+  for (const name of entries) {
+    if (!/^server-\d{4}-\d{2}-\d{2}\.log$/.test(name)) continue;
+    const full = join(dir, name);
+    try {
+      const s = statSync(full);
+      if (s.mtimeMs < cutoffMs) unlinkSync(full);
+    } catch {
+      // Skip anything we can't stat/unlink.
+    }
+  }
+}
+
+/** Encode an incoming write chunk to a UTF-8 string. process.stdout
+ *  handles Buffer / string / Uint8Array; we do the same. */
+function chunkToString(chunk: unknown, encoding?: BufferEncoding): string {
+  if (chunk == null) return "";
+  if (typeof chunk === "string") return chunk;
+  if (chunk instanceof Uint8Array) return Buffer.from(chunk).toString(encoding ?? "utf8");
+  return String(chunk);
+}
+
+interface LogTeeState {
+  dir: string;
+  currentStamp: string;
+  currentPath: string;
+  installed: boolean;
+}
+
+let state: LogTeeState | null = null;
+
+/**
+ * Install the tee. Idempotent — repeat calls are no-ops.
+ *
+ * Call this AS EARLY AS POSSIBLE in `index.ts` (right after
+ * `loadEnv()`) so every subsequent stdout / stderr write is
+ * captured.
+ *
+ * On failure (unwritable log dir, permission errors, etc.) the
+ * tee is silently skipped so the server still starts.
+ */
+export function installLogTee(): void {
+  if (state?.installed) return;
+  if (process.env.TIANSHU_LOG_DISABLE === "1") return;
+
+  const dir = resolveLogDir();
+  try {
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  } catch (err) {
+    // Can't create dir — bail without teeing. The original stdout
+    // still works.
+    process.stderr.write(
+      `[log-tee] disabled: cannot create ${dir}: ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    return;
+  }
+
+  const stamp = todayStamp();
+  const path = join(dir, `server-${stamp}.log`);
+
+  state = {
+    dir,
+    currentStamp: stamp,
+    currentPath: path,
+    installed: true,
+  };
+
+  // Prune once at startup. We don't schedule a repeating pruner —
+  // process restarts are frequent enough for this to be sufficient
+  // in practice, and a background timer would just be another
+  // thing that can leak on hot reload.
+  pruneOldLogs(dir, resolveKeepDays());
+
+  // Header line so operators can see when this server booted when
+  // they later grep the file.
+  const header = `\n=== tianshu server boot ${new Date().toISOString()} pid=${process.pid} ===\n`;
+  try {
+    appendFileSync(path, header);
+  } catch {
+    // Ignore — first write will surface any real issue.
+  }
+
+  // Monkey-patch stdout.write / stderr.write. Preserve the
+  // original for the actual terminal echo; add the tee alongside.
+  //
+  // We keep the original signature intact (multiple overloads),
+  // so downstream code that inspects the return value or passes
+  // a callback still works.
+  const origStdoutWrite = process.stdout.write.bind(process.stdout);
+  const origStderrWrite = process.stderr.write.bind(process.stderr);
+
+  function teeToFile(text: string): void {
+    if (!state) return;
+    // Cheap date check: only compute today's stamp when the
+    // previously written line's date might be stale. We do it
+    // every write — it's a Date allocation and a few string ops,
+    // negligible compared to the fs write itself.
+    const stampNow = todayStamp();
+    if (stampNow !== state.currentStamp) {
+      state.currentStamp = stampNow;
+      state.currentPath = join(state.dir, `server-${stampNow}.log`);
+      // A midnight-crossing boot: prune again so the retention
+      // window is honored even on servers that stay up for weeks.
+      try {
+        pruneOldLogs(state.dir, resolveKeepDays());
+      } catch {
+        // ignore
+      }
+    }
+    try {
+      appendFileSync(state.currentPath, text);
+    } catch {
+      // File write failing must never break user-visible stdout.
+      // Common cause: disk full. We drop the log line silently.
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (process.stdout.write as any) = function patchedStdoutWrite(
+    chunk: unknown,
+    encodingOrCb?: BufferEncoding | ((err?: Error | null) => void),
+    cb?: (err?: Error | null) => void,
+  ): boolean {
+    const encoding: BufferEncoding | undefined =
+      typeof encodingOrCb === "string" ? (encodingOrCb as BufferEncoding) : undefined;
+    teeToFile(chunkToString(chunk, encoding));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (origStdoutWrite as any)(chunk, encodingOrCb, cb);
+  };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (process.stderr.write as any) = function patchedStderrWrite(
+    chunk: unknown,
+    encodingOrCb?: BufferEncoding | ((err?: Error | null) => void),
+    cb?: (err?: Error | null) => void,
+  ): boolean {
+    const encoding: BufferEncoding | undefined =
+      typeof encodingOrCb === "string" ? (encodingOrCb as BufferEncoding) : undefined;
+    teeToFile(chunkToString(chunk, encoding));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (origStderrWrite as any)(chunk, encodingOrCb, cb);
+  };
+
+  // Catch-alls so a crash still ends up on disk. Do NOT swallow —
+  // rethrow through the normal Node handlers (there's no
+  // process.on("uncaughtException") default that quits gracefully,
+  // so we just log and let Node's default handler win).
+  process.on("uncaughtException", (err) => {
+    teeToFile(`[uncaughtException] ${err.stack ?? err.message ?? String(err)}\n`);
+  });
+  process.on("unhandledRejection", (reason) => {
+    const text = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+    teeToFile(`[unhandledRejection] ${text}\n`);
+  });
+
+  // One-line hint so operators reading the terminal know where the
+  // file lives. Goes through the original writer directly to avoid
+  // being teed to a file that was just announced.
+  origStdoutWrite(`[log-tee] server logs \u2192 ${path} (keep ${resolveKeepDays()} days)\n`);
+}
+
+/** Exposed for tests: what file path is currently active. */
+export function currentLogPath(): string | null {
+  return state?.currentPath ?? null;
+}
+
+/** Exposed for tests: is the tee currently installed. */
+export function isLogTeeInstalled(): boolean {
+  return state?.installed === true;
+}

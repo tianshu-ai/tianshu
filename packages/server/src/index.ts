@@ -11,6 +11,14 @@
 // setup/load-env.ts for why a plain `dotenv/config` is wrong here.
 import { loadEnv } from "./setup/load-env.js";
 loadEnv();
+// Install the rolling log tee AS EARLY AS POSSIBLE so subsequent
+// console.log / process.stdout / process.stderr calls (plugin
+// activations, [handler] catch traces, uncaught exceptions) all land
+// in ~/.tianshu/logs/server-YYYY-MM-DD.log alongside the terminal
+// echo. See setup/log-tee.ts for env knobs (TIANSHU_LOG_DIR,
+// TIANSHU_LOG_KEEP_DAYS, TIANSHU_LOG_DISABLE).
+import { installLogTee } from "./setup/log-tee.js";
+installLogTee();
 import { getPackageVersion } from "./setup/repo-root.js";
 
 import express from "express";
