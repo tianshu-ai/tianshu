@@ -14,6 +14,14 @@
  * every entry to find toolu_bdrk_* ids for the log line) is also
  * skipped entirely when the gate is off — the CPU cost was itself
  * part of the hang, not just the log I/O.
+ *
+ * SECOND-ORDER RULE (2026-09-14): if you're temporarily adding a
+ * console.log to trace a specific bug, wrap it in `dbg()` from the
+ * start — never a bare console.log. Commit 69e5ff4 added two raw
+ * `[storage:diag]` console.log lines during an orphaned-tool_result
+ * investigation and forgot to gate them; they then flooded every
+ * production log until Yu asked for them to be removed on 09-14.
+ * The `dbg()` helper below exists precisely so this cost is opt-in.
  */
 const STORAGE_DEBUG = process.env.TIANSHU_STORAGE_DEBUG === "1";
 function dbg(msg: string): void {
