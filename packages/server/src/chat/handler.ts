@@ -1167,21 +1167,42 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     console.log(`[handler] catch: ${errMsg.slice(0, 300)}`);
     if (/tool_use_id.*tool_result|tool_result.*tool_use/i.test(errMsg)) {
       console.log(`[handler] detected orphaned tool_result error, session=${session.id}`);
+      // The orphan is NOT a DB row — it's generated during pi-agent-core's
+      // session-tree → Anthropic wire-format conversion (compaction can
+      // break tool_use ↔ tool_result adjacency). Row-level purge won't
+      // help. Force a full compaction to rebuild the history cleanly.
       try {
-        const purged = purgeOrphanedToolResults(ctx, session.id);
-        if (purged > 0) {
-          console.log(`[handler] purged ${purged} orphaned toolResult row(s), scheduling retry via inbox`);
-          // After purging, retry the turn via inbox so the user's
-          // intent isn't lost. Same pattern as auto-recovery.
-          setTimeout(() => {
-            void enqueueInbox(ctx, session.id, {
-              kind: "system_note",
-              text: "Orphaned tool_result rows were cleaned up. Continue where you left off.",
-            });
-          }, 500);
-        }
-      } catch (purgeErr) {
-        console.warn(`[handler] purgeOrphanedToolResults failed: ${purgeErr}`);
+        console.log(`[handler] forcing compaction to clear corrupted history...`);
+        await compactSession({
+          ctx,
+          userId,
+          oldSession: session,
+          pi: loadAgentHistoryForSession(ctx, session.id, {
+            api: modelInfo.api,
+            provider: modelInfo.providerId,
+            model: modelInfo.modelId,
+          }).messages,
+          rows: loadAgentHistoryForSession(ctx, session.id, {
+            api: modelInfo.api,
+            provider: modelInfo.providerId,
+            model: modelInfo.modelId,
+          }).rows,
+          modelInfo,
+          signal: new AbortController().signal,
+        });
+        console.log(`[handler] compaction done, scheduling retry via inbox`);
+        setTimeout(() => {
+          void enqueueInbox(ctx, session.id, {
+            kind: "system_note",
+            text: "History was compacted to fix a corrupted tool_result chain. Continue where you left off.",
+          });
+        }, 1000);
+      } catch (compactErr) {
+        console.warn(`[handler] forced compaction failed: ${compactErr}`);
+        // Fallback: try the old row-level purge
+        try {
+          purgeOrphanedToolResults(ctx, session.id);
+        } catch { /* best effort */ }
       }
     }
 
