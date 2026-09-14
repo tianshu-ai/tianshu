@@ -1114,21 +1114,32 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           needsRecovery = parsed.stopReason === "error" || parsed.stopReason === "aborted";
         } catch { /* not JSON or no stopReason */ }
         if (needsRecovery) {
-          const retryPrompt = buildAutoRecoveryPrompt(
-            outstandingToolCalls,
-            lastRow.content,
-          );
-          console.log(
-            `[handler] auto-recovery: scheduling new turn via inbox in 3s (first 200 chars): ${retryPrompt.slice(0, 200)}`,
-          );
-          // 3s delay lets bridge reconnect, then a fresh handleTurn
-          // re-resolves toolsets with the live connection.
-          setTimeout(() => {
-            void enqueueInbox(ctx, session.id, {
-              kind: "system_note",
-              text: retryPrompt,
-            });
-          }, 3000);
+          // Guard against infinite retry loops: check how many recent
+          // auto-recovery notes already exist in this session. If we've
+          // already retried MAX times, stop and let the user intervene.
+          const MAX_AUTO_RECOVERY = 2;
+          const recentRecoveries = countRecentRecoveryNotes(ctx, session.id);
+          if (recentRecoveries >= MAX_AUTO_RECOVERY) {
+            console.log(
+              `[handler] auto-recovery: already retried ${recentRecoveries} times, stopping to avoid infinite loop`,
+            );
+          } else {
+            const retryPrompt = buildAutoRecoveryPrompt(
+              outstandingToolCalls,
+              lastRow.content,
+            );
+            console.log(
+              `[handler] auto-recovery ${recentRecoveries + 1}/${MAX_AUTO_RECOVERY}: scheduling new turn via inbox in 3s`,
+            );
+            // 3s delay lets bridge reconnect, then a fresh handleTurn
+            // re-resolves toolsets with the live connection.
+            setTimeout(() => {
+              void enqueueInbox(ctx, session.id, {
+                kind: "system_note",
+                text: `[auto-recovery ${recentRecoveries + 1}/${MAX_AUTO_RECOVERY}] ${retryPrompt}`,
+              });
+            }, 3000);
+          }
         }
       }
     }
@@ -1148,7 +1159,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       try {
         const purged = purgeOrphanedToolResults(ctx, session.id);
         if (purged > 0) {
-          console.log(`[handler] purged ${purged} orphaned toolResult row(s) from session ${session.id}`);
+          console.log(`[handler] purged ${purged} orphaned toolResult row(s), scheduling retry via inbox`);
+          // After purging, retry the turn via inbox so the user's
+          // intent isn't lost. Same pattern as auto-recovery.
+          setTimeout(() => {
+            void enqueueInbox(ctx, session.id, {
+              kind: "system_note",
+              text: "Orphaned tool_result rows were cleaned up. Continue where you left off.",
+            });
+          }, 500);
         }
       } catch (purgeErr) {
         console.warn(`[handler] purgeOrphanedToolResults failed: ${purgeErr}`);
@@ -1699,6 +1718,31 @@ function bridgeHarnessEventToWs(
  * Exported so it can be unit-tested; not intended for external
  * callers.
  */
+/**
+ * Count recent auto-recovery inbox notes for this session (last 60s).
+ * Used to cap the retry loop and prevent infinite recovery cycles.
+ */
+function countRecentRecoveryNotes(
+  ctx: TenantContext,
+  sessionId: string,
+): number {
+  const cutoff = Date.now() - 60_000;
+  try {
+    const rows = ctx.db
+      .prepare(
+        `SELECT payload FROM session_inbox
+         WHERE target_session_id = ? AND created_at > ?`,
+      )
+      .all(sessionId, cutoff) as Array<{ payload: string }>;
+    return rows.filter((r) => {
+      try {
+        const m = JSON.parse(r.payload);
+        return typeof m.text === "string" && m.text.includes("[auto-recovery");
+      } catch { return false; }
+    }).length;
+  } catch { return 0; }
+}
+
 export function buildAutoRecoveryPrompt(
   outstandingToolCalls: ReadonlyMap<string, { name: string }>,
   lastAssistantMessageContent?: string,
