@@ -893,6 +893,17 @@ function stripNestedOrphanToolBlocks(path: SessionTreeEntry[]): SessionTreeEntry
       }
     }
   }
+  // DIAG: dump all entry types/roles and tool-related blocks for debugging
+  console.log(`[storage:diag] stripNestedOrphanToolBlocks: ${path.length} entries, ${allToolCallIds.size} toolCallIds`);
+  for (const entry of path) {
+    if (entry.type !== "message") continue;
+    const msg = (entry as { message: { role: string; toolCallId?: string; content?: unknown[] } }).message;
+    if (msg.role === "toolResult" || msg.role === "tool") {
+      const tcId = msg.toolCallId;
+      const contentTypes = Array.isArray(msg.content) ? msg.content.map((b: any) => `${b.type}:${b.id||b.toolCallId||b.tool_use_id||'?'}`).join(',') : 'no-content';
+      console.log(`[storage:diag]   role=${msg.role} toolCallId=${tcId} contentBlocks=${contentTypes} orphan=${tcId && !allToolCallIds.has(tcId)}`);
+    }
+  }
 
   let modified = false;
   const result = path.map((entry) => {
