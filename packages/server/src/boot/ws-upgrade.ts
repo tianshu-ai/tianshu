@@ -45,7 +45,29 @@ export function installChatWebSocket(
   const { server, globalOps, pluginRegistry } = deps;
   const wss = new WebSocketServer({ server, path: "/ws" });
 
+  // Server-side ping/pong: keep WS connections alive through NAT/
+  // firewalls (typically drop idle TCP after 60-120s) and detect
+  // dead clients. 30s interval; client has 10s to pong back.
+  const PING_INTERVAL_MS = 30_000;
+  const PONG_TIMEOUT_MS = 10_000;
+  const aliveSet = new Set<import("ws").WebSocket>();
+  const pingTimer = setInterval(() => {
+    for (const client of wss.clients) {
+      if (!aliveSet.has(client)) {
+        // Missed previous pong — terminate.
+        client.terminate();
+        continue;
+      }
+      aliveSet.delete(client);
+      client.ping();
+    }
+  }, PING_INTERVAL_MS);
+  pingTimer.unref();
+  wss.on("close", () => clearInterval(pingTimer));
+
   wss.on("connection", async (socket, request) => {
+    aliveSet.add(socket);
+    socket.on("pong", () => aliveSet.add(socket));
     // Build the chain from the live auth config so WS honours the same
     // login wall as HTTP. Skipping this (pinning DEV_RESOLVER_CHAIN) would
     // be an isolation hole: an unauthenticated socket could bypass auth.

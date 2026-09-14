@@ -48,7 +48,18 @@ export class BridgeRegistry {
   }): BridgeConn {
     const k = this.key(args.userId, args.deviceId);
     const existing = this.conns.get(k);
-    if (existing && existing.socket !== args.socket) {
+    // Cancel any pending grace-period removal for this key —
+    // the bridge reconnected in time.
+    const graceTimer = this.pendingRemoval.get(k);
+    if (graceTimer) {
+      clearTimeout(graceTimer);
+      this.pendingRemoval.delete(k);
+    }
+    // Only drop pending calls if the socket truly changed AND the
+    // old conn isn't stale (grace-period). Stale conns' pending
+    // calls should be inherited by the new connection so in-flight
+    // tool calls survive a brief reconnect.
+    if (existing && existing.socket !== args.socket && !(existing as any)._stale) {
       this.dropPending(existing, "replaced by a new connection");
     }
     const conn: BridgeConn = {
@@ -64,13 +75,36 @@ export class BridgeRegistry {
     return conn;
   }
 
-  /** Remove whatever connection owns this socket (on close/unregister). */
+  /** Grace period before fully removing a disconnected bridge.
+   *  If the bridge reconnects within this window (same user+device),
+   *  the new connection inherits the pending calls and tools stay
+   *  available without a gap. */
+  private static REMOVE_GRACE_MS = 5000;
+  private pendingRemoval = new Map<string, ReturnType<typeof setTimeout>>();
+
+  /** Schedule removal of the connection that owns this socket.
+   *  A 5s grace period lets the bridge reconnect and re-register
+   *  before tools disappear and in-flight calls are dropped. */
   removeBySocket(socket: WebSocket): void {
     for (const [k, c] of this.conns) {
-      if (c.socket === socket) {
-        this.dropPending(c, "connection closed");
-        this.conns.delete(k);
-      }
+      if (c.socket !== socket) continue;
+      // Mark the conn as stale so new tool calls won't use it,
+      // but keep it in the map so a re-register can inherit pending.
+      (c as any)._stale = true;
+      // Cancel any earlier grace timer for this key.
+      const prev = this.pendingRemoval.get(k);
+      if (prev) clearTimeout(prev);
+      const timer = setTimeout(() => {
+        this.pendingRemoval.delete(k);
+        // Only remove if the conn is still the stale one (not replaced
+        // by a fresh re-register).
+        const current = this.conns.get(k);
+        if (current === c) {
+          this.dropPending(c, "connection closed (grace period expired)");
+          this.conns.delete(k);
+        }
+      }, BridgeRegistry.REMOVE_GRACE_MS);
+      this.pendingRemoval.set(k, timer);
     }
   }
 
@@ -85,12 +119,12 @@ export class BridgeRegistry {
 
   /** All connections for a user (a user may run several devices). */
   forUser(userId: string): BridgeConn[] {
-    return [...this.conns.values()].filter((c) => c.userId === userId);
+    return [...this.conns.values()].filter((c) => c.userId === userId && !(c as any)._stale);
   }
 
   /** Every connection in this (tenant-scoped) registry. */
   all(): BridgeConn[] {
-    return [...this.conns.values()];
+    return [...this.conns.values()].filter((c) => !(c as any)._stale);
   }
 
   /** Resolve a pending JSON-RPC reply arriving from a bridge. */
