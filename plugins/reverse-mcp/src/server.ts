@@ -49,6 +49,13 @@ function socketUserId(socket: WebSocket): string {
 // (and their tool lists) persist. Cleared only when the process exits.
 const registriesByTenant = new Map<string, BridgeRegistry>();
 
+// Heartbeat dedup for `bridge registered` log lines. Keyed by
+// `${userId}|${deviceId}|${toolCount}` — same tuple within the
+// window collapses to a single announcement. See the callsite
+// below for the full motivation.
+const registerAnnounceCache = new Map<string, number>();
+const REGISTER_DEDUP_MS = 60_000;
+
 function registryForTenant(tenantId: string): BridgeRegistry {
   let reg = registriesByTenant.get(tenantId);
   if (!reg) {
@@ -79,9 +86,27 @@ const plugin: PluginServerModule = {
         ? m.tools.filter((t) => t && typeof t.name === "string")
         : [];
       registry.register({ userId, deviceId, label: m.label, socket, tools });
-      ctx.log.info(
-        `bridge registered: user=${userId} device=${deviceId} tools=${tools.length}`,
-      );
+      // Dedup: bridge clients re-register every ~20s as a heartbeat.
+      // Without gating this log the file fills with thousands of
+      // identical `bridge registered` lines and drowns real events
+      // (Yu, 2026-09-14: the 24:05 abort log had ~40 register lines
+      // in the crash window). Only announce the first arrival of
+      // each (user, device, toolCount) combo per REGISTER_DEDUP_MS.
+      // A change in toolCount always re-announces so "device gained
+      // 3 tools" is still visible.
+      const dedupKey = `${userId}|${deviceId}|${tools.length}`;
+      const nowMs = Date.now();
+      const lastAnnounced = registerAnnounceCache.get(dedupKey);
+      if (lastAnnounced == null || nowMs - lastAnnounced > REGISTER_DEDUP_MS) {
+        registerAnnounceCache.set(dedupKey, nowMs);
+        ctx.log.info(
+          `bridge registered: user=${userId} device=${deviceId} tools=${tools.length}`,
+        );
+      }
+      // Note: the deduped re-registrations are intentionally silent.
+      // If you ever need to prove the heartbeat is firing at expected
+      // cadence, either flip REGISTER_DEDUP_MS down or use the
+      // per-connection activity from tool_activity events instead.
       socket.send(JSON.stringify({ type: MSG.registered, ok: true, deviceId }));
       // Let panels refresh.
       ctx.broadcast("connections_changed", { userId });

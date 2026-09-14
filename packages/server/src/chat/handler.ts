@@ -106,6 +106,14 @@ import {
 } from "./active-harnesses.js";
 import { SqliteSessionStorage } from "./sqlite-session-storage.js";
 import {
+  createLogger,
+  elapsedMs,
+  summarizeToolArgs,
+  estimateToolResultBytes,
+} from "../setup/logger.js";
+
+const log = createLogger("handler");
+import {
   filterSkillsForTenant,
   loadSkillsForPlugin,
   type LoadedSkill,
@@ -866,7 +874,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // the finally block so the chip resolves.
   const outstandingToolCalls = new Map<
     string,
-    { name: string }
+    { name: string; startedAt: bigint }
   >();
 
   const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
@@ -875,11 +883,46 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const tc = event as unknown as {
         toolCallId: string;
         toolName: string;
+        input?: unknown;
+        arguments?: unknown;
+        args?: unknown;
       };
-      outstandingToolCalls.set(tc.toolCallId, { name: tc.toolName });
+      const startedAt = process.hrtime.bigint();
+      outstandingToolCalls.set(tc.toolCallId, {
+        name: tc.toolName,
+        startedAt,
+      });
+      // Tool call debug trail (Yu, 2026-09-14 09:03): without this
+      // there was no way to correlate a bridge hang with which tool
+      // + args the agent had asked for. Only emitted at debug
+      // level so info-level logs stay quiet.
+      const rawArgs = tc.input ?? tc.arguments ?? tc.args;
+      log.debug(
+        `tool_start name=${tc.toolName} id=${tc.toolCallId} args=${summarizeToolArgs(rawArgs)}`,
+      );
     } else if (ev.type === "tool_execution_end") {
-      const te = event as unknown as { toolCallId: string };
+      const te = event as unknown as {
+        toolCallId: string;
+        error?: unknown;
+        result?: unknown;
+        output?: unknown;
+      };
+      const started = outstandingToolCalls.get(te.toolCallId);
       outstandingToolCalls.delete(te.toolCallId);
+      if (started) {
+        const duration = elapsedMs(started.startedAt);
+        const outcome = te.error != null ? "error" : "ok";
+        const resultBytes = estimateToolResultBytes(te.result ?? te.output);
+        log.debug(
+          `tool_end name=${started.name} id=${te.toolCallId} duration_ms=${duration} outcome=${outcome} result_bytes=${resultBytes}`,
+        );
+      } else {
+        // Endpoint fired without a matching start — either recovery
+        // path or the start event was swallowed. Log so we notice.
+        log.debug(
+          `tool_end id=${te.toolCallId} (no matching start; likely recovery or lost event)`,
+        );
+      }
     }
     bridgeHarnessEventToWs(event, {
       ctx,

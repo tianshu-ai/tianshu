@@ -33,6 +33,11 @@
 // already fixed in v0.50.2.
 
 import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync, appendFileSync } from "node:fs";
+
+// Matches a line prefix like `[2026-09-14T00:40:12.345Z]` — the
+// shape logger.ts and the heartbeat emit. Used to avoid double-
+// stamping in stampLines() below.
+const ALREADY_STAMPED_RE = /^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -188,11 +193,51 @@ export function installLogTee(): void {
       }
     }
     try {
-      appendFileSync(state.currentPath, text);
+      appendFileSync(state.currentPath, stampLines(text));
     } catch {
       // File write failing must never break user-visible stdout.
       // Common cause: disk full. We drop the log line silently.
     }
+  }
+
+  // Prefix every line in `text` with an ISO timestamp so post-
+  // mortem readers can measure gaps between events.
+  //
+  // Motivation (Yu, 2026-09-14 09:03): the 09-13 24:05 abort log
+  // was unreadable because thousands of `bridge registered` lines
+  // had no time info — impossible to tell whether they were
+  // spread over 20s or 2 minutes.
+  //
+  // Skip lines that ALREADY start with `[YYYY-MM-DDTHH:` — those
+  // came through the new logger.ts and have their own stamp; a
+  // second one would just clutter the file. Same for heartbeat
+  // lines, which pre-stamp themselves inside the setInterval.
+  //
+  // Trailing-newline preservation is important: chunk.split("\n")
+  // on "a\nb\n" gives ["a", "b", ""] and we want the empty trailer
+  // to remain a trailing newline in the output. join("\n") on the
+  // same array does that correctly.
+  function stampLines(text: string): string {
+    if (text.length === 0) return text;
+    // Fast path: single already-stamped chunk (e.g. logger.ts
+    // output, heartbeats). Avoids the split/map/join round-trip
+    // for the most common case.
+    if (ALREADY_STAMPED_RE.test(text) && !text.slice(0, -1).includes("\n")) {
+      return text;
+    }
+    const ts = new Date().toISOString();
+    return text
+      .split("\n")
+      .map((line, i, arr) => {
+        // Preserve empty trailer (from a trailing "\n" split).
+        if (i === arr.length - 1 && line === "") return "";
+        // Preserve empty interior lines (blank line separators).
+        if (line === "") return "";
+        // Skip lines already stamped by logger.ts / heartbeat.
+        if (ALREADY_STAMPED_RE.test(line)) return line;
+        return `[${ts}] ${line}`;
+      })
+      .join("\n");
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
