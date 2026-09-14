@@ -2357,7 +2357,10 @@ function purgeOrphanedToolResults(ctx: TenantContext, sessionId: string): number
         const content = parsed.content ?? parsed;
         if (Array.isArray(content)) {
           for (const part of content) {
-            if (part.type === "toolCall" && part.id) toolUseIds.add(part.id);
+            // pi stores as "toolCall", Anthropic wire format as "tool_use"
+            if ((part.type === "toolCall" || part.type === "tool_use") && (part.id || part.toolCallId)) {
+              toolUseIds.add(part.id ?? part.toolCallId);
+            }
           }
         }
       } catch { /* malformed content, skip */ }
@@ -2369,7 +2372,8 @@ function purgeOrphanedToolResults(ctx: TenantContext, sessionId: string): number
     if (row.role !== "tool") continue;
     try {
       const parsed = JSON.parse(row.content);
-      const tcId = parsed.toolCallId;
+      // pi stores as "toolCallId", Anthropic wire as "tool_use_id"
+      const tcId = parsed.toolCallId ?? parsed.tool_use_id;
       if (tcId && !toolUseIds.has(tcId)) {
         orphanRowIds.push(row.id);
       }
