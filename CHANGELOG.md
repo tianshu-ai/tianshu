@@ -6,6 +6,27 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.52.0](https://github.com/tianshu-ai/tianshu/compare/v0.51.0...v0.52.0) (2026-09-14)
+
+
+### Features
+
+* auto-continue after post-turn compaction ([a743344](https://github.com/tianshu-ai/tianshu/commit/a7433442bb4399da37cf45c7a4754441b1132486))
+* **log:** event-loop heartbeat every 100ms for self-locating stalls ([f1fb244](https://github.com/tianshu-ai/tianshu/commit/f1fb244d691f4c6abd29af4341bed2072493b9f7))
+* **log:** timestamps, tool-call traces, TIANSHU_LOG_LEVEL, dedup bridge heartbeat ([73821ec](https://github.com/tianshu-ai/tianshu/commit/73821ecc13c7aa6e644e73265ff3761f42738ee1))
+
+
+### Bug Fixes
+
+* all tool-orphan filters now recognize tool_use + tool_use_id format ([cbe534f](https://github.com/tianshu-ai/tianshu/commit/cbe534f33f834ac5cc4fa33c50363c1455c93aa1))
+* auto-recovery uses inbox instead of in-turn harness.prompt() ([8b85a03](https://github.com/tianshu-ai/tianshu/commit/8b85a03d13f15881c24e28ba5edd800cac2f5493))
+* cap auto-recovery retries + self-heal orphaned tool_result ([93e866c](https://github.com/tianshu-ai/tianshu/commit/93e866ce6a6f30862c9e0255c220c96583a3e48f))
+* filterOrphanedToolResults also recognizes tool_use format ([9228d27](https://github.com/tianshu-ai/tianshu/commit/9228d271fccea36e633c54d15efb63977f347de1))
+* force compaction on Anthropic 400 orphaned tool_result ([009521b](https://github.com/tianshu-ai/tianshu/commit/009521b6f2eea448f501790003e976f8b88b4557))
+* pre-purge orphaned tool_result before auto-recovery retry ([ad54b0a](https://github.com/tianshu-ai/tianshu/commit/ad54b0a7a9ae5849a96d20b06d93bacc2648440e))
+* purgeOrphanedToolResults recognizes both toolCall and tool_use formats ([c6dccaa](https://github.com/tianshu-ai/tianshu/commit/c6dccaa3513beaac0cae394a8d27e9a40fc4248a))
+* WS ping/pong keepalive + bridge disconnect grace period ([2ae64d9](https://github.com/tianshu-ai/tianshu/commit/2ae64d9febb25151c28e60a654fb87fd74b835b8))
+
 ## [0.51.0](https://github.com/tianshu-ai/tianshu/compare/v0.50.3...v0.51.0) (2026-09-13)
 
 
