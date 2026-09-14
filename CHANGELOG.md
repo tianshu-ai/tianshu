@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.52.1](https://github.com/tianshu-ai/tianshu/compare/v0.52.0...v0.52.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* document why storage debug logging is gated; land as v0.52.1 ([f00b179](https://github.com/tianshu-ai/tianshu/commit/f00b179c229149da5526810cdca03d112b3b3f28))
+
 ## [0.52.0](https://github.com/tianshu-ai/tianshu/compare/v0.51.0...v0.52.0) (2026-09-14)
 
 
