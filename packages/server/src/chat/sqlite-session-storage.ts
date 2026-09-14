@@ -851,8 +851,8 @@ function patchDanglingToolCalls(path: SessionTreeEntry[]): SessionTreeEntry[] {
 
     const cleaned = msg.content.filter((block: unknown) => {
       const b = block as { type?: string; id?: string };
-      if (b.type === "toolCall" && b.id && !allToolResultIds.has(b.id)) {
-        dbg(`[storage] patchDanglingToolCalls: stripping toolCall id=${b.id} (no matching toolResult) from entry=${entry.id}`);
+      if ((b.type === "toolCall" || b.type === "tool_use") && b.id && !allToolResultIds.has(b.id)) {
+        dbg(`[storage] patchDanglingToolCalls: stripping ${b.type} id=${b.id} (no matching toolResult) from entry=${entry.id}`);
         modified = true;
         return false;
       }
@@ -889,7 +889,7 @@ function stripNestedOrphanToolBlocks(path: SessionTreeEntry[]): SessionTreeEntry
     if (msg.role === "assistant" && Array.isArray(msg.content)) {
       for (const part of msg.content) {
         const p = part as { type?: string; id?: string };
-        if (p.type === "toolCall" && p.id) allToolCallIds.add(p.id);
+        if ((p.type === "toolCall" || p.type === "tool_use") && p.id) allToolCallIds.add(p.id);
       }
     }
   }
