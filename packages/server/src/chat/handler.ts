@@ -1124,6 +1124,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               `[handler] auto-recovery: already retried ${recentRecoveries} times, stopping to avoid infinite loop`,
             );
           } else {
+            // Purge orphaned tool_result rows BEFORE scheduling retry.
+            // A failed turn can leave tool_result rows without matching
+            // tool_use — Anthropic rejects these with 400. Clean up now
+            // so the retry turn starts with valid history.
+            try {
+              const purged = purgeOrphanedToolResults(ctx, session.id);
+              if (purged > 0) {
+                console.log(`[handler] auto-recovery: pre-purged ${purged} orphaned toolResult row(s)`);
+              }
+            } catch { /* best effort */ }
+
             const retryPrompt = buildAutoRecoveryPrompt(
               outstandingToolCalls,
               lastRow.content,
