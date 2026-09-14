@@ -2303,8 +2303,9 @@ function filterOrphanedToolResults(
     if (!Array.isArray(content)) continue;
     for (const part of content) {
       const p = part as { type?: string; id?: string; toolCallId?: string };
-      if (p.type === "toolCall") {
+      if (p.type === "toolCall" || p.type === "tool_use") {
         if (p.id) toolUseIds.add(p.id);
+        if (p.toolCallId) toolUseIds.add(p.toolCallId);
       }
     }
   }
