@@ -97,6 +97,7 @@ import {
   drainPending as drainInbox,
   renderForPrompt as renderInboxForPrompt,
   extractEvents,
+  enqueue as enqueueInbox,
   type InboxEvent,
   markDeliveredFromMessage,
 } from "./session-inbox.js";
@@ -1090,36 +1091,46 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // context to probe environment state before re-issuing the same
     // call — and to bail out and tell the user if the tool is
     // fundamentally unavailable.
-    let recoveryAttempts = 0;
-    const MAX_RECOVERY = 2;
-    while (recoveryAttempts < MAX_RECOVERY) {
+    // Auto-recover from transient errors by scheduling a NEW turn
+    // via the session inbox, not harness.prompt() within this turn.
+    //
+    // Root cause (Yu, 2026-09-14): harness.prompt() reuses the same
+    // toolset snapshot built at the top of handleTurn. If a bridge
+    // tool failed because the connection dropped, the toolset still
+    // holds the dead BridgeConn — so the retry always fails again.
+    // Meanwhile, the user typing "继续" triggers a fresh handleTurn
+    // which calls refreshStaleToolsets() + buildToolset(), picks up
+    // the reconnected bridge, and succeeds.
+    //
+    // Fix: enqueue the retry prompt into the session inbox. The
+    // inbox flush triggers a brand-new handleTurn with fresh tool
+    // resolution — identical to what a user message does.
+    {
       const lastRow = lastAssistantRow as ChatMessage | null;
-      if (!lastRow) break;
-      try {
-        const parsed = JSON.parse(lastRow.content) as { stopReason?: string };
-        if (parsed.stopReason !== "error" && parsed.stopReason !== "aborted") break;
-      } catch { break; }
-      // Don't retry if user explicitly aborted
-      if (signal.aborted) break;
-      recoveryAttempts++;
-      console.log(`[handler] auto-recovery ${recoveryAttempts}/${MAX_RECOVERY} (stopReason=error/aborted, retrying)`);
-      // Brief delay before retry to let transient issues resolve
-      await new Promise((r) => setTimeout(r, 2000));
-      // Pass the full assistant JSON as the second-tier data source:
-      // pi emits tool_execution_start/end in pairs even on aborts, so
-      // outstandingToolCalls is nearly always empty by the time we
-      // land here. The persisted assistant content still carries the
-      // toolCall blocks that were being invoked — that's what actually
-      // identifies the failing tool in Yu's bridge-disconnect scenario.
-      const retryPrompt = buildAutoRecoveryPrompt(
-        outstandingToolCalls,
-        lastRow?.content,
-      );
-      console.log(
-        `[handler] auto-recovery prompt (first 200 chars): ${retryPrompt.slice(0, 200)}`,
-      );
-      await harness.prompt(retryPrompt);
-      await harness.waitForIdle();
+      if (lastRow && !signal.aborted) {
+        let needsRecovery = false;
+        try {
+          const parsed = JSON.parse(lastRow.content) as { stopReason?: string };
+          needsRecovery = parsed.stopReason === "error" || parsed.stopReason === "aborted";
+        } catch { /* not JSON or no stopReason */ }
+        if (needsRecovery) {
+          const retryPrompt = buildAutoRecoveryPrompt(
+            outstandingToolCalls,
+            lastRow.content,
+          );
+          console.log(
+            `[handler] auto-recovery: scheduling new turn via inbox in 3s (first 200 chars): ${retryPrompt.slice(0, 200)}`,
+          );
+          // 3s delay lets bridge reconnect, then a fresh handleTurn
+          // re-resolves toolsets with the live connection.
+          setTimeout(() => {
+            void enqueueInbox(ctx, session.id, {
+              kind: "system_note",
+              text: retryPrompt,
+            });
+          }, 3000);
+        }
+      }
     }
   } catch (err) {
     if (err instanceof HandledTurnAbort) {
