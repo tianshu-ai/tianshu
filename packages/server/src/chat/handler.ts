@@ -1293,8 +1293,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // After every successful turn, decide whether to fire it.
   // Also fires when the agent explicitly called compact_context mid-turn
   // (which deferred to this post-turn hook via compactRef.requestedByAgent).
+  let compacted = false;
   if (!streamErrorSent || compactRef?.requestedByAgent) {
     if (compactRef) compactRef.requestedByAgent = false;
+    const preCompactSession = session;
     await maybeAutoCompact({
       session,
       piSession,
@@ -1303,6 +1305,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       send,
       compactionSettings,
       onSuccessRefresh: () => {
+        compacted = true;
         // Refresh after compaction: same default page size as the
         // initial fetch. The compacted session is what the client
         // wants to see; we don't try to preserve the older paged-in
@@ -1315,6 +1318,39 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         });
       },
     });
+  }
+
+  // After successful post-turn compaction, check if the agent was
+  // mid-task. The last assistant message may have tool calls that
+  // completed, but the agent intended to do more. Without a nudge
+  // the session goes silent — the user has to manually type "继续".
+  // Inject a "continue" via inbox so a fresh handleTurn picks up
+  // with the newly-compacted (smaller) context.
+  if (compacted && !signal.aborted) {
+    const lastRow = lastAssistantRow as ChatMessage | null;
+    if (lastRow) try {
+      const parsed = JSON.parse(lastRow.content) as {
+        stopReason?: string;
+        content?: Array<{ type?: string }>;
+      };
+      // Heuristic: the agent was mid-task if its last turn contained
+      // tool calls (it was doing work, not just chatting).
+      const hadToolCalls = Array.isArray(parsed.content) &&
+        parsed.content.some((b: any) => b.type === "tool_use" || b.type === "toolCall");
+      if (hadToolCalls) {
+        console.log(
+          `[handler] post-compaction: agent had tool calls in last turn, injecting continue via inbox`,
+        );
+        setTimeout(() => {
+          void enqueueInbox(ctx, session.id, {
+            kind: "system_note",
+            text:
+              "Context was automatically compacted to free space. " +
+              "Continue where you left off — the task is still in progress.",
+          });
+        }, 1000);
+      }
+    } catch { /* not JSON, skip */ }
   }
 
   // Emit stream_end so the UI re-enables the send button.
