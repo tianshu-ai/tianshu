@@ -1371,37 +1371,67 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     });
   }
 
-  // After successful post-turn compaction, check if the agent was
-  // mid-task. The last assistant message may have tool calls that
-  // completed, but the agent intended to do more. Without a nudge
-  // the session goes silent — the user has to manually type "继续".
-  // Inject a "continue" via inbox so a fresh handleTurn picks up
-  // with the newly-compacted (smaller) context.
+  // After successful post-turn compaction, always drop a
+  // system_note into the session inbox so the next turn's
+  // handleTurn sees an explicit acknowledgement of what just
+  // happened. Two motivations for making this unconditional
+  // (Yu, 2026-09-15 00:11):
+  //
+  //   1. Continuity: previously we only injected the note when
+  //      the last assistant turn had tool_use blocks, on the
+  //      assumption "agent was mid-task, nudge it to continue".
+  //      In practice that also skipped the case where the agent
+  //      wrapped up mid-conversation but the operator was about
+  //      to ask a follow-up — that follow-up now walks in with
+  //      no signal that half the history is a summary block.
+  //
+  //   2. Auditability: even for a purely-chatty session, the
+  //      agent's next reply benefits from knowing "the earlier
+  //      turns you're about to reference have been condensed"
+  //      so it doesn't confidently cite specifics that are no
+  //      longer in the exact history it can see.
+  //
+  // The note is phrased so both branches (mid-task vs settled)
+  // read naturally — the agent decides whether to "continue"
+  // based on its own view of the history, not our heuristic.
+  //
+  // Still gated on compacted + !aborted: if compaction skipped
+  // (below threshold) or the turn was aborted, injecting a note
+  // would just add noise.
   if (compacted && !signal.aborted) {
+    let hadToolCalls = false;
     const lastRow = lastAssistantRow as ChatMessage | null;
-    if (lastRow) try {
-      const parsed = JSON.parse(lastRow.content) as {
-        stopReason?: string;
-        content?: Array<{ type?: string }>;
-      };
-      // Heuristic: the agent was mid-task if its last turn contained
-      // tool calls (it was doing work, not just chatting).
-      const hadToolCalls = Array.isArray(parsed.content) &&
-        parsed.content.some((b: any) => b.type === "tool_use" || b.type === "toolCall");
-      if (hadToolCalls) {
-        console.log(
-          `[handler] post-compaction: agent had tool calls in last turn, injecting continue via inbox`,
-        );
-        setTimeout(() => {
-          void enqueueInbox(ctx, session.id, {
-            kind: "system_note",
-            text:
-              "Context was automatically compacted to free space. " +
-              "Continue where you left off — the task is still in progress.",
-          });
-        }, 1000);
+    if (lastRow) {
+      try {
+        const parsed = JSON.parse(lastRow.content) as {
+          content?: Array<{ type?: string }>;
+        };
+        hadToolCalls =
+          Array.isArray(parsed.content) &&
+          parsed.content.some(
+            (b: { type?: string }) => b.type === "tool_use" || b.type === "toolCall",
+          );
+      } catch {
+        // Content wasn't JSON — treat as "no known tool calls"
+        // and fall through to the generic branch below.
       }
-    } catch { /* not JSON, skip */ }
+    }
+    const noteText = hadToolCalls
+      ? "Context was automatically compacted to free space. " +
+        "You were in the middle of a task — continue where you left off."
+      : "Context was automatically compacted to free space. " +
+        "Earlier turns are now available as a summary rather than " +
+        "verbatim messages; keep this in mind if you're about to " +
+        "cite specific earlier exchanges.";
+    log.debug(
+      `post-compaction inbox note: hadToolCalls=${hadToolCalls} session=${session.id}`,
+    );
+    setTimeout(() => {
+      void enqueueInbox(ctx, session.id, {
+        kind: "system_note",
+        text: noteText,
+      });
+    }, 1000);
   }
 
   // Emit stream_end so the UI re-enables the send button.
