@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.53.0](https://github.com/tianshu-ai/tianshu/compare/v0.52.1...v0.53.0) (2026-09-15)
+
+
+### Features
+
+* **board:** serve sibling CSS/JS/image assets next to index.html ([0c594d3](https://github.com/tianshu-ai/tianshu/commit/0c594d3b810fa589aa9e22a8e6fd23f28405f821))
+* log abort/error detail for debugging + remove diag logs ([cc58103](https://github.com/tianshu-ai/tianshu/commit/cc58103ddf75cbff75550347306f4c0f19c95e79))
+
+
+### Bug Fixes
+
+* **compact:** always post an inbox note after post-turn auto-compaction ([ed0dab2](https://github.com/tianshu-ai/tianshu/commit/ed0dab2bbcb3d2af04d6fd722999334d06943a3c))
+
 ## [0.52.1](https://github.com/tianshu-ai/tianshu/compare/v0.52.0...v0.52.1) (2026-09-14)
 
 
