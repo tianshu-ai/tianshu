@@ -1412,6 +1412,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Still gated on compacted + !aborted: if compaction skipped
   // (below threshold) or the turn was aborted, injecting a note
   // would just add noise.
+  console.log(`[handler] post-turn: compacted=${compacted} signal.aborted=${signal.aborted} session=${session.id}`);
   if (compacted && !signal.aborted) {
     let hadToolCalls = false;
     const lastRow = lastAssistantRow as ChatMessage | null;
