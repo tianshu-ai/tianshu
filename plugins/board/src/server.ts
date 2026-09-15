@@ -80,6 +80,81 @@ function readBoardHtml(userHomeDir: string, name: string): string | null {
   }
 }
 
+// A sibling asset filename inside a board directory. Same char
+// class as isSafeName plus the file extension. We disallow slashes
+// (single path segment only) because the underlying plugin router
+// param `[A-Za-z0-9._~-]+` cannot represent subdirectories anyway
+// — declaring the restriction here means we fail fast with a clean
+// 404 rather than a confusing plugin-router miss.
+const ASSET_NAME_RE = /^[A-Za-z0-9._-]+\.[A-Za-z0-9]+$/;
+
+// Content-Type by lowercased extension. Anything not listed is
+// served as application/octet-stream so the browser doesn't try to
+// execute it as script. Keep this list conservative — boards are
+// user code but they run in a sandboxed iframe, so we only need
+// the types index.html actually links to.
+const ASSET_CONTENT_TYPES: Record<string, string> = {
+  css: "text/css; charset=utf-8",
+  js: "application/javascript; charset=utf-8",
+  mjs: "application/javascript; charset=utf-8",
+  json: "application/json; charset=utf-8",
+  map: "application/json; charset=utf-8",
+  txt: "text/plain; charset=utf-8",
+  svg: "image/svg+xml",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  ico: "image/x-icon",
+  woff: "font/woff",
+  woff2: "font/woff2",
+  ttf: "font/ttf",
+  otf: "font/otf",
+};
+
+/**
+ * Locate a board's sibling asset file (styles.css, app.js, etc.)
+ * and return its bytes + content-type, or null if missing/unsafe.
+ *
+ * Contract:
+ *   * `name` passes isSafeName (same as index.html serving).
+ *   * `file` passes ASSET_NAME_RE — a single segment, dot, and
+ *      known extension.
+ *   * Resolved absolute path is a descendant of the user's board
+ *      dir (path-traversal defence in depth).
+ *   * Extension is a known content-type. Unknown extensions get
+ *      a 404 rather than octet-stream + attacker-controlled
+ *      content, because the whole point of this is to load CSS
+ *      and JS into an iframe — anything weird is either a typo
+ *      in the board or someone testing us.
+ */
+function readBoardAsset(
+  userHomeDir: string,
+  name: string,
+  file: string,
+): { bytes: Buffer; contentType: string } | null {
+  if (!isSafeName(name)) return null;
+  if (!ASSET_NAME_RE.test(file)) return null;
+  if (file === "index.html") {
+    // index.html has its own route; keep this handler focused on
+    // siblings so route-selection stays predictable.
+    return null;
+  }
+  const ext = file.split(".").pop()!.toLowerCase();
+  const contentType = ASSET_CONTENT_TYPES[ext];
+  if (!contentType) return null;
+  const absFile = path.join(boardsRoot(userHomeDir), name, file);
+  const root = path.resolve(boardsRoot(userHomeDir));
+  if (!path.resolve(absFile).startsWith(root + path.sep)) return null;
+  try {
+    const bytes = fs.readFileSync(absFile);
+    return { bytes, contentType };
+  } catch {
+    return null;
+  }
+}
+
 // ─── agent tool: show_board ─────────────────────────────────────
 
 function buildShowBoardTool(pluginCtx: PluginContext): AgentTool {
@@ -282,7 +357,37 @@ function buildRoutes(ctx: PluginContext): Record<string, PluginRouteHandler> {
     res.send(injectRuntime(html));
   };
 
-  return { listBoards, serveBoard };
+  const serveBoardAsset: PluginRouteHandler = (req: Request, res: Response) => {
+    // Sibling asset loader for a board's index.html. Motivation
+    // (Yu, 2026-09-15 23:07): boards want to `<link href="styles.css">`
+    // and `<script src="app.js">` like any static site — without this
+    // handler the browser hits /api/p/board/boards/:name/styles.css
+    // and gets a 404 because only /index.html was routed.
+    //
+    // Auth mirrors serveBoard: same tenant + user context, same
+    // isSafeName gate. readBoardAsset itself does the extension
+    // whitelist and traversal check so this handler stays small.
+    const userId = userIdFromReq(req);
+    if (!userId) {
+      res.status(401).json({ error: "no user context" });
+      return;
+    }
+    const name = String(req.params.name ?? "");
+    const file = String(req.params.file ?? "");
+    const asset = readBoardAsset(ctx.userHomeDir(userId), name, file);
+    if (asset === null) {
+      res.status(404).send("board asset not found");
+      return;
+    }
+    res.setHeader("Content-Type", asset.contentType);
+    // Boards are user-authored and might change between reloads;
+    // no aggressive caching. A short revalidation window is fine
+    // — anyone editing a board expects reload-to-see-changes.
+    res.setHeader("Cache-Control", "no-cache");
+    res.send(asset.bytes);
+  };
+
+  return { listBoards, serveBoard, serveBoardAsset };
 }
 
 // ─── WS handler: board_act_response ─────────────────────────────

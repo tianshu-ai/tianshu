@@ -60,6 +60,11 @@
         "method": "GET",
         "path": "/boards/:name/index.html",
         "handler": "serveBoard"
+      },
+      {
+        "method": "GET",
+        "path": "/boards/:name/:file",
+        "handler": "serveBoardAsset"
       }
     ],
     "systemPromptFragments": [
