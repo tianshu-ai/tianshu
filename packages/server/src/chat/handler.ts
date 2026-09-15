@@ -1110,8 +1110,22 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       if (lastRow && !signal.aborted) {
         let needsRecovery = false;
         try {
-          const parsed = JSON.parse(lastRow.content) as { stopReason?: string };
+          const parsed = JSON.parse(lastRow.content) as {
+            stopReason?: string;
+            errorMessage?: string;
+            content?: Array<{ type?: string; text?: string; name?: string }>;
+          };
           needsRecovery = parsed.stopReason === "error" || parsed.stopReason === "aborted";
+          if (needsRecovery) {
+            // Log the actual abort/error reason for debugging.
+            const toolCalls = (parsed.content ?? []).filter((b: any) => b.type === "toolCall" || b.type === "tool_use").map((b: any) => b.name || b.toolName || "?");
+            console.log(
+              `[handler] turn ended with stopReason=${parsed.stopReason}` +
+              (parsed.errorMessage ? ` error="${parsed.errorMessage.slice(0, 200)}"` : "") +
+              (toolCalls.length ? ` toolCalls=[${toolCalls.join(",")}]` : "") +
+              ` session=${session.id}`,
+            );
+          }
         } catch { /* not JSON or no stopReason */ }
         if (needsRecovery) {
           // Guard against infinite retry loops: check how many recent
