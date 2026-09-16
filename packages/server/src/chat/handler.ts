@@ -1246,6 +1246,32 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         `[handler] pi state-error; skipping recovery-agent spawn (session=${session.id})`,
       );
     }
+
+    // Catch-block inbox recovery: if the error is transient (not a
+    // pi state error, not user-abort), schedule an inbox retry so
+    // the agent can self-recover with a fresh handleTurn. This
+    // covers bridge timeouts, provider 5xx, and other exceptions
+    // that the post-waitForIdle recovery path never sees.
+    if (!isPiStateError && !signal.aborted) {
+      const recentRecoveries = countRecentRecoveryNotes(ctx, session.id);
+      if (recentRecoveries < 2) {
+        console.log(
+          `[handler] catch-block recovery ${recentRecoveries + 1}/2: scheduling inbox retry in 3s error="${errMsg.slice(0, 150)}" session=${session.id}`,
+        );
+        // Pre-purge orphaned tool_results before retry
+        try { purgeOrphanedToolResults(ctx, session.id); } catch { /* best effort */ }
+        setTimeout(() => {
+          void enqueueInbox(ctx, session.id, {
+            kind: "system_note",
+            text: `[auto-recovery ${recentRecoveries + 1}/2] The previous attempt threw an error: ${errMsg.slice(0, 200)}. Retry what you were doing — if it fails again, describe the failure to the user.`,
+          });
+        }, 3000);
+      } else {
+        console.log(
+          `[handler] catch-block recovery: already retried ${recentRecoveries} times, stopping. error="${errMsg.slice(0, 150)}" session=${session.id}`,
+        );
+      }
+    }
     // Self-recovery: spawn a recovery agent in an isolated
     // session so it can diagnose what crashed + nudge this
     // session back to life. Dedupe is handled inside
