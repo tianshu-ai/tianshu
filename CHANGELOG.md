@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.53.4](https://github.com/tianshu-ai/tianshu/compare/v0.53.3...v0.53.4) (2026-09-16)
+
+
+### Bug Fixes
+
+* **chat:** skip stopReason=error/aborted assistant rows when loading history ([b9a9de1](https://github.com/tianshu-ai/tianshu/commit/b9a9de16f7b8a68cafc622925b058e1a25e399d3))
+
 ## [0.53.3](https://github.com/tianshu-ai/tianshu/compare/v0.53.2...v0.53.3) (2026-09-16)
 
 
