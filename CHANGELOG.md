@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.53.5](https://github.com/tianshu-ai/tianshu/compare/v0.53.4...v0.53.5) (2026-09-16)
+
+
+### Bug Fixes
+
+* **prompt:** strengthen "never ask permission to continue" in execution bias ([96803f5](https://github.com/tianshu-ai/tianshu/commit/96803f5b98c8ae79b25ba2568dac5f10f148b2ac))
+
 ## [0.53.4](https://github.com/tianshu-ai/tianshu/compare/v0.53.3...v0.53.4) (2026-09-16)
 
 
