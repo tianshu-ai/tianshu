@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.53.1](https://github.com/tianshu-ai/tianshu/compare/v0.53.0...v0.53.1) (2026-09-16)
+
+
+### Bug Fixes
+
+* catch-block inbox recovery for all transient errors ([c61c946](https://github.com/tianshu-ai/tianshu/commit/c61c9460f34ca795cfa72b32b49325ef37dd634f))
+* downgrade bridge registered log from info to debug ([db2dda9](https://github.com/tianshu-ai/tianshu/commit/db2dda9510184d1a36075c709335dfc415c62a26))
+
 ## [0.53.0](https://github.com/tianshu-ai/tianshu/compare/v0.52.1...v0.53.0) (2026-09-15)
 
 
