@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.53.3](https://github.com/tianshu-ai/tianshu/compare/v0.53.2...v0.53.3) (2026-09-16)
+
+
+### Bug Fixes
+
+* disable heartbeat log by default (opt-in via TIANSHU_HEARTBEAT_ENABLE=1) ([6fc7212](https://github.com/tianshu-ai/tianshu/commit/6fc721260a91cbfd75f2782be762fe54406bf9e0))
+* reduce heartbeat interval 100ms→5s + add watchOptions to tsconfig.base ([d1194f0](https://github.com/tianshu-ai/tianshu/commit/d1194f004fa2d0715926453a9c56dffcc396c1ac))
+* remove diagnostic checkpoint logs ([ab55ea9](https://github.com/tianshu-ai/tianshu/commit/ab55ea9d5da1fb52f60b66345f93ad3c170584f7))
+
+
+### Reverts
+
+* remove catch-block inbox recovery (caused infinite processing) ([e6ddd88](https://github.com/tianshu-ai/tianshu/commit/e6ddd88e82a88ea11d054440267c6d68b57e7d23))
+* roll back ws 8.21.3 and happy-dom 20.14.5 upgrades ([ac63857](https://github.com/tianshu-ai/tianshu/commit/ac63857ac1ac1420ee450a439edef4e20b2752a2))
+
 ## [0.53.2](https://github.com/tianshu-ai/tianshu/compare/v0.53.1...v0.53.2) (2026-09-16)
 
 
