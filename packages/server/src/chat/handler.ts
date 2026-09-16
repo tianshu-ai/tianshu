@@ -629,13 +629,36 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
       ]
     : [];
+  // Compaction threshold defaults. Yu's 2026-09-16 23:13 report:
+  // "阈值比较低的话会频繁触发" — the previous default of
+  // triggerPercent=50 was inherited from an era of 8-16k context
+  // windows where "halfway full" was a real concern; on today's
+  // 200k+ opus/sonnet windows it means the session compacts
+  // roughly every 30 minutes of active tool-heavy work, and the
+  // user has to sit through a 30-60s summariser LLM call in
+  // between substeps.
+  //
+  // 80% is the operating point where:
+  //   * a typical assistant reply still has 40k+ headroom before
+  //     it would force a mid-turn compaction (which currently
+  //     surfaces as an Anthropic 400 orphan-tool-result loop — see
+  //     v0.53.4);
+  //   * `keepRecentTokens=20k` means the summariser has
+  //     window*0.8 - 20k ≈ 140k of "old" content to condense,
+  //     giving it a substantial run and making the resulting
+  //     summary genuinely durable (compacting 50k twice in a row
+  //     is strictly worse than compacting 100k once).
+  //
+  // Tenants that had explicitly configured a lower triggerPercent
+  // are unaffected — the ?? only kicks in when the field is
+  // absent. This is a default change, not an override.
   const compactionCfg = ctx.config.models?.compaction;
   const compactionSettings = compactionCfg ? {
     enabled: compactionCfg.enabled ?? true,
     reserveTokens: compactionCfg.reserveTokens ?? 16384,
     keepRecentTokens: compactionCfg.keepRecentTokens ?? 20000,
-    triggerPercent: compactionCfg.triggerPercent ?? 50,
-  } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 50 };
+    triggerPercent: compactionCfg.triggerPercent ?? 80,
+  } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80 };
   const hostToolsDefs = buildHostTools({
     contextWindow: modelInfo.contextWindow,
     compactionSettings,
