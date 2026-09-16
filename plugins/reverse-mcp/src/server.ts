@@ -99,7 +99,7 @@ const plugin: PluginServerModule = {
       const lastAnnounced = registerAnnounceCache.get(dedupKey);
       if (lastAnnounced == null || nowMs - lastAnnounced > REGISTER_DEDUP_MS) {
         registerAnnounceCache.set(dedupKey, nowMs);
-        ctx.log.info(
+        ctx.log.debug(
           `bridge registered: user=${userId} device=${deviceId} tools=${tools.length}`,
         );
       }
