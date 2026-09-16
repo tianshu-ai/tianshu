@@ -288,12 +288,26 @@ export function mountCoreRoutes(
           ...(cfg.models ?? {}),
           providers: parsed.value,
         };
-        if (typeof body.defaultModelId === "string") {
-          nextModels.defaultModelId = body.defaultModelId || undefined;
+        // Unify onto models.defaultModelId (Yu, 2026-09-17 00:58).
+        // Accept either field name in the request body — clients
+        // that still POST { defaultModel } get their value written
+        // to the new location. If both are set we prefer
+        // defaultModelId (the canonical field).
+        const incomingDefault =
+          typeof body.defaultModelId === "string"
+            ? body.defaultModelId
+            : typeof body.defaultModel === "string"
+              ? body.defaultModel
+              : undefined;
+        if (incomingDefault !== undefined) {
+          nextModels.defaultModelId = incomingDefault || undefined;
         }
         const nextCfg = { ...cfg, models: nextModels };
-        if (typeof body.defaultModel === "string") {
-          nextCfg.defaultModel = body.defaultModel || undefined;
+        // Clear the deprecated top-level key on any write so a
+        // migration in progress converges. New writes never
+        // populate it again.
+        if (incomingDefault !== undefined) {
+          delete nextCfg.defaultModel;
         }
         const lang = (req.body as { outputLanguage?: unknown }).outputLanguage;
         if (lang === "en" || lang === "zh") {

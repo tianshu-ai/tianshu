@@ -164,10 +164,20 @@ export function findModel(
   return toModelInfo(providerId, provider, entry);
 }
 
-/** Resolve the configured default model, falling back to the first listed. */
+/**
+ * Resolve the configured default model, falling back to the first listed.
+ *
+ * Reads `models.defaultModelId` first (the canonical field, Yu
+ * decided 2026-09-17 00:58 to unify onto the nested location) and
+ * only falls back to top-level `config.defaultModel` for backward
+ * compatibility with existing config.json files. New config should
+ * write `models.defaultModelId`; top-level `defaultModel` is
+ * deprecated and will be removed in a future major.
+ */
 export function getDefaultModel(config: ResolvedConfig): ResolvedModelInfo | undefined {
-  if (config.defaultModel) {
-    const found = findModel(config, config.defaultModel);
+  const preferred = config.models?.defaultModelId ?? config.defaultModel;
+  if (preferred) {
+    const found = findModel(config, preferred);
     if (found) return found;
   }
   return listModels(config)[0];
