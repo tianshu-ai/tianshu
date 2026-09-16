@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.53.6](https://github.com/tianshu-ai/tianshu/compare/v0.53.5...v0.53.6) (2026-09-16)
+
+
+### Bug Fixes
+
+* **compact:** raise default triggerPercent from 50 to 80 in main handler ([4b82b4d](https://github.com/tianshu-ai/tianshu/commit/4b82b4d97509bd059b73074e4517b6b6ad4ef724))
+* **config:** unify default-model field onto models.defaultModelId; deprecate top-level defaultModel ([a636259](https://github.com/tianshu-ai/tianshu/commit/a6362597afff8d6d2bd710ec10872552ce2eaa77))
+
 ## [0.53.5](https://github.com/tianshu-ai/tianshu/compare/v0.53.4...v0.53.5) (2026-09-16)
 
 
