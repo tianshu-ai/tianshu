@@ -306,7 +306,7 @@ export function installLogTee(): void {
   //
   // Opt out with TIANSHU_HEARTBEAT_DISABLE=1 if the noise ever
   // becomes a problem for a specific investigation.
-  if (process.env.TIANSHU_HEARTBEAT_DISABLE !== "1") {
+  if (process.env.TIANSHU_HEARTBEAT_ENABLE === "1") {
     const heartbeatIntervalMs = Math.max(1000, Number(process.env.TIANSHU_HEARTBEAT_MS) || 5000);
     let hbSeq = 0;
     const timer = setInterval(() => {
