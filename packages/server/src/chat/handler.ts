@@ -466,7 +466,6 @@ interface RunPromptArgs {
 }
 
 export async function runPrompt(args: RunPromptArgs): Promise<void> {
-  console.log(`[handler:diag] runPrompt ENTER userId=${args.userId} content=${String(args.content).slice(0,50)}`);
   const { ctx, userId, send, content, modelId, attachments, signal, pluginRegistry, homeDir } = args;
   const retryLastTurn = args.retryLastTurn ?? false;
   const wireOpts = makeWireOpts(ctx);
@@ -495,7 +494,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   // Resolve the model up front — we need imageMaxBytes / context
   // window for both auto-compact and the LLM call below.
-  console.log(`[handler:diag] checkpoint: resolving model`);
   const modelInfo = (modelId ? findModel(ctx.config, modelId) : undefined) ?? getDefaultModel(ctx.config);
   if (!modelInfo) {
     send({
@@ -521,9 +519,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // genuinely down.
   if (pluginRegistry) {
     try {
-      console.log(`[handler:diag] checkpoint: refreshStaleToolsets`);
       await pluginRegistry.refreshStaleToolsets(ctx.tenantId, 1500);
-      console.log(`[handler:diag] checkpoint: refreshStaleToolsets done`);
     } catch {
       // refreshStaleToolsets already swallows per-toolset errors;
       // a thrown one would mean the registry itself faulted, which
@@ -673,7 +669,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       username: userRecord?.username,
     });
   }
-  console.log(`[handler:diag] checkpoint: buildToolset`);
   const toolset = await buildToolset({
     pluginTools,
     toolContext: {
@@ -738,7 +733,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // agent can pull the full text back via recall_tool_call / recall_range.
   // Short sessions pass through unchanged.
   const progressiveCfg = ctx.config.models?.progressiveHistory ?? {};
-  console.log(`[handler:diag] checkpoint: creating PiSession`);
   const piSession = new PiSession(storage, {
     entryTransforms: progressiveCfg.enabled === false
       ? []
