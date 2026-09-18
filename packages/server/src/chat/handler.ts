@@ -163,6 +163,17 @@ const MAX_TURNS = 16;
 // (usually <10KB). Warn-level so it shows in the default log
 // stream without needing debug enabled.
 const LARGE_TOOL_RESULT_BYTES = 100_000;
+// Yu, 2026-09-19 00:38: warn when the pre-request pruneOldToolResults
+// pass takes long enough to be plausibly blocking the event loop.
+// session_fd95eae5 hit 1023 tool_results in context; if pruning that
+// many entries synchronously is the stall cause, this catches it.
+// 50ms threshold: routine sessions run in <5ms, so this stays
+// quiet in the healthy case; anything above is worth investigating.
+const PRUNE_SLOW_MS = 50;
+// Also warn on high message count even when fast — a large context
+// can be slow for OTHER sync work (JSON.stringify request payload,
+// SQLite row writes) not just prune. Fires as a heads-up.
+const PRUNE_LARGE_MSGS = 500;
 /** Max auto-continuations when the model hits maxTokens (stopReason=length). */
 const MAX_CONTINUATIONS = 3;
 
@@ -871,9 +882,25 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Tool-result aging: hook into harness's "context" event.
   // @ts-expect-error — harness.on type doesn't expose "context" in generic
   const unsubscribePrune = harness.on("context", (event: { messages: Array<{ role: string; content?: unknown }> }) => {
+    // Yu, 2026-09-19 00:38: session_fd95eae5 was aborting with 1023
+    // tool_results in context. This function fires on every provider
+    // request; if it's the event-loop-block culprit, the timing here
+    // (plus messageCount) will show it. Slow-path warn threshold
+    // picked so routine sessions stay quiet while pathological ones
+    // stand out. Also cheap: process.hrtime.bigint() is ~20ns.
+    const startedAt = process.hrtime.bigint();
+    const messageCount = event.messages.length;
     const pruned = pruneOldToolResults(event.messages, toolResultCfg);
+    const durationMs = Number(
+      (process.hrtime.bigint() - startedAt) / 1_000_000n,
+    );
     if (pruned > 0) {
       console.log(`[handler] pruned ${pruned} old tool result(s) from context`);
+    }
+    if (durationMs >= PRUNE_SLOW_MS || messageCount >= PRUNE_LARGE_MSGS) {
+      log.warn(
+        `prune_slow session=${session.id} messages=${messageCount} pruned=${pruned} duration_ms=${durationMs}`,
+      );
     }
     return { messages: event.messages };
   });
