@@ -6,6 +6,15 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.53.7](https://github.com/tianshu-ai/tianshu/compare/v0.53.6...v0.53.7) (2026-09-18)
+
+
+### Bug Fixes
+
+* **idle-runner:** stop swallowing background-turn errors on webchat ([634b2ce](https://github.com/tianshu-ai/tianshu/commit/634b2ced12dab31adaaafcbfe8872cbc44e2553a))
+* **inbox:** release flush lock after 60s to prevent notification stalls ([32bcc96](https://github.com/tianshu-ai/tianshu/commit/32bcc96f72d2a9d82a182355b4e1e74e922bbf28))
+* **observability:** log large tool_result + abort in-flight tool state ([12a328e](https://github.com/tianshu-ai/tianshu/commit/12a328efcf60bf066fe167db097de12b9d70b632))
+
 ## [0.53.6](https://github.com/tianshu-ai/tianshu/compare/v0.53.5...v0.53.6) (2026-09-16)
 
 
