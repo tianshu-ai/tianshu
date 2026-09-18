@@ -157,6 +157,12 @@ import {
 } from "./image-fit.js";
 
 const MAX_TURNS = 16;
+// Yu, 2026-09-18 10:29: warn when a single tool_result crosses this
+// size. Threshold picked to catch mvn/spring-boot-style firehose
+// output (typically 1-20MB) while ignoring routine tool results
+// (usually <10KB). Warn-level so it shows in the default log
+// stream without needing debug enabled.
+const LARGE_TOOL_RESULT_BYTES = 100_000;
 /** Max auto-continuations when the model hits maxTokens (stopReason=length). */
 const MAX_CONTINUATIONS = 3;
 
@@ -877,10 +883,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   compactRef.piSession = piSession;
   compactRef.harness = harness;
 
-  // External abort → harness.abort()
-  const onAbort = () => void harness.abort();
-  signal.addEventListener("abort", onAbort, { once: true });
-
   // Register this harness in the process-local registry so the
   // session inbox can route a live `enqueue()` through
   // `harness.followUp(...)` instead of leaving the message stuck
@@ -900,6 +902,26 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     string,
     { name: string; startedAt: bigint }
   >();
+
+  // External abort → harness.abort(). Yu, 2026-09-18 10:29:
+  // log the in-flight tool state so we can later correlate
+  // aborts with large-result tools (the leading hypothesis for
+  // the "整个 3110 卡" pattern). Cheap — outstandingToolCalls
+  // is a small Map (usually 0-2 entries).
+  const onAbort = () => {
+    if (outstandingToolCalls.size > 0) {
+      const inFlight = Array.from(outstandingToolCalls.entries())
+        .map(([id, meta]) => `${meta.name}#${id}@${elapsedMs(meta.startedAt)}ms`)
+        .join(",");
+      log.warn(
+        `abort_context session=${session.id} in_flight_tools=${outstandingToolCalls.size} tools=[${inFlight}]`,
+      );
+    } else {
+      log.debug(`abort_context session=${session.id} in_flight_tools=0`);
+    }
+    void harness.abort();
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
 
   const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
     const ev = event as { type?: string };
@@ -940,6 +962,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         log.debug(
           `tool_end name=${started.name} id=${te.toolCallId} duration_ms=${duration} outcome=${outcome} result_bytes=${resultBytes}`,
         );
+        // Yu, 2026-09-18 10:29: warn on any tool_result larger than
+        // LARGE_TOOL_RESULT_BYTES (100KB). Correlation with abort
+        // patterns is our best signal for the "整个 3110 卡" issue.
+        // Cheap check — resultBytes already computed above.
+        if (resultBytes >= LARGE_TOOL_RESULT_BYTES) {
+          log.warn(
+            `tool_result_large name=${started.name} id=${te.toolCallId} duration_ms=${duration} outcome=${outcome} bytes=${resultBytes} session=${session.id} aborted=${signal.aborted}`,
+          );
+        }
       } else {
         // Endpoint fired without a matching start — either recovery
         // path or the start event was swallowed. Log so we notice.
