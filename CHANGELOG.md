@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.53.8](https://github.com/tianshu-ai/tianshu/compare/v0.53.7...v0.53.8) (2026-09-18)
+
+
+### Bug Fixes
+
+* **observability:** time pruneOldToolResults + warn on slow or large-context sessions ([01f3dd0](https://github.com/tianshu-ai/tianshu/commit/01f3dd0eadc150323f711e90cc0c254a1e88e1b8))
+
 ## [0.53.7](https://github.com/tianshu-ai/tianshu/compare/v0.53.6...v0.53.7) (2026-09-18)
 
 
