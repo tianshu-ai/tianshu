@@ -345,12 +345,37 @@ async function flushSessionInbox(
   //   - Need re-entrancy guard so a second enqueue mid-turn
   //     doesn't kick a second turn; the running turn sees its
   //     own new rows on the next drainPending.
-  if (!boundIdleRunner) return;
-  if (!userId) return;
-  if (idleTurnsInFlight.has(sessionId)) return;
+  //
+  // Yu, 2026-09-18 22:14: previously all four guards returned
+  // silently, producing dead conversations with only the "using
+  // idle-runner" log line to go on. Warn on each skip reason so
+  // the log trail actually explains where the recovery went.
+  if (!boundIdleRunner) {
+    console.warn(
+      `[session-inbox] idle-runner not bound; ${sessionId} rows stay pending until next user prompt`,
+    );
+    return;
+  }
+  if (!userId) {
+    console.warn(
+      `[session-inbox] no userId on session ${sessionId}; giving up on background turn`,
+    );
+    return;
+  }
+  if (idleTurnsInFlight.has(sessionId)) {
+    console.log(
+      `[session-inbox] idle turn already in flight for ${sessionId}; new rows will be picked up by the running drain`,
+    );
+    return;
+  }
 
   const drained = drainPending(ctx, sessionId);
-  if (drained.length === 0) return;
+  if (drained.length === 0) {
+    console.log(
+      `[session-inbox] no pending rows to drain for ${sessionId} (race with another flush?)`,
+    );
+    return;
+  }
   const promptText = renderForPrompt(drained);
 
   idleTurnsInFlight.add(sessionId);

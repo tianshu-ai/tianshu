@@ -120,6 +120,19 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
       clearTimeout(deadline);
     }
 
+    // Yu, 2026-09-18 22:14: log webchat-path errors too. Previously
+    // errorReason was only surfaced in the isChannelSession branch
+    // below, meaning a runPrompt failure inside a webchat idle-runner
+    // turn (e.g. session_fd95eae5's provider 400 loop) went silent
+    // — the log trail just stopped at "using idle-runner" and the
+    // user saw a dead conversation with no explanation. Warn either
+    // way; the channel-session branch adds its own extra log below.
+    if (errorReason.length > 0 && !isChannelSession) {
+      console.warn(
+        `[idle-runner] background turn errored on webchat session ${sessionId}: ${errorReason}`,
+      );
+    }
+
     if (channelSink && channelBindingId && channelChatId) {
       const sinkError = channelSink.getErrorReason();
       if (sinkError) errorReason = sinkError;
