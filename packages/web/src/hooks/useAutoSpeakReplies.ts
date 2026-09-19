@@ -348,15 +348,22 @@ export function useAutoSpeakReplies() {
 
         // Check the immediately-previous tail id, if any. This is
         // the placeholder in almost every case.
+        // Only treat as id-swap when previous tail text is a REAL
+        // prefix of the new tail text ("server renamed the id").
+        // A stale prevText from an earlier settled reply happens
+        // to share an opener like "好的，" is NOT a swap — those
+        // are new independent replies. Require the prev's ENTIRE
+        // text to appear as a prefix of the new tail (and non-
+        // trivially long).
         const prevId = lastTailIdRef.current;
         if (prevId && prevId !== tail.id) {
           const prevText = lastTailTextRef.current;
           const prevCursor = cursorRef.current.get(prevId);
           if (
             prevCursor != null &&
-            prevText.length > 0 &&
-            tailText.length >= prevCursor &&
-            tailText.slice(0, prevCursor) === prevText.slice(0, prevCursor)
+            prevText.length >= 20 &&
+            tailText.length >= prevText.length &&
+            tailText.slice(0, prevText.length) === prevText
           ) {
             inheritedCursor = prevCursor;
           }
@@ -364,22 +371,37 @@ export function useAutoSpeakReplies() {
 
         // Fallback: check other current-messages assistant rows in
         // case the store keeps both rows around briefly during swap.
+        //
+        // Yu 2026-09-20 01:49 "第一次发消息，语音回复都正常，
+        // 继续发消息，回复就会跳过几个 chunk":
+        // this fallback was matching UNRELATED messages by their
+        // short common opening (“好的，” “让我” etc.), then
+        // treating them as an id-swap and inheriting the other
+        // message's fully-played cursor. Result: new reply's opening
+        // chunks got seeded past.
+        //
+        // Fix: require a substantial common prefix (>= 20 chars),
+        // AND require the OTHER text to be substantially longer
+        // than tail (otherwise it's not a placeholder-→-persistent
+        // swap; it's a genuinely new reply that happens to share
+        // an opener). Only real id-swaps satisfy both.
+        const SWAP_MIN_COMMON_PREFIX = 20;
         if (inheritedCursor == null) {
           for (const other of messages) {
             if (other.role !== "assistant" || other.id === tail.id) continue;
             const otherText = other.text ?? "";
             const otherCursor = cursorRef.current.get(other.id);
             if (otherCursor == null) continue;
-            const commonLen = Math.min(otherText.length, tailText.length);
-            if (
-              commonLen > 0 &&
-              otherText.slice(0, commonLen) === tailText.slice(0, commonLen)
-            ) {
-              inheritedCursor = Math.max(
-                inheritedCursor ?? 0,
-                Math.min(otherCursor, tailText.length),
-              );
-            }
+            // Real swaps have the placeholder's full text as a
+            // prefix of the new tail's text (server just renamed
+            // the id).
+            if (otherText.length < SWAP_MIN_COMMON_PREFIX) continue;
+            if (otherText.length > tailText.length) continue;
+            if (tailText.slice(0, otherText.length) !== otherText) continue;
+            inheritedCursor = Math.max(
+              inheritedCursor ?? 0,
+              Math.min(otherCursor, tailText.length),
+            );
           }
         }
 
