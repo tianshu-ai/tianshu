@@ -24,27 +24,63 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { getTianshuHome } from "../core/paths.js";
 
-let recognizer: any = null;
+// Yu, 2026-09-19: dual-mode ASR support. Only one recognizer is live
+// at a time — the active model in ~/.tianshu/models/active-asr-model.txt
+// decides which. Downstream code should read `activeMode` before
+// touching either recognizer variable; the wrong one is always null.
+let offlineRecognizer: any = null;
+let onlineRecognizer: any = null;
+let activeMode: "offline" | "online" | null = null;
+
+/** For legacy compatibility — several places still refer to `recognizer`
+ *  through this getter, meaning “whichever recognizer is loaded”. */
+function getActiveRecognizer(): any {
+  return activeMode === "online" ? onlineRecognizer : offlineRecognizer;
+}
 
 /** Force reload the recognizer (called when admin activates a model). */
 export async function reloadAsrModel(): Promise<boolean> {
-  recognizer = null;
+  // Yu, 2026-09-19: reset both variants so a mode switch (offline
+  // ↔ online) actually rebinds. Prior code only cleared the single
+  // `recognizer` slot which is now gone.
+  offlineRecognizer = null;
+  onlineRecognizer = null;
+  activeMode = null;
   return initRecognizer();
 }
 
 // Model preference order: best quality first
+// Model preference order. `arch` chooses the sherpa modelConfig
+// shape; `mode` chooses OfflineRecognizer vs OnlineRecognizer.
 interface ModelCandidate {
   dir: string;
-  type: "senseVoice" | "paraformer" | "whisper";
-  model: string;  // relative to dir
+  arch: "senseVoice" | "paraformer" | "whisper" | "zipformer";
+  mode: "offline" | "online";
+  model: string;  // for zipformer this is the encoder
   tokens: string;
 }
 
-const MODEL_CANDIDATES: { dirName: string; type: ModelCandidate["type"]; model: string; tokens: string }[] = [
-  { dirName: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17", type: "senseVoice", model: "model.int8.onnx", tokens: "tokens.txt" },
-  { dirName: "sherpa-onnx-paraformer-zh-2024-03-09", type: "paraformer", model: "model.int8.onnx", tokens: "tokens.txt" },
-  { dirName: "sherpa-onnx-paraformer-zh-small-2024-03-09", type: "paraformer", model: "model.int8.onnx", tokens: "tokens.txt" },
-  { dirName: "sherpa-onnx-whisper-tiny", type: "whisper", model: "tiny-encoder.int8.onnx", tokens: "tiny-tokens.txt" },
+type CandidateSpec = {
+  id: string;
+  dirName: string;
+  arch: ModelCandidate["arch"];
+  mode: ModelCandidate["mode"];
+  model: string;
+  tokens: string;
+};
+
+const MODEL_CANDIDATES: CandidateSpec[] = [
+  // Offline models — best quality first.
+  { id: "sense-voice-zh", dirName: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17", arch: "senseVoice", mode: "offline", model: "model.int8.onnx", tokens: "tokens.txt" },
+  { id: "paraformer-zh", dirName: "sherpa-onnx-paraformer-zh-2024-03-09", arch: "paraformer", mode: "offline", model: "model.int8.onnx", tokens: "tokens.txt" },
+  { id: "paraformer-zh-small", dirName: "sherpa-onnx-paraformer-zh-small-2024-03-09", arch: "paraformer", mode: "offline", model: "model.int8.onnx", tokens: "tokens.txt" },
+  { id: "whisper-tiny", dirName: "sherpa-onnx-whisper-tiny", arch: "whisper", mode: "offline", model: "tiny-encoder.int8.onnx", tokens: "tiny-tokens.txt" },
+
+  // Streaming (online) — for WS /ws/asr real-time partials.
+  // For zipformer the `model` field points to the encoder; the actual
+  // recognizer needs the tuple of encoder+decoder+joiner — initRecognizer
+  // derives decoder/joiner from the same directory.
+  { id: "streaming-zipformer-bilingual", dirName: "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20", arch: "zipformer", mode: "online", model: "encoder-epoch-99-avg-1.int8.onnx", tokens: "tokens.txt" },
 ];
 
 function getModelsRoots(): string[] {
@@ -56,37 +92,34 @@ function getModelsRoots(): string[] {
 function findBestModel(): ModelCandidate | null {
   const modelsRoot = getModelsRoots()[0];
 
-  // Check if admin selected a specific model
+  // Check if admin selected a specific model.
+  // Yu, 2026-09-19: replaced the old index-based byId map with a
+  // find-by-id lookup so adding a new streaming candidate doesn't
+  // silently break the mapping.
   const activeFile = path.join(modelsRoot, "active-asr-model.txt");
   if (fs.existsSync(activeFile)) {
     const activeId = fs.readFileSync(activeFile, "utf8").trim();
-    const byId: Record<string, typeof MODEL_CANDIDATES[0]> = {
-      "paraformer-zh-small": MODEL_CANDIDATES[2],
-      "paraformer-zh": MODEL_CANDIDATES[1],
-      "sense-voice-zh": MODEL_CANDIDATES[0],
-      "whisper-tiny": MODEL_CANDIDATES[3],
-    };
-    const pick = byId[activeId];
+    const pick = MODEL_CANDIDATES.find((c) => c.id === activeId);
     if (pick) {
       const dir = path.join(modelsRoot, pick.dirName);
-      if (fs.existsSync(path.join(dir, pick.model))) {
-        return { dir, type: pick.type, model: pick.model, tokens: pick.tokens };
+      if (fs.existsSync(path.join(dir, pick.model)) && fs.existsSync(path.join(dir, pick.tokens))) {
+        return { dir, arch: pick.arch, mode: pick.mode, model: pick.model, tokens: pick.tokens };
       }
     }
   }
 
-  // Fallback: auto-select best available
+  // Fallback: auto-select best available.
   for (const c of MODEL_CANDIDATES) {
     const dir = path.join(modelsRoot, c.dirName);
     if (fs.existsSync(path.join(dir, c.model)) && fs.existsSync(path.join(dir, c.tokens))) {
-      return { dir, type: c.type, model: c.model, tokens: c.tokens };
+      return { dir, arch: c.arch, mode: c.mode, model: c.model, tokens: c.tokens };
     }
   }
   return null;
 }
 
 async function initRecognizer(): Promise<boolean> {
-  if (recognizer) return true;
+  if (getActiveRecognizer()) return true;
   const best = findBestModel();
   if (!best) {
     console.warn("[asr] no ASR model found — transcribe endpoint disabled. Download one from Settings → 语音识别.");
@@ -95,42 +128,103 @@ async function initRecognizer(): Promise<boolean> {
   try {
     // @ts-ignore — no type declarations for sherpa-onnx-node
     const mod = await import("sherpa-onnx-node");
-    const OfflineRecognizer = mod.OfflineRecognizer ?? mod.default?.OfflineRecognizer;
-
-    // Build config based on model type
-    const modelPath = path.join(best.dir, best.model);
-    const tokensPath = path.join(best.dir, best.tokens);
-    let modelConfig: Record<string, unknown>;
-
-    if (best.type === "senseVoice") {
-      modelConfig = {
-        senseVoice: { model: modelPath, language: "auto", useInverseTextNormalization: 1 },
-        tokens: tokensPath,
-        numThreads: 4,
-      };
-    } else if (best.type === "whisper") {
-      const decoderPath = modelPath.replace("encoder", "decoder");
-      modelConfig = {
-        whisper: { encoder: modelPath, decoder: decoderPath, language: "zh" },
-        tokens: tokensPath,
-        numThreads: 4,
-      };
-    } else {
-      // paraformer
-      modelConfig = {
-        paraformer: { model: modelPath },
-        tokens: tokensPath,
-        numThreads: 4,
-      };
+    if (best.mode === "online") {
+      return initOnlineRecognizer(mod, best);
     }
-
-    recognizer = new OfflineRecognizer({ modelConfig });
-    console.log(`[asr] loaded ${best.type} from ${best.dir}`);
-    return true;
+    return initOfflineRecognizer(mod, best);
   } catch (e) {
     console.warn("[asr] failed to load sherpa-onnx:", e);
     return false;
   }
+}
+
+function initOfflineRecognizer(mod: any, best: ModelCandidate): boolean {
+  const OfflineRecognizer = mod.OfflineRecognizer ?? mod.default?.OfflineRecognizer;
+  if (!OfflineRecognizer) {
+    console.warn("[asr] sherpa-onnx-node has no OfflineRecognizer export");
+    return false;
+  }
+  const modelPath = path.join(best.dir, best.model);
+  const tokensPath = path.join(best.dir, best.tokens);
+  let modelConfig: Record<string, unknown>;
+
+  if (best.arch === "senseVoice") {
+    modelConfig = {
+      senseVoice: { model: modelPath, language: "auto", useInverseTextNormalization: 1 },
+      tokens: tokensPath,
+      numThreads: 4,
+    };
+  } else if (best.arch === "whisper") {
+    const decoderPath = modelPath.replace("encoder", "decoder");
+    modelConfig = {
+      whisper: { encoder: modelPath, decoder: decoderPath, language: "zh" },
+      tokens: tokensPath,
+      numThreads: 4,
+    };
+  } else {
+    // paraformer (offline)
+    modelConfig = {
+      paraformer: { model: modelPath },
+      tokens: tokensPath,
+      numThreads: 4,
+    };
+  }
+
+  offlineRecognizer = new OfflineRecognizer({ modelConfig });
+  activeMode = "offline";
+  console.log(`[asr] loaded offline ${best.arch} from ${best.dir}`);
+  return true;
+}
+
+/**
+ * Streaming recognizer init. Yu, 2026-09-19: only zipformer supported
+ * today (validated end-to-end by scripts/spike-online-asr.mjs). Adding
+ * more online model families is a matter of extending this switch and
+ * MODEL_CANDIDATES.
+ *
+ * zipformer needs three onnx files (encoder + decoder + joiner); we
+ * derive decoder/joiner by name substitution from the encoder path
+ * because sherpa release archives use that convention.
+ */
+function initOnlineRecognizer(mod: any, best: ModelCandidate): boolean {
+  const OnlineRecognizer = mod.OnlineRecognizer ?? mod.default?.OnlineRecognizer;
+  if (!OnlineRecognizer) {
+    console.warn("[asr] sherpa-onnx-node has no OnlineRecognizer export");
+    return false;
+  }
+  const encoderPath = path.join(best.dir, best.model);
+  const decoderPath = encoderPath.replace("encoder", "decoder");
+  const joinerPath = encoderPath.replace("encoder", "joiner");
+  const tokensPath = path.join(best.dir, best.tokens);
+
+  if (best.arch !== "zipformer") {
+    console.warn(`[asr] online arch "${best.arch}" not yet wired \u2014 only zipformer supported`);
+    return false;
+  }
+
+  const config = {
+    modelConfig: {
+      transducer: {
+        encoder: encoderPath,
+        decoder: decoderPath,
+        joiner: joinerPath,
+      },
+      tokens: tokensPath,
+      numThreads: 4,
+    },
+    // Endpoint detection lets a caller notice the user paused; the WS
+    // handler will use it to finalise one utterance and start another
+    // without tearing down the recognizer.
+    enableEndpoint: 1,
+    rule1MinTrailingSilence: 2.4,
+    rule2MinTrailingSilence: 1.2,
+    rule3MinUtteranceLength: 20,
+  };
+
+  onlineRecognizer = new OnlineRecognizer(config);
+  activeMode = "online";
+  console.log(`[asr] loaded online ${best.arch} from ${best.dir}`);
+  return true;
 }
 
 /**
@@ -182,7 +276,14 @@ export function mountAsrPublicRoutes(app: Express): void {
     let runtimeInstalled = true;
     // @ts-ignore
     try { await import("sherpa-onnx-node"); } catch { runtimeInstalled = false; }
-    res.json({ available: !!recognizer, runtimeInstalled });
+    res.json({
+      available: !!getActiveRecognizer(),
+      // Yu, 2026-09-19: expose active mode so the frontend knows
+      // whether streaming (WS /ws/asr) or one-shot (POST /api/transcribe)
+      // is the right entry point for this install.
+      mode: activeMode,
+      runtimeInstalled,
+    });
   });
 }
 
@@ -207,8 +308,17 @@ export function mountAsrAuthedRoutes(app: Express): void {
       res.status(401).json({ error: "authentication required" });
       return;
     }
-    if (!recognizer && !(await initRecognizer())) {
+    // Yu, 2026-09-19: this route is the offline (one-shot) path only.
+    // If the active model is online, the caller should switch to the
+    // WS endpoint; refuse rather than silently misbehave.
+    if (!offlineRecognizer && !(await initRecognizer())) {
       res.status(503).json({ error: "ASR model not loaded" });
+      return;
+    }
+    if (activeMode !== "offline") {
+      res.status(409).json({
+        error: `active ASR model is ${activeMode}; use WS /ws/asr for streaming input`,
+      });
       return;
     }
 
@@ -232,10 +342,10 @@ export function mountAsrAuthedRoutes(app: Express): void {
         const wavPath = convertToWav(tmpInput);
         const { samples, sampleRate } = readWavSamples(wavPath);
 
-        const stream = recognizer.createStream();
+        const stream = offlineRecognizer.createStream();
         stream.acceptWaveform({ samples, sampleRate });
-        recognizer.decode(stream);
-        const text = recognizer.getResult(stream).text || "";
+        offlineRecognizer.decode(stream);
+        const text = offlineRecognizer.getResult(stream).text || "";
 
         res.json({ text: text.trim() });
       } catch (e) {

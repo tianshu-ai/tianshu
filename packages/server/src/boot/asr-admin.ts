@@ -22,9 +22,17 @@ interface ModelDef {
   dir: string;
   tokens: string;
   description: string;
+  // Yu, 2026-09-19 14:04: streaming ASR support.
+  //   "offline" — one-shot POST /api/transcribe (existing behaviour).
+  //   "online"  — streaming WS /ws/asr, partial results as audio arrives.
+  // Older entries omit this field; treated as "offline" everywhere.
+  type?: "offline" | "online";
+  // sherpa model family — drives modelConfig shape in boot/asr.ts.
+  arch?: "paraformer" | "whisper" | "senseVoice" | "zipformer";
 }
 
 const MODELS: ModelDef[] = [
+  // ─── Offline (one-shot POST /api/transcribe) ───
   {
     id: "paraformer-zh-small",
     name: "Paraformer Chinese (Small)",
@@ -34,6 +42,8 @@ const MODELS: ModelDef[] = [
     dir: "sherpa-onnx-paraformer-zh-small-2024-03-09",
     tokens: "tokens.txt",
     description: "",
+    type: "offline",
+    arch: "paraformer",
   },
   {
     id: "paraformer-zh",
@@ -44,6 +54,8 @@ const MODELS: ModelDef[] = [
     dir: "sherpa-onnx-paraformer-zh-2024-03-09",
     tokens: "tokens.txt",
     description: "",
+    type: "offline",
+    arch: "paraformer",
   },
   {
     id: "sense-voice-zh",
@@ -54,6 +66,8 @@ const MODELS: ModelDef[] = [
     dir: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
     tokens: "tokens.txt",
     description: "",
+    type: "offline",
+    arch: "senseVoice",
   },
   {
     id: "whisper-tiny",
@@ -64,6 +78,24 @@ const MODELS: ModelDef[] = [
     dir: "sherpa-onnx-whisper-tiny",
     tokens: "tiny-tokens.txt",
     description: "",
+    type: "offline",
+    arch: "whisper",
+  },
+
+  // ─── Streaming (WS /ws/asr, real-time partials) ───
+  // Yu, 2026-09-19: enables the “one character at a time” voice input
+  // experience. Verified end-to-end with scripts/spike-online-asr.mjs.
+  {
+    id: "streaming-zipformer-bilingual",
+    name: "Streaming Zipformer (中英双语)",
+    lang: "zh,en",
+    size: "~500 MB",
+    url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2",
+    dir: "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
+    tokens: "tokens.txt",
+    description: "中英混合实时识别，适合日常多语言输入。",
+    type: "online",
+    arch: "zipformer",
   },
 ];
 
