@@ -53,11 +53,13 @@ function splitChunks(text: string): string[] {
 // Row layout constants. Tuned together so the filmstrip transform
 // perfectly aligns the currentIndex row on screen center.
 //
-// ROW_HEIGHT in px — each subtitle occupies a fixed slot regardless
-// of natural text height, so transform math stays predictable.
-// If a chunk is long enough to wrap 3+ lines, we let it overflow
-// downward; visual clamp on the container hides it.
-const ROW_HEIGHT_PX = 96;
+// Yu 2026-09-20 01:29: bumped ROW_HEIGHT from 96 to 220 after a
+// multi-line current chunk (3 lines at text-5xl = ~180px) crashed
+// into the prev/next rows sitting 96px away. Off-center rows also
+// now line-clamp to a single line so they can't collide even if
+// they're multi-line themselves — the user only needs to see
+// "what's coming next" not read it.
+const ROW_HEIGHT_PX = 220;
 // Visual radius: how many rows above / below the current one we
 // render. total rendered = 1 + 2*VISIBLE_RADIUS. Higher = smoother
 // scroll but more offscreen DOM.
@@ -73,30 +75,44 @@ interface FilmstripRowProps {
 /** One row in the filmstrip. Absolute-positioned; distance from
  *  current governs size and opacity. Yu 2026-09-20 01:13: "搞个
  *  滚动效果" — the ENTIRE strip translates on chunk change so
- *  each row slides up (or down for a rewind) with a smooth ease. */
+ *  each row slides up (or down for a rewind) with a smooth ease.
+ *
+ *  Yu 2026-09-20 01:29: only the CENTER row wraps multi-line. Off-
+ *  center rows are single-line truncated so multi-line chunks can't
+ *  bleed into each other's slots. Truncated rows still communicate
+ *  "what just played / what's coming" without competing for
+ *  attention with the current chunk. */
 function FilmstripRow({ text, offset }: FilmstripRowProps) {
   const abs = Math.abs(offset);
   let sizeClass: string;
   let opacityClass: string;
   let colorClass: string;
+  let clampClass: string;
 
   if (abs === 0) {
     sizeClass = "text-3xl sm:text-4xl md:text-5xl font-medium";
     opacityClass = "opacity-100";
     colorClass = "text-fg-default";
+    // Center row wraps naturally; leading-relaxed keeps multi-line
+    // readable but bounded by the container height math.
+    clampClass = "leading-relaxed";
   } else if (abs === 1) {
     sizeClass = "text-xl sm:text-2xl";
     opacityClass = "opacity-60";
     colorClass = offset < 0 ? "text-fg-faint" : "text-fg-muted";
+    // truncate: one-line ellipsis. Tailwind's `truncate` is
+    // white-space-nowrap + overflow-hidden + text-ellipsis.
+    clampClass = "truncate";
   } else {
     sizeClass = "text-base sm:text-lg";
     opacityClass = "opacity-25";
     colorClass = "text-fg-faint";
+    clampClass = "truncate";
   }
 
   return (
     <div
-      className={`absolute inset-x-0 mx-auto max-w-4xl px-6 text-center leading-relaxed transition-all duration-500 ease-out ${sizeClass} ${opacityClass} ${colorClass}`}
+      className={`absolute inset-x-0 mx-auto max-w-4xl px-6 text-center transition-all duration-500 ease-out ${sizeClass} ${opacityClass} ${colorClass} ${clampClass}`}
       style={{
         top: `calc(50% + ${offset * ROW_HEIGHT_PX}px)`,
         transform: "translateY(-50%)",
