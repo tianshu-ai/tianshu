@@ -178,8 +178,26 @@ export function useVoiceInput(
     });
     streamRef.current = stream;
 
-    // 2. AudioContext + worklet
-    const ctx = new AudioContext();
+    // 2. AudioContext + worklet.
+    // Yu, 2026-09-19: MUST create AudioContext at 16 kHz. Letting
+    // it default to the platform's native rate (44.1/48 kHz) forced
+    // the worklet to resample to 16 kHz in JS, which introduced
+    // slightly-off-cadence samples that sherpa's streaming zipformer
+    // interpreted as multiple identical utterances ("你你你你"). The
+    // browser's native resampler produces clean 16 kHz output.
+    // Mirrors sherpa's official WASM demo (app-asr.js).
+    //
+    // Safari and some older Chrome versions ignore the option and
+    // silently return the native rate anyway; log the actual rate
+    // so we notice if the fix regresses.
+    const ctx = new AudioContext({ sampleRate: 16000 });
+    if (ctx.sampleRate !== 16000) {
+      console.warn(
+        `[voice] AudioContext sampleRate=${ctx.sampleRate}, expected 16000; ` +
+        `sherpa will likely produce duplicated tokens. Browser doesn't ` +
+        `honour the sampleRate hint on this platform.`,
+      );
+    }
     audioCtxRef.current = ctx;
     try {
       await ctx.audioWorklet.addModule(WORKLET_URL);

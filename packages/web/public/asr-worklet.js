@@ -1,37 +1,36 @@
-// AudioWorklet processor that converts mic input to 16kHz mono Float32
-// PCM chunks and posts them to the main thread via `port.postMessage`.
+// AudioWorklet processor that ships mic input to the main thread in
+// ~250 ms Float32 chunks, WITHOUT resampling.
 //
-// The main thread creates an AudioContext at the platform's native rate
-// (usually 48 kHz on macOS) and connects a MediaStreamSource → this
-// worklet. On each 128-sample render quantum we accumulate audio into a
-// downsample buffer; once we have enough source samples to produce ~250 ms
-// at 16 kHz (4000 output samples), we resample, ship as a Float32Array,
-// and reset.
+// Yu, 2026-09-19: this worklet used to do linear-interpolation
+// resampling to 16 kHz because AudioContext was created at the
+// platform's native rate (44.1/48 kHz). That's what caused the
+// "你你你你你" repeated-token bug — the resampler produced
+// slightly-off-cadence samples that sherpa's streaming zipformer
+// interpreted as multiple identical utterances.
+//
+// The fix (mirroring sherpa's official WASM demo, app-asr.js) is to
+// force `new AudioContext({ sampleRate: 16000 })` on the main thread
+// and let the browser do the resampling in native code. This worklet
+// then just batches whatever it receives and postMessages it. No
+// arithmetic on samples means no chance to introduce artefacts.
 //
 // Design notes:
 // - AudioWorklet runs on the audio thread; no fetch/console/etc.
-// - Simple linear-interpolation resampling is good enough for ASR
-//   (sherpa's zipformer models tolerate it fine — verified in the spike).
-// - We ship raw Float32 (no int16 quantisation) because the WS handler
-//   feeds Float32 straight into sherpa.acceptWaveform().
+// - We accumulate 128-sample render quanta into a 4000-sample chunk
+//   (~250 ms at 16 kHz) and postMessage that. Transfer the backing
+//   buffer to avoid a copy.
+// - If the platform delivers channel-0 stereo, we take channel 0 only.
+// - Input rate is trusted to be 16 kHz because the main thread
+//   requested AudioContext({sampleRate: 16000}) — the browser resamples
+//   the mic stream into the context rate before we see it.
 
-const TARGET_RATE = 16000;
-const CHUNK_MS = 250; // send every 250 ms
-const OUT_SAMPLES_PER_CHUNK = (TARGET_RATE * CHUNK_MS) / 1000; // 4000
+const CHUNK_SAMPLES = 4000; // ~250 ms at 16 kHz
 
 class AsrProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // Source-rate ring buffer; sized to hold enough for one output chunk.
-    this._srcRate = sampleRate; // AudioWorklet global — the AudioContext rate
-    this._ratio = this._srcRate / TARGET_RATE;
-    // Rough max we'd need for one output chunk, +1 for interpolation safety.
-    this._srcNeeded = Math.ceil(OUT_SAMPLES_PER_CHUNK * this._ratio) + 1;
-    this._srcBuf = new Float32Array(this._srcNeeded * 2); // extra headroom
-    this._srcLen = 0;
-    // Fractional index tracked across chunks so we don't skip samples on
-    // boundaries.
-    this._srcPos = 0;
+    this._buf = new Float32Array(CHUNK_SAMPLES);
+    this._len = 0;
     this._stopped = false;
     this.port.onmessage = (ev) => {
       if (ev.data === 'stop') this._stopped = true;
@@ -39,73 +38,32 @@ class AsrProcessor extends AudioWorkletProcessor {
   }
 
   process(inputs) {
-    if (this._stopped) return false; // detach worklet
+    if (this._stopped) return false;
     const input = inputs[0];
     if (!input || input.length === 0) return true;
-    const ch0 = input[0]; // mono; if stereo we take channel 0
+    const ch0 = input[0];
     if (!ch0 || ch0.length === 0) return true;
 
-    // Append to source buffer
-    if (this._srcLen + ch0.length > this._srcBuf.length) {
-      // Grow — shouldn't normally happen with 128-sample quanta
-      const grown = new Float32Array(this._srcBuf.length * 2);
-      grown.set(this._srcBuf.subarray(0, this._srcLen));
-      this._srcBuf = grown;
-    }
-    this._srcBuf.set(ch0, this._srcLen);
-    this._srcLen += ch0.length;
+    // Copy incoming samples into the buffer. If we cross the chunk
+    // boundary mid-quantum, split it — ship the completed chunk and
+    // start the next one with the leftover.
+    let inOff = 0;
+    while (inOff < ch0.length) {
+      const room = CHUNK_SAMPLES - this._len;
+      const take = Math.min(room, ch0.length - inOff);
+      this._buf.set(ch0.subarray(inOff, inOff + take), this._len);
+      this._len += take;
+      inOff += take;
 
-    // Produce as many output chunks as we have source samples for.
-    while (true) {
-      // How many source samples we need for one full output chunk starting
-      // at this._srcPos.
-      const need = Math.ceil((OUT_SAMPLES_PER_CHUNK - 1) * this._ratio) + 2;
-      if (this._srcLen - Math.floor(this._srcPos) < need) break;
-
-      const out = new Float32Array(OUT_SAMPLES_PER_CHUNK);
-      for (let i = 0; i < OUT_SAMPLES_PER_CHUNK; i++) {
-        const srcIdx = this._srcPos + i * this._ratio;
-        const i0 = Math.floor(srcIdx);
-        const i1 = i0 + 1;
-        const frac = srcIdx - i0;
-        const s0 = this._srcBuf[i0] ?? 0;
-        const s1 = this._srcBuf[i1] ?? s0;
-        out[i] = s0 * (1 - frac) + s1 * frac;
-      }
-      // Yu, 2026-09-19: silence gate. Sherpa's streaming recognizer
-      // does not tolerate long stretches of near-zero audio — it
-      // reprocesses the last hypothesis token forever, producing
-      // "走走走走停停停停你停你停" runaway output when mic is on but user
-      // is quiet. Compute chunk RMS; if it's below a talking-noise-
-      // floor threshold, drop the chunk on the floor instead of
-      // shipping it. 0.005 was tuned by ear against Yu's mic setup;
-      // whispered speech still crosses it, tabletop keystrokes and
-      // room silence don't. If this proves too aggressive we can
-      // switch to a proper VAD (webrtc's or sherpa's own) later.
-      let sumSq = 0;
-      for (let i = 0; i < out.length; i++) sumSq += out[i] * out[i];
-      const rms = Math.sqrt(sumSq / out.length);
-      if (rms >= 0.005) {
-        // Ship to main thread. Transfer the underlying buffer to avoid a copy.
+      if (this._len === CHUNK_SAMPLES) {
+        // Ship a full chunk. Transfer the backing buffer to avoid a
+        // copy — but that detaches this._buf, so allocate a fresh
+        // one for the next chunk.
+        const out = this._buf;
+        this._buf = new Float32Array(CHUNK_SAMPLES);
+        this._len = 0;
         this.port.postMessage({ samples: out }, [out.buffer]);
       }
-      // If gated, we still advance the cursor below so the buffer stays
-      // in sync — we just skip the send. Silent audio doesn't need to
-      // be replayed later, we're not archiving.
-      void 0; // marker for the edit — no-op
-
-      // Advance the source cursor by the fractional amount consumed.
-      this._srcPos += OUT_SAMPLES_PER_CHUNK * this._ratio;
-    }
-
-    // Compact the source buffer periodically so it doesn't grow unbounded.
-    // Drop everything before the current fractional cursor, keep the
-    // remainder + fractional offset.
-    const dropWholeSamples = Math.floor(this._srcPos);
-    if (dropWholeSamples > 1024) {
-      this._srcBuf.copyWithin(0, dropWholeSamples, this._srcLen);
-      this._srcLen -= dropWholeSamples;
-      this._srcPos -= dropWholeSamples;
     }
 
     return true;
