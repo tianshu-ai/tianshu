@@ -163,17 +163,30 @@ export default function VoiceSubtitleView() {
     }
   }, [currentDisplayText]);
 
-  // Tail assistant message chunks — source of prev / next context.
-  // Walking chat-store.messages directly (WireMessage) so we see
-  // the same raw text useAutoSpeakReplies is slicing.
+  // All assistant chunks across ALL assistant messages, in order.
+  // Yu 2026-09-20 02:15: taking only the LAST message's chunks
+  // makes the second reply feel abrupt — there's no fade-back
+  // context of what was said earlier. Concatenating chunks from
+  // every assistant reply keeps the Apple-Music-style scroll feel
+  // continuous across turns: the previous reply's tail chunks
+  // linger at the top as sung/faded, then the current chunk of
+  // the new reply arrives in the middle, then future chunks stay
+  // below waiting.
+  //
+  // Trimming to the last ~30 chunks so the filmstrip doesn't grow
+  // unbounded on a long session. VISIBLE_RADIUS=2 needs 5 rows,
+  // so 30 leaves plenty of context and keeps the DOM tiny.
+  const CHUNK_HISTORY_LIMIT = 30;
   const tailChunks = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const m = messages[i];
-      if (m.role === "assistant" && m.text) {
-        return splitChunks(m.text);
-      }
+    const all: string[] = [];
+    for (const m of messages) {
+      if (m.role !== "assistant" || !m.text) continue;
+      for (const c of splitChunks(m.text)) all.push(c);
     }
-    return [] as string[];
+    if (all.length > CHUNK_HISTORY_LIMIT) {
+      return all.slice(all.length - CHUNK_HISTORY_LIMIT);
+    }
+    return all;
   }, [messages]);
 
   // Locate the current chunk within tailChunks so we can pick prev
