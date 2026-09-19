@@ -108,6 +108,14 @@ const MODEL_CANDIDATES: CandidateSpec[] = [
   // model uses a different decoding pipeline and is expected to avoid
   // that class of bug.
   { id: "streaming-zipformer2-ctc-zh", dirName: "sherpa-onnx-streaming-zipformer-ctc-zh-xlarge-int8-2025-06-30", arch: "zipformer2Ctc", mode: "online", model: "model.int8.onnx", tokens: "tokens.txt" },
+  // Online paraformer: encoder + decoder tuple, bilingual zh+en.
+  // Yu, 2026-09-19: chose this over zipformer2Ctc when Yu confirmed
+  // he needs bilingual support (that CTC model is zh-only). Paraformer
+  // has a distinct architecture from both transducer and CTC, so the
+  // #3469 duplicate-token failure mode shouldn't apply. `model` here
+  // points to the encoder; initOnlineRecognizer swaps "encoder" →
+  // "decoder" in the filename to locate the decoder half.
+  { id: "streaming-paraformer-bilingual", dirName: "sherpa-onnx-streaming-paraformer-bilingual-zh-en", arch: "paraformer", mode: "online", model: "encoder.int8.onnx", tokens: "tokens.txt" },
 ];
 
 function getModelsRoots(): string[] {
@@ -269,6 +277,24 @@ function initOnlineRecognizer(mod: any, best: ModelCandidate): boolean {
       // model is to sidestep the transducer blank-dominance issue.
       // If duplicates return with this model too, that's a separate
       // investigation.
+    };
+  } else if (best.arch === "paraformer") {
+    // Yu, 2026-09-19: online paraformer for bilingual zh+en. `model`
+    // holds the encoder path; decoder derived by name substitution.
+    // Distinct arch from transducer/CTC, so shouldn't inherit either
+    // family's decoding pathologies.
+    const encoderPath = path.join(best.dir, best.model);
+    const decoderPath = encoderPath.replace("encoder", "decoder");
+    config = {
+      modelConfig: {
+        paraformer: {
+          encoder: encoderPath,
+          decoder: decoderPath,
+        },
+        tokens: tokensPath,
+        numThreads: 4,
+      },
+      ...commonEndpoint,
     };
   } else {
     console.warn(`[asr] online arch "${best.arch}" not yet wired`);

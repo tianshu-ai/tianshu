@@ -105,9 +105,21 @@ const MODELS: ModelDef[] = [
     url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-zh-xlarge-int8-2025-06-30.tar.bz2",
     dir: "sherpa-onnx-streaming-zipformer-ctc-zh-xlarge-int8-2025-06-30",
     tokens: "tokens.txt",
-    description: "中文专用 CTC 架构，2025-06 新版，避开 transducer 短字叠字问题。首选。",
+    description: "中文专用 CTC 架构，2025-06 新版，避开 transducer 短字叠字问题。仅中文。",
     type: "online",
     arch: "zipformer", // reused for download listing; runtime arch is zipformer2Ctc
+  },
+  {
+    id: "streaming-paraformer-bilingual",
+    name: "Streaming Paraformer (中英双语)",
+    lang: "zh,en",
+    size: "~230 MB",
+    url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-paraformer-bilingual-zh-en.tar.bz2",
+    dir: "sherpa-onnx-streaming-paraformer-bilingual-zh-en",
+    tokens: "tokens.txt",
+    description: "中英双语，paraformer 架构——避开 zipformer transducer 的短字叠字 bug。日常首选。",
+    type: "online",
+    arch: "paraformer",
   },
 ];
 
