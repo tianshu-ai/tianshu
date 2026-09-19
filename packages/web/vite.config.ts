@@ -18,6 +18,13 @@ export default defineConfig({
     proxy: {
       "/api": `http://localhost:${serverPort}`,
       "/ws": { target: `ws://localhost:${serverPort}`, ws: true },
+      // Yu, 2026-09-19: /ws/asr is a separate WebSocketServer (see
+      // packages/server/src/boot/ws-asr.ts), and vite's proxy config
+      // matches paths individually — the /ws entry above does not
+      // cover child paths like /ws/asr. Adding an explicit entry with
+      // ws:true so dev-mode voice input works. In prod both paths hit
+      // the tianshu server directly and this indirection isn't needed.
+      "/ws/asr": { target: `ws://localhost:${serverPort}`, ws: true },
       // Custom shell UI lives at /shell/tenants/... so it doesn't
       // hijack the native UI. Proxy all /shell/ requests to backend.
       "/shell": `http://localhost:${serverPort}`,
