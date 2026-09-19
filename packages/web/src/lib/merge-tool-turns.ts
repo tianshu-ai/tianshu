@@ -194,6 +194,18 @@ function coalesceAssistantTurns(rows: MergedMessage[]): MergedMessage[] {
     ) {
       // Fold this assistant turn into the previous one.
       const mergedBlocks = [...toBlocks(prev), ...toBlocks(row)];
+      // Concatenate speech sources across the fold so the play
+      // button on the merged bubble reads the whole spoken turn.
+      //
+      // Yu, 2026-09-19 22:44: bug — tool-only prev has
+      // speechSource=undefined (no text to collect), row has the
+      // narration, but the previous `{...prev, ...}` spread kept
+      // prev's undefined and dropped row's value entirely. The
+      // merged bubble ended up with no speechSource so
+      // MessageBubble hid the play button.
+      const mergedSpeech = [prev.speechSource, row.speechSource]
+        .filter((s): s is string => !!s && s.length > 0)
+        .join("\n\n");
       out[out.length - 1] = {
         ...prev,
         // Keep the later turn's metadata (final model/usage) + newest
@@ -203,6 +215,7 @@ function coalesceAssistantTurns(rows: MergedMessage[]): MergedMessage[] {
         text: "",
         resolvedToolCalls: undefined,
         resolvedBlocks: mergedBlocks,
+        speechSource: mergedSpeech.length > 0 ? mergedSpeech : undefined,
       };
       continue;
     }
