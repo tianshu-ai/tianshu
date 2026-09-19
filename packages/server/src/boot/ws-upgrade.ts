@@ -43,7 +43,25 @@ export function installChatWebSocket(
   deps: InstallChatWebSocketDeps,
 ): WebSocketServer {
   const { server, globalOps, pluginRegistry } = deps;
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  // Yu, 2026-09-19: switched to noServer + manual upgrade dispatch.
+  // Coexisting with the /ws/asr WSS on the same http.Server needs
+  // this pattern; the old {server, path} auto-hook form ends up
+  // aborting a socket the other WSS is already streaming from,
+  // producing "Invalid frame header" client-side after {type:ready}
+  // gets through. Server-side dispatch lives in this file too.
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (request, socket, head) => {
+    const url = request.url ?? "";
+    const pathname = url.split("?", 1)[0];
+    // Take ONLY /ws (exact match). Query strings after /ws (e.g.
+    // identity switch) still count. Leave /ws/asr and anything
+    // else to whichever module registered its own listener.
+    if (pathname !== "/ws") return;
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit("connection", ws, request);
+    });
+  });
 
   // Server-side ping/pong: keep WS connections alive through NAT/
   // firewalls (typically drop idle TCP after 60-120s) and detect
