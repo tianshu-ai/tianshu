@@ -190,18 +190,43 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
           <MessageAttachments attachments={m.attachments} align="end" />
         )}
 
-        {!isUser && (m.meta || m.createdAt || m.text) && (
-          <div className="mt-1 flex items-center gap-2">
-            {m.text && <SpeakButton messageId={m.id} text={m.text} />}
-            {(m.meta || m.createdAt) && (
-              <MessageMeta
-                meta={m.meta}
-                createdAt={m.createdAt}
-                align="start"
-              />
-            )}
-          </div>
-        )}
+        {(() => {
+          if (isUser) return null;
+          // Assemble the text worth speaking. Prefer m.text (present
+          // for simple assistant replies). When m.text is empty but
+          // the turn used the blocks path (typical for streaming
+          // messages after WireAssistantBlock rollout), collect text
+          // segments from blocks. Skip tool-only turns entirely —
+          // there's nothing to speak.
+          const speechText =
+            m.text ||
+            (blocks
+              ? blocks
+                  .map((b) =>
+                    b.kind === "text" && typeof b.text === "string"
+                      ? b.text
+                      : "",
+                  )
+                  .filter(Boolean)
+                  .join("\n\n")
+              : "");
+          const hasFooterContent = m.meta || m.createdAt || speechText;
+          if (!hasFooterContent) return null;
+          return (
+            <div className="mt-1 flex items-center gap-2">
+              {speechText && (
+                <SpeakButton messageId={m.id} text={speechText} />
+              )}
+              {(m.meta || m.createdAt) && (
+                <MessageMeta
+                  meta={m.meta}
+                  createdAt={m.createdAt}
+                  align="start"
+                />
+              )}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
