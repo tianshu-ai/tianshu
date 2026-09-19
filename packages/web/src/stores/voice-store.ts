@@ -56,6 +56,14 @@ let audio: HTMLAudioElement | null = null;
 let mediaSource: MediaSource | null = null;
 let objectUrl: string | null = null;
 let abortController: AbortController | null = null;
+// URLs held for delayed revoke. teardown() moves the current
+// objectUrl here without immediately revoking; the next play()
+// revokes them after safely re-pointing audio.src at a fresh
+// resource. This avoids the ERR_FILE_NOT_FOUND races Yu hit three
+// times (2026-09-19 21:49 / 21:54 / 21:56) with sync, microtask,
+// and 'emptied'-event revocation strategies — they all lost the
+// race with audio's internal detach fetch.
+const pendingRevokes: string[] = [];
 
 function getAudio(): HTMLAudioElement {
   if (audio) return audio;
@@ -83,43 +91,33 @@ function teardown() {
       // ignore — normal after abort
     }
   }
-  // Blob URL ordering, take 3 (Yu 2026-09-19 21:54 the second
-  // ERR_FILE_NOT_FOUND). Sequence that finally kills the noise:
-  //   1. Grab the current URL into a local (so a later play()
-  //      doesn't stomp objectUrl before we revoke).
-  //   2. Register a one-shot 'emptied' listener that revokes only
-  //      AFTER the audio element has finished its detach fetch.
-  //      The emptied event fires exactly when the browser resets
-  //      the audio pipeline — by then, no more GET is pending.
-  //   3. Pause + remove src + load() to trigger the detach.
-  //   4. If for any reason emptied never fires (older browsers?
-  //      failed pipeline?), fall back to a 500 ms setTimeout revoke
-  //      so we don't leak the URL forever.
+  // Blob URL cleanup, take 4 (Yu 2026-09-19 21:56 third failure).
+  // Approach: DON'T revoke here. Move the URL to pendingRevokes
+  // and let the next play() (or explicit page unload) revoke it
+  // after the audio element is safely bound to a new resource.
   //
-  // Earlier attempts:
-  //   - Sync revoke: ERR_FILE_NOT_FOUND (async fetch still going)
-  //   - queueMicrotask revoke: same error (load()'s network fetch
-  //     runs on the macrotask queue, not microtask)
-  const url = objectUrl;
-  objectUrl = null;
+  // Reasoning: every previous strategy lost a race with audio's
+  // internal detach network fetch:
+  //   - Sync revoke: fetch still going (obvious)
+  //   - queueMicrotask: fetch dispatch is macrotask, revoke wins
+  //   - 'emptied' event: apparently still not late enough on Chrome,
+  //     or the event doesn't fire in the paths we hit
+  //
+  // The only reliable moment to revoke an audio blob URL is when
+  // the element is guaranteed to be pointing at something else.
+  // Deferring the revoke to the next play() call gives us that
+  // guarantee: by then audio.src holds the new URL, and any
+  // straggler request against the old URL is impossible.
+  //
+  // Memory impact: at most a few blob URLs pending at any time.
+  // Each edge-tts response is ~25-85 KB. In the worst case (user
+  // furiously clicking play buttons) we hold a handful of URLs
+  // until the next play(); page unload reaps all of them.
+  if (objectUrl) {
+    pendingRevokes.push(objectUrl);
+    objectUrl = null;
+  }
   if (audio) {
-    let revoked = false;
-    const revokeOnce = () => {
-      if (revoked) return;
-      revoked = true;
-      if (url) {
-        try {
-          URL.revokeObjectURL(url);
-        } catch {
-          // ignore
-        }
-      }
-    };
-    if (url) {
-      audio.addEventListener("emptied", revokeOnce, { once: true });
-      // Safety net: revoke after 500ms even if emptied never fires.
-      setTimeout(revokeOnce, 500);
-    }
     try {
       audio.pause();
     } catch {
@@ -132,15 +130,33 @@ function teardown() {
     } catch {
       // ignore
     }
-  } else if (url) {
-    // No audio element yet — nothing to detach, safe to revoke
-    // immediately.
-    try {
-      URL.revokeObjectURL(url);
-    } catch {
-      // ignore
-    }
   }
+}
+
+/**
+ * Called by play() after safely binding audio.src to a fresh URL.
+ * At that point any queued detach fetches for the previous URLs
+ * have already produced their (harmless) errors AND the audio
+ * element is pointing at a new resource, so revoke can't race
+ * with a pending GET.
+ *
+ * We give the browser a full task boundary via setTimeout(0) before
+ * revoking, because Chrome dispatches the detach fetch on the same
+ * macrotask that removed src/set new src — revoking synchronously
+ * even after re-binding still triggered the error.
+ */
+function drainPendingRevokes() {
+  if (pendingRevokes.length === 0) return;
+  const urls = pendingRevokes.splice(0);
+  setTimeout(() => {
+    for (const url of urls) {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+    }
+  }, 0);
 }
 
 export const useVoiceStore = create<VoiceState>((set, get) => ({
@@ -158,6 +174,10 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     // Cancel whatever's playing / fetching before starting fresh.
     teardown();
     set({ playingId: req.id, lastError: null });
+    // Kick pending revocations to the next macrotask — by the time
+    // audio.src gets re-bound below, the old fetch straggler has
+    // fired its harmless error and we can safely reclaim the URL.
+    drainPendingRevokes();
 
     const controller = new AbortController();
     abortController = controller;
