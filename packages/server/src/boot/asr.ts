@@ -38,6 +38,24 @@ function getActiveRecognizer(): any {
   return activeMode === "online" ? onlineRecognizer : offlineRecognizer;
 }
 
+/** Exposed for the /ws/asr endpoint. Returns the OnlineRecognizer
+ *  handle if the active model is streaming, otherwise null. */
+export function getOnlineRecognizer(): any {
+  return activeMode === "online" ? onlineRecognizer : null;
+}
+
+/** True iff a streaming (online) recognizer is currently loaded. */
+export function isOnlineActive(): boolean {
+  return activeMode === "online" && onlineRecognizer !== null;
+}
+
+/** Ensure a recognizer is loaded. Used by /ws/asr to lazy-init on
+ *  the first connection instead of failing when boot-time init lost
+ *  the race (e.g. the model was downloaded after server start). */
+export async function ensureRecognizer(): Promise<boolean> {
+  return initRecognizer();
+}
+
 /** Force reload the recognizer (called when admin activates a model). */
 export async function reloadAsrModel(): Promise<boolean> {
   // Yu, 2026-09-19: reset both variants so a mode switch (offline

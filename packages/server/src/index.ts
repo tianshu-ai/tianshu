@@ -127,6 +127,7 @@ import { installIdleRunner } from "./boot/idle-runner.js";
 import { mountChannelRoutes, toView } from "./boot/routes-channels.js";
 import { mountCoreRoutes } from "./boot/routes-core.js";
 import { installChatWebSocket } from "./boot/ws-upgrade.js";
+import { installAsrWebSocket } from "./boot/ws-asr.js";
 import { mountStaticSpa, isSpaHosted } from "./boot/static-spa.js";
 import { mountShellSpa } from "./boot/shell-spa.js";
 
@@ -903,6 +904,11 @@ const server = (_sslCfg?.sslCert && _sslCfg?.sslKey)
 // other host hooks (onPluginsChanged broadcast, shutdown wss.close)
 // can still touch it.
 const wss = installChatWebSocket({ server, globalOps, pluginRegistry });
+
+// Streaming ASR over WebSocket (Yu, 2026-09-19). Separate path,
+// separate WSS instance from /ws so the two protocols never mix.
+// The handler body lives in boot/ws-asr.ts.
+installAsrWebSocket({ server, globalOps });
 
 // /api/plugins (GET + PATCH) — see ./plugins-routes.ts.
 //
