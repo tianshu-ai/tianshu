@@ -898,17 +898,24 @@ const server = (_sslCfg?.sslCert && _sslCfg?.sslKey)
     })()
   : createServer(app);
 
+// Streaming ASR over WebSocket (Yu, 2026-09-19). Mounted FIRST so
+// our upgrade listener runs before installChatWebSocket's. Reason:
+// the chat WSS uses ws-lib's auto-hook `{server, path:"/ws"}` form,
+// which internally does `abortHandshake(socket, 400)` on any upgrade
+// whose URL doesn't match `/ws` — including `/ws/asr`. If chat's
+// listener runs first it kills the socket before our asr listener
+// gets a chance to handleUpgrade(). Listener execution order is
+// registration order, so registering ours first fixes the race
+// without needing to convert the chat WSS to noServer + dispatch.
+// The handler body lives in boot/ws-asr.ts.
+installAsrWebSocket({ server, globalOps });
+
 // Chat over WebSocket. See boot/ws-upgrade.ts for the connection
 // handler body (identity resolution + tenant open + plugin
 // activation + attachChatHandler). We keep the WSS handle here so
 // other host hooks (onPluginsChanged broadcast, shutdown wss.close)
 // can still touch it.
 const wss = installChatWebSocket({ server, globalOps, pluginRegistry });
-
-// Streaming ASR over WebSocket (Yu, 2026-09-19). Separate path,
-// separate WSS instance from /ws so the two protocols never mix.
-// The handler body lives in boot/ws-asr.ts.
-installAsrWebSocket({ server, globalOps });
 
 // /api/plugins (GET + PATCH) — see ./plugins-routes.ts.
 //
