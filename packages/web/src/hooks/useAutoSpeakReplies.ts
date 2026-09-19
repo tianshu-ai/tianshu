@@ -420,6 +420,10 @@ export function useAutoSpeakReplies() {
             enqueue({
               id: `${m.id}#${regionStart}`,
               text: spoken,
+              // displayText for subtitle view: use the trimmed raw
+              // chunk (still readable markdown) so on-screen shows
+              // the same paragraph the TTS is reading.
+              displayText: trimmed,
               provider: ttsProvider ?? undefined,
               voice: ttsVoice ?? undefined,
             });
@@ -446,6 +450,7 @@ export function useAutoSpeakReplies() {
             enqueue({
               id: `${m.id}#${regionStart}`,
               text: spoken,
+              displayText: trimmed,
               provider: ttsProvider ?? undefined,
               voice: ttsVoice ?? undefined,
             });

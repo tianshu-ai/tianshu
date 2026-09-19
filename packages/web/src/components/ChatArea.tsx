@@ -7,6 +7,7 @@ import ChatInput from "./ChatInput";
 import ModelSelector from "./ModelSelector";
 import PluginManager from "./PluginManager";
 import PluginTopBarButtons from "./PluginTopBarButtons";
+import VoiceSubtitleView from "./VoiceSubtitleView";
 import { useT } from "../hooks/useT";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import { useAutoSpeakReplies } from "../hooks/useAutoSpeakReplies";
@@ -78,6 +79,14 @@ export default function ChatArea() {
   // during streaming that's once per token, which also defeats the
   // React.memo on MessageBubble (every child would get new props).
   const merged = useMemo(() => mergeToolTurns(messages), [messages]);
+
+  // Voice mode: swap ChatArea for the big-font subtitle view. Yu
+  // 2026-09-20 01:02: "conversation 区域最好改成字幕模式". The
+  // subtitle view has its own composer inside so we return early
+  // without the normal top bar / message list.
+  if (voiceEnabled) {
+    return <VoiceSubtitleView />;
+  }
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">

@@ -27,6 +27,16 @@ export interface SpeakRequest {
   id: string;
   /** Raw text (already markdown-stripped). */
   text: string;
+  /**
+   * Human-readable text to render in the subtitle view. Usually the
+   * same as `text` but may differ if the caller stripped silent-tag
+   * content for TTS while wanting the original on-screen. Optional
+   * for backward compat with non-subtitle callers.
+   *
+   * Yu, 2026-09-20 01:02 subtitle view: reads this to show the
+   * currently-spoken chunk on a big-font 3-line rolling display.
+   */
+  displayText?: string;
   /** Optional voice / provider overrides. Server picks a default
    *  when omitted. */
   voice?: string;
@@ -49,6 +59,10 @@ interface VoiceState {
   /** Id of the utterance currently playing (or fetching audio for);
    *  null when idle. */
   playingId: string | null;
+  /** Human-readable text of the utterance currently playing. Empty
+   *  when idle. Subtitle view watches this to render the current
+   *  spoken chunk with big-font emphasis (Yu 2026-09-20 01:02). */
+  currentDisplayText: string;
   /** Last error surface; useful for the caller to show a toast. */
   lastError: string | null;
 
@@ -193,6 +207,7 @@ function teardown() {
 
 export const useVoiceStore = create<VoiceState>((set, get) => ({
   playingId: null,
+  currentDisplayText: "",
   lastError: null,
 
   stop: () => {
@@ -204,7 +219,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     prefetchCache.clear();
     teardown();
     if (get().playingId !== null) {
-      set({ playingId: null });
+      set({ playingId: null, currentDisplayText: "" });
     }
   },
 
@@ -275,7 +290,13 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     }
     // Cancel whatever's playing / fetching before starting fresh.
     teardown();
-    set({ playingId: req.id, lastError: null });
+    // displayText falls back to text so callers that don't pass a
+    // separate on-screen version still get subtitle rendering.
+    set({
+      playingId: req.id,
+      currentDisplayText: req.displayText ?? req.text,
+      lastError: null,
+    });
 
     const controller = new AbortController();
     abortController = controller;
@@ -323,7 +344,11 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
         if ((err as { name?: string })?.name === "AbortError") {
           return;
         }
-        set({ playingId: null, lastError: err instanceof Error ? err.message : String(err) });
+        set({
+          playingId: null,
+          currentDisplayText: "",
+          lastError: err instanceof Error ? err.message : String(err),
+        });
         throw err;
       }
     }
@@ -331,7 +356,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     // If stop() fired while we were awaiting fetch, the controller
     // signals are aborted but we may have raced past the check.
     if (controller.signal.aborted) {
-      set({ playingId: null });
+      set({ playingId: null, currentDisplayText: "" });
       return;
     }
 
@@ -369,15 +394,19 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
           blob = await res.blob();
         } catch (err) {
           if ((err as { name?: string })?.name === "AbortError") return;
-          set({ playingId: null, lastError: err instanceof Error ? err.message : String(err) });
+          set({
+            playingId: null,
+            currentDisplayText: "",
+            lastError: err instanceof Error ? err.message : String(err),
+          });
           throw err;
         }
         if (controller.signal.aborted) {
-          set({ playingId: null });
+          set({ playingId: null, currentDisplayText: "" });
           return;
         }
       } else {
-        set({ playingId: null });
+        set({ playingId: null, currentDisplayText: "" });
         return;
       }
       const url = URL.createObjectURL(blob);
@@ -400,7 +429,9 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
           // audio's internal detach fetch).
           if (objectUrl === url) objectUrl = null;
           // Only clear playingId if THIS request still owns it.
-          if (get().playingId === thisReqId) set({ playingId: null });
+          if (get().playingId === thisReqId) {
+            set({ playingId: null, currentDisplayText: "" });
+          }
         }
         function onEnded() {
           cleanup();
@@ -440,7 +471,9 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
         if (objectUrl === url) objectUrl = null;
         // Only clear playingId if it still belongs to this request;
         // a newer play() may have already claimed it.
-        if (get().playingId === req.id) set({ playingId: null });
+        if (get().playingId === req.id) {
+          set({ playingId: null, currentDisplayText: "" });
+        }
       }
       function onEnded() {
         if (settled) return;
