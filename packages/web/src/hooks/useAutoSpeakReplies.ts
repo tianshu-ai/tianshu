@@ -310,22 +310,48 @@ export function useAutoSpeakReplies() {
       return;
     }
 
-    // Streaming per-sentence enqueue. For each assistant message:
+    // Streaming per-sentence enqueue. Only track the LAST assistant
+    // message; historical messages are pre-seeded (cursor=length)
+    // to avoid re-speaking on refresh AND to avoid re-slicing when
+    // the server swaps the streaming placeholder id for a persistent
+    // id at stream_end (Yu 2026-09-19 23:10: log showed the story
+    // arrived twice — once as streaming id `ming__...`, then
+    // instantly again as persistent id `c114a3...` from cursor 0,
+    // duplicating enqueues and thrashing the audio queue).
+    //
+    // For the current tail message:
     //   - Look up cursor (0 for new messages, previous slice end
     //     otherwise)
-    //   - Try to find the last complete sentence terminator from
-    //     the cursor
+    //   - Find the last complete sentence terminator from cursor
     //   - If found: extract [cursor → terminator], enqueue, advance
-    //     cursor
-    //   - If not: no complete sentence available yet, wait for the
-    //     next delta
+    //   - Else if !isStreaming: flush remaining as a final slice
+    //   - Else: no complete sentence yet, wait for next delta
     //
-    // On stream_end (message settles final) we flush anything left
-    // between the cursor and text.length as a final slice, whether
-    // or not it has a terminator — handles single-sentence replies
-    // that don't end with .!?
+    // When a new tail message id appears (persistent id swap or a
+    // new turn), we mark all prior ids as "already done" (cursor at
+    // their full length) so they don't re-slice. This is what the
+    // seed pass on line above already does for pre-existing history.
+    const tail = messages[messages.length - 1];
+    if (tail && tail.role === "assistant") {
+      // If we've never seen this id, mark every OTHER assistant
+      // message id as "already done" so an id swap on the previous
+      // turn doesn't re-slice it. Only the newest id gets streamed.
+      if (!cursorRef.current.has(tail.id)) {
+        for (const other of messages) {
+          if (other.role === "assistant" && other.id !== tail.id) {
+            const src = other.text ?? "";
+            cursorRef.current.set(other.id, src.length);
+          }
+        }
+      }
+    }
+
     for (const m of messages) {
       if (m.role !== "assistant") continue;
+      // Only slice the LAST assistant message. Historical ones are
+      // seeded above to cursor=length so this check is a no-op for
+      // them, but keep it explicit so the intent is obvious.
+      if (m !== tail) continue;
       const src = m.text ?? "";
       if (!src.trim()) continue;
       const cursor = cursorRef.current.get(m.id) ?? 0;
