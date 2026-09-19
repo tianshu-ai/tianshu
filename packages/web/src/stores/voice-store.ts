@@ -172,8 +172,16 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
         try {
           while (pendingQueue.length > 0) {
             const next = pendingQueue.shift()!;
+            console.log(
+              `[voice] drain start id=${next.id.slice(-12)} queue=${pendingQueue.length}`,
+            );
+            const started = Date.now();
             try {
               await get().play({ ...next, mode: "immediate" });
+              console.log(
+                `[voice] drain done id=${next.id.slice(-12)} ` +
+                  `elapsed=${Date.now() - started}ms queue=${pendingQueue.length}`,
+              );
             } catch (err) {
               // Keep draining on individual failures; log so a
               // consistent failure surfaces via console noise.
@@ -182,6 +190,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
           }
         } finally {
           queueDraining = false;
+          console.log("[voice] drain finished, queue empty");
         }
       })();
     }
