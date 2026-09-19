@@ -345,7 +345,7 @@ export function useAutoSpeakReplies() {
         // content in streaming voice). Log why we're NOT slicing so
         // we can see if cursor got ahead of text or terminator search
         // failed.
-        console.debug(
+        console.log(
           `[voice] no-slice id=${m.id.slice(-6)} cursor=${cursor} ` +
             `len=${src.length} isStreaming=${isStreaming} ` +
             `sliceEnd=${sliceEnd}`,
@@ -360,8 +360,10 @@ export function useAutoSpeakReplies() {
 
       // Diagnostic: show every slice we take, with raw and spoken
       // lengths so we can see if stripSilent/stripMarkdown ate more
-      // than expected.
-      console.debug(
+      // than expected. Uses console.log (not debug) because Chrome
+      // hides debug level by default and Yu didn't see the earlier
+      // logs (2026-09-19 23:06).
+      console.log(
         `[voice] slice id=${m.id.slice(-6)} ` +
           `[${prevCursor}..${sliceEnd}] rawLen=${raw.length} ` +
           `spokenLen=${spoken.length} spoken=${JSON.stringify(spoken.slice(0, 40))}`,
