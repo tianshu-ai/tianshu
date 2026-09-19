@@ -8,21 +8,35 @@
 //                   just complete?"
 //
 // Sits at the ChatArea level, subscribes to the store, and fires
-// speak() exactly once per newly completed assistant reply.
+// speak() once per assistant message that appears AFTER voice mode
+// turns on.
 //
-// Detection rule (deliberately simple):
+// Detection rule:
 //
-//   A reply is "newly completed" when the last message in the
-//   messages array satisfies:
-//     - role === "assistant"
-//     - id !== the id we last spoke
-//     - isStreaming === false
-//     - content is a non-empty string
+//   We track a set of assistant-message ids we've already spoken.
+//   Each render, we walk the messages array and speak any assistant
+//   message that:
+//     - has non-empty text
+//     - has an id not in the spoken set
 //
-// Why check id rather than a boolean flag: the store already tracks
-// each message by id, and we want the spoken audio to line up with
-// exactly one bubble — including the case where the same assistant
-// content later gets edited/retried (new id, new audio).
+//   The spoken set is seeded on first pass with the current
+//   assistant messages so pre-existing history isn't read out.
+//
+// Why NOT gate on isStreaming: Yu 2026-09-19 21:21 pointed out
+// that multi-step replies (assistant text → tool call → assistant
+// text → tool call → final assistant text) only spoke the last
+// segment. Root cause: for the full multi-step turn, isStreaming
+// stays true — there's no false window between the intermediate
+// assistant messages and the next tool call. Tracking the id set
+// directly means each new assistant bubble triggers speak() as it
+// appears, regardless of whether the turn is still in flight.
+//
+// This does mean a partial (streaming) assistant message could
+// trigger speak() as its id first appears — but WireMessage.text
+// is only populated on stream chunks with content; empty-text
+// intermediate frames get skipped. If we see "partial-text" audio
+// artefacts in practice we can add a "minimum text length" or
+// "debounce until text stops growing" guard.
 //
 // Why not subscribe to stream_end events directly: keeping the
 // dependency on useChatStore matches how the rest of the UI reads
@@ -102,7 +116,7 @@ export function useAutoSpeakReplies() {
   // with the current tail on mount so only messages that arrive
   // AFTER voice mode is on trigger playback. Bootstrap flag makes
   // that one-time initialisation observable to the effect.
-  const lastSpokenIdRef = useRef<string | null>(null);
+  const spokenIdsRef = useRef<Set<string>>(new Set());
   const seededRef = useRef(false);
 
   // Cached user preferences for TTS provider + voice. Read once
@@ -136,88 +150,57 @@ export function useAutoSpeakReplies() {
   const isStreaming = useChatStore((s) => s.isStreaming);
 
   useEffect(() => {
-    const last = messages[messages.length - 1];
-    // Diagnostic log — Yu 2026-09-19 21:17, chase-down for
-    // "new replies not spoken". Remove once auto-speak trigger
-    // path is proven to fire.
-    console.debug(
-      `[voice] tick: enabled=${enabled} streaming=${isStreaming} seeded=${seededRef.current} ` +
-        `tail=${last?.id ?? "none"}/${last?.role ?? "-"} lastSpoken=${lastSpokenIdRef.current}`,
-    );
-
     // If the user turned voice mode off mid-playback, cut the audio.
-    // Also reset the seed flag so re-enabling voice mode later
-    // won't replay whatever's already on screen.
+    // Also reset the seed so re-enabling voice mode later won't
+    // replay whatever's already on screen.
     if (!enabled) {
       stop();
       seededRef.current = false;
-      lastSpokenIdRef.current = null;
+      spokenIdsRef.current = new Set();
       return;
     }
 
-    // On first pass with voice mode on, adopt the current tail as
-    // "already spoken" so historical messages that predate the
-    // toggle don't get read out. Only messages appended AFTER this
-    // seed should trigger speak().
+    // On first pass with voice mode on, mark every current
+    // assistant message as "already spoken" so historical replies
+    // that predate the toggle aren't read out. Only messages
+    // appended AFTER this seed should trigger speak().
     if (!seededRef.current) {
-      lastSpokenIdRef.current = last?.id ?? null;
+      for (const m of messages) {
+        if (m.role === "assistant") spokenIdsRef.current.add(m.id);
+      }
       seededRef.current = true;
-      console.debug(
-        `[voice] seeded lastSpokenId=${lastSpokenIdRef.current}`,
-      );
       return;
     }
 
-    // Only speak when streaming finished — otherwise we'd speak
-    // partial assistant text every render.
-    if (isStreaming) {
-      console.debug("[voice] skip: still streaming");
-      return;
-    }
+    // Walk the array, speak any assistant message whose id isn't
+    // in the spoken set. Fire them in order so multi-step replies
+    // are voiced in the order they appear on screen.
+    for (const m of messages) {
+      if (m.role !== "assistant") continue;
+      if (spokenIdsRef.current.has(m.id)) continue;
+      if (typeof m.text !== "string" || !m.text.trim()) continue;
 
-    if (!last) return;
-    if (last.role !== "assistant") {
-      console.debug(`[voice] skip: tail role=${last.role}`);
-      return;
-    }
-    if (last.id === lastSpokenIdRef.current) {
-      console.debug(`[voice] skip: id already spoken (${last.id})`);
-      return;
-    }
-    // WireMessage.text is the human-readable body. Tool-only turns
-    // have empty text; skip those — nothing to speak.
-    if (typeof last.text !== "string" || !last.text.trim()) {
-      console.debug(
-        `[voice] skip: tail has no text (type=${typeof last.text}, len=${(last.text ?? "").length})`,
-      );
-      return;
-    }
+      const spoken = textForSpeech(m.text);
+      if (!spoken) continue;
 
-    const spoken = textForSpeech(last.text);
-    if (!spoken) {
-      console.debug("[voice] skip: text-for-speech empty after strip");
-      return;
+      // Reserve the id BEFORE the async speak() so a re-render
+      // during network fetch doesn't double-fire on the same id.
+      spokenIdsRef.current.add(m.id);
+
+      // Fire and forget. speak() rejects on network / decode errors;
+      // we log but don't disrupt the chat UI — voice is an enhancement.
+      speak(spoken, {
+        provider: ttsProvider ?? undefined,
+        voice: ttsVoice ?? undefined,
+      }).catch((err) => {
+        console.warn("[voice] auto-speak failed:", err);
+      });
     }
-
-    console.debug(
-      `[voice] SPEAK: id=${last.id} textLen=${spoken.length}`,
-    );
-
-    // Reserve the id BEFORE the async speak() so a rapid re-render
-    // during network fetch doesn't double-fire.
-    lastSpokenIdRef.current = last.id;
-
-    // Fire and forget. speak() rejects on network / decode errors;
-    // we log but don't disrupt the chat UI — voice is an enhancement.
-    speak(spoken, {
-      provider: ttsProvider ?? undefined,
-      voice: ttsVoice ?? undefined,
-    }).catch((err) => {
-      console.warn("[voice] auto-speak failed:", err);
-    });
-    // ttsProvider/ttsVoice deliberately NOT in deps — we don't want
-    // a pref refresh to re-fire speak on a message that's already
-    // been spoken.
+    // ttsProvider/ttsVoice deliberately NOT in deps — a pref refresh
+    // should NOT re-fire speak on a message that was already spoken.
+    // isStreaming intentionally dropped — tracking a spoken-id set
+    // decouples us from the stream_start/stream_end lifecycle, which
+    // stays true across an entire multi-step turn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, isStreaming, messages, speak, stop]);
+  }, [enabled, messages, speak, stop]);
 }
