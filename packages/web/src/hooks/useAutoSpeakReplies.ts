@@ -148,26 +148,76 @@ export function spokenTextFor(md: string): string {
   return stripMarkdown(stripSilent(md));
 }
 
+/**
+ * Sentence-boundary regex.
+ *
+ * Matches at the END of a sentence — the char AFTER the terminator.
+ * Chinese full-width punct (。！？) doesn't need whitespace to end
+ * a sentence; ASCII (. ! ?) requires whitespace or newline right
+ * after to avoid mis-splitting on decimals / URLs / abbreviations.
+ * Double newlines also end a paragraph regardless of terminators.
+ *
+ * Yu, 2026-09-19 22:36: streaming auto-speak walks assistant text
+ * as it grows, extracts completed sentences via this regex, and
+ * enqueues each. Result: TTS starts within one sentence of the
+ * first word arriving, not after the whole reply finishes.
+ */
+const SENTENCE_END_RE = /(?:[。！？]|[.!?](?=\s|$)|\n\n)/g;
+
+/**
+ * Find the end index (exclusive) of the last complete sentence in
+ * `text` starting from `from`. Returns null if no complete sentence
+ * is available yet — caller should wait for more text.
+ *
+ * "Complete" means: sentence terminator present AND not inside an
+ * unclosed `<silent>` block starting after `from`. If an unclosed
+ * silent tag opens before the last terminator, the last terminator
+ * before the unclosed tag counts — we don't split MID silent block.
+ */
+function findLastCompleteSentenceEnd(
+  text: string,
+  from: number,
+): number | null {
+  if (from >= text.length) return null;
+  const region = text.slice(from);
+
+  // Detect an unclosed <silent> in the region. If present, anything
+  // after its opener is ineligible for slicing until the closer
+  // arrives.
+  const openIdx = region.search(/<silent>/i);
+  const closeIdx = region.search(/<\/silent>/i);
+  let ceiling = region.length;
+  if (openIdx !== -1) {
+    if (closeIdx === -1 || closeIdx < openIdx) {
+      // Unclosed silent tag — sentences after the opener are
+      // ineligible. Ceiling = opener position.
+      ceiling = openIdx;
+    }
+  }
+
+  // Find the LAST sentence terminator inside [0, ceiling).
+  let lastEnd: number | null = null;
+  SENTENCE_END_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = SENTENCE_END_RE.exec(region)) !== null) {
+    const end = m.index + m[0].length;
+    if (end > ceiling) break;
+    lastEnd = end;
+  }
+  if (lastEnd == null) return null;
+  return from + lastEnd;
+}
+
 export function useAutoSpeakReplies() {
   const { enabled } = useVoiceMode();
-  // Route through the global voice store so auto-speak and the
-  // per-bubble play buttons share a single audio element —
-  // playing a manual message stops any auto-play in flight and
-  // vice versa. Yu, 2026-09-19 21:40.
-  const play = useVoiceStore((s) => s.play);
+  const enqueue = useVoiceStore((s) => s.enqueue);
   const stop = useVoiceStore((s) => s.stop);
 
-  // Track the last message id we successfully asked to speak.
-  // Persist across renders via ref rather than state — we don't
-  // want to re-render when this changes.
-  //
-  // Yu, 2026-09-19 21:06: bug — first mount with an existing chat
-  // history would fire speak() on the pre-existing tail message
-  // ("刷新以后会自动播放最新的那个消息"). Fix: seed the ref
-  // with the current tail on mount so only messages that arrive
-  // AFTER voice mode is on trigger playback. Bootstrap flag makes
-  // that one-time initialisation observable to the effect.
-  const spokenIdsRef = useRef<Set<string>>(new Set());
+  // Streaming sentence cursor: for each assistant message id, how
+  // many characters of its speechSource we've already enqueued.
+  // Set on seed to the full length of every current assistant
+  // message so pre-existing history isn't spoken.
+  const cursorRef = useRef<Map<string, number>>(new Map());
   const seededRef = useRef(false);
 
   // Cached user preferences for TTS provider + voice. Read once
@@ -207,71 +257,76 @@ export function useAutoSpeakReplies() {
     if (!enabled) {
       stop();
       seededRef.current = false;
-      spokenIdsRef.current = new Set();
+      cursorRef.current = new Map();
       return;
     }
 
-    // On first pass with voice mode on, mark every current
-    // assistant message as "already spoken" so historical replies
-    // that predate the toggle aren't read out.
-    //
-    // Yu, 2026-09-19 21:24: page refresh regression — first mount
-    // sees messages=[] (store still loading history), so the seed
-    // recorded an empty set. When history landed a moment later,
-    // every assistant message looked "new" and got spoken.
-    //
-    // Fix: don't seed when the array is empty; wait for the first
-    // non-empty snapshot and seed off THAT. New assistant messages
-    // arriving after seed still trigger speak() because they land
-    // in a later effect run, by which point seededRef is true.
-    //
-    // Edge case: if voice mode is toggled on in a truly empty
-    // session (no history at all, no messages ever sent), the
-    // seed is deferred until the first message arrives. That's
-    // fine — the first message will be the user's own prompt,
-    // which we mark as spoken (only assistant ids are added, so
-    // it's a no-op) and then the first assistant reply is
-    // correctly identified as new.
+    // Defer seed until history has landed — first mount often sees
+    // messages=[] before the WS finishes streaming history.
     if (!seededRef.current) {
       if (messages.length === 0) return;
       for (const m of messages) {
-        if (m.role === "assistant") spokenIdsRef.current.add(m.id);
+        if (m.role !== "assistant") continue;
+        const src = m.text ?? "";
+        // Seed cursor at the end so nothing existing is spoken.
+        cursorRef.current.set(m.id, src.length);
       }
       seededRef.current = true;
       return;
     }
 
-    // Walk the array, speak any assistant message whose id isn't
-    // in the spoken set. Fire them in order so multi-step replies
-    // are voiced in the order they appear on screen.
+    // Streaming per-sentence enqueue. For each assistant message:
+    //   - Look up cursor (0 for new messages, previous slice end
+    //     otherwise)
+    //   - Try to find the last complete sentence terminator from
+    //     the cursor
+    //   - If found: extract [cursor → terminator], enqueue, advance
+    //     cursor
+    //   - If not: no complete sentence available yet, wait for the
+    //     next delta
+    //
+    // On stream_end (message settles final) we flush anything left
+    // between the cursor and text.length as a final slice, whether
+    // or not it has a terminator — handles single-sentence replies
+    // that don't end with .!?
     for (const m of messages) {
       if (m.role !== "assistant") continue;
-      if (spokenIdsRef.current.has(m.id)) continue;
-      if (typeof m.text !== "string" || !m.text.trim()) continue;
+      const src = m.text ?? "";
+      if (!src.trim()) continue;
+      const cursor = cursorRef.current.get(m.id) ?? 0;
+      if (cursor >= src.length) continue;
 
-      const spoken = spokenTextFor(m.text);
+      let sliceEnd = findLastCompleteSentenceEnd(src, cursor);
+
+      // Flush any trailing text as a final slice once streaming for
+      // the whole turn has settled (isStreaming false). Otherwise we
+      // wait for more text to arrive or a terminator to close the
+      // in-progress sentence.
+      if (sliceEnd == null && !isStreaming) {
+        sliceEnd = src.length;
+      }
+      if (sliceEnd == null || sliceEnd <= cursor) continue;
+
+      const raw = src.slice(cursor, sliceEnd);
+      const spoken = spokenTextFor(raw);
+      cursorRef.current.set(m.id, sliceEnd);
+
       if (!spoken) continue;
 
-      // Reserve the id BEFORE the async speak() so a re-render
-      // during network fetch doesn't double-fire on the same id.
-      spokenIdsRef.current.add(m.id);
-
-      // Fire and forget. play() rejects on network / decode errors;
-      // we log but don't disrupt the chat UI — voice is an enhancement.
-      play({
-        id: m.id,
+      enqueue({
+        // Each slice needs a unique id so the store's playingId can
+        // reflect the currently-playing slice — but the UI's
+        // per-bubble button watches only the message id, so we keep
+        // the message id as prefix for observability without
+        // colliding on repeat plays.
+        id: `${m.id}#${cursor}`,
         text: spoken,
         provider: ttsProvider ?? undefined,
         voice: ttsVoice ?? undefined,
-      }).catch((err) => {
-        console.warn("[voice] auto-speak failed:", err);
       });
     }
     // ttsProvider/ttsVoice deliberately NOT in deps — a pref refresh
-    // should NOT re-fire speak on a message that was already spoken.
-    // isStreaming intentionally dropped — tracking a spoken-id set
-    // decouples us from the stream_start/stream_end lifecycle, which
-    // stays true across an entire multi-step turn.
+    // should NOT re-fire on old slices.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, messages, play, stop]);
+  }, [enabled, isStreaming, messages, enqueue, stop]);
 }

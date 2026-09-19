@@ -20,9 +20,10 @@ import { create } from "zustand";
 
 /** What to say. Called by every entry point that wants audio out. */
 export interface SpeakRequest {
-  /** Stable id for the utterance (usually a message id). Used to
-   *  drive UI state — the bubble whose id matches `playingId`
-   *  shows a pause icon; everyone else shows play. */
+  /** Stable id for the utterance. UI shows pause on the bubble
+   *  whose id matches `playingId`. For streaming sentence slices
+   *  the id can be the message id — several slices share it, only
+   *  the last one’s completion clears playingId. */
   id: string;
   /** Raw text (already markdown-stripped). */
   text: string;
@@ -30,6 +31,15 @@ export interface SpeakRequest {
    *  when omitted. */
   voice?: string;
   provider?: string;
+  /** Dispatch mode:
+   *   - "immediate" (default): interrupt any current playback and
+   *     clear the pending queue. Used for manual play button and
+   *     Settings preview — the user asked for something specific
+   *     and expects it NOW.
+   *   - "queue": append to the FIFO queue and play after everything
+   *     currently pending finishes. Used by streaming auto-speak
+   *     so mid-stream sentence slices don't cut each other off. */
+  mode?: "immediate" | "queue";
 }
 
 interface VoiceState {
@@ -39,11 +49,19 @@ interface VoiceState {
   /** Last error surface; useful for the caller to show a toast. */
   lastError: string | null;
 
-  /** Fire an utterance. Cancels any current playback. Resolves
-   *  when playback finishes (or rejects on fetch/decode error). */
+  /** Fire an utterance IMMEDIATELY (default): cancel any current
+   *  playback and clear the pending queue. Manual play button and
+   *  the Settings preview use this.
+   *  Passing mode:"queue" redirects to enqueue() — provided so
+   *  callers can use one entry point if they prefer. */
   play: (req: SpeakRequest) => Promise<void>;
-  /** Stop whatever is currently playing / fetching. Safe to call
-   *  when nothing is active. */
+
+  /** Append an utterance to the FIFO queue. Plays after everything
+   *  currently pending finishes. Used by streaming auto-speak so
+   *  mid-stream sentence slices don't cut each other off. */
+  enqueue: (req: SpeakRequest) => void;
+
+  /** Stop current playback AND flush the queue. */
   stop: () => void;
 }
 
@@ -56,6 +74,13 @@ let audio: HTMLAudioElement | null = null;
 let mediaSource: MediaSource | null = null;
 let objectUrl: string | null = null;
 let abortController: AbortController | null = null;
+
+// FIFO queue for mode: "queue" requests. Streaming auto-speak
+// pushes each sentence slice here; the drain loop below pulls
+// heads sequentially so slices play in order without cutting each
+// other off. Manual play() (mode:"immediate") flushes this queue.
+const pendingQueue: SpeakRequest[] = [];
+let queueDraining = false;
 
 // Blob URL cleanup, take 5 (Yu 2026-09-19 22:00 fourth failure).
 // Give up on URL.revokeObjectURL entirely — four strategies failed:
@@ -128,13 +153,52 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   lastError: null,
 
   stop: () => {
+    pendingQueue.length = 0;
     teardown();
     if (get().playingId !== null) {
       set({ playingId: null });
     }
   },
 
+  enqueue: (req: SpeakRequest) => {
+    pendingQueue.push({ ...req, mode: "queue" });
+    if (!queueDraining) {
+      queueDraining = true;
+      // Drain in an IIFE; use the store's own play() to run each
+      // item end-to-end and reuse teardown/MediaSource plumbing.
+      // Uses mode:"immediate" internally so each pop actually plays
+      // rather than re-enqueuing.
+      void (async () => {
+        try {
+          while (pendingQueue.length > 0) {
+            const next = pendingQueue.shift()!;
+            try {
+              await get().play({ ...next, mode: "immediate" });
+            } catch (err) {
+              // Keep draining on individual failures; log so a
+              // consistent failure surfaces via console noise.
+              console.warn("[voice] queued utterance failed:", err);
+            }
+          }
+        } finally {
+          queueDraining = false;
+        }
+      })();
+    }
+  },
+
   play: async (req: SpeakRequest) => {
+    // "queue" mode goes through enqueue instead — avoid infinite
+    // recursion by intercepting here. This lets callers do
+    // `useVoiceStore.getState().play({ mode: "queue", ... })` if
+    // they prefer one entry point.
+    if (req.mode === "queue") {
+      get().enqueue(req);
+      return;
+    }
+    // Manual play flushes the queue — user asked for something
+    // specific, don't let queued auto-speak jump the line.
+    pendingQueue.length = 0;
     // Cancel whatever's playing / fetching before starting fresh.
     teardown();
     set({ playingId: req.id, lastError: null });
