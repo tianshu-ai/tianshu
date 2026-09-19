@@ -136,6 +136,15 @@ export function useAutoSpeakReplies() {
   const isStreaming = useChatStore((s) => s.isStreaming);
 
   useEffect(() => {
+    const last = messages[messages.length - 1];
+    // Diagnostic log — Yu 2026-09-19 21:17, chase-down for
+    // "new replies not spoken". Remove once auto-speak trigger
+    // path is proven to fire.
+    console.debug(
+      `[voice] tick: enabled=${enabled} streaming=${isStreaming} seeded=${seededRef.current} ` +
+        `tail=${last?.id ?? "none"}/${last?.role ?? "-"} lastSpoken=${lastSpokenIdRef.current}`,
+    );
+
     // If the user turned voice mode off mid-playback, cut the audio.
     // Also reset the seed flag so re-enabling voice mode later
     // won't replay whatever's already on screen.
@@ -151,26 +160,48 @@ export function useAutoSpeakReplies() {
     // toggle don't get read out. Only messages appended AFTER this
     // seed should trigger speak().
     if (!seededRef.current) {
-      const tail = messages[messages.length - 1];
-      lastSpokenIdRef.current = tail?.id ?? null;
+      lastSpokenIdRef.current = last?.id ?? null;
       seededRef.current = true;
+      console.debug(
+        `[voice] seeded lastSpokenId=${lastSpokenIdRef.current}`,
+      );
       return;
     }
 
     // Only speak when streaming finished — otherwise we'd speak
     // partial assistant text every render.
-    if (isStreaming) return;
+    if (isStreaming) {
+      console.debug("[voice] skip: still streaming");
+      return;
+    }
 
-    const last = messages[messages.length - 1];
     if (!last) return;
-    if (last.role !== "assistant") return;
-    if (last.id === lastSpokenIdRef.current) return;
+    if (last.role !== "assistant") {
+      console.debug(`[voice] skip: tail role=${last.role}`);
+      return;
+    }
+    if (last.id === lastSpokenIdRef.current) {
+      console.debug(`[voice] skip: id already spoken (${last.id})`);
+      return;
+    }
     // WireMessage.text is the human-readable body. Tool-only turns
     // have empty text; skip those — nothing to speak.
-    if (typeof last.text !== "string" || !last.text.trim()) return;
+    if (typeof last.text !== "string" || !last.text.trim()) {
+      console.debug(
+        `[voice] skip: tail has no text (type=${typeof last.text}, len=${(last.text ?? "").length})`,
+      );
+      return;
+    }
 
     const spoken = textForSpeech(last.text);
-    if (!spoken) return;
+    if (!spoken) {
+      console.debug("[voice] skip: text-for-speech empty after strip");
+      return;
+    }
+
+    console.debug(
+      `[voice] SPEAK: id=${last.id} textLen=${spoken.length}`,
+    );
 
     // Reserve the id BEFORE the async speak() so a rapid re-render
     // during network fetch doesn't double-fire.
