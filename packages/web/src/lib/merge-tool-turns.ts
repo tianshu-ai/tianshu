@@ -48,37 +48,31 @@ export interface MergedMessage
 }
 
 /**
- * Strip the `<voice_summary>...</voice_summary>` tag (and any
- * partial tag currently being streamed) from assistant text before
- * it renders.
+ * Remove `<silent>` and `</silent>` tag DELIMITERS from assistant
+ * text before it renders — keeping the wrapped body visible.
  *
- * Yu, 2026-09-19: voice mode asks tianshu to append a spoken-friendly
- * short summary in this tag. The audio pipeline reads it; the user
- * should not see the raw XML.
+ * Yu, 2026-09-19 22:28: voice mode now uses <silent>...</silent> as
+ * an opt-out marker. Default is speak-everything; wrapped regions
+ * are still shown on screen but skipped by TTS (see spokenTextFor).
+ * So on the RENDER path we just strip the tags themselves and leave
+ * their contents in place — the user still sees the URL / code / etc
+ * that we told tianshu to wrap.
  *
- * 22:25 update: original impl only matched the CLOSED tag with a
- * non-greedy `[\s\S]*?</voice_summary>` pattern. That meant:
- *   - Mid-stream: `<voice_summary>hello` (no closer yet) DIDN'T match,
- *     so the partial content leaked onto the screen for the moments
- *     between the opening tag arriving and the closer arriving —
- *     hence Yu's "一闪就没了" flash.
- *   - After stream_end: closer arrives, regex now matches, whole tag
- *     and body vanish.
+ * Two patterns handle stream and post-stream states:
+ *   1. Complete tag: `<silent>body</silent>` → keep body, drop tags
+ *   2. Mid-stream: `<silent>partial` (no closer yet) → drop opener
+ *      alone (body renders through), closer strips later when it
+ *      arrives via the tag-only regex.
  *
- * Fix: strip from the FIRST `<voice_summary>` onward regardless of
- * whether the closer is present yet. Once the opening tag appears,
- * NOTHING after it should ever render — by contract that region is
- * voice-only content. After the closer arrives we still trim the
- * complete tag (belt and braces with the same behaviour).
- *
- * The voice pipeline (useAutoSpeakReplies + MessageBubble's SpeakButton)
- * reads the ORIGINAL text via speechSource / WireMessage.text, not
- * the merged row, so extraction still works there.
+ * Both are case-insensitive.
  */
-const VOICE_SUMMARY_OPEN_RE = /\s*<voice_summary>[\s\S]*$/i;
+const SILENT_OPEN_TAG_RE = /<silent>/gi;
+const SILENT_CLOSE_TAG_RE = /<\/silent>/gi;
 
 function stripVoiceSummary(text: string): string {
-  return text.replace(VOICE_SUMMARY_OPEN_RE, "");
+  // Function name kept for backward source-search compatibility;
+  // behaviour is now "strip silent tag delimiters, keep content".
+  return text.replace(SILENT_OPEN_TAG_RE, "").replace(SILENT_CLOSE_TAG_RE, "");
 }
 
 /**

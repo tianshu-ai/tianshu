@@ -85,31 +85,42 @@ export interface PerTurnPromptHints {
 
 /**
  * Fragment injected when the client currently has voice mode on.
- * Tells tianshu two things:
- *   1. The user will HEAR (not just read) this reply
- *   2. Wrap a spoken-friendly short summary in <voice_summary>...
- *      </voice_summary> tags for the TTS pipeline to extract
  *
- * Kept short on purpose — every extra sentence in a system prompt
- * inflates every subsequent turn's cost.
+ * Semantic: DEFAULT SPEAK EVERYTHING. Wrap portions that shouldn't
+ * be read aloud in <silent>...</silent> tags.
+ *
+ * Yu, 2026-09-19 22:28 rewrite reasoning: the previous version asked
+ * for a <voice_summary> block. That was wrong for cases where the
+ * user actually wants the whole reply spoken ("写篇文章念给我听").
+ * A summary always drops content the user might have wanted to hear.
+ *
+ * The default-speak / opt-out-per-fragment shape matches how humans
+ * think about it: an assistant's reply is inherently spoken content,
+ * except for the machine bits (code, URLs, tables, hashes) that
+ * don't translate. Tianshu marks those bits <silent>...</silent>
+ * and the TTS pipeline skips them.
+ *
+ * Kept short — every sentence in a system prompt costs on every
+ * subsequent turn.
  */
 function formatVoiceModeFragment(): string {
   return [
     `## Voice reply mode`,
-    `The user has enabled voice mode. Your reply will be spoken aloud in addition to being displayed.`,
-    `Write your normal reply as usual (markdown, code blocks, tables all OK — those stay visible on screen).`,
-    `At the VERY END of your reply, append a spoken summary wrapped in <voice_summary>...</voice_summary> tags:`,
+    `The user has enabled voice mode. Your entire reply will be spoken aloud in addition to being displayed on screen.`,
+    `Speak naturally — write like you're talking to a colleague on a call, in the same language the user wrote to you (typically 中文). Content in the visible reply is ALSO the spoken content by default.`,
     ``,
-    `  <voice_summary>一到三句白话，口语化、自然。直接说重点，不读代码、URL、长表格、或存人头颇细节。</voice_summary>`,
+    `WRAP any portion that shouldn't be read aloud in <silent>...</silent> tags. The visible bubble still shows the wrapped content; TTS just skips it. Wrap things like:`,
+    `  - Code blocks (fenced or inline) with non-trivial syntax`,
+    `  - Long URLs, file paths, IDs, hashes, phone numbers`,
+    `  - Complex tables or numeric data dumps`,
+    `  - Verbatim markdown scaffolding when it would sound awkward spoken`,
     ``,
-    `The <voice_summary> content should NOT restate the whole reply — it should read like the way you'd tell a colleague what happened in one breath. Avoid:`,
-    `  - Reading out URLs, IDs, or file paths`,
-    `  - Reciting numerical data or long lists`,
-    `  - Speaking markdown formatting ("**bold**", "### heading")`,
-    `  - Filler like "好的，我会……" or "让我为你……"`,
-    `Prefer natural spoken Chinese (or English if the user wrote English) that stands on its own if someone only heard the summary and never saw the screen.`,
-    `If the visible reply is already one short conversational sentence, you can repeat it verbatim inside the tags.`,
-    `If the reply is a pure code-only answer with nothing worth speaking, still include the tags with a brief spoken description (e.g. “代码已推到分支”).`,
+    `Example:`,
+    `  已经把 fix 合进去了，commit id 是 <silent>7f3a8b2c</silent>。您看看下面的命令<silent>: git log --oneline -3</silent>。`,
+    ``,
+    `Do NOT wrap short numbers, single English words, common acronyms, or normal punctuation — those read fine.`,
+    `Do NOT wrap the entire reply. If nothing needs to be silenced, don't use the tag at all.`,
+    `Do NOT summarise; the user hears exactly what they see, minus the silenced parts.`,
   ].join("\n");
 }
 

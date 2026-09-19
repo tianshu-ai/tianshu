@@ -73,45 +73,51 @@ async function readPreference(key: string): Promise<string | null> {
 }
 
 /**
- * Match `<voice_summary>...</voice_summary>` in an assistant reply.
+ * `<silent>...</silent>` marks a portion of the assistant reply that
+ * should be VISIBLE on screen but NOT spoken by TTS.
  *
- * Yu, 2026-09-19: voice mode asks tianshu to append a spoken-friendly
- * short summary in this tag. When present it becomes the ONLY text
- * TTS reads, so the user hears "代码已推到分支" instead of a paragraph
- * of markdown with URLs and code fences.
+ * Yu, 2026-09-19 22:28: switched from a voice_summary opt-in tag to
+ * this opt-out tag. "写篇文章念给我听" needs the whole reply spoken,
+ * not a summary. Default is speak-everything; the LLM only wraps
+ * bits that don't translate to speech (code, URLs, hashes, etc.).
  *
- * Case-insensitive, DOTALL so it spans newlines. Non-greedy body so
- * nested tags (unlikely but defensive) match the innermost.
+ * Case-insensitive; matches non-greedy so multiple silenced regions
+ * in one reply each get stripped independently.
+ *
+ * Handles two open-ended forms so mid-stream text (before the closer
+ * arrives) also drops correctly:
+ *   1. `<silent>body</silent>` — complete tag, both spans stripped
+ *   2. `<silent>body...`         — unclosed tag at end of stream, drop
+ *      from the opener onward. The audio pipeline runs off the final
+ *      text so unclosed tags only exist mid-stream, and by
+ *      auto-play time (end of streaming) we get form 1.
  */
-const VOICE_SUMMARY_RE = /<voice_summary>([\s\S]*?)<\/voice_summary>/i;
+const SILENT_CLOSED_RE = /<silent>[\s\S]*?<\/silent>/gi;
+const SILENT_UNCLOSED_TAIL_RE = /<silent>[\s\S]*$/i;
 
 /**
- * Extract the voice_summary tag content if present. Returns null
- * when the tag is absent or empty. Shared with MessageBubble's
- * per-message play button so both surfaces speak the same slice.
+ * Remove every <silent>...</silent> region from a piece of assistant
+ * text. What's left is the intended spoken content.
+ *
+ * Exported so MessageBubble's per-message play button can share it —
+ * both auto-speak and manual play speak identical audio.
  */
-export function extractVoiceSummary(md: string): string | null {
-  const m = md.match(VOICE_SUMMARY_RE);
-  if (!m) return null;
-  const inner = m[1].trim();
-  return inner.length > 0 ? inner : null;
+export function stripSilent(text: string): string {
+  return text.replace(SILENT_CLOSED_RE, "").replace(SILENT_UNCLOSED_TAIL_RE, "");
 }
 
 /**
- * Strip common markdown markers so TTS reads text naturally.
- * Not a full markdown parser — just enough to avoid the worst
- * "star star" / "hash hash" reading artefacts.
- *
- * Also strips a trailing <voice_summary>...</voice_summary> block
- * so if we fall back to reading the whole message (no tag was
- * generated), we don't read the tag literal.
+ * Strip common markdown markers AFTER silent regions have been
+ * removed. Not a full markdown parser — just enough to avoid the
+ * worst "star star" / "hash hash" reading artefacts on the content
+ * that IS being spoken.
  */
-function textForSpeech(md: string): string {
+function stripMarkdown(md: string): string {
   return (
     md
-      // strip voice_summary tags entirely from the fallback text
-      .replace(VOICE_SUMMARY_RE, "")
-      // fenced code blocks: replace with a single spoken hint
+      // fenced code blocks: replace with a single spoken hint. In
+      // voice mode tianshu is expected to <silent>-wrap code blocks,
+      // but be defensive in case a block leaks through.
       .replace(/```[\s\S]*?```/g, "。代码块。")
       // inline code: drop backticks, keep content
       .replace(/`([^`]+)`/g, "$1")
@@ -135,13 +141,11 @@ function textForSpeech(md: string): string {
 
 /**
  * Given raw assistant text, return the string TTS should read.
- * Prefer <voice_summary> when present; otherwise fall back to the
- * whole message with markdown stripped.
+ * Removes <silent>...</silent> regions first (whether closed mid-
+ * text or unclosed at the tail), then strips visual markdown.
  */
 export function spokenTextFor(md: string): string {
-  const summary = extractVoiceSummary(md);
-  if (summary) return summary;
-  return textForSpeech(md);
+  return stripMarkdown(stripSilent(md));
 }
 
 export function useAutoSpeakReplies() {
