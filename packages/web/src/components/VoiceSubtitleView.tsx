@@ -50,20 +50,20 @@ function splitChunks(text: string): string[] {
     .filter((c) => c.length > 0);
 }
 
-// Row layout constants. Tuned together so the filmstrip transform
-// perfectly aligns the currentIndex row on screen center.
+// Apple Music lyrics-style layout.
 //
-// Yu 2026-09-20 01:29: bumped ROW_HEIGHT from 96 to 220 after a
-// multi-line current chunk (3 lines at text-5xl = ~180px) crashed
-// into the prev/next rows sitting 96px away. Off-center rows also
-// now line-clamp to a single line so they can't collide even if
-// they're multi-line themselves — the user only needs to see
-// "what's coming next" not read it.
-const ROW_HEIGHT_PX = 220;
-// Visual radius: how many rows above / below the current one we
-// render. total rendered = 1 + 2*VISIBLE_RADIUS. Higher = smoother
-// scroll but more offscreen DOM.
-const VISIBLE_RADIUS = 2;
+// Yu 2026-09-20 01:52: "参考下其他做的比较好的滚动字幕效果
+// 的 app，把他们的效果借鉴过来". Apple Music picked (A):
+//   - Left-aligned, bold, big, uniform font size across ALL rows
+//   - Current line: white 100% + slight scale + micro 3D tilt
+//   - Sung: white fading to 12% opacity (further back = fainter)
+//   - Upcoming: white fading to 15% opacity (brighter than sung
+//     at same distance — Apple's ambient "about to play" glow)
+//   - Smooth cubic-bezier scroll on line change (500ms)
+//   - Blurred halo backdrop of the current text for ambient color
+const ROW_HEIGHT_PX = 180;
+// Wider window (3 each side = 7 total) for Apple's roomy feel.
+const VISIBLE_RADIUS = 3;
 
 interface FilmstripRowProps {
   text: string;
@@ -72,50 +72,68 @@ interface FilmstripRowProps {
   offset: number;
 }
 
-/** One row in the filmstrip. Absolute-positioned; distance from
- *  current governs size and opacity. Yu 2026-09-20 01:13: "搞个
- *  滚动效果" — the ENTIRE strip translates on chunk change so
- *  each row slides up (or down for a rewind) with a smooth ease.
+/**
+ * Apple Music-style lyric row.
  *
- *  Yu 2026-09-20 01:29: only the CENTER row wraps multi-line. Off-
- *  center rows are single-line truncated so multi-line chunks can't
- *  bleed into each other's slots. Truncated rows still communicate
- *  "what just played / what's coming" without competing for
- *  attention with the current chunk. */
+ * Uniform font-size across all rows so the scroll feels
+ * continuous — depth comes from color / opacity / scale / tilt,
+ * not from shrinking off-center text.
+ *
+ * offset semantics:
+ *   0     : current line — white 100%, bold-heavier, slight scale
+ *  <0    : sung — fades to 12% opacity, back-tilt (rotateX +)
+ *  >0    : upcoming — subtly brighter than sung at same distance,
+ *          forward-tilt (rotateX -) so it feels like it's leaning
+ *          into view
+ *
+ * Yu 2026-09-20 01:52: match Apple Music's ambient scroll UX.
+ */
 function FilmstripRow({ text, offset }: FilmstripRowProps) {
   const abs = Math.abs(offset);
-  let sizeClass: string;
-  let opacityClass: string;
-  let colorClass: string;
-  let clampClass: string;
+  const isCurrent = abs === 0;
 
-  if (abs === 0) {
-    sizeClass = "text-3xl sm:text-4xl md:text-5xl font-medium";
-    opacityClass = "opacity-100";
-    colorClass = "text-fg-default";
-    // Center row wraps naturally; leading-relaxed keeps multi-line
-    // readable but bounded by the container height math.
-    clampClass = "leading-relaxed";
-  } else if (abs === 1) {
-    sizeClass = "text-xl sm:text-2xl";
-    opacityClass = "opacity-60";
-    colorClass = offset < 0 ? "text-fg-faint" : "text-fg-muted";
-    // truncate: one-line ellipsis. Tailwind's `truncate` is
-    // white-space-nowrap + overflow-hidden + text-ellipsis.
-    clampClass = "truncate";
+  let color: string;
+  let scale: string;
+  let tiltDeg: string;
+
+  if (isCurrent) {
+    color = "rgba(255,255,255,1)";
+    scale = "1.03";
+    tiltDeg = "0deg";
+  } else if (offset < 0) {
+    color =
+      abs === 1
+        ? "rgba(255,255,255,0.35)"
+        : abs === 2
+          ? "rgba(255,255,255,0.20)"
+          : "rgba(255,255,255,0.10)";
+    scale = "1";
+    tiltDeg = `${Math.min(abs * 2, 6)}deg`;
   } else {
-    sizeClass = "text-base sm:text-lg";
-    opacityClass = "opacity-25";
-    colorClass = "text-fg-faint";
-    clampClass = "truncate";
+    color =
+      abs === 1
+        ? "rgba(255,255,255,0.55)"
+        : abs === 2
+          ? "rgba(255,255,255,0.28)"
+          : "rgba(255,255,255,0.14)";
+    scale = "1";
+    tiltDeg = `-${Math.min(abs * 2, 6)}deg`;
   }
 
   return (
     <div
-      className={`absolute inset-x-0 mx-auto max-w-4xl px-6 text-center transition-all duration-500 ease-out ${sizeClass} ${opacityClass} ${colorClass} ${clampClass}`}
+      className="absolute inset-x-0 px-6 text-left text-3xl sm:text-4xl md:text-5xl"
       style={{
         top: `calc(50% + ${offset * ROW_HEIGHT_PX}px)`,
-        transform: "translateY(-50%)",
+        transform: `translateY(-50%) scale(${scale}) rotateX(${tiltDeg})`,
+        transformOrigin: offset < 0 ? "top center" : "bottom center",
+        transition:
+          "top 500ms cubic-bezier(0.4, 0, 0.2, 1), transform 500ms cubic-bezier(0.4, 0, 0.2, 1), color 500ms ease-out",
+        color,
+        fontWeight: isCurrent ? 700 : 600,
+        lineHeight: 1.25,
+        letterSpacing: "-0.01em",
+        textShadow: isCurrent ? "0 0 30px rgba(255,255,255,0.15)" : "none",
       }}
     >
       {text}
@@ -250,14 +268,36 @@ export default function VoiceSubtitleView() {
             </div>
           </div>
         ) : (
-          // Filmstrip container. Fixed height so absolute-positioned
-          // rows can center via `top: 50% + offset`. Overflow hidden
-          // so far-offset rows dissolve at the edges instead of
-          // spilling into the composer.
+          // Filmstrip. `perspective` on the wrapper turns rotateX
+          // on rows into real 3D depth. `relative` allows the halo
+          // backdrop to absolute-position inside. Max-w-5xl keeps
+          // subtitle lines readable at desktop widths.
           <div
-            className="relative w-full overflow-hidden"
-            style={{ height: `${ROW_HEIGHT_PX * (1 + 2 * VISIBLE_RADIUS)}px` }}
+            className="relative mx-auto w-full max-w-5xl overflow-hidden"
+            style={{
+              height: `${ROW_HEIGHT_PX * (1 + 2 * VISIBLE_RADIUS)}px`,
+              perspective: "1200px",
+            }}
           >
+            {/* Apple Music halo backdrop: blurred giant text of
+                the current chunk, providing ambient color glow
+                behind the subtitles. pointer-events-none so it
+                never intercepts clicks intended for buttons that
+                might peek through. */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+              style={{
+                fontSize: "14rem",
+                lineHeight: 1,
+                fontWeight: 900,
+                color: "rgba(120, 180, 255, 0.10)",
+                filter: "blur(60px)",
+                transform: "scale(1.4)",
+              }}
+            >
+              {displayCurrent.slice(0, 6)}
+            </div>
             {filmstrip.map((row) => (
               <FilmstripRow
                 key={row.index}
