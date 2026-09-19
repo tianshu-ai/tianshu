@@ -48,27 +48,37 @@ export interface MergedMessage
 }
 
 /**
- * Match and strip the `<voice_summary>...</voice_summary>` tag from
- * assistant text before it renders.
+ * Strip the `<voice_summary>...</voice_summary>` tag (and any
+ * partial tag currently being streamed) from assistant text before
+ * it renders.
  *
  * Yu, 2026-09-19: voice mode asks tianshu to append a spoken-friendly
  * short summary in this tag. The audio pipeline reads it; the user
- * should not see the raw XML. We remove the whole tag (including its
- * body) from the visible markdown here so it's absent from every UI
- * surface downstream: bubble body, markdown parser, copy-to-clipboard,
- * search index, everything.
+ * should not see the raw XML.
+ *
+ * 22:25 update: original impl only matched the CLOSED tag with a
+ * non-greedy `[\s\S]*?</voice_summary>` pattern. That meant:
+ *   - Mid-stream: `<voice_summary>hello` (no closer yet) DIDN'T match,
+ *     so the partial content leaked onto the screen for the moments
+ *     between the opening tag arriving and the closer arriving —
+ *     hence Yu's "一闪就没了" flash.
+ *   - After stream_end: closer arrives, regex now matches, whole tag
+ *     and body vanish.
+ *
+ * Fix: strip from the FIRST `<voice_summary>` onward regardless of
+ * whether the closer is present yet. Once the opening tag appears,
+ * NOTHING after it should ever render — by contract that region is
+ * voice-only content. After the closer arrives we still trim the
+ * complete tag (belt and braces with the same behaviour).
  *
  * The voice pipeline (useAutoSpeakReplies + MessageBubble's SpeakButton)
- * reads the ORIGINAL m.text via WireMessage on the store, not the
- * merged row, so extraction still works there.
- *
- * Case-insensitive, DOTALL; matches at most once per message (only
- * one summary per turn).
+ * reads the ORIGINAL text via speechSource / WireMessage.text, not
+ * the merged row, so extraction still works there.
  */
-const VOICE_SUMMARY_RE = /\s*<voice_summary>[\s\S]*?<\/voice_summary>\s*/i;
+const VOICE_SUMMARY_OPEN_RE = /\s*<voice_summary>[\s\S]*$/i;
 
 function stripVoiceSummary(text: string): string {
-  return text.replace(VOICE_SUMMARY_RE, "");
+  return text.replace(VOICE_SUMMARY_OPEN_RE, "");
 }
 
 /**
