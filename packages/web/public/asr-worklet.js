@@ -72,8 +72,27 @@ class AsrProcessor extends AudioWorkletProcessor {
         const s1 = this._srcBuf[i1] ?? s0;
         out[i] = s0 * (1 - frac) + s1 * frac;
       }
-      // Ship to main thread. Transfer the underlying buffer to avoid a copy.
-      this.port.postMessage({ samples: out }, [out.buffer]);
+      // Yu, 2026-09-19: silence gate. Sherpa's streaming recognizer
+      // does not tolerate long stretches of near-zero audio — it
+      // reprocesses the last hypothesis token forever, producing
+      // "走走走走停停停停你停你停" runaway output when mic is on but user
+      // is quiet. Compute chunk RMS; if it's below a talking-noise-
+      // floor threshold, drop the chunk on the floor instead of
+      // shipping it. 0.005 was tuned by ear against Yu's mic setup;
+      // whispered speech still crosses it, tabletop keystrokes and
+      // room silence don't. If this proves too aggressive we can
+      // switch to a proper VAD (webrtc's or sherpa's own) later.
+      let sumSq = 0;
+      for (let i = 0; i < out.length; i++) sumSq += out[i] * out[i];
+      const rms = Math.sqrt(sumSq / out.length);
+      if (rms >= 0.005) {
+        // Ship to main thread. Transfer the underlying buffer to avoid a copy.
+        this.port.postMessage({ samples: out }, [out.buffer]);
+      }
+      // If gated, we still advance the cursor below so the buffer stays
+      // in sync — we just skip the send. Silent audio doesn't need to
+      // be replayed later, we're not archiving.
+      void 0; // marker for the edit — no-op
 
       // Advance the source cursor by the fractional amount consumed.
       this._srcPos += OUT_SAMPLES_PER_CHUNK * this._ratio;
