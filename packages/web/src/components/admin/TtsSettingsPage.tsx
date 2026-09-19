@@ -32,6 +32,7 @@ import {
   RefreshCw,
   Speaker,
 } from "lucide-react";
+import { useVoiceStore } from "../../stores/voice-store";
 
 /** Provider slugs the server understands (see routes-tts.ts). */
 type TtsProvider = "edge" | "cosyvoice";
@@ -176,44 +177,27 @@ export default function TtsSettingsPage() {
     }
   }, []);
 
-  // Preview: hit /api/tts with a short canned string and play the
-  // resulting audio. Lets the user hear the voice before committing
-  // to using it in chat.
+  // Preview: hit /api/tts with a short canned string via the global
+  // voice store. Sharing the store means the preview stops any
+  // running auto-speak and vice versa — the user hears exactly one
+  // thing at a time regardless of which surface triggered it.
+  const playVoice = useVoiceStore((s) => s.play);
   const testVoice = useCallback(async () => {
     setTesting(true);
     setTestError(null);
     try {
-      const res = await fetch("/api/tts", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: "你好，我是天枢。这是一段声音测试。",
-          voice,
-          provider,
-        }),
+      await playVoice({
+        id: "tts-settings-preview",
+        text: "你好，我是天枢。这是一段声音测试。",
+        voice,
+        provider,
       });
-      if (!res.ok) {
-        let msg = `HTTP ${res.status}`;
-        try {
-          const body = await res.json();
-          if (body?.error) msg = body.error;
-        } catch {
-          // ignore non-json errors
-        }
-        throw new Error(msg);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.addEventListener("ended", () => URL.revokeObjectURL(url));
-      await audio.play();
     } catch (err) {
       setTestError(err instanceof Error ? err.message : String(err));
     } finally {
       setTesting(false);
     }
-  }, [provider, voice]);
+  }, [provider, voice, playVoice]);
 
   const cosyvoiceOffline =
     status?.cosyvoiceReachable === false && provider === "cosyvoice";

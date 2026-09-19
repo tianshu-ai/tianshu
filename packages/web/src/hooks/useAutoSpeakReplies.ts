@@ -51,8 +51,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../stores/chat-store";
+import { useVoiceStore } from "../stores/voice-store";
 import { useVoiceMode } from "./useVoiceMode";
-import { useTts } from "./useTts";
 
 /**
  * Fetch a single user preference. Returns null when unset or the
@@ -104,7 +104,12 @@ function textForSpeech(md: string): string {
 
 export function useAutoSpeakReplies() {
   const { enabled } = useVoiceMode();
-  const { speak, stop } = useTts();
+  // Route through the global voice store so auto-speak and the
+  // per-bubble play buttons share a single audio element —
+  // playing a manual message stops any auto-play in flight and
+  // vice versa. Yu, 2026-09-19 21:40.
+  const play = useVoiceStore((s) => s.play);
+  const stop = useVoiceStore((s) => s.stop);
 
   // Track the last message id we successfully asked to speak.
   // Persist across renders via ref rather than state — we don't
@@ -205,9 +210,11 @@ export function useAutoSpeakReplies() {
       // during network fetch doesn't double-fire on the same id.
       spokenIdsRef.current.add(m.id);
 
-      // Fire and forget. speak() rejects on network / decode errors;
+      // Fire and forget. play() rejects on network / decode errors;
       // we log but don't disrupt the chat UI — voice is an enhancement.
-      speak(spoken, {
+      play({
+        id: m.id,
+        text: spoken,
         provider: ttsProvider ?? undefined,
         voice: ttsVoice ?? undefined,
       }).catch((err) => {
@@ -220,5 +227,5 @@ export function useAutoSpeakReplies() {
     // decouples us from the stream_start/stream_end lifecycle, which
     // stays true across an entire multi-step turn.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, messages, speak, stop]);
+  }, [enabled, messages, play, stop]);
 }

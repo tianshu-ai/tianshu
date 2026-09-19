@@ -26,10 +26,13 @@ import {
   ChevronRight,
   Clock,
   Loader2,
+  Pause,
+  Play,
   Repeat,
   User,
   XCircle,
 } from "lucide-react";
+import { useVoiceStore } from "../stores/voice-store";
 import type {
   MergedAssistantBlock,
   MergedMessage,
@@ -187,15 +190,89 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
           <MessageAttachments attachments={m.attachments} align="end" />
         )}
 
-        {!isUser && (m.meta || m.createdAt) && (
-          <MessageMeta
-            meta={m.meta}
-            createdAt={m.createdAt}
-            align="start"
-          />
+        {!isUser && (m.meta || m.createdAt || m.text) && (
+          <div className="mt-1 flex items-center gap-2">
+            {m.text && <SpeakButton messageId={m.id} text={m.text} />}
+            {(m.meta || m.createdAt) && (
+              <MessageMeta
+                meta={m.meta}
+                createdAt={m.createdAt}
+                align="start"
+              />
+            )}
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Per-message speak/pause control for assistant bubbles.
+ *
+ * Yu, 2026-09-19 21:40: "在每个 tianshu 消息里放个播放按钮，可以
+ * 主动播放，但是同时只能播一个". Global voice store
+ * enforces the single-active rule — pressing play on message B
+ * while A is playing simply supersedes A. UI reflects that by
+ * showing Pause on the message currently playing (playingId ===
+ * m.id) and Play on all others.
+ *
+ * Text sanitisation is done via the same markdown-strip helper
+ * used by useAutoSpeakReplies so manual and auto playback sound
+ * identical. Kept inline here to avoid a cross-hook import chain
+ * for a 15-line function.
+ */
+function stripMarkdownForSpeech(md: string): string {
+  return md
+    .replace(/```[\s\S]*?```/g, "。代码块。")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/\*([^*]+)\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/_([^_]+)_/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^[-*+]\s+/gm, "")
+    .replace(/^\d+\.\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function SpeakButton({ messageId, text }: { messageId: string; text: string }) {
+  const playing = useVoiceStore((s) => s.playingId === messageId);
+  const play = useVoiceStore((s) => s.play);
+  const stop = useVoiceStore((s) => s.stop);
+
+  const handleClick = () => {
+    if (playing) {
+      stop();
+      return;
+    }
+    const spoken = stripMarkdownForSpeech(text);
+    if (!spoken) return;
+    play({ id: messageId, text: spoken }).catch(() => {
+      // Errors surface via the store's lastError field; the caller
+      // can add a toast later if we want visible feedback. For now
+      // silent failure keeps the chat surface unpolluted.
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={
+        "inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors " +
+        (playing
+          ? "bg-accent-fill text-accent-fg"
+          : "text-fg-faint hover:bg-bg-raised hover:text-fg-muted")
+      }
+      title={playing ? "停止播放" : "播放语音"}
+      aria-label={playing ? "Stop playback" : "Play voice"}
+      aria-pressed={playing}
+    >
+      {playing ? <Pause size={12} /> : <Play size={12} />}
+    </button>
   );
 }
 
