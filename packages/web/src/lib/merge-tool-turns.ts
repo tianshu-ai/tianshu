@@ -68,11 +68,21 @@ export interface MergedMessage
  */
 const SILENT_OPEN_TAG_RE = /<silent>/gi;
 const SILENT_CLOSE_TAG_RE = /<\/silent>/gi;
+const CHUNK_OPEN_TAG_RE = /<chunk>/gi;
+const CHUNK_CLOSE_TAG_RE = /<\/chunk>/gi;
 
 function stripVoiceSummary(text: string): string {
   // Function name kept for backward source-search compatibility;
-  // behaviour is now "strip silent tag delimiters, keep content".
-  return text.replace(SILENT_OPEN_TAG_RE, "").replace(SILENT_CLOSE_TAG_RE, "");
+  // behaviour is: strip <silent>/</silent> AND <chunk>/</chunk>
+  // tag delimiters from visible text while keeping the wrapped
+  // content. The audio pipeline (useAutoSpeakReplies + SpeakButton)
+  // reads the ORIGINAL text via speechSource so extraction still
+  // works on the raw tagged form.
+  return text
+    .replace(SILENT_OPEN_TAG_RE, "")
+    .replace(SILENT_CLOSE_TAG_RE, "")
+    .replace(CHUNK_OPEN_TAG_RE, "")
+    .replace(CHUNK_CLOSE_TAG_RE, "");
 }
 
 /**

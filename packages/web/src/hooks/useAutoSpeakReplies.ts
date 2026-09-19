@@ -184,63 +184,58 @@ export function spokenTextFor(md: string): string {
 }
 
 /**
- * Sentence-boundary regex.
+ * Chunk-tag regex.
  *
- * Matches at the END of a sentence — the char AFTER the terminator.
- * Chinese full-width punct (。！？) doesn't need whitespace to end
- * a sentence; ASCII (. ! ?) requires whitespace or newline right
- * after to avoid mis-splitting on decimals / URLs / abbreviations.
- * Double newlines also end a paragraph regardless of terminators.
+ * Yu, 2026-09-19 23:41: switched from heuristic sentence-boundary
+ * detection to an author-driven <chunk>...</chunk> marker. The LLM
+ * emits each spoken segment wrapped in these tags, and the client
+ * slices exactly on tag boundaries.
  *
- * Yu, 2026-09-19 22:36: streaming auto-speak walks assistant text
- * as it grows, extracts completed sentences via this regex, and
- * enqueues each. Result: TTS starts within one sentence of the
- * first word arriving, not after the whole reply finishes.
+ * Why: pure-regex sentence detection kept mis-slicing on —, …,
+ * quoted dialogue with internal periods, --- dividers, etc. The
+ * LLM knows where breaths belong in its own writing; letting it
+ * mark them removes an entire class of client-side bugs.
+ *
+ * The regex matches a COMPLETE <chunk>...</chunk> pair only. When
+ * an opening tag has arrived but the closer hasn't yet, the match
+ * fails — caller waits for more streaming text before slicing.
+ *
+ * Case-insensitive; DOTALL via [\s\S]. Non-greedy body so multiple
+ * back-to-back chunks each get matched individually.
  */
-const SENTENCE_END_RE = /(?:[。！？]|[.!?](?=\s|$)|\n\n)/g;
+const CHUNK_RE = /<chunk>([\s\S]*?)<\/chunk>/gi;
+
+interface ChunkMatch {
+  /** Exclusive end index of the </chunk> tag (i.e. one past `>`). */
+  end: number;
+  /** The text INSIDE the tags, ready to hand to spokenTextFor. */
+  body: string;
+}
 
 /**
- * Find the end index (exclusive) of the last complete sentence in
- * `text` starting from `from`. Returns null if no complete sentence
- * is available yet — caller should wait for more text.
+ * Find the last complete <chunk>...</chunk> ending at or after `from`.
+ * Returns null when no complete chunk is available yet — caller
+ * should wait for the next streaming delta.
  *
- * "Complete" means: sentence terminator present AND not inside an
- * unclosed `<silent>` block starting after `from`. If an unclosed
- * silent tag opens before the last terminator, the last terminator
- * before the unclosed tag counts — we don't split MID silent block.
+ * Scans linearly rather than tracking state so a slight text
+ * rewrite mid-stream (rare but possible if the LLM back-tracks)
+ * doesn't leave stale internal state — cheap for reasonable
+ * reply lengths and only runs per delta anyway.
  */
-function findLastCompleteSentenceEnd(
+function findLastCompleteChunk(
   text: string,
   from: number,
-): number | null {
-  if (from >= text.length) return null;
-  const region = text.slice(from);
-
-  // Detect an unclosed <silent> in the region. If present, anything
-  // after its opener is ineligible for slicing until the closer
-  // arrives.
-  const openIdx = region.search(/<silent>/i);
-  const closeIdx = region.search(/<\/silent>/i);
-  let ceiling = region.length;
-  if (openIdx !== -1) {
-    if (closeIdx === -1 || closeIdx < openIdx) {
-      // Unclosed silent tag — sentences after the opener are
-      // ineligible. Ceiling = opener position.
-      ceiling = openIdx;
-    }
-  }
-
-  // Find the LAST sentence terminator inside [0, ceiling).
-  let lastEnd: number | null = null;
-  SENTENCE_END_RE.lastIndex = 0;
+): ChunkMatch | null {
+  CHUNK_RE.lastIndex = from;
+  let lastMatch: ChunkMatch | null = null;
   let m: RegExpExecArray | null;
-  while ((m = SENTENCE_END_RE.exec(region)) !== null) {
-    const end = m.index + m[0].length;
-    if (end > ceiling) break;
-    lastEnd = end;
+  while ((m = CHUNK_RE.exec(text)) !== null) {
+    lastMatch = {
+      end: m.index + m[0].length,
+      body: m[1],
+    };
   }
-  if (lastEnd == null) return null;
-  return from + lastEnd;
+  return lastMatch;
 }
 
 export function useAutoSpeakReplies() {
@@ -426,66 +421,48 @@ export function useAutoSpeakReplies() {
 
     for (const m of messages) {
       if (m.role !== "assistant") continue;
-      // Only slice the LAST assistant message. Historical ones are
-      // seeded above to cursor=length so this check is a no-op for
-      // them, but keep it explicit so the intent is obvious.
       if (m !== tail) continue;
       const src = m.text ?? "";
       if (!src.trim()) continue;
       const cursor = cursorRef.current.get(m.id) ?? 0;
       if (cursor >= src.length) continue;
 
-      let sliceEnd = findLastCompleteSentenceEnd(src, cursor);
-
-      // Flush any trailing text as a final slice once streaming for
-      // the whole turn has settled (isStreaming false). Otherwise we
-      // wait for more text to arrive or a terminator to close the
-      // in-progress sentence.
-      if (sliceEnd == null && !isStreaming) {
-        sliceEnd = src.length;
-      }
-      if (sliceEnd == null || sliceEnd <= cursor) {
-        // Diagnostic (Yu 2026-09-19 22:55, chase-down for skipped
-        // content in streaming voice). Log why we're NOT slicing so
-        // we can see if cursor got ahead of text or terminator search
-        // failed.
+      // Slice on <chunk>...</chunk> boundaries. Find every complete
+      // chunk from `cursor` onward and enqueue each. Author-driven
+      // chunking means the LLM decides where breaths belong — no
+      // more regex heuristics for sentence terminators.
+      CHUNK_RE.lastIndex = cursor;
+      let anyMatch = false;
+      let lastEnd = cursor;
+      let m2: RegExpExecArray | null;
+      while ((m2 = CHUNK_RE.exec(src)) !== null) {
+        anyMatch = true;
+        const body = m2[1];
+        const chunkEnd = m2.index + m2[0].length;
+        lastEnd = chunkEnd;
+        const spoken = spokenTextFor(body);
         console.log(
-          `[voice] no-slice id=${m.id.slice(-6)} cursor=${cursor} ` +
-            `len=${src.length} isStreaming=${isStreaming} ` +
-            `sliceEnd=${sliceEnd}`,
+          `[voice] chunk id=${m.id.slice(-6)} ` +
+            `[${m2.index}..${chunkEnd}] bodyLen=${body.length} ` +
+            `spokenLen=${spoken.length} spoken=${JSON.stringify(spoken.slice(0, 40))}`,
         );
-        continue;
+        if (!spoken) continue;
+        enqueue({
+          id: `${m.id}#${m2.index}`,
+          text: spoken,
+          provider: ttsProvider ?? undefined,
+          voice: ttsVoice ?? undefined,
+        });
       }
 
-      const raw = src.slice(cursor, sliceEnd);
-      const spoken = spokenTextFor(raw);
-      const prevCursor = cursor;
-      cursorRef.current.set(m.id, sliceEnd);
-
-      // Diagnostic: show every slice we take, with raw and spoken
-      // lengths so we can see if stripSilent/stripMarkdown ate more
-      // than expected. Uses console.log (not debug) because Chrome
-      // hides debug level by default and Yu didn't see the earlier
-      // logs (2026-09-19 23:06).
-      console.log(
-        `[voice] slice id=${m.id.slice(-6)} ` +
-          `[${prevCursor}..${sliceEnd}] rawLen=${raw.length} ` +
-          `spokenLen=${spoken.length} spoken=${JSON.stringify(spoken.slice(0, 40))}`,
-      );
-
-      if (!spoken) continue;
-
-      enqueue({
-        // Each slice needs a unique id so the store's playingId can
-        // reflect the currently-playing slice — but the UI's
-        // per-bubble button watches only the message id, so we keep
-        // the message id as prefix for observability without
-        // colliding on repeat plays.
-        id: `${m.id}#${cursor}`,
-        text: spoken,
-        provider: ttsProvider ?? undefined,
-        voice: ttsVoice ?? undefined,
-      });
+      if (anyMatch) {
+        cursorRef.current.set(m.id, lastEnd);
+      } else {
+        console.log(
+          `[voice] no-chunk id=${m.id.slice(-6)} cursor=${cursor} ` +
+            `len=${src.length} isStreaming=${isStreaming}`,
+        );
+      }
     }
     // ttsProvider/ttsVoice deliberately NOT in deps — a pref refresh
     // should NOT re-fire on old slices.
