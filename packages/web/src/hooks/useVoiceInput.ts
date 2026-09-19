@@ -22,7 +22,25 @@ type Mode = "offline" | "online" | null;
 const WORKLET_URL = "/asr-worklet.js";
 const WORKLET_NAME = "asr-processor";
 
-export function useVoiceInput(onResult: (text: string) => void) {
+// Yu, 2026-09-19: streaming mode replaces the current draft each partial
+// (text grows across calls), offline mode appends one final result. Callers
+// that want smart draft behaviour pass BOTH callbacks; if only `onResult`
+// is passed, streaming partials fall back to appending, matching legacy
+// offline behaviour.
+export interface VoiceInputCallbacks {
+  onResult: (text: string) => void;         // fired on offline final / streaming final
+  onPartial?: (text: string) => void;       // fired on streaming partials (replace, not append)
+}
+
+export function useVoiceInput(
+  onResultOrCallbacks: ((text: string) => void) | VoiceInputCallbacks,
+) {
+  const callbacks: VoiceInputCallbacks =
+    typeof onResultOrCallbacks === "function"
+      ? { onResult: onResultOrCallbacks }
+      : onResultOrCallbacks;
+  const onResult = callbacks.onResult;
+  const onPartial = callbacks.onPartial ?? callbacks.onResult;
   const [recording, setRecording] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [available, setAvailable] = useState(false);
@@ -220,7 +238,12 @@ export function useVoiceInput(onResult: (text: string) => void) {
           case "partial": {
             const text = msg.text ?? "";
             lastPartialRef.current = text;
-            onResult(finalisedRef.current + text);
+            // Streaming partials REPLACE the growing draft. `onPartial`
+            // is the streaming-aware callback; when the caller only
+            // provided the legacy `onResult` it falls back to append
+            // (see the callbacks resolution above) which produces the
+            // pre-streaming behaviour — acceptable but not ideal.
+            onPartial(finalisedRef.current + text);
             return;
           }
           case "endpoint": {

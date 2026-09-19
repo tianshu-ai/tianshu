@@ -34,10 +34,37 @@ export default function ChatInput() {
   const pttRef = useRef(false); // push-to-talk active
 
   // ── Voice input (server-side ASR) ────────────────────────
-  const onVoiceResult = useCallback((text: string) => {
-    setDraft((prev) => (prev ? prev + " " + text : text));
+  // Yu, 2026-09-19: streaming ASR needs replace-semantics on partial
+  // updates — the text grows every message and appending each one
+  // produced garbled "你好 你好呀 你好呀你..." output. Track the length
+  // of the last voice-driven update on the previous draft so we can
+  // replace just that segment on the next partial, leaving anything
+  // the user typed manually alone.
+  const voiceBaseRef = useRef<string | null>(null);
+  const onVoicePartial = useCallback((text: string) => {
+    setDraft((prev) => {
+      // First partial of this session captures the pre-voice draft.
+      if (voiceBaseRef.current === null) voiceBaseRef.current = prev;
+      const base = voiceBaseRef.current ?? "";
+      return base ? base + (base.endsWith(" ") ? "" : " ") + text : text;
+    });
   }, []);
-  const { recording, toggle: toggleVoice, voiceLoading, available: asrAvailable, shortcut } = useVoiceInput(onVoiceResult);
+  const onVoiceResult = useCallback((text: string) => {
+    // Final result: bake voice text into draft and forget the base.
+    setDraft((prev) => {
+      if (voiceBaseRef.current === null) {
+        // Offline mode never fired onPartial; original behaviour.
+        return prev ? prev + " " + text : text;
+      }
+      const base = voiceBaseRef.current;
+      voiceBaseRef.current = null;
+      return base ? base + (base.endsWith(" ") ? "" : " ") + text : text;
+    });
+  }, []);
+  const { recording, toggle: toggleVoice, voiceLoading, available: asrAvailable, shortcut } = useVoiceInput({
+    onResult: onVoiceResult,
+    onPartial: onVoicePartial,
+  });
 
   // ── Push-to-talk: Alt+V ──────────────────────────────────
   useEffect(() => {
