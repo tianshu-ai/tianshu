@@ -306,11 +306,8 @@ export function useAutoSpeakReplies() {
       if (messages.length === 0) return;
       for (const m of messages) {
         if (m.role !== "assistant") continue;
-        // Seed with speechSource length — all subsequent slice /
-        // cursor math is against speechSource, so we need cursors
-        // in the same coordinate space to correctly mark existing
-        // history as "already spoken".
-        const src = m.speechSource ?? m.text ?? "";
+        const src = m.text ?? "";
+        // Seed cursor at the end so nothing existing is spoken.
         cursorRef.current.set(m.id, src.length);
       }
       seededRef.current = true;
@@ -357,15 +354,11 @@ export function useAutoSpeakReplies() {
       // regardless of whether the placeholder still exists in
       // messages[] — we keep the reference across renders.
       if (!cursorRef.current.has(tail.id)) {
-        // speechSource has the raw tags, m.text is stripped. All
-        // slice / cursor math in this hook operates on speechSource
-        // so chunk indices align. If speechSource is undefined (a
-        // wire message before mergeToolTurns fires), fall back to
-        // m.text so we don't crash — the chunk regex just won't
-        // match that render pass and slices happen next tick.
-        const tailText = tail.speechSource ?? tail.text ?? "";
+        const tailText = tail.text ?? "";
         let inheritedCursor: number | null = null;
 
+        // Check the immediately-previous tail id, if any. This is
+        // the placeholder in almost every case.
         const prevId = lastTailIdRef.current;
         if (prevId && prevId !== tail.id) {
           const prevText = lastTailTextRef.current;
@@ -380,10 +373,12 @@ export function useAutoSpeakReplies() {
           }
         }
 
+        // Fallback: check other current-messages assistant rows in
+        // case the store keeps both rows around briefly during swap.
         if (inheritedCursor == null) {
           for (const other of messages) {
             if (other.role !== "assistant" || other.id === tail.id) continue;
-            const otherText = other.speechSource ?? other.text ?? "";
+            const otherText = other.text ?? "";
             const otherCursor = cursorRef.current.get(other.id);
             if (otherCursor == null) continue;
             const commonLen = Math.min(otherText.length, tailText.length);
@@ -409,11 +404,10 @@ export function useAutoSpeakReplies() {
         );
 
         // Mark every OTHER current assistant row as done so a
-        // re-render doesn't re-slice them. speechSource length for
-        // consistency with the slice loop below.
+        // re-render doesn't re-slice them.
         for (const other of messages) {
           if (other.role === "assistant" && other.id !== tail.id) {
-            const src = other.speechSource ?? other.text ?? "";
+            const src = other.text ?? "";
             cursorRef.current.set(other.id, src.length);
           }
         }
@@ -422,20 +416,13 @@ export function useAutoSpeakReplies() {
       // Snapshot the tail state AFTER we've handled any swap so
       // the NEXT swap can look back at this tail's final state.
       lastTailIdRef.current = tail.id;
-      lastTailTextRef.current = tail.speechSource ?? tail.text ?? "";
+      lastTailTextRef.current = tail.text ?? "";
     }
 
     for (const m of messages) {
       if (m.role !== "assistant") continue;
       if (m !== tail) continue;
-      // CRITICAL: use speechSource, NOT m.text. mergeToolTurns
-      // strips <chunk>/</chunk> from m.text so the visible bubble
-      // stays clean. If we sliced m.text we'd never match any
-      // chunks. Yu 2026-09-19 23:57 DOM inspection: `# 🧤 手套`
-      // + plain paragraphs with no <chunk> tags in the rendered
-      // HTML — stripped, not missing from tianshu's output.
-      // speechSource preserves the ORIGINAL text with tags intact.
-      const src = m.speechSource ?? m.text ?? "";
+      const src = m.text ?? "";
       if (!src.trim()) continue;
       const cursor = cursorRef.current.get(m.id) ?? 0;
       if (cursor >= src.length) continue;
