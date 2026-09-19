@@ -249,15 +249,27 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     const contentType = res.headers.get("content-type") ?? "";
     const el = getAudio();
 
-    // Streaming path for audio/mpeg (edge-tts). Fallback to blob()
-    // for other content types (CosyVoice wav) or when MediaSource
-    // doesn't support mpeg.
-    const canStream =
-      contentType.startsWith("audio/mpeg") &&
-      typeof MediaSource !== "undefined" &&
-      MediaSource.isTypeSupported("audio/mpeg");
-
-    if (!canStream) {
+    // Blob-only path. Yu, 2026-09-19 23:00: earlier design used
+    // MediaSource for audio/mpeg to start playback on the first
+    // chunk, but streaming per-sentence auto-speak exposed a fatal
+    // interaction: MediaSource plus multiple SHORT independent mp3
+    // blobs played back-to-back triggers
+    //   NotSupportedError: Failed to load because no supported
+    //   source was found
+    // on the second slice, because MediaSource is designed for one
+    // long stream chunked into frames, not N discrete mp3s each
+    // with their own header. The drain loop then treats it as a
+    // failed slice and moves on — hence Yu's "content skipped".
+    //
+    // Trade-off: we lose the ~800 ms first-chunk-to-playback edge
+    // from MediaSource. In per-sentence streaming that saving was
+    // mostly wasted anyway (each sentence's blob is small enough
+    // that whole-blob fetch is ~1s). Blob-only is dramatically
+    // more reliable for the multi-slice case.
+    //
+    // If we ever go back to "one long TTS stream per assistant
+    // reply" instead of sentence slices, revisit MediaSource.
+    if (true as boolean) {
       let blob: Blob;
       try {
         blob = await res.blob();
