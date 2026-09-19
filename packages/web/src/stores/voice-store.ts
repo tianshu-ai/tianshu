@@ -74,6 +74,10 @@ function teardown() {
     abortController.abort();
     abortController = null;
   }
+  // Order matters: pause + detach src BEFORE revoking the blob
+  // URL. Otherwise audio.load() (triggered by removing src) may
+  // still race for one final GET of the blob URL after revoke,
+  // producing the ERR_FILE_NOT_FOUND Yu reported (2026-09-19 21:49).
   if (audio) {
     try {
       audio.pause();
@@ -98,12 +102,19 @@ function teardown() {
     }
   }
   if (objectUrl) {
-    try {
-      URL.revokeObjectURL(objectUrl);
-    } catch {
-      // ignore
-    }
+    // Delay the revoke by a microtask so the audio element has
+    // fully detached before we invalidate the URL. Without this
+    // the browser fires one last request for the blob after we
+    // revoked it — harmless but noisy in the console.
+    const url = objectUrl;
     objectUrl = null;
+    queueMicrotask(() => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+        // ignore
+      }
+    });
   }
 }
 
