@@ -85,6 +85,46 @@ let abortController: AbortController | null = null;
 const pendingQueue: SpeakRequest[] = [];
 let queueDraining = false;
 
+// Lookahead prefetch cache. Yu, 2026-09-19 23:33: audio playback
+// worked but had a ~1-3s silent gap between slices while /api/tts
+// fetched the next mp3. Prefetching the next slice while the
+// current one is playing means by the time current `ended` fires,
+// next slice's blob is already in memory — sub-100ms cross-fade.
+const prefetchCache = new Map<
+  string,
+  Promise<{ blob: Blob; contentType: string } | null>
+>();
+
+/**
+ * Kick off a background fetch for the given speak request.
+ * Idempotent — second call for same id returns without re-fetching.
+ * Errors resolve to null so the play path can retry via normal fetch.
+ */
+function startPrefetch(req: SpeakRequest): void {
+  if (prefetchCache.has(req.id)) return;
+  const p: Promise<{ blob: Blob; contentType: string } | null> = (async () => {
+    try {
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          text: req.text,
+          voice: req.voice,
+          provider: req.provider,
+        }),
+      });
+      if (!res.ok) return null;
+      const contentType = res.headers.get("content-type") ?? "audio/mpeg";
+      const blob = await res.blob();
+      return { blob, contentType };
+    } catch {
+      return null;
+    }
+  })();
+  prefetchCache.set(req.id, p);
+}
+
 // Blob URL cleanup, take 5 (Yu 2026-09-19 22:00 fourth failure).
 // Give up on URL.revokeObjectURL entirely — four strategies failed:
 //   1. sync revoke: audio.load() fetch still queued, 404
@@ -157,6 +197,11 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
 
   stop: () => {
     pendingQueue.length = 0;
+    // Discard any in-flight prefetches so we don't keep loading
+    // audio for utterances the user just cancelled. Cached promises
+    // are fire-and-forget — dropping references is enough; the
+    // background fetch completes and its blob gets GC'd.
+    prefetchCache.clear();
     teardown();
     if (get().playingId !== null) {
       set({ playingId: null });
@@ -173,24 +218,31 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       // rather than re-enqueuing.
       void (async () => {
         try {
+          // Prefetch the FIRST item before entering the loop. Every
+          // iteration after that starts the NEXT slice's prefetch
+          // during the current slice's playback.
+          if (pendingQueue[0]) startPrefetch(pendingQueue[0]);
+
           while (pendingQueue.length > 0) {
             const next = pendingQueue.shift()!;
+            // Kick off next slice's prefetch NOW, in parallel with
+            // playing the current one. Yu 2026-09-19 23:33: this is
+            // the whole point of streaming — by the time current
+            // slice's audio ends, next slice's mp3 is already loaded.
+            const upcoming = pendingQueue[0];
+            if (upcoming) startPrefetch(upcoming);
+
             console.log(
               `[voice] drain start id=${next.id.slice(-12)} queue=${pendingQueue.length}`,
             );
             const started = Date.now();
             try {
-              // mode:"drain" tells play() to skip the queue-flush
-              // step — we're pulling FROM the queue, we mustn't nuke
-              // the remaining items behind us.
               await get().play({ ...next, mode: "drain" });
               console.log(
                 `[voice] drain done id=${next.id.slice(-12)} ` +
                   `elapsed=${Date.now() - started}ms queue=${pendingQueue.length}`,
               );
             } catch (err) {
-              // Keep draining on individual failures; log so a
-              // consistent failure surfaces via console noise.
               console.warn("[voice] queued utterance failed:", err);
             }
           }
@@ -228,47 +280,64 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     const controller = new AbortController();
     abortController = controller;
 
-    let res: globalThis.Response;
-    try {
-      res = await fetch("/api/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          text: req.text,
-          voice: req.voice,
-          provider: req.provider,
-        }),
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        let detail = `HTTP ${res.status}`;
-        try {
-          const body = await res.json();
-          if (body?.error) detail = body.error;
-        } catch {
-          // response wasn't JSON
+    // Prefetch fast-path (Yu 2026-09-19 23:33 lookahead): if the
+    // drain loop already fetched this slice's mp3 in the background,
+    // use it. Falls through to a normal fetch on cache miss.
+    let prefetchedBlob: Blob | null = null;
+    let prefetchedContentType = "";
+    const cached = prefetchCache.get(req.id);
+    if (cached) {
+      prefetchCache.delete(req.id);
+      const result = await cached;
+      if (result) {
+        prefetchedBlob = result.blob;
+        prefetchedContentType = result.contentType;
+      }
+    }
+
+    let res: globalThis.Response | null = null;
+    if (!prefetchedBlob) {
+      try {
+        res = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            text: req.text,
+            voice: req.voice,
+            provider: req.provider,
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          let detail = `HTTP ${res.status}`;
+          try {
+            const body = await res.json();
+            if (body?.error) detail = body.error;
+          } catch {
+            // response wasn't JSON
+          }
+          throw new Error(detail);
         }
-        throw new Error(detail);
+      } catch (err) {
+        if ((err as { name?: string })?.name === "AbortError") {
+          return;
+        }
+        set({ playingId: null, lastError: err instanceof Error ? err.message : String(err) });
+        throw err;
       }
-    } catch (err) {
-      if ((err as { name?: string })?.name === "AbortError") {
-        // stop() was called mid-fetch — this is normal, not an error.
-        return;
-      }
-      set({ playingId: null, lastError: err instanceof Error ? err.message : String(err) });
-      throw err;
     }
 
     // If stop() fired while we were awaiting fetch, the controller
     // signals are aborted but we may have raced past the check.
-    // Bail if that happened.
     if (controller.signal.aborted) {
       set({ playingId: null });
       return;
     }
 
-    const contentType = res.headers.get("content-type") ?? "";
+    const contentType =
+      prefetchedContentType ||
+      (res ? res.headers.get("content-type") ?? "" : "");
     const el = getAudio();
 
     // Blob-only path. Yu, 2026-09-19 23:00: earlier design used
@@ -293,14 +362,21 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     // reply" instead of sentence slices, revisit MediaSource.
     if (true as boolean) {
       let blob: Blob;
-      try {
-        blob = await res.blob();
-      } catch (err) {
-        if ((err as { name?: string })?.name === "AbortError") return;
-        set({ playingId: null, lastError: err instanceof Error ? err.message : String(err) });
-        throw err;
-      }
-      if (controller.signal.aborted) {
+      if (prefetchedBlob) {
+        blob = prefetchedBlob;
+      } else if (res) {
+        try {
+          blob = await res.blob();
+        } catch (err) {
+          if ((err as { name?: string })?.name === "AbortError") return;
+          set({ playingId: null, lastError: err instanceof Error ? err.message : String(err) });
+          throw err;
+        }
+        if (controller.signal.aborted) {
+          set({ playingId: null });
+          return;
+        }
+      } else {
         set({ playingId: null });
         return;
       }
@@ -464,12 +540,17 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
             }
           });
 
-          if (!res.body) {
+          // Dead code in the blob-only era — the MediaSource path is
+          // gated off by `if (true as boolean)` above. Keeping the
+          // block for the day we bring MediaSource back; TS non-null
+          // assertions here because control-flow analysis can't see
+          // that `res` was set in the pre-blob fetch path.
+          if (!res!.body) {
             ended = true;
             pump();
             return;
           }
-          const reader = res.body.getReader();
+          const reader = res!.body.getReader();
           try {
             while (true) {
               if (controller.signal.aborted) {
