@@ -73,13 +73,44 @@ async function readPreference(key: string): Promise<string | null> {
 }
 
 /**
+ * Match `<voice_summary>...</voice_summary>` in an assistant reply.
+ *
+ * Yu, 2026-09-19: voice mode asks tianshu to append a spoken-friendly
+ * short summary in this tag. When present it becomes the ONLY text
+ * TTS reads, so the user hears "代码已推到分支" instead of a paragraph
+ * of markdown with URLs and code fences.
+ *
+ * Case-insensitive, DOTALL so it spans newlines. Non-greedy body so
+ * nested tags (unlikely but defensive) match the innermost.
+ */
+const VOICE_SUMMARY_RE = /<voice_summary>([\s\S]*?)<\/voice_summary>/i;
+
+/**
+ * Extract the voice_summary tag content if present. Returns null
+ * when the tag is absent or empty. Shared with MessageBubble's
+ * per-message play button so both surfaces speak the same slice.
+ */
+export function extractVoiceSummary(md: string): string | null {
+  const m = md.match(VOICE_SUMMARY_RE);
+  if (!m) return null;
+  const inner = m[1].trim();
+  return inner.length > 0 ? inner : null;
+}
+
+/**
  * Strip common markdown markers so TTS reads text naturally.
  * Not a full markdown parser — just enough to avoid the worst
  * "star star" / "hash hash" reading artefacts.
+ *
+ * Also strips a trailing <voice_summary>...</voice_summary> block
+ * so if we fall back to reading the whole message (no tag was
+ * generated), we don't read the tag literal.
  */
 function textForSpeech(md: string): string {
   return (
     md
+      // strip voice_summary tags entirely from the fallback text
+      .replace(VOICE_SUMMARY_RE, "")
       // fenced code blocks: replace with a single spoken hint
       .replace(/```[\s\S]*?```/g, "。代码块。")
       // inline code: drop backticks, keep content
@@ -100,6 +131,17 @@ function textForSpeech(md: string): string {
       .replace(/\s+/g, " ")
       .trim()
   );
+}
+
+/**
+ * Given raw assistant text, return the string TTS should read.
+ * Prefer <voice_summary> when present; otherwise fall back to the
+ * whole message with markdown stripped.
+ */
+export function spokenTextFor(md: string): string {
+  const summary = extractVoiceSummary(md);
+  if (summary) return summary;
+  return textForSpeech(md);
 }
 
 export function useAutoSpeakReplies() {
@@ -203,7 +245,7 @@ export function useAutoSpeakReplies() {
       if (spokenIdsRef.current.has(m.id)) continue;
       if (typeof m.text !== "string" || !m.text.trim()) continue;
 
-      const spoken = textForSpeech(m.text);
+      const spoken = spokenTextFor(m.text);
       if (!spoken) continue;
 
       // Reserve the id BEFORE the async speak() so a re-render

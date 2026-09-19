@@ -43,6 +43,12 @@ export type ClientMsg =
       /** Optional model id (e.g. 'anthropic/claude-sonnet-4-6'). When
        *  absent the server falls back to config.defaultModel. */
       modelId?: string;
+      /** Yu, 2026-09-19: whether the client currently has voice mode
+       *  on. When true, the server injects a system-prompt fragment
+       *  asking tianshu to append a <voice_summary>...</voice_summary>
+       *  block so TTS reads a natural short spoken version rather than
+       *  the entire markdown reply. Absent/false means text-only. */
+      voiceMode?: boolean;
       /** Optional session id. When provided, the prompt is routed to
        *  this specific session instead of the user's default active
        *  session. The session must already exist and belong to this

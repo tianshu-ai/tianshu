@@ -37,6 +37,62 @@ export interface MergedMessage
    *  this when set; falls back to `text + resolvedToolCalls` for
    *  legacy rows. */
   resolvedBlocks?: MergedAssistantBlock[];
+  /** Yu, 2026-09-19: original assistant text INCLUDING any
+   *  <voice_summary>...</voice_summary> tag, preserved for the
+   *  voice pipeline. `text` (and any resolvedBlocks[].text) has the
+   *  tag stripped so the visible bubble stays clean; `speechSource`
+   *  keeps the tag so the SpeakButton can extract it. Only set on
+   *  assistant rows whose original text contained the tag or whose
+   *  text is non-empty (i.e. anything speakable). */
+  speechSource?: string;
+}
+
+/**
+ * Match and strip the `<voice_summary>...</voice_summary>` tag from
+ * assistant text before it renders.
+ *
+ * Yu, 2026-09-19: voice mode asks tianshu to append a spoken-friendly
+ * short summary in this tag. The audio pipeline reads it; the user
+ * should not see the raw XML. We remove the whole tag (including its
+ * body) from the visible markdown here so it's absent from every UI
+ * surface downstream: bubble body, markdown parser, copy-to-clipboard,
+ * search index, everything.
+ *
+ * The voice pipeline (useAutoSpeakReplies + MessageBubble's SpeakButton)
+ * reads the ORIGINAL m.text via WireMessage on the store, not the
+ * merged row, so extraction still works there.
+ *
+ * Case-insensitive, DOTALL; matches at most once per message (only
+ * one summary per turn).
+ */
+const VOICE_SUMMARY_RE = /\s*<voice_summary>[\s\S]*?<\/voice_summary>\s*/i;
+
+function stripVoiceSummary(text: string): string {
+  return text.replace(VOICE_SUMMARY_RE, "");
+}
+
+/**
+ * Assemble the original speakable text for an assistant WireMessage,
+ * preserving any <voice_summary> tag intact. Prefers `text` field but
+ * falls back to concatenating text-kind blocks so multi-block turns
+ * (typical for streamed replies with tool calls) still yield the tag
+ * when it lives on a block instead of the top-level text.
+ *
+ * Returns undefined when there's nothing speakable, so callers can
+ * distinguish "no audio available" from "empty string tried".
+ */
+function collectSpeechSource(m: WireMessage): string | undefined {
+  if (m.role !== "assistant") return undefined;
+  const fromText = typeof m.text === "string" ? m.text : "";
+  const fromBlocks =
+    m.blocks
+      ?.map((b) =>
+        b.kind === "text" && typeof b.text === "string" ? b.text : "",
+      )
+      .filter(Boolean)
+      .join("\n\n") ?? "";
+  const combined = fromText || fromBlocks;
+  return combined.trim().length > 0 ? combined : undefined;
 }
 
 export function mergeToolTurns(messages: WireMessage[]): MergedMessage[] {
@@ -65,21 +121,35 @@ export function mergeToolTurns(messages: WireMessage[]): MergedMessage[] {
         (b): MergedAssistantBlock =>
           b.kind === "toolCall"
             ? { ...b, result: resultsByCallId.get(b.id) }
-            : b,
+            : { ...b, text: stripVoiceSummary(b.text) },
       );
+      // Preserve the original speakable text (may contain
+      // <voice_summary>) for the audio pipeline. Combine block
+      // texts + top-level text in case the tag lives in either.
+      const speechSource = collectSpeechSource(m);
       // Strip the wire-only fields we already lifted into
       // `resolvedBlocks` / `resolvedToolCalls` and pass the rest
-      // through (notably `attachments`).
+      // through (notably `attachments`). Also strip <voice_summary>
+      // from the visible text — the audio pipeline reads speechSource.
       const { toolCalls: _tc, toolResult: _tr, blocks: _b, ...rest } = m;
       out.push({
         ...rest,
+        text: stripVoiceSummary(rest.text),
         resolvedToolCalls: resolved.length > 0 ? resolved : undefined,
         resolvedBlocks,
+        speechSource,
       });
       continue;
     }
     const { toolCalls: _tc, toolResult: _tr, blocks: _b, ...rest } = m;
-    out.push(rest);
+    // Only assistant rows carry voice_summary, but stripping on user
+    // rows is safe (the tag never appears there) and keeps the code
+    // uniform.
+    out.push({
+      ...rest,
+      text: stripVoiceSummary(rest.text),
+      speechSource: m.role === "assistant" ? collectSpeechSource(m) : undefined,
+    });
   }
   return coalesceAssistantTurns(out);
 }

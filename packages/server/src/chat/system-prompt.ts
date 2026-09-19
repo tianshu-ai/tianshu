@@ -70,12 +70,56 @@ export function formatOutputLanguageLine(
   return "";
 }
 
+/**
+ * Runtime hint attached to a single turn. Currently only carries
+ * whether the client has voice mode on so tianshu knows to append a
+ * <voice_summary> block. Kept as a separate object rather than an
+ * extra positional arg so we can add more per-turn hints later
+ * without breaking every caller.
+ */
+export interface PerTurnPromptHints {
+  /** When true, inject a voice-mode fragment asking tianshu to end
+   *  its reply with a <voice_summary>...</voice_summary> block. */
+  voiceMode?: boolean;
+}
+
+/**
+ * Fragment injected when the client currently has voice mode on.
+ * Tells tianshu two things:
+ *   1. The user will HEAR (not just read) this reply
+ *   2. Wrap a spoken-friendly short summary in <voice_summary>...
+ *      </voice_summary> tags for the TTS pipeline to extract
+ *
+ * Kept short on purpose — every extra sentence in a system prompt
+ * inflates every subsequent turn's cost.
+ */
+function formatVoiceModeFragment(): string {
+  return [
+    `## Voice reply mode`,
+    `The user has enabled voice mode. Your reply will be spoken aloud in addition to being displayed.`,
+    `Write your normal reply as usual (markdown, code blocks, tables all OK — those stay visible on screen).`,
+    `At the VERY END of your reply, append a spoken summary wrapped in <voice_summary>...</voice_summary> tags:`,
+    ``,
+    `  <voice_summary>一到三句白话，口语化、自然。直接说重点，不读代码、URL、长表格、或存人头颇细节。</voice_summary>`,
+    ``,
+    `The <voice_summary> content should NOT restate the whole reply — it should read like the way you'd tell a colleague what happened in one breath. Avoid:`,
+    `  - Reading out URLs, IDs, or file paths`,
+    `  - Reciting numerical data or long lists`,
+    `  - Speaking markdown formatting ("**bold**", "### heading")`,
+    `  - Filler like "好的，我会……" or "让我为你……"`,
+    `Prefer natural spoken Chinese (or English if the user wrote English) that stands on its own if someone only heard the summary and never saw the screen.`,
+    `If the visible reply is already one short conversational sentence, you can repeat it verbatim inside the tags.`,
+    `If the reply is a pure code-only answer with nothing worth speaking, still include the tags with a brief spoken description (e.g. “代码已推到分支”).`,
+  ].join("\n");
+}
+
 export function defaultSystemPrompt(
   ctx: TenantContext,
   userId: string,
   skills: readonly LoadedSkill[] = [],
   pluginFragments: readonly PluginPromptFragment[] = [],
   mainOverrides: MainAgentPromptOverrides = {},
+  turnHints: PerTurnPromptHints = {},
 ): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
   const lines: string[] = [
@@ -144,6 +188,13 @@ export function defaultSystemPrompt(
     userHomeDir,
   );
   if (ctxBlock) lines.push("", ctxBlock);
+
+  // Voice mode fragment. Injected before tenant prompt so the
+  // agent sees the voice mode instruction FIRST (per-turn behaviour)
+  // and can layer tenant-specific tenantPrompt guidance on top.
+  if (turnHints.voiceMode) {
+    lines.push("", formatVoiceModeFragment());
+  }
 
   // Tenant prompt override (applied solution). Injected right
   // after workspace context so it reads as tenant-level guidance

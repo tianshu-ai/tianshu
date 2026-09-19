@@ -33,6 +33,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
+import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
 import type {
   MergedAssistantBlock,
   MergedMessage,
@@ -192,24 +193,14 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
 
         {(() => {
           if (isUser) return null;
-          // Assemble the text worth speaking. Prefer m.text (present
-          // for simple assistant replies). When m.text is empty but
-          // the turn used the blocks path (typical for streaming
-          // messages after WireAssistantBlock rollout), collect text
-          // segments from blocks. Skip tool-only turns entirely —
-          // there's nothing to speak.
-          const speechText =
-            m.text ||
-            (blocks
-              ? blocks
-                  .map((b) =>
-                    b.kind === "text" && typeof b.text === "string"
-                      ? b.text
-                      : "",
-                  )
-                  .filter(Boolean)
-                  .join("\n\n")
-              : "");
+          // speechSource comes from mergeToolTurns and preserves the
+          // ORIGINAL text INCLUDING any <voice_summary> tag — the
+          // visible fields (m.text, blocks[].text) have the tag
+          // stripped for clean rendering, but the audio pipeline
+          // needs the tag to extract the spoken-friendly summary.
+          // Falls back to m.text for legacy rows without speechSource
+          // set (e.g. history that predates the speechSource field).
+          const speechText = m.speechSource ?? m.text ?? "";
           const hasFooterContent = m.meta || m.createdAt || speechText;
           if (!hasFooterContent) return null;
           return (
@@ -242,27 +233,12 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
  * showing Pause on the message currently playing (playingId ===
  * m.id) and Play on all others.
  *
- * Text sanitisation is done via the same markdown-strip helper
- * used by useAutoSpeakReplies so manual and auto playback sound
- * identical. Kept inline here to avoid a cross-hook import chain
- * for a 15-line function.
+ * Text-to-speech pipeline: spokenTextFor() from useAutoSpeakReplies
+ * prefers the <voice_summary>...</voice_summary> content when tianshu
+ * generated one under voice mode, falling back to markdown-stripped
+ * whole reply otherwise. Shared with the auto-speak hook so manual
+ * and auto playback read the same slice of the message.
  */
-function stripMarkdownForSpeech(md: string): string {
-  return md
-    .replace(/```[\s\S]*?```/g, "。代码块。")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/\*([^*]+)\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/_([^_]+)_/g, "$1")
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
-    .replace(/^#{1,6}\s+/gm, "")
-    .replace(/^[-*+]\s+/gm, "")
-    .replace(/^\d+\.\s+/gm, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function SpeakButton({ messageId, text }: { messageId: string; text: string }) {
   const playing = useVoiceStore((s) => s.playingId === messageId);
   const play = useVoiceStore((s) => s.play);
@@ -273,7 +249,7 @@ function SpeakButton({ messageId, text }: { messageId: string; text: string }) {
       stop();
       return;
     }
-    const spoken = stripMarkdownForSpeech(text);
+    const spoken = spokenTextFor(text);
     if (!spoken) return;
     play({ id: messageId, text: spoken }).catch(() => {
       // Errors surface via the store's lastError field; the caller
