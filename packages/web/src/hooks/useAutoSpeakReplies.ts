@@ -184,59 +184,26 @@ export function spokenTextFor(md: string): string {
 }
 
 /**
- * Chunk-tag regex.
+ * Blank-line boundary regex.
  *
- * Yu, 2026-09-19 23:41: switched from heuristic sentence-boundary
- * detection to an author-driven <chunk>...</chunk> marker. The LLM
- * emits each spoken segment wrapped in these tags, and the client
- * slices exactly on tag boundaries.
+ * Yu, 2026-09-20 00:03: abandoned <chunk> tag approach after
+ * repeated evidence that opus-class models ignore the instruction
+ * to wrap EVERY sentence — log showed 1 tag at the opener then
+ * 200+ chars of un-wrapped prose. Instead we lean into the fact
+ * that markdown output NATURALLY separates paragraphs with blank
+ * lines: the system prompt now tells tianshu to keep 1-2 sentences
+ * per paragraph, and we slice on blank-line boundaries here.
  *
- * Why: pure-regex sentence detection kept mis-slicing on —, …,
- * quoted dialogue with internal periods, --- dividers, etc. The
- * LLM knows where breaths belong in its own writing; letting it
- * mark them removes an entire class of client-side bugs.
+ * The regex matches ONE OR MORE blank lines (possibly containing
+ * whitespace). A blank line = \n\n at minimum. Matching \n\s*\n
+ * tolerates a stray space in the empty line.
  *
- * The regex matches a COMPLETE <chunk>...</chunk> pair only. When
- * an opening tag has arrived but the closer hasn't yet, the match
- * fails — caller waits for more streaming text before slicing.
- *
- * Case-insensitive; DOTALL via [\s\S]. Non-greedy body so multiple
- * back-to-back chunks each get matched individually.
+ * Streaming safety: we only slice when a paragraph is BOUNDED on
+ * BOTH sides — either preceded by a blank-line separator (or
+ * cursor start) AND followed by a blank line. An unbounded
+ * paragraph (still being streamed) is left for the next delta.
  */
-const CHUNK_RE = /<chunk>([\s\S]*?)<\/chunk>/gi;
-
-interface ChunkMatch {
-  /** Exclusive end index of the </chunk> tag (i.e. one past `>`). */
-  end: number;
-  /** The text INSIDE the tags, ready to hand to spokenTextFor. */
-  body: string;
-}
-
-/**
- * Find the last complete <chunk>...</chunk> ending at or after `from`.
- * Returns null when no complete chunk is available yet — caller
- * should wait for the next streaming delta.
- *
- * Scans linearly rather than tracking state so a slight text
- * rewrite mid-stream (rare but possible if the LLM back-tracks)
- * doesn't leave stale internal state — cheap for reasonable
- * reply lengths and only runs per delta anyway.
- */
-function findLastCompleteChunk(
-  text: string,
-  from: number,
-): ChunkMatch | null {
-  CHUNK_RE.lastIndex = from;
-  let lastMatch: ChunkMatch | null = null;
-  let m: RegExpExecArray | null;
-  while ((m = CHUNK_RE.exec(text)) !== null) {
-    lastMatch = {
-      end: m.index + m[0].length,
-      body: m[1],
-    };
-  }
-  return lastMatch;
-}
+const BLANK_LINE_RE = /\n\s*\n/g;
 
 export function useAutoSpeakReplies() {
   const { enabled } = useVoiceMode();
@@ -427,32 +394,64 @@ export function useAutoSpeakReplies() {
       const cursor = cursorRef.current.get(m.id) ?? 0;
       if (cursor >= src.length) continue;
 
-      // Slice on <chunk>...</chunk> boundaries. Find every complete
-      // chunk from `cursor` onward and enqueue each. Author-driven
-      // chunking means the LLM decides where breaths belong — no
-      // more regex heuristics for sentence terminators.
-      CHUNK_RE.lastIndex = cursor;
+      // Slice on blank-line boundaries. Find every blank line from
+      // cursor onward; each region between blank lines (and between
+      // cursor and the FIRST blank line) is one chunk. A trailing
+      // region with no closing blank line is left for the next
+      // delta unless streaming has ended — then flush it as final.
+      BLANK_LINE_RE.lastIndex = cursor;
+      let regionStart = cursor;
       let anyMatch = false;
       let lastEnd = cursor;
       let m2: RegExpExecArray | null;
-      while ((m2 = CHUNK_RE.exec(src)) !== null) {
-        anyMatch = true;
-        const body = m2[1];
+      while ((m2 = BLANK_LINE_RE.exec(src)) !== null) {
+        const chunkText = src.slice(regionStart, m2.index);
         const chunkEnd = m2.index + m2[0].length;
+        const trimmed = chunkText.trim();
+        if (trimmed.length > 0) {
+          anyMatch = true;
+          const spoken = spokenTextFor(chunkText);
+          console.log(
+            `[voice] chunk id=${m.id.slice(-6)} ` +
+              `[${regionStart}..${m2.index}] bodyLen=${chunkText.length} ` +
+              `spokenLen=${spoken.length} spoken=${JSON.stringify(spoken.slice(0, 40))}`,
+          );
+          if (spoken) {
+            enqueue({
+              id: `${m.id}#${regionStart}`,
+              text: spoken,
+              provider: ttsProvider ?? undefined,
+              voice: ttsVoice ?? undefined,
+            });
+          }
+        }
         lastEnd = chunkEnd;
-        const spoken = spokenTextFor(body);
-        console.log(
-          `[voice] chunk id=${m.id.slice(-6)} ` +
-            `[${m2.index}..${chunkEnd}] bodyLen=${body.length} ` +
-            `spokenLen=${spoken.length} spoken=${JSON.stringify(spoken.slice(0, 40))}`,
-        );
-        if (!spoken) continue;
-        enqueue({
-          id: `${m.id}#${m2.index}`,
-          text: spoken,
-          provider: ttsProvider ?? undefined,
-          voice: ttsVoice ?? undefined,
-        });
+        regionStart = chunkEnd;
+      }
+
+      // Trailing region past the last blank line. Only flush when
+      // streaming has ended — otherwise it's likely still growing.
+      if (!isStreaming && regionStart < src.length) {
+        const chunkText = src.slice(regionStart);
+        const trimmed = chunkText.trim();
+        if (trimmed.length > 0) {
+          anyMatch = true;
+          const spoken = spokenTextFor(chunkText);
+          console.log(
+            `[voice] chunk id=${m.id.slice(-6)} ` +
+              `[${regionStart}..${src.length}] bodyLen=${chunkText.length} ` +
+              `spokenLen=${spoken.length} spoken=${JSON.stringify(spoken.slice(0, 40))} (final)`,
+          );
+          if (spoken) {
+            enqueue({
+              id: `${m.id}#${regionStart}`,
+              text: spoken,
+              provider: ttsProvider ?? undefined,
+              voice: ttsVoice ?? undefined,
+            });
+          }
+          lastEnd = src.length;
+        }
       }
 
       if (anyMatch) {
