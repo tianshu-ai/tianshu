@@ -198,16 +198,26 @@ export function installAsrWebSocket(deps: InstallAsrWebSocketDeps): WebSocketSer
 
     send({ type: "ready" });
 
+    // Yu, 2026-09-19 16:20 diagnostic: single-char-repeats bug
+    // reported after silence-gate landed. Log every partial and
+    // every endpoint so we can see whether sherpa is emitting the
+    // same text multiple times or endpoint is firing repeatedly.
+    let partialCount = 0;
+    let endpointCount = 0;
     const drainDecodes = () => {
       while (recognizer.isReady(stream)) {
         recognizer.decode(stream);
         const result = recognizer.getResult(stream);
         const text = (result.text ?? "").trim();
         if (text !== lastText) {
+          partialCount++;
+          console.log(`[ws-asr] partial #${partialCount}: "${text}"`);
           send({ type: "partial", text });
           lastText = text;
         }
         if (recognizer.isEndpoint(stream)) {
+          endpointCount++;
+          console.log(`[ws-asr] endpoint #${endpointCount}; lastText="${lastText}"`);
           send({ type: "endpoint" });
           recognizer.reset(stream);
           lastText = "";
