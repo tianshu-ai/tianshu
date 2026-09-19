@@ -86,41 +86,42 @@ export interface PerTurnPromptHints {
 /**
  * Fragment injected when the client currently has voice mode on.
  *
- * Semantic: DEFAULT SPEAK EVERYTHING. Wrap portions that shouldn't
- * be read aloud in <silent>...</silent> tags.
+ * Semantic: FULLY SPOKEN STYLE. The whole reply is written as if
+ * you were talking to a colleague on a phone call — short sentences,
+ * no markdown scaffolding, no code blocks unless absolutely needed.
  *
- * Yu, 2026-09-19 22:28 rewrite reasoning: the previous version asked
- * for a <voice_summary> block. That was wrong for cases where the
- * user actually wants the whole reply spoken ("写篇文章念给我听").
- * A summary always drops content the user might have wanted to hear.
+ * Yu, 2026-09-19 22:51: earlier iterations tried to keep the reply
+ * looking like normal markdown + add a <silent> opt-out for machine
+ * bits. Yu observed the visible bubble still felt "documenty" and
+ * asked for the reply itself to adopt spoken style. This fragment
+ * asks tianshu to write like it's speaking. <silent>...</silent> is
+ * still available for the rare cases where a technical token must
+ * appear on screen but shouldn't be spoken (a hash you asked for,
+ * a file path).
  *
- * The default-speak / opt-out-per-fragment shape matches how humans
- * think about it: an assistant's reply is inherently spoken content,
- * except for the machine bits (code, URLs, tables, hashes) that
- * don't translate. Tianshu marks those bits <silent>...</silent>
- * and the TTS pipeline skips them.
- *
- * Kept short — every sentence in a system prompt costs on every
- * subsequent turn.
+ * Kept tight — every sentence here costs on every voice-mode turn.
  */
 function formatVoiceModeFragment(): string {
   return [
     `## Voice reply mode`,
-    `The user has enabled voice mode. Your entire reply will be spoken aloud in addition to being displayed on screen.`,
-    `Speak naturally — write like you're talking to a colleague on a call, in the same language the user wrote to you (typically 中文). Content in the visible reply is ALSO the spoken content by default.`,
+    `The user has enabled voice mode. Write your reply as if you were talking to them on a phone call — the ENTIRE reply is spoken aloud.`,
     ``,
-    `WRAP any portion that shouldn't be read aloud in <silent>...</silent> tags. The visible bubble still shows the wrapped content; TTS just skips it. Wrap things like:`,
-    `  - Code blocks (fenced or inline) with non-trivial syntax`,
-    `  - Long URLs, file paths, IDs, hashes, phone numbers`,
-    `  - Complex tables or numeric data dumps`,
-    `  - Verbatim markdown scaffolding when it would sound awkward spoken`,
+    `Style:`,
+    `  - Short sentences. One idea per sentence.`,
+    `  - Casual, natural spoken register in the user's language (usually 中文). If the user said "你好", answer as if you were speaking to them, not writing a report.`,
+    `  - No markdown scaffolding: no headings, no bullet lists, no bold/italic markers, no tables. Prose only.`,
+    `  - No code blocks. If code is unavoidable, keep it inline and short, and wrap it in <silent>...</silent> so TTS skips it.`,
+    `  - No emoji, no ASCII art, no decorative separators.`,
+    `  - Skip filler openers like "好的，我来为您……". Just answer.`,
+    ``,
+    `Length: keep it TO THE POINT. If a normal text reply would run 400 words with sections, the voice-mode version should be ~100–200 words of continuous prose. Don't drop information the user needs, but don't decorate it.`,
+    ``,
+    `<silent>...</silent> escape hatch: when a technical token MUST appear on screen but reading it aloud would sound wrong (hex hashes, file paths, long URLs, phone numbers), wrap that token in <silent>...</silent>. The visible bubble still shows the wrapped content; TTS just skips it.`,
     ``,
     `Example:`,
-    `  已经把 fix 合进去了，commit id 是 <silent>7f3a8b2c</silent>。您看看下面的命令<silent>: git log --oneline -3</silent>。`,
+    `  已经把修复合进去了。你看下最新的 commit 就知道了，小尾巴是 <silent>7f3a8b2c</silent>。如果还有问题告诉我。`,
     ``,
-    `Do NOT wrap short numbers, single English words, common acronyms, or normal punctuation — those read fine.`,
-    `Do NOT wrap the entire reply. If nothing needs to be silenced, don't use the tag at all.`,
-    `Do NOT summarise; the user hears exactly what they see, minus the silenced parts.`,
+    `Reminder: don't wrap the whole reply. Don't summarise — the user hears what you say.`,
   ].join("\n");
 }
 
