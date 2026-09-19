@@ -237,6 +237,15 @@ function initOnlineRecognizer(mod: any, best: ModelCandidate): boolean {
     rule1MinTrailingSilence: 2.4,
     rule2MinTrailingSilence: 1.2,
     rule3MinUtteranceLength: 20,
+    // Yu, 2026-09-19: streaming zipformer duplicates short/repeated
+    // Chinese tokens on its own ("你" → "你你你你你"). sherpa issue
+    // #3469 documents the CTC blank-dominance root cause; raising
+    // blank_penalty biases the decoder away from spurious token
+    // emissions on the same frame. Sherpa docs describe this as a
+    // positive penalty added to blank symbol probability during
+    // decoding. Value 2.0 is the middle of the range #3469 tested;
+    // if 2.0 undershoots we can push to 3.0-4.0.
+    blankPenalty: 2.0,
   };
 
   onlineRecognizer = new OnlineRecognizer(config);
