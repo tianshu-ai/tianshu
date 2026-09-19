@@ -162,9 +162,27 @@ export function useAutoSpeakReplies() {
 
     // On first pass with voice mode on, mark every current
     // assistant message as "already spoken" so historical replies
-    // that predate the toggle aren't read out. Only messages
-    // appended AFTER this seed should trigger speak().
+    // that predate the toggle aren't read out.
+    //
+    // Yu, 2026-09-19 21:24: page refresh regression — first mount
+    // sees messages=[] (store still loading history), so the seed
+    // recorded an empty set. When history landed a moment later,
+    // every assistant message looked "new" and got spoken.
+    //
+    // Fix: don't seed when the array is empty; wait for the first
+    // non-empty snapshot and seed off THAT. New assistant messages
+    // arriving after seed still trigger speak() because they land
+    // in a later effect run, by which point seededRef is true.
+    //
+    // Edge case: if voice mode is toggled on in a truly empty
+    // session (no history at all, no messages ever sent), the
+    // seed is deferred until the first message arrives. That's
+    // fine — the first message will be the user's own prompt,
+    // which we mark as spoken (only assistant ids are added, so
+    // it's a no-op) and then the first assistant reply is
+    // correctly identified as new.
     if (!seededRef.current) {
+      if (messages.length === 0) return;
       for (const m of messages) {
         if (m.role === "assistant") spokenIdsRef.current.add(m.id);
       }
