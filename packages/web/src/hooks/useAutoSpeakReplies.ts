@@ -288,12 +288,31 @@ export function useAutoSpeakReplies() {
           break;
         }
       }
+      // Yu 2026-09-20 02:00 log confirmed: second-message seeding
+      // hits the else branch (isStreaming was still FALSE at seed
+      // time) even though tail was actively streaming. The delta
+      // arrives before the store finishes flipping isStreaming to
+      // true, so relying on it as the sole gate is racy.
+      //
+      // Fix: treat the LAST assistant message as "streaming from
+      // start" whenever it's short enough to plausibly be brand-
+      // new. 100 chars threshold: shorter than any real prior
+      // reply that the user would've fully read, so no risk of
+      // re-speaking historical text; longer than the first-delta
+      // burst (typically 20-60 chars) that races isStreaming.
+      const NEW_TAIL_LEN_THRESHOLD = 100;
       for (let i = 0; i < messages.length; i++) {
         const m = messages[i];
         if (m.role !== "assistant") continue;
         const src = m.text ?? "";
         const isTail = i === lastAssistantIdx;
-        if (isTail && isStreaming) {
+        // Tail is "new / streaming" when either:
+        //   - the store already flipped isStreaming to true, or
+        //   - the message is short enough that it can only be a
+        //     freshly-started reply (below the threshold)
+        const looksNew =
+          isTail && (isStreaming || src.length < NEW_TAIL_LEN_THRESHOLD);
+        if (looksNew) {
           cursorRef.current.set(m.id, 0);
         } else {
           cursorRef.current.set(m.id, src.length);
