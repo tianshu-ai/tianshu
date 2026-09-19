@@ -68,7 +68,28 @@ const SAMPLE_RATE = 16_000;
 
 export function installAsrWebSocket(deps: InstallAsrWebSocketDeps): WebSocketServer {
   const { server, globalOps } = deps;
-  const wss = new WebSocketServer({ server, path: "/ws/asr" });
+  // Yu, 2026-09-19: `noServer: true` + manual upgrade dispatch is
+  // the ws library's officially-required pattern when multiple WSS
+  // share one HTTP server. The chat WSS (ws-upgrade.ts) uses the
+  // simpler {server, path} auto-hook form; two auto-hooked WSSes on
+  // the same http.Server both try to own the `upgrade` event and
+  // one wins non-deterministically — the other returns garbled
+  // handshake bytes, which surfaces client-side as "Invalid frame
+  // header". We opt this new WSS out of the auto-hook and manually
+  // route only /ws/asr upgrades here, leaving all other paths
+  // (notably /ws) untouched for the existing WSS.
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on("upgrade", (request, socket, head) => {
+    const url = request.url ?? "";
+    // Match the pathname exactly. Query strings on ws:// URLs are
+    // used for identity switching (see /ws) so allow them here too.
+    const pathname = url.split("?", 1)[0];
+    if (pathname !== "/ws/asr") return; // let /ws or 404 handle it
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit("connection", ws, request);
+    });
+  });
 
   const aliveSet = new Set<WebSocket>();
   const pingTimer = setInterval(() => {
