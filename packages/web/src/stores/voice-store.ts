@@ -74,11 +74,52 @@ function teardown() {
     abortController.abort();
     abortController = null;
   }
-  // Order matters: pause + detach src BEFORE revoking the blob
-  // URL. Otherwise audio.load() (triggered by removing src) may
-  // still race for one final GET of the blob URL after revoke,
-  // producing the ERR_FILE_NOT_FOUND Yu reported (2026-09-19 21:49).
+  if (mediaSource) {
+    const ms = mediaSource;
+    mediaSource = null;
+    try {
+      if (ms.readyState === "open") ms.endOfStream();
+    } catch {
+      // ignore — normal after abort
+    }
+  }
+  // Blob URL ordering, take 3 (Yu 2026-09-19 21:54 the second
+  // ERR_FILE_NOT_FOUND). Sequence that finally kills the noise:
+  //   1. Grab the current URL into a local (so a later play()
+  //      doesn't stomp objectUrl before we revoke).
+  //   2. Register a one-shot 'emptied' listener that revokes only
+  //      AFTER the audio element has finished its detach fetch.
+  //      The emptied event fires exactly when the browser resets
+  //      the audio pipeline — by then, no more GET is pending.
+  //   3. Pause + remove src + load() to trigger the detach.
+  //   4. If for any reason emptied never fires (older browsers?
+  //      failed pipeline?), fall back to a 500 ms setTimeout revoke
+  //      so we don't leak the URL forever.
+  //
+  // Earlier attempts:
+  //   - Sync revoke: ERR_FILE_NOT_FOUND (async fetch still going)
+  //   - queueMicrotask revoke: same error (load()'s network fetch
+  //     runs on the macrotask queue, not microtask)
+  const url = objectUrl;
+  objectUrl = null;
   if (audio) {
+    let revoked = false;
+    const revokeOnce = () => {
+      if (revoked) return;
+      revoked = true;
+      if (url) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore
+        }
+      }
+    };
+    if (url) {
+      audio.addEventListener("emptied", revokeOnce, { once: true });
+      // Safety net: revoke after 500ms even if emptied never fires.
+      setTimeout(revokeOnce, 500);
+    }
     try {
       audio.pause();
     } catch {
@@ -91,30 +132,14 @@ function teardown() {
     } catch {
       // ignore
     }
-  }
-  if (mediaSource) {
-    const ms = mediaSource;
-    mediaSource = null;
+  } else if (url) {
+    // No audio element yet — nothing to detach, safe to revoke
+    // immediately.
     try {
-      if (ms.readyState === "open") ms.endOfStream();
+      URL.revokeObjectURL(url);
     } catch {
-      // ignore — normal after abort
+      // ignore
     }
-  }
-  if (objectUrl) {
-    // Delay the revoke by a microtask so the audio element has
-    // fully detached before we invalidate the URL. Without this
-    // the browser fires one last request for the blob after we
-    // revoked it — harmless but noisy in the console.
-    const url = objectUrl;
-    objectUrl = null;
-    queueMicrotask(() => {
-      try {
-        URL.revokeObjectURL(url);
-      } catch {
-        // ignore
-      }
-    });
   }
 }
 
