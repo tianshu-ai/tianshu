@@ -49,34 +49,58 @@ function splitChunks(text: string): string[] {
     .filter((c) => c.length > 0);
 }
 
-interface ChunkRowProps {
+// Row layout constants. Tuned together so the filmstrip transform
+// perfectly aligns the currentIndex row on screen center.
+//
+// ROW_HEIGHT in px — each subtitle occupies a fixed slot regardless
+// of natural text height, so transform math stays predictable.
+// If a chunk is long enough to wrap 3+ lines, we let it overflow
+// downward; visual clamp on the container hides it.
+const ROW_HEIGHT_PX = 96;
+// Visual radius: how many rows above / below the current one we
+// render. total rendered = 1 + 2*VISIBLE_RADIUS. Higher = smoother
+// scroll but more offscreen DOM.
+const VISIBLE_RADIUS = 2;
+
+interface FilmstripRowProps {
   text: string;
-  role: "prev" | "current" | "next";
+  /** Distance from currentIndex; 0 = center, negative = above,
+   *  positive = below. Drives size + opacity. */
+  offset: number;
 }
 
-/** One subtitle row. `role` drives sizing + opacity. */
-function ChunkRow({ text, role }: ChunkRowProps) {
-  const base =
-    "mx-auto max-w-4xl px-6 text-center transition-all duration-300 ease-out leading-relaxed";
-  if (role === "current") {
-    return (
-      <div
-        className={`${base} text-3xl font-medium text-fg-default sm:text-4xl md:text-5xl`}
-      >
-        {text}
-      </div>
-    );
+/** One row in the filmstrip. Absolute-positioned; distance from
+ *  current governs size and opacity. Yu 2026-09-20 01:13: "搞个
+ *  滚动效果" — the ENTIRE strip translates on chunk change so
+ *  each row slides up (or down for a rewind) with a smooth ease. */
+function FilmstripRow({ text, offset }: FilmstripRowProps) {
+  const abs = Math.abs(offset);
+  let sizeClass: string;
+  let opacityClass: string;
+  let colorClass: string;
+
+  if (abs === 0) {
+    sizeClass = "text-3xl sm:text-4xl md:text-5xl font-medium";
+    opacityClass = "opacity-100";
+    colorClass = "text-fg-default";
+  } else if (abs === 1) {
+    sizeClass = "text-xl sm:text-2xl";
+    opacityClass = "opacity-60";
+    colorClass = offset < 0 ? "text-fg-faint" : "text-fg-muted";
+  } else {
+    sizeClass = "text-base sm:text-lg";
+    opacityClass = "opacity-25";
+    colorClass = "text-fg-faint";
   }
-  if (role === "prev") {
-    return (
-      <div className={`${base} text-lg text-fg-faint opacity-60 sm:text-xl`}>
-        {text}
-      </div>
-    );
-  }
-  // next
+
   return (
-    <div className={`${base} text-lg text-fg-muted opacity-60 sm:text-xl`}>
+    <div
+      className={`absolute inset-x-0 mx-auto max-w-4xl px-6 text-center leading-relaxed transition-all duration-500 ease-out ${sizeClass} ${opacityClass} ${colorClass}`}
+      style={{
+        top: `calc(50% + ${offset * ROW_HEIGHT_PX}px)`,
+        transform: "translateY(-50%)",
+      }}
+    >
       {text}
     </div>
   );
@@ -126,12 +150,33 @@ export default function VoiceSubtitleView() {
     currentDisplayText ||
     lastCurrentRef.current ||
     (tailChunks.length > 0 ? tailChunks[tailChunks.length - 1] : "");
-  const displayPrev =
-    currentIndex > 0 ? tailChunks[currentIndex - 1] : undefined;
-  const displayNext =
-    currentIndex >= 0 && currentIndex < tailChunks.length - 1
-      ? tailChunks[currentIndex + 1]
-      : undefined;
+
+  // Effective center index. When currentIndex is -1 (idle or
+  // between chunks), fall back to the last chunk in tailChunks so
+  // the filmstrip settles somewhere reasonable instead of jumping
+  // to 0.
+  const effectiveIndex =
+    currentIndex >= 0
+      ? currentIndex
+      : tailChunks.length > 0
+        ? tailChunks.length - 1
+        : 0;
+
+  // Filmstrip window — slice around effectiveIndex. We track chunks
+  // and their ABSOLUTE indices so cross-fades between chunks feel
+  // natural even when the window edges hit array boundaries.
+  const filmstrip: Array<{ text: string; index: number }> = useMemo(() => {
+    if (tailChunks.length === 0) {
+      return [{ text: displayCurrent, index: 0 }];
+    }
+    const out: Array<{ text: string; index: number }> = [];
+    for (let i = effectiveIndex - VISIBLE_RADIUS; i <= effectiveIndex + VISIBLE_RADIUS; i++) {
+      if (i >= 0 && i < tailChunks.length) {
+        out.push({ text: tailChunks[i], index: i });
+      }
+    }
+    return out;
+  }, [tailChunks, effectiveIndex, displayCurrent]);
 
   const idle = !playingId && !lastCurrentRef.current;
 
@@ -175,15 +220,22 @@ export default function VoiceSubtitleView() {
             </div>
           </div>
         ) : (
-          <>
-            <div className="min-h-[2em]">
-              {displayPrev && <ChunkRow text={displayPrev} role="prev" />}
-            </div>
-            <ChunkRow text={displayCurrent} role="current" />
-            <div className="min-h-[2em]">
-              {displayNext && <ChunkRow text={displayNext} role="next" />}
-            </div>
-          </>
+          // Filmstrip container. Fixed height so absolute-positioned
+          // rows can center via `top: 50% + offset`. Overflow hidden
+          // so far-offset rows dissolve at the edges instead of
+          // spilling into the composer.
+          <div
+            className="relative w-full overflow-hidden"
+            style={{ height: `${ROW_HEIGHT_PX * (1 + 2 * VISIBLE_RADIUS)}px` }}
+          >
+            {filmstrip.map((row) => (
+              <FilmstripRow
+                key={row.index}
+                text={row.text}
+                offset={row.index - effectiveIndex}
+              />
+            ))}
+          </div>
         )}
       </div>
 
