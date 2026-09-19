@@ -217,8 +217,13 @@ export default function VoiceSubtitleView() {
         </div>
       </header>
 
-      {/* Big centered subtitle area */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-8 px-4 py-12">
+      {/* Big centered subtitle area. `min-h-0` on the flex child
+          + `overflow-hidden` on the wrapper: without these, the
+          fixed-height filmstrip (480px) can push its parent past
+          the flex allocation and cover the composer below. Yu
+          2026-09-20 01:18 reported ModelSelector unclickable in
+          voice mode — that's this. */}
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 overflow-hidden px-4 py-12">
         {idle ? (
           <div className="text-center">
             <div className="text-2xl text-fg-muted sm:text-3xl">
@@ -248,8 +253,11 @@ export default function VoiceSubtitleView() {
         )}
       </div>
 
-      {/* Composer stays put so voice-mode users can still send. */}
-      <div className="border-t border-border-subtle bg-bg-elevated/50 backdrop-blur">
+      {/* Composer. `relative z-10` guarantees it stacks above any
+          filmstrip row that briefly extends past its container
+          during a transition. Yu 2026-09-20 01:18: ModelSelector
+          was unclickable behind a 5xl chunk row. */}
+      <div className="relative z-10 border-t border-border-subtle bg-bg-elevated/50 backdrop-blur">
         <div className="mx-auto max-w-3xl">
           <ChatInput />
         </div>
