@@ -93,9 +93,21 @@ const MODELS: ModelDef[] = [
     url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20.tar.bz2",
     dir: "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20",
     tokens: "tokens.txt",
-    description: "中英混合实时识别，适合日常多语言输入。",
+    description: "中英混合实时识别，适合日常多语言输入。短字存在叠字问题，建议优先试 zipformer2-ctc-zh。",
     type: "online",
     arch: "zipformer",
+  },
+  {
+    id: "streaming-zipformer2-ctc-zh",
+    name: "Streaming Zipformer2-CTC (中文 xlarge int8)",
+    lang: "zh",
+    size: "~728 MB",
+    url: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-ctc-zh-xlarge-int8-2025-06-30.tar.bz2",
+    dir: "sherpa-onnx-streaming-zipformer-ctc-zh-xlarge-int8-2025-06-30",
+    tokens: "tokens.txt",
+    description: "中文专用 CTC 架构，2025-06 新版，避开 transducer 短字叠字问题。首选。",
+    type: "online",
+    arch: "zipformer", // reused for download listing; runtime arch is zipformer2Ctc
   },
 ];
 

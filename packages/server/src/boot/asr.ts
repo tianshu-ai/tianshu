@@ -72,9 +72,12 @@ export async function reloadAsrModel(): Promise<boolean> {
 // shape; `mode` chooses OfflineRecognizer vs OnlineRecognizer.
 interface ModelCandidate {
   dir: string;
-  arch: "senseVoice" | "paraformer" | "whisper" | "zipformer";
+  arch: "senseVoice" | "paraformer" | "whisper" | "zipformer" | "zipformer2Ctc";
   mode: "offline" | "online";
-  model: string;  // for zipformer this is the encoder
+  // For transducer zipformer this is the encoder path (decoder/joiner
+  // derived by name substitution). For zipformer2Ctc it is the single
+  // model.int8.onnx path. For other archs it is the primary model file.
+  model: string;
   tokens: string;
 }
 
@@ -95,10 +98,16 @@ const MODEL_CANDIDATES: CandidateSpec[] = [
   { id: "whisper-tiny", dirName: "sherpa-onnx-whisper-tiny", arch: "whisper", mode: "offline", model: "tiny-encoder.int8.onnx", tokens: "tiny-tokens.txt" },
 
   // Streaming (online) — for WS /ws/asr real-time partials.
-  // For zipformer the `model` field points to the encoder; the actual
-  // recognizer needs the tuple of encoder+decoder+joiner — initRecognizer
-  // derives decoder/joiner from the same directory.
+  // Transducer zipformer: `model` points to encoder; initOnlineRecognizer
+  // derives decoder/joiner by name substitution.
   { id: "streaming-zipformer-bilingual", dirName: "sherpa-onnx-streaming-zipformer-bilingual-zh-en-2023-02-20", arch: "zipformer", mode: "online", model: "encoder-epoch-99-avg-1.int8.onnx", tokens: "tokens.txt" },
+  // CTC zipformer2: single ONNX file, different sherpa config branch.
+  // Yu, 2026-09-19: adding because the transducer variant above emits
+  // duplicated tokens on short/repeated Chinese utterances (sherpa
+  // issue #3469 — CTC blank dominance in the decoder). This CTC-based
+  // model uses a different decoding pipeline and is expected to avoid
+  // that class of bug.
+  { id: "streaming-zipformer2-ctc-zh", dirName: "sherpa-onnx-streaming-zipformer-ctc-zh-xlarge-int8-2025-06-30", arch: "zipformer2Ctc", mode: "online", model: "model.int8.onnx", tokens: "tokens.txt" },
 ];
 
 function getModelsRoots(): string[] {
@@ -195,14 +204,13 @@ function initOfflineRecognizer(mod: any, best: ModelCandidate): boolean {
 }
 
 /**
- * Streaming recognizer init. Yu, 2026-09-19: only zipformer supported
- * today (validated end-to-end by scripts/spike-online-asr.mjs). Adding
- * more online model families is a matter of extending this switch and
- * MODEL_CANDIDATES.
+ * Streaming recognizer init. Yu, 2026-09-19: supports two online archs.
+ *   - zipformer (transducer): three onnx files (encoder+decoder+joiner)
+ *     derived by name substitution from the encoder path
+ *   - zipformer2Ctc: single model.int8.onnx file
  *
- * zipformer needs three onnx files (encoder + decoder + joiner); we
- * derive decoder/joiner by name substitution from the encoder path
- * because sherpa release archives use that convention.
+ * Adding more online model families is a matter of extending this switch
+ * and MODEL_CANDIDATES.
  */
 function initOnlineRecognizer(mod: any, best: ModelCandidate): boolean {
   const OnlineRecognizer = mod.OnlineRecognizer ?? mod.default?.OnlineRecognizer;
@@ -210,43 +218,62 @@ function initOnlineRecognizer(mod: any, best: ModelCandidate): boolean {
     console.warn("[asr] sherpa-onnx-node has no OnlineRecognizer export");
     return false;
   }
-  const encoderPath = path.join(best.dir, best.model);
-  const decoderPath = encoderPath.replace("encoder", "decoder");
-  const joinerPath = encoderPath.replace("encoder", "joiner");
   const tokensPath = path.join(best.dir, best.tokens);
 
-  if (best.arch !== "zipformer") {
-    console.warn(`[asr] online arch "${best.arch}" not yet wired \u2014 only zipformer supported`);
-    return false;
-  }
-
-  const config = {
-    modelConfig: {
-      transducer: {
-        encoder: encoderPath,
-        decoder: decoderPath,
-        joiner: joinerPath,
-      },
-      tokens: tokensPath,
-      numThreads: 4,
-    },
-    // Endpoint detection lets a caller notice the user paused; the WS
-    // handler will use it to finalise one utterance and start another
-    // without tearing down the recognizer.
+  // Endpoint detection lets a caller notice the user paused; the WS
+  // handler will use it to finalise one utterance and start another
+  // without tearing down the recognizer. Values match sherpa CLI
+  // defaults for both arches.
+  const commonEndpoint = {
     enableEndpoint: 1,
     rule1MinTrailingSilence: 2.4,
     rule2MinTrailingSilence: 1.2,
     rule3MinUtteranceLength: 20,
-    // Yu, 2026-09-19: streaming zipformer duplicates short/repeated
-    // Chinese tokens on its own ("你" → "你你你你你"). sherpa issue
-    // #3469 documents the CTC blank-dominance root cause; raising
-    // blank_penalty biases the decoder away from spurious token
-    // emissions on the same frame. Sherpa docs describe this as a
-    // positive penalty added to blank symbol probability during
-    // decoding. Value 2.0 is the middle of the range #3469 tested;
-    // if 2.0 undershoots we can push to 3.0-4.0.
-    blankPenalty: 2.0,
   };
+
+  let config: Record<string, unknown>;
+
+  if (best.arch === "zipformer") {
+    const encoderPath = path.join(best.dir, best.model);
+    const decoderPath = encoderPath.replace("encoder", "decoder");
+    const joinerPath = encoderPath.replace("encoder", "joiner");
+    config = {
+      modelConfig: {
+        transducer: {
+          encoder: encoderPath,
+          decoder: decoderPath,
+          joiner: joinerPath,
+        },
+        tokens: tokensPath,
+        numThreads: 4,
+      },
+      ...commonEndpoint,
+      // Yu, 2026-09-19: streaming zipformer transducer duplicates
+      // short/repeated Chinese tokens ("你" → "你你你你你").
+      // sherpa issue #3469 documents the CTC blank-dominance root
+      // cause in the transducer decoder; raising blank_penalty biases
+      // the decoder away from spurious repeats. 2.0 is the middle of
+      // the range #3469 tested; if it undershoots we can push higher.
+      blankPenalty: 2.0,
+    };
+  } else if (best.arch === "zipformer2Ctc") {
+    const modelPath = path.join(best.dir, best.model);
+    config = {
+      modelConfig: {
+        zipformer2Ctc: { model: modelPath },
+        tokens: tokensPath,
+        numThreads: 4,
+      },
+      ...commonEndpoint,
+      // No blankPenalty here — the whole point of moving to the CTC
+      // model is to sidestep the transducer blank-dominance issue.
+      // If duplicates return with this model too, that's a separate
+      // investigation.
+    };
+  } else {
+    console.warn(`[asr] online arch "${best.arch}" not yet wired`);
+    return false;
+  }
 
   onlineRecognizer = new OnlineRecognizer(config);
   activeMode = "online";
