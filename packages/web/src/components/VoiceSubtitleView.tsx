@@ -52,18 +52,18 @@ function splitChunks(text: string): string[] {
 
 // Apple Music lyrics-style layout.
 //
-// Yu 2026-09-20 01:52: "参考下其他做的比较好的滚动字幕效果
-// 的 app，把他们的效果借鉴过来". Apple Music picked (A):
-//   - Left-aligned, bold, big, uniform font size across ALL rows
-//   - Current line: white 100% + slight scale + micro 3D tilt
-//   - Sung: white fading to 12% opacity (further back = fainter)
-//   - Upcoming: white fading to 15% opacity (brighter than sung
-//     at same distance — Apple's ambient "about to play" glow)
-//   - Smooth cubic-bezier scroll on line change (500ms)
-//   - Blurred halo backdrop of the current text for ambient color
-const ROW_HEIGHT_PX = 180;
-// Wider window (3 each side = 7 total) for Apple's roomy feel.
-const VISIBLE_RADIUS = 3;
+// Yu 2026-09-20 02:08 "有点乱" screenshot: v2 (cc6fe92) had all
+// rows at 5xl full-multi-line, so adjacent chunks stacked into
+// each other. Also the halo backdrop looked like garbled text.
+//
+// v3: keep the Apple Music left-aligned bold big vibe, but:
+//   - Off-center rows TRUNCATE to single line (only current wraps)
+//   - Halo backdrop removed (it was noise, not ambiance)
+//   - ROW_HEIGHT_PX bumped to 240 to comfortably fit 3-line current
+//   - VISIBLE_RADIUS 2 (5 rows total) — Apple's actual UI shows
+//     roughly 2 sung + current + 2 upcoming
+const ROW_HEIGHT_PX = 240;
+const VISIBLE_RADIUS = 2;
 
 interface FilmstripRowProps {
   text: string;
@@ -120,9 +120,13 @@ function FilmstripRow({ text, offset }: FilmstripRowProps) {
     tiltDeg = `-${Math.min(abs * 2, 6)}deg`;
   }
 
+  // Only current wraps multi-line; off-center rows truncate to a
+  // single line + ellipsis so they can't collide with neighbors.
+  const wrapClass = isCurrent ? "" : "truncate";
+
   return (
     <div
-      className="absolute inset-x-0 px-6 text-left text-3xl sm:text-4xl md:text-5xl"
+      className={`absolute inset-x-0 px-6 text-left text-3xl sm:text-4xl md:text-5xl ${wrapClass}`}
       style={{
         top: `calc(50% + ${offset * ROW_HEIGHT_PX}px)`,
         transform: `translateY(-50%) scale(${scale}) rotateX(${tiltDeg})`,
@@ -279,25 +283,6 @@ export default function VoiceSubtitleView() {
               perspective: "1200px",
             }}
           >
-            {/* Apple Music halo backdrop: blurred giant text of
-                the current chunk, providing ambient color glow
-                behind the subtitles. pointer-events-none so it
-                never intercepts clicks intended for buttons that
-                might peek through. */}
-            <div
-              aria-hidden
-              className="pointer-events-none absolute inset-0 flex items-center justify-center"
-              style={{
-                fontSize: "14rem",
-                lineHeight: 1,
-                fontWeight: 900,
-                color: "rgba(120, 180, 255, 0.10)",
-                filter: "blur(60px)",
-                transform: "scale(1.4)",
-              }}
-            >
-              {displayCurrent.slice(0, 6)}
-            </div>
             {filmstrip.map((row) => (
               <FilmstripRow
                 key={row.index}
