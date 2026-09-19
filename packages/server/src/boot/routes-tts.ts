@@ -100,8 +100,28 @@ function buildWavHeader(pcmByteLen: number): Buffer {
 }
 
 /**
- * Edge TTS handler — synthesises via @andresaya/edge-tts, returns
- * MP3 bytes. Cloud-only, no local setup needed.
+ * Edge TTS handler — streams mp3 chunks via @andresaya/edge-tts's
+ * synthesizeStream() async iterator.
+ *
+ * Yu, 2026-09-19 21:27: switched from batch synthesize() +
+ * toBase64() to streaming. Reason: edge-tts's cloud endpoint has
+ * ~1.8s first-byte latency; the batch path also waited for the
+ * FULL synthesis before returning (~2.6s), so users heard silence
+ * for ~2s after the reply text finished streaming. Streaming
+ * halves the perceived delay because express flushes each chunk
+ * to the browser and MediaSource on the client starts playback
+ * as soon as the first chunk arrives.
+ *
+ * Wire-level (probed 2026-09-19 against @andresaya/edge-tts@1.8.0):
+ *   synthesizeStream(text, voice, { outputFormat })
+ *     → AsyncIterable<Uint8Array>
+ *   Each chunk is ~1.4 KB of raw MP3 frames aligned on frame
+ *   boundaries. Content-Type is audio/mpeg. No trailing footer or
+ *   completion marker — iterator just ends.
+ *
+ * Response uses chunked transfer encoding implicitly (express
+ * writes without Content-Length). Client MediaSource + fetch
+ * ReadableStream + SourceBuffer.appendBuffer plays as chunks land.
  */
 async function handleEdge(
   res: Response,
@@ -110,41 +130,55 @@ async function handleEdge(
 ): Promise<void> {
   const useVoice = voice?.trim() || DEFAULT_EDGE_VOICE;
   const tts = new EdgeTTS();
+
   console.log(
-    `[tts] edge synthesise: len=${text.length} voice=${useVoice}`,
+    `[tts] edge streaming synthesise: len=${text.length} voice=${useVoice}`,
   );
-  try {
-    await tts.synthesize(text, useVoice, {
-      outputFormat: EDGE_OUTPUT_FORMAT,
-    });
-  } catch (err) {
-    console.warn("[tts] edge synthesis failed:", err);
-    res.status(502).json({
-      error: "edge tts synthesis failed",
-      detail: err instanceof Error ? err.message : String(err),
-    });
-    return;
-  }
 
-  // API note (probed against @andresaya/edge-tts@1.8.0 on 2026-09-19):
-  //   toBase64() and toRaw() both return the audio as a base64
-  //   STRING (not Buffer, despite what "raw" sounds like). Neither
-  //   getBase64 nor getAudioBuffer exists on this version. Use
-  //   toBase64() explicitly — same output, clearer name.
-  const b64 = (tts as unknown as { toBase64: () => string }).toBase64();
-  if (!b64) {
-    console.warn("[tts] edge returned empty audio");
-    res.status(502).json({ error: "edge tts returned empty audio" });
-    return;
-  }
-  const audio = Buffer.from(b64, "base64");
-
+  // Set headers up-front; don't set Content-Length — that would
+  // require buffering the whole thing.
   res.setHeader("Content-Type", "audio/mpeg");
-  res.setHeader("Content-Length", String(audio.length));
   res.setHeader("Cache-Control", "no-store");
-  res.end(audio);
+  // Explicitly disable Nagle-style buffering on the response so
+  // the first chunk gets flushed to the client immediately.
+  res.setHeader("X-Accel-Buffering", "no");
 
-  console.log(`[tts] edge delivered mp3: ${audio.length}B`);
+  const start = Date.now();
+  let chunkCount = 0;
+  let byteCount = 0;
+  let firstChunkMs: number | null = null;
+
+  try {
+    const iter = (tts as unknown as {
+      synthesizeStream: (
+        text: string,
+        voice: string,
+        opts: { outputFormat: string },
+      ) => AsyncIterable<Uint8Array>;
+    }).synthesizeStream(text, useVoice, { outputFormat: EDGE_OUTPUT_FORMAT });
+    for await (const chunk of iter) {
+      if (firstChunkMs == null) firstChunkMs = Date.now() - start;
+      chunkCount++;
+      byteCount += chunk.length;
+      res.write(Buffer.from(chunk));
+    }
+  } catch (err) {
+    console.warn("[tts] edge stream failed mid-flight:", err);
+    // Headers already sent; can't return a JSON error body. Best
+    // effort: end the response so the browser sees an empty stream.
+    try {
+      res.end();
+    } catch {
+      // ignore
+    }
+    return;
+  }
+
+  res.end();
+  console.log(
+    `[tts] edge streamed mp3: ${byteCount}B in ${chunkCount} chunks ` +
+      `(first at ${firstChunkMs}ms, total ${Date.now() - start}ms)`,
+  );
 }
 
 /**

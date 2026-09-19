@@ -107,9 +107,19 @@ export function useTts(): {
       const controller = new AbortController();
       abortRef.current = controller;
 
-      let audioBlob: Blob;
+      // Kick off the request. We DON'T await res.blob() any more —
+      // we're going to stream the response into MediaSource so the
+      // audio starts playing as chunks arrive.
+      //
+      // Yu, 2026-09-19 21:27: switched from blob() to MediaSource
+      // streaming. Edge-tts cloud has ~1.8s first-byte latency +
+      // total ~2.6s for a short sentence; buffering the whole blob
+      // made the user hear silence for the full 2.6s. Streaming
+      // starts playback at ~1.8s — the browser plays as chunks
+      // land, roughly halving perceived latency.
+      let res: globalThis.Response;
       try {
-        const res = await fetch("/api/tts", {
+        res = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -121,7 +131,6 @@ export function useTts(): {
           signal: controller.signal,
         });
         if (!res.ok) {
-          // Try to surface the server's error JSON if any.
           let detail = `HTTP ${res.status}`;
           try {
             const body = await res.json();
@@ -131,22 +140,86 @@ export function useTts(): {
           }
           throw new Error(`[tts] ${detail}`);
         }
-        audioBlob = await res.blob();
       } catch (err) {
-        // If we were aborted, that's a normal stop() — swallow silently.
         if ((err as { name?: string })?.name === "AbortError") return;
         setIsSpeaking(false);
         throw err;
       }
-
-      // Only proceed if we weren't stopped mid-flight.
       if (controller.signal.aborted) return;
 
-      const url = URL.createObjectURL(audioBlob);
-      objectUrlRef.current = url;
+      const contentType = res.headers.get("content-type") ?? "";
       const audio = getAudio();
 
+      // CosyVoice returns audio/wav in this codebase. MediaSource
+      // works well with MP3 ("audio/mpeg") in all modern browsers,
+      // but wav is finicky — spec says supported but every browser
+      // has quirks. Fall back to blob() for anything that isn't
+      // audio/mpeg so wav from CosyVoice still works.
+      const canStream =
+        contentType.startsWith("audio/mpeg") &&
+        typeof MediaSource !== "undefined" &&
+        MediaSource.isTypeSupported("audio/mpeg");
+
+      if (!canStream) {
+        // Non-mpeg or MediaSource unsupported — legacy blob path.
+        let audioBlob: Blob;
+        try {
+          audioBlob = await res.blob();
+        } catch (err) {
+          if ((err as { name?: string })?.name === "AbortError") return;
+          setIsSpeaking(false);
+          throw err;
+        }
+        if (controller.signal.aborted) return;
+        const url = URL.createObjectURL(audioBlob);
+        objectUrlRef.current = url;
+        return new Promise<void>((resolve, reject) => {
+          function cleanup() {
+            audio.removeEventListener("ended", onEnded);
+            audio.removeEventListener("error", onError);
+            if (objectUrlRef.current === url) {
+              try {
+                URL.revokeObjectURL(url);
+              } catch {
+                // ignore
+              }
+              objectUrlRef.current = null;
+            }
+            setIsSpeaking(false);
+          }
+          function onEnded() {
+            cleanup();
+            resolve();
+          }
+          function onError() {
+            cleanup();
+            reject(new Error("[tts] audio playback failed"));
+          }
+          audio.addEventListener("ended", onEnded);
+          audio.addEventListener("error", onError);
+          audio.src = url;
+          setIsSpeaking(true);
+          audio.play().catch((err) => {
+            cleanup();
+            reject(err);
+          });
+        });
+      }
+
+      // Streaming path via MediaSource. Flow:
+      //   1. Create MediaSource, set audio.src to its objectURL
+      //   2. On "sourceopen", add a SourceBuffer for audio/mpeg
+      //   3. Read the fetch response body as chunks
+      //   4. Serialise appendBuffer calls (SourceBuffer is one-op-
+      //      at-a-time; queue and flush on updateend)
+      //   5. When the reader is exhausted, endOfStream()
+      //   6. Resolve on audio.ended, reject on error
+      const mediaSource = new MediaSource();
+      const url = URL.createObjectURL(mediaSource);
+      objectUrlRef.current = url;
+
       return new Promise<void>((resolve, reject) => {
+        let settled = false;
         function cleanup() {
           audio.removeEventListener("ended", onEnded);
           audio.removeEventListener("error", onError);
@@ -161,25 +234,126 @@ export function useTts(): {
           setIsSpeaking(false);
         }
         function onEnded() {
+          if (settled) return;
+          settled = true;
           cleanup();
           resolve();
         }
         function onError() {
+          if (settled) return;
+          settled = true;
           cleanup();
           reject(new Error("[tts] audio playback failed"));
         }
-
         audio.addEventListener("ended", onEnded);
         audio.addEventListener("error", onError);
+
+        mediaSource.addEventListener(
+          "sourceopen",
+          async () => {
+            let sourceBuffer: SourceBuffer;
+            try {
+              sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+            } catch (err) {
+              if (!settled) {
+                settled = true;
+                cleanup();
+                reject(err);
+              }
+              return;
+            }
+
+            // Queue chunks; SourceBuffer refuses appendBuffer while
+            // updating so we serialise.
+            const queue: Uint8Array[] = [];
+            let ended = false;
+            let appending = false;
+
+            function pump() {
+              if (appending) return;
+              if (queue.length === 0) {
+                if (ended) {
+                  try {
+                    if (mediaSource.readyState === "open") {
+                      mediaSource.endOfStream();
+                    }
+                  } catch {
+                    // ignore — audio ended event will resolve us
+                  }
+                }
+                return;
+              }
+              appending = true;
+              const next = queue.shift()!;
+              try {
+                // TS 7 tightened Uint8Array typing; SourceBuffer.appendBuffer
+                // takes BufferSource which older TS accepted Uint8Array for
+                // implicitly. Explicit cast — runtime is unchanged.
+                sourceBuffer.appendBuffer(next as BufferSource);
+              } catch (err) {
+                appending = false;
+                if (!settled) {
+                  settled = true;
+                  cleanup();
+                  reject(err);
+                }
+              }
+            }
+            sourceBuffer.addEventListener("updateend", () => {
+              appending = false;
+              pump();
+            });
+
+            // Start playback — audio can begin as soon as the
+            // sourceBuffer has enough data for the codec.
+            setIsSpeaking(true);
+            audio.src = url;
+            audio.play().catch((err) => {
+              if (!settled) {
+                settled = true;
+                cleanup();
+                reject(err);
+              }
+            });
+
+            // Pump the fetch stream into the queue.
+            if (!res.body) {
+              ended = true;
+              pump();
+              return;
+            }
+            const reader = res.body.getReader();
+            try {
+              while (true) {
+                if (controller.signal.aborted) {
+                  try {
+                    reader.cancel();
+                  } catch {
+                    // ignore
+                  }
+                  return;
+                }
+                const { value, done } = await reader.read();
+                if (done) break;
+                if (value && value.length) {
+                  queue.push(value);
+                  pump();
+                }
+              }
+              ended = true;
+              pump();
+            } catch (err) {
+              if (!settled) {
+                settled = true;
+                cleanup();
+                reject(err);
+              }
+            }
+          },
+          { once: true },
+        );
+
         audio.src = url;
-        setIsSpeaking(true);
-        audio.play().catch((err) => {
-          // Autoplay policy can reject here (user hasn't interacted
-          // yet). Surface the error so the caller can prompt the
-          // user to click first.
-          cleanup();
-          reject(err);
-        });
       });
     },
     [stop],
