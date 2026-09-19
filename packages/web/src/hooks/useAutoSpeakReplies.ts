@@ -333,10 +333,46 @@ export function useAutoSpeakReplies() {
     // seed pass on line above already does for pre-existing history.
     const tail = messages[messages.length - 1];
     if (tail && tail.role === "assistant") {
-      // If we've never seen this id, mark every OTHER assistant
-      // message id as "already done" so an id swap on the previous
-      // turn doesn't re-slice it. Only the newest id gets streamed.
+      // Handle the placeholder → persistent id swap that server does
+      // on stream_end. Yu 2026-09-19 23:14 log:
+      //   ming__ streams to 243 chars, slices 12 sentences
+      //   THEN persistent id 9b5d3b appears with the same 243 chars
+      //   fresh cursorRef entry for 9b5d3b starts at 0
+      //   → re-slices the whole story as one giant slice
+      //
+      // Detection: if we've never seen this tail id AND there's
+      // another assistant message with matching text prefix (the
+      // placeholder we've been slicing), inherit its cursor.
       if (!cursorRef.current.has(tail.id)) {
+        const tailText = tail.text ?? "";
+        let inheritedCursor: number | null = null;
+        for (const other of messages) {
+          if (other.role !== "assistant" || other.id === tail.id) continue;
+          const otherText = other.text ?? "";
+          const otherCursor = cursorRef.current.get(other.id);
+          if (otherCursor == null) continue;
+          // Same-prefix match: the persistent row's text starts with
+          // (or IS) the placeholder's text up to the placeholder's
+          // cursor. Handles both "same content, swap id at end" and
+          // "placeholder was fully sliced but stream added a bit
+          // more before persist".
+          const commonLen = Math.min(otherText.length, tailText.length);
+          if (
+            commonLen > 0 &&
+            otherText.slice(0, commonLen) === tailText.slice(0, commonLen)
+          ) {
+            inheritedCursor = Math.max(
+              inheritedCursor ?? 0,
+              Math.min(otherCursor, tailText.length),
+            );
+          }
+        }
+        if (inheritedCursor != null) {
+          cursorRef.current.set(tail.id, inheritedCursor);
+        }
+
+        // Regardless of inheritance, mark every OTHER assistant
+        // message as "done" so a re-render doesn't re-slice them.
         for (const other of messages) {
           if (other.role === "assistant" && other.id !== tail.id) {
             const src = other.text ?? "";
