@@ -95,7 +95,15 @@ export function useAutoSpeakReplies() {
   // Track the last message id we successfully asked to speak.
   // Persist across renders via ref rather than state — we don't
   // want to re-render when this changes.
+  //
+  // Yu, 2026-09-19 21:06: bug — first mount with an existing chat
+  // history would fire speak() on the pre-existing tail message
+  // ("刷新以后会自动播放最新的那个消息"). Fix: seed the ref
+  // with the current tail on mount so only messages that arrive
+  // AFTER voice mode is on trigger playback. Bootstrap flag makes
+  // that one-time initialisation observable to the effect.
   const lastSpokenIdRef = useRef<string | null>(null);
+  const seededRef = useRef(false);
 
   // Cached user preferences for TTS provider + voice. Read once
   // when voice mode turns on; re-fetched when the user toggles it
@@ -129,8 +137,23 @@ export function useAutoSpeakReplies() {
 
   useEffect(() => {
     // If the user turned voice mode off mid-playback, cut the audio.
+    // Also reset the seed flag so re-enabling voice mode later
+    // won't replay whatever's already on screen.
     if (!enabled) {
       stop();
+      seededRef.current = false;
+      lastSpokenIdRef.current = null;
+      return;
+    }
+
+    // On first pass with voice mode on, adopt the current tail as
+    // "already spoken" so historical messages that predate the
+    // toggle don't get read out. Only messages appended AFTER this
+    // seed should trigger speak().
+    if (!seededRef.current) {
+      const tail = messages[messages.length - 1];
+      lastSpokenIdRef.current = tail?.id ?? null;
+      seededRef.current = true;
       return;
     }
 
