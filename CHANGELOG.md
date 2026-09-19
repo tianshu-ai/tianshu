@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.53.9](https://github.com/tianshu-ai/tianshu/compare/v0.53.8...v0.53.9) (2026-09-19)
+
+
+### Bug Fixes
+
+* **asr:** mount POST /api/transcribe after tenantMiddleware so auth works ([0d36463](https://github.com/tianshu-ai/tianshu/commit/0d364632b56f66aa8158fd226a370f0b933002fb))
+* **voice:** send credentials on POST /api/transcribe so cookie auth works ([4ed38ff](https://github.com/tianshu-ai/tianshu/commit/4ed38ff56515fe5185b83a7da4c7294a9821424f))
+
 ## [0.53.8](https://github.com/tianshu-ai/tianshu/compare/v0.53.7...v0.53.8) (2026-09-18)
 
 
