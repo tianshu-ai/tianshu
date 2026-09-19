@@ -33,6 +33,7 @@ import { useChatStore } from "../stores/chat-store";
 import { useVoiceStore } from "../stores/voice-store";
 import { useVoiceMode } from "../hooks/useVoiceMode";
 import ChatInput from "./ChatInput";
+import PluginTopBarButtons from "./PluginTopBarButtons";
 
 // Same blank-line splitter used by useAutoSpeakReplies. Kept in
 // sync via test-if-you-touch-either. Two \n\ns min, tolerates
@@ -182,30 +183,38 @@ export default function VoiceSubtitleView() {
 
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
-      {/* Minimal header — sidebar toggle + close-voice button.
-          Anything else would compete with the big subtitles. */}
+      {/* Header: keep sidebar + plugin-panel controls so voice mode
+          still lets Yu manage side panels manually AND lets tianshu
+          drive them via plugin bar buttons. Yu 2026-09-20 01:15:
+          "聊天模式你把插件的 panel 隐掉了，我还希望 tianshu 可以帮我
+          操作边栏的". */}
       <header className="flex h-12 items-center justify-between border-b border-border-subtle bg-bg-elevated/50 px-4 backdrop-blur">
-        <button
-          type="button"
-          onClick={toggleSidebar}
-          className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
-          title={sidebarOpen ? "隐藏侧栏" : "显示侧栏"}
-        >
-          {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-        </button>
-        <div className="text-xs uppercase tracking-widest text-fg-faint">
-          🎧 语音模式
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
+            title={sidebarOpen ? "隐藏侧栏" : "显示侧栏"}
+          >
+            {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+          </button>
+          <span className="text-xs uppercase tracking-widest text-fg-faint">
+            🎧 语音模式
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={toggleVoice}
-          className="rounded-lg p-1.5 text-accent-fill transition-colors hover:bg-bg-raised hover:text-accent-fg"
-          title="关闭语音回复"
-          aria-label="Disable voice replies"
-          aria-pressed={true}
-        >
-          <Volume2 size={16} />
-        </button>
+        <div className="flex items-center gap-2">
+          <PluginTopBarButtons />
+          <button
+            type="button"
+            onClick={toggleVoice}
+            className="rounded-lg p-1.5 text-accent-fill transition-colors hover:bg-bg-raised hover:text-accent-fg"
+            title="关闭语音回复"
+            aria-label="Disable voice replies"
+            aria-pressed={true}
+          >
+            <Volume2 size={16} />
+          </button>
+        </div>
       </header>
 
       {/* Big centered subtitle area */}
