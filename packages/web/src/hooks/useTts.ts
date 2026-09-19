@@ -70,6 +70,13 @@ export function useTts(): {
     return el;
   }
 
+  // Track the current MediaSource so stop() can shut it down
+  // cleanly. Without this, calling speak() twice in quick succession
+  // (e.g. multi-step replies) starts a second SourceBuffer while the
+  // previous streaming pump is still inserting into a detached
+  // MediaSource → InvalidStateError on appendBuffer.
+  const mediaSourceRef = useRef<MediaSource | null>(null);
+
   const stop = useCallback(() => {
     // Cancel any in-flight fetch.
     if (abortRef.current) {
@@ -84,6 +91,26 @@ export function useTts(): {
         // Ignore — element may already be in a torn-down state.
       }
       audioRef.current.currentTime = 0;
+      // Clearing src detaches the MediaSource / blob source so it
+      // won't hold references or fight the next speak() call.
+      try {
+        audioRef.current.removeAttribute("src");
+        audioRef.current.load();
+      } catch {
+        // ignore
+      }
+    }
+    // Tear down any active MediaSource. endOfStream() only works
+    // in "open" state; otherwise removeSourceBuffer / detach via
+    // src clear above is enough.
+    if (mediaSourceRef.current) {
+      const ms = mediaSourceRef.current;
+      mediaSourceRef.current = null;
+      try {
+        if (ms.readyState === "open") ms.endOfStream();
+      } catch {
+        // ignore — stream may already be ending / errored
+      }
     }
     // Revoke any blob URL to release memory.
     if (objectUrlRef.current) {
@@ -215,6 +242,7 @@ export function useTts(): {
       //   5. When the reader is exhausted, endOfStream()
       //   6. Resolve on audio.ended, reject on error
       const mediaSource = new MediaSource();
+      mediaSourceRef.current = mediaSource;
       const url = URL.createObjectURL(mediaSource);
       objectUrlRef.current = url;
 
@@ -283,6 +311,20 @@ export function useTts(): {
                 }
                 return;
               }
+              // Bail if the MediaSource / SourceBuffer was torn
+              // down while we were queued (rapid stop() + new speak
+              // during multi-step replies). Without this guard the
+              // appendBuffer call throws InvalidStateError with
+              // "SourceBuffer has been removed from the parent
+              // media source" (Yu 2026-09-19 21:34).
+              if (
+                settled ||
+                mediaSourceRef.current !== mediaSource ||
+                mediaSource.readyState !== "open"
+              ) {
+                queue.length = 0;
+                return;
+              }
               appending = true;
               const next = queue.shift()!;
               try {
@@ -292,6 +334,17 @@ export function useTts(): {
                 sourceBuffer.appendBuffer(next as BufferSource);
               } catch (err) {
                 appending = false;
+                // Treat detach as a silent stop rather than an error
+                // — it just means the caller moved on to a new speak.
+                const name = (err as { name?: string })?.name;
+                if (name === "InvalidStateError") {
+                  if (!settled) {
+                    settled = true;
+                    cleanup();
+                    resolve();
+                  }
+                  return;
+                }
                 if (!settled) {
                   settled = true;
                   cleanup();
