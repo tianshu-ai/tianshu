@@ -338,7 +338,9 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
             pump();
           });
 
-          el.src = url;
+          // el.src already set outside sourceopen; setting again
+          // here caused a second blob fetch that 404'd (Yu
+          // 2026-09-19 22:03). Just start playback.
           el.play().catch((err) => {
             if (!settled) {
               settled = true;
@@ -383,7 +385,15 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
         { once: true },
       );
 
-      el.src = url;
+      // Bind the audio element to the MediaSource URL. sourceopen
+      // above fires once the browser has read this src and started
+      // opening the MediaSource. Yu, 2026-09-19 22:03: had TWO
+      // `el.src = url` assignments (this one and one inside
+      // sourceopen after addSourceBuffer). The double-assign made
+      // the browser fetch the blob URL twice — the second fetch
+      // hit 404 when the MediaSource was already open and consuming
+      // the first bind. Removed the inner one; keeping only this
+      // outer one so sourceopen is actually triggered.
     });
   },
 }));
