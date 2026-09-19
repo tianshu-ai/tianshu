@@ -284,15 +284,25 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       }
       const url = URL.createObjectURL(blob);
       objectUrl = url;
+      // Snapshot the request id so cleanup only clears playingId
+      // if THIS request is still the active one. Prevents a stale
+      // ended/error event from a previous slice from wiping the
+      // playingId of the slice that just started (Yu 2026-09-19
+      // 23:20: queued slices playing out of order / dropping).
+      const thisReqId = req.id;
       return new Promise<void>((resolve, reject) => {
+        let settled = false;
         function cleanup() {
+          if (settled) return;
+          settled = true;
           el.removeEventListener("ended", onEnded);
           el.removeEventListener("error", onError);
           // Deliberately don't revoke url — see top-of-file comment
           // (Yu 2026-09-19 22:00, four revoke strategies all raced
           // audio's internal detach fetch).
           if (objectUrl === url) objectUrl = null;
-          set({ playingId: null });
+          // Only clear playingId if THIS request still owns it.
+          if (get().playingId === thisReqId) set({ playingId: null });
         }
         function onEnded() {
           cleanup();
