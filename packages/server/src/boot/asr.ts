@@ -161,7 +161,16 @@ function readWavSamples(wavPath: string): { samples: Float32Array; sampleRate: n
   return { samples: float32, sampleRate: 16000 };
 }
 
-export function mountAsrRoute(app: Express): void {
+/**
+ * Public ASR routes — no tenant/auth required.
+ *
+ * Mount BEFORE tenantMiddleware. Only exposes read-only availability
+ * checks; no audio data crosses this boundary.
+ *
+ * Kicks off initRecognizer as a side effect so the model is warm by
+ * the time the first POST arrives on the authed route.
+ */
+export function mountAsrPublicRoutes(app: Express): void {
   // Try to init at mount time (fire-and-forget, won't block boot)
   initRecognizer().then((ok) => {
     if (ok) console.log("[asr] POST /api/transcribe ready");
@@ -175,7 +184,23 @@ export function mountAsrRoute(app: Express): void {
     try { await import("sherpa-onnx-node"); } catch { runtimeInstalled = false; }
     res.json({ available: !!recognizer, runtimeInstalled });
   });
+}
 
+/**
+ * Authed ASR route — audio upload endpoint.
+ *
+ * Mount AFTER tenantMiddleware. The handler still keeps a defensive
+ * `!req.ctx` check, but with correct mount order it should never
+ * trip — tenantMiddleware either sets req.ctx or 401's the request
+ * before it reaches here.
+ *
+ * Yu, 2026-09-19 13:48: this used to be part of mountAsrRoute() and
+ * was mounted BEFORE tenantMiddleware in index.ts. That meant every
+ * upload got a 401 in dev and in the deployed CLI — req.ctx was
+ * never populated. Split into two functions so mount order is
+ * unambiguous.
+ */
+export function mountAsrAuthedRoutes(app: Express): void {
   app.post("/api/transcribe", async (req: Request, res: Response) => {
     // Require authentication — reject anonymous requests
     if (!req.ctx) {
