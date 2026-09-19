@@ -31,7 +31,7 @@
   },
   "dependencies": {
     "@tianshu-ai/plugin-sdk": "*",
-    "microsandbox": "^0.5.7"
+    "microsandbox": "^0.7.0"
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
