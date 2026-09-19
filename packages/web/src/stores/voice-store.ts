@@ -38,8 +38,11 @@ export interface SpeakRequest {
    *     and expects it NOW.
    *   - "queue": append to the FIFO queue and play after everything
    *     currently pending finishes. Used by streaming auto-speak
-   *     so mid-stream sentence slices don't cut each other off. */
-  mode?: "immediate" | "queue";
+   *     so mid-stream sentence slices don't cut each other off.
+   *   - "drain" (internal): identical to immediate but preserves
+   *     the pending queue. Only the drain loop should set this;
+   *     external callers use "immediate" or "queue". */
+  mode?: "immediate" | "queue" | "drain";
 }
 
 interface VoiceState {
@@ -177,7 +180,10 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
             );
             const started = Date.now();
             try {
-              await get().play({ ...next, mode: "immediate" });
+              // mode:"drain" tells play() to skip the queue-flush
+              // step — we're pulling FROM the queue, we mustn't nuke
+              // the remaining items behind us.
+              await get().play({ ...next, mode: "drain" });
               console.log(
                 `[voice] drain done id=${next.id.slice(-12)} ` +
                   `elapsed=${Date.now() - started}ms queue=${pendingQueue.length}`,
@@ -205,9 +211,16 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       get().enqueue(req);
       return;
     }
-    // Manual play flushes the queue — user asked for something
-    // specific, don't let queued auto-speak jump the line.
-    pendingQueue.length = 0;
+    // Manual play flushes the queue — UNLESS this call is coming
+    // from the drain loop itself (mode:"drain" internal flag).
+    // Yu, 2026-09-19 23:29 log: drain loop was calling play() with
+    // mode:"immediate" and the pendingQueue.length=0 wipe inside
+    // that path was truncating the queue mid-drain — drain thought
+    // it was still going but the queue was already empty. Only 3
+    // slices audibly played out of 20.
+    if (req.mode !== "drain") {
+      pendingQueue.length = 0;
+    }
     // Cancel whatever's playing / fetching before starting fresh.
     teardown();
     set({ playingId: req.id, lastError: null });
