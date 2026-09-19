@@ -107,14 +107,44 @@ export function stripSilent(text: string): string {
 }
 
 /**
+ * Emoji + pictographic character regex.
+ *
+ * Yu, 2026-09-19 22:48: "图片、emoji 之类的内容就不应该念出来".
+ * Emoji get "grinning face" or nothing at all read from most TTS
+ * engines, either way not what the user wants.
+ *
+ * Covers the Unicode ranges that render as pictographs:
+ *   - Emoticons                       U+1F600 – U+1F64F
+ *   - Misc Symbols and Pictographs    U+1F300 – U+1F5FF
+ *   - Transport and Map Symbols       U+1F680 – U+1F6FF
+ *   - Regional Indicator (flags)      U+1F1E6 – U+1F1FF
+ *   - Supplemental Symbols and Pict.  U+1F900 – U+1F9FF
+ *   - Symbols and Pictographs Ext-A   U+1FA70 – U+1FAFF
+ *   - Miscellaneous Symbols           U+2600  – U+26FF
+ *   - Dingbats                        U+2700  – U+27BF
+ *   - Variation selectors + ZWJ       U+FE00–U+FE0F, U+200D
+ *
+ * Uses the `u` flag so surrogate-pair emoji are matched as a single
+ * unit rather than half-and-half.
+ */
+const EMOJI_RE =
+  /[\u{1F1E6}-\u{1F1FF}\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE00}-\u{FE0F}\u{200D}]/gu;
+
+/**
  * Strip common markdown markers AFTER silent regions have been
  * removed. Not a full markdown parser — just enough to avoid the
  * worst "star star" / "hash hash" reading artefacts on the content
  * that IS being spoken.
+ *
+ * Also strips emoji and image references so TTS reads clean text
+ * without "grinning face" or an alt text alone in the audio.
  */
 function stripMarkdown(md: string): string {
   return (
     md
+      // image markdown ![alt](url) — drop entirely; alt text alone
+      // is not useful in audio and reading a URL is worse
+      .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
       // fenced code blocks: replace with a single spoken hint. In
       // voice mode tianshu is expected to <silent>-wrap code blocks,
       // but be defensive in case a block leaks through.
@@ -128,11 +158,16 @@ function stripMarkdown(md: string): string {
       .replace(/_([^_]+)_/g, "$1")
       // markdown links [text](url) → text
       .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      // raw URLs on their own — speak nothing; embedded URLs inside
+      // sentences also get stripped, which is desirable in audio
+      .replace(/https?:\/\/\S+/g, "")
       // heading hashes at line start
       .replace(/^#{1,6}\s+/gm, "")
       // list bullet markers at line start
       .replace(/^[-*+]\s+/gm, "")
       .replace(/^\d+\.\s+/gm, "")
+      // emoji + variation selectors + ZWJ joiners: drop entirely
+      .replace(EMOJI_RE, "")
       // collapse whitespace
       .replace(/\s+/g, " ")
       .trim()
