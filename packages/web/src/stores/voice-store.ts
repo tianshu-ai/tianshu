@@ -56,14 +56,26 @@ let audio: HTMLAudioElement | null = null;
 let mediaSource: MediaSource | null = null;
 let objectUrl: string | null = null;
 let abortController: AbortController | null = null;
-// URLs held for delayed revoke. teardown() moves the current
-// objectUrl here without immediately revoking; the next play()
-// revokes them after safely re-pointing audio.src at a fresh
-// resource. This avoids the ERR_FILE_NOT_FOUND races Yu hit three
-// times (2026-09-19 21:49 / 21:54 / 21:56) with sync, microtask,
-// and 'emptied'-event revocation strategies — they all lost the
-// race with audio's internal detach fetch.
-const pendingRevokes: string[] = [];
+
+// Blob URL cleanup, take 5 (Yu 2026-09-19 22:00 fourth failure).
+// Give up on URL.revokeObjectURL entirely — four strategies failed:
+//   1. sync revoke: audio.load() fetch still queued, 404
+//   2. queueMicrotask: fetch dispatch is macrotask, revoke wins
+//   3. 'emptied' event: apparently doesn't fire late enough on
+//      the Chrome paths we hit
+//   4. defer to next play(): still races the detach fetch
+//
+// The browser eventually reaps blob URLs on page unload. Memory
+// leak per utterance is ~25-85 KB (edge-tts mp3 for a short reply);
+// a chat with a few hundred replies leaks a few MB, well under
+// what a normal page holds. No throughput or correctness impact.
+//
+// If leak ever matters we could switch to <audio>.srcObject =
+// MediaSource (Chrome 108+ / Safari 15+ / Firefox 121+) which
+// sidesteps blob URLs entirely, but srcObject support for
+// MediaSource is less battle-tested than createObjectURL. Not
+// worth the risk of introducing new playback bugs for a leak
+// nobody will ever hit in practice.
 
 function getAudio(): HTMLAudioElement {
   if (audio) return audio;
@@ -91,32 +103,10 @@ function teardown() {
       // ignore — normal after abort
     }
   }
-  // Blob URL cleanup, take 4 (Yu 2026-09-19 21:56 third failure).
-  // Approach: DON'T revoke here. Move the URL to pendingRevokes
-  // and let the next play() (or explicit page unload) revoke it
-  // after the audio element is safely bound to a new resource.
-  //
-  // Reasoning: every previous strategy lost a race with audio's
-  // internal detach network fetch:
-  //   - Sync revoke: fetch still going (obvious)
-  //   - queueMicrotask: fetch dispatch is macrotask, revoke wins
-  //   - 'emptied' event: apparently still not late enough on Chrome,
-  //     or the event doesn't fire in the paths we hit
-  //
-  // The only reliable moment to revoke an audio blob URL is when
-  // the element is guaranteed to be pointing at something else.
-  // Deferring the revoke to the next play() call gives us that
-  // guarantee: by then audio.src holds the new URL, and any
-  // straggler request against the old URL is impossible.
-  //
-  // Memory impact: at most a few blob URLs pending at any time.
-  // Each edge-tts response is ~25-85 KB. In the worst case (user
-  // furiously clicking play buttons) we hold a handful of URLs
-  // until the next play(); page unload reaps all of them.
-  if (objectUrl) {
-    pendingRevokes.push(objectUrl);
-    objectUrl = null;
-  }
+  // Deliberately DO NOT revoke objectUrl. See top-of-file comment
+  // for why every ordering strategy failed. Let the browser reap
+  // on page unload.
+  objectUrl = null;
   if (audio) {
     try {
       audio.pause();
@@ -131,32 +121,6 @@ function teardown() {
       // ignore
     }
   }
-}
-
-/**
- * Called by play() after safely binding audio.src to a fresh URL.
- * At that point any queued detach fetches for the previous URLs
- * have already produced their (harmless) errors AND the audio
- * element is pointing at a new resource, so revoke can't race
- * with a pending GET.
- *
- * We give the browser a full task boundary via setTimeout(0) before
- * revoking, because Chrome dispatches the detach fetch on the same
- * macrotask that removed src/set new src — revoking synchronously
- * even after re-binding still triggered the error.
- */
-function drainPendingRevokes() {
-  if (pendingRevokes.length === 0) return;
-  const urls = pendingRevokes.splice(0);
-  setTimeout(() => {
-    for (const url of urls) {
-      try {
-        URL.revokeObjectURL(url);
-      } catch {
-        // ignore
-      }
-    }
-  }, 0);
 }
 
 export const useVoiceStore = create<VoiceState>((set, get) => ({
@@ -174,10 +138,6 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     // Cancel whatever's playing / fetching before starting fresh.
     teardown();
     set({ playingId: req.id, lastError: null });
-    // Kick pending revocations to the next macrotask — by the time
-    // audio.src gets re-bound below, the old fetch straggler has
-    // fired its harmless error and we can safely reclaim the URL.
-    drainPendingRevokes();
 
     const controller = new AbortController();
     abortController = controller;
@@ -252,14 +212,10 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
         function cleanup() {
           el.removeEventListener("ended", onEnded);
           el.removeEventListener("error", onError);
-          if (objectUrl === url) {
-            try {
-              URL.revokeObjectURL(url);
-            } catch {
-              // ignore
-            }
-            objectUrl = null;
-          }
+          // Deliberately don't revoke url — see top-of-file comment
+          // (Yu 2026-09-19 22:00, four revoke strategies all raced
+          // audio's internal detach fetch).
+          if (objectUrl === url) objectUrl = null;
           set({ playingId: null });
         }
         function onEnded() {
@@ -296,14 +252,8 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       function cleanup() {
         el.removeEventListener("ended", onEnded);
         el.removeEventListener("error", onError);
-        if (objectUrl === url) {
-          try {
-            URL.revokeObjectURL(url);
-          } catch {
-            // ignore
-          }
-          objectUrl = null;
-        }
+        // Deliberately don't revoke url — see top-of-file comment.
+        if (objectUrl === url) objectUrl = null;
         // Only clear playingId if it still belongs to this request;
         // a newer play() may have already claimed it.
         if (get().playingId === req.id) set({ playingId: null });
