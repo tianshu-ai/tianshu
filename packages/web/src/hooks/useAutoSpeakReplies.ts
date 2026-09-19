@@ -255,6 +255,15 @@ export function useAutoSpeakReplies() {
   const cursorRef = useRef<Map<string, number>>(new Map());
   const seededRef = useRef(false);
 
+  // Last-tail snapshot for detecting placeholder → persistent id
+  // swaps. Yu 2026-09-19 23:17: the earlier prefix-search fix
+  // failed because at swap time the server had already removed
+  // the placeholder row from messages[]; we couldn't find it to
+  // read its cursor. Snapshot the tail here across renders so the
+  // swap detector always has the previous state to compare.
+  const lastTailIdRef = useRef<string | null>(null);
+  const lastTailTextRef = useRef<string>("");
+
   // Cached user preferences for TTS provider + voice. Read once
   // when voice mode turns on; re-fetched when the user toggles it
   // (which is when they'd typically go to Settings to reconfigure
@@ -333,46 +342,74 @@ export function useAutoSpeakReplies() {
     // seed pass on line above already does for pre-existing history.
     const tail = messages[messages.length - 1];
     if (tail && tail.role === "assistant") {
-      // Handle the placeholder → persistent id swap that server does
-      // on stream_end. Yu 2026-09-19 23:14 log:
-      //   ming__ streams to 243 chars, slices 12 sentences
-      //   THEN persistent id 9b5d3b appears with the same 243 chars
-      //   fresh cursorRef entry for 9b5d3b starts at 0
-      //   → re-slices the whole story as one giant slice
+      // Placeholder → persistent id swap on stream_end.
       //
-      // Detection: if we've never seen this tail id AND there's
-      // another assistant message with matching text prefix (the
-      // placeholder we've been slicing), inherit its cursor.
+      // Yu 2026-09-19 23:17 log showed the earlier fix (f17a5dc)
+      // failed because at swap time the server REMOVED the
+      // placeholder row from messages[] and inserted the persistent
+      // row — they didn't coexist. Looking at
+      // `messages[].id` couldn't find the placeholder because it
+      // was gone. Slice started from cursor=0 on 3c9497 and
+      // re-spoke 408 chars of story.
+      //
+      // Fix: track the LAST tail id we sliced against (lastTailIdRef)
+      // and its cursor. When tail.id changes AND we've never seen
+      // the new id AND the new tail's text starts with the last
+      // placeholder's sliced prefix, inherit the cursor. This works
+      // regardless of whether the placeholder still exists in
+      // messages[] — we keep the reference across renders.
       if (!cursorRef.current.has(tail.id)) {
         const tailText = tail.text ?? "";
         let inheritedCursor: number | null = null;
-        for (const other of messages) {
-          if (other.role !== "assistant" || other.id === tail.id) continue;
-          const otherText = other.text ?? "";
-          const otherCursor = cursorRef.current.get(other.id);
-          if (otherCursor == null) continue;
-          // Same-prefix match: the persistent row's text starts with
-          // (or IS) the placeholder's text up to the placeholder's
-          // cursor. Handles both "same content, swap id at end" and
-          // "placeholder was fully sliced but stream added a bit
-          // more before persist".
-          const commonLen = Math.min(otherText.length, tailText.length);
+
+        // Check the immediately-previous tail id, if any. This is
+        // the placeholder in almost every case.
+        const prevId = lastTailIdRef.current;
+        if (prevId && prevId !== tail.id) {
+          const prevText = lastTailTextRef.current;
+          const prevCursor = cursorRef.current.get(prevId);
           if (
-            commonLen > 0 &&
-            otherText.slice(0, commonLen) === tailText.slice(0, commonLen)
+            prevCursor != null &&
+            prevText.length > 0 &&
+            tailText.length >= prevCursor &&
+            tailText.slice(0, prevCursor) === prevText.slice(0, prevCursor)
           ) {
-            inheritedCursor = Math.max(
-              inheritedCursor ?? 0,
-              Math.min(otherCursor, tailText.length),
-            );
+            inheritedCursor = prevCursor;
           }
         }
-        if (inheritedCursor != null) {
-          cursorRef.current.set(tail.id, inheritedCursor);
+
+        // Fallback: check other current-messages assistant rows in
+        // case the store keeps both rows around briefly during swap.
+        if (inheritedCursor == null) {
+          for (const other of messages) {
+            if (other.role !== "assistant" || other.id === tail.id) continue;
+            const otherText = other.text ?? "";
+            const otherCursor = cursorRef.current.get(other.id);
+            if (otherCursor == null) continue;
+            const commonLen = Math.min(otherText.length, tailText.length);
+            if (
+              commonLen > 0 &&
+              otherText.slice(0, commonLen) === tailText.slice(0, commonLen)
+            ) {
+              inheritedCursor = Math.max(
+                inheritedCursor ?? 0,
+                Math.min(otherCursor, tailText.length),
+              );
+            }
+          }
         }
 
-        // Regardless of inheritance, mark every OTHER assistant
-        // message as "done" so a re-render doesn't re-slice them.
+        cursorRef.current.set(tail.id, inheritedCursor ?? 0);
+
+        // Log the inheritance decision so we can see it working.
+        console.log(
+          `[voice] tail id changed: prev=${prevId?.slice(-6) ?? "none"} ` +
+            `new=${tail.id.slice(-6)} inheritedCursor=${inheritedCursor} ` +
+            `tailLen=${tailText.length}`,
+        );
+
+        // Mark every OTHER current assistant row as done so a
+        // re-render doesn't re-slice them.
         for (const other of messages) {
           if (other.role === "assistant" && other.id !== tail.id) {
             const src = other.text ?? "";
@@ -380,6 +417,11 @@ export function useAutoSpeakReplies() {
           }
         }
       }
+
+      // Snapshot the tail state AFTER we've handled any swap so
+      // the NEXT swap can look back at this tail's final state.
+      lastTailIdRef.current = tail.id;
+      lastTailTextRef.current = tail.text ?? "";
     }
 
     for (const m of messages) {
