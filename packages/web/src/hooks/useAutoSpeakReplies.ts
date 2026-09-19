@@ -340,11 +340,32 @@ export function useAutoSpeakReplies() {
       if (sliceEnd == null && !isStreaming) {
         sliceEnd = src.length;
       }
-      if (sliceEnd == null || sliceEnd <= cursor) continue;
+      if (sliceEnd == null || sliceEnd <= cursor) {
+        // Diagnostic (Yu 2026-09-19 22:55, chase-down for skipped
+        // content in streaming voice). Log why we're NOT slicing so
+        // we can see if cursor got ahead of text or terminator search
+        // failed.
+        console.debug(
+          `[voice] no-slice id=${m.id.slice(-6)} cursor=${cursor} ` +
+            `len=${src.length} isStreaming=${isStreaming} ` +
+            `sliceEnd=${sliceEnd}`,
+        );
+        continue;
+      }
 
       const raw = src.slice(cursor, sliceEnd);
       const spoken = spokenTextFor(raw);
+      const prevCursor = cursor;
       cursorRef.current.set(m.id, sliceEnd);
+
+      // Diagnostic: show every slice we take, with raw and spoken
+      // lengths so we can see if stripSilent/stripMarkdown ate more
+      // than expected.
+      console.debug(
+        `[voice] slice id=${m.id.slice(-6)} ` +
+          `[${prevCursor}..${sliceEnd}] rawLen=${raw.length} ` +
+          `spokenLen=${spoken.length} spoken=${JSON.stringify(spoken.slice(0, 40))}`,
+      );
 
       if (!spoken) continue;
 
