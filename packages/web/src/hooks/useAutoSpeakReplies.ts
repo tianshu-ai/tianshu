@@ -441,6 +441,22 @@ export function useAutoSpeakReplies() {
             cursorRef.current.set(other.id, src.length);
           }
         }
+
+        // Yu 2026-09-20 02:11 log confirmed: server REUSES the
+        // same placeholder id ("ming__") for consecutive replies.
+        // A stale cursor for that id survives from the previous
+        // reply's pre-swap position (typically ~470), so slicing
+        // on the SECOND reply starts from 470 and skips the first
+        // 470 chars.
+        //
+        // The current-messages sweep above handles this-tick's
+        // other rows. This block handles the PREVIOUS tail id
+        // that already vanished from messages[] before this
+        // effect run — wipe its cursor so a future reuse of
+        // that id starts fresh from 0.
+        if (prevId && prevId !== tail.id) {
+          cursorRef.current.delete(prevId);
+        }
       }
 
       // Snapshot the tail state AFTER we've handled any swap so
