@@ -17,14 +17,16 @@ export default defineConfig({
     port: webPort,
     proxy: {
       "/api": `http://localhost:${serverPort}`,
+      // Yu, 2026-09-19: this single "/ws" entry proxies all upgrade
+      // requests with a /ws* URL to the tianshu server, including
+      // /ws/asr. http-proxy-middleware does prefix matching, so a
+      // second more-specific entry for /ws/asr would either be
+      // shadowed (order-dependent) or, worse, trigger vite's
+      // known upgrade-dispatch race between two ws:true entries
+      // on the same target. Path preservation is enough because
+      // the tianshu server distinguishes /ws vs /ws/asr internally
+      // (see ws-upgrade.ts and ws-asr.ts).
       "/ws": { target: `ws://localhost:${serverPort}`, ws: true },
-      // Yu, 2026-09-19: /ws/asr is a separate WebSocketServer (see
-      // packages/server/src/boot/ws-asr.ts), and vite's proxy config
-      // matches paths individually — the /ws entry above does not
-      // cover child paths like /ws/asr. Adding an explicit entry with
-      // ws:true so dev-mode voice input works. In prod both paths hit
-      // the tianshu server directly and this indirection isn't needed.
-      "/ws/asr": { target: `ws://localhost:${serverPort}`, ws: true },
       // Custom shell UI lives at /shell/tenants/... so it doesn't
       // hijack the native UI. Proxy all /shell/ requests to backend.
       "/shell": `http://localhost:${serverPort}`,
