@@ -80,13 +80,21 @@ export function installAsrWebSocket(deps: InstallAsrWebSocketDeps): WebSocketSer
   // (notably /ws) untouched for the existing WSS.
   const wss = new WebSocketServer({ noServer: true });
 
+  // Yu, 2026-09-19 15:39: startup log so we can prove this module ran.
+  // Yu was seeing WS connection failures with no diagnostic footprint,
+  // and the only way to distinguish “install didn’t run” from “install
+  // ran but upgrade dispatch is broken” is to trace both explicitly.
+  console.log("[ws-asr] installed /ws/asr WebSocket endpoint");
+
   server.on("upgrade", (request, socket, head) => {
     const url = request.url ?? "";
     // Match the pathname exactly. Query strings on ws:// URLs are
     // used for identity switching (see /ws) so allow them here too.
     const pathname = url.split("?", 1)[0];
     if (pathname !== "/ws/asr") return; // let /ws or 404 handle it
+    console.log(`[ws-asr] upgrade request from ${request.socket.remoteAddress ?? "?"} url=${url}`);
     wss.handleUpgrade(request, socket, head, (ws) => {
+      console.log("[ws-asr] upgrade handled; emitting connection");
       wss.emit("connection", ws, request);
     });
   });
