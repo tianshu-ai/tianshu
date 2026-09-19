@@ -269,13 +269,35 @@ export function useAutoSpeakReplies() {
 
     // Defer seed until history has landed — first mount often sees
     // messages=[] before the WS finishes streaming history.
+    //
+    // Yu 2026-09-20 01:33 "还有的时候会把前一两句跳掉":
+    // if the component mounts (or re-mounts — e.g. voice toggle
+    // swaps ChatArea ↔ VoiceSubtitleView) mid-stream, the tail
+    // assistant message already has 1-2 sentences buffered.
+    // Seeding cursor=length there means those first sentences
+    // never get sliced/enqueued.
+    //
+    // Fix: streaming tail seeds to 0 (speak from start); everything
+    // else seeds to length (skip existing history).
     if (!seededRef.current) {
       if (messages.length === 0) return;
-      for (const m of messages) {
+      let lastAssistantIdx = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === "assistant") {
+          lastAssistantIdx = i;
+          break;
+        }
+      }
+      for (let i = 0; i < messages.length; i++) {
+        const m = messages[i];
         if (m.role !== "assistant") continue;
         const src = m.text ?? "";
-        // Seed cursor at the end so nothing existing is spoken.
-        cursorRef.current.set(m.id, src.length);
+        const isTail = i === lastAssistantIdx;
+        if (isTail && isStreaming) {
+          cursorRef.current.set(m.id, 0);
+        } else {
+          cursorRef.current.set(m.id, src.length);
+        }
       }
       seededRef.current = true;
       return;
