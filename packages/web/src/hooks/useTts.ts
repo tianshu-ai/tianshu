@@ -41,8 +41,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 interface SpeakOptions {
   /** Speaker id passed through to /api/tts. Server picks a sensible
-   *  default (e.g. "中文女") when omitted. */
+   *  default when omitted. */
   voice?: string;
+  /** TTS provider override: "edge" | "cosyvoice". When omitted the
+   *  server uses its TTS_PROVIDER env default. Yu, 2026-09-19:
+   *  added so the client can honour the user's Settings choice
+   *  without restarting the server. */
+  provider?: string;
 }
 
 export function useTts(): {
@@ -108,7 +113,11 @@ export function useTts(): {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ text, voice: opts?.voice }),
+          body: JSON.stringify({
+            text,
+            voice: opts?.voice,
+            provider: opts?.provider,
+          }),
           signal: controller.signal,
         });
         if (!res.ok) {
