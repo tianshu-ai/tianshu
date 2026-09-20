@@ -364,11 +364,35 @@ export default function VoiceSubtitleView() {
       return composer;
     }
 
-    // Initial focus. defer to next tick so the DOM has settled
-    // after this effect flush.
-    const initTimer = window.setTimeout(() => {
-      findComposer()?.focus();
-    }, 0);
+    // Initial focus. Yu 2026-09-20 11:49: after enlarging the
+    // composer via 05f594a, the initial focus grabbed the wrong
+    // moment sometimes — either the ChatInput textarea hadn't
+    // mounted yet, or React swapped the DOM node during the
+    // className change and our cached ref pointed at the stale
+    // one. Retry 3x with increasing delays; log each attempt.
+    let attempt = 0;
+    let initTimer: number | null = null;
+    function tryInitFocus() {
+      const c = findComposer();
+      console.log(
+        `[voice] init focus attempt ${attempt + 1}: found=${!!c} contained=${c ? document.contains(c) : false}`,
+      );
+      if (c) {
+        c.focus();
+        // Verify focus took — sometimes .focus() silently fails on
+        // hidden or transitioning elements.
+        window.requestAnimationFrame(() => {
+          if (document.activeElement !== c && attempt < 3) {
+            attempt++;
+            initTimer = window.setTimeout(tryInitFocus, 100 * attempt);
+          }
+        });
+      } else if (attempt < 3) {
+        attempt++;
+        initTimer = window.setTimeout(tryInitFocus, 100 * attempt);
+      }
+    }
+    initTimer = window.setTimeout(tryInitFocus, 0);
 
     function isInteractiveTarget(el: Element | null): boolean {
       if (!el) return false;
@@ -450,7 +474,7 @@ export default function VoiceSubtitleView() {
     document.addEventListener("focusin", onFocusIn);
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      window.clearTimeout(initTimer);
+      if (initTimer !== null) window.clearTimeout(initTimer);
       document.removeEventListener("focusin", onFocusIn);
       window.removeEventListener("keydown", onKeyDown);
     };
