@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.59.1](https://github.com/tianshu-ai/tianshu/compare/v0.59.0...v0.59.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **release:** trigger v0.59.1 publish after v0.59.0 stuck in npm stage ([e8716e4](https://github.com/tianshu-ai/tianshu/commit/e8716e480cf507ae911bfe3f618f73fa2895b68f))
+
 ## [0.59.0](https://github.com/tianshu-ai/tianshu/compare/v0.58.0...v0.59.0) (2026-09-20)
 
 
