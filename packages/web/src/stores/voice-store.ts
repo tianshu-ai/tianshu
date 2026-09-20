@@ -217,6 +217,17 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     // are fire-and-forget — dropping references is enough; the
     // background fetch completes and its blob gets GC'd.
     prefetchCache.clear();
+    // Abort the current play()'s AbortController FIRST, before
+    // teardown. This fires the abort listener inside the blob-
+    // playback Promise, which resolves it cleanly and lets the
+    // drain loop's `await play()` proceed. Without this, teardown
+    // pauses audio without firing ended/error — promise stays
+    // pending, drain loop stays awaited, queueDraining stuck true,
+    // and new enqueue() calls just push to a queue that nothing
+    // ever drains. (Yu 2026-09-20 11:17 "切断了，但新消息没播放".)
+    if (abortController && !abortController.signal.aborted) {
+      abortController.abort();
+    }
     teardown();
     if (get().playingId !== null) {
       set({ playingId: null, currentDisplayText: "" });
@@ -424,6 +435,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
           settled = true;
           el.removeEventListener("ended", onEnded);
           el.removeEventListener("error", onError);
+          controller.signal.removeEventListener("abort", onAbort);
           // Deliberately don't revoke url — see top-of-file comment
           // (Yu 2026-09-19 22:00, four revoke strategies all raced
           // audio's internal detach fetch).
@@ -441,10 +453,27 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
           cleanup();
           reject(new Error("audio playback failed"));
         }
+        // Yu 2026-09-20 11:17: without an abort listener here, stop()
+        // teardown removes audio src but doesn't fire ended/error —
+        // this promise stays pending forever, drain loop stays
+        // awaited, queueDraining stuck true, subsequent enqueue()
+        // calls just push to queue without kicking the drain loop.
+        // Result: user interrupt “worked” (audio stopped) but new
+        // reply chunks pushed to queue never play.
+        function onAbort() {
+          cleanup();
+          resolve();
+        }
         el.addEventListener("ended", onEnded);
         el.addEventListener("error", onError);
+        controller.signal.addEventListener("abort", onAbort);
         el.src = url;
         el.play().catch((err) => {
+          if (controller.signal.aborted) {
+            cleanup();
+            resolve();
+            return;
+          }
           cleanup();
           reject(err);
         });
