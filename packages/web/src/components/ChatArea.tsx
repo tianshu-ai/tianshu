@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Volume2, VolumeX } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
 import { mergeToolTurns } from "../lib/merge-tool-turns";
@@ -7,7 +7,10 @@ import ChatInput from "./ChatInput";
 import ModelSelector from "./ModelSelector";
 import PluginManager from "./PluginManager";
 import PluginTopBarButtons from "./PluginTopBarButtons";
+import VoiceSubtitleView from "./VoiceSubtitleView";
 import { useT } from "../hooks/useT";
+import { useVoiceMode } from "../hooks/useVoiceMode";
+import { useAutoSpeakReplies } from "../hooks/useAutoSpeakReplies";
 
 /**
  * Main column.
@@ -25,6 +28,12 @@ import { useT } from "../hooks/useT";
  */
 export default function ChatArea() {
   const t = useT();
+  // Voice mode: when on, assistant replies are also spoken via /api/tts.
+  // The toggle lives in this component's header; the auto-speak side
+  // effect subscribes to chat store and fires speak() per new assistant
+  // reply. Both are per-device localStorage-backed, not tenant config.
+  const { enabled: voiceEnabled, toggle: toggleVoice } = useVoiceMode();
+  useAutoSpeakReplies();
   const messages = useChatStore((s) => s.messages);
   const me = useChatStore((s) => s.me);
   const viewingSessionId = useChatStore((s) => s.viewingSessionId);
@@ -71,6 +80,14 @@ export default function ChatArea() {
   // React.memo on MessageBubble (every child would get new props).
   const merged = useMemo(() => mergeToolTurns(messages), [messages]);
 
+  // Voice mode: swap ChatArea for the big-font subtitle view. Yu
+  // 2026-09-20 01:02: "conversation 区域最好改成字幕模式". The
+  // subtitle view has its own composer inside so we return early
+  // without the normal top bar / message list.
+  if (voiceEnabled) {
+    return <VoiceSubtitleView />;
+  }
+
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       {/* Top bar */}
@@ -92,6 +109,21 @@ export default function ChatArea() {
         </div>
         <div className="flex items-center gap-2">
           <PluginTopBarButtons />
+          <button
+            type="button"
+            onClick={toggleVoice}
+            className={
+              "rounded-lg p-1.5 transition-colors hover:bg-bg-raised " +
+              (voiceEnabled
+                ? "text-accent-fill hover:text-accent-fg"
+                : "text-fg-muted hover:text-fg-default")
+            }
+            title={voiceEnabled ? "关闭语音回复" : "开启语音回复"}
+            aria-label={voiceEnabled ? "Disable voice replies" : "Enable voice replies"}
+            aria-pressed={voiceEnabled}
+          >
+            {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
           <button
             type="button"
             onClick={() => setPluginManagerOpen(true)}

@@ -70,12 +70,102 @@ export function formatOutputLanguageLine(
   return "";
 }
 
+/**
+ * Runtime hint attached to a single turn. Currently only carries
+ * whether the client has voice mode on so tianshu knows to append a
+ * <voice_summary> block. Kept as a separate object rather than an
+ * extra positional arg so we can add more per-turn hints later
+ * without breaking every caller.
+ */
+export interface PerTurnPromptHints {
+  /** When true, inject a voice-mode fragment asking tianshu to end
+   *  its reply with a <voice_summary>...</voice_summary> block. */
+  voiceMode?: boolean;
+}
+
+/**
+ * Fragment injected when the client currently has voice mode on.
+ *
+ * Semantic: FULLY SPOKEN STYLE. The whole reply is written as if
+ * you were talking to a colleague on a phone call — short sentences,
+ * no markdown scaffolding, no code blocks unless absolutely needed.
+ *
+ * Yu, 2026-09-19 22:51: earlier iterations tried to keep the reply
+ * looking like normal markdown + add a <silent> opt-out for machine
+ * bits. Yu observed the visible bubble still felt "documenty" and
+ * asked for the reply itself to adopt spoken style. This fragment
+ * asks tianshu to write like it's speaking. <silent>...</silent> is
+ * still available for the rare cases where a technical token must
+ * appear on screen but shouldn't be spoken (a hash you asked for,
+ * a file path).
+ *
+ * Kept tight — every sentence here costs on every voice-mode turn.
+ */
+function formatVoiceModeFragment(): string {
+  return [
+    `## Voice reply mode`,
+    `The user has enabled voice mode. Write your reply as if you were talking to them on a phone call — the ENTIRE reply is spoken aloud.`,
+    ``,
+    `Style:`,
+    `  - Short sentences. One idea per sentence.`,
+    `  - Casual, natural spoken register in the user's language (usually 中文). If the user said "你好", answer as if you were speaking to them, not writing a report.`,
+    `  - No markdown scaffolding: no headings, no bullet lists, no bold/italic markers, no tables. Prose only.`,
+    `  - No code blocks. If code is unavoidable, keep it inline and short, and wrap it in <silent>...</silent> so TTS skips it.`,
+    `  - No emoji, no ASCII art, no decorative separators.`,
+    `  - Skip filler openers like "好的，我来为您……". Just answer.`,
+    ``,
+    `Length: keep it TO THE POINT. If a normal text reply would run 400 words with sections, the voice-mode version should be ~100–200 words of continuous prose. Don't drop information the user needs, but don't decorate it.`,
+    ``,
+    `## Speak before every tool call`,
+    `Voice mode users can't see terminal output stream by. When you're about to call a tool (read a file, run a search, edit code, fetch data...), first say a short natural sentence out loud describing what you're doing. Examples:`,
+    ``,
+    `  “我看一下那个文件。” then read`,
+    `  “让我搜一下相关代码。” then grep`,
+    `  “先看下目录结构。” then ls`,
+    `  “改一下这行。” then edit`,
+    ``,
+    `Even one 5-8 char sentence works — just don't call a tool in silence, users will think the session froze. After the tool returns, narrate the result briefly if it's useful, or move on with the next reasoning step.`,
+    ``,
+    `## Chunking for streaming playback`,
+    `Separate each spoken chunk with a **blank line** (double newline). The client synthesises and plays each blank-line-separated block in order as it streams, so blank-line boundaries drive TTS pacing directly.`,
+    ``,
+    `Rules:`,
+    `  - One or two sentences per chunk. Then blank line. Then next chunk.`,
+    `  - No indent, no bullets, no markers — just prose separated by blank lines.`,
+    `  - A chunk of 3+ sentences works but delays first audio; prefer shorter.`,
+    `  - Very short standalone lines (like "好的。") are fine as their own chunk.`,
+    ``,
+    `<silent>...</silent> escape hatch: for hex hashes, file paths, long URLs, phone numbers — wrap so TTS skips reading them. Works anywhere in a chunk.`,
+    ``,
+    `Example — short reply:`,
+    `  已经把修复合进去了。`,
+    ``,
+    `  你看下最新的 commit 就知道了，小尾巴是 <silent>7f3a8b2c</silent>。`,
+    ``,
+    `  如果还有问题告诉我。`,
+    ``,
+    `Example — long reply / story:`,
+    `  好，再来一段。`,
+    ``,
+    `  从前有个小镇。镇上住着一个叫阿云的小女孩。`,
+    ``,
+    `  阿云每天早上到海边看日出，一看就是五年。`,
+    ``,
+    `  五年后的一个早上，她没来。那天的日出也没来。`,
+    ``,
+    `  后来投诉发现，两件事没有关系。`,
+    ``,
+    `Reminder: blank lines are your only pacing tool. No <chunk> tags. No numbered lists. Just prose with breathing room.`,
+  ].join("\n");
+}
+
 export function defaultSystemPrompt(
   ctx: TenantContext,
   userId: string,
   skills: readonly LoadedSkill[] = [],
   pluginFragments: readonly PluginPromptFragment[] = [],
   mainOverrides: MainAgentPromptOverrides = {},
+  turnHints: PerTurnPromptHints = {},
 ): string {
   const brand = ctx.config.branding?.name ?? "Tianshu";
   const lines: string[] = [
@@ -144,6 +234,13 @@ export function defaultSystemPrompt(
     userHomeDir,
   );
   if (ctxBlock) lines.push("", ctxBlock);
+
+  // Voice mode fragment. Injected before tenant prompt so the
+  // agent sees the voice mode instruction FIRST (per-turn behaviour)
+  // and can layer tenant-specific tenantPrompt guidance on top.
+  if (turnHints.voiceMode) {
+    lines.push("", formatVoiceModeFragment());
+  }
 
   // Tenant prompt override (applied solution). Injected right
   // after workspace context so it reads as tenant-level guidance

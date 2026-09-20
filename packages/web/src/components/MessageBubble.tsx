@@ -26,10 +26,14 @@ import {
   ChevronRight,
   Clock,
   Loader2,
+  Pause,
+  Play,
   Repeat,
   User,
   XCircle,
 } from "lucide-react";
+import { useVoiceStore } from "../stores/voice-store";
+import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
 import type {
   MergedAssistantBlock,
   MergedMessage,
@@ -187,15 +191,89 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
           <MessageAttachments attachments={m.attachments} align="end" />
         )}
 
-        {!isUser && (m.meta || m.createdAt) && (
-          <MessageMeta
-            meta={m.meta}
-            createdAt={m.createdAt}
-            align="start"
-          />
-        )}
+        {(() => {
+          if (isUser) return null;
+          // speechSource comes from mergeToolTurns and preserves the
+          // ORIGINAL text INCLUDING any <voice_summary> tag — the
+          // visible fields (m.text, blocks[].text) have the tag
+          // stripped for clean rendering, but the audio pipeline
+          // needs the tag to extract the spoken-friendly summary.
+          // Falls back to m.text for legacy rows without speechSource
+          // set (e.g. history that predates the speechSource field).
+          const speechText = m.speechSource ?? m.text ?? "";
+          const hasFooterContent = m.meta || m.createdAt || speechText;
+          if (!hasFooterContent) return null;
+          return (
+            <div className="mt-1 flex items-center gap-2">
+              {speechText && (
+                <SpeakButton messageId={m.id} text={speechText} />
+              )}
+              {(m.meta || m.createdAt) && (
+                <MessageMeta
+                  meta={m.meta}
+                  createdAt={m.createdAt}
+                  align="start"
+                />
+              )}
+            </div>
+          );
+        })()}
       </div>
     </div>
+  );
+}
+
+/**
+ * Per-message speak/pause control for assistant bubbles.
+ *
+ * Yu, 2026-09-19 21:40: "在每个 tianshu 消息里放个播放按钮，可以
+ * 主动播放，但是同时只能播一个". Global voice store
+ * enforces the single-active rule — pressing play on message B
+ * while A is playing simply supersedes A. UI reflects that by
+ * showing Pause on the message currently playing (playingId ===
+ * m.id) and Play on all others.
+ *
+ * Text-to-speech pipeline: spokenTextFor() from useAutoSpeakReplies
+ * prefers the <voice_summary>...</voice_summary> content when tianshu
+ * generated one under voice mode, falling back to markdown-stripped
+ * whole reply otherwise. Shared with the auto-speak hook so manual
+ * and auto playback read the same slice of the message.
+ */
+function SpeakButton({ messageId, text }: { messageId: string; text: string }) {
+  const playing = useVoiceStore((s) => s.playingId === messageId);
+  const play = useVoiceStore((s) => s.play);
+  const stop = useVoiceStore((s) => s.stop);
+
+  const handleClick = () => {
+    if (playing) {
+      stop();
+      return;
+    }
+    const spoken = spokenTextFor(text);
+    if (!spoken) return;
+    play({ id: messageId, text: spoken }).catch(() => {
+      // Errors surface via the store's lastError field; the caller
+      // can add a toast later if we want visible feedback. For now
+      // silent failure keeps the chat surface unpolluted.
+    });
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      className={
+        "inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors " +
+        (playing
+          ? "bg-accent-fill text-accent-fg"
+          : "text-fg-faint hover:bg-bg-raised hover:text-fg-muted")
+      }
+      title={playing ? "停止播放" : "播放语音"}
+      aria-label={playing ? "Stop playback" : "Play voice"}
+      aria-pressed={playing}
+    >
+      {playing ? <Pause size={12} /> : <Play size={12} />}
+    </button>
   );
 }
 

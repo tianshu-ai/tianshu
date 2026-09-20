@@ -37,6 +37,76 @@ export interface MergedMessage
    *  this when set; falls back to `text + resolvedToolCalls` for
    *  legacy rows. */
   resolvedBlocks?: MergedAssistantBlock[];
+  /** Yu, 2026-09-19: original assistant text INCLUDING any
+   *  <voice_summary>...</voice_summary> tag, preserved for the
+   *  voice pipeline. `text` (and any resolvedBlocks[].text) has the
+   *  tag stripped so the visible bubble stays clean; `speechSource`
+   *  keeps the tag so the SpeakButton can extract it. Only set on
+   *  assistant rows whose original text contained the tag or whose
+   *  text is non-empty (i.e. anything speakable). */
+  speechSource?: string;
+}
+
+/**
+ * Remove `<silent>` and `</silent>` tag DELIMITERS from assistant
+ * text before it renders — keeping the wrapped body visible.
+ *
+ * Yu, 2026-09-19 22:28: voice mode now uses <silent>...</silent> as
+ * an opt-out marker. Default is speak-everything; wrapped regions
+ * are still shown on screen but skipped by TTS (see spokenTextFor).
+ * So on the RENDER path we just strip the tags themselves and leave
+ * their contents in place — the user still sees the URL / code / etc
+ * that we told tianshu to wrap.
+ *
+ * Two patterns handle stream and post-stream states:
+ *   1. Complete tag: `<silent>body</silent>` → keep body, drop tags
+ *   2. Mid-stream: `<silent>partial` (no closer yet) → drop opener
+ *      alone (body renders through), closer strips later when it
+ *      arrives via the tag-only regex.
+ *
+ * Both are case-insensitive.
+ */
+const SILENT_OPEN_TAG_RE = /<silent>/gi;
+const SILENT_CLOSE_TAG_RE = /<\/silent>/gi;
+const CHUNK_OPEN_TAG_RE = /<chunk>/gi;
+const CHUNK_CLOSE_TAG_RE = /<\/chunk>/gi;
+
+function stripVoiceSummary(text: string): string {
+  // Function name kept for backward source-search compatibility;
+  // behaviour is: strip <silent>/</silent> AND <chunk>/</chunk>
+  // tag delimiters from visible text while keeping the wrapped
+  // content. The audio pipeline (useAutoSpeakReplies + SpeakButton)
+  // reads the ORIGINAL text via speechSource so extraction still
+  // works on the raw tagged form.
+  return text
+    .replace(SILENT_OPEN_TAG_RE, "")
+    .replace(SILENT_CLOSE_TAG_RE, "")
+    .replace(CHUNK_OPEN_TAG_RE, "")
+    .replace(CHUNK_CLOSE_TAG_RE, "");
+}
+
+/**
+ * Assemble the original speakable text for an assistant WireMessage,
+ * preserving any <voice_summary> tag intact. Prefers `text` field but
+ * falls back to concatenating text-kind blocks so multi-block turns
+ * (typical for streamed replies with tool calls) still yield the tag
+ * when it lives on a block instead of the top-level text.
+ *
+ * Returns undefined when there's nothing speakable, so callers can
+ * distinguish "no audio available" from "empty string tried".
+ */
+function collectSpeechSource(m: WireMessage): string | undefined {
+  if (m.role !== "assistant") return undefined;
+  const fromText = typeof m.text === "string" ? m.text : "";
+  const fromBlocks =
+    m.blocks
+      ?.map((b) =>
+        b.kind === "text" && typeof b.text === "string" ? b.text : "",
+      )
+      .filter(Boolean)
+      .join("\n\n") ?? "";
+  const combined = fromText || fromBlocks;
+  return combined.trim().length > 0 ? combined : undefined;
 }
 
 export function mergeToolTurns(messages: WireMessage[]): MergedMessage[] {
@@ -65,21 +135,35 @@ export function mergeToolTurns(messages: WireMessage[]): MergedMessage[] {
         (b): MergedAssistantBlock =>
           b.kind === "toolCall"
             ? { ...b, result: resultsByCallId.get(b.id) }
-            : b,
+            : { ...b, text: stripVoiceSummary(b.text) },
       );
+      // Preserve the original speakable text (may contain
+      // <voice_summary>) for the audio pipeline. Combine block
+      // texts + top-level text in case the tag lives in either.
+      const speechSource = collectSpeechSource(m);
       // Strip the wire-only fields we already lifted into
       // `resolvedBlocks` / `resolvedToolCalls` and pass the rest
-      // through (notably `attachments`).
+      // through (notably `attachments`). Also strip <voice_summary>
+      // from the visible text — the audio pipeline reads speechSource.
       const { toolCalls: _tc, toolResult: _tr, blocks: _b, ...rest } = m;
       out.push({
         ...rest,
+        text: stripVoiceSummary(rest.text),
         resolvedToolCalls: resolved.length > 0 ? resolved : undefined,
         resolvedBlocks,
+        speechSource,
       });
       continue;
     }
     const { toolCalls: _tc, toolResult: _tr, blocks: _b, ...rest } = m;
-    out.push(rest);
+    // Only assistant rows carry voice_summary, but stripping on user
+    // rows is safe (the tag never appears there) and keeps the code
+    // uniform.
+    out.push({
+      ...rest,
+      text: stripVoiceSummary(rest.text),
+      speechSource: m.role === "assistant" ? collectSpeechSource(m) : undefined,
+    });
   }
   return coalesceAssistantTurns(out);
 }
@@ -120,6 +204,18 @@ function coalesceAssistantTurns(rows: MergedMessage[]): MergedMessage[] {
     ) {
       // Fold this assistant turn into the previous one.
       const mergedBlocks = [...toBlocks(prev), ...toBlocks(row)];
+      // Concatenate speech sources across the fold so the play
+      // button on the merged bubble reads the whole spoken turn.
+      //
+      // Yu, 2026-09-19 22:44: bug — tool-only prev has
+      // speechSource=undefined (no text to collect), row has the
+      // narration, but the previous `{...prev, ...}` spread kept
+      // prev's undefined and dropped row's value entirely. The
+      // merged bubble ended up with no speechSource so
+      // MessageBubble hid the play button.
+      const mergedSpeech = [prev.speechSource, row.speechSource]
+        .filter((s): s is string => !!s && s.length > 0)
+        .join("\n\n");
       out[out.length - 1] = {
         ...prev,
         // Keep the later turn's metadata (final model/usage) + newest
@@ -129,6 +225,7 @@ function coalesceAssistantTurns(rows: MergedMessage[]): MergedMessage[] {
         text: "",
         resolvedToolCalls: undefined,
         resolvedBlocks: mergedBlocks,
+        speechSource: mergedSpeech.length > 0 ? mergedSpeech : undefined,
       };
       continue;
     }

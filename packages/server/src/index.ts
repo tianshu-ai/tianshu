@@ -846,6 +846,13 @@ app.use(
 // rationale at the public mount site earlier in this file.
 mountAsrAuthedRoutes(app);
 
+// ─── TTS proxy route (after tenantMiddleware) ───
+// POST /api/tts — forwards {text, voice?} to a locally-launched
+// CosyVoice 2 FastAPI server (env TTS_URL, default localhost:8000)
+// and streams the audio response back. Powers the voice-reply mode
+// added in feat/voice-conversation-mode.
+mountTtsRoutes(app);
+
 // `/api/channel-sessions/*` + `/api/channel-bindings/:id/model`
 // — see boot/routes-channels.ts for the bodies.
 mountChannelRoutes(app);
@@ -857,6 +864,7 @@ mountCoreRoutes(app, { pluginRegistry, listTenants: () => globalOps.list() });
 
 // ASR model admin routes
 import { mountAsrAdminRoutes } from "./boot/asr-admin.js";
+import { mountTtsRoutes } from "./boot/routes-tts.js";
 mountAsrAdminRoutes(app);
 
 import { mountUsageRoutes } from "./boot/routes-usage.js";

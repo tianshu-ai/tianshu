@@ -3,6 +3,7 @@ import { Loader2, Mic, Send, Square } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { useComposerStore } from "../stores/composer-store";
 import { useVoiceInput } from "../hooks/useVoiceInput";
+import { useVoiceMode } from "../hooks/useVoiceMode";
 import ModelSelector from "./ModelSelector";
 import PluginComposerActions from "./PluginComposerActions";
 import ComposerAttachments from "./ComposerAttachments";
@@ -22,6 +23,13 @@ export default function ChatInput() {
   const isCompacting = useChatStore((s) => s.isCompacting);
   const sendPrompt = useChatStore((s) => s.sendPrompt);
   const abort = useChatStore((s) => s.abort);
+
+  // Yu, 2026-09-19: voice mode piggy-backs on each prompt so the
+  // server can inject a system-prompt fragment asking tianshu to
+  // append a <voice_summary>...</voice_summary> block. Sent per-
+  // turn so a user can toggle mid-conversation and see the effect
+  // on the very next reply without re-negotiating anything.
+  const voiceEnabled = useVoiceMode().enabled;
 
   const attachmentCount = useComposerStore((s) => s.attachments.length);
   const hasPending = useComposerStore((s) => s.hasPending());
@@ -110,7 +118,11 @@ export default function ChatInput() {
         path: a.path!, mimeType: a.mimeType ?? "application/octet-stream", name: a.name, size: a.size,
       }));
       if (finalText.trim().length > 0 || wire.length > 0) {
-        sendPrompt(finalText, wire.length > 0 ? wire : undefined);
+        sendPrompt(
+          finalText,
+          wire.length > 0 ? wire : undefined,
+          voiceEnabled ? { voiceMode: true } : undefined,
+        );
       }
       setDraft("");
       clearAll();
@@ -135,8 +147,20 @@ export default function ChatInput() {
       : `${t("chat.voiceInput")} (${displayShortcut})`;
 
   return (
-    <div className="border-t border-border-subtle bg-bg-base px-4 py-3">
-      <div className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-3 focus-within:border-border-default">
+    <div
+      className={
+        voiceEnabled
+          ? "border-t border-border-subtle bg-bg-base px-6 py-5"
+          : "border-t border-border-subtle bg-bg-base px-4 py-3"
+      }
+    >
+      <div
+        className={
+          voiceEnabled
+            ? "mx-auto flex max-w-5xl flex-col gap-3 rounded-3xl border border-border-subtle bg-bg-elevated p-5 focus-within:border-border-default"
+            : "mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-3 focus-within:border-border-default"
+        }
+      >
         <ComposerAttachments />
         <textarea
           ref={ref}
@@ -156,7 +180,11 @@ export default function ChatInput() {
                 ? t("chat.compacting")
                 : t("chat.placeholder")
           }
-          className="resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
+          className={
+            voiceEnabled
+              ? "resize-none bg-transparent text-xl leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none sm:text-2xl"
+              : "resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
+          }
         />
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">

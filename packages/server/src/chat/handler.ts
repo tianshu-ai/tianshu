@@ -342,6 +342,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           pluginRegistry,
           homeDir,
           session: explicitSession,
+          voiceMode: parsed.voiceMode === true,
         }).catch((err) => {
           send({
             type: "stream_error",
@@ -453,6 +454,11 @@ interface RunPromptArgs {
   signal: AbortSignal;
   pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
   homeDir?: string;
+  /** Yu, 2026-09-19: client had voice mode on when it sent the
+   *  prompt. When true, defaultSystemPrompt gets a per-turn hint to
+   *  inject the voice-summary fragment. Text-mode turns leave the
+   *  prompt unchanged. */
+  voiceMode?: boolean;
   /**
    * Optional explicit session. When provided, runPrompt skips the
    *  `ensureActiveSession(userId)` lookup and uses this session
@@ -836,6 +842,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       userOnboarding: mainConfig.overrides.userOnboarding,
       customFragments: mainConfig.customFragments,
     },
+    { voiceMode: args.voiceMode === true },
   );
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
   // pi 0.80: the harness owns a `Models` instance and resolves auth

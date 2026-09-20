@@ -190,7 +190,11 @@ interface ChatState {
   // actions
   init: () => void;
   toggleSidebar: () => void;
-  sendPrompt: (content: string, attachments?: WireAttachment[]) => void;
+  sendPrompt: (
+    content: string,
+    attachments?: WireAttachment[],
+    opts?: { voiceMode?: boolean },
+  ) => void;
   /** Stop the auto-retry loop (the "停止 / stop" button). Cancels any
    *  pending backoff and clears the retry state; the last error banner
    *  stays so the user sees what happened. */
@@ -776,7 +780,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
     );
   },
 
-  sendPrompt: (content: string, attachments?: WireAttachment[]) => {
+  sendPrompt: (
+    content: string,
+    attachments?: WireAttachment[],
+    opts?: { voiceMode?: boolean },
+  ) => {
     const trimmed = content.trim();
     const hasAttachments = attachments && attachments.length > 0;
     // Allow empty text when attachments are present ("look at this")
@@ -820,6 +828,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content: trimmed,
       modelId,
       ...(hasAttachments ? { attachments } : {}),
+      // Yu, 2026-09-19: voice mode flag drives a system-prompt
+      // fragment on the server that asks tianshu to append a short
+      // <voice_summary>...</voice_summary> block for TTS to read.
+      // Field is only sent when explicitly enabled so text-only
+      // sessions stay unchanged.
+      ...(opts?.voiceMode ? { voiceMode: true } : {}),
     });
   },
 
