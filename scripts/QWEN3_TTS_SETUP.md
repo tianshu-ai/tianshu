@@ -23,12 +23,26 @@ CPU 上太慢（RTF 6x），Kokoro 够快但声音是微软 Edge TTS 的翻版�
 
 - macOS 14+ (Sonoma 或更新)
 - Apple Silicon Mac (M1/M2/M3/M4)
-- [Miniforge](https://github.com/conda-forge/miniforge) 或 Miniconda
-- ~4GB 磁盘空间（conda env + 模型缓存）
+- ~4GB 磁盘空间（Python 环境 + 模型缓存）
+
+> ❗ macOS 自带的 Python 3.9 **太旧**。`mlx-audio` 需要 Python ≥ 3.10 才支持
+> `qwen3_tts` 模型类型。如果 `python3 --version` 显示 < 3.10，先装一个：
+> `brew install python@3.11` 或用 pyenv/mise/asdf 等。
 
 ## 安装步骤
 
-### 1. 创建 conda 环境
+### 1. 创建 Python 环境
+
+两种方式任选：
+
+**方案 A — venv（推荐，无额外依赖）**
+
+```bash
+python3.11 -m venv ~/qwen-tts-venv
+source ~/qwen-tts-venv/bin/activate
+```
+
+**方案 B — conda**
 
 ```bash
 conda create -n qwen-tts python=3.11 -y

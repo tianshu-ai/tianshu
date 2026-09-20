@@ -334,9 +334,22 @@ TEXT-TO-SPEECH (TTS):
 - The user can also switch providers in the Tianshu web UI:
   Settings → 语音合成 (TTS).
 - Setting up Qwen3-TTS locally:
-  1. Create a conda env: conda create -n qwen-tts python=3.11
-  2. Install: pip install mlx mlx-audio sounddevice soundfile
-     numpy fastapi uvicorn python-multipart
+  Prerequisite: Python >= 3.10 on Apple Silicon Mac. macOS ships
+  Python 3.9 which is TOO OLD (mlx-audio won't support qwen3_tts).
+  If 'python3 --version' shows < 3.10, install via:
+    brew install python@3.11
+  or any other method (pyenv, mise, asdf, etc.).
+
+  1. Create a Python environment (either way works):
+     Option A — venv (more common, no extra tools):
+       python3.11 -m venv ~/qwen-tts-venv
+       source ~/qwen-tts-venv/bin/activate
+     Option B — conda:
+       conda create -n qwen-tts python=3.11 -y
+       conda activate qwen-tts
+  2. Install dependencies:
+     pip install mlx mlx-audio sounddevice soundfile numpy \\
+       fastapi uvicorn python-multipart
   3. Find the server script. It ships inside the tianshu package
      at scripts/qwen3-tts-server/server.py. Locate it:
      * npm global install:
@@ -345,7 +358,6 @@ TEXT-TO-SPEECH (TTS):
      Use shell_exec with 'ls' to confirm the path exists before
      telling the user to run it.
   4. Start server:
-     conda activate qwen-tts
      python <path-from-step-3>/server.py \\
        --port 50000 --voice vivian
   5. Set TTS_PROVIDER=qwentts and TTS_URL=http://localhost:50000
