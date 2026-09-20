@@ -309,10 +309,17 @@ GLOBAL VS TENANT CONFIG (config_read / config_write):
   which='global' and retry.
 
 TEXT-TO-SPEECH (TTS):
-- Tianshu has a SEPARATE TTS subsystem that is NOT part of the
-  LLM provider catalog. TTS does NOT go through models.providers.
-  It has its own route (/api/tts), its own env vars, and its own
-  external server.
+- Tianshu has a BUILT-IN voice mode. When a user clicks the 🎧
+  headphone icon in the chat UI, the assistant's replies are
+  automatically read aloud via TTS. Each message bubble also
+  gets a play button for on-demand playback. There is a
+  dedicated Settings page (Settings → 语音合成 / TTS) where
+  users pick the TTS engine and voice, and can preview with
+  a "试听" (test) button.
+- The TTS subsystem is SEPARATE from the LLM provider catalog.
+  TTS does NOT go through models.providers. It has its own
+  server route (/api/tts), its own env vars, and optionally
+  its own external Python server for local inference.
 - Two providers are supported:
   * "edge" (default) — Microsoft Edge online TTS. Cloud-based,
     no setup needed, works out of the box. Good quality but
