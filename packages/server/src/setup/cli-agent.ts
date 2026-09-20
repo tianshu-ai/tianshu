@@ -49,6 +49,7 @@ import {
 } from "../core/llm.js";
 import {
   loadGlobalConfig,
+  mergeConfigs,
   writeGlobalConfig,
   writeTenantConfig,
   TenantConfigForbiddenFieldError,
@@ -2509,7 +2510,11 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
     );
     return;
   }
-  const info = getDefaultModel(config);
+  // Resolve global config through the same merge path the server uses
+  // so that models.defaultModelId is correctly picked up. Passing an
+  // empty tenant config means "pure global, no tenant overrides".
+  const resolved = mergeConfigs(config, {});
+  const info = getDefaultModel(resolved);
   if (!info) {
     p.log.error("No default model configured; finish the wizard first.");
     return;
