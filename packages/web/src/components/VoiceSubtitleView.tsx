@@ -229,16 +229,29 @@ export default function VoiceSubtitleView() {
     lastCurrentRef.current ||
     (tailChunks.length > 0 ? tailChunks[tailChunks.length - 1] : "");
 
-  // Effective center index. When currentIndex is -1 (idle or
-  // between chunks), fall back to the last chunk in tailChunks so
-  // the filmstrip settles somewhere reasonable instead of jumping
-  // to 0.
-  const effectiveIndex =
-    currentIndex >= 0
-      ? currentIndex
-      : tailChunks.length > 0
-        ? tailChunks.length - 1
-        : 0;
+  // Effective center index. Yu 2026-09-20 09:55: "streaming 过程里
+  // 字幕 queue 会不断增加，增加的时候会导致字幕来回滚动".
+  //
+  // The old fallback "tailChunks.length - 1" was the flicker
+  // culprit: any time currentIndex momentarily dropped to -1
+  // (chunk-transition frame in voice-store when currentDisplayText
+  // is cleared before the next chunk's is set), effectiveIndex
+  // jumped to the growing tail end. As streaming added chunks,
+  // that fallback value climbed too, and the filmstrip visibly
+  // scrolled downward on every new chunk boundary.
+  //
+  // Fix: cache the last VALID effectiveIndex in a ref. When
+  // currentIndex resolves to -1, reuse the cached one instead of
+  // chasing tailChunks.length. Only update when we have a real
+  // exact/prefix match.
+  const lastEffectiveIndexRef = useRef<number>(0);
+  const effectiveIndex = useMemo(() => {
+    if (currentIndex >= 0) {
+      lastEffectiveIndexRef.current = currentIndex;
+      return currentIndex;
+    }
+    return lastEffectiveIndexRef.current;
+  }, [currentIndex]);
 
   // Filmstrip window — slice around effectiveIndex. We track chunks
   // and their ABSOLUTE indices so cross-fades between chunks feel
