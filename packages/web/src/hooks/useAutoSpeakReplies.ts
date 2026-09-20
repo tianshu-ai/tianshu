@@ -509,6 +509,14 @@ export function useAutoSpeakReplies() {
 
       // Snapshot the tail state AFTER we've handled any swap so
       // the NEXT swap can look back at this tail's final state.
+      const prevTailId = lastTailIdRef.current;
+      const prevTailLen = lastTailTextRef.current.length;
+      const newTailLen = (tail.text ?? "").length;
+      if (prevTailId !== tail.id) {
+        console.log(
+          `[voice] tail snapshot: prev=${prevTailId?.slice(-6) ?? "none"}(len=${prevTailLen}) → new=${tail.id.slice(-6)}(len=${newTailLen})`,
+        );
+      }
       lastTailIdRef.current = tail.id;
       lastTailTextRef.current = tail.text ?? "";
     }
@@ -519,6 +527,11 @@ export function useAutoSpeakReplies() {
       const src = m.text ?? "";
       if (!src.trim()) continue;
       const cursor = cursorRef.current.get(m.id) ?? 0;
+      // Yu 2026-09-20 11:35 debug: log every slice-loop entry so
+      // we see the exact cursor / len / isStreaming state each tick.
+      console.log(
+        `[voice] slice-loop id=${m.id.slice(-6)} cursor=${cursor} len=${src.length} isStreaming=${isStreaming}`,
+      );
       if (cursor >= src.length) continue;
 
       // Slice on blank-line boundaries. Find every blank line from
