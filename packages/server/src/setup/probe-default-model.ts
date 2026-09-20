@@ -18,7 +18,7 @@ import {
   getDefaultModel,
   resolveApiKey,
 } from "../core/llm.js";
-import { loadGlobalConfig } from "../core/config.js";
+import { loadGlobalConfig, mergeConfigs } from "../core/config.js";
 
 export interface ProbeResult {
   /** Convenience: was the call successful end-to-end? */
@@ -74,7 +74,10 @@ export async function probeDefaultModel(
     };
   }
 
-  const info = getDefaultModel(config);
+  // Resolve through mergeConfigs so models.defaultModelId is
+  // correctly picked up (raw GlobalConfig skips the resolve logic).
+  const resolved = mergeConfigs(config, {});
+  const info = getDefaultModel(resolved);
   if (!info) {
     return {
       ok: false,
@@ -88,10 +91,7 @@ export async function probeDefaultModel(
   }
 
   const apiKey = resolveApiKey(info);
-  if (!apiKey || apiKey === "test-key-1") {
-    // resolveApiKey() falls back to test-key-1 when nothing is
-    // set; that's a sentinel for "the user didn't actually set
-    // a key" rather than something we should try to call with.
+  if (!apiKey) {
     return {
       ok: false,
       modelId: info.id,
@@ -99,9 +99,9 @@ export async function probeDefaultModel(
       durationMs: Date.now() - start,
       error: {
         kind: "no-api-key",
-        message: `apiKey for ${info.providerId} resolved to empty/sentinel; set ${
+        message: `apiKey for ${info.providerId} resolved to empty; set ${
           info.apiKeyTemplate ?? `the provider's API key`
-        } in .env.`,
+        } in config or .env.`,
       },
     };
   }
