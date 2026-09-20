@@ -103,13 +103,15 @@ const FilmstripRow = memo(function FilmstripRow({
   let webkitTextFillColor: string | undefined;
 
   if (isCurrent) {
-    // Yu 2026-09-20 12:09 “没看到变颜色和字幕效果”:
-    // give current row a gradient text fill so it stands out
-    // dramatically. Blue-white-purple sweep matches Apple Music /
-    // Spotify "now playing" glow.
+    // Yu 2026-09-20 13:15 “字幕颜色和效果要适配几种主题”:
+    // Read gradient + glow tint from CSS vars so dark / light /
+    // classical each get their own palette. Fallback keeps old
+    // cyan→white→lavender look if the theme forgot to declare
+    // its --voice-current-gradient (shouldn't happen; both roots
+    // and both [data-theme] blocks now define the full set).
     color = "transparent";
     background =
-      "linear-gradient(120deg, #a5d8ff 0%, #ffffff 50%, #d0bfff 100%)";
+      "var(--voice-current-gradient, linear-gradient(120deg, #a5d8ff 0%, #ffffff 50%, #d0bfff 100%))";
     webkitBackgroundClip = "text";
     webkitTextFillColor = "transparent";
     scale = "1.06";
@@ -117,19 +119,19 @@ const FilmstripRow = memo(function FilmstripRow({
   } else if (offset < 0) {
     color =
       abs === 1
-        ? "rgba(255,255,255,0.35)"
+        ? "var(--voice-past-1, rgba(255,255,255,0.35))"
         : abs === 2
-          ? "rgba(255,255,255,0.20)"
-          : "rgba(255,255,255,0.10)";
+          ? "var(--voice-past-2, rgba(255,255,255,0.20))"
+          : "var(--voice-past-3, rgba(255,255,255,0.10))";
     scale = "1";
     tiltDeg = `${Math.min(abs * 2, 6)}deg`;
   } else {
     color =
       abs === 1
-        ? "rgba(255,255,255,0.55)"
+        ? "var(--voice-next-1, rgba(255,255,255,0.55))"
         : abs === 2
-          ? "rgba(255,255,255,0.28)"
-          : "rgba(255,255,255,0.14)";
+          ? "var(--voice-next-2, rgba(255,255,255,0.28))"
+          : "var(--voice-next-3, rgba(255,255,255,0.14))";
     scale = "1";
     tiltDeg = `-${Math.min(abs * 2, 6)}deg`;
   }
@@ -156,7 +158,7 @@ const FilmstripRow = memo(function FilmstripRow({
         WebkitTextFillColor: webkitTextFillColor,
         backgroundClip: webkitBackgroundClip,
         filter: isCurrent
-          ? "drop-shadow(0 0 24px rgba(165,216,255,0.35)) drop-shadow(0 0 48px rgba(208,191,255,0.20))"
+          ? "drop-shadow(0 0 24px var(--voice-current-glow-1, rgba(165,216,255,0.35))) drop-shadow(0 0 48px var(--voice-current-glow-2, rgba(208,191,255,0.20)))"
           : "none",
       }}
     >
