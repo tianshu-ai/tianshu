@@ -256,6 +256,12 @@ export function useAutoSpeakReplies() {
   const messages = useChatStore((s) => s.messages);
   const isStreaming = useChatStore((s) => s.isStreaming);
 
+  // Track the most-recent user-message id so we can detect when a
+  // NEW user turn starts (Yu 2026-09-20 11:11: sending another
+  // message mid-playback means "interrupt current reply, jump to
+  // the new one"). Ref so it doesn't trigger extra effect fires.
+  const lastUserIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     // If the user turned voice mode off mid-playback, cut the audio.
     // Also reset the seed so re-enabling voice mode later won't
@@ -264,7 +270,35 @@ export function useAutoSpeakReplies() {
       stop();
       seededRef.current = false;
       cursorRef.current = new Map();
+      lastUserIdRef.current = null;
       return;
+    }
+
+    // Detect user-initiated interruption: a NEW user message id
+    // appears at the tail of messages. That means Yu sent a
+    // follow-up while audio was still playing the previous reply.
+    // Stop everything and let the new reply's chunks stream in
+    // fresh via the slice loop below.
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role !== "user") continue;
+      // We only care about the newest user message. If it's the
+      // same as we already saw, nothing to do.
+      if (lastUserIdRef.current !== m.id) {
+        // First seed run: don't stop anything, just record.
+        // Subsequent user-id changes DURING playback: stop audio
+        // + flush queue so the new reply starts talking
+        // immediately when its first chunk arrives.
+        if (lastUserIdRef.current !== null && seededRef.current) {
+          console.log(
+            `[voice] user interrupt: new user msg ${m.id.slice(-6)}, ` +
+              `flushing playback queue`,
+          );
+          stop();
+        }
+        lastUserIdRef.current = m.id;
+      }
+      break;
     }
 
     // Defer seed until history has landed — first mount often sees
