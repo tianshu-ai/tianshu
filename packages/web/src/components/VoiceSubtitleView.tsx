@@ -245,9 +245,6 @@ export default function VoiceSubtitleView() {
   const currentIndex = useMemo(() => {
     const needle = currentDisplayText || lastCurrentRef.current;
     if (!needle) {
-      console.log(
-        `[subtitle] currentIndex: needle=empty tailLen=${tailChunks.length} → -1`,
-      );
       return -1;
     }
 
@@ -255,9 +252,6 @@ export default function VoiceSubtitleView() {
     // has the chunk verbatim, findIndex nails it.
     const exact = tailChunks.findIndex((c) => c === needle);
     if (exact !== -1) {
-      console.log(
-        `[subtitle] currentIndex: EXACT idx=${exact} tailLen=${tailChunks.length} needle=${JSON.stringify(needle.slice(0, 20))}`,
-      );
       return exact;
     }
 
@@ -283,9 +277,6 @@ export default function VoiceSubtitleView() {
           c.length <= needle.length + 200 &&
           c.length > needle.length
         ) {
-          console.log(
-            `[subtitle] currentIndex: PREFIX-OF-CHUNK idx=${i} chunkLen=${c.length} needleLen=${needle.length} tailLen=${tailChunks.length} needle=${JSON.stringify(needle.slice(0, 20))}`,
-          );
           return i;
         }
       }
@@ -298,16 +289,10 @@ export default function VoiceSubtitleView() {
     for (let i = tailChunks.length - 1; i >= 0; i--) {
       const c = tailChunks[i];
       if (needle.startsWith(c) && c.length >= needle.length - 40) {
-        console.log(
-          `[subtitle] currentIndex: CHUNK-PREFIX-OF-NEEDLE idx=${i} chunkLen=${c.length} needleLen=${needle.length} tailLen=${tailChunks.length}`,
-        );
         return i;
       }
     }
 
-    console.log(
-      `[subtitle] currentIndex: NO-MATCH tailLen=${tailChunks.length} needleLen=${needle.length} needle=${JSON.stringify(needle.slice(0, 20))} tailSample=${JSON.stringify(tailChunks.slice(-2).map((c) => c.slice(0, 20)))}`,
-    );
     return -1;
   }, [tailChunks, currentDisplayText]);
 
@@ -357,9 +342,6 @@ export default function VoiceSubtitleView() {
   const effectiveIndex = useMemo(() => {
     if (currentIndex >= 0) {
       if (lastEffectiveIndexRef.current !== currentIndex) {
-        console.log(
-          `[subtitle] effectiveIndex CHANGE ${lastEffectiveIndexRef.current} → ${currentIndex}`,
-        );
       }
       lastEffectiveIndexRef.current = currentIndex;
       return currentIndex;
@@ -427,9 +409,6 @@ export default function VoiceSubtitleView() {
     let initTimer: number | null = null;
     function tryInitFocus() {
       const c = findComposer();
-      console.log(
-        `[voice] init focus attempt ${attempt + 1}: found=${!!c} contained=${c ? document.contains(c) : false}`,
-      );
       if (c) {
         c.focus();
         // Verify focus took — sometimes .focus() silently fails on

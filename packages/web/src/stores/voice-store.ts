@@ -211,9 +211,6 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   lastError: null,
 
   stop: () => {
-    console.log(
-      `[voice] STOP called, pendingQueue.length=${pendingQueue.length}, queueDraining=${queueDraining}, playingId=${get().playingId?.slice(-12) ?? "null"}`,
-    );
     pendingQueue.length = 0;
     prefetchCache.clear();
     if (abortController && !abortController.signal.aborted) {
@@ -227,9 +224,6 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
 
   enqueue: (req: SpeakRequest) => {
     pendingQueue.push({ ...req, mode: "queue" });
-    console.log(
-      `[voice] ENQUEUE id=${req.id.slice(-12)} queueLen=${pendingQueue.length} queueDraining=${queueDraining}`,
-    );
     if (!queueDraining) {
       queueDraining = true;
       // Drain in an IIFE; use the store's own play() to run each
@@ -252,23 +246,14 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
             const upcoming = pendingQueue[0];
             if (upcoming) startPrefetch(upcoming);
 
-            console.log(
-              `[voice] drain start id=${next.id.slice(-12)} queue=${pendingQueue.length}`,
-            );
             const started = Date.now();
             try {
               await get().play({ ...next, mode: "drain" });
-              console.log(
-                `[voice] drain done id=${next.id.slice(-12)} ` +
-                  `elapsed=${Date.now() - started}ms queue=${pendingQueue.length}`,
-              );
             } catch (err) {
-              console.warn("[voice] queued utterance failed:", err);
             }
           }
         } finally {
           queueDraining = false;
-          console.log("[voice] drain finished, queue empty");
         }
       })();
     }
@@ -516,13 +501,10 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       ms.addEventListener(
         "sourceopen",
         async () => {
-          console.debug("[voice] MediaSource sourceopen fired");
           let sourceBuffer: SourceBuffer;
           try {
             sourceBuffer = ms.addSourceBuffer("audio/mpeg");
-            console.debug("[voice] SourceBuffer added");
           } catch (err) {
-            console.warn("[voice] addSourceBuffer failed:", err);
             if (!settled) {
               settled = true;
               cleanup();
@@ -584,11 +566,8 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
           // el.src already set outside sourceopen; setting again
           // here caused a second blob fetch that 404'd (Yu
           // 2026-09-19 22:03). Just start playback.
-          console.debug("[voice] calling audio.play()");
           el.play().then(() => {
-            console.debug("[voice] audio.play resolved (playback started)");
           }).catch((err) => {
-            console.warn("[voice] audio.play rejected:", err);
             if (!settled) {
               settled = true;
               cleanup();
@@ -640,19 +619,13 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       // Bind the audio element to the MediaSource URL. sourceopen
       // above fires once the browser has read this src and started
       // opening the MediaSource.
-      console.debug(
-        `[voice] MediaSource created, url=${url.slice(0, 40)}..., ` +
-          `readyState=${ms.readyState}, setting audio.src`,
-      );
       el.src = url;
       // Explicit load() kicks the media element pipeline; on some
       // browsers just setting src doesn't reliably trigger the
       // MediaSource sourceopen event.
       try {
         el.load();
-        console.debug("[voice] audio.load() called, now waiting for sourceopen");
       } catch (err) {
-        console.warn("[voice] audio.load failed:", err);
       }
     });
   },

@@ -290,10 +290,6 @@ export function useAutoSpeakReplies() {
         // + flush queue so the new reply starts talking
         // immediately when its first chunk arrives.
         if (lastUserIdRef.current !== null && seededRef.current) {
-          console.log(
-            `[voice] user interrupt: new user msg ${m.id.slice(-6)}, ` +
-              `flushing playback queue`,
-          );
           stop();
         }
         lastUserIdRef.current = m.id;
@@ -475,11 +471,6 @@ export function useAutoSpeakReplies() {
         cursorRef.current.set(tail.id, inheritedCursor ?? 0);
 
         // Log the inheritance decision so we can see it working.
-        console.log(
-          `[voice] tail id changed: prev=${prevId?.slice(-6) ?? "none"} ` +
-            `new=${tail.id.slice(-6)} inheritedCursor=${inheritedCursor} ` +
-            `tailLen=${tailText.length}`,
-        );
 
         // Mark every OTHER current assistant row as done so a
         // re-render doesn't re-slice them.
@@ -523,11 +514,6 @@ export function useAutoSpeakReplies() {
             const trailingText = prevText.slice(prevCursor).trim();
             if (trailingText.length > 0) {
               const spoken = spokenTextFor(trailingText);
-              console.log(
-                `[voice] tail-swap trailing flush id=${prevId.slice(-6)} ` +
-                  `[${prevCursor}..${prevText.length}] bodyLen=${prevText.length - prevCursor} ` +
-                  `spoken=${JSON.stringify(spoken.slice(0, 40))}`,
-              );
               if (spoken) {
                 enqueue({
                   id: `${prevId}#${prevCursor}`,
@@ -556,9 +542,6 @@ export function useAutoSpeakReplies() {
                 newTailText.slice(0, prevText.length) === prevText
               ) {
                 cursorRef.current.set(tail.id, prevText.length);
-                console.log(
-                  `[voice] tail-swap: seeded new tail ${tail.id.slice(-6)} cursor=${prevText.length} (avoiding duplicate flush)`,
-                );
               }
             }
           }
@@ -572,9 +555,6 @@ export function useAutoSpeakReplies() {
       const prevTailLen = lastTailTextRef.current.length;
       const newTailLen = (tail.text ?? "").length;
       if (prevTailId !== tail.id) {
-        console.log(
-          `[voice] tail snapshot: prev=${prevTailId?.slice(-6) ?? "none"}(len=${prevTailLen}) → new=${tail.id.slice(-6)}(len=${newTailLen})`,
-        );
       }
       lastTailIdRef.current = tail.id;
       lastTailTextRef.current = tail.text ?? "";
@@ -588,9 +568,6 @@ export function useAutoSpeakReplies() {
       const cursor = cursorRef.current.get(m.id) ?? 0;
       // Yu 2026-09-20 11:35 debug: log every slice-loop entry so
       // we see the exact cursor / len / isStreaming state each tick.
-      console.log(
-        `[voice] slice-loop id=${m.id.slice(-6)} cursor=${cursor} len=${src.length} isStreaming=${isStreaming}`,
-      );
       if (cursor >= src.length) continue;
 
       // Slice on blank-line boundaries. Find every blank line from
@@ -610,11 +587,6 @@ export function useAutoSpeakReplies() {
         if (trimmed.length > 0) {
           anyMatch = true;
           const spoken = spokenTextFor(chunkText);
-          console.log(
-            `[voice] chunk id=${m.id.slice(-6)} ` +
-              `[${regionStart}..${m2.index}] bodyLen=${chunkText.length} ` +
-              `spokenLen=${spoken.length} spoken=${JSON.stringify(spoken.slice(0, 40))}`,
-          );
           if (spoken) {
             enqueue({
               id: `${m.id}#${regionStart}`,
@@ -640,11 +612,6 @@ export function useAutoSpeakReplies() {
         if (trimmed.length > 0) {
           anyMatch = true;
           const spoken = spokenTextFor(chunkText);
-          console.log(
-            `[voice] chunk id=${m.id.slice(-6)} ` +
-              `[${regionStart}..${src.length}] bodyLen=${chunkText.length} ` +
-              `spokenLen=${spoken.length} spoken=${JSON.stringify(spoken.slice(0, 40))} (final)`,
-          );
           if (spoken) {
             enqueue({
               id: `${m.id}#${regionStart}`,
@@ -661,10 +628,6 @@ export function useAutoSpeakReplies() {
       if (anyMatch) {
         cursorRef.current.set(m.id, lastEnd);
       } else {
-        console.log(
-          `[voice] no-chunk id=${m.id.slice(-6)} cursor=${cursor} ` +
-            `len=${src.length} isStreaming=${isStreaming}`,
-        );
       }
     }
     // ttsProvider/ttsVoice deliberately NOT in deps — a pref refresh
