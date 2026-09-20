@@ -167,27 +167,29 @@ export default function VoiceSubtitleView() {
   }, [currentDisplayText]);
 
   // All assistant chunks across ALL assistant messages, in order.
-  // Yu 2026-09-20 02:15: taking only the LAST message's chunks
-  // makes the second reply feel abrupt — there's no fade-back
-  // context of what was said earlier. Concatenating chunks from
-  // every assistant reply keeps the Apple-Music-style scroll feel
-  // continuous across turns: the previous reply's tail chunks
-  // linger at the top as sung/faded, then the current chunk of
-  // the new reply arrives in the middle, then future chunks stay
-  // below waiting.
+  // Yu 2026-09-20 02:15 wanted cross-turn continuity (concat all
+  // messages' chunks), and 2026-09-20 10:06 log showed why the
+  // 30-chunk sliding limit was WRONG: streaming keeps adding new
+  // chunks, and each addition slid the old "好。" chunk from idx=28
+  // to 27 to 26 ... because slice(all.length - 30) chased the
+  // window head. currentIndex tracked the moving idx correctly
+  // (log showed EXACT idx=28,27,26,25,...) but every change fired
+  // an effectiveIndex CHANGE which scrolled the filmstrip.
   //
-  // Trimming to the last ~30 chunks so the filmstrip doesn't grow
-  // unbounded on a long session. VISIBLE_RADIUS=2 needs 5 rows,
-  // so 30 leaves plenty of context and keeps the DOM tiny.
-  const CHUNK_HISTORY_LIMIT = 30;
+  // Fix: keep the FULL history so chunk indices stay STABLE across
+  // deltas. React memo on FilmstripRow + stable indices = subtitle
+  // stays put unless the audio pipeline actually advances.
+  //
+  // Trade-off: memory grows linearly with the session. A long
+  // session (say 1000 chunks * 100 chars each) is ~200 KB of
+  // strings held in memory. Filmstrip still renders only 5 rows
+  // via VISIBLE_RADIUS window — the extra chunks are just Array
+  // storage. Acceptable.
   const tailChunks = useMemo(() => {
     const all: string[] = [];
     for (const m of messages) {
       if (m.role !== "assistant" || !m.text) continue;
       for (const c of splitChunks(m.text)) all.push(c);
-    }
-    if (all.length > CHUNK_HISTORY_LIMIT) {
-      return all.slice(all.length - CHUNK_HISTORY_LIMIT);
     }
     return all;
   }, [messages]);
