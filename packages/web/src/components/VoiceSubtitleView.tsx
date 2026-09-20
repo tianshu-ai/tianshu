@@ -194,6 +194,20 @@ export default function VoiceSubtitleView() {
     return all;
   }, [messages]);
 
+  // Parallel array mapping chunk index → owning assistant message id.
+  // Used to find the user question that triggered the currently-
+  // playing chunk. Yu 2026-09-20 12:06: fix a user-question pill at
+  // top of subtitle view so we always know what question is being
+  // answered right now.
+  const chunkMessageIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const m of messages) {
+      if (m.role !== "assistant" || !m.text) continue;
+      for (const _c of splitChunks(m.text)) ids.push(m.id);
+    }
+    return ids;
+  }, [messages]);
+
   // Locate the current chunk within tailChunks so we can pick prev
   // and next context rows. `currentDisplayText` was pre-trimmed by
   // useAutoSpeakReplies before enqueueing, so equality works.
@@ -284,6 +298,28 @@ export default function VoiceSubtitleView() {
     currentDisplayText ||
     lastCurrentRef.current ||
     (tailChunks.length > 0 ? tailChunks[tailChunks.length - 1] : "");
+
+  // The user question associated with the currently-playing chunk.
+  // Walk messages backward from the owning assistant message id
+  // (chunkMessageIds[currentIndex]) to find the immediately-
+  // preceding user message. Yu 2026-09-20 12:06: pill fixed at
+  // the top of the subtitle view keeps context visible even
+  // during long AI replies.
+  const currentUserQuestion = useMemo(() => {
+    if (currentIndex < 0) return null;
+    const owningId = chunkMessageIds[currentIndex];
+    if (!owningId) return null;
+    const owningIdx = messages.findIndex((mm) => mm.id === owningId);
+    if (owningIdx < 0) return null;
+    // Scan backward for the nearest user message.
+    for (let i = owningIdx - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === "user" && m.text) {
+        return m.text.trim();
+      }
+    }
+    return null;
+  }, [currentIndex, chunkMessageIds, messages]);
 
   // Effective center index. Yu 2026-09-20 09:55: "streaming 过程里
   // 字幕 queue 会不断增加，增加的时候会导致字幕来回滚动".
@@ -515,6 +551,25 @@ export default function VoiceSubtitleView() {
           </button>
         </div>
       </header>
+
+      {/* Pinned user-question pill. Yu 2026-09-20 12:06: keeps
+          context visible during long replies. Shows the user
+          message that triggered whatever chunk is currently
+          playing. Hidden when nothing is playing (idle). */}
+      {currentUserQuestion && (
+        <div className="flex-none px-6 pt-4">
+          <div className="mx-auto max-w-4xl rounded-2xl border border-white/10 bg-white/5 px-6 py-3 backdrop-blur">
+            <div className="flex items-baseline gap-3">
+              <span className="flex-none text-xs font-medium uppercase tracking-widest text-fg-faint">
+                • 你问
+              </span>
+              <span className="line-clamp-2 flex-1 text-lg text-fg-muted sm:text-xl">
+                {currentUserQuestion}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Big centered subtitle area. `min-h-0` on the flex child
           + `overflow-hidden` on the wrapper: without these, the
