@@ -147,8 +147,20 @@ export default function ChatInput() {
       : `${t("chat.voiceInput")} (${displayShortcut})`;
 
   return (
-    <div className="border-t border-border-subtle bg-bg-base px-4 py-3">
-      <div className="mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-3 focus-within:border-border-default">
+    <div
+      className={
+        voiceEnabled
+          ? "border-t border-border-subtle bg-bg-base px-6 py-5"
+          : "border-t border-border-subtle bg-bg-base px-4 py-3"
+      }
+    >
+      <div
+        className={
+          voiceEnabled
+            ? "mx-auto flex max-w-5xl flex-col gap-3 rounded-3xl border border-border-subtle bg-bg-elevated p-5 focus-within:border-border-default"
+            : "mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-3 focus-within:border-border-default"
+        }
+      >
         <ComposerAttachments />
         <textarea
           ref={ref}
@@ -168,7 +180,11 @@ export default function ChatInput() {
                 ? t("chat.compacting")
                 : t("chat.placeholder")
           }
-          className="resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
+          className={
+            voiceEnabled
+              ? "resize-none bg-transparent text-xl leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none sm:text-2xl"
+              : "resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
+          }
         />
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1">
