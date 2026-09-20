@@ -211,20 +211,11 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   lastError: null,
 
   stop: () => {
+    console.log(
+      `[voice] STOP called, pendingQueue.length=${pendingQueue.length}, queueDraining=${queueDraining}, playingId=${get().playingId?.slice(-12) ?? "null"}`,
+    );
     pendingQueue.length = 0;
-    // Discard any in-flight prefetches so we don't keep loading
-    // audio for utterances the user just cancelled. Cached promises
-    // are fire-and-forget — dropping references is enough; the
-    // background fetch completes and its blob gets GC'd.
     prefetchCache.clear();
-    // Abort the current play()'s AbortController FIRST, before
-    // teardown. This fires the abort listener inside the blob-
-    // playback Promise, which resolves it cleanly and lets the
-    // drain loop's `await play()` proceed. Without this, teardown
-    // pauses audio without firing ended/error — promise stays
-    // pending, drain loop stays awaited, queueDraining stuck true,
-    // and new enqueue() calls just push to a queue that nothing
-    // ever drains. (Yu 2026-09-20 11:17 "切断了，但新消息没播放".)
     if (abortController && !abortController.signal.aborted) {
       abortController.abort();
     }
@@ -236,6 +227,9 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
 
   enqueue: (req: SpeakRequest) => {
     pendingQueue.push({ ...req, mode: "queue" });
+    console.log(
+      `[voice] ENQUEUE id=${req.id.slice(-12)} queueLen=${pendingQueue.length} queueDraining=${queueDraining}`,
+    );
     if (!queueDraining) {
       queueDraining = true;
       // Drain in an IIFE; use the store's own play() to run each
