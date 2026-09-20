@@ -255,25 +255,87 @@ export default function VoiceSubtitleView() {
 
   const idle = !playingId && !lastCurrentRef.current;
 
-  // Auto-focus ChatInput textarea on any character key when nothing
-  // else is focused. Yu 2026-09-20 09:34: "有没可能在没有任何
-  // 输入框 focus 的情况下默认把文字输入打到输入框里？".
-  // Only active in voice mode — that's the "far-viewing" scenario
-  // where the user wants to start dictating without first tabbing
-  // back to the composer.
+  // Keep the composer textarea focused whenever voice mode is on.
+  //
+  // Yu 2026-09-20 09:34: wanted zero-friction dictation for far-
+  // viewing UX — sit back, watch subtitles, start talking. First
+  // attempt used a keydown listener to catch the first char and
+  // steer it into the composer, but Yu 2026-09-20 09:46 flagged
+  // that OS dictation (macOS fn+fn, Windows Win+H) uses IME
+  // composition events, NOT keydown. Fix: keep composer focused
+  // ALL THE TIME while voice mode is on, so IME composition has
+  // a target ready without any keystroke needed.
+  //
+  // Strategy:
+  //   1. On mount, focus the composer.
+  //   2. Listen for focusin on the whole document. If focus lands
+  //      anywhere else, refocus the composer — UNLESS the new
+  //      focus is on one of the allowed exceptions (sidebar
+  //      toggle, plugin bar buttons, voice-off button, plugin
+  //      panel content). Users need those to be interactive.
+  //   3. On mouse click landing on the subtitle area (not on a
+  //      button), we can rely on browser default to move focus
+  //      to body, and step 2 kicks it back to the composer.
   useEffect(() => {
+    let composer: HTMLTextAreaElement | null = null;
+
+    function findComposer(): HTMLTextAreaElement | null {
+      if (composer && document.contains(composer)) return composer;
+      composer = document.querySelector("textarea") as
+        | HTMLTextAreaElement
+        | null;
+      return composer;
+    }
+
+    // Initial focus. defer to next tick so the DOM has settled
+    // after this effect flush.
+    const initTimer = window.setTimeout(() => {
+      findComposer()?.focus();
+    }, 0);
+
+    function isInteractiveTarget(el: Element | null): boolean {
+      if (!el) return false;
+      // Any button, link, form control, or contenteditable is
+      // interactive and should keep focus. Plugin panels can hold
+      // their own inputs (like the DataSource query editor); if
+      // focus lands inside them, respect that.
+      let node: Element | null = el;
+      while (node) {
+        const tag = node.tagName;
+        if (
+          tag === "BUTTON" ||
+          tag === "A" ||
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          tag === "SELECT" ||
+          (node as HTMLElement).isContentEditable
+        ) {
+          return true;
+        }
+        // aside = PluginRightPanel wrapper; anything inside a plugin
+        // panel should be treated as legitimate user focus.
+        if (tag === "ASIDE") return true;
+        node = node.parentElement;
+      }
+      return false;
+    }
+
+    function onFocusIn(ev: FocusEvent) {
+      const target = ev.target as Element | null;
+      const c = findComposer();
+      if (!c) return;
+      if (target === c) return; // already the composer
+      if (isInteractiveTarget(target)) return; // legit user click
+      // Fell through to non-interactive area — grab focus back.
+      c.focus();
+    }
+
+    // Also keep listening for character keydowns for a safety net,
+    // in case IME composition lands somewhere unexpected — same
+    // logic as before but the primary win is now focusin above.
     function onKeyDown(ev: KeyboardEvent) {
-      // Ignore modifier-combined shortcuts (Cmd/Ctrl/Alt).
-      // Shift alone is fine (capital letters).
       if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
-
-      // Ignore navigation / function / editing keys — they shouldn't
-      // steal focus to the composer.
       if (ev.key.length !== 1 && ev.key !== "Enter") return;
-
-      // If focus is already inside a text-editing element, leave
-      // it alone. Covers native inputs, ContentEditable divs, and
-      // anything that carries an aria-role of textbox.
       const target = ev.target as HTMLElement | null;
       if (target) {
         const tag = target.tagName;
@@ -286,46 +348,35 @@ export default function VoiceSubtitleView() {
           return;
         }
       }
-
-      // Find the ChatInput textarea. In voice mode it's the only
-      // textarea on screen (subtitle view has no other inputs).
-      const composer = document.querySelector("textarea") as
-        | HTMLTextAreaElement
-        | null;
-      if (!composer) return;
-
-      // Focus, then let the current keydown continue into it. Focus
-      // synchronously moves the browser's insertion point; the same
-      // event's default action (typing) then lands in the composer.
-      composer.focus();
-
-      // For character keys, browsers may have already skipped the
-      // now-focused element in this dispatch cycle. Manually insert
-      // the character so the first keystroke isn't lost.
+      const c = findComposer();
+      if (!c) return;
+      c.focus();
       if (ev.key.length === 1) {
         ev.preventDefault();
-        const start = composer.selectionStart ?? composer.value.length;
-        const end = composer.selectionEnd ?? composer.value.length;
-        const newValue =
-          composer.value.slice(0, start) + ev.key + composer.value.slice(end);
-        // React-controlled textarea: set value via the native setter
-        // so React's onChange fires and store state stays in sync.
+        const start = c.selectionStart ?? c.value.length;
+        const end = c.selectionEnd ?? c.value.length;
+        const newValue = c.value.slice(0, start) + ev.key + c.value.slice(end);
         const setter = Object.getOwnPropertyDescriptor(
           window.HTMLTextAreaElement.prototype,
           "value",
         )?.set;
         if (setter) {
-          setter.call(composer, newValue);
-          composer.dispatchEvent(new Event("input", { bubbles: true }));
+          setter.call(c, newValue);
+          c.dispatchEvent(new Event("input", { bubbles: true }));
         } else {
-          composer.value = newValue;
+          c.value = newValue;
         }
-        composer.selectionStart = composer.selectionEnd = start + 1;
+        c.selectionStart = c.selectionEnd = start + 1;
       }
     }
 
+    document.addEventListener("focusin", onFocusIn);
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(initTimer);
+      document.removeEventListener("focusin", onFocusIn);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, []);
 
   return (
