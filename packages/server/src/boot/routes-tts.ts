@@ -1,23 +1,24 @@
 // POST /api/tts: text -> audio proxy.
 //
-// Yu, 2026-09-19: supports two TTS backends selected by env
-// TTS_PROVIDER:
+// Yu, 2026-09-19: initial version with edge + cosyvoice.
+// Yu, 2026-09-20: replaced cosyvoice/kokoro with qwentts.
+//   CosyVoice (RTF 6x, too slow) and Kokoro (sounds like edge-tts)
+//   are removed. Only edge and qwentts remain.
+//
+// TTS_PROVIDER env selects the default backend:
 //
 //   "edge" (default) — Microsoft Edge's online TTS via the
-//     @andresaya/edge-tts npm package. Zero local setup, no API key,
-//     free unlimited use. Chinese voices (Xiaoxiao/Yunxi/Yunyang)
-//     are near-production quality. Trade-off: needs internet;
-//     Microsoft EULA forbids commercial use (fine for a personal
-//     side project like tianshu, revisit before shipping).
+//     @andresaya/edge-tts npm package. Zero local setup, no API key.
+//     Chinese voices (Xiaoxiao/Yunxi/Yunyang) are near-production
+//     quality. Needs internet; Microsoft EULA forbids commercial use.
 //
-//   "cosyvoice" — Local CosyVoice 2 FastAPI server (Apache 2.0,
-//     ~150 ms first-packet latency, native Apple Silicon MPS).
-//     Yu runs the CosyVoice server separately; tianshu forwards
-//     via HTTP. See scripts/COSYVOICE_SETUP.md for setup.
+//   "qwentts" — Local Qwen3-TTS 0.6B MLX server (Apache 2.0,
+//     RTF ~0.3x on Apple Silicon, 9 preset voices, 10 languages).
+//     See scripts/QWEN3_TTS_SETUP.md for setup.
 //
 // Same public contract in both cases:
-//   POST /api/tts   body: { text, voice? }
-//   → response body: audio/* (mp3 for edge, wav for cosyvoice)
+//   POST /api/tts   body: { text, voice?, provider? }
+//   → response body: audio/* (mp3 for edge, wav for qwentts)
 //
 // Browser <audio> plays either directly; useTts hook doesn't care.
 
@@ -83,7 +84,12 @@ function buildWavHeader(pcmByteLen: number): Buffer {
   const blockAlign = COSY_CHANNELS * (COSY_BITS_PER_SAMPLE / 8);
 
   header.write("RIFF", 0);
-  header.writeUInt32LE(36 + pcmByteLen, 4);
+  // For streaming (pcmByteLen=0xFFFFFFFF), RIFF chunk size is also
+  // 0xFFFFFFFF — signals unknown length to decoders.
+  header.writeUInt32LE(
+    pcmByteLen === 0xFFFFFFFF ? 0xFFFFFFFF : 36 + pcmByteLen,
+    4,
+  );
   header.write("WAVE", 8);
   header.write("fmt ", 12);
   header.writeUInt32LE(16, 16);
@@ -182,44 +188,61 @@ async function handleEdge(
 }
 
 /**
- * CosyVoice handler — forwards to the local FastAPI server, buffers
- * PCM, prepends a wav header, streams back.
+ * Local TTS handler — forwards to a local FastAPI server (Kokoro or
+ * CosyVoice) and streams WAV back to the browser.
+ *
+ * Yu, 2026-09-20: rewritten from buffer-all to true streaming.
+ * Old path buffered ALL PCM before prepending the WAV header,
+ * which meant 9+ seconds silence on CosyVoice before audio started.
+ *
+ * New path:
+ *   1. Send a WAV header with data-size = 0xFFFFFFFF (streaming
+ *      marker; browsers / MediaSource treat this as "unknown length,
+ *      keep reading until connection closes").
+ *   2. Pipe upstream PCM chunks directly to the HTTP response as
+ *      they arrive — first audio byte reaches the browser as soon
+ *      as the model yields its first chunk.
+ *   3. Connection close signals end-of-stream.
+ *
+ * Works with both Kokoro (RTF ~0.4x, first chunk ~2s) and CosyVoice
+ * (RTF ~6x, first chunk ~9s). The streaming path benefits Kokoro
+ * enormously; CosyVoice still has a long first-chunk wait but at
+ * least doesn't add extra buffering delay on top.
  */
-async function handleCosyvoice(
+async function handleLocalTts(
   res: Response,
   text: string,
   voice: string | undefined,
+  providerLabel: string,
 ): Promise<void> {
   const useVoice = voice?.trim() || DEFAULT_COSY_VOICE;
   const upstream = process.env.TTS_URL || DEFAULT_COSY_URL;
   const url = `${upstream}/inference_sft`;
 
-  // CosyVoice's FastAPI expects multipart/form-data (server.py:
-  // `tts_text: str = Form(), spk_id: str = Form()`).
   const form = new FormData();
   form.set("tts_text", text);
   form.set("spk_id", useVoice);
 
   console.log(
-    `[tts] cosyvoice forwarding: len=${text.length} voice=${useVoice} url=${url}`,
+    `[tts] ${providerLabel} forwarding: len=${text.length} voice=${useVoice} url=${url}`,
   );
 
   let upstreamRes: globalThis.Response;
   try {
     upstreamRes = await fetch(url, { method: "POST", body: form });
   } catch (err) {
-    console.warn(`[tts] cosyvoice upstream unreachable: ${upstream}`, err);
+    console.warn(`[tts] ${providerLabel} upstream unreachable: ${upstream}`, err);
     res.status(503).json({
       error: "tts upstream unreachable",
       detail: err instanceof Error ? err.message : String(err),
-      hint: `Is CosyVoice running at ${upstream}? See scripts/COSYVOICE_SETUP.md.`,
+      hint: `Is the TTS server running at ${upstream}?`,
     });
     return;
   }
 
   if (!upstreamRes.ok || !upstreamRes.body) {
     console.warn(
-      `[tts] cosyvoice upstream error: ${upstreamRes.status} ${upstreamRes.statusText}`,
+      `[tts] ${providerLabel} upstream error: ${upstreamRes.status} ${upstreamRes.statusText}`,
     );
     res.status(upstreamRes.status).json({
       error: "tts upstream returned error",
@@ -229,53 +252,48 @@ async function handleCosyvoice(
     return;
   }
 
-  // Buffer full PCM then wrap with RIFF wav header (needs total
-  // byte length up front). ~24 KB/s at 24 kHz mono int16 — a 10 s
-  // reply is ~240 KB, safe in memory.
-  const chunks: Buffer[] = [];
+  // Stream WAV: send header immediately with unknown data size,
+  // then pipe PCM chunks as they arrive from upstream.
+  const streamingHeader = buildWavHeader(0xFFFFFFFF);
+  res.setHeader("Content-Type", "audio/wav");
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("X-Accel-Buffering", "no");
+  res.write(streamingHeader);
+
+  const start = Date.now();
   let totalBytes = 0;
+  let chunkCount = 0;
+  let firstChunkMs: number | null = null;
+
   const reader = upstreamRes.body.getReader();
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
       const buf = Buffer.from(value);
-      chunks.push(buf);
+      if (firstChunkMs == null) firstChunkMs = Date.now() - start;
       totalBytes += buf.length;
+      chunkCount++;
+      res.write(buf);
     }
   } catch (err) {
-    console.warn("[tts] cosyvoice stream aborted:", err);
-    res.status(502).json({
-      error: "tts upstream stream aborted",
-      detail: err instanceof Error ? err.message : String(err),
-    });
-    return;
+    console.warn(`[tts] ${providerLabel} stream aborted:`, err);
+    // Headers already sent; just close the response.
   }
 
-  if (totalBytes === 0) {
-    console.warn("[tts] cosyvoice returned empty PCM");
-    res.status(502).json({ error: "tts upstream returned empty audio" });
-    return;
-  }
-
-  const header = buildWavHeader(totalBytes);
-  const wavLen = header.length + totalBytes;
-
-  res.setHeader("Content-Type", "audio/wav");
-  res.setHeader("Content-Length", String(wavLen));
-  res.setHeader("Cache-Control", "no-store");
-  res.write(header);
-  for (const chunk of chunks) res.write(chunk);
   res.end();
 
+  if (totalBytes === 0) {
+    console.warn(`[tts] ${providerLabel} returned empty PCM`);
+    return;
+  }
+
+  const audioDur =
+    totalBytes / COSY_SAMPLE_RATE / (COSY_BITS_PER_SAMPLE / 8) / COSY_CHANNELS;
   console.log(
-    `[tts] cosyvoice delivered wav: pcm=${totalBytes}B total=${wavLen}B ` +
-      `(${(
-        totalBytes /
-        COSY_SAMPLE_RATE /
-        (COSY_BITS_PER_SAMPLE / 8) /
-        COSY_CHANNELS
-      ).toFixed(1)}s)`,
+    `[tts] ${providerLabel} streamed wav: ${totalBytes}B in ${chunkCount} chunks ` +
+      `(first at ${firstChunkMs}ms, total ${Date.now() - start}ms, ` +
+      `${audioDur.toFixed(1)}s audio)`,
   );
 }
 
@@ -309,13 +327,13 @@ export function mountTtsRoutes(app: Express) {
 
     if (requestedProvider === "edge") {
       await handleEdge(res, text, voice);
-    } else if (requestedProvider === "cosyvoice") {
-      await handleCosyvoice(res, text, voice);
+    } else if (requestedProvider === "qwentts") {
+      await handleLocalTts(res, text, voice, requestedProvider);
     } else {
       console.warn(`[tts] unknown provider: ${requestedProvider}`);
       res.status(400).json({
         error: `unknown provider: ${requestedProvider}`,
-        hint: "Use provider=edge or provider=cosyvoice",
+        hint: "Use provider=edge or provider=qwentts",
       });
     }
   });

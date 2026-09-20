@@ -1,28 +1,23 @@
 // TTS settings page.
 //
-// Yu, 2026-09-19: added when Yu asked to make TTS provider switchable
-// and treat CosyVoice as an external service.
+// Yu, 2026-09-19: added when Yu asked to make TTS provider switchable.
+// Yu, 2026-09-20: switched from CosyVoice/Kokoro to Qwen3-TTS MLX.
+//   CosyVoice (RTF 6x, too slow) and Kokoro (82M, sounds like edge-tts)
+//   are removed. Only Edge TTS (cloud) and Qwen3-TTS (local MLX) remain.
 //
 // Provider choices:
 //   - edge (default): Microsoft Edge online TTS via @andresaya/edge-tts.
 //     Cloud-based, no local model needed, ~15 Chinese voices, good
 //     quality but personal-use only per Microsoft EULA.
-//   - cosyvoice: Local CosyVoice 2 FastAPI server, controlled entirely
-//     outside tianshu — the user starts it on their machine at the URL
-//     configured server-side via env TTS_URL (default localhost:50000).
-//     tianshu just forwards HTTP requests to it.
+//   - qwentts: Local Qwen3-TTS 0.6B MLX server on Apple Silicon.
+//     RTF ~0.3x, 9 preset voices, 10 languages. Fully offline.
+//     See scripts/QWEN3_TTS_SETUP.md for setup instructions.
 //
 // Config split:
 //   - provider + voice: stored in user_preferences (per-user, per-tenant,
 //     cross-device). Reason: these are usage preferences.
-//   - TTS_URL for CosyVoice: server env only. Reason: infra config,
-//     changes when Yu moves the CosyVoice service, per-server not
+//   - TTS_URL: server env only. Reason: infra config, per-server not
 //     per-user.
-//
-// This page exposes provider + voice; the CosyVoice URL is shown
-// read-only (fetched from a status endpoint) so the user can verify
-// what the server is pointed at without letting them accidentally
-// break routing for other users on the same tenant.
 
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -35,15 +30,8 @@ import {
 import { useVoiceStore } from "../../stores/voice-store";
 
 /** Provider slugs the server understands (see routes-tts.ts). */
-type TtsProvider = "edge" | "cosyvoice";
+type TtsProvider = "edge" | "qwentts";
 
-/**
- * Voice options grouped by provider. Kept in the client rather than
- * fetched from the server because these lists are effectively static
- * per provider — edge voices come from Microsoft's Speech catalogue,
- * CosyVoice SFT ids are model-baked. If we ever add a "load voices
- * from server" endpoint we can swap this out.
- */
 const VOICES: Record<TtsProvider, Array<{ id: string; label: string }>> = {
   edge: [
     { id: "zh-CN-XiaoxiaoNeural", label: "晓晓 (中文女, 默认)" },
@@ -60,24 +48,23 @@ const VOICES: Record<TtsProvider, Array<{ id: string; label: string }>> = {
     { id: "en-GB-SoniaNeural", label: "Sonia (British female)" },
     { id: "ja-JP-NanamiNeural", label: "Nanami (Japanese female)" },
   ],
-  cosyvoice: [
-    { id: "中文女", label: "中文女 (默认)" },
-    { id: "中文男", label: "中文男" },
-    { id: "粤语女", label: "粤语女" },
-    { id: "英文女", label: "英文女" },
-    { id: "英文男", label: "英文男" },
-    { id: "日语男", label: "日语男" },
-    { id: "韩语女", label: "韩语女" },
+  qwentts: [
+    { id: "vivian", label: "Vivian (中文女, 默认)" },
+    { id: "serena", label: "Serena (英文女)" },
+    { id: "uncle_fu", label: "Uncle Fu (中文男)" },
+    { id: "ryan", label: "Ryan (英文男)" },
+    { id: "aiden", label: "Aiden (英文男)" },
+    { id: "eric", label: "Eric (英文男)" },
+    { id: "dylan", label: "Dylan (英文男)" },
+    { id: "ono_anna", label: "Ono Anna (日文女)" },
+    { id: "sohee", label: "Sohee (韩文女)" },
   ],
 };
 
 interface TtsStatus {
-  /** Server's TTS_PROVIDER env default. */
   providerDefault: TtsProvider;
-  /** Server's TTS_URL env — where cosyvoice is expected to be. */
-  cosyvoiceUrl: string;
-  /** Ping result — did tianshu reach the cosyvoice server just now? */
-  cosyvoiceReachable: boolean | null;
+  ttsUrl: string;
+  ttsReachable: boolean | null;
 }
 
 export default function TtsSettingsPage() {
@@ -92,7 +79,6 @@ export default function TtsSettingsPage() {
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
 
-  // Load server status + user preferences.
   const refresh = useCallback(async () => {
     setStatusLoading(true);
     setStatusError(null);
@@ -108,15 +94,22 @@ export default function TtsSettingsPage() {
           .then((r) => (r.ok ? r.json() : null))
           .catch(() => null),
       ]);
-      setStatus(statusRes as TtsStatus);
+      // Normalize legacy field names from status endpoint
+      const s = statusRes as any;
+      const normalized: TtsStatus = {
+        providerDefault: s.providerDefault || "edge",
+        ttsUrl: s.ttsUrl || s.cosyvoiceUrl || "",
+        ttsReachable: s.ttsReachable ?? s.cosyvoiceReachable ?? null,
+      };
+      setStatus(normalized);
       const chosenProvider =
         (providerPref?.value as TtsProvider) ||
-        (statusRes as TtsStatus).providerDefault ||
+        normalized.providerDefault ||
         "edge";
       setProvider(chosenProvider);
       const chosenVoice =
         (voicePref?.value as string) ||
-        VOICES[chosenProvider][0]?.id ||
+        VOICES[chosenProvider]?.[0]?.id ||
         "";
       setVoice(chosenVoice);
     } catch (err) {
@@ -130,9 +123,6 @@ export default function TtsSettingsPage() {
     refresh();
   }, [refresh]);
 
-  // When provider changes, default voice to the first entry for that
-  // provider (unless the current voice is still valid for the new
-  // provider, which is rare across the edge/cosyvoice split).
   const changeProvider = useCallback(
     async (next: TtsProvider) => {
       setProvider(next);
@@ -177,10 +167,6 @@ export default function TtsSettingsPage() {
     }
   }, []);
 
-  // Preview: hit /api/tts with a short canned string via the global
-  // voice store. Sharing the store means the preview stops any
-  // running auto-speak and vice versa — the user hears exactly one
-  // thing at a time regardless of which surface triggered it.
   const playVoice = useVoiceStore((s) => s.play);
   const testVoice = useCallback(async () => {
     setTesting(true);
@@ -199,8 +185,8 @@ export default function TtsSettingsPage() {
     }
   }, [provider, voice, playVoice]);
 
-  const cosyvoiceOffline =
-    status?.cosyvoiceReachable === false && provider === "cosyvoice";
+  const localTtsOffline =
+    status?.ttsReachable === false && provider === "qwentts";
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -268,28 +254,28 @@ export default function TtsSettingsPage() {
                 <input
                   type="radio"
                   name="provider"
-                  value="cosyvoice"
-                  checked={provider === "cosyvoice"}
-                  onChange={() => changeProvider("cosyvoice")}
+                  value="qwentts"
+                  checked={provider === "qwentts"}
+                  onChange={() => changeProvider("qwentts")}
                   className="mt-1"
                 />
                 <div className="flex-1">
                   <div className="text-sm font-medium text-fg-default">
-                    CosyVoice 2 (本地)
+                    Qwen3-TTS (本地)
                   </div>
                   <div className="text-xs text-fg-muted mt-0.5">
-                    阿里达摩院开源 (Apache 2.0)，本地部署，无需联网。
-                    首包 ~150ms，支持中英日韩粤等多语言与方言。
+                    阿里通义开源 0.6B MLX (Apache 2.0)，Apple Silicon 优化。
+                    RTF ~0.3x，流式输出，9 种预设声音，中英日韩 10 语言。
                   </div>
                   <div className="text-xs text-fg-faint mt-1.5">
                     服务地址 (env <code>TTS_URL</code>):{" "}
-                    <code className="text-fg-muted">{status.cosyvoiceUrl}</code>
-                    {status.cosyvoiceReachable === true && (
+                    <code className="text-fg-muted">{status.ttsUrl}</code>
+                    {status.ttsReachable === true && (
                       <span className="ml-2 inline-flex items-center gap-1 text-ok">
                         <CheckCircle size={12} /> 可达
                       </span>
                     )}
-                    {status.cosyvoiceReachable === false && (
+                    {status.ttsReachable === false && (
                       <span className="ml-2 inline-flex items-center gap-1 text-warn">
                         <AlertCircle size={12} /> 未响应
                       </span>
@@ -299,14 +285,13 @@ export default function TtsSettingsPage() {
               </label>
             </div>
 
-            {cosyvoiceOffline && (
+            {localTtsOffline && (
               <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
                 <AlertCircle size={14} className="mt-0.5 shrink-0" />
                 <div>
-                  CosyVoice 服务未启动，选择此引擎后语音合成会失败。
-                  参考{" "}
+                  Qwen3-TTS 服务未启动。参考{" "}
                   <code className="text-amber-100">
-                    scripts/COSYVOICE_SETUP.md
+                    scripts/QWEN3_TTS_SETUP.md
                   </code>{" "}
                   启动本地服务。
                 </div>
