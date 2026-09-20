@@ -537,6 +537,29 @@ export function useAutoSpeakReplies() {
                   voice: ttsVoice ?? undefined,
                 });
               }
+              // Yu 2026-09-20 11:53 log "有消息念两遍":
+              // when prev is a placeholder → persistent id swap
+              // (server just renamed the row), the NEW tail's text
+              // is the SAME content we just flushed. Without seeding
+              // the new tail's cursor to length, the slice-loop
+              // below picks up the same content again, enqueues it,
+              // and TTS plays it twice.
+              //
+              // Only do this when new tail's text starts with prev's
+              // full text — that's the placeholder-swap signature.
+              // A truly new reply won't match this and slice-loop
+              // continues normally.
+              const newTailText = tail.text ?? "";
+              if (
+                prevText.length > 0 &&
+                newTailText.length >= prevText.length &&
+                newTailText.slice(0, prevText.length) === prevText
+              ) {
+                cursorRef.current.set(tail.id, prevText.length);
+                console.log(
+                  `[voice] tail-swap: seeded new tail ${tail.id.slice(-6)} cursor=${prevText.length} (avoiding duplicate flush)`,
+                );
+              }
             }
           }
           cursorRef.current.delete(prevId);
