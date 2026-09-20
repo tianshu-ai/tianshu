@@ -192,10 +192,33 @@ export default function VoiceSubtitleView() {
   // Locate the current chunk within tailChunks so we can pick prev
   // and next context rows. `currentDisplayText` was pre-trimmed by
   // useAutoSpeakReplies before enqueueing, so equality works.
+  //
+  // Yu 2026-09-20 09:43 "长文本回复时字幕会经常刷新":
+  // during streaming, tailChunks changes on every delta — the
+  // last chunk's text keeps growing until the next blank-line
+  // arrives. If we use string equality against a MUTATING chunk,
+  // findIndex flip-flops between the previous match and -1,
+  // making effectiveIndex jump, filmstrip translate, and CSS
+  // transitions re-fire on every keystroke's delta — the "flicker"
+  // Yu sees.
+  //
+  // Fix: prefer EXACT match, but if that fails, fall back to
+  // "startsWith" — the currently-playing chunk's snapshot text
+  // is a stable prefix of the growing tail chunk. Once the tail
+  // stabilises (next blank-line arrives), exact match returns.
   const currentIndex = useMemo(() => {
     const needle = currentDisplayText || lastCurrentRef.current;
     if (!needle) return -1;
-    return tailChunks.findIndex((c) => c === needle);
+    const exact = tailChunks.findIndex((c) => c === needle);
+    if (exact !== -1) return exact;
+    // Fallback: the currently-spoken chunk may be a stable prefix
+    // of a still-growing final tail chunk. Search backward so we
+    // pick the LATEST match (most recent chunk) not an older
+    // repeat of the same opening.
+    for (let i = tailChunks.length - 1; i >= 0; i--) {
+      if (tailChunks[i].startsWith(needle)) return i;
+    }
+    return -1;
   }, [tailChunks, currentDisplayText]);
 
   const displayCurrent =
