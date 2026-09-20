@@ -98,10 +98,21 @@ const FilmstripRow = memo(function FilmstripRow({
   let color: string;
   let scale: string;
   let tiltDeg: string;
+  let background: string | undefined;
+  let webkitBackgroundClip: string | undefined;
+  let webkitTextFillColor: string | undefined;
 
   if (isCurrent) {
-    color = "rgba(255,255,255,1)";
-    scale = "1.03";
+    // Yu 2026-09-20 12:09 “没看到变颜色和字幕效果”:
+    // give current row a gradient text fill so it stands out
+    // dramatically. Blue-white-purple sweep matches Apple Music /
+    // Spotify "now playing" glow.
+    color = "transparent";
+    background =
+      "linear-gradient(120deg, #a5d8ff 0%, #ffffff 50%, #d0bfff 100%)";
+    webkitBackgroundClip = "text";
+    webkitTextFillColor = "transparent";
+    scale = "1.06";
     tiltDeg = "0deg";
   } else if (offset < 0) {
     color =
@@ -129,7 +140,7 @@ const FilmstripRow = memo(function FilmstripRow({
 
   return (
     <div
-      className={`absolute inset-x-0 px-6 text-left text-3xl sm:text-4xl md:text-5xl ${wrapClass}`}
+      className={`absolute inset-x-0 px-6 text-left text-3xl sm:text-4xl md:text-5xl ${wrapClass}${isCurrent ? " voice-current-row" : ""}`}
       style={{
         top: `calc(50% + ${offset * ROW_HEIGHT_PX}px)`,
         transform: `translateY(-50%) scale(${scale}) rotateX(${tiltDeg})`,
@@ -137,10 +148,16 @@ const FilmstripRow = memo(function FilmstripRow({
         transition:
           "top 500ms cubic-bezier(0.4, 0, 0.2, 1), transform 500ms cubic-bezier(0.4, 0, 0.2, 1), color 500ms ease-out",
         color,
-        fontWeight: isCurrent ? 700 : 600,
+        fontWeight: isCurrent ? 800 : 600,
         lineHeight: 1.25,
         letterSpacing: "-0.01em",
-        textShadow: isCurrent ? "0 0 30px rgba(255,255,255,0.15)" : "none",
+        background,
+        WebkitBackgroundClip: webkitBackgroundClip,
+        WebkitTextFillColor: webkitTextFillColor,
+        backgroundClip: webkitBackgroundClip,
+        filter: isCurrent
+          ? "drop-shadow(0 0 24px rgba(165,216,255,0.35)) drop-shadow(0 0 48px rgba(208,191,255,0.20))"
+          : "none",
       }}
     >
       {text}
