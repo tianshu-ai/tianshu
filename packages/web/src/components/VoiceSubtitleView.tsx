@@ -212,15 +212,50 @@ export default function VoiceSubtitleView() {
   const currentIndex = useMemo(() => {
     const needle = currentDisplayText || lastCurrentRef.current;
     if (!needle) return -1;
+
+    // Priority 1: exact match. This is the normal state — tailChunks
+    // has the chunk verbatim, findIndex nails it.
     const exact = tailChunks.findIndex((c) => c === needle);
     if (exact !== -1) return exact;
-    // Fallback: the currently-spoken chunk may be a stable prefix
-    // of a still-growing final tail chunk. Search backward so we
-    // pick the LATEST match (most recent chunk) not an older
-    // repeat of the same opening.
-    for (let i = tailChunks.length - 1; i >= 0; i--) {
-      if (tailChunks[i].startsWith(needle)) return i;
+
+    // Priority 2: needle IS-A-PREFIX-OF a chunk (chunk is still
+    // growing). Yu 2026-09-20 09:58: previous fix scanned backward
+    // for ANY startsWith match — but streaming adds new chunks
+    // whose openings often coincide with the previous chunk's
+    // opener ("好的，" pattern), so the match jumped forward to
+    // the newer chunk, then back once it grew past the shared
+    // prefix. Bidirectional flicker.
+    //
+    // Fix: require the chunk to be UNAMBIGUOUSLY needle's growing
+    // successor — (a) chunk.startsWith(needle) AND (b) chunk is
+    // AT MOST needle.length + 200 chars (chunks generally settle
+    // within 200 more chars before the next blank line). Also,
+    // the needle itself must be non-trivial (>= 10 chars) so
+    // short openers can't cause false matches.
+    if (needle.length >= 10) {
+      for (let i = tailChunks.length - 1; i >= 0; i--) {
+        const c = tailChunks[i];
+        if (
+          c.startsWith(needle) &&
+          c.length <= needle.length + 200 &&
+          c.length > needle.length
+        ) {
+          return i;
+        }
+      }
     }
+
+    // Priority 3: chunk IS-A-PREFIX-OF needle. This is the rarer
+    // case: needle was assembled from a chunk after user played
+    // a longer version. Only match when chunk length is close
+    // to needle length so we don't grab an early-shortened version.
+    for (let i = tailChunks.length - 1; i >= 0; i--) {
+      const c = tailChunks[i];
+      if (needle.startsWith(c) && c.length >= needle.length - 40) {
+        return i;
+      }
+    }
+
     return -1;
   }, [tailChunks, currentDisplayText]);
 
