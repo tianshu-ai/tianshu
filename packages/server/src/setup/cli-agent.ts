@@ -337,13 +337,21 @@ TEXT-TO-SPEECH (TTS):
   1. Create a conda env: conda create -n qwen-tts python=3.11
   2. Install: pip install mlx mlx-audio sounddevice soundfile
      numpy fastapi uvicorn python-multipart
-  3. Start server:
+  3. Find the server script. It ships inside the tianshu package
+     at scripts/qwen3-tts-server/server.py. Locate it:
+     * npm global install:
+       $(npm root -g)/@tianshu-ai/tianshu/scripts/qwen3-tts-server/server.py
+     * git checkout: <repo>/scripts/qwen3-tts-server/server.py
+     Use shell_exec with `ls` to confirm the path exists before
+     telling the user to run it.
+  4. Start server:
      conda activate qwen-tts
-     python scripts/qwen3-tts-server/server.py \\
+     python <path-from-step-3>/server.py \\
        --port 50000 --voice vivian
-  4. Set TTS_PROVIDER=qwentts and TTS_URL=http://localhost:50000
+  5. Set TTS_PROVIDER=qwentts and TTS_URL=http://localhost:50000
      in the launchd plist, then reload.
-  5. Full guide: scripts/QWEN3_TTS_SETUP.md
+  6. Full setup guide is at scripts/QWEN3_TTS_SETUP.md
+     (same location logic as step 3).
 - Available Qwen3-TTS voices: vivian (Chinese female, default),
   uncle_fu (Chinese male), serena (English female), ryan
   (English male), aiden, eric, dylan, ono_anna (Japanese),

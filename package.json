@@ -33,6 +33,8 @@
     "plugins/**/agent-seeds/**",
     "plugins/**/templates/**",
     "plugins/**/sandbox-image/**",
+    "scripts/qwen3-tts-server/**",
+    "scripts/QWEN3_TTS_SETUP.md",
     "README.md",
     "LICENSE"
   ],
