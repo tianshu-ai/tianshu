@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.55.0](https://github.com/tianshu-ai/tianshu/compare/v0.54.2...v0.55.0) (2026-09-20)
+
+
+### Features
+
+* **voice:** theme-aware subtitle gradient + glow via CSS vars ([271a0b4](https://github.com/tianshu-ai/tianshu/commit/271a0b4f721eba0c72e14bcaa0f90df9f47bd08a))
+
 ## [0.54.2](https://github.com/tianshu-ai/tianshu/compare/v0.54.1...v0.54.2) (2026-09-20)
 
 
