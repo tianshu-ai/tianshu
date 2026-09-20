@@ -342,7 +342,7 @@ TEXT-TO-SPEECH (TTS):
      * npm global install:
        $(npm root -g)/@tianshu-ai/tianshu/scripts/qwen3-tts-server/server.py
      * git checkout: <repo>/scripts/qwen3-tts-server/server.py
-     Use shell_exec with `ls` to confirm the path exists before
+     Use shell_exec with 'ls' to confirm the path exists before
      telling the user to run it.
   4. Start server:
      conda activate qwen-tts
