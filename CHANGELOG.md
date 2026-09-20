@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.54.1](https://github.com/tianshu-ai/tianshu/compare/v0.54.0...v0.54.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **tts:** hoist @andresaya/edge-tts to root deps for npm publish ([3dbd9a3](https://github.com/tianshu-ai/tianshu/commit/3dbd9a3bfaa5ede02856a474cb6bb45a345f0611))
+
 ## [0.54.0](https://github.com/tianshu-ai/tianshu/compare/v0.53.9...v0.54.0) (2026-09-20)
 
 
