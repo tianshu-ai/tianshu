@@ -27,7 +27,7 @@
 // to the tail assistant message. This keeps everything in sync
 // with what the audio pipeline is actually playing.
 
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { PanelLeftClose, PanelLeftOpen, Volume2 } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { useVoiceStore } from "../stores/voice-store";
@@ -88,7 +88,10 @@ interface FilmstripRowProps {
  *
  * Yu 2026-09-20 01:52: match Apple Music's ambient scroll UX.
  */
-function FilmstripRow({ text, offset }: FilmstripRowProps) {
+const FilmstripRow = memo(function FilmstripRow({
+  text,
+  offset,
+}: FilmstripRowProps) {
   const abs = Math.abs(offset);
   const isCurrent = abs === 0;
 
@@ -143,7 +146,7 @@ function FilmstripRow({ text, offset }: FilmstripRowProps) {
       {text}
     </div>
   );
-}
+});
 
 export default function VoiceSubtitleView() {
   const messages = useChatStore((s) => s.messages);
