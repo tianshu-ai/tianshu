@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.57.0](https://github.com/tianshu-ai/tianshu/compare/v0.56.0...v0.57.0) (2026-09-20)
+
+
+### Features
+
+* **voice:** tighter length guidance — brief + lead with conclusion ([a469d67](https://github.com/tianshu-ai/tianshu/commit/a469d6710f1571419b5aa8fbc40cf6ee4844ee33))
+
 ## [0.56.0](https://github.com/tianshu-ai/tianshu/compare/v0.55.0...v0.56.0) (2026-09-20)
 
 
