@@ -140,9 +140,59 @@ const FilmstripRow = memo(function FilmstripRow({
   // single line + ellipsis so they can't collide with neighbors.
   const wrapClass = isCurrent ? "" : "truncate";
 
+  // Yu 2026-09-20 13:22 “正在播放的 trunk 的背景搞成磨砂玻璃的样子”:
+  // 拆成两层。外层 <div> 处理位置、transform、磨砂玻璃背景（仅
+  // current）。内层 <span> 处理文本颜色、渐变填充、drop-shadow 发光。
+  // 不能把 background 同时用在文字渐变（background-clip:text）和背
+  // 景玻璃层上——不兼容。双层后各自干自己的活。
+  if (isCurrent) {
+    return (
+      <div
+        className={`absolute inset-x-0 mx-4 sm:mx-6 md:mx-8 voice-current-row`}
+        style={{
+          top: `calc(50% + ${offset * ROW_HEIGHT_PX}px)`,
+          transform: `translateY(-50%) scale(${scale}) rotateX(${tiltDeg})`,
+          transformOrigin: "center",
+          transition:
+            "top 500ms cubic-bezier(0.4, 0, 0.2, 1), transform 500ms cubic-bezier(0.4, 0, 0.2, 1)",
+          // Frosted-glass pill: theme-aware tint + heavy backdrop
+          // blur + saturate. Rounded, subtle inner ring so the
+          // panel edge reads even on solid backgrounds.
+          background:
+            "var(--voice-current-panel-bg, rgba(255,255,255,0.05))",
+          backdropFilter: "blur(20px) saturate(1.6)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.6)",
+          borderRadius: "24px",
+          boxShadow:
+            "inset 0 0 0 1px var(--voice-current-panel-ring, rgba(255,255,255,0.12)), 0 8px 32px var(--voice-current-panel-shadow, rgba(0,0,0,0.25))",
+          padding: "20px 28px",
+        }}
+      >
+        <span
+          className="text-left text-3xl sm:text-4xl md:text-5xl block"
+          style={{
+            color: "transparent",
+            fontWeight: 800,
+            lineHeight: 1.25,
+            letterSpacing: "-0.01em",
+            background,
+            WebkitBackgroundClip: webkitBackgroundClip,
+            WebkitTextFillColor: webkitTextFillColor,
+            backgroundClip: webkitBackgroundClip,
+            filter:
+              "drop-shadow(0 0 24px var(--voice-current-glow-1, rgba(165,216,255,0.35))) drop-shadow(0 0 48px var(--voice-current-glow-2, rgba(208,191,255,0.20)))",
+          }}
+        >
+          {text}
+        </span>
+      </div>
+    );
+  }
+
+  // Non-current rows: single flat div, no frosted panel.
   return (
     <div
-      className={`absolute inset-x-0 px-6 text-left text-3xl sm:text-4xl md:text-5xl ${wrapClass}${isCurrent ? " voice-current-row" : ""}`}
+      className={`absolute inset-x-0 px-6 text-left text-3xl sm:text-4xl md:text-5xl ${wrapClass}`}
       style={{
         top: `calc(50% + ${offset * ROW_HEIGHT_PX}px)`,
         transform: `translateY(-50%) scale(${scale}) rotateX(${tiltDeg})`,
@@ -150,16 +200,9 @@ const FilmstripRow = memo(function FilmstripRow({
         transition:
           "top 500ms cubic-bezier(0.4, 0, 0.2, 1), transform 500ms cubic-bezier(0.4, 0, 0.2, 1), color 500ms ease-out",
         color,
-        fontWeight: isCurrent ? 800 : 600,
+        fontWeight: 600,
         lineHeight: 1.25,
         letterSpacing: "-0.01em",
-        background,
-        WebkitBackgroundClip: webkitBackgroundClip,
-        WebkitTextFillColor: webkitTextFillColor,
-        backgroundClip: webkitBackgroundClip,
-        filter: isCurrent
-          ? "drop-shadow(0 0 24px var(--voice-current-glow-1, rgba(165,216,255,0.35))) drop-shadow(0 0 48px var(--voice-current-glow-2, rgba(208,191,255,0.20)))"
-          : "none",
       }}
     >
       {text}

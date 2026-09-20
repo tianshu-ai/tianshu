@@ -125,6 +125,12 @@
   --voice-next-1:           rgba(255, 255, 255, 0.55);
   --voice-next-2:           rgba(255, 255, 255, 0.28);
   --voice-next-3:           rgba(255, 255, 255, 0.14);
+  /* Frosted-glass panel behind the currently-playing chunk. Very
+   * light fill + backdrop-filter blur in the component. Ring +
+   * shadow tune edge/depth. Dark theme: subtle white haze. */
+  --voice-current-panel-bg:     rgba(255, 255, 255, 0.05);
+  --voice-current-panel-ring:   rgba(255, 255, 255, 0.12);
+  --voice-current-panel-shadow: rgba(0, 0, 0, 0.25);
 
   --color-link:           #91a7ff;
   --color-success:        #10b981;
@@ -229,6 +235,11 @@
   --voice-next-1:           rgba(15, 23, 42, 0.65);
   --voice-next-2:           rgba(15, 23, 42, 0.35);
   --voice-next-3:           rgba(15, 23, 42, 0.18);
+  /* Frosted-glass panel: light theme uses white haze with slate
+   * ring so it pops against paper background. */
+  --voice-current-panel-bg:     rgba(255, 255, 255, 0.55);
+  --voice-current-panel-ring:   rgba(15, 23, 42, 0.10);
+  --voice-current-panel-shadow: rgba(15, 23, 42, 0.12);
 
   --color-link:           #4263eb;          /* brand-700 */
   --color-success:        #059669;
@@ -322,6 +333,12 @@
   --voice-next-1:           rgba(45, 40, 35, 0.70);
   --voice-next-2:           rgba(45, 40, 35, 0.38);
   --voice-next-3:           rgba(45, 40, 35, 0.18);
+  /* Frosted-glass panel: classical uses silk-white haze with a
+   * bamboo-strip ring so the pill looks like rice paper resting
+   * over the ink texture. */
+  --voice-current-panel-bg:     rgba(255, 250, 242, 0.55);
+  --voice-current-panel-ring:   rgba(45, 40, 35, 0.12);
+  --voice-current-panel-shadow: rgba(45, 40, 35, 0.15);
 
   --color-link:           #8b6914;          /* gilded bronze */
   --color-success:        #5a8c7d;          /* celadon glaze */
