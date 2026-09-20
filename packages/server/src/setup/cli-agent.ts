@@ -339,7 +339,7 @@ TEXT-TO-SPEECH (TTS):
      numpy fastapi uvicorn python-multipart
   3. Start server:
      conda activate qwen-tts
-     python ~/git/cosyvoice2-mac-parent/qwen3-tts-server/server.py \\
+     python scripts/qwen3-tts-server/server.py \\
        --port 50000 --voice vivian
   4. Set TTS_PROVIDER=qwentts and TTS_URL=http://localhost:50000
      in the launchd plist, then reload.

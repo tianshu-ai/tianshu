@@ -67,11 +67,11 @@ print('Model downloaded and verified.')
 
 ## 启动 TTS Server
 
-server 脚本位于 `qwen3-tts-server/server.py`（与 tianshu 仓库同级目录）。
+server 脚本位于 tianshu 仓库的 `scripts/qwen3-tts-server/server.py`。
 
 ```bash
 conda activate qwen-tts
-python ~/git/cosyvoice2-mac-parent/qwen3-tts-server/server.py \
+python scripts/qwen3-tts-server/server.py \
   --port 50000 \
   --voice vivian
 ```
@@ -158,7 +158,7 @@ RTF < 1 意味着合成速度快于播放速度，适合 streaming。
 如果需要更好的音质（代价是更多 RAM 和稍慢速度）：
 
 ```bash
-python ~/git/cosyvoice2-mac-parent/qwen3-tts-server/server.py \
+python scripts/qwen3-tts-server/server.py \
   --port 50000 \
   --voice vivian \
   --model mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit
