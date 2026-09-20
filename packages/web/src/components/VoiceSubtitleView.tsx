@@ -232,6 +232,79 @@ export default function VoiceSubtitleView() {
 
   const idle = !playingId && !lastCurrentRef.current;
 
+  // Auto-focus ChatInput textarea on any character key when nothing
+  // else is focused. Yu 2026-09-20 09:34: "有没可能在没有任何
+  // 输入框 focus 的情况下默认把文字输入打到输入框里？".
+  // Only active in voice mode — that's the "far-viewing" scenario
+  // where the user wants to start dictating without first tabbing
+  // back to the composer.
+  useEffect(() => {
+    function onKeyDown(ev: KeyboardEvent) {
+      // Ignore modifier-combined shortcuts (Cmd/Ctrl/Alt).
+      // Shift alone is fine (capital letters).
+      if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+
+      // Ignore navigation / function / editing keys — they shouldn't
+      // steal focus to the composer.
+      if (ev.key.length !== 1 && ev.key !== "Enter") return;
+
+      // If focus is already inside a text-editing element, leave
+      // it alone. Covers native inputs, ContentEditable divs, and
+      // anything that carries an aria-role of textbox.
+      const target = ev.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (
+          tag === "INPUT" ||
+          tag === "TEXTAREA" ||
+          target.isContentEditable ||
+          target.getAttribute("role") === "textbox"
+        ) {
+          return;
+        }
+      }
+
+      // Find the ChatInput textarea. In voice mode it's the only
+      // textarea on screen (subtitle view has no other inputs).
+      const composer = document.querySelector("textarea") as
+        | HTMLTextAreaElement
+        | null;
+      if (!composer) return;
+
+      // Focus, then let the current keydown continue into it. Focus
+      // synchronously moves the browser's insertion point; the same
+      // event's default action (typing) then lands in the composer.
+      composer.focus();
+
+      // For character keys, browsers may have already skipped the
+      // now-focused element in this dispatch cycle. Manually insert
+      // the character so the first keystroke isn't lost.
+      if (ev.key.length === 1) {
+        ev.preventDefault();
+        const start = composer.selectionStart ?? composer.value.length;
+        const end = composer.selectionEnd ?? composer.value.length;
+        const newValue =
+          composer.value.slice(0, start) + ev.key + composer.value.slice(end);
+        // React-controlled textarea: set value via the native setter
+        // so React's onChange fires and store state stays in sync.
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLTextAreaElement.prototype,
+          "value",
+        )?.set;
+        if (setter) {
+          setter.call(composer, newValue);
+          composer.dispatchEvent(new Event("input", { bubbles: true }));
+        } else {
+          composer.value = newValue;
+        }
+        composer.selectionStart = composer.selectionEnd = start + 1;
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       {/* Header: keep sidebar + plugin-panel controls so voice mode
