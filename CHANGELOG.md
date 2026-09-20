@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.54.2](https://github.com/tianshu-ai/tianshu/compare/v0.54.1...v0.54.2) (2026-09-20)
+
+
+### Bug Fixes
+
+* **ci:** add .npmrc legacy-peer-deps for edge-tts ERESOLVE ([551ef44](https://github.com/tianshu-ai/tianshu/commit/551ef4484c5a7d519947a0eaf97c6704a5884a6d))
+
 ## [0.54.1](https://github.com/tianshu-ai/tianshu/compare/v0.54.0...v0.54.1) (2026-09-20)
 
 
