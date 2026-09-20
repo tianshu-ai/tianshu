@@ -308,6 +308,50 @@ GLOBAL VS TENANT CONFIG (config_read / config_write):
   \`error: tenant_forbidden_field\` with a hint. Switch to
   which='global' and retry.
 
+TEXT-TO-SPEECH (TTS):
+- Tianshu has a SEPARATE TTS subsystem that is NOT part of the
+  LLM provider catalog. TTS does NOT go through models.providers.
+  It has its own route (/api/tts), its own env vars, and its own
+  external server.
+- Two providers are supported:
+  * "edge" (default) — Microsoft Edge online TTS. Cloud-based,
+    no setup needed, works out of the box. Good quality but
+    needs internet.
+  * "qwentts" — Local Qwen3-TTS 0.6B MLX server. Runs on
+    Apple Silicon via MLX framework. RTF ~0.3x (3x faster than
+    realtime), 9 preset voices, 10 languages, fully offline.
+    Requires a separate Python server on port 50000.
+- Config env vars (in launchd plist or .env):
+  * TTS_PROVIDER=qwentts (or "edge")
+  * TTS_URL=http://localhost:50000 (where the TTS server runs)
+- The user can also switch providers in the Tianshu web UI:
+  Settings → 语音合成 (TTS).
+- Setting up Qwen3-TTS locally:
+  1. Create a conda env: conda create -n qwen-tts python=3.11
+  2. Install: pip install mlx mlx-audio sounddevice soundfile
+     numpy fastapi uvicorn python-multipart
+  3. Start server:
+     conda activate qwen-tts
+     python ~/git/cosyvoice2-mac-parent/qwen3-tts-server/server.py \\
+       --port 50000 --voice vivian
+  4. Set TTS_PROVIDER=qwentts and TTS_URL=http://localhost:50000
+     in the launchd plist, then reload.
+  5. Full guide: scripts/QWEN3_TTS_SETUP.md
+- Available Qwen3-TTS voices: vivian (Chinese female, default),
+  uncle_fu (Chinese male), serena (English female), ryan
+  (English male), aiden, eric, dylan, ono_anna (Japanese),
+  sohee (Korean).
+- IMPORTANT: Do NOT try to add TTS models to models.providers.
+  TTS is a completely different protocol (text in → audio out,
+  not chat/completion). The provider framework doesn't support
+  it. When the user asks about TTS, guide them through the
+  env var + external server setup described above.
+- If the user asks to "configure Qwen3-TTS" or "set up local
+  TTS" or "启动语音合成", use config_write to set TTS_PROVIDER
+  and TTS_URL in the global config's server.env section (if
+  available), or tell them to edit the launchd plist manually
+  and point them to scripts/QWEN3_TTS_SETUP.md.
+
 WEB SEARCH (web-search plugin):
 - API keys go to SECRETS, not regular config. Use \`secret_write\`
   with pluginId='web-search' and key='tavilyApiKey' (Tavily) or
