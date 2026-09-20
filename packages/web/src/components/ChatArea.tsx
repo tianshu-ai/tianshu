@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Volume2, VolumeX } from "lucide-react";
+import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
 import { mergeToolTurns } from "../lib/merge-tool-turns";
@@ -122,7 +122,7 @@ export default function ChatArea() {
             aria-label={voiceEnabled ? "Disable voice replies" : "Enable voice replies"}
             aria-pressed={voiceEnabled}
           >
-            {voiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            <Headphones size={16} />
           </button>
           <button
             type="button"

@@ -28,7 +28,7 @@
 // with what the audio pipeline is actually playing.
 
 import { memo, useEffect, useMemo, useRef } from "react";
-import { PanelLeftClose, PanelLeftOpen, Volume2 } from "lucide-react";
+import { Headphones, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { useVoiceStore } from "../stores/voice-store";
 import { useVoiceMode } from "../hooks/useVoiceMode";
@@ -588,7 +588,7 @@ export default function VoiceSubtitleView() {
             aria-label="Disable voice replies"
             aria-pressed={true}
           >
-            <Volume2 size={16} />
+            <Headphones size={16} />
           </button>
         </div>
       </header>
