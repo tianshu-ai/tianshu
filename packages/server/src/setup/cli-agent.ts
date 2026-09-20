@@ -334,36 +334,28 @@ TEXT-TO-SPEECH (TTS):
 - The user can also switch providers in the Tianshu web UI:
   Settings → 语音合成 (TTS).
 - Setting up Qwen3-TTS locally:
-  Prerequisite: Python >= 3.10 on Apple Silicon Mac. macOS ships
-  Python 3.9 which is TOO OLD (mlx-audio won't support qwen3_tts).
-  If 'python3 --version' shows < 3.10, install via:
-    brew install python@3.11
-  or any other method (pyenv, mise, asdf, etc.).
+  Tianshu ships a one-click install script at
+  scripts/qwen3-tts-server/install.sh. It handles everything:
+  checks Python >= 3.10, creates a venv at ~/.tianshu/qwen-tts-venv,
+  installs mlx-audio + FastAPI, downloads the model (~1.2 GB).
 
-  1. Create a Python environment (either way works):
-     Option A — venv (more common, no extra tools):
-       python3.11 -m venv ~/qwen-tts-venv
-       source ~/qwen-tts-venv/bin/activate
-     Option B — conda:
-       conda create -n qwen-tts python=3.11 -y
-       conda activate qwen-tts
-  2. Install dependencies:
-     pip install mlx mlx-audio sounddevice soundfile numpy \\
-       fastapi uvicorn python-multipart
-  3. Find the server script. It ships inside the tianshu package
-     at scripts/qwen3-tts-server/server.py. Locate it:
+  1. Find the install script. It ships inside the tianshu package:
      * npm global install:
-       $(npm root -g)/@tianshu-ai/tianshu/scripts/qwen3-tts-server/server.py
-     * git checkout: <repo>/scripts/qwen3-tts-server/server.py
-     Use shell_exec with 'ls' to confirm the path exists before
-     telling the user to run it.
-  4. Start server:
-     python <path-from-step-3>/server.py \\
+       $(npm root -g)/@tianshu-ai/tianshu/scripts/qwen3-tts-server/install.sh
+     * git checkout: <repo>/scripts/qwen3-tts-server/install.sh
+     Use shell_exec with 'ls' to confirm the path exists.
+  2. Run it:
+     bash <path>/scripts/qwen3-tts-server/install.sh
+  3. After install, start the server:
+     ~/.tianshu/qwen-tts-venv/bin/python <path>/scripts/qwen3-tts-server/server.py \\
        --port 50000 --voice vivian
-  5. Set TTS_PROVIDER=qwentts and TTS_URL=http://localhost:50000
+  4. Set TTS_PROVIDER=qwentts and TTS_URL=http://localhost:50000
      in the launchd plist, then reload.
-  6. Full setup guide is at scripts/QWEN3_TTS_SETUP.md
-     (same location logic as step 3).
+  5. Full setup guide: scripts/QWEN3_TTS_SETUP.md
+
+  Prerequisite: Python >= 3.10 on Apple Silicon Mac. macOS ships
+  Python 3.9 which is TOO OLD. The install script will check and
+  tell the user to 'brew install python@3.11' if needed.
 - Available Qwen3-TTS voices: vivian (Chinese female, default),
   uncle_fu (Chinese male), serena (English female), ryan
   (English male), aiden, eric, dylan, ono_anna (Japanese),

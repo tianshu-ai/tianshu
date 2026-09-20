@@ -31,15 +31,30 @@ CPU 上太慢（RTF 6x），Kokoro 够快但声音是微软 Edge TTS 的翻版�
 
 ## 安装步骤
 
-### 1. 创建 Python 环境
-
-两种方式任选：
-
-**方案 A — venv（推荐，无额外依赖）**
+### 一键安装（推荐）
 
 ```bash
-python3.11 -m venv ~/qwen-tts-venv
-source ~/qwen-tts-venv/bin/activate
+bash scripts/qwen3-tts-server/install.sh
+```
+
+脚本会自动：
+1. 检查 Python ≥ 3.10（不够新会提示 `brew install python@3.11`）
+2. 创建 venv 到 `~/.tianshu/qwen-tts-venv`
+3. 安装 mlx-audio + FastAPI 依赖
+4. 下载 Qwen3-TTS 0.6B MLX 模型（~1.2 GB，仅首次）
+
+模型缓存在 `~/.cache/huggingface/hub/models--mlx-community--Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit/`。
+
+### 手动安装
+
+如果不想用一键脚本，可以手动执行：
+
+**方案 A — venv（推荐）**
+
+```bash
+python3.11 -m venv ~/.tianshu/qwen-tts-venv
+source ~/.tianshu/qwen-tts-venv/bin/activate
+pip install mlx mlx-audio sounddevice soundfile numpy fastapi uvicorn python-multipart
 ```
 
 **方案 B — conda**
@@ -47,37 +62,8 @@ source ~/qwen-tts-venv/bin/activate
 ```bash
 conda create -n qwen-tts python=3.11 -y
 conda activate qwen-tts
-```
-
-### 2. 安装依赖
-
-```bash
 pip install mlx mlx-audio sounddevice soundfile numpy fastapi uvicorn python-multipart
 ```
-
-关键包：
-- `mlx` + `mlx-audio`：Apple Silicon 原生推理框架，直接用 GPU/ANE
-- `fastapi` + `uvicorn`：HTTP server，提供 `/inference_sft` 接口给 Tianshu
-
-### 3. 预下载模型（可选，首次启动会自动下载）
-
-```bash
-python -c "
-from mlx_audio.tts.generate import generate_audio
-import tempfile, os
-with tempfile.TemporaryDirectory() as d:
-    generate_audio(
-        text='测试',
-        model='mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit',
-        voice='vivian',
-        output_path=d, file_prefix='test', audio_format='wav',
-        save=True, play=False, verbose=False,
-    )
-print('Model downloaded and verified.')
-"
-```
-
-模型缓存在 `~/.cache/huggingface/hub/models--mlx-community--Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit/`。
 
 ## 启动 TTS Server
 
