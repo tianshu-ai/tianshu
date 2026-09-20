@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.59.0](https://github.com/tianshu-ai/tianshu/compare/v0.58.0...v0.59.0) (2026-09-20)
+
+
+### Features
+
+* **voice:** mode toggle shows next-mode icon (Headphones ↔ Keyboard) ([945e2c1](https://github.com/tianshu-ai/tianshu/commit/945e2c18c351acb5aae71fcf32555c8cb40733bc))
+
 ## [0.58.0](https://github.com/tianshu-ai/tianshu/compare/v0.57.0...v0.58.0) (2026-09-20)
 
 
