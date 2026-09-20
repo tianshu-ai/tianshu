@@ -28,7 +28,7 @@
 // with what the audio pipeline is actually playing.
 
 import { memo, useEffect, useMemo, useRef } from "react";
-import { Headphones, LogOut, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Headphones, Keyboard, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { useVoiceStore } from "../stores/voice-store";
 import { useVoiceMode } from "../hooks/useVoiceMode";
@@ -580,27 +580,20 @@ export default function VoiceSubtitleView() {
         </div>
         <div className="flex items-center gap-2">
           <PluginTopBarButtons />
-          {/* Yu 2026-09-20 14:01: split status indicator from exit
-              button. Headphones stays as the voice-mode badge
-              (accent color = active), LogOut is the explicit
-              exit affordance. Two separate roles, two clicks
-              both call toggleVoice — the second one is what
-              users' eyes actually go to when they want out. */}
-          <span
-            className="rounded-lg p-1.5 text-accent-fill"
-            title="正在语音模式"
-            aria-hidden="true"
-          >
-            <Headphones size={16} />
-          </span>
+          {/* Yu 2026-09-20 14:06: "左上角的icon显示当前的模式，
+              右上角的 button 应该是下一个模式的icon". Header
+              already shows "🎧 语音模式" text at left as current-
+              mode badge, so this cluster on the right becomes
+              the single next-mode toggle button. Voice mode's
+              next mode is keyboard — show Keyboard icon here. */}
           <button
             type="button"
             onClick={toggleVoice}
             className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
-            title="退出语音模式"
-            aria-label="Exit voice mode"
+            title="切换到键盘模式"
+            aria-label="Switch to keyboard mode"
           >
-            <LogOut size={16} />
+            <Keyboard size={16} />
           </button>
         </div>
       </header>

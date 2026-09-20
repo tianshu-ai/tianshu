@@ -109,18 +109,16 @@ export default function ChatArea() {
         </div>
         <div className="flex items-center gap-2">
           <PluginTopBarButtons />
+          {/* Yu 2026-09-20 14:06: 右上角 button 显示"下一个模式"
+              的 icon。键盘模式时 → Headphones（下一个=语音）。
+              语音模式时本 ChatArea 根本不渲染（被
+              VoiceSubtitleView 接管），那里的按钮显 Keyboard。 */}
           <button
             type="button"
             onClick={toggleVoice}
-            className={
-              "rounded-lg p-1.5 transition-colors hover:bg-bg-raised " +
-              (voiceEnabled
-                ? "text-accent-fill hover:text-accent-fg"
-                : "text-fg-muted hover:text-fg-default")
-            }
-            title={voiceEnabled ? "关闭语音回复" : "开启语音回复"}
-            aria-label={voiceEnabled ? "Disable voice replies" : "Enable voice replies"}
-            aria-pressed={voiceEnabled}
+            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
+            title="切换到语音模式"
+            aria-label="Switch to voice mode"
           >
             <Headphones size={16} />
           </button>
