@@ -502,7 +502,43 @@ export function useAutoSpeakReplies() {
         // that already vanished from messages[] before this
         // effect run — wipe its cursor so a future reuse of
         // that id starts fresh from 0.
+        //
+        // Yu 2026-09-20 11:39 log: BEFORE wiping, flush the prev
+        // tail's un-played TRAILING region as a final chunk. Log
+        // showed the pre-tool short sentence ("让我搜一下 ACP 的
+        // RPT 模型。") got a tail-swap from placeholder→persistent
+        // id `d63453`, cursor sat at 0 len 35 with isStreaming=true
+        // so trailing-flush wouldn't fire, then a NEW placeholder
+        // took over and the d63453 row was abandoned with its
+        // opening sentence never sliced.
+        //
+        // Prev tail is being abandoned by definition (tail.id
+        // changed). Its text won't grow further — whatever's past
+        // its cursor is a complete final chunk. Flush it.
         if (prevId && prevId !== tail.id) {
+          const prevCursor = cursorRef.current.get(prevId) ?? 0;
+          const prevMsg = messages.find((mm) => mm.id === prevId);
+          const prevText = prevMsg?.text ?? lastTailTextRef.current ?? "";
+          if (prevCursor < prevText.length) {
+            const trailingText = prevText.slice(prevCursor).trim();
+            if (trailingText.length > 0) {
+              const spoken = spokenTextFor(trailingText);
+              console.log(
+                `[voice] tail-swap trailing flush id=${prevId.slice(-6)} ` +
+                  `[${prevCursor}..${prevText.length}] bodyLen=${prevText.length - prevCursor} ` +
+                  `spoken=${JSON.stringify(spoken.slice(0, 40))}`,
+              );
+              if (spoken) {
+                enqueue({
+                  id: `${prevId}#${prevCursor}`,
+                  text: spoken,
+                  displayText: trailingText,
+                  provider: ttsProvider ?? undefined,
+                  voice: ttsVoice ?? undefined,
+                });
+              }
+            }
+          }
           cursorRef.current.delete(prevId);
         }
       }
