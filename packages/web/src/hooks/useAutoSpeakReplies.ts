@@ -408,13 +408,25 @@ export function useAutoSpeakReplies() {
         // are new independent replies. Require the prev's ENTIRE
         // text to appear as a prefix of the new tail (and non-
         // trivially long).
+        //
+        // Yu 2026-09-20 11:30 "tool 前第一句不念":
+        // when tianshu says a SHORT sentence (e.g. "让我搜一下 ACP
+        // 的 RPT 模型。" ~19 chars) then calls a tool,
+        // STREAMING_ID gets replaced by a persisted message id in
+        // chat-store. Previously the 20-char threshold rejected
+        // this as "not a swap" and inherited cursor=0, but by then
+        // isStreaming had flipped to false and the trailing region
+        // wasn't flushed either. Lowered threshold to 4 chars —
+        // still filters out coincidental "好的" openers across
+        // truly separate replies while catching the short-swap case.
+        const SWAP_MIN_PREV_LEN = 4;
         const prevId = lastTailIdRef.current;
         if (prevId && prevId !== tail.id) {
           const prevText = lastTailTextRef.current;
           const prevCursor = cursorRef.current.get(prevId);
           if (
             prevCursor != null &&
-            prevText.length >= 20 &&
+            prevText.length >= SWAP_MIN_PREV_LEN &&
             tailText.length >= prevText.length &&
             tailText.slice(0, prevText.length) === prevText
           ) {
@@ -438,7 +450,7 @@ export function useAutoSpeakReplies() {
         // than tail (otherwise it's not a placeholder-→-persistent
         // swap; it's a genuinely new reply that happens to share
         // an opener). Only real id-swaps satisfy both.
-        const SWAP_MIN_COMMON_PREFIX = 20;
+        const SWAP_MIN_COMMON_PREFIX = 4;
         if (inheritedCursor == null) {
           for (const other of messages) {
             if (other.role !== "assistant" || other.id === tail.id) continue;
@@ -447,7 +459,9 @@ export function useAutoSpeakReplies() {
             if (otherCursor == null) continue;
             // Real swaps have the placeholder's full text as a
             // prefix of the new tail's text (server just renamed
-            // the id).
+            // the id). Threshold reduced to 4 chars (2026-09-20
+            // 11:30) to catch short opening sentences before tool
+            // calls.
             if (otherText.length < SWAP_MIN_COMMON_PREFIX) continue;
             if (otherText.length > tailText.length) continue;
             if (tailText.slice(0, otherText.length) !== otherText) continue;
