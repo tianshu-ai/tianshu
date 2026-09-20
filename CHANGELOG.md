@@ -6,6 +6,91 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.54.0](https://github.com/tianshu-ai/tianshu/compare/v0.53.9...v0.54.0) (2026-09-20)
+
+
+### Features
+
+* **tts:** add edge-tts provider as default (no local model needed) ([01bbc0c](https://github.com/tianshu-ai/tianshu/commit/01bbc0cc0f9f4d3c83396fb1a513d80a445818bc))
+* voice conversation mode ([dc1fcd6](https://github.com/tianshu-ai/tianshu/commit/dc1fcd6e2e15df52091d367c7caa1f35768f0593))
+* **voice:** Apple Music-style lyric scroll for subtitle view ([cc6fe92](https://github.com/tianshu-ai/tianshu/commit/cc6fe92c280457681ea11c73843dd81c675f2b77))
+* **voice:** author-driven &lt;chunk&gt; boundaries replace regex slicing ([fe3bd4a](https://github.com/tianshu-ai/tianshu/commit/fe3bd4a2be80a8abf8ec585d70874ed1eb876b46))
+* **voice:** auto-speak assistant replies when voice mode is on ([fea9574](https://github.com/tianshu-ai/tianshu/commit/fea95748bdf57d3b92739e809c81ea23d70551bf))
+* **voice:** big-font 3-row subtitle view for voice mode ([4f158e6](https://github.com/tianshu-ai/tianshu/commit/4f158e67836daeae1ccd0325b5edc819c96acaba))
+* **voice:** big-screen composer in voice mode ([05f594a](https://github.com/tianshu-ai/tianshu/commit/05f594a9e5679bfc67a327b70d86fa643dfc162a))
+* **voice:** blank-line chunk boundaries (opus-friendly) ([ffc14d9](https://github.com/tianshu-ai/tianshu/commit/ffc14d99e2bf8e68f79ffd1056211b94aea66a5a))
+* **voice:** concat all assistant chunks for cross-turn continuity ([d68a676](https://github.com/tianshu-ai/tianshu/commit/d68a676f06d90974c48fc76843d82de8b4e4fbe1))
+* **voice:** filmstrip scroll effect for subtitle view ([4639fb1](https://github.com/tianshu-ai/tianshu/commit/4639fb169fd653438a45c1daf85342b7cf0baa93))
+* **voice:** global keydown auto-focuses composer in voice mode ([6151611](https://github.com/tianshu-ai/tianshu/commit/6151611afdc5dbe3339a965a1482219774f3dbb9))
+* **voice:** gradient text + glow filter for current subtitle row ([89e69f9](https://github.com/tianshu-ai/tianshu/commit/89e69f97958e9ac459a9f1b03171036e12d43e34))
+* **voice:** interrupt playback when user sends new message ([7ab5429](https://github.com/tianshu-ai/tianshu/commit/7ab542954173993df720e2ab92c190592419fe00))
+* **voice:** keep composer focused in voice mode for IME dictation ([64edccb](https://github.com/tianshu-ai/tianshu/commit/64edccb921a54ec66db3acb7aa94af55cc0b3f2d))
+* **voice:** lookahead prefetch to eliminate inter-slice gaps ([175d6cb](https://github.com/tianshu-ai/tianshu/commit/175d6cbf58cc1bd6de63381eb8cfe25221ae4410))
+* **voice:** per-message play button + global single-active playback ([09c7a3e](https://github.com/tianshu-ai/tianshu/commit/09c7a3ea8ea9903fcacce7bee8aed782f62586b2))
+* **voice:** pin user question at top of subtitle view ([96b56a2](https://github.com/tianshu-ai/tianshu/commit/96b56a2b9bbea425d5c761d18e6892a42a9c303d))
+* **voice:** prompt tianshu to narrate before every tool call ([7f08daa](https://github.com/tianshu-ai/tianshu/commit/7f08daa845967951619d30ce33b7f72d33f84cdd))
+* **voice:** rewrite voice-mode fragment for fully-spoken reply style ([8f394cb](https://github.com/tianshu-ai/tianshu/commit/8f394cb50adc7c1d8b76bdc1e2ce8b04b6c3277f))
+* **voice:** scaffold TTS proxy + client hooks for CosyVoice 2 ([26fe688](https://github.com/tianshu-ai/tianshu/commit/26fe6881d312a749d82087a2717195e7bb95f94b))
+* **voice:** stream edge-tts via MediaSource to halve perceived delay ([8b323fc](https://github.com/tianshu-ai/tianshu/commit/8b323fc308581f69c6bdc223e664add9260fd555))
+* **voice:** streaming per-sentence TTS enqueue ([0432117](https://github.com/tianshu-ai/tianshu/commit/04321176a629c578b44417d7ac5c4d1359024745))
+* **voice:** switch from &lt;voice_summary&gt; opt-in to &lt;silent&gt; opt-out ([47b5dbd](https://github.com/tianshu-ai/tianshu/commit/47b5dbd73aeb12249cacf290060eb0986bf6154b))
+* **voice:** TTS settings page + runtime provider switching ([b28ae62](https://github.com/tianshu-ai/tianshu/commit/b28ae622acc308c7165392e7169427b0c5b855ac))
+* **voice:** voice-mode-aware system prompt + subtitle-style playback ([e2c15fe](https://github.com/tianshu-ai/tianshu/commit/e2c15fe52760703a3cf2c39541bbb78525e48ff3))
+
+
+### Bug Fixes
+
+* **tts:** align /api/tts with CosyVoice server.py actual shape ([656daf4](https://github.com/tianshu-ai/tianshu/commit/656daf4b55a4c1c939456f1b69d2c49203c4cb54))
+* **voice:** abort in-flight play promise on stop() so drain loop resumes ([924f3d3](https://github.com/tianshu-ai/tianshu/commit/924f3d3c5d50762486340a725ee885bbdd49765c))
+* **voice:** cache effectiveIndex to stop filmstrip scroll on new chunk ([b8c08a8](https://github.com/tianshu-ai/tianshu/commit/b8c08a8d7fce02cf8a2e8cbbf8052e743c14affc))
+* **voice:** clean up subtitle layout (truncate off-center, drop halo) ([e44f458](https://github.com/tianshu-ai/tianshu/commit/e44f45881f6849d0e24f0349153d6fef000bfb3a))
+* **voice:** defer blob URL revoke until next play() rebinds audio.src ([79e9d6d](https://github.com/tianshu-ai/tianshu/commit/79e9d6db9dda3f34432a3e3416ed7d50b4619800))
+* **voice:** defer seed until messages array first non-empty ([50f28e1](https://github.com/tianshu-ai/tianshu/commit/50f28e196f148589dc21da8c8931368a9d3af32d))
+* **voice:** don't speak pre-existing tail message on mount ([190b8ef](https://github.com/tianshu-ai/tianshu/commit/190b8efbaf2cfb5506aeecf3f494b3ee2b647954))
+* **voice:** drain loop must not flush the pending queue ([8635e8c](https://github.com/tianshu-ai/tianshu/commit/8635e8cf1e2ceaf1350f00140eff5fee456974ce))
+* **voice:** drop MediaSource path, use blob-only for multi-slice streaming ([141dfa6](https://github.com/tianshu-ai/tianshu/commit/141dfa6fd0280587481caa582e170027a4756aaf))
+* **voice:** flush prev tail trailing region on tail-swap ([00d1331](https://github.com/tianshu-ai/tianshu/commit/00d13310eb3ee7b583c513a4e0beb5f26586f3c9))
+* **voice:** guard cleanup against stale ended events from prior slice ([2ead1e4](https://github.com/tianshu-ai/tianshu/commit/2ead1e4722e572a4d85044c46a610369b3387ace))
+* **voice:** guard MediaSource lifecycle against rapid speak() reentry ([68db43a](https://github.com/tianshu-ai/tianshu/commit/68db43a29b3319dc8472c5906b1cfa0a828324d3))
+* **voice:** hide streamed &lt;voice_summary&gt; body from opening tag onward ([332bf14](https://github.com/tianshu-ai/tianshu/commit/332bf14aa93cb2efbeb586c06300a6a34691c0ff))
+* **voice:** inherit cursor across placeholder→persistent id swap ([f17a5dc](https://github.com/tianshu-ai/tianshu/commit/f17a5dc1eec29183dce38d9271e46770c027462c))
+* **voice:** keep full chunk history so subtitle indices stay stable ([99a4bd8](https://github.com/tianshu-ai/tianshu/commit/99a4bd84da003e173c445fc6989ea6143939141c))
+* **voice:** keep plugin top-bar buttons in subtitle header ([b9c4def](https://github.com/tianshu-ai/tianshu/commit/b9c4def70c20a18c801727228758eae4a4db63b1))
+* **voice:** lower swap threshold so short pre-tool sentences don't lose their first chunk ([55812f2](https://github.com/tianshu-ai/tianshu/commit/55812f20668aaedbe8f5c53e746b295e64b7f3fe))
+* **voice:** make chunk-every-sentence explicit in system prompt ([f54ec0d](https://github.com/tianshu-ai/tianshu/commit/f54ec0d027ed8b3b17a6c39d27e2d016426b8e78))
+* **voice:** make useVoiceMode a shared store (fix toggle no-op) ([a607b53](https://github.com/tianshu-ai/tianshu/commit/a607b536bf2f078cf0aae6279f70302a06ef17d0))
+* **voice:** only stream-slice the last assistant message ([0b56d7d](https://github.com/tianshu-ai/tianshu/commit/0b56d7daeaf4754454c5e3762664259eef40f756))
+* **voice:** preserve speechSource when coalescing assistant turns ([cfabaf8](https://github.com/tianshu-ai/tianshu/commit/cfabaf85014cb4c357dcce7c8a1b41ddd3318a32))
+* **voice:** remove duplicate el.src = url in MediaSource path ([cb88550](https://github.com/tianshu-ai/tianshu/commit/cb8855058917d61587b3cbca52b7c0f0cd128159))
+* **voice:** retry initial composer focus with rAF verification ([f175b57](https://github.com/tianshu-ai/tianshu/commit/f175b5760a332a71e0efeed9e0a18d94b088b34a))
+* **voice:** revoke blob URL after audio detach to avoid ERR_FILE_NOT_FOUND ([d31e118](https://github.com/tianshu-ai/tianshu/commit/d31e1182c774f519b3da2097011d35bd54b5270b))
+* **voice:** revoke blob URL on audio 'emptied' event, not microtask ([aebc5da](https://github.com/tianshu-ai/tianshu/commit/aebc5dad55f395ddb9e0146660397ee0bcea91af))
+* **voice:** seed new tail cursor after swap-flush to avoid double play ([01a929e](https://github.com/tianshu-ai/tianshu/commit/01a929e7dd9ea24ddd84d510c474c740a370e569))
+* **voice:** seed short tail as new-streaming regardless of isStreaming flag ([c622b00](https://github.com/tianshu-ai/tianshu/commit/c622b00bf95ccd36ed151b64bcc9fd858117cc3d))
+* **voice:** seed streaming tail cursor to 0 to catch opening chunks ([861338e](https://github.com/tianshu-ai/tianshu/commit/861338e912985fbf975e0a8cf00402752130ec33))
+* **voice:** show speak button on block-only assistant replies ([c37b64c](https://github.com/tianshu-ai/tianshu/commit/c37b64c9f3f5cfb62b74d30b469f0694c6351937))
+* **voice:** slice on speechSource not m.text (chunk tags stripped) ([71f0e24](https://github.com/tianshu-ai/tianshu/commit/71f0e243aba936efbc27cd4395eb1f85875547c1))
+* **voice:** speak every assistant message in multi-step replies ([6644e19](https://github.com/tianshu-ai/tianshu/commit/6644e19ce8e9a325c0eca1ff1836194fed9136e3))
+* **voice:** stop filmstrip from covering composer controls ([ccc4723](https://github.com/tianshu-ai/tianshu/commit/ccc4723bedf1c52104a76514cf481bdc720dc5ce))
+* **voice:** stop revoking blob URLs entirely — take 5, actually final ([b40e9cf](https://github.com/tianshu-ai/tianshu/commit/b40e9cf6c9f43bfaa2fab76e23e88a0a5f13948a))
+* **voice:** stop subtitle flicker on streaming delta ([6d6212d](https://github.com/tianshu-ai/tianshu/commit/6d6212d01d31116a389df13062bea0c0f2848d35))
+* **voice:** stop subtitle rows overlapping (bump row height + clamp) ([c306892](https://github.com/tianshu-ai/tianshu/commit/c306892d3a3085a7c77bf1200ef743c0bbfe634e))
+* **voice:** strip emoji, image markdown, and raw URLs from TTS text ([3f7a0ef](https://github.com/tianshu-ai/tianshu/commit/3f7a0efdbcc6ed7c58525a4c3586ba4194babd21))
+* **voice:** tighten currentIndex matching to stop chunk flip-flop ([79d13db](https://github.com/tianshu-ai/tianshu/commit/79d13db99189936bb5089e4ab98ea6b3d6a6dc1a))
+* **voice:** tighten id-swap detection to real prefix matches only ([5d96fc8](https://github.com/tianshu-ai/tianshu/commit/5d96fc8e7d25a4703a604bdacb50900a814ebeca))
+* **voice:** track last-tail across renders for id-swap cursor inheritance ([136a6ae](https://github.com/tianshu-ai/tianshu/commit/136a6aefd95ba05802d22d466814cb6236ecad0a))
+* **voice:** wipe reused placeholder id's stale cursor on tail-swap ([5c1bced](https://github.com/tianshu-ai/tianshu/commit/5c1bced42876022a6844741335b31dc6eb7184ad))
+
+
+### Performance
+
+* **voice:** memoize FilmstripRow to stop full re-render on delta ([6673078](https://github.com/tianshu-ai/tianshu/commit/66730784967f3d8e1667e14ce5adf5aa8ebd65d7))
+
+
+### Documentation
+
+* **voice:** add CosyVoice local setup checklist ([867d1fd](https://github.com/tianshu-ai/tianshu/commit/867d1fdf5df2f20c40bb5791cd88e08b1fd2846f))
+
 ## [0.53.9](https://github.com/tianshu-ai/tianshu/compare/v0.53.8...v0.53.9) (2026-09-19)
 
 
