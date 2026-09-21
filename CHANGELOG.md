@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.60.2](https://github.com/tianshu-ai/tianshu/compare/v0.60.1...v0.60.2) (2026-09-21)
+
+
+### Bug Fixes
+
+* remove test-key-1 fallback from resolveApiKey ([8b70b1f](https://github.com/tianshu-ai/tianshu/commit/8b70b1f84f81c05ce10f908a788ecd808d97cc07))
+
 ## [0.60.1](https://github.com/tianshu-ai/tianshu/compare/v0.60.0...v0.60.1) (2026-09-21)
 
 
