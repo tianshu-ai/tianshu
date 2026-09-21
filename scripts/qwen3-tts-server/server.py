@@ -67,22 +67,37 @@ PRESET_VOICES = [
 # Populated at startup by _load_custom_voices().
 custom_voices: dict[str, str] = {}
 
-# Map legacy CosyVoice/Kokoro spk_ids → voice names
+# Map legacy / Edge TTS / alias spk_ids → custom voice names.
+# Keys are matched case-insensitively in _resolve_voice().
 SPK_ALIAS = {
-    "中文女": "vivian",
-    "中文男": "uncle_fu",
-    "英文女": "serena",
-    "英文男": "ryan",
+    # Chinese aliases
+    "中文女": "huopo",
+    "中文男": "nansheng",
+    "英文女": "jenny",
+    "英文男": "guy",
     "御姐": "yujie",
-    # Kokoro voice names
-    "zf_xiaobei": "vivian",
-    "zf_xiaoxiao": "serena",
-    "zm_yunxi": "ryan",
-    "zm_yunyang": "aiden",
-    "zm_yunjian": "uncle_fu",
-    "zf_xiaoni": "vivian",
-    "zf_xiaoyi": "serena",
-    "zm_yunxia": "eric",
+    "播音": "boyin",
+    "温柔": "nansheng",
+    "活泼": "huopo",
+    # Edge TTS voice names → closest ref audio
+    "zh-cn-xiaoxiaoneural": "yujie",
+    "zh-cn-xiaoyineural": "huopo",
+    "zh-cn-yunxineural": "nansheng",
+    "zh-cn-yunjianneural": "boyin",
+    "zh-cn-yunxianeural": "nansheng",
+    "en-us-jennyneural": "jenny",
+    "en-us-guyneural": "guy",
+    "en-us-arianeural": "jenny",
+    "en-us-davisneural": "guy",
+    # Legacy Kokoro voice names
+    "zf_xiaobei": "huopo",
+    "zf_xiaoxiao": "yujie",
+    "zm_yunxi": "nansheng",
+    "zm_yunyang": "nansheng",
+    "zm_yunjian": "boyin",
+    "zf_xiaoni": "huopo",
+    "zf_xiaoyi": "huopo",
+    "zm_yunxia": "nansheng",
 }
 
 
@@ -109,7 +124,8 @@ def _resolve_voice(raw_spk_id: str) -> tuple[str, str | None]:
       - For custom ref-audio voices: (voice_name, path_to_wav)
       - For unknown voices: falls back to default_voice
     """
-    voice = SPK_ALIAS.get(raw_spk_id, raw_spk_id) if raw_spk_id else default_voice
+    lowered = raw_spk_id.strip().lower() if raw_spk_id else ""
+    voice = SPK_ALIAS.get(lowered, raw_spk_id) if lowered else default_voice
 
     # Check custom ref-audio voices first
     if voice in custom_voices:
