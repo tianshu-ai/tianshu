@@ -165,30 +165,6 @@ function formatVoiceModeFragment(ttsProvider?: string): string {
     `Reminder: blank lines are your only pacing tool. No <chunk> tags. No numbered lists. Just prose with breathing room.`,
   ];
 
-  // Qwen3-TTS prosody markup — only when the local TTS engine is active.
-  // These tags are interpreted by the Qwen3-TTS model during synthesis;
-  // they would be read aloud as literal text by Edge TTS, so we only
-  // inject this section for qwentts.
-  if (ttsProvider === "qwentts") {
-    lines.push(
-      ``,
-      `## Prosody markup (Qwen3-TTS only)`,
-      `The local TTS engine understands inline prosody tags. Use them sparingly for emotional color — don't overdo it.`,
-      ``,
-      `Available tags:`,
-      `  - \`[laughter]哈哈太好笑了[/laughter]\` — laughing while speaking`,
-      `  - \`[breath]\` — audible breath / pause for emphasis`,
-      `  - \`<strong>重点内容</strong>\` — stressed / emphasized words`,
-      ``,
-      `Guidelines:`,
-      `  - Use [laughter] only when genuine amusement fits the context, not as decoration.`,
-      `  - Use [breath] before a dramatic pause or topic shift — at most once per reply.`,
-      `  - Use <strong> for the single most important word or phrase, not whole sentences.`,
-      `  - Punctuation already affects intonation: ！ for excitement, ？ for questions, …… for trailing off. Lean on punctuation first, tags second.`,
-      `  - A reply with zero tags is perfectly fine. Tags add spice, not structure.`,
-    );
-  }
-
   return lines.join("\n");
 }
 
