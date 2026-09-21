@@ -304,7 +304,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       }
       case "prompt": {
-        if (aborter) aborter.abort(); // single in-flight prompt per socket
+        if (aborter) {
+          console.warn(`[handler] abort:new_prompt (previous turn superseded by new user message)`);
+          aborter.abort();
+        }
         aborter = new AbortController();
         // Slash-command: `/compact` runs an immediate compaction
         // pass without sending a fresh user prompt. Recognised when
@@ -355,7 +358,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // Resume the last turn of the current session in place (no new
         // user message). The client's auto-retry loop uses this so a
         // failed / interrupted run doesn't spawn duplicate prompts.
-        if (aborter) aborter.abort();
+        if (aborter) {
+          console.warn(`[handler] abort:retry (previous turn superseded by client retry)`);
+          aborter.abort();
+        }
         aborter = new AbortController();
         runPrompt({
           ctx,
@@ -376,6 +382,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       }
       case "abort": {
+        console.warn(`[handler] abort:user_stop (user clicked stop button)`);
         aborter?.abort();
         aborter = null;
         return;
@@ -1022,6 +1029,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         lastAssistantRow = row;
         assistantTurns++;
         if (assistantTurns >= MAX_TURNS) {
+          console.warn(
+            `[handler] abort:max_turns session=${session.id} turns=${assistantTurns}/${MAX_TURNS}`,
+          );
           void harness.abort();
         }
       },
