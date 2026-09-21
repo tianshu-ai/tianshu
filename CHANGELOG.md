@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.62.0](https://github.com/tianshu-ai/tianshu/compare/v0.61.0...v0.62.0) (2026-09-21)
+
+
+### Features
+
+* inject Qwen3-TTS prosody markup hints in voice mode ([18952d1](https://github.com/tianshu-ai/tianshu/commit/18952d1e56cded9c49a568f14acbfeceb89d32f9))
+
+
+### Reverts
+
+* remove Qwen3-TTS prosody markup from voice mode prompt ([079f285](https://github.com/tianshu-ai/tianshu/commit/079f28504c523d11705c8c599b45a0036cbae191))
+
 ## [0.61.0](https://github.com/tianshu-ai/tianshu/compare/v0.60.2...v0.61.0) (2026-09-21)
 
 
