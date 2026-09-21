@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.60.1](https://github.com/tianshu-ai/tianshu/compare/v0.60.0...v0.60.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **i18n:** add TTS nav entry to localizeCorePageLabel ([8c5aa82](https://github.com/tianshu-ai/tianshu/commit/8c5aa820a118afe93e37ddc06292722c703460ef))
+
 ## [0.60.0](https://github.com/tianshu-ai/tianshu/compare/v0.59.1...v0.60.0) (2026-09-21)
 
 
