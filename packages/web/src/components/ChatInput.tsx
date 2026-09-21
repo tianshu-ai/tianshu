@@ -31,6 +31,19 @@ export default function ChatInput() {
   // on the very next reply without re-negotiating anything.
   const voiceEnabled = useVoiceMode().enabled;
 
+  // Read TTS provider preference so the server can tailor voice-mode
+  // system prompt (e.g. Qwen3-TTS prosody markup hints).
+  const [ttsProvider, setTtsProvider] = useState<string | null>(null);
+  useEffect(() => {
+    if (!voiceEnabled) { setTtsProvider(null); return; }
+    let cancelled = false;
+    fetch("/api/preferences/tts.provider", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled) setTtsProvider(d?.value ?? null); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [voiceEnabled]);
+
   const attachmentCount = useComposerStore((s) => s.attachments.length);
   const hasPending = useComposerStore((s) => s.hasPending());
   const applyTransforms = useComposerStore((s) => s.applyTransforms);
@@ -121,7 +134,9 @@ export default function ChatInput() {
         sendPrompt(
           finalText,
           wire.length > 0 ? wire : undefined,
-          voiceEnabled ? { voiceMode: true } : undefined,
+          voiceEnabled
+            ? { voiceMode: true, ...(ttsProvider ? { ttsProvider } : {}) }
+            : undefined,
         );
       }
       setDraft("");

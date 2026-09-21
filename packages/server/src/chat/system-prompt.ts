@@ -81,6 +81,8 @@ export interface PerTurnPromptHints {
   /** When true, inject a voice-mode fragment asking tianshu to end
    *  its reply with a <voice_summary>...</voice_summary> block. */
   voiceMode?: boolean;
+  /** TTS provider slug from the client ("edge", "qwentts"). */
+  ttsProvider?: string;
 }
 
 /**
@@ -101,8 +103,8 @@ export interface PerTurnPromptHints {
  *
  * Kept tight — every sentence here costs on every voice-mode turn.
  */
-function formatVoiceModeFragment(): string {
-  return [
+function formatVoiceModeFragment(ttsProvider?: string): string {
+  const lines = [
     `## Voice reply mode`,
     `The user has enabled voice mode. Write your reply as if you were talking to them on a phone call — the ENTIRE reply is spoken aloud.`,
     ``,
@@ -161,7 +163,33 @@ function formatVoiceModeFragment(): string {
     `  后来投诉发现，两件事没有关系。`,
     ``,
     `Reminder: blank lines are your only pacing tool. No <chunk> tags. No numbered lists. Just prose with breathing room.`,
-  ].join("\n");
+  ];
+
+  // Qwen3-TTS prosody markup — only when the local TTS engine is active.
+  // These tags are interpreted by the Qwen3-TTS model during synthesis;
+  // they would be read aloud as literal text by Edge TTS, so we only
+  // inject this section for qwentts.
+  if (ttsProvider === "qwentts") {
+    lines.push(
+      ``,
+      `## Prosody markup (Qwen3-TTS only)`,
+      `The local TTS engine understands inline prosody tags. Use them sparingly for emotional color — don't overdo it.`,
+      ``,
+      `Available tags:`,
+      `  - \`[laughter]哈哈太好笑了[/laughter]\` — laughing while speaking`,
+      `  - \`[breath]\` — audible breath / pause for emphasis`,
+      `  - \`<strong>重点内容</strong>\` — stressed / emphasized words`,
+      ``,
+      `Guidelines:`,
+      `  - Use [laughter] only when genuine amusement fits the context, not as decoration.`,
+      `  - Use [breath] before a dramatic pause or topic shift — at most once per reply.`,
+      `  - Use <strong> for the single most important word or phrase, not whole sentences.`,
+      `  - Punctuation already affects intonation: ！ for excitement, ？ for questions, …… for trailing off. Lean on punctuation first, tags second.`,
+      `  - A reply with zero tags is perfectly fine. Tags add spice, not structure.`,
+    );
+  }
+
+  return lines.join("\n");
 }
 
 export function defaultSystemPrompt(
@@ -244,7 +272,7 @@ export function defaultSystemPrompt(
   // agent sees the voice mode instruction FIRST (per-turn behaviour)
   // and can layer tenant-specific tenantPrompt guidance on top.
   if (turnHints.voiceMode) {
-    lines.push("", formatVoiceModeFragment());
+    lines.push("", formatVoiceModeFragment(turnHints.ttsProvider));
   }
 
   // Tenant prompt override (applied solution). Injected right

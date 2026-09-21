@@ -783,7 +783,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sendPrompt: (
     content: string,
     attachments?: WireAttachment[],
-    opts?: { voiceMode?: boolean },
+    opts?: { voiceMode?: boolean; ttsProvider?: string },
   ) => {
     const trimmed = content.trim();
     const hasAttachments = attachments && attachments.length > 0;
@@ -834,6 +834,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       // Field is only sent when explicitly enabled so text-only
       // sessions stay unchanged.
       ...(opts?.voiceMode ? { voiceMode: true } : {}),
+      ...(opts?.ttsProvider ? { ttsProvider: opts.ttsProvider } : {}),
     });
   },
 
