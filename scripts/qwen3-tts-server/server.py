@@ -137,7 +137,7 @@ if __name__ == "__main__":
     parser.add_argument("--voice", type=str, default="vivian",
                         help="Default voice (serena/vivian/uncle_fu/ryan/aiden/...)")
     parser.add_argument("--model", type=str,
-                        default="mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit",
+                        default="mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-bf16",
                         help="MLX model id from HuggingFace")
     args = parser.parse_args()
     default_voice = args.voice
