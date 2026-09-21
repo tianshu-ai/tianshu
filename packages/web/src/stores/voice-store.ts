@@ -115,6 +115,8 @@ const prefetchCache = new Map<
  * Errors resolve to null so the play path can retry via normal fetch.
  */
 function startPrefetch(req: SpeakRequest): void {
+  // qwentts uses the streaming GET path — no blob to prefetch.
+  if (req.provider === "qwentts") return;
   if (prefetchCache.has(req.id)) return;
   const p: Promise<{ blob: Blob; contentType: string } | null> = (async () => {
     try {
@@ -291,6 +293,63 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     const controller = new AbortController();
     abortController = controller;
 
+    const el = getAudio();
+
+    // ─── Streaming GET path for local TTS (qwentts) ──────────
+    //
+    // Yu, 2026-09-21: qwentts returns streaming WAV — the server
+    // yields PCM chunks as the model generates them (first chunk
+    // ~450ms). Using fetch + await blob() defeats this because it
+    // buffers the entire response before playback starts.
+    //
+    // Instead we point audio.src at a GET endpoint. The browser's
+    // native audio pipeline handles chunked WAV natively — playback
+    // starts as soon as the first bytes arrive, zero JS buffering.
+    //
+    // Edge TTS (audio/mpeg sentence slices) still uses the blob
+    // path below — short mp3 blobs download fast and the prefetch
+    // lookahead already eliminates inter-slice gaps.
+    const useStreamingGet = req.provider === "qwentts";
+    if (useStreamingGet) {
+      const params = new URLSearchParams();
+      params.set("text", req.text);
+      if (req.voice) params.set("voice", req.voice);
+      params.set("provider", "qwentts");
+      const streamUrl = `/api/tts/stream?${params.toString()}`;
+
+      const thisReqId = req.id;
+      return new Promise<void>((resolve) => {
+        let settled = false;
+        function cleanup() {
+          if (settled) return;
+          settled = true;
+          el.removeEventListener("ended", onEnded);
+          el.removeEventListener("error", onError);
+          controller.signal.removeEventListener("abort", onAbort);
+          if (get().playingId === thisReqId) {
+            set({ playingId: null, currentDisplayText: "" });
+          }
+        }
+        function onEnded() { cleanup(); resolve(); }
+        function onError() {
+          cleanup();
+          // Don't reject — treat playback errors as "done" so the
+          // drain loop continues to the next slice.
+          resolve();
+        }
+        function onAbort() { cleanup(); resolve(); }
+        el.addEventListener("ended", onEnded);
+        el.addEventListener("error", onError);
+        controller.signal.addEventListener("abort", onAbort);
+        el.src = streamUrl;
+        el.play().catch(() => {
+          if (!settled) { cleanup(); resolve(); }
+        });
+      });
+    }
+
+    // ─── Blob path (edge TTS and prefetch cache) ─────────────
+
     // Prefetch fast-path (Yu 2026-09-19 23:33 lookahead): if the
     // drain loop already fetched this slice's mp3 in the background,
     // use it. Falls through to a normal fetch on cache miss.
@@ -353,7 +412,6 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     const contentType =
       prefetchedContentType ||
       (res ? res.headers.get("content-type") ?? "" : "");
-    const el = getAudio();
 
     // Blob-only path. Yu, 2026-09-19 23:00: earlier design used
     // MediaSource for audio/mpeg to start playback on the first

@@ -298,6 +298,50 @@ async function handleLocalTts(
 }
 
 export function mountTtsRoutes(app: Express) {
+  // GET /api/tts/stream?text=...&voice=...&provider=...
+  //
+  // Streaming-friendly endpoint that browsers can use directly via
+  // <audio src="/api/tts/stream?...">. Unlike POST /api/tts, the
+  // browser's built-in audio pipeline handles chunked WAV natively —
+  // playback starts as soon as the first bytes arrive, no need for
+  // MediaSource or blob buffering.
+  //
+  // Yu, 2026-09-21: added so qwentts true-streaming WAV can be
+  // consumed edge-to-edge without waiting for the full response.
+  app.get("/api/tts/stream", async (req: Request, res: Response) => {
+    const text = typeof req.query.text === "string" ? req.query.text.trim() : "";
+    const voice =
+      typeof req.query.voice === "string" && req.query.voice.trim().length
+        ? req.query.voice.trim()
+        : undefined;
+    const requestedProvider =
+      typeof req.query.provider === "string" && req.query.provider.trim().length
+        ? req.query.provider.trim().toLowerCase()
+        : TTS_PROVIDER;
+
+    if (!text) {
+      res.status(400).json({ error: "text is required" });
+      return;
+    }
+    if (text.length > MAX_TEXT_CHARS) {
+      res.status(400).json({
+        error: `text too long: ${text.length} chars > max ${MAX_TEXT_CHARS}`,
+      });
+      return;
+    }
+
+    if (requestedProvider === "edge") {
+      await handleEdge(res, text, voice);
+    } else if (requestedProvider === "qwentts") {
+      await handleLocalTts(res, text, voice, requestedProvider);
+    } else {
+      res.status(400).json({
+        error: `unknown provider: ${requestedProvider}`,
+        hint: "Use provider=edge or provider=qwentts",
+      });
+    }
+  });
+
   app.post("/api/tts", async (req: Request, res: Response) => {
     const body = (req.body ?? {}) as TtsRequestBody;
     const text = typeof body.text === "string" ? body.text.trim() : "";
