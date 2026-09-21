@@ -6,6 +6,20 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.61.0](https://github.com/tianshu-ai/tianshu/compare/v0.60.2...v0.61.0) (2026-09-21)
+
+
+### Features
+
+* add 5 voice ref audio for Qwen3-TTS voice cloning ([13d166c](https://github.com/tianshu-ai/tianshu/commit/13d166c2c0213e7986a0a86b5a2aac5fcb1b90fc))
+* add start.sh for Qwen3-TTS server + fix install.sh & server.py ([b7635af](https://github.com/tianshu-ai/tianshu/commit/b7635af546998fec58fabeb362fb2045c660843b))
+* dynamic voice list for Qwen3-TTS from /health endpoint ([509b20c](https://github.com/tianshu-ai/tianshu/commit/509b20cf4784d32dc171f01961b4fb56402a7f88))
+
+
+### Bug Fixes
+
+* streaming GET path respects user-selected TTS provider ([7547f00](https://github.com/tianshu-ai/tianshu/commit/7547f00d42a0ef94fb6aa217c1c2b33bb712e1b2))
+
 ## [0.60.2](https://github.com/tianshu-ai/tianshu/compare/v0.60.1...v0.60.2) (2026-09-21)
 
 
