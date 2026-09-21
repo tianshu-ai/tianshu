@@ -391,6 +391,8 @@ function localizeCorePageLabel(
       return t("admin.nav.mcp");
     case "asr":
       return t("admin.nav.asr");
+    case "tts":
+      return t("admin.nav.tts");
     case "usage":
       return t("admin.nav.usage");
     default:
