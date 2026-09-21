@@ -115,8 +115,8 @@ const prefetchCache = new Map<
  * Errors resolve to null so the play path can retry via normal fetch.
  */
 function startPrefetch(req: SpeakRequest): void {
-  // qwentts uses the streaming GET path — no blob to prefetch.
-  if (req.provider === "qwentts") return;
+  // Both qwentts and edge use the streaming GET path — no blob to prefetch.
+  if (req.provider === "qwentts" || req.provider === "edge") return;
   if (prefetchCache.has(req.id)) return;
   const p: Promise<{ blob: Blob; contentType: string } | null> = (async () => {
     try {
@@ -309,7 +309,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
     // Edge TTS (audio/mpeg sentence slices) still uses the blob
     // path below — short mp3 blobs download fast and the prefetch
     // lookahead already eliminates inter-slice gaps.
-    const useStreamingGet = req.provider === "qwentts";
+    const useStreamingGet = req.provider === "qwentts" || req.provider === "edge";
     if (useStreamingGet) {
       const params = new URLSearchParams();
       params.set("text", req.text);
