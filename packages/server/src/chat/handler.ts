@@ -156,7 +156,7 @@ import {
   imageFitCacheKey,
 } from "./image-fit.js";
 
-const MAX_TURNS = 16;
+const MAX_TURNS = 9999;
 // Yu, 2026-09-18 10:29: warn when a single tool_result crosses this
 // size. Threshold picked to catch mvn/spring-boot-style firehose
 // output (typically 1-20MB) while ignoring routine tool results
