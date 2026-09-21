@@ -127,9 +127,15 @@ def _resolve_voice(raw_spk_id: str) -> tuple[str, str | None]:
 
 # ─── Streaming generation ────────────────────────────────────
 
-def generate_pcm_streaming(tts_text: str, voice: str, ref_audio: str | None = None):
+async def generate_pcm_streaming(tts_text: str, voice: str, ref_audio: str | None = None):
     """Generate audio via model.generate(stream=True), yield int16 PCM
-    bytes as soon as each chunk is ready."""
+    bytes as soon as each chunk is ready.
+
+    This is an async generator so FastAPI's StreamingResponse doesn't
+    block the event loop during long generations. The actual MLX
+    inference is synchronous (CPU/GPU-bound), but we yield control
+    back to the event loop between chunks via asyncio.sleep(0)."""
+    import asyncio
     t0 = time.time()
     first_chunk_time = None
     total_bytes = 0
@@ -150,18 +156,25 @@ def generate_pcm_streaming(tts_text: str, voice: str, ref_audio: str | None = No
         # CustomVoice model: preset speaker
         gen_kwargs["voice"] = voice
 
-    results = model.generate(**gen_kwargs)
+    try:
+        results = model.generate(**gen_kwargs)
 
-    for result in results:
-        audio_np = np.array(result.audio, dtype=np.float32).flatten()
-        pcm = (audio_np * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+        for result in results:
+            audio_np = np.array(result.audio, dtype=np.float32).flatten()
+            pcm = (audio_np * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
 
-        if first_chunk_time is None:
-            first_chunk_time = time.time() - t0
+            if first_chunk_time is None:
+                first_chunk_time = time.time() - t0
 
-        total_bytes += len(pcm)
-        chunk_count += 1
-        yield pcm
+            total_bytes += len(pcm)
+            chunk_count += 1
+            yield pcm
+            # Yield control so other requests aren't starved
+            await asyncio.sleep(0)
+
+    except Exception as e:
+        log.error("generate failed: %s (voice=%s, ref=%s)", e, voice, bool(ref_audio))
+        return
 
     wall = time.time() - t0
     audio_dur = total_bytes / (sample_rate * 2)
