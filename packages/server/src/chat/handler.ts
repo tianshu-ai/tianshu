@@ -346,7 +346,6 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           homeDir,
           session: explicitSession,
           voiceMode: parsed.voiceMode === true,
-          ttsProvider: typeof parsed.ttsProvider === "string" ? parsed.ttsProvider : undefined,
         }).catch((err) => {
           send({
             type: "stream_error",
@@ -467,8 +466,6 @@ interface RunPromptArgs {
    *  inject the voice-summary fragment. Text-mode turns leave the
    *  prompt unchanged. */
   voiceMode?: boolean;
-  /** TTS provider the client is using (e.g. "qwentts", "edge"). */
-  ttsProvider?: string;
   /**
    * Optional explicit session. When provided, runPrompt skips the
    *  `ensureActiveSession(userId)` lookup and uses this session
@@ -852,7 +849,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       userOnboarding: mainConfig.overrides.userOnboarding,
       customFragments: mainConfig.customFragments,
     },
-    { voiceMode: args.voiceMode === true, ttsProvider: args.ttsProvider },
+    { voiceMode: args.voiceMode === true },
   );
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
   // pi 0.80: the harness owns a `Models` instance and resolves auth

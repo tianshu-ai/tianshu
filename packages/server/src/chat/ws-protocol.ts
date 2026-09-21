@@ -49,9 +49,6 @@ export type ClientMsg =
        *  block so TTS reads a natural short spoken version rather than
        *  the entire markdown reply. Absent/false means text-only. */
       voiceMode?: boolean;
-      /** TTS provider slug ("edge", "qwentts") for provider-specific
-       *  system-prompt hints (e.g. Qwen3-TTS prosody markup). */
-      ttsProvider?: string;
       /** Optional session id. When provided, the prompt is routed to
        *  this specific session instead of the user's default active
        *  session. The session must already exist and belong to this

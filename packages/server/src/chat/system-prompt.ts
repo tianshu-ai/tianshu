@@ -81,8 +81,6 @@ export interface PerTurnPromptHints {
   /** When true, inject a voice-mode fragment asking tianshu to end
    *  its reply with a <voice_summary>...</voice_summary> block. */
   voiceMode?: boolean;
-  /** TTS provider slug from the client ("edge", "qwentts"). */
-  ttsProvider?: string;
 }
 
 /**
@@ -103,7 +101,7 @@ export interface PerTurnPromptHints {
  *
  * Kept tight — every sentence here costs on every voice-mode turn.
  */
-function formatVoiceModeFragment(ttsProvider?: string): string {
+function formatVoiceModeFragment(): string {
   const lines = [
     `## Voice reply mode`,
     `The user has enabled voice mode. Write your reply as if you were talking to them on a phone call — the ENTIRE reply is spoken aloud.`,
@@ -248,7 +246,7 @@ export function defaultSystemPrompt(
   // agent sees the voice mode instruction FIRST (per-turn behaviour)
   // and can layer tenant-specific tenantPrompt guidance on top.
   if (turnHints.voiceMode) {
-    lines.push("", formatVoiceModeFragment(turnHints.ttsProvider));
+    lines.push("", formatVoiceModeFragment());
   }
 
   // Tenant prompt override (applied solution). Injected right
