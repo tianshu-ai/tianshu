@@ -204,13 +204,13 @@ export function buildModel(info: ResolvedModelInfo): Model<Api> {
 
 /**
  * Resolve the API key string for a model, expanding `${VAR}` placeholders.
- * Falls back to `DEFAULT_API_KEY` env, then to `"test-key-1"` (the
- * convention used by the closed-source repo's local SAP proxy).
+ * Falls back to `DEFAULT_API_KEY` env, then to empty string.
+ * Callers should treat empty as "no key configured".
  */
 export function resolveApiKey(info: ResolvedModelInfo): string {
   const expanded = expandEnvPlaceholders(info.apiKeyTemplate);
   if (expanded && expanded.length > 0) return expanded;
-  return process.env.DEFAULT_API_KEY ?? "test-key-1";
+  return process.env.DEFAULT_API_KEY ?? "";
 }
 
 // ─── internals ────────────────────────────────────────────────────
