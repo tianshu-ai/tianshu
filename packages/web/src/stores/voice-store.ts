@@ -314,7 +314,7 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
       const params = new URLSearchParams();
       params.set("text", req.text);
       if (req.voice) params.set("voice", req.voice);
-      params.set("provider", "qwentts");
+      params.set("provider", req.provider || "qwentts");
       const streamUrl = `/api/tts/stream?${params.toString()}`;
 
       const thisReqId = req.id;
