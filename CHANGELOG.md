@@ -6,6 +6,40 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.60.0](https://github.com/tianshu-ai/tianshu/compare/v0.59.1...v0.60.0) (2026-09-21)
+
+
+### Features
+
+* bundle qwen3-tts server.py into tianshu repo ([d3a3afa](https://github.com/tianshu-ai/tianshu/commit/d3a3afa43a7c9c6a0e28036f5eeff22223c9ba5e))
+* edge TTS also uses streaming GET playback ([ccc0dad](https://github.com/tianshu-ai/tianshu/commit/ccc0dadc4e76823928414520249b0dd8d6a5739b))
+* include TTS server in npm package, teach setup agent to find it ([9a72ae0](https://github.com/tianshu-ai/tianshu/commit/9a72ae02bcc074b3aa8be3aea5a7454eb92b3806))
+* one-click install.sh for Qwen3-TTS server ([6179d83](https://github.com/tianshu-ai/tianshu/commit/6179d835ec2bf6172e1b1e5a630e451136a66d7a))
+* **setup:** add TTS domain knowledge to setup agent ([e1d4c2e](https://github.com/tianshu-ai/tianshu/commit/e1d4c2ed96b877c2cf68f462f74fb071c89208bd))
+* streaming playback for qwentts — audio starts in ~450ms ([4b81e3e](https://github.com/tianshu-ai/tianshu/commit/4b81e3e146da092ecc4b6d41e7052970c85c3988))
+* **tts:** replace CosyVoice/Kokoro with Qwen3-TTS MLX ([ce38f7d](https://github.com/tianshu-ai/tianshu/commit/ce38f7d5c857a97ad39902475642d02b63a8fc43))
+* voice cloning support with yujie ref audio ([307aa1f](https://github.com/tianshu-ai/tianshu/commit/307aa1f651e64657075f4461491f270a8ae75d7c))
+
+
+### Bug Fixes
+
+* escape backticks in template string that broke TS build ([2d467d8](https://github.com/tianshu-ai/tianshu/commit/2d467d8c3275af86718b57a0d1f42d60246f8df2))
+* **setup:** clarify TTS is a built-in Tianshu feature ([d6c9556](https://github.com/tianshu-ai/tianshu/commit/d6c95560463b6625ab5b40207831e1ebafff0dca))
+* **setup:** resolve global config before reading defaultModelId ([fa33e2d](https://github.com/tianshu-ai/tianshu/commit/fa33e2d36b17b0d663414c3f4c4ad8c9339e63e1))
+* **setup:** stop rejecting test-key-1 as sentinel in probe ([3ee38f8](https://github.com/tianshu-ai/tianshu/commit/3ee38f829c3c7a960b733c0ccad2ab01a1ad13cf))
+* **wiki:** embedding diagnostics, Test Connection probe, and auto /v1 prefix ([fb38e18](https://github.com/tianshu-ai/tianshu/commit/fb38e18d62cf2215a0a81559ad53d48d29960143))
+
+
+### Performance
+
+* true streaming TTS — first chunk ~450ms regardless of text length ([b4d4152](https://github.com/tianshu-ai/tianshu/commit/b4d415292ece7ed8387dfddb33629369ba5dfa62))
+* upgrade default TTS model to 1.7B-bf16 for better quality ([c502124](https://github.com/tianshu-ai/tianshu/commit/c502124755c3a0f3e5ffaf2557cebb96bee0514d))
+
+
+### Documentation
+
+* support both venv and conda for Qwen3-TTS setup ([0bde798](https://github.com/tianshu-ai/tianshu/commit/0bde798045a092384838c463598810f788ccf04c))
+
 ## [0.59.1](https://github.com/tianshu-ai/tianshu/compare/v0.59.0...v0.59.1) (2026-09-20)
 
 
