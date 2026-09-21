@@ -28,6 +28,7 @@ import {
   Speaker,
 } from "lucide-react";
 import { useVoiceStore } from "../../stores/voice-store";
+import { useT } from "../../hooks/useT";
 
 /** Provider slugs the server understands (see routes-tts.ts). */
 type TtsProvider = "edge" | "qwentts";
@@ -68,6 +69,7 @@ interface TtsStatus {
 }
 
 export default function TtsSettingsPage() {
+  const t = useT();
   const [status, setStatus] = useState<TtsStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -194,10 +196,10 @@ export default function TtsSettingsPage() {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
             <Speaker size={22} />
-            语音合成 (TTS)
+            {t("tts.title")}
           </h1>
           <p className="mt-2 text-sm text-fg-muted">
-            配置助手回复时使用哪个 TTS 引擎与发音人。开启语音模式后，助手回复会自动朗读。
+            {t("tts.subtitle")}
           </p>
         </div>
         <button
@@ -205,7 +207,7 @@ export default function TtsSettingsPage() {
           onClick={refresh}
           className="rounded-md border border-border-strong px-3 py-1.5 text-xs text-fg-muted hover:text-fg-default"
           disabled={statusLoading}
-          title="刷新服务器状态"
+          title={t("tts.refreshTooltip")}
         >
           <RefreshCw
             size={14}
@@ -218,7 +220,7 @@ export default function TtsSettingsPage() {
         <div className="mb-4 flex items-start gap-2 rounded-md border border-danger/50 bg-danger/10 px-3 py-2 text-sm text-danger">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
           <div className="flex-1">
-            无法读取 TTS 状态: {statusError}
+            {t("tts.statusError", { error: statusError ?? "" })}
           </div>
         </div>
       )}
@@ -228,7 +230,7 @@ export default function TtsSettingsPage() {
           {/* Provider selection */}
           <section className="rounded-lg border border-border bg-bg-raised/40 p-4">
             <h2 className="mb-3 text-sm font-medium text-fg-default">
-              引擎
+              {t("tts.engine")}
             </h2>
             <div className="space-y-2">
               <label className="flex items-start gap-3 rounded-md border border-border p-3 hover:bg-bg-raised/60 cursor-pointer">
@@ -242,11 +244,10 @@ export default function TtsSettingsPage() {
                 />
                 <div className="flex-1">
                   <div className="text-sm font-medium text-fg-default">
-                    Edge TTS (微软云)
+                    {t("tts.edge.name")}
                   </div>
                   <div className="text-xs text-fg-muted mt-0.5">
-                    无需本地部署，云端合成。中英日粤多语言，音质接近生产级。
-                    个人 / 开发使用免费；商用需符合微软 EULA。
+                    {t("tts.edge.desc")}
                   </div>
                 </div>
               </label>
@@ -261,23 +262,22 @@ export default function TtsSettingsPage() {
                 />
                 <div className="flex-1">
                   <div className="text-sm font-medium text-fg-default">
-                    Qwen3-TTS (本地)
+                    {t("tts.qwentts.name")}
                   </div>
                   <div className="text-xs text-fg-muted mt-0.5">
-                    阿里通义开源 0.6B MLX (Apache 2.0)，Apple Silicon 优化。
-                    RTF ~0.3x，流式输出，9 种预设声音，中英日韩 10 语言。
+                    {t("tts.qwentts.desc")}
                   </div>
                   <div className="text-xs text-fg-faint mt-1.5">
-                    服务地址 (env <code>TTS_URL</code>):{" "}
+                    {t("tts.serverUrl")}{" "}
                     <code className="text-fg-muted">{status.ttsUrl}</code>
                     {status.ttsReachable === true && (
                       <span className="ml-2 inline-flex items-center gap-1 text-ok">
-                        <CheckCircle size={12} /> 可达
+                        <CheckCircle size={12} /> {t("tts.reachable")}
                       </span>
                     )}
                     {status.ttsReachable === false && (
                       <span className="ml-2 inline-flex items-center gap-1 text-warn">
-                        <AlertCircle size={12} /> 未响应
+                        <AlertCircle size={12} /> {t("tts.unreachable")}
                       </span>
                     )}
                   </div>
@@ -289,11 +289,7 @@ export default function TtsSettingsPage() {
               <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
                 <AlertCircle size={14} className="mt-0.5 shrink-0" />
                 <div>
-                  Qwen3-TTS 服务未启动。参考{" "}
-                  <code className="text-amber-100">
-                    scripts/QWEN3_TTS_SETUP.md
-                  </code>{" "}
-                  启动本地服务。
+                  {t("tts.offlineHint")}
                 </div>
               </div>
             )}
@@ -302,7 +298,7 @@ export default function TtsSettingsPage() {
           {/* Voice selection */}
           <section className="rounded-lg border border-border bg-bg-raised/40 p-4">
             <h2 className="mb-3 text-sm font-medium text-fg-default">
-              发音人
+              {t("tts.voice")}
             </h2>
             <select
               value={voice}
@@ -326,17 +322,17 @@ export default function TtsSettingsPage() {
                 {testing ? (
                   <span className="inline-flex items-center gap-1.5">
                     <Loader2 size={12} className="animate-spin" />
-                    合成中…
+                    {t("tts.previewing")}
                   </span>
                 ) : (
-                  "试听"
+                  t("tts.preview")
                 )}
               </button>
               {saving && (
-                <span className="text-xs text-fg-faint">保存中…</span>
+                <span className="text-xs text-fg-faint">{t("tts.saving")}</span>
               )}
               {testError && (
-                <span className="text-xs text-danger">试听失败: {testError}</span>
+                <span className="text-xs text-danger">{t("tts.previewFailed", { error: testError ?? "" })}</span>
               )}
             </div>
           </section>
