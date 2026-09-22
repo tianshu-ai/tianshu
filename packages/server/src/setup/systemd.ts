@@ -217,8 +217,8 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=${opts.repoRoot}
 ExecStart=${opts.npmPath} run ${opts.npmScript ?? "dev"}
-Restart=on-failure
-RestartSec=30
+Restart=always
+RestartSec=5
 Environment=PATH=${pathEnv}
 Environment=HOME=${os.homedir()}
 Environment=NODE_OPTIONS=--no-warnings
@@ -281,14 +281,60 @@ function daemonReload(): void {
 }
 
 /**
+ * Enable loginctl linger for the current user so user-scoped systemd
+ * services survive logout and start on boot. Without linger, the user
+ * instance is torn down when the last login session ends, and services
+ * won't auto-start after a reboot until someone logs in.
+ *
+ * This is the Linux equivalent of macOS launchd's KeepAlive=true +
+ * RunAtLoad=true behaviour.
+ */
+export function enableLinger(): { ok: boolean; alreadyEnabled?: boolean } {
+  const user = os.userInfo().username;
+  // Check current linger state
+  try {
+    const out = execSync(`loginctl show-user ${shellQuote(user)} --property=Linger 2>/dev/null`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    if (out.trim() === "Linger=yes") {
+      return { ok: true, alreadyEnabled: true };
+    }
+  } catch {
+    // loginctl not available or user not logged in via logind —
+    // try to enable anyway, some setups still accept it.
+  }
+  try {
+    execSync(`loginctl enable-linger ${shellQuote(user)}`, {
+      stdio: ["ignore", "ignore", "pipe"],
+    });
+    return { ok: true };
+  } catch (err) {
+    // Non-fatal: linger is a reliability improvement, not a hard
+    // requirement. The service still works while the user is logged in.
+    const e = err as NodeJS.ErrnoException & { stderr?: Buffer };
+    console.warn(
+      `[systemd] loginctl enable-linger failed (non-fatal): ${e.stderr ? e.stderr.toString().trim() : e.message}`,
+    );
+    return { ok: false };
+  }
+}
+
+/**
  * `systemctl --user enable --now <unit>` — load + start.
  * The unit file path is written by writePlist; systemd resolves it
  * by name from the user unit dir, so we take the unit NAME here (the
  * plistPath is accepted for signature parity and its basename used).
+ *
+ * Also enables linger so the service survives logout and auto-starts
+ * on boot.
  */
 export function bootstrap(unitPathOrName: string): LaunchctlResult {
   const unit = path.basename(unitPathOrName);
   daemonReload();
+  // Enable linger before starting — ensures the user systemd instance
+  // persists after logout and starts on boot.
+  enableLinger();
   return runSystemctl(`enable --now ${shellQuote(unit)}`);
 }
 
@@ -300,26 +346,45 @@ export function bootout(unit: string): LaunchctlResult {
   return r;
 }
 
-/** Restart a unit reliably: stop → kill stragglers → start.
- *  Plain `systemctl restart` can leave the old process alive if it
- *  doesn't respond to SIGTERM quickly enough. */
+/** Restart a unit via `systemctl restart`.
+ *  With Restart=always in the unit, systemd handles the full
+ *  stop → wait → start cycle reliably, including SIGKILL after
+ *  TimeoutStopSec. No need for manual pkill. */
 export function kickstart(unit: string): LaunchctlResult {
   const name = path.basename(unit);
-  // Stop the unit (sends SIGTERM, then SIGKILL after TimeoutStopSec)
-  runSystemctl(`stop ${shellQuote(name)}`);
-  // Give it a moment, then kill any stragglers on the port
+  daemonReload();
+  return runSystemctl(`restart ${shellQuote(name)}`);
+}
+
+// ─── health checks for `tianshu status` ─────────────────────────
+
+/** Check if a unit is enabled (auto-start on boot). */
+export function isEnabled(unit: string): boolean {
+  const name = path.basename(unit);
+  const scope = hasSystemUnit() ? "" : "--user ";
   try {
-    const { execSync } = require("node:child_process") as typeof import("node:child_process");
-    execSync("sleep 1", { stdio: "ignore" });
-    // Kill any remaining node processes from the old service
-    execSync(
-      `pkill -9 -f 'serve\.mjs.*tianshu' 2>/dev/null || true`,
-      { stdio: "ignore", timeout: 3000 },
-    );
-    execSync("sleep 1", { stdio: "ignore" });
-  } catch { /* best effort */ }
-  // Start fresh
-  return runSystemctl(`start ${shellQuote(name)}`);
+    const out = execSync(`systemctl ${scope}is-enabled ${shellQuote(name)} 2>/dev/null`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.trim() === "enabled";
+  } catch {
+    return false;
+  }
+}
+
+/** Check if linger is enabled for the current user. */
+export function isLingerEnabled(): boolean {
+  const user = os.userInfo().username;
+  try {
+    const out = execSync(`loginctl show-user ${shellQuote(user)} --property=Linger 2>/dev/null`, {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return out.trim() === "Linger=yes";
+  } catch {
+    return false;
+  }
 }
 
 // ─── util ────────────────────────────────────────────────────────
