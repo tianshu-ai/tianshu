@@ -250,6 +250,7 @@ export function mountCoreRoutes(
         providers: maskProviders(providers),
         defaultModelId: cfg.models?.defaultModelId ?? null,
         defaultModel: cfg.defaultModel ?? null,
+        imageGenModelId: cfg.models?.imageGenModelId ?? null,
         outputLanguage: cfg.outputLanguage ?? "auto",
       });
     } catch (err) {
@@ -283,6 +284,7 @@ export function mountCoreRoutes(
         const body = req.body as {
           defaultModelId?: unknown;
           defaultModel?: unknown;
+          imageGenModelId?: unknown;
         };
         const nextModels = {
           ...(cfg.models ?? {}),
@@ -302,6 +304,11 @@ export function mountCoreRoutes(
         if (incomingDefault !== undefined) {
           nextModels.defaultModelId = incomingDefault || undefined;
         }
+        if (typeof body.imageGenModelId === "string") {
+          nextModels.imageGenModelId = body.imageGenModelId || undefined;
+        } else if (body.imageGenModelId === null) {
+          nextModels.imageGenModelId = undefined;
+        }
         const nextCfg = { ...cfg, models: nextModels };
         // Clear the deprecated top-level key on any write so a
         // migration in progress converges. New writes never
@@ -320,6 +327,7 @@ export function mountCoreRoutes(
           providers: maskProviders(parsed.value),
           defaultModelId: nextModels.defaultModelId ?? null,
           defaultModel: nextCfg.defaultModel ?? null,
+          imageGenModelId: nextModels.imageGenModelId ?? null,
           outputLanguage: nextCfg.outputLanguage ?? "auto",
         });
       } catch (err) {

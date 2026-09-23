@@ -207,6 +207,12 @@ export interface ModelsCatalog {
    *  tianshu.models.json field; the Settings Models page reads/writes
    *  it. */
   defaultModelId?: string;
+  /** Optional model id for the built-in `generate_image` tool. Must
+   *  point at a `mode: "image-gen"` model in the catalog. When absent
+   *  and the catalog contains at least one image-gen model, the tool
+   *  uses the first one. When absent and no image-gen model exists,
+   *  the tool is hidden from the agent's toolset. */
+  imageGenModelId?: string;
   /** Cross-provider retry policy for transient LLM call failures
    *  (network, 429 rate-limit, 5xx, expired JWT/401). Applied at the
    *  single stream chokepoint in core/pi-models.ts, so it covers the

@@ -354,7 +354,12 @@ export async function runAgentLoop(
     enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80,
     ...(ctx.config.models?.compaction ?? {}),
   };
-  const workerHostTools = buildHostTools({ contextWindow: modelInfo.contextWindow, compactionSettings: workerCompactionSettings });
+  const workerHostTools = buildHostTools({
+    contextWindow: modelInfo.contextWindow,
+    compactionSettings: workerCompactionSettings,
+    config: ctx.config,
+    signal: externalSignal,
+  });
   const toolset = await buildToolset({
     pluginTools,
     hostTools: workerHostTools,

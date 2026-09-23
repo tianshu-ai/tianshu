@@ -58,6 +58,7 @@ interface ApiResponse {
   providers: Record<string, ProviderRow>;
   defaultModelId: string | null;
   defaultModel: string | null;
+  imageGenModelId: string | null;
   outputLanguage: "auto" | "en" | "zh";
 }
 
@@ -104,6 +105,7 @@ export default function ModelsPage() {
   const t = useT();
   const [providers, setProviders] = useState<EditableProvider[] | null>(null);
   const [defaultModelId, setDefaultModelId] = useState<string>("");
+  const [imageGenModelId, setImageGenModelId] = useState<string>("");
   const [outputLanguage, setOutputLanguage] = useState<"auto" | "en" | "zh">("auto");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -130,6 +132,7 @@ export default function ModelsPage() {
       );
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
+      setImageGenModelId(j.imageGenModelId ?? "");
       setOutputLanguage(j.outputLanguage ?? "auto");
       setDirty(false);
     } catch (err) {
@@ -213,6 +216,7 @@ export default function ModelsPage() {
         body: JSON.stringify({
           providers: body,
           defaultModelId: defaultModelId.trim(),
+          imageGenModelId: imageGenModelId.trim(),
           outputLanguage,
         }),
       });
@@ -229,6 +233,7 @@ export default function ModelsPage() {
       );
       setProviders(list);
       setDefaultModelId(j.defaultModelId ?? "");
+      setImageGenModelId(j.imageGenModelId ?? "");
       setOutputLanguage(j.outputLanguage ?? "auto");
       setDirty(false);
       setNotice(t("models.savedTo"));
@@ -237,7 +242,7 @@ export default function ModelsPage() {
     } finally {
       setSaving(false);
     }
-  }, [providers, defaultModelId, outputLanguage]);
+  }, [providers, defaultModelId, imageGenModelId, outputLanguage]);
 
   const totalModels = useMemo(
     () => (providers ?? []).reduce((n, p) => n + (p.models?.length ?? 0), 0),
@@ -255,6 +260,22 @@ export default function ModelsPage() {
       for (const m of p.models ?? []) {
         const mid = (m.id ?? "").trim();
         if (!mid) continue;
+        const value = `${pid}/${mid}`;
+        opts.push({ value, label: m.name ? `${m.name} — ${value}` : value });
+      }
+    }
+    return opts;
+  }, [providers]);
+
+  const imageGenModelOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [];
+    for (const p of providers ?? []) {
+      const pid = p.id.trim();
+      if (!pid) continue;
+      for (const m of p.models ?? []) {
+        const mid = (m.id ?? "").trim();
+        if (!mid) continue;
+        if (m.mode !== "image-gen") continue;
         const value = `${pid}/${mid}`;
         opts.push({ value, label: m.name ? `${m.name} — ${value}` : value });
       }
@@ -348,6 +369,40 @@ export default function ModelsPage() {
         </select>
         <p className="mt-1 text-[11px] text-fg-fainter">
           {t("models.defaultModel.hint")}
+        </p>
+      </div>
+
+      {/* Image generation model */}
+      <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
+        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+          Image generation model
+        </label>
+        <select
+          value={imageGenModelId}
+          onChange={(e) => {
+            setImageGenModelId(e.target.value);
+            setDirty(true);
+            setNotice(null);
+          }}
+          className="w-full rounded-md border border-border-default bg-bg-base px-2.5 py-1.5 text-sm text-fg-default focus:border-link focus:outline-none"
+        >
+          <option value="">
+            {imageGenModelOptions.length === 0
+              ? "— No image-gen models configured —"
+              : "— Use first available —"}
+          </option>
+          {imageGenModelOptions.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+          {imageGenModelId &&
+            !imageGenModelOptions.some((o) => o.value === imageGenModelId) && (
+              <option value={imageGenModelId}>{imageGenModelId} (not an image-gen model)</option>
+            )}
+        </select>
+        <p className="mt-1 text-[11px] text-fg-fainter">
+          Used by the built-in <code>generate_image</code> tool. Only models with mode <code>image-gen</code> are shown. When any image-gen model exists, the tool is available to agents.
         </p>
       </div>
 

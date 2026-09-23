@@ -43,41 +43,6 @@ export interface PluginContext {
    * cast/parse as needed. Empty object if not configured.
    */
   pluginConfig: Record<string, unknown>;
-
-  /**
-   * Resolve a model ID (e.g. "sap-gemini/gemini-2.0-flash-preview-image-generation")
-   * to its connection info: baseUrl, apiKey, api protocol, and metadata.
-   * Returns null if the model ID is not found in the tenant's config.
-   *
-   * This lets plugins call configured models without duplicating
-   * provider credentials in plugin config.
-   */
-  resolveModel?(modelId: string): ResolvedModelHandle | null;
-
-  /**
-   * List configured models, optionally filtered by mode.
-   * E.g. `listModels("image-gen")` returns only image generation models.
-   * Omit the argument to get all non-embedding models.
-   */
-  listModels?(mode?: string): ResolvedModelHandle[];
-}
-
-/** Connection info for a configured model, returned by PluginContext.resolveModel. */
-export interface ResolvedModelHandle {
-  /** Full model ID, e.g. "sap-gemini/gemini-2.0-flash-preview-image-generation". */
-  id: string;
-  /** Provider ID, e.g. "sap-gemini". */
-  providerId: string;
-  /** Model ID within the provider, e.g. "gemini-2.0-flash-preview-image-generation". */
-  modelId: string;
-  /** API protocol: "openai-completions" | "google-generative-ai" | "anthropic-messages" etc. */
-  api: string;
-  /** Provider base URL. */
-  baseUrl: string;
-  /** Resolved API key (env placeholders expanded). Empty if none configured. */
-  apiKey: string;
-  /** Model mode: "chat" | "image-gen". */
-  mode: string;
 }
 
 /**

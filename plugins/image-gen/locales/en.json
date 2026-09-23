@@ -1,4 +1,0 @@
-{
-  "plugin.displayName": "Image Generation",
-  "plugin.description": "Generate images from text prompts using Gemini or ComfyUI."
-}

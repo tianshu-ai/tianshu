@@ -24,9 +24,6 @@ import { CheckCircle2, Loader2 } from "lucide-react";
 const DataSourceConfigFormLazy = lazy(() =>
   import("./DataSourceConfigForm").then((m) => ({ default: m.DataSourceConfigForm })),
 );
-const ImageGenConfigFormLazy = lazy(() =>
-  import("./ImageGenConfigForm").then((m) => ({ default: m.ImageGenConfigForm })),
-);
 import {
   api,
   type PluginConfigField,
@@ -70,15 +67,6 @@ export function PluginConfigFormById({
       </div>
     );
   }
-  if (customUI === "image-gen-settings") {
-    return (
-      <div className={className}>
-        <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin text-fg-faint" />}>
-          <ImageGenConfigFormLazy plugin={plugin} />
-        </Suspense>
-      </div>
-    );
-  }
   if ((plugin.configSchema.fields?.length ?? 0) === 0) return null;
   return (
     <div className={className}>
@@ -93,13 +81,6 @@ export function PluginConfigForm({ plugin }: { plugin: PluginListEntry }) {
     return (
       <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin text-fg-faint" />}>
         <DataSourceConfigFormLazy plugin={plugin} />
-      </Suspense>
-    );
-  }
-  if (plugin.configSchema?.customUI === "image-gen-settings") {
-    return (
-      <Suspense fallback={<Loader2 className="h-4 w-4 animate-spin text-fg-faint" />}>
-        <ImageGenConfigFormLazy plugin={plugin} />
       </Suspense>
     );
   }

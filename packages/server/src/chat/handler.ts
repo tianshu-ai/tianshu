@@ -692,6 +692,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const hostToolsDefs = buildHostTools({
     contextWindow: modelInfo.contextWindow,
     compactionSettings,
+    config: ctx.config,
     broadcast: (event, payload) => send({ type: "plugin_event", event, payload } as ServerMsg),
     listPanels: () => {
       if (!pluginRegistry) return [];
