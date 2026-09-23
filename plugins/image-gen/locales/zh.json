@@ -1,0 +1,4 @@
+{
+  "plugin.displayName": "AI 生图",
+  "plugin.description": "通过 Gemini 或 ComfyUI 根据文字描述生成图片。"
+}

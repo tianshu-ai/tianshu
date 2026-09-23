@@ -1,0 +1,73 @@
+{
+  "id": "image-gen",
+  "version": "0.1.0",
+  "displayName": "Image Generation",
+  "description": "Generate images from text prompts using Gemini or ComfyUI. Agents call generate_image as a tool during conversation.",
+  "category": "media",
+  "author": "tianshu-ai",
+  "license": "Apache-2.0",
+  "permissions": ["network.external"],
+  "server": { "entry": "@tianshu-builtin/plugin-image-gen/server" },
+  "contributes": {
+    "tools": [
+      { "id": "generate_image", "module": "GenerateImageTool", "since": "0.1.0" }
+    ],
+    "apiRoutes": [
+      { "method": "GET", "path": "/status", "handler": "getStatus" },
+      { "method": "POST", "path": "/test", "handler": "testGenerate" }
+    ]
+  },
+  "configSchema": {
+    "fields": [
+      {
+        "key": "provider",
+        "label": "Provider",
+        "kind": "select",
+        "default": "gemini",
+        "options": [
+          { "label": "Gemini", "value": "gemini" }
+        ],
+        "description": "Image generation backend."
+      },
+      {
+        "key": "geminiBaseUrl",
+        "label": "Gemini API Base URL",
+        "kind": "text",
+        "default": "https://generativelanguage.googleapis.com",
+        "description": "Gemini API endpoint. Change for proxies (e.g. SAP AI Proxy)."
+      },
+      {
+        "key": "geminiApiKey",
+        "label": "Gemini API Key",
+        "kind": "password",
+        "default": "",
+        "description": "API key for Gemini. Leave empty if using a proxy that handles auth."
+      },
+      {
+        "key": "geminiModel",
+        "label": "Gemini Model",
+        "kind": "select",
+        "default": "gemini-2.0-flash-preview-image-generation",
+        "options": [
+          { "label": "Gemini 2.0 Flash (Preview)", "value": "gemini-2.0-flash-preview-image-generation" },
+          { "label": "Gemini 2.5 Flash", "value": "gemini-2.5-flash-preview-image-generation" }
+        ],
+        "description": "Which Gemini model to use for image generation."
+      },
+      {
+        "key": "defaultAspectRatio",
+        "label": "Default Aspect Ratio",
+        "kind": "select",
+        "default": "1:1",
+        "options": [
+          { "label": "1:1 (Square)", "value": "1:1" },
+          { "label": "16:9 (Landscape)", "value": "16:9" },
+          { "label": "9:16 (Portrait)", "value": "9:16" },
+          { "label": "4:3", "value": "4:3" },
+          { "label": "3:4", "value": "3:4" }
+        ],
+        "description": "Default aspect ratio when not specified in the prompt."
+      }
+    ]
+  }
+}
