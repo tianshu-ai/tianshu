@@ -28,46 +28,47 @@ import {
   Speaker,
 } from "lucide-react";
 import { useVoiceStore } from "../../stores/voice-store";
+import { useT } from "../../hooks/useT";
 
 /** Provider slugs the server understands (see routes-tts.ts). */
 type TtsProvider = "edge" | "qwentts";
 
-const VOICES: Record<TtsProvider, Array<{ id: string; label: string }>> = {
-  edge: [
-    { id: "zh-CN-XiaoxiaoNeural", label: "晓晓 (中文女, 默认)" },
-    { id: "zh-CN-YunxiNeural", label: "云希 (中文男)" },
-    { id: "zh-CN-YunyangNeural", label: "云扬 (中文男, 新闻)" },
-    { id: "zh-CN-XiaoyiNeural", label: "晓伊 (中文女, 少女)" },
-    { id: "zh-CN-YunjianNeural", label: "云健 (中文男, 沉稳)" },
-    { id: "zh-CN-liaoning-XiaobeiNeural", label: "晓北 (东北女)" },
-    { id: "zh-CN-shaanxi-XiaoniNeural", label: "晓妮 (陕西女)" },
-    { id: "zh-HK-HiuMaanNeural", label: "曉曼 (粤语女)" },
-    { id: "zh-TW-HsiaoChenNeural", label: "曉臻 (台湾女)" },
-    { id: "en-US-AriaNeural", label: "Aria (English female)" },
-    { id: "en-US-GuyNeural", label: "Guy (English male)" },
-    { id: "en-GB-SoniaNeural", label: "Sonia (British female)" },
-    { id: "ja-JP-NanamiNeural", label: "Nanami (Japanese female)" },
-  ],
-  qwentts: [
-    { id: "vivian", label: "Vivian (中文女, 默认)" },
-    { id: "serena", label: "Serena (英文女)" },
-    { id: "uncle_fu", label: "Uncle Fu (中文男)" },
-    { id: "ryan", label: "Ryan (英文男)" },
-    { id: "aiden", label: "Aiden (英文男)" },
-    { id: "eric", label: "Eric (英文男)" },
-    { id: "dylan", label: "Dylan (英文男)" },
-    { id: "ono_anna", label: "Ono Anna (日文女)" },
-    { id: "sohee", label: "Sohee (韩文女)" },
-  ],
+/** Human-friendly labels for known custom voices (from voices/ ref audio). */
+const VOICE_LABELS: Record<string, string> = {
+  yujie: "御姐 (中文女, 默认)",
+  nansheng: "温柔男声 (中文男)",
+  huopo: "活泼女声 (中文女)",
+  boyin: "播音腔 (中文男)",
+  jenny: "Jenny (English female)",
+  guy: "Guy (English male)",
 };
+
+const EDGE_VOICES: Array<{ id: string; label: string }> = [
+  { id: "zh-CN-XiaoxiaoNeural", label: "晓晓 (中文女, 默认)" },
+  { id: "zh-CN-YunxiNeural", label: "云希 (中文男)" },
+  { id: "zh-CN-YunyangNeural", label: "云扬 (中文男, 新闻)" },
+  { id: "zh-CN-XiaoyiNeural", label: "晓伊 (中文女, 少女)" },
+  { id: "zh-CN-YunjianNeural", label: "云健 (中文男, 沉稳)" },
+  { id: "zh-CN-liaoning-XiaobeiNeural", label: "晓北 (东北女)" },
+  { id: "zh-CN-shaanxi-XiaoniNeural", label: "晓妮 (陕西女)" },
+  { id: "zh-HK-HiuMaanNeural", label: "曉曼 (粤语女)" },
+  { id: "zh-TW-HsiaoChenNeural", label: "曉臻 (台湾女)" },
+  { id: "en-US-AriaNeural", label: "Aria (English female)" },
+  { id: "en-US-GuyNeural", label: "Guy (English male)" },
+  { id: "en-GB-SoniaNeural", label: "Sonia (British female)" },
+  { id: "ja-JP-NanamiNeural", label: "Nanami (Japanese female)" },
+];
 
 interface TtsStatus {
   providerDefault: TtsProvider;
   ttsUrl: string;
   ttsReachable: boolean | null;
+  /** Dynamic voice list from the local TTS server's /health endpoint. */
+  qwenttsVoices: Array<{ id: string; label: string }>;
 }
 
 export default function TtsSettingsPage() {
+  const t = useT();
   const [status, setStatus] = useState<TtsStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [statusError, setStatusError] = useState<string | null>(null);
@@ -78,6 +79,15 @@ export default function TtsSettingsPage() {
 
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
+
+  /** Build voice list for a provider. */
+  const voicesFor = useCallback(
+    (p: TtsProvider): Array<{ id: string; label: string }> => {
+      if (p === "edge") return EDGE_VOICES;
+      return status?.qwenttsVoices ?? [];
+    },
+    [status],
+  );
 
   const refresh = useCallback(async () => {
     setStatusLoading(true);
@@ -96,10 +106,31 @@ export default function TtsSettingsPage() {
       ]);
       // Normalize legacy field names from status endpoint
       const s = statusRes as any;
+
+      // Build qwentts voice list from the server's /health response
+      // which is proxied through /api/tts/status
+      const customVoices: string[] = s.customVoices ?? s.custom_voices ?? [];
+      const presetVoices: string[] = s.presetVoices ?? s.preset_voices ?? [];
+      const defaultVoice: string = s.defaultVoice ?? s.default_voice ?? "";
+      const qwenttsVoices: Array<{ id: string; label: string }> = [];
+      // Put default voice first
+      const allNames = [
+        ...new Set([
+          ...(defaultVoice ? [defaultVoice] : []),
+          ...customVoices,
+          ...presetVoices,
+        ]),
+      ];
+      for (const name of allNames) {
+        const label = VOICE_LABELS[name] ?? name;
+        qwenttsVoices.push({ id: name, label });
+      }
+
       const normalized: TtsStatus = {
         providerDefault: s.providerDefault || "edge",
         ttsUrl: s.ttsUrl || s.cosyvoiceUrl || "",
         ttsReachable: s.ttsReachable ?? s.cosyvoiceReachable ?? null,
+        qwenttsVoices,
       };
       setStatus(normalized);
       const chosenProvider =
@@ -107,9 +138,10 @@ export default function TtsSettingsPage() {
         normalized.providerDefault ||
         "edge";
       setProvider(chosenProvider);
+      const voices = chosenProvider === "edge" ? EDGE_VOICES : qwenttsVoices;
       const chosenVoice =
         (voicePref?.value as string) ||
-        VOICES[chosenProvider]?.[0]?.id ||
+        voices[0]?.id ||
         "";
       setVoice(chosenVoice);
     } catch (err) {
@@ -126,8 +158,9 @@ export default function TtsSettingsPage() {
   const changeProvider = useCallback(
     async (next: TtsProvider) => {
       setProvider(next);
-      const validVoice = VOICES[next].some((v) => v.id === voice);
-      const nextVoice = validVoice ? voice : VOICES[next][0]?.id || "";
+      const voices = voicesFor(next);
+      const validVoice = voices.some((v) => v.id === voice);
+      const nextVoice = validVoice ? voice : voices[0]?.id || "";
       setVoice(nextVoice);
       setSaving(true);
       try {
@@ -149,7 +182,7 @@ export default function TtsSettingsPage() {
         setSaving(false);
       }
     },
-    [voice],
+    [voice, voicesFor],
   );
 
   const changeVoice = useCallback(async (next: string) => {
@@ -194,10 +227,10 @@ export default function TtsSettingsPage() {
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold text-fg-default">
             <Speaker size={22} />
-            语音合成 (TTS)
+            {t("tts.title")}
           </h1>
           <p className="mt-2 text-sm text-fg-muted">
-            配置助手回复时使用哪个 TTS 引擎与发音人。开启语音模式后，助手回复会自动朗读。
+            {t("tts.subtitle")}
           </p>
         </div>
         <button
@@ -205,7 +238,7 @@ export default function TtsSettingsPage() {
           onClick={refresh}
           className="rounded-md border border-border-strong px-3 py-1.5 text-xs text-fg-muted hover:text-fg-default"
           disabled={statusLoading}
-          title="刷新服务器状态"
+          title={t("tts.refreshTooltip")}
         >
           <RefreshCw
             size={14}
@@ -218,7 +251,7 @@ export default function TtsSettingsPage() {
         <div className="mb-4 flex items-start gap-2 rounded-md border border-danger/50 bg-danger/10 px-3 py-2 text-sm text-danger">
           <AlertCircle size={16} className="mt-0.5 shrink-0" />
           <div className="flex-1">
-            无法读取 TTS 状态: {statusError}
+            {t("tts.statusError", { error: statusError ?? "" })}
           </div>
         </div>
       )}
@@ -228,7 +261,7 @@ export default function TtsSettingsPage() {
           {/* Provider selection */}
           <section className="rounded-lg border border-border bg-bg-raised/40 p-4">
             <h2 className="mb-3 text-sm font-medium text-fg-default">
-              引擎
+              {t("tts.engine")}
             </h2>
             <div className="space-y-2">
               <label className="flex items-start gap-3 rounded-md border border-border p-3 hover:bg-bg-raised/60 cursor-pointer">
@@ -242,11 +275,10 @@ export default function TtsSettingsPage() {
                 />
                 <div className="flex-1">
                   <div className="text-sm font-medium text-fg-default">
-                    Edge TTS (微软云)
+                    {t("tts.edge.name")}
                   </div>
                   <div className="text-xs text-fg-muted mt-0.5">
-                    无需本地部署，云端合成。中英日粤多语言，音质接近生产级。
-                    个人 / 开发使用免费；商用需符合微软 EULA。
+                    {t("tts.edge.desc")}
                   </div>
                 </div>
               </label>
@@ -261,23 +293,22 @@ export default function TtsSettingsPage() {
                 />
                 <div className="flex-1">
                   <div className="text-sm font-medium text-fg-default">
-                    Qwen3-TTS (本地)
+                    {t("tts.qwentts.name")}
                   </div>
                   <div className="text-xs text-fg-muted mt-0.5">
-                    阿里通义开源 0.6B MLX (Apache 2.0)，Apple Silicon 优化。
-                    RTF ~0.3x，流式输出，9 种预设声音，中英日韩 10 语言。
+                    {t("tts.qwentts.desc")}
                   </div>
                   <div className="text-xs text-fg-faint mt-1.5">
-                    服务地址 (env <code>TTS_URL</code>):{" "}
+                    {t("tts.serverUrl")}{" "}
                     <code className="text-fg-muted">{status.ttsUrl}</code>
                     {status.ttsReachable === true && (
                       <span className="ml-2 inline-flex items-center gap-1 text-ok">
-                        <CheckCircle size={12} /> 可达
+                        <CheckCircle size={12} /> {t("tts.reachable")}
                       </span>
                     )}
                     {status.ttsReachable === false && (
                       <span className="ml-2 inline-flex items-center gap-1 text-warn">
-                        <AlertCircle size={12} /> 未响应
+                        <AlertCircle size={12} /> {t("tts.unreachable")}
                       </span>
                     )}
                   </div>
@@ -289,11 +320,7 @@ export default function TtsSettingsPage() {
               <div className="mt-3 flex items-start gap-2 rounded-md border border-amber-700/50 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
                 <AlertCircle size={14} className="mt-0.5 shrink-0" />
                 <div>
-                  Qwen3-TTS 服务未启动。参考{" "}
-                  <code className="text-amber-100">
-                    scripts/QWEN3_TTS_SETUP.md
-                  </code>{" "}
-                  启动本地服务。
+                  {t("tts.offlineHint")}
                 </div>
               </div>
             )}
@@ -302,14 +329,14 @@ export default function TtsSettingsPage() {
           {/* Voice selection */}
           <section className="rounded-lg border border-border bg-bg-raised/40 p-4">
             <h2 className="mb-3 text-sm font-medium text-fg-default">
-              发音人
+              {t("tts.voice")}
             </h2>
             <select
               value={voice}
               onChange={(e) => changeVoice(e.target.value)}
               className="w-full rounded-md border border-border-strong bg-bg-elevated px-3 py-2 text-sm text-fg-default"
             >
-              {VOICES[provider].map((v) => (
+              {voicesFor(provider).map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.label}
                 </option>
@@ -326,17 +353,17 @@ export default function TtsSettingsPage() {
                 {testing ? (
                   <span className="inline-flex items-center gap-1.5">
                     <Loader2 size={12} className="animate-spin" />
-                    合成中…
+                    {t("tts.previewing")}
                   </span>
                 ) : (
-                  "试听"
+                  t("tts.preview")
                 )}
               </button>
               {saving && (
-                <span className="text-xs text-fg-faint">保存中…</span>
+                <span className="text-xs text-fg-faint">{t("tts.saving")}</span>
               )}
               {testError && (
-                <span className="text-xs text-danger">试听失败: {testError}</span>
+                <span className="text-xs text-danger">{t("tts.previewFailed", { error: testError ?? "" })}</span>
               )}
             </div>
           </section>

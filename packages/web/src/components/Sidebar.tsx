@@ -57,11 +57,50 @@ export default function Sidebar() {
   const appVersion = me?.appVersion;
   const t = useT();
 
+  // Brand mark in the sidebar header: prefer classical Chinese
+  // calligraphy for the default "Tianshu" brand. If an operator
+  // customised branding.name, render whatever they set as-is.
+  const isDefaultBrand = brandName === "Tianshu";
+
   return (
     <aside className="flex h-full w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
       {/* Header */}
       <div className="flex h-12 items-center border-b border-border-subtle px-4">
-        <span className="text-lg font-semibold text-fg-default">{brandName}</span>
+        {isDefaultBrand ? (
+          <div className="relative flex items-center" title="Tianshu">
+            {/* Logo rendered via CSS mask so the ink color follows the
+                current theme's --color-fg-default (light theme = dark ink,
+                dark/classical theme = light ink). The PNG itself is pure
+                white with an alpha channel; the mask uses that alpha and
+                the div's background paints the visible pixels. */}
+            <div
+              aria-label="天枢 Tianshu"
+              role="img"
+              className="h-11 w-24 bg-fg-default"
+              style={{
+                WebkitMaskImage: "url(/classical/tianshu-brand.png)",
+                maskImage: "url(/classical/tianshu-brand.png)",
+                WebkitMaskRepeat: "no-repeat",
+                maskRepeat: "no-repeat",
+                WebkitMaskPosition: "center",
+                maskPosition: "center",
+                WebkitMaskSize: "contain",
+                maskSize: "contain",
+              }}
+            />
+            {/* Sparkle decoration — four-pointed star, top-right of the wordmark */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="pointer-events-none absolute -right-1 top-0.5 h-3 w-3 text-amber-300"
+              aria-hidden="true"
+            >
+              <path d="M12 0 L13.5 10.5 L24 12 L13.5 13.5 L12 24 L10.5 13.5 L0 12 L10.5 10.5 Z" />
+            </svg>
+          </div>
+        ) : (
+          <span className="text-lg font-semibold text-fg-default">{brandName}</span>
+        )}
         {appVersion && <span className="ml-2 text-xs font-normal text-fg-muted">v{appVersion}</span>}
       </div>
 

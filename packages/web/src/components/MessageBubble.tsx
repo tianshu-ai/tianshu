@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
 import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
+import { ClickableImage } from "./ui/ImageLightbox";
 import type {
   MergedAssistantBlock,
   MergedMessage,
@@ -386,6 +387,63 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const hasUi = uiResources.length > 0;
   const screenshots = (result?.text ?? "").match(SCREENSHOT_RE) ?? [];
   const hasScreenshots = screenshots.length > 0;
+  // Extract only the filename group so URL construction stays simple.
+  const generatedImageFilenames: string[] = [];
+  {
+    const txt = result?.text ?? "";
+    let m: RegExpExecArray | null;
+    const re = new RegExp(GENERATED_IMAGE_RE.source, "g");
+    while ((m = re.exec(txt)) !== null) {
+      if (m[1]) generatedImageFilenames.push(m[1]);
+    }
+  }
+  const hasGeneratedImages = generatedImageFilenames.length > 0;
+
+  // Generated images render like screenshots: auto-visible, thin header + images.
+  if (hasGeneratedImages && !hasUi) {
+    const body = (
+      <>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full select-none items-center gap-1.5 px-3 py-1.5 text-xs text-fg-faint hover:text-fg-muted transition-colors"
+        >
+          {isError ? (
+            <XCircle size={11} className="text-rose-400/70" />
+          ) : (
+            <CheckCircle2 size={11} className="text-emerald-500/60" />
+          )}
+          <code className="font-mono text-[12px] text-link">{call.name}</code>
+          <span className="ml-auto text-[10px] text-fg-fainter">
+            {expanded ? "hide details" : "details"}
+          </span>
+        </button>
+        <div className="px-3 pb-2 flex flex-wrap gap-2">
+          {generatedImageFilenames.map((fname, i) => (
+            <ClickableImage
+              key={i}
+              src={`/api/generated-images/${encodeURIComponent(fname)}`}
+              alt={fname}
+              imgClassName="max-h-96 max-w-md rounded-md border border-border-subtle shadow-sm hover:shadow-md transition-shadow"
+            />
+          ))}
+        </div>
+        {expanded && result && (
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] text-fg-muted">
+            {truncate(result.text, 4000)}
+          </pre>
+        )}
+      </>
+    );
+    if (inCard) {
+      return <div className="flex flex-col divide-y divide-border-subtle/60">{body}</div>;
+    }
+    return (
+      <div className="flex flex-col overflow-visible rounded-lg border border-border-subtle bg-bg-elevated/60 max-w-2xl divide-y divide-border-subtle/60 ai-bubble">
+        {body}
+      </div>
+    );
+  }
 
   // Screenshots render like MCP-UI: auto-visible, thin header + images.
   if (hasScreenshots && !hasUi) {
@@ -408,18 +466,11 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         </button>
         <div className="px-3 pb-2 flex flex-wrap gap-2">
           {screenshots.map((p, i) => (
-            <a
+            <ClickableImage
               key={i}
-              href={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
-              target="_blank"
-              rel="noopener"
-            >
-              <img
-                src={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
-                alt={p}
-                className="max-h-64 max-w-md rounded-md border border-border-subtle shadow-sm hover:shadow-md transition-shadow"
-              />
-            </a>
+              src={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
+              alt={p}
+            />
           ))}
         </div>
         {expanded && result && (
@@ -560,6 +611,9 @@ function truncate(s: string, max: number): string {
 
 /** Regex matching bridge-screenshots paths in tool result text. */
 const SCREENSHOT_RE = /bridge-screenshots\/[\w.-]+\.(?:png|jpg|jpeg|webp|gif)/g;
+
+/** Regex matching generated-images paths (from generate_image host tool). */
+const GENERATED_IMAGE_RE = /generated-images\/([\w.-]+\.(?:png|jpg|jpeg|webp|gif))/g;
 
 /** Strip the [System] Triggered at: ... prefix from cron text, keep only user message. */
 function stripSystemPrefix(text: string): string {

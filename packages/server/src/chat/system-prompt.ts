@@ -102,7 +102,7 @@ export interface PerTurnPromptHints {
  * Kept tight — every sentence here costs on every voice-mode turn.
  */
 function formatVoiceModeFragment(): string {
-  return [
+  const lines = [
     `## Voice reply mode`,
     `The user has enabled voice mode. Write your reply as if you were talking to them on a phone call — the ENTIRE reply is spoken aloud.`,
     ``,
@@ -161,7 +161,9 @@ function formatVoiceModeFragment(): string {
     `  后来投诉发现，两件事没有关系。`,
     ``,
     `Reminder: blank lines are your only pacing tool. No <chunk> tags. No numbered lists. Just prose with breathing room.`,
-  ].join("\n");
+  ];
+
+  return lines.join("\n");
 }
 
 export function defaultSystemPrompt(

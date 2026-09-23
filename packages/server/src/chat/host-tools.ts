@@ -18,6 +18,14 @@ import type { AgentTool } from "@tianshu-ai/plugin-sdk";
 import { tryAutoCompact } from "./compact-decision.js";
 import type { ToolExecutor } from "../tools/index.js";
 import { buildRecallToolCallTool, buildRecallRangeTool } from "./host-tools/recall-tools.js";
+import {
+  buildGenerateImageHostTool,
+  isImageGenEnabled,
+  listImageGenModels,
+} from "./host-tools/generate-image.js";
+import type { ResolvedConfig } from "../core/config.js";
+
+export { listImageGenModels, isImageGenEnabled };
 
 export interface HostToolsOpts {
   contextWindow: number | undefined;
@@ -32,6 +40,13 @@ export interface HostToolsOpts {
     db: import("better-sqlite3").Database;
     tenantId: string;
   };
+  /** Tenant config. When present and it has at least one image-gen
+   *  model, we register the built-in `generate_image` tool. */
+  config?: ResolvedConfig;
+  /** Optional AbortSignal forwarded to generate_image's fetch calls. */
+  signal?: AbortSignal;
+  /** User home dir (workspace/users/<userId>) for saving generated images. */
+  userHomeDir?: string;
 }
 
 /**
@@ -57,6 +72,12 @@ export function buildHostTools(opts: HostToolsOpts): Array<{ schema: Tool; execu
   const tools: Array<{ schema: Tool; executor: ToolExecutor }> = [compactContextTool(opts, ref)];
   if (opts.broadcast && opts.listPanels) {
     tools.push(switchPanelTool(opts.broadcast, opts.listPanels));
+  }
+  // generate_image only when the tenant explicitly picked an image-gen
+  // model. Leaving imageGenModelId empty disables the tool entirely
+  // — agents don't see it, regardless of what's in the catalog.
+  if (opts.config && isImageGenEnabled(opts.config)) {
+    tools.push(buildGenerateImageHostTool(opts.config, opts.userHomeDir, opts.signal));
   }
   // Attach ref to the array so the caller can grab it.
   (tools as unknown as { _compactRef: CompactToolRef })._compactRef = ref;

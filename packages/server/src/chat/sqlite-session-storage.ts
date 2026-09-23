@@ -156,6 +156,19 @@ export interface PendingUserAttachments {
   attachments: unknown[];
 }
 
+/**
+ * How many recent user turns to load full content for. Older entries
+ * get a lightweight stub instead — `progressiveHistoryTransform`
+ * would replace them with archived markers anyway, so we skip the
+ * expensive JSON parse at the SQL level.
+ *
+ * Must be >= the `recentTurnsToKeep` value used by
+ * `progressiveHistoryTransform` (default 5). We use a slightly
+ * higher margin (8) so the orphan filters still have enough
+ * real content to inspect in the transition zone.
+ */
+const CONTENT_PROJECTION_RECENT_TURNS = 8;
+
 export class SqliteSessionStorage
   implements SessionStorage<SqliteSessionMetadata>
 {
@@ -173,6 +186,8 @@ export class SqliteSessionStorage
    *  inline base64. Failed reads degrade to a short text note —
    *  same shape the chat handler used to write before N+6.4. */
   imageInflate: ImageInflateOptions | null = null;
+
+  private _cachedPath: { leafId: string; entries: SessionTreeEntry[] } | null = null;
 
   constructor(
     private readonly ctx: TenantContext,
@@ -252,6 +267,7 @@ export class SqliteSessionStorage
   }
 
   async appendEntry(entry: SessionTreeEntry): Promise<void> {
+    this._cachedPath = null;
     // If the chat handler stashed attachments for this turn,
     // splice them onto the first user message we persist.
     let mutated = entry;
@@ -368,31 +384,92 @@ export class SqliteSessionStorage
   async getPathToRoot(leafId: string | null): Promise<SessionTreeEntry[]> {
     dbg(`[storage] getPathToRoot called, session=${this.sessionId}, leafId=${leafId?.slice(0, 8)}`);
     if (!leafId) return [];
-    const rows = this.ctx.db
-      .prepare<[string], MessagesRow>(
-        `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
-         FROM messages WHERE session_id = ?
-         ORDER BY created_at ASC, rowid ASC`,
-      )
-      .all(this.sessionId);
-    const byId = new Map(rows.map((r) => [r.id, r] as const));
-    let path: SessionTreeEntry[] = [];
-    let cursor: string | null = leafId;
-    const guard = new Set<string>();
-    while (cursor) {
-      if (guard.has(cursor)) break;
-      guard.add(cursor);
-      const r = byId.get(cursor);
-      if (!r) break;
-      path.unshift(rowToEntry(r));
-      cursor = r.parent_id;
+
+    // ── Per-instance cache: same leafId within a turn skips re-query ──
+    if (this._cachedPath?.leafId === leafId) {
+      dbg(`[storage] getPathToRoot cache hit, session=${this.sessionId}`);
+      return this._cachedPath.entries;
     }
-    // Migration 004 guarantees every session's parent_id forms a
-    // strict chronological chain rooted at NULL, so the walk above
-    // covers every row when leafId is current. We deliberately
-    // don't paper over a short walk here — if it happens we want
-    // to see it (storage corruption / out-of-date leaf_id) rather
-    // than silently splice rows in.
+
+    // ── Phase 1: Recursive CTE — walk parent_id chain from leaf ──
+    // Only loads the active branch, not dead forks or orphaned rows.
+    // Skeleton query omits `content` and `entry_details` (the heavy
+    // columns) so we can decide which rows need full hydration.
+    interface SkeletonRow {
+      id: string;
+      session_id: string;
+      role: string;
+      parent_id: string | null;
+      entry_type: string;
+      created_at: number;
+    }
+    const skeleton = this.ctx.db
+      .prepare<[string, string, string], SkeletonRow>(
+        `WITH RECURSIVE ancestors AS (
+           SELECT id, session_id, role, parent_id, entry_type, created_at
+             FROM messages WHERE session_id = ? AND id = ?
+           UNION ALL
+           SELECT m.id, m.session_id, m.role, m.parent_id, m.entry_type, m.created_at
+             FROM messages m JOIN ancestors a ON m.id = a.parent_id
+             WHERE m.session_id = ?
+         )
+         SELECT * FROM ancestors ORDER BY created_at ASC`,
+      )
+      .all(this.sessionId, leafId, this.sessionId);
+
+    if (skeleton.length === 0) return [];
+
+    // ── Phase 2: Content projection — only load content for recent entries ──
+    // Count user-turn boundaries from the tail to find the cutoff.
+    // Entries beyond CONTENT_PROJECTION_RECENT_TURNS user turns get
+    // a stub — progressiveHistoryTransform would archive them anyway.
+    let userTurnsSeen = 0;
+    let contentBoundaryIdx = 0;
+    for (let i = skeleton.length - 1; i >= 0; i--) {
+      const row = skeleton[i]!;
+      if (row.role === "user" && row.entry_type === "message") {
+        userTurnsSeen++;
+        if (userTurnsSeen >= CONTENT_PROJECTION_RECENT_TURNS) {
+          contentBoundaryIdx = i;
+          break;
+        }
+      }
+    }
+
+    // Batch-fetch full rows only for the recent window.
+    const recentIds = skeleton.slice(contentBoundaryIdx).map((r) => r.id);
+    const fullRowMap = new Map<string, MessagesRow>();
+
+    // SQLite max variable number is 999; batch in chunks.
+    for (let i = 0; i < recentIds.length; i += 400) {
+      const batch = recentIds.slice(i, i + 400);
+      const placeholders = batch.map(() => "?").join(",");
+      const rows = this.ctx.db
+        .prepare<unknown[], MessagesRow>(
+          `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
+           FROM messages WHERE session_id = ? AND id IN (${placeholders})`,
+        )
+        .all(this.sessionId, ...batch);
+      for (const r of rows) fullRowMap.set(r.id, r);
+    }
+
+    // ── Phase 3: Assemble the path ──
+    let path: SessionTreeEntry[] = skeleton.map((s) => {
+      const full = fullRowMap.get(s.id);
+      if (full) return rowToEntry(full);
+      // Old entry beyond the content boundary — lightweight stub.
+      return rowToEntry({
+        id: s.id,
+        session_id: s.session_id,
+        role: s.role as MessagesRow["role"],
+        content: s.entry_type === "message" ? stubContentForRole(s.role) : "",
+        parent_id: s.parent_id,
+        entry_type: s.entry_type,
+        entry_details: s.entry_type !== "message" ? "{}" : null,
+        created_at: s.created_at,
+      });
+    });
+
     if (this.imageInflate) {
       const inflate = this.imageInflate;
       path = await Promise.all(
@@ -411,10 +488,6 @@ export class SqliteSessionStorage
     // the toolResult). Without this, Anthropic rejects with 400.
     if (STORAGE_DEBUG) {
       dbg(`[storage] getPathToRoot: ${path.length} entries before filter, session=${this.sessionId}`);
-      // Brute-force scan for tool-call id patterns — only useful
-      // when actively debugging orphaned-tool issues. Do NOT run
-      // this unconditionally: on a 200+ entry branch it
-      // JSON.stringify()'s every entry twice and dominates CPU.
       for (const entry of path) {
         const json = JSON.stringify(entry);
         const idMatches = json.match(/toolu_bdrk_[A-Za-z0-9]+/g);
@@ -440,13 +513,13 @@ export class SqliteSessionStorage
     }
     const filtered = filterOrphanedToolResults(path);
     const patched = patchDanglingToolCalls(filtered);
-    // Re-run orphan filter: patchDanglingToolCalls may have stripped
-    // toolCall blocks, turning their paired toolResults into new orphans.
     const refiltered = filterOrphanedToolResults(patched);
     const sanitized = stripNestedOrphanToolBlocks(refiltered);
     dbg(
       `[storage] getPathToRoot: ${sanitized.length} entries after filter (removed ${path.length - sanitized.length})`,
     );
+
+    this._cachedPath = { leafId, entries: sanitized };
     return sanitized;
   }
 
@@ -710,6 +783,41 @@ function safeParse(s: string): unknown {
   } catch {
     return null;
   }
+}
+
+// ─── Content projection stubs ─────────────────────────────────────
+// Minimal valid JSON for each role so rowToEntry/parseMessage produce
+// a well-typed entry without loading the real (potentially huge) content.
+
+const STUB_USER = JSON.stringify({
+  role: "user",
+  content: [{ type: "text", text: "[archived]" }],
+  timestamp: 0,
+});
+const STUB_ASSISTANT = JSON.stringify({
+  role: "assistant",
+  content: [{ type: "text", text: "[archived]" }],
+  stopReason: "stop",
+  usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: 0 },
+  api: "unknown",
+  provider: "unknown",
+  model: "unknown",
+  timestamp: 0,
+});
+const STUB_TOOL = JSON.stringify({
+  role: "toolResult",
+  toolCallId: "",
+  toolName: "",
+  content: [{ type: "text", text: "[archived]" }],
+  isError: false,
+  timestamp: 0,
+});
+
+function stubContentForRole(role: string): string {
+  if (role === "user") return STUB_USER;
+  if (role === "assistant") return STUB_ASSISTANT;
+  if (role === "tool") return STUB_TOOL;
+  return "";
 }
 
 // ─── Orphan filter ────────────────────────────────────────────────────

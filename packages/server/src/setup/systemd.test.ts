@@ -165,7 +165,7 @@ describe("systemd.renderUnit", () => {
       });
       expect(body).toContain("WorkingDirectory=/home/u/tianshu");
       expect(body).toContain("ExecStart=/usr/bin/npm run dev");
-      expect(body).toContain("Restart=on-failure");
+      expect(body).toContain("Restart=always");
       expect(body).toContain("WantedBy=default.target");
       expect(body).toContain(
         "StandardOutput=append:/tmp/fakestate/tianshu/log/tianshu-dev.out.log",

@@ -6,6 +6,130 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.64.0](https://github.com/tianshu-ai/tianshu/compare/v0.63.1...v0.64.0) (2026-09-23)
+
+
+### Features
+
+* add image-gen plugin with Gemini backend ([5bd0976](https://github.com/tianshu-ai/tianshu/commit/5bd0976c137f21f0847da771bcaa22417f95f173))
+* brand logo horizontal + transparent + light color ([29d0997](https://github.com/tianshu-ai/tianshu/commit/29d0997ec79624a7233e8db73274affd522ffda4))
+* brand logo uses CSS mask to follow theme colors ([314b5e9](https://github.com/tianshu-ai/tianshu/commit/314b5e9555b0c54b1d625df289b0808a7e23baa3))
+* chat images open in Lightbox modal instead of navigating ([472427a](https://github.com/tianshu-ai/tianshu/commit/472427aad765e606f8f329a46d43c4b5193970bb))
+* empty imageGenModelId disables generate_image tool ([ba0ef54](https://github.com/tianshu-ai/tianshu/commit/ba0ef54dd3908377a681f5d792b1703a5844fc2e))
+* generate_image as built-in host tool (no plugin needed) ([4b994b1](https://github.com/tianshu-ai/tianshu/commit/4b994b19f53f7fdf35abfeef649727775080c36f))
+* generate_image saves to workspace + renders in chat UI ([8ffb422](https://github.com/tianshu-ai/tianshu/commit/8ffb422bf66623f9a0c3e11c4bbb6689ae57e3a2))
+* image-gen adds Model dropdown in Settings ([2af89f1](https://github.com/tianshu-ai/tianshu/commit/2af89f10128855a1200566a079e236730b401f35))
+* image-gen plugin uses resolveModel to reuse configured providers ([497b5b4](https://github.com/tianshu-ai/tianshu/commit/497b5b4081afae68eefabec957a5901eb7c752b8))
+* sidebar brand mark uses Chinese calligraphy for 'Tianshu' ([966df75](https://github.com/tianshu-ai/tianshu/commit/966df75ae4a2ebc5ce59969b6bc7c22a35609c63))
+* sidebar brand mark uses generated Chinese calligraphy PNG ([e9f002b](https://github.com/tianshu-ai/tianshu/commit/e9f002b7255480608a51a6fc20c371f196b8b485))
+* sidebar brand mark uses Long Cang cursive + warm gradient ([92259c0](https://github.com/tianshu-ai/tianshu/commit/92259c0f560173de9f9b8a7ae6e06d5b1e152575))
+* sidebar brand mark uses modern rounded Chinese + sparkle ([5f733fd](https://github.com/tianshu-ai/tianshu/commit/5f733fdb8cf4845009bc3e07e30d0ef3ab09f320))
+
+
+### Bug Fixes
+
+* image-gen configSchema use valid field kinds (string/secret) ([cfef4c0](https://github.com/tianshu-ai/tianshu/commit/cfef4c0707320856d1710e45f556f436282aea92))
+* Lightbox zoom now uses discrete levels (fit / 100% / 200%) ([f5f7b23](https://github.com/tianshu-ai/tianshu/commit/f5f7b23b103170c0eacd7df237de7d9f185e0e2f))
+* tighter alpha cutoff on brand logo eliminates blue bg bleed ([6bfee62](https://github.com/tianshu-ai/tianshu/commit/6bfee62b00d7688b1b8b93991277d28d723548e5))
+
+
+### Refactor
+
+* image-gen auto-discovers image-gen models from tenant config ([75d43d5](https://github.com/tianshu-ai/tianshu/commit/75d43d5347084f17d9c3c0aa4031d9e1830e7928))
+
+## [0.63.1](https://github.com/tianshu-ai/tianshu/compare/v0.63.0...v0.63.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* skip auto-recovery on 4xx client errors to prevent retry loop ([91ad74c](https://github.com/tianshu-ai/tianshu/commit/91ad74cd4424be3b85bf42488420390ef1652d80))
+
+## [0.63.0](https://github.com/tianshu-ai/tianshu/compare/v0.62.0...v0.63.0) (2026-09-23)
+
+
+### Features
+
+* improve systemd service reliability for Linux deployments ([9f8c3c4](https://github.com/tianshu-ai/tianshu/commit/9f8c3c49f5795363efa01e8558049ab729c3bf44))
+
+
+### Performance
+
+* optimize getPathToRoot for large sessions — recursive CTE, content projection, path cache ([95908b7](https://github.com/tianshu-ai/tianshu/commit/95908b76c6b26bc56ce3e2f91dcc3c0815ecd74f))
+
+## [0.62.0](https://github.com/tianshu-ai/tianshu/compare/v0.61.0...v0.62.0) (2026-09-21)
+
+
+### Features
+
+* inject Qwen3-TTS prosody markup hints in voice mode ([18952d1](https://github.com/tianshu-ai/tianshu/commit/18952d1e56cded9c49a568f14acbfeceb89d32f9))
+
+
+### Reverts
+
+* remove Qwen3-TTS prosody markup from voice mode prompt ([079f285](https://github.com/tianshu-ai/tianshu/commit/079f28504c523d11705c8c599b45a0036cbae191))
+
+## [0.61.0](https://github.com/tianshu-ai/tianshu/compare/v0.60.2...v0.61.0) (2026-09-21)
+
+
+### Features
+
+* add 5 voice ref audio for Qwen3-TTS voice cloning ([13d166c](https://github.com/tianshu-ai/tianshu/commit/13d166c2c0213e7986a0a86b5a2aac5fcb1b90fc))
+* add start.sh for Qwen3-TTS server + fix install.sh & server.py ([b7635af](https://github.com/tianshu-ai/tianshu/commit/b7635af546998fec58fabeb362fb2045c660843b))
+* dynamic voice list for Qwen3-TTS from /health endpoint ([509b20c](https://github.com/tianshu-ai/tianshu/commit/509b20cf4784d32dc171f01961b4fb56402a7f88))
+
+
+### Bug Fixes
+
+* streaming GET path respects user-selected TTS provider ([7547f00](https://github.com/tianshu-ai/tianshu/commit/7547f00d42a0ef94fb6aa217c1c2b33bb712e1b2))
+
+## [0.60.2](https://github.com/tianshu-ai/tianshu/compare/v0.60.1...v0.60.2) (2026-09-21)
+
+
+### Bug Fixes
+
+* remove test-key-1 fallback from resolveApiKey ([8b70b1f](https://github.com/tianshu-ai/tianshu/commit/8b70b1f84f81c05ce10f908a788ecd808d97cc07))
+
+## [0.60.1](https://github.com/tianshu-ai/tianshu/compare/v0.60.0...v0.60.1) (2026-09-21)
+
+
+### Bug Fixes
+
+* **i18n:** add TTS nav entry to localizeCorePageLabel ([8c5aa82](https://github.com/tianshu-ai/tianshu/commit/8c5aa820a118afe93e37ddc06292722c703460ef))
+
+## [0.60.0](https://github.com/tianshu-ai/tianshu/compare/v0.59.1...v0.60.0) (2026-09-21)
+
+
+### Features
+
+* bundle qwen3-tts server.py into tianshu repo ([d3a3afa](https://github.com/tianshu-ai/tianshu/commit/d3a3afa43a7c9c6a0e28036f5eeff22223c9ba5e))
+* edge TTS also uses streaming GET playback ([ccc0dad](https://github.com/tianshu-ai/tianshu/commit/ccc0dadc4e76823928414520249b0dd8d6a5739b))
+* include TTS server in npm package, teach setup agent to find it ([9a72ae0](https://github.com/tianshu-ai/tianshu/commit/9a72ae02bcc074b3aa8be3aea5a7454eb92b3806))
+* one-click install.sh for Qwen3-TTS server ([6179d83](https://github.com/tianshu-ai/tianshu/commit/6179d835ec2bf6172e1b1e5a630e451136a66d7a))
+* **setup:** add TTS domain knowledge to setup agent ([e1d4c2e](https://github.com/tianshu-ai/tianshu/commit/e1d4c2ed96b877c2cf68f462f74fb071c89208bd))
+* streaming playback for qwentts — audio starts in ~450ms ([4b81e3e](https://github.com/tianshu-ai/tianshu/commit/4b81e3e146da092ecc4b6d41e7052970c85c3988))
+* **tts:** replace CosyVoice/Kokoro with Qwen3-TTS MLX ([ce38f7d](https://github.com/tianshu-ai/tianshu/commit/ce38f7d5c857a97ad39902475642d02b63a8fc43))
+* voice cloning support with yujie ref audio ([307aa1f](https://github.com/tianshu-ai/tianshu/commit/307aa1f651e64657075f4461491f270a8ae75d7c))
+
+
+### Bug Fixes
+
+* escape backticks in template string that broke TS build ([2d467d8](https://github.com/tianshu-ai/tianshu/commit/2d467d8c3275af86718b57a0d1f42d60246f8df2))
+* **setup:** clarify TTS is a built-in Tianshu feature ([d6c9556](https://github.com/tianshu-ai/tianshu/commit/d6c95560463b6625ab5b40207831e1ebafff0dca))
+* **setup:** resolve global config before reading defaultModelId ([fa33e2d](https://github.com/tianshu-ai/tianshu/commit/fa33e2d36b17b0d663414c3f4c4ad8c9339e63e1))
+* **setup:** stop rejecting test-key-1 as sentinel in probe ([3ee38f8](https://github.com/tianshu-ai/tianshu/commit/3ee38f829c3c7a960b733c0ccad2ab01a1ad13cf))
+* **wiki:** embedding diagnostics, Test Connection probe, and auto /v1 prefix ([fb38e18](https://github.com/tianshu-ai/tianshu/commit/fb38e18d62cf2215a0a81559ad53d48d29960143))
+
+
+### Performance
+
+* true streaming TTS — first chunk ~450ms regardless of text length ([b4d4152](https://github.com/tianshu-ai/tianshu/commit/b4d415292ece7ed8387dfddb33629369ba5dfa62))
+* upgrade default TTS model to 1.7B-bf16 for better quality ([c502124](https://github.com/tianshu-ai/tianshu/commit/c502124755c3a0f3e5ffaf2557cebb96bee0514d))
+
+
+### Documentation
+
+* support both venv and conda for Qwen3-TTS setup ([0bde798](https://github.com/tianshu-ai/tianshu/commit/0bde798045a092384838c463598810f788ccf04c))
+
 ## [0.59.1](https://github.com/tianshu-ai/tianshu/compare/v0.59.0...v0.59.1) (2026-09-20)
 
 

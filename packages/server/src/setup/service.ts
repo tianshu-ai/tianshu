@@ -26,6 +26,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import { getBackend, backendName } from "./service-backend.js";
+import * as systemd from "./systemd.js";
 import { findRepoRoot } from "./repo-root.js";
 import { resolveServerPort as coreResolveServerPort } from "../core/urls.js";
 
@@ -128,6 +129,29 @@ export async function runStatus(
       );
     } else {
       lines.push(`health:       not responding (${health.reason ?? "?"})`);
+    }
+    // On Linux, show systemd-specific health indicators.
+    if (backendName() === "systemd") {
+      const enabled = systemd.isEnabled(label);
+      const linger = systemd.isLingerEnabled();
+      lines.push(`auto-start:   ${enabled ? "yes" : "no  ← run: tianshu start"}`);
+      lines.push(`linger:       ${linger ? "yes" : "no  ← run: loginctl enable-linger"}`);
+      if (!enabled || !linger) {
+        lines.push("");
+        if (!enabled && !linger) {
+          lines.push(
+            "⚠ Service won't survive a reboot. Enable auto-start and linger:",
+          );
+          lines.push("  systemctl --user enable tianshu-prod.service");
+          lines.push("  loginctl enable-linger");
+        } else if (!enabled) {
+          lines.push("⚠ Service is not enabled for auto-start after reboot.");
+        } else {
+          lines.push(
+            "⚠ Linger is off — service won't auto-start after reboot unless someone logs in.",
+          );
+        }
+      }
     }
     if (!status.installed) {
       lines.push("");

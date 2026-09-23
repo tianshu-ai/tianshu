@@ -156,7 +156,7 @@ import {
   imageFitCacheKey,
 } from "./image-fit.js";
 
-const MAX_TURNS = 16;
+const MAX_TURNS = 9999;
 // Yu, 2026-09-18 10:29: warn when a single tool_result crosses this
 // size. Threshold picked to catch mvn/spring-boot-style firehose
 // output (typically 1-20MB) while ignoring routine tool results
@@ -304,7 +304,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       }
       case "prompt": {
-        if (aborter) aborter.abort(); // single in-flight prompt per socket
+        if (aborter) {
+          console.warn(`[handler] abort:new_prompt (previous turn superseded by new user message)`);
+          aborter.abort();
+        }
         aborter = new AbortController();
         // Slash-command: `/compact` runs an immediate compaction
         // pass without sending a fresh user prompt. Recognised when
@@ -355,7 +358,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // Resume the last turn of the current session in place (no new
         // user message). The client's auto-retry loop uses this so a
         // failed / interrupted run doesn't spawn duplicate prompts.
-        if (aborter) aborter.abort();
+        if (aborter) {
+          console.warn(`[handler] abort:retry (previous turn superseded by client retry)`);
+          aborter.abort();
+        }
         aborter = new AbortController();
         runPrompt({
           ctx,
@@ -376,6 +382,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       }
       case "abort": {
+        console.warn(`[handler] abort:user_stop (user clicked stop button)`);
         aborter?.abort();
         aborter = null;
         return;
@@ -685,6 +692,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const hostToolsDefs = buildHostTools({
     contextWindow: modelInfo.contextWindow,
     compactionSettings,
+    config: ctx.config,
+    userHomeDir: ctx.userHomeDir(userId),
     broadcast: (event, payload) => send({ type: "plugin_event", event, payload } as ServerMsg),
     listPanels: () => {
       if (!pluginRegistry) return [];
@@ -1022,6 +1031,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         lastAssistantRow = row;
         assistantTurns++;
         if (assistantTurns >= MAX_TURNS) {
+          console.warn(
+            `[handler] abort:max_turns session=${session.id} turns=${assistantTurns}/${MAX_TURNS}`,
+          );
           void harness.abort();
         }
       },
@@ -1213,6 +1225,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               (toolCalls.length ? ` toolCalls=[${toolCalls.join(",")}]` : "") +
               ` session=${session.id}`,
             );
+            // Permanent client errors (4xx) indicate a structural
+            // problem with the context (orphaned tool_result, bad
+            // message ordering, etc.) that no amount of retrying will
+            // fix. Skip auto-recovery for these — the orphan filters
+            // in getPathToRoot and the compaction path handle them on
+            // the next user-initiated turn.
+            const errMsg = parsed.errorMessage ?? "";
+            if (/\b4\d{2}\b/.test(errMsg) || /\b4\d{2} /.test(errMsg)) {
+              console.log(
+                `[handler] auto-recovery skipped: client error (4xx) is not retryable, session=${session.id}`,
+              );
+              needsRecovery = false;
+            }
           }
         } catch { /* not JSON or no stopReason */ }
         if (needsRecovery) {

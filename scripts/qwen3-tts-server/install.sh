@@ -18,8 +18,8 @@ set -euo pipefail
 
 VENV_DIR="${TIANSHU_TTS_VENV:-$HOME/.tianshu/qwen-tts-venv}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-MODEL_ID="mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-8bit"
-DEFAULT_VOICE="vivian"
+MODEL_ID="mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
+DEFAULT_VOICE="yujie"
 PORT=50000
 
 # ── Colors ────────────────────────────────────────────────────
@@ -96,17 +96,15 @@ info "Dependencies installed"
 # ── Step 5: Pre-download model ───────────────────────────────
 echo "Pre-downloading model ($MODEL_ID) ..."
 "$PY" -c "
-from mlx_audio.tts.generate import generate_audio
-import tempfile
-with tempfile.TemporaryDirectory() as d:
-    generate_audio(
-        text='test',
-        model='$MODEL_ID',
-        voice='$DEFAULT_VOICE',
-        output_path=d, file_prefix='warmup',
-        audio_format='wav', save=True, play=False, verbose=False,
-    )
-print('Model downloaded and verified.')
+from mlx_audio.tts import load_model
+import mlx.core as mx
+model = load_model(model_path='$MODEL_ID')
+print(f'Model loaded: type={getattr(model.config, \"tts_model_type\", \"base\")}, sample_rate={model.sample_rate}')
+# Warm up JIT
+for r in model.generate(text='test', verbose=False):
+    pass
+mx.clear_cache()
+print('Model downloaded, loaded, and verified.')
 " 2>&1 | grep -v 'Warning\|warning\|Fetching\|transformers\]'
 
 info "Model ready"
@@ -130,5 +128,5 @@ echo "  Then set in Tianshu:"
 echo "    TTS_PROVIDER=qwentts"
 echo "    TTS_URL=http://localhost:$PORT"
 echo ""
-echo "  Or switch in Tianshu UI: Settings → 语音合成 → Qwen3-TTS (本地)"
+echo "  Or switch in Tianshu UI: Settings → Text to Speech → Qwen3-TTS (Local)"
 echo ""
