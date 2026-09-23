@@ -18,7 +18,7 @@
  *       * ToolResultMessage → single-line stub with tool_call_id
  *   - Non-message entries (compaction, custom, session_info, etc.)
  *     are passed through unchanged.
- *   - The transform is a pure function over SessionTreeEntry[]; it
+ *   - The transform is a pure function over Entry[]; it
  *     does NOT mutate the session tree. The stubs are transient and
  *     only affect one turn's model context.
  *
@@ -28,7 +28,7 @@
  */
 
 import type {
-  SessionTreeEntry,
+  Entry,
   MessageEntry,
 } from "@earendil-works/pi-agent-core";
 import type {
@@ -73,7 +73,7 @@ const SYSTEM_INJECTED_USER_PREFIXES = [
 
 /** True when a MessageEntry is a real user-authored turn (as opposed
  *  to a tianshu-injected `role: "user"` system notice). */
-function isRealUserTurn(entry: SessionTreeEntry): boolean {
+function isRealUserTurn(entry: Entry): boolean {
   if (entry.type !== "message") return false;
   const m = entry.message;
   if (m.role !== "user") return false;
@@ -108,7 +108,7 @@ function isRealUserTurn(entry: SessionTreeEntry): boolean {
  * any MessageEntry that passes `isRealUserTurn` — tianshu-injected
  * `role: "user"` system notices don't count.
  */
-function countUserTurns(entries: readonly SessionTreeEntry[]): number {
+function countUserTurns(entries: readonly Entry[]): number {
   let n = 0;
   for (const e of entries) {
     if (isRealUserTurn(e)) n++;
@@ -124,7 +124,7 @@ function countUserTurns(entries: readonly SessionTreeEntry[]): number {
  * Used to split the branch into (older, recent) at a user-turn boundary.
  */
 function indexOfNthRecentUserTurn(
-  entries: readonly SessionTreeEntry[],
+  entries: readonly Entry[],
   n: number,
 ): number {
   let seen = 0;
@@ -247,8 +247,8 @@ export function progressiveHistoryTransform(
   const recentTurns = config.recentTurnsToKeep ?? DEFAULTS.recentTurnsToKeep;
 
   return function progressiveHistoryTransformImpl(
-    entries: readonly SessionTreeEntry[],
-  ): readonly SessionTreeEntry[] {
+    entries: readonly Entry[],
+  ): readonly Entry[] {
     const userTurns = countUserTurns(entries);
     if (userTurns < minTurns) return entries;
 
@@ -266,7 +266,7 @@ export function progressiveHistoryTransform(
       );
     }
 
-    const result: SessionTreeEntry[] = [];
+    const result: Entry[] = [];
     // Walk once to compute the absolute turn number for each real
     // user MessageEntry (1-indexed, spanning both old and new region).
     // Only real user turns advance the counter; system-injected user

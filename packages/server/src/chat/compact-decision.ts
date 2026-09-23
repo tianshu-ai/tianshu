@@ -21,14 +21,16 @@
 //     per-tenant override even though today the constant is true)
 
 import {
-  AgentHarness,
   DEFAULT_COMPACTION_SETTINGS,
-  Session as PiSession,
   estimateContextTokens,
   shouldCompact,
+  type AgentHarness,
+  type AgentLane,
   type AgentMessage,
   type CompactionSettings,
-  type SessionTreeEntry,
+  type Context,
+  type Entry,
+  type Session as PiSession,
 } from "@earendil-works/pi-agent-core";
 
 // ─── compaction helpers ───────────────────────────────────────────────
@@ -53,7 +55,7 @@ import {
 // the fork-on-explicit-request pattern.
 
 export interface ShouldCompactBranchInput {
-  branch: SessionTreeEntry[];
+  branch: Entry[];
   contextWindow: number | undefined;
   settings?: CompactionSettings;
 }
@@ -102,10 +104,13 @@ export function shouldCompactBranch(
  */
 export async function branchStillOverWindow(args: {
   piSession: PiSession;
+  context: Context;
   contextWindow: number | undefined;
 }): Promise<boolean> {
   try {
-    const branch = await args.piSession.getBranch();
+    // pi 0.85: session.getBranch() removed. findEntries(undefined,
+    // ctx) returns the full committed branch in the same order.
+    const branch = await args.piSession.findEntries(undefined, args.context);
     return shouldCompactBranch({ branch, contextWindow: args.contextWindow });
   } catch {
     return false;
@@ -175,13 +180,16 @@ function isNothingToCompact(err: unknown): boolean {
 export async function tryAutoCompact(args: {
   piSession: PiSession;
   harness: AgentHarness;
+  /** pi 0.85: compact() is now on AgentLane, not AgentHarness. */
+  lane: AgentLane;
+  context: Context;
   contextWindow: number | undefined;
   settings?: CompactionSettings;
 }): Promise<AutoCompactDecision> {
-  const { piSession, harness, contextWindow, settings } = args;
-  let branch: SessionTreeEntry[];
+  const { piSession, lane, context, contextWindow, settings } = args;
+  let branch: Entry[];
   try {
-    branch = await piSession.getBranch();
+    branch = await piSession.findEntries(undefined, context);
   } catch (err) {
     console.warn(
       `[chat] auto-compact decision failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -191,31 +199,44 @@ export async function tryAutoCompact(args: {
   if (!shouldCompactBranch({ branch, contextWindow, settings })) {
     return { compacted: false, reason: "below_threshold" };
   }
+  // pi 0.85: compute tokens before compact via estimateContextTokens
+  // because the old CompactionOutcome.tokensBefore is gone.
+  const messagesBefore = branch
+    .filter((e): e is Entry & { type: "message" } => e.type === "message")
+    .map((e) => (e as { message: unknown }).message as never);
+  const tokensBefore = estimateContextTokens(messagesBefore).tokens;
   try {
-    // Count entries visible to the LLM before compact (getPathToRoot
-    // already respects compaction cut points).
-    // getBranch returns the current visible branch (respects compaction
-    // cut points). Count messages the LLM would actually see.
-    const msgsBefore = branch.filter((e: { type: string }) => e.type === "message").length;
-    const result = await harness.compact();
-    // After compact, getBranch starts from the new compaction entry.
+    const msgsBefore = branch.filter((e) => e.type === "message").length;
+    // pi 0.85: lane.compact() returns Result<{compaction, run?}, ...>
+    // We check `ok` first; NothingToCompact is a typed error variant.
+    const result = await lane.compact(undefined, context);
+    if (!result.ok) {
+      // Typed error variants. NothingToCompact is expected when the
+      // tail is already a compaction entry with nothing new to fold.
+      const errName = (result.error as { _tag?: string })._tag;
+      if (errName === "NothingToCompact") {
+        return { compacted: false, reason: "nothing_to_compact" };
+      }
+      return {
+        compacted: false,
+        reason: "error",
+        error: (result.error as Error).message ?? String(result.error),
+      };
+    }
+    // Recount after compact.
     let msgsAfter = 0;
     try {
-      const afterBranch = await piSession.getBranch();
-      msgsAfter = afterBranch.filter((e: { type: string }) => e.type === "message").length;
+      const afterBranch = await piSession.findEntries(undefined, context);
+      msgsAfter = afterBranch.filter((e) => e.type === "message").length;
     } catch { /* best-effort */ }
     return {
       compacted: true,
-      tokensBefore: result.tokensBefore,
+      tokensBefore,
       summarisedCount: Math.max(0, msgsBefore - msgsAfter),
       keptCount: msgsAfter,
       reason: "compacted",
     };
   } catch (err) {
-    // "Nothing to compact" is the expected over-window-but-no-cut-point
-    // case (see AutoCompactDecision.reason). Surface it distinctly so
-    // the caller can fall back to fork+summarise instead of treating it
-    // as a hard error or pressing on with an oversized prompt.
     if (isNothingToCompact(err)) {
       return { compacted: false, reason: "nothing_to_compact" };
     }

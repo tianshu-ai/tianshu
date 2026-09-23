@@ -24,11 +24,10 @@ import {
   Session as PiSession,
   estimateContextTokens,
   shouldCompact,
-  type AgentHarnessEvent,
-  type AgentHarnessOwnEvent,
+  type HarnessEvent,
   type AgentMessage,
   type CompactionSettings,
-  type SessionTreeEntry,
+  type Entry,
 } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
@@ -966,7 +965,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   };
   signal.addEventListener("abort", onAbort, { once: true });
 
-  const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
+  const unsubscribe = harness.subscribe((event: HarnessEvent) => {
     const ev = event as { type?: string };
     if (ev.type === "tool_execution_start") {
       const tc = event as unknown as {
@@ -1456,7 +1455,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             isError: true,
             timestamp: Date.now(),
           } as ToolResultMessage,
-        } as SessionTreeEntry);
+        } as Entry);
       } catch (persistErr) {
         console.warn(
           `[handler] failed to persist synthetic toolResult for ${callId}: ${
@@ -1711,7 +1710,7 @@ async function prepareUserInput(
  * working unchanged.
  */
 function bridgeHarnessEventToWs(
-  event: AgentHarnessEvent,
+  event: HarnessEvent,
   args: {
     ctx: TenantContext;
     session: ChatSession;
@@ -1723,7 +1722,7 @@ function bridgeHarnessEventToWs(
 ): void {
   const { ctx, session, send, wireOpts, onAssistantPersisted, onStreamError } =
     args;
-  const e = event as AgentHarnessOwnEvent | { type: string };
+  const e = event as HarnessEvent;
 
   // Pi-low-level events first (text_delta etc).
   const lowType = (event as { type: string }).type;
@@ -2475,8 +2474,8 @@ function makeLogger(
 // (and others) reject the request with a 400.
 
 function filterOrphanedToolResults(
-  entries: readonly SessionTreeEntry[],
-): readonly SessionTreeEntry[] {
+  entries: readonly Entry[],
+): readonly Entry[] {
   // Collect all toolCall ids from assistant messages.
   const toolUseIds = new Set<string>();
   for (const entry of entries) {

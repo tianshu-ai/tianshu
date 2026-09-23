@@ -131,8 +131,11 @@ export interface SqliteSessionMetadata extends SessionMetadata {
   kind: "user" | "worker" | "system";
   /** Optional worker role tag (e.g. "llm"). */
   workerRole: string | null;
-  /** Parent session id (for forks). */
-  parentSessionId: string | null;
+  /** Parent session id (for forks). Undefined for root sessions.
+   *  Storage layer stores NULL in SQL; the mapper below converts
+   *  `NULL → undefined` so the type matches pi 0.85's SessionMetadata
+   *  contract (`parentSessionId?: string`). */
+  parentSessionId?: string;
   /** Session display title. */
   title: string | null;
 }
@@ -207,13 +210,14 @@ export class SqliteSessionStorage
     if (!row) throw new Error(`session not found: ${this.sessionId}`);
     return {
       id: row.id,
-      createdAt: new Date(row.created_at).toISOString(),
+      createdAt: row.created_at,
       tenantId: this.ctx.tenantId,
       userId: row.user_id,
       kind: row.kind as SqliteSessionMetadata["kind"],
       workerRole: row.worker_role,
-      parentSessionId: row.parent_id,
+      parentSessionId: row.parent_id ?? undefined,
       title: row.title,
+      storageVersion: 1,
     };
   }
 
