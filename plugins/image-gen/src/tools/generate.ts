@@ -10,6 +10,7 @@ import {
 } from "../providers/index.js";
 
 export interface ImageGenPluginConfig {
+  modelId?: string;
   defaultAspectRatio?: string;
 }
 
@@ -61,7 +62,8 @@ export function buildGenerateImageTool(
           ? args.aspect_ratio
           : cfg.defaultAspectRatio ?? "1:1";
 
-      // Auto-discover: pick the first image-gen model from tenant config
+      // Pick the configured model, or fall back to the first
+      // image-gen model in the tenant catalog.
       const imageModels = pluginCtx.listModels?.("image-gen") ?? [];
       if (imageModels.length === 0) {
         throw new Error(
@@ -69,7 +71,15 @@ export function buildGenerateImageTool(
           "Go to Settings → Models and add a model with mode \"image-gen\".",
         );
       }
-      const model = imageModels[0]!;
+      const model = cfg.modelId
+        ? (pluginCtx.resolveModel?.(cfg.modelId) ?? imageModels[0]!)
+        : imageModels[0]!;
+      if (model.mode !== "image-gen") {
+        throw new Error(
+          `Model "${model.id}" is not an image-gen model. " +
+          "Pick one from Settings → Image Generation."`,
+        );
+      }
 
       const geminiCfg: GeminiConfig = {
         baseUrl: model.baseUrl,

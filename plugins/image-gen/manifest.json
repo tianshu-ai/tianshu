@@ -2,7 +2,7 @@
   "id": "image-gen",
   "version": "0.1.0",
   "displayName": "Image Generation",
-  "description": "Generate images from text prompts. Automatically uses any image-gen model configured in Settings → Models.",
+  "description": "Generate images from text prompts. Pick which image-gen model to use from your configured models.",
   "category": "media",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
@@ -17,7 +17,15 @@
     ]
   },
   "configSchema": {
+    "customUI": "image-gen-settings",
     "fields": [
+      {
+        "key": "modelId",
+        "label": "Model",
+        "kind": "string",
+        "default": "",
+        "description": "Which image-gen model to use for generate_image tool."
+      },
       {
         "key": "defaultAspectRatio",
         "label": "Default Aspect Ratio",
@@ -29,8 +37,7 @@
           { "label": "9:16 (Portrait)", "value": "9:16" },
           { "label": "4:3", "value": "4:3" },
           { "label": "3:4", "value": "3:4" }
-        ],
-        "description": "Default aspect ratio when not specified in the prompt."
+        ]
       }
     ]
   }

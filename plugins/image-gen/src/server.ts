@@ -14,6 +14,8 @@ import {
 function readConfig(ctx: PluginContext): ImageGenPluginConfig {
   const raw = (ctx.pluginConfig ?? {}) as Record<string, unknown>;
   return {
+    modelId:
+      typeof raw.modelId === "string" && raw.modelId ? raw.modelId : undefined,
     defaultAspectRatio:
       typeof raw.defaultAspectRatio === "string"
         ? raw.defaultAspectRatio
@@ -42,6 +44,7 @@ const plugin: PluginServerModule = {
           const models = ctx.listModels?.("image-gen") ?? [];
           res.json({
             available: models.length > 0,
+            selectedModelId: cfg.modelId ?? null,
             models: models.map((m) => ({
               id: m.id,
               providerId: m.providerId,
