@@ -69,12 +69,12 @@ export default function Sidebar() {
         {isDefaultBrand ? (
           <div className="relative flex items-baseline" title="Tianshu">
             <span
-              className="bg-gradient-to-br from-indigo-300 to-violet-500 bg-clip-text text-transparent"
+              className="bg-gradient-to-br from-amber-200 via-amber-400 to-rose-500 bg-clip-text text-transparent"
               style={{
-                fontFamily: "'ZCOOL XiaoWei', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
-                fontSize: "1.75rem",
+                fontFamily: "'Long Cang', 'ZCOOL KuaiLe', 'STXingkai', 'KaiTi', 'PingFang SC', serif",
+                fontSize: "2.25rem",
                 lineHeight: 1,
-                letterSpacing: "0.05em",
+                letterSpacing: "0.02em",
                 fontWeight: 400,
               }}
             >
@@ -84,7 +84,7 @@ export default function Sidebar() {
             <svg
               viewBox="0 0 24 24"
               fill="currentColor"
-              className="pointer-events-none absolute -right-3 -top-1 h-3 w-3 text-violet-400"
+              className="pointer-events-none absolute -right-3.5 -top-1 h-3.5 w-3.5 text-amber-300"
               aria-hidden="true"
             >
               <path d="M12 0 L13.5 10.5 L24 12 L13.5 13.5 L12 24 L10.5 13.5 L0 12 L10.5 10.5 Z" />
