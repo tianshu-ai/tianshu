@@ -6,6 +6,37 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.64.0](https://github.com/tianshu-ai/tianshu/compare/v0.63.1...v0.64.0) (2026-09-23)
+
+
+### Features
+
+* add image-gen plugin with Gemini backend ([5bd0976](https://github.com/tianshu-ai/tianshu/commit/5bd0976c137f21f0847da771bcaa22417f95f173))
+* brand logo horizontal + transparent + light color ([29d0997](https://github.com/tianshu-ai/tianshu/commit/29d0997ec79624a7233e8db73274affd522ffda4))
+* brand logo uses CSS mask to follow theme colors ([314b5e9](https://github.com/tianshu-ai/tianshu/commit/314b5e9555b0c54b1d625df289b0808a7e23baa3))
+* chat images open in Lightbox modal instead of navigating ([472427a](https://github.com/tianshu-ai/tianshu/commit/472427aad765e606f8f329a46d43c4b5193970bb))
+* empty imageGenModelId disables generate_image tool ([ba0ef54](https://github.com/tianshu-ai/tianshu/commit/ba0ef54dd3908377a681f5d792b1703a5844fc2e))
+* generate_image as built-in host tool (no plugin needed) ([4b994b1](https://github.com/tianshu-ai/tianshu/commit/4b994b19f53f7fdf35abfeef649727775080c36f))
+* generate_image saves to workspace + renders in chat UI ([8ffb422](https://github.com/tianshu-ai/tianshu/commit/8ffb422bf66623f9a0c3e11c4bbb6689ae57e3a2))
+* image-gen adds Model dropdown in Settings ([2af89f1](https://github.com/tianshu-ai/tianshu/commit/2af89f10128855a1200566a079e236730b401f35))
+* image-gen plugin uses resolveModel to reuse configured providers ([497b5b4](https://github.com/tianshu-ai/tianshu/commit/497b5b4081afae68eefabec957a5901eb7c752b8))
+* sidebar brand mark uses Chinese calligraphy for 'Tianshu' ([966df75](https://github.com/tianshu-ai/tianshu/commit/966df75ae4a2ebc5ce59969b6bc7c22a35609c63))
+* sidebar brand mark uses generated Chinese calligraphy PNG ([e9f002b](https://github.com/tianshu-ai/tianshu/commit/e9f002b7255480608a51a6fc20c371f196b8b485))
+* sidebar brand mark uses Long Cang cursive + warm gradient ([92259c0](https://github.com/tianshu-ai/tianshu/commit/92259c0f560173de9f9b8a7ae6e06d5b1e152575))
+* sidebar brand mark uses modern rounded Chinese + sparkle ([5f733fd](https://github.com/tianshu-ai/tianshu/commit/5f733fdb8cf4845009bc3e07e30d0ef3ab09f320))
+
+
+### Bug Fixes
+
+* image-gen configSchema use valid field kinds (string/secret) ([cfef4c0](https://github.com/tianshu-ai/tianshu/commit/cfef4c0707320856d1710e45f556f436282aea92))
+* Lightbox zoom now uses discrete levels (fit / 100% / 200%) ([f5f7b23](https://github.com/tianshu-ai/tianshu/commit/f5f7b23b103170c0eacd7df237de7d9f185e0e2f))
+* tighter alpha cutoff on brand logo eliminates blue bg bleed ([6bfee62](https://github.com/tianshu-ai/tianshu/commit/6bfee62b00d7688b1b8b93991277d28d723548e5))
+
+
+### Refactor
+
+* image-gen auto-discovers image-gen models from tenant config ([75d43d5](https://github.com/tianshu-ai/tianshu/commit/75d43d5347084f17d9c3c0aa4031d9e1830e7928))
+
 ## [0.63.1](https://github.com/tianshu-ai/tianshu/compare/v0.63.0...v0.63.1) (2026-09-23)
 
 
