@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.63.1](https://github.com/tianshu-ai/tianshu/compare/v0.63.0...v0.63.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* skip auto-recovery on 4xx client errors to prevent retry loop ([91ad74c](https://github.com/tianshu-ai/tianshu/commit/91ad74cd4424be3b85bf42488420390ef1652d80))
+
 ## [0.63.0](https://github.com/tianshu-ai/tianshu/compare/v0.62.0...v0.63.0) (2026-09-23)
 
 
