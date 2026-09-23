@@ -388,8 +388,8 @@ export default function ModelsPage() {
         >
           <option value="">
             {imageGenModelOptions.length === 0
-              ? "— No image-gen models configured —"
-              : "— Use first available —"}
+              ? "— None (no image-gen models configured) —"
+              : "— None (disable image generation) —"}
           </option>
           {imageGenModelOptions.map((o) => (
             <option key={o.value} value={o.value}>
@@ -402,7 +402,7 @@ export default function ModelsPage() {
             )}
         </select>
         <p className="mt-1 text-[11px] text-fg-fainter">
-          Used by the built-in <code>generate_image</code> tool. Only models with mode <code>image-gen</code> are shown. When any image-gen model exists, the tool is available to agents.
+          Used by the built-in <code>generate_image</code> tool. Only models with mode <code>image-gen</code> are shown. Leave empty to hide the tool from agents entirely.
         </p>
       </div>
 

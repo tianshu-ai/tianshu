@@ -35,6 +35,20 @@ export function listImageGenModels(config: ResolvedConfig) {
   return listModels(config).filter((m) => m.mode === "image-gen");
 }
 
+/**
+ * Whether the generate_image tool should be registered for this tenant.
+ *
+ * Rule: only when `models.imageGenModelId` is explicitly set to a
+ * resolvable image-gen model. An empty / unset id means the operator
+ * intentionally left it off — do not fall back to "first available".
+ */
+export function isImageGenEnabled(config: ResolvedConfig): boolean {
+  const id = config.models?.imageGenModelId;
+  if (!id) return false;
+  const m = findModel(config, id);
+  return !!m && m.mode === "image-gen";
+}
+
 export function buildGenerateImageHostTool(
   config: ResolvedConfig,
   signal?: AbortSignal,
@@ -76,18 +90,19 @@ export function buildGenerateImageHostTool(
           ? a.aspect_ratio
           : "1:1";
 
-      // Pick the configured image-gen model, else the first available.
+      // Only use the explicitly configured image-gen model. When
+      // unset the tool is not registered at all (see isImageGenEnabled),
+      // so this branch only runs when the operator picked a model.
       const configuredId = config.models?.imageGenModelId;
-      let model = configuredId ? findModel(config, configuredId) : undefined;
+      const model = configuredId
+        ? findModel(config, configuredId)
+        : undefined;
       if (!model || model.mode !== "image-gen") {
-        model = listImageGenModels(config)[0];
-      }
-      if (!model) {
         return {
           ok: false,
           text:
-            "No image generation model available. Add a model with " +
-            'mode "image-gen" in Settings → Models.',
+            "No image generation model selected. Choose one in " +
+            "Settings → Models → Image generation model.",
         };
       }
 

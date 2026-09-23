@@ -20,11 +20,12 @@ import type { ToolExecutor } from "../tools/index.js";
 import { buildRecallToolCallTool, buildRecallRangeTool } from "./host-tools/recall-tools.js";
 import {
   buildGenerateImageHostTool,
+  isImageGenEnabled,
   listImageGenModels,
 } from "./host-tools/generate-image.js";
 import type { ResolvedConfig } from "../core/config.js";
 
-export { listImageGenModels };
+export { listImageGenModels, isImageGenEnabled };
 
 export interface HostToolsOpts {
   contextWindow: number | undefined;
@@ -70,8 +71,10 @@ export function buildHostTools(opts: HostToolsOpts): Array<{ schema: Tool; execu
   if (opts.broadcast && opts.listPanels) {
     tools.push(switchPanelTool(opts.broadcast, opts.listPanels));
   }
-  // generate_image only when tenant catalog has at least one image-gen model.
-  if (opts.config && listImageGenModels(opts.config).length > 0) {
+  // generate_image only when the tenant explicitly picked an image-gen
+  // model. Leaving imageGenModelId empty disables the tool entirely
+  // — agents don't see it, regardless of what's in the catalog.
+  if (opts.config && isImageGenEnabled(opts.config)) {
     tools.push(buildGenerateImageHostTool(opts.config, opts.signal));
   }
   // Attach ref to the array so the caller can grab it.
