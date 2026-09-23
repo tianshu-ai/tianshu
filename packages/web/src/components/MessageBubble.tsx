@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
 import { spokenTextFor } from "../hooks/useAutoSpeakReplies";
+import { ClickableImage } from "./ui/ImageLightbox";
 import type {
   MergedAssistantBlock,
   MergedMessage,
@@ -419,18 +420,12 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         </button>
         <div className="px-3 pb-2 flex flex-wrap gap-2">
           {generatedImageFilenames.map((fname, i) => (
-            <a
+            <ClickableImage
               key={i}
-              href={`/api/generated-images/${encodeURIComponent(fname)}`}
-              target="_blank"
-              rel="noopener"
-            >
-              <img
-                src={`/api/generated-images/${encodeURIComponent(fname)}`}
-                alt={fname}
-                className="max-h-96 max-w-md rounded-md border border-border-subtle shadow-sm hover:shadow-md transition-shadow"
-              />
-            </a>
+              src={`/api/generated-images/${encodeURIComponent(fname)}`}
+              alt={fname}
+              imgClassName="max-h-96 max-w-md rounded-md border border-border-subtle shadow-sm hover:shadow-md transition-shadow"
+            />
           ))}
         </div>
         {expanded && result && (
@@ -471,18 +466,11 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         </button>
         <div className="px-3 pb-2 flex flex-wrap gap-2">
           {screenshots.map((p, i) => (
-            <a
+            <ClickableImage
               key={i}
-              href={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
-              target="_blank"
-              rel="noopener"
-            >
-              <img
-                src={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
-                alt={p}
-                className="max-h-64 max-w-md rounded-md border border-border-subtle shadow-sm hover:shadow-md transition-shadow"
-              />
-            </a>
+              src={`/api/p/reverse-mcp/screenshot?path=${encodeURIComponent(p)}`}
+              alt={p}
+            />
           ))}
         </div>
         {expanded && result && (

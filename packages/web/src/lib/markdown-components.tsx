@@ -16,8 +16,9 @@
 //     element overrides here so every Markdown surface stays in
 //     sync.
 
-import type { ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import { rewriteWorkspaceUri } from "./workspace-uri.js";
+import { ImageLightbox } from "../components/ui/ImageLightbox";
 
 /** URL transform applied to both `[text](url)` and `![alt](src)`.
  *  Behaviour is intentionally symmetric: a `workspace://` link in
@@ -31,14 +32,26 @@ export function urlTransform(url: string): string {
 
 function MarkdownImg(props: ComponentProps<"img">) {
   const { src, alt, ...rest } = props;
+  const [open, setOpen] = useState(false);
   return (
-    <img
-      src={src}
-      alt={alt ?? ""}
-      loading="lazy"
-      className="my-2 max-h-96 max-w-full rounded-lg border border-border-default/50"
-      {...rest}
-    />
+    <>
+      <img
+        src={src}
+        alt={alt ?? ""}
+        loading="lazy"
+        onClick={() => src && setOpen(true)}
+        className="my-2 max-h-96 max-w-full cursor-zoom-in rounded-lg border border-border-default/50"
+        {...rest}
+      />
+      {src && (
+        <ImageLightbox
+          src={src}
+          alt={alt}
+          isOpen={open}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
   );
 }
 
