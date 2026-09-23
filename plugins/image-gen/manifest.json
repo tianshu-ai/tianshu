@@ -32,14 +32,14 @@
       {
         "key": "geminiBaseUrl",
         "label": "Gemini API Base URL",
-        "kind": "text",
+        "kind": "string",
         "default": "https://generativelanguage.googleapis.com",
         "description": "Gemini API endpoint. Change for proxies (e.g. SAP AI Proxy)."
       },
       {
         "key": "geminiApiKey",
         "label": "Gemini API Key",
-        "kind": "password",
+        "kind": "secret",
         "default": "",
         "description": "API key for Gemini. Leave empty if using a proxy that handles auth."
       },
