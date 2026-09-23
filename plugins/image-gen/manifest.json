@@ -2,7 +2,7 @@
   "id": "image-gen",
   "version": "0.1.0",
   "displayName": "Image Generation",
-  "description": "Generate images from text prompts using Gemini or ComfyUI. Agents call generate_image as a tool during conversation.",
+  "description": "Generate images from text prompts. Automatically uses any image-gen model configured in Settings → Models.",
   "category": "media",
   "author": "tianshu-ai",
   "license": "Apache-2.0",
@@ -13,29 +13,11 @@
       { "id": "generate_image", "module": "GenerateImageTool", "since": "0.1.0" }
     ],
     "apiRoutes": [
-      { "method": "GET", "path": "/status", "handler": "getStatus" },
-      { "method": "POST", "path": "/test", "handler": "testGenerate" }
+      { "method": "GET", "path": "/status", "handler": "getStatus" }
     ]
   },
   "configSchema": {
     "fields": [
-      {
-        "key": "provider",
-        "label": "Provider",
-        "kind": "select",
-        "default": "gemini",
-        "options": [
-          { "label": "Gemini", "value": "gemini" }
-        ],
-        "description": "Image generation backend."
-      },
-      {
-        "key": "modelId",
-        "label": "Model",
-        "kind": "string",
-        "default": "",
-        "description": "Full model ID from your configured providers (e.g. sap-gemini/gemini-2.0-flash-preview-image-generation). Must be an image-gen capable model."
-      },
       {
         "key": "defaultAspectRatio",
         "label": "Default Aspect Ratio",

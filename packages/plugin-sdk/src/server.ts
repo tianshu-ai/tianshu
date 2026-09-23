@@ -53,6 +53,13 @@ export interface PluginContext {
    * provider credentials in plugin config.
    */
   resolveModel?(modelId: string): ResolvedModelHandle | null;
+
+  /**
+   * List configured models, optionally filtered by mode.
+   * E.g. `listModels("image-gen")` returns only image generation models.
+   * Omit the argument to get all non-embedding models.
+   */
+  listModels?(mode?: string): ResolvedModelHandle[];
 }
 
 /** Connection info for a configured model, returned by PluginContext.resolveModel. */

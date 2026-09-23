@@ -10,8 +10,6 @@ import {
 } from "../providers/index.js";
 
 export interface ImageGenPluginConfig {
-  provider?: "gemini";
-  modelId?: string;
   defaultAspectRatio?: string;
 }
 
@@ -63,63 +61,52 @@ export function buildGenerateImageTool(
           ? args.aspect_ratio
           : cfg.defaultAspectRatio ?? "1:1";
 
-      const provider = cfg.provider ?? "gemini";
-
-      if (provider === "gemini") {
-        const modelId = cfg.modelId;
-        if (!modelId) {
-          throw new Error(
-            "No image generation model configured. Go to Settings → Image Generation and set a model ID.",
-          );
-        }
-
-        // Resolve model from tenant's configured providers
-        const model = pluginCtx.resolveModel?.(modelId);
-        if (!model) {
-          throw new Error(
-            `Model "${modelId}" not found in configured providers. Check Settings → Models.`,
-          );
-        }
-
-        const geminiCfg: GeminiConfig = {
-          baseUrl: model.baseUrl,
-          apiKey: model.apiKey,
-          model: model.modelId,
-          api: model.api,
-        };
-
-        ctx.log.info(
-          `generate_image: provider=${model.providerId} model=${model.modelId} ratio=${aspectRatio} prompt=${prompt.slice(0, 80)}...`,
+      // Auto-discover: pick the first image-gen model from tenant config
+      const imageModels = pluginCtx.listModels?.("image-gen") ?? [];
+      if (imageModels.length === 0) {
+        throw new Error(
+          "No image generation model configured. " +
+          "Go to Settings → Models and add a model with mode \"image-gen\".",
         );
+      }
+      const model = imageModels[0]!;
 
-        let result: ImageGenResult;
-        try {
-          result = await generateImage(
-            geminiCfg,
-            { prompt, aspectRatio },
-            ctx.signal,
-          );
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          ctx.log.error(`generate_image failed: ${msg}`);
-          throw new Error(`Image generation failed: ${msg}`);
-        }
+      const geminiCfg: GeminiConfig = {
+        baseUrl: model.baseUrl,
+        apiKey: model.apiKey,
+        model: model.modelId,
+        api: model.api,
+      };
 
-        // Return in the { ok, text, images } shape that
-        // agent-tool-adapter.ts's normaliseToolResult + extractImages
-        // recognises. The images array entries are passed through as
-        // ImageContent in the tool_result message, so the vision
-        // model can see the generated image on this turn.
-        const description =
-          result.text ?? `Generated image for: ${prompt.slice(0, 100)}`;
-        return {
-          ok: true,
-          text: description,
-          images: [{ base64: result.data, mimeType: result.mimeType }],
-        };
+      ctx.log.info(
+        `generate_image: provider=${model.providerId} model=${model.modelId} ratio=${aspectRatio} prompt=${prompt.slice(0, 80)}...`,
+      );
+
+      let result: ImageGenResult;
+      try {
+        result = await generateImage(
+          geminiCfg,
+          { prompt, aspectRatio },
+          ctx.signal,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        ctx.log.error(`generate_image failed: ${msg}`);
+        throw new Error(`Image generation failed: ${msg}`);
       }
 
-      throw new Error(`Unknown image-gen provider: ${provider}`);
+      // Return in the { ok, text, images } shape that
+      // agent-tool-adapter.ts's normaliseToolResult + extractImages
+      // recognises. The images array entries are passed through as
+      // ImageContent in the tool_result message, so the vision
+      // model can see the generated image on this turn.
+      const description =
+        result.text ?? `Generated image for: ${prompt.slice(0, 100)}`;
+      return {
+        ok: true,
+        text: description,
+        images: [{ base64: result.data, mimeType: result.mimeType }],
+      };
     },
   };
 }

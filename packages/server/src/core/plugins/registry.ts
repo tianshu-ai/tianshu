@@ -53,7 +53,7 @@ import type {
 import path from "node:path";
 import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu-ai/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
-import { findEmbeddingModel, findModel, resolveApiKey } from "../llm.js";
+import { findEmbeddingModel, findModel, listModels as listAllModels, resolveApiKey } from "../llm.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
 import {
   loadSkillsForPlugin,
@@ -1271,6 +1271,19 @@ function makePluginContext(args: {
         apiKey: resolveApiKey(info),
         mode: info.mode,
       };
+    },
+    listModels(mode?: string) {
+      let models = listAllModels(ctx.config);
+      if (mode) models = models.filter((m) => m.mode === mode);
+      return models.map((m) => ({
+        id: m.id,
+        providerId: m.providerId,
+        modelId: m.modelId,
+        api: m.api,
+        baseUrl: m.baseUrl,
+        apiKey: resolveApiKey(m),
+        mode: m.mode,
+      }));
     },
   };
 }
