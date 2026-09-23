@@ -32,9 +32,9 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.1",
-    "@types/react": "^19.2.17",
+    "@types/react": "^19.3.0",
     "lucide-react": "^1.30.0",
-    "react": "^19.2.8",
+    "react": "^19.3.0",
     "react-force-graph-2d": "^1.29",
     "typescript": "^7.0.2",
     "vitest": "^5.0.1"
