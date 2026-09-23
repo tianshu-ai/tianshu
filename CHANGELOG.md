@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.63.0](https://github.com/tianshu-ai/tianshu/compare/v0.62.0...v0.63.0) (2026-09-23)
+
+
+### Features
+
+* improve systemd service reliability for Linux deployments ([9f8c3c4](https://github.com/tianshu-ai/tianshu/commit/9f8c3c49f5795363efa01e8558049ab729c3bf44))
+
+
+### Performance
+
+* optimize getPathToRoot for large sessions — recursive CTE, content projection, path cache ([95908b7](https://github.com/tianshu-ai/tianshu/commit/95908b76c6b26bc56ce3e2f91dcc3c0815ecd74f))
+
 ## [0.62.0](https://github.com/tianshu-ai/tianshu/compare/v0.61.0...v0.62.0) (2026-09-21)
 
 
