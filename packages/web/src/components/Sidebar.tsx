@@ -67,18 +67,29 @@ export default function Sidebar() {
       {/* Header */}
       <div className="flex h-12 items-center border-b border-border-subtle px-4">
         {isDefaultBrand ? (
-          <span
-            className="text-fg-default"
-            style={{
-              fontFamily: "'Long Cang', 'Ma Shan Zheng', 'STXingkai', 'KaiTi', serif",
-              fontSize: "1.9rem",
-              lineHeight: 1,
-              letterSpacing: "0.08em",
-            }}
-            title="Tianshu"
-          >
-            天枢
-          </span>
+          <div className="relative flex items-baseline" title="Tianshu">
+            <span
+              className="bg-gradient-to-br from-indigo-300 to-violet-500 bg-clip-text text-transparent"
+              style={{
+                fontFamily: "'ZCOOL XiaoWei', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
+                fontSize: "1.75rem",
+                lineHeight: 1,
+                letterSpacing: "0.05em",
+                fontWeight: 400,
+              }}
+            >
+              天枢
+            </span>
+            {/* Sparkle decoration — four-pointed star, top-right of the wordmark */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="currentColor"
+              className="pointer-events-none absolute -right-3 -top-1 h-3 w-3 text-violet-400"
+              aria-hidden="true"
+            >
+              <path d="M12 0 L13.5 10.5 L24 12 L13.5 13.5 L12 24 L10.5 13.5 L0 12 L10.5 10.5 Z" />
+            </svg>
+          </div>
         ) : (
           <span className="text-lg font-semibold text-fg-default">{brandName}</span>
         )}
