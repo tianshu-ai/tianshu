@@ -1,17 +1,18 @@
 // ImageLightbox — click-to-zoom modal used everywhere in chat.
 //
 // Renders as a full-screen overlay with the image fitted inside;
-// click outside the image (or press ESC) to close, click the image
-// to toggle a 1:1 pixel view for detail inspection.
+// click outside the image (or press ESC) to close. Zoom cycles
+// through discrete levels: fit → 100% → 200% → back to fit.
 //
-// Deliberately does NOT reuse <Modal> because Modal's chrome
-// (title bar, size presets, backdrop card) is wrong for a
-// full-viewport image viewer. We want maximum image area with
-// minimal UI.
+// Fit mode uses object-contain against the viewport so a small
+// image fills as much vertical space as it can without going past
+// its natural bounds. 100% / 200% render at explicit CSS pixel
+// dimensions with a scrollable wrapper so users can pan around
+// large images.
 
 import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
-import { X, ZoomIn, ZoomOut, ExternalLink } from "lucide-react";
+import { X, ZoomIn, ZoomOut, ExternalLink, Maximize2 } from "lucide-react";
 
 export interface ImageLightboxProps {
   src: string;
@@ -19,6 +20,20 @@ export interface ImageLightboxProps {
   isOpen: boolean;
   onClose: () => void;
 }
+
+type ZoomLevel = "fit" | "100" | "200";
+
+const ZOOM_CYCLE: Record<ZoomLevel, ZoomLevel> = {
+  fit: "100",
+  "100": "200",
+  "200": "fit",
+};
+
+const ZOOM_LABEL: Record<ZoomLevel, string> = {
+  fit: "Fit",
+  "100": "100%",
+  "200": "200%",
+};
 
 let _portalRoot: HTMLElement | null = null;
 function getPortalRoot(): HTMLElement {
@@ -46,9 +61,7 @@ export function ClickableImage({
 }: {
   src: string;
   alt?: string;
-  /** Container styles (usually empty; the parent lays these out). */
   className?: string;
-  /** Styles applied to the thumbnail <img>. */
   imgClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
@@ -62,7 +75,10 @@ export function ClickableImage({
         <img
           src={src}
           alt={alt ?? "image"}
-          className={imgClassName ?? "max-h-64 max-w-md rounded-md border border-border-subtle shadow-sm hover:shadow-md transition-shadow"}
+          className={
+            imgClassName ??
+            "max-h-64 max-w-md rounded-md border border-border-subtle shadow-sm hover:shadow-md transition-shadow"
+          }
         />
       </button>
       <ImageLightbox
@@ -81,13 +97,25 @@ export function ImageLightbox({
   isOpen,
   onClose,
 }: ImageLightboxProps) {
-  const [zoomed, setZoomed] = useState(false);
+  const [zoom, setZoom] = useState<ZoomLevel>("fit");
+  // Track image natural dimensions so 100% / 200% can size the img
+  // element explicitly. Otherwise CSS max-h/max-w constraints
+  // silently keep the image at fit size even when the wrapper is
+  // scrollable, which is what made the old zoom feel broken.
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
 
-  // Close on ESC, lock body scroll while open.
+  // Close on ESC, cycle zoom on Space/=, lock body scroll.
   useEffect(() => {
     if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      else if (e.key === " " || e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        setZoom((z) => ZOOM_CYCLE[z]);
+      } else if (e.key === "-" || e.key === "0") {
+        e.preventDefault();
+        setZoom("fit");
+      }
     };
     document.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
@@ -98,22 +126,41 @@ export function ImageLightbox({
     };
   }, [isOpen, onClose]);
 
-  // Reset zoom whenever the modal reopens on a different image.
+  // Reset zoom + natural dims each time the modal reopens.
   useEffect(() => {
-    if (!isOpen) setZoomed(false);
+    if (!isOpen) {
+      setZoom("fit");
+      setNatural(null);
+    }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   const handleBackdropClick = (e: ReactMouseEvent) => {
-    // Only close if the click landed on the backdrop itself.
     if (e.target === e.currentTarget) onClose();
   };
 
+  const cycleZoom = () => setZoom((z) => ZOOM_CYCLE[z]);
+
   const handleImageClick = (e: ReactMouseEvent) => {
     e.stopPropagation();
-    setZoomed((v) => !v);
+    cycleZoom();
   };
+
+  // Build the <img> style for the current zoom level.
+  const zoomMultiplier =
+    zoom === "100" ? 1 : zoom === "200" ? 2 : null; // null = fit
+  const imgStyle =
+    zoomMultiplier !== null && natural
+      ? {
+          width: `${natural.w * zoomMultiplier}px`,
+          height: `${natural.h * zoomMultiplier}px`,
+          maxWidth: "none",
+          maxHeight: "none",
+        }
+      : undefined;
+
+  const isFit = zoom === "fit";
 
   return createPortal(
     <div
@@ -124,18 +171,58 @@ export function ImageLightbox({
       onClick={handleBackdropClick}
     >
       {/* Top-right controls */}
-      <div className="absolute right-3 top-3 flex items-center gap-1">
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-1">
+        {/* Zoom level pill (also cycles on click) */}
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            setZoomed((v) => !v);
+            cycleZoom();
           }}
-          className="rounded-md bg-white/10 p-1.5 text-white/90 hover:bg-white/20"
-          aria-label={zoomed ? "Zoom out" : "Zoom in"}
-          title={zoomed ? "Fit to screen" : "Actual size"}
+          className="rounded-md bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-white/90 hover:bg-white/20"
+          aria-label="Cycle zoom"
+          title="Cycle zoom (Space / = / -)"
         >
-          {zoomed ? <ZoomOut size={16} /> : <ZoomIn size={16} />}
+          {ZOOM_LABEL[zoom]}
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setZoom("fit");
+          }}
+          disabled={isFit}
+          className="rounded-md bg-white/10 p-1.5 text-white/90 hover:bg-white/20 disabled:cursor-default disabled:opacity-40"
+          aria-label="Fit to screen"
+          title="Fit to screen"
+        >
+          <Maximize2 size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setZoom((z) => (z === "200" ? "100" : z === "100" ? "fit" : "fit"));
+          }}
+          disabled={isFit}
+          className="rounded-md bg-white/10 p-1.5 text-white/90 hover:bg-white/20 disabled:cursor-default disabled:opacity-40"
+          aria-label="Zoom out"
+          title="Zoom out"
+        >
+          <ZoomOut size={16} />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setZoom((z) => (z === "fit" ? "100" : z === "100" ? "200" : "200"));
+          }}
+          className="rounded-md bg-white/10 p-1.5 text-white/90 hover:bg-white/20 disabled:cursor-default disabled:opacity-40"
+          disabled={zoom === "200"}
+          aria-label="Zoom in"
+          title="Zoom in"
+        >
+          <ZoomIn size={16} />
         </button>
         <a
           href={src}
@@ -159,10 +246,21 @@ export function ImageLightbox({
         </button>
       </div>
 
-      {/* Image itself. Fit-mode uses object-contain in the viewport,
-          zoomed mode shows the image at its natural size with a
-          scrollable wrapper. */}
-      {zoomed ? (
+      {/* Image content. Fit mode uses object-contain in the viewport,
+          zoomed modes place the natural-sized image inside a
+          scrollable wrapper so users can pan around large images. */}
+      {isFit ? (
+        <img
+          src={src}
+          alt={alt ?? "image"}
+          onClick={handleImageClick}
+          onLoad={(e) => {
+            const img = e.currentTarget;
+            setNatural({ w: img.naturalWidth, h: img.naturalHeight });
+          }}
+          className="max-h-[92vh] max-w-[92vw] cursor-zoom-in object-contain shadow-2xl"
+        />
+      ) : (
         <div
           className="max-h-[92vh] max-w-[92vw] overflow-auto"
           onClick={handleBackdropClick}
@@ -171,16 +269,16 @@ export function ImageLightbox({
             src={src}
             alt={alt ?? "image"}
             onClick={handleImageClick}
-            className="block cursor-zoom-out"
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              if (!natural) {
+                setNatural({ w: img.naturalWidth, h: img.naturalHeight });
+              }
+            }}
+            style={imgStyle}
+            className="block cursor-zoom-in"
           />
         </div>
-      ) : (
-        <img
-          src={src}
-          alt={alt ?? "image"}
-          onClick={handleImageClick}
-          className="max-h-[92vh] max-w-[92vw] cursor-zoom-in object-contain shadow-2xl"
-        />
       )}
     </div>,
     getPortalRoot(),
