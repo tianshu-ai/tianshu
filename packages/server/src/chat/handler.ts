@@ -1223,6 +1223,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               (toolCalls.length ? ` toolCalls=[${toolCalls.join(",")}]` : "") +
               ` session=${session.id}`,
             );
+            // Permanent client errors (4xx) indicate a structural
+            // problem with the context (orphaned tool_result, bad
+            // message ordering, etc.) that no amount of retrying will
+            // fix. Skip auto-recovery for these — the orphan filters
+            // in getPathToRoot and the compaction path handle them on
+            // the next user-initiated turn.
+            const errMsg = parsed.errorMessage ?? "";
+            if (/\b4\d{2}\b/.test(errMsg) || /\b4\d{2} /.test(errMsg)) {
+              console.log(
+                `[handler] auto-recovery skipped: client error (4xx) is not retryable, session=${session.id}`,
+              );
+              needsRecovery = false;
+            }
           }
         } catch { /* not JSON or no stopReason */ }
         if (needsRecovery) {
