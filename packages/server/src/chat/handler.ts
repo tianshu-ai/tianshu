@@ -693,6 +693,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     contextWindow: modelInfo.contextWindow,
     compactionSettings,
     config: ctx.config,
+    userHomeDir: ctx.userHomeDir(userId),
     broadcast: (event, payload) => send({ type: "plugin_event", event, payload } as ServerMsg),
     listPanels: () => {
       if (!pluginRegistry) return [];

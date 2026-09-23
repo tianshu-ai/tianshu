@@ -358,6 +358,7 @@ export async function runAgentLoop(
     contextWindow: modelInfo.contextWindow,
     compactionSettings: workerCompactionSettings,
     config: ctx.config,
+    userHomeDir: ctx.userHomeDir(userId),
     signal: externalSignal,
   });
   const toolset = await buildToolset({

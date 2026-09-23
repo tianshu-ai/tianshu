@@ -45,6 +45,8 @@ export interface HostToolsOpts {
   config?: ResolvedConfig;
   /** Optional AbortSignal forwarded to generate_image's fetch calls. */
   signal?: AbortSignal;
+  /** User home dir (workspace/users/<userId>) for saving generated images. */
+  userHomeDir?: string;
 }
 
 /**
@@ -75,7 +77,7 @@ export function buildHostTools(opts: HostToolsOpts): Array<{ schema: Tool; execu
   // model. Leaving imageGenModelId empty disables the tool entirely
   // — agents don't see it, regardless of what's in the catalog.
   if (opts.config && isImageGenEnabled(opts.config)) {
-    tools.push(buildGenerateImageHostTool(opts.config, opts.signal));
+    tools.push(buildGenerateImageHostTool(opts.config, opts.userHomeDir, opts.signal));
   }
   // Attach ref to the array so the caller can grab it.
   (tools as unknown as { _compactRef: CompactToolRef })._compactRef = ref;

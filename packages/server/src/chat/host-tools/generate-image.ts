@@ -8,11 +8,41 @@
 // image-gen model configured — see handler.ts where we skip
 // registration when listImageGenModels(config).length === 0.
 
+import * as fs from "node:fs";
+import * as path from "node:path";
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
 import type { ResolvedConfig } from "../../core/config.js";
 import { findModel, listModels, resolveApiKey } from "../../core/llm.js";
 import type { ToolExecutor } from "../../tools/index.js";
+
+const GENERATED_DIR = "generated-images";
+
+function extForMime(mime: string): string {
+  if (mime.includes("jpeg") || mime.includes("jpg")) return ".jpg";
+  if (mime.includes("webp")) return ".webp";
+  if (mime.includes("gif")) return ".gif";
+  return ".png";
+}
+
+function saveImageToWorkspace(
+  userHomeDir: string,
+  base64: string,
+  mimeType: string,
+): { relPath: string; absPath: string } | null {
+  try {
+    const dir = path.join(userHomeDir, GENERATED_DIR);
+    fs.mkdirSync(dir, { recursive: true });
+    const ext = extForMime(mimeType);
+    const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}${ext}`;
+    const absPath = path.join(dir, filename);
+    const bytes = Buffer.from(base64, "base64");
+    fs.writeFileSync(absPath, bytes);
+    return { relPath: `${GENERATED_DIR}/${filename}`, absPath };
+  } catch {
+    return null;
+  }
+}
 
 interface GenerateImageArgs {
   prompt?: string;
@@ -51,6 +81,7 @@ export function isImageGenEnabled(config: ResolvedConfig): boolean {
 
 export function buildGenerateImageHostTool(
   config: ResolvedConfig,
+  userHomeDir: string | undefined,
   signal?: AbortSignal,
 ): { schema: Tool; executor: ToolExecutor } {
   return {
@@ -176,9 +207,21 @@ export function buildGenerateImageHostTool(
       }
 
       const description = text ?? `Generated image for: ${prompt.slice(0, 100)}`;
+
+      // Save to workspace/generated-images/ so the UI can render it.
+      // The relPath is included in the tool text so the frontend regex
+      // can spot it and show an <img> pointing at /api/generated-images.
+      let textOut = description;
+      if (userHomeDir) {
+        const saved = saveImageToWorkspace(userHomeDir, imageData, imageMime);
+        if (saved) {
+          textOut = `${description}\n\n${saved.relPath}`;
+        }
+      }
+
       return {
         ok: true,
-        text: description,
+        text: textOut,
         images: [{ base64: imageData, mimeType: imageMime }],
       };
     },
