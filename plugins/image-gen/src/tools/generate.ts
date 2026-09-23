@@ -2,23 +2,22 @@
 // create an image from a text prompt during conversation.
 
 import { Type } from "typebox";
-import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
+import type { AgentTool, AgentToolContext, PluginContext } from "@tianshu-ai/plugin-sdk";
 import {
-  geminiGenerateImage,
+  generateImage,
   type GeminiConfig,
   type ImageGenResult,
 } from "../providers/index.js";
 
 export interface ImageGenPluginConfig {
   provider?: "gemini";
-  geminiBaseUrl?: string;
-  geminiApiKey?: string;
-  geminiModel?: string;
+  modelId?: string;
   defaultAspectRatio?: string;
 }
 
 export function buildGenerateImageTool(
   cfg: ImageGenPluginConfig,
+  pluginCtx: PluginContext,
 ): AgentTool {
   return {
     schema: {
@@ -67,30 +66,41 @@ export function buildGenerateImageTool(
       const provider = cfg.provider ?? "gemini";
 
       if (provider === "gemini") {
+        const modelId = cfg.modelId;
+        if (!modelId) {
+          throw new Error(
+            "No image generation model configured. Go to Settings → Image Generation and set a model ID.",
+          );
+        }
+
+        // Resolve model from tenant's configured providers
+        const model = pluginCtx.resolveModel?.(modelId);
+        if (!model) {
+          throw new Error(
+            `Model "${modelId}" not found in configured providers. Check Settings → Models.`,
+          );
+        }
+
         const geminiCfg: GeminiConfig = {
-          baseUrl:
-            cfg.geminiBaseUrl ??
-            "https://generativelanguage.googleapis.com",
-          apiKey: cfg.geminiApiKey ?? "",
-          model:
-            cfg.geminiModel ??
-            "gemini-2.0-flash-preview-image-generation",
+          baseUrl: model.baseUrl,
+          apiKey: model.apiKey,
+          model: model.modelId,
+          api: model.api,
         };
 
         ctx.log.info(
-          `generate_image: gemini model=${geminiCfg.model} ratio=${aspectRatio} prompt=${prompt.slice(0, 80)}...`,
+          `generate_image: provider=${model.providerId} model=${model.modelId} ratio=${aspectRatio} prompt=${prompt.slice(0, 80)}...`,
         );
 
         let result: ImageGenResult;
         try {
-          result = await geminiGenerateImage(
+          result = await generateImage(
             geminiCfg,
             { prompt, aspectRatio },
             ctx.signal,
           );
         } catch (err) {
-          const msg =
-            err instanceof Error ? err.message : String(err);
+          const msg = err instanceof Error ? err.message : String(err);
           ctx.log.error(`generate_image failed: ${msg}`);
           throw new Error(`Image generation failed: ${msg}`);
         }

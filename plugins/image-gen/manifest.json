@@ -30,29 +30,11 @@
         "description": "Image generation backend."
       },
       {
-        "key": "geminiBaseUrl",
-        "label": "Gemini API Base URL",
+        "key": "modelId",
+        "label": "Model",
         "kind": "string",
-        "default": "https://generativelanguage.googleapis.com",
-        "description": "Gemini API endpoint. Change for proxies (e.g. SAP AI Proxy)."
-      },
-      {
-        "key": "geminiApiKey",
-        "label": "Gemini API Key",
-        "kind": "secret",
         "default": "",
-        "description": "API key for Gemini. Leave empty if using a proxy that handles auth."
-      },
-      {
-        "key": "geminiModel",
-        "label": "Gemini Model",
-        "kind": "select",
-        "default": "gemini-2.0-flash-preview-image-generation",
-        "options": [
-          { "label": "Gemini 2.0 Flash (Preview)", "value": "gemini-2.0-flash-preview-image-generation" },
-          { "label": "Gemini 2.5 Flash", "value": "gemini-2.5-flash-preview-image-generation" }
-        ],
-        "description": "Which Gemini model to use for image generation."
+        "description": "Full model ID from your configured providers (e.g. sap-gemini/gemini-2.0-flash-preview-image-generation). Must be an image-gen capable model."
       },
       {
         "key": "defaultAspectRatio",

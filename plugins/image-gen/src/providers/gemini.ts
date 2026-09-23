@@ -13,7 +13,10 @@
 export interface GeminiConfig {
   baseUrl: string;
   apiKey: string;
+  /** The bare model name (no provider prefix), e.g. "gemini-2.0-flash-preview-image-generation". */
   model: string;
+  /** API protocol — "google-generative-ai" uses native Gemini, others use OpenAI compat. */
+  api: string;
 }
 
 export interface ImageGenRequest {
@@ -40,19 +43,30 @@ export async function generateImage(
   req: ImageGenRequest,
   signal?: AbortSignal,
 ): Promise<ImageGenResult> {
-  const { baseUrl, apiKey, model } = config;
+  const { baseUrl, apiKey, model, api } = config;
 
-  // Build the URL — Gemini native API uses :generateContent suffix
-  const url = apiKey
-    ? `${baseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`
-    : `${baseUrl}/v1beta/models/${model}:generateContent`;
+  // Native Gemini API: POST /v1beta/models/{model}:generateContent
+  // OpenAI-compat proxies: we still need the native endpoint for image gen
+  // because responseModalities is a Gemini-specific feature.
+  const isNative = api === "google-generative-ai";
 
+  let url: string;
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
-  // Some proxies (SAP AI Proxy) use Bearer auth instead of query param
-  if (!apiKey) {
-    // No auth — proxy handles it
+
+  if (isNative) {
+    // Native Gemini: API key in query param
+    url = apiKey
+      ? `${baseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`
+      : `${baseUrl}/v1beta/models/${model}:generateContent`;
+  } else {
+    // OpenAI-compat proxy (e.g. SAP AI Proxy) — use Bearer auth
+    // and the Gemini native path (proxy should forward it)
+    url = `${baseUrl}/v1beta/models/${model}:generateContent`;
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
   }
 
   const body = {

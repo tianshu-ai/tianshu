@@ -1,5 +1,5 @@
 export {
-  generateImage as geminiGenerateImage,
+  generateImage,
   type GeminiConfig,
   type ImageGenRequest,
   type ImageGenResult,

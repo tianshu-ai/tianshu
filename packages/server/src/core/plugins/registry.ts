@@ -53,7 +53,7 @@ import type {
 import path from "node:path";
 import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu-ai/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
-import { findEmbeddingModel } from "../llm.js";
+import { findEmbeddingModel, findModel, resolveApiKey } from "../llm.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
 import {
   loadSkillsForPlugin,
@@ -1259,6 +1259,19 @@ function makePluginContext(args: {
       broadcast?.(ctx.tenantId, `${pluginId}:${type}`, payload),
     capabilities,
     pluginConfig: readPluginConfig(ctx, pluginId),
+    resolveModel(modelId: string) {
+      const info = findModel(ctx.config, modelId);
+      if (!info) return null;
+      return {
+        id: info.id,
+        providerId: info.providerId,
+        modelId: info.modelId,
+        api: info.api,
+        baseUrl: info.baseUrl,
+        apiKey: resolveApiKey(info),
+        mode: info.mode,
+      };
+    },
   };
 }
 

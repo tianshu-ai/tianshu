@@ -11,7 +11,7 @@ import {
   type ImageGenPluginConfig,
 } from "./tools/generate.js";
 import {
-  geminiGenerateImage,
+  generateImage,
   type GeminiConfig,
 } from "./providers/index.js";
 
@@ -19,9 +19,7 @@ function readConfig(ctx: PluginContext): ImageGenPluginConfig {
   const raw = (ctx.pluginConfig ?? {}) as Record<string, unknown>;
   return {
     provider: (raw.provider as "gemini") ?? "gemini",
-    geminiBaseUrl: typeof raw.geminiBaseUrl === "string" ? raw.geminiBaseUrl : undefined,
-    geminiApiKey: typeof raw.geminiApiKey === "string" ? raw.geminiApiKey : undefined,
-    geminiModel: typeof raw.geminiModel === "string" ? raw.geminiModel : undefined,
+    modelId: typeof raw.modelId === "string" && raw.modelId ? raw.modelId : undefined,
     defaultAspectRatio: typeof raw.defaultAspectRatio === "string" ? raw.defaultAspectRatio : undefined,
   };
 }
@@ -30,25 +28,40 @@ const plugin: PluginServerModule = {
   activate(ctx: PluginContext): PluginServerExports {
     const cfg = readConfig(ctx);
     ctx.log.info(
-      `image-gen: provider=${cfg.provider ?? "gemini"}, model=${cfg.geminiModel ?? "default"}`,
+      `image-gen: provider=${cfg.provider ?? "gemini"}, modelId=${cfg.modelId ?? "(not set)"}`,
     );
 
     return {
       tools: {
-        GenerateImageTool: buildGenerateImageTool(cfg),
+        GenerateImageTool: buildGenerateImageTool(cfg, ctx),
       },
       routes: {
         // GET /api/p/image-gen/status — check if the provider is configured
         getStatus: async (_req: Request, res: Response) => {
           const provider = cfg.provider ?? "gemini";
-          const configured =
-            provider === "gemini"
-              ? !!(cfg.geminiBaseUrl || cfg.geminiApiKey)
-              : false;
+          const modelId = cfg.modelId;
+          let modelResolved = false;
+          let modelInfo: Record<string, unknown> = {};
+
+          if (modelId && ctx.resolveModel) {
+            const m = ctx.resolveModel(modelId);
+            if (m) {
+              modelResolved = true;
+              modelInfo = {
+                providerId: m.providerId,
+                modelId: m.modelId,
+                api: m.api,
+                baseUrl: m.baseUrl,
+                mode: m.mode,
+              };
+            }
+          }
+
           res.json({
             provider,
-            configured,
-            geminiModel: cfg.geminiModel ?? "gemini-2.0-flash-preview-image-generation",
+            modelId: modelId ?? null,
+            modelResolved,
+            modelInfo,
             defaultAspectRatio: cfg.defaultAspectRatio ?? "1:1",
           });
         },
@@ -60,17 +73,32 @@ const plugin: PluginServerModule = {
             res.status(400).json({ error: `Provider ${provider} not supported yet` });
             return;
           }
+
+          const modelId = cfg.modelId;
+          if (!modelId) {
+            res.status(400).json({ error: "No model configured. Set modelId in plugin settings." });
+            return;
+          }
+
+          const model = ctx.resolveModel?.(modelId);
+          if (!model) {
+            res.status(400).json({ error: `Model "${modelId}" not found in configured providers.` });
+            return;
+          }
+
           const geminiCfg: GeminiConfig = {
-            baseUrl: cfg.geminiBaseUrl ?? "https://generativelanguage.googleapis.com",
-            apiKey: cfg.geminiApiKey ?? "",
-            model: cfg.geminiModel ?? "gemini-2.0-flash-preview-image-generation",
+            baseUrl: model.baseUrl,
+            apiKey: model.apiKey,
+            model: model.modelId,
+            api: model.api,
           };
+
           const prompt =
             typeof req.body?.prompt === "string"
               ? req.body.prompt
               : "A cute cat wearing a tiny hat, digital art style";
           try {
-            const result = await geminiGenerateImage(
+            const result = await generateImage(
               geminiCfg,
               { prompt, aspectRatio: cfg.defaultAspectRatio ?? "1:1" },
               AbortSignal.timeout(30_000),
@@ -79,9 +107,7 @@ const plugin: PluginServerModule = {
               ok: true,
               mimeType: result.mimeType,
               text: result.text,
-              // Don't send full base64 in test — just confirm it worked
               dataLength: result.data.length,
-              preview: `data:${result.mimeType};base64,${result.data.slice(0, 100)}...`,
             });
           } catch (err) {
             res.status(500).json({
