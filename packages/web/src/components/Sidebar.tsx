@@ -67,24 +67,20 @@ export default function Sidebar() {
       {/* Header */}
       <div className="flex h-12 items-center border-b border-border-subtle px-4">
         {isDefaultBrand ? (
-          <div className="relative flex items-baseline" title="Tianshu">
-            <span
-              className="bg-gradient-to-br from-amber-200 via-amber-400 to-rose-500 bg-clip-text text-transparent"
+          <div className="relative flex items-center" title="Tianshu">
+            <img
+              src="/classical/tianshu-brand.png"
+              alt="天枢 Tianshu"
+              className="h-9 w-auto object-contain"
               style={{
-                fontFamily: "'Long Cang', 'ZCOOL KuaiLe', 'STXingkai', 'KaiTi', 'PingFang SC', serif",
-                fontSize: "2.25rem",
-                lineHeight: 1,
-                letterSpacing: "0.02em",
-                fontWeight: 400,
+                filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.35))",
               }}
-            >
-              天枢
-            </span>
+            />
             {/* Sparkle decoration — four-pointed star, top-right of the wordmark */}
             <svg
               viewBox="0 0 24 24"
               fill="currentColor"
-              className="pointer-events-none absolute -right-3.5 -top-1 h-3.5 w-3.5 text-amber-300"
+              className="pointer-events-none absolute -right-1 -top-0.5 h-3 w-3 text-amber-300"
               aria-hidden="true"
             >
               <path d="M12 0 L13.5 10.5 L24 12 L13.5 13.5 L12 24 L10.5 13.5 L0 12 L10.5 10.5 Z" />
