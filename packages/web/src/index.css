@@ -112,6 +112,26 @@
   --color-accent-hover:   #4263eb;
   --color-accent-faint:   rgba(76 110 245 / 0.1);
 
+  /* ─── Voice subtitle (VoiceSubtitleView filmstrip) ───
+   * Dark theme: cyan→white→lavender gradient over near-black
+   * canvas. Companion glows in matching hues. Non-current rows
+   * fade to white/alpha. */
+  --voice-current-gradient: linear-gradient(120deg, #a5d8ff 0%, #ffffff 50%, #d0bfff 100%);
+  --voice-current-glow-1:   rgba(165, 216, 255, 0.55);
+  --voice-current-glow-2:   rgba(208, 191, 255, 0.35);
+  --voice-past-1:           rgba(255, 255, 255, 0.35);
+  --voice-past-2:           rgba(255, 255, 255, 0.20);
+  --voice-past-3:           rgba(255, 255, 255, 0.10);
+  --voice-next-1:           rgba(255, 255, 255, 0.55);
+  --voice-next-2:           rgba(255, 255, 255, 0.28);
+  --voice-next-3:           rgba(255, 255, 255, 0.14);
+  /* Frosted-glass panel behind the currently-playing chunk. Very
+   * light fill + backdrop-filter blur in the component. Ring +
+   * shadow tune edge/depth. Dark theme: subtle white haze. */
+  --voice-current-panel-bg:     rgba(255, 255, 255, 0.05);
+  --voice-current-panel-ring:   rgba(255, 255, 255, 0.12);
+  --voice-current-panel-shadow: rgba(0, 0, 0, 0.25);
+
   --color-link:           #91a7ff;
   --color-success:        #10b981;
   --color-warning:        #f59e0b;
@@ -202,6 +222,25 @@
   --color-accent-hover:   #3b5bdb;          /* brand-800 */
   --color-accent-faint:   rgba(66 99 235 / 0.08);
 
+  /* ─── Voice subtitle (VoiceSubtitleView filmstrip) ───
+   * Light theme: indigo→slate→violet gradient. Non-current rows
+   * fade to slate-900/alpha (dark ink on light paper). Glows in
+   * indigo→violet to pop against the light canvas. */
+  --voice-current-gradient: linear-gradient(120deg, #4263eb 0%, #1e293b 50%, #6d28d9 100%);
+  --voice-current-glow-1:   rgba(66, 99, 235, 0.35);
+  --voice-current-glow-2:   rgba(109, 40, 217, 0.25);
+  --voice-past-1:           rgba(15, 23, 42, 0.45);
+  --voice-past-2:           rgba(15, 23, 42, 0.25);
+  --voice-past-3:           rgba(15, 23, 42, 0.12);
+  --voice-next-1:           rgba(15, 23, 42, 0.65);
+  --voice-next-2:           rgba(15, 23, 42, 0.35);
+  --voice-next-3:           rgba(15, 23, 42, 0.18);
+  /* Frosted-glass panel: light theme uses white haze with slate
+   * ring so it pops against paper background. */
+  --voice-current-panel-bg:     rgba(255, 255, 255, 0.55);
+  --voice-current-panel-ring:   rgba(15, 23, 42, 0.10);
+  --voice-current-panel-shadow: rgba(15, 23, 42, 0.12);
+
   --color-link:           #4263eb;          /* brand-700 */
   --color-success:        #059669;
   --color-warning:        #b45309;
@@ -279,6 +318,27 @@
   --color-accent:         #b5473b;          /* cinnabar / vermillion */
   --color-accent-hover:   #983a30;          /* deep cinnabar */
   --color-accent-faint:   rgba(181 71 59 / 0.08);
+
+  /* ─── Voice subtitle (VoiceSubtitleView filmstrip) ───
+   * Classical theme: cinnabar→concentrated ink→gilded bronze
+   * gradient — like a red seal on ink calligraphy. Non-current
+   * rows fade to ink-black/alpha. Glows in cinnabar→bronze to
+   * evoke lantern light through rice paper. */
+  --voice-current-gradient: linear-gradient(120deg, #b5473b 0%, #2d2823 50%, #8b6914 100%);
+  --voice-current-glow-1:   rgba(181, 71, 59, 0.40);
+  --voice-current-glow-2:   rgba(139, 105, 20, 0.30);
+  --voice-past-1:           rgba(45, 40, 35, 0.50);
+  --voice-past-2:           rgba(45, 40, 35, 0.28);
+  --voice-past-3:           rgba(45, 40, 35, 0.14);
+  --voice-next-1:           rgba(45, 40, 35, 0.70);
+  --voice-next-2:           rgba(45, 40, 35, 0.38);
+  --voice-next-3:           rgba(45, 40, 35, 0.18);
+  /* Frosted-glass panel: classical uses silk-white haze with a
+   * bamboo-strip ring so the pill looks like rice paper resting
+   * over the ink texture. */
+  --voice-current-panel-bg:     rgba(255, 250, 242, 0.55);
+  --voice-current-panel-ring:   rgba(45, 40, 35, 0.12);
+  --voice-current-panel-shadow: rgba(45, 40, 35, 0.15);
 
   --color-link:           #8b6914;          /* gilded bronze */
   --color-success:        #5a8c7d;          /* celadon glaze */

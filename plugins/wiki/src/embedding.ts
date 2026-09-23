@@ -66,19 +66,31 @@ async function embedOpenAI(
   inputs: string[],
   signal?: AbortSignal,
 ): Promise<number[][]> {
-  const base = (cfg.baseUrl ?? "").replace(/\/$/, "");
+  let base = (cfg.baseUrl ?? "").replace(/\/$/, "");
+  if (!/\/v\d/.test(base)) base = `${base}/v1`;
   const url = `${base}/embeddings`;
   const body: Record<string, unknown> = { model: cfg.model, input: inputs };
   if (cfg.dimensions) body.dimensions = cfg.dimensions;
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cfg.apiKey ? { Authorization: `Bearer ${cfg.apiKey}` } : {}),
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (fetchErr) {
+    const cause = (fetchErr as { cause?: { message?: string; code?: string } }).cause;
+    const detail = cause
+      ? `${cause.message ?? String(cause)}${cause.code ? ` [${cause.code}]` : ""}`
+      : "";
+    throw new Error(
+      `embeddings fetch to ${url} failed: ${(fetchErr as Error).message}${detail ? ` — ${detail}` : ""}`,
+    );
+  }
   if (!res.ok) {
     throw new Error(
       `embeddings ${res.status} [apiKey: ${keyHint(cfg.apiKey ?? "")}]: ${(await res.text()).slice(0, 200)}`,
@@ -125,18 +137,29 @@ async function embedGemini(
       ...(cfg.dimensions ? { output_dimensionality: cfg.dimensions } : {}),
     })),
   };
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      // Send the key BOTH ways: `x-goog-api-key` (Google/Gemini proxies)
-      // and `Authorization: Bearer` (OpenAI-style gateways). Harmless to
-      // send both; whichever the proxy reads wins.
-      ...(key ? { "x-goog-api-key": key, Authorization: `Bearer ${key}` } : {}),
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // Send the key BOTH ways: `x-goog-api-key` (Google/Gemini proxies)
+        // and `Authorization: Bearer` (OpenAI-style gateways). Harmless to
+        // send both; whichever the proxy reads wins.
+        ...(key ? { "x-goog-api-key": key, Authorization: `Bearer ${key}` } : {}),
+      },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (fetchErr) {
+    const cause = (fetchErr as { cause?: { message?: string; code?: string } }).cause;
+    const detail = cause
+      ? `${cause.message ?? String(cause)}${cause.code ? ` [${cause.code}]` : ""}`
+      : "";
+    throw new Error(
+      `embedContent fetch to ${url} failed: ${(fetchErr as Error).message}${detail ? ` — ${detail}` : ""}`,
+    );
+  }
   if (!res.ok) {
     throw new Error(
       `embedContent ${res.status} [apiKey: ${keyHint(key)}]: ${(await res.text()).slice(0, 200)}`,

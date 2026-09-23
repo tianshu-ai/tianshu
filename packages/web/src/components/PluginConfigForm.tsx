@@ -232,12 +232,12 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
               setTesting(true);
               setTestResult(null);
               try {
-                const res = await fetch(`/api/p/${plugin.id}/status`, { credentials: "include" });
+                const res = await fetch(`/api/p/${plugin.id}/status?probe=1`, { credentials: "include" });
                 const data = await res.json();
                 setTestResult({
                   ok: !!data.ok,
                   message: data.ok
-                    ? `Connected to ${data.uri || plugin.id} (${data.database || ""})`
+                    ? (data.message || `Connected to ${data.uri || plugin.id}${data.database ? ` (${data.database})` : ""}`)
                     : `Connection failed: ${data.error || "unknown error"}`,
                 });
               } catch (err) {

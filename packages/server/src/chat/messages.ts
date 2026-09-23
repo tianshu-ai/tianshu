@@ -245,6 +245,33 @@ export function loadAgentHistoryForSession(
         parsed.role === "assistant" ||
         parsed.role === "toolResult")
     ) {
+      // Skip broken assistant rows (stopReason=error/aborted).
+      //
+      // Motivation (Yu, 2026-09-16 20:38, session_fd95eae5): a
+      // provider 400 ("The conversation must end with a user
+      // message") wrote a broken assistant row to SQLite with
+      // stopReason="error". Every subsequent turn on that session
+      // loaded the broken row into messages, and pi-agent-core
+      // eventually shipped a request whose last message was that
+      // very broken assistant — provider 400'd again in a tight
+      // loop.
+      //
+      // The row is preserved on disk (session tree entry stays
+      // untouched, UI still renders the failed turn). We only
+      // drop it from the LLM-visible history the next turn is
+      // built on. A dropped assistant is also assumed to have
+      // no meaningful toolCalls to answer — pi never got to run
+      // them — so we do NOT need to also drop trailing tool
+      // results: the tool result chain is entirely broken here
+      // and any lingering toolResult rows will be filtered by
+      // the existing orphan sweeps (filterOrphanedToolResults,
+      // stripNestedOrphanToolBlocks).
+      if (
+        parsed.role === "assistant" &&
+        (parsed.stopReason === "error" || parsed.stopReason === "aborted")
+      ) {
+        continue;
+      }
       out.push(parsed);
       continue;
     }

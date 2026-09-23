@@ -49,6 +49,7 @@ import {
 } from "../core/llm.js";
 import {
   loadGlobalConfig,
+  mergeConfigs,
   writeGlobalConfig,
   writeTenantConfig,
   TenantConfigForbiddenFieldError,
@@ -306,6 +307,69 @@ GLOBAL VS TENANT CONFIG (config_read / config_write):
 - Trying to set a global-only field on a tenant returns
   \`error: tenant_forbidden_field\` with a hint. Switch to
   which='global' and retry.
+
+TEXT-TO-SPEECH (TTS):
+- Tianshu has a BUILT-IN voice mode. When a user clicks the 🎧
+  headphone icon in the chat UI, the assistant's replies are
+  automatically read aloud via TTS. Each message bubble also
+  gets a play button for on-demand playback. There is a
+  dedicated Settings page (Settings → 语音合成 / TTS) where
+  users pick the TTS engine and voice, and can preview with
+  a "试听" (test) button.
+- The TTS subsystem is SEPARATE from the LLM provider catalog.
+  TTS does NOT go through models.providers. It has its own
+  server route (/api/tts), its own env vars, and optionally
+  its own external Python server for local inference.
+- Two providers are supported:
+  * "edge" (default) — Microsoft Edge online TTS. Cloud-based,
+    no setup needed, works out of the box. Good quality but
+    needs internet.
+  * "qwentts" — Local Qwen3-TTS 0.6B MLX server. Runs on
+    Apple Silicon via MLX framework. RTF ~0.3x (3x faster than
+    realtime), 9 preset voices, 10 languages, fully offline.
+    Requires a separate Python server on port 50000.
+- Config env vars (in launchd plist or .env):
+  * TTS_PROVIDER=qwentts (or "edge")
+  * TTS_URL=http://localhost:50000 (where the TTS server runs)
+- The user can also switch providers in the Tianshu web UI:
+  Settings → 语音合成 (TTS).
+- Setting up Qwen3-TTS locally:
+  Tianshu ships a one-click install script at
+  scripts/qwen3-tts-server/install.sh. It handles everything:
+  checks Python >= 3.10, creates a venv at ~/.tianshu/qwen-tts-venv,
+  installs mlx-audio + FastAPI, downloads the model (~1.2 GB).
+
+  1. Find the install script. It ships inside the tianshu package:
+     * npm global install:
+       $(npm root -g)/@tianshu-ai/tianshu/scripts/qwen3-tts-server/install.sh
+     * git checkout: <repo>/scripts/qwen3-tts-server/install.sh
+     Use shell_exec with 'ls' to confirm the path exists.
+  2. Run it:
+     bash <path>/scripts/qwen3-tts-server/install.sh
+  3. After install, start the server:
+     ~/.tianshu/qwen-tts-venv/bin/python <path>/scripts/qwen3-tts-server/server.py \\
+       --port 50000 --voice vivian
+  4. Set TTS_PROVIDER=qwentts and TTS_URL=http://localhost:50000
+     in the launchd plist, then reload.
+  5. Full setup guide: scripts/QWEN3_TTS_SETUP.md
+
+  Prerequisite: Python >= 3.10 on Apple Silicon Mac. macOS ships
+  Python 3.9 which is TOO OLD. The install script will check and
+  tell the user to 'brew install python@3.11' if needed.
+- Available Qwen3-TTS voices: vivian (Chinese female, default),
+  uncle_fu (Chinese male), serena (English female), ryan
+  (English male), aiden, eric, dylan, ono_anna (Japanese),
+  sohee (Korean).
+- IMPORTANT: Do NOT try to add TTS models to models.providers.
+  TTS is a completely different protocol (text in → audio out,
+  not chat/completion). The provider framework doesn't support
+  it. When the user asks about TTS, guide them through the
+  env var + external server setup described above.
+- If the user asks to "configure Qwen3-TTS" or "set up local
+  TTS" or "启动语音合成", use config_write to set TTS_PROVIDER
+  and TTS_URL in the global config's server.env section (if
+  available), or tell them to edit the launchd plist manually
+  and point them to scripts/QWEN3_TTS_SETUP.md.
 
 WEB SEARCH (web-search plugin):
 - API keys go to SECRETS, not regular config. Use \`secret_write\`
@@ -2509,7 +2573,11 @@ export async function runCliAgent(opts: CliAgentOpts = {}): Promise<void> {
     );
     return;
   }
-  const info = getDefaultModel(config);
+  // Resolve global config through the same merge path the server uses
+  // so that models.defaultModelId is correctly picked up. Passing an
+  // empty tenant config means "pure global, no tenant overrides".
+  const resolved = mergeConfigs(config, {});
+  const info = getDefaultModel(resolved);
   if (!info) {
     p.log.error("No default model configured; finish the wizard first.");
     return;

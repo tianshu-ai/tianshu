@@ -164,10 +164,20 @@ export function findModel(
   return toModelInfo(providerId, provider, entry);
 }
 
-/** Resolve the configured default model, falling back to the first listed. */
+/**
+ * Resolve the configured default model, falling back to the first listed.
+ *
+ * Reads `models.defaultModelId` first (the canonical field, Yu
+ * decided 2026-09-17 00:58 to unify onto the nested location) and
+ * only falls back to top-level `config.defaultModel` for backward
+ * compatibility with existing config.json files. New config should
+ * write `models.defaultModelId`; top-level `defaultModel` is
+ * deprecated and will be removed in a future major.
+ */
 export function getDefaultModel(config: ResolvedConfig): ResolvedModelInfo | undefined {
-  if (config.defaultModel) {
-    const found = findModel(config, config.defaultModel);
+  const preferred = config.models?.defaultModelId ?? config.defaultModel;
+  if (preferred) {
+    const found = findModel(config, preferred);
     if (found) return found;
   }
   return listModels(config)[0];
@@ -194,13 +204,13 @@ export function buildModel(info: ResolvedModelInfo): Model<Api> {
 
 /**
  * Resolve the API key string for a model, expanding `${VAR}` placeholders.
- * Falls back to `DEFAULT_API_KEY` env, then to `"test-key-1"` (the
- * convention used by the closed-source repo's local SAP proxy).
+ * Falls back to `DEFAULT_API_KEY` env, then to empty string.
+ * Callers should treat empty as "no key configured".
  */
 export function resolveApiKey(info: ResolvedModelInfo): string {
   const expanded = expandEnvPlaceholders(info.apiKeyTemplate);
   if (expanded && expanded.length > 0) return expanded;
-  return process.env.DEFAULT_API_KEY ?? "test-key-1";
+  return process.env.DEFAULT_API_KEY ?? "";
 }
 
 // ─── internals ────────────────────────────────────────────────────

@@ -72,6 +72,12 @@ export function useVoiceInput(onResult: (text: string) => void) {
             method: "POST",
             headers: { "Content-Type": "audio/webm" },
             body: blob,
+            // Yu, 2026-09-19 13:37: POST was missing credentials so
+            // the auth cookie never went with the request — server
+            // saw an anonymous fetch and returned 401. The two other
+            // /api/transcribe/... fetches in this hook already had
+            // credentials:"include"; this one just got missed.
+            credentials: "include",
           });
           if (!res.ok) {
             console.error("[voice] transcribe failed:", res.status);

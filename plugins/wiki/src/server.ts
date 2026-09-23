@@ -58,6 +58,7 @@ import {
 } from "./vault.js";
 import { ingestSource } from "./ingest.js";
 import {
+  embed,
   embeddingEnabled,
   indexPage,
   reindexAll,
@@ -965,11 +966,9 @@ function buildRoutes(
     res.json({ hits: searchPages(ctx.userHomeDir(userId), q) });
   };
 
-  const status: PluginRouteHandler = (req: Request, res: Response) => {
+  const status: PluginRouteHandler = async (req: Request, res: Response) => {
     const userId = userIdFromReq(req);
     if (!userId) return void res.status(401).json({ error: "no user context" });
-    // Progress = where the time cursor sits within the message time
-    // span. Drives the ring on the record button.
     let progress = 0;
     let indexedDays = 0;
     let totalDays = 0;
@@ -982,7 +981,6 @@ function buildRoutes(
       } else if (span.max > 0 && cursor >= span.max) {
         progress = 1;
       }
-      // Count actual days with messages (not date-span approximation)
       const dc = messageDayCounts(ctx.db, userId, cursor);
       totalDays = dc.totalDays;
       indexedDays = dc.indexedDays;
@@ -990,8 +988,38 @@ function buildRoutes(
     } catch {
       /* best-effort */
     }
+    const isRunning = running.has(runKey(ctx.tenantId, userId));
+
+    // ?probe=1 (sent by Test Connection) fires a real embedding call;
+    // the indexing tab polls without it to avoid per-second API noise.
+    const shouldProbe = String(req.query.probe ?? "0") === "1";
+    let embProbe: { ok: boolean; detail: string };
+    if (!embeddingEnabled(cfg)) {
+      embProbe = { ok: true, detail: "keyword search (no embedding model)" };
+    } else if (!shouldProbe) {
+      embProbe = { ok: true, detail: `${cfg!.model}` };
+    } else {
+      try {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), 8000);
+        const [vec] = await embed(cfg, ["ping"], ac.signal);
+        clearTimeout(timer);
+        embProbe = { ok: true, detail: `${cfg!.model} — ${vec.length}d vector OK` };
+      } catch (err) {
+        embProbe = {
+          ok: false,
+          detail: `${cfg!.model} — ${err instanceof Error ? err.message : String(err)}`,
+        };
+      }
+    }
+
     res.json({
-      running: running.has(runKey(ctx.tenantId, userId)),
+      ok: embProbe.ok,
+      message: embProbe.ok
+        ? `Wiki active — ${embProbe.detail}, ${totalDays} days indexed`
+        : `Embedding probe failed: ${embProbe.detail}`,
+      error: embProbe.ok ? undefined : embProbe.detail,
+      running: isRunning,
       progress,
       indexedDays,
       totalDays,

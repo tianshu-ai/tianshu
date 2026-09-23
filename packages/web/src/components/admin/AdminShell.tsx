@@ -37,6 +37,7 @@ import { api, type PluginListEntry } from "../../lib/api";
 import { useT } from "../../hooks/useT";
 import { buildIdentityPath, clearIdentityCookie } from "../../dev-identity";
 import AsrModelsPage from "./AsrModelsPage";
+import TtsSettingsPage from "./TtsSettingsPage";
 import UsagePage from "./UsagePage";
 import McpServersPage from "./McpServersPage";
 import ModelsPage from "./ModelsPage";
@@ -170,6 +171,19 @@ const CORE_PAGES: FlatAdminPage[] = [
     coreComponent: AsrModelsPage as unknown as React.ComponentType<AdminPageProps>,
     group: "Platform",
     order: 7,
+    clientEntry: null,
+  },
+  {
+    pluginId: "core",
+    pluginDisplayName: "Tianshu",
+    pageId: "tts",
+    displayName: "Text-to-Speech",
+    icon: "Speaker",
+    kind: "core",
+    component: "TtsSettingsPage",
+    coreComponent: TtsSettingsPage as unknown as React.ComponentType<AdminPageProps>,
+    group: "Platform",
+    order: 8,
     clientEntry: null,
   },
   {
@@ -377,6 +391,8 @@ function localizeCorePageLabel(
       return t("admin.nav.mcp");
     case "asr":
       return t("admin.nav.asr");
+    case "tts":
+      return t("admin.nav.tts");
     case "usage":
       return t("admin.nav.usage");
     default:

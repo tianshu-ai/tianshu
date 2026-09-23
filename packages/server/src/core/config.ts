@@ -31,6 +31,16 @@ export type PluginsConfig = Record<
 
 /** Fields that BOTH global and tenant configs can set. Tenant wins on conflict. */
 export interface OverridableConfig {
+  /**
+   * @deprecated 2026-09-17 — Yu unified the default-model field
+   *   onto `models.defaultModelId`. Write there instead. This
+   *   top-level key is kept as a read fallback so existing config
+   *   files don't stop working, and the loader logs a one-time
+   *   migration hint when it sees the old field with the new one
+   *   empty. Removal target: next major after all known configs
+   *   have been migrated (grep `config.defaultModel` should hit
+   *   only the fallback branch by then).
+   */
   defaultModel?: string;
   /**
    * Default language the agent should reply in, injected into the
@@ -197,6 +207,12 @@ export interface ModelsCatalog {
    *  tianshu.models.json field; the Settings Models page reads/writes
    *  it. */
   defaultModelId?: string;
+  /** Optional model id for the built-in `generate_image` tool. Must
+   *  point at a `mode: "image-gen"` model in the catalog. When absent
+   *  and the catalog contains at least one image-gen model, the tool
+   *  uses the first one. When absent and no image-gen model exists,
+   *  the tool is hidden from the agent's toolset. */
+  imageGenModelId?: string;
   /** Cross-provider retry policy for transient LLM call failures
    *  (network, 429 rate-limit, 5xx, expired JWT/401). Applied at the
    *  single stream chokepoint in core/pi-models.ts, so it covers the
@@ -488,6 +504,12 @@ interface CacheEntry {
 }
 const configCache = new Map<string, CacheEntry>();
 
+// One-shot deprecation flag: log the "move defaultModel to
+// models.defaultModelId" hint once per process, no matter how
+// many tenants use the legacy key. Set true after the first log
+// so noisy startup with N tenants doesn't paper the console.
+let warnedAboutDeprecatedDefaultModel = false;
+
 /** Drop a cached entry (called after our own writes). */
 function invalidateConfigCache(filepath: string): void {
   configCache.delete(filepath);
@@ -589,15 +611,22 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
   // that defined `qwen` only; defaultModel inherited as
   // 'anthropic/claude-sonnet-4-6' from global.
   //
-  // Resolution rule:
-  //   1. tenant.defaultModel wins outright if set
-  //   2. else, if tenant brought its own models, pick the first
-  //      provider/model in that catalog (deterministic: tenant
-  //      author has full control by ordering)
-  //   3. else, inherit global.defaultModel (the original behaviour
-  //      for tenants that don't override models)
-  let defaultModel = tenant.defaultModel ?? global.defaultModel;
-  if (!tenant.defaultModel && tenant.models && models?.providers) {
+  // Resolution rule (Yu, 2026-09-17 00:58: unify onto
+  // models.defaultModelId, keep top-level defaultModel as a
+  // deprecated read fallback for existing config files):
+  //   1. tenant.models.defaultModelId wins if set (canonical location)
+  //   2. else tenant.defaultModel (deprecated top-level fallback)
+  //   3. else, if tenant brought its own models catalog, pick the
+  //      first provider/model in that catalog (deterministic:
+  //      tenant author has full control by ordering)
+  //   4. else, inherit global.models.defaultModelId, then
+  //      global.defaultModel (same order as tenant)
+  //   5. Warn once when only the deprecated key is populated so
+  //      operators know to migrate.
+  const tenantDefault = tenant.models?.defaultModelId ?? tenant.defaultModel;
+  const globalDefault = global.models?.defaultModelId ?? global.defaultModel;
+  let defaultModel = tenantDefault ?? globalDefault;
+  if (!tenantDefault && tenant.models && models?.providers) {
     const firstProviderId = Object.keys(models.providers)[0];
     const firstProvider = firstProviderId
       ? models.providers[firstProviderId]
@@ -605,6 +634,23 @@ export function mergeConfigs(global: GlobalConfig, tenant: TenantConfig): Resolv
     const firstModelId = firstProvider?.models?.[0]?.id;
     if (firstProviderId && firstModelId) {
       defaultModel = `${firstProviderId}/${firstModelId}`;
+    }
+  }
+
+  // Migration hint: some config had `defaultModel` at the top
+  // level but nothing at `models.defaultModelId`. Log once so
+  // operators know they're on the deprecated path; both keys
+  // resolve to the same value today, but the top-level one is
+  // going away in a future major.
+  if (
+    (tenant.defaultModel && !tenant.models?.defaultModelId) ||
+    (global.defaultModel && !global.models?.defaultModelId)
+  ) {
+    if (!warnedAboutDeprecatedDefaultModel) {
+      warnedAboutDeprecatedDefaultModel = true;
+      console.warn(
+        `[config] top-level 'defaultModel' is deprecated; move it to 'models.defaultModelId'. Both work today, but the top-level key will be removed in a future major.`,
+      );
     }
   }
 

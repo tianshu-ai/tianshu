@@ -99,9 +99,10 @@ const plugin: PluginServerModule = {
       const lastAnnounced = registerAnnounceCache.get(dedupKey);
       if (lastAnnounced == null || nowMs - lastAnnounced > REGISTER_DEDUP_MS) {
         registerAnnounceCache.set(dedupKey, nowMs);
-        ctx.log.info(
-          `bridge registered: user=${userId} device=${deviceId} tools=${tools.length}`,
-        );
+        // Silenced: heartbeat re-registers are deduped to once per
+        // REGISTER_DEDUP_MS, but even that is noisy at info level and
+        // PluginLogger has no debug(). First-connect is visible via
+        // the connections_changed broadcast + UI badge update.
       }
       // Note: the deduped re-registrations are intentionally silent.
       // If you ever need to prove the heartbeat is firing at expected

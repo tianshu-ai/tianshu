@@ -156,7 +156,24 @@ import {
   imageFitCacheKey,
 } from "./image-fit.js";
 
-const MAX_TURNS = 16;
+const MAX_TURNS = 9999;
+// Yu, 2026-09-18 10:29: warn when a single tool_result crosses this
+// size. Threshold picked to catch mvn/spring-boot-style firehose
+// output (typically 1-20MB) while ignoring routine tool results
+// (usually <10KB). Warn-level so it shows in the default log
+// stream without needing debug enabled.
+const LARGE_TOOL_RESULT_BYTES = 100_000;
+// Yu, 2026-09-19 00:38: warn when the pre-request pruneOldToolResults
+// pass takes long enough to be plausibly blocking the event loop.
+// session_fd95eae5 hit 1023 tool_results in context; if pruning that
+// many entries synchronously is the stall cause, this catches it.
+// 50ms threshold: routine sessions run in <5ms, so this stays
+// quiet in the healthy case; anything above is worth investigating.
+const PRUNE_SLOW_MS = 50;
+// Also warn on high message count even when fast — a large context
+// can be slow for OTHER sync work (JSON.stringify request payload,
+// SQLite row writes) not just prune. Fires as a heads-up.
+const PRUNE_LARGE_MSGS = 500;
 /** Max auto-continuations when the model hits maxTokens (stopReason=length). */
 const MAX_CONTINUATIONS = 3;
 
@@ -287,7 +304,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       }
       case "prompt": {
-        if (aborter) aborter.abort(); // single in-flight prompt per socket
+        if (aborter) {
+          console.warn(`[handler] abort:new_prompt (previous turn superseded by new user message)`);
+          aborter.abort();
+        }
         aborter = new AbortController();
         // Slash-command: `/compact` runs an immediate compaction
         // pass without sending a fresh user prompt. Recognised when
@@ -325,6 +345,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           pluginRegistry,
           homeDir,
           session: explicitSession,
+          voiceMode: parsed.voiceMode === true,
         }).catch((err) => {
           send({
             type: "stream_error",
@@ -337,7 +358,10 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // Resume the last turn of the current session in place (no new
         // user message). The client's auto-retry loop uses this so a
         // failed / interrupted run doesn't spawn duplicate prompts.
-        if (aborter) aborter.abort();
+        if (aborter) {
+          console.warn(`[handler] abort:retry (previous turn superseded by client retry)`);
+          aborter.abort();
+        }
         aborter = new AbortController();
         runPrompt({
           ctx,
@@ -358,6 +382,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       }
       case "abort": {
+        console.warn(`[handler] abort:user_stop (user clicked stop button)`);
         aborter?.abort();
         aborter = null;
         return;
@@ -436,6 +461,11 @@ interface RunPromptArgs {
   signal: AbortSignal;
   pluginRegistry?: import("../core/plugins/registry.js").PluginRegistry;
   homeDir?: string;
+  /** Yu, 2026-09-19: client had voice mode on when it sent the
+   *  prompt. When true, defaultSystemPrompt gets a per-turn hint to
+   *  inject the voice-summary fragment. Text-mode turns leave the
+   *  prompt unchanged. */
+  voiceMode?: boolean;
   /**
    * Optional explicit session. When provided, runPrompt skips the
    *  `ensureActiveSession(userId)` lookup and uses this session
@@ -629,16 +659,41 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         },
       ]
     : [];
+  // Compaction threshold defaults. Yu's 2026-09-16 23:13 report:
+  // "阈值比较低的话会频繁触发" — the previous default of
+  // triggerPercent=50 was inherited from an era of 8-16k context
+  // windows where "halfway full" was a real concern; on today's
+  // 200k+ opus/sonnet windows it means the session compacts
+  // roughly every 30 minutes of active tool-heavy work, and the
+  // user has to sit through a 30-60s summariser LLM call in
+  // between substeps.
+  //
+  // 80% is the operating point where:
+  //   * a typical assistant reply still has 40k+ headroom before
+  //     it would force a mid-turn compaction (which currently
+  //     surfaces as an Anthropic 400 orphan-tool-result loop — see
+  //     v0.53.4);
+  //   * `keepRecentTokens=20k` means the summariser has
+  //     window*0.8 - 20k ≈ 140k of "old" content to condense,
+  //     giving it a substantial run and making the resulting
+  //     summary genuinely durable (compacting 50k twice in a row
+  //     is strictly worse than compacting 100k once).
+  //
+  // Tenants that had explicitly configured a lower triggerPercent
+  // are unaffected — the ?? only kicks in when the field is
+  // absent. This is a default change, not an override.
   const compactionCfg = ctx.config.models?.compaction;
   const compactionSettings = compactionCfg ? {
     enabled: compactionCfg.enabled ?? true,
     reserveTokens: compactionCfg.reserveTokens ?? 16384,
     keepRecentTokens: compactionCfg.keepRecentTokens ?? 20000,
-    triggerPercent: compactionCfg.triggerPercent ?? 50,
-  } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 50 };
+    triggerPercent: compactionCfg.triggerPercent ?? 80,
+  } : { enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80 };
   const hostToolsDefs = buildHostTools({
     contextWindow: modelInfo.contextWindow,
     compactionSettings,
+    config: ctx.config,
+    userHomeDir: ctx.userHomeDir(userId),
     broadcast: (event, payload) => send({ type: "plugin_event", event, payload } as ServerMsg),
     listPanels: () => {
       if (!pluginRegistry) return [];
@@ -796,6 +851,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       userOnboarding: mainConfig.overrides.userOnboarding,
       customFragments: mainConfig.customFragments,
     },
+    { voiceMode: args.voiceMode === true },
   );
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
   // pi 0.80: the harness owns a `Models` instance and resolves auth
@@ -842,9 +898,25 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Tool-result aging: hook into harness's "context" event.
   // @ts-expect-error — harness.on type doesn't expose "context" in generic
   const unsubscribePrune = harness.on("context", (event: { messages: Array<{ role: string; content?: unknown }> }) => {
+    // Yu, 2026-09-19 00:38: session_fd95eae5 was aborting with 1023
+    // tool_results in context. This function fires on every provider
+    // request; if it's the event-loop-block culprit, the timing here
+    // (plus messageCount) will show it. Slow-path warn threshold
+    // picked so routine sessions stay quiet while pathological ones
+    // stand out. Also cheap: process.hrtime.bigint() is ~20ns.
+    const startedAt = process.hrtime.bigint();
+    const messageCount = event.messages.length;
     const pruned = pruneOldToolResults(event.messages, toolResultCfg);
+    const durationMs = Number(
+      (process.hrtime.bigint() - startedAt) / 1_000_000n,
+    );
     if (pruned > 0) {
       console.log(`[handler] pruned ${pruned} old tool result(s) from context`);
+    }
+    if (durationMs >= PRUNE_SLOW_MS || messageCount >= PRUNE_LARGE_MSGS) {
+      log.warn(
+        `prune_slow session=${session.id} messages=${messageCount} pruned=${pruned} duration_ms=${durationMs}`,
+      );
     }
     return { messages: event.messages };
   });
@@ -853,10 +925,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const compactRef = getCompactRef(hostToolsDefs);
   compactRef.piSession = piSession;
   compactRef.harness = harness;
-
-  // External abort → harness.abort()
-  const onAbort = () => void harness.abort();
-  signal.addEventListener("abort", onAbort, { once: true });
 
   // Register this harness in the process-local registry so the
   // session inbox can route a live `enqueue()` through
@@ -877,6 +945,26 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     string,
     { name: string; startedAt: bigint }
   >();
+
+  // External abort → harness.abort(). Yu, 2026-09-18 10:29:
+  // log the in-flight tool state so we can later correlate
+  // aborts with large-result tools (the leading hypothesis for
+  // the "整个 3110 卡" pattern). Cheap — outstandingToolCalls
+  // is a small Map (usually 0-2 entries).
+  const onAbort = () => {
+    if (outstandingToolCalls.size > 0) {
+      const inFlight = Array.from(outstandingToolCalls.entries())
+        .map(([id, meta]) => `${meta.name}#${id}@${elapsedMs(meta.startedAt)}ms`)
+        .join(",");
+      log.warn(
+        `abort_context session=${session.id} in_flight_tools=${outstandingToolCalls.size} tools=[${inFlight}]`,
+      );
+    } else {
+      log.debug(`abort_context session=${session.id} in_flight_tools=0`);
+    }
+    void harness.abort();
+  };
+  signal.addEventListener("abort", onAbort, { once: true });
 
   const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
     const ev = event as { type?: string };
@@ -917,6 +1005,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         log.debug(
           `tool_end name=${started.name} id=${te.toolCallId} duration_ms=${duration} outcome=${outcome} result_bytes=${resultBytes}`,
         );
+        // Yu, 2026-09-18 10:29: warn on any tool_result larger than
+        // LARGE_TOOL_RESULT_BYTES (100KB). Correlation with abort
+        // patterns is our best signal for the "整个 3110 卡" issue.
+        // Cheap check — resultBytes already computed above.
+        if (resultBytes >= LARGE_TOOL_RESULT_BYTES) {
+          log.warn(
+            `tool_result_large name=${started.name} id=${te.toolCallId} duration_ms=${duration} outcome=${outcome} bytes=${resultBytes} session=${session.id} aborted=${signal.aborted}`,
+          );
+        }
       } else {
         // Endpoint fired without a matching start — either recovery
         // path or the start event was swallowed. Log so we notice.
@@ -934,6 +1031,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         lastAssistantRow = row;
         assistantTurns++;
         if (assistantTurns >= MAX_TURNS) {
+          console.warn(
+            `[handler] abort:max_turns session=${session.id} turns=${assistantTurns}/${MAX_TURNS}`,
+          );
           void harness.abort();
         }
       },
@@ -1125,6 +1225,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               (toolCalls.length ? ` toolCalls=[${toolCalls.join(",")}]` : "") +
               ` session=${session.id}`,
             );
+            // Permanent client errors (4xx) indicate a structural
+            // problem with the context (orphaned tool_result, bad
+            // message ordering, etc.) that no amount of retrying will
+            // fix. Skip auto-recovery for these — the orphan filters
+            // in getPathToRoot and the compaction path handle them on
+            // the next user-initiated turn.
+            const errMsg = parsed.errorMessage ?? "";
+            if (/\b4\d{2}\b/.test(errMsg) || /\b4\d{2} /.test(errMsg)) {
+              console.log(
+                `[handler] auto-recovery skipped: client error (4xx) is not retryable, session=${session.id}`,
+              );
+              needsRecovery = false;
+            }
           }
         } catch { /* not JSON or no stopReason */ }
         if (needsRecovery) {
@@ -1246,6 +1359,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         `[handler] pi state-error; skipping recovery-agent spawn (session=${session.id})`,
       );
     }
+
+    // Catch-block errors (exceptions) are NOT auto-retried via inbox.
+    // Only the post-waitForIdle path (stopReason=error/aborted) does
+    // inbox recovery, because those are known-transient bridge drops.
+    // Retrying arbitrary exceptions caused infinite processing loops
+    // (Yu, 2026-09-16).
     // Self-recovery: spawn a recovery agent in an isolated
     // session so it can diagnose what crashed + nudge this
     // session back to life. Dedupe is handled inside
@@ -1412,7 +1531,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Still gated on compacted + !aborted: if compaction skipped
   // (below threshold) or the turn was aborted, injecting a note
   // would just add noise.
-  console.log(`[handler] post-turn: compacted=${compacted} signal.aborted=${signal.aborted} session=${session.id}`);
   if (compacted && !signal.aborted) {
     let hadToolCalls = false;
     const lastRow = lastAssistantRow as ChatMessage | null;

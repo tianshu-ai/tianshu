@@ -399,7 +399,7 @@ async function startViaServiceManager(
   p.log.success(`Wrote ${kind} → ${plistPath}`);
 
   // Load + start. On macOS: launchctl bootstrap (RunAtLoad + KeepAlive).
-  // On Linux: systemctl --user enable --now (Restart=on-failure).
+  // On Linux: systemctl --user enable --now (Restart=always).
   const bootRes = backend.bootstrap(plistPath);
   if (!bootRes.ok) {
     p.log.error(

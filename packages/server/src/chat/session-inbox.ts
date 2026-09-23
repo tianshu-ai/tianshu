@@ -80,8 +80,24 @@ const idleTurnsInFlight = new Set<string>();
  * messages in the chat. The lock means the second flush waits
  * for the first to complete, then runs its own drain on whatever
  * rows remain pending.
+ *
+ * Timeout escape hatch (Yu, 2026-09-17 09:00: "有时候这样的情况会
+ * 过好一会才会出 notification"): flushInFlight is a Map from
+ * sessionId to the timestamp when we grabbed the lock, not a plain
+ * Set. If a flush has been "in flight" for longer than
+ * FLUSH_STUCK_MS, we assume it wedged (provider hang, event-loop
+ * stall, unhandled exception that skipped the finally block) and
+ * treat the lock as released. A subsequent enqueue will start a
+ * fresh flush instead of forever queueing behind the wedged one.
+ *
+ * The stale lock isn't cleared automatically — the fresh flush
+ * that overrides it will overwrite the timestamp when it acquires,
+ * and its own finally block will delete the entry. If the wedged
+ * request eventually completes (unlikely but possible), its
+ * finally will delete a lock it no longer owns; that's fine.
  */
-const flushInFlight = new Set<string>();
+const flushInFlight = new Map<string, number>();
+const FLUSH_STUCK_MS = 60_000;
 
 /**
  * Runs an inbox-driven background turn on an idle session. Wired
@@ -196,15 +212,39 @@ async function runFlushWithLock(
   ctx: TenantContext,
   sessionId: string,
 ): Promise<void> {
-  if (flushInFlight.has(sessionId)) {
+  // Honour an existing in-flight flush UNLESS it looks wedged.
+  // Yu 2026-09-17 09:00: notifications sometimes surface "过好一会"
+  // (many seconds to minutes) after an abort. The likeliest cause
+  // is a prior flush that wedged in the idle-runner path (provider
+  // hang, event-loop stall, etc.) and never released this Set entry
+  // — every subsequent enqueue then went through scheduleFlush,
+  // adding another 1.5s debounce and never actually starting a
+  // real turn.
+  //
+  // Treat any lock older than FLUSH_STUCK_MS as released. The new
+  // flush overwrites the timestamp on acquire; its finally block
+  // deletes only its own entry (identified by the timestamp).
+  const heldSince = flushInFlight.get(sessionId);
+  if (heldSince != null && Date.now() - heldSince < FLUSH_STUCK_MS) {
     scheduleFlush(ctx, sessionId);
     return;
   }
-  flushInFlight.add(sessionId);
+  if (heldSince != null) {
+    console.warn(
+      `[session-inbox] flush lock for ${sessionId} held for ${Date.now() - heldSince}ms; assuming wedged and overriding`,
+    );
+  }
+  const myAcquiredAt = Date.now();
+  flushInFlight.set(sessionId, myAcquiredAt);
   try {
     await flushSessionInbox(ctx, sessionId, ownerUserId(ctx, sessionId));
   } finally {
-    flushInFlight.delete(sessionId);
+    // Only delete the lock if it's still ours. A concurrent
+    // override (from the wedge-recovery branch above) may have
+    // taken the slot in the meantime; leave that one alone.
+    if (flushInFlight.get(sessionId) === myAcquiredAt) {
+      flushInFlight.delete(sessionId);
+    }
     // Pending arrivals during the flush — schedule another pass.
     if (countPending(ctx, sessionId) > 0) {
       scheduleFlush(ctx, sessionId);
@@ -305,12 +345,37 @@ async function flushSessionInbox(
   //   - Need re-entrancy guard so a second enqueue mid-turn
   //     doesn't kick a second turn; the running turn sees its
   //     own new rows on the next drainPending.
-  if (!boundIdleRunner) return;
-  if (!userId) return;
-  if (idleTurnsInFlight.has(sessionId)) return;
+  //
+  // Yu, 2026-09-18 22:14: previously all four guards returned
+  // silently, producing dead conversations with only the "using
+  // idle-runner" log line to go on. Warn on each skip reason so
+  // the log trail actually explains where the recovery went.
+  if (!boundIdleRunner) {
+    console.warn(
+      `[session-inbox] idle-runner not bound; ${sessionId} rows stay pending until next user prompt`,
+    );
+    return;
+  }
+  if (!userId) {
+    console.warn(
+      `[session-inbox] no userId on session ${sessionId}; giving up on background turn`,
+    );
+    return;
+  }
+  if (idleTurnsInFlight.has(sessionId)) {
+    console.log(
+      `[session-inbox] idle turn already in flight for ${sessionId}; new rows will be picked up by the running drain`,
+    );
+    return;
+  }
 
   const drained = drainPending(ctx, sessionId);
-  if (drained.length === 0) return;
+  if (drained.length === 0) {
+    console.log(
+      `[session-inbox] no pending rows to drain for ${sessionId} (race with another flush?)`,
+    );
+    return;
+  }
   const promptText = renderForPrompt(drained);
 
   idleTurnsInFlight.add(sessionId);

@@ -764,12 +764,18 @@ mountPublicAuthRoutes(app, {
 
 // Everything below /api/* needs a tenant context. The chain is built
 // per-request from the live auth config (see resolvePublicUrl comment).
-// ─── ASR status (before auth — lightweight, no sensitive data) ───
-import { mountAsrRoute } from "./boot/asr.js";
-// Note: mountAsrRoute registers both /api/transcribe/status (public)
-// and /api/transcribe (POST, needs auth). We mount it here but the
-// POST handler checks auth via the tenant context below.
-mountAsrRoute(app);
+// ─── ASR public routes (before tenantMiddleware) ───
+// Only exposes GET /api/transcribe/status — the mic-availability
+// probe the frontend polls every 10s. No audio ever passes here.
+// The audio upload endpoint (POST /api/transcribe) is a separate
+// export mounted AFTER tenantMiddleware below, so its handler can
+// rely on req.ctx being populated.
+//
+// Yu, 2026-09-19 13:48: previously a single mountAsrRoute() call
+// registered both routes here. The POST handler's `if (!req.ctx)`
+// guard 401'd every request because tenantMiddleware hadn't run yet.
+import { mountAsrPublicRoutes, mountAsrAuthedRoutes } from "./boot/asr.js";
+mountAsrPublicRoutes(app);
 
 // ─── HF Model Proxy (before auth) ─────────────────────────
 // Proxies model file requests to HuggingFace mirror so the browser
@@ -834,6 +840,19 @@ app.use(
   }),
 );
 
+// ─── ASR authed route (after tenantMiddleware) ───
+// POST /api/transcribe — accepts an audio blob and returns text.
+// Depends on req.ctx set by tenantMiddleware above; see the split
+// rationale at the public mount site earlier in this file.
+mountAsrAuthedRoutes(app);
+
+// ─── TTS proxy route (after tenantMiddleware) ───
+// POST /api/tts — forwards {text, voice?} to a locally-launched
+// CosyVoice 2 FastAPI server (env TTS_URL, default localhost:8000)
+// and streams the audio response back. Powers the voice-reply mode
+// added in feat/voice-conversation-mode.
+mountTtsRoutes(app);
+
 // `/api/channel-sessions/*` + `/api/channel-bindings/:id/model`
 // — see boot/routes-channels.ts for the bodies.
 mountChannelRoutes(app);
@@ -845,6 +864,7 @@ mountCoreRoutes(app, { pluginRegistry, listTenants: () => globalOps.list() });
 
 // ASR model admin routes
 import { mountAsrAdminRoutes } from "./boot/asr-admin.js";
+import { mountTtsRoutes } from "./boot/routes-tts.js";
 mountAsrAdminRoutes(app);
 
 import { mountUsageRoutes } from "./boot/routes-usage.js";

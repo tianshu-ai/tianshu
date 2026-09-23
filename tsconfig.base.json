@@ -11,5 +11,8 @@
     "declarationMap": true,
     "sourceMap": true,
     "forceConsistentCasingInFileNames": true
+  },
+  "watchOptions": {
+    "excludeDirectories": ["**/node_modules", "**/dist"]
   }
 }
