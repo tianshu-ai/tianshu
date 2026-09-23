@@ -57,11 +57,31 @@ export default function Sidebar() {
   const appVersion = me?.appVersion;
   const t = useT();
 
+  // Brand mark in the sidebar header: prefer classical Chinese
+  // calligraphy for the default "Tianshu" brand. If an operator
+  // customised branding.name, render whatever they set as-is.
+  const isDefaultBrand = brandName === "Tianshu";
+
   return (
     <aside className="flex h-full w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
       {/* Header */}
       <div className="flex h-12 items-center border-b border-border-subtle px-4">
-        <span className="text-lg font-semibold text-fg-default">{brandName}</span>
+        {isDefaultBrand ? (
+          <span
+            className="text-fg-default"
+            style={{
+              fontFamily: "'Long Cang', 'Ma Shan Zheng', 'STXingkai', 'KaiTi', serif",
+              fontSize: "1.9rem",
+              lineHeight: 1,
+              letterSpacing: "0.08em",
+            }}
+            title="Tianshu"
+          >
+            天枢
+          </span>
+        ) : (
+          <span className="text-lg font-semibold text-fg-default">{brandName}</span>
+        )}
         {appVersion && <span className="ml-2 text-xs font-normal text-fg-muted">v{appVersion}</span>}
       </div>
 
