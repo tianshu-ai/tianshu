@@ -532,6 +532,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Resolve the model up front — we need imageMaxBytes / context
   // window for both auto-compact and the LLM call below.
   const modelInfo = (modelId ? findModel(ctx.config, modelId) : undefined) ?? getDefaultModel(ctx.config);
+  console.log(`[handler:diag] modelInfo: id=${modelInfo?.modelId} provider=${modelInfo?.providerId} api=${modelInfo?.api} baseUrl=${modelInfo?.baseUrl?.slice(0,60)}`);
   if (!modelInfo) {
     send({
       type: "stream_error",
@@ -542,6 +543,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   const piModel = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
+  console.log(`[handler:diag] piModel built, apiKey=${apiKey ? 'present' : 'MISSING'}`);
   const userHome = ctx.userHomeDir(userId);
 
   // MCP toolsets (e.g. plugin-microsandbox's Playwright server)
