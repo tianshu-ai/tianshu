@@ -24,7 +24,7 @@ import type {
   AgentTool,
   AgentToolContext,
 } from "@tianshu-ai/plugin-sdk";
-import { isRealUserContent } from "../real-user-turn.js";
+
 
 export interface RecallToolsDeps {
   /** Resolves a TenantContext-lite (just enough to hit the messages
@@ -50,17 +50,11 @@ interface MessageRow {
   role: string;
   content: string;
   created_at: number;
-}
-
-/**
- * True when a DB row represents a real user-authored JSON message.
- * The rule (role='user' AND first text chunk not prefixed by any
- * SYSTEM_INJECTED_USER_PREFIXES entry) lives in ./real-user-turn.ts
- * so storage, recall_range, and progressive-history stay aligned.
- */
-function isRealUserJson(row: MessageRow): boolean {
-  if (row.role !== "user") return false;
-  return isRealUserContent(row.content);
+  /** Session-absolute turn number written by migration 017 / the
+   *  storage insert path. NULL only on the theoretical case of a
+   *  row inserted before 017 migrated (back-fill runs for every
+   *  existing session, so in practice this is always populated). */
+  turn_number: number | null;
 }
 
 /**
@@ -375,14 +369,26 @@ export function buildRecallRangeTool(deps: RecallToolsDeps): AgentTool {
       // the desired range. Small sessions: fine. Very large sessions
       // (>10k rows) will be slow — that's acceptable given recall is
       // a rare operation.
+      // Fast path: filter on the (session_id, turn_number) index
+      // populated by migration 017. All rows written after 017
+      // (including live migrations of legacy sessions) have
+      // turn_number set; only the theoretical case of a session
+      // whose 017 back-fill was interrupted mid-way could hit the
+      // NULL branch, so we treat missing turn_number as a fatal
+      // per-session data problem rather than falling back to a full
+      // scan — the fallback would silently return wrong results
+      // when the counts drifted.
       let rows: MessageRow[];
       try {
         rows = owning.db
-          .prepare<[string], MessageRow>(
-            `SELECT id, role, content, created_at FROM messages
-              WHERE session_id = ? ORDER BY created_at`,
+          .prepare<[string, number, number], MessageRow>(
+            `SELECT id, role, content, created_at, turn_number
+               FROM messages
+              WHERE session_id = ?
+                AND turn_number BETWEEN ? AND ?
+              ORDER BY created_at, seq`,
           )
-          .all(sessionId);
+          .all(sessionId, fromTurn, toTurn);
       } catch (err) {
         return {
           ok: false,
@@ -392,25 +398,18 @@ export function buildRecallRangeTool(deps: RecallToolsDeps): AgentTool {
         };
       }
 
-      // Walk messages; assign turnIdx to each row based on the number
-      // of REAL user messages seen so far (a real user JSON message
-      // opens a new turn). Plugin-notification / recovery-injected
-      // plain-text rows under role='user' are skipped for turn-counting
-      // but still returned when they fall within the recalled span.
+      // Emit rows in order, using the row's own turn_number so
+      // formatMessageForRecall can label the chunk. System-injected
+      // rows with turn_number=0 are filtered by the WHERE (fromTurn
+      // is validated >= 1 above) so we never emit pre-first-user
+      // notices here.
       const chunks: string[] = [];
-      let turnIdx = 0;
       let capturedBytes = 0;
       const MAX_BYTES = 200_000; // hard ceiling to protect the context
       let truncated = false;
       for (const row of rows) {
-        if (isRealUserJson(row)) turnIdx++;
-        // Only start capturing once we're inside the requested range.
-        // Injected plain-text notes that appear BEFORE turn 1 (e.g. a
-        // plugin-enable notice written to the session before the first
-        // real user prompt) are silently skipped.
-        if (turnIdx < fromTurn) continue;
-        if (turnIdx > toTurn) break;
-        if (turnIdx === 0) continue; // safety: never emit rows preceding turn 1
+        const turnIdx = row.turn_number ?? 0;
+        if (turnIdx < fromTurn || turnIdx > toTurn) continue;
         const chunk = formatMessageForRecall(row, turnIdx);
         if (capturedBytes + chunk.length > MAX_BYTES) {
           truncated = true;
