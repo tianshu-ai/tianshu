@@ -1013,7 +1013,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // type our branches inspect. Any type we don't care about is silently
   // ignored (matches old "return without doing anything" default).
   const dispatchHarnessEvent = (event: HarnessEvent) => {
-    const ev = event as { type?: string };
+    const ev = event as { type?: string; reason?: string; error?: unknown; message?: { role?: string; stopReason?: string } };
+    console.log(`[handler:diag] harness event: type=${ev.type} reason=${ev.reason ?? ''} stopReason=${ev.message?.stopReason ?? ''}`);
     // pi 0.85 renamed tool_execution_start → tool_start.
     if (ev.type === "tool_start") {
       const tc = event as unknown as {
