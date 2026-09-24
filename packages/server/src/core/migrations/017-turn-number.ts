@@ -40,15 +40,53 @@ interface Row {
   entry_type: string;
 }
 
+// Prefixes that mark a role='user' row as tianshu-injected system
+// content rather than a real user turn. Kept inline (not imported
+// from ../../chat/real-user-turn.js) because migrations must be
+// self-contained — dropping a runtime dependency on chat/ keeps
+// the migration replayable even if that module later refactors.
+//
+// If you add a new SYSTEM_INJECTED_USER_PREFIXES entry in
+// real-user-turn.ts and want it retroactively applied to existing
+// rows, add a follow-up migration that re-scans this same predicate
+// with the updated list; do NOT edit this migration in place.
+const SYSTEM_INJECTED_USER_PREFIXES = ["[plugin-system]", "[system note]"];
+
+function firstTextOf(content: unknown): string | null {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    for (const p of content) {
+      if (
+        p &&
+        typeof p === "object" &&
+        "type" in p &&
+        (p as { type: string }).type === "text"
+      ) {
+        const t = (p as { text?: unknown }).text;
+        if (typeof t === "string") return t;
+      }
+    }
+  }
+  return null;
+}
+
 function isRealUserJson(row: Row): boolean {
   if (row.entry_type !== "message") return false;
   if (row.role !== "user") return false;
+  let j: { role?: unknown; content?: unknown };
   try {
-    const j = JSON.parse(row.content) as { role?: unknown };
-    return j != null && typeof j === "object" && j.role === "user";
+    j = JSON.parse(row.content);
   } catch {
     return false;
   }
+  if (!j || typeof j !== "object" || j.role !== "user") return false;
+  const firstText = firstTextOf(j.content);
+  if (firstText === null) return true;
+  const head = firstText.trimStart();
+  for (const prefix of SYSTEM_INJECTED_USER_PREFIXES) {
+    if (head.startsWith(prefix)) return false;
+  }
+  return true;
 }
 
 export function up(db: Database.Database): void {

@@ -60,6 +60,7 @@ import type {
   ValueList,
 } from "@earendil-works/pi-agent-core";
 import type { Usage } from "@earendil-works/pi-ai";
+import { isRealUserAgentMessage } from "./real-user-turn.js";
 
 // Row shape mirrors the `messages` table augmented by 003-session-tree
 // + 015-pi-storage-v2. `entry_type` narrows to pi's EntryType; the
@@ -711,17 +712,15 @@ function rowToEntry(row: MessageRow): Entry {
  * i.e. the entry-level input a human (or upstream agent) sent to open
  * a new turn. Plugin notifications and recovery-injected plain-text
  * stubs go in under role='user' too but must NOT bump the turn
- * counter; those keep the caller-provided sentinel format (a plain
- * string in message.content or a non-"user" role on the inner JSON).
+ * counter; those are excluded by the SYSTEM_INJECTED_USER_PREFIXES
+ * text-prefix rule shared with progressive-history + recall_range.
  *
- * Keep this predicate in sync with sqlite-storage's row-level
- * `isRealUserJson` (used by recall_range) and migration 017's
- * back-fill copy — the whole turn model depends on all three agreeing.
+ * See ./real-user-turn.ts for the single source of truth and the
+ * list of injection prefixes.
  */
 export function isRealUserEntry(entry: NewEntry): boolean {
   if (entry.type !== "message") return false;
-  const msg = entry.message as { role?: unknown };
-  return msg?.role === "user";
+  return isRealUserAgentMessage(entry.message);
 }
 
 function entryToRow(

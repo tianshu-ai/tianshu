@@ -46,6 +46,7 @@ import type {
   TextContent,
   ThinkingContent,
 } from "@earendil-works/pi-ai";
+import { isKnownMessage, isRealUserAgentMessage } from "./real-user-turn.js";
 
 export interface ProgressiveHistoryConfig {
   /** Turn count below which the transform is a no-op. Default 15. */
@@ -70,53 +71,14 @@ const DEFAULTS = {
  * off by however many system notes were injected, and the transform's
  * old/new region split lands in the wrong place.
  *
- * If you add another injection site elsewhere in the codebase, add its
- * prefix here so recall_range and this transform stay in agreement.
+ * If you add another injection site elsewhere in the codebase, add
+ * its prefix to real-user-turn.ts's SYSTEM_INJECTED_USER_PREFIXES
+ * so this transform, recall_range, and the storage-side turn_number
+ * writer stay in agreement.
  */
-const SYSTEM_INJECTED_USER_PREFIXES = [
-  "[plugin-system]",
-  "[system note]",
-];
-
-/** Narrow AgentMessage to the pi-ai Message union. AgentMessage
- *  also includes plugin-defined custom message shapes we don't
- *  understand — those pass through untouched. */
-function isKnownMessage(msg: AgentMessage): msg is Message {
-  if (!msg || typeof msg !== "object") return false;
-  const role = (msg as { role?: unknown }).role;
-  return role === "user" || role === "assistant" || role === "toolResult";
-}
-
-/** True when a message is a real user-authored turn (as opposed
- *  to a tianshu-injected `role: "user"` system notice). */
-function isRealUserTurn(msg: AgentMessage): boolean {
-  if (!isKnownMessage(msg)) return false;
-  if (msg.role !== "user") return false;
-  // Grab the first text chunk of the message and test its prefix.
-  // Tianshu's SqliteSessionStorage.parseMessage wraps legacy plain-text
-  // rows as `content: [{type:"text", text:"..."}]`, so this reaches
-  // both the legacy shape and the modern one.
-  let firstText: string | null = null;
-  if (typeof msg.content === "string") {
-    firstText = msg.content;
-  } else if (Array.isArray(msg.content)) {
-    for (const p of msg.content) {
-      if (p && typeof p === "object" && "type" in p && (p as { type: string }).type === "text") {
-        const t = (p as { text?: unknown }).text;
-        if (typeof t === "string") {
-          firstText = t;
-          break;
-        }
-      }
-    }
-  }
-  if (firstText === null) return true; // no text — treat as real turn conservatively
-  const head = firstText.trimStart();
-  for (const prefix of SYSTEM_INJECTED_USER_PREFIXES) {
-    if (head.startsWith(prefix)) return false;
-  }
-  return true;
-}
+// The predicate + prefix list moved to ./real-user-turn.ts so
+// storage, recall, and this transform share one source of truth.
+const isRealUserTurn = isRealUserAgentMessage;
 
 /**
  * Count the user turns represented by a message list. A "user turn"

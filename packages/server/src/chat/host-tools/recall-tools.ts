@@ -24,6 +24,7 @@ import type {
   AgentTool,
   AgentToolContext,
 } from "@tianshu-ai/plugin-sdk";
+import { isRealUserContent } from "../real-user-turn.js";
 
 export interface RecallToolsDeps {
   /** Resolves a TenantContext-lite (just enough to hit the messages
@@ -52,21 +53,14 @@ interface MessageRow {
 }
 
 /**
- * True when a DB row represents a real user-authored JSON message —
- * i.e. `role='user'` AND `content` parses as an `AgentMessage`-shaped
- * JSON blob. Tianshu injects transient plain-text notes under
- * `role='user'` for plugin enable/disable notifications, tool-catalog
- * refresh notes, and session-recovery status. Those rows should NOT
- * count as user turns for the purposes of turn-range recall.
+ * True when a DB row represents a real user-authored JSON message.
+ * The rule (role='user' AND first text chunk not prefixed by any
+ * SYSTEM_INJECTED_USER_PREFIXES entry) lives in ./real-user-turn.ts
+ * so storage, recall_range, and progressive-history stay aligned.
  */
 function isRealUserJson(row: MessageRow): boolean {
   if (row.role !== "user") return false;
-  try {
-    const j = JSON.parse(row.content) as { role?: unknown };
-    return j != null && typeof j === "object" && j.role === "user";
-  } catch {
-    return false;
-  }
+  return isRealUserContent(row.content);
 }
 
 /**
