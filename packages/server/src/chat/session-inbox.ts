@@ -304,13 +304,19 @@ async function flushSessionInbox(
   // If `followUp` itself throws (harness phase=idle, between
   // turns), we fall through to the idle-runner path so the rows
   // get processed by a fresh background turn.
-  const harness = getActiveHarness(sessionId);
-  if (harness) {
+  // pi 0.85: registry now stores {harness, lane, context}; followUp
+  // moved from the harness to AgentLane.
+  const entry = getActiveHarness(sessionId);
+  if (entry) {
     console.log(`[session-inbox] active harness found for ${sessionId}, using followUp`);
     const drained = drainPendingTentative(ctx, sessionId);
     if (drained.length === 0) return;
     try {
-      await harness.followUp(renderForPrompt(drained));
+      await entry.lane.followUp(
+        renderForPrompt(drained),
+        undefined,
+        entry.context,
+      );
       console.log(`[session-inbox] followUp queued OK for ${sessionId}`);
       // Rows are now 'in_flight'. markDeliveredFromMessage will
       // transition them to 'delivered' once the message is persisted.

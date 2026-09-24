@@ -577,7 +577,12 @@ export async function runAgentLoop(
   const { harness } = await AgentHarness.create(
     {
       session,
-      tools: adapted.tools,
+      // pi 0.85 typed AgentHarnessTool[] more strictly than our
+      // adapter yields; a runtime cast is safe here because our
+      // AgentTool shape matches AgentHarnessTool structurally.
+      tools: adapted.tools as unknown as Parameters<
+        typeof AgentHarness.create
+      >[0]["tools"],
       systemPrompt,
       model: piModel,
       models: buildModels(piModel, apiKey, {
@@ -792,7 +797,7 @@ export async function runAgentLoop(
       // (best-effort reading from session). This used to be the
       // "max_turns" branch when the worker capped turns; now it's
       // the only "agent quietly gave up" path.
-      const finalText = await lastAssistantText(session);
+      const finalText = await lastAssistantText(session, piContext);
       result = {
         status: "stalled",
         summary: finalText || "agent stopped without calling task_complete",
@@ -845,8 +850,9 @@ export async function runAgentLoop(
 
 async function lastAssistantText(
   session: import("@earendil-works/pi-agent-core").Session,
+  context: import("@earendil-works/pi-agent-core").Context,
 ): Promise<string> {
-  const entries = await session.findEntries(undefined, piContext);
+  const entries = await session.findEntries(undefined, context);
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i]!;
     if (e.type !== "message") continue;

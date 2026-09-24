@@ -20,15 +20,21 @@
 
 import {
   AgentHarness,
+  BACKGROUND_CONTEXT,
   DEFAULT_COMPACTION_SETTINGS,
-  Session as PiSession,
+  StorageBackedSession,
   estimateContextTokens,
   shouldCompact,
+  withAbortSignal,
+  type AgentLane,
+  type Context as PiHarnessContext,
   type HarnessEvent,
   type AgentMessage,
   type CompactionSettings,
   type Entry,
+  type Session as PiSession,
 } from "@earendil-works/pi-agent-core";
+import type { Message } from "@earendil-works/pi-ai";
 import type {
   AssistantMessage,
   Context,
@@ -786,16 +792,17 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // rewrite older tool_call + tool_result entries into short stubs. The
   // agent can pull the full text back via recall_tool_call / recall_range.
   // Short sessions pass through unchanged.
+  //
+  // pi 0.85 migration: `entryTransforms` is gone. We now compose all
+  // read-time transforms (progressive-history + tool-result aging)
+  // into a single `toProviderMessages` hook passed to
+  // `AgentHarness.create()` further below. See `progressiveTransform`
+  // variable near the harness creation site.
   const progressiveCfg = ctx.config.models?.progressiveHistory ?? {};
-  const piSession = new PiSession(storage, {
-    entryTransforms: progressiveCfg.enabled === false
-      ? []
-      : [progressiveHistoryTransform({
-          minTurnsToEngage: progressiveCfg.minTurnsToEngage ?? 15,
-          recentTurnsToKeep: progressiveCfg.recentTurnsToKeep ?? 5,
-          debug: progressiveCfg.debug === true,
-        })],
-  });
+  // pi 0.85: Session is an interface. `StorageBackedSession` is the
+  // canonical implementation and takes (metadata, storage, options).
+  const piSessionMetadata = await storage.getMetadata();
+  const piSession = new StorageBackedSession(piSessionMetadata, storage);
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
       attachments: originalAttachments as unknown[],
@@ -853,59 +860,33 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     { voiceMode: args.voiceMode === true },
   );
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
-  // pi 0.80: the harness owns a `Models` instance and resolves auth
-  // through it, replacing 0.79's `getApiKeyAndHeaders` callback. We
-  // build a single-provider Models closing over this run's resolved
-  // (model, apiKey). See core/pi-models.ts.
-  const harness = new AgentHarness({
-    session: piSession,
-    tools: adapted.tools,
-    systemPrompt,
-    model: piModel,
-    models: buildModels(piModel, apiKey, {
-      resilience: ctx.config.models?.resilience,
-      reResolveApiKey: () => resolveApiKey(modelInfo),
-      onRetry: (n) => {
-        // Rebuilding after partial content: tell the client to drop the
-        // half-streamed bubble before the replay's deltas land, so the
-        // answer isn't duplicated.
-        if (n.contentStreamed) {
-          send({ type: "stream_reset", sessionId: session.id });
-        }
-        send({
-          type: "model_retry",
-          attempt: n.attempt,
-          maxAttempts: n.maxAttempts,
-          kind: n.kind,
-          delayMs: n.delayMs,
-          rateLimited: n.rateLimited,
-          message: n.message,
-          contentStreamed: n.contentStreamed,
-          sessionId: session.id,
+  // pi 0.85: Context threads through every harness / lane / session
+  // call. Root context cancels when `signal` aborts.
+  const piContext: PiHarnessContext = withAbortSignal(signal, BACKGROUND_CONTEXT);
+  // pi 0.85: combine our two read-time transforms
+  // (progressive-history + tool-result aging) into one
+  // `toProviderMessages` hook. Runs on every provider request; the
+  // returned Message[] is what pi ships to the model.
+  const stubTransform =
+    progressiveCfg.enabled === false
+      ? null
+      : progressiveHistoryTransform({
+          minTurnsToEngage: progressiveCfg.minTurnsToEngage ?? 15,
+          recentTurnsToKeep: progressiveCfg.recentTurnsToKeep ?? 5,
+          debug: progressiveCfg.debug === true,
         });
-      },
-    }),
-  });
-
-  // ── Tool-result aging: prune old tool results before each LLM call ──
-  // This reduces context bloat by replacing old (far from the current
-  // turn) tool results with a short placeholder. The original data is
-  // preserved in the session tree — pruning only affects the transient
-  // message array the model sees.
-  // Tool-result aging: directly patch the harness's internal handlers map
-  // to intercept the "context" hook event that transformContext fires.
-  // Tool-result aging: hook into harness's "context" event.
-  // @ts-expect-error — harness.on type doesn't expose "context" in generic
-  const unsubscribePrune = harness.on("context", (event: { messages: Array<{ role: string; content?: unknown }> }) => {
-    // Yu, 2026-09-19 00:38: session_fd95eae5 was aborting with 1023
-    // tool_results in context. This function fires on every provider
-    // request; if it's the event-loop-block culprit, the timing here
-    // (plus messageCount) will show it. Slow-path warn threshold
-    // picked so routine sessions stay quiet while pathological ones
-    // stand out. Also cheap: process.hrtime.bigint() is ~20ns.
+  const toProviderMessages = (messages: AgentMessage[]): Message[] => {
+    const stubbed: Message[] = stubTransform
+      ? stubTransform(messages)
+      : (messages as Message[]);
+    // Tool-result aging: prune old tool results in place. Fire the
+    // same slow-path warning that used to live in the `context` hook.
     const startedAt = process.hrtime.bigint();
-    const messageCount = event.messages.length;
-    const pruned = pruneOldToolResults(event.messages, toolResultCfg);
+    const messageCount = stubbed.length;
+    const pruned = pruneOldToolResults(
+      stubbed as unknown as Parameters<typeof pruneOldToolResults>[0],
+      toolResultCfg,
+    );
     const durationMs = Number(
       (process.hrtime.bigint() - startedAt) / 1_000_000n,
     );
@@ -917,19 +898,70 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         `prune_slow session=${session.id} messages=${messageCount} pruned=${pruned} duration_ms=${durationMs}`,
       );
     }
-    return { messages: event.messages };
-  });
+    return stubbed;
+  };
+  // pi 0.85: `AgentHarness` is a static factory (`.create()`), not a
+  // class. Returns `{ harness, open }`; `open` lists any operations
+  // that were mid-flight in a previously persisted session — for chat
+  // we start fresh each turn, so we ignore it.
+  const { harness } = await AgentHarness.create(
+    {
+      session: piSession,
+      tools: adapted.tools,
+      systemPrompt,
+      model: piModel,
+      toProviderMessages,
+      models: buildModels(piModel, apiKey, {
+        resilience: ctx.config.models?.resilience,
+        reResolveApiKey: () => resolveApiKey(modelInfo),
+        onRetry: (n) => {
+          // Rebuilding after partial content: tell the client to drop the
+          // half-streamed bubble before the replay's deltas land, so the
+          // answer isn't duplicated.
+          if (n.contentStreamed) {
+            send({ type: "stream_reset", sessionId: session.id });
+          }
+          send({
+            type: "model_retry",
+            attempt: n.attempt,
+            maxAttempts: n.maxAttempts,
+            kind: n.kind,
+            delayMs: n.delayMs,
+            rateLimited: n.rateLimited,
+            message: n.message,
+            contentStreamed: n.contentStreamed,
+            sessionId: session.id,
+          });
+        },
+      }),
+    },
+    piContext,
+  );
+  // pi 0.85: all lane-scoped operations (prompt, abort, waitForIdle,
+  // compact, followUp, etc.) moved from harness onto AgentLane. Use
+  // one "main" lane for the whole chat session.
+  const lane = await harness.lane("main", piContext);
 
-  // Bind the compact tool's deferred ref now that piSession + harness exist.
+  // Tool-result aging + progressive-history stubbing are now handled
+  // inside `toProviderMessages` above (pi 0.85 removed the `context`
+  // hook + `entryTransforms`); no separate unsubscribe needed.
+
+  // Bind the compact tool's deferred ref now that lane + context exist.
   const compactRef = getCompactRef(hostToolsDefs);
   compactRef.piSession = piSession;
   compactRef.harness = harness;
+  compactRef.lane = lane;
+  compactRef.context = piContext;
 
   // Register this harness in the process-local registry so the
   // session inbox can route a live `enqueue()` through
   // `harness.followUp(...)` instead of leaving the message stuck
   // in `pending` until the user types again. Cleared in finally.
-  const unregisterHarness = registerActiveHarness(session.id, harness);
+  const unregisterHarness = registerActiveHarness(session.id, {
+    harness,
+    lane,
+    context: piContext,
+  });
 
   let lastAssistantRow: ChatMessage | null = null;
   let assistantTurns = 0;
@@ -961,13 +993,18 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     } else {
       log.debug(`abort_context session=${session.id} in_flight_tools=0`);
     }
-    void harness.abort();
+    void lane.abort(piContext);
   };
   signal.addEventListener("abort", onAbort, { once: true });
 
-  const unsubscribe = harness.subscribe((event: HarnessEvent) => {
+  // pi 0.85: `harness.subscribe(fn)` is gone; use `harness.events.on(type, fn)`.
+  // We define the callback body once, then attach it to every event
+  // type our branches inspect. Any type we don't care about is silently
+  // ignored (matches old "return without doing anything" default).
+  const dispatchHarnessEvent = (event: HarnessEvent) => {
     const ev = event as { type?: string };
-    if (ev.type === "tool_execution_start") {
+    // pi 0.85 renamed tool_execution_start → tool_start.
+    if (ev.type === "tool_start") {
       const tc = event as unknown as {
         toolCallId: string;
         toolName: string;
@@ -988,7 +1025,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       log.debug(
         `tool_start name=${tc.toolName} id=${tc.toolCallId} args=${summarizeToolArgs(rawArgs)}`,
       );
-    } else if (ev.type === "tool_execution_end") {
+    // pi 0.85 renamed tool_execution_end → tool_end.
+    } else if (ev.type === "tool_end") {
       const te = event as unknown as {
         toolCallId: string;
         error?: unknown;
@@ -1033,14 +1071,39 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           console.warn(
             `[handler] abort:max_turns session=${session.id} turns=${assistantTurns}/${MAX_TURNS}`,
           );
-          void harness.abort();
+          void lane.abort(piContext);
         }
       },
       onStreamError: () => {
         streamErrorSent = true;
       },
     });
-  });
+  };
+  // pi 0.85: subscribe to every event type our dispatchHarnessEvent
+  // callback branches on. Types not listed here are silently ignored
+  // (matches old "return without doing anything" for unmatched event.type).
+  // We include the wider bridge event set that bridgeHarnessEventToWs
+  // inspects so it still receives them.
+  // pi 0.85 renamed tool_execution_{start,end} → tool_{start,end}.
+  // The dispatcher inspects event.type internally and no-ops on
+  // unmatched types, so subscribing to a broad set is cheap.
+  const unsubscribers: Array<() => void> = [
+    harness.events.on("turn_end", dispatchHarnessEvent),
+    harness.events.on("message_start", dispatchHarnessEvent),
+    harness.events.on("message_update", dispatchHarnessEvent),
+    harness.events.on("message_end", dispatchHarnessEvent),
+    harness.events.on("tool_start", dispatchHarnessEvent),
+    harness.events.on("tool_end", dispatchHarnessEvent),
+    harness.events.on("compaction_start", dispatchHarnessEvent),
+    harness.events.on("compaction_end", dispatchHarnessEvent),
+    harness.events.on("run_end", dispatchHarnessEvent),
+    harness.events.on("fault", dispatchHarnessEvent),
+  ];
+  const unsubscribe = () => {
+    for (const off of unsubscribers) {
+      try { off(); } catch { /* best-effort */ }
+    }
+  };
 
   // Pre-prompt auto-compact. The post-turn compact below only
   // frees space for the NEXT turn; if history is already over the
@@ -1053,6 +1116,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     const pre = await tryAutoCompact({
       piSession,
       harness,
+      lane,
+      context: piContext,
       contextWindow: modelInfo.contextWindow,
       settings: compactionSettings,
     });
@@ -1074,6 +1139,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // against the freshly-forked (small) session.
       const stillOver = await branchStillOverWindow({
         piSession,
+        context: piContext,
         contextWindow: modelInfo.contextWindow,
       });
       if (stillOver && !args._afterCompactFallback) {
@@ -1090,7 +1156,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           // re-enter, so we don't leave a dangling subscription /
           // registry entry for a turn we're abandoning.
           unsubscribe();
-          unsubscribePrune();
           unregisterHarness();
           signal.removeEventListener("abort", onAbort);
           if (storage) storage.pendingUserAttachments = null;
@@ -1134,11 +1199,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       if (!resume) {
         throw new HandledTurnAbort();
       }
-      await harness.prompt(resume, images.length > 0 ? { images } : undefined);
+      await lane.prompt(resume, images.length > 0 ? images : undefined, piContext);
     } else {
-      await harness.prompt(promptText, images.length > 0 ? { images } : undefined);
+      await lane.prompt(promptText, images.length > 0 ? images : undefined, piContext);
     }
-    await harness.waitForIdle();
+    await lane.waitForIdle(piContext);
 
     // Auto-continue when model was truncated by maxTokens.
     // The PI SDK sets stopReason="length" on the last assistant message.
@@ -1160,8 +1225,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       } catch { break; }
       continuations++;
       console.log(`[handler] auto-continue ${continuations}/${MAX_CONTINUATIONS} (stopReason=length)`);
-      await harness.prompt("Continue from where you left off. Do not repeat what you already said.");
-      await harness.waitForIdle();
+      await lane.prompt("Continue from where you left off. Do not repeat what you already said.", undefined, piContext);
+      await lane.waitForIdle(piContext);
     }
 
     // Auto-recover from transient errors (abort, stalled).
@@ -1455,7 +1520,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
             isError: true,
             timestamp: Date.now(),
           } as ToolResultMessage,
-        } as Entry);
+        } as unknown as Entry);
       } catch (persistErr) {
         console.warn(
           `[handler] failed to persist synthetic toolResult for ${callId}: ${
@@ -1466,7 +1531,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }
     outstandingToolCalls.clear();
     unsubscribe();
-    unsubscribePrune();
     unregisterHarness();
     signal.removeEventListener("abort", onAbort);
     if (storage) storage.pendingUserAttachments = null;
@@ -1484,6 +1548,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       session,
       piSession,
       harness,
+      lane,
+      context: piContext,
       modelInfo,
       send,
       compactionSettings,
@@ -2284,15 +2350,19 @@ async function maybeAutoCompact(args: {
   session: ChatSession;
   piSession: PiSession;
   harness: AgentHarness;
+  lane: AgentLane;
+  context: PiHarnessContext;
   modelInfo: ResolvedModelInfo;
   send: (msg: ServerMsg) => void;
   onSuccessRefresh: () => void;
   compactionSettings?: CompactionSettings;
 }): Promise<void> {
-  const { session, piSession, harness, modelInfo, send, onSuccessRefresh, compactionSettings } = args;
+  const { session, piSession, harness, lane, context, modelInfo, send, onSuccessRefresh, compactionSettings } = args;
   const decision = await tryAutoCompact({
     piSession,
     harness,
+    lane,
+    context,
     contextWindow: modelInfo.contextWindow,
     settings: compactionSettings,
   });

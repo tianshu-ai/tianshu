@@ -8,31 +8,38 @@
  * details via the `recall_tool_call` / `recall_range` host tools.
  *
  * Design (2026-09-12, agreed with Yu):
- *   - Only kicks in when the branch has >= `minTurnsToEngage` user
+ *   - Only kicks in when the transcript has >= `minTurnsToEngage` user
  *     turns (default 15). Short sessions are untouched.
  *   - The most recent `recentTurnsToKeep` user turns (default 5) are
  *     returned verbatim.
- *   - Older MessageEntry entries are rewritten:
- *       * UserMessage       → verbatim
+ *   - Older messages are rewritten:
+ *       * UserMessage       → verbatim + `[turn N]` prefix
  *       * AssistantMessage  → text/thinking verbatim, ToolCall → stub
  *       * ToolResultMessage → single-line stub with tool_call_id
- *   - Non-message entries (compaction, custom, session_info, etc.)
- *     are passed through unchanged.
- *   - The transform is a pure function over Entry[]; it
+ *   - The transform is a pure function over AgentMessage[]; it
  *     does NOT mutate the session tree. The stubs are transient and
  *     only affect one turn's model context.
  *
- * Wire this in by passing it to `new PiSession(storage, {
- *   entryTransforms: [progressiveHistoryTransform(config)]
- * })`.
+ * pi 0.85 migration:
+ *   - Previous versions injected this via
+ *     `new PiSession(storage, { entryTransforms: [...] })`.
+ *   - pi 0.85 removed `entryTransforms`. The equivalent hook is
+ *     `AgentHarnessOptions.toProviderMessages`, which pi invokes on
+ *     every provider request (execution/assistant.js:67) with the
+ *     assembled `AgentMessage[]` before conversion to `Message[]`.
+ *   - `AgentMessage = Message | CustomAgentMessages[K]`. We only
+ *     rewrite the three known `Message` roles; any custom message
+ *     shape passes through unchanged.
+ *   - Wire this in via `AgentHarness.create({ toProviderMessages:
+ *     progressiveHistoryTransform(config), ... })`.
  */
 
 import type {
-  Entry,
-  MessageEntry,
+  AgentMessage,
 } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
+  Message,
   UserMessage,
   ToolCall,
   ToolResultMessage,
@@ -71,21 +78,29 @@ const SYSTEM_INJECTED_USER_PREFIXES = [
   "[system note]",
 ];
 
-/** True when a MessageEntry is a real user-authored turn (as opposed
+/** Narrow AgentMessage to the pi-ai Message union. AgentMessage
+ *  also includes plugin-defined custom message shapes we don't
+ *  understand — those pass through untouched. */
+function isKnownMessage(msg: AgentMessage): msg is Message {
+  if (!msg || typeof msg !== "object") return false;
+  const role = (msg as { role?: unknown }).role;
+  return role === "user" || role === "assistant" || role === "toolResult";
+}
+
+/** True when a message is a real user-authored turn (as opposed
  *  to a tianshu-injected `role: "user"` system notice). */
-function isRealUserTurn(entry: Entry): boolean {
-  if (entry.type !== "message") return false;
-  const m = entry.message;
-  if (m.role !== "user") return false;
+function isRealUserTurn(msg: AgentMessage): boolean {
+  if (!isKnownMessage(msg)) return false;
+  if (msg.role !== "user") return false;
   // Grab the first text chunk of the message and test its prefix.
   // Tianshu's SqliteSessionStorage.parseMessage wraps legacy plain-text
   // rows as `content: [{type:"text", text:"..."}]`, so this reaches
   // both the legacy shape and the modern one.
   let firstText: string | null = null;
-  if (typeof m.content === "string") {
-    firstText = m.content;
-  } else if (Array.isArray(m.content)) {
-    for (const p of m.content) {
+  if (typeof msg.content === "string") {
+    firstText = msg.content;
+  } else if (Array.isArray(msg.content)) {
+    for (const p of msg.content) {
       if (p && typeof p === "object" && "type" in p && (p as { type: string }).type === "text") {
         const t = (p as { text?: unknown }).text;
         if (typeof t === "string") {
@@ -104,33 +119,34 @@ function isRealUserTurn(entry: Entry): boolean {
 }
 
 /**
- * Count the user turns represented by a branch. A "user turn" is
- * any MessageEntry that passes `isRealUserTurn` — tianshu-injected
+ * Count the user turns represented by a message list. A "user turn"
+ * is any UserMessage that passes `isRealUserTurn` — tianshu-injected
  * `role: "user"` system notices don't count.
  */
-function countUserTurns(entries: readonly Entry[]): number {
+function countUserTurns(messages: readonly AgentMessage[]): number {
   let n = 0;
-  for (const e of entries) {
-    if (isRealUserTurn(e)) n++;
+  for (const m of messages) {
+    if (isRealUserTurn(m)) n++;
   }
   return n;
 }
 
 /**
- * Find the index of the Nth-most-recent real user MessageEntry
+ * Find the index of the Nth-most-recent real user message
  * (0-indexed from the end). If N exceeds the number of user turns,
  * returns 0. System-injected user notices are skipped.
  *
- * Used to split the branch into (older, recent) at a user-turn boundary.
+ * Used to split the transcript into (older, recent) at a user-turn
+ * boundary.
  */
 function indexOfNthRecentUserTurn(
-  entries: readonly Entry[],
+  messages: readonly AgentMessage[],
   n: number,
 ): number {
   let seen = 0;
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const e = entries[i]!;
-    if (isRealUserTurn(e)) {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i]!;
+    if (isRealUserTurn(m)) {
       seen++;
       if (seen === n) return i;
     }
@@ -238,67 +254,76 @@ function stubToolResult(msg: ToolResultMessage): ToolResultMessage {
 
 /**
  * The transform. Wrap it once with your config and pass into
- * `new PiSession(storage, { entryTransforms: [...] })`.
+ * `AgentHarness.create({ toProviderMessages: progressiveHistoryTransform(config), ... })`.
+ *
+ * pi 0.85 signature: `(messages: AgentMessage[], context: Context) => Message[]`.
+ * We ignore the context arg — the transform is a pure sync function
+ * over the message list, no I/O needed.
  */
 export function progressiveHistoryTransform(
   config: ProgressiveHistoryConfig = {},
-) {
+): (messages: AgentMessage[]) => Message[] {
   const minTurns = config.minTurnsToEngage ?? DEFAULTS.minTurnsToEngage;
   const recentTurns = config.recentTurnsToKeep ?? DEFAULTS.recentTurnsToKeep;
 
   return function progressiveHistoryTransformImpl(
-    entries: readonly Entry[],
-  ): readonly Entry[] {
-    const userTurns = countUserTurns(entries);
-    if (userTurns < minTurns) return entries;
+    messages: AgentMessage[],
+  ): Message[] {
+    // Narrow AgentMessage[] to Message[]. Custom message shapes (plugin-
+    // defined AgentMessage variants) are not something we can rewrite —
+    // pass them through as-is by upcasting; pi will convert via its
+    // default converter downstream.
+    const known: Message[] = messages.filter(isKnownMessage);
+    // Non-Message custom shapes — kept for pass-through emission
+    // after the known-message transform. Preserving relative order
+    // is not critical; provider-facing messages are the known ones.
+    const custom = messages.filter((m) => !isKnownMessage(m)) as unknown as Message[];
+
+    const userTurns = countUserTurns(known);
+    if (userTurns < minTurns) return [...known, ...custom];
 
     // The boundary is the index of the (recentTurns)-th most recent
-    // user turn. Entries at or after this index are the "recent
-    // region"; entries before are the "old region" that gets stubbed.
-    const boundary = indexOfNthRecentUserTurn(entries, recentTurns);
+    // user turn. Messages at or after this index are the "recent
+    // region"; messages before are the "old region" that gets stubbed.
+    const boundary = indexOfNthRecentUserTurn(known, recentTurns);
 
     if (config.debug) {
       // eslint-disable-next-line no-console
       console.log(
         `[progressive-history] engage: userTurns=${userTurns} ` +
           `recentKeep=${recentTurns} boundary=${boundary} ` +
-          `oldEntries=${boundary} recentEntries=${entries.length - boundary}`,
+          `oldMessages=${boundary} recentMessages=${known.length - boundary}`,
       );
     }
 
-    const result: Entry[] = [];
+    const result: Message[] = [];
     // Walk once to compute the absolute turn number for each real
-    // user MessageEntry (1-indexed, spanning both old and new region).
+    // user message (1-indexed, spanning both old and new region).
     // Only real user turns advance the counter; system-injected user
     // notices are numbered 0 (never referenced).
     let userTurnCounter = 0;
     let metaInserted = false;
 
-    for (let i = 0; i < entries.length; i++) {
-      const e = entries[i]!;
-      const isRealUser = isRealUserTurn(e);
+    for (let i = 0; i < known.length; i++) {
+      const msg = known[i]!;
+      const isRealUser = isRealUserTurn(msg);
       if (isRealUser) userTurnCounter++;
 
       if (i >= boundary) {
         // Recent region: verbatim (agent already has the context in
         // full; adding turn markers would only add noise).
-        result.push(e);
+        result.push(msg);
         continue;
       }
 
       // --- Old region ---
-      // The first time we see a MessageEntry in the old region,
-      // insert a `[system note]`-prefixed UserMessage explaining
-      // what follows. Two design points:
-      //   1. It's placed IMMEDIATELY BEFORE the first stubbed
-      //      message (not at branch head) so non-message entries
-      //      like `compaction` stay at their original position.
-      //   2. We reuse the `[system note]` prefix so isRealUserTurn
-      //      excludes it from turn counting — if this transform
-      //      runs on already-transformed output, the note is a
-      //      no-op.
-      const isMessageEntry = e.type === "message";
-      if (!metaInserted && isMessageEntry) {
+      // The first time we see a message in the old region, insert
+      // a `[system note]`-prefixed UserMessage explaining what
+      // follows. Reusing the `[system note]` prefix means
+      // isRealUserTurn excludes it from turn counting — safe if
+      // this transform accidentally runs on already-transformed
+      // output (idempotent-ish; the note is a no-op).
+      if (!metaInserted) {
         metaInserted = true;
         const metaMsg: UserMessage = {
           role: "user",
@@ -317,45 +342,29 @@ export function progressiveHistoryTransform(
           ],
           timestamp: 0,
         };
-        result.push({
-          id: `progressive-history-meta-${e.id}`,
-          parentId: null,
-          timestamp: new Date(0).toISOString(),
-          type: "message",
-          message: metaMsg,
-        } as MessageEntry);
+        result.push(metaMsg);
       }
 
-      // Old region: rewrite messages, pass through everything else.
-      if (!isMessageEntry) {
-        result.push(e);
-        continue;
-      }
-      const m = e.message;
-      if (m.role === "user") {
+      // Old region: rewrite messages by role.
+      if (msg.role === "user") {
         if (isRealUser) {
-          const tagged = prefixUserWithTurnNumber(m, userTurnCounter);
-          result.push({ ...e, message: tagged } as MessageEntry);
+          result.push(prefixUserWithTurnNumber(msg, userTurnCounter));
         } else {
           // System-injected notice — pass through unchanged.
-          result.push(e);
+          result.push(msg);
         }
-      } else if (m.role === "assistant") {
-        const rewritten = stubAssistantToolCalls(m);
-        if (rewritten === m) {
-          result.push(e);
-        } else {
-          const newEntry: MessageEntry = { ...e, message: rewritten };
-          result.push(newEntry);
-        }
-      } else if (m.role === "toolResult") {
-        const rewritten = stubToolResult(m);
-        const newEntry: MessageEntry = { ...e, message: rewritten };
-        result.push(newEntry);
+      } else if (msg.role === "assistant") {
+        result.push(stubAssistantToolCalls(msg));
+      } else if (msg.role === "toolResult") {
+        result.push(stubToolResult(msg));
       } else {
-        result.push(e);
+        result.push(msg);
       }
     }
-    return result;
+
+    // Emit any custom (non-Message) shapes at the tail so we don't
+    // silently drop them. In practice pi 0.85's default converter
+    // handles them; letting them ride along preserves that path.
+    return [...result, ...custom];
   };
 }
