@@ -550,6 +550,87 @@ export class SqliteStorage implements Storage {
 
 type EntryTypeStr = "message" | "compaction" | "branch_summary" | "custom";
 
+// ─── Legacy-safe parsing helpers ─────────────────────────────
+// See rowToEntry() for context. These mirror the tolerant
+// parseMessage/safeParse pair in sqlite-session-storage.ts.
+
+function safeParseJson(s: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(s);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // fall through — non-JSON entry_details is treated as empty
+  }
+  return {};
+}
+
+function parseLegacySafeMessage(content: string, role: string): unknown {
+  // Try the modern path first: content should be a JSON-serialised
+  // pi-ai Message. If it parses to an object with a role, use it.
+  try {
+    const parsed = JSON.parse(content);
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      typeof (parsed as { role?: unknown }).role === "string"
+    ) {
+      return parsed;
+    }
+  } catch {
+    // fall through to legacy plain-text upgrade
+  }
+  // Legacy plain-text upgrade — best-effort minimum viable pi-ai
+  // Message. We fill just enough so callers that inspect .role /
+  // .content / .usage / .stopReason don't NPE; the fake
+  // provider/model strings are inert (they only affect display).
+  const now = Date.now();
+  if (role === "user") {
+    return {
+      role: "user",
+      content: [{ type: "text", text: content }],
+      timestamp: now,
+    };
+  }
+  if (role === "assistant") {
+    return {
+      role: "assistant",
+      content: [{ type: "text", text: content }],
+      stopReason: "stop",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      api: "anthropic-messages",
+      provider: "unknown",
+      model: "unknown",
+      timestamp: now,
+    };
+  }
+  if (role === "tool") {
+    return {
+      role: "toolResult",
+      toolCallId: "",
+      toolName: "",
+      content: [{ type: "text", text: content }],
+      isError: false,
+      timestamp: now,
+    };
+  }
+  // system / unknown roles: treat as a system-flavoured user
+  // message so it still shows in the branch.
+  return {
+    role: "user",
+    content: [{ type: "text", text: content }],
+    timestamp: now,
+  };
+}
+
 function rowToEntry(row: MessageRow): Entry {
   const base = {
     id: row.id,
@@ -559,10 +640,21 @@ function rowToEntry(row: MessageRow): Entry {
   };
   const kind = row.entry_type as EntryTypeStr;
   if (kind === "message") {
-    const msg = JSON.parse(row.content);
+    // Legacy-safe parse. Old rows (migrations pre-006 and the
+    // `appendMessage(role:"user", text)` shortcut in index.ts /
+    // compact.ts / flush-tool-delta.ts / tool-catalog-refresh.ts)
+    // stuffed a plain string like `[plugin-system] Plugin "X"
+    // was just ENABLED. ...` straight into messages.content.
+    // SqliteSessionStorage.parseMessage tolerated this by
+    // upgrading to a minimal pi-ai message shell; we do the same
+    // here so pi's Session.findEntries()/getBranch() never
+    // crashes on real production data. JSON.parse blowing up
+    // aborts every auto-compact decision (see chat/compact-
+    // decision.ts catch block).
+    const msg = parseLegacySafeMessage(row.content, row.role);
     return { ...base, type: "message", message: msg } as MessageEntry;
   }
-  const details = row.entry_details ? JSON.parse(row.entry_details) : {};
+  const details = row.entry_details ? safeParseJson(row.entry_details) : {};
   if (kind === "compaction") {
     return {
       ...base,
