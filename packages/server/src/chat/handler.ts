@@ -1014,7 +1014,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // ignored (matches old "return without doing anything" default).
   const dispatchHarnessEvent = (event: HarnessEvent) => {
     const ev = event as { type?: string; reason?: string; error?: unknown; message?: { role?: string; stopReason?: string } };
-    console.log(`[handler:diag] harness event: type=${ev.type} reason=${ev.reason ?? ''} stopReason=${ev.message?.stopReason ?? ''}`);
+    const entryRole = (event as any).entry?.message?.role ?? (event as any).message?.role ?? '';
+    const entryType = (event as any).entry?.type ?? '';
+    const errMsg = (event as any).error ? String((event as any).error).slice(0, 200) : '';
+    console.log(`[handler:diag] harness event: type=${ev.type} entryRole=${entryRole} entryType=${entryType} reason=${ev.reason ?? ''} stopReason=${ev.message?.stopReason ?? ''} error=${errMsg}`);
     // pi 0.85 renamed tool_execution_start → tool_start.
     if (ev.type === "tool_start") {
       const tc = event as unknown as {
