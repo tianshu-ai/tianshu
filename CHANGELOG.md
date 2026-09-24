@@ -6,6 +6,22 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.66.0](https://github.com/tianshu-ai/tianshu/compare/v0.65.1...v0.66.0) (2026-09-24)
+
+
+### Features
+
+* **chat:** chain-absolute turn_number across fork boundaries ([#505](https://github.com/tianshu-ai/tianshu/issues/505)) ([0e96a1f](https://github.com/tianshu-ai/tianshu/commit/0e96a1f007064a560c999ee712a5d90fdcafb607))
+* **chat:** route /compact through harness.compact() so structured summaries apply ([#503](https://github.com/tianshu-ai/tianshu/issues/503)) ([8dcdd10](https://github.com/tianshu-ai/tianshu/commit/8dcdd1004637a606815593ad4c3f95bd35f12c7c))
+* **chat:** structured compaction with turn-numbered summaries ([#501](https://github.com/tianshu-ai/tianshu/issues/501)) ([63ba5fe](https://github.com/tianshu-ai/tianshu/commit/63ba5fea549c5c4a64cce50a6dc783042434aa2a))
+* **wiki:** add knowledge-linking instruction to ingest prompt ([#507](https://github.com/tianshu-ai/tianshu/issues/507)) ([37af268](https://github.com/tianshu-ai/tianshu/commit/37af26824980a1c87688dbda408b905a6d055650))
+* **wiki:** add turn_number index to wiki ingest transcript ([#506](https://github.com/tianshu-ai/tianshu/issues/506)) ([be1629d](https://github.com/tianshu-ai/tianshu/commit/be1629dd003e4eb3d15a676367a726cd86618869))
+
+
+### Bug Fixes
+
+* **chat:** exclude fork-seed [Conversation summary] from real user turn count ([#504](https://github.com/tianshu-ai/tianshu/issues/504)) ([0574867](https://github.com/tianshu-ai/tianshu/commit/0574867873dbd2cbd9dd0aafd389c4be969dbbaf))
+
 ## [0.65.1](https://github.com/tianshu-ai/tianshu/compare/v0.65.0...v0.65.1) (2026-09-24)
 
 
