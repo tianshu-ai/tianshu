@@ -79,10 +79,13 @@ export function runMigrations(db: Database): { applied: string[]; alreadyApplied
       alreadyApplied.push(m.id);
       continue;
     }
+    console.log(`[migrations] running ${m.id}...`);
+    const t0 = Date.now();
     db.transaction(() => {
       m.up(db);
       recordStmt.run(m.id, Date.now());
     })();
+    console.log(`[migrations] ${m.id} done (${Date.now() - t0}ms)`);
     applied.push(m.id);
   }
 
