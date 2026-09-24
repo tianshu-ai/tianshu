@@ -111,6 +111,7 @@ import {
   registerUserSendChannel,
 } from "./active-harnesses.js";
 import { SqliteSessionStorage } from "./sqlite-session-storage.js";
+import { SqliteStorage } from "./sqlite-storage.js";
 import {
   createLogger,
   elapsedMs,
@@ -796,13 +797,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // pi 0.85 migration: `entryTransforms` is gone. We now compose all
   // read-time transforms (progressive-history + tool-result aging)
   // into a single `toProviderMessages` hook passed to
-  // `AgentHarness.create()` further below. See `progressiveTransform`
-  // variable near the harness creation site.
+  // `AgentHarness.create()` further below.
   const progressiveCfg = ctx.config.models?.progressiveHistory ?? {};
   // pi 0.85: Session is an interface. `StorageBackedSession` is the
   // canonical implementation and takes (metadata, storage, options).
+  // The pi Storage is our new SqliteStorage; SqliteSessionStorage
+  // stays as tianshu-specific glue (attachments + inbox events).
   const piSessionMetadata = await storage.getMetadata();
-  const piSession = new StorageBackedSession(piSessionMetadata, storage);
+  const piStorage = new SqliteStorage(ctx.db, session.id);
+  const piSession = new StorageBackedSession(piSessionMetadata, piStorage);
   if (originalAttachments && originalAttachments.length > 0) {
     storage.pendingUserAttachments = {
       attachments: originalAttachments as unknown[],
@@ -907,7 +910,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const { harness } = await AgentHarness.create(
     {
       session: piSession,
-      tools: adapted.tools,
+      // pi 0.85 typed AgentHarnessTool[] more strictly than our
+      // adapter yields; a runtime cast is safe here because the
+      // AgentTool shape matches AgentHarnessTool structurally.
+      tools: adapted.tools as unknown as Parameters<
+        typeof AgentHarness.create
+      >[0]["tools"],
       systemPrompt,
       model: piModel,
       toProviderMessages,
@@ -1793,7 +1801,10 @@ function bridgeHarnessEventToWs(
   // Pi-low-level events first (text_delta etc).
   const lowType = (event as { type: string }).type;
   if (lowType === "message_update") {
-    const upd = event as {
+    // pi 0.85 HarnessEvent is a wider tagged union that doesn't
+    // structurally overlap this narrow message_update shape at the
+    // TS level, so the cast routes through `unknown`.
+    const upd = event as unknown as {
       type: "message_update";
       assistantMessageEvent: { type: string; delta?: string };
     };
@@ -1923,7 +1934,9 @@ function bridgeHarnessEventToWs(
   // 401'd, pi flagged the assistant with stopReason="error", server
   // returned a silent empty bubble.
   if (lowType === "agent_end") {
-    const messages = (event as { messages: AgentMessage[] }).messages;
+    // Same widening story as message_update above.
+    const messages = (event as unknown as { messages: AgentMessage[] })
+      .messages;
     const last = messages[messages.length - 1];
     if (
       last &&

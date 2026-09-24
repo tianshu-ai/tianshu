@@ -63,9 +63,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type {
   AgentMessage,
+  Entry,
   SessionMetadata,
-  SessionStorage,
-  SessionTreeEntry,
 } from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
@@ -172,8 +171,15 @@ export interface PendingUserAttachments {
  */
 const CONTENT_PROJECTION_RECENT_TURNS = 8;
 
+// pi 0.85 no longer exports SessionStorage; the equivalent contract
+// (Storage) lives at a lower level and is implemented by
+// packages/server/src/chat/sqlite-storage.ts. This class stays as
+// tianshu-specific glue: it owns the attachments/inbox-event handoff
+// slots the chat handler stamps onto the next user message, and it
+// exposes the legacy image-inflate + progressive-history helpers that
+// existing recall-tool / handler paths still consume against a raw SQL
+// projection of the messages table.
 export class SqliteSessionStorage
-  implements SessionStorage<SqliteSessionMetadata>
 {
   /** Optional: when set, the next user-role message persisted
    *  through `appendEntry` gets the `attachments` array spliced
@@ -190,7 +196,7 @@ export class SqliteSessionStorage
    *  same shape the chat handler used to write before N+6.4. */
   imageInflate: ImageInflateOptions | null = null;
 
-  private _cachedPath: { leafId: string; entries: SessionTreeEntry[] } | null = null;
+  private _cachedPath: { leafId: string; entries: Entry[] } | null = null;
 
   constructor(
     private readonly ctx: TenantContext,
@@ -245,7 +251,7 @@ export class SqliteSessionStorage
     };
   }
 
-  async getPathToRootOrCompaction(leafId: string | null): Promise<SessionTreeEntry[]> {
+  async getPathToRootOrCompaction(leafId: string | null): Promise<Entry[]> {
     return this.getPathToRoot(leafId);
   }
 
@@ -270,7 +276,7 @@ export class SqliteSessionStorage
     return `msg_${randomUUID()}`;
   }
 
-  async appendEntry(entry: SessionTreeEntry): Promise<void> {
+  async appendEntry(entry: Entry): Promise<void> {
     this._cachedPath = null;
     // If the chat handler stashed attachments for this turn,
     // splice them onto the first user message we persist.
@@ -342,7 +348,7 @@ export class SqliteSessionStorage
     await this.setLeafId(mutated.id);
   }
 
-  async getEntry(id: string): Promise<SessionTreeEntry | undefined> {
+  async getEntry(id: string): Promise<Entry | undefined> {
     const row = this.ctx.db
       .prepare<[string, string], MessagesRow>(
         `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
@@ -352,9 +358,9 @@ export class SqliteSessionStorage
     return row ? rowToEntry(row) : undefined;
   }
 
-  async findEntries<TType extends SessionTreeEntry["type"]>(
+  async findEntries<TType extends Entry["type"]>(
     type: TType,
-  ): Promise<Array<Extract<SessionTreeEntry, { type: TType }>>> {
+  ): Promise<Array<Extract<Entry, { type: TType }>>> {
     const rows = this.ctx.db
       .prepare<[string, string], MessagesRow>(
         `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
@@ -365,27 +371,13 @@ export class SqliteSessionStorage
     return rows.map((r) => rowToEntry(r) as never);
   }
 
-  async getLabel(id: string): Promise<string | undefined> {
-    // Labels are stored as their own entries (`entry_type='label'`)
-    // and reference the labelled entry via `targetId`. The most
-    // recent label wins.
-    const rows = this.ctx.db
-      .prepare<[string], MessagesRow>(
-        `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
-         FROM messages WHERE session_id = ? AND entry_type = 'label'
-         ORDER BY created_at DESC, rowid DESC`,
-      )
-      .all(this.sessionId);
-    for (const r of rows) {
-      const entry = rowToEntry(r);
-      if (entry.type === "label" && entry.targetId === id) {
-        return entry.label ?? undefined;
-      }
-    }
-    return undefined;
-  }
+  // pi 0.85 dropped the `label` EntryType and stores labels via
+  // Session.setLabel / Session.getLabel (backed by pi's Value<string>
+  // KV). Callers that used to reach into SqliteSessionStorage.getLabel
+  // now go through the pi session facade instead — no local shim.
 
-  async getPathToRoot(leafId: string | null): Promise<SessionTreeEntry[]> {
+
+  async getPathToRoot(leafId: string | null): Promise<Entry[]> {
     dbg(`[storage] getPathToRoot called, session=${this.sessionId}, leafId=${leafId?.slice(0, 8)}`);
     if (!leafId) return [];
 
@@ -458,7 +450,7 @@ export class SqliteSessionStorage
     }
 
     // ── Phase 3: Assemble the path ──
-    let path: SessionTreeEntry[] = skeleton.map((s) => {
+    let path: Entry[] = skeleton.map((s) => {
       const full = fullRowMap.get(s.id);
       if (full) return rowToEntry(full);
       // Old entry beyond the content boundary — lightweight stub.
@@ -527,7 +519,7 @@ export class SqliteSessionStorage
     return sanitized;
   }
 
-  async getEntries(): Promise<SessionTreeEntry[]> {
+  async getEntries(): Promise<Entry[]> {
     const rows = this.ctx.db
       .prepare<[string], MessagesRow>(
         `SELECT id, session_id, role, content, parent_id, entry_type, entry_details, created_at
@@ -543,7 +535,7 @@ export class SqliteSessionStorage
 
 function entryToRow(
   sessionId: string,
-  entry: SessionTreeEntry,
+  entry: Entry,
 ): {
   id: string;
   session_id: string;
@@ -554,7 +546,13 @@ function entryToRow(
   entry_details: string | null;
   created_at: number;
 } {
-  const created_at = Date.parse(entry.timestamp) || Date.now();
+  // pi 0.85 `Entry.timestamp` is already an epoch number; older
+  // callers passed ISO strings. Accept both defensively.
+  const rawTs = (entry as { timestamp: number | string }).timestamp;
+  const created_at =
+    typeof rawTs === "number"
+      ? rawTs
+      : Date.parse(rawTs) || Date.now();
   if (entry.type === "message") {
     const m = entry.message;
     const role: MessagesRow["role"] =
@@ -594,15 +592,20 @@ function entryToRow(
   };
 }
 
-function rowToEntry(row: MessagesRow): SessionTreeEntry {
+function rowToEntry(row: MessagesRow): Entry {
   const base = {
     id: row.id,
     parentId: row.parent_id,
-    timestamp: new Date(row.created_at).toISOString(),
+    // pi 0.85: Entry.timestamp is a number (epoch ms), not an ISO
+    // string.
+    timestamp: row.created_at,
+    // pi 0.85 requires seq on every Entry; legacy rows may hold
+    // NULL, which we surface as 0 ("before any committed write").
+    seq: 0,
   };
   if (row.entry_type === "message") {
     const message = parseMessage(row.content, row.role);
-    return { type: "message", ...base, message };
+    return { type: "message", ...base, message } as unknown as Entry;
   }
   const parsed = row.entry_details ? safeParse(row.entry_details) : null;
   const details =
@@ -611,7 +614,7 @@ function rowToEntry(row: MessagesRow): SessionTreeEntry {
       : {};
   // Cast through unknown — the `details` JSON keys have to line up
   // with the typed entry's fields (we control the writer).
-  return { type: row.entry_type, ...base, ...details } as unknown as SessionTreeEntry;
+  return { type: row.entry_type, ...base, ...details } as unknown as Entry;
 }
 
 function parseMessage(content: string, role: MessagesRow["role"]): AgentMessage {
@@ -829,7 +832,7 @@ function stubContentForRole(role: string): string {
  * Remove toolResult entries whose toolCallId doesn't match any toolCall
  * in a prior assistant message. Prevents Anthropic 400 after compaction.
  */
-function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[] {
+function filterOrphanedToolResults(path: Entry[]): Entry[] {
   // Anthropic requires every tool_result to reference a tool_use from
   // the IMMEDIATELY PRECEDING assistant message. After compaction,
   // ordering can break this invariant. We fix it by tracking which
@@ -916,7 +919,7 @@ function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[]
   if (removed === 0) return path;
 
   // Third pass: build filtered path
-  const filtered: SessionTreeEntry[] = [];
+  const filtered: Entry[] = [];
   for (let i = 0; i < path.length; i++) {
     if (orphanEntryIndices.has(i)) continue;
     const entry = path[i];
@@ -925,7 +928,7 @@ function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[]
       const ce = entry as { retainedTail?: unknown[] };
       if (Array.isArray(ce.retainedTail)) {
         const cleanTail = ce.retainedTail.filter((_: unknown, t: number) => !tailDrops.has(t));
-        filtered.push({ ...entry, retainedTail: cleanTail } as unknown as SessionTreeEntry);
+        filtered.push({ ...entry, retainedTail: cleanTail } as unknown as Entry);
         continue;
       }
     }
@@ -941,7 +944,7 @@ function filterOrphanedToolResults(path: SessionTreeEntry[]): SessionTreeEntry[]
  * assistant message was persisted but before the toolResult landed.
  * Anthropic rejects requests where tool_use has no tool_result.
  */
-function patchDanglingToolCalls(path: SessionTreeEntry[]): SessionTreeEntry[] {
+function patchDanglingToolCalls(path: Entry[]): Entry[] {
   const allToolResultIds = new Set<string>();
   for (const entry of path) {
     if (entry.type !== "message") continue;
@@ -982,7 +985,7 @@ function patchDanglingToolCalls(path: SessionTreeEntry[]): SessionTreeEntry[] {
     return {
       ...entry,
       message: { ...msg, content: cleaned },
-    } as unknown as SessionTreeEntry;
+    } as unknown as Entry;
   });
 
   if (modified) {
@@ -999,7 +1002,7 @@ function patchDanglingToolCalls(path: SessionTreeEntry[]): SessionTreeEntry[] {
  * contains embedded toolCall blocks from an aborted turn — IDs that
  * were never in the assistant's toolCall list.
  */
-function stripNestedOrphanToolBlocks(path: SessionTreeEntry[]): SessionTreeEntry[] {
+function stripNestedOrphanToolBlocks(path: Entry[]): Entry[] {
   // Collect all toolCall ids from assistant messages.
   const allToolCallIds = new Set<string>();
   for (const entry of path) {
@@ -1041,7 +1044,7 @@ function stripNestedOrphanToolBlocks(path: SessionTreeEntry[]): SessionTreeEntry
     return {
       ...entry,
       message: { ...msg, content: cleaned },
-    } as unknown as SessionTreeEntry;
+    } as unknown as Entry;
   });
 
   if (modified) {

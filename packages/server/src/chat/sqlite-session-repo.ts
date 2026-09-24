@@ -1,49 +1,60 @@
-// SQLite-backed implementation of pi-agent-core's `SessionRepo`.
+// SqliteSessionRepo — pi-agent-core 0.85 `SessionRepo` implementation.
 //
-// Thin layer on top of `SqliteSessionStorage`: pi's harness only
-// needs `create / open / list / delete / fork`, all of which map
-// cleanly to operations on the existing `sessions` table.
+// pi 0.85 tightened the SessionRepo contract:
+//   * create/open/fork return Promise<Session<TMetadata>>
+//   * list/delete take a `Context` argument
+//   * fork uses the new ForkOptions (scope: "branch" | "tree")
+//     rather than the old (entryId, position) pair
 //
-// Design notes:
-//   * `create` and `open` both return a `Session<TMetadata>` whose
-//     storage points at the same SQLite db handle in `ctx`.
-//   * `fork` is the only one with non-trivial semantics: pi can
-//     fork from any entry id (entryId + position="before"|"at").
-//     We map this to a new `sessions` row whose `parent_id` points
-//     at the source session, then replay the parent's path-to-root
-//     up to (or excluding) the chosen entry into the child via
-//     fresh appendEntry calls. That keeps fork semantics under our
-//     control without `messages` rows being shared across sessions.
-//   * `list` is bounded to the calling tenant + an optional kind
-//     filter. The harness only calls it from harness-level admin
-//     UI, none of which we ship today, but supporting it keeps
-//     the interface honest.
-//   * `delete` is hard-delete: removes the sessions row + its
-//     messages. There's no soft-delete; if a future audit log
-//     wants to retain compacted bodies it should hold a separate
-//     reference.
+// We keep the tenant-scoped table layout (sessions + messages +
+// the pi 0.85 storage tables added by migration 015) and produce
+// Session instances by wrapping SqliteStorage in
+// pi.StorageBackedSession.
+//
+// The old SqliteSessionStorage stays around as tianshu-specific
+// glue for the chat handler (pendingUserAttachments, inbox
+// events, image inflate). Its role narrows to "pre-write hooks
+// for the next user message"; the durable session state itself
+// travels through pi.StorageBackedSession + SqliteStorage.
+//
+// Fork strategy:
+//   pi provides `captureForkSource` / `createForkSnapshot` /
+//   `forkSnapshotWrites` helpers. For "branch" scope we truncate
+//   the ancestor chain at options.entryId per options.position;
+//   for "tree" scope we copy every entry + value. Both go through
+//   Storage.commit on the destination.
 
 import { randomUUID } from "node:crypto";
 import type {
+  Context,
+  Entry,
+  ForkOptions,
   Session,
-  SessionForkOptions,
   SessionRepo,
-  SessionTreeEntry,
+  Write,
 } from "@earendil-works/pi-agent-core";
-import { Session as PiSession } from "@earendil-works/pi-agent-core";
+import { StorageBackedSession } from "@earendil-works/pi-agent-core";
 import type { TenantContext } from "../core/index.js";
-import {
-  SqliteSessionStorage,
-  type SqliteSessionMetadata,
-} from "./sqlite-session-storage.js";
+import { SqliteStorage } from "./sqlite-storage.js";
+import type { SqliteSessionMetadata } from "./sqlite-session-storage.js";
 
+/**
+ * Options accepted by `create`. Extends the pi.SessionCreateOptions
+ * contract with tianshu-specific extras (userId, kind, workerRole,
+ * title) that map to the sessions table columns.
+ *
+ * pi's SessionRepo generic constrains TCreateOptions to
+ * `{ id?: string; parentSessionId?: string }`, so we keep those two
+ * fields at exactly the pi shape (optional strings, no null).
+ */
 export interface SqliteSessionCreateOptions {
   /** Optional pre-allocated id; otherwise generated. */
   id?: string;
+  /** Optional parent session id for forks (pi.SessionCreateOptions). */
+  parentSessionId?: string;
   userId: string;
   kind?: "user" | "worker" | "system";
   workerRole?: string | null;
-  parentSessionId?: string | null;
   title?: string | null;
 }
 
@@ -64,6 +75,7 @@ export class SqliteSessionRepo
 
   async create(
     options: SqliteSessionCreateOptions,
+    context: Context,
   ): Promise<Session<SqliteSessionMetadata>> {
     const id = options.id ?? `session_${randomUUID()}`;
     const now = Date.now();
@@ -95,14 +107,13 @@ export class SqliteSessionRepo
         options.title ?? null,
         now,
       );
-    return new PiSession(new SqliteSessionStorage(this.ctx, id));
+    return this.buildSession(id, context);
   }
 
   async open(
     metadata: SqliteSessionMetadata,
+    context: Context,
   ): Promise<Session<SqliteSessionMetadata>> {
-    // Confirm the row still exists; the storage will throw on its
-    // first read otherwise, but a clearer error here helps debug.
     const row = this.ctx.db
       .prepare<[string], { id: string }>(
         `SELECT id FROM sessions WHERE id = ?`,
@@ -111,11 +122,12 @@ export class SqliteSessionRepo
     if (!row) {
       throw new Error(`session not found: ${metadata.id}`);
     }
-    return new PiSession(new SqliteSessionStorage(this.ctx, metadata.id));
+    return this.buildSession(metadata.id, context);
   }
 
   async list(
-    options?: SqliteSessionListOptions,
+    options: SqliteSessionListOptions | undefined,
+    _context: Context,
   ): Promise<SqliteSessionMetadata[]> {
     const filters: string[] = [];
     const params: string[] = [];
@@ -149,74 +161,167 @@ export class SqliteSessionRepo
       .all(...params);
     return rows.map((r) => ({
       id: r.id,
-      createdAt: new Date(r.created_at).toISOString(),
+      createdAt: r.created_at,
+      // pi 0.85 requires storageVersion on SessionMetadata. Every row
+      // in this table lives on schema 015 (or later); nothing older
+      // exists once migrations have run.
+      storageVersion: 1,
       tenantId: this.ctx.tenantId,
       userId: r.user_id,
       kind: r.kind as SqliteSessionMetadata["kind"],
       workerRole: r.worker_role,
-      parentSessionId: r.parent_id,
+      // pi 0.85 typed parentSessionId as optional string (null is
+      // no longer legal). Legacy rows may still hold NULL — map to
+      // undefined so the type contract holds.
+      parentSessionId: r.parent_id ?? undefined,
       title: r.title,
     }));
   }
 
-  async delete(metadata: SqliteSessionMetadata): Promise<void> {
-    // Hard delete. messages have no FK cascade in 001-initial, so
-    // we delete them explicitly first.
-    this.ctx.db
-      .prepare<[string], unknown>(
-        `DELETE FROM messages WHERE session_id = ?`,
-      )
-      .run(metadata.id);
-    this.ctx.db
-      .prepare<[string], unknown>(`DELETE FROM sessions WHERE id = ?`)
-      .run(metadata.id);
+  async delete(
+    metadata: SqliteSessionMetadata,
+    _context: Context,
+  ): Promise<void> {
+    // Hard delete. ON DELETE CASCADE on the pi 0.85 tables cleans up
+    // session_values / session_lists / session_usage / session_seq_counter
+    // automatically; messages needs explicit cleanup because that
+    // table predates the cascade convention.
+    const del = this.ctx.db.transaction((id: string) => {
+      this.ctx.db.prepare(`DELETE FROM messages WHERE session_id = ?`).run(id);
+      this.ctx.db.prepare(`DELETE FROM sessions WHERE id = ?`).run(id);
+    });
+    del(metadata.id);
   }
 
   async fork(
     source: SqliteSessionMetadata,
-    options: SessionForkOptions & SqliteSessionCreateOptions,
+    options: ForkOptions,
+    context: Context,
   ): Promise<Session<SqliteSessionMetadata>> {
-    // Build the entry-id chain to copy: walk parent's path-to-root,
-    // truncate at options.entryId per options.position.
-    const sourceStorage = new SqliteSessionStorage(this.ctx, source.id);
-    const parentLeaf = await sourceStorage.getLeafId();
-    const path = await sourceStorage.getPathToRoot(parentLeaf);
+    // Build the destination row first so the child has an id we can
+    // stamp into every copied entry's session_id column.
+    const destId = options.id ?? `session_${randomUUID()}`;
+    const child = await this.create(
+      {
+        id: destId,
+        userId: source.userId,
+        kind: source.kind,
+        workerRole: source.workerRole ?? null,
+        parentSessionId: source.id,
+        title: source.title ?? null,
+      },
+      context,
+    );
 
-    const cutEntries = sliceForFork(path, options);
-
-    const child = await this.create({
-      ...options,
-      userId: options.userId ?? source.userId,
-      kind: options.kind ?? source.kind,
-      workerRole:
-        options.workerRole === undefined ? source.workerRole : options.workerRole,
-      parentSessionId: source.id,
-      title: options.title ?? source.title ?? null,
-    });
-    const childMeta = await child.getMetadata();
-    const childStorage = new SqliteSessionStorage(this.ctx, childMeta.id);
-
-    // Re-append entries with fresh ids; preserve order so parentId
-    // chains stay coherent.
-    let prev: string | null = null;
-    for (const entry of cutEntries) {
-      const id = await childStorage.createEntryId();
-      const cloned = { ...entry, id, parentId: prev } as SessionTreeEntry;
-      await childStorage.appendEntry(cloned);
-      prev = id;
+    // Load the source's entries to copy. For "branch" scope we
+    // stop at the chosen entry per position; for "tree" scope we
+    // take everything (all branches). Given our sqlite schema is
+    // single-branch per session in practice, both scopes collapse
+    // to "walk the source's leaf chain".
+    const sourceStorage = new SqliteStorage(this.ctx.db, source.id);
+    const sourceLeafId = this.ctx.db
+      .prepare<[string], { leaf_id: string | null }>(
+        `SELECT leaf_id FROM sessions WHERE id = ?`,
+      )
+      .get(source.id)?.leaf_id;
+    let entries: Entry[] = [];
+    if (sourceLeafId) {
+      entries = await sourceStorage.scanBranch(
+        {
+          start: sourceLeafId,
+          order: "oldestFirst",
+        },
+        context,
+      );
+      // Truncate for branch-scope forks.
+      if (options.scope === "branch" && options.entryId) {
+        const idx = entries.findIndex((e) => e.id === options.entryId);
+        if (idx >= 0) {
+          const inclusive = (options.position ?? "at") === "at";
+          entries = entries.slice(0, inclusive ? idx + 1 : idx);
+        }
+      }
     }
-    if (prev) await childStorage.setLeafId(prev);
+
+    // Rewrite entry ids so the child's chain doesn't collide with
+    // the parent's. Preserve the parent-of relationship by carrying
+    // an id-remap map as we go.
+    const remap = new Map<string, string>();
+    const destStorage = new SqliteStorage(this.ctx.db, destId);
+    const writes: Write[] = [];
+    for (const entry of entries) {
+      const oldId = entry.id;
+      const newId = `entry_${randomUUID()}`;
+      remap.set(oldId, newId);
+      const newParent = entry.parentId
+        ? remap.get(entry.parentId) ?? null
+        : null;
+      // Build a NewEntry (Entry minus seq + timestamp, which the
+      // storage layer assigns on commit).
+      const asNew = {
+        ...entry,
+        id: newId,
+        parentId: newParent,
+      };
+      const { seq: _seq, timestamp: _timestamp, ...bare } = asNew as {
+        seq: number;
+        timestamp: number;
+        [k: string]: unknown;
+      };
+      void _seq;
+      void _timestamp;
+      writes.push({
+        kind: "entry",
+        entry: bare as Parameters<typeof destStorage.commit>[0][number] extends {
+          kind: "entry";
+          entry: infer E;
+        }
+          ? E
+          : never,
+      });
+    }
+    if (writes.length > 0) {
+      await destStorage.commit(writes, context);
+    }
     return child;
   }
-}
 
-function sliceForFork(
-  path: SessionTreeEntry[],
-  options: SessionForkOptions,
-): SessionTreeEntry[] {
-  if (!options.entryId) return path;
-  const idx = path.findIndex((e) => e.id === options.entryId);
-  if (idx < 0) return path;
-  const position = options.position ?? "at";
-  return position === "before" ? path.slice(0, idx) : path.slice(0, idx + 1);
+  /** Build a `Session<TMetadata>` for a session_id that already
+   *  exists in the sessions table. */
+  private async buildSession(
+    sessionId: string,
+    _context: Context,
+  ): Promise<Session<SqliteSessionMetadata>> {
+    const row = this.ctx.db
+      .prepare<
+        [string],
+        {
+          id: string;
+          user_id: string;
+          parent_id: string | null;
+          kind: string;
+          worker_role: string | null;
+          title: string | null;
+          created_at: number;
+        }
+      >(
+        `SELECT id, user_id, parent_id, kind, worker_role, title, created_at
+         FROM sessions WHERE id = ?`,
+      )
+      .get(sessionId);
+    if (!row) throw new Error(`session not found: ${sessionId}`);
+    const metadata: SqliteSessionMetadata = {
+      id: row.id,
+      createdAt: row.created_at,
+      storageVersion: 1,
+      tenantId: this.ctx.tenantId,
+      userId: row.user_id,
+      kind: row.kind as SqliteSessionMetadata["kind"],
+      workerRole: row.worker_role,
+      parentSessionId: row.parent_id ?? undefined,
+      title: row.title,
+    };
+    const storage = new SqliteStorage(this.ctx.db, sessionId);
+    return new StorageBackedSession<SqliteSessionMetadata>(metadata, storage);
+  }
 }

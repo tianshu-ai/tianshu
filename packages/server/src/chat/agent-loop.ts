@@ -169,6 +169,15 @@ export async function runAgentLoop(
     signal: externalSignal,
   } = req;
 
+  // pi 0.85: every harness/lane/session/repo method requires a
+  // `Context`. We build it early so the session repo can consume
+  // it in open/create below. Cancellation follows the caller's
+  // externalSignal; a stricter innerCtl-scoped context is derived
+  // downstream once the loop's abort controller exists.
+  let piContext: Context = externalSignal
+    ? withAbortSignal(externalSignal, BACKGROUND_CONTEXT)
+    : BACKGROUND_CONTEXT;
+
   const repo = new SqliteSessionRepo(ctx);
   // Resume vs. fresh:
   //   - When the caller (e.g. workboard's retry path) passes
@@ -191,17 +200,20 @@ export async function runAgentLoop(
       // the type but ignored at runtime; we pass plausible values
       // sourced from the request so we don't accidentally load a
       // session belonging to another tenant.
-      session = await repo.open({
-        id: req.resumeSessionId,
-        createdAt: 0,
-        storageVersion: 1,
-        tenantId: ctx.tenantId,
-        userId,
-        kind: "worker",
-        workerRole: req.workerRole ?? null,
-        parentSessionId: req.parentSessionId ?? undefined,
-        title: req.sessionTitle ?? null,
-      });
+      session = await repo.open(
+        {
+          id: req.resumeSessionId,
+          createdAt: 0,
+          storageVersion: 1,
+          tenantId: ctx.tenantId,
+          userId,
+          kind: "worker",
+          workerRole: req.workerRole ?? null,
+          parentSessionId: req.parentSessionId ?? undefined,
+          title: req.sessionTitle ?? null,
+        },
+        piContext,
+      );
       resumed = true;
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -212,13 +224,16 @@ export async function runAgentLoop(
     }
   }
   if (!session) {
-    session = await repo.create({
-      userId,
-      kind: "worker",
-      workerRole: req.workerRole ?? null,
-      parentSessionId: req.parentSessionId ?? null,
-      title: req.sessionTitle ?? null,
-    });
+    session = await repo.create(
+      {
+        userId,
+        kind: "worker",
+        workerRole: req.workerRole ?? null,
+        parentSessionId: req.parentSessionId ?? undefined,
+        title: req.sessionTitle ?? null,
+      },
+      piContext,
+    );
   }
   const sessionMeta = session.metadata;
   // Notify caller of the freshly-created session row so callers
@@ -353,11 +368,10 @@ export async function runAgentLoop(
   const innerCtl = new AbortController();
   const onExternalAbort = () => innerCtl.abort();
   externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
-  // pi 0.85: every harness/lane/session/repo method requires a
-  // `Context`. We derive one root Context from BACKGROUND_CONTEXT
-  // whose cancellation follows innerCtl's abort, then pass it
-  // through to every pi API callsite in this function.
-  const piContext: Context = withAbortSignal(innerCtl.signal, BACKGROUND_CONTEXT);
+  // Tighten the context to the loop's inner abort controller now
+  // that it exists. innerCtl fires on both externalSignal aborts
+  // (via the listener above) and on internal timeouts/turn caps.
+  piContext = withAbortSignal(innerCtl.signal, BACKGROUND_CONTEXT);
   const workerCompactionSettings = {
     enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80,
     ...(ctx.config.models?.compaction ?? {}),

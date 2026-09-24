@@ -23,6 +23,7 @@ import * as channelBindingsOwner from "./011-channel-bindings-owner.js";
 import * as channelBindingsUnique from "./012-channel-bindings-unique.js";
 import * as userPreferences from "./013-user-preferences.js";
 import * as messageChainWalkIndex from "./014-message-chain-walk-index.js";
+import * as piStorageV2 from "./015-pi-storage-v2.js";
 
 export interface Migration {
   id: string;
@@ -45,6 +46,7 @@ export const MIGRATIONS: Migration[] = [
   { id: channelBindingsUnique.ID, up: channelBindingsUnique.up },
   { id: userPreferences.ID, up: userPreferences.up },
   { id: messageChainWalkIndex.ID, up: messageChainWalkIndex.up },
+  { id: piStorageV2.ID, up: piStorageV2.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `
