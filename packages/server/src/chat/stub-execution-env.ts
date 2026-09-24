@@ -80,6 +80,12 @@ export function makeStubExecutionEnv(cwd: string): ExecutionEnv {
     async remove() {
       return fileErr("filesystem ops not supported in this harness");
     },
+    // pi 0.87 added openTextLineReader to the ExecutionEnv contract
+    // (pull-based UTF-8 line reader). Not used by the harness path we
+    // exercise — stubbed as unsupported like the rest of the fs surface.
+    async openTextLineReader() {
+      return fileErr("filesystem ops not supported in this harness");
+    },
     // pi 0.85 added renameFile to the ExecutionEnv contract.
     async renameFile() {
       return fileErr("filesystem ops not supported in this harness");
