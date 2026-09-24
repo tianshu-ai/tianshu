@@ -617,11 +617,27 @@ export const useChatStore = create<ChatState>((set, get) => ({
         // the same id (paranoia for re-registered handlers).
         const withoutPlaceholder = s.messages.filter((x) => x.id !== STREAMING_ID);
         const alreadyHave = withoutPlaceholder.some((x) => x.id === m.message.id);
+        // Suppress synthetic empty stream_end payloads. The server emits
+        // a fake `msg_empty_<ts>` message with role=assistant + no visible
+        // text when the harness's final turn was tool-only (or was aborted
+        // during compaction). Its sole purpose is to re-enable the send
+        // button; appending it would leave a `··· 0% ctx` bubble in the
+        // transcript. Detect by id prefix + empty text; the real persisted
+        // rows always have UUIDv7 ids and non-empty content in this
+        // branch (bare tool-call assistants are filtered server-side).
+        const isSyntheticEmpty =
+          typeof m.message.id === "string" &&
+          m.message.id.startsWith("msg_empty_") &&
+          (m.message.text ?? "").trim().length === 0 &&
+          !(m.message.toolCalls?.length);
         // A successful completion ends the auto-retry loop entirely
         // (cancels timers + resets the climbing attempt counter).
         resetRetryLoop();
         return {
-          messages: alreadyHave ? withoutPlaceholder : [...withoutPlaceholder, m.message],
+          messages:
+            alreadyHave || isSyntheticEmpty
+              ? withoutPlaceholder
+              : [...withoutPlaceholder, m.message],
           isStreaming: false,
           isCompacting: false,
           // Turn completed successfully; clear transient notices +
