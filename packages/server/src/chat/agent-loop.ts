@@ -682,9 +682,26 @@ export async function runAgentLoop(
     lastEventAt = Date.now();
     sawAnyEvent = true;
   });
-  const unsubscribeActivity2 = harness.events.on("tool_start", () => {
+  // Track task_complete args as they come in on tool_start. pi 0.85
+  // dropped `args` from the tool_end event (see harness/agent-
+  // harness.d.ts::HarnessEventPayload — tool_end only carries
+  // toolCallId/toolName/result/isError/terminate). We used to read
+  // e.args on tool_end; that field never existed in 0.85 and made
+  // task_complete look like it was never called, so orchestrator
+  // would report [no_completion] and re-queue the task.
+  const pendingTaskCompleteArgs = new Map<
+    string,
+    { summary?: unknown; files?: unknown }
+  >();
+  const unsubscribeActivity2 = harness.events.on("tool_start", (e) => {
     lastEventAt = Date.now();
     sawAnyEvent = true;
+    if (e.toolName === TASK_COMPLETE_TOOL) {
+      pendingTaskCompleteArgs.set(
+        e.toolCallId,
+        (e.args ?? {}) as { summary?: unknown; files?: unknown },
+      );
+    }
   });
   const unsubscribe = () => {
     unsubscribeTurnEnd();
@@ -720,10 +737,10 @@ export async function runAgentLoop(
       // Already captured the terminal call; ignore any stragglers.
       return undefined;
     }
-    const input = (e as unknown as { args?: unknown }).args as {
-      summary?: unknown;
-      files?: unknown;
-    };
+    // pi 0.85 tool_end carries no args — read the args we cached on
+    // the matching tool_start above.
+    const input = pendingTaskCompleteArgs.get(e.toolCallId) ?? {};
+    pendingTaskCompleteArgs.delete(e.toolCallId);
     if (typeof input.summary === "string") {
       completionSink.summary = input.summary;
     }

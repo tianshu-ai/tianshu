@@ -219,15 +219,24 @@ describe("runAgentLoop (worker)", () => {
   });
 
   it("task_complete tool_result → done with summary + files", async () => {
-    // pi 0.85 renamed tool_result → tool_end and swapped the input
-    // arg name to `args`. See agent-loop.ts:708 for the subscriber.
+    // pi 0.85 event flow: tool_start carries args, tool_end DOES
+    // NOT (see HarnessEventPayload in agent-harness.d.ts). The
+    // runtime caches args from tool_start by toolCallId and reads
+    // them back on tool_end. Tests replicate that pair.
     __script = {
       events: [
+        {
+          type: "tool_start",
+          toolCallId: "c1",
+          toolName: "task_complete",
+          args: { summary: "I shipped v1", files: ["report.md"] },
+          runId: "r1",
+          turnId: "t1",
+        } as AgentHarnessEvent,
         {
           type: "tool_end",
           toolCallId: "c1",
           toolName: "task_complete",
-          args: { summary: "I shipped v1", files: ["report.md"] },
           result: undefined,
           isError: false,
           terminate: false,
@@ -255,14 +264,23 @@ describe("runAgentLoop (worker)", () => {
     // with a correction. Nothing stopped the turn, so the SECOND
     // (wrong) summary overwrote the first. Now the first call must
     // win and abort the harness.
-    // pi 0.85: tool_result → tool_end; input → args.
+    // pi 0.85: args on tool_start, none on tool_end. Two full
+    // start/end pairs — the first should win and abort the harness
+    // before the second is honoured.
     __script = {
       events: [
+        {
+          type: "tool_start",
+          toolCallId: "c1",
+          toolName: "task_complete",
+          args: { summary: "FIRST verdict", files: ["a.md"] },
+          runId: "r1",
+          turnId: "t1",
+        } as AgentHarnessEvent,
         {
           type: "tool_end",
           toolCallId: "c1",
           toolName: "task_complete",
-          args: { summary: "FIRST verdict", files: ["a.md"] },
           result: undefined,
           isError: false,
           terminate: false,
@@ -270,10 +288,17 @@ describe("runAgentLoop (worker)", () => {
           turnId: "t1",
         } as AgentHarnessEvent,
         {
-          type: "tool_end",
+          type: "tool_start",
           toolCallId: "c2",
           toolName: "task_complete",
           args: { summary: "SECOND (oops) verdict", files: ["b.md"] },
+          runId: "r1",
+          turnId: "t2",
+        } as AgentHarnessEvent,
+        {
+          type: "tool_end",
+          toolCallId: "c2",
+          toolName: "task_complete",
           result: undefined,
           isError: false,
           terminate: false,
