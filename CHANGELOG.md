@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.65.1](https://github.com/tianshu-ai/tianshu/compare/v0.65.0...v0.65.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **chat:** document msg_empty_ sentinel contract between server + web ([4a63d7f](https://github.com/tianshu-ai/tianshu/commit/4a63d7ff7fee6471da51f5e1d2b0985cc3f83df3))
+
 ## [0.65.0](https://github.com/tianshu-ai/tianshu/compare/v0.64.0...v0.65.0) (2026-09-24)
 
 
