@@ -27,6 +27,7 @@ import * as piStorageV2 from "./015-pi-storage-v2.js";
 import * as toolResultToTool from "./016-toolresult-to-tool.js";
 import * as turnNumber from "./017-turn-number.js";
 import * as turnNumberForkSeed from "./018-turn-number-fork-seed.js";
+import * as turnNumberChainAbsolute from "./019-turn-number-chain-absolute.js";
 
 export interface Migration {
   id: string;
@@ -53,6 +54,7 @@ export const MIGRATIONS: Migration[] = [
   { id: toolResultToTool.ID, up: toolResultToTool.up },
   { id: turnNumber.ID, up: turnNumber.up },
   { id: turnNumberForkSeed.ID, up: turnNumberForkSeed.up },
+  { id: turnNumberChainAbsolute.ID, up: turnNumberChainAbsolute.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `

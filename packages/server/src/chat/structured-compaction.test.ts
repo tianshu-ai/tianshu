@@ -20,6 +20,10 @@ import {
 function makeDb(): Database.Database {
   const db = new Database(":memory:");
   db.exec(`
+    CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      parent_id TEXT
+    );
     CREATE TABLE messages (
       id          TEXT PRIMARY KEY,
       session_id  TEXT NOT NULL,
@@ -32,6 +36,7 @@ function makeDb(): Database.Database {
       seq         INTEGER,
       turn_number INTEGER
     );
+    INSERT INTO sessions (id, parent_id) VALUES ('S', NULL);
   `);
   return db;
 }

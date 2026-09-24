@@ -47,6 +47,7 @@ import type { Database } from "better-sqlite3";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
 
 import { buildTranscript } from "./compact.js";
+import { resolveSessionChain } from "./session-chain.js";
 
 /** Prompt used for structured compaction. The model gets the full
  *  history-to-summarize as one big user turn and must return the
@@ -102,18 +103,18 @@ export function computeCompactionTurnRange(
   sessionId: string,
   retainedTailLength: number,
 ): { turnStart: number; turnEnd: number } | null {
-  // Only entry_type='message' rows carry the turn boundary; other
-  // rows (compaction/branch_summary/custom) inherit turn. pi's
-  // retainedTail count refers to AgentMessage entries, which map
-  // 1:1 to message-type entries in normal operation.
+  // Chain-absolute: walk the entire fork chain so turn numbers
+  // span the full conversation history, not just this session.
+  const chain = resolveSessionChain(db, sessionId);
+  const placeholders = chain.map(() => "?").join(",");
   const rows = db
-    .prepare<[string], CompactionRangeRow>(
+    .prepare<string[], CompactionRangeRow>(
       `SELECT turn_number, entry_type
          FROM messages
-        WHERE session_id = ? AND entry_type = 'message'
+        WHERE session_id IN (${placeholders}) AND entry_type = 'message'
         ORDER BY created_at, seq`,
     )
-    .all(sessionId);
+    .all(...chain);
 
   if (rows.length === 0) return null;
   if (retainedTailLength >= rows.length) return null; // nothing to summarize
