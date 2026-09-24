@@ -313,11 +313,13 @@ export class SqliteStorage implements Storage {
       address.namespace,
       address.key,
     ];
+    const order = options?.order === "desc" ? "DESC" : "ASC";
     if (options?.cursor) {
-      clauses.push("seq > ?");
+      // For ascending order, fetch elements after the cursor;
+      // for descending, fetch elements before it.
+      clauses.push(options.order === "desc" ? "seq < ?" : "seq > ?");
       bindings.push(options.cursor.seq);
     }
-    const order = options?.order === "desc" ? "DESC" : "ASC";
     const limit =
       options?.limit && options.limit > 0 ? `LIMIT ${options.limit}` : "";
     const rows = this.db
