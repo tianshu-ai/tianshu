@@ -310,6 +310,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         return;
       }
       case "prompt": {
+        console.log(`[handler] prompt received: modelId=${parsed.modelId ?? '(none)'} content=${String(parsed.content).slice(0,50)}`);
         if (aborter) {
           console.warn(`[handler] abort:new_prompt (previous turn superseded by new user message)`);
           aborter.abort();
