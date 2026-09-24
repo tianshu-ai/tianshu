@@ -702,9 +702,20 @@ function entryToRow(
   // `NewEntry` is pi's discriminated union with the same fields as
   // Entry but without `seq` and `timestamp` — storage assigns those.
   if (entry.type === "message") {
+    // Column-role convention. tianshu's messages.role column is
+    // narrow: user | assistant | tool | system. pi-ai's Message
+    // union uses `toolResult` for tool-result messages, which is
+    // what entry.message.role reports. Map it back to `tool` here
+    // so the wire layer, history reads, listMessagesForSessionPage,
+    // and the browser's mergeToolTurns keep matching by
+    // role === "tool". Without this, tool chips loaded from history
+    // stay stuck at 'running…' because the paired tool row is
+    // present but under an unexpected role.
+    const pi85Role = (entry.message as { role: string }).role;
+    const columnRole = pi85Role === "toolResult" ? "tool" : pi85Role;
     return {
       id: entry.id,
-      role: (entry.message as { role: string }).role,
+      role: columnRole,
       content: JSON.stringify(entry.message),
       entry_type: "message",
       entry_details: null,
