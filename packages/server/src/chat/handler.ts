@@ -88,6 +88,7 @@ import {
   buildModels,
   findModel,
   getDefaultModel,
+  listModels,
   resolveApiKey,
   type ResolvedModelInfo,
   type TenantContext,
@@ -925,6 +926,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       models: buildModels(piModel, apiKey, {
         resilience: ctx.config.models?.resilience,
         reResolveApiKey: () => resolveApiKey(modelInfo),
+        // Register ALL configured models so pi can resolve models
+        // stored in session state from previous turns. Without this,
+        // switching models mid-session fails with `model_unavailable`.
+        additionalModels: listModels(ctx.config)
+          .filter((m) => !(m.modelId === modelInfo.modelId && m.providerId === modelInfo.providerId))
+          .map((m) => ({ model: buildModel(m), apiKey: resolveApiKey(m) })),
         onRetry: (n) => {
           // Rebuilding after partial content: tell the client to drop the
           // half-streamed bubble before the replay's deltas land, so the

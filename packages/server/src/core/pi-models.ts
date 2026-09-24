@@ -82,6 +82,10 @@ export interface BuildModelsOptions {
   /** Called once per retry (before backoff) so the caller can surface
    *  a UI notification. Applies to both stream and streamSimple. */
   onRetry?: (notice: RetryNotice) => void;
+  /** Additional (model, apiKey) pairs to register so pi can resolve
+   *  models stored in session state from previous turns. Without this
+   *  switching models mid-session fails with `model_unavailable`. */
+  additionalModels?: Array<{ model: Model<Api>; apiKey: string }>;
 }
 
 export function buildModels(
@@ -133,6 +137,51 @@ export function buildModels(
 
   const models = createModels();
   models.setProvider(provider);
+
+  // Register additional models so pi can resolve models stored in
+  // session state from previous turns. Without this, switching models
+  // mid-session fails with `model_unavailable`.
+  if (options?.additionalModels) {
+    // Group by provider so we create one provider per group.
+    const byProvider = new Map<string, { models: Model<Api>[]; apiKey: string }>();
+    for (const extra of options.additionalModels) {
+      // Skip the primary model — already registered above.
+      if (extra.model.id === piModel.id && extra.model.provider === piModel.provider) continue;
+      const key = extra.model.provider;
+      let group = byProvider.get(key);
+      if (!group) {
+        group = { models: [], apiKey: extra.apiKey };
+        byProvider.set(key, group);
+      }
+      group.models.push(extra.model);
+    }
+    for (const [provId, group] of byProvider) {
+      const extraApi = getApiProvider(group.models[0]!.api);
+      if (!extraApi) continue;
+      const extraKey = group.apiKey;
+      const extraProvider = createProvider({
+        id: provId,
+        name: provId,
+        baseUrl: group.models[0]!.baseUrl,
+        auth: {
+          apiKey: {
+            name: `${provId} api key`,
+            resolve: async () => ({
+              auth: { apiKey: extraKey },
+              source: "tenant-config",
+            }),
+          },
+        },
+        models: group.models,
+        api: {
+          stream: extraApi.stream as never,
+          streamSimple: extraApi.streamSimple as never,
+        },
+      });
+      models.setProvider(extraProvider);
+    }
+  }
+
   return models;
 }
 
