@@ -6,6 +6,39 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.65.0](https://github.com/tianshu-ai/tianshu/compare/v0.64.0...v0.65.0) (2026-09-24)
+
+
+### Features
+
+* pi 0.85.1 migration complete — 0 TypeScript errors ([8082401](https://github.com/tianshu-ai/tianshu/commit/8082401aacb8f4319cf4cade8f3b38ba22fc548a))
+
+
+### Bug Fixes
+
+* abort stuck deferred operations before lane.prompt() ([b0da1de](https://github.com/tianshu-ai/tianshu/commit/b0da1deb56fd29142eea3ca5bced6322f51696f1))
+* add progress logs to migration 015 seq backfill ([a23c0bc](https://github.com/tianshu-ai/tianshu/commit/a23c0bc400aacfbb2cc33d65db8757a85000a38a))
+* align react-dom to ^19.3.0 to match react version ([0b40bdf](https://github.com/tianshu-ai/tianshu/commit/0b40bdfacd9ae8745495a32e5b329fc6926d5042))
+* bridgeHarnessEventToWs uses pi 0.85 tool_{start,end} names ([d0e9e8a](https://github.com/tianshu-ai/tianshu/commit/d0e9e8a59a335d7db28aa0875574aee3eeb118c7))
+* forward message_added on entry_added, not message_end ([d425f9f](https://github.com/tianshu-ai/tianshu/commit/d425f9ff5977ac343575227f4623028113cbaf23))
+* group all models per provider to avoid setProvider overwrite ([a781739](https://github.com/tianshu-ai/tianshu/commit/a7817396343b8af163cbc49c94c055f0ac5a88e8))
+* include provider prefix in model id to avoid cross-provider collision ([2dbf50f](https://github.com/tianshu-ai/tianshu/commit/2dbf50fe7449d3a21eabf0784c67a9356bcb7378))
+* legacy-safe parse in SqliteStorage rowToEntry ([415f6a3](https://github.com/tianshu-ai/tianshu/commit/415f6a3c033feed69475f7bf4ab12f6795c787e3))
+* message_update event field is 'event', not 'assistantMessageEvent' ([f00204d](https://github.com/tianshu-ai/tianshu/commit/f00204df055bfa5c7b5b43a1d8727f6675de4c6a))
+* normalize toolResult row role to 'tool' in SqliteStorage ([0bddea2](https://github.com/tianshu-ai/tianshu/commit/0bddea26463dab4ca5d4e5e1001d74cb3e434cee))
+* readList cursor direction for descending order ([8a26758](https://github.com/tianshu-ai/tianshu/commit/8a26758695dd5c0962e2b48c0e4ed568293e229e))
+* register all configured models in pi Models registry ([062e8ab](https://github.com/tianshu-ai/tianshu/commit/062e8ab6cf76645ee14a1691a5e10f49ab39d0f6))
+* sync activeToolNames before every lane.prompt() ([2949623](https://github.com/tianshu-ai/tianshu/commit/294962372d2125971f912eef10c2fb06a2bbf3ab))
+* sync model identity before every lane.prompt() ([970f0b4](https://github.com/tianshu-ai/tianshu/commit/970f0b4e2fd3f8bf3aabafc802c5ee6ca5701815))
+* tag WS tool_call/tool_result with sessionId ([ba25ac6](https://github.com/tianshu-ai/tianshu/commit/ba25ac61806975b1ae6e401089f13d3d928c9161))
+* task_complete args come from tool_start, not tool_end ([200604a](https://github.com/tianshu-ai/tianshu/commit/200604a64d85c32cd906c1801b2a12d7b6e10fa0))
+
+
+### Reverts
+
+* drop sessionId tags on tool_call/tool_result WS events ([b8e2567](https://github.com/tianshu-ai/tianshu/commit/b8e2567a7dc5e297c95303490a456ddb2da92395))
+* remove provider prefix from model.id ([e2af1fe](https://github.com/tianshu-ai/tianshu/commit/e2af1fe5e856bafac7aff8264d7f716eb929022d))
+
 ## [0.64.0](https://github.com/tianshu-ai/tianshu/compare/v0.63.1...v0.64.0) (2026-09-23)
 
 
