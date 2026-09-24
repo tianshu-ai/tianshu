@@ -1508,7 +1508,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         name: info.name,
         ok: false,
         text: errText,
-        sessionId: session.id,
       });
       // Persist to DB so the message chain stays valid for future
       // LLM calls. storage.appendEntry handles id generation,
@@ -1892,7 +1891,6 @@ function bridgeHarnessEventToWs(
       callId: tc.toolCallId,
       name: tc.toolName,
       arguments: (tc.args as Record<string, unknown>) ?? {},
-      sessionId: session.id,
     });
     return;
   }
@@ -1925,7 +1923,6 @@ function bridgeHarnessEventToWs(
       name: te.toolName,
       ok: !te.isError,
       text,
-      sessionId: session.id,
       ...(ui ? { ui } : {}),
     });
     return;
