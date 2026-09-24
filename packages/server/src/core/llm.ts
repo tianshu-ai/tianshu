@@ -188,7 +188,7 @@ export function getDefaultModel(config: ResolvedConfig): ResolvedModelInfo | und
  */
 export function buildModel(info: ResolvedModelInfo): Model<Api> {
   return {
-    id: `${info.providerId}/${info.modelId}`,
+    id: info.modelId,
     name: info.name,
     api: info.api,
     provider: info.providerId,
