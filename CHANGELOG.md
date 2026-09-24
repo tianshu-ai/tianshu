@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.66.1](https://github.com/tianshu-ai/tianshu/compare/v0.66.0...v0.66.1) (2026-09-24)
+
+
+### Bug Fixes
+
+* **wiki:** remove ~10-day limit and extend worker timeout to 2h ([#508](https://github.com/tianshu-ai/tianshu/issues/508)) ([e5d88dc](https://github.com/tianshu-ai/tianshu/commit/e5d88dcad36c1f613669a4b0507ce96322b14edc))
+
 ## [0.66.0](https://github.com/tianshu-ai/tianshu/compare/v0.65.1...v0.66.0) (2026-09-24)
 
 
