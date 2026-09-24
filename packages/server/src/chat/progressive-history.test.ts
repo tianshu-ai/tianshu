@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type {
-  SessionTreeEntry,
-  MessageEntry,
-} from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type {
   UserMessage,
   AssistantMessage,
@@ -11,37 +8,38 @@ import type {
 import { progressiveHistoryTransform } from "./progressive-history.js";
 
 // ── Fixture helpers ───────────────────────────────────────────────
+//
+// pi 0.85 migration: the transform now operates on AgentMessage[]
+// (called via AgentHarnessOptions.toProviderMessages) instead of the
+// old SessionTreeEntry[] shape. Tests build message arrays directly;
+// helpers below hand back one message per call so a "turn" is a
+// sequence of pushed messages, not a wrapped entry.
+//
+// We keep the same semantic coverage as the 0.82 tests: threshold
+// engagement, boundary math, per-role rewrites, `[system note]` meta
+// insertion, and the plugin-system / system-note prefix filter.
 
-let idCounter = 0;
-function nextId(prefix = "e"): string {
-  idCounter++;
-  return `${prefix}_${idCounter}`;
-}
-
-function userEntry(text: string): MessageEntry {
-  const msg: UserMessage = {
+function userMsg(text: string): UserMessage {
+  return {
     role: "user",
     content: [{ type: "text", text }],
     timestamp: Date.now(),
   };
-  return {
-    id: nextId(),
-    parentId: null,
-    timestamp: new Date().toISOString(),
-    type: "message",
-    message: msg,
-  };
 }
 
-function assistantEntry(
+function assistantMsg(
   parts: Array<
     | { type: "text"; text: string }
-    | { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> }
+    | {
+        type: "toolCall";
+        id: string;
+        name: string;
+        arguments: Record<string, unknown>;
+      }
   >,
-): MessageEntry {
-  const msg: AssistantMessage = {
+): AssistantMessage {
+  return {
     role: "assistant",
-    // TS narrows the union properly because we hand-shape `parts`
     content: parts as AssistantMessage["content"],
     api: "openai-completions",
     provider: "test",
@@ -49,54 +47,47 @@ function assistantEntry(
     usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     stopReason: "stop",
     timestamp: Date.now(),
-  };
-  return {
-    id: nextId(),
-    parentId: null,
-    timestamp: new Date().toISOString(),
-    type: "message",
-    message: msg,
-  };
+  } as AssistantMessage;
 }
 
-function toolResultEntry(
+function toolResultMsg(
   toolCallId: string,
   toolName: string,
   text: string,
-): MessageEntry {
-  const msg: ToolResultMessage = {
+): ToolResultMessage {
+  return {
     role: "toolResult",
     toolCallId,
     toolName,
     content: [{ type: "text", text }],
     isError: false,
     timestamp: Date.now(),
-  };
-  return {
-    id: nextId(),
-    parentId: null,
-    timestamp: new Date().toISOString(),
-    type: "message",
-    message: msg,
-  };
+  } as ToolResultMessage;
 }
 
 /**
- * Build a fake branch with N user turns. Each turn is
+ * Build a fake message list with N user turns. Each turn is
  * [user, assistant(toolCall), toolResult, assistant(text)].
  */
-function fakeBranch(userTurns: number): SessionTreeEntry[] {
-  const out: SessionTreeEntry[] = [];
+function fakeMessages(userTurns: number): AgentMessage[] {
+  const out: AgentMessage[] = [];
   for (let t = 1; t <= userTurns; t++) {
-    out.push(userEntry(`user msg ${t}`));
+    out.push(userMsg(`user msg ${t}`));
     const tcId = `tc_${t}`;
     out.push(
-      assistantEntry([
-        { type: "toolCall", id: tcId, name: "read_file", arguments: { path: `/f${t}` } },
+      assistantMsg([
+        {
+          type: "toolCall",
+          id: tcId,
+          name: "read_file",
+          arguments: { path: `/f${t}` },
+        },
       ]),
     );
-    out.push(toolResultEntry(tcId, "read_file", `file ${t} contents (imagine 30KB here)`));
-    out.push(assistantEntry([{ type: "text", text: `assistant reply ${t}` }]));
+    out.push(
+      toolResultMsg(tcId, "read_file", `file ${t} contents (imagine 30KB here)`),
+    );
+    out.push(assistantMsg([{ type: "text", text: `assistant reply ${t}` }]));
   }
   return out;
 }
@@ -105,38 +96,46 @@ function fakeBranch(userTurns: number): SessionTreeEntry[] {
 
 describe("progressiveHistoryTransform", () => {
   it("no-ops when userTurns < minTurnsToEngage", () => {
-    const branch = fakeBranch(10);
+    const messages = fakeMessages(10);
     const transform = progressiveHistoryTransform({
       minTurnsToEngage: 15,
       recentTurnsToKeep: 5,
     });
-    const out = transform(branch);
-    expect(out).toBe(branch); // same reference — didn't rebuild
+    const out = transform(messages);
+    // Under threshold — the transform returns the input verbatim
+    // (element-by-element identical). We can't require reference
+    // equality anymore because the new hook always returns a fresh
+    // array to satisfy Message[] type discipline; compare by strict
+    // deep equality instead.
+    expect(out).toStrictEqual(messages);
   });
 
   it("engages at the threshold and keeps recent turns verbatim", () => {
-    const branch = fakeBranch(20);
+    const messages = fakeMessages(20);
     const transform = progressiveHistoryTransform({
       minTurnsToEngage: 15,
       recentTurnsToKeep: 5,
     });
-    const out = transform(branch);
-    expect(out).not.toBe(branch);
-    // The last 5 user turns should be untouched — that's 5 * 4 = 20
-    // entries at the end (user, asst-toolCall, toolResult, asst-text
-    // for each turn). Verify the LAST assistant with a toolCall is
-    // still intact.
-    const outArr = Array.from(out);
-    const lastFiveEntries = outArr.slice(-20);
-    // Find the assistant messages that have a toolCall inside the
-    // recent region; they should preserve the toolCall verbatim.
+    const out = transform(messages);
+    // Above threshold — the transform inserts a meta note and
+    // rewrites the old region, so length grows by 1.
+    expect(out.length).toBe(messages.length + 1);
+    // The last 5 turns should be untouched — that's 5 * 4 = 20
+    // messages at the end. Verify the LAST assistant with a toolCall
+    // is still intact (original path arg, no archived marker).
+    const lastFive = out.slice(-20);
     let recentToolCallsSeen = 0;
-    for (const e of lastFiveEntries) {
-      if (e.type !== "message" || e.message.role !== "assistant") continue;
-      const content = e.message.content;
+    for (const m of lastFive) {
+      if (m.role !== "assistant") continue;
+      const content = m.content;
       if (!Array.isArray(content)) continue;
       for (const p of content) {
-        if (p.type === "toolCall") recentToolCallsSeen++;
+        if (p.type === "toolCall") {
+          recentToolCallsSeen++;
+          expect(
+            (p.arguments as { __archived?: unknown } | undefined)?.__archived,
+          ).toBeUndefined();
+        }
       }
     }
     expect(recentToolCallsSeen).toBe(5); // one per recent turn
@@ -148,24 +147,26 @@ describe("progressiveHistoryTransform", () => {
     // be paired, and breaking that pairing yields `400 status code
     // (no body)`. So old toolCalls keep type="toolCall", id, name;
     // only `arguments` gets replaced with a stub marker.
-    const branch = fakeBranch(20);
+    const messages = fakeMessages(20);
     const transform = progressiveHistoryTransform({
       minTurnsToEngage: 15,
       recentTurnsToKeep: 5,
     });
-    const out = Array.from(transform(branch));
-    const oldRegion = out.slice(0, 60);
+    const out = transform(messages);
+
+    // Recent region is the last 20 messages (5 turns × 4 messages).
+    // Everything before that is the old region.
+    const oldRegion = out.slice(0, out.length - 20);
 
     let oldStubbedCalls = 0;
     let oldFullCalls = 0;
-    for (const e of oldRegion) {
-      if (e.type !== "message" || e.message.role !== "assistant") continue;
-      const c = e.message.content;
+    for (const m of oldRegion) {
+      if (m.role !== "assistant") continue;
+      const c = m.content;
       if (!Array.isArray(c)) continue;
       for (const p of c) {
         if (p.type !== "toolCall") continue;
         const args = p.arguments as Record<string, unknown> | undefined;
-        // Structural fields preserved.
         expect(p.id).toMatch(/^tc_\d+$/);
         expect(typeof p.name).toBe("string");
         if (args && args.__archived === true) {
@@ -178,58 +179,53 @@ describe("progressiveHistoryTransform", () => {
       }
     }
     expect(oldStubbedCalls).toBe(15); // one per old turn
-    expect(oldFullCalls).toBe(0);     // no full arguments left in old region
+    expect(oldFullCalls).toBe(0); // no full arguments left in old region
   });
 
   it("replaces old tool results with short stubs, preserving role/id", () => {
-    const branch = fakeBranch(20);
+    const messages = fakeMessages(20);
     const transform = progressiveHistoryTransform({
       minTurnsToEngage: 15,
       recentTurnsToKeep: 5,
     });
-    const out = Array.from(transform(branch));
-    const oldRegion = out.slice(0, 60);
+    const out = transform(messages);
+    const oldRegion = out.slice(0, out.length - 20);
     let toolResults = 0;
-    for (const e of oldRegion) {
-      if (e.type !== "message" || e.message.role !== "toolResult") continue;
+    for (const m of oldRegion) {
+      if (m.role !== "toolResult") continue;
       toolResults++;
-      const content = e.message.content;
+      const content = m.content;
       expect(Array.isArray(content)).toBe(true);
       expect(content.length).toBe(1);
       const first = content[0];
       expect(first?.type).toBe("text");
-      expect(first?.type === "text" && first.text.startsWith("[archived result:")).toBe(true);
-      // The toolCallId / toolName must be preserved verbatim.
-      expect(e.message.toolCallId).toMatch(/^tc_\d+$/);
-      expect(e.message.toolName).toBe("read_file");
-      // The stub must include the id so the model knows what to recall.
-      expect(first?.type === "text" && first.text.includes(e.message.toolCallId)).toBe(true);
+      expect(
+        first?.type === "text" && first.text.startsWith("[archived result:"),
+      ).toBe(true);
+      expect(m.toolCallId).toMatch(/^tc_\d+$/);
+      expect(m.toolName).toBe("read_file");
+      expect(
+        first?.type === "text" && first.text.includes(m.toolCallId),
+      ).toBe(true);
     }
     expect(toolResults).toBe(15);
   });
 
   it("keeps user text verbatim; tags old-region turns with [turn N]", () => {
-    // Old-region real user messages get `[turn N]` prepended as a
-    // separate TextContent block. Their original text remains
-    // untouched (as a second TextContent). Recent-region user
-    // messages stay verbatim without a marker.
-    const branch = fakeBranch(20);
+    const messages = fakeMessages(20);
     const transform = progressiveHistoryTransform({
       minTurnsToEngage: 15,
       recentTurnsToKeep: 5,
     });
-    const out = Array.from(transform(branch));
+    const out = transform(messages);
 
-    // Split output into (before-boundary, after-boundary) so we can
-    // check each region's user-message shape independently. We look
-    // for the meta [system note] to find the old region start.
     let userSeen = 0;
     let tagged = 0;
-    let taggedTurnsSeen: number[] = [];
+    const taggedTurnsSeen: number[] = [];
     let untaggedOriginals = 0;
-    for (const e of out) {
-      if (e.type !== "message" || e.message.role !== "user") continue;
-      const c = e.message.content;
+    for (const m of out) {
+      if (m.role !== "user") continue;
+      const c = m.content;
       if (!Array.isArray(c)) continue;
       const first = c[0];
       const firstText = first?.type === "text" ? first.text : "";
@@ -243,39 +239,38 @@ describe("progressiveHistoryTransform", () => {
         // The second block must be the ORIGINAL text, verbatim.
         const second = c[1];
         expect(second?.type).toBe("text");
-        expect(second?.type === "text" && second.text.startsWith("user msg ")).toBe(true);
+        expect(
+          second?.type === "text" && second.text.startsWith("user msg "),
+        ).toBe(true);
       } else {
-        // Untagged user: this is the recent-region shape; the first
-        // block should be the original `user msg N` text.
         expect(firstText.startsWith("user msg ")).toBe(true);
         untaggedOriginals++;
       }
     }
     expect(userSeen).toBe(20);
-    expect(tagged).toBe(15);            // old region has 15 tagged turns
-    expect(untaggedOriginals).toBe(5);  // recent region has 5 verbatim turns
-    // Tagged turn numbers should be exactly 1..15.
-    expect(taggedTurnsSeen).toEqual([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]);
+    expect(tagged).toBe(15);
+    expect(untaggedOriginals).toBe(5);
+    expect(taggedTurnsSeen).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+    ]);
   });
 
   it("prepends a [system note] meta message before old region", () => {
-    const branch = fakeBranch(20);
-    const out = Array.from(
-      progressiveHistoryTransform({
-        minTurnsToEngage: 15,
-        recentTurnsToKeep: 5,
-      })(branch),
-    );
-    // Meta must be present exactly once, in the OLD region (before
-    // the recent turns), and must NOT be counted as a real turn (its
-    // prefix triggers isRealUserTurn's system-notice filter).
-    let metas: string[] = [];
-    for (const e of out) {
-      if (e.type !== "message" || e.message.role !== "user") continue;
-      const c = e.message.content;
+    const messages = fakeMessages(20);
+    const out = progressiveHistoryTransform({
+      minTurnsToEngage: 15,
+      recentTurnsToKeep: 5,
+    })(messages);
+    const metas: string[] = [];
+    for (const m of out) {
+      if (m.role !== "user") continue;
+      const c = m.content;
       if (!Array.isArray(c)) continue;
       const first = c[0];
-      if (first?.type === "text" && first.text.startsWith("[system note] Progressive-history")) {
+      if (
+        first?.type === "text" &&
+        first.text.startsWith("[system note] Progressive-history")
+      ) {
         metas.push(first.text);
       }
     }
@@ -285,49 +280,19 @@ describe("progressiveHistoryTransform", () => {
     expect(metas[0]).toContain("recall_range");
   });
 
-  it("passes non-message entries through unchanged", () => {
-    // A leading compaction entry must remain at position 0. Our
-    // meta [system note] is inserted BEFORE the first MessageEntry
-    // in the old region, not at branch head, so it must appear at
-    // position 1 (right after the compaction).
-    const branch: SessionTreeEntry[] = [];
-    branch.push({
-      id: "compaction_1",
-      parentId: null,
-      timestamp: new Date().toISOString(),
-      type: "compaction",
-      summary: "earlier gist",
-      tokensBefore: 100000,
-    });
-    branch.push(...fakeBranch(20));
-    const transform = progressiveHistoryTransform({ minTurnsToEngage: 15, recentTurnsToKeep: 5 });
-    const out = Array.from(transform(branch));
-
-    expect(out[0]?.type).toBe("compaction");
-    if (out[0]?.type === "compaction") {
-      expect(out[0].summary).toBe("earlier gist");
-    }
-    // Meta note lives at position 1 (before first old-region message).
-    expect(out[1]?.type).toBe("message");
-    if (out[1]?.type === "message" && out[1].message.role === "user") {
-      const c = out[1].message.content;
-      expect(Array.isArray(c)).toBe(true);
-      const first = Array.isArray(c) ? c[0] : null;
-      expect(first?.type === "text" && first.text.startsWith("[system note] Progressive-history")).toBe(true);
-    }
-  });
-
   it("boundary math: recentTurnsToKeep > userTurns keeps everything", () => {
     // If we ask for 20 recent turns but only have 15, boundary should
     // clamp to 0 and no stubbing happens.
-    const branch = fakeBranch(15);
-    const transform = progressiveHistoryTransform({ minTurnsToEngage: 15, recentTurnsToKeep: 20 });
-    const out = Array.from(transform(branch));
-    // No stub markers anywhere.
+    const messages = fakeMessages(15);
+    const transform = progressiveHistoryTransform({
+      minTurnsToEngage: 15,
+      recentTurnsToKeep: 20,
+    });
+    const out = transform(messages);
     let stubs = 0;
-    for (const e of out) {
-      if (e.type !== "message" || e.message.role !== "assistant") continue;
-      const c = e.message.content;
+    for (const m of out) {
+      if (m.role !== "assistant") continue;
+      const c = m.content;
       if (!Array.isArray(c)) continue;
       for (const p of c) {
         if (p.type === "text" && /^\[archived/.test(p.text)) stubs++;
@@ -337,48 +302,36 @@ describe("progressiveHistoryTransform", () => {
   });
 
   it("skips [plugin-system] injected user notices when counting turns", () => {
-    // Simulate what tianshu's plugin-enable/disable path writes to the
-    // session as a role='user' notice. The transform must NOT treat it
-    // as a real user turn, otherwise the recent/old boundary drifts.
-    const branch: SessionTreeEntry[] = [];
-    // First entry: a system-injected "user" notice (like the one that
-    // caused the real 6068e0e1 bug on 2026-09-12).
-    const systemNotice: UserMessage = {
+    const messages: AgentMessage[] = [];
+    messages.push({
       role: "user",
-      content: [{
-        type: "text",
-        text:
-          '[plugin-system] Plugin "Custom UI Shell" (custom-ui) was just ENABLED. ' +
-          "Newly available — no agent-facing surface. Use these when they help.",
-      }],
+      content: [
+        {
+          type: "text",
+          text:
+            '[plugin-system] Plugin "Custom UI Shell" (custom-ui) was just ENABLED. ' +
+            "Newly available — no agent-facing surface. Use these when they help.",
+        },
+      ],
       timestamp: Date.now(),
-    };
-    branch.push({
-      id: nextId(),
-      parentId: null,
-      timestamp: new Date().toISOString(),
-      type: "message",
-      message: systemNotice,
-    });
-    // Now append 20 real user turns.
-    branch.push(...fakeBranch(20));
+    } as UserMessage);
+    messages.push(...fakeMessages(20));
 
     const transform = progressiveHistoryTransform({
       minTurnsToEngage: 15,
       recentTurnsToKeep: 5,
     });
-    const out = Array.from(transform(branch));
+    const out = transform(messages);
 
-    // The [plugin-system] notice should NOT count toward turn total.
+    // The [plugin-system] notice must NOT count toward turn total.
     // With 20 real turns and recentTurnsToKeep=5, exactly 5 turns
-    // should have their toolCalls left with original arguments (in
-    // the recent region). The 15 old turns' toolCalls stay as blocks
-    // but with archived-marker arguments.
+    // should have their toolCalls left with original arguments; the
+    // 15 old turns' toolCalls should carry the archived marker.
     let recentFullArgs = 0;
     let oldArchivedArgs = 0;
-    for (const e of out) {
-      if (e.type !== "message" || e.message.role !== "assistant") continue;
-      const c = e.message.content;
+    for (const m of out) {
+      if (m.role !== "assistant") continue;
+      const c = m.content;
       if (!Array.isArray(c)) continue;
       for (const p of c) {
         if (p.type !== "toolCall") continue;
@@ -390,92 +343,95 @@ describe("progressiveHistoryTransform", () => {
     expect(recentFullArgs).toBe(5);
     expect(oldArchivedArgs).toBe(15);
 
-    // And the notice itself must still be present verbatim.
+    // Notice itself still present verbatim.
     const notice = out.find(
-      (e) =>
-        e.type === "message" &&
-        e.message.role === "user" &&
-        Array.isArray(e.message.content) &&
-        e.message.content.some(
-          (p) => p.type === "text" && typeof p.text === "string" && p.text.startsWith("[plugin-system]"),
+      (m) =>
+        m.role === "user" &&
+        Array.isArray(m.content) &&
+        m.content.some(
+          (p) =>
+            p.type === "text" &&
+            typeof p.text === "string" &&
+            p.text.startsWith("[plugin-system]"),
         ),
     );
     expect(notice).toBeDefined();
   });
 
   it("skips [system note] injected user notices when counting turns", () => {
-    // Same pattern as above, but with the tool-catalog-refresh prefix.
-    const branch: SessionTreeEntry[] = [];
-    const upgradeNotice: UserMessage = {
+    const messages: AgentMessage[] = [];
+    messages.push({
       role: "user",
-      content: [{
-        type: "text",
-        text: "[system note] tianshu upgraded from 0.48.7 to 0.48.8 while this conversation was open. New tool available: ...",
-      }],
+      content: [
+        {
+          type: "text",
+          text:
+            "[system note] tianshu upgraded from 0.48.7 to 0.48.8 while this conversation was open. New tool available: ...",
+        },
+      ],
       timestamp: Date.now(),
-    };
-    branch.push({
-      id: nextId(),
-      parentId: null,
-      timestamp: new Date().toISOString(),
-      type: "message",
-      message: upgradeNotice,
-    });
-    // 14 real turns — with the notice miscounted this would engage the
-    // transform (15 total). Correct behavior: 14 real, transform no-op.
-    branch.push(...fakeBranch(14));
+    } as UserMessage);
+    // 14 real turns — with the notice miscounted this would engage
+    // the transform (15 total). Correct behavior: 14 real, transform
+    // no-op (returns the input verbatim by deep equality).
+    messages.push(...fakeMessages(14));
 
     const transform = progressiveHistoryTransform({
       minTurnsToEngage: 15,
       recentTurnsToKeep: 5,
     });
-    const out = transform(branch);
-    expect(out).toBe(branch); // same reference — no-op
+    const out = transform(messages);
+    expect(out).toStrictEqual(messages);
   });
 
   it("preserves assistant text alongside stubbed tool calls", () => {
     // Older assistants that mix text + toolCall should keep the text
     // AND keep the toolCall block (with archived arguments).
-    const mixed: MessageEntry = assistantEntry([
+    const mixed = assistantMsg([
       { type: "text", text: "let me check that" },
-      { type: "toolCall", id: "tc_mixed", name: "web_fetch", arguments: { url: "x" } },
+      {
+        type: "toolCall",
+        id: "tc_mixed",
+        name: "web_fetch",
+        arguments: { url: "x" },
+      },
     ]);
-    const branch: SessionTreeEntry[] = [];
+    const messages: AgentMessage[] = [];
     for (let t = 1; t <= 20; t++) {
-      branch.push(userEntry(`u${t}`));
+      messages.push(userMsg(`u${t}`));
       if (t === 3) {
-        branch.push(mixed); // planted in old region
+        messages.push(mixed); // planted in old region
       } else {
-        branch.push(assistantEntry([{ type: "text", text: `a${t}` }]));
+        messages.push(assistantMsg([{ type: "text", text: `a${t}` }]));
       }
     }
-    const out = Array.from(
-      progressiveHistoryTransform({ minTurnsToEngage: 15, recentTurnsToKeep: 5 })(branch),
-    );
-    // Find our mixed assistant post-transform.
+    const out = progressiveHistoryTransform({
+      minTurnsToEngage: 15,
+      recentTurnsToKeep: 5,
+    })(messages);
     const found = out.find(
-      (e) =>
-        e.type === "message" &&
-        e.message.role === "assistant" &&
-        Array.isArray(e.message.content) &&
-        e.message.content.some(
+      (m) =>
+        m.role === "assistant" &&
+        Array.isArray(m.content) &&
+        m.content.some(
           (p) => p.type === "text" && p.text === "let me check that",
         ),
     );
     expect(found).toBeDefined();
-    if (found?.type === "message" && found.message.role === "assistant") {
-      const c = found.message.content as Array<{
+    if (found && found.role === "assistant") {
+      const c = found.content as Array<{
         type: string;
         text?: string;
         id?: string;
         name?: string;
         arguments?: Record<string, unknown>;
       }>;
-      // Original text preserved.
-      const hasText = c.some((p) => p.type === "text" && p.text === "let me check that");
-      // ToolCall block is STILL present (with stubbed args) so
-      // tool_use ↔ tool_result pairing is preserved.
-      const toolCall = c.find((p) => p.type === "toolCall" && p.id === "tc_mixed");
+      const hasText = c.some(
+        (p) => p.type === "text" && p.text === "let me check that",
+      );
+      const toolCall = c.find(
+        (p) => p.type === "toolCall" && p.id === "tc_mixed",
+      );
       expect(hasText).toBe(true);
       expect(toolCall).toBeDefined();
       expect(toolCall?.name).toBe("web_fetch");

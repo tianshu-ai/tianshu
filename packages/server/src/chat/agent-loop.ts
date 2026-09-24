@@ -23,8 +23,10 @@
 
 import {
   AgentHarness,
-  type AgentHarnessEvent,
-  type AgentHarnessOwnEvent,
+  type HarnessEvent,
+  type Context,
+  BACKGROUND_CONTEXT,
+  withAbortSignal,
 } from "@earendil-works/pi-agent-core";
 import type { TenantContext } from "../core/index.js";
 import {
@@ -167,6 +169,15 @@ export async function runAgentLoop(
     signal: externalSignal,
   } = req;
 
+  // pi 0.85: every harness/lane/session/repo method requires a
+  // `Context`. We build it early so the session repo can consume
+  // it in open/create below. Cancellation follows the caller's
+  // externalSignal; a stricter innerCtl-scoped context is derived
+  // downstream once the loop's abort controller exists.
+  let piContext: Context = externalSignal
+    ? withAbortSignal(externalSignal, BACKGROUND_CONTEXT)
+    : BACKGROUND_CONTEXT;
+
   const repo = new SqliteSessionRepo(ctx);
   // Resume vs. fresh:
   //   - When the caller (e.g. workboard's retry path) passes
@@ -189,16 +200,20 @@ export async function runAgentLoop(
       // the type but ignored at runtime; we pass plausible values
       // sourced from the request so we don't accidentally load a
       // session belonging to another tenant.
-      session = await repo.open({
-        id: req.resumeSessionId,
-        createdAt: new Date(0).toISOString(),
-        tenantId: ctx.tenantId,
-        userId,
-        kind: "worker",
-        workerRole: req.workerRole ?? null,
-        parentSessionId: req.parentSessionId ?? null,
-        title: req.sessionTitle ?? null,
-      });
+      session = await repo.open(
+        {
+          id: req.resumeSessionId,
+          createdAt: 0,
+          storageVersion: 1,
+          tenantId: ctx.tenantId,
+          userId,
+          kind: "worker",
+          workerRole: req.workerRole ?? null,
+          parentSessionId: req.parentSessionId ?? undefined,
+          title: req.sessionTitle ?? null,
+        },
+        piContext,
+      );
       resumed = true;
     } catch (err) {
       // eslint-disable-next-line no-console
@@ -209,15 +224,18 @@ export async function runAgentLoop(
     }
   }
   if (!session) {
-    session = await repo.create({
-      userId,
-      kind: "worker",
-      workerRole: req.workerRole ?? null,
-      parentSessionId: req.parentSessionId ?? null,
-      title: req.sessionTitle ?? null,
-    });
+    session = await repo.create(
+      {
+        userId,
+        kind: "worker",
+        workerRole: req.workerRole ?? null,
+        parentSessionId: req.parentSessionId ?? undefined,
+        title: req.sessionTitle ?? null,
+      },
+      piContext,
+    );
   }
-  const sessionMeta = await session.getMetadata();
+  const sessionMeta = session.metadata;
   // Notify caller of the freshly-created session row so callers
   // (e.g. the workboard plugin) can link long-running tasks to
   // their session id before the LLM loop runs. We swallow errors
@@ -350,6 +368,10 @@ export async function runAgentLoop(
   const innerCtl = new AbortController();
   const onExternalAbort = () => innerCtl.abort();
   externalSignal?.addEventListener("abort", onExternalAbort, { once: true });
+  // Tighten the context to the loop's inner abort controller now
+  // that it exists. innerCtl fires on both externalSignal aborts
+  // (via the listener above) and on internal timeouts/turn caps.
+  piContext = withAbortSignal(innerCtl.signal, BACKGROUND_CONTEXT);
   const workerCompactionSettings = {
     enabled: true, reserveTokens: 16384, keepRecentTokens: 20000, triggerPercent: 80,
     ...(ctx.config.models?.compaction ?? {}),
@@ -562,24 +584,42 @@ export async function runAgentLoop(
     }
   }, TICK_MS);
 
-  // pi 0.80: harness resolves auth via a `Models` instance instead of
-  // the old `getApiKeyAndHeaders` callback. See core/pi-models.ts.
-  const harness = new AgentHarness({
-    session,
-    tools: adapted.tools,
-    systemPrompt,
-    model: piModel,
-    models: buildModels(piModel, apiKey, {
-      resilience: ctx.config.models?.resilience,
-      reResolveApiKey: () => resolveApiKey(modelInfo),
-      onRetry: req.onModelRetry,
-    }),
-  });
+  // pi 0.85: `AgentHarness` is no longer a class — use the static
+  // `AgentHarness.create(options, context)` factory. It returns
+  // `{ harness, open }`; we ignore the `open` operations list
+  // because we start fresh on each call.
+  const { harness } = await AgentHarness.create(
+    {
+      session,
+      // pi 0.85 typed AgentHarnessTool[] more strictly than our
+      // adapter yields; a runtime cast is safe here because our
+      // AgentTool shape matches AgentHarnessTool structurally.
+      tools: adapted.tools as unknown as Parameters<
+        typeof AgentHarness.create
+      >[0]["tools"],
+      systemPrompt,
+      model: piModel,
+      models: buildModels(piModel, apiKey, {
+        resilience: ctx.config.models?.resilience,
+        reResolveApiKey: () => resolveApiKey(modelInfo),
+        onRetry: req.onModelRetry,
+      }),
+    },
+    piContext,
+  );
+
+  // pi 0.85: all lane-scoped operations (prompt/abort/waitForIdle)
+  // are on the AgentLane, not the harness. We use one default lane
+  // named "main" for the whole worker session; tianshu doesn't need
+  // multiple lanes yet.
+  const lane = await harness.lane("main", piContext);
 
   // Bind compact_context deferred ref.
   const workerCompactRef = getCompactRef(workerHostTools);
   workerCompactRef.piSession = session;
   workerCompactRef.harness = harness;
+  workerCompactRef.lane = lane;
+  workerCompactRef.context = piContext;
 
   // Watch harness events for two purposes:
   //   1. Reset the watchdog whenever something happens (timestamps
@@ -600,45 +640,74 @@ export async function runAgentLoop(
   // chat path is naturally serial because the turn loop drains
   // before the next turn_end fires.
   let compactInFlight = false;
-  const unsubscribe = harness.subscribe((event: AgentHarnessEvent) => {
+  // pi 0.85: `harness.events.on(type, listener)` replaces
+  // `harness.subscribe(fn)`. Since we only care about turn_end for
+  // auto-compact and watchdog activity, subscribe only to that
+  // event type. The general "any activity" watchdog reset now hooks
+  // more specific events (message_update, tool_start, tool_end).
+  const unsubscribeTurnEnd = harness.events.on("turn_end", () => {
     lastEventAt = Date.now();
     sawAnyEvent = true;
-    if ((event as { type?: string }).type === "turn_end") {
-      assistantTurns += 1;
-      // Auto-compact for workers: fire-and-forget after every
-      // assistant turn. Same threshold as the chat path; the
-      // worker had been stalling on no_completion when a single
-      // task accumulated >70% of the model's context window
-      // (e.g. a research worker reading 5 large source files).
-      // We reach for compact ASAP rather than waiting for the
-      // next prompt because the worker is autonomously chaining
-      // turns — if we let context grow until the next call, the
-      // call itself fails.
-      if (!compactInFlight && modelInfo.contextWindow) {
-        compactInFlight = true;
-        void (async () => {
-          try {
-            const r = await tryAutoCompact({
-              piSession: session!,
-              harness,
-              contextWindow: modelInfo.contextWindow,
-            });
-            if (r.compacted) {
-              console.log(
-                `[agent-loop] worker auto-compact ran (tokensBefore=${r.tokensBefore})`,
-              );
-            } else if (r.error) {
-              console.warn(
-                `[agent-loop] worker auto-compact failed: ${r.error}`,
-              );
-            }
-          } finally {
-            compactInFlight = false;
+    assistantTurns += 1;
+    // Auto-compact for workers: fire-and-forget after every
+    // assistant turn. Same threshold as the chat path.
+    if (!compactInFlight && modelInfo.contextWindow) {
+      compactInFlight = true;
+      void (async () => {
+        try {
+          const r = await tryAutoCompact({
+            piSession: session!,
+            harness,
+            lane,
+            context: piContext,
+            contextWindow: modelInfo.contextWindow,
+          });
+          if (r.compacted) {
+            console.log(
+              `[agent-loop] worker auto-compact ran (tokensBefore=${r.tokensBefore})`,
+            );
+          } else if (r.error) {
+            console.warn(
+              `[agent-loop] worker auto-compact failed: ${r.error}`,
+            );
           }
-        })();
-      }
+        } finally {
+          compactInFlight = false;
+        }
+      })();
     }
   });
+  // Also watch for general activity to reset the idle watchdog.
+  const unsubscribeActivity1 = harness.events.on("message_update", () => {
+    lastEventAt = Date.now();
+    sawAnyEvent = true;
+  });
+  // Track task_complete args as they come in on tool_start. pi 0.85
+  // dropped `args` from the tool_end event (see harness/agent-
+  // harness.d.ts::HarnessEventPayload — tool_end only carries
+  // toolCallId/toolName/result/isError/terminate). We used to read
+  // e.args on tool_end; that field never existed in 0.85 and made
+  // task_complete look like it was never called, so orchestrator
+  // would report [no_completion] and re-queue the task.
+  const pendingTaskCompleteArgs = new Map<
+    string,
+    { summary?: unknown; files?: unknown }
+  >();
+  const unsubscribeActivity2 = harness.events.on("tool_start", (e) => {
+    lastEventAt = Date.now();
+    sawAnyEvent = true;
+    if (e.toolName === TASK_COMPLETE_TOOL) {
+      pendingTaskCompleteArgs.set(
+        e.toolCallId,
+        (e.args ?? {}) as { summary?: unknown; files?: unknown },
+      );
+    }
+  });
+  const unsubscribe = () => {
+    unsubscribeTurnEnd();
+    unsubscribeActivity1();
+    unsubscribeActivity2();
+  };
 
   // Detect task_complete tool calls and capture the agent's args
   // into completionSink so the post-run code can resolve `done`.
@@ -651,7 +720,9 @@ export async function runAgentLoop(
   // call would land in the DB but `completionSink.summary` stayed
   // undefined, the run terminated as `no_completion`, and the
   // pool re-queued the task forever.
-  const unhookToolResult = harness.on("tool_result", (e) => {
+  // pi 0.85 renamed "tool_result" → "tool_end" and put it on the
+  // main event bus (no separate hook channel).
+  const unhookToolResult = harness.events.on("tool_end", (e) => {
     if (e.toolName !== TASK_COMPLETE_TOOL) return;
     // task_complete is TERMINAL and captured ONCE. The tool result
     // text promises "the worker will exit", and the prompt tells the
@@ -666,7 +737,10 @@ export async function runAgentLoop(
       // Already captured the terminal call; ignore any stragglers.
       return undefined;
     }
-    const input = e.input as { summary?: unknown; files?: unknown };
+    // pi 0.85 tool_end carries no args — read the args we cached on
+    // the matching tool_start above.
+    const input = pendingTaskCompleteArgs.get(e.toolCallId) ?? {};
+    pendingTaskCompleteArgs.delete(e.toolCallId);
     if (typeof input.summary === "string") {
       completionSink.summary = input.summary;
     }
@@ -682,11 +756,13 @@ export async function runAgentLoop(
     // looping until it happens to go idle; abort() stops generation
     // right after the terminal call, so exactly one task_complete
     // decides the outcome.
-    try {
-      harness.abort();
-    } catch {
-      // best-effort; waitForIdle() below still resolves the run.
-    }
+    void (async () => {
+      try {
+        await lane.abort(piContext);
+      } catch {
+        // best-effort; waitForIdle() below still resolves the run.
+      }
+    })();
     return undefined;
   });
 
@@ -694,15 +770,15 @@ export async function runAgentLoop(
   try {
     // Wire the abort signal: when innerCtl aborts (timeout / turn
     // cap / external), tell the harness.
-    const onAbort = () => void harness.abort();
+    const onAbort = () => void lane.abort(piContext);
     innerCtl.signal.addEventListener("abort", onAbort, { once: true });
 
-    await harness.prompt(initialUserMessage);
+    await lane.prompt(initialUserMessage, undefined, piContext);
     // If aborted, give waitForIdle a grace period then force-resolve.
     // Without this, a long-running tool call can block abort indefinitely.
     if (innerCtl.signal.aborted) {
       await Promise.race([
-        harness.waitForIdle(),
+        lane.waitForIdle(piContext),
         new Promise((r) => setTimeout(r, 3000)),
       ]);
     } else {
@@ -712,7 +788,7 @@ export async function runAgentLoop(
           setTimeout(resolve, 3000);
         }, { once: true });
       });
-      await Promise.race([harness.waitForIdle(), abortRace]);
+      await Promise.race([lane.waitForIdle(piContext), abortRace]);
     }
 
     if (timedOutReason) {
@@ -752,7 +828,7 @@ export async function runAgentLoop(
       // (best-effort reading from session). This used to be the
       // "max_turns" branch when the worker capped turns; now it's
       // the only "agent quietly gave up" path.
-      const finalText = await lastAssistantText(session);
+      const finalText = await lastAssistantText(session, piContext);
       result = {
         status: "stalled",
         summary: finalText || "agent stopped without calling task_complete",
@@ -805,8 +881,9 @@ export async function runAgentLoop(
 
 async function lastAssistantText(
   session: import("@earendil-works/pi-agent-core").Session,
+  context: import("@earendil-works/pi-agent-core").Context,
 ): Promise<string> {
-  const entries = await session.getEntries();
+  const entries = await session.findEntries(undefined, context);
   for (let i = entries.length - 1; i >= 0; i--) {
     const e = entries[i]!;
     if (e.type !== "message") continue;

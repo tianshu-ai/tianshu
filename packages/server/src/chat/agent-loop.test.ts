@@ -41,53 +41,46 @@ vi.mock("../core/pi-models.js", () => ({
 vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@earendil-works/pi-agent-core")>();
 
-  class FakeHarness {
-    private listeners: Array<(e: AgentHarnessEvent) => void> = [];
-    // pi-agent-core dispatches some events (notably tool_result) on
-    // a separate hook channel via `harness.on(type, handler)`. The
-    // real harness's `subscribe(...)` listener never sees those.
-    // Mirror that split here so tests catch any regression where
-    // server code goes back to listening on subscribe and silently
-    // misses tool_result.
-    private hookHandlers = new Map<
+  // pi 0.85 migration: AgentHarness is now a `{ create }` object, not
+  // a constructor; lane-scoped ops (prompt/abort/waitForIdle) moved to
+  // AgentLane; and event subscription goes through `harness.events.on
+  // (type, fn)` instead of `harness.subscribe(fn)`. Our FakeHarness /
+  // FakeLane / FakeEvents mirror that shape closely enough to drive
+  // the loop deterministically.
+
+  class FakeEvents {
+    // Per-event-type listener registry. dispatchByType(e) routes an
+    // event to every handler that subscribed to its `type` field.
+    private byType = new Map<
       string,
       Array<(e: AgentHarnessEvent) => unknown>
     >();
-    private aborted = false;
-    constructor(options: unknown) {
-      const sp = (options as { systemPrompt?: string } | undefined)
-        ?.systemPrompt;
-      __lastSystemPrompt = sp;
-    }
-    subscribe(listener: (e: AgentHarnessEvent) => void) {
-      this.listeners.push(listener);
+    on(type: string, listener: (e: AgentHarnessEvent) => unknown) {
+      const arr = this.byType.get(type) ?? [];
+      arr.push(listener);
+      this.byType.set(type, arr);
       return () => {
-        this.listeners = this.listeners.filter((l) => l !== listener);
-      };
-    }
-    on(type: string, handler: (e: AgentHarnessEvent) => unknown) {
-      const arr = this.hookHandlers.get(type) ?? [];
-      arr.push(handler);
-      this.hookHandlers.set(type, arr);
-      return () => {
-        const next = (this.hookHandlers.get(type) ?? []).filter(
-          (h) => h !== handler,
+        const next = (this.byType.get(type) ?? []).filter(
+          (h) => h !== listener,
         );
-        this.hookHandlers.set(type, next);
+        this.byType.set(type, next);
       };
     }
-    async prompt(_text: string): Promise<void> {
-      const emit = (e: AgentHarnessEvent) => {
-        const t = (e as { type?: string }).type;
-        // Hook-channel events (tool_call / tool_result / context /
-        // session_before_compact / etc.) go to `on(type, ...)`
-        // handlers, NOT subscribe.
-        if (t === "tool_result" || t === "tool_call") {
-          for (const h of this.hookHandlers.get(t) ?? []) h(e);
-          return;
-        }
-        for (const l of this.listeners) l(e);
-      };
+    dispatch(e: AgentHarnessEvent) {
+      const t = (e as { type?: string }).type ?? "";
+      for (const h of this.byType.get(t) ?? []) h(e);
+    }
+  }
+
+  class FakeLane {
+    aborted = false;
+    constructor(private readonly events: FakeEvents) {}
+    async prompt(
+      _text: unknown,
+      _images: unknown,
+      _ctx: unknown,
+    ): Promise<void> {
+      const emit = (e: AgentHarnessEvent) => this.events.dispatch(e);
       emit({ type: "agent_start" } as AgentHarnessEvent);
       if (__script.delayMs && __script.delayMs > 0) {
         await new Promise<void>((r) => setTimeout(r, __script.delayMs));
@@ -102,28 +95,59 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       }
       emit({ type: "agent_end", messages: [] } as AgentHarnessEvent);
     }
-    async waitForIdle() {
-      // pi calls turn_end internally; we already ran prompt to
-      // completion, so resolve immediately.
+    async waitForIdle(_ctx: unknown): Promise<void> {
+      // resolved once prompt() returns (see above).
     }
-    async abort() {
+    async abort(_ctx: unknown): Promise<void> {
       this.aborted = true;
       __abortAcked = true;
     }
+    async followUp(
+      _msg: unknown,
+      _images: unknown,
+      _ctx: unknown,
+    ): Promise<{ ok: true; value: { entryId: string } }> {
+      return { ok: true, value: { entryId: "fake-entry" } };
+    }
   }
+
+  class FakeHarness {
+    readonly events = new FakeEvents();
+    private readonly _lane: FakeLane;
+    constructor(options: unknown) {
+      const sp = (options as { systemPrompt?: string } | undefined)
+        ?.systemPrompt;
+      __lastSystemPrompt = sp;
+      this._lane = new FakeLane(this.events);
+    }
+    async lane(_name: string, _ctx: unknown): Promise<FakeLane> {
+      return this._lane;
+    }
+  }
+
+  // pi 0.85 API surface: static factory that returns `{ harness, open }`.
+  const FakeAgentHarness = {
+    async create(options: unknown, _ctx: unknown) {
+      const harness = new FakeHarness(options);
+      return { harness, open: [] as unknown[] };
+    },
+  };
 
   return {
     ...actual,
-    AgentHarness: FakeHarness as unknown as typeof actual.AgentHarness,
+    AgentHarness: FakeAgentHarness as unknown as typeof actual.AgentHarness,
   };
 });
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { up as runInitialMigration } from "../core/migrations/001-initial.js";
-import { up as runDepsMigration } from "../core/migrations/002-task-dependencies.js";
-import { up as runSessionTreeMigration } from "../core/migrations/003-session-tree.js";
+// pi 0.85 migration: use the full migration runner so migration 015
+// (pi-storage-v2, adds session_values / session_lists / session_usage
+// / session_seq_counter and messages.seq) is applied. Running only
+// 001+002+003 by hand made SqliteStorage crash at runtime because
+// the new tables didn't exist.
+import { runMigrations } from "../core/migrations/index.js";
 import type { TenantContext } from "../core/index.js";
 import { getTenantConfigDir } from "../core/paths.js";
 import { runAgentLoop } from "./agent-loop.js";
@@ -131,9 +155,7 @@ import { runAgentLoop } from "./agent-loop.js";
 function freshDb(): Database.Database {
   const db = new Database(":memory:");
   db.pragma("journal_mode = MEMORY");
-  runInitialMigration(db);
-  runDepsMigration(db);
-  runSessionTreeMigration(db);
+  runMigrations(db);
   db.prepare(
     `INSERT INTO users (id, external_id, provider, display_name, created_at)
      VALUES (?, ?, ?, ?, ?)`,
@@ -197,16 +219,29 @@ describe("runAgentLoop (worker)", () => {
   });
 
   it("task_complete tool_result → done with summary + files", async () => {
+    // pi 0.85 event flow: tool_start carries args, tool_end DOES
+    // NOT (see HarnessEventPayload in agent-harness.d.ts). The
+    // runtime caches args from tool_start by toolCallId and reads
+    // them back on tool_end. Tests replicate that pair.
     __script = {
       events: [
         {
-          type: "tool_result",
+          type: "tool_start",
           toolCallId: "c1",
           toolName: "task_complete",
-          input: { summary: "I shipped v1", files: ["report.md"] },
-          content: [],
-          details: undefined,
+          args: { summary: "I shipped v1", files: ["report.md"] },
+          runId: "r1",
+          turnId: "t1",
+        } as AgentHarnessEvent,
+        {
+          type: "tool_end",
+          toolCallId: "c1",
+          toolName: "task_complete",
+          result: undefined,
           isError: false,
+          terminate: false,
+          runId: "r1",
+          turnId: "t1",
         } as AgentHarnessEvent,
       ],
     };
@@ -229,25 +264,46 @@ describe("runAgentLoop (worker)", () => {
     // with a correction. Nothing stopped the turn, so the SECOND
     // (wrong) summary overwrote the first. Now the first call must
     // win and abort the harness.
+    // pi 0.85: args on tool_start, none on tool_end. Two full
+    // start/end pairs — the first should win and abort the harness
+    // before the second is honoured.
     __script = {
       events: [
         {
-          type: "tool_result",
+          type: "tool_start",
           toolCallId: "c1",
           toolName: "task_complete",
-          input: { summary: "FIRST verdict", files: ["a.md"] },
-          content: [],
-          details: undefined,
-          isError: false,
+          args: { summary: "FIRST verdict", files: ["a.md"] },
+          runId: "r1",
+          turnId: "t1",
         } as AgentHarnessEvent,
         {
-          type: "tool_result",
+          type: "tool_end",
+          toolCallId: "c1",
+          toolName: "task_complete",
+          result: undefined,
+          isError: false,
+          terminate: false,
+          runId: "r1",
+          turnId: "t1",
+        } as AgentHarnessEvent,
+        {
+          type: "tool_start",
           toolCallId: "c2",
           toolName: "task_complete",
-          input: { summary: "SECOND (oops) verdict", files: ["b.md"] },
-          content: [],
-          details: undefined,
+          args: { summary: "SECOND (oops) verdict", files: ["b.md"] },
+          runId: "r1",
+          turnId: "t2",
+        } as AgentHarnessEvent,
+        {
+          type: "tool_end",
+          toolCallId: "c2",
+          toolName: "task_complete",
+          result: undefined,
           isError: false,
+          terminate: false,
+          runId: "r1",
+          turnId: "t2",
         } as AgentHarnessEvent,
       ],
     };

@@ -13,7 +13,13 @@
 
 import { Type } from "typebox";
 import type { Tool } from "@earendil-works/pi-ai";
-import type { AgentHarness, Session as PiSession, CompactionSettings } from "@earendil-works/pi-agent-core";
+import type {
+  AgentHarness,
+  AgentLane,
+  CompactionSettings,
+  Context,
+  Session as PiSession,
+} from "@earendil-works/pi-agent-core";
 import type { AgentTool } from "@tianshu-ai/plugin-sdk";
 import { tryAutoCompact } from "./compact-decision.js";
 import type { ToolExecutor } from "../tools/index.js";
@@ -56,6 +62,10 @@ export interface HostToolsOpts {
 export interface CompactToolRef {
   piSession?: PiSession;
   harness?: AgentHarness;
+  /** pi 0.85: compact() moved from harness to lane. */
+  lane?: AgentLane;
+  /** pi 0.85: every session/lane call requires a Context. */
+  context?: Context;
   /** Set by the compact_context tool when called mid-turn.
    *  The post-turn maybeAutoCompact checks this and forces compaction. */
   requestedByAgent?: boolean;
@@ -129,9 +139,14 @@ function compactContextTool(
         return { ok: false, message: "Compaction not available (session not initialized)." };
       }
       // Try immediate compaction (works if harness is idle, e.g. during followUp gaps).
+      if (!ref.lane || !ref.context) {
+        return { ok: false, message: "Compaction not available (lane/context not initialized)." };
+      }
       const result = await tryAutoCompact({
         piSession: ref.piSession,
         harness: ref.harness,
+        lane: ref.lane,
+        context: ref.context,
         contextWindow: opts.contextWindow,
         settings: {
           enabled: true,

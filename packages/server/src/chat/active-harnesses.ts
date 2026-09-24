@@ -29,10 +29,26 @@
 //   …) to find the live harness. The DB persistence path keeps
 //   working unchanged.
 
-import type { AgentHarness } from "@earendil-works/pi-agent-core";
+import type {
+  AgentHarness,
+  AgentLane,
+  Context,
+} from "@earendil-works/pi-agent-core";
 import type { ServerMsg } from "./ws-protocol.js";
 
-const active = new Map<string, AgentHarness>();
+/**
+ * pi 0.85 split lane-scoped ops (prompt/abort/waitForIdle/followUp/
+ * compact) off the harness onto AgentLane. The session-inbox needs
+ * `lane.followUp(msg, images, context)`, so the registry stores the
+ * three-tuple {harness, lane, context} instead of just the harness.
+ */
+export interface ActiveHarnessEntry {
+  harness: AgentHarness;
+  lane: AgentLane;
+  context: Context;
+}
+
+const active = new Map<string, ActiveHarnessEntry>();
 
 /**
  * userId → set of `send` thunks for every open chat WebSocket
@@ -69,26 +85,26 @@ const tenantSendChannels = new Map<string, Set<(msg: ServerMsg) => void>>();
  */
 export function registerActiveHarness(
   sessionId: string,
-  harness: AgentHarness,
+  entry: ActiveHarnessEntry,
 ): () => void {
-  active.set(sessionId, harness);
+  active.set(sessionId, entry);
   return () => {
     // Only delete if still pointing at the same instance — guards
     // against a stale unregister thunk fired after the slot was
     // re-claimed by a new harness for the same session.
-    if (active.get(sessionId) === harness) {
+    if (active.get(sessionId) === entry) {
       active.delete(sessionId);
     }
   };
 }
 
 /**
- * Look up the active harness for a session, if any. Callers must
- * be defensive: even when this returns a value, the harness may
- * be in the process of shutting down. Use `harness.followUp(...)`
+ * Look up the active harness entry for a session, if any. Callers
+ * must be defensive: even when this returns a value, the harness may
+ * be in the process of shutting down. Use `entry.lane.followUp(...)`
  * inside try/catch.
  */
-export function getActiveHarness(sessionId: string): AgentHarness | undefined {
+export function getActiveHarness(sessionId: string): ActiveHarnessEntry | undefined {
   return active.get(sessionId);
 }
 

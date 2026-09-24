@@ -82,6 +82,10 @@ export interface BuildModelsOptions {
   /** Called once per retry (before backoff) so the caller can surface
    *  a UI notification. Applies to both stream and streamSimple. */
   onRetry?: (notice: RetryNotice) => void;
+  /** Additional (model, apiKey) pairs to register so pi can resolve
+   *  models stored in session state from previous turns. Without this
+   *  switching models mid-session fails with `model_unavailable`. */
+  additionalModels?: Array<{ model: Model<Api>; apiKey: string }>;
 }
 
 export function buildModels(
@@ -131,8 +135,69 @@ export function buildModels(
     },
   });
 
+  // Collect ALL models grouped by provider so each provider is
+  // registered once with its complete model list. This avoids the
+  // bug where a second setProvider() for the same provider id
+  // overwrites the first (losing the primary model).
+  const byProvider = new Map<string, { models: Model<Api>[]; apiKey: string; api: Api; baseUrl?: string }>();
+
+  // Primary model always goes first.
+  byProvider.set(piModel.provider, {
+    models: [piModel],
+    apiKey,
+    api: piModel.api,
+    baseUrl: piModel.baseUrl,
+  });
+
+  // Merge additional models into the same provider groups.
+  if (options?.additionalModels) {
+    for (const extra of options.additionalModels) {
+      // Skip exact duplicates of the primary.
+      if (extra.model.id === piModel.id && extra.model.provider === piModel.provider) continue;
+      const key = extra.model.provider;
+      let group = byProvider.get(key);
+      if (!group) {
+        group = { models: [], apiKey: extra.apiKey, api: extra.model.api, baseUrl: extra.model.baseUrl };
+        byProvider.set(key, group);
+      }
+      group.models.push(extra.model);
+    }
+  }
+
   const models = createModels();
-  models.setProvider(provider);
+  for (const [provId, group] of byProvider) {
+    const streams = getApiProvider(group.api);
+    if (!streams) continue;
+    const groupKey = group.apiKey;
+    const isPrimary = provId === piModel.provider;
+    const prov = createProvider({
+      id: provId,
+      name: provId,
+      baseUrl: group.baseUrl,
+      auth: {
+        apiKey: {
+          name: `${provId} api key`,
+          resolve: async () => ({
+            auth: { apiKey: groupKey },
+            source: "tenant-config",
+          }),
+        },
+      },
+      models: group.models,
+      api: {
+        // Only the primary provider gets retry wrapping; additional
+        // providers are fallback-only (session state resolution).
+        stream: isPrimary
+          ? wrapWithRetry(streams.stream, piModel, options)
+          : (streams.stream as never),
+        streamSimple: isPrimary
+          ? wrapWithRetry(streams.streamSimple, piModel, options)
+          : (streams.streamSimple as never),
+      },
+    });
+    models.setProvider(prov);
+  }
+
   return models;
 }
 
