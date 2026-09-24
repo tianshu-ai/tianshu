@@ -1227,16 +1227,23 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       if (!resume) {
         throw new HandledTurnAbort();
       }
-      // Sync tools for resume path too (same rationale as below).
+      // Sync model + tools for resume path too (same rationale as below).
+      await lane.setModel(
+        { provider: piModel.provider, modelId: piModel.id },
+        piContext,
+      );
       const resumeToolNames = adapted.tools.map((t: { name: string }) => t.name);
       await lane.setActiveTools(resumeToolNames, piContext);
       await lane.prompt(resume, images.length > 0 ? images : undefined, piContext);
     } else {
-      // pi 0.85 persists activeToolNames in session state. If tools
-      // changed since the last turn (plugin enable/disable, bridge
-      // reconnect, stale session from another machine), the stored
-      // list won't match the current toolset and pi will refuse to
-      // run with `configured_tools_unavailable`. Sync before prompt.
+      // pi 0.85 persists model identity + activeToolNames in session
+      // state. If the user switches models or tools change between
+      // turns, the stored config won't match and pi refuses to run.
+      // Sync both before every prompt.
+      await lane.setModel(
+        { provider: piModel.provider, modelId: piModel.id },
+        piContext,
+      );
       const currentToolNames = adapted.tools.map((t: { name: string }) => t.name);
       await lane.setActiveTools(currentToolNames, piContext);
 
