@@ -61,6 +61,7 @@ import type {
 } from "@earendil-works/pi-agent-core";
 import type { Usage } from "@earendil-works/pi-ai";
 import { isRealUserAgentMessage } from "./real-user-turn.js";
+import { chainMaxTurn } from "./session-chain.js";
 
 // Row shape mirrors the `messages` table augmented by 003-session-tree
 // + 015-pi-storage-v2. `entry_type` narrows to pi's EntryType; the
@@ -439,18 +440,14 @@ export class SqliteStorage implements Storage {
            entry_details, parent_id, seq, turn_number)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
-      // Session-absolute turn counter (invariant: monotonic, never
-      // rewritten). Seed from the max turn already stored so writes
-      // across process restarts keep counting up. Real user entries
-      // bump; every other entry inherits the current turn. See
-      // migration 017 + isRealUserEntry for the full rules.
-      const currentMaxTurnRow = this.db
-        .prepare<[string], { max_turn: number | null }>(
-          `SELECT MAX(turn_number) AS max_turn FROM messages
-            WHERE session_id = ?`,
-        )
-        .get(this.sessionId);
-      let currentTurn = currentMaxTurnRow?.max_turn ?? 0;
+      // Chain-absolute turn counter (invariant: monotonic across the
+      // entire parent_id fork chain, never rewritten). Seed from the
+      // max turn across ALL sessions in this chain so a legacy
+      // compactSession fork continues numbering from where the parent
+      // left off. New pi 0.87+ compaction doesn't fork, so the chain
+      // is length 1 and this degenerates to a single-session MAX.
+      // See migration 019 + isRealUserEntry for the full rules.
+      let currentTurn = chainMaxTurn(this.db, this.sessionId);
       const setLeaf = this.db.prepare(
         `UPDATE sessions SET leaf_id = ? WHERE id = ?`,
       );
