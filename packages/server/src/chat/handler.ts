@@ -1016,7 +1016,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     const ev = event as { type?: string; reason?: string; error?: unknown; message?: { role?: string; stopReason?: string } };
     const entryRole = (event as any).entry?.message?.role ?? (event as any).message?.role ?? '';
     const entryType = (event as any).entry?.type ?? '';
-    const errMsg = (event as any).error ? String((event as any).error).slice(0, 200) : '';
+    const rawErr = (event as any).error;
+    const errMsg = rawErr ? JSON.stringify(rawErr, Object.getOwnPropertyNames(rawErr), 2)?.slice(0, 500) ?? String(rawErr) : '';
     console.log(`[handler:diag] harness event: type=${ev.type} entryRole=${entryRole} entryType=${entryType} reason=${ev.reason ?? ''} stopReason=${ev.message?.stopReason ?? ''} error=${errMsg}`);
     // pi 0.85 renamed tool_execution_start → tool_start.
     if (ev.type === "tool_start") {
