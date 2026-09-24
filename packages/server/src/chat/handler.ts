@@ -55,6 +55,7 @@ import {
   shouldCompactBranch,
   tryAutoCompact,
   branchStillOverWindow,
+  isNothingToCompact,
   type AutoCompactDecision,
   type ShouldCompactBranchInput,
 } from "./compact-decision.js";
@@ -2574,45 +2575,136 @@ async function runManualCompact(args: {
     (modelId ? findModel(ctx.config, modelId) : undefined) ??
     getDefaultModel(ctx.config);
   if (!modelInfo) {
-    send({
-      type: "stream_error",
-      reason: "no models configured",
-    });
+    send({ type: "stream_error", reason: "no models configured" });
     return;
   }
-  const { messages, rows } = loadAgentHistoryForSession(ctx, session.id, {
-    api: modelInfo.api,
-    provider: modelInfo.providerId,
-    model: modelInfo.modelId,
-  });
-  if (messages.length === 0) {
-    send({
-      type: "stream_error",
-      reason: "nothing to compact (no messages yet)",
-    });
+
+  // Route manual /compact through pi's harness.compact() so the
+  // before_compaction hook fires (see structured-compaction.ts).
+  // Historically /compact went through the legacy fork+summarise
+  // path in compact.ts; that path never triggered pi hooks and
+  // therefore skipped the turn-numbered structured summary.
+  //
+  // We build a minimal, single-purpose harness here — no tools,
+  // no progressive-history, no active-harness registration — just
+  // enough to call `lane.compact()`. See runPrompt for the full
+  // harness setup used during real turns; this deliberately mirrors
+  // only the pieces compact needs (piStorage / piSession / piContext
+  // / harness / lane) so future pi API changes are easy to trace.
+  const piStorage = new SqliteStorage(ctx.db, session.id);
+  // Build a minimal SessionMetadata by hand rather than instantiating
+  // SqliteSessionStorage (which needs a real userHome for image
+  // inflation — not relevant to compaction). Only pi's storageVersion
+  // + id + createdAt are consulted by StorageBackedSession; the rest
+  // are optional and let pi thread parent-session pointers when they
+  // exist.
+  const sessionRow = ctx.db
+    .prepare<[string], { created_at: number; parent_id: string | null } | undefined>(
+      `SELECT created_at, parent_id FROM sessions WHERE id = ?`,
+    )
+    .get(session.id);
+  if (!sessionRow) {
+    send({ type: "stream_error", reason: `compact: session not found: ${session.id}` });
     return;
   }
+  const piSessionMetadata = {
+    id: session.id,
+    createdAt: sessionRow.created_at,
+    storageVersion: 2, // matches migration 015-pi-storage-v2
+    parentSessionId: sessionRow.parent_id ?? undefined,
+  };
+  const piSession = new StorageBackedSession(piSessionMetadata, piStorage);
+  const piModel = buildModel(modelInfo);
+  const apiKey = resolveApiKey(modelInfo);
+  const piContext: PiHarnessContext = withAbortSignal(signal, BACKGROUND_CONTEXT);
+
+  let harness: AgentHarness | undefined;
+  let unsubStructuredCompaction: (() => void) | undefined;
+  const t0 = Date.now();
   try {
-    const result = await compactSession({
-      ctx,
-      userId,
-      oldSession: session,
-      pi: messages,
-      rows,
-      modelInfo,
-      signal,
+    const created = await AgentHarness.create(
+      {
+        session: piSession,
+        tools: undefined,
+        model: piModel,
+        models: buildModels(piModel, apiKey, {
+          resilience: ctx.config.models?.resilience,
+          reResolveApiKey: () => resolveApiKey(modelInfo),
+          additionalModels: listModels(ctx.config)
+            .filter((m) => !(m.modelId === modelInfo.modelId && m.providerId === modelInfo.providerId))
+            .map((m) => ({ model: buildModel(m), apiKey: resolveApiKey(m) })),
+        }),
+      },
+      piContext,
+    );
+    harness = created.harness;
+    const lane = await harness.lane("main", piContext);
+
+    unsubStructuredCompaction = installStructuredCompactionHook({
+      harness,
+      session: { id: session.id },
+      db: ctx.db,
+      model: piModel,
+      apiKey,
+      onFallback: (reason) => {
+        log.warn(
+          `structured_compaction fallback session=${session.id} reason=${reason} (manual)`,
+        );
+      },
     });
+
+    // Snapshot pre-compaction message count so we can report
+    // summarisedCount/keptCount without re-reading model context.
+    const branchBefore = await piSession.findEntries(undefined, piContext);
+    const msgsBefore = branchBefore.filter((e) => e.type === "message").length;
+    if (msgsBefore === 0) {
+      send({
+        type: "stream_error",
+        reason: "nothing to compact (no messages yet)",
+      });
+      return;
+    }
+
+    // pi 0.85+: lane.compact() returns Result<{compaction, run?}, err>.
+    // NothingToCompact means the tail is already a compaction entry
+    // — nothing new to fold in.
+    const result = await lane.compact(undefined, piContext);
+    if (!result.ok) {
+      const errTag = (result.error as { _tag?: string })._tag;
+      if (errTag === "NothingToCompact") {
+        send({
+          type: "stream_error",
+          reason: "nothing to compact (nothing new since last compaction)",
+        });
+        return;
+      }
+      send({
+        type: "stream_error",
+        reason: `compact failed: ${(result.error as Error).message ?? String(result.error)}`,
+      });
+      return;
+    }
+
+    const branchAfter = await piSession.findEntries(undefined, piContext);
+    const msgsAfter = branchAfter.filter((e) => e.type === "message").length;
+    const summarisedCount = Math.max(0, msgsBefore - msgsAfter);
+    const keptCount = msgsAfter;
+    const durationMs = Date.now() - t0;
+
+    // Manual /compact used to fork a new session; pi 0.87 writes the
+    // compaction entry into the SAME session. Send old==new here —
+    // chat-store.ts:698 already handles this shape (see the auto-
+    // compact path which has done old==new since the pi 0.85 migration).
     send({
       type: "history_compacted",
       reason: "manual",
-      oldSessionId: result.oldSessionId,
-      newSessionId: result.newSession.id,
-      summarisedCount: result.summarisedCount,
-      keptCount: result.keptCount,
-      durationMs: result.durationMs,
+      oldSessionId: session.id,
+      newSessionId: session.id,
+      summarisedCount,
+      keptCount,
+      durationMs,
     });
-    // Push a refreshed history so the UI swaps to the new session
-    // immediately (the fork ack + summary stub plus any kept tail).
+    // Refresh so the UI drops any stale streaming placeholder.
     const page = listMessagesForUserPage(ctx, userId);
     send({
       type: "history",
@@ -2620,14 +2712,30 @@ async function runManualCompact(args: {
       hasMore: page.hasMore,
     });
   } catch (err) {
-    if (err instanceof CompactSkippedError) {
-      send({ type: "stream_error", reason: `compact skipped: ${err.message}` });
+    if (isNothingToCompact(err)) {
+      send({
+        type: "stream_error",
+        reason: "nothing to compact (nothing new since last compaction)",
+      });
       return;
     }
     send({
       type: "stream_error",
       reason: `compact failed: ${err instanceof Error ? err.message : String(err)}`,
     });
+  } finally {
+    unsubStructuredCompaction?.();
+    if (harness) {
+      try {
+        await harness.close(piContext);
+      } catch (closeErr) {
+        log.warn(
+          `runManualCompact: harness.close failed session=${session.id}: ${
+            closeErr instanceof Error ? closeErr.message : String(closeErr)
+          }`,
+        );
+      }
+    }
   }
 }
 

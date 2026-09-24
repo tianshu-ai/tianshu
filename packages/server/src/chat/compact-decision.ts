@@ -172,7 +172,7 @@ export interface AutoCompactDecision {
  *  yields no cut point. Matched loosely (case-insensitive substring)
  *  so a future rephrasing of the harness error doesn't silently break
  *  the fallback path. */
-function isNothingToCompact(err: unknown): boolean {
+export function isNothingToCompact(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /nothing to compact/i.test(msg);
 }
