@@ -1227,8 +1227,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       if (!resume) {
         throw new HandledTurnAbort();
       }
+      // Sync tools for resume path too (same rationale as below).
+      const resumeToolNames = adapted.tools.map((t: { name: string }) => t.name);
+      await lane.setActiveTools(resumeToolNames, piContext);
       await lane.prompt(resume, images.length > 0 ? images : undefined, piContext);
     } else {
+      // pi 0.85 persists activeToolNames in session state. If tools
+      // changed since the last turn (plugin enable/disable, bridge
+      // reconnect, stale session from another machine), the stored
+      // list won't match the current toolset and pi will refuse to
+      // run with `configured_tools_unavailable`. Sync before prompt.
+      const currentToolNames = adapted.tools.map((t: { name: string }) => t.name);
+      await lane.setActiveTools(currentToolNames, piContext);
+
       console.log(`[handler:diag] calling lane.prompt()...`);
       await lane.prompt(promptText, images.length > 0 ? images : undefined, piContext);
       console.log(`[handler:diag] lane.prompt() returned`);
