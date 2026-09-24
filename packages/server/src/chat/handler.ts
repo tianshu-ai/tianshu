@@ -533,7 +533,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Resolve the model up front — we need imageMaxBytes / context
   // window for both auto-compact and the LLM call below.
   const modelInfo = (modelId ? findModel(ctx.config, modelId) : undefined) ?? getDefaultModel(ctx.config);
-  console.log(`[handler:diag] modelInfo: id=${modelInfo?.modelId} provider=${modelInfo?.providerId} api=${modelInfo?.api} baseUrl=${modelInfo?.baseUrl?.slice(0,60)}`);
   if (!modelInfo) {
     send({
       type: "stream_error",
@@ -544,7 +543,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   const piModel = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
-  console.log(`[handler:diag] piModel built, apiKey=${apiKey ? 'present' : 'MISSING'}`);
   const userHome = ctx.userHomeDir(userId);
 
   // MCP toolsets (e.g. plugin-microsandbox's Playwright server)
@@ -1025,7 +1023,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     const entryType = (event as any).entry?.type ?? '';
     const rawErr = (event as any).error;
     const errMsg = rawErr ? JSON.stringify(rawErr, Object.getOwnPropertyNames(rawErr), 2)?.slice(0, 500) ?? String(rawErr) : '';
-    console.log(`[handler:diag] harness event: type=${ev.type} entryRole=${entryRole} entryType=${entryType} reason=${ev.reason ?? ''} stopReason=${ev.message?.stopReason ?? ''} error=${errMsg}`);
     // pi 0.85 renamed tool_execution_start → tool_start.
     if (ev.type === "tool_start") {
       const tc = event as unknown as {
@@ -1253,7 +1250,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       try {
         const abortResult = await lane.abort(piContext);
         if (abortResult.ok) {
-          console.log(`[handler:diag] aborted stuck operation before prompt`);
           // Wait briefly for the abort to settle. Use a race with
           // a timeout so we don't hang forever if the abort itself
           // gets stuck.
@@ -1270,17 +1266,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         // — log and proceed, the prompt will queue anyway.
         const msg = e instanceof Error ? e.message : String(e);
         if (msg !== "abort-settle-timeout") {
-          console.log(`[handler:diag] pre-prompt abort: ${msg}`);
         } else {
           console.warn(`[handler] stuck operation could not be aborted within 5s, proceeding`);
         }
       }
 
-      console.log(`[handler:diag] calling lane.prompt()...`);
       await lane.prompt(promptText, images.length > 0 ? images : undefined, piContext);
-      console.log(`[handler:diag] lane.prompt() returned`);
     }
-    console.log(`[handler:diag] calling lane.waitForIdle()...`);
     // Guard against stuck operations: if waitForIdle doesn't
     // return within 120s, abort and move on.
     try {
@@ -1299,7 +1291,6 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
         throw e;
       }
     }
-    console.log(`[handler:diag] lane.waitForIdle() returned`);
 
     // Auto-continue when model was truncated by maxTokens.
     // The PI SDK sets stopReason="length" on the last assistant message.
