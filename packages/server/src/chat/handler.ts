@@ -1247,12 +1247,58 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       const currentToolNames = adapted.tools.map((t: { name: string }) => t.name);
       await lane.setActiveTools(currentToolNames, piContext);
 
+      // pi 0.85 may have a stuck deferred operation from a previous
+      // stalled/crashed turn. If the lane isn't idle, abort() clears
+      // it so our new prompt can actually run.
+      try {
+        const abortResult = await lane.abort(piContext);
+        if (abortResult.ok) {
+          console.log(`[handler:diag] aborted stuck operation before prompt`);
+          // Wait briefly for the abort to settle. Use a race with
+          // a timeout so we don't hang forever if the abort itself
+          // gets stuck.
+          await Promise.race([
+            lane.waitForIdle(piContext),
+            new Promise<void>((_, reject) =>
+              setTimeout(() => reject(new Error("abort-settle-timeout")), 5000),
+            ),
+          ]);
+        }
+      } catch (e) {
+        // NoActiveOperation (lane already idle) is the happy path.
+        // abort-settle-timeout means the stuck op couldn't be cleared
+        // — log and proceed, the prompt will queue anyway.
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg !== "abort-settle-timeout") {
+          console.log(`[handler:diag] pre-prompt abort: ${msg}`);
+        } else {
+          console.warn(`[handler] stuck operation could not be aborted within 5s, proceeding`);
+        }
+      }
+
       console.log(`[handler:diag] calling lane.prompt()...`);
       await lane.prompt(promptText, images.length > 0 ? images : undefined, piContext);
       console.log(`[handler:diag] lane.prompt() returned`);
     }
     console.log(`[handler:diag] calling lane.waitForIdle()...`);
-    await lane.waitForIdle(piContext);
+    // Guard against stuck operations: if waitForIdle doesn't
+    // return within 120s, abort and move on.
+    try {
+      await Promise.race([
+        lane.waitForIdle(piContext),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error("waitForIdle-timeout")), 120_000),
+        ),
+      ]);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg === "waitForIdle-timeout") {
+        console.warn(`[handler] waitForIdle timed out after 120s, aborting lane`);
+        try { await lane.abort(piContext); } catch { /* best effort */ }
+      } else {
+        throw e;
+      }
+    }
     console.log(`[handler:diag] lane.waitForIdle() returned`);
 
     // Auto-continue when model was truncated by maxTokens.
