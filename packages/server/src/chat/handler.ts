@@ -1217,9 +1217,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       }
       await lane.prompt(resume, images.length > 0 ? images : undefined, piContext);
     } else {
+      console.log(`[handler:diag] calling lane.prompt()...`);
       await lane.prompt(promptText, images.length > 0 ? images : undefined, piContext);
+      console.log(`[handler:diag] lane.prompt() returned`);
     }
+    console.log(`[handler:diag] calling lane.waitForIdle()...`);
     await lane.waitForIdle(piContext);
+    console.log(`[handler:diag] lane.waitForIdle() returned`);
 
     // Auto-continue when model was truncated by maxTokens.
     // The PI SDK sets stopReason="length" on the last assistant message.
