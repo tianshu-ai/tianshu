@@ -87,6 +87,7 @@ const RECORD_WIKI_STEPS = [
   "2. Read it, then record across BOTH layers for that day:",
   "   • TIME (wiki_journal_write): write the daily entry — level=daily, period=<that YYYY-MM-DD> — noting what was done that day, cross-linking the topics/entities/concepts it touched with [[section/slug]].",
   "   • THEMATIC (wiki_write_page): project → section=entities; reusable tech/knowledge points → section=concepts; a cross-day thread/undertaking (e.g. 'build the board plugin') → section=topics. A topic usually spans several days — add this day to the topic page's timeline and link both ways.",
+  "   • TURN INDEX: each transcript line is prefixed with [turn N]. When writing ANY wiki page (journal or thematic), group related messages by topic and note the turn range: '(turns X-Y → recall_range(X, Y))'. This lets a future reader pull back the exact original conversation with recall_range. Always include the turn range — it is the primary index into the session history.",
   "3. Call wiki_day_done({ throughMs }) with the throughMs from wiki_next_day to advance the cursor past that day.",
   "4. Repeat. When you've recorded all days of an ISO week / month / year, roll them up with wiki_journal_write: weekly (YYYY-Www) from its dailies, monthly (YYYY-MM) from its weeks, yearly (YYYY) from its months. Roll-ups summarise and link down — don't repeat detail.",
   "5. Stop when wiki_next_day reports done:true, or after ~10 days this run (the cursor persists; the next run resumes). Then give a one-paragraph summary of what you recorded.",
@@ -470,7 +471,7 @@ function buildNextDayTool(ctx: PluginContext): AgentTool {
           timeZone: LOCAL_TZ, hour: "2-digit", minute: "2-digit", hour12: false,
         }).format(new Date(ms));
       let transcript = dayMsgs
-        .map((m) => `[${timeOf(m.created_at)}] ${messageToText(m.role, m.content)}`)
+        .map((m) => `[${timeOf(m.created_at)}] ${messageToText(m.role, m.content, m.turn_number)}`)
         .join("\n\n");
       let truncatedNote = "";
       if (transcript.length > DAY_MAX_CHARS) {
@@ -493,7 +494,7 @@ function buildNextDayTool(ctx: PluginContext): AgentTool {
           if (t.session_id) {
             const wmsgs = listSessionMessages(ctx.db, t.session_id);
             if (wmsgs.length > 0) {
-              const wt = wmsgs.map((m) => messageToText(m.role, m.content)).join("\n");
+              const wt = wmsgs.map((m) => messageToText(m.role, m.content, m.turn_number)).join("\n");
               lines.push(`- worker transcript:\n${wt.slice(0, 6000)}`);
             }
           }

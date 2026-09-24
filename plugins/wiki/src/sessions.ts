@@ -35,6 +35,10 @@ export interface TimedMessageRow {
   role: string;
   content: string;
   created_at: number;
+  /** Chain-absolute turn number (see migration 017-019). NULL only
+   *  for rows written before 017 migrated (shouldn't happen after
+   *  a single server restart). */
+  turn_number: number | null;
 }
 
 /** Local-timezone day key (YYYY-MM-DD) for an epoch-ms timestamp.
@@ -67,7 +71,8 @@ export function listMessagesAfter(
 ): TimedMessageRow[] {
   return db
     .prepare<[string, string, number, number], TimedMessageRow>(
-      `SELECT m.id, m.session_id, m.role, m.content, m.created_at
+      `SELECT m.id, m.session_id, m.role, m.content, m.created_at,
+              m.turn_number
          FROM messages m
          JOIN sessions s ON s.id = m.session_id
         WHERE s.user_id = ?
@@ -157,6 +162,7 @@ export interface MessageRow {
   role: string;
   content: string;
   created_at: number;
+  turn_number: number | null;
 }
 
 export interface TaskRow {
@@ -205,7 +211,7 @@ export function listUserSessions(db: TenantDbHandle, userId: string): SessionRow
 export function listSessionMessages(db: TenantDbHandle, sessionId: string): MessageRow[] {
   return db
     .prepare<[string], MessageRow>(
-      `SELECT id, role, content, created_at
+      `SELECT id, role, content, created_at, turn_number
          FROM messages
         WHERE session_id = ?
         ORDER BY created_at ASC`,
@@ -231,15 +237,18 @@ export function listSessionTasks(db: TenantDbHandle, parentSessionId: string): T
  *  a plain string); we extract text/tool-call gist, dropping heavy
  *  tool output. Best-effort — unknown shapes fall back to the raw
  *  string, truncated. */
-export function messageToText(role: string, contentJson: string): string {
+export function messageToText(role: string, contentJson: string, turnNumber?: number | null): string {
+  const turnTag = typeof turnNumber === "number" && turnNumber > 0
+    ? `[turn ${turnNumber}] `
+    : "";
   let parsed: unknown;
   try {
     parsed = JSON.parse(contentJson);
   } catch {
     // Plain-string content.
-    return `${role}: ${truncate(contentJson, 4000)}`;
+    return `${turnTag}${role}: ${truncate(contentJson, 4000)}`;
   }
-  if (typeof parsed === "string") return `${role}: ${truncate(parsed, 4000)}`;
+  if (typeof parsed === "string") return `${turnTag}${role}: ${truncate(parsed, 4000)}`;
 
   const parts: string[] = [];
   const blocks = Array.isArray(parsed)
@@ -250,8 +259,8 @@ export function messageToText(role: string, contentJson: string): string {
   if (!blocks) {
     // Object with a top-level text field, or unknown — stringify small.
     const t = (parsed as { text?: unknown }).text;
-    if (typeof t === "string") return `${role}: ${truncate(t, 4000)}`;
-    return `${role}: ${truncate(JSON.stringify(parsed), 1200)}`;
+    if (typeof t === "string") return `${turnTag}${role}: ${truncate(t, 4000)}`;
+    return `${turnTag}${role}: ${truncate(JSON.stringify(parsed), 1200)}`;
   }
   for (const b of blocks) {
     if (!b || typeof b !== "object") continue;
@@ -266,7 +275,7 @@ export function messageToText(role: string, contentJson: string): string {
     }
   }
   const text = parts.join("\n").trim();
-  return `${role}: ${truncate(text || "(no text)", 4000)}`;
+  return `${turnTag}${role}: ${truncate(text || "(no text)", 4000)}`;
 }
 
 function truncate(s: string, n: number): string {
