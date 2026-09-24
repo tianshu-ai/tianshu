@@ -602,8 +602,15 @@ function extractAssistantMeta(
   // pi-ai stores `model` as the bare model id and `provider` as the
   // provider id; tenant config keys models by `<provider>/<model>`.
   // Compose the lookup id when both are present so we don't have to
-  // teach `contextWindowFor` about that split.
-  const fullId = provider && model ? `${provider}/${model}` : model;
+  // teach `contextWindowFor` about that split. If model already
+  // contains a provider prefix (e.g. "sap-proxy/claude-opus-4-7"),
+  // don't double it.
+  const fullId =
+    model && model.includes("/")
+      ? model
+      : provider && model
+        ? `${provider}/${model}`
+        : model;
   const contextWindow = fullId
     ? opts.contextWindowFor?.(fullId) ?? undefined
     : undefined;
