@@ -392,6 +392,10 @@ export class SqliteStorage implements Storage {
 
   async commit(writes: Write[], _ctx: Context): Promise<CommitResult> {
     this.assertOpen();
+    console.log(`[storage:diag] commit: ${writes.length} write(s) session=${this.sessionId}`);
+    for (const w of writes.slice(0, 5)) {
+      console.log(`[storage:diag]   write: kind=${(w as any).kind ?? '?'} type=${(w as any).type ?? (w as any).entry?.type ?? '?'} id=${(w as any).id ?? (w as any).entry?.id ?? '?'}`);
+    }
     if (writes.length === 0) {
       // Nothing to do — return current stats + a zero-seq range.
       const stats = await this.getStats(_ctx);
