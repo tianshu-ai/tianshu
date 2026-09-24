@@ -1868,11 +1868,19 @@ function bridgeHarnessEventToWs(
     return;
   }
 
-  // Pi's low-level tool events: tool_execution_start fires when
-  // the harness begins running a tool, tool_execution_end after
-  // it completes. We emit the legacy tianshu chip events around
-  // them so the existing UI flow keeps working.
-  if (lowType === "tool_execution_start") {
+  // Pi's low-level tool events: tool_start fires when the harness
+  // begins running a tool, tool_end after it completes. We emit
+  // the legacy tianshu chip events around them so the existing UI
+  // flow keeps working.
+  //
+  // pi 0.85 rename: tool_execution_{start,end} → tool_{start,end}
+  // (see harness/events.d.ts::HarnessEvent). Missing this rename
+  // here left every tool chip stuck at "running" in the UI
+  // because tool_result never reached the browser — the assistant
+  // message chip is created by text_delta / message_added but
+  // it only flips to "done" when a matching tool_result WS event
+  // arrives (see chat-store.ts::tianshuWs.on("tool_result")).
+  if (lowType === "tool_start") {
     const tc = event as unknown as {
       toolCallId: string;
       toolName: string;
@@ -1886,7 +1894,7 @@ function bridgeHarnessEventToWs(
     });
     return;
   }
-  if (lowType === "tool_execution_end") {
+  if (lowType === "tool_end") {
     const te = event as unknown as {
       toolCallId: string;
       toolName: string;
