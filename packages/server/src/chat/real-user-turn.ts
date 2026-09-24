@@ -31,7 +31,16 @@ import type { Message } from "@earendil-works/pi-ai";
  * future call sites; do NOT edit past entries — they anchor a
  * historical DB.
  */
-export const SYSTEM_INJECTED_USER_PREFIXES = ["[plugin-system]", "[system note]"];
+export const SYSTEM_INJECTED_USER_PREFIXES = [
+  "[plugin-system]",
+  "[system note]",
+  // Legacy fork-based compactSession (compact.ts) seeds a new session
+  // with a role='user' row starting `[Conversation summary — generated
+  // at <ISO>]`. That row is not a real user turn — it's a system-
+  // generated summary that opens the forked session. Excluded so it
+  // doesn't consume turn 1 in the fork's turn_number sequence.
+  "[Conversation summary — generated at",
+];
 
 /** Narrow AgentMessage to a pi-ai Message the checker understands.
  *  Plugin-defined custom messages fall through as "not a user turn". */
