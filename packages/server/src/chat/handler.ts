@@ -1100,6 +1100,11 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     harness.events.on("message_start", dispatchHarnessEvent),
     harness.events.on("message_update", dispatchHarnessEvent),
     harness.events.on("message_end", dispatchHarnessEvent),
+    // pi 0.85 emits entry_added AFTER the entry is committed to
+    // storage — this is what the WS bridge actually needs to forward
+    // `message_added` events to the client (see the entry_added
+    // branch in bridgeHarnessEventToWs for the full rationale).
+    harness.events.on("entry_added", dispatchHarnessEvent),
     harness.events.on("tool_start", dispatchHarnessEvent),
     harness.events.on("tool_end", dispatchHarnessEvent),
     harness.events.on("compaction_start", dispatchHarnessEvent),
@@ -1823,55 +1828,54 @@ function bridgeHarnessEventToWs(
     }
     return;
   }
-  if (lowType === "message_end") {
-    const m = (event as { message: AgentMessage }).message;
-    if (m.role === "assistant") {
-      const row = readBackLatestMessage(ctx, session.id, "assistant");
+  if (lowType === "entry_added") {
+    // pi 0.85 emits `entry_added` AFTER the entry is durably written
+    // to storage. This is the correct hook to forward `message_added`
+    // events to the WS client. We used to react to `message_end`, but
+    // pi emits that BEFORE the settleOperation() commit that writes
+    // the entry — so a synchronous SELECT in message_end always
+    // missed the just-generated row, the WS bridge sent nothing, and
+    // the browser's STREAMING_ID placeholder never got paired with a
+    // real assistant row (streaming visible during reply, entire
+    // bubble vanished at stream_end, only visible after refresh).
+    // See node_modules/@earendil-works/pi-agent-core/dist/harness/
+    // runtime/drive/response.js::publishResponse — events emitted
+    // AFTER commit are entry_added + usage; message_end is a lifecycle
+    // marker emitted before commit.
+    const entry = (event as { entry?: { id?: string; type?: string; message?: { role?: string } } }).entry;
+    if (entry && entry.type === "message" && entry.id) {
+      const persistedRole = entry.message?.role;
+      const row = readBackMessageById(ctx, session.id, entry.id);
       if (row) {
-        // Always notify the run controller (lastAssistantRow gets
-        // tracked here) so MAX_TURNS counting and the stream_end
-        // selection in the caller stay correct, even if we
-        // suppress the wire message below.
-        onAssistantPersisted(row);
-        const wire = toWire(row, wireOpts);
-        // Suppress empty assistant messages (no user-visible
-        // text segments). They show up as bare "…" bubbles
-        // when the agent's final turn was tool-only — the tool
-        // result chips above already tell the story. The same
-        // filter is applied at stream_end below.
-        if (hasVisibleAssistantText(wire)) {
-          send({ type: "message_added", message: wire });
+        if (persistedRole === "assistant") {
+          onAssistantPersisted(row);
+          const wire = toWire(row, wireOpts);
+          if (hasVisibleAssistantText(wire)) {
+            send({ type: "message_added", message: wire });
+          }
+        } else if (persistedRole === "user") {
+          try {
+            markDeliveredFromMessage(ctx, row.content);
+          } catch (err) {
+            console.warn(
+              "[handler] markDeliveredFromMessage failed:",
+              err instanceof Error ? err.message : err,
+            );
+          }
+          send({ type: "message_added", message: toWire(row, wireOpts) });
+        } else if (persistedRole === "toolResult") {
+          send({ type: "message_added", message: toWire(row, wireOpts) });
         }
-      }
-    } else if (m.role === "user") {
-      const row = readBackLatestMessage(ctx, session.id, "user");
-      if (row) {
-        // pi just persisted a user message. If it carries inbox
-        // markers, this is the proof we needed that the inbox
-        // followUp was actually consumed — mark those rows
-        // delivered now so they don't get redelivered as a
-        // prefix on the next user prompt. See
-        // session-inbox.ts's markDeliveredFromMessage.
-        try {
-          markDeliveredFromMessage(ctx, row.content);
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn(
-            "[handler] markDeliveredFromMessage failed:",
-            err instanceof Error ? err.message : err,
-          );
-        }
-        send({ type: "message_added", message: toWire(row, wireOpts) });
-      }
-    } else if ((m as { role?: string }).role === "toolResult") {
-      // SqliteSessionStorage just wrote the tool-result row;
-      // forward it to the UI so the chip materialises into a
-      // proper message in the transcript.
-      const row = readBackLatestMessage(ctx, session.id, "tool");
-      if (row) {
-        send({ type: "message_added", message: toWire(row, wireOpts) });
       }
     }
+    return;
+  }
+  if (lowType === "message_end") {
+    // Intentional no-op. pi 0.85 emits message_end BEFORE
+    // settleOperation commits the entry to storage; anything that
+    // needs the persisted row lives in `entry_added` above. We
+    // subscribe to message_end anyway so other bridge stages that
+    // read the event stream continue to observe lifecycle markers.
     return;
   }
 
@@ -2098,6 +2102,42 @@ export function extractToolCallNames(assistantMessageJson: string): string[] {
   } catch {
     return [];
   }
+}
+
+/** Read one persisted message row by its exact id. pi 0.85 message_end
+ *  events carry `entryId` on the wire; using it avoids the race where
+ *  readBackLatestMessage(role) picks up an unrelated older row (or a
+ *  concurrent siblings turn's row). */
+function readBackMessageById(
+  ctx: TenantContext,
+  sessionId: string,
+  id: string,
+): ChatMessage | null {
+  const row = ctx.db
+    .prepare<
+      [string, string],
+      {
+        id: string;
+        session_id: string;
+        role: ChatMessage["role"];
+        content: string;
+        created_at: number;
+      }
+    >(
+      `SELECT id, session_id, role, content, created_at
+       FROM messages
+       WHERE session_id = ? AND id = ? AND entry_type = 'message'
+       LIMIT 1`,
+    )
+    .get(sessionId, id);
+  if (!row) return null;
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    role: row.role,
+    content: row.content,
+    createdAt: row.created_at,
+  };
 }
 
 /** Read the most recently persisted message of a given role from
