@@ -1735,7 +1735,12 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     if (lastWire && !lastIsEmpty) {
       send({ type: "stream_end", message: lastWire });
     } else {
-      // Synthetic placeholder so the UI doesn't get stuck.
+      // Synthetic placeholder so the UI doesn't get stuck. The id
+      // prefix `msg_empty_` is the sentinel chat-store.ts's
+      // stream_end handler matches on to *skip* appending this row
+      // to the transcript (see `isSyntheticEmpty` there). Real
+      // persisted rows use UUIDv7 ids (01a0…), so the prefix check
+      // is unambiguous. Keep both sides in sync when renaming.
       send({
         type: "stream_end",
         message: toWire(
