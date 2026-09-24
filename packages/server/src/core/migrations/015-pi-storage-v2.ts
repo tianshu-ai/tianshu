@@ -71,7 +71,9 @@ export function up(db: Database): void {
   const updateSeq = db.prepare<[number, string], unknown>(
     `UPDATE messages SET seq = ? WHERE id = ?`,
   );
-  for (const s of sessions) {
+  console.log(`[migration:015] backfilling seq for ${sessions.length} session(s)...`);
+  for (let si = 0; si < sessions.length; si++) {
+    const s = sessions[si]!;
     // Find root: parent_id IS NULL.
     const roots = walkFromRoot.all(s.id);
     if (roots.length === 0) continue;
@@ -85,7 +87,11 @@ export function up(db: Database): void {
       const child = findChild.get(s.id, current);
       current = child?.id ?? null;
     }
+    if (n > 100 || (si + 1) % 50 === 0) {
+      console.log(`[migration:015]   session ${si + 1}/${sessions.length}: ${n - 1} messages`);
+    }
   }
+  console.log(`[migration:015] seq backfill done`);
 
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_messages_session_seq
