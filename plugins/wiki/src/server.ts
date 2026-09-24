@@ -90,7 +90,7 @@ const RECORD_WIKI_STEPS = [
   "   • TURN INDEX: each transcript line is prefixed with [turn N]. When writing ANY wiki page (journal or thematic), group related messages by topic and note the turn range: '(turns X-Y → recall_range(X, Y))'. This lets a future reader pull back the exact original conversation with recall_range. Always include the turn range — it is the primary index into the session history.",
   "3. Call wiki_day_done({ throughMs }) with the throughMs from wiki_next_day to advance the cursor past that day.",
   "4. Repeat. When you've recorded all days of an ISO week / month / year, roll them up with wiki_journal_write: weekly (YYYY-Www) from its dailies, monthly (YYYY-MM) from its weeks, yearly (YYYY) from its months. Roll-ups summarise and link down — don't repeat detail.",
-  "5. Stop when wiki_next_day reports done:true, or after ~10 days this run (the cursor persists; the next run resumes). Then give a one-paragraph summary of what you recorded.",
+  "5. Keep going until wiki_next_day reports done:true. Do NOT stop early — process every available day in this run. The cursor persists, so if the run is interrupted it resumes next time, but always aim for full completion. When done, give a one-paragraph summary of what you recorded.",
   "Reuse wiki_search / wiki_list_pages / wiki_read first so you extend existing pages instead of duplicating them.",
   "KNOWLEDGE LINKING: before writing any page, search the wiki (wiki_search) for related existing pages — entities, concepts, topics, and prior journal entries. In the new page, link every related page with [[section/slug]] wikilinks. Also UPDATE the related page to add a back-link to the new page (a 'Related' or 'See also' section). This builds a bidirectional knowledge graph: conversation history ↔ entities ↔ concepts ↔ topics ↔ journal entries. The goal is that searching any node in the wiki surfaces its full context: what was discussed (turn ranges + recall_range), what it relates to (wikilinks), and when it happened (journal links).",
 ];
@@ -1089,7 +1089,7 @@ function buildRoutes(
           sessionTitle: "Wiki update",
           toolsAllow: WIKI_WORKER_TOOLS,
           parentSessionId,
-          timeouts: { firstResponseMs: 0, idleMs: 0, maxRunMs: 30 * 60_000 },
+          timeouts: { firstResponseMs: 0, idleMs: 0, maxRunMs: 120 * 60_000 },
         });
         summary = result.summary;
         status = result.status;
