@@ -25,6 +25,7 @@ import * as userPreferences from "./013-user-preferences.js";
 import * as messageChainWalkIndex from "./014-message-chain-walk-index.js";
 import * as piStorageV2 from "./015-pi-storage-v2.js";
 import * as toolResultToTool from "./016-toolresult-to-tool.js";
+import * as turnNumber from "./017-turn-number.js";
 
 export interface Migration {
   id: string;
@@ -49,6 +50,7 @@ export const MIGRATIONS: Migration[] = [
   { id: messageChainWalkIndex.ID, up: messageChainWalkIndex.up },
   { id: piStorageV2.ID, up: piStorageV2.up },
   { id: toolResultToTool.ID, up: toolResultToTool.up },
+  { id: turnNumber.ID, up: turnNumber.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `

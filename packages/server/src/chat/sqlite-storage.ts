@@ -60,6 +60,7 @@ import type {
   ValueList,
 } from "@earendil-works/pi-agent-core";
 import type { Usage } from "@earendil-works/pi-ai";
+import { isRealUserAgentMessage } from "./real-user-turn.js";
 
 // Row shape mirrors the `messages` table augmented by 003-session-tree
 // + 015-pi-storage-v2. `entry_type` narrows to pi's EntryType; the
@@ -74,6 +75,7 @@ interface MessageRow {
   entry_type: string; // pi EntryType
   entry_details: string | null; // JSON blob for non-message entries
   seq: number | null; // NULL only for legacy rows before 015 backfill
+  turn_number: number | null; // session-absolute turn (see migration 017)
 }
 
 interface ValueRow {
@@ -434,9 +436,21 @@ export class SqliteStorage implements Storage {
       const insertMessage = this.db.prepare(
         `INSERT INTO messages
           (id, session_id, role, content, created_at, entry_type,
-           entry_details, parent_id, seq)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           entry_details, parent_id, seq, turn_number)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       );
+      // Session-absolute turn counter (invariant: monotonic, never
+      // rewritten). Seed from the max turn already stored so writes
+      // across process restarts keep counting up. Real user entries
+      // bump; every other entry inherits the current turn. See
+      // migration 017 + isRealUserEntry for the full rules.
+      const currentMaxTurnRow = this.db
+        .prepare<[string], { max_turn: number | null }>(
+          `SELECT MAX(turn_number) AS max_turn FROM messages
+            WHERE session_id = ?`,
+        )
+        .get(this.sessionId);
+      let currentTurn = currentMaxTurnRow?.max_turn ?? 0;
       const setLeaf = this.db.prepare(
         `UPDATE sessions SET leaf_id = ? WHERE id = ?`,
       );
@@ -474,6 +488,7 @@ export class SqliteStorage implements Storage {
         if (w.kind === "entry") {
           const e = w.entry;
           const rowShape = entryToRow(e, seq, timestamp);
+          if (isRealUserEntry(e)) currentTurn += 1;
           insertMessage.run(
             rowShape.id,
             this.sessionId,
@@ -484,6 +499,7 @@ export class SqliteStorage implements Storage {
             rowShape.entry_details,
             rowShape.parent_id,
             seq,
+            currentTurn,
           );
           setLeaf.run(rowShape.id, this.sessionId);
         } else if (w.kind === "value") {
@@ -689,6 +705,22 @@ function rowToEntry(row: MessageRow): Entry {
     customType: details.customType ?? "unknown",
     data: details.data,
   } as CustomEntry;
+}
+
+/**
+ * Return true when a MessageEntry represents a real user prompt —
+ * i.e. the entry-level input a human (or upstream agent) sent to open
+ * a new turn. Plugin notifications and recovery-injected plain-text
+ * stubs go in under role='user' too but must NOT bump the turn
+ * counter; those are excluded by the SYSTEM_INJECTED_USER_PREFIXES
+ * text-prefix rule shared with progressive-history + recall_range.
+ *
+ * See ./real-user-turn.ts for the single source of truth and the
+ * list of injection prefixes.
+ */
+export function isRealUserEntry(entry: NewEntry): boolean {
+  if (entry.type !== "message") return false;
+  return isRealUserAgentMessage(entry.message);
 }
 
 function entryToRow(

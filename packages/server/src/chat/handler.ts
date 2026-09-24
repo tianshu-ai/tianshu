@@ -148,6 +148,7 @@ import { getUserStore } from "../core/auth/user-store.js";
 import { resolveTenantRole } from "../core/auth/identity.js";
 import { buildHostTools, buildRecallHostTools, getCompactRef } from "./host-tools.js";
 import { progressiveHistoryTransform } from "./progressive-history.js";
+import { installStructuredCompactionHook } from "./structured-compaction.js";
 import {
   toWire,
   type ClientMsg,
@@ -958,6 +959,24 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // one "main" lane for the whole chat session.
   const lane = await harness.lane("main", piContext);
 
+  // Structured compaction: intercept pi's default free-form summary
+  // with a turn-numbered markdown block that lets the model use
+  // recall_range(A, B) against exact session turns. Falls through
+  // to pi's default summarizer on any hook failure; unsubscribed
+  // in the finally block below (see hookUnsubscribes).
+  const unsubStructuredCompaction = installStructuredCompactionHook({
+    harness,
+    session: { id: session.id },
+    db: ctx.db,
+    model: piModel,
+    apiKey,
+    onFallback: (reason) => {
+      log.warn(
+        `structured_compaction fallback session=${session.id} reason=${reason}`,
+      );
+    },
+  });
+
   // Tool-result aging + progressive-history stubbing are now handled
   // inside `toProviderMessages` above (pi 0.85 removed the `context`
   // hook + `entryTransforms`); no separate unsubscribe needed.
@@ -1618,6 +1637,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }
     outstandingToolCalls.clear();
     unsubscribe();
+    unsubStructuredCompaction();
     unregisterHarness();
     signal.removeEventListener("abort", onAbort);
     if (storage) storage.pendingUserAttachments = null;
