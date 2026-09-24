@@ -1804,15 +1804,22 @@ function bridgeHarnessEventToWs(
     // pi 0.85 HarnessEvent is a wider tagged union that doesn't
     // structurally overlap this narrow message_update shape at the
     // TS level, so the cast routes through `unknown`.
+    //
+    // Field-name fix: earlier migration passes assumed the inner
+    // stream event lived on `assistantMessageEvent`. pi 0.85 exposes
+    // it as `event` (see agent-harness.d.ts::HarnessEventPayload
+    // message_update variant). Reading the wrong key meant every
+    // text_delta branch became a no-op, so the browser never got
+    // `stream_delta` events and the message stayed on '···'.
     const upd = event as unknown as {
       type: "message_update";
-      assistantMessageEvent: { type: string; delta?: string };
+      event: { type: string; delta?: string };
     };
     if (
-      upd.assistantMessageEvent.type === "text_delta" &&
-      typeof upd.assistantMessageEvent.delta === "string"
+      upd.event.type === "text_delta" &&
+      typeof upd.event.delta === "string"
     ) {
-      send({ type: "stream_delta", delta: upd.assistantMessageEvent.delta });
+      send({ type: "stream_delta", delta: upd.event.delta });
     }
     return;
   }
