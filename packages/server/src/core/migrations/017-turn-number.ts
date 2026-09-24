@@ -46,10 +46,11 @@ interface Row {
 // self-contained — dropping a runtime dependency on chat/ keeps
 // the migration replayable even if that module later refactors.
 //
-// If you add a new SYSTEM_INJECTED_USER_PREFIXES entry in
-// real-user-turn.ts and want it retroactively applied to existing
-// rows, add a follow-up migration that re-scans this same predicate
-// with the updated list; do NOT edit this migration in place.
+// FROZEN LIST. Do NOT edit; this migration must produce the same
+// back-fill output on every replay. If a new prefix is added to
+// real-user-turn.ts (post-017), add a follow-up migration that
+// re-scans with the updated list — 018-turn-number-fork-seed is
+// the first such follow-up.
 const SYSTEM_INJECTED_USER_PREFIXES = ["[plugin-system]", "[system note]"];
 
 function firstTextOf(content: unknown): string | null {

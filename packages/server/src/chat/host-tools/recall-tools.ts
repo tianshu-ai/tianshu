@@ -420,9 +420,37 @@ export function buildRecallRangeTool(deps: RecallToolsDeps): AgentTool {
       }
 
       if (chunks.length === 0) {
+        // Empty result. Before failing, tell the agent whether this
+        // session was forked from a parent (legacy compactSession
+        // behavior — see compact.ts). If so, the requested turns
+        // likely live in the parent; recall_range doesn't cross the
+        // fork boundary automatically because turn_number is per-
+        // session, but naming the parent lets the agent decide
+        // whether to look further.
+        let parentHint = "";
+        try {
+          const parentRow = owning.db
+            .prepare<[string], { parent_id: string | null; status: string | null } | undefined>(
+              `SELECT parent_id, status FROM sessions WHERE id = ?`,
+            )
+            .get(sessionId);
+          if (parentRow?.parent_id) {
+            const parentMax = owning.db
+              .prepare<[string], { max_turn: number | null } | undefined>(
+                `SELECT MAX(turn_number) AS max_turn FROM messages WHERE session_id = ?`,
+              )
+              .get(parentRow.parent_id);
+            const maxTurn = parentMax?.max_turn ?? 0;
+            parentHint =
+              ` This session was forked from an earlier compacted session (parent_id=${parentRow.parent_id}, ${maxTurn} turns). ` +
+              `The requested range likely refers to the parent's turns; recall_range operates on the current session only, so the compaction summary at the head of this session is your source for those.`;
+          }
+        } catch {
+          /* best-effort; parentHint stays empty */
+        }
         return {
           ok: false,
-          text: `recall_range: no messages found in turns ${fromTurn}-${toTurn} of this session.`,
+          text: `recall_range: no messages found in turns ${fromTurn}-${toTurn} of this session.${parentHint}`,
         };
       }
 
