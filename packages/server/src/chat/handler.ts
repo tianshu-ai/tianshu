@@ -914,6 +914,53 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // class. Returns `{ harness, open }`; `open` lists any operations
   // that were mid-flight in a previously persisted session — for chat
   // we start fresh each turn, so we ignore it.
+  // ── repair stale lane operations ─────────────────────────
+  // When a turn is interrupted (abort, crash, SIGTERM), the lane
+  // state may record a currentOperationId whose op.meta / op.state
+  // KV entries were never written. pi-agent-core's restoreLaneState
+  // treats this as a fatal SessionInvariantError → HarnessFault,
+  // permanently bricking the session. Fix: before harness restore,
+  // scan lane states and null out any currentOperationId that points
+  // to a missing op.meta. This is a runtime-state repair, not a
+  // history rewrite.
+  try {
+    const laneRows = ctx.db
+      .prepare<[string, string], { key: string; value: string }>(
+        `SELECT key, value FROM session_values
+         WHERE session_id = ? AND namespace = ?`,
+      )
+      .all(session.id, "pi.lane.state");
+    for (const row of laneRows) {
+      try {
+        const parsed = JSON.parse(row.value);
+        const opId = parsed.currentOperationId;
+        if (!opId) continue;
+        const metaRow = ctx.db
+          .prepare<[string, string, string], { value: string }>(
+            `SELECT value FROM session_values
+             WHERE session_id = ? AND namespace = ? AND key = ?`,
+          )
+          .get(session.id, "pi.op.meta", opId);
+        if (!metaRow) {
+          console.warn(
+            `[handler] repairing stale operation ref session=${session.id} lane=${row.key} operationId=${opId} (op.meta missing)`,
+          );
+          parsed.currentOperationId = null;
+          ctx.db
+            .prepare(
+              `UPDATE session_values SET value = ?
+               WHERE session_id = ? AND namespace = ? AND key = ?`,
+            )
+            .run(JSON.stringify(parsed), session.id, "pi.lane.state", row.key);
+        }
+      } catch (parseErr) {
+        // Malformed JSON in lane state — skip, harness will handle it.
+      }
+    }
+  } catch (repairErr) {
+    console.warn(`[handler] lane-state repair failed session=${session.id}`, repairErr);
+  }
+
   console.log(`[handler] AgentHarness.create starting session=${session.id}`);
   const { harness } = await AgentHarness.create(
     {
