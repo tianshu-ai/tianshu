@@ -332,6 +332,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             modelId: parsed.modelId,
             signal: aborter.signal,
           }).catch((err) => {
+            console.error(`[handler] runPrompt FAILED`, err?.stack ?? err);
             send({
               type: "stream_error",
               reason: err instanceof Error ? err.message : String(err),
@@ -357,6 +358,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           session: explicitSession,
           voiceMode: parsed.voiceMode === true,
         }).catch((err) => {
+          console.error(`[handler] runPrompt(explicit) FAILED`, err?.stack ?? err);
           send({
             type: "stream_error",
             reason: err instanceof Error ? err.message : String(err),
@@ -384,6 +386,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
           pluginRegistry,
           homeDir,
         }).catch((err) => {
+          console.error(`[handler] runPrompt(retry) FAILED`, err?.stack ?? err);
           send({
             type: "stream_error",
             reason: err instanceof Error ? err.message : String(err),
@@ -911,6 +914,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // class. Returns `{ harness, open }`; `open` lists any operations
   // that were mid-flight in a previously persisted session — for chat
   // we start fresh each turn, so we ignore it.
+  console.log(`[handler] AgentHarness.create starting session=${session.id}`);
   const { harness } = await AgentHarness.create(
     {
       session: piSession,
@@ -954,11 +958,20 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       }),
     },
     piContext,
-  );
+  ).catch((err) => {
+    console.error(`[handler] AgentHarness.create FAILED session=${session.id}`, err);
+    throw err;
+  });
+  console.log(`[handler] AgentHarness.create OK session=${session.id}`);
   // pi 0.85: all lane-scoped operations (prompt, abort, waitForIdle,
   // compact, followUp, etc.) moved from harness onto AgentLane. Use
   // one "main" lane for the whole chat session.
-  const lane = await harness.lane("main", piContext);
+  console.log(`[handler] harness.lane("main") starting session=${session.id}`);
+  const lane = await harness.lane("main", piContext).catch((err) => {
+    console.error(`[handler] harness.lane("main") FAILED session=${session.id}`, err);
+    throw err;
+  });
+  console.log(`[handler] harness.lane("main") OK session=${session.id}`);
 
   // Structured compaction: intercept pi's default free-form summary
   // with a turn-numbered markdown block that lets the model use
