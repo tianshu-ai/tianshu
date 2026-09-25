@@ -729,6 +729,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
   const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(true);
   const [auditing, setAuditing] = useState(false);
+  const [auditLog, setAuditLog] = useState<string[]>([]);
   const [confirmAudit, setConfirmAudit] = useState(false);
   const nav = useChatNav();
 
@@ -737,7 +738,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
       fetch(`${API_BASE}/kb/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
       fetch(`${API_BASE}/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
       fetch(`${API_BASE}/embedding-status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
-    ]).then(([kb, wiki, emb]: [KbStatus | null, { running?: boolean; auditing?: boolean; progress?: number; indexedDays?: number; totalDays?: number; pendingDays?: number } | null, EmbeddingStatus | null]) => {
+    ]).then(([kb, wiki, emb]: [KbStatus | null, { running?: boolean; auditing?: boolean; auditLog?: string[]; progress?: number; indexedDays?: number; totalDays?: number; pendingDays?: number } | null, EmbeddingStatus | null]) => {
       setKbStatus(kb);
       setSessionStatus(wiki ? { running: !!wiki.running, progress: wiki.progress ?? 0, indexedDays: wiki.indexedDays ?? 0, totalDays: wiki.totalDays ?? 0, pendingDays: wiki.pendingDays ?? 0 } : null);
       setEmbStatus(emb);
@@ -745,6 +746,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
       const isAuditing = !!wiki?.auditing || false;
       setRunning(isRunning);
       setAuditing(isAuditing);
+      if (wiki?.auditLog) setAuditLog(wiki.auditLog);
       setLoading(false);
     });
   }, []);
@@ -955,6 +957,13 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
           <div className="text-[11px] text-fg-muted">
             {t("indexing.auditDesc")}
           </div>
+          {auditing && auditLog.length > 0 && (
+            <div className="mt-1 max-h-32 overflow-y-auto rounded-md bg-bg-default/60 p-2 text-[10px] text-fg-muted font-mono leading-relaxed space-y-0.5">
+              {auditLog.map((line, i) => (
+                <div key={i} className="truncate">{line}</div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Audit confirmation modal */}

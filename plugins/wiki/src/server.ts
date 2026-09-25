@@ -197,6 +197,16 @@ const KB_WORKER_TOOLS = [
 // clicks (or two channels) don't double-process the same sessions.
 const running = new Set<string>();
 
+/** Per-user audit progress log (last N lines). Cleared when audit starts. */
+const auditLogs = new Map<string, string[]>();
+const AUDIT_LOG_MAX = 30;
+function pushAuditLog(key: string, line: string): void {
+  let arr = auditLogs.get(key);
+  if (!arr) { arr = []; auditLogs.set(key, arr); }
+  arr.push(line);
+  if (arr.length > AUDIT_LOG_MAX) arr.splice(0, arr.length - AUDIT_LOG_MAX);
+}
+
 function runKey(tenantId: string, userId: string): string {
   return `${tenantId}:${userId}`;
 }
@@ -284,6 +294,11 @@ function buildReadTool(): AgentTool {
       const section = parts.slice(0, -1).join("/");
       const md = readPage(ctx.userHomeDir, section, slug);
       if (md === null) return { ok: false, text: `Page not found: ${p.path}` };
+      // Audit progress: log reads periodically (not every single page).
+      const rk = runKey(ctx.tenantId, ctx.userId);
+      if (running.has(rk + ":audit")) {
+        pushAuditLog(rk, `📖 read ${p.path}`);
+      }
       return { ok: true, text: md.slice(0, 16000) };
     },
   };
@@ -469,6 +484,11 @@ function buildWritePageTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentToo
           };
         }
       }
+      // Audit progress log (best-effort; no-op when not auditing).
+      const rk = runKey(ctx.tenantId, ctx.userId);
+      if (running.has(rk + ":audit")) {
+        pushAuditLog(rk, `✏️ wrote ${section}/${slug} — ${title}`);
+      }
       return { ok: true, text: `wrote ${section}/${slug}` };
     },
   };
@@ -515,6 +535,10 @@ function buildDeletePageTool(
         new WikiIndex(db, ctx.userId).removePage(`${section}/${slug}`);
       } catch { /* best-effort */ }
       const reason = p.reason ? ` Reason: ${p.reason}` : "";
+      const rk = runKey(ctx.tenantId, ctx.userId);
+      if (running.has(rk + ":audit")) {
+        pushAuditLog(rk, `🗑️ deleted ${section}/${slug}${reason}`);
+      }
       console.log(`[wiki-audit] deleted ${section}/${slug}.${reason}`);
       return { ok: true, text: `Deleted ${section}/${slug}.${reason}` };
     },
@@ -1136,6 +1160,7 @@ function buildRoutes(
       error: embProbe.ok ? undefined : embProbe.detail,
       running: isRunning,
       auditing: isAuditing,
+      auditLog: isAuditing ? (auditLogs.get(rk) ?? []) : [],
       progress,
       indexedDays,
       totalDays,
@@ -1253,6 +1278,8 @@ function buildRoutes(
         ? (req.body as { sessionId: string }).sessionId
         : null;
 
+    auditLogs.delete(key); // clear previous audit log
+    pushAuditLog(key, "🔍 Audit started — Phase 1: reading primary pages…");
     running.add(auditKey);
     void (async () => {
       let summary = "";
