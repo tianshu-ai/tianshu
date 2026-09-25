@@ -936,19 +936,21 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
             <div className="flex-1 min-w-0">
               <div className="text-[12px] font-medium text-fg-default">{t("indexing.audit")}</div>
             </div>
-            {auditing && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-purple-500/10 text-purple-400">
+            {auditing ? (
+              <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-purple-500/10 text-purple-400">
+                <Share2 size={10} className="animate-spin" />
                 {t("indexing.auditing")}
               </span>
+            ) : (
+              <button
+                onClick={() => setConfirmAudit(true)}
+                disabled={running}
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors disabled:opacity-40"
+              >
+                <Share2 size={10} />
+                {t("indexing.runAudit")}
+              </button>
             )}
-            <button
-              onClick={() => setConfirmAudit(true)}
-              disabled={running || auditing}
-              className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors disabled:opacity-40"
-            >
-              <Share2 size={10} className={auditing ? "animate-spin" : ""} />
-              {auditing ? t("indexing.auditing") : t("indexing.runAudit")}
-            </button>
           </div>
           <div className="text-[11px] text-fg-muted">
             {t("indexing.auditDesc")}
