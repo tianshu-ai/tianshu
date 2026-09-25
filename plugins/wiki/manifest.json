@@ -142,6 +142,12 @@
         "since": "0.2.0"
       }
     ],
+    "systemPromptFragments": [
+      {
+        "id": "wiki-recall",
+        "text": "You have a wiki knowledge base (wiki_search, wiki_read, wiki_list_pages). It contains conversation history summaries, project entities, technical concepts, cross-day topic threads, and knowledge-base documents — all cross-linked.\n\nWhen to search the wiki:\n- User mentions something discussed before, a past decision, a project/system/person\n- User asks \"how did we do X\", \"what was decided about Y\", \"last time we talked about Z\"\n- You need prior context not present in the current conversation\n\nHow to use it:\n1. wiki_search(query) → returns relevant pages (semantic or keyword)\n2. wiki_read(path) → read the full page\n3. If a page contains \"turns X-Y → recall_range(X, Y)\", call recall_range(X, Y) to retrieve the exact original conversation\n\nChain: wiki_search → wiki_read → spot turn reference → recall_range → full original conversation.\nDo NOT search every turn — only when prior context is genuinely needed."
+      }
+    ],
     "apiRoutes": [
       {
         "method": "GET",
