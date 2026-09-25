@@ -720,6 +720,7 @@ interface EmbeddingStatus {
 
 function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
   const t = usePluginT("wiki");
+  const { Modal } = useUiPrimitives();
   const [kbStatus, setKbStatus] = useState<KbStatus | null>(null);
   const [sessionStatus, setSessionStatus] = useState<{ running: boolean; progress: number; indexedDays: number; totalDays: number; pendingDays: number } | null>(null);
   const [embStatus, setEmbStatus] = useState<EmbeddingStatus | null>(null);
@@ -727,6 +728,8 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
   const [reindexMsg, setReindexMsg] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [auditing, setAuditing] = useState(false);
+  const [confirmAudit, setConfirmAudit] = useState(false);
   const nav = useChatNav();
 
   const fetchStatus = useCallback(() => {
@@ -749,6 +752,22 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
     const id = setInterval(fetchStatus, running ? 2000 : 8000);
     return () => clearInterval(id);
   }, [fetchStatus, running]);
+
+  const triggerAudit = () => {
+    setAuditing(true);
+    setConfirmAudit(false);
+    fetch(`${API_BASE}/audit`, {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: nav.viewingSessionId ?? null }),
+    })
+      .then((r) => r.json())
+      .then((body: { started?: boolean }) => {
+        if (!body.started) setAuditing(false);
+        else setTimeout(fetchStatus, 2000);
+      })
+      .catch(() => setAuditing(false));
+  };
 
   const triggerUpdate = () => {
     setRunning(true);
@@ -906,7 +925,62 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
           )}
         </div>
 
-        {/* ③ Semantic search / Embedding */}
+        {/* ③ Audit & cross-link */}
+        <div className="rounded-xl bg-bg-raised/50 p-3.5 space-y-2.5">
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-purple-500/10">
+              <Share2 size={14} className="text-purple-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[12px] font-medium text-fg-default">{t("indexing.audit") || "Audit & Cross-link"}</div>
+            </div>
+            <button
+              onClick={() => setConfirmAudit(true)}
+              disabled={running || auditing}
+              className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors disabled:opacity-40"
+            >
+              <Share2 size={10} className={auditing ? "animate-spin" : ""} />
+              {auditing ? (t("indexing.auditing") || "Auditing…") : (t("indexing.runAudit") || "Run Audit")}
+            </button>
+          </div>
+          <div className="text-[11px] text-fg-muted">
+            {t("indexing.auditDesc") || "Scan all pages, rebuild entity/concept/topic synthesis with full cross-links. May delete or rewrite outdated synthesis pages."}
+          </div>
+        </div>
+
+        {/* Audit confirmation modal */}
+        <Modal
+          isOpen={confirmAudit}
+          onClose={() => !auditing && setConfirmAudit(false)}
+          title={t("audit.title") || "Run Wiki Audit"}
+          size="sm"
+          allowMaximize={false}
+        >
+          <div className="px-4 py-3 text-[13px] text-fg-muted">
+            <p>{t("audit.body1") || "This will scan all wiki pages and rebuild synthesis pages (entities, concepts, topics) with full cross-links."}</p>
+            <p className="mt-2">
+              <strong className="text-amber-500">{t("audit.body2") || "Outdated synthesis pages may be rewritten or deleted. Primary pages (sources, journal, knowledge) are never modified."}</strong>
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmAudit(false)}
+                disabled={auditing}
+                className="rounded-md px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-hover transition-colors"
+              >
+                {t("audit.cancel") || "Cancel"}
+              </button>
+              <button
+                onClick={triggerAudit}
+                disabled={auditing}
+                className="rounded-md bg-purple-600/90 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-600 transition-colors disabled:opacity-60"
+              >
+                {auditing ? (t("audit.running") || "Running…") : (t("audit.confirm") || "Start Audit")}
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* ④ Semantic search / Embedding */}
         <div className="rounded-xl bg-bg-raised/50 p-3.5 space-y-2.5">
           <div className="flex items-center gap-2">
             <div className={"flex items-center justify-center w-7 h-7 rounded-lg " +
