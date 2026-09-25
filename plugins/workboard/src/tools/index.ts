@@ -271,6 +271,56 @@ function formatBoard(
   return lines.join("\n");
 }
 
+export function buildListWorkersTool(deps: ToolDeps): AgentTool {
+  return {
+    schema: {
+      name: "task_list_workers",
+      description:
+        "List registered worker agents. By default only enabled workers are shown. " +
+        "Pass includeDisabled:true to also see disabled workers (useful when you need to re-enable one).",
+      parameters: Type.Object({
+        includeDisabled: Type.Optional(
+          Type.Boolean({
+            description:
+              "When true, include disabled workers in the result. Default false.",
+          }),
+        ),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolReturn => {
+      const args = raw as { includeDisabled?: boolean };
+      const all = listAgents(ctx.tenantId, ctx.tenantHomeDir);
+      const filtered = args.includeDisabled
+        ? all
+        : all.filter((a) => a.enabled);
+      const lines = filtered.map((a) => {
+        const status = a.enabled ? "✅" : "❌ disabled";
+        const model = a.modelId ? ` model=${a.modelId}` : "";
+        const desc = a.description ? ` — ${a.description}` : "";
+        return `- **${a.id}** (${a.kind}) [${status}]${model}${desc}`;
+      });
+      return {
+        ok: true,
+        text: filtered.length === 0
+          ? args.includeDisabled
+            ? "No worker agents registered."
+            : "No enabled worker agents. Use includeDisabled:true to see disabled ones."
+          : `${filtered.length} worker(s):\n${lines.join("\n")}`,
+        data: {
+          workers: filtered.map((a) => ({
+            id: a.id,
+            kind: a.kind,
+            name: a.name,
+            enabled: a.enabled,
+            modelId: a.modelId,
+            description: a.description,
+          })),
+        },
+      };
+    },
+  };
+}
+
 export function buildTaskListTool(deps: ToolDeps): AgentTool {
   return {
     schema: {
@@ -357,7 +407,7 @@ const TaskCreateItem = Type.Object({
   worker_agent_id: Type.Optional(
     Type.String({
       description:
-        "Slug of the worker that should pick this task up (e.g. \"coder\", \"llm-default\"). Use `tenant_config_list({path:\"workers\"})` to see what's registered. Omitting this leaves the task unpinned — any enabled worker can grab it, but you lose control over which one. Pinning by slug is the recommended path; kind-based dispatch is no longer exposed.",
+        "Slug of the worker that should pick this task up (e.g. \"coder\", \"llm-default\"). Use `task_list_workers` to see registered workers. Omitting this leaves the task unpinned — any enabled worker can grab it, but you lose control over which one. Pinning by slug is the recommended path; kind-based dispatch is no longer exposed.",
     }),
   ),
   ref: Type.Optional(
@@ -520,7 +570,7 @@ export function buildTaskCreateTool(deps: ToolDeps): AgentTool {
             results[index] = {
               ok: false,
               index,
-              text: `Worker agent "${explicitAgentId}" doesn't exist in this tenant. Use \`tenant_config_list({ path: "workers" })\` to see available slugs.`,
+              text: `Worker agent "${explicitAgentId}" doesn't exist in this tenant. Use \`task_list_workers\` to see available slugs (pass includeDisabled:true if you need disabled ones).`,
             };
             continue;
           }
@@ -595,7 +645,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         worker_agent_id: Type.Optional(
           Type.Union([Type.String(), Type.Null()], {
             description:
-              "Repin to a different worker by slug, or pass null to clear the pin (any enabled worker can grab it). Use `tenant_config_list({path:\"workers\"})` to see slugs.",
+              "Repin to a different worker by slug, or pass null to clear the pin (any enabled worker can grab it). Use `task_list_workers` to see slugs.",
           }),
         ),
         depends_on: Type.Optional(
@@ -648,7 +698,7 @@ export function buildTaskUpdateTool(deps: ToolDeps): AgentTool {
         if (!target) {
           return {
             ok: false,
-            text: `Worker agent "${slug}" doesn't exist. Use \`tenant_config_list({path:"workers"})\` for available slugs.`,
+            text: `Worker agent "${slug}" doesn't exist. Use \`task_list_workers\` for available slugs (pass includeDisabled:true for disabled ones).`,
           };
         }
         if (!target.enabled) {

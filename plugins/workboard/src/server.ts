@@ -48,6 +48,7 @@ import {
 import { OpenCodeWorker } from "./worker/opencode-worker.js";
 import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 import {
+  buildListWorkersTool,
   buildModelListTool,
   buildTaskAbortTool,
   buildTaskCompleteTool,
@@ -521,6 +522,7 @@ const plugin: PluginServerModule = {
 
     return {
       tools: {
+        ListWorkersTool: buildListWorkersTool(toolDeps),
         TaskListTool: buildTaskListTool(toolDeps),
         TaskCreateTool: buildTaskCreateTool(toolDeps),
         TaskUpdateTool: buildTaskUpdateTool(toolDeps),

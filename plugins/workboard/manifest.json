@@ -60,6 +60,11 @@
     ],
     "tools": [
       {
+        "id": "task_list_workers",
+        "module": "ListWorkersTool",
+        "since": "0.1.0"
+      },
+      {
         "id": "task_list",
         "module": "TaskListTool",
         "since": "0.1.0"
