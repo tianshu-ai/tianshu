@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.67.1](https://github.com/tianshu-ai/tianshu/compare/v0.67.0...v0.67.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **chat:** catch AbortError from lane.abort() to prevent unhandledRejection ([8f9345a](https://github.com/tianshu-ai/tianshu/commit/8f9345a086c41205598d7a74a77cc4002eb06112))
+
 ## [0.67.0](https://github.com/tianshu-ai/tianshu/compare/v0.66.1...v0.67.0) (2026-09-25)
 
 
