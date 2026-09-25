@@ -6,6 +6,25 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.67.0](https://github.com/tianshu-ai/tianshu/compare/v0.66.1...v0.67.0) (2026-09-25)
+
+
+### Features
+
+* **wiki:** inject systemPromptFragment so main agent uses wiki recall ([773e813](https://github.com/tianshu-ai/tianshu/commit/773e813b944b4ce73b74b621b25f48e5ed31283c))
+* **wiki:** live audit progress log in UI ([c078a9f](https://github.com/tianshu-ai/tianshu/commit/c078a9f96bb7a04746295dd96a8c706e93beca9f))
+* **wiki:** three-phase audit for cross-linking and synthesis page maintenance ([#513](https://github.com/tianshu-ai/tianshu/issues/513)) ([10f4881](https://github.com/tianshu-ai/tianshu/commit/10f488130cfcd84eb546d75956a9d1e348c5facb))
+* **workboard:** add task_list_workers tool with includeDisabled param ([#512](https://github.com/tianshu-ai/tianshu/issues/512)) ([eef7f6b](https://github.com/tianshu-ai/tianshu/commit/eef7f6b8f7e128d0d929055c337c3fbaaf76da97))
+
+
+### Bug Fixes
+
+* **wiki:** add i18n keys for audit UI (en + zh) ([266ee2d](https://github.com/tianshu-ai/tianshu/commit/266ee2d703dfa1b22db691c240d43c6663fc67d2))
+* **wiki:** register /audit route in manifest.json apiRoutes ([cd997b4](https://github.com/tianshu-ai/tianshu/commit/cd997b4ae45fd90939e5f79cf81727f59d08eb7b))
+* **wiki:** show audit running status in UI + separate audit/record run locks ([d051c23](https://github.com/tianshu-ai/tianshu/commit/d051c239536bc10b9e687e53c0df8472e1537086))
+* **wiki:** show either audit badge or button, not both ([ddfa38c](https://github.com/tianshu-ai/tianshu/commit/ddfa38c6a14e152da8d63846a95642737436d75d))
+* **wiki:** tolerate baseUrl with/without /v1 for embeddings endpoint ([#510](https://github.com/tianshu-ai/tianshu/issues/510)) ([1b92231](https://github.com/tianshu-ai/tianshu/commit/1b922311a17ffd8089c6fcefc1f47bc3762f9269))
+
 ## [0.66.1](https://github.com/tianshu-ai/tianshu/compare/v0.66.0...v0.66.1) (2026-09-24)
 
 
