@@ -67,8 +67,15 @@ async function embedOpenAI(
   signal?: AbortSignal,
 ): Promise<number[][]> {
   let base = (cfg.baseUrl ?? "").replace(/\/$/, "");
-  if (!/\/v\d/.test(base)) base = `${base}/v1`;
-  const url = `${base}/embeddings`;
+  // If the user already configured the full endpoint path, use it as-is.
+  // Otherwise append /v1/embeddings per OpenAI convention.
+  let url: string;
+  if (/\/embeddings$/.test(base)) {
+    url = base;
+  } else {
+    if (!/\/v\d/.test(base)) base = `${base}/v1`;
+    url = `${base}/embeddings`;
+  }
   const body: Record<string, unknown> = { model: cfg.model, input: inputs };
   if (cfg.dimensions) body.dimensions = cfg.dimensions;
   let res: Response;
@@ -92,8 +99,10 @@ async function embedOpenAI(
     );
   }
   if (!res.ok) {
+    const errBody = (await res.text()).slice(0, 400);
+    console.error(`[wiki-embed] POST ${url} model=${cfg.model} → ${res.status}: ${errBody}`);
     throw new Error(
-      `embeddings ${res.status} [apiKey: ${keyHint(cfg.apiKey ?? "")}]: ${(await res.text()).slice(0, 200)}`,
+      `embeddings ${res.status} from ${url} (model=${cfg.model}): ${errBody}`,
     );
   }
   const json = (await res.json()) as { data?: Array<{ embedding: number[] }> };
