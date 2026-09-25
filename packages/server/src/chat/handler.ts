@@ -1029,7 +1029,14 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     } else {
       log.debug(`abort_context session=${session.id} in_flight_tools=0`);
     }
-    void lane.abort(piContext);
+    lane.abort(piContext).catch(() => {
+      // Expected: the abort fires while a tool call or provider
+      // request is in flight; the resulting AbortError is normal.
+      // Swallowing it here prevents an unhandledRejection that
+      // destabilises the session (stalled → 120s timeout → retry
+      // storm). The prompt-level .catch() in the WS handler
+      // already covers the user-visible error path.
+    });
   };
   signal.addEventListener("abort", onAbort, { once: true });
 
