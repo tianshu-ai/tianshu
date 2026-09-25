@@ -164,6 +164,11 @@
         "handler": "record"
       },
       {
+        "method": "POST",
+        "path": "/audit",
+        "handler": "audit"
+      },
+      {
         "method": "GET",
         "path": "/status",
         "handler": "status"
