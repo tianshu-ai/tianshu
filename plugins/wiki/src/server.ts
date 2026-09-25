@@ -1101,7 +1101,9 @@ function buildRoutes(
     } catch {
       /* best-effort */
     }
-    const isRunning = running.has(runKey(ctx.tenantId, userId));
+    const rk = runKey(ctx.tenantId, userId);
+    const isRunning = running.has(rk);
+    const isAuditing = running.has(rk + ":audit");
 
     // ?probe=1 (sent by Test Connection) fires a real embedding call;
     // the indexing tab polls without it to avoid per-second API noise.
@@ -1133,6 +1135,7 @@ function buildRoutes(
         : `Embedding probe failed: ${embProbe.detail}`,
       error: embProbe.ok ? undefined : embProbe.detail,
       running: isRunning,
+      auditing: isAuditing,
       progress,
       indexedDays,
       totalDays,
@@ -1173,7 +1176,7 @@ function buildRoutes(
     const userId = userIdFromReq(req);
     if (!userId) return void res.status(401).json({ error: "no user context" });
     const key = runKey(ctx.tenantId, userId);
-    if (running.has(key)) {
+    if (running.has(key) || running.has(key + ":audit")) {
       return void res.json({ started: false, reason: "a wiki update is already running" });
     }
     const runner = ctx.capabilities.get<AgentLoopRunner>("host.agentLoop");
@@ -1237,7 +1240,8 @@ function buildRoutes(
     const userId = userIdFromReq(req);
     if (!userId) return void res.status(401).json({ error: "no user context" });
     const key = runKey(ctx.tenantId, userId);
-    if (running.has(key)) {
+    const auditKey = key + ":audit";
+    if (running.has(key) || running.has(auditKey)) {
       return void res.json({ started: false, reason: "a wiki update is already running" });
     }
     const runner = ctx.capabilities.get<AgentLoopRunner>("host.agentLoop");
@@ -1249,7 +1253,7 @@ function buildRoutes(
         ? (req.body as { sessionId: string }).sessionId
         : null;
 
-    running.add(key);
+    running.add(auditKey);
     void (async () => {
       let summary = "";
       let status: string = "error";
@@ -1272,7 +1276,7 @@ function buildRoutes(
         summary = err instanceof Error ? err.message : String(err);
         status = "error";
       } finally {
-        running.delete(key);
+        running.delete(auditKey);
       }
       if (parentSessionId) {
         try {

@@ -737,21 +737,23 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
       fetch(`${API_BASE}/kb/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
       fetch(`${API_BASE}/status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
       fetch(`${API_BASE}/embedding-status`, { credentials: "include" }).then((r) => r.json()).catch(() => null),
-    ]).then(([kb, wiki, emb]: [KbStatus | null, { running?: boolean; progress?: number; indexedDays?: number; totalDays?: number; pendingDays?: number } | null, EmbeddingStatus | null]) => {
+    ]).then(([kb, wiki, emb]: [KbStatus | null, { running?: boolean; auditing?: boolean; progress?: number; indexedDays?: number; totalDays?: number; pendingDays?: number } | null, EmbeddingStatus | null]) => {
       setKbStatus(kb);
       setSessionStatus(wiki ? { running: !!wiki.running, progress: wiki.progress ?? 0, indexedDays: wiki.indexedDays ?? 0, totalDays: wiki.totalDays ?? 0, pendingDays: wiki.pendingDays ?? 0 } : null);
       setEmbStatus(emb);
       const isRunning = !!wiki?.running || false;
+      const isAuditing = !!wiki?.auditing || false;
       setRunning(isRunning);
+      setAuditing(isAuditing);
       setLoading(false);
     });
   }, []);
 
   useEffect(() => {
     fetchStatus();
-    const id = setInterval(fetchStatus, running ? 2000 : 8000);
+    const id = setInterval(fetchStatus, (running || auditing) ? 2000 : 8000);
     return () => clearInterval(id);
-  }, [fetchStatus, running]);
+  }, [fetchStatus, running, auditing]);
 
   const triggerAudit = () => {
     setAuditing(true);
@@ -932,19 +934,24 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               <Share2 size={14} className="text-purple-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-medium text-fg-default">{t("indexing.audit") || "Audit & Cross-link"}</div>
+              <div className="text-[12px] font-medium text-fg-default">{t("indexing.audit")}</div>
             </div>
+            {auditing && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-purple-500/10 text-purple-400">
+                {t("indexing.auditing")}
+              </span>
+            )}
             <button
               onClick={() => setConfirmAudit(true)}
               disabled={running || auditing}
               className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors disabled:opacity-40"
             >
               <Share2 size={10} className={auditing ? "animate-spin" : ""} />
-              {auditing ? (t("indexing.auditing") || "Auditing…") : (t("indexing.runAudit") || "Run Audit")}
+              {auditing ? t("indexing.auditing") : t("indexing.runAudit")}
             </button>
           </div>
           <div className="text-[11px] text-fg-muted">
-            {t("indexing.auditDesc") || "Scan all pages, rebuild entity/concept/topic synthesis with full cross-links. May delete or rewrite outdated synthesis pages."}
+            {t("indexing.auditDesc")}
           </div>
         </div>
 
