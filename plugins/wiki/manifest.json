@@ -107,6 +107,11 @@
         "since": "0.1.0"
       },
       {
+        "id": "wiki_delete_page",
+        "module": "WikiDeletePageTool",
+        "since": "0.1.0"
+      },
+      {
         "id": "wiki_reset",
         "module": "WikiResetTool",
         "since": "0.1.0"

@@ -305,6 +305,19 @@ export interface IngestCursor {
   updatedAt: string;
 }
 
+/** Delete a single page by section + slug. Returns true if the file
+ *  existed and was removed, false if it was already gone. */
+export function deletePage(userHome: string, section: string, slug: string): boolean {
+  const file = resolvePage(userHome, section, slug);
+  if (!file) return false;
+  try {
+    fs.unlinkSync(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function readCursor(userHome: string): IngestCursor {
   try {
     const raw = fs.readFileSync(cursorFile(userHome), "utf8");

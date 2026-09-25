@@ -52,6 +52,7 @@ import {
   isValidPeriod,
   isoWeekRange,
   resetVault,
+  deletePage,
   buildGraph,
   pageSnippet,
   type JournalLevel,
@@ -95,6 +96,60 @@ const RECORD_WIKI_STEPS = [
   "KNOWLEDGE LINKING: before writing any page, search the wiki (wiki_search) for related existing pages — entities, concepts, topics, and prior journal entries. In the new page, link every related page with [[section/slug]] wikilinks. Also UPDATE the related page to add a back-link to the new page (a 'Related' or 'See also' section). This builds a bidirectional knowledge graph: conversation history ↔ entities ↔ concepts ↔ topics ↔ journal entries. The goal is that searching any node in the wiki surfaces its full context: what was discussed (turn ranges + recall_range), what it relates to (wikilinks), and when it happened (journal links).",
 ];
 
+// ─── audit prompt ───────────────────────────────────────────────
+// Three-phase wiki audit: (1) read all primary pages to build a
+// global fact index, (2) compare against existing synthesis pages,
+// (3) rewrite / delete / create synthesis pages with full links.
+const AUDIT_WIKI_STEPS = [
+  "You are auditing the user's LLM Wiki for completeness and cross-linking. Work in THREE phases:",
+  "",
+  "## Phase 1 — Read & index primary pages",
+  "Primary (immutable source-of-truth) sections: sources/, journal/, knowledge/.",
+  "1. Call wiki_list_pages to get every page.",
+  "2. Read ALL primary pages (wiki_read). For each, extract:",
+  "   • entities mentioned (projects, people, systems, repos)",
+  "   • concepts mentioned (techniques, patterns, design decisions)",
+  "   • topic threads (a multi-day undertaking, e.g. 'structured compaction')",
+  "   • turn ranges if present (turns X-Y)",
+  "   • source marker (session id, date, KB filename)",
+  "   Build an in-memory fact index: { entity/concept/topic → [list of primary pages that mention it] }.",
+  "",
+  "## Phase 2 — Compare synthesis pages against the index",
+  "Synthesis (rebuildable) sections: entities/, concepts/, topics/.",
+  "For each existing synthesis page, judge:",
+  "   ✅ KEEP — still accurate and complete; only add missing wikilinks.",
+  "   ♻️ REWRITE — outdated, incomplete, or poorly linked; rewrite from primary sources.",
+  "   ❌ DELETE — duplicate, wrong granularity, or superseded; remove with wiki_delete_page.",
+  "For each fact-index entry with NO synthesis page: mark as 🆕 CREATE.",
+  "",
+  "## Phase 3 — Execute",
+  "Work through the plan:",
+  "   • REWRITE: wiki_write_page with full content re-synthesised from primary pages. Include ALL cross-links and a Sources section at the bottom listing every primary page it drew from.",
+  "   • DELETE: wiki_delete_page to remove obsolete pages.",
+  "   • CREATE: wiki_write_page for new synthesis pages.",
+  "   • KEEP: wiki_write_page to update only the links/Related section.",
+  "   • For EVERY primary page that mentions a synthesis entity/concept/topic: update it to add a back-link in a Related section (if not already present).",
+  "",
+  "## Rules",
+  "- Primary pages: add links only, NEVER change their main content.",
+  "- Synthesis pages: full rewrite is fine — they are derived products.",
+  "- Every synthesis page MUST have a 'Sources' section listing its primary-page origins with [[wikilinks]].",
+  "- Every synthesis page MUST have a 'Related' section linking other relevant synthesis pages.",
+  "- If a primary page has turn ranges, carry them into the synthesis page: '(turns X-Y → recall_range(X, Y))'.",
+  "- Prefer merging small related entities/concepts into one page over many tiny pages.",
+  "- When done, give a summary: pages read / kept / rewritten / deleted / created.",
+];
+
+function auditWikiPrompt(lang: "auto" | "en" | "zh" | undefined): string {
+  const langLine =
+    lang === "en"
+      ? "Write all wiki pages in English."
+      : lang === "zh"
+        ? "Write all wiki pages in Chinese (中文)."
+        : "";
+  return [langLine, ...AUDIT_WIKI_STEPS].filter(Boolean).join("\n");
+}
+
 /** Build the record prompt, prefixing the configured output language
  *  so wiki pages are written in it (not just the session's language). */
 function recordWikiPrompt(lang: "auto" | "en" | "zh" | undefined): string {
@@ -118,6 +173,15 @@ const WIKI_WORKER_TOOLS = [
   "wiki_search",
   "wiki_write_page",
   "wiki_journal_write",
+];
+
+const AUDIT_WORKER_TOOLS = [
+  "wiki_list_pages",
+  "wiki_read",
+  "wiki_search",
+  "wiki_write_page",
+  "wiki_journal_write",
+  "wiki_delete_page",
 ];
 
 const KB_WORKER_TOOLS = [
@@ -406,6 +470,53 @@ function buildWritePageTool(db: TenantDbHandle, cfg?: EmbeddingConfig): AgentToo
         }
       }
       return { ok: true, text: `wrote ${section}/${slug}` };
+    },
+  };
+}
+
+function buildDeletePageTool(
+  db: TenantDbHandle,
+  cfg: EmbeddingConfig | undefined,
+): AgentTool {
+  return {
+    schema: {
+      name: "wiki_delete_page",
+      description:
+        "Delete a synthesis page (entities / concepts / topics) that is obsolete, " +
+        "duplicated, or superseded. Cannot delete primary pages (sources, journal, knowledge). " +
+        "Use this during wiki audit to clean up outdated synthesis pages before rewriting.",
+      parameters: Type.Object({
+        section: Type.String({
+          description: "One of: entities | concepts | topics.",
+        }),
+        slug: Type.String({ description: "Slug of the page to delete." }),
+        reason: Type.Optional(
+          Type.String({ description: "Short reason for deletion (logged, not stored)." }),
+        ),
+      }),
+    },
+    execute: (raw, ctx: AgentToolContext): ToolResult => {
+      const p = raw as { section?: string; slug?: string; reason?: string };
+      const section = String(p.section ?? "");
+      if (!["entities", "concepts", "topics"].includes(section)) {
+        return {
+          ok: false,
+          text: `Cannot delete from "${section}". Only synthesis sections (entities / concepts / topics) can be deleted during audit.`,
+        };
+      }
+      const slug = String(p.slug ?? "");
+      if (!slug) return { ok: false, text: "slug is required" };
+      const removed = deletePage(ctx.userHomeDir, section, slug);
+      if (!removed) {
+        return { ok: false, text: `Page ${section}/${slug} not found (already deleted?).` };
+      }
+      // Remove from semantic index too.
+      try {
+        new WikiIndex(db, ctx.userId).removePage(`${section}/${slug}`);
+      } catch { /* best-effort */ }
+      const reason = p.reason ? ` Reason: ${p.reason}` : "";
+      console.log(`[wiki-audit] deleted ${section}/${slug}.${reason}`);
+      return { ok: true, text: `Deleted ${section}/${slug}.${reason}` };
     },
   };
 }
@@ -1119,6 +1230,69 @@ function buildRoutes(
     res.json({ started: true });
   };
 
+  // Three-phase audit: read all primary pages, compare synthesis pages,
+  // rewrite/delete/create synthesis with full cross-links. Uses the same
+  // run lock as record so they don't race.
+  const audit: PluginRouteHandler = (req: Request, res: Response) => {
+    const userId = userIdFromReq(req);
+    if (!userId) return void res.status(401).json({ error: "no user context" });
+    const key = runKey(ctx.tenantId, userId);
+    if (running.has(key)) {
+      return void res.json({ started: false, reason: "a wiki update is already running" });
+    }
+    const runner = ctx.capabilities.get<AgentLoopRunner>("host.agentLoop");
+    if (!runner) {
+      return void res.status(503).json({ error: "host.agentLoop unavailable" });
+    }
+    const parentSessionId =
+      typeof (req.body as { sessionId?: unknown })?.sessionId === "string"
+        ? (req.body as { sessionId: string }).sessionId
+        : null;
+
+    running.add(key);
+    void (async () => {
+      let summary = "";
+      let status: string = "error";
+      try {
+        const result = await runner.run({
+          userId,
+          initialUserMessage: auditWikiPrompt(
+            (ctx.tenantConfig as { outputLanguage?: "auto" | "en" | "zh" })?.outputLanguage,
+          ),
+          workerRole: WIKI_WORKER_ROLE,
+          workerSlug: WIKI_WORKER_ROLE,
+          sessionTitle: "Wiki audit",
+          toolsAllow: AUDIT_WORKER_TOOLS,
+          parentSessionId,
+          timeouts: { firstResponseMs: 0, idleMs: 0, maxRunMs: 180 * 60_000 },
+        });
+        summary = result.summary;
+        status = result.status;
+      } catch (err) {
+        summary = err instanceof Error ? err.message : String(err);
+        status = "error";
+      } finally {
+        running.delete(key);
+      }
+      if (parentSessionId) {
+        try {
+          const inbox = ctx.capabilities.get<SessionInboxCapability>("host.sessionInbox");
+          await inbox?.enqueue(parentSessionId, {
+            kind: "system_note",
+            text:
+              status === "done"
+                ? `🔍 Wiki audit complete. ${summary}`
+                : `🔍 Wiki audit finished (${status}). ${summary}`,
+          });
+        } catch {
+          /* inbox is best-effort */
+        }
+      }
+    })();
+
+    res.json({ started: true });
+  };
+
   // Rebuild the semantic index from every existing page. Panel-only
   // ("Rebuild index" button). No-op with a friendly message when no
   // embedding model is configured. Guarded by the same run lock so it
@@ -1306,7 +1480,7 @@ function buildRoutes(
     });
   };
 
-  return { list, read, search, "semantic-search": semanticSearchRoute, status, record, reset, graph, reindex, "embedding-status": embeddingStatus, kbStatus, kbScan };
+  return { list, read, search, "semantic-search": semanticSearchRoute, status, record, audit, reset, graph, reindex, "embedding-status": embeddingStatus, kbStatus, kbScan };
 }
 
 // ─── wiki.ingest capability (host compaction hook calls this) ────
@@ -1355,6 +1529,7 @@ const plugin: PluginServerModule = {
         WikiReadTool: buildReadTool(),
         WikiSearchTool: buildSearchTool(ctx.db, cfg),
         WikiWritePageTool: buildWritePageTool(ctx.db, cfg),
+        WikiDeletePageTool: buildDeletePageTool(ctx.db, cfg),
         WikiJournalWriteTool: buildJournalWriteTool(ctx.db, cfg),
         WikiResetTool: buildResetTool(),
         WikiKbStatusTool: buildKbStatusTool(),
