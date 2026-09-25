@@ -191,7 +191,7 @@ export class SqliteStorage implements Storage {
     }
     // Limit.
     if (query.limit && query.limit > 0) filtered = filtered.slice(0, query.limit);
-    return filtered.map(rowToEntry);
+    return repairOrphanedToolCalls(filtered.map(rowToEntry));
   }
 
   async scanBranchStructure(
@@ -831,4 +831,72 @@ function aggregateUsage(rows: RawUsage[]): Usage {
 
 function emptyUsage(): Usage {
   return {} as unknown as Usage;
+}
+
+// ─── orphaned tool-call repair ─────────────────────────────
+//
+// When a turn is interrupted (abort, crash, timeout) an assistant
+// message may contain toolCall blocks whose corresponding
+// toolResult entries were never written. pi-agent-core's harness
+// restore treats this as an invariant violation → HarnessFault,
+// which bricks the session until the data is fixed.
+//
+// Instead of patching the DB (which would rewrite history), we
+// repair in memory: scan the entries returned by scanBranch and
+// inject synthetic error-result entries for any toolCall that
+// has no matching toolResult. The synthetic entries are never
+// persisted — they only exist for the harness restore pass.
+
+function repairOrphanedToolCalls(entries: Entry[]): Entry[] {
+  // Collect all toolCallIds that have a result.
+  const answeredIds = new Set<string>();
+  for (const e of entries) {
+    if (e.type !== "message") continue;
+    const msg = (e as MessageEntry).message as { role: string; toolCallId?: string };
+    if (msg.role === "toolResult" && msg.toolCallId) {
+      answeredIds.add(msg.toolCallId);
+    }
+  }
+
+  // Find assistant messages with unanswered toolCalls.
+  const patches: Entry[] = [];
+  for (const e of entries) {
+    if (e.type !== "message") continue;
+    const msg = (e as MessageEntry).message as {
+      role: string;
+      content?: Array<{ type: string; id?: string; name?: string }>;
+    };
+    if (msg.role !== "assistant" || !Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block.type !== "toolCall" || !block.id) continue;
+      if (answeredIds.has(block.id)) continue;
+      // Orphaned — synthesise an error result.
+      const syntheticId = `synth-repair-${block.id}`;
+      console.warn(
+        `[storage] repairing orphaned toolCall id=${block.id} name=${block.name ?? "?"} → synthetic error result`,
+      );
+      patches.push({
+        id: syntheticId,
+        parentId: e.id,
+        seq: e.seq + 0.001, // just after the assistant entry
+        timestamp: e.timestamp,
+        type: "message",
+        message: {
+          role: "toolResult",
+          toolCallId: block.id,
+          toolName: block.name ?? "",
+          content: [{ type: "text", text: "[interrupted — tool call did not complete]" }],
+          isError: true,
+          timestamp: e.timestamp,
+        },
+      } as MessageEntry);
+      answeredIds.add(block.id); // prevent duplicates
+    }
+  }
+
+  if (patches.length === 0) return entries;
+  // Merge patches into the entries array and re-sort by seq.
+  const merged = [...entries, ...patches];
+  merged.sort((a, b) => a.seq - b.seq);
+  return merged;
 }
