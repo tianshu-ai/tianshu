@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.67.2](https://github.com/tianshu-ai/tianshu/compare/v0.67.1...v0.67.2) (2026-09-25)
+
+
+### Bug Fixes
+
+* **chat:** add diagnostic logging for AgentHarness fault debugging ([dba246e](https://github.com/tianshu-ai/tianshu/commit/dba246e7eba8079dd6069ddb8c671576e3988bec))
+* **chat:** remove unused repairOrphanedToolCalls ([fbee99b](https://github.com/tianshu-ai/tianshu/commit/fbee99bf76e3bd02ac4a45ffc66eb6bbab92e612))
+* **chat:** repair orphaned tool calls in memory before harness restore ([472d0e0](https://github.com/tianshu-ai/tianshu/commit/472d0e0149fda50df25a7c7c310b193fe76890ac))
+* **chat:** repair stale lane operation refs before harness restore ([1d1d9b0](https://github.com/tianshu-ai/tianshu/commit/1d1d9b0e556fd56cd667c851403a23bd771a8744))
+
 ## [0.67.1](https://github.com/tianshu-ai/tianshu/compare/v0.67.0...v0.67.1) (2026-09-25)
 
 
