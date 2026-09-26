@@ -8,6 +8,18 @@ interface RestConfig {
   timeout?: number; // ms, default 30000
 }
 
+interface OAuthConfig {
+  tokenUrl: string;
+  clientId: string;
+  clientSecret: string;
+  scope?: string;
+}
+
+interface OAuthToken {
+  accessToken: string;
+  expiresAt: number; // epoch ms
+}
+
 /**
  * Query string format:
  *   "GET /path?key=val"          → GET  baseUrl/path?key=val
@@ -86,6 +98,8 @@ export class RestDriver implements DataSourceDriver {
   type = "rest";
   private cfg: RestConfig;
   private timeout: number;
+  private oauth: OAuthConfig | null = null;
+  private cachedToken: OAuthToken | null = null;
 
   constructor(raw: Record<string, unknown>) {
     const headers: Record<string, string> = {};
@@ -126,6 +140,21 @@ export class RestDriver implements DataSourceDriver {
         }
         break;
       }
+      case "oauth2": {
+        // OAuth2 Client Credentials — token fetched lazily
+        const tokenUrl = String(raw.tokenUrl ?? "").trim();
+        const clientId = String(raw.clientId ?? "").trim();
+        const clientSecret = String(raw.clientSecret ?? "").trim();
+        if (tokenUrl && clientId && clientSecret) {
+          this.oauth = {
+            tokenUrl,
+            clientId,
+            clientSecret,
+            scope: raw.scope ? String(raw.scope).trim() : undefined,
+          };
+        }
+        break;
+      }
       // "none" — no auth headers
     }
 
@@ -137,13 +166,63 @@ export class RestDriver implements DataSourceDriver {
     this.timeout = this.cfg.timeout ?? 30_000;
   }
 
+  /** Fetch or reuse a cached OAuth2 access token. */
+  private async getOAuthToken(): Promise<string> {
+    if (!this.oauth) throw new Error("OAuth2 not configured");
+    // Reuse cached token if still valid (with 30s margin)
+    if (this.cachedToken && Date.now() < this.cachedToken.expiresAt - 30_000) {
+      return this.cachedToken.accessToken;
+    }
+    const body = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: this.oauth.clientId,
+      client_secret: this.oauth.clientSecret,
+    });
+    if (this.oauth.scope) body.set("scope", this.oauth.scope);
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), this.timeout);
+    const res = await fetch(this.oauth.tokenUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`OAuth2 token request failed: HTTP ${res.status}${text ? " " + text.slice(0, 300) : ""}`);
+    }
+    const data = await res.json() as { access_token?: string; expires_in?: number };
+    if (!data.access_token) throw new Error("OAuth2 response missing access_token");
+
+    const expiresIn = data.expires_in ?? 3600; // default 1h
+    this.cachedToken = {
+      accessToken: data.access_token,
+      expiresAt: Date.now() + expiresIn * 1000,
+    };
+    return this.cachedToken.accessToken;
+  }
+
+  /** Build effective headers, injecting OAuth2 Bearer token if needed. */
+  private async effectiveHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+    const h: Record<string, string> = { ...this.cfg.headers, ...extra };
+    if (this.oauth) {
+      const token = await this.getOAuthToken();
+      h["Authorization"] = `Bearer ${token}`;
+    }
+    return h;
+  }
+
   async ping(): Promise<string | null> {
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), this.timeout);
+      const headers = await this.effectiveHeaders();
       const res = await fetch(this.cfg.baseUrl, {
         method: "HEAD",
-        headers: this.cfg.headers,
+        headers,
         signal: ctrl.signal,
       });
       clearTimeout(timer);
@@ -165,12 +244,12 @@ export class RestDriver implements DataSourceDriver {
 
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), this.timeout);
+    const headers = await this.effectiveHeaders(
+      hasBody ? { "Content-Type": "application/json" } : undefined,
+    );
     const res = await fetch(url, {
       method,
-      headers: {
-        ...this.cfg.headers,
-        ...(hasBody ? { "Content-Type": "application/json" } : {}),
-      },
+      headers,
       ...(hasBody && params ? { body: JSON.stringify(params) } : {}),
       signal: ctrl.signal,
     });

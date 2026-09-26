@@ -136,6 +136,7 @@ const plugin: PluginServerModule = {
                 { value: "bearer", label: "Bearer Token" },
                 { value: "apikey", label: "API Key" },
                 { value: "basic", label: "Basic Auth" },
+                { value: "oauth2", label: "OAuth2 (Client Credentials)" },
                 { value: "custom", label: "Custom Headers" },
               ]},
               { key: "token", label: "Token", secret: true, showWhen: { authType: "bearer" } },
@@ -144,6 +145,10 @@ const plugin: PluginServerModule = {
               { key: "username", label: "Username", showWhen: { authType: "basic" } },
               { key: "password", label: "Password", secret: true, showWhen: { authType: "basic" } },
               { key: "headers", label: "Headers (JSON)", placeholder: '{"X-Custom": "value"}', showWhen: { authType: "custom" } },
+              { key: "tokenUrl", label: "Token URL", placeholder: "https://auth.example.com/oauth/token", required: true, showWhen: { authType: "oauth2" } },
+              { key: "clientId", label: "Client ID", required: true, showWhen: { authType: "oauth2" } },
+              { key: "clientSecret", label: "Client Secret", secret: true, required: true, showWhen: { authType: "oauth2" } },
+              { key: "scope", label: "Scope", placeholder: "read write", showWhen: { authType: "oauth2" } },
               { key: "timeout", label: "Timeout (ms)", placeholder: "30000" },
             ]},
           ]});
