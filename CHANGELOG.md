@@ -6,6 +6,28 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.68.0](https://github.com/tianshu-ai/tianshu/compare/v0.67.2...v0.68.0) (2026-09-26)
+
+
+### Features
+
+* add TOON (Token-Optimised Object Notation) to plugin-sdk and adopt across tool results ([372955f](https://github.com/tianshu-ai/tianshu/commit/372955f9ba2e69e957bc9d08c2f366cd5c897fe9))
+* **datasource:** add REST API driver ([c6655d6](https://github.com/tianshu-ai/tianshu/commit/c6655d6b5105efb679aa5cc5c254c6fda2727cae))
+* **datasource:** auth type selector for REST API connections ([678ee8a](https://github.com/tianshu-ai/tianshu/commit/678ee8a13b524834a7e5d7a25a9606749e164149))
+* **datasource:** extra headers field for REST API connections (always visible) ([625e093](https://github.com/tianshu-ai/tianshu/commit/625e093a8097e2b25c0a46500496ad0ea3d56334))
+* **datasource:** OAuth2 Client Credentials auth for REST API ([21d27f6](https://github.com/tianshu-ai/tianshu/commit/21d27f6be09ad0460fb2f33271869da4e81089dc))
+* **datasource:** per-request headers parameter for REST API tools ([1d85d40](https://github.com/tianshu-ai/tianshu/commit/1d85d40f3221e0c1d6c1991dd560eaf197f97cf5))
+
+
+### Bug Fixes
+
+* **chat:** extract text from content-array tool results instead of JSON-stringifying ([7de2cde](https://github.com/tianshu-ai/tianshu/commit/7de2cdeaf3f3f230e524cabb4abf63efef1b163c))
+* **chat:** use toon() in agent-tool-adapter fallback instead of JSON.stringify ([cef8a9b](https://github.com/tianshu-ai/tianshu/commit/cef8a9bcc1bcbd17f7bab64f76fbb1571ad911e1))
+* **datasource:** flatten nested objects in REST API responses ([4d379da](https://github.com/tianshu-ai/tianshu/commit/4d379da1b991aebdb60650d0c5824353a193f87b))
+* **datasource:** make connection pool per-tenant ([c4789d8](https://github.com/tianshu-ai/tianshu/commit/c4789d8fee569644bf34aa191be430b6195e15a0))
+* **datasource:** use TOON-style compact cell format to save tokens ([56fc920](https://github.com/tianshu-ai/tianshu/commit/56fc920b0eb93c07611f4f42726373fb60f05294))
+* replace remaining JSON.stringify in tool/LLM-facing text with toon-style compact format ([9a643e1](https://github.com/tianshu-ai/tianshu/commit/9a643e122cee47db7ab80536aa486f0b8c6c7349))
+
 ## [0.67.2](https://github.com/tianshu-ai/tianshu/compare/v0.67.1...v0.67.2) (2026-09-25)
 
 
