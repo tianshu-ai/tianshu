@@ -56,8 +56,14 @@ function formatResult(columns: string[], rows: Record<string, unknown>[], totalC
   return `${totalCount} row(s)\n\n` + JSON.stringify(rows, null, 2);
 }
 
+/** Compact cell rendering — avoids JSON quotes/braces to save tokens. */
 function formatCell(v: unknown): string {
   if (v === null || v === undefined) return "";
-  if (typeof v === "object") return JSON.stringify(v);
+  if (Array.isArray(v)) return v.map(formatCell).join(", ");
+  if (typeof v === "object") {
+    return Object.entries(v as Record<string, unknown>)
+      .map(([k, val]) => `${k}:${formatCell(val)}`)
+      .join(", ");
+  }
   return String(v);
 }
