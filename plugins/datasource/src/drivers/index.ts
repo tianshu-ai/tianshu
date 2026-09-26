@@ -13,6 +13,10 @@ export async function createDriver(name: string, cfg: ConnectionConfig): Promise
       const { MysqlDriver } = await import("./mysql.js");
       return new MysqlDriver(cfg as unknown as ConstructorParameters<typeof MysqlDriver>[0]);
     }
+    case "rest": {
+      const { RestDriver } = await import("./rest.js");
+      return new RestDriver(cfg as unknown as ConstructorParameters<typeof RestDriver>[0]);
+    }
     default:
       throw new Error(`Unknown datasource type: ${cfg.type}`);
   }

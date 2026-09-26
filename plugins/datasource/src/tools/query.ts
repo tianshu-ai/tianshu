@@ -8,7 +8,7 @@ export const DsQueryTool: AgentTool = {
     name: "ds_query",
     description:
       "Execute a read-only query against a data source. " +
-      "Use SQL for MySQL, Cypher for Neo4j. Returns up to 200 rows. " +
+      "Use SQL for MySQL, Cypher for Neo4j, HTTP method + path for REST (e.g. 'GET /users?limit=10'). Returns up to 200 rows. " +
       "Call ds_list first to see available sources.",
     parameters: {
       type: "object",

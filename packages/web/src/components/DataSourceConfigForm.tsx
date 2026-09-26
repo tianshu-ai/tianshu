@@ -44,6 +44,11 @@ const DRIVER_TYPES: DriverType[] = [
     { key: "password", label: "ds.field.password", secret: true, required: true },
     { key: "database", label: "ds.field.database", required: true },
   ]},
+  { id: "rest", name: "REST API", fields: [
+    { key: "baseUrl", label: "ds.field.baseUrl", placeholder: "https://api.example.com", required: true },
+    { key: "headers", label: "ds.field.headers", placeholder: '{"Authorization": "Bearer ..."}' },
+    { key: "timeout", label: "ds.field.timeout", placeholder: "30000" },
+  ]},
 ];
 
 const INPUT =

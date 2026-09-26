@@ -125,6 +125,8 @@ function DataSourcePanel(_props: PanelProps) {
   const selectedSource = sources.find((s) => s.name === selected);
   const placeholder = selectedSource?.type === "neo4j"
     ? "MATCH (n) RETURN n LIMIT 10"
+    : selectedSource?.type === "rest"
+    ? "GET /endpoint?param=value"
     : "SELECT * FROM table_name LIMIT 10";
 
   return (

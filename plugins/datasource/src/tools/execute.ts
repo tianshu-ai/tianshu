@@ -5,9 +5,9 @@ export const DsExecuteTool: AgentTool = {
   schema: {
     name: "ds_execute",
     description:
-      "Execute a write operation or DDL against a data source. " +
-      "Use for INSERT/UPDATE/DELETE/CREATE/ALTER/DROP (SQL) or " +
-      "CREATE/MERGE/DELETE/SET (Cypher). Returns affected row counts.",
+      "Execute a write operation against a data source. " +
+      "SQL: INSERT/UPDATE/DELETE/CREATE/ALTER/DROP. Cypher: CREATE/MERGE/DELETE/SET. " +
+      "REST: 'POST /path' or 'PUT /path' with params as JSON body. Returns affected row counts.",
     parameters: {
       type: "object",
       properties: {

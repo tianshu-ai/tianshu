@@ -129,6 +129,11 @@ const plugin: PluginServerModule = {
               { key: "password", label: "Password", secret: true, required: true },
               { key: "database", label: "Database", required: true },
             ]},
+            { id: "rest", name: "REST API", fields: [
+              { key: "baseUrl", label: "Base URL", placeholder: "https://api.example.com", required: true },
+              { key: "headers", label: "Headers (JSON)", placeholder: '{"Authorization": "Bearer ..."}' },
+              { key: "timeout", label: "Timeout (ms)", placeholder: "30000" },
+            ]},
           ]});
         },
       },

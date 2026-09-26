@@ -30,7 +30,7 @@ export interface DataSourceDriver {
 }
 
 export interface ConnectionConfig {
-  type: "neo4j" | "mysql";
+  type: "neo4j" | "mysql" | "rest";
   description?: string;
   [key: string]: unknown;
 }
