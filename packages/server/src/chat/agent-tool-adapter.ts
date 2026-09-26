@@ -28,6 +28,7 @@ import type {
   AgentToolResult,
 } from "@earendil-works/pi-agent-core";
 import type { TextContent, ImageContent, Tool as PiTool } from "@earendil-works/pi-ai";
+import { toon } from "@tianshu-ai/plugin-sdk";
 import type { Toolset } from "../tools/index.js";
 // Write-time truncation removed: current-turn tool results should
 // not be truncated. See tool-result-truncation.ts for the aging
@@ -104,7 +105,7 @@ export function normaliseToolResult(out: unknown): AnyToolResult {
     else if (typeof r.exit_code === "number") ok = r.exit_code === 0;
     else if (typeof r.state === "string")
       ok = r.state !== "error" && r.state !== "failed";
-    return { ok, text: JSON.stringify(out) };
+    return { ok, text: toon(out) };
   }
   return { ok: true, text: String(out ?? "") };
 }
