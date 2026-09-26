@@ -60,18 +60,48 @@ function buildUrl(base: string, path: string, queryParams?: Record<string, unkno
   return url.toString();
 }
 
+/**
+ * Flatten a nested object into dot-notation keys.
+ * { user: { name: "Yu", tags: [1,2] } }
+ * → { "user.name": "Yu", "user.tags": [1,2] }
+ *
+ * Arrays are kept as-is (not further expanded into user.tags.0).
+ * Max depth 4 to avoid runaway recursion on deep/circular structures.
+ */
+function flattenObj(
+  obj: Record<string, unknown>,
+  prefix = "",
+  depth = 0,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (
+      v !== null &&
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      depth < 4
+    ) {
+      Object.assign(out, flattenObj(v as Record<string, unknown>, key, depth + 1));
+    } else {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+
 function flattenToRows(data: unknown): { columns: string[]; rows: Record<string, unknown>[] } {
-  // If data is an array of objects → direct table
+  // If data is an array of objects → flatten each row then collect columns
   if (Array.isArray(data)) {
     if (data.length === 0) return { columns: [], rows: [] };
     if (typeof data[0] === "object" && data[0] !== null) {
-      const columns = [...new Set(data.flatMap((r) => Object.keys(r as object)))];
-      return {
-        columns,
-        rows: data.map((r) =>
-          typeof r === "object" && r !== null ? (r as Record<string, unknown>) : { value: r },
-        ),
-      };
+      const flat = data.map((r) =>
+        typeof r === "object" && r !== null && !Array.isArray(r)
+          ? flattenObj(r as Record<string, unknown>)
+          : { value: r },
+      );
+      const columns = [...new Set(flat.flatMap((r) => Object.keys(r)))];
+      return { columns, rows: flat };
     }
     // Array of primitives
     return { columns: ["value"], rows: data.map((v) => ({ value: v })) };
@@ -85,9 +115,9 @@ function flattenToRows(data: unknown): { columns: string[]; rows: Record<string,
         return flattenToRows(obj[key]);
       }
     }
-    // Single object → one-row table
-    const columns = Object.keys(obj);
-    return { columns, rows: [obj] };
+    // Single object → flatten then one-row table
+    const flat = flattenObj(obj);
+    return { columns: Object.keys(flat), rows: [flat] };
   }
 
   // Scalar

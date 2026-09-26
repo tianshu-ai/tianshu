@@ -49,9 +49,15 @@ function formatResult(columns: string[], rows: Record<string, unknown>[], totalC
     const header = `| ${columns.join(" | ")} |`;
     const sep = `| ${columns.map(() => "---").join(" | ")} |`;
     const body = rows.map((r) =>
-      `| ${columns.map((k) => String(r[k] ?? "")).join(" | ")} |`
+      `| ${columns.map((k) => formatCell(r[k])).join(" | ")} |`
     );
     return [`${totalCount} row(s)`, "", header, sep, ...body].join("\n");
   }
   return `${totalCount} row(s)\n\n` + JSON.stringify(rows, null, 2);
+}
+
+function formatCell(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
 }
