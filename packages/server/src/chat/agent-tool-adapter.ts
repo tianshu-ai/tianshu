@@ -86,6 +86,17 @@ export function normaliseToolResult(out: unknown): AnyToolResult {
     const r = out as { ok: boolean; text: string };
     return { ok: r.ok, text: r.text, images: extractImages(out) };
   }
+  // pi-style { content: [{ type: "text", text }], isError? } — extract
+  // text from content blocks instead of JSON-stringifying the wrapper.
+  if (out && typeof out === "object" && Array.isArray((out as { content?: unknown }).content)) {
+    const r = out as { content: Array<{ type?: string; text?: string }>; isError?: boolean };
+    const text = r.content
+      .filter((b) => b.type === "text" && typeof b.text === "string")
+      .map((b) => b.text!)
+      .join("\n");
+    const ok = r.isError !== true;
+    return { ok, text, images: extractImages(out) };
+  }
   if (out && typeof out === "object") {
     const r = out as Record<string, unknown>;
     let ok = true;
