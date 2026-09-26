@@ -20,6 +20,7 @@
 //      is not a privileged operation.
 
 import { Type } from "typebox";
+import { toon } from "@tianshu-ai/plugin-sdk";
 import type {
   AgentTool,
   AgentToolContext,
@@ -219,9 +220,7 @@ export function buildRecallToolCallTool(deps: RecallToolsDeps): AgentTool {
         parts.push(`## Tool call: ${callInfo.name}(id=${tcid})`);
         parts.push("");
         parts.push("### Arguments");
-        parts.push("```json");
-        parts.push(JSON.stringify(callInfo.arguments, null, 2));
-        parts.push("```");
+        parts.push(toon(callInfo.arguments));
       } else {
         parts.push(`## Tool call: (id=${tcid}) — arguments not found`);
       }
@@ -303,9 +302,7 @@ function formatMessageForRecall(row: MessageRow, turnIdx: number): string {
         lines.push(part.text);
       } else if (part?.type === "toolCall") {
         lines.push(
-          `[toolCall ${part.name}(id=${part.id})] ${JSON.stringify(
-            part.arguments ?? {},
-          )}`,
+          `[toolCall ${part.name}(id=${part.id})] ${toon(part.arguments ?? {})}`,
         );
       }
     }

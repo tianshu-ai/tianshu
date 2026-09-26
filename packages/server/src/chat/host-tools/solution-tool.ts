@@ -26,6 +26,7 @@
 // Studio plugin uses.
 
 import { Type } from "typebox";
+import { toon } from "@tianshu-ai/plugin-sdk";
 import type {
   AgentTool,
   AgentToolContext,
@@ -120,7 +121,7 @@ export function buildSolutionTool(): AgentTool {
         switch (action) {
           case "list": {
             const sols = cap.list(userId);
-            return ok(JSON.stringify(sols, null, 2));
+            return ok(toon(sols));
           }
           case "active": {
             const slug = cap.getActive(userId);
@@ -134,12 +135,12 @@ export function buildSolutionTool(): AgentTool {
             if (!p.slug) return err("solution get: slug required.");
             const detail = cap.get(userId, p.slug);
             if (!detail) return err(`solution get: "${p.slug}" not found.`);
-            return ok(JSON.stringify(detail, null, 2));
+            return ok(toon(detail));
           }
           case "diff": {
             if (!p.slug) return err("solution diff: slug required.");
             const d = cap.diff(userId, { slug: p.slug, against: "reality" });
-            return ok(JSON.stringify(d, null, 2));
+            return ok(toon(d));
           }
           case "extract": {
             if (!p.slug) return err("solution extract: slug required.");
@@ -199,11 +200,7 @@ export function buildSolutionTool(): AgentTool {
                 against: "reality",
               });
               return ok(
-                `Activation of "${p.slug}" NOT performed — confirm:true is required and the user must explicitly agree to change the live system first.\n\nChanges vs the running system:\n${JSON.stringify(
-                  d,
-                  null,
-                  2,
-                )}\n\nAsk the user to confirm, then call again with confirm:true.`,
+                `Activation of "${p.slug}" NOT performed — confirm:true is required and the user must explicitly agree to change the live system first.\n\nChanges vs the running system:\n${toon(d)}\n\nAsk the user to confirm, then call again with confirm:true.`,
               );
             }
             const r = await cap.activate(userId, p.slug);

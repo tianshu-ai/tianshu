@@ -1,4 +1,5 @@
 import type { AgentTool } from "@tianshu-ai/plugin-sdk";
+import { toonRows } from "@tianshu-ai/plugin-sdk";
 import { getDriver } from "../connection-pool.js";
 
 const MAX_ROWS = 200;
@@ -53,7 +54,7 @@ function formatResult(columns: string[], rows: Record<string, unknown>[], totalC
     );
     return [`${totalCount} row(s)`, "", header, sep, ...body].join("\n");
   }
-  return `${totalCount} row(s)\n\n` + JSON.stringify(rows, null, 2);
+  return `${totalCount} row(s)\n\n` + toonRows(rows, columns);
 }
 
 /** Compact cell rendering — avoids JSON quotes/braces to save tokens. */
