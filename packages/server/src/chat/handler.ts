@@ -1488,6 +1488,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // Intentional, already-reported bail (pre-prompt over-window
       // guard). Nothing to send, nothing to recover — fall through to
       // the finally block which resolves any dangling tool chips.
+    } else if (signal.aborted) {
+      // User-initiated abort — not an error. Skip all recovery paths.
+      // The finally block still cleans up outstanding tool calls.
+      console.log(`[handler] catch: user-abort, skipping recovery session=${session.id}`);
     } else {
     // Self-heal orphaned tool_result rows that cause Anthropic 400.
     // The filterOrphanedToolResults in getPathToRoot handles reads,
@@ -1577,7 +1581,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     // bootstrap, but it's defined as optional on the request type
     // — if some test path doesn't provide one, skip the recovery
     // attempt rather than crashing in the catch block.
-    if (pluginRegistry && !isPiStateError) {
+    if (pluginRegistry && !isPiStateError && !signal.aborted) {
       try {
         const { spawnSessionRecovery } = await import(
           "./recovery-agent.js"
