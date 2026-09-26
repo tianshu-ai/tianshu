@@ -14,6 +14,9 @@ interface DriverField {
   placeholder?: string;
   secret?: boolean;
   required?: boolean;
+  fieldType?: "text" | "select";
+  options?: Array<{ value: string; label: string }>;
+  showWhen?: Record<string, string>;
 }
 
 interface DriverType {
@@ -211,23 +214,44 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
                   placeholder={t("ds.descriptionPlaceholder")} autoComplete="off"
                 />
               </div>
-              {driverType?.fields.map((f) => (
-                <div key={f.key}>
-                  <label className="mb-0.5 block text-[11px] text-fg-faint">
-                    {t(f.label)}{f.required ? " *" : ""}
-                  </label>
-                  <input
-                    className={INPUT}
-                    type={f.secret ? "password" : "text"}
-                    value={String((conn as Record<string, unknown>)[f.key] ?? "")}
-                    onChange={(e) => updateField(name, f.key, e.target.value)}
-                    placeholder={f.placeholder}
-                    autoComplete="off"
-                    data-1p-ignore
-                    data-lpignore="true"
-                  />
-                </div>
-              ))}
+              {driverType?.fields.map((f) => {
+                // Conditional visibility
+                if (f.showWhen) {
+                  const visible = Object.entries(f.showWhen).every(
+                    ([k, v]) => String((conn as Record<string, unknown>)[k] ?? "") === v,
+                  );
+                  if (!visible) return null;
+                }
+                return (
+                  <div key={f.key}>
+                    <label className="mb-0.5 block text-[11px] text-fg-faint">
+                      {t(f.label)}{f.required ? " *" : ""}
+                    </label>
+                    {f.fieldType === "select" && f.options ? (
+                      <select
+                        className={INPUT}
+                        value={String((conn as Record<string, unknown>)[f.key] ?? f.options[0]?.value ?? "")}
+                        onChange={(e) => updateField(name, f.key, e.target.value)}
+                      >
+                        {f.options.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className={INPUT}
+                        type={f.secret ? "password" : "text"}
+                        value={String((conn as Record<string, unknown>)[f.key] ?? "")}
+                        onChange={(e) => updateField(name, f.key, e.target.value)}
+                        placeholder={f.placeholder}
+                        autoComplete="off"
+                        data-1p-ignore
+                        data-lpignore="true"
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );

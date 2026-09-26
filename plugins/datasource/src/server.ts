@@ -131,7 +131,19 @@ const plugin: PluginServerModule = {
             ]},
             { id: "rest", name: "REST API", fields: [
               { key: "baseUrl", label: "Base URL", placeholder: "https://api.example.com", required: true },
-              { key: "headers", label: "Headers (JSON)", placeholder: '{"Authorization": "Bearer ..."}' },
+              { key: "authType", label: "Authentication", fieldType: "select", options: [
+                { value: "none", label: "None" },
+                { value: "bearer", label: "Bearer Token" },
+                { value: "apikey", label: "API Key" },
+                { value: "basic", label: "Basic Auth" },
+                { value: "custom", label: "Custom Headers" },
+              ]},
+              { key: "token", label: "Token", secret: true, showWhen: { authType: "bearer" } },
+              { key: "apiKeyName", label: "Header Name", placeholder: "X-API-Key", showWhen: { authType: "apikey" } },
+              { key: "apiKeyValue", label: "API Key", secret: true, showWhen: { authType: "apikey" } },
+              { key: "username", label: "Username", showWhen: { authType: "basic" } },
+              { key: "password", label: "Password", secret: true, showWhen: { authType: "basic" } },
+              { key: "headers", label: "Headers (JSON)", placeholder: '{"X-Custom": "value"}', showWhen: { authType: "custom" } },
               { key: "timeout", label: "Timeout (ms)", placeholder: "30000" },
             ]},
           ]});

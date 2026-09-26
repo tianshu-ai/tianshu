@@ -88,16 +88,50 @@ export class RestDriver implements DataSourceDriver {
   private timeout: number;
 
   constructor(raw: Record<string, unknown>) {
-    // headers may arrive as a JSON string from the config form
-    let headers: Record<string, string> | undefined;
-    if (typeof raw.headers === "string" && raw.headers.trim()) {
-      try { headers = JSON.parse(raw.headers); } catch { headers = undefined; }
-    } else if (typeof raw.headers === "object" && raw.headers !== null) {
-      headers = raw.headers as Record<string, string>;
+    const headers: Record<string, string> = {};
+    const authType = String(raw.authType ?? "none");
+
+    switch (authType) {
+      case "bearer": {
+        const token = String(raw.token ?? "").trim();
+        if (token) headers["Authorization"] = `Bearer ${token}`;
+        break;
+      }
+      case "apikey": {
+        const name = String(raw.apiKeyName ?? "X-API-Key").trim();
+        const value = String(raw.apiKeyValue ?? "").trim();
+        if (name && value) headers[name] = value;
+        break;
+      }
+      case "basic": {
+        const user = String(raw.username ?? "");
+        const pass = String(raw.password ?? "");
+        if (user) {
+          const encoded = Buffer.from(`${user}:${pass}`).toString("base64");
+          headers["Authorization"] = `Basic ${encoded}`;
+        }
+        break;
+      }
+      case "custom": {
+        // Custom headers: JSON string or object
+        if (typeof raw.headers === "string" && raw.headers.trim()) {
+          try {
+            const parsed = JSON.parse(raw.headers);
+            if (typeof parsed === "object" && parsed !== null) {
+              Object.assign(headers, parsed);
+            }
+          } catch { /* invalid JSON — skip */ }
+        } else if (typeof raw.headers === "object" && raw.headers !== null) {
+          Object.assign(headers, raw.headers);
+        }
+        break;
+      }
+      // "none" — no auth headers
     }
+
     this.cfg = {
       baseUrl: String(raw.baseUrl ?? ""),
-      headers,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
       timeout: raw.timeout ? Number(raw.timeout) : undefined,
     };
     this.timeout = this.cfg.timeout ?? 30_000;
