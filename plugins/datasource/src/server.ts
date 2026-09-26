@@ -37,7 +37,8 @@ const plugin: PluginServerModule = {
       ctx.log.info(`datasource: ${names.length} connection(s): ${names.join(", ")}`);
     }
 
-    configure(connections);
+    const tenantId = ctx.tenantId;
+    configure(tenantId, connections);
 
     return {
       tools: {
@@ -49,7 +50,7 @@ const plugin: PluginServerModule = {
       },
       routes: {
         getStatus: async (_req: Request, res: Response) => {
-          const results = await pingAll();
+          const results = await pingAll(tenantId);
           const allOk = Object.values(results).every((r) => r.ok);
           res.json({ ok: allOk, connections: results });
         },
@@ -74,7 +75,7 @@ const plugin: PluginServerModule = {
             return;
           }
           try {
-            const driver = await import("./connection-pool.js").then(m => m.getDriver(name));
+            const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, name));
             const err = await driver.ping();
             res.json(err ? { ok: false, error: err } : { ok: true, name });
           } catch (err) {
@@ -91,7 +92,7 @@ const plugin: PluginServerModule = {
             return;
           }
           try {
-            const driver = await import("./connection-pool.js").then(m => m.getDriver(source));
+            const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, source));
             const result = await driver.query(q, (body.params ?? {}) as Record<string, unknown>);
             res.json({ columns: result.columns, rows: result.rows.slice(0, 200), rowCount: result.rowCount });
           } catch (err) {
@@ -106,7 +107,7 @@ const plugin: PluginServerModule = {
             return;
           }
           try {
-            const driver = await import("./connection-pool.js").then(m => m.getDriver(name));
+            const driver = await import("./connection-pool.js").then(m => m.getDriver(tenantId, name));
             const result = await driver.schema("overview");
             res.json({ text: result.text });
           } catch (err) {

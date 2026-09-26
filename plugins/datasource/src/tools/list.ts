@@ -1,4 +1,4 @@
-import type { AgentTool } from "@tianshu-ai/plugin-sdk";
+import type { AgentTool, AgentToolContext } from "@tianshu-ai/plugin-sdk";
 import { listSources } from "../connection-pool.js";
 
 export const DsListTool: AgentTool = {
@@ -9,8 +9,8 @@ export const DsListTool: AgentTool = {
       "Call this first to discover available sources before querying.",
     parameters: { type: "object", properties: {} },
   },
-  async execute() {
-    const sources = listSources();
+  async execute(_args: Record<string, unknown>, ctx: AgentToolContext) {
+    const sources = listSources(ctx.tenantId);
     if (sources.length === 0) {
       return { content: [{ type: "text", text: "No data sources configured." }] };
     }
