@@ -58,6 +58,7 @@ import { loadTenantSkills } from "../core/tenant-skills.js";
 import { loadWorkerExecutionBiasOverride } from "../core/worker-agents-fs.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
+import { repairStaleLaneOperations } from "./repair-lane-state.js";
 import { buildHostTools, getCompactRef } from "./host-tools.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
 import { matchesAny } from "../core/glob-match.js";
@@ -583,6 +584,9 @@ export async function runAgentLoop(
       return;
     }
   }, TICK_MS);
+
+  // Repair stale lane operation refs before harness restore.
+  repairStaleLaneOperations(ctx.db, sessionMeta.id);
 
   // pi 0.85: `AgentHarness` is no longer a class — use the static
   // `AgentHarness.create(options, context)` factory. It returns
