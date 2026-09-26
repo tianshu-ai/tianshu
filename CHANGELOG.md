@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.68.1](https://github.com/tianshu-ai/tianshu/compare/v0.68.0...v0.68.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **chat:** extract stale lane repair to shared module + protect auto-continue ([b522f40](https://github.com/tianshu-ai/tianshu/commit/b522f4042313841bcbac663df1bda84d85ed6433))
+* **chat:** skip recovery agent and stream_error on user-initiated abort ([4913530](https://github.com/tianshu-ai/tianshu/commit/49135306aa13f5af18ecc5fe16c9e2a5a96f7d71))
+
 ## [0.68.0](https://github.com/tianshu-ai/tianshu/compare/v0.67.2...v0.68.0) (2026-09-26)
 
 
