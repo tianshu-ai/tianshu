@@ -188,6 +188,18 @@ export class RestDriver implements DataSourceDriver {
       // "none" — no auth headers
     }
 
+    // Merge extraHeaders (always visible, independent of auth type)
+    if (typeof raw.extraHeaders === "string" && raw.extraHeaders.trim()) {
+      try {
+        const parsed = JSON.parse(raw.extraHeaders);
+        if (typeof parsed === "object" && parsed !== null) {
+          Object.assign(headers, parsed);
+        }
+      } catch { /* invalid JSON — skip */ }
+    } else if (typeof raw.extraHeaders === "object" && raw.extraHeaders !== null) {
+      Object.assign(headers, raw.extraHeaders);
+    }
+
     this.cfg = {
       baseUrl: String(raw.baseUrl ?? ""),
       headers: Object.keys(headers).length > 0 ? headers : undefined,
