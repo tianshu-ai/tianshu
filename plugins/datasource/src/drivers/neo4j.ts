@@ -160,7 +160,8 @@ export class Neo4jDriver implements DataSourceDriver {
           const samples = await s.run(`MATCH (n:\`${label}\`) RETURN properties(n) AS props LIMIT 5`);
           lines.push(`### :${label}`);
           for (const sr of samples.records) {
-            lines.push(`  ${JSON.stringify(this.toPlain(sr.get("props")))}`);
+            const props = this.toPlain(sr.get("props")) as Record<string, unknown>;
+            lines.push(`  ${Object.entries(props).map(([k,v]) => `${k}:${v === null ? '' : v}`).join(', ')}`);
           }
         }
       }

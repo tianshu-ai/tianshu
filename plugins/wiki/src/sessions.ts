@@ -260,7 +260,11 @@ export function messageToText(role: string, contentJson: string, turnNumber?: nu
     // Object with a top-level text field, or unknown — stringify small.
     const t = (parsed as { text?: unknown }).text;
     if (typeof t === "string") return `${turnTag}${role}: ${truncate(t, 4000)}`;
-    return `${turnTag}${role}: ${truncate(JSON.stringify(parsed), 1200)}`;
+    // toon-style compact: avoid JSON quotes/braces in wiki ingest text
+    const compact = Object.entries(parsed as Record<string, unknown>)
+      .map(([k, v]) => `${k}:${typeof v === 'object' ? JSON.stringify(v) : v}`)
+      .join(', ');
+    return `${turnTag}${role}: ${truncate(compact, 1200)}`;
   }
   for (const b of blocks) {
     if (!b || typeof b !== "object") continue;

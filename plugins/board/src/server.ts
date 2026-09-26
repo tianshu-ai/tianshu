@@ -29,6 +29,7 @@ import type {
   ToolResult,
 } from "@tianshu-ai/plugin-sdk";
 import { Type } from "typebox";
+import { toon } from "@tianshu-ai/plugin-sdk";
 import type { Request, Response } from "express";
 import type { WebSocket } from "ws";
 import { injectRuntime } from "./runtime.js";
@@ -316,7 +317,7 @@ function buildBoardActTool(ctx: PluginContext): AgentTool {
           ? `board_act ${action} ok`
           : typeof data === "string"
             ? data
-            : JSON.stringify(data);
+            : toon(data);
       return { ok: true, text: text.slice(0, 8000), data };
     },
   };

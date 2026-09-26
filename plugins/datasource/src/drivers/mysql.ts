@@ -144,7 +144,7 @@ export class MysqlDriver implements DataSourceDriver {
         if (samples.length > 0) {
           lines.push(`Sample rows:`);
           for (const row of samples) {
-            lines.push(`  ${JSON.stringify(row)}`);
+            lines.push(`  ${Object.entries(row as Record<string, unknown>).map(([k,v]) => `${k}:${v === null ? '' : v}`).join(', ')}`);
           }
           lines.push(``);
         }
