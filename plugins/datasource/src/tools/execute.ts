@@ -15,8 +15,13 @@ export const DsExecuteTool: AgentTool = {
         query: { type: "string", description: "Write query or DDL statement" },
         params: {
           type: "object",
-          description: "Query parameters",
+          description: "Query parameters. REST: JSON body for POST/PUT/PATCH.",
           additionalProperties: true,
+        },
+        headers: {
+          type: "object",
+          description: "Extra HTTP headers for this request (REST only). Merged with connection-level headers.",
+          additionalProperties: { type: "string" },
         },
       },
       required: ["source", "query"],
@@ -31,7 +36,8 @@ export const DsExecuteTool: AgentTool = {
     }
     try {
       const driver = await getDriver(ctx.tenantId, source);
-      const result = await driver.execute(query, (args.params ?? {}) as Record<string, unknown>);
+      const hdrs = args.headers && typeof args.headers === "object" ? args.headers as Record<string, string> : undefined;
+      const result = await driver.execute(query, (args.params ?? {}) as Record<string, unknown>, hdrs);
       return {
         content: [{ type: "text", text: `Executed successfully. Affected: ${result.affectedRows}. ${result.details}` }],
       };

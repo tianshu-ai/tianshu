@@ -18,8 +18,13 @@ export const DsQueryTool: AgentTool = {
         query: { type: "string", description: "Query string (SQL for MySQL, Cypher for Neo4j)" },
         params: {
           type: "object",
-          description: "Query parameters. MySQL: {:name} style. Neo4j: {$name} style.",
+          description: "Query parameters. MySQL: {:name} style. Neo4j: {$name} style. REST: JSON body for POST/PUT/PATCH, query string for GET/DELETE.",
           additionalProperties: true,
+        },
+        headers: {
+          type: "object",
+          description: "Extra HTTP headers for this request (REST only). Merged with connection-level headers.",
+          additionalProperties: { type: "string" },
         },
       },
       required: ["source", "query"],
@@ -34,7 +39,8 @@ export const DsQueryTool: AgentTool = {
     }
     try {
       const driver = await getDriver(ctx.tenantId, source);
-      const result = await driver.query(query, (args.params ?? {}) as Record<string, unknown>);
+      const hdrs = args.headers && typeof args.headers === "object" ? args.headers as Record<string, string> : undefined;
+      const result = await driver.query(query, (args.params ?? {}) as Record<string, unknown>, hdrs);
       const rows = result.rows.slice(0, MAX_ROWS);
       const text = formatResult(result.columns, rows, result.rowCount);
       return { content: [{ type: "text", text }] };

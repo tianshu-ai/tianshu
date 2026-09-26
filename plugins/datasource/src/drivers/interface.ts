@@ -20,9 +20,9 @@ export interface DataSourceDriver {
   /** Test connectivity. Returns null on success, error message on failure. */
   ping(): Promise<string | null>;
   /** Read-only query. */
-  query(sql: string, params?: Record<string, unknown>): Promise<QueryResult>;
+  query(sql: string, params?: Record<string, unknown>, headers?: Record<string, string>): Promise<QueryResult>;
   /** Write / DDL. */
-  execute(sql: string, params?: Record<string, unknown>): Promise<ExecuteResult>;
+  execute(sql: string, params?: Record<string, unknown>, headers?: Record<string, string>): Promise<ExecuteResult>;
   /** Inspect schema. */
   schema(detail?: string): Promise<SchemaInfo>;
   /** Close connections. */
