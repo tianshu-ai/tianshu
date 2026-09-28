@@ -104,7 +104,26 @@ export async function fitToLimit(
   // Pass 0: clamp oversized dimensions. Anthropic rejects any image
   // where width or height > 8000px, regardless of byte size. Browser
   // full-page screenshots are the main offender.
-  const meta = await sharp(buf).metadata();
+  //
+  // Read metadata first; if that fails (truncated/corrupt buffer) and
+  // the image is within byte budget, pass through and let the provider
+  // decide — crashing here would degrade a valid small image that sharp
+  // can't parse (e.g. exotic format or partial PNG header in tests).
+  let meta: { width?: number; height?: number } | null = null;
+  try {
+    meta = await sharp(buf).metadata();
+  } catch {
+    // sharp can't decode — if within budget, pass through as-is.
+    if (encodedSize(buf.length) <= maxBytes) {
+      return { buf, mimeType, passthrough: true };
+    }
+    // Over budget AND unreadable — nothing we can do.
+    throw new Error(
+      `image unreadable by sharp and exceeds byte budget: ` +
+      `${buf.length} raw bytes (${encodedSize(buf.length)} base64) > ${maxBytes}`,
+    );
+  }
+
   let didResize = false;
   if ((meta.width && meta.width > MAX_DIMENSION) || (meta.height && meta.height > MAX_DIMENSION)) {
     // Transcode to JPEG during resize — keeps byte size predictable

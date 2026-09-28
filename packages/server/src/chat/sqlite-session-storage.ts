@@ -719,21 +719,29 @@ async function inflateUserImages(
           ? path.basename(filePath)
           : "image";
     if (data.length > 0) {
-      // Already inlined (e.g. a turn we just persisted). Still run
-      // through fitImageContent — the image may exceed the provider's
-      // dimension limit (8000px) even if it was within the byte budget
-      // when first persisted.
-      try {
-        const fitted = await fitImageContent(
-          { type: "image", data, mimeType: typeof part.mimeType === "string" ? part.mimeType : "image/png" },
-          options.imageMaxBytes,
-        );
-        out.push({ ...part, data: fitted.data, mimeType: fitted.mimeType });
-        if (fitted.data !== data) mutated = true;
-      } catch {
-        // fitImageContent failed (e.g. corrupt data) — degrade to text.
-        out.push({ type: "text", text: `[Attached image: ${name} — recompression failed]` });
-        mutated = true;
+      // Already inlined (e.g. a turn we just persisted). Re-fit only
+      // when the raw bytes are large enough that the image MIGHT
+      // exceed the provider's 8000px dimension limit or byte budget.
+      // A 8000×8000 JPEG at q=85 is ~2–3 MB raw → ~3–4 MB base64, so
+      // anything under 1 MB base64 is safe to pass through. This
+      // avoids decoding tiny or synthetic base64 (e.g. in tests) that
+      // isn't a valid image buffer.
+      const REFIT_THRESHOLD = 1_000_000; // 1 MB base64 chars
+      if (data.length > REFIT_THRESHOLD) {
+        try {
+          const fitted = await fitImageContent(
+            { type: "image", data, mimeType: typeof part.mimeType === "string" ? part.mimeType : "image/png" },
+            options.imageMaxBytes,
+          );
+          out.push({ ...part, data: fitted.data, mimeType: fitted.mimeType });
+          if (fitted.data !== data) mutated = true;
+        } catch {
+          // fitImageContent failed (e.g. corrupt data) — degrade to text.
+          out.push({ type: "text", text: `[Attached image: ${name} — recompression failed]` });
+          mutated = true;
+        }
+      } else {
+        out.push(part);
       }
       continue;
     }
