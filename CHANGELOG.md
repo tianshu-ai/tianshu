@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.68.3](https://github.com/tianshu-ai/tianshu/compare/v0.68.2...v0.68.3) (2026-09-28)
+
+
+### Bug Fixes
+
+* **image:** graceful fallback when sharp cannot decode small images ([69c48cb](https://github.com/tianshu-ai/tianshu/commit/69c48cbf054060c7bbea97e244a05c8c44e72999))
+
 ## [0.68.2](https://github.com/tianshu-ai/tianshu/compare/v0.68.1...v0.68.2) (2026-09-28)
 
 
