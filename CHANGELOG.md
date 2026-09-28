@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.68.4](https://github.com/tianshu-ai/tianshu/compare/v0.68.3...v0.68.4) (2026-09-28)
+
+
+### Bug Fixes
+
+* **deps:** update runtime dependencies ([7058ed8](https://github.com/tianshu-ai/tianshu/commit/7058ed816a8c9126827c8e04e187faf84a6be442))
+
 ## [0.68.3](https://github.com/tianshu-ai/tianshu/compare/v0.68.2...v0.68.3) (2026-09-28)
 
 
