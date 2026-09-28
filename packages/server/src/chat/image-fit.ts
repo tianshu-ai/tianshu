@@ -57,6 +57,13 @@ const QUALITY_LADDER = [85, 75, 65, 55, 45, 35] as const;
 // Gemini / OpenAI vision.
 const RESIZE_LONG_EDGE = 1568;
 
+// Anthropic rejects images where ANY dimension exceeds 8000px.
+// Browser full-page screenshots regularly hit 10000–20000px tall.
+// We must resize these BEFORE the byte-budget check, otherwise a
+// small-enough-in-bytes but too-tall image passes through and the
+// provider returns 400.
+const MAX_DIMENSION = 8000;
+
 // Mime types we never transcode.
 const PASSTHROUGH_MIMES = new Set(["image/svg+xml", "image/gif"]);
 
@@ -88,18 +95,38 @@ export async function fitToLimit(
   mimeType: string,
   maxBytes: number,
 ): Promise<FitResult> {
-  if (encodedSize(buf.length) <= maxBytes) {
-    return { buf, mimeType, passthrough: true };
-  }
   if (PASSTHROUGH_MIMES.has(mimeType)) {
-    // Caller decides what to do — usually log & let the provider
-    // reject. We don't try to compress SVG/GIF.
     return { buf, mimeType, passthrough: true };
   }
 
   const sharp = await loadSharp();
 
-  // Pass 1: quality ladder on the original pixels.
+  // Pass 0: clamp oversized dimensions. Anthropic rejects any image
+  // where width or height > 8000px, regardless of byte size. Browser
+  // full-page screenshots are the main offender.
+  const meta = await sharp(buf).metadata();
+  let didResize = false;
+  if ((meta.width && meta.width > MAX_DIMENSION) || (meta.height && meta.height > MAX_DIMENSION)) {
+    // Transcode to JPEG during resize — keeps byte size predictable
+    // and avoids returning a PNG buffer with mimeType "image/jpeg".
+    buf = await sharp(buf)
+      .resize({
+        width: MAX_DIMENSION,
+        height: MAX_DIMENSION,
+        fit: "inside",
+        withoutEnlargement: true,
+      })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+    mimeType = "image/jpeg";
+    didResize = true;
+  }
+
+  if (encodedSize(buf.length) <= maxBytes) {
+    return { buf, mimeType, passthrough: !didResize, resized: didResize };
+  }
+
+  // Pass 1: quality ladder on the (possibly resized) pixels.
   for (const q of QUALITY_LADDER) {
     const out = await sharp(buf).jpeg({ quality: q }).toBuffer();
     if (encodedSize(out.length) <= maxBytes) {

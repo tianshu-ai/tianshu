@@ -1874,6 +1874,10 @@ async function prepareUserInput(
     );
     try {
       const stat = fs.statSync(abs);
+      const rawBytes = stat.size;
+      console.log(
+        `[handler] image attach: ${att.name ?? att.path} raw=${(rawBytes / 1024 / 1024).toFixed(1)}MB limit=${(modelInfo.imageMaxBytes / 1024 / 1024).toFixed(1)}MB`,
+      );
       const cacheKey = imageFitCacheKey(
         abs,
         stat.mtimeMs,
@@ -1885,12 +1889,20 @@ async function prepareUserInput(
       if (cached) {
         buf = cached.buf;
         mimeType = cached.mimeType;
+        console.log(`[handler] image cache hit: ${att.name ?? att.path}`);
       } else {
         const raw = fs.readFileSync(abs);
-        const fitted = await fitToLimit(
-          raw,
-          att.mimeType,
-          modelInfo.imageMaxBytes,
+        const fitStart = Date.now();
+        const fitted = await Promise.race([
+          fitToLimit(raw, att.mimeType, modelInfo.imageMaxBytes),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("image compression timed out after 30s")), 30_000),
+          ),
+        ]);
+        console.log(
+          `[handler] image fitted: ${att.name ?? att.path} ` +
+          `${(raw.length / 1024 / 1024).toFixed(1)}MB → ${(fitted.buf.length / 1024 / 1024).toFixed(1)}MB ` +
+          `q=${fitted.quality ?? "passthrough"} resized=${fitted.resized ?? false} ${Date.now() - fitStart}ms`,
         );
         buf = fitted.buf;
         mimeType = fitted.mimeType;
@@ -1904,8 +1916,9 @@ async function prepareUserInput(
     } catch (err) {
       const reason =
         (err as { message?: string } | null)?.message ?? "read failed";
+      console.warn(`[handler] image attach failed: ${att.name ?? att.path} — ${reason}`);
       fileLines.push(
-        `[Attached image: ${att.name ?? att.path} — read failed: ${reason}]`,
+        `[Attached image: ${att.name ?? att.path} — ${reason}]`,
       );
     }
   }
