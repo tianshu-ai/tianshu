@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.68.2](https://github.com/tianshu-ai/tianshu/compare/v0.68.1...v0.68.2) (2026-09-28)
+
+
+### Bug Fixes
+
+* **image:** clamp oversized dimensions before byte-budget check ([0b17d09](https://github.com/tianshu-ai/tianshu/commit/0b17d090869621331454d1b86aa30aaa22a8099c))
+* **image:** fit already-inlined images in history through dimension check ([8028b64](https://github.com/tianshu-ai/tianshu/commit/8028b64889f910d66d2a5da76af50dc3266d19c5))
+
 ## [0.68.1](https://github.com/tianshu-ai/tianshu/compare/v0.68.0...v0.68.1) (2026-09-26)
 
 
