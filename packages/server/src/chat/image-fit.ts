@@ -243,7 +243,10 @@ export async function fitImageContent(
   maxBytes: number,
 ): Promise<ImageContent> {
   const buf = Buffer.from(ic.data, "base64");
-  if (encodedSize(buf.length) <= maxBytes) return ic;
+  // Always run through fitToLimit — it checks BOTH byte budget AND
+  // pixel dimensions (Pass 0 clamps >8000px). Skipping on bytes
+  // alone missed oversized screenshots that were small in bytes
+  // but too tall/wide for the provider.
   const fitted = await fitToLimit(buf, ic.mimeType, maxBytes);
   if (fitted.passthrough) return ic;
   return {

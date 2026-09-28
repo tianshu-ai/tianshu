@@ -75,6 +75,7 @@ import type { TenantContext } from "../core/index.js";
 import {
   cacheGet,
   cachePut,
+  fitImageContent,
   fitToLimit,
   imageFitCacheKey,
 } from "./image-fit.js";
@@ -718,8 +719,22 @@ async function inflateUserImages(
           ? path.basename(filePath)
           : "image";
     if (data.length > 0) {
-      // Already inlined (e.g. a turn we just persisted) — keep it.
-      out.push(part);
+      // Already inlined (e.g. a turn we just persisted). Still run
+      // through fitImageContent — the image may exceed the provider's
+      // dimension limit (8000px) even if it was within the byte budget
+      // when first persisted.
+      try {
+        const fitted = await fitImageContent(
+          { type: "image", data, mimeType: typeof part.mimeType === "string" ? part.mimeType : "image/png" },
+          options.imageMaxBytes,
+        );
+        out.push({ ...part, data: fitted.data, mimeType: fitted.mimeType });
+        if (fitted.data !== data) mutated = true;
+      } catch {
+        // fitImageContent failed (e.g. corrupt data) — degrade to text.
+        out.push({ type: "text", text: `[Attached image: ${name} — recompression failed]` });
+        mutated = true;
+      }
       continue;
     }
     if (!options.supportsImages) {
