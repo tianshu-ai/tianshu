@@ -397,14 +397,14 @@ describe("checkConfig", () => {
     expect(cfgLine?.severity).toBe("ok");
   });
 
-  it("flags missing .env as warning, not blocker (shell env can substitute)", () => {
+  it("does not check for .env (removed — purely optional)", () => {
     fs.writeFileSync(
       path.join(home, "config.json"),
       JSON.stringify({ models: { providers: {} } }),
     );
     const r = checkConfig({ home, cwd });
     const envLine = r.lines.find((l) => l.text.includes(".env"));
-    expect(envLine?.severity).toBe("warning");
+    expect(envLine).toBeUndefined();
   });
 });
 
