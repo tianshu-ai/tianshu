@@ -20,7 +20,6 @@ export function checkConfig(opts: ConfigCheckOpts = {}): CheckGroup {
   const home = opts.home ?? getTianshuHome();
   const cwd = opts.cwd ?? process.cwd();
   const configPath = getGlobalConfigPath(home);
-  const envPath = path.join(cwd, ".env");
   const lines: CheckGroup["lines"] = [];
 
   // TIANSHU_HOME existence
@@ -59,17 +58,6 @@ export function checkConfig(opts: ConfigCheckOpts = {}): CheckGroup {
     });
   }
 
-  // .env (repo-local) — purely informational. Users can export
-  // keys directly in their shell or use config.json; .env is optional.
-  if (fs.existsSync(envPath)) {
-    lines.push({ severity: "ok", text: `.env loaded`, detail: envPath });
-  } else {
-    lines.push({
-      severity: "ok",
-      text: `no .env file (optional)`,
-      detail: `${envPath} — provider keys can be set in config.json or shell environment instead.`,
-    });
-  }
 
   return { title: "Config files", lines };
 }
