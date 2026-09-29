@@ -350,6 +350,9 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "sidebar.channels": "Channels",
     "sidebar.maintenance": "Maintenance",
     "sidebar.exitMaintenance": "Exit Maintenance",
+    "chat.maintenanceMode": "Maintenance Mode",
+    "chat.maintenanceHint": "Setup Agent is ready — ask it to configure your system.",
+    "chat.exitMaintenance": "Exit",
     "sidebar.sessionsNote": "Sessions are managed by the agent, not the user (ADR-0001 §5).",
     // admin shell nav
     "admin.group.platform": "Platform",
@@ -776,6 +779,9 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "sidebar.channels": "渠道",
     "sidebar.maintenance": "维护模式",
     "sidebar.exitMaintenance": "退出维护",
+    "chat.maintenanceMode": "维护模式",
+    "chat.maintenanceHint": "Setup Agent 已就绪，可以帮你检查和配置系统。",
+    "chat.exitMaintenance": "退出",
     "sidebar.sessionsNote": "会话由 Agent 管理，用户无需干预（ADR-0001 §5）。",
     // admin shell nav
     "admin.group.platform": "平台管理",

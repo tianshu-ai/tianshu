@@ -9,6 +9,7 @@ import {
   KeyRound,
   ShieldCheck,
   Wrench,
+
   LogOut,
   Building2,
 } from "lucide-react";
@@ -100,29 +101,18 @@ export default function Sidebar() {
           {appVersion && <span className="ml-2 text-xs font-normal text-fg-muted">v{appVersion}</span>}
         </div>
 
-        {/* Maintenance mode toggle — super-admins only */}
-        {me?.superAdmin && (
+        {/* Maintenance mode icon — super-admins only, not shown when already in _setup */}
+        {me?.superAdmin && me?.tenantId !== "_setup" && (
           <button
             type="button"
-            title={me?.tenantId === "_setup" ? t("sidebar.exitMaintenance") : t("sidebar.maintenance")}
+            title={t("sidebar.maintenance")}
             onClick={async () => {
-              const inSetup = me?.tenantId === "_setup";
-              const targetTenant = inSetup ? "default" : "_setup";
-              try {
-                await api.switchTenant(targetTenant);
-              } catch { /* ignore — cookie-based nav below handles it */ }
-              window.location.assign(
-                `/tenants/${targetTenant}/users/${me?.userId ?? "admin"}`,
-              );
+              try { await api.switchTenant("_setup"); } catch { /* ignore */ }
+              window.location.assign(`/tenants/_setup/users/${me?.userId ?? "admin"}`);
             }}
-            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
-              me?.tenantId === "_setup"
-                ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25"
-                : "text-fg-muted hover:bg-bg-hover hover:text-fg-default"
-            }`}
+            className="rounded-md p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-amber-400"
           >
-            <Wrench size={12} />
-            <span>{me?.tenantId === "_setup" ? t("sidebar.exitMaintenance") : t("sidebar.maintenance")}</span>
+            <Wrench size={14} />
           </button>
         )}
       </div>

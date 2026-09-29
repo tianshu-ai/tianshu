@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw } from "lucide-react";
+import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Wrench, X } from "lucide-react";
+import { api } from "../lib/api";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
 import { mergeToolTurns } from "../lib/merge-tool-turns";
@@ -133,6 +134,28 @@ export default function ChatArea() {
           </button>
         </div>
       </header>
+
+      {/* Maintenance mode banner — shown when in _setup tenant */}
+      {me?.tenantId === "_setup" && (
+        <div className="flex items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-2">
+          <div className="flex items-center gap-2 text-sm text-amber-400">
+            <Wrench size={14} className="flex-shrink-0" />
+            <span className="font-medium">{t("chat.maintenanceMode")}</span>
+            <span className="text-xs text-amber-400/70">{t("chat.maintenanceHint")}</span>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              try { await api.switchTenant("default"); } catch { /* ignore */ }
+              window.location.assign(`/tenants/default/users/${me?.userId ?? "admin"}`);
+            }}
+            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20"
+          >
+            <X size={12} />
+            <span>{t("chat.exitMaintenance")}</span>
+          </button>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-6">
