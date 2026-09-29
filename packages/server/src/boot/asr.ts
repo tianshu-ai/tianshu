@@ -44,6 +44,10 @@ const MODEL_CANDIDATES: { dirName: string; type: ModelCandidate["type"]; model: 
   { dirName: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17", type: "senseVoice", model: "model.int8.onnx", tokens: "tokens.txt" },
   { dirName: "sherpa-onnx-paraformer-zh-2024-03-09", type: "paraformer", model: "model.int8.onnx", tokens: "tokens.txt" },
   { dirName: "sherpa-onnx-paraformer-zh-small-2024-03-09", type: "paraformer", model: "model.int8.onnx", tokens: "tokens.txt" },
+  { dirName: "sherpa-onnx-whisper-large-v3", type: "whisper", model: "large-v3-encoder.int8.onnx", tokens: "large-v3-tokens.txt" },
+  { dirName: "sherpa-onnx-whisper-distil-large-v3", type: "whisper", model: "distil-large-v3-encoder.int8.onnx", tokens: "distil-large-v3-tokens.txt" },
+  { dirName: "sherpa-onnx-whisper-small", type: "whisper", model: "small-encoder.int8.onnx", tokens: "small-tokens.txt" },
+  { dirName: "sherpa-onnx-whisper-base", type: "whisper", model: "base-encoder.int8.onnx", tokens: "base-tokens.txt" },
   { dirName: "sherpa-onnx-whisper-tiny", type: "whisper", model: "tiny-encoder.int8.onnx", tokens: "tiny-tokens.txt" },
 ];
 
@@ -64,7 +68,11 @@ function findBestModel(): ModelCandidate | null {
       "paraformer-zh-small": MODEL_CANDIDATES[2],
       "paraformer-zh": MODEL_CANDIDATES[1],
       "sense-voice-zh": MODEL_CANDIDATES[0],
-      "whisper-tiny": MODEL_CANDIDATES[3],
+      "whisper-large-v3": MODEL_CANDIDATES[3],
+      "whisper-distil-large-v3": MODEL_CANDIDATES[4],
+      "whisper-small": MODEL_CANDIDATES[5],
+      "whisper-base": MODEL_CANDIDATES[6],
+      "whisper-tiny": MODEL_CANDIDATES[7],
     };
     const pick = byId[activeId];
     if (pick) {
