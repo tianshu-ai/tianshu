@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.71.2](https://github.com/tianshu-ai/tianshu/compare/v0.71.1...v0.71.2) (2026-09-29)
+
+
+### Bug Fixes
+
+* **doctor:** fix double .service suffix in systemd unit path ([4bf0203](https://github.com/tianshu-ai/tianshu/commit/4bf02033ff0d6d50df54fa71f6a56cd831a70b5a))
+* **tests:** update .env test to match removed check ([01a6aa0](https://github.com/tianshu-ai/tianshu/commit/01a6aa0387301211491ee2adc825d6fbfd9b7023))
+
 ## [0.71.1](https://github.com/tianshu-ai/tianshu/compare/v0.71.0...v0.71.1) (2026-09-29)
 
 
