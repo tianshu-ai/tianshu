@@ -348,7 +348,8 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "auth.tenants.idLabel": "Tenant id",
     // sidebar
     "sidebar.channels": "Channels",
-    "sidebar.setupAgent": "Setup Agent",
+    "sidebar.maintenance": "Maintenance",
+    "sidebar.exitMaintenance": "Exit Maintenance",
     "sidebar.sessionsNote": "Sessions are managed by the agent, not the user (ADR-0001 §5).",
     // admin shell nav
     "admin.group.platform": "Platform",
@@ -773,7 +774,8 @@ const STRINGS: Record<Locale, Record<string, string>> = {
     "auth.tenants.idLabel": "租户 id",
     // sidebar
     "sidebar.channels": "渠道",
-    "sidebar.setupAgent": "系统设置",
+    "sidebar.maintenance": "维护模式",
+    "sidebar.exitMaintenance": "退出维护",
     "sidebar.sessionsNote": "会话由 Agent 管理，用户无需干预（ADR-0001 §5）。",
     // admin shell nav
     "admin.group.platform": "平台管理",

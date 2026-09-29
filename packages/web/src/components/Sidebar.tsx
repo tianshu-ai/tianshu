@@ -7,8 +7,8 @@ import {
   Globe,
   Hash,
   KeyRound,
-  Settings,
   ShieldCheck,
+  Wrench,
   LogOut,
   Building2,
 } from "lucide-react";
@@ -66,43 +66,65 @@ export default function Sidebar() {
   return (
     <aside className="flex h-full w-64 flex-shrink-0 flex-col border-r border-border-subtle bg-bg-elevated">
       {/* Header */}
-      <div className="flex h-12 items-center border-b border-border-subtle px-4">
-        {isDefaultBrand ? (
-          <div className="relative flex items-center" title="Tianshu">
-            {/* Logo rendered via CSS mask so the ink color follows the
-                current theme's --color-fg-default (light theme = dark ink,
-                dark/classical theme = light ink). The PNG itself is pure
-                white with an alpha channel; the mask uses that alpha and
-                the div's background paints the visible pixels. */}
-            <div
-              aria-label="天枢 Tianshu"
-              role="img"
-              className="h-11 w-24 bg-fg-default"
-              style={{
-                WebkitMaskImage: "url(/classical/tianshu-brand.png)",
-                maskImage: "url(/classical/tianshu-brand.png)",
-                WebkitMaskRepeat: "no-repeat",
-                maskRepeat: "no-repeat",
-                WebkitMaskPosition: "center",
-                maskPosition: "center",
-                WebkitMaskSize: "contain",
-                maskSize: "contain",
-              }}
-            />
-            {/* Sparkle decoration — four-pointed star, top-right of the wordmark */}
-            <svg
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              className="pointer-events-none absolute -right-1 top-0.5 h-3 w-3 text-amber-300"
-              aria-hidden="true"
-            >
-              <path d="M12 0 L13.5 10.5 L24 12 L13.5 13.5 L12 24 L10.5 13.5 L0 12 L10.5 10.5 Z" />
-            </svg>
-          </div>
-        ) : (
-          <span className="text-lg font-semibold text-fg-default">{brandName}</span>
+      <div className="flex h-12 items-center justify-between border-b border-border-subtle px-4">
+        <div className="flex items-center">
+          {isDefaultBrand ? (
+            <div className="relative flex items-center" title="Tianshu">
+              <div
+                aria-label="天枢 Tianshu"
+                role="img"
+                className="h-11 w-24 bg-fg-default"
+                style={{
+                  WebkitMaskImage: "url(/classical/tianshu-brand.png)",
+                  maskImage: "url(/classical/tianshu-brand.png)",
+                  WebkitMaskRepeat: "no-repeat",
+                  maskRepeat: "no-repeat",
+                  WebkitMaskPosition: "center",
+                  maskPosition: "center",
+                  WebkitMaskSize: "contain",
+                  maskSize: "contain",
+                }}
+              />
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                className="pointer-events-none absolute -right-1 top-0.5 h-3 w-3 text-amber-300"
+                aria-hidden="true"
+              >
+                <path d="M12 0 L13.5 10.5 L24 12 L13.5 13.5 L12 24 L10.5 13.5 L0 12 L10.5 10.5 Z" />
+              </svg>
+            </div>
+          ) : (
+            <span className="text-lg font-semibold text-fg-default">{brandName}</span>
+          )}
+          {appVersion && <span className="ml-2 text-xs font-normal text-fg-muted">v{appVersion}</span>}
+        </div>
+
+        {/* Maintenance mode toggle — super-admins only */}
+        {me?.superAdmin && (
+          <button
+            type="button"
+            title={me?.tenantId === "_setup" ? t("sidebar.exitMaintenance") : t("sidebar.maintenance")}
+            onClick={async () => {
+              const inSetup = me?.tenantId === "_setup";
+              const targetTenant = inSetup ? "default" : "_setup";
+              try {
+                await api.switchTenant(targetTenant);
+              } catch { /* ignore — cookie-based nav below handles it */ }
+              window.location.assign(
+                `/tenants/${targetTenant}/users/${me?.userId ?? "admin"}`,
+              );
+            }}
+            className={`flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors ${
+              me?.tenantId === "_setup"
+                ? "bg-amber-500/15 text-amber-500 hover:bg-amber-500/25"
+                : "text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+            }`}
+          >
+            <Wrench size={12} />
+            <span>{me?.tenantId === "_setup" ? t("sidebar.exitMaintenance") : t("sidebar.maintenance")}</span>
+          </button>
         )}
-        {appVersion && <span className="ml-2 text-xs font-normal text-fg-muted">v{appVersion}</span>}
       </div>
 
       {/* Agents + Workers */}
@@ -121,26 +143,7 @@ export default function Sidebar() {
           <PluginSidebarSections anchor="workers" />
         </div>
 
-        {/* Setup Agent — super-admins only. Switches to the _setup
-         *  system tenant where the in-browser setup assistant runs. */}
-        {me?.superAdmin && me?.tenantId !== "_setup" && (
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await api.switchTenant("_setup");
-              } finally {
-                window.location.assign(
-                  `/tenants/_setup/users/${me?.userId ?? ""}`,
-                );
-              }
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-fg-muted hover:bg-bg-hover hover:text-fg-default transition-colors"
-          >
-            <Settings size={14} className="flex-shrink-0" />
-            <span className="text-xs">{t("sidebar.setupAgent")}</span>
-          </button>
-        )}
+
       </div>
 
       <div className="mx-3 my-2 border-b border-border-subtle/50" />
