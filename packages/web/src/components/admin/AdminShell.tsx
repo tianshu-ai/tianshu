@@ -298,12 +298,19 @@ export default function AdminShell() {
   }, [init, loadPlugins]);
 
   const isSuperAdmin = me?.superAdmin ?? false;
+  const authEnabled = !!me?.provider;
   const pages = useMemo(() => {
-    const all = flattenAdminPages(plugins);
+    let all = flattenAdminPages(plugins);
+    // No-auth mode: hide auth-related pages (Users, Auth Settings,
+    // Providers, Tenants) — they're meaningless without auth.
+    if (!authEnabled) {
+      const authPages = new Set(["auth-users", "auth-settings", "auth-providers", "auth-tenants"]);
+      all = all.filter((p) => !authPages.has(p.pageId));
+    }
     // Tenant admins can't see Platform settings
     if (!isSuperAdmin) return all.filter((p) => p.group !== "Platform");
     return all;
-  }, [plugins, isSuperAdmin]);
+  }, [plugins, isSuperAdmin, authEnabled]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg-base text-fg-default">
