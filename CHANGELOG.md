@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.69.2](https://github.com/tianshu-ai/tianshu/compare/v0.69.1...v0.69.2) (2026-09-29)
+
+
+### Bug Fixes
+
+* **doctor:** replace require with ESM import for child_process ([c268f88](https://github.com/tianshu-ai/tianshu/commit/c268f88e39b6a1f0fab1441accc1b5430a2926ee))
+
 ## [0.69.1](https://github.com/tianshu-ai/tianshu/compare/v0.69.0...v0.69.1) (2026-09-29)
 
 
