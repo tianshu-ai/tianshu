@@ -16,7 +16,8 @@
 //     element overrides here so every Markdown surface stays in
 //     sync.
 
-import { useState, type ComponentProps } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
+import { Check, Copy } from "lucide-react";
 import { rewriteWorkspaceUri } from "./workspace-uri.js";
 import { ImageLightbox } from "../components/ui/ImageLightbox";
 
@@ -55,4 +56,53 @@ function MarkdownImg(props: ComponentProps<"img">) {
   );
 }
 
-export const MARKDOWN_COMPONENTS = { img: MarkdownImg } as const;
+// ─── Code block copy button ─────────────────────────────────────
+// Fenced code blocks (```` ```lang ... ``` ````) render as <pre><code>.
+// We wrap <pre> to add a hover copy button (top-right), matching
+// the style of CodeBlock.tsx's CopyButton.
+
+function CodeCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="absolute right-2 top-2 z-10 rounded-md border border-border-subtle/80 bg-bg-elevated/80 p-1 text-fg-muted opacity-0 backdrop-blur transition-opacity hover:bg-bg-raised group-hover:opacity-100"
+      title={copied ? "Copied" : "Copy"}
+      onClick={() => {
+        navigator.clipboard
+          ?.writeText(text)
+          .then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1200);
+          })
+          .catch(() => {});
+      }}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
+    </button>
+  );
+}
+
+/** Extract plain text from a <pre> element's children (the <code>
+ *  inside may carry span wrappers from syntax highlighting). */
+function extractText(children: ReactNode): string {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children)) return children.map(extractText).join("");
+  if (children && typeof children === "object" && "props" in children) {
+    return extractText((children as { props: { children?: ReactNode } }).props.children);
+  }
+  return "";
+}
+
+function MarkdownPre(props: ComponentProps<"pre">) {
+  const { children, ...rest } = props;
+  const text = extractText(children);
+  return (
+    <pre {...rest} className={`group relative ${props.className ?? ""}`}>
+      <CodeCopyButton text={text.replace(/\n$/, "")} />
+      {children}
+    </pre>
+  );
+}
+
+export const MARKDOWN_COMPONENTS = { img: MarkdownImg, pre: MarkdownPre } as const;

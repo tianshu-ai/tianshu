@@ -21,10 +21,12 @@ import {
   Bell,
   Bot,
   Calendar,
+  Check,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   Clock,
+  Copy,
   Loader2,
   Pause,
   Play,
@@ -209,6 +211,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
               {speechText && (
                 <SpeakButton messageId={m.id} text={speechText} />
               )}
+              <CopyMessageButton text={m.text} />
               {(m.meta || m.createdAt) && (
                 <MessageMeta
                   meta={m.meta}
@@ -274,6 +277,36 @@ function SpeakButton({ messageId, text }: { messageId: string; text: string }) {
       aria-pressed={playing}
     >
       {playing ? <Pause size={12} /> : <Play size={12} />}
+    </button>
+  );
+}
+
+/** Copy entire assistant message text to clipboard. */
+function CopyMessageButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  if (!text) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        navigator.clipboard
+          ?.writeText(text)
+          .then(() => {
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1200);
+          })
+          .catch(() => {});
+      }}
+      className={
+        "inline-flex h-6 w-6 items-center justify-center rounded-full transition-colors " +
+        (copied
+          ? "text-green-500"
+          : "text-fg-faint hover:bg-bg-raised hover:text-fg-muted")
+      }
+      title={copied ? "已复制" : "复制消息"}
+      aria-label={copied ? "Copied" : "Copy message"}
+    >
+      {copied ? <Check size={12} /> : <Copy size={12} />}
     </button>
   );
 }
