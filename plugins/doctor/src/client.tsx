@@ -92,7 +92,7 @@ function LineItem({
       role={actionable ? "button" : undefined}
       tabIndex={actionable ? 0 : undefined}
       onKeyDown={actionable ? (e) => { if (e.key === "Enter" || e.key === " ") onPin(line, groupTitle); } : undefined}
-      title={actionable ? "Click to send to chat — agent will diagnose & fix" : undefined}
+
     >
       {/* Icon: severity icon morphs into chat icon on hover */}
       <span className="flex-shrink-0 relative">
