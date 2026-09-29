@@ -287,18 +287,33 @@ function checkSystemdPaths(
 
 // ── helpers ─────────────────────────────────────────────────────────
 
-/** Resolve the npm binary path for the CURRENT process.
- *  Derives from process.execPath (the running node binary) so it
- *  works even when PATH doesn't include nvm — which happens inside
- *  OpenClaw's sandbox exec environment. */
+/** Resolve where `tianshu` CLI lives and derive the npm binary
+ *  from the same bin directory. This is more reliable than
+ *  `which npm` (which fails when PATH is incomplete) and more
+ *  meaningful than process.execPath (which is node, not tianshu).
+ *
+ *  Chain: which tianshu → realpath → .../bin/tianshu.mjs
+ *         → dirname → .../bin/npm */
 function resolveCurrentNpmPath(): string {
-  // process.execPath = /Users/x/.nvm/versions/node/v24.18.0/bin/node
-  // npm lives next to it:   .../bin/npm
+  const { execSync } = require("node:child_process") as typeof import("node:child_process");
+  // 1. Try `which tianshu` → follow symlink → derive bin dir
+  try {
+    const tianshuBin = execSync("which tianshu", { encoding: "utf8" }).trim();
+    if (tianshuBin) {
+      // Follow symlink to real path
+      const real = fs.realpathSync(tianshuBin);
+      // real = .../lib/node_modules/@tianshu-ai/tianshu/bin/tianshu.mjs
+      // The npm binary is in the same bin dir as the symlink origin
+      const binDir = path.dirname(tianshuBin);
+      const npmInBin = path.join(binDir, "npm");
+      if (fs.existsSync(npmInBin)) return npmInBin;
+    }
+  } catch { /* not installed globally */ }
+  // 2. Derive from process.execPath (node binary)
   const derived = path.join(path.dirname(process.execPath), "npm");
   if (fs.existsSync(derived)) return derived;
-  // Fallback: try which
+  // 3. Last resort
   try {
-    const { execSync } = require("node:child_process") as typeof import("node:child_process");
     return execSync("which npm", { encoding: "utf8" }).trim();
   } catch {
     return "/usr/bin/env npm";
