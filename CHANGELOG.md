@@ -6,6 +6,46 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.71.0](https://github.com/tianshu-ai/tianshu/compare/v0.70.0...v0.71.0) (2026-09-29)
+
+
+### Features
+
+* add multi-platform sandbox image CI + fix microsandbox build 400 error ([eec6238](https://github.com/tianshu-ai/tianshu/commit/eec6238b3c49c07623156fcc8c35935e1342d729))
+* **doctor:** add System Doctor plugin for maintenance mode ([4ae0285](https://github.com/tianshu-ai/tianshu/commit/4ae0285582f8661a31e5af7567b307df3614501c))
+* **doctor:** pin warning/error items to chat for diagnosis ([031a7d9](https://github.com/tianshu-ai/tianshu/commit/031a7d954c1460ea5c01941fa3a289633450b168))
+* **microsandbox:** support YAML literal block syntax in Sandboxfile parser ([d500e89](https://github.com/tianshu-ai/tianshu/commit/d500e89769e3af113106f0216fb41b9efdbd143b))
+* **setup:** add _setup tenant for web-based Setup Agent ([e511e50](https://github.com/tianshu-ai/tianshu/commit/e511e503aa8b489550e6e0cbccd9aecdd4518465))
+* **setup:** runtime context in setup agent + hide plugins in maintenance ([6be6d6d](https://github.com/tianshu-ai/tianshu/commit/6be6d6d996c0eb3b11f719e31a76141548a91f5b))
+
+
+### Bug Fixes
+
+* **auth:** allow switch-tenant to _setup system tenant ([e23871c](https://github.com/tianshu-ai/tianshu/commit/e23871ccbb5889d1f4d33acc64b2da9f68fbc158))
+* **core:** allow open/exists to handle system-reserved tenant IDs ([b988654](https://github.com/tianshu-ai/tianshu/commit/b9886549b52fd670ab0158fb4f5a135090cb8099))
+* **doctor:** align severity icons vertically with text line ([6e1140d](https://github.com/tianshu-ai/tianshu/commit/6e1140d8482878b3b4ae87112c453b1ffdfcd08c))
+* **doctor:** downgrade probe failure to ok for local/custom endpoints ([607cf8e](https://github.com/tianshu-ai/tianshu/commit/607cf8e762b412376b1d084eb11285e442b2e43f))
+* **doctor:** fix hover CSS selectors not matching ([1609258](https://github.com/tianshu-ai/tianshu/commit/1609258e22ba85dcb5c9de99344e8e2ee45d8a42))
+* **doctor:** hover-to-pin interaction on severity icons ([a868a53](https://github.com/tianshu-ai/tianshu/commit/a868a5360646b588173e5de733d45a18b5873447))
+* **doctor:** move fix hint to left side next to icon ([54bbfe9](https://github.com/tianshu-ai/tianshu/commit/54bbfe91a5829b98eb1aec07e096db30624a54f8))
+* **doctor:** remove tooltip from actionable detail lines ([6ee4503](https://github.com/tianshu-ai/tianshu/commit/6ee450390a516709544a2c480348d9542495ba4b))
+* **doctor:** remove tooltip on actionable lines ([726dadb](https://github.com/tianshu-ai/tianshu/commit/726dadbb31372986118a0f2b85218c1fc163bbf7))
+* **doctor:** skip embedding models in contextWindow/maxTokens checks ([57ba52b](https://github.com/tianshu-ai/tianshu/commit/57ba52b22bd0f80091223dbfda56fbdcea96bd84))
+* **doctor:** skip service checks in development checkout ([5b463e4](https://github.com/tianshu-ai/tianshu/commit/5b463e48e119e8350463aa2dc2dc1db5a653f1d1))
+* **doctor:** update defaultModel check to use models.defaultModelId ([cb878b2](https://github.com/tianshu-ai/tianshu/commit/cb878b229f7bca9670caa162d828cfaf2c778eb9))
+* **doctor:** whole-row hover highlight + click-to-fix UX ([990b963](https://github.com/tianshu-ai/tianshu/commit/990b9631080379c1304fd11fd5a4d2ffdf55dcc5))
+* **middleware:** handle InvalidTenantIdError gracefully ([07bbb1f](https://github.com/tianshu-ai/tianshu/commit/07bbb1f8f17d460c44b866662903adf4aabce37b))
+* **openshell:** replace community base image with tianshu82/opencode-sandbox ([7df71e6](https://github.com/tianshu-ai/tianshu/commit/7df71e63be2f70fdb2e7372208535f02745d3bd5))
+* **plugins:** parse maintenanceOnly field from manifest ([5cedf19](https://github.com/tianshu-ai/tianshu/commit/5cedf19f2abaaba4d42eabb3a06145b3b5bd7c0e))
+* **ui:** move maintenance toggle to chat area banner ([390934a](https://github.com/tianshu-ai/tianshu/commit/390934a3ec88deb62a392856022b058bdf97efb6))
+* **ui:** move setup agent toggle to sidebar header ([bbc2324](https://github.com/tianshu-ai/tianshu/commit/bbc2324eaf903a35f682575ffe8f993ef16c66c2))
+
+
+### Refactor
+
+* **doctor:** split tenant checks into per-tenant groups ([422de77](https://github.com/tianshu-ai/tianshu/commit/422de7756918ffe06b04218fd580190f6fece7d3))
+* **setup:** rename _setup tenant to maintenance ([680af5a](https://github.com/tianshu-ai/tianshu/commit/680af5a3d71952439dadecc959d31e4ad98b877e))
+
 ## [0.70.0](https://github.com/tianshu-ai/tianshu/compare/v0.69.3...v0.70.0) (2026-09-29)
 
 
