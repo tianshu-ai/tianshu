@@ -666,7 +666,7 @@ if (bootstrap.created) {
   console.log(`[tianshu] tenants found: [${globalOps.list().join(", ")}]`);
 }
 
-// Create the _setup system tenant so the super-admin can use the
+// Create the maintenance tenant so the super-admin can use the
 // in-browser setup assistant. Always created, regardless of other tenants.
 const setupBootstrap = bootstrapSetupTenant(globalOps, loadGlobalConfig());
 if (setupBootstrap.created) {

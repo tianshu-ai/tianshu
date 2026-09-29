@@ -1,5 +1,5 @@
 // Setup agent tools — shared between the CLI wizard (cli-agent.ts) and
-// the in-browser setup agent (_setup tenant in handler.ts).
+// the in-browser setup agent (maintenance tenant in handler.ts).
 //
 // Wraps cli-agent's buildTools into the plugin-sdk AgentTool shape so
 // the chat handler can inject them alongside (or instead of) normal

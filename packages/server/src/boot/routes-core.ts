@@ -157,7 +157,7 @@ export function mountCoreRoutes(
     // Auth mode: membership + super-admin, minus disabled.
     // No-auth mode: all tenants — the user should be able to
     // freely switch without any auth gating.
-    // Filter out the _setup system tenant — it has its own sidebar
+    // Filter out the maintenance tenant — it has its own sidebar
     // entry and should not appear in the tenant-switcher dropdown.
     const tenants = (authCfg.enabled
       ? tenantsForUser(

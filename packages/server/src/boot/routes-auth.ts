@@ -336,8 +336,8 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
         res.status(400).json({ error: "missing_tenant_id" });
         return;
       }
-      // _setup is a system tenant (underscore-prefix) not listed by
-      // listTenants(), but super-admins (= everyone in no-auth mode)
+      // maintenance tenant: super-admins can switch into it even though
+      // it is filtered from the normal switcher list.
       // should be able to switch into it.
       const knownTenants = deps.listTenants();
       const isSetup = target === SETUP_TENANT_ID;
@@ -377,7 +377,7 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
       deps.listTenants,
       isTenantDisabled,
     );
-    // _setup is a system tenant not in the normal allowed list;
+    // maintenance tenant: not in the normal allowed list;
     // only super-admins may switch into it.
     const isSetupTarget = target === SETUP_TENANT_ID;
     if (isSetupTarget) {

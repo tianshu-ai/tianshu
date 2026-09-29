@@ -567,7 +567,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // we don't block a chat turn for too long when an upstream is
   // genuinely down.
   // ── Setup agent fast-path ─────────────────────────────────────
-  // The _setup tenant runs the setup assistant (shared with the CLI
+  // The maintenance tenant runs the setup assistant (shared with the CLI
   // wizard). No plugin tools, no skills, no plugin fragments — just
   // the setup toolset and the setup system prompt.
   const isSetupTenant = ctx.tenantId === SETUP_TENANT_ID;
@@ -584,7 +584,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }
   }
   const pluginTools = isSetupTenant
-    ? buildSetupAgentTools().map((t) => ({ pluginId: "_setup" as string, tool: t as any }))
+    ? buildSetupAgentTools().map((t) => ({ pluginId: "maintenance" as string, tool: t as any }))
     : pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
   // Progressive-history recall tools. Injected as pseudo-plugin tools
   // under pluginId="_host" so they share the AgentToolContext wiring

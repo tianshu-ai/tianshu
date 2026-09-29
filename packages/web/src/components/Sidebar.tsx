@@ -101,14 +101,14 @@ export default function Sidebar() {
           {appVersion && <span className="ml-2 text-xs font-normal text-fg-muted">v{appVersion}</span>}
         </div>
 
-        {/* Maintenance mode icon — super-admins only, not shown when already in _setup */}
-        {me?.superAdmin && me?.tenantId !== "_setup" && (
+        {/* Maintenance mode icon — super-admins only, not shown when already in maintenance */}
+        {me?.superAdmin && me?.tenantId !== "maintenance" && (
           <button
             type="button"
             title={t("sidebar.maintenance")}
             onClick={async () => {
-              try { await api.switchTenant("_setup"); } catch { /* ignore */ }
-              window.location.assign(`/tenants/_setup/users/${me?.userId ?? "admin"}`);
+              try { await api.switchTenant("maintenance"); } catch { /* ignore */ }
+              window.location.assign(`/tenants/maintenance/users/${me?.userId ?? "admin"}`);
             }}
             className="rounded-md p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-amber-400"
           >

@@ -80,8 +80,6 @@ export class GlobalOps {
 
   /** True iff this tenant's directory exists and is not soft-deleted. */
   exists(tenantId: string): boolean {
-    // System-reserved tenants bypass user-facing regex validation.
-    if (isSystemReserved(tenantId)) return this.existsSystem(tenantId);
     try {
       validateTenantId(tenantId);
     } catch {
@@ -93,9 +91,6 @@ export class GlobalOps {
 
   /** Open a TenantContext, throwing if the tenant doesn't exist. */
   open(tenantId: string): TenantContext {
-    // System-reserved tenants (underscore prefix, e.g. _setup) bypass
-    // the user-facing tenant-id regex but still require an existing dir.
-    if (isSystemReserved(tenantId)) return this.openSystem(tenantId);
     const id = validateTenantId(tenantId);
     if (!this.exists(id)) throw new TenantNotFoundError(id);
     const db = this.pool.get(id);
@@ -160,7 +155,7 @@ export class GlobalOps {
       .run(args.userId, args.externalId, args.provider, args.displayName ?? null, now);
   }
 
-  // ── System-reserved tenants (e.g. _setup) ──────────────────────
+  // ── System-reserved tenants (e.g. maintenance) ──────────────────────
   // These bypass user-facing tenant id validation since system ids
   // start with '_' which the regex rejects. Used by the setup agent
   // bootstrap and middleware path.

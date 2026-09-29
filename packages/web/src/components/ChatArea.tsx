@@ -135,8 +135,8 @@ export default function ChatArea() {
         </div>
       </header>
 
-      {/* Maintenance mode banner — shown when in _setup tenant */}
-      {me?.tenantId === "_setup" && (
+      {/* Maintenance mode banner — shown when in maintenance tenant */}
+      {me?.tenantId === "maintenance" && (
         <div className="flex items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-2">
           <div className="flex items-center gap-2 text-sm text-amber-400">
             <Wrench size={14} className="flex-shrink-0" />
