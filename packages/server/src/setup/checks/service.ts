@@ -14,6 +14,7 @@
 // respawning under the old binary — sometimes a completely
 // different tianshu version.
 
+import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -295,7 +296,6 @@ function checkSystemdPaths(
  *  Chain: which tianshu → realpath → .../bin/tianshu.mjs
  *         → dirname → .../bin/npm */
 function resolveCurrentNpmPath(): string {
-  const { execSync } = require("node:child_process") as typeof import("node:child_process");
   // 1. Try `which tianshu` → follow symlink → derive bin dir
   try {
     const tianshuBin = execSync("which tianshu", { encoding: "utf8" }).trim();
@@ -312,6 +312,7 @@ function resolveCurrentNpmPath(): string {
   // 2. Derive from process.execPath (node binary)
   const derived = path.join(path.dirname(process.execPath), "npm");
   if (fs.existsSync(derived)) return derived;
+  // 3. Last resort
   // 3. Last resort
   try {
     return execSync("which npm", { encoding: "utf8" }).trim();
