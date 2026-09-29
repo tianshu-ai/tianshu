@@ -98,6 +98,7 @@ import { SETUP_TENANT_ID } from "../core/dev-mode.js";
 import {
   buildSetupAgentTools,
   SETUP_SYSTEM_PROMPT,
+  setupRuntimeContext,
 } from "../setup/setup-tools.js";
 import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildToolset } from "../tools/index.js";
@@ -875,7 +876,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   const toolResultCfg = ctx.config.models?.toolResults;
   const adapted = adaptToolset(effectiveToolset);
   const systemPrompt = isSetupTenant
-    ? SETUP_SYSTEM_PROMPT
+    ? setupRuntimeContext() + "\n\n" + SETUP_SYSTEM_PROMPT
     : defaultSystemPrompt(
         ctx,
         userId,

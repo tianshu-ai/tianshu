@@ -67,7 +67,7 @@ import {
 import { collectDoctorReport } from "./doctor.js";
 import * as launchd from "./launchd.js";
 import { getBackend } from "./service-backend.js";
-import { findRepoRoot } from "./repo-root.js";
+import { findRepoRoot, isDevelopmentCheckout, getPackageVersion } from "./repo-root.js";
 import {
   detectInstallSource,
   fetchDistTag,
@@ -2815,7 +2815,7 @@ function shortArgs(args: Record<string, unknown>): string {
  * module — bundle size + initialisation cost matters for the
  * one-shot `tianshu setup` path.
  */
-function setupRuntimeContext(): string {
+export function setupRuntimeContext(): string {
   const now = new Date();
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -2826,10 +2826,22 @@ function setupRuntimeContext(): string {
     `T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}` +
     `${sign}${pad(Math.floor(Math.abs(off) / 60))}:${pad(Math.abs(off) % 60)}`;
   const weekday = now.toLocaleDateString("en-US", { weekday: "long" });
+
+  const repoRoot = findRepoRoot();
+  const isDev = repoRoot ? isDevelopmentCheckout(repoRoot) : false;
+  const runMode = isDev ? "development (npm run dev)" : "production (tianshu start)";
+  const version = getPackageVersion() ?? "unknown";
+  const home = getTianshuHome();
+
   return [
     `## Runtime Context`,
     `- Time: ${isoLocal} (${weekday}, timezone ${tz})`,
     `- Host: ${os.platform()} ${os.arch()} · Node ${process.versions.node}`,
+    `- Run mode: ${runMode}`,
+    `- Version: ${version}`,
+    `- Data dir: ${home}`,
+    `- Repo root: ${repoRoot ?? "n/a"}`,
+    `- PID: ${process.pid}`,
   ].join("\n");
 }
 

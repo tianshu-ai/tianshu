@@ -109,7 +109,7 @@ export default function ChatArea() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <PluginTopBarButtons />
+          {me?.tenantId !== "maintenance" && <PluginTopBarButtons />}
           {/* Yu 2026-09-20 14:06: 右上角 button 显示"下一个模式"
               的 icon。键盘模式时 → Headphones（下一个=语音）。
               语音模式时本 ChatArea 根本不渲染（被
@@ -123,15 +123,17 @@ export default function ChatArea() {
           >
             <Headphones size={16} />
           </button>
-          <button
-            type="button"
-            onClick={() => setPluginManagerOpen(true)}
-            className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
-            title={t("chat.pluginManager")}
-            aria-label={t("chat.openPluginManager")}
-          >
-            <Puzzle size={16} />
-          </button>
+          {me?.tenantId !== "maintenance" && (
+            <button
+              type="button"
+              onClick={() => setPluginManagerOpen(true)}
+              className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-raised hover:text-fg-default"
+              title={t("chat.pluginManager")}
+              aria-label={t("chat.openPluginManager")}
+            >
+              <Puzzle size={16} />
+            </button>
+          )}
         </div>
       </header>
 
@@ -269,10 +271,12 @@ export default function ChatArea() {
         <ChannelSessionFooter sessionId={viewingSessionId} />
       )}
 
-      <PluginManager
-        open={pluginManagerOpen}
-        onClose={() => setPluginManagerOpen(false)}
-      />
+      {me?.tenantId !== "maintenance" && (
+        <PluginManager
+          open={pluginManagerOpen}
+          onClose={() => setPluginManagerOpen(false)}
+        />
+      )}
     </main>
   );
 }

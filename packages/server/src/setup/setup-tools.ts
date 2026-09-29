@@ -6,11 +6,11 @@
 // plugin tools. The file-based execution path (serverUrl=undefined)
 // is used because the setup agent runs inside the server process.
 
-import { buildTools, SETUP_SYSTEM_PROMPT } from "./cli-agent.js";
+import { buildTools, SETUP_SYSTEM_PROMPT, setupRuntimeContext } from "./cli-agent.js";
 import { getTianshuHome } from "../core/paths.js";
 import type { Tool } from "@earendil-works/pi-ai";
 
-export { SETUP_SYSTEM_PROMPT };
+export { SETUP_SYSTEM_PROMPT, setupRuntimeContext };
 
 /**
  * Minimal AgentTool shape — structurally compatible with
