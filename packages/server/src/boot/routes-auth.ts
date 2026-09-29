@@ -41,6 +41,7 @@ import {
 } from "../core/auth/identity.js";
 import { getUserStore, type TenantRole } from "../core/auth/user-store.js";
 import { expandEnvPlaceholders as expandEnv, isTenantDisabled } from "../core/config.js";
+import { SETUP_TENANT_ID } from "../core/dev-mode.js";
 
 /** Short-lived cookie carrying PKCE state between /start and /callback. */
 const PKCE_COOKIE = "tianshu_oauth_pkce";
@@ -335,11 +336,16 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
         res.status(400).json({ error: "missing_tenant_id" });
         return;
       }
-      if (!deps.listTenants().includes(target)) {
+      // _setup is a system tenant (underscore-prefix) not listed by
+      // listTenants(), but super-admins (= everyone in no-auth mode)
+      // should be able to switch into it.
+      const knownTenants = deps.listTenants();
+      const isSetup = target === SETUP_TENANT_ID;
+      if (!knownTenants.includes(target) && !isSetup) {
         res.status(404).json({ error: "tenant_not_found", tenantId: target });
         return;
       }
-      if (isTenantDisabled(target)) {
+      if (!isSetup && isTenantDisabled(target)) {
         res.status(403).json({ error: "tenant_disabled", tenantId: target });
         return;
       }
@@ -371,7 +377,19 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
       deps.listTenants,
       isTenantDisabled,
     );
-    if (!allowed.includes(target)) {
+    // _setup is a system tenant not in the normal allowed list;
+    // only super-admins may switch into it.
+    const isSetupTarget = target === SETUP_TENANT_ID;
+    if (isSetupTarget) {
+      const isSuper = isSuperAdmin(cfg, {
+        email: claims.email,
+        username: claims.provider === "local" ? claims.name : undefined,
+      });
+      if (!isSuper) {
+        res.status(403).json({ error: "setup_requires_super_admin", tenantId: target });
+        return;
+      }
+    } else if (!allowed.includes(target)) {
       res.status(403).json({ error: "no_access_to_tenant", tenantId: target });
       return;
     }
