@@ -10,9 +10,11 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
+  MessageSquareWarning,
   RefreshCw,
   XCircle,
 } from "lucide-react";
+import { useChatNav } from "@tianshu-ai/plugin-sdk/client";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/doctor";
@@ -67,7 +69,7 @@ function severityCount(lines: CheckLine[], s: Severity): number {
 
 // ── Group component ────────────────────────────────────────────
 
-function GroupSection({ group }: { group: CheckGroup }) {
+function GroupSection({ group, onPin }: { group: CheckGroup; onPin: (line: CheckLine, group: string) => void }) {
   const [open, setOpen] = useState(true);
   const worst = groupSeverity(group);
   const total = group.lines.length;
@@ -99,7 +101,7 @@ function GroupSection({ group }: { group: CheckGroup }) {
           {group.lines.map((line, i) => (
             <div
               key={i}
-              className="flex items-start gap-2 px-3 py-1"
+              className="group/line flex items-start gap-2 px-3 py-1"
             >
               <SeverityIcon severity={line.severity} />
               <div className="min-w-0 flex-1">
@@ -110,6 +112,16 @@ function GroupSection({ group }: { group: CheckGroup }) {
                   </div>
                 )}
               </div>
+              {line.severity !== "ok" && (
+                <button
+                  type="button"
+                  onClick={() => onPin(line, group.title)}
+                  className="flex-shrink-0 rounded p-0.5 text-fg-faint opacity-0 transition-opacity hover:bg-bg-hover hover:text-fg-muted group-hover/line:opacity-100"
+                  title="Send to chat for diagnosis"
+                >
+                  <MessageSquareWarning size={12} />
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -124,6 +136,19 @@ function DoctorPanel(_props: PanelProps) {
   const [report, setReport] = useState<DoctorReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const chatNav = useChatNav();
+
+  const handlePin = useCallback((line: CheckLine, groupTitle: string) => {
+    const emoji = line.severity === "blocker" ? "🔴" : "⚠️";
+    const msg = [
+      `${emoji} Doctor found an issue in **${groupTitle}**:`,
+      `> ${line.text}`,
+      line.detail ? `> ${line.detail}` : "",
+      "",
+      "Please diagnose and fix this.",
+    ].filter(Boolean).join("\n");
+    chatNav.sendPrompt?.(msg);
+  }, [chatNav]);
 
   const runCheck = useCallback(async () => {
     setLoading(true);
@@ -188,7 +213,7 @@ function DoctorPanel(_props: PanelProps) {
         <>
           <div className="flex-1 overflow-y-auto">
             {report.groups.map((group, i) => (
-              <GroupSection key={i} group={group} />
+              <GroupSection key={i} group={group} onPin={handlePin} />
             ))}
           </div>
 
