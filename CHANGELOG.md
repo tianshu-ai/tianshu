@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.71.4](https://github.com/tianshu-ai/tianshu/compare/v0.71.3...v0.71.4) (2026-09-29)
+
+
+### Bug Fixes
+
+* **doctor:** also check plugin dir exists before running Sandbox check ([a7daa0b](https://github.com/tianshu-ai/tianshu/commit/a7daa0b6d2b377d05c8f647ab249f7ef6f554aa1))
+
 ## [0.71.3](https://github.com/tianshu-ai/tianshu/compare/v0.71.2...v0.71.3) (2026-09-29)
 
 
