@@ -131,16 +131,15 @@ function LineItem({
 
   // Wrap actionable lines in a group so we can swap icons + show hint on hover via CSS
   if (!actionable) return row;
-  return <div className="group/fix">{injectLineHoverStyles}{row}</div>;
+  return <div className="dr-line-actionable">{row}</div>;
 }
 
 // CSS-only hover swap: avoids React state thrash on rapid mouse movement.
-// .group-icon / .group-icon-hover / .group-hover-hint toggle via parent .group\/fix:hover
-const injectLineHoverStyles = (
+const lineHoverStyles = (
   <style>{`
-    .group\/fix:hover .group-icon { display: none !important; }
-    .group\/fix:hover .group-icon-hover { display: block !important; }
-    .group\/fix:hover .group-hover-hint { display: block !important; }
+    .dr-line-actionable:hover .group-icon { display: none !important; }
+    .dr-line-actionable:hover .group-icon-hover { display: block !important; }
+    .dr-line-actionable:hover .group-hover-hint { display: block !important; }
   `}</style>
 );
 
@@ -265,6 +264,7 @@ function DoctorPanel(_props: PanelProps) {
       {/* Results */}
       {report && (
         <>
+          {lineHoverStyles}
           <div className="flex-1 overflow-y-auto">
             {report.groups.map((group, i) => (
               <GroupSection key={i} group={group} onPin={handlePin} />
