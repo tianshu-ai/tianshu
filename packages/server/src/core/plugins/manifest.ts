@@ -80,6 +80,7 @@ export function parseManifest(raw: unknown): PluginManifest {
   const configSchema = optionalConfigSchema(raw.configSchema, acc);
   const setup = optionalSetupSpec(raw.setup, acc);
   const uiShell = optionalUiShell(raw.uiShell, acc);
+  const maintenanceOnly = raw.maintenanceOnly === true ? true : undefined;
 
   // ADR-0004 §3: every capability listed in `provides[]` must be
   // backed by a real contribution. Today the only derivation rule
@@ -132,6 +133,7 @@ export function parseManifest(raw: unknown): PluginManifest {
     configSchema,
     setup,
     uiShell,
+    ...(maintenanceOnly ? { maintenanceOnly } : {}),
   };
 }
 
