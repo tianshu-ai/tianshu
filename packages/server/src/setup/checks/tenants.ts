@@ -58,8 +58,7 @@ export interface TenantsCheckOpts {
   home?: string;
 }
 
-export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
-  const lines: CheckGroup["lines"] = [];
+export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup[] {
   const home = opts.home ?? getTianshuHome();
 
   // What plugins are *available* (manifest on disk). We need this
@@ -68,29 +67,38 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
   // "all available" baseline.
   const availablePlugins = readAvailablePlugins(opts);
   if (availablePlugins.error) {
-    lines.push({
-      severity: "warning",
-      text: "couldn't enumerate plugins",
-      detail: availablePlugins.error,
-    });
+    return [{
+      title: "Tenants & plugins",
+      lines: [{
+        severity: "warning",
+        text: "couldn't enumerate plugins",
+        detail: availablePlugins.error,
+      }],
+    }];
   }
   const availableSet = new Set(availablePlugins.ids);
 
   // Now the tenants pass.
   const tenantIds = listTenants(home);
   if (tenantIds.length === 0) {
-    lines.push({
-      severity: "warning",
-      text: "no tenants on disk",
-      detail:
-        "Run `tianshu tenant create default` (or let the wizard auto-create one).",
-    });
-    return { title: "Tenants & plugins", lines };
+    return [{
+      title: "Tenants & plugins",
+      lines: [{
+        severity: "warning",
+        text: "no tenants on disk",
+        detail:
+          "Run `tianshu tenant create default` (or let the wizard auto-create one).",
+      }],
+    }];
   }
 
   const globalCfg = safeLoadGlobalConfig(home);
+  const groups: CheckGroup[] = [];
 
   for (const tenantId of tenantIds) {
+    // Skip the maintenance tenant — it has no user-facing config.
+    if (tenantId === "maintenance") continue;
+    const lines: CheckGroup["lines"] = [];
     const tenantCfg = safeLoadTenantConfig(tenantId, home);
     const merged = mergePlugins(globalCfg.plugins, tenantCfg.plugins);
 
@@ -115,14 +123,12 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
 
     const users = listUsers(home, tenantId);
 
-    // Header line per tenant.
-    lines.push({
-      severity: "ok",
-      text: `tenant '${tenantId}'`,
-      detail: tenantCfg.defaultModel
-        ? `defaultModel override: ${tenantCfg.defaultModel}`
-        : undefined,
-    });
+    if (tenantCfg.defaultModel) {
+      lines.push({
+        severity: "ok",
+        text: `defaultModel override: ${tenantCfg.defaultModel}`,
+      });
+    }
 
     // Tenant-level provider catalog validation. Only fires when the
     // tenant actually overrides `models` — default tenants that
@@ -342,9 +348,10 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup {
           "Config references plugins that don't exist on disk. Either install them, or remove the entries.",
       });
     }
+    groups.push({ title: `Tenant: ${tenantId}`, lines });
   }
 
-  return { title: "Tenants & plugins", lines };
+  return groups;
 }
 
 function readAvailablePlugins(

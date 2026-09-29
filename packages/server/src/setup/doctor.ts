@@ -74,7 +74,7 @@ export async function collectDoctorReport(
   );
   groups.push(await checkNetwork());
   groups.push(await checkSandbox({ full: opts.probeSandbox }));
-  groups.push(checkTenants());
+  groups.push(...checkTenants());
   groups.push(checkDb());
   groups.push(checkAuth());
   groups.push(checkService());
