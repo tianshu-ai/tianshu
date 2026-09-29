@@ -96,17 +96,19 @@ function LineItem({
     >
       {/* Icon: severity icon morphs into chat icon on hover.
          mt-[3px] aligns the 12px icon with the first text line. */}
-      <span className="flex-shrink-0 relative mt-[3px]">
+      {/* Icon + hint label */}
+      <span className="flex-shrink-0 flex items-center gap-1 mt-[3px]">
         {actionable ? (
           <>
             <span className="block group-icon">
               <SeverityIcon severity={line.severity} />
             </span>
-            <span className="hidden group-icon-hover">
+            <span className="hidden group-icon-hover flex items-center gap-1">
               <MessageSquareWarning
                 size={12}
                 className={line.severity === "blocker" ? "text-rose-400" : "text-amber-400"}
               />
+              <span className="text-[9px] text-fg-faint/80 whitespace-nowrap">fix</span>
             </span>
           </>
         ) : (
@@ -121,11 +123,6 @@ function LineItem({
           </div>
         )}
       </div>
-      {actionable && (
-        <span className="hidden group-hover-hint flex-shrink-0 text-[9px] text-fg-faint/60 self-center whitespace-nowrap">
-          click to fix →
-        </span>
-      )}
     </div>
   );
 
@@ -139,7 +136,6 @@ const lineHoverStyles = (
   <style>{`
     .dr-line-actionable:hover .group-icon { display: none !important; }
     .dr-line-actionable:hover .group-icon-hover { display: block !important; }
-    .dr-line-actionable:hover .group-hover-hint { display: block !important; }
   `}</style>
 );
 
