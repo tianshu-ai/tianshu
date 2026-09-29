@@ -230,12 +230,13 @@ function checkSystemdPaths(
   lines: CheckGroup["lines"],
 ): void {
   // systemd user units live in ~/.config/systemd/user/
+  // label already includes the .service suffix (e.g. "tianshu-prod.service")
   const unitPath = path.join(
     os.homedir(),
     ".config",
     "systemd",
     "user",
-    `${label}.service`,
+    label,
   );
   let body: string;
   try {
@@ -243,7 +244,7 @@ function checkSystemdPaths(
   } catch {
     // Try system-wide unit
     try {
-      body = fs.readFileSync(`/etc/systemd/system/${label}.service`, "utf8");
+      body = fs.readFileSync(`/etc/systemd/system/${label}`, "utf8");
     } catch {
       lines.push({
         severity: "warning",
