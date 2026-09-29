@@ -59,9 +59,15 @@ export async function checkNetwork(
         "Server isn't running. Start it with `tianshu setup --wizard` (auto-installs launchd) or `npm run dev` from a checkout.",
     });
   } else {
+    // When SSL is configured, probe over HTTPS with certificate
+    // validation disabled (the cert is for the real domain, not
+    // localhost, so TLS verification would always fail).
+    const useHttps = !!(cfg?.server?.sslCert && cfg?.server?.sslKey);
+    const scheme = useHttps ? "https" : "http";
     const health = await probeHealth(
-      `http://localhost:${serverPort}/api/health`,
+      `${scheme}://localhost:${serverPort}/api/health`,
       opts.healthTimeoutMs ?? 2000,
+      { rejectUnauthorized: false },
     );
     if (health.kind === "tianshu") {
       lines.push({
@@ -194,9 +200,16 @@ interface HealthSilent {
 async function probeHealth(
   url: string,
   timeoutMs: number,
+  tlsOpts?: { rejectUnauthorized: boolean },
 ): Promise<HealthOk | HealthStranger | HealthSilent> {
   const ac = new AbortController();
   const t = setTimeout(() => ac.abort(), timeoutMs);
+  // When probing localhost over HTTPS, the cert is for the real
+  // domain — disable TLS verification for this single fetch.
+  const prevTls = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  if (tlsOpts && !tlsOpts.rejectUnauthorized) {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+  }
   try {
     const res = await fetch(url, { signal: ac.signal });
     const text = await res.text();
@@ -235,5 +248,11 @@ async function probeHealth(
       kind: "silent",
       error: err instanceof Error ? err.message : String(err),
     };
+  } finally {
+    // Restore TLS setting
+    if (tlsOpts && !tlsOpts.rejectUnauthorized) {
+      if (prevTls === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+      else process.env.NODE_TLS_REJECT_UNAUTHORIZED = prevTls;
+    }
   }
 }
