@@ -287,7 +287,16 @@ function checkSystemdPaths(
 
 // ── helpers ─────────────────────────────────────────────────────────
 
+/** Resolve the npm binary path for the CURRENT process.
+ *  Derives from process.execPath (the running node binary) so it
+ *  works even when PATH doesn't include nvm — which happens inside
+ *  OpenClaw's sandbox exec environment. */
 function resolveCurrentNpmPath(): string {
+  // process.execPath = /Users/x/.nvm/versions/node/v24.18.0/bin/node
+  // npm lives next to it:   .../bin/npm
+  const derived = path.join(path.dirname(process.execPath), "npm");
+  if (fs.existsSync(derived)) return derived;
+  // Fallback: try which
   try {
     const { execSync } = require("node:child_process") as typeof import("node:child_process");
     return execSync("which npm", { encoding: "utf8" }).trim();
