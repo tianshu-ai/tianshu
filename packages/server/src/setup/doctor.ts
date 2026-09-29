@@ -73,11 +73,13 @@ export async function collectDoctorReport(
     }),
   );
   groups.push(await checkNetwork());
-  // Only check sandbox readiness if a sandbox plugin is enabled
-  // in at least one tenant. No point warning about missing SDK
-  // when nobody uses it.
+  // Only check sandbox readiness if a sandbox plugin is actually
+  // installed on disk AND enabled in at least one tenant.
   const earlyEnabledIds = collectEnabledPluginIds();
-  if (earlyEnabledIds.has("microsandbox") || earlyEnabledIds.has("openshell")) {
+  const sandboxPluginInstalled = ["microsandbox", "openshell"].some((id) =>
+    fs.existsSync(path.join(getBuiltinConfigDir(), "plugins", id, "manifest.json")),
+  );
+  if (sandboxPluginInstalled && (earlyEnabledIds.has("microsandbox") || earlyEnabledIds.has("openshell"))) {
     groups.push(await checkSandbox({ full: opts.probeSandbox }));
   }
   groups.push(...checkTenants());
