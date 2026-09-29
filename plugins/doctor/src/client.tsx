@@ -78,31 +78,40 @@ function LineItem({
   groupTitle: string;
   onPin: (line: CheckLine, group: string) => void;
 }) {
-  const [hovered, setHovered] = useState(false);
   const actionable = line.severity !== "ok";
 
-  return (
+  const row = (
     <div
-      className="flex items-start gap-2 px-3 py-1"
-      onMouseEnter={() => actionable && setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={[
+        "flex items-start gap-2 px-3 py-1 rounded-md transition-colors",
+        actionable
+          ? "cursor-pointer hover:bg-white/[0.06]"
+          : "",
+      ].join(" ")}
+      onClick={actionable ? () => onPin(line, groupTitle) : undefined}
+      role={actionable ? "button" : undefined}
+      tabIndex={actionable ? 0 : undefined}
+      onKeyDown={actionable ? (e) => { if (e.key === "Enter" || e.key === " ") onPin(line, groupTitle); } : undefined}
+      title={actionable ? "Click to send to chat — agent will diagnose & fix" : undefined}
     >
-      {/* Icon: severity icon morphs into pin button on hover */}
-      {actionable && hovered ? (
-        <button
-          type="button"
-          onClick={() => onPin(line, groupTitle)}
-          className="flex-shrink-0 rounded p-0 transition-transform hover:scale-110"
-          title="Send to chat for diagnosis"
-        >
-          <MessageSquareWarning
-            size={12}
-            className={line.severity === "blocker" ? "text-rose-400" : "text-amber-400"}
-          />
-        </button>
-      ) : (
-        <SeverityIcon severity={line.severity} />
-      )}
+      {/* Icon: severity icon morphs into chat icon on hover */}
+      <span className="flex-shrink-0 relative">
+        {actionable ? (
+          <>
+            <span className="block group-icon">
+              <SeverityIcon severity={line.severity} />
+            </span>
+            <span className="hidden group-icon-hover">
+              <MessageSquareWarning
+                size={12}
+                className={line.severity === "blocker" ? "text-rose-400" : "text-amber-400"}
+              />
+            </span>
+          </>
+        ) : (
+          <SeverityIcon severity={line.severity} />
+        )}
+      </span>
       <div className="min-w-0 flex-1">
         <span className="text-[11px] text-fg-default">{line.text}</span>
         {line.detail && (
@@ -111,9 +120,28 @@ function LineItem({
           </div>
         )}
       </div>
+      {actionable && (
+        <span className="hidden group-hover-hint flex-shrink-0 text-[9px] text-fg-faint/60 self-center whitespace-nowrap">
+          click to fix →
+        </span>
+      )}
     </div>
   );
+
+  // Wrap actionable lines in a group so we can swap icons + show hint on hover via CSS
+  if (!actionable) return row;
+  return <div className="group/fix">{injectLineHoverStyles}{row}</div>;
 }
+
+// CSS-only hover swap: avoids React state thrash on rapid mouse movement.
+// .group-icon / .group-icon-hover / .group-hover-hint toggle via parent .group\/fix:hover
+const injectLineHoverStyles = (
+  <style>{`
+    .group\/fix:hover .group-icon { display: none !important; }
+    .group\/fix:hover .group-icon-hover { display: block !important; }
+    .group\/fix:hover .group-hover-hint { display: block !important; }
+  `}</style>
+);
 
 // ── Group component ────────────────────────────────────────────
 
