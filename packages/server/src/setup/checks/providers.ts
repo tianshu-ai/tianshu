@@ -37,6 +37,23 @@ function isOpenAIBaseUrl(baseUrl?: string): boolean {
   }
 }
 
+/** True for localhost, 127.x, private IPs, or non-official cloud endpoints. */
+function isLocalOrCustomUrl(baseUrl?: string): boolean {
+  if (!baseUrl) return true; // no URL = env-var driven, treat as custom
+  try {
+    const host = new URL(baseUrl).hostname;
+    if (host === "localhost" || host === "127.0.0.1" || host.startsWith("192.168.") || host.startsWith("10.")) return true;
+    // Known official endpoints that should support /v1/models probe
+    const officialHosts = [
+      "api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com",
+      "api.mistral.ai", "api.groq.com",
+    ];
+    return !officialHosts.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return true;
+  }
+}
+
 /**
  * The `api` values pi-ai's register-builtins.ts knows. Anything
  * outside this set throws "No API provider registered" at first
@@ -299,9 +316,15 @@ export async function checkProviders(
           detail: `${baseDetail}; ${probeRes.latencyMs}ms`,
         });
       } else {
+        // Probe failures on local/self-hosted providers are expected
+        // (custom gateways rarely expose /v1/models). Only warn for
+        // official cloud endpoints where probe should work.
+        const isLocal = isLocalOrCustomUrl(entry.baseUrl);
         lines.push({
-          severity: "warning",
-          text: `${id}: probe failed`,
+          severity: isLocal ? "ok" : "warning",
+          text: isLocal
+            ? `${id} configured (probe skipped — local/custom endpoint)`
+            : `${id}: probe failed`,
           detail: `${baseDetail}. ${probeRes.error}`,
         });
       }
