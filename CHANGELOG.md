@@ -6,6 +6,17 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.69.3](https://github.com/tianshu-ai/tianshu/compare/v0.69.2...v0.69.3) (2026-09-29)
+
+
+### Bug Fixes
+
+* **admin:** hide auth pages in no-auth mode ([746db16](https://github.com/tianshu-ai/tianshu/commit/746db16b5003fd0d251e4aa73752ff7c89c9ffa2))
+* **auth:** allow tenant switching in no-auth mode ([8430908](https://github.com/tianshu-ai/tianshu/commit/843090837030cd3bdd4b3302820e8fcd8bf99d77))
+* **auth:** filter disabled tenants from no-auth tenant list ([d1a3255](https://github.com/tianshu-ai/tianshu/commit/d1a3255c5e77f81b6c199831f3bcbbf33856f1ed))
+* **auth:** force admin identity in no-auth mode ([18f3fd7](https://github.com/tianshu-ai/tianshu/commit/18f3fd7b2605e8bfb8e90e4730c6eb378225cb47))
+* **board:** add allow-downloads to iframe sandbox ([1be2f4e](https://github.com/tianshu-ai/tianshu/commit/1be2f4ef71762a6e1d69555921c23654b9e28258))
+
 ## [0.69.2](https://github.com/tianshu-ai/tianshu/compare/v0.69.1...v0.69.2) (2026-09-29)
 
 
