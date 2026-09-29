@@ -33,6 +33,13 @@ describe("checkRuntime", () => {
 });
 
 describe("checkTenants (tenant + user + plugin topology)", () => {
+  // Helper: checkTenants now returns CheckGroup[] (one per tenant).
+  // Flatten all lines for backward-compatible assertions.
+  function flatCheck(opts: Parameters<typeof checkTenants>[0]) {
+    const groups = checkTenants(opts);
+    return { groups, lines: groups.flatMap((g) => g.lines) };
+  }
+
   // Spin a fake builtinConfig dir + ~/.tianshu home, so the
   // check runs against a controllable layout. These tests pin
   // the user-facing line text — the original doctor mis-rendered
@@ -96,7 +103,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
   }
 
   it("warns when no tenants on disk", () => {
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     expect(r.lines[0]!.severity).toBe("warning");
     expect(r.lines[0]!.text).toMatch(/no tenants on disk/);
   });
@@ -112,10 +119,11 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       { plugins: { files: { enabled: true } } },
       ["alice", "bob"],
     );
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     const text = r.lines.map((l) => l.text).join("\n");
-    // Tenants in sorted order.
-    expect(text).toMatch(/tenant 'alpha'[\s\S]*tenant 'default'/);
+    // Tenants in sorted order (group titles).
+    const titles = r.groups.map((g) => g.title);
+    expect(titles.indexOf("Tenant: alpha")).toBeLessThan(titles.indexOf("Tenant: default"));
     expect(text).toMatch(/users \(2\): alice, bob/);
     expect(text).toMatch(/users \(1\): dev/);
     // Enabled plugin lists are sorted, no microsandbox in either.
@@ -128,7 +136,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
     // doctor to surface it as disabled rather than silently drop
     // it (the original bug pattern).
     seedTenant("default", { plugins: { files: { enabled: true } } }, ["dev"]);
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     const text = r.lines.map((l) => l.text).join("\n");
     expect(text).toMatch(/disabled plugins \(2\): microsandbox, workboard/);
   });
@@ -139,7 +147,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       { plugins: { ghost: { enabled: true } } },
       ["dev"],
     );
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     const unknownLine = r.lines.find((l) =>
       l.text.includes("unknown plugins in config"),
     );
@@ -152,7 +160,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
     fs.mkdirSync(path.join(home, "tenants", "default.deleted.999"), {
       recursive: true,
     });
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     expect(r.lines[0]!.text).toMatch(/no tenants on disk/);
   });
 
@@ -162,9 +170,12 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       { defaultModel: "openai/gpt-4o", plugins: {} },
       ["dev"],
     );
-    const r = checkTenants({ builtinConfigDir, home });
-    const header = r.lines.find((l) => l.text === "tenant 'default'");
-    expect(header?.detail).toMatch(/openai\/gpt-4o/);
+    const r = flatCheck({ builtinConfigDir, home });
+    const group = r.groups.find((g) => g.title === "Tenant: default");
+    expect(group).toBeDefined();
+    // defaultModel should appear in one of the lines
+    const modelLine = group!.lines.find((l) => l.text.includes("defaultModel") || l.detail?.includes("openai/gpt-4o"));
+    expect(modelLine).toBeDefined();
   });
 
   it("warns 'workboard: no defaultModel resolvable' when workboard on + no model", () => {
@@ -176,7 +187,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       { plugins: { workboard: { enabled: true } } },
       ["dev"],
     );
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     const w = r.lines.find((l) => l.text.includes("workboard: no defaultModel"));
     expect(w?.severity).toBe("warning");
   });
@@ -190,7 +201,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       },
       ["dev"],
     );
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     expect(r.lines.find((l) => l.text.includes("workboard: no defaultModel"))).toBeUndefined();
   });
 
@@ -230,7 +241,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       description: "Research worker.",
       // no modelId → inherits tenant defaultModel
     });
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     const lines = r.lines;
     const coderLine = lines.find((l) => l.text.includes("worker 'coder'"));
     expect(coderLine?.severity).toBe("ok");
@@ -267,7 +278,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       modelId: "ghosthouse/claude-9999",
       description: "Pins a model that doesn't exist.",
     });
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     const ghostLine = r.lines.find((l) => l.text.includes("worker 'ghost'"));
     expect(ghostLine?.severity).toBe("blocker");
     expect(ghostLine?.text).toMatch(/not in catalog/);
@@ -297,7 +308,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       enabled: true,
       description: "Echo doesn't use an LLM.",
     });
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     expect(
       r.lines.find((l) => l.text.includes("worker 'echo-demo'")),
     ).toBeUndefined();
@@ -327,7 +338,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       modelId: "ghosthouse/whatever", // would normally blocker
       description: "Pinned to bad model but disabled.",
     });
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     expect(
       r.lines.find((l) => l.text.includes("worker 'disabled-one'")),
     ).toBeUndefined();
@@ -342,7 +353,7 @@ describe("checkTenants (tenant + user + plugin topology)", () => {
       },
       ["dev"],
     );
-    const r = checkTenants({ builtinConfigDir, home });
+    const r = flatCheck({ builtinConfigDir, home });
     const w = r.lines.find((l) => l.text.includes("deprecated 'worker'"));
     expect(w?.severity).toBe("warning");
   });
