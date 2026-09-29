@@ -252,7 +252,7 @@ function BoardPanel(_props: PanelProps) {
           ref={iframeRef}
           src={src}
           title={selected}
-          sandbox="allow-scripts allow-forms allow-popups allow-same-origin"
+          sandbox="allow-scripts allow-forms allow-popups allow-same-origin allow-downloads"
           className="w-full flex-1 border-0 bg-white"
         />
       ) : (
