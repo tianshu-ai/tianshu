@@ -314,30 +314,34 @@ export async function checkProviders(
     }
   }
 
-  // defaultModel should resolve to one of the configured providers.
-  const def = config.defaultModel;
-  if (!def) {
-    lines.push({
-      severity: "warning",
-      text: "no defaultModel set",
-      detail: "callers without an explicit modelId will fail. Set `defaultModel` in config.json.",
-    });
-  } else {
+  // Model selection: prefer models.defaultModelId (canonical since
+  // v0.66), fall back to deprecated top-level defaultModel, then
+  // auto-pick the first model in the catalog. Only warn when the
+  // explicit setting points at an unknown provider.
+  const def = config.models?.defaultModelId ?? config.defaultModel;
+  if (def) {
     const slash = def.indexOf("/");
     const provId = slash > 0 ? def.slice(0, slash) : null;
     if (provId && providers[provId]) {
       lines.push({
         severity: "ok",
-        text: `defaultModel resolves`,
+        text: `defaultModelId resolves`,
         detail: def,
       });
     } else {
       lines.push({
         severity: "blocker",
-        text: `defaultModel references unknown provider`,
+        text: `defaultModelId references unknown provider`,
         detail: `\`${def}\` — provider id is "${provId ?? "(missing /)"}"; known: ${ids.join(", ")}`,
       });
     }
+  } else {
+    // No explicit default — auto-pick from catalog (first provider's
+    // first model). Not a problem, just informational.
+    lines.push({
+      severity: "ok",
+      text: `no explicit defaultModelId — auto-pick from catalog`,
+    });
   }
 
   // Deprecated `worker:` block on global config — same fate as on
