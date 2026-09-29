@@ -121,6 +121,9 @@ function parseRaw(source: string): ParsedRaw {
         list = parseInlineList(rest, lineNo);
       } else {
         // Multi-line: `- entry` per line, until next non-indented line.
+        // Also supports YAML-style `- |` literal blocks: all
+        // subsequent lines indented deeper than the `- ` prefix
+        // are joined with newlines into a single entry.
         while (i < lines.length) {
           const next = lines[i]!;
           const nextStripped = stripComment(next);
@@ -129,16 +132,44 @@ function parseRaw(source: string): ParsedRaw {
             continue;
           }
           if (!/^\s/.test(nextStripped)) break; // back to top level
-          const m = /^\s+-\s*(.*)$/.exec(nextStripped);
+          const m = /^(\s+)-\s*(.*)$/.exec(nextStripped);
           if (!m) {
             throw new SandboxfileError(
               `expected "- entry" under "${key}:", got "${nextStripped.trim()}"`,
               i + 1,
             );
           }
-          const entry = unquote(m[1]!.trim());
-          if (entry.length > 0) list.push(entry);
+          const dashIndent = m[1]!.length; // indent of the `- `
+          const value = m[2]!.trim();
           i++;
+
+          // `- |` or `- |\n` → literal block: collect indented continuation lines
+          if (value === "|" || value === "|-") {
+            const blockLines: string[] = [];
+            while (i < lines.length) {
+              const bl = lines[i]!;
+              // Empty lines inside the block are preserved
+              if (bl.trim().length === 0) {
+                blockLines.push("");
+                i++;
+                continue;
+              }
+              // Must be indented deeper than the dash
+              const blIndent = bl.search(/\S/);
+              if (blIndent <= dashIndent) break;
+              blockLines.push(bl.slice(dashIndent + 2)); // strip block indent
+              i++;
+            }
+            // Trim trailing empty lines
+            while (blockLines.length > 0 && blockLines[blockLines.length - 1] === "") {
+              blockLines.pop();
+            }
+            const joined = blockLines.join("\n");
+            if (joined.length > 0) list.push(joined);
+          } else {
+            const entry = unquote(value);
+            if (entry.length > 0) list.push(entry);
+          }
         }
       }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
