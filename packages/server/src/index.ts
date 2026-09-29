@@ -654,6 +654,15 @@ if (!(ignoreSetupArg || ignoreSetupEnv)) {
   }
 }
 
+// Expose collectDoctorReport to the doctor plugin via globalThis.
+// The plugin runs in the same process but can't import @tianshu/server
+// (circular dep). Same global-slot pattern the plugin-sdk uses on the
+// client side (useComposer, useTheme, etc.).
+{
+  const { collectDoctorReport } = await import("./setup/doctor.js");
+  (globalThis as unknown as Record<string, unknown>).__tianshuDoctorCheck__ = collectDoctorReport;
+}
+
 // Create the dev tenant + dev user on first boot if global config allows.
 const bootstrap = bootstrapDevTenantIfNeeded(globalOps, loadGlobalConfig());
 if (bootstrap.created) {

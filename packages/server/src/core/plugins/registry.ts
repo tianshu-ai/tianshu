@@ -53,6 +53,7 @@ import type {
 import path from "node:path";
 import { isCapabilityName, KNOWN_CAPABILITIES } from "@tianshu-ai/plugin-sdk";
 import type { TenantContext } from "../tenant-context.js";
+import { SETUP_TENANT_ID } from "../dev-mode.js";
 import { findEmbeddingModel } from "../llm.js";
 import { discoverPlugins, type DiscoveredPlugin } from "./discovery.js";
 import {
@@ -330,9 +331,17 @@ export class PluginRegistry {
     // Compute activation order over the subset enabled in tenant
     // config. `requires` edges only matter between enabled plugins;
     // a disabled plugin can't satisfy anything.
+    //
+    // Maintenance tenant: plugins with `maintenanceOnly: true` are
+    // auto-enabled regardless of config — they exist specifically
+    // for the maintenance surface (e.g. System Doctor).
+    const isMaintenance = ctx.tenantId === SETUP_TENANT_ID;
     const enabledIds = new Set(
       discovery.plugins
-        .filter((p) => cfg[p.manifest.id]?.enabled === true)
+        .filter((p) =>
+          cfg[p.manifest.id]?.enabled === true ||
+          (isMaintenance && p.manifest.maintenanceOnly === true)
+        )
         .map((p) => p.manifest.id),
     );
 

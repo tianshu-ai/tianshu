@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Wrench, X } from "lucide-react";
+import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Stethoscope, Wrench, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
@@ -8,6 +8,7 @@ import ChatInput from "./ChatInput";
 import ModelSelector from "./ModelSelector";
 import PluginManager from "./PluginManager";
 import PluginTopBarButtons from "./PluginTopBarButtons";
+import { usePluginStore } from "../stores/plugin-store";
 import VoiceSubtitleView from "./VoiceSubtitleView";
 import { useT } from "../hooks/useT";
 import { useVoiceMode } from "../hooks/useVoiceMode";
@@ -139,24 +140,7 @@ export default function ChatArea() {
 
       {/* Maintenance mode banner — shown when in maintenance tenant */}
       {me?.tenantId === "maintenance" && (
-        <div className="flex items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-2">
-          <div className="flex items-center gap-2 text-sm text-amber-400">
-            <Wrench size={14} className="flex-shrink-0" />
-            <span className="font-medium">{t("chat.maintenanceMode")}</span>
-            <span className="text-xs text-amber-400/70">{t("chat.maintenanceHint")}</span>
-          </div>
-          <button
-            type="button"
-            onClick={async () => {
-              try { await api.switchTenant("default"); } catch { /* ignore */ }
-              window.location.assign(`/tenants/default/users/${me?.userId ?? "admin"}`);
-            }}
-            className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20"
-          >
-            <X size={12} />
-            <span>{t("chat.exitMaintenance")}</span>
-          </button>
-        </div>
+        <MaintenanceBanner userId={me?.userId} />
       )}
 
       {/* Messages */}
@@ -278,6 +262,55 @@ export default function ChatArea() {
         />
       )}
     </main>
+  );
+}
+
+/**
+ * Maintenance-mode banner with the "System Doctor" toggle and
+ * an exit button. Renders the Stethoscope button inline so
+ * PluginTopBarButtons (hidden in maintenance) isn't needed.
+ */
+function MaintenanceBanner({ userId }: { userId?: string }) {
+  const t = useT();
+  const openPanel = usePluginStore((s) => s.openPanel);
+  const setOpenPanel = usePluginStore((s) => s.setOpenPanel);
+  const isDoctorOpen = openPanel === "doctor.main";
+
+  return (
+    <div className="flex items-center justify-between border-b border-amber-500/30 bg-amber-500/10 px-4 py-2">
+      <div className="flex items-center gap-2 text-sm text-amber-400">
+        <Wrench size={14} className="flex-shrink-0" />
+        <span className="font-medium">{t("chat.maintenanceMode")}</span>
+        <span className="text-xs text-amber-400/70">{t("chat.maintenanceHint")}</span>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={() => setOpenPanel(isDoctorOpen ? null : "doctor.main")}
+          className={[
+            "flex items-center gap-1 rounded-md px-2 py-1 text-xs transition-colors",
+            isDoctorOpen
+              ? "bg-amber-500/30 text-amber-200"
+              : "text-amber-400 hover:bg-amber-500/20",
+          ].join(" ")}
+          title="System Doctor"
+        >
+          <Stethoscope size={12} />
+          <span>Doctor</span>
+        </button>
+        <button
+          type="button"
+          onClick={async () => {
+            try { await api.switchTenant("default"); } catch { /* ignore */ }
+            window.location.assign(`/tenants/default/users/${userId ?? "admin"}`);
+          }}
+          className="flex items-center gap-1 rounded-md px-2 py-1 text-xs text-amber-400 transition-colors hover:bg-amber-500/20"
+        >
+          <X size={12} />
+          <span>{t("chat.exitMaintenance")}</span>
+        </button>
+      </div>
+    </div>
   );
 }
 

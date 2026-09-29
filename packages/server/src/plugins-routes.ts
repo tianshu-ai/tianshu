@@ -18,6 +18,7 @@ import {
   writeTenantConfig,
   type TenantContext,
 } from "./core/index.js";
+import { SETUP_TENANT_ID } from "./core/dev-mode.js";
 import type {
   PluginConfigSchema,
   PluginConfigField,
@@ -764,7 +765,11 @@ export async function listPluginsForTenant(
       { config?: Record<string, unknown> }
     >;
 
-  return registry.listForTenant(tenant.tenantId).map((e) => {
+  return registry.listForTenant(tenant.tenantId)
+    // Hide maintenanceOnly plugins from normal tenants — they only
+    // exist for the maintenance surface (System Doctor, etc.).
+    .filter((e) => !(e.manifest.maintenanceOnly && tenant.tenantId !== SETUP_TENANT_ID))
+    .map((e) => {
     const rawConfig = tenantConfigPlugins[e.manifest.id]?.config ?? {};
     // Redact any `secret`-kind fields before exposing the config
     // to the browser. The plugin admin form only needs to know

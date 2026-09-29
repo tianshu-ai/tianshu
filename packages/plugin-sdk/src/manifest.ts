@@ -20,6 +20,14 @@ export interface PluginManifest {
    */
   category?: string;
   /**
+   * When true, this plugin is only visible and auto-enabled in the
+   * maintenance tenant (`SETUP_TENANT_ID`). Normal tenants never
+   * see it in the Plugin Manager and cannot enable it. Used for
+   * host-level diagnostic surfaces (e.g. the System Doctor panel)
+   * that only make sense during setup / maintenance.
+   */
+  maintenanceOnly?: boolean;
+  /**
    * Optional mutual-exclusion group. At most one plugin per group may
    * be enabled in a tenant at a time — enabling one auto-disables the
    * others in the same group (radio-button behaviour). Use this for

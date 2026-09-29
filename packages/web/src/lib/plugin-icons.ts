@@ -21,6 +21,7 @@ import {
   Paintbrush,
   Plug,
   Search,
+  Stethoscope,
   Terminal,
   Wrench,
 } from "lucide-react";
@@ -41,6 +42,7 @@ export const ICONS_BY_NAME: Record<string, ComponentType<{ size?: number }>> = {
   Paintbrush,
   Plug,
   Search,
+  Stethoscope,
   Terminal,
   Wrench,
 };
