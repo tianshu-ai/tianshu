@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.69.0](https://github.com/tianshu-ai/tianshu/compare/v0.68.4...v0.69.0) (2026-09-29)
+
+
+### Features
+
+* **doctor:** check launchd/systemd service path consistency ([3e8b7f3](https://github.com/tianshu-ai/tianshu/commit/3e8b7f3177f9a24f9b16114732eae0818cb301fe))
+* **web:** copy buttons for messages and code blocks ([d5387d5](https://github.com/tianshu-ai/tianshu/commit/d5387d545b47a391695b1d81bf9e54eaa7468fd5))
+
 ## [0.68.4](https://github.com/tianshu-ai/tianshu/compare/v0.68.3...v0.68.4) (2026-09-28)
 
 
