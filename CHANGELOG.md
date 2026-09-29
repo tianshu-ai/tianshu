@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.70.0](https://github.com/tianshu-ai/tianshu/compare/v0.69.3...v0.70.0) (2026-09-29)
+
+
+### Features
+
+* **asr:** add Whisper base, small, large-v3, and distil-large-v3 models ([3032a94](https://github.com/tianshu-ai/tianshu/commit/3032a94c5f8a76e9bef67783e90f398ddd5ab89c))
+
 ## [0.69.3](https://github.com/tianshu-ai/tianshu/compare/v0.69.2...v0.69.3) (2026-09-29)
 
 
