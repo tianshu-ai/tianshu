@@ -87,7 +87,7 @@ export interface CliAgentOpts {
   serverUrl?: string;
 }
 
-const SETUP_SYSTEM_PROMPT = `You are the tianshu setup assistant.
+export const SETUP_SYSTEM_PROMPT = `You are the tianshu setup assistant.
 
 The user just finished configuring an LLM provider. Your job is
 to walk them through the remaining setup decisions — not to

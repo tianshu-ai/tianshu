@@ -94,6 +94,11 @@ import {
   type ResolvedModelInfo,
   type TenantContext,
 } from "../core/index.js";
+import { SETUP_TENANT_ID } from "../core/dev-mode.js";
+import {
+  buildSetupAgentTools,
+  SETUP_SYSTEM_PROMPT,
+} from "../setup/setup-tools.js";
 import { loadMainAgentConfig } from "../core/main-agent-config.js";
 import { buildToolset } from "../tools/index.js";
 import { adaptToolset, isAdapterError } from "./agent-tool-adapter.js";
@@ -561,7 +566,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // refresh the admin route does, but with a tighter deadline so
   // we don't block a chat turn for too long when an upstream is
   // genuinely down.
-  if (pluginRegistry) {
+  // ── Setup agent fast-path ─────────────────────────────────────
+  // The _setup tenant runs the setup assistant (shared with the CLI
+  // wizard). No plugin tools, no skills, no plugin fragments — just
+  // the setup toolset and the setup system prompt.
+  const isSetupTenant = ctx.tenantId === SETUP_TENANT_ID;
+
+  if (pluginRegistry && !isSetupTenant) {
     try {
       await pluginRegistry.refreshStaleToolsets(ctx.tenantId, 1500);
     } catch {
@@ -572,7 +583,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       // had.
     }
   }
-  const pluginTools = pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
+  const pluginTools = isSetupTenant
+    ? buildSetupAgentTools().map((t) => ({ pluginId: "_setup" as string, tool: t as any }))
+    : pluginRegistry?.toolsForTenant(ctx.tenantId) ?? [];
   // Progressive-history recall tools. Injected as pseudo-plugin tools
   // under pluginId="_host" so they share the AgentToolContext wiring
   // (tenantId, sessionId, log). Paired with progressiveHistoryTransform
@@ -582,18 +595,20 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // recall_* tools only read from the current tenant's DB (a session
   // never spans tenants). Reject any cross-tenant lookup up front
   // rather than opening some other pool the handler can't reach.
-  const recallTools = buildRecallHostTools({
-    openTenant: (tenantId) => {
-      if (tenantId !== ctx.tenantId) {
-        throw new Error(
-          `recall_*: cross-tenant lookup not permitted (want=${tenantId} current=${ctx.tenantId})`,
-        );
-      }
-      return { db: ctx.db, tenantId: ctx.tenantId };
-    },
-  });
-  for (const t of recallTools) {
-    pluginTools.push({ pluginId: "_host", tool: t });
+  if (!isSetupTenant) {
+    const recallTools = buildRecallHostTools({
+      openTenant: (tenantId) => {
+        if (tenantId !== ctx.tenantId) {
+          throw new Error(
+            `recall_*: cross-tenant lookup not permitted (want=${tenantId} current=${ctx.tenantId})`,
+          );
+        }
+        return { db: ctx.db, tenantId: ctx.tenantId };
+      },
+    });
+    for (const t of recallTools) {
+      pluginTools.push({ pluginId: "_host", tool: t });
+    }
   }
   // Skill priority (later wins on the dedup key, which is the
   // directory name for tenant skills and the contribution id for
@@ -605,17 +620,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // and carry tenant-config:/// filePaths so the system prompt's
   // <available_skills> block can advertise them in the same shape
   // as user-authored skills.
-  const allSkills = [
-    ...(pluginRegistry?.mirroredSkillsForTenant(ctx.tenantId) ?? []),
-    ...loadTenantSkills({
-      tenantId: ctx.tenantId,
-      scope: { kind: "main" },
-      onFailure: (f) =>
-        console.warn(
-          `[tenant-skills:${f.scope}] ${f.filePath}: ${f.reason}`,
-        ),
-    }),
-  ];
+  const allSkills: LoadedSkill[] = isSetupTenant
+    ? []
+    : [
+        ...(pluginRegistry?.mirroredSkillsForTenant(ctx.tenantId) ?? []),
+        ...loadTenantSkills({
+          tenantId: ctx.tenantId,
+          scope: { kind: "main" },
+          onFailure: (f) =>
+            console.warn(
+              `[tenant-skills:${f.scope}] ${f.filePath}: ${f.reason}`,
+            ),
+        }),
+      ];
   // Build a set of registered tool names from pluginTools' schemas.
   // We don't yet know what `available()` will say, so we use the
   // schema name; this slightly over-includes skills that depend on
@@ -633,8 +650,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // injected on every turn for every active plugin in the tenant.
   // Workers don't get these (the agent-loop's worker path uses a
   // separate prompt path).
-  const pluginFragments =
-    pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
+  const pluginFragments = isSetupTenant
+    ? []
+    : pluginRegistry?.systemPromptFragmentsForTenant(ctx.tenantId) ?? [];
   // Channel-session awareness: if this session is bound to a chat
   // platform (wechat / telegram / ...), feed the tagging into the
   // toolset (so channel-only tools become visible) AND into the
@@ -856,20 +874,22 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
 
   const toolResultCfg = ctx.config.models?.toolResults;
   const adapted = adaptToolset(effectiveToolset);
-  const systemPrompt = defaultSystemPrompt(
-    ctx,
-    userId,
-    effectiveSkills,
-    [...channelFragments, ...pluginFragments],
-    {
-      tenantPrompt: mainConfig.tenantPrompt,
-      executionBias: mainConfig.overrides.executionBias,
-      replyStyle: mainConfig.overrides.replyStyle,
-      userOnboarding: mainConfig.overrides.userOnboarding,
-      customFragments: mainConfig.customFragments,
-    },
-    { voiceMode: args.voiceMode === true },
-  );
+  const systemPrompt = isSetupTenant
+    ? SETUP_SYSTEM_PROMPT
+    : defaultSystemPrompt(
+        ctx,
+        userId,
+        effectiveSkills,
+        [...channelFragments, ...pluginFragments],
+        {
+          tenantPrompt: mainConfig.tenantPrompt,
+          executionBias: mainConfig.overrides.executionBias,
+          replyStyle: mainConfig.overrides.replyStyle,
+          userOnboarding: mainConfig.overrides.userOnboarding,
+          customFragments: mainConfig.customFragments,
+        },
+        { voiceMode: args.voiceMode === true },
+      );
   dumpSystemPrompt({ ctx, role: "main", userId, systemPrompt });
   // pi 0.85: Context threads through every harness / lane / session
   // call. Root context cancels when `signal` aborts.

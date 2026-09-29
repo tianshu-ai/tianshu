@@ -19,6 +19,7 @@ import { GlobalOps } from "./global-ops.js";
 import { getTianshuHome } from "./paths.js";
 
 export const DEV_TENANT_ID = "default";
+export const SETUP_TENANT_ID = "_setup";
 export const DEV_USER_ID = "admin";
 export const DEV_USER_EXTERNAL_ID = "dev@local";
 export const DEV_USER_PROVIDER = "dev";
@@ -72,4 +73,35 @@ export function bootstrapDevTenantIfNeeded(
   );
 
   return { created: true, tenantId: DEV_TENANT_ID, userId: DEV_USER_ID };
+}
+
+/**
+ * Bootstrap the `_setup` system tenant — the in-browser setup agent.
+ * Unlike the dev tenant, this is always created (not gated by
+ * autoCreateDefault or the presence of other tenants) so the super-admin
+ * always has a setup surface.
+ *
+ * Uses GlobalOps.createSystem() which bypasses the user-facing tenant-id
+ * validation (the `_` prefix is system-reserved).
+ */
+export function bootstrapSetupTenant(
+  ops?: GlobalOps,
+  _cfg?: GlobalConfig,
+): BootstrapResult {
+  const home = getTianshuHome();
+  const globalOps = ops ?? new GlobalOps({ home });
+
+  if (globalOps.existsSystem(SETUP_TENANT_ID)) {
+    return { created: false, tenantId: SETUP_TENANT_ID, userId: null };
+  }
+
+  const ctx = globalOps.createSystem(SETUP_TENANT_ID);
+  globalOps.ensureUser(ctx, {
+    userId: DEV_USER_ID,
+    provider: "system",
+    externalId: "admin@setup",
+    displayName: "Setup Admin",
+  });
+
+  return { created: true, tenantId: SETUP_TENANT_ID, userId: DEV_USER_ID };
 }

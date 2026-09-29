@@ -93,10 +93,12 @@ export {
 
 export {
   bootstrapDevTenantIfNeeded,
+  bootstrapSetupTenant,
   DEV_TENANT_ID,
   DEV_USER_EXTERNAL_ID,
   DEV_USER_ID,
   DEV_USER_PROVIDER,
+  SETUP_TENANT_ID,
   type BootstrapResult,
 } from "./dev-mode.js";
 

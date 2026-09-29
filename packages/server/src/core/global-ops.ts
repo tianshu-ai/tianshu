@@ -155,6 +155,38 @@ export class GlobalOps {
       .run(args.userId, args.externalId, args.provider, args.displayName ?? null, now);
   }
 
+  // ── System-reserved tenants (e.g. _setup) ──────────────────────
+  // These bypass user-facing tenant id validation since system ids
+  // start with '_' which the regex rejects. Used by the setup agent
+  // bootstrap and middleware path.
+
+  /** Check if a system-reserved tenant exists on disk. */
+  existsSystem(tenantId: string): boolean {
+    const root = getTenantRoot(tenantId, this.home);
+    return fs.existsSync(root) && !isSoftDeletedDirName(path.basename(root));
+  }
+
+  /** Open a system-reserved tenant, bypassing user-facing id validation. */
+  openSystem(tenantId: string): TenantContext {
+    if (!this.existsSystem(tenantId)) throw new TenantNotFoundError(tenantId);
+    const db = this.pool.get(tenantId);
+    return buildTenantContext(tenantId, db, this.home);
+  }
+
+  /** Create a system-reserved tenant if it doesn't exist. Idempotent. */
+  createSystem(tenantId: string): TenantContext {
+    if (this.existsSystem(tenantId)) return this.openSystem(tenantId);
+    const root = getTenantRoot(tenantId, this.home);
+    fs.mkdirSync(root, { recursive: true });
+    fs.mkdirSync(getTenantSecretsDir(tenantId, this.home), {
+      recursive: true,
+      mode: 0o700,
+    });
+    writeTenantConfig(tenantId, {}, this.home);
+    const db = this.pool.get(tenantId);
+    return buildTenantContext(tenantId, db, this.home);
+  }
+
   // For tests / shutdown.
   closePool(): void {
     this.pool.closeAll();

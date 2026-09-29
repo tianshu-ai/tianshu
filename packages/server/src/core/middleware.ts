@@ -25,8 +25,9 @@
 import type { NextFunction, Request, Response } from "express";
 import { GlobalOps, TenantNotFoundError } from "./global-ops.js";
 import type { TenantContext } from "./tenant-context.js";
-import { DEV_TENANT_ID, DEV_USER_ID } from "./dev-mode.js";
-import { isTenantDisabled } from "./config.js";
+import { DEV_TENANT_ID, DEV_USER_ID, SETUP_TENANT_ID } from "./dev-mode.js";
+import { isTenantDisabled, loadGlobalConfig } from "./config.js";
+import { isSuperAdmin } from "./auth/identity.js";
 import {
   DEV_RESOLVER_CHAIN,
   runIdentityChain,
@@ -146,6 +147,66 @@ export function tenantMiddleware(opts: TenantMiddlewareOpts) {
         error: "tenant_disabled",
         tenantId: resolution.tenantId,
       });
+      return;
+    }
+
+    // ── _setup tenant: super-admin gate + system-level open ────────
+    // The _setup tenant id starts with '_' (system-reserved prefix)
+    // so it bypasses normal tenant-id validation. Only super-admins
+    // may enter; in no-auth mode everyone is de-facto super-admin.
+    if (resolution.tenantId === SETUP_TENANT_ID) {
+      const authCfg = loadGlobalConfig().auth ?? {};
+      if (authCfg.enabled) {
+        const meta = resolution.meta ?? {};
+        const isSuper = isSuperAdmin(authCfg, {
+          email: meta.email,
+          username: meta.provider === "local" ? meta.name : undefined,
+        });
+        if (!isSuper) {
+          res.status(403).json({
+            error: "setup_requires_super_admin",
+            detail:
+              "The _setup tenant is restricted to super admins.",
+          });
+          return;
+        }
+      }
+      let setupTenant: TenantContext;
+      try {
+        setupTenant = opts.ops.openSystem(SETUP_TENANT_ID);
+      } catch (err) {
+        if (err instanceof TenantNotFoundError) {
+          res
+            .status(404)
+            .json({ error: "setup_tenant_not_found" });
+          return;
+        }
+        next(err);
+        return;
+      }
+      req.ctx = {
+        tenant: setupTenant,
+        userId: resolution.userId,
+        identitySource: resolution.source,
+        identityMeta: resolution.meta,
+      };
+      if (opts.ensureTenantUser) {
+        const key = `${setupTenant.tenantId}\0${resolution.userId}`;
+        if (!seededTenantUsers.has(key)) {
+          try {
+            opts.ensureTenantUser(setupTenant, {
+              userId: resolution.userId,
+              source: resolution.source,
+              meta: resolution.meta,
+            });
+            seededTenantUsers.add(key);
+          } catch {
+            // leave uncached so a later request retries
+          }
+        }
+      }
+      res.setHeader("X-Tianshu-Identity-Source", resolution.source);
+      next();
       return;
     }
 

@@ -31,6 +31,7 @@ import { readFileSync } from "node:fs";
 
 import {
   bootstrapDevTenantIfNeeded,
+  bootstrapSetupTenant,
   DEV_TENANT_ID,
   DEV_RESOLVER_CHAIN,
   GlobalOps,
@@ -663,6 +664,14 @@ if (bootstrap.created) {
 } else {
   // eslint-disable-next-line no-console
   console.log(`[tianshu] tenants found: [${globalOps.list().join(", ")}]`);
+}
+
+// Create the _setup system tenant so the super-admin can use the
+// in-browser setup assistant. Always created, regardless of other tenants.
+const setupBootstrap = bootstrapSetupTenant(globalOps, loadGlobalConfig());
+if (setupBootstrap.created) {
+  // eslint-disable-next-line no-console
+  console.log(`[tianshu] bootstrapped setup tenant "${setupBootstrap.tenantId}"`);
 }
 
 // Backfill any additive `_tenant/config/` content the host ships

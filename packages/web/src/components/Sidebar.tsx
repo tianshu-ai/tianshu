@@ -7,6 +7,7 @@ import {
   Globe,
   Hash,
   KeyRound,
+  Settings,
   ShieldCheck,
   LogOut,
   Building2,
@@ -119,6 +120,27 @@ export default function Sidebar() {
         <div data-testid="sidebar-workers-anchor">
           <PluginSidebarSections anchor="workers" />
         </div>
+
+        {/* Setup Agent — super-admins only. Switches to the _setup
+         *  system tenant where the in-browser setup assistant runs. */}
+        {me?.superAdmin && me?.tenantId !== "_setup" && (
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await api.switchTenant("_setup");
+              } finally {
+                window.location.assign(
+                  `/tenants/_setup/users/${me?.userId ?? ""}`,
+                );
+              }
+            }}
+            className="flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-fg-muted hover:bg-bg-hover hover:text-fg-default transition-colors"
+          >
+            <Settings size={14} className="flex-shrink-0" />
+            <span className="text-xs">{t("sidebar.setupAgent")}</span>
+          </button>
+        )}
       </div>
 
       <div className="mx-3 my-2 border-b border-border-subtle/50" />

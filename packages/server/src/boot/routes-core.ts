@@ -7,7 +7,7 @@
 // no DB writes, no plugin state mutation.
 
 import express, { type Express, type Request, type Response } from "express";
-import { DEV_TENANT_ID, DEV_USER_ID } from "../core/dev-mode.js";
+import { DEV_TENANT_ID, DEV_USER_ID, SETUP_TENANT_ID } from "../core/dev-mode.js";
 import { listModels, getDefaultModel } from "../core/llm.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import {
@@ -157,7 +157,9 @@ export function mountCoreRoutes(
     // Auth mode: membership + super-admin, minus disabled.
     // No-auth mode: all tenants — the user should be able to
     // freely switch without any auth gating.
-    const tenants = authCfg.enabled
+    // Filter out the _setup system tenant — it has its own sidebar
+    // entry and should not appear in the tenant-switcher dropdown.
+    const tenants = (authCfg.enabled
       ? tenantsForUser(
           authCfg,
           getUserStore(),
@@ -169,7 +171,8 @@ export function mountCoreRoutes(
           deps.listTenants,
           isTenantDisabled,
         )
-      : deps.listTenants().filter((id) => !isTenantDisabled(id));
+      : deps.listTenants().filter((id) => !isTenantDisabled(id))
+    ).filter((id) => id !== SETUP_TENANT_ID);
     const superAdmin = authCfg.enabled
       ? isSuperAdmin(authCfg, {
           email: meta.email,
