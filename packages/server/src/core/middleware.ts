@@ -24,6 +24,7 @@
 
 import type { NextFunction, Request, Response } from "express";
 import { GlobalOps, TenantNotFoundError } from "./global-ops.js";
+import { InvalidTenantIdError } from "./tenant-id.js";
 import type { TenantContext } from "./tenant-context.js";
 import { DEV_TENANT_ID, DEV_USER_ID, SETUP_TENANT_ID } from "./dev-mode.js";
 import { isTenantDisabled, loadGlobalConfig } from "./config.js";
@@ -176,7 +177,7 @@ export function tenantMiddleware(opts: TenantMiddlewareOpts) {
     try {
       tenant = opts.ops.open(resolution.tenantId);
     } catch (err) {
-      if (err instanceof TenantNotFoundError) {
+      if (err instanceof TenantNotFoundError || err instanceof InvalidTenantIdError) {
         // Fall back to default tenant when a resolver claims a
         // tenant that doesn't exist on disk yet. Common in dev:
         // user typo'd ?tenant=foo, or `tianshu tenant delete foo`
