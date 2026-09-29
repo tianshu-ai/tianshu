@@ -59,15 +59,15 @@ export function checkConfig(opts: ConfigCheckOpts = {}): CheckGroup {
     });
   }
 
-  // .env (repo-local) — only a warning if missing. Users can also
-  // export keys directly in their shell, so this isn't a blocker.
+  // .env (repo-local) — purely informational. Users can export
+  // keys directly in their shell or use config.json; .env is optional.
   if (fs.existsSync(envPath)) {
-    lines.push({ severity: "ok", text: `.env exists`, detail: envPath });
+    lines.push({ severity: "ok", text: `.env loaded`, detail: envPath });
   } else {
     lines.push({
-      severity: "warning",
-      text: `.env not found at CWD`,
-      detail: `${envPath} — fine if you exported provider keys via shell; otherwise \`tianshu setup --wizard\` will create one.`,
+      severity: "ok",
+      text: `no .env file (optional)`,
+      detail: `${envPath} — provider keys can be set in config.json or shell environment instead.`,
     });
   }
 
