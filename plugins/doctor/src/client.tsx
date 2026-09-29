@@ -67,6 +67,54 @@ function severityCount(lines: CheckLine[], s: Severity): number {
   return lines.filter((l) => l.severity === s).length;
 }
 
+// ── Line item with hover-to-pin ───────────────────────────────
+
+function LineItem({
+  line,
+  groupTitle,
+  onPin,
+}: {
+  line: CheckLine;
+  groupTitle: string;
+  onPin: (line: CheckLine, group: string) => void;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const actionable = line.severity !== "ok";
+
+  return (
+    <div
+      className="flex items-start gap-2 px-3 py-1"
+      onMouseEnter={() => actionable && setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
+      {/* Icon: severity icon morphs into pin button on hover */}
+      {actionable && hovered ? (
+        <button
+          type="button"
+          onClick={() => onPin(line, groupTitle)}
+          className="flex-shrink-0 rounded p-0 transition-transform hover:scale-110"
+          title="Send to chat for diagnosis"
+        >
+          <MessageSquareWarning
+            size={12}
+            className={line.severity === "blocker" ? "text-rose-400" : "text-amber-400"}
+          />
+        </button>
+      ) : (
+        <SeverityIcon severity={line.severity} />
+      )}
+      <div className="min-w-0 flex-1">
+        <span className="text-[11px] text-fg-default">{line.text}</span>
+        {line.detail && (
+          <div className="text-[10px] text-fg-faint truncate" title={line.detail}>
+            {line.detail}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Group component ────────────────────────────────────────────
 
 function GroupSection({ group, onPin }: { group: CheckGroup; onPin: (line: CheckLine, group: string) => void }) {
@@ -99,30 +147,7 @@ function GroupSection({ group, onPin }: { group: CheckGroup; onPin: (line: Check
       {open && (
         <div className="pb-1.5 pl-5">
           {group.lines.map((line, i) => (
-            <div
-              key={i}
-              className="group/line flex items-start gap-2 px-3 py-1"
-            >
-              <SeverityIcon severity={line.severity} />
-              <div className="min-w-0 flex-1">
-                <span className="text-[11px] text-fg-default">{line.text}</span>
-                {line.detail && (
-                  <div className="text-[10px] text-fg-faint truncate" title={line.detail}>
-                    {line.detail}
-                  </div>
-                )}
-              </div>
-              {line.severity !== "ok" && (
-                <button
-                  type="button"
-                  onClick={() => onPin(line, group.title)}
-                  className="flex-shrink-0 rounded p-0.5 text-fg-faint opacity-0 transition-opacity hover:bg-bg-hover hover:text-fg-muted group-hover/line:opacity-100"
-                  title="Send to chat for diagnosis"
-                >
-                  <MessageSquareWarning size={12} />
-                </button>
-              )}
-            </div>
+            <LineItem key={i} line={line} groupTitle={group.title} onPin={onPin} />
           ))}
         </div>
       )}
