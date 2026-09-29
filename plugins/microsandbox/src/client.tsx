@@ -485,8 +485,13 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
         body: "{}",
       });
       if (!r.ok || !r.body) {
+        let detail = "";
+        try {
+          const errBody = await r.json() as { message?: string; error?: string };
+          detail = errBody.message ?? errBody.error ?? "";
+        } catch { /* ignore parse failures */ }
         throw new Error(
-          `build request failed: HTTP ${r.status}${r.statusText ? " " + r.statusText : ""}`,
+          detail || `build request failed: HTTP ${r.status}${r.statusText ? " " + r.statusText : ""}`,
         );
       }
       // Read NDJSON: one JSON object per "\n"-terminated line.
