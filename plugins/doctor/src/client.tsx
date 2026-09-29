@@ -116,7 +116,7 @@ function LineItem({
       <div className="min-w-0 flex-1">
         <span className="text-[11px] text-fg-default">{line.text}</span>
         {line.detail && (
-          <div className="text-[10px] text-fg-faint truncate" title={line.detail}>
+          <div className="text-[10px] text-fg-faint truncate" title={actionable ? undefined : line.detail}>
             {line.detail}
           </div>
         )}
