@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.71.3](https://github.com/tianshu-ai/tianshu/compare/v0.71.2...v0.71.3) (2026-09-29)
+
+
+### Bug Fixes
+
+* **doctor:** probe HTTPS when SSL is configured ([9a407b5](https://github.com/tianshu-ai/tianshu/commit/9a407b5ba9217f4a6e062a75286dd38049328561))
+
 ## [0.71.2](https://github.com/tianshu-ai/tianshu/compare/v0.71.1...v0.71.2) (2026-09-29)
 
 
