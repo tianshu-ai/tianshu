@@ -213,7 +213,7 @@ export async function checkProviders(
       // own startup-time invariant rejected
       // google/gemini-3-pro-image-preview which has
       // ctx=32768, max=65536 — documented values, not a bug.
-      if (m.mode === "image-gen") {
+      if (m.mode === "image-gen" || m.mode === "embedding") {
         continue;
       }
       const ctx = m.contextWindow;
@@ -402,11 +402,13 @@ export async function checkProviders(
     }
   }
 
-  // Warn if models lack contextWindow (compaction won't trigger)
+  // Warn if chat models lack contextWindow (compaction won't trigger).
+  // Skip embedding and image-gen models — they don't use contextWindow.
   const modelsWithoutWindow: string[] = [];
   for (const [pid, prov] of Object.entries(providers)) {
-    const models = (prov as { models?: Array<{ id?: string; contextWindow?: number }> }).models ?? [];
+    const models = (prov as { models?: Array<{ id?: string; mode?: string; contextWindow?: number }> }).models ?? [];
     for (const m of models) {
+      if (m.mode === "image-gen" || m.mode === "embedding") continue;
       if (!m.contextWindow || m.contextWindow <= 0) {
         modelsWithoutWindow.push(`${pid}/${m.id ?? "?"}`);
       }

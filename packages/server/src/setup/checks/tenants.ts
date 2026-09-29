@@ -168,7 +168,7 @@ export function checkTenants(opts: TenantsCheckOpts = {}): CheckGroup[] {
           // Skip image-gen models — their ctx/max semantics
           // differ from chat models (see checks/providers.ts
           // for the full rationale).
-          if (m.mode === "image-gen") {
+          if (m.mode === "image-gen" || m.mode === "embedding") {
             continue;
           }
           const fullId = `${provId}/${m.id}`;
