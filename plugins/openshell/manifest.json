@@ -275,13 +275,13 @@
         ]
       },
       {
-        "id": "sandbox-base-image",
-        "label": "OpenShell community base image",
-        "description": "Pre-pulled so the first sandbox doesn't stall on a ~700MB download.",
+        "id": "tianshu-sandbox-image",
+        "label": "Tianshu OpenCode sandbox image",
+        "description": "Pre-built sandbox image with ffmpeg, Chromium, Playwright, Python libs, opencode, and omo. Set plugins.openshell.config.fromImage to use it.",
         "severity": "recommended",
         "verify": [
           {
-            "cmd": "docker image inspect ghcr.io/nvidia/openshell-community/sandboxes/base:latest >/dev/null 2>&1"
+            "cmd": "docker image inspect tianshu82/opencode-sandbox:latest >/dev/null 2>&1"
           }
         ],
         "install": [
@@ -289,37 +289,10 @@
             "label": "docker pull",
             "steps": [
               {
-                "cmd": "docker pull ghcr.io/nvidia/openshell-community/sandboxes/base:latest"
-              }
-            ]
-          }
-        ]
-      },
-      {
-        "id": "tianshu-sandbox-image",
-        "label": "Tianshu OpenCode sandbox image",
-        "description": "Custom sandbox image with pre-installed tools (ffmpeg, Chromium, Playwright, Python libs, opencode, omo). Built from plugins/openshell/sandbox-image/Dockerfile. Set plugins.openshell.config.fromImage to use it.",
-        "severity": "recommended",
-        "verify": [
-          {
-            "cmd": "docker image inspect tianshu/opencode-sandbox:latest >/dev/null 2>&1"
-          }
-        ],
-        "install": [
-          {
-            "label": "Build from bundled Dockerfile",
-            "description": "Builds the tianshu sandbox image from plugins/openshell/sandbox-image/Dockerfile. Takes 10-20 min on first build (downloads base image + apt packages + npm/pip deps). Subsequent builds use Docker layer cache.",
-            "steps": [
-              {
-                "cmd": "docker build -t tianshu/opencode-sandbox:latest $(npm root -g)/@tianshu-ai/tianshu/plugins/openshell/sandbox-image/",
-                "note": "For npm global install. If running from git checkout, use the repo path instead: docker build -t tianshu/opencode-sandbox:latest plugins/openshell/sandbox-image/",
-                "os": [
-                  "linux",
-                  "darwin"
-                ]
+                "cmd": "docker pull tianshu82/opencode-sandbox:latest"
               },
               {
-                "cmd": "echo 'After build, configure: plugins.openshell.config.fromImage = \"tianshu/opencode-sandbox:latest\"'",
+                "cmd": "echo 'After pull, configure: plugins.openshell.config.fromImage = \"tianshu82/opencode-sandbox:latest\"'",
                 "note": "Set fromImage in tenant or global config so openshell uses this image for new sandboxes."
               }
             ]
