@@ -6,6 +6,16 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.71.1](https://github.com/tianshu-ai/tianshu/compare/v0.71.0...v0.71.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* **doctor:** downgrade missing .env from warning to ok ([4247cf3](https://github.com/tianshu-ai/tianshu/commit/4247cf3fabb7b4fd106ebc4852ac787ce7c41b5f))
+* **doctor:** remove .env check entirely ([889c505](https://github.com/tianshu-ai/tianshu/commit/889c50552984ffed39209139fc3d883340d971bc))
+* **doctor:** skip Sandbox check when no sandbox plugin is enabled ([d648b68](https://github.com/tianshu-ai/tianshu/commit/d648b68216cff0a79f584bb61e7af7006fcb9a12))
+* **tests:** update checkTenants tests for per-tenant group return type ([630b16b](https://github.com/tianshu-ai/tianshu/commit/630b16b117c7bd47fc7f2a9d46ab99a87d918e72))
+
 ## [0.71.0](https://github.com/tianshu-ai/tianshu/compare/v0.70.0...v0.71.0) (2026-09-29)
 
 
