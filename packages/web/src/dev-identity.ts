@@ -46,7 +46,7 @@ const IDENTITY_PATH_RE =
 
 /** Reasonable fallback identity when we have nothing else. */
 export const FALLBACK_TENANT = "default";
-export const FALLBACK_USER = "dev";
+export const FALLBACK_USER = "admin";
 
 export interface ParsedPath {
   tenantId: string;

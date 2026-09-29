@@ -42,8 +42,25 @@ export default function IdentityGuard({ children }: { children: ReactNode }) {
         if (!cancelled) setState("ok");
         return;
       }
+      // Even when auth is disabled, force the URL to match the
+      // server's canonical identity (admin/default). This prevents
+      // stale cookies or bookmarks from landing on a random userId.
       if (!authEnabled) {
-        if (!cancelled) setState("ok"); // dev mode: URL identity stands.
+        let session: Session;
+        try {
+          session = await api.me();
+        } catch {
+          if (!cancelled) setState("ok");
+          return;
+        }
+        if (cancelled) return;
+        if (session.tenantId !== urlTenant || session.userId !== urlUser) {
+          navigate(`/tenants/${session.tenantId}/users/${session.userId}`, {
+            replace: true,
+          });
+          return;
+        }
+        setState("ok");
         return;
       }
       let session: Session;

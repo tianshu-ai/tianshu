@@ -19,7 +19,7 @@ import { GlobalOps } from "./global-ops.js";
 import { getTianshuHome } from "./paths.js";
 
 export const DEV_TENANT_ID = "default";
-export const DEV_USER_ID = "dev";
+export const DEV_USER_ID = "admin";
 export const DEV_USER_EXTERNAL_ID = "dev@local";
 export const DEV_USER_PROVIDER = "dev";
 
