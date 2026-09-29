@@ -73,7 +73,13 @@ export async function collectDoctorReport(
     }),
   );
   groups.push(await checkNetwork());
-  groups.push(await checkSandbox({ full: opts.probeSandbox }));
+  // Only check sandbox readiness if a sandbox plugin is enabled
+  // in at least one tenant. No point warning about missing SDK
+  // when nobody uses it.
+  const earlyEnabledIds = collectEnabledPluginIds();
+  if (earlyEnabledIds.has("microsandbox") || earlyEnabledIds.has("openshell")) {
+    groups.push(await checkSandbox({ full: opts.probeSandbox }));
+  }
   groups.push(...checkTenants());
   groups.push(checkDb());
   groups.push(checkAuth());
