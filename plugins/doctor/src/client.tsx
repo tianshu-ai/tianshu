@@ -94,8 +94,9 @@ function LineItem({
       onKeyDown={actionable ? (e) => { if (e.key === "Enter" || e.key === " ") onPin(line, groupTitle); } : undefined}
 
     >
-      {/* Icon: severity icon morphs into chat icon on hover */}
-      <span className="flex-shrink-0 relative">
+      {/* Icon: severity icon morphs into chat icon on hover.
+         mt-[3px] aligns the 12px icon with the first text line. */}
+      <span className="flex-shrink-0 relative mt-[3px]">
         {actionable ? (
           <>
             <span className="block group-icon">
