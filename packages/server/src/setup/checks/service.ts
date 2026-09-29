@@ -28,6 +28,19 @@ import { findRepoRoot, isDevelopmentCheckout } from "../repo-root.js";
 
 export function checkService(): CheckGroup {
   const lines: CheckGroup["lines"] = [];
+
+  // Dev mode (npm run dev) — service checks are irrelevant.
+  try {
+    const root = findRepoRoot();
+    if (isDevelopmentCheckout(root)) {
+      lines.push({
+        severity: "ok",
+        text: "Development checkout — service checks skipped",
+      });
+      return { title: "Service", lines };
+    }
+  } catch { /* fall through to normal checks */ }
+
   const platform = backendName();
 
   if (!isServiceManaged()) {
