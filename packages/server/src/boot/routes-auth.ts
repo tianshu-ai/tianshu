@@ -327,7 +327,19 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
   app.post("/api/auth/switch-tenant", (req: Request, res: Response) => {
     const cfg = currentAuth();
     if (!cfg.enabled) {
-      res.status(404).json({ error: "auth_disabled" });
+      // No-auth mode: allow free tenant switching. No session cookie
+      // to rewrite — the client will navigate to /tenants/<id>/... and
+      // the session resolver picks it up from the URL path.
+      const target = (req.body as { tenantId?: string }).tenantId?.trim() ?? "";
+      if (!target) {
+        res.status(400).json({ error: "missing_tenant_id" });
+        return;
+      }
+      if (!deps.listTenants().includes(target)) {
+        res.status(404).json({ error: "tenant_not_found", tenantId: target });
+        return;
+      }
+      res.json({ ok: true, tenantId: target });
       return;
     }
     const secret = expandEnv(cfg.sessionSecret) ?? "";

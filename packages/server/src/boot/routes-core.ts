@@ -153,8 +153,10 @@ export function mountCoreRoutes(
           username: meta.provider === "local" ? meta.name : undefined,
         })
       : "admin"; // dev mode: de-facto admin
-    // Tenants this user may enter (for the tenant switcher). Only
-    // meaningful in auth mode; membership + super-admin, minus disabled.
+    // Tenants this user may enter (for the tenant switcher).
+    // Auth mode: membership + super-admin, minus disabled.
+    // No-auth mode: all tenants — the user should be able to
+    // freely switch without any auth gating.
     const tenants = authCfg.enabled
       ? tenantsForUser(
           authCfg,
@@ -167,7 +169,7 @@ export function mountCoreRoutes(
           deps.listTenants,
           isTenantDisabled,
         )
-      : [tenant.tenantId];
+      : deps.listTenants();
     const superAdmin = authCfg.enabled
       ? isSuperAdmin(authCfg, {
           email: meta.email,

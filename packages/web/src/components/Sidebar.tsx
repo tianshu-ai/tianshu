@@ -168,7 +168,10 @@ function SidebarFooter() {
   const showAdmin = !me?.provider || me?.role === "admin";
   // Tenants this user can switch between (auth mode, >1 membership).
   const switchableTenants = me?.tenants ?? [];
-  const canSwitchTenant = !!me?.provider && switchableTenants.length > 1;
+  // Show tenant switcher when there are multiple tenants to choose
+  // from. In no-auth mode provider is null but the user should still
+  // be able to switch freely.
+  const canSwitchTenant = switchableTenants.length > 1;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [langOpen, setLangOpen] = useState(false);
