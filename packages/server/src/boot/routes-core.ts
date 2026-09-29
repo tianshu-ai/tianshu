@@ -169,7 +169,7 @@ export function mountCoreRoutes(
           deps.listTenants,
           isTenantDisabled,
         )
-      : deps.listTenants();
+      : deps.listTenants().filter((id) => !isTenantDisabled(id));
     const superAdmin = authCfg.enabled
       ? isSuperAdmin(authCfg, {
           email: meta.email,

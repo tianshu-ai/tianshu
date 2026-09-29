@@ -339,6 +339,10 @@ export function mountPublicAuthRoutes(app: Express, deps: RoutesAuthDeps): void 
         res.status(404).json({ error: "tenant_not_found", tenantId: target });
         return;
       }
+      if (isTenantDisabled(target)) {
+        res.status(403).json({ error: "tenant_disabled", tenantId: target });
+        return;
+      }
       res.json({ ok: true, tenantId: target });
       return;
     }
