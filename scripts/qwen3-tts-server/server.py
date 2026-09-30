@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Qwen3-TTS MLX FastAPI server — true streaming PCM chunks.
+"""Qwen3-TTS FastAPI server — cross-platform (MLX on Apple Silicon, PyTorch on Linux/CUDA).
 
-Uses model.generate(stream=True) to yield audio chunks as they are
-generated, so the first PCM bytes arrive in ~1-2s regardless of text
-length.
+Auto-detects the runtime:
+  - Apple Silicon (macOS arm64): uses mlx_audio for streaming generation
+  - Linux / CUDA: uses qwen-tts (official PyTorch package)
+  - CPU fallback: uses qwen-tts with float32
+
+Both backends expose the same HTTP API so the tianshu server doesn't
+need to know which one is running.
 
 Supports two model variants:
   - CustomVoice: preset speakers (vivian, serena, ryan, etc.)
@@ -14,8 +18,9 @@ are auto-registered as cloneable voices. Use their filename (without
 extension) as the voice name.
 
 Usage:
-    python server.py --port 50000 --voice vivian
-    python server.py --port 50000 --voice yujie  # uses voices/yujie_ref.wav
+    python server.py --port 50000 --voice yujie
+    python server.py --port 50000 --voice vivian --backend mlx
+    python server.py --port 50000 --voice yujie --backend pytorch
 
 Endpoint:
     POST /inference_sft
@@ -24,12 +29,15 @@ Endpoint:
 """
 
 import argparse
+import asyncio
+import glob
 import logging
 import os
-import glob
+import platform
+import sys
 import time
+
 import numpy as np
-import mlx.core as mx
 from fastapi import FastAPI, Form
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,69 +55,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Globals set in __main__
-model = None          # pre-loaded mlx_audio Model instance
-model_type = ""       # "custom_voice" or "base"
+# ─── Globals set in __main__ ─────────────────────────────────
+
+backend = ""           # "mlx" or "pytorch"
+model = None           # pre-loaded model instance (backend-specific)
+model_type = ""        # "custom_voice" or "base"
 default_voice = "vivian"
 model_id = ""
-sample_rate = 24000   # will be updated from model after load
+sample_rate = 24000
 
 # ─── Voice registry ──────────────────────────────────────────
 
-# Preset voices available on CustomVoice models
 PRESET_VOICES = [
     "serena", "vivian", "uncle_fu", "ryan", "aiden",
     "ono_anna", "sohee", "eric", "dylan",
 ]
 
-# Custom ref-audio voices loaded from voices/ directory.
-# key: voice name, value: absolute path to wav file.
-# Populated at startup by _load_custom_voices().
 custom_voices: dict[str, str] = {}
 
-# Map legacy / Edge TTS / alias spk_ids → custom voice names.
-# Keys are matched case-insensitively in _resolve_voice().
 SPK_ALIAS = {
-    # Chinese aliases
-    "中文女": "huopo",
-    "中文男": "nansheng",
-    "英文女": "jenny",
-    "英文男": "guy",
-    "御姐": "yujie",
-    "播音": "boyin",
-    "温柔": "nansheng",
-    "活泼": "huopo",
-    # Edge TTS voice names → closest ref audio
-    "zh-cn-xiaoxiaoneural": "yujie",
-    "zh-cn-xiaoyineural": "huopo",
-    "zh-cn-yunxineural": "nansheng",
-    "zh-cn-yunjianneural": "boyin",
-    "zh-cn-yunxianeural": "nansheng",
-    "en-us-jennyneural": "jenny",
-    "en-us-guyneural": "guy",
-    "en-us-arianeural": "jenny",
+    "中文女": "huopo", "中文男": "nansheng", "英文女": "jenny",
+    "英文男": "guy", "御姐": "yujie", "播音": "boyin",
+    "温柔": "nansheng", "活泼": "huopo",
+    "zh-cn-xiaoxiaoneural": "yujie", "zh-cn-xiaoyineural": "huopo",
+    "zh-cn-yunxineural": "nansheng", "zh-cn-yunjianneural": "boyin",
+    "zh-cn-yunxianeural": "nansheng", "en-us-jennyneural": "jenny",
+    "en-us-guyneural": "guy", "en-us-arianeural": "jenny",
     "en-us-davisneural": "guy",
-    # Legacy Kokoro voice names
-    "zf_xiaobei": "huopo",
-    "zf_xiaoxiao": "yujie",
-    "zm_yunxi": "nansheng",
-    "zm_yunyang": "nansheng",
-    "zm_yunjian": "boyin",
-    "zf_xiaoni": "huopo",
-    "zf_xiaoyi": "huopo",
+    "zf_xiaobei": "huopo", "zf_xiaoxiao": "yujie",
+    "zm_yunxi": "nansheng", "zm_yunyang": "nansheng",
+    "zm_yunjian": "boyin", "zf_xiaoni": "huopo",
+    "zf_xiaoni": "huopo", "zf_xiaoyi": "huopo",
     "zm_yunxia": "nansheng",
 }
 
 
 def _load_custom_voices():
-    """Scan voices/ directory for wav files and register them."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
     voices_dir = os.path.join(script_dir, "voices")
     if not os.path.isdir(voices_dir):
         return
     for wav_path in sorted(glob.glob(os.path.join(voices_dir, "*.wav"))):
         name = os.path.splitext(os.path.basename(wav_path))[0]
-        # Strip _ref suffix for cleaner names: yujie_ref.wav → yujie
         if name.endswith("_ref"):
             name = name[:-4]
         custom_voices[name] = wav_path
@@ -117,90 +104,181 @@ def _load_custom_voices():
 
 
 def _resolve_voice(raw_spk_id: str) -> tuple[str, str | None]:
-    """Resolve a spk_id to (voice_name, ref_audio_path_or_None).
-
-    Returns:
-      - For preset voices: (voice_name, None)
-      - For custom ref-audio voices: (voice_name, path_to_wav)
-      - For unknown voices: falls back to default_voice
-    """
     lowered = raw_spk_id.strip().lower() if raw_spk_id else ""
     voice = SPK_ALIAS.get(lowered, raw_spk_id) if lowered else default_voice
-
-    # Check custom ref-audio voices first
     if voice in custom_voices:
         return voice, custom_voices[voice]
-
-    # Check preset voices (CustomVoice model only)
     if voice in PRESET_VOICES and model_type == "custom_voice":
         return voice, None
-
-    # Fallback
     if default_voice in custom_voices:
         return default_voice, custom_voices[default_voice]
     return default_voice, None
 
 
-# ─── Streaming generation ────────────────────────────────────
+# ─── Backend: MLX (Apple Silicon) ────────────────────────────
 
-async def generate_pcm_streaming(tts_text: str, voice: str, ref_audio: str | None = None):
-    """Generate audio via model.generate(stream=True), yield int16 PCM
-    bytes as soon as each chunk is ready.
+def load_model_mlx(mid: str):
+    global model, model_type, sample_rate
+    log.info("Loading MLX model: %s", mid)
+    from mlx_audio.tts import load_model as mlx_load
+    model = mlx_load(model_path=mid)
+    sample_rate = model.sample_rate
+    model_type = getattr(model.config, "tts_model_type", "base")
+    log.info("MLX model loaded: type=%s, sr=%d", model_type, sample_rate)
 
-    This is an async generator so FastAPI's StreamingResponse doesn't
-    block the event loop during long generations. The actual MLX
-    inference is synchronous (CPU/GPU-bound), but we yield control
-    back to the event loop between chunks via asyncio.sleep(0)."""
-    import asyncio
+
+async def generate_pcm_mlx(tts_text: str, voice: str, ref_audio: str | None):
+    import mlx.core as mx  # noqa: F811
     t0 = time.time()
     first_chunk_time = None
     total_bytes = 0
     chunk_count = 0
 
-    gen_kwargs = dict(
-        text=tts_text,
-        verbose=False,
-        stream=True,
-        streaming_interval=2.0,
-    )
-
+    gen_kwargs = dict(text=tts_text, verbose=False, stream=True, streaming_interval=2.0)
     if ref_audio:
-        # Base model: voice cloning via ref_audio
         gen_kwargs["ref_audio"] = ref_audio
-        # ref_text is auto-transcribed by mlx_audio if not provided
     else:
-        # CustomVoice model: preset speaker
         gen_kwargs["voice"] = voice
 
     try:
-        results = model.generate(**gen_kwargs)
-
-        for result in results:
+        for result in model.generate(**gen_kwargs):
             audio_np = np.array(result.audio, dtype=np.float32).flatten()
             pcm = (audio_np * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
-
             if first_chunk_time is None:
                 first_chunk_time = time.time() - t0
-
             total_bytes += len(pcm)
             chunk_count += 1
             yield pcm
-            # Yield control so other requests aren't starved
             await asyncio.sleep(0)
-
     except Exception as e:
-        log.error("generate failed: %s (voice=%s, ref=%s)", e, voice, bool(ref_audio))
+        log.error("MLX generate failed: %s", e)
         return
 
     wall = time.time() - t0
     audio_dur = total_bytes / (sample_rate * 2)
-    mode = "clone" if ref_audio else "preset"
     log.info(
-        "streamed: %.1fs audio in %.3fs wall (first chunk %.3fs), "
-        "%d chunks, RTF=%.3f, voice=%s (%s)",
+        "MLX streamed: %.1fs audio in %.3fs (first=%.3fs, %d chunks, RTF=%.3f, voice=%s)",
         audio_dur, wall, first_chunk_time or 0, chunk_count,
-        wall / audio_dur if audio_dur > 0 else 0, voice, mode,
+        wall / audio_dur if audio_dur > 0 else 0, voice,
     )
+
+
+def warmup_mlx():
+    import mlx.core as mx  # noqa: F811
+    voice, ref_audio = _resolve_voice(default_voice)
+    kw = dict(text="测试", verbose=False)
+    if ref_audio:
+        kw["ref_audio"] = ref_audio
+    else:
+        kw["voice"] = voice
+    for _ in model.generate(**kw):
+        pass
+    mx.clear_cache()
+
+
+# ─── Backend: PyTorch (Linux / CUDA) ─────────────────────────
+
+def load_model_pytorch(mid: str):
+    global model, model_type, sample_rate
+    import torch
+    from qwen_tts import Qwen3TTSModel
+
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
+    dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+
+    load_kwargs = dict(device_map=device, dtype=dtype)
+    # Use flash_attention_2 if available on CUDA
+    if torch.cuda.is_available():
+        try:
+            import flash_attn  # noqa: F401
+            load_kwargs["attn_implementation"] = "flash_attention_2"
+            log.info("FlashAttention 2 available, using it")
+        except ImportError:
+            log.info("FlashAttention 2 not found, using default attention")
+
+    log.info("Loading PyTorch model: %s (device=%s, dtype=%s)", mid, device, dtype)
+    model = Qwen3TTSModel.from_pretrained(mid, **load_kwargs)
+    sample_rate = 24000  # Qwen3-TTS always 24kHz
+
+    # Detect model type from model class or config
+    cls_name = type(model).__name__.lower()
+    if "customvoice" in cls_name:
+        model_type = "custom_voice"
+    elif "voicedesign" in cls_name:
+        model_type = "voice_design"
+    else:
+        model_type = "base"
+
+    log.info("PyTorch model loaded: type=%s, device=%s", model_type, device)
+
+
+async def generate_pcm_pytorch(tts_text: str, voice: str, ref_audio: str | None):
+    """Generate audio with PyTorch backend.
+
+    The official qwen-tts package doesn't support streaming, so we
+    generate the full audio then yield it in chunks for consistent API.
+    """
+    t0 = time.time()
+
+    try:
+        if ref_audio:
+            # Base model: voice cloning
+            wavs, sr = model.generate_voice_clone(
+                text=tts_text,
+                ref_audio=ref_audio,
+            )
+        elif model_type == "custom_voice":
+            # CustomVoice model: preset speaker
+            wavs, sr = model.generate_custom_voice(
+                text=tts_text,
+                speaker=voice.capitalize(),
+                language="Auto",
+            )
+        else:
+            # Base model without ref audio — use ref_audio from default voice
+            _, fallback_ref = _resolve_voice(default_voice)
+            if fallback_ref:
+                wavs, sr = model.generate_voice_clone(
+                    text=tts_text,
+                    ref_audio=fallback_ref,
+                )
+            else:
+                log.error("No ref audio and not a custom_voice model")
+                return
+
+        audio_np = np.array(wavs[0], dtype=np.float32).flatten()
+        pcm = (audio_np * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+
+        wall = time.time() - t0
+        audio_dur = len(pcm) / (sample_rate * 2)
+        log.info(
+            "PyTorch generated: %.1fs audio in %.3fs (RTF=%.3f, voice=%s)",
+            audio_dur, wall, wall / audio_dur if audio_dur > 0 else 0, voice,
+        )
+
+        # Yield in ~0.5s chunks for streaming response
+        chunk_size = sample_rate  # 0.5s of int16 = 24000 samples = 48000 bytes
+        for i in range(0, len(pcm), chunk_size):
+            yield pcm[i:i + chunk_size]
+            await asyncio.sleep(0)
+
+    except Exception as e:
+        log.error("PyTorch generate failed: %s", e)
+        return
+
+
+def warmup_pytorch():
+    voice, ref_audio = _resolve_voice(default_voice)
+    try:
+        if ref_audio:
+            model.generate_voice_clone(text="test", ref_audio=ref_audio)
+        elif model_type == "custom_voice":
+            model.generate_custom_voice(
+                text="test", speaker=voice.capitalize(), language="Auto",
+            )
+        log.info("PyTorch warmup done")
+    except Exception as e:
+        log.warning("PyTorch warmup failed (non-fatal): %s", e)
 
 
 # ─── API endpoints ───────────────────────────────────────────
@@ -214,13 +292,16 @@ async def inference_sft(
     raw = spk_id.strip()
     voice, ref_audio = _resolve_voice(raw)
     log.info(
-        "request: %d chars, voice=%s, ref=%s (raw spk_id=%s)",
-        len(tts_text), voice, "yes" if ref_audio else "no", raw,
+        "request: %d chars, voice=%s, ref=%s, backend=%s (raw=%s)",
+        len(tts_text), voice, "yes" if ref_audio else "no", backend, raw,
     )
-    return StreamingResponse(
-        generate_pcm_streaming(tts_text, voice, ref_audio),
-        media_type="audio/pcm",
-    )
+
+    if backend == "mlx":
+        gen = generate_pcm_mlx(tts_text, voice, ref_audio)
+    else:
+        gen = generate_pcm_pytorch(tts_text, voice, ref_audio)
+
+    return StreamingResponse(gen, media_type="audio/pcm")
 
 
 @app.get("/health")
@@ -229,12 +310,38 @@ async def health():
         "status": "ok",
         "model": model_id,
         "model_type": model_type,
+        "backend": backend,
         "default_voice": default_voice,
         "preset_voices": PRESET_VOICES if model_type == "custom_voice" else [],
         "custom_voices": list(custom_voices.keys()),
         "sample_rate": sample_rate,
-        "streaming": True,
+        "streaming": backend == "mlx",  # true streaming only on MLX
     }
+
+
+# ─── Auto-detect backend ─────────────────────────────────────
+
+DEFAULT_MODELS = {
+    "mlx": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+    "pytorch": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+}
+
+def detect_backend() -> str:
+    """Auto-detect the best backend for this platform."""
+    if platform.system() == "Darwin" and platform.machine() == "arm64":
+        try:
+            import mlx.core  # noqa: F401
+            return "mlx"
+        except ImportError:
+            pass
+    # Fallback to PyTorch
+    try:
+        import torch  # noqa: F401
+        return "pytorch"
+    except ImportError:
+        pass
+    log.error("No backend available. Install mlx-audio (Mac) or qwen-tts (Linux).")
+    sys.exit(1)
 
 
 # ─── Main ────────────────────────────────────────────────────
@@ -244,40 +351,39 @@ if __name__ == "__main__":
     parser.add_argument("--port", type=int, default=50000)
     parser.add_argument("--voice", type=str, default="yujie",
                         help="Default voice name (preset or custom ref-audio)")
-    parser.add_argument("--model", type=str,
-                        default="mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
-                        help="MLX model id from HuggingFace")
+    parser.add_argument("--model", type=str, default="",
+                        help="Model id (HuggingFace). Auto-selected per backend if empty.")
+    parser.add_argument("--backend", type=str, default="auto",
+                        choices=["auto", "mlx", "pytorch"],
+                        help="Force a specific backend (default: auto-detect)")
     args = parser.parse_args()
     default_voice = args.voice
-    model_id = args.model
 
-    # Load custom ref-audio voices from voices/ directory
+    # Detect or use specified backend
+    backend = args.backend if args.backend != "auto" else detect_backend()
+    log.info("Backend: %s", backend)
+
+    # Model ID: use explicit --model, or auto-select per backend
+    model_id = args.model or DEFAULT_MODELS.get(backend, DEFAULT_MODELS["pytorch"])
+
+    # Load custom ref-audio voices
     _load_custom_voices()
 
-    # Pre-load model into memory
-    log.info("Loading Qwen3-TTS MLX model: %s", model_id)
-    from mlx_audio.tts import load_model
-    model = load_model(model_path=model_id)
-    sample_rate = model.sample_rate
-
-    # Detect model type
-    model_type = getattr(model.config, "tts_model_type", "base")
-    log.info("Model loaded: type=%s, sample_rate=%d", model_type, sample_rate)
+    # Load model
+    if backend == "mlx":
+        load_model_mlx(model_id)
+    else:
+        load_model_pytorch(model_id)
 
     if custom_voices:
         log.info("Custom voices: %s", ", ".join(custom_voices.keys()))
 
-    # Warm up: generate a tiny clip to JIT-compile compute graphs
+    # Warmup
     log.info("Warming up...")
-    voice, ref_audio = _resolve_voice(default_voice)
-    warmup_kwargs = dict(text="测试", verbose=False)
-    if ref_audio:
-        warmup_kwargs["ref_audio"] = ref_audio
+    if backend == "mlx":
+        warmup_mlx()
     else:
-        warmup_kwargs["voice"] = voice
-    for result in model.generate(**warmup_kwargs):
-        pass
-    mx.clear_cache()
-    log.info("Warm, default voice: %s, streaming mode ON", default_voice)
+        warmup_pytorch()
+    log.info("Ready. Default voice: %s, backend: %s", default_voice, backend)
 
     uvicorn.run(app, host="0.0.0.0", port=args.port)
