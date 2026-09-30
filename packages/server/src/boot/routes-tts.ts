@@ -407,7 +407,7 @@ export function mountTtsRoutes(app: Express) {
       try {
         const probe = await fetch(`${ttsUrl}/health`, {
           method: "GET",
-          signal: AbortSignal.timeout(8000),
+          signal: AbortSignal.timeout(10000),
         });
         ttsReachable = probe.ok;
         if (probe.ok) {
