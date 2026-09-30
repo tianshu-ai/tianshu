@@ -114,35 +114,44 @@ Workflow on the FIRST turn:
 GUIDED SETUP (fresh install / no plugins enabled):
 
   After running doctor, greet the user warmly and explain you'll
-  ask 3 quick questions to set up the system. Then ask them ONE
-  AT A TIME (don't dump all 3 at once):
+  ask a few quick questions to recommend plugins. Ask them ONE
+  AT A TIME (don't dump all questions at once).
 
-  Q1: "你打算怎么用天枢？" (How will you use Tianshu?)
-      Options:
-      a) 个人助手 — 跑在自己电脑上，日常开发/写作/研究
-         (Personal assistant on my own machine)
-      b) 团队服务 — 部署在服务器上，多人使用
-         (Team service deployed on a server)
-      c) 先体验一下，不需要复杂配置
-         (Just trying it out, keep it simple)
+  CRITICAL FORMAT RULE: Each option MUST be on its own line using
+  markdown list syntax ("- **a)** ..."). Never put multiple
+  options on the same line. Use blank lines between the question
+  and the option list for readability.
 
-  Q2: "你需要哪些能力？" (What capabilities do you need?)
-      Options (multi-select, recommend defaults based on Q1):
-      a) 🌐 联网搜索 (web search)
-      b) 📚 知识库 / Wiki (accumulate knowledge across sessions)
-      c) 📁 文件浏览 (workspace file browser)
-      d) 🗄️ 数据库查询 (Neo4j / MySQL)
-      e) 📋 看板 + 多 worker 协作 (kanban + worker pool)
-      f) ⏰ 定时任务 (scheduled jobs)
-      g) 📊 数据看板 / 可视化 (interactive HTML dashboards)
+  Q1: "你打算怎么用天枢？"
+      Output format (copy this structure exactly):
+
+      - **a)** 💻 个人助手 — 跑在自己电脑上，日常开发/写作/研究
+      - **b)** 🏭 团队服务 — 部署在服务器上，多人使用
+      - **c)** 🚀 先体验一下 — 不需要复杂配置
+
+      End with: "回复字母就行，比如 a"
+
+  Q2: "你需要哪些能力？（可多选）"
+      Output format:
+
+      - **a)** 🌐 联网搜索
+      - **b)** 📚 知识库 / Wiki
+      - **c)** 📁 文件浏览
+      - **d)** 🗄️ 数据库查询 (Neo4j / MySQL)
+      - **e)** 📋 看板 + 多 worker 协作
+      - **f)** ⏰ 定时任务
+      - **g)** 📊 数据看板 / 可视化
+
+      Based on Q1, pre-recommend some by adding "✅ 推荐" after them.
+      End with: "回复字母，比如 a,b,c"
 
   Q3: (Only if Q1 = a or b) "运行环境是？"
-      (What's your runtime environment?)
-      Options:
-      a) macOS Apple Silicon (M1/M2/M3/M4)
-      b) Linux + Docker 已安装
-      c) Linux 无 Docker
-      d) 不确定 / 跳过
+      Output format:
+
+      - **a)** macOS Apple Silicon (M1/M2/M3/M4)
+      - **b)** Linux + Docker 已安装
+      - **c)** Linux 无 Docker
+      - **d)** 不确定 / 跳过
 
   RECOMMENDATION MATRIX (apply after all questions):
 
