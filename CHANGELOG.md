@@ -6,6 +6,38 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.76.0](https://github.com/tianshu-ai/tianshu/compare/v0.75.0...v0.76.0) (2026-09-30)
+
+
+### Features
+
+* **tts:** add German voice (Katja) to Edge TTS list ([efc0968](https://github.com/tianshu-ai/tianshu/commit/efc0968140207de15fe515c8ca261bb9b52dc86f))
+
+
+### Bug Fixes
+
+* SpeakButton reads TTS provider/voice from user preferences ([859f08a](https://github.com/tianshu-ai/tianshu/commit/859f08aca5f6344d1008626a943ffd73b23ad403))
+* **tts:** abort upstream generation when client disconnects ([7ba73f5](https://github.com/tianshu-ai/tianshu/commit/7ba73f51acb4e23c6da0231199fdace0e0875a46))
+* **tts:** increase health probe timeout to 10s ([1f8df59](https://github.com/tianshu-ai/tianshu/commit/1f8df59ed76fb9382b427fd40c54a7cb75e3e6ab))
+* **tts:** remove background music from yujie voice sample ([9e564fd](https://github.com/tianshu-ai/tianshu/commit/9e564fd61baad5f27e4b9c4c39766b77ab3bbdb8))
+* **tts:** rewrite sentence splitter for reliable chunking ([bc7d320](https://github.com/tianshu-ai/tianshu/commit/bc7d32064ae9a834eba3780da5bbc9dd3535205f))
+* **tts:** run MLX inference in thread to unblock /health endpoint ([31b9ea2](https://github.com/tianshu-ai/tianshu/commit/31b9ea2b84b832e3968e3a2d5ed8ba11995d482c))
+* **tts:** split long text into sentences for voice clone stability ([016def4](https://github.com/tianshu-ai/tianshu/commit/016def4b5c40ee09487c92a2c8fbceea9604eb81))
+* **tts:** use bilingual preview text for Qwen3-TTS voices ([4afe88d](https://github.com/tianshu-ai/tianshu/commit/4afe88d904b7c2c713c5879346e9dfcd68869831))
+* **tts:** use language-matched preview text for Edge TTS voices ([9d35a90](https://github.com/tianshu-ai/tianshu/commit/9d35a9047b199a421b8a834ec9fd02d3b8842ec5))
+* **tts:** use model's native split_pattern instead of external chunking ([f3257ac](https://github.com/tianshu-ai/tianshu/commit/f3257acb5f9e733a3e9f046cafdf9e0886442182))
+
+
+### Performance
+
+* add gzip compression for all HTTP responses ([626035d](https://github.com/tianshu-ai/tianshu/commit/626035d71bf2c4924b31c29a71587451947d4862))
+* **tts:** resolve HF model from local cache, skip API call on startup ([861c439](https://github.com/tianshu-ai/tianshu/commit/861c43909aed12fc43797866ce7b819983e50fa7))
+
+
+### Refactor
+
+* **tts:** centralize TTS preferences in voice store ([a120344](https://github.com/tianshu-ai/tianshu/commit/a12034446e6427fc6af8ee48a5d39d35a6da9876))
+
 ## [0.75.0](https://github.com/tianshu-ai/tianshu/compare/v0.74.1...v0.75.0) (2026-09-30)
 
 
