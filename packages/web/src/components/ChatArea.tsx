@@ -174,7 +174,6 @@ export default function ChatArea() {
               </div>
             ))}
             {/* ask_user interaction buttons */}
-            <InteractionButtons />
             {/* No "streaming…" label here — the streaming bubble
              *  itself shows incoming text or a typing indicator,
              *  which is visual enough. */}
@@ -252,6 +251,9 @@ export default function ChatArea() {
         )}
       </div>
 
+      {/* ask_user interaction buttons — pinned above the composer
+         so they're always visible regardless of scroll position */}
+      <InteractionButtons />
       {viewingSessionId === null ? (
         <ChatInput />
       ) : (
