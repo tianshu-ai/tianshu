@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useChatNav } from "@tianshu-ai/plugin-sdk/client";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
+import { t, tText, tTitle } from "./i18n.js";
 
 const API_BASE = "/api/p/doctor";
 
@@ -108,7 +109,7 @@ function LineItem({
                 size={12}
                 className={line.severity === "blocker" ? "text-rose-400" : "text-amber-400"}
               />
-              <span className="text-[9px] text-fg-faint/80 whitespace-nowrap">fix</span>
+              <span className="text-[9px] text-fg-faint/80 whitespace-nowrap">{t("panel.fix")}</span>
             </span>
           </>
         ) : (
@@ -116,7 +117,7 @@ function LineItem({
         )}
       </span>
       <div className="min-w-0 flex-1">
-        <span className="text-[11px] text-fg-default">{line.text}</span>
+        <span className="text-[11px] text-fg-default">{tText(line.text)}</span>
         {line.detail && (
           <div className="text-[10px] text-fg-faint truncate" title={actionable ? undefined : line.detail}>
             {line.detail}
@@ -161,7 +162,7 @@ function GroupSection({ group, onPin }: { group: CheckGroup; onPin: (line: Check
         )}
         <SeverityIcon severity={worst} size={14} />
         <span className="flex-1 text-[12px] font-medium text-fg-default">
-          {group.title}
+          {tTitle(group.title)}
         </span>
         <span className="text-[10px] text-fg-faint">
           {okCount}/{total}
@@ -190,11 +191,11 @@ function DoctorPanel(_props: PanelProps) {
   const handlePin = useCallback((line: CheckLine, groupTitle: string) => {
     const emoji = line.severity === "blocker" ? "🔴" : "⚠️";
     const msg = [
-      `${emoji} Doctor found an issue in **${groupTitle}**:`,
-      `> ${line.text}`,
+      `${emoji} ${t("pin.header")} **${tTitle(groupTitle)}**:`,
+      `> ${tText(line.text)}`,
       line.detail ? `> ${line.detail}` : "",
       "",
-      "Please diagnose and fix this.",
+      t("pin.footer"),
     ].filter(Boolean).join("\n");
     chatNav.sendPrompt?.(msg);
   }, [chatNav]);
@@ -228,7 +229,7 @@ function DoctorPanel(_props: PanelProps) {
       <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="text-sm">🩺</span>
-          <span className="text-[12px] font-medium text-fg-default">System Doctor</span>
+          <span className="text-[12px] font-medium text-fg-default">{t("panel.title")}</span>
         </div>
         <button
           type="button"
@@ -238,7 +239,7 @@ function DoctorPanel(_props: PanelProps) {
           title="Re-check"
         >
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
-          {loading ? "Checking…" : "Re-check"}
+          {loading ? t("panel.checking") : t("panel.recheck")}
         </button>
       </div>
 
@@ -246,7 +247,7 @@ function DoctorPanel(_props: PanelProps) {
       {loading && !report && (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-fg-faint">
           <Loader2 size={20} className="animate-spin" />
-          <span className="text-[11px]">Running diagnostics…</span>
+          <span className="text-[11px]">{t("panel.running")}</span>
         </div>
       )}
 
@@ -288,10 +289,10 @@ function DoctorPanel(_props: PanelProps) {
             </div>
             <span className="text-fg-faint">
               {report.blocker > 0
-                ? "Setup incomplete"
+                ? t("panel.incomplete")
                 : report.warning > 0
-                  ? "Usable, with caveats"
-                  : "Healthy ✓"}
+                  ? t("panel.usable")
+                  : t("panel.healthy")}
             </span>
           </div>
         </>
