@@ -75,7 +75,7 @@ export interface ResolvedConfigShape {
   branding?: { name?: string; emoji?: string };
   /** Default reply language for agents (Settings → Models → Output
    *  language): "auto" | "en" | "zh". Absent/auto = match the user. */
-  outputLanguage?: "auto" | "en" | "zh";
+  outputLanguage?: "auto" | "en" | "zh" | "de" | "ja" | "ko";
 }
 
 export interface PluginLogger {

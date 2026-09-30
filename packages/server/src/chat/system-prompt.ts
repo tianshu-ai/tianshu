@@ -63,10 +63,13 @@ export interface MainAgentPromptOverrides {
 /** One-line reply-language directive for the system prompt, or ""
  *  when set to auto/unset (let the model match the user). */
 export function formatOutputLanguageLine(
-  lang: "auto" | "en" | "zh" | undefined,
+  lang: "auto" | "en" | "zh" | "de" | "ja" | "ko" | undefined,
 ): string {
   if (lang === "en") return "Always reply in English, regardless of the language the user writes in.";
   if (lang === "zh") return "\u603b\u662f\u7528\u4e2d\u6587\u56de\u590d\uff0c\u65e0\u8bba\u7528\u6237\u7528\u4ec0\u4e48\u8bed\u8a00\u63d0\u95ee\u3002(Always reply in Chinese regardless of the user's language.)";
+  if (lang === "de") return "Antworte immer auf Deutsch, unabhängig von der Sprache des Benutzers. (Always reply in German regardless of the user's language.)";
+  if (lang === "ja") return "ユーザーがどの言語で質問しても、常に日本語で回答してください。(Always reply in Japanese regardless of the user's language.)";
+  if (lang === "ko") return "사용자가 어떤 언어로 질문하든 항상 한국어로 답변하세요. (Always reply in Korean regardless of the user's language.)";
   return "";
 }
 

@@ -59,7 +59,7 @@ interface ApiResponse {
   defaultModelId: string | null;
   defaultModel: string | null;
   imageGenModelId: string | null;
-  outputLanguage: "auto" | "en" | "zh";
+  outputLanguage: "auto" | "en" | "zh" | "de" | "ja" | "ko";
 }
 
 // Local editable shape: providers as an ordered array (so we can add /
@@ -106,7 +106,7 @@ export default function ModelsPage() {
   const [providers, setProviders] = useState<EditableProvider[] | null>(null);
   const [defaultModelId, setDefaultModelId] = useState<string>("");
   const [imageGenModelId, setImageGenModelId] = useState<string>("");
-  const [outputLanguage, setOutputLanguage] = useState<"auto" | "en" | "zh">("auto");
+  const [outputLanguage, setOutputLanguage] = useState<"auto" | "en" | "zh" | "de" | "ja" | "ko">("auto");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -414,7 +414,7 @@ export default function ModelsPage() {
         <select
           value={outputLanguage}
           onChange={(e) => {
-            setOutputLanguage(e.target.value as "auto" | "en" | "zh");
+            setOutputLanguage(e.target.value as "auto" | "en" | "zh" | "de" | "ja" | "ko");
             setDirty(true);
             setNotice(null);
           }}
@@ -423,6 +423,9 @@ export default function ModelsPage() {
           <option value="auto">{t("models.lang.auto")}</option>
           <option value="en">English</option>
           <option value="zh">中文 (Chinese)</option>
+          <option value="de">Deutsch (German)</option>
+          <option value="ja">日本語 (Japanese)</option>
+          <option value="ko">한국어 (Korean)</option>
         </select>
         <p className="mt-1 text-[11px] text-fg-fainter">
           {t("models.outputLanguage.hint")}

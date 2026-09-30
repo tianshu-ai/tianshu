@@ -47,7 +47,7 @@ export interface OverridableConfig {
    * system prompt. "auto" (or unset) = match the user's language;
    * "en" / "zh" force English / Chinese. Tenant config wins over global.
    */
-  outputLanguage?: "auto" | "en" | "zh";
+  outputLanguage?: "auto" | "en" | "zh" | "de" | "ja" | "ko";
   /** Per-plugin enable/disable. Listed-but-disabled and not-listed are
    *  distinct: not listed = invisible everywhere. See ADR-0003 §4. */
   plugins?: PluginsConfig;

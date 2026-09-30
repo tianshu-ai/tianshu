@@ -272,6 +272,9 @@ export default function AsrModelsPage() {
             <option value="auto">{t("asr.langAuto")}</option>
             <option value="zh">{t("asr.langZh")}</option>
             <option value="en">{t("asr.langEn")}</option>
+            <option value="de">{t("asr.langDe")}</option>
+            <option value="ja">{t("asr.langJa")}</option>
+            <option value="ko">{t("asr.langKo")}</option>
           </select>
         </div>
       </div>

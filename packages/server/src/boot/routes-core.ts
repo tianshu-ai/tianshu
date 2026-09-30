@@ -373,7 +373,7 @@ export function mountCoreRoutes(
           delete nextCfg.defaultModel;
         }
         const lang = (req.body as { outputLanguage?: unknown }).outputLanguage;
-        if (lang === "en" || lang === "zh") {
+        if (lang === "en" || lang === "zh" || lang === "de" || lang === "ja" || lang === "ko") {
           nextCfg.outputLanguage = lang;
         } else if (lang === "auto" || lang === "" || lang === null) {
           delete nextCfg.outputLanguage;
