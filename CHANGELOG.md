@@ -6,6 +6,32 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.74.0](https://github.com/tianshu-ai/tianshu/compare/v0.73.0...v0.74.0) (2026-09-30)
+
+
+### Features
+
+* add German, Japanese, Korean to language options ([903dc86](https://github.com/tianshu-ai/tianshu/commit/903dc865e85b6d8da1720a4ac9db584e92c22490))
+* ask_user interaction buttons (frontend) ([d790ea7](https://github.com/tianshu-ai/tianshu/commit/d790ea70427b6b26692e1386d05d97e69e325726))
+* ask_user tool + interaction suspend mechanism (server side) ([7c15194](https://github.com/tianshu-ai/tianshu/commit/7c15194016cfada7207ceb84ea738721a77d1e84))
+* **asr:** add recognition language setting in ASR settings page ([fa96149](https://github.com/tianshu-ai/tianshu/commit/fa9614948137d3f5455128b5ee6c73e7450a815e))
+* click option fills composer draft instead of auto-sending ([38ac7eb](https://github.com/tianshu-ai/tianshu/commit/38ac7eb7757f03200ee9cab921656edc55c70c79))
+* enable free-form input during ask_user interactions ([928355f](https://github.com/tianshu-ai/tianshu/commit/928355f955ae335a9b71546d5d62ff893befd554))
+* **setup:** use ask_user tool for guided setup questions ([2e12db5](https://github.com/tianshu-ai/tianshu/commit/2e12db56e466994e3f0760f2289c79cf4c539c33))
+
+
+### Bug Fixes
+
+* **asr:** align language options with outputLanguage (auto/zh/en only) ([f166bdc](https://github.com/tianshu-ai/tianshu/commit/f166bdcbb6b146b1e4e612bab14803ed4eef9b0d))
+* **asr:** use outputLanguage config for Whisper instead of hardcoded zh ([fe82722](https://github.com/tianshu-ai/tianshu/commit/fe82722b0b8a46eddce503789f48dce1490e13a4))
+* center-align interaction buttons and question text ([169cf26](https://github.com/tianshu-ai/tianshu/commit/169cf26a3e4a42d4774b0dc49d713632eeb3aefc))
+* pin InteractionButtons above composer instead of in scroll area ([fa5f2de](https://github.com/tianshu-ai/tianshu/commit/fa5f2de2cd27f106a3ab229c0380365944cb0555))
+* re-push pending interactions on initial WS connect, not hello ([be66bd9](https://github.com/tianshu-ai/tianshu/commit/be66bd90c683a7f7005d5ebab6718702b6130cdd))
+* re-push pending interactions on WS reconnect (page refresh) ([96c957c](https://github.com/tianshu-ai/tianshu/commit/96c957c1469f1c220eb7f4c2bf75486d5e5a1bc2))
+* reconnect state recovery without arbitrary timeout ([e06b03f](https://github.com/tianshu-ai/tianshu/commit/e06b03f940d26cb721612af987a0f63015a0a984))
+* reset InteractionButtons state on new interaction ([d3dd743](https://github.com/tianshu-ai/tianshu/commit/d3dd7433a820be47f3e1bb5d270cfc7a7339f5c1))
+* reset streaming state after server restart + reconnect ([3d84c8c](https://github.com/tianshu-ai/tianshu/commit/3d84c8ce62b84996725b082a8e3b52f04424018a))
+
 ## [0.73.0](https://github.com/tianshu-ai/tianshu/compare/v0.72.0...v0.73.0) (2026-09-30)
 
 
