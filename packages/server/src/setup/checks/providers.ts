@@ -423,6 +423,15 @@ export async function checkProviders(
         });
       }
     }
+  } else {
+    lines.push({
+      severity: "warning",
+      text: "auto-compaction not configured (models.compaction missing)",
+      detail:
+        "Long conversations will grow unbounded until they hit the model's context limit and fail. " +
+        "Add models.compaction to config.json to enable automatic summarisation. " +
+        "Also ensure each chat model has a contextWindow value so compaction knows when to trigger.",
+    });
   }
 
   // Warn if chat models lack contextWindow (compaction won't trigger).
