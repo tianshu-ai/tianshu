@@ -12,6 +12,8 @@
 // through untranslated — the diagnostic detail is still useful
 // in English and the setup agent understands both languages.
 
+import { useEffect, useState } from "react";
+
 type Locale = "en" | "zh";
 
 function detectLocale(): Locale {
@@ -28,9 +30,38 @@ function detectLocale(): Locale {
   return "en";
 }
 
-let locale: Locale | null = null;
+// Read fresh every time — the main app writes to localStorage
+// on language switch and we need to pick it up without a reload.
 function getLocale(): Locale {
-  if (!locale) locale = detectLocale();
+  return detectLocale();
+}
+
+/**
+ * React hook that re-renders the component when the locale changes.
+ * Listens to both cross-tab storage events and same-tab writes via
+ * a polling interval (localStorage writes from the same tab don't
+ * fire the 'storage' event).
+ */
+export function useLocaleRefresh(): Locale {
+  const [locale, setLocale] = useState(getLocale);
+  useEffect(() => {
+    // Cross-tab changes
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === "tianshu.locale") setLocale(getLocale());
+    };
+    window.addEventListener("storage", onStorage);
+    // Same-tab polling (the main app sets localStorage synchronously;
+    // storage event only fires in other tabs). 500ms is fast enough
+    // for a language switch to feel instant.
+    const timer = setInterval(() => {
+      const current = getLocale();
+      setLocale((prev) => (prev !== current ? current : prev));
+    }, 500);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      clearInterval(timer);
+    };
+  }, []);
   return locale;
 }
 

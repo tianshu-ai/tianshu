@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useChatNav } from "@tianshu-ai/plugin-sdk/client";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { t, tText, tTitle } from "./i18n.js";
+import { t, tText, tTitle, useLocaleRefresh } from "./i18n.js";
 
 const API_BASE = "/api/p/doctor";
 
@@ -187,6 +187,8 @@ function DoctorPanel(_props: PanelProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const chatNav = useChatNav();
+  // Re-render when locale changes (language switch in UI)
+  useLocaleRefresh();
 
   const handlePin = useCallback((line: CheckLine, groupTitle: string) => {
     const emoji = line.severity === "blocker" ? "🔴" : "⚠️";
