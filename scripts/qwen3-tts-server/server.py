@@ -128,7 +128,17 @@ def load_model_mlx(mid: str):
 
 
 async def generate_pcm_mlx(tts_text: str, voice: str, ref_audio: str | None):
+    """Stream PCM chunks from MLX.
+
+    model.generate() is synchronous and blocks the Python event loop
+    during each chunk's computation. We run the blocking iterator in
+    a thread so /health and other endpoints stay responsive while
+    audio is being generated.
+    """
     import mlx.core as mx  # noqa: F811
+    from concurrent.futures import ThreadPoolExecutor
+    import queue as _queue
+
     t0 = time.time()
     first_chunk_time = None
     total_bytes = 0
@@ -140,19 +150,42 @@ async def generate_pcm_mlx(tts_text: str, voice: str, ref_audio: str | None):
     else:
         gen_kwargs["voice"] = voice
 
+    # Producer runs in a thread; pushes PCM bytes into a queue.
+    # None sentinel signals completion; Exception signals error.
+    pcm_queue: _queue.Queue = _queue.Queue(maxsize=8)
+
+    def _produce():
+        try:
+            for result in model.generate(**gen_kwargs):
+                audio_np = np.array(result.audio, dtype=np.float32).flatten()
+                pcm = (audio_np * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+                pcm_queue.put(pcm)
+            pcm_queue.put(None)  # done
+        except Exception as e:
+            pcm_queue.put(e)
+
+    loop = asyncio.get_event_loop()
+    _executor = ThreadPoolExecutor(max_workers=1)
+    loop.run_in_executor(_executor, _produce)
+
     try:
-        for result in model.generate(**gen_kwargs):
-            audio_np = np.array(result.audio, dtype=np.float32).flatten()
-            pcm = (audio_np * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+        while True:
+            # Poll the queue without blocking the event loop
+            while pcm_queue.empty():
+                await asyncio.sleep(0.02)
+            item = pcm_queue.get_nowait()
+            if item is None:
+                break
+            if isinstance(item, Exception):
+                log.error("MLX generate failed: %s", item)
+                return
             if first_chunk_time is None:
                 first_chunk_time = time.time() - t0
-            total_bytes += len(pcm)
+            total_bytes += len(item)
             chunk_count += 1
-            yield pcm
-            await asyncio.sleep(0)
-    except Exception as e:
-        log.error("MLX generate failed: %s", e)
-        return
+            yield item
+    finally:
+        _executor.shutdown(wait=False)
 
     wall = time.time() - t0
     audio_dur = total_bytes / (sample_rate * 2)

@@ -53,7 +53,10 @@ const EDGE_OUTPUT_FORMAT = "audio-24khz-96kbitrate-mono-mp3";
 
 /** CosyVoice FastAPI server URL (default matches server.py's
  *  `--port 50000`). */
-const DEFAULT_COSY_URL = "http://localhost:50000";
+// Use 127.0.0.1 instead of localhost — on WSL2, localhost resolves
+// to ::1 (IPv6) first with a ~200ms fallback to IPv4, which makes
+// every health probe and TTS request unnecessarily slow.
+const DEFAULT_COSY_URL = "http://127.0.0.1:50000";
 
 /** CosyVoice2-0.5B outputs 24 kHz mono int16 PCM. Hardcoded to
  *  match the model; expose as env if we run a different one. */
@@ -404,7 +407,7 @@ export function mountTtsRoutes(app: Express) {
       try {
         const probe = await fetch(`${ttsUrl}/health`, {
           method: "GET",
-          signal: AbortSignal.timeout(2000),
+          signal: AbortSignal.timeout(8000),
         });
         ttsReachable = probe.ok;
         if (probe.ok) {
