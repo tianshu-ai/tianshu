@@ -399,9 +399,11 @@ TEXT-TO-SPEECH (TTS):
   * "edge" (default) — Microsoft Edge online TTS. Cloud-based,
     no setup needed, works out of the box. Good quality but
     needs internet.
-  * "qwentts" — Local Qwen3-TTS 0.6B MLX server. Runs on
-    Apple Silicon via MLX framework. RTF ~0.3x (3x faster than
-    realtime), 9 preset voices, 10 languages, fully offline.
+  * "qwentts" — Local Qwen3-TTS server. Cross-platform:
+    Apple Silicon Mac uses MLX (fastest, RTF ~0.3x),
+    Linux + NVIDIA GPU uses PyTorch + CUDA,
+    Linux CPU works but is slow.
+    9 preset voices, 10 languages, fully offline.
     Requires a separate Python server on port 50000.
 - Config env vars (in launchd plist or .env):
   * TTS_PROVIDER=qwentts (or "edge")
@@ -410,9 +412,13 @@ TEXT-TO-SPEECH (TTS):
   Settings → 语音合成 (TTS).
 - Setting up Qwen3-TTS locally:
   Tianshu ships a one-click install script at
-  scripts/qwen3-tts-server/install.sh. It handles everything:
-  checks Python >= 3.10, creates a venv at ~/.tianshu/qwen-tts-venv,
-  installs mlx-audio + FastAPI, downloads the model (~1.2 GB).
+  scripts/qwen3-tts-server/install.sh. It auto-detects the
+  platform and installs the right backend:
+  * macOS Apple Silicon → mlx-audio (MLX, true streaming)
+  * Linux + NVIDIA GPU → qwen-tts (PyTorch + CUDA + flash-attn)
+  * Linux CPU → qwen-tts (PyTorch float32, slow fallback)
+  It checks Python >= 3.10, creates a venv at ~/.tianshu/qwen-tts-venv,
+  installs deps, and downloads the model.
 
   1. Find the install script. It ships inside the tianshu package:
      * npm global install:
@@ -428,9 +434,10 @@ TEXT-TO-SPEECH (TTS):
      in the launchd plist, then reload.
   5. Full setup guide: scripts/QWEN3_TTS_SETUP.md
 
-  Prerequisite: Python >= 3.10 on Apple Silicon Mac. macOS ships
-  Python 3.9 which is TOO OLD. The install script will check and
-  tell the user to 'brew install python@3.11' if needed.
+  Prerequisite: Python >= 3.10. On macOS the system Python 3.9 is
+  too old — tell the user to 'brew install python@3.11' if needed.
+  On Linux, most distros ship Python 3.10+. The install script
+  checks and reports clearly.
 - Available Qwen3-TTS voices: vivian (Chinese female, default),
   uncle_fu (Chinese male), serena (English female), ryan
   (English male), aiden, eric, dylan, ono_anna (Japanese),
