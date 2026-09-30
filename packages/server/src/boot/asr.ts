@@ -23,6 +23,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { getTianshuHome } from "../core/paths.js";
+import { loadGlobalConfig } from "../core/config.js";
 
 let recognizer: any = null;
 
@@ -119,7 +120,7 @@ async function initRecognizer(): Promise<boolean> {
     } else if (best.type === "whisper") {
       const decoderPath = modelPath.replace("encoder", "decoder");
       modelConfig = {
-        whisper: { encoder: modelPath, decoder: decoderPath, language: "zh" },
+        whisper: { encoder: modelPath, decoder: decoderPath, language: loadGlobalConfig().outputLanguage ?? "auto" },
         tokens: tokensPath,
         numThreads: 4,
       };
