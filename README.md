@@ -64,26 +64,15 @@ Don't `sudo`. If you hit `EACCES`, switch to a Node manager that
 puts the global bin under your user directory — not a system
 folder.
 
-### Configure your provider
+### Quick setup (CLI)
 
 ```bash
 tianshu setup
 ```
 
-A short interactive wizard. It:
-
-1. Asks which provider to use — Anthropic / OpenAI / Google, or
-   **"OpenAI-compatible endpoint"** for anything that speaks the
-   OpenAI API (Qwen/DashScope, vLLM, LM Studio, a gateway, a
-   local llama.cpp, …). Pick that and the wizard walks you through
-   the base URL and model id — no need to know the flags.
-2. Reads your API key with a hidden prompt.
-3. Writes `~/.tianshu/config.json` (settings) and `~/.tianshu/.env`
-   (secret).
-
-**Configuring a model is the only step you have to do by hand.**
-Once it's wired up, the setup agent (below) drives everything
-else — search keys, sandboxes, plugins, updates.
+The interactive wizard asks which provider to use, reads your API
+key, and writes `~/.tianshu/config.json`. That's it — one model
+configured and you're ready to start.
 
 Prefer one command (no prompts)? Use the non-interactive flavour —
 this is also what you run in Docker / CI:
@@ -93,13 +82,11 @@ this is also what you run in Docker / CI:
 tianshu setup --non-interactive --provider=anthropic --api-key=sk-***
 
 # Any OpenAI-compatible endpoint — pass --base-url and --default-model.
-# (--provider=openai-compatible is an alias for --provider=openai here.)
 
 # Alibaba Qwen (DashScope), mainland-China endpoint:
 tianshu setup --non-interactive --provider=openai --api-key=sk-*** \
   --base-url=https://dashscope.aliyuncs.com/compatible-mode/v1 \
   --default-model=openai/qwen-plus
-#   outside China: use https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 
 # A local model server:
 tianshu setup --non-interactive --provider=openai --api-key=*** \
@@ -109,34 +96,6 @@ tianshu setup --non-interactive --provider=openai --api-key=*** \
 > Flags use `--key=value` (an `=`, not a space). `--base-url` is the
 > prefix before `/chat/completions`, not the full endpoint URL.
 
-Once a model is configured, the wizard hands you over to the
-**setup agent** — an LLM-driven assistant running in the same
-terminal that can finish the rest of the configuration for
-you. It has 18 tools (`run_doctor`, `sandbox_inventory`,
-`config_write`, `plugin_enable`, `build_sandbox`,
-`use_sandbox_build`, `secret_write`, `apply_update`, ...) and
-asks for your confirmation before every state-changing call.
-Things you can ask it right now:
-
-- *"Set me up a search API key for the web-search plugin."* —
-  it'll ask which provider (Tavily / Brave / SerpAPI / ...),
-  prompt for the key, and write it via `secret_write` into
-  the right tenant's plugin config. No editing JSON by hand.
-- *"Build my sandboxes so I can use the browser."* — it
-  calls `sandbox_inventory` first to see what's already on
-  disk, then `build_sandbox` and `use_sandbox_build` to fill
-  in whatever's missing. Browser tools work the moment the
-  layered `task-runner-with-browser` snapshot is published.
-- *"Doctor's complaining about my provider — fix it."* — it
-  reads `run_doctor`, finds the offending line, and proposes
-  the specific `config_write` or `secret_write` call to fix
-  it before running anything.
-- *"Am I on the latest version?"* — it runs
-  `check_for_update` and, if you say yes, `apply_update`.
-
-You can exit anytime (type *done* / Ctrl-C) and come back
-later — the agent re-reads state from disk on each invocation.
-
 ### Start the service
 
 ```bash
@@ -145,10 +104,36 @@ tianshu start
 
 On macOS this installs a launchd agent
 (`~/Library/LaunchAgents/ai.tianshu.prod.plist`) that auto-starts
-at login and auto-restarts on crash. Linux systemd support is on
-the roadmap; for now, run `npm run dev` from a checkout.
+at login and auto-restarts on crash. On Linux a systemd unit
+(`tianshu-prod.service`) is installed instead.
 
 Open <http://localhost:3110> and start chatting.
+
+### Finish setup in the UI — Maintenance Mode
+
+Once the server is running, open the web UI. Click **Maintenance
+Mode** (the 🔧 icon in the sidebar) to enter the built-in setup
+assistant. This is an AI agent running inside the UI that helps
+you configure everything else — interactively, with clickable
+option buttons:
+
+- **"Run a health check."** — runs Doctor across 12 dimensions
+  and walks you through any issues.
+- **"Set up sandboxes so I can use the browser."** — inventories
+  what's built, proposes the missing layers, builds them for you.
+- **"Add a Tavily API key for web search."** — asks which
+  provider, prompts for the key, writes it into the right config.
+- **"Check for updates."** — checks npm, and upgrades if you
+  confirm.
+
+The assistant asks for your confirmation before every
+state-changing action. It presents options as clickable buttons
+you can tap or modify before sending. You can leave and come back
+anytime — the agent reads state from disk on each conversation.
+
+> **Tip:** You can also manage models, plugins, network policy,
+> and more from **Settings** (⚙️) without entering Maintenance
+> Mode.
 
 ### Verify everything
 
@@ -156,9 +141,10 @@ Open <http://localhost:3110> and start chatting.
 tianshu doctor
 ```
 
-Reports across 8 dimensions — runtime / version freshness / config
-files / LLM providers / network / sandbox / plugins / tenant DBs.
-Read-only. Run it anytime something feels off.
+Reports across 12 dimensions — runtime / version freshness / config
+files / LLM providers / network / sandbox / plugins / tenant DBs /
+service health / HTTPS / disk. Read-only. Run it anytime something
+feels off. Also available inside the UI via Maintenance Mode.
 
 ---
 
@@ -222,11 +208,12 @@ Plus:
   for the full story.
 - 🏢 **Multi-tenant from row 1.** Every record carries `tenantId`.
   Sidecars, workspaces, and worker pools are tenant-isolated.
-- 🧠 **A setup assistant that fixes things.** `tianshu setup` runs a
-  Claude/Codex-driven wizard with 18 tools: it can read your doctor
-  report, enable plugins, write config, build sandboxes, and even
-  upgrade itself. See it talk you through it in
-  [the launch video](https://youtu.be/Xw7c3JrlUVo).
+- 🧠 **A setup assistant that fixes things.** Enter **Maintenance
+  Mode** in the UI and talk to an AI-driven assistant that can read
+  your doctor report, enable plugins, write config, build sandboxes,
+  and upgrade the server — with clickable option buttons and
+  confirm-before-mutating safety. Also available via `tianshu setup`
+  in the terminal.
 - 🎚️ **Point-and-click day-2 controls.** A Settings surface for the
   things you used to hand-edit: a **Models** page to manage the
   provider catalog (add/edit providers + models, pick the default,
@@ -289,67 +276,34 @@ config). Third-party plugins install the same way; see
 A narrated walk-through. From zero to "agent driving a real
 browser on your screen":
 
-### Step 1 · Install + wizard (~2 min)
+### Step 1 · Install + configure a model (~2 min)
 
 ```bash
 npm install -g @tianshu-ai/tianshu@latest
-tianshu setup
+tianshu setup          # picks provider, reads API key, writes config
+tianshu start          # installs the service and starts the server
 ```
 
-The wizard picks a provider, reads your key, writes config. If
-you skip the LLM step you can edit `~/.tianshu/config.json` by
-hand later.
+Open <http://localhost:3110> — you should see the chat UI.
 
-### Step 2 · Start the service (~10 s)
+### Step 2 · Enter Maintenance Mode and let the agent guide you (~3 min)
 
-```bash
-tianshu start
-```
+Click the 🔧 icon in the sidebar to enter **Maintenance Mode**.
+You're now talking to a setup assistant that knows every
+configuration knob. It presents options as **clickable buttons**
+— pick one or type your own answer:
 
-The wizard already verified network / config. `tianshu start`
-installs the launchd agent and waits for the server to answer
-`/api/health`.
+> **Agent:** What would you like to set up?
+>
+> `[🛠 Build sandboxes]` `[🔑 Add API key]` `[🩺 Run Doctor]` `[🔄 Check updates]`
 
-### Step 3 · Ask the setup agent to finish the configuration
+Click **Build sandboxes** and the agent walks you through
+building the sandbox + browser layers. Click **Add API key** to
+wire up web search. Every state-changing action asks for your
+confirm first.
 
-After `tianshu setup` writes the provider config it drops you
-straight into the **setup agent** (still in the same terminal).
-This is where you finish wiring things up. Type plain English:
-
-> **You:** Set up sandboxes so I can use the browser tool.
-
-The agent will:
-
-1. Run `sandbox_inventory` to see what's already built.
-2. If a snapshot is missing, propose `build_sandbox
-   (template='task-runner')` and ask you to confirm.
-3. After ~10 min (cold) or ~3 min (warm) the snapshot lands; the
-   agent publishes it to the `task` role pointer with
-   `use_sandbox_build`.
-4. Repeat for the browser layer
-   (`task-runner-with-browser` on top of the task snapshot).
-
-If the build looks stuck, the agent calls `check_build_progress`
-first — it reads the launchd logs, classifies the build state
-(`in_progress` / `stalled` / `errored`), and tells you whether
-to wait or retry. It will NOT silently retry a 10-minute build
-that's still pulling apt packages.
-
-While you're here, you can keep talking to the agent about
-other setup work — say *"add a Tavily API key for web search"*
-or *"check for tianshu updates"* and it'll handle them with the
-same confirm-before-mutating loop. When you're done, type
-*done* or Ctrl-C; the agent saves state to disk and you can
-come back later with another `tianshu setup`.
-
-### Step 4 · Open the SPA and use it
-
-```bash
-open http://localhost:3110
-```
-
-This is the actual product UI — the chat surface your agent
-runs under. Try:
+When you're done, switch back to the main chat and start using
+your agent:
 
 > **You:** Open hacker news and tell me the top story right now.
 
@@ -362,10 +316,9 @@ Done. You've got a working agent.
 
 | Symptom | First step |
 |---|---|
-| `tianshu doctor` flags a blocker | Read the line; the `detail` field has the fix. |
-| Browser tool says "runner not ready" | `sandbox_inventory` in chat; build the missing snapshot. |
+| Doctor flags a blocker | Enter Maintenance Mode — ask *"fix my doctor issues"*. |
+| Browser tool says "runner not ready" | Maintenance Mode → *"build sandboxes"*. |
 | `tianshu start` says "server didn't respond" | `tianshu logs --stream=err -f` for the actual error. |
-| Setup wizard wedged | Ctrl-C, re-run `tianshu setup --wizard`. |
 | `npm install -g` errors with EACCES | Switch to nvm / volta / asdf. Don't `sudo`. |
 
 More in [Troubleshooting](docs/getting-started.md#troubleshooting).
@@ -464,7 +417,7 @@ the full picture.
 - [x] `npm install -g @tianshu-ai/tianshu` published to npm
 - [x] Production single-port server (SPA + API on `:3110`)
 - [x] `tianshu doctor` — runtime / config / network / sandbox / plugins
-- [x] Setup agent with 18 tools (inventory, build, fix, upgrade)
+- [x] Setup assistant (Maintenance Mode UI + `tianshu setup` CLI)
 - [x] Tenant model, plugin registry, sandbox role pointers
 
 **Shipped (0.4.x → 0.5.0)**
@@ -483,11 +436,13 @@ the full picture.
       `board.ds()` API for dashboard apps
 - [x] **Board enhancements** — `board.llm()` + `board.ds()` APIs,
       fullscreen mode, chat-embedded boards with API access
-- [x] **Setup agent improvements** — full plugin catalog knowledge,
-      runtime mutual-exclusivity enforcement, `compat` field
-      guidance, cross-arch deployment flow, China network hints
-- [x] **Doctor improvements** — `supportsDeveloperRole` compat check,
-      HOME env check, only checks enabled plugins' prerequisites
+- [x] **Setup assistant improvements** — full plugin catalog knowledge,
+      interactive option buttons (`ask_user`), runtime mutual-exclusivity
+      enforcement, `compat` field guidance, cross-arch deployment flow,
+      China network hints
+- [x] **Doctor improvements** — 12 check modules, Chinese i18n,
+      `supportsDeveloperRole` compat check, HTTPS health probe,
+      conditional sandbox checks, in-UI Doctor panel via Maintenance Mode
 
 **Next (0.5.x → 0.6)**
 
