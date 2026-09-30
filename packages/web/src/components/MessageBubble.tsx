@@ -243,6 +243,34 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
  * whole reply otherwise. Shared with the auto-speak hook so manual
  * and auto playback read the same slice of the message.
  */
+// ── TTS preference cache ─────────────────────────────────────
+// SpeakButton reads the user's chosen TTS provider + voice from
+// preferences once, then caches them for the session lifetime.
+// Without this, every play() call used the server's env default
+// instead of the user's Settings → TTS choice.
+let _ttsPrefsLoaded = false;
+let _ttsProvider: string | undefined;
+let _ttsVoice: string | undefined;
+
+async function loadTtsPrefs(): Promise<void> {
+  if (_ttsPrefsLoaded) return;
+  _ttsPrefsLoaded = true;
+  try {
+    const [pRes, vRes] = await Promise.all([
+      fetch("/api/preferences/tts.provider", { credentials: "include" }),
+      fetch("/api/preferences/tts.voice", { credentials: "include" }),
+    ]);
+    if (pRes.ok) {
+      const p = (await pRes.json()) as { value?: string | null };
+      if (p.value) _ttsProvider = p.value;
+    }
+    if (vRes.ok) {
+      const v = (await vRes.json()) as { value?: string | null };
+      if (v.value) _ttsVoice = v.value;
+    }
+  } catch { /* silent — fall back to server defaults */ }
+}
+
 function SpeakButton({ messageId, text }: { messageId: string; text: string }) {
   const playing = useVoiceStore((s) => s.playingId === messageId);
   const play = useVoiceStore((s) => s.play);
@@ -255,10 +283,14 @@ function SpeakButton({ messageId, text }: { messageId: string; text: string }) {
     }
     const spoken = spokenTextFor(text);
     if (!spoken) return;
-    play({ id: messageId, text: spoken }).catch(() => {
-      // Errors surface via the store's lastError field; the caller
-      // can add a toast later if we want visible feedback. For now
-      // silent failure keeps the chat surface unpolluted.
+    // Load TTS prefs (cached after first call), then play
+    loadTtsPrefs().then(() => {
+      play({
+        id: messageId,
+        text: spoken,
+        provider: _ttsProvider,
+        voice: _ttsVoice,
+      }).catch(() => {});
     });
   };
 
