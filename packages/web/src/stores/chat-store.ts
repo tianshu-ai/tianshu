@@ -156,6 +156,20 @@ interface ChatState {
    *  driven by inbound platform messages, not user-typed prompts. */
   viewingSessionId: string | null;
 
+  // ── ask_user interactions ──
+  /** Active interaction request from ask_user tool. Rendered as
+   *  clickable option buttons below the latest assistant message.
+   *  Cleared after the user responds or the interaction times out. */
+  activeInteraction: {
+    id: string;
+    sessionId: string;
+    question: string;
+    options: Array<{ value: string; label: string; description?: string }>;
+    multiSelect?: boolean;
+    /** Set after the user clicks; shows which option was picked. */
+    responded?: string | string[];
+  } | null;
+
   // ── internal ──
   /**
    * Tracks whether init() has registered its singleton WS handlers /
@@ -234,6 +248,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   sidebarOpen: true,
 
   viewingSessionId: null,
+  activeInteraction: null,
 
   _initialized: false,
   _lastPrompt: null,
@@ -773,6 +788,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ],
         };
       }),
+    );
+    // ask_user interaction requests
+    tianshuWs.on("interaction_request", (m) =>
+      set(() => ({
+        activeInteraction: {
+          id: m.id,
+          sessionId: m.sessionId,
+          question: m.question,
+          options: m.options,
+          multiSelect: m.multiSelect,
+        },
+      })),
     );
   },
 

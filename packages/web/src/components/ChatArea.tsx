@@ -3,6 +3,7 @@ import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Stethoscop
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
+import { InteractionButtons } from "./InteractionButtons";
 import { mergeToolTurns } from "../lib/merge-tool-turns";
 import ChatInput from "./ChatInput";
 import ModelSelector from "./ModelSelector";
@@ -172,6 +173,8 @@ export default function ChatArea() {
                 <MessageBubble m={m} />
               </div>
             ))}
+            {/* ask_user interaction buttons */}
+            <InteractionButtons />
             {/* No "streaming…" label here — the streaming bubble
              *  itself shows incoming text or a typing indicator,
              *  which is visual enough. */}

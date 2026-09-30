@@ -88,7 +88,15 @@ export type ServerEvent =
    * read `payload`. Lets plugin UIs react to server pushes instead of
    * polling on a timer.
    */
-  | { type: "plugin_event"; event: string; payload: unknown };
+  | { type: "plugin_event"; event: string; payload: unknown }
+  | {
+      type: "interaction_request";
+      id: string;
+      sessionId: string;
+      question: string;
+      options: Array<{ value: string; label: string; description?: string }>;
+      multiSelect?: boolean;
+    };
 
 export interface PluginsChangedDelta {
   pluginId: string;
