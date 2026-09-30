@@ -7,7 +7,7 @@
 
 import { type Express, type Request, type Response } from "express";
 import { requireSuperAdmin } from "./routes-auth.js";
-import { reloadAsrModel } from "./asr.js";
+import { reloadAsrModel, setAsrLanguage, getAsrLanguage } from "./asr.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createReadStream, createWriteStream } from "node:fs";
@@ -306,5 +306,18 @@ export function mountAsrAdminRoutes(app: Express): void {
       await reloadAsrModel(); // will find nothing → recognizer = null
     }
     res.json({ ok: true });
+  });
+
+  // Read current ASR language setting
+  app.get("/api/admin/asr/language", requireSuperAdmin, (_req: Request, res: Response) => {
+    res.json({ language: getAsrLanguage() });
+  });
+
+  // Reload ASR model (e.g. after language change)
+  app.post("/api/admin/asr/reload", requireSuperAdmin, async (req: Request, res: Response) => {
+    const lang = (req.body as { language?: string })?.language;
+    if (lang) setAsrLanguage(lang);
+    const ok = await reloadAsrModel();
+    res.json({ ok });
   });
 }

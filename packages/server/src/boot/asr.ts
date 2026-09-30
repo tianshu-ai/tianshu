@@ -23,7 +23,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 import { getTianshuHome } from "../core/paths.js";
-import { loadGlobalConfig } from "../core/config.js";
+
 
 let recognizer: any = null;
 
@@ -56,6 +56,22 @@ function getModelsRoots(): string[] {
   return [
     path.join(getTianshuHome(), "models"),
   ];
+}
+
+/** Read ASR language preference from disk. Falls back to "auto". */
+export function getAsrLanguage(): string {
+  try {
+    const langFile = path.join(getModelsRoots()[0], "asr-language.txt");
+    if (fs.existsSync(langFile)) return fs.readFileSync(langFile, "utf8").trim() || "auto";
+  } catch {}
+  return "auto";
+}
+
+/** Persist ASR language preference to disk. */
+export function setAsrLanguage(lang: string): void {
+  const dir = getModelsRoots()[0];
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, "asr-language.txt"), lang, "utf8");
 }
 
 function findBestModel(): ModelCandidate | null {
@@ -120,7 +136,7 @@ async function initRecognizer(): Promise<boolean> {
     } else if (best.type === "whisper") {
       const decoderPath = modelPath.replace("encoder", "decoder");
       modelConfig = {
-        whisper: { encoder: modelPath, decoder: decoderPath, language: loadGlobalConfig().outputLanguage ?? "auto" },
+        whisper: { encoder: modelPath, decoder: decoderPath, language: getAsrLanguage() },
         tokens: tokensPath,
         numThreads: 4,
       };

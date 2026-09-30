@@ -20,6 +20,7 @@ export default function AsrModelsPage() {
   const [modelsDir, setModelsDir] = useState("");
   const [loading, setLoading] = useState(true);
   const [shortcut, setShortcut] = useState("ctrl+shift+m");
+  const [asrLang, setAsrLang] = useState("auto");
   const [recordingKey, setRecordingKey] = useState(false);
   const [runtimeInstalled, setRuntimeInstalled] = useState(true);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -33,6 +34,10 @@ export default function AsrModelsPage() {
     fetch("/api/preferences/asr.shortcut", { credentials: "include" })
       .then((r) => r.json())
       .then((d) => { if (d.value) setShortcut(d.value); })
+      .catch(() => {});
+    fetch("/api/admin/asr/language", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d) => { if (d.language) setAsrLang(d.language); })
       .catch(() => {});
   }, []);
 
@@ -241,6 +246,36 @@ export default function AsrModelsPage() {
             </div>
           );
         })}
+      </div>
+
+      {/* Language config */}
+      <div className="mt-6 rounded-md border border-border-subtle bg-bg-surface px-4 py-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-fg-default">{t("asr.languageLabel")}</p>
+            <p className="text-[11px] text-fg-faint mt-0.5">{t("asr.languageHint")}</p>
+          </div>
+          <select
+            value={asrLang}
+            onChange={async (e) => {
+              const val = e.target.value;
+              setAsrLang(val);
+              // Save language and reload ASR model in one call
+              await fetch("/api/admin/asr/reload", {
+                method: "POST", credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ language: val }),
+              });
+            }}
+            className="w-48 rounded-md border border-border-default bg-bg-base px-3 py-1.5 text-xs text-fg-default focus:border-link focus:outline-none"
+          >
+            <option value="auto">{t("asr.langAuto")}</option>
+            <option value="zh">{t("asr.langZh")}</option>
+            <option value="en">{t("asr.langEn")}</option>
+            <option value="ja">{t("asr.langJa")}</option>
+            <option value="ko">{t("asr.langKo")}</option>
+          </select>
+        </div>
       </div>
 
       {/* Shortcut config */}
