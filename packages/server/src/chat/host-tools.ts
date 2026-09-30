@@ -29,6 +29,7 @@ import {
   isImageGenEnabled,
   listImageGenModels,
 } from "./host-tools/generate-image.js";
+import { buildAskUserTool } from "./host-tools/ask-user.js";
 import type { ResolvedConfig } from "../core/config.js";
 
 export { listImageGenModels, isImageGenEnabled };
@@ -36,8 +37,12 @@ export { listImageGenModels, isImageGenEnabled };
 export interface HostToolsOpts {
   contextWindow: number | undefined;
   compactionSettings: CompactionSettings & { triggerPercent?: number };
-  /** Callback to broadcast a WS event to the user. Used by switch_panel. */
+  /** Callback to broadcast a WS event to the user. Used by switch_panel and ask_user. */
   broadcast?: (event: string, payload: unknown) => void;
+  /** Callback to send a raw ServerMsg to the client. Used by ask_user. */
+  sendRaw?: (msg: unknown) => void;
+  /** Current session id. Needed by ask_user to tag interactions. */
+  sessionId?: string;
   /** Returns available panel ids from active plugins. */
   listPanels?: () => Array<{ panelId: string; pluginId: string; displayName: string }>;
   /** Opens the tenant DB for the recall_* tools. Optional: when absent,
@@ -88,6 +93,14 @@ export function buildHostTools(opts: HostToolsOpts): Array<{ schema: Tool; execu
   // — agents don't see it, regardless of what's in the catalog.
   if (opts.config && isImageGenEnabled(opts.config)) {
     tools.push(buildGenerateImageHostTool(opts.config, opts.userHomeDir, opts.signal));
+  }
+  // ask_user: available when we can push events to the client
+  if (opts.sendRaw && opts.sessionId) {
+    tools.push(buildAskUserTool({
+      sessionId: opts.sessionId,
+      broadcast: opts.sendRaw,
+      signal: opts.signal,
+    }));
   }
   // Attach ref to the array so the caller can grab it.
   (tools as unknown as { _compactRef: CompactToolRef })._compactRef = ref;

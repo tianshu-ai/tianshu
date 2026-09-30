@@ -77,7 +77,9 @@ export type ClientMsg =
    * user/tool-result message (nothing to continue).
    */
   | { type: "retry"; modelId?: string }
-  | { type: "abort" };
+  | { type: "abort" }
+  /** User responded to an ask_user interaction. */
+  | { type: "interaction_response"; id: string; value: string | string[] };
 
 export interface WireAttachment {
   /** User-home-relative path, always starts with "/". */
@@ -245,7 +247,16 @@ export type ServerMsg =
    * (workboard uses event "workboard:workboard.task" to push kanban
    * task updates so the board can drop its 3s poll.)
    */
-  | { type: "plugin_event"; event: string; payload: unknown };
+  | { type: "plugin_event"; event: string; payload: unknown }
+  /** ask_user tool suspended — render option buttons in the UI. */
+  | {
+      type: "interaction_request";
+      id: string;
+      sessionId: string;
+      question: string;
+      options: Array<{ value: string; label: string; description?: string }>;
+      multiSelect?: boolean;
+    };
 
 export interface PluginsChangedDelta {
   pluginId: string;

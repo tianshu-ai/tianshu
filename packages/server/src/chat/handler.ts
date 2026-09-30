@@ -407,6 +407,18 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         aborter = null;
         return;
       }
+      case "interaction_response": {
+        const { id, value } = parsed as { id?: string; value?: string | string[] };
+        if (typeof id === "string" && value !== undefined) {
+          import("./pending-interactions.js").then(({ resolveInteraction }) => {
+            const resolved = resolveInteraction(id, value);
+            if (!resolved) {
+              console.warn(`[handler] interaction_response for unknown id=${id}`);
+            }
+          });
+        }
+        return;
+      }
       default: {
         // Not a core message type. Offer it to plugin WS handlers
         // (declared via manifest `contributes.wsMessages[]`). Used by
@@ -728,6 +740,9 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     config: ctx.config,
     userHomeDir: ctx.userHomeDir(userId),
     broadcast: (event, payload) => send({ type: "plugin_event", event, payload } as ServerMsg),
+    sendRaw: (msg) => send(msg as ServerMsg),
+    sessionId: session.id,
+    signal,
     listPanels: () => {
       if (!pluginRegistry) return [];
       const panels: Array<{ panelId: string; pluginId: string; displayName: string }> = [];
