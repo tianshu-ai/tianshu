@@ -150,6 +150,14 @@ export function getPendingForSession(
   return result;
 }
 
+/**
+ * Get all pending interactions (across all sessions).
+ * Used to re-push on WS reconnect.
+ */
+export function getAllPending(): InteractionRequest[] {
+  return [...pending.values()].map((e) => e.request);
+}
+
 /** Clean up a pending entry. */
 function cleanup(id: string): void {
   const entry = pending.get(id);

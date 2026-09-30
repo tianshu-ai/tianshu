@@ -278,9 +278,17 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     }
 
     switch (parsed.type) {
-      case "hello":
+      case "hello": {
         send({ type: "connected", tenantId: ctx.tenantId, userId });
+        // Re-push any pending ask_user interactions so a page
+        // refresh doesn't lose the option buttons.
+        import("./pending-interactions.js").then(({ getAllPending }) => {
+          for (const req of getAllPending()) {
+            send({ type: "interaction_request", ...req } as ServerMsg);
+          }
+        });
         return;
+      }
       case "history": {
         const opts = makeWireOpts(ctx);
         // Caller can pin to a specific session (e.g. a channel
