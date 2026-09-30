@@ -58,6 +58,7 @@ const EDGE_VOICES: Array<{ id: string; label: string }> = [
   { id: "en-US-GuyNeural", label: "Guy (English male)" },
   { id: "en-GB-SoniaNeural", label: "Sonia (British female)" },
   { id: "ja-JP-NanamiNeural", label: "Nanami (Japanese female)" },
+  { id: "de-DE-KatjaNeural", label: "Katja (Deutsch weiblich)" },
 ];
 
 interface TtsStatus {
