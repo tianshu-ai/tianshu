@@ -323,6 +323,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       tianshuWs.send(
         sid ? { type: "history", sessionId: sid } : { type: "history" },
       );
+      // After a reconnect (e.g. server restart), any in-flight
+      // agent turn is dead. Wait briefly for a re-pushed
+      // interaction_request; if none arrives, reset streaming
+      // state so the user can send a new message.
+      if (get().isStreaming) {
+        setTimeout(() => {
+          // If still streaming but no interaction restored,
+          // the previous turn is gone — clean up.
+          const s = get();
+          if (s.isStreaming && !s.activeInteraction) {
+            set({
+              isStreaming: false,
+              _awaitingResponse: false,
+              activeInteraction: null,
+            });
+          }
+        }, 2000);
+      }
     });
     tianshuWs.on("history", (m) =>
       set({ messages: m.messages, hasMoreHistory: m.hasMore, loadingMore: false }),
