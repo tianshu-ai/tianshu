@@ -48,11 +48,11 @@ export function InteractionButtons() {
   };
 
   return (
-    <div className="mt-2 mb-1 px-3">
+    <div className="mt-2 mb-1 px-3 flex flex-col items-center">
       {question && (
         <div className="text-[12px] text-fg-muted mb-2">{question}</div>
       )}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap justify-center gap-2">
         {options.map((opt) => {
           const isSelected = selected.has(opt.value);
           return (
