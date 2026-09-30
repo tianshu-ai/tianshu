@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.74.1](https://github.com/tianshu-ai/tianshu/compare/v0.74.0...v0.74.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **i18n:** remove duplicate asr.langJa/asr.langKo keys ([1346a21](https://github.com/tianshu-ai/tianshu/commit/1346a21908a8380df48d985ec6ff74e6afb99611))
+
 ## [0.74.0](https://github.com/tianshu-ai/tianshu/compare/v0.73.0...v0.74.0) (2026-09-30)
 
 
