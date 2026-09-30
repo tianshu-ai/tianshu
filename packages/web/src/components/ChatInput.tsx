@@ -46,6 +46,17 @@ export default function ChatInput() {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const pendingDraft = useChatStore((s) => s.pendingDraft);
+
+  // Consume pendingDraft from InteractionButtons
+  useEffect(() => {
+    if (pendingDraft !== null) {
+      setDraft(pendingDraft);
+      useChatStore.setState({ pendingDraft: null });
+      // Focus the textarea so the user can edit and hit Enter
+      ref.current?.focus();
+    }
+  }, [pendingDraft]);
   const pttRef = useRef(false); // push-to-talk active
 
   // ── Voice input (server-side ASR) ────────────────────────

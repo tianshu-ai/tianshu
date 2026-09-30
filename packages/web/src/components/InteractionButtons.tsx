@@ -1,35 +1,31 @@
 // InteractionButtons — renders ask_user tool option buttons.
 //
-// Shown below the latest assistant message when activeInteraction
-// is set. User clicks an option → sends interaction_response via
-// WS → clears the interaction state.
+// Clicking an option fills the composer draft with the option's
+// value text. The user can edit it, then hit Send — which resolves
+// the pending interaction via interaction_response.
 
 import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../stores/chat-store";
-import { tianshuWs } from "../lib/ws";
 
 export function InteractionButtons() {
   const interaction = useChatStore((s) => s.activeInteraction);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [respondedId, setRespondedId] = useState<string | null>(null);
-  // Track the current interaction id so we reset local state
-  // when a new interaction arrives.
   const lastIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (interaction && interaction.id !== lastIdRef.current) {
-      // New interaction — reset local state
       lastIdRef.current = interaction.id;
       setSelected(new Set());
-      setRespondedId(null);
     }
   }, [interaction]);
 
   if (!interaction) return null;
-  // Already responded to THIS interaction — hide after brief delay
-  if (respondedId === interaction.id) return null;
 
-  const { id, question, options, multiSelect } = interaction;
+  const { question, options, multiSelect } = interaction;
+
+  const fillDraft = (text: string) => {
+    useChatStore.setState({ pendingDraft: text });
+  };
 
   const handleClick = (value: string) => {
     if (multiSelect) {
@@ -40,27 +36,19 @@ export function InteractionButtons() {
         return next;
       });
     } else {
-      // Single select — respond immediately
-      respond(value);
+      // Single select — fill the composer with the value
+      fillDraft(value);
     }
-  };
-
-  const respond = (value: string | string[]) => {
-    tianshuWs.send({ type: "interaction_response", id, value });
-    setRespondedId(id);
-    // Clear store after a short delay
-    setTimeout(() => {
-      useChatStore.setState({ activeInteraction: null });
-    }, 800);
   };
 
   const handleConfirm = () => {
     if (selected.size === 0) return;
-    respond([...selected]);
+    // Multi-select — fill comma-separated values
+    fillDraft([...selected].join(", "));
   };
 
   return (
-    <div className="mt-2 mb-1 px-1">
+    <div className="mt-2 mb-1 px-3">
       {question && (
         <div className="text-[12px] text-fg-muted mb-2">{question}</div>
       )}

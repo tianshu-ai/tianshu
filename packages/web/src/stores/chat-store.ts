@@ -166,9 +166,10 @@ interface ChatState {
     question: string;
     options: Array<{ value: string; label: string; description?: string }>;
     multiSelect?: boolean;
-    /** Set after the user clicks; shows which option was picked. */
-    responded?: string | string[];
   } | null;
+  /** Text to inject into the composer draft. Set by InteractionButtons
+   *  when the user clicks an option; consumed by ChatInput. */
+  pendingDraft: string | null;
 
   // ── internal ──
   /**
@@ -249,6 +250,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   viewingSessionId: null,
   activeInteraction: null,
+  pendingDraft: null,
 
   _initialized: false,
   _lastPrompt: null,
