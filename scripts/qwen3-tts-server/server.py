@@ -115,6 +115,38 @@ def _resolve_voice(raw_spk_id: str) -> tuple[str, str | None]:
     return default_voice, None
 
 
+# ─── HF cache resolver ────────────────────────────────────────
+
+def _resolve_hf_cache(model_id: str) -> str:
+    """If model_id is an HF repo ID and already cached locally, return
+    the snapshot path so we skip the HF API call on startup.
+    Passes through local paths and unknown repos unchanged."""
+    if os.path.isdir(model_id):
+        return model_id  # already a local path
+    cache_dir = os.path.join(
+        os.environ.get("HF_HOME", os.path.expanduser("~/.cache/huggingface")),
+        "hub",
+    )
+    # HF cache layout: models--<org>--<name>/snapshots/<hash>/
+    safe_name = "models--" + model_id.replace("/", "--")
+    snapshots_dir = os.path.join(cache_dir, safe_name, "snapshots")
+    if not os.path.isdir(snapshots_dir):
+        log.info("No local cache for %s, will download from HF", model_id)
+        return model_id
+    # Pick the most recent snapshot (by mtime)
+    snaps = sorted(
+        (os.path.join(snapshots_dir, d) for d in os.listdir(snapshots_dir)
+         if os.path.isdir(os.path.join(snapshots_dir, d))),
+        key=os.path.getmtime,
+        reverse=True,
+    )
+    if not snaps:
+        return model_id
+    local_path = snaps[0]
+    log.info("Using local HF cache: %s", local_path)
+    return local_path
+
+
 # ─── Backend: MLX (Apple Silicon) ────────────────────────────
 
 def load_model_mlx(mid: str):
@@ -405,6 +437,11 @@ if __name__ == "__main__":
 
     # Model ID: use explicit --model, or auto-select per backend
     model_id = args.model or DEFAULT_MODELS.get(backend, DEFAULT_MODELS["pytorch"])
+
+    # Resolve HF cache to a local snapshot path so we skip the HF API
+    # check on every startup. The model files are already cached locally
+    # after the first download — no need to hit the network.
+    model_id = _resolve_hf_cache(model_id)
 
     # Load custom ref-audio voices
     _load_custom_voices()
