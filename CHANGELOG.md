@@ -6,6 +6,21 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.73.0](https://github.com/tianshu-ai/tianshu/compare/v0.72.0...v0.73.0) (2026-09-30)
+
+
+### Features
+
+* **doctor:** add Chinese i18n for doctor panel ([8af92e4](https://github.com/tianshu-ai/tianshu/commit/8af92e4c40dadce044a1db2edecbc40480dcc6d5))
+* **doctor:** complete Chinese translation for all check-line texts ([6173cbf](https://github.com/tianshu-ai/tianshu/commit/6173cbf26191ecc94b102339a22446a7408d0dfd))
+* **setup:** guided setup wizard for fresh installs ([3836bc8](https://github.com/tianshu-ai/tianshu/commit/3836bc8c5a57ebcb9f4fd946af0f5d93d5330801))
+
+
+### Bug Fixes
+
+* **doctor:** live locale switch without page reload ([969b709](https://github.com/tianshu-ai/tianshu/commit/969b709d762fd166e1cea7696573728ad90a2350))
+* **setup:** enforce markdown list format for guided setup questions ([cb5b941](https://github.com/tianshu-ai/tianshu/commit/cb5b941cc5b9ba994958f239282f70b0b0d84860))
+
 ## [0.72.0](https://github.com/tianshu-ai/tianshu/compare/v0.71.4...v0.72.0) (2026-09-30)
 
 
