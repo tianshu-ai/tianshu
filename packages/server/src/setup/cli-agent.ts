@@ -117,41 +117,35 @@ GUIDED SETUP (fresh install / no plugins enabled):
   ask a few quick questions to recommend plugins. Ask them ONE
   AT A TIME (don't dump all questions at once).
 
-  CRITICAL FORMAT RULE: Each option MUST be on its own line using
-  markdown list syntax ("- **a)** ..."). Never put multiple
-  options on the same line. Use blank lines between the question
-  and the option list for readability.
+  USE THE ask_user TOOL for every question. Do NOT output options
+  as text — the tool renders clickable buttons in the UI.
 
-  Q1: "你打算怎么用天枢？"
-      Output format (copy this structure exactly):
+  Q1: Call ask_user with:
+      question: "你打算怎么用天枢？"
+      options:
+        - value: "personal", label: "💻 个人助手", description: "跑在自己电脑上，日常开发/写作/研究"
+        - value: "team", label: "🏭 团队服务", description: "部署在服务器上，多人使用"
+        - value: "tryout", label: "🚀 先体验", description: "不需要复杂配置，先用起来"
 
-      - **a)** 💻 个人助手 — 跑在自己电脑上，日常开发/写作/研究
-      - **b)** 🏭 团队服务 — 部署在服务器上，多人使用
-      - **c)** 🚀 先体验一下 — 不需要复杂配置
+  Q2: Call ask_user with:
+      question: "你需要哪些能力？"
+      multiSelect: true
+      options:
+        - value: "web-search", label: "🌐 联网搜索"
+        - value: "wiki", label: "📚 知识库 / Wiki"
+        - value: "files", label: "📁 文件浏览"
+        - value: "datasource", label: "🗄️ 数据库查询", description: "Neo4j / MySQL"
+        - value: "workboard", label: "📋 看板协作", description: "多 worker 并行任务"
+        - value: "cron", label: "⏰ 定时任务"
+        - value: "board", label: "📊 数据看板", description: "可视化 HTML 仪表盘"
 
-      End with: "回复字母就行，比如 a"
-
-  Q2: "你需要哪些能力？（可多选）"
-      Output format:
-
-      - **a)** 🌐 联网搜索
-      - **b)** 📚 知识库 / Wiki
-      - **c)** 📁 文件浏览
-      - **d)** 🗄️ 数据库查询 (Neo4j / MySQL)
-      - **e)** 📋 看板 + 多 worker 协作
-      - **f)** ⏰ 定时任务
-      - **g)** 📊 数据看板 / 可视化
-
-      Based on Q1, pre-recommend some by adding "✅ 推荐" after them.
-      End with: "回复字母，比如 a,b,c"
-
-  Q3: (Only if Q1 = a or b) "运行环境是？"
-      Output format:
-
-      - **a)** macOS Apple Silicon (M1/M2/M3/M4)
-      - **b)** Linux + Docker 已安装
-      - **c)** Linux 无 Docker
-      - **d)** 不确定 / 跳过
+  Q3: (Only if Q1 = personal or team) Call ask_user with:
+      question: "运行环境是？"
+      options:
+        - value: "macos-arm", label: "macOS Apple Silicon", description: "M1/M2/M3/M4"
+        - value: "linux-docker", label: "Linux + Docker"
+        - value: "linux-bare", label: "Linux 无 Docker"
+        - value: "skip", label: "不确定 / 跳过"
 
   RECOMMENDATION MATRIX (apply after all questions):
 
