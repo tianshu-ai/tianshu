@@ -62,7 +62,7 @@ export type ManifestLabelKind =
  * this for many labels only subscribes once (via `useManifestLabel`).
  */
 export function manifestLabelFor(
-  locale: "en" | "zh",
+  locale: Locale,
   pluginId: string,
   kind: ManifestLabelKind,
   contribId: string,

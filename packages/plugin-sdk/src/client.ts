@@ -593,7 +593,7 @@ export function useTheme(): ThemeApi {
 // inside the `t` it installs. Keys with no matching translation
 // fall through to the raw key (again, matching host behaviour).
 
-export type PluginLocale = "en" | "zh";
+export type PluginLocale = "en" | "zh" | "de";
 
 export interface LocaleApi {
   /** Currently-active locale. Two values today (en / zh); the

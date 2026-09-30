@@ -32,6 +32,7 @@ const localeModules = import.meta.glob<Record<string, string>>(
  *  (`plugin.<id>.<original>`); values are the current-locale
  *  string. One map per supported locale. */
 const merged: Record<Locale, Map<string, string>> = {
+  de: new Map(),
   en: new Map(),
   zh: new Map(),
 };
@@ -76,7 +77,7 @@ for (const [filePath, mod] of Object.entries(localeModules)) {
   if (!m) continue;
   const pluginId = m[1]!;
   const lang = m[2]!;
-  if (lang !== "en" && lang !== "zh") continue;
+  if (lang !== "en" && lang !== "zh" && lang !== "de") continue;
   registerPluginLocale(pluginId, lang, mod ?? {});
 }
 
