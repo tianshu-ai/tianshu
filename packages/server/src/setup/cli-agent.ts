@@ -2198,8 +2198,37 @@ export function buildTools(
           output: captured.join("\n"),
           nextStep:
             exitCode === 0 && !dryRun
-              ? "Run `tianshu restart` to bounce the dev server onto the new code."
+              ? "Use the restart_service tool to apply the update."
               : null,
+        });
+      },
+    },
+    restart_service: {
+      schema: {
+        name: "restart_service",
+        description:
+          "Restart the tianshu service via the OS service manager (launchd on macOS, systemd on Linux). " +
+          "The current process will be killed and replaced — the WebSocket session will disconnect briefly " +
+          "and reconnect automatically once the new process is healthy.\n\n" +
+          "Use after apply_update or config changes that require a restart. " +
+          "Returns immediately after issuing the restart command; the tool result may not arrive " +
+          "if the process is killed before the response is flushed.",
+        parameters: {
+          type: "object",
+          properties: {},
+          required: [],
+        } as never,
+      },
+      execute: async () => {
+        const { runRestart } = await import("./service.js");
+        // Don't wait for health — we'll be dead before the check completes.
+        const exitCode = await runRestart({ wait: false });
+        return JSON.stringify({
+          ok: exitCode === 0,
+          exitCode,
+          note: exitCode === 0
+            ? "Restart issued. This session will disconnect momentarily."
+            : "Restart failed — check service logs.",
         });
       },
     },
@@ -2382,7 +2411,12 @@ export function buildTools(
         const timeoutSeconds = Number.isFinite(rawTimeout) && rawTimeout > 0
           ? Math.min(rawTimeout, 1800)
           : 600;
-        const cwd = typeof args.cwd === "string" && args.cwd ? args.cwd : undefined;
+        // Fall back to $HOME when cwd is unset or the directory no
+        // longer exists (e.g. deleted temp dir → ENOENT: uv_cwd).
+        const requestedCwd = typeof args.cwd === "string" && args.cwd ? args.cwd : undefined;
+        const cwd = requestedCwd && fs.existsSync(requestedCwd)
+          ? requestedCwd
+          : os.homedir();
         const startedAt = Date.now();
         const { spawn } = await import("node:child_process");
         return await new Promise<string>((resolve) => {
