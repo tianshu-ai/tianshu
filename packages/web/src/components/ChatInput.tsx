@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Mic, Send, Square } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
+import { tianshuWs } from "../lib/ws";
 import { useComposerStore } from "../stores/composer-store";
 import { useVoiceInput } from "../hooks/useVoiceInput";
 import { useVoiceMode } from "../hooks/useVoiceMode";
@@ -20,6 +21,12 @@ import { useT } from "../hooks/useT";
 export default function ChatInput() {
   const t = useT();
   const isStreaming = useChatStore((s) => s.isStreaming);
+  const activeInteraction = useChatStore((s) => s.activeInteraction);
+  // When an ask_user interaction is pending, the agent loop is
+  // suspended (isStreaming=true) but the user should still be able
+  // to type a free-form answer. Treat it as "not streaming" for
+  // the composer's disabled/send logic.
+  const effectiveStreaming = isStreaming && !activeInteraction;
   const isCompacting = useChatStore((s) => s.isCompacting);
   const sendPrompt = useChatStore((s) => s.sendPrompt);
   const abort = useChatStore((s) => s.abort);
@@ -97,7 +104,7 @@ export default function ChatInput() {
   }, [draft]);
 
   const sendAllowed = (() => {
-    if (isStreaming) return true;
+    if (effectiveStreaming) return true;
     if (isCompacting) return false;
     if (submitting) return false;
     if (hasPending) return false;
@@ -105,10 +112,23 @@ export default function ChatInput() {
   })();
 
   const submit = async () => {
-    if (isStreaming) { abort(); return; }
+    if (effectiveStreaming) { abort(); return; }
     if (submitting || hasPending) return;
     const trimmed = draft.trimEnd();
     if (!trimmed && attachmentCount === 0) return;
+
+    // If there's a pending ask_user interaction, resolve it with
+    // the user's free-form text instead of sending a normal prompt.
+    if (activeInteraction) {
+      tianshuWs.send({
+        type: "interaction_response",
+        id: activeInteraction.id,
+        value: trimmed,
+      });
+      useChatStore.setState({ activeInteraction: null });
+      setDraft("");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -192,7 +212,7 @@ export default function ChatInput() {
           </div>
           <div className="flex items-center gap-2">
             <ModelSelector />
-            {!isStreaming && asrAvailable && (
+            {!effectiveStreaming && asrAvailable && (
               <button
                 type="button"
                 onClick={() => void toggleVoice()}
@@ -219,7 +239,7 @@ export default function ChatInput() {
                 )}
               </button>
             )}
-            {isStreaming ? (
+            {effectiveStreaming ? (
               <button
                 type="button"
                 onClick={abort}
