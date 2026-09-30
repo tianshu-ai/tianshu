@@ -208,10 +208,14 @@ export default function TtsSettingsPage() {
   const testVoice = useCallback(async () => {
     setTesting(true);
     setTestError(null);
-    // Pick preview text matching the voice's language so non-Chinese
-    // voices don't choke on Chinese characters.
-    let previewText = "你好，我是天枢。这是一段声音测试。";
-    if (voice.startsWith("en-")) {
+    // Pick preview text matching the voice's language.
+    // Edge TTS voices have locale prefixes (zh-CN, en-US, etc.) so we
+    // match on those. Qwen3-TTS voices are custom names without locale
+    // prefixes — use a bilingual sentence so any voice sounds natural.
+    let previewText: string;
+    if (provider === "qwentts") {
+      previewText = "你好，我是天枢。Hello, this is a voice preview.";
+    } else if (voice.startsWith("en-")) {
       previewText = "Hello, I'm Tianshu. This is a voice preview test.";
     } else if (voice.startsWith("ja-")) {
       previewText = "こんにちは、天枢です。これは音声プレビューテストです。";
@@ -221,6 +225,8 @@ export default function TtsSettingsPage() {
       previewText = "Hallo, ich bin Tianshu. Dies ist ein Sprachvorschau-Test.";
     } else if (voice.startsWith("zh-HK") || voice.startsWith("zh-TW")) {
       previewText = "你好，我是天樞。這是一段語音測試。";
+    } else {
+      previewText = "你好，我是天枢。这是一段声音测试。";
     }
     try {
       await playVoice({
