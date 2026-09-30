@@ -716,6 +716,13 @@ app.use(
     credentials: true,
   }),
 );
+
+// gzip/deflate compression for all responses. Critical on WSL2 where
+// the Hyper-V network bridge can stall on large uncompressed payloads
+// (the 2 MB SPA bundle was loading for 30+ seconds without this).
+import compression from "compression";
+app.use(compression());
+
 app.use(express.json({ limit: "1mb" }));
 
 // OpenCode model proxy route. Mounted BEFORE the tenant middleware
@@ -1089,7 +1096,10 @@ void channelManager.bootAll().catch((err) => {
 (globalThis as unknown as { __tianshuStopChannelRouter?: () => void }).__tianshuStopChannelRouter =
   stopChannelRouter;
 
-server.listen(PORT, () => {
+// Bind to '::' (dual-stack IPv4 + IPv6). On WSL2, 'localhost' resolves
+// to ::1 (IPv6) first; without dual-stack the client waits ~200ms for
+// the IPv6 connect to timeout before falling back to 127.0.0.1.
+server.listen(PORT, "::", () => {
   // eslint-disable-next-line no-console
   const _proto = (_sslCfg?.sslCert && _sslCfg?.sslKey) ? 'https' : 'http';
   const _wsProto = _proto === 'https' ? 'wss' : 'ws';
