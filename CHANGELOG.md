@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.76.1](https://github.com/tianshu-ai/tianshu/compare/v0.76.0...v0.76.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* **doctor:** warn when auto-compaction is not configured ([8eceddc](https://github.com/tianshu-ai/tianshu/commit/8eceddc67b694a266234df5d0c0e4126dc6b1164))
+
 ## [0.76.0](https://github.com/tianshu-ai/tianshu/compare/v0.75.0...v0.76.0) (2026-09-30)
 
 
