@@ -25,6 +25,7 @@ import {
   CheckCircle,
   Loader2,
   RefreshCw,
+  Save,
   Speaker,
 } from "lucide-react";
 import { useVoiceStore } from "../../stores/voice-store";
@@ -138,12 +139,14 @@ export default function TtsSettingsPage() {
         normalized.providerDefault ||
         "edge";
       setProvider(chosenProvider);
+      setSavedProvider(chosenProvider);
       const voices = chosenProvider === "edge" ? EDGE_VOICES : qwenttsVoices;
       const chosenVoice =
         (voicePref?.value as string) ||
         voices[0]?.id ||
         "";
       setVoice(chosenVoice);
+      setSavedVoice(chosenVoice);
     } catch (err) {
       setStatusError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -155,54 +158,50 @@ export default function TtsSettingsPage() {
     refresh();
   }, [refresh]);
 
+  // ── Saved state for dirty detection ──────────────────────────
+  const [savedProvider, setSavedProvider] = useState<TtsProvider>(provider);
+  const [savedVoice, setSavedVoice] = useState(voice);
+  const dirty = provider !== savedProvider || voice !== savedVoice;
+
   const changeProvider = useCallback(
-    async (next: TtsProvider) => {
+    (next: TtsProvider) => {
       setProvider(next);
       const voices = voicesFor(next);
       const validVoice = voices.some((v) => v.id === voice);
-      const nextVoice = validVoice ? voice : voices[0]?.id || "";
-      setVoice(nextVoice);
-      setSaving(true);
-      try {
-        await Promise.all([
-          fetch("/api/preferences/tts.provider", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ value: next }),
-          }),
-          fetch("/api/preferences/tts.voice", {
-            method: "POST",
-            credentials: "include",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ value: nextVoice }),
-          }),
-        ]);
-        // Sync to voice store so play() picks up the new choice
-        useVoiceStore.getState().setTtsPrefs(next, nextVoice);
-      } finally {
-        setSaving(false);
-      }
+      if (!validVoice) setVoice(voices[0]?.id || "");
     },
     [voice, voicesFor],
   );
 
-  const changeVoice = useCallback(async (next: string) => {
+  const changeVoice = useCallback((next: string) => {
     setVoice(next);
+  }, []);
+
+  const save = useCallback(async () => {
     setSaving(true);
     try {
-      await fetch("/api/preferences/tts.voice", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: next }),
-      });
-      // Sync to voice store
-      useVoiceStore.getState().setTtsPrefs(useVoiceStore.getState().ttsProvider, next);
+      await Promise.all([
+        fetch("/api/preferences/tts.provider", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: provider }),
+        }),
+        fetch("/api/preferences/tts.voice", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: voice }),
+        }),
+      ]);
+      // Sync to voice store so play() picks up the new choice
+      useVoiceStore.getState().setTtsPrefs(provider, voice);
+      setSavedProvider(provider);
+      setSavedVoice(voice);
     } finally {
       setSaving(false);
     }
-  }, []);
+  }, [provider, voice]);
 
   const playVoice = useVoiceStore((s) => s.play);
   const testVoice = useCallback(async () => {
@@ -350,9 +349,22 @@ export default function TtsSettingsPage() {
             <div className="mt-3 flex items-center gap-2">
               <button
                 type="button"
+                onClick={() => void save()}
+                disabled={!dirty || saving}
+                className="inline-flex items-center gap-1.5 rounded-md bg-accent-fill px-3 py-1.5 text-xs font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Save size={13} />
+                )}
+                {saving ? t("common.saving") : t("common.save")}
+              </button>
+              <button
+                type="button"
                 onClick={testVoice}
                 disabled={testing || saving}
-                className="rounded-md bg-accent-fill px-3 py-1.5 text-xs font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
+                className="rounded-md border border-border-strong px-3 py-1.5 text-xs font-medium text-fg-default hover:bg-bg-raised/60 disabled:opacity-50"
               >
                 {testing ? (
                   <span className="inline-flex items-center gap-1.5">
@@ -363,9 +375,6 @@ export default function TtsSettingsPage() {
                   t("tts.preview")
                 )}
               </button>
-              {saving && (
-                <span className="text-xs text-fg-faint">{t("tts.saving")}</span>
-              )}
               {testError && (
                 <span className="text-xs text-danger">{t("tts.previewFailed", { error: testError ?? "" })}</span>
               )}
