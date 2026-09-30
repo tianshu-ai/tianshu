@@ -353,6 +353,63 @@ def warmup_pytorch():
         log.warning("PyTorch warmup failed (non-fatal): %s", e)
 
 
+# ─── Sentence splitting ─────────────────────────────────────
+import re
+
+# Max characters per TTS chunk. Voice-clone quality degrades on long
+# inputs; splitting at sentence boundaries keeps each generation short.
+_MAX_SENTENCE_CHARS = 80
+
+_SENTENCE_RE = re.compile(
+    r'(?<=[.!?\u3002\uff01\uff1f\uff1b\u3001\uff0c;,\n])\s*'
+)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split text into chunks of roughly _MAX_SENTENCE_CHARS.
+
+    Splits at sentence-ending punctuation. If a single sentence
+    exceeds the limit, it is kept whole (splitting mid-sentence
+    sounds worse than a slightly-too-long input).
+    """
+    raw = _SENTENCE_RE.split(text.strip())
+    sentences = [s.strip() for s in raw if s.strip()]
+    if not sentences:
+        return [text.strip()] if text.strip() else []
+
+    chunks: list[str] = []
+    buf = ""
+    for s in sentences:
+        if buf and len(buf) + len(s) > _MAX_SENTENCE_CHARS:
+            chunks.append(buf)
+            buf = s
+        else:
+            buf = (buf + s) if buf else s
+    if buf:
+        chunks.append(buf)
+    return chunks
+
+
+async def _generate_chunked(text: str, voice: str, ref_audio: str | None):
+    """Split long text into sentences and generate PCM for each chunk
+    sequentially. Yields PCM bytes suitable for StreamingResponse.
+    Voice-clone quality stays consistent because each chunk is short."""
+    chunks = _split_sentences(text)
+    if len(chunks) <= 1:
+        # Short text — no splitting needed, stream directly
+        gen_fn = generate_pcm_mlx if backend == "mlx" else generate_pcm_pytorch
+        async for pcm in gen_fn(text, voice, ref_audio):
+            yield pcm
+        return
+
+    log.info("Splitting %d chars into %d chunks", len(text), len(chunks))
+    for i, chunk in enumerate(chunks):
+        log.info("  chunk %d/%d: %d chars", i + 1, len(chunks), len(chunk))
+        gen_fn = generate_pcm_mlx if backend == "mlx" else generate_pcm_pytorch
+        async for pcm in gen_fn(chunk, voice, ref_audio):
+            yield pcm
+
+
 # ─── API endpoints ───────────────────────────────────────────
 
 @app.get("/inference_sft")
@@ -368,12 +425,10 @@ async def inference_sft(
         len(tts_text), voice, "yes" if ref_audio else "no", backend, raw,
     )
 
-    if backend == "mlx":
-        gen = generate_pcm_mlx(tts_text, voice, ref_audio)
-    else:
-        gen = generate_pcm_pytorch(tts_text, voice, ref_audio)
-
-    return StreamingResponse(gen, media_type="audio/pcm")
+    return StreamingResponse(
+        _generate_chunked(tts_text, voice, ref_audio),
+        media_type="audio/pcm",
+    )
 
 
 @app.get("/health")
