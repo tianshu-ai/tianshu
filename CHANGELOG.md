@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.72.0](https://github.com/tianshu-ai/tianshu/compare/v0.71.4...v0.72.0) (2026-09-30)
+
+
+### Features
+
+* **setup:** add restart_service tool + fix shell_exec ENOENT cwd ([1322e60](https://github.com/tianshu-ai/tianshu/commit/1322e600ee1d390d5f2fe90fecc4590baa1d53a4))
+
 ## [0.71.4](https://github.com/tianshu-ai/tianshu/compare/v0.71.3...v0.71.4) (2026-09-29)
 
 
