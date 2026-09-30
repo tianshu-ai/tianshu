@@ -6,6 +6,19 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.75.0](https://github.com/tianshu-ai/tianshu/compare/v0.74.1...v0.75.0) (2026-09-30)
+
+
+### Features
+
+* **tts:** cross-platform Qwen3-TTS server (MLX + PyTorch) ([124d6ba](https://github.com/tianshu-ai/tianshu/commit/124d6ba2741640eece653ccb7ec8c8a3cd99b1cd))
+
+
+### Documentation
+
+* rewrite README quick-start to use Maintenance Mode UI ([c39f6a0](https://github.com/tianshu-ai/tianshu/commit/c39f6a09c9d3f260648eec4b5a448713859b2cc4))
+* **setup:** update TTS section for cross-platform support ([086dfd8](https://github.com/tianshu-ai/tianshu/commit/086dfd824cc6b66d418734ee33bca9033f62b2a9))
+
 ## [0.74.1](https://github.com/tianshu-ai/tianshu/compare/v0.74.0...v0.74.1) (2026-09-30)
 
 
