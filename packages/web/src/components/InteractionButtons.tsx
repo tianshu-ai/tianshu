@@ -4,16 +4,30 @@
 // is set. User clicks an option → sends interaction_response via
 // WS → clears the interaction state.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChatStore } from "../stores/chat-store";
 import { tianshuWs } from "../lib/ws";
 
 export function InteractionButtons() {
   const interaction = useChatStore((s) => s.activeInteraction);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [responded, setResponded] = useState(false);
+  const [respondedId, setRespondedId] = useState<string | null>(null);
+  // Track the current interaction id so we reset local state
+  // when a new interaction arrives.
+  const lastIdRef = useRef<string | null>(null);
 
-  if (!interaction || responded) return null;
+  useEffect(() => {
+    if (interaction && interaction.id !== lastIdRef.current) {
+      // New interaction — reset local state
+      lastIdRef.current = interaction.id;
+      setSelected(new Set());
+      setRespondedId(null);
+    }
+  }, [interaction]);
+
+  if (!interaction) return null;
+  // Already responded to THIS interaction — hide after brief delay
+  if (respondedId === interaction.id) return null;
 
   const { id, question, options, multiSelect } = interaction;
 
@@ -33,14 +47,11 @@ export function InteractionButtons() {
 
   const respond = (value: string | string[]) => {
     tianshuWs.send({ type: "interaction_response", id, value });
-    setResponded(true);
-    useChatStore.setState({
-      activeInteraction: { ...interaction, responded: Array.isArray(value) ? value : value },
-    });
-    // Clear after a short delay so the user sees their selection
+    setRespondedId(id);
+    // Clear store after a short delay
     setTimeout(() => {
       useChatStore.setState({ activeInteraction: null });
-    }, 1500);
+    }, 800);
   };
 
   const handleConfirm = () => {
