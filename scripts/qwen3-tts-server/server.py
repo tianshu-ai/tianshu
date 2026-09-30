@@ -356,38 +356,106 @@ def warmup_pytorch():
 # ─── Sentence splitting ─────────────────────────────────────
 import re
 
-# Max characters per TTS chunk. Voice-clone quality degrades on long
-# inputs; splitting at sentence boundaries keeps each generation short.
-_MAX_SENTENCE_CHARS = 80
+# Target characters per TTS chunk. Voice-clone quality degrades on
+# long inputs; splitting at sentence boundaries keeps generation short.
+_TARGET_CHARS = 60
+_MAX_CHARS = 100  # hard ceiling before forced sub-splitting
+_MIN_CHARS = 15   # merge tiny fragments into neighbors
 
-_SENTENCE_RE = re.compile(
-    r'(?<=[.!?\u3002\uff01\uff1f\uff1b\u3001\uff0c;,\n])\s*'
+# Split after sentence-ending punctuation (Chinese & Western).
+# The pattern *keeps* the punctuation attached to the preceding text
+# by using findall with a capturing group rather than re.split.
+_SENT_RE = re.compile(
+    r'((?:[^.!?\u3002\uff01\uff1f\uff1b;\n]*'
+    r'[.!?\u3002\uff01\uff1f\uff1b;\n])'
+    r'|(?:[^.!?\u3002\uff01\uff1f\uff1b;\n]+$))'
+)
+
+# Fallback: split at commas / clause boundaries for long segments.
+_CLAUSE_RE = re.compile(
+    r'((?:[^\u3001\uff0c,]*[\u3001\uff0c,])'
+    r'|(?:[^\u3001\uff0c,]+$))'
 )
 
 
 def _split_sentences(text: str) -> list[str]:
-    """Split text into chunks of roughly _MAX_SENTENCE_CHARS.
+    """Split text into chunks of roughly _TARGET_CHARS.
 
-    Splits at sentence-ending punctuation. If a single sentence
-    exceeds the limit, it is kept whole (splitting mid-sentence
-    sounds worse than a slightly-too-long input).
+    1. Split at sentence-ending punctuation (.!?。！？；;)
+    2. Merge tiny fragments (< _MIN_CHARS) into their neighbor
+    3. If any chunk still exceeds _MAX_CHARS, sub-split at commas
+    4. If still too long, hard-split at _MAX_CHARS
     """
-    raw = _SENTENCE_RE.split(text.strip())
+    stripped = text.strip()
+    if not stripped:
+        return []
+    if len(stripped) <= _MAX_CHARS:
+        return [stripped]
+
+    # Step 1: sentence split
+    raw = _SENT_RE.findall(stripped)
     sentences = [s.strip() for s in raw if s.strip()]
     if not sentences:
-        return [text.strip()] if text.strip() else []
+        sentences = [stripped]
 
+    # Step 2: merge into target-sized chunks, absorbing tiny fragments
     chunks: list[str] = []
     buf = ""
     for s in sentences:
-        if buf and len(buf) + len(s) > _MAX_SENTENCE_CHARS:
+        if not buf:
+            buf = s
+        elif len(buf) + len(s) <= _TARGET_CHARS:
+            buf += s
+        else:
             chunks.append(buf)
             buf = s
-        else:
-            buf = (buf + s) if buf else s
     if buf:
-        chunks.append(buf)
-    return chunks
+        # Merge trailing tiny fragment into previous chunk
+        if chunks and len(buf) < _MIN_CHARS:
+            chunks[-1] += buf
+        else:
+            chunks.append(buf)
+
+    # Step 3: sub-split oversized chunks at commas
+    result: list[str] = []
+    for chunk in chunks:
+        if len(chunk) <= _MAX_CHARS:
+            result.append(chunk)
+            continue
+        # Try clause-level split
+        clauses = _CLAUSE_RE.findall(chunk)
+        sub_buf = ""
+        for c in clauses:
+            c = c.strip()
+            if not c:
+                continue
+            if not sub_buf:
+                sub_buf = c
+            elif len(sub_buf) + len(c) <= _TARGET_CHARS:
+                sub_buf += c
+            else:
+                result.append(sub_buf)
+                sub_buf = c
+        if sub_buf:
+            if result and len(sub_buf) < _MIN_CHARS:
+                result[-1] += sub_buf
+            else:
+                result.append(sub_buf)
+
+    # Step 4: hard-split anything still over _MAX_CHARS
+    final: list[str] = []
+    for chunk in result:
+        while len(chunk) > _MAX_CHARS:
+            # Find last space or punctuation within limit
+            cut = chunk[:_MAX_CHARS].rfind(" ")
+            if cut < _MIN_CHARS:
+                cut = _MAX_CHARS
+            final.append(chunk[:cut].strip())
+            chunk = chunk[cut:].strip()
+        if chunk:
+            final.append(chunk)
+
+    return final
 
 
 async def _generate_chunked(text: str, voice: str, ref_audio: str | None):
