@@ -178,6 +178,8 @@ export default function TtsSettingsPage() {
             body: JSON.stringify({ value: nextVoice }),
           }),
         ]);
+        // Sync to voice store so play() picks up the new choice
+        useVoiceStore.getState().setTtsPrefs(next, nextVoice);
       } finally {
         setSaving(false);
       }
@@ -195,6 +197,8 @@ export default function TtsSettingsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ value: next }),
       });
+      // Sync to voice store
+      useVoiceStore.getState().setTtsPrefs(useVoiceStore.getState().ttsProvider, next);
     } finally {
       setSaving(false);
     }

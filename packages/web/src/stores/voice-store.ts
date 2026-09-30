@@ -66,6 +66,15 @@ interface VoiceState {
   /** Last error surface; useful for the caller to show a toast. */
   lastError: string | null;
 
+  // ── TTS preference state ──────────────────────────────────
+  // Loaded once from /api/preferences on first access; updated
+  // by the Settings → TTS page on save. All play() calls read
+  // these as defaults when the caller doesn't pass overrides.
+  ttsProvider: string | null;
+  ttsVoice: string | null;
+  /** Update cached TTS preferences (called by Settings page). */
+  setTtsPrefs: (provider: string | null, voice: string | null) => void;
+
   /** Fire an utterance IMMEDIATELY (default): cancel any current
    *  playback and clear the pending queue. Manual play button and
    *  the Settings preview use this.
@@ -207,10 +216,40 @@ function teardown() {
   }
 }
 
+// ── TTS preference loader (once per page load) ───────────────
+let _ttsPrefsLoadPromise: Promise<void> | null = null;
+
+function ensureTtsPrefs(): Promise<void> {
+  if (_ttsPrefsLoadPromise) return _ttsPrefsLoadPromise;
+  _ttsPrefsLoadPromise = (async () => {
+    try {
+      const [pRes, vRes] = await Promise.all([
+        fetch("/api/preferences/tts.provider", { credentials: "include" }),
+        fetch("/api/preferences/tts.voice", { credentials: "include" }),
+      ]);
+      let provider: string | null = null;
+      let voice: string | null = null;
+      if (pRes.ok) {
+        const p = (await pRes.json()) as { value?: string | null };
+        if (p.value) provider = p.value;
+      }
+      if (vRes.ok) {
+        const v = (await vRes.json()) as { value?: string | null };
+        if (v.value) voice = v.value;
+      }
+      useVoiceStore.setState({ ttsProvider: provider, ttsVoice: voice });
+    } catch { /* silent — server defaults used */ }
+  })();
+  return _ttsPrefsLoadPromise;
+}
+
 export const useVoiceStore = create<VoiceState>((set, get) => ({
   playingId: null,
   currentDisplayText: "",
   lastError: null,
+  ttsProvider: null,
+  ttsVoice: null,
+  setTtsPrefs: (provider, voice) => set({ ttsProvider: provider, ttsVoice: voice }),
 
   stop: () => {
     pendingQueue.length = 0;
@@ -262,6 +301,15 @@ export const useVoiceStore = create<VoiceState>((set, get) => ({
   },
 
   play: async (req: SpeakRequest) => {
+    // ── Apply TTS preference defaults ───────────────────────
+    // Ensure preferences are loaded (no-op after first call), then
+    // fill in provider/voice from the store when the caller didn't
+    // supply explicit overrides.
+    await ensureTtsPrefs();
+    const { ttsProvider, ttsVoice } = get();
+    if (!req.provider && ttsProvider) req = { ...req, provider: ttsProvider };
+    if (!req.voice && ttsVoice) req = { ...req, voice: ttsVoice };
+
     // "queue" mode goes through enqueue instead — avoid infinite
     // recursion by intercepting here. This lets callers do
     // `useVoiceStore.getState().play({ mode: "queue", ... })` if
