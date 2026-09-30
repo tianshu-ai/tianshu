@@ -323,23 +323,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
       tianshuWs.send(
         sid ? { type: "history", sessionId: sid } : { type: "history" },
       );
-      // After a reconnect (e.g. server restart), any in-flight
-      // agent turn is dead. Wait briefly for a re-pushed
-      // interaction_request; if none arrives, reset streaming
-      // state so the user can send a new message.
+      // On reconnect, unconditionally reset streaming state.
+      // If the server is still running an agent turn it will
+      // re-push stream_start (and interaction_request for
+      // pending ask_user) immediately — those handlers flip
+      // isStreaming back to true. If the server restarted,
+      // nothing is running and the user gets their composer back.
       if (get().isStreaming) {
-        setTimeout(() => {
-          // If still streaming but no interaction restored,
-          // the previous turn is gone — clean up.
-          const s = get();
-          if (s.isStreaming && !s.activeInteraction) {
-            set({
-              isStreaming: false,
-              _awaitingResponse: false,
-              activeInteraction: null,
-            });
-          }
-        }, 2000);
+        set({
+          isStreaming: false,
+          _awaitingResponse: false,
+          activeInteraction: null,
+        });
       }
     });
     tianshuWs.on("history", (m) =>
@@ -549,7 +544,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
           next = next.slice();
         }
         next[idx] = { ...next[idx]!, text: next[idx]!.text + m.delta };
-        return { messages: next };
+        // If we got a delta but isStreaming is false (e.g. page
+        // refresh mid-turn), re-arm it so the stop button appears.
+        return { messages: next, isStreaming: true };
       }),
     );
     // Live tool-call rendering. The server emits tool_call / tool_result
@@ -812,6 +809,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // ask_user interaction requests
     tianshuWs.on("interaction_request", (m) =>
       set(() => ({
+        // Re-arm isStreaming: the agent loop is suspended waiting
+        // for a response, which counts as an active turn.
+        isStreaming: true,
         activeInteraction: {
           id: m.id,
           sessionId: m.sessionId,
