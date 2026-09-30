@@ -207,10 +207,24 @@ export default function TtsSettingsPage() {
   const testVoice = useCallback(async () => {
     setTesting(true);
     setTestError(null);
+    // Pick preview text matching the voice's language so non-Chinese
+    // voices don't choke on Chinese characters.
+    let previewText = "你好，我是天枢。这是一段声音测试。";
+    if (voice.startsWith("en-")) {
+      previewText = "Hello, I'm Tianshu. This is a voice preview test.";
+    } else if (voice.startsWith("ja-")) {
+      previewText = "こんにちは、天枢です。これは音声プレビューテストです。";
+    } else if (voice.startsWith("ko-")) {
+      previewText = "안녕하세요, 천추입니다. 음성 미리듣기 테스트입니다.";
+    } else if (voice.startsWith("de-")) {
+      previewText = "Hallo, ich bin Tianshu. Dies ist ein Sprachvorschau-Test.";
+    } else if (voice.startsWith("zh-HK") || voice.startsWith("zh-TW")) {
+      previewText = "你好，我是天樞。這是一段語音測試。";
+    }
     try {
       await playVoice({
         id: "tts-settings-preview",
-        text: "你好，我是天枢。这是一段声音测试。",
+        text: previewText,
         voice,
         provider,
       });
