@@ -152,11 +152,17 @@ async def generate_pcm_mlx(tts_text: str, voice: str, ref_audio: str | None):
 
     # Producer runs in a thread; pushes PCM bytes into a queue.
     # None sentinel signals completion; Exception signals error.
+    # cancelled flag lets the consumer (async generator) tell the
+    # producer to stop early when the client disconnects.
     pcm_queue: _queue.Queue = _queue.Queue(maxsize=8)
+    cancelled = False
 
     def _produce():
         try:
             for result in model.generate(**gen_kwargs):
+                if cancelled:
+                    log.info("MLX generate cancelled by client")
+                    break
                 audio_np = np.array(result.audio, dtype=np.float32).flatten()
                 pcm = (audio_np * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
                 pcm_queue.put(pcm)
@@ -185,6 +191,7 @@ async def generate_pcm_mlx(tts_text: str, voice: str, ref_audio: str | None):
             chunk_count += 1
             yield item
     finally:
+        cancelled = True
         _executor.shutdown(wait=False)
 
     wall = time.time() - t0

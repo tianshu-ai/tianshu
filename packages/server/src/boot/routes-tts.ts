@@ -230,9 +230,15 @@ async function handleLocalTts(
     `[tts] ${providerLabel} forwarding: len=${text.length} voice=${useVoice} url=${url}`,
   );
 
+  // Abort upstream fetch when the client disconnects (e.g. user
+  // stops playback). Without this, the TTS server keeps generating
+  // audio for a response nobody is listening to.
+  const upstreamAbort = new AbortController();
+  res.on("close", () => upstreamAbort.abort());
+
   let upstreamRes: globalThis.Response;
   try {
-    upstreamRes = await fetch(url, { method: "POST", body: form });
+    upstreamRes = await fetch(url, { method: "POST", body: form, signal: upstreamAbort.signal });
   } catch (err) {
     console.warn(`[tts] ${providerLabel} upstream unreachable: ${upstream}`, err);
     res.status(503).json({
@@ -273,6 +279,12 @@ async function handleLocalTts(
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
+      // Client disconnected — abort upstream and stop.
+      if (res.writableEnded || res.destroyed) {
+        reader.cancel();
+        upstreamAbort.abort();
+        break;
+      }
       const buf = Buffer.from(value);
       if (firstChunkMs == null) firstChunkMs = Date.now() - start;
       totalBytes += buf.length;
@@ -280,7 +292,9 @@ async function handleLocalTts(
       res.write(buf);
     }
   } catch (err) {
-    console.warn(`[tts] ${providerLabel} stream aborted:`, err);
+    if (!upstreamAbort.signal.aborted) {
+      console.warn(`[tts] ${providerLabel} stream aborted:`, err);
+    }
     // Headers already sent; just close the response.
   }
 
