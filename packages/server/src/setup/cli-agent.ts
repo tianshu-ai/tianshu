@@ -401,9 +401,11 @@ TEXT-TO-SPEECH (TTS):
     needs internet.
   * "qwentts" — Local Qwen3-TTS server. Cross-platform:
     Apple Silicon Mac uses MLX (fastest, RTF ~0.3x),
-    Linux + NVIDIA GPU uses PyTorch + CUDA,
+    Linux + NVIDIA GPU uses faster-qwen3-tts (CUDA Graph,
+    RTF ~4.78 on RTX 4090, true streaming ~333ms chunks),
+    falls back to vanilla PyTorch if faster-qwen3-tts unavailable.
     Linux CPU works but is slow.
-    9 preset voices, 10 languages, fully offline.
+    Voice cloning + 10 languages, fully offline.
     Requires a separate Python server on port 50000.
 - Config env vars (in launchd plist or .env):
   * TTS_PROVIDER=qwentts (or "edge")
@@ -415,7 +417,9 @@ TEXT-TO-SPEECH (TTS):
   scripts/qwen3-tts-server/install.sh. It auto-detects the
   platform and installs the right backend:
   * macOS Apple Silicon → mlx-audio (MLX, true streaming)
-  * Linux + NVIDIA GPU → qwen-tts (PyTorch + CUDA + flash-attn)
+  * Linux + NVIDIA GPU → faster-qwen3-tts (CUDA Graph, 5-6x
+    faster than vanilla PyTorch, true streaming) preferred;
+    falls back to qwen-tts (PyTorch + CUDA) if unavailable
   * Linux CPU → qwen-tts (PyTorch float32, slow fallback)
   It checks Python >= 3.10, creates a venv at ~/.tianshu/qwen-tts-venv,
   installs deps, and downloads the model.
@@ -428,8 +432,10 @@ TEXT-TO-SPEECH (TTS):
   2. Run it:
      bash <path>/scripts/qwen3-tts-server/install.sh
   3. After install, start the server:
+     bash <path>/scripts/qwen3-tts-server/start.sh --background
+     Or manually:
      ~/.tianshu/qwen-tts-venv/bin/python <path>/scripts/qwen3-tts-server/server.py \\
-       --port 50000 --voice vivian
+       --port 50000 --voice yujie
   4. Set TTS_PROVIDER=qwentts and TTS_URL=http://localhost:50000
      in the launchd plist, then reload.
   5. Full setup guide: scripts/QWEN3_TTS_SETUP.md
