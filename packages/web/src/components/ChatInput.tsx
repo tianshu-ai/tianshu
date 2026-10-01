@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Mic, Send, Square } from "lucide-react";
+import { Loader2, Mic, Send, Square, Upload } from "lucide-react";
 import { useChatStore } from "../stores/chat-store";
 import { tianshuWs } from "../lib/ws";
 import { useComposerStore } from "../stores/composer-store";
@@ -46,6 +46,75 @@ export default function ChatInput() {
   const [draft, setDraft] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const addAtt = useComposerStore((s) => s.addAttachment);
+  const updateAtt = useComposerStore((s) => s.updateAttachment);
+
+  // ── Drag & drop onto composer ────────────────────────────
+  useEffect(() => {
+    const zone = dropZoneRef.current;
+    if (!zone) return;
+    let counter = 0;
+    const enter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      counter++;
+      if (counter === 1) setDragActive(true);
+    };
+    const over = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    };
+    const leave = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      counter--;
+      if (counter <= 0) { counter = 0; setDragActive(false); }
+    };
+    const drop = (e: DragEvent) => {
+      counter = 0;
+      setDragActive(false);
+      if (!e.dataTransfer?.files.length) return;
+      e.preventDefault();
+      for (const file of Array.from(e.dataTransfer.files)) {
+        const MAX = 50 * 1024 * 1024;
+        if (file.size > MAX) {
+          addAtt({ name: file.name, size: file.size, status: "error", error: `Exceeds ${MAX / 1024 / 1024} MB`, mimeType: file.type || "application/octet-stream" });
+          continue;
+        }
+        const id = addAtt({ name: file.name, size: file.size, status: "uploading", mimeType: file.type || "application/octet-stream" });
+        void (async () => {
+          try {
+            const resp = await fetch("/api/p/files/upload", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/octet-stream", "X-Filename": encodeURIComponent(file.name) },
+              body: file,
+            });
+            if (!resp.ok) {
+              updateAtt(id, { status: "error", error: `${resp.status}: ${(await resp.text()).slice(0, 200)}` });
+              return;
+            }
+            const json = (await resp.json()) as { path: string; size: number };
+            updateAtt(id, { status: "ready", path: json.path, size: json.size });
+          } catch (err) {
+            updateAtt(id, { status: "error", error: err instanceof Error ? err.message : String(err) });
+          }
+        })();
+      }
+    };
+    zone.addEventListener("dragenter", enter);
+    zone.addEventListener("dragover", over);
+    zone.addEventListener("dragleave", leave);
+    zone.addEventListener("drop", drop);
+    return () => {
+      zone.removeEventListener("dragenter", enter);
+      zone.removeEventListener("dragover", over);
+      zone.removeEventListener("dragleave", leave);
+      zone.removeEventListener("drop", drop);
+    };
+  }, [addAtt, updateAtt]);
   const pendingDraft = useChatStore((s) => s.pendingDraft);
 
   // Consume pendingDraft from InteractionButtons
@@ -186,12 +255,28 @@ export default function ChatInput() {
       }
     >
       <div
+        ref={dropZoneRef}
         className={
           voiceEnabled
-            ? "mx-auto flex max-w-5xl flex-col gap-3 rounded-3xl border border-border-subtle bg-bg-elevated p-5 focus-within:border-border-default"
-            : "mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border border-border-subtle bg-bg-elevated p-3 focus-within:border-border-default"
+            ? `relative mx-auto flex max-w-5xl flex-col gap-3 rounded-3xl border bg-bg-elevated p-5 focus-within:border-border-default transition-colors duration-150 ${
+                dragActive ? "border-brand-400 bg-brand-500/5" : "border-border-subtle"
+              }`
+            : `relative mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border bg-bg-elevated p-3 focus-within:border-border-default transition-colors duration-150 ${
+                dragActive ? "border-brand-400 bg-brand-500/5" : "border-border-subtle"
+              }`
         }
       >
+        {/* Drop overlay inside composer */}
+        <div
+          className={`absolute inset-0 z-10 flex items-center justify-center rounded-2xl transition-opacity duration-150 pointer-events-none ${
+            dragActive ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <div className="flex items-center gap-2 text-brand-400">
+            <Upload size={18} className="animate-bounce" style={{ animationDuration: "1.5s" }} />
+            <span className="text-sm font-medium">{t("chat.dropFiles")}</span>
+          </div>
+        </div>
         <ComposerAttachments />
         <textarea
           ref={ref}
