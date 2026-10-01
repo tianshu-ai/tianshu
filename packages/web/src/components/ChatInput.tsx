@@ -268,13 +268,21 @@ export default function ChatInput() {
       >
         {/* Drop overlay inside composer */}
         <div
-          className={`absolute inset-0 z-10 flex items-center justify-center rounded-2xl transition-opacity duration-150 pointer-events-none ${
-            dragActive ? "opacity-100" : "opacity-0"
+          className={`absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl transition-all duration-200 pointer-events-none ${
+            dragActive ? "opacity-100 scale-100" : "opacity-0 scale-95"
           }`}
+          style={{ transitionProperty: "opacity, transform" }}
         >
-          <div className="flex items-center gap-2 text-brand-400">
-            <Upload size={18} className="animate-bounce" style={{ animationDuration: "1.5s" }} />
-            <span className="text-sm font-medium">{t("chat.dropFiles")}</span>
+          <div className="absolute inset-0 rounded-2xl bg-bg-elevated/90 backdrop-blur-sm" />
+          <div className="absolute inset-1 rounded-xl border-2 border-dashed border-brand-400/60 animate-pulse" />
+          <div className="relative flex flex-col items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-500/15 animate-bounce" style={{ animationDuration: "1.5s" }}>
+              <Upload size={20} className="text-brand-400" />
+            </div>
+            <div className="text-center">
+              <div className="text-sm font-semibold text-fg-default">{t("chat.dropFiles")}</div>
+              <div className="mt-0.5 text-xs text-fg-faint">{t("chat.dropFilesHint")}</div>
+            </div>
           </div>
         </div>
         <ComposerAttachments />
