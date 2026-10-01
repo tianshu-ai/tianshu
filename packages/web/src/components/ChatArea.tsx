@@ -94,7 +94,7 @@ export default function ChatArea() {
   return (
     <main className="flex h-full min-w-0 flex-1 flex-col">
       {/* Top bar */}
-      <header className="flex h-12 items-center justify-between border-b border-border-subtle bg-bg-elevated/50 px-4 backdrop-blur">
+      <header className="flex h-12 items-center justify-between border-b border-border-subtle/30 px-4">
         <div className="flex items-center">
           <button
             type="button"
@@ -106,11 +106,13 @@ export default function ChatArea() {
           </button>
           <h1 className="ml-3 text-sm font-medium text-fg-muted">main</h1>
           <span className="ml-3 text-xs text-fg-faint">
-            tenant <span className="text-fg-muted">{me?.tenantId ?? "…"}</span> · user{" "}
-            <span className="text-fg-muted">{me?.displayName ?? me?.userId ?? "…"}</span>
+            {me?.tenantId && me.tenantId !== "default" && (
+              <>tenant <span className="text-fg-muted">{me.tenantId}</span> · </>
+            )}
+            user <span className="text-fg-muted">{me?.displayName ?? me?.userId ?? "…"}</span>
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           {me?.tenantId !== "maintenance" && <PluginTopBarButtons />}
           {/* Yu 2026-09-20 14:06: 右上角 button 显示"下一个模式"
               的 icon。键盘模式时 → Headphones（下一个=语音）。
