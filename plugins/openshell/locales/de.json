@@ -8,7 +8,7 @@
   "window.24hr": "24 Std.",
 
   "page.title": "Sandbox-Netzwerkrichtlinie",
-  "page.description": "Ausgangsrichtlinie für die OpenShell-Sandbox. Unten: ausgehende Anfragen, die im gewählten Zeitfenster abgelehnt wurden, und die aktuelle Zulassungsliste der geltenden Endpunkte. Schreibgeschützt – Regeln ändern sich, wenn der Agent Egress über den Richtlinienberater vorschlägt oder ein Task ihn gewährt.",
+  "page.description": "Ausgangsrichtlinie für die OpenShell-Sandbox. Unten: ausgehende Anfragen, die im gewählten Zeitfenster abgelehnt wurden, sowie die aktuell gültige Erlaubnisliste der Endpunkte. Nur Lesezugriff – Regeln ändern sich, wenn der Agent über den Richtlinienberater Ausgangsverkehr vorschlägt oder eine Aufgabe dies gewährt.",
   "page.refresh": "Aktualisieren",
 
   "denials.title": "Abgelehnte Anfragen",
@@ -18,23 +18,23 @@
   "denials.col.time": "Zeit",
   "denials.col.hostPort": "Host:Port",
   "denials.col.engine": "Engine",
-  "denials.col.binary": "Binary",
+  "denials.col.binary": "Programm",
   "denials.col.reason": "Grund",
   "denials.col.action": "Aktion",
-  "denials.allowed": "Zugelassen",
-  "denials.allow": "Zulassen",
-  "denials.allowTitle": "{host}:{port} zulassen",
+  "denials.allowed": "Erlaubt",
+  "denials.allow": "Erlauben",
+  "denials.allowTitle": "{host}:{port} erlauben",
 
-  "allowed.title": "Gültige Richtlinie (aktive Zulassungsliste)",
-  "allowed.allowFailed": "Zulassung fehlgeschlagen: {error}",
-  "allowed.loading": "Richtlinie wird geladen…",
+  "allowed.title": "Erlaubnisrichtlinie (gültige Erlaubnisliste)",
+  "allowed.allowFailed": "Erlauben fehlgeschlagen: {error}",
+  "allowed.loading": "Richtlinie wird geladen …",
   "allowed.col.rule": "Regel",
   "allowed.col.hostPort": "Host:Port",
   "allowed.col.proto": "Protokoll",
-  "allowed.col.enforce": "Durchsetzung",
-  "allowed.col.binaries": "Binaries",
-  "allowed.noneParsed": "Keine Endpunkte geparst – Raw-Policy-JSON anzeigen",
+  "allowed.col.enforce": "Erzwingen",
+  "allowed.col.binaries": "Programme",
+  "allowed.noneParsed": "Keine Endpunkte erkannt – rohe Richtlinien-JSON anzeigen",
   "allowed.emptyPolicy": "(leere Richtlinie)",
   "manifest.displayName": "OpenShell (Docker)",
-  "manifest.description": "Shell-Befehle in OpenShell-verwalteten Docker-Sandboxes ausführen (NVIDIA OpenShell). Alternative zu microsandbox: vermeidet macOS Hypervisor.framework (kein CPU-Leerlaufverbrauch auf Apple Silicon Tahoe), enthält Netzwerk-/Inference-Richtlinienunterstützung. MVP bietet nur sandbox.shell; Browser-Sidecar und Task-Pool sind für Folge-PRs vorgesehen."
+  "manifest.description": "Shell-Befehle in von OpenShell verwalteten Docker-Sandboxes ausführen (NVIDIA OpenShell). Alternative zu microsandbox: vermeidet macOS Hypervisor.framework (kein CPU-Leerlaufverbrauch auf Apple Silicon Tahoe), inklusive Unterstützung für Netzwerk-/Inferenzrichtlinien. MVP bietet nur sandbox.shell; Browser-Sidecar und aufgabenbasierter Pool sind für spätere Versionen vorgesehen."
 }

@@ -1,0 +1,53 @@
+{
+  "manifest.sidebarSections.sessions": "WeChat",
+  "manifest.topBarButtons.toggle": "WeChat",
+  "manifest.rightPanels.main": "WeChat",
+
+  "status.running": "Verbunden",
+  "status.starting": "Wird gestartet",
+  "status.idle": "Inaktiv",
+  "status.stopped": "Gestoppt",
+  "status.error": "Fehler",
+
+  "add.title": "WeChat-Konto hinzufügen",
+  "add.chooseModel": "Wählen Sie das Modell, an das dieses WeChat-Konto weiterleiten soll:",
+  "add.noModels": "(keine Modelle registriert)",
+  "add.default": " (Standard)",
+  "add.continue": "Weiter → QR-Code scannen",
+  "add.changeLater": "Sie können das Modell später durch erneutes Scannen ändern.",
+  "add.requestingQr": "QR-Code wird angefordert …",
+  "add.scanToAuthorise": "Scannen Sie mit WeChat zur Autorisierung",
+  "add.scanSteps": "WeChat öffnen → Scannen → Bestätigen",
+  "add.waitingForScan": "Warte auf Scan …",
+  "add.connected": "Verbunden",
+  "add.defaultAccountName": "WeChat-Konto",
+  "add.loginFailed": "Anmeldung fehlgeschlagen",
+
+  "qr.renderFailed": "QR-Code-Darstellung fehlgeschlagen: {error}",
+  "qr.ariaLabel": "WeChat-Anmelde-QR-Code",
+
+  "page.title": "WeChat",
+  "page.subtitle": "Verbinden Sie Ihr WeChat, damit Direktnachrichten an Ihren Agenten weitergeleitet werden.",
+  "page.refresh": "Aktualisieren",
+  "page.loading": "Wird geladen …",
+  "page.deleteConfirm": "Dieses WeChat-Konto von tianshu trennen? Der bestehende Chatverlauf mit diesem Konto wird ebenfalls gelöscht.",
+
+  "page.empty.title": "Kein WeChat verbunden",
+  "page.empty.desc": "Scannen Sie einen QR-Code mit der WeChat-App, um Ihre Direktnachrichten über tianshu weiterzuleiten.",
+  "page.empty.connect": "WeChat verbinden",
+
+  "page.bound.hint": "Ein Konto verbunden. Erneut scannen, um das Modell zu wechseln oder den Token zu aktualisieren.",
+  "page.bound.rescan": "Erneut scannen",
+  "page.bound.defaultAccountName": "WeChat-Konto",
+  "page.bound.modelTitle": "Modell, an das eingehende Direktnachrichten dieser Bindung weitergeleitet werden",
+  "page.bound.boundOn": "· verbunden am {date}",
+  "page.bound.disconnect": "Trennen",
+
+  "sidebar.untitled": "(unbenannt)",
+  "sidebar.dm": "DM",
+  "sidebar.group": "Gruppe",
+  "sidebar.active": "aktiv",
+  "sidebar.wechat": "WeChat",
+  "manifest.displayName": "WeChat (微信)",
+  "manifest.description": "WeChat-Kanal basierend auf Tencents iLink-Bot-API. Scannen Sie einen QR-Code mit der WeChat-App zur Autorisierung; eingehende Direktnachrichten von autorisierten Benutzern werden über das Kanalsystem an den Agenten weitergeleitet."
+}

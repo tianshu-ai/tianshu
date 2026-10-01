@@ -1,0 +1,11 @@
+{
+  "manifest.adminPages.settings": "Websuche",
+  "manifest.config.backend.label": "Such-Backend",
+  "manifest.config.backend.description": "Welcher gehostete Endpunkt von web_search abgefragt wird. Beide sind schlüsselfrei (anonyme Gratisstufe). Exa liefert hervorgehobene Auszüge; Parallel liefert gerankte Ergebnisse. web_fetch ist davon nicht betroffen.",
+  "manifest.config.backend.option.exa": "Exa",
+  "manifest.config.backend.option.parallel": "Parallel",
+  "manifest.config.timeoutMs.label": "Timeout pro Anfrage",
+  "manifest.config.timeoutMs.description": "Netzwerk-Timeout für jeden web_search / web_fetch Aufruf. Erhöhen Sie den Wert bei Timeouts in langsamen Netzwerken.",
+  "manifest.displayName": "Websuche",
+  "manifest.description": "Schlüsselfreie Websuche + Einzelseiten-Abruf für Agenten. Die Suche läuft über einen gehosteten Endpunkt (Exa oder Parallel) ohne API-Schlüssel. web_fetch liest eine Seite als Markdown, ebenfalls ohne Konfiguration."
+}

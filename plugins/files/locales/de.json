@@ -1,5 +1,5 @@
 {
-  "manifest.topBarButtons.toggle": "Workspace-Dateien",
+  "manifest.topBarButtons.toggle": "Arbeitsbereich-Dateien",
   "manifest.rightPanels.main": "Dateien",
   "manifest.composerActions.attach": "Datei anhängen",
 
@@ -16,23 +16,23 @@
   "modified.daysAgo": "vor {n} T.",
 
   "panel.upOneLevel": "Eine Ebene höher",
-  "panel.filterPlaceholder": "Dateien filtern...",
+  "panel.filterPlaceholder": "Dateien filtern …",
   "panel.refresh": "Aktualisieren",
-  "panel.toggleView": "Ansicht umschalten",
+  "panel.toggleView": "Ansicht wechseln",
   "panel.col.name": "Name",
   "panel.col.size": "Größe",
   "panel.col.modified": "Geändert",
   "panel.noMatching": "Keine passenden Dateien",
   "panel.emptyDir": "Leeres Verzeichnis",
   "panel.dash": "—",
-  "panel.truncated": "Auflistung bei 5000 Einträgen abgeschnitten.",
+  "panel.truncated": "Liste bei 5 000 Einträgen abgeschnitten.",
 
   "preview.download": "Herunterladen",
-  "preview.sizeExceeds": "Die Datei ist {size} groß und überschreitet das Vorschau-Limit von {max}.",
+  "preview.sizeExceeds": "Die Datei ist {size} groß und überschreitet das Vorschaulimit von {max}.",
 
   "upload.attachFile": "Datei anhängen",
   "upload.exceedsCap": "Datei überschreitet das Limit von {mb} MB",
   "upload.noBody": "(kein Inhalt)",
-  "manifest.displayName": "Workspace-Dateien",
-  "manifest.description": "Dateien im Mandanten-Workspace durchsuchen, lesen und hochladen."
+  "manifest.displayName": "Arbeitsbereich-Dateien",
+  "manifest.description": "Dateien im Mandanten-Arbeitsbereich durchsuchen, lesen und hochladen."
 }
