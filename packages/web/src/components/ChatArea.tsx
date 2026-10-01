@@ -6,7 +6,6 @@ import MessageBubble from "./MessageBubble";
 import { InteractionButtons } from "./InteractionButtons";
 import { mergeToolTurns } from "../lib/merge-tool-turns";
 import ChatInput from "./ChatInput";
-import SuggestedFollowups from "./SuggestedFollowups";
 import ModelSelector from "./ModelSelector";
 import PluginManager from "./PluginManager";
 import PluginTopBarButtons from "./PluginTopBarButtons";
@@ -247,7 +246,6 @@ export default function ChatArea() {
                 </button>
               </div>
             )}
-            <SuggestedFollowups />
             <div ref={bottomRef} />
           </div>
         )}
