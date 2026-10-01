@@ -258,10 +258,10 @@ export default function ChatInput() {
         ref={dropZoneRef}
         className={
           voiceEnabled
-            ? `relative mx-auto flex max-w-5xl flex-col gap-3 rounded-3xl border bg-bg-elevated p-5 focus-within:border-border-default transition-colors duration-150 ${
+            ? `relative mx-auto flex max-w-5xl flex-col gap-3 rounded-3xl border bg-bg-elevated p-5 focus-within:border-accent transition-colors duration-150 ${
                 dragActive ? "border-brand-400 bg-brand-500/5" : "border-border-subtle"
               }`
-            : `relative mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border bg-bg-elevated p-3 focus-within:border-border-default transition-colors duration-150 ${
+            : `relative mx-auto flex max-w-3xl flex-col gap-2 rounded-2xl border bg-bg-elevated p-3 focus-within:border-accent transition-colors duration-150 ${
                 dragActive ? "border-brand-400 bg-brand-500/5" : "border-border-subtle"
               }`
         }
