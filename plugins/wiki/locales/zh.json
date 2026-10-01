@@ -100,5 +100,7 @@
   "filter.period.7d": "7 天",
   "filter.period.1m": "1 个月",
   "filter.period.3m": "3 个月",
-  "filter.period.all": "全部"
+  "filter.period.all": "全部",
+  "panel.noSearchResults": "无结果",
+  "panel.recentlyUpdated": "最近更新"
 }

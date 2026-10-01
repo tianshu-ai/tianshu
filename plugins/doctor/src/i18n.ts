@@ -71,6 +71,7 @@ export function useLocaleRefresh(): Locale {
 const UI: Record<string, Record<Locale, string>> = {
   "panel.title":          { en: "System Doctor",        zh: "系统诊断",           de: "Systemdiagnose" },
   "panel.recheck":        { en: "Re-check",             zh: "重新检查",           de: "Erneut prüfen" },
+  "panel.recheckTitle":   { en: "Re-check",             zh: "重新检查",           de: "Erneut prüfen" },
   "panel.checking":       { en: "Checking…",            zh: "检查中…",           de: "Prüfe…" },
   "panel.running":        { en: "Running diagnostics…", zh: "正在诊断…",         de: "Diagnose läuft…" },
   "panel.healthy":        { en: "Healthy ✓",            zh: "一切正常 ✓",        de: "Alles in Ordnung ✓" },

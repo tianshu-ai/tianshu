@@ -100,5 +100,7 @@
   "filter.period.7d": "7 days",
   "filter.period.1m": "1 month",
   "filter.period.3m": "3 months",
-  "filter.period.all": "All"
+  "filter.period.all": "All",
+  "panel.noSearchResults": "No results",
+  "panel.recentlyUpdated": "Recently Updated"
 }

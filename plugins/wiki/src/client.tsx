@@ -576,7 +576,7 @@ function WikiPanel(_props: PanelProps) {
                 </button>
               ))}
               {searchResults.length === 0 && !searching && (
-                <div className="px-3 py-4 text-center text-[11px] text-fg-fainter">No results</div>
+                <div className="px-3 py-4 text-center text-[11px] text-fg-fainter">{t("panel.noSearchResults")}</div>
               )}
             </div>
           )}
@@ -585,7 +585,7 @@ function WikiPanel(_props: PanelProps) {
             <div className="mb-1">
               <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold text-fg-muted">
                 <Clock size={12} />
-                <span>Recently Updated</span>
+                <span>{t("panel.recentlyUpdated")}</span>
               </div>
               {recentPages.map((p) => (
                 <button

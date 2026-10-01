@@ -238,7 +238,7 @@ function DoctorPanel(_props: PanelProps) {
           onClick={runCheck}
           disabled={loading}
           className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-raised hover:text-fg-default disabled:opacity-40"
-          title="Re-check"
+          title={t("panel.recheckTitle")}
         >
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
           {loading ? t("panel.checking") : t("panel.recheck")}
