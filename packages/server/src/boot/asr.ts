@@ -135,8 +135,13 @@ async function initRecognizer(): Promise<boolean> {
       };
     } else if (best.type === "whisper") {
       const decoderPath = modelPath.replace("encoder", "decoder");
+      // Whisper expects an ISO language code ("en", "zh", etc.) or
+      // empty string for auto-detect. "auto" is not a valid whisper
+      // language token and can crash the native recognizer.
+      const rawLang = getAsrLanguage();
+      const whisperLang = rawLang === "auto" ? "" : rawLang;
       modelConfig = {
-        whisper: { encoder: modelPath, decoder: decoderPath, language: getAsrLanguage() },
+        whisper: { encoder: modelPath, decoder: decoderPath, language: whisperLang },
         tokens: tokensPath,
         numThreads: 4,
       };
