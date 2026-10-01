@@ -6,6 +6,35 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.79.0](https://github.com/tianshu-ai/tianshu/compare/v0.78.1...v0.79.0) (2026-10-01)
+
+
+### Features
+
+* **files:** drag & drop files into chat composer ([d14f7c7](https://github.com/tianshu-ai/tianshu/commit/d14f7c7a649f62c9a62c811b5d938a200ca92ffc))
+
+
+### Bug Fixes
+
+* **asr:** map "auto" to empty string for whisper language config ([a29e8f2](https://github.com/tianshu-ai/tianshu/commit/a29e8f2a33e275eacb25e87a4a105bf13514ed65))
+* **ui:** bump last 9px badge to 10px in Sidebar ([593f7f6](https://github.com/tianshu-ai/tianshu/commit/593f7f6a81649199a587b5a6f8d61fee52a5b0ae))
+* **ui:** bump sidebar/badge chrome from 10px to 11px per legibility audit ([a0b3f5d](https://github.com/tianshu-ai/tianshu/commit/a0b3f5d31e03685afde3b7131d216e54d55aa831))
+* **ui:** eliminate fractional font sizes (8/9.5/10.5/11.5px) ([94996b0](https://github.com/tianshu-ai/tianshu/commit/94996b08bb9e59c5abda5d61258bbc0ef904da74))
+* **ui:** move drag & drop from files plugin to ChatArea host layer ([9666b10](https://github.com/tianshu-ai/tianshu/commit/9666b10114f6a567a5d66f7574f4f0524ea599cf))
+* **ui:** polished drag & drop overlay with animations ([83cccc0](https://github.com/tianshu-ai/tianshu/commit/83cccc0d71f926cc2049b1b742ec6c423b8ac7f2))
+* **ui:** raise all text-[11px] to text-xs (12px) per legibility audit ([9b18e23](https://github.com/tianshu-ai/tianshu/commit/9b18e2382173053cbeeb463d799f78f4560b8880))
+* **ui:** raise minimum font size from 9-10px to 11-12px ([cba170e](https://github.com/tianshu-ai/tianshu/commit/cba170e3c0ab59a25d8433582f23610541608d1c))
+* **ui:** raise panel/admin description text from 12px to 14px (text-sm) ([0b4bf8e](https://github.com/tianshu-ai/tianshu/commit/0b4bf8ed4968a30d4b244135b35b951c523380ac))
+* **ui:** raise plugin panel description/status text to text-sm (14px) ([34ee7d9](https://github.com/tianshu-ai/tianshu/commit/34ee7d9fc65606f418a97c228e6767d9e2f96de6))
+* **ui:** restore blur + dashed border overlay on composer drop zone ([717fefb](https://github.com/tianshu-ai/tianshu/commit/717fefbed1c9f22fed88e23711d238833295a15f))
+* **ui:** revert sidebar/badge font sizes to 10px for compact layout ([cde0402](https://github.com/tianshu-ai/tianshu/commit/cde0402948e38d5d604e87aef6db18443603a8e3))
+* **ui:** scope drag & drop to composer input area only ([0b442c8](https://github.com/tianshu-ai/tianshu/commit/0b442c8d65547c5d899afb73a53317b3c5191522))
+
+
+### Refactor
+
+* **ui:** normalize text-[12px] → text-xs (semantic equivalent) ([5d5ab45](https://github.com/tianshu-ai/tianshu/commit/5d5ab459d94baafdc3a2562c912e25672ea87faa))
+
 ## [0.78.1](https://github.com/tianshu-ai/tianshu/compare/v0.78.0...v0.78.1) (2026-10-01)
 
 
