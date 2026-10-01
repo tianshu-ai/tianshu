@@ -2629,12 +2629,9 @@ void WorkboardAdminPage;
 // host code; for now keeping it here keeps the contract visible.)
 
 function WorkersSidebarSection(_props: SidebarSectionProps) {
-  // usePluginT auto-prefixes `plugin.workboard.` for every key,
-  // so translation JSON keys stay short ("workers.title", not
-  // "plugin.workboard.workers.title"). See
-  // packages/plugin-sdk/src/client.ts for the mechanism.
   const t = usePluginT("workboard");
   const [snapshot, setSnapshot] = useState<WorkerSnapshot | null>(null);
+  const [collapsed, setCollapsed] = useState(true);
 
   const reload = useCallback(async () => {
     try {
@@ -2671,11 +2668,18 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
   const realWorkers = snapshot?.workers ?? [];
   const busyCount = realWorkers.filter((w) => w.busy).length;
 
+  // Auto-expand when any worker is busy
+  const hasBusy = busyCount > 0;
+
   return (
     <div className="px-3 py-2">
-      <div className="mb-2 flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setCollapsed((v) => !v)}
+        className="mb-1 flex w-full items-center gap-2 rounded-lg px-1 py-1 transition-colors hover:bg-bg-hover/30"
+      >
         <Zap size={14} className="flex-shrink-0 text-fg-fainter" />
-        <span className="flex-1 text-sm font-medium text-fg-muted">
+        <span className="flex-1 text-left text-sm font-medium text-fg-muted">
           {t("workers.title")}
         </span>
         <span className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-fainter">
@@ -2684,23 +2688,31 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
             total: realWorkers.length,
           })}
         </span>
-      </div>
-      <div className="space-y-1.5">
-        {realWorkers.length === 0 ? (
-          <div className="text-xs text-fg-fainter px-1">
-            {t("workers.empty")}
-          </div>
-        ) : (
-          realWorkers.map((w) => (
-            <SidebarWorkerRow
-              key={w.agentId}
-              name={w.name}
-              kind={w.kind}
-              busy={w.busy}
-            />
-          ))
-        )}
-      </div>
+        <ChevronDown
+          size={12}
+          className={`flex-shrink-0 text-fg-fainter transition-transform ${
+            collapsed && !hasBusy ? "-rotate-90" : ""
+          }`}
+        />
+      </button>
+      {(!collapsed || hasBusy) && (
+        <div className="space-y-1.5 mt-1">
+          {realWorkers.length === 0 ? (
+            <div className="text-xs text-fg-fainter px-1">
+              {t("workers.empty")}
+            </div>
+          ) : (
+            realWorkers.map((w) => (
+              <SidebarWorkerRow
+                key={w.agentId}
+                name={w.name}
+                kind={w.kind}
+                busy={w.busy}
+              />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
