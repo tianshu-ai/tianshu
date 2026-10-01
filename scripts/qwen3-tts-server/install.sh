@@ -68,12 +68,13 @@ if [ "$OS" = "Darwin" ] && [ "$ARCH" = "arm64" ]; then
   MODEL_ID="mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16"
   info "Apple Silicon detected → MLX backend"
 elif [ "$OS" = "Linux" ]; then
-  BACKEND="pytorch"
+  BACKEND="faster"  # default; install step falls back to pytorch if needed
   MODEL_ID="Qwen/Qwen3-TTS-12Hz-1.7B-Base"
   # Check for CUDA
   if command -v nvidia-smi &>/dev/null; then
-    info "Linux + NVIDIA GPU detected → PyTorch CUDA backend"
+    info "Linux + NVIDIA GPU detected → faster-qwen3-tts (CUDA Graph) preferred"
   else
+    BACKEND="pytorch"
     warn "Linux without NVIDIA GPU → PyTorch CPU backend (slow, not recommended)"
   fi
 else
@@ -103,8 +104,29 @@ if [ "$BACKEND" = "mlx" ]; then
     fastapi uvicorn python-multipart \
     -q 2>&1 | tail -3
   info "MLX dependencies installed"
+elif [ "$BACKEND" = "faster" ]; then
+  # Prefer faster-qwen3-tts (CUDA Graph acceleration, true streaming)
+  if "$PIP" install \
+    faster-qwen3-tts soundfile numpy \
+    fastapi uvicorn python-multipart \
+    -q 2>&1 | tail -3; then
+    info "faster-qwen3-tts dependencies installed (CUDA Graph enabled)"
+  else
+    warn "faster-qwen3-tts install failed, falling back to qwen-tts"
+    BACKEND="pytorch"
+    "$PIP" install \
+      qwen-tts soundfile numpy \
+      fastapi uvicorn python-multipart \
+      -q 2>&1 | tail -3
+    # Try to install flash-attn for better performance (optional)
+    echo "Installing FlashAttention 2 (optional, may take a few minutes) ..."
+    MAX_JOBS=4 "$PIP" install flash-attn --no-build-isolation -q 2>&1 | tail -3 || {
+      warn "FlashAttention 2 install failed (non-fatal). Using default attention."
+    }
+    info "PyTorch dependencies installed (fallback)"
+  fi
 else
-  # PyTorch backend
+  # PyTorch backend (CPU or explicit)
   "$PIP" install \
     qwen-tts soundfile numpy \
     fastapi uvicorn python-multipart \
@@ -134,6 +156,13 @@ for r in model.generate(text='test', verbose=False):
 mx.clear_cache()
 print('Model verified.')
 " 2>&1 | grep -v 'Warning\|warning\|Fetching\|transformers\]'
+elif [ "$BACKEND" = "faster" ]; then
+  "$PY" -c "
+from faster_qwen3_tts import FasterQwen3TTS
+print('Loading faster-qwen3-tts model...')
+model = FasterQwen3TTS.from_pretrained('$MODEL_ID')
+print('Model downloaded and loaded (faster backend).')
+" 2>&1 | grep -v 'Warning\|warning\|Fetching'
 else
   "$PY" -c "
 import torch

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Qwen3-TTS FastAPI server — cross-platform (MLX on Apple Silicon, PyTorch on Linux/CUDA).
+"""Qwen3-TTS FastAPI server — cross-platform (MLX on Apple Silicon, faster-qwen3-tts / PyTorch on Linux/CUDA).
 
 Auto-detects the runtime:
   - Apple Silicon (macOS arm64): uses mlx_audio for streaming generation
-  - Linux / CUDA: uses qwen-tts (official PyTorch package)
+  - Linux / CUDA: uses faster-qwen3-tts (CUDA Graph, true streaming, 5-6x faster)
+  - Linux / CUDA fallback: uses qwen-tts (official PyTorch package)
   - CPU fallback: uses qwen-tts with float32
 
-Both backends expose the same HTTP API so the tianshu server doesn't
+All backends expose the same HTTP API so the tianshu server doesn't
 need to know which one is running.
 
 Supports two model variants:
@@ -39,7 +40,7 @@ import sys
 import time
 
 import numpy as np
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
@@ -58,7 +59,7 @@ app.add_middleware(
 
 # ─── Globals set in __main__ ─────────────────────────────────
 
-backend = ""           # "mlx" or "pytorch"
+backend = ""           # "mlx", "faster", or "pytorch"
 model = None           # pre-loaded model instance (backend-specific)
 model_type = ""        # "custom_voice" or "base"
 default_voice = "vivian"
@@ -360,6 +361,142 @@ def warmup_pytorch():
         log.warning("PyTorch warmup failed (non-fatal): %s", e)
 
 
+# ─── Backend: faster-qwen3-tts (Linux / CUDA Graph) ──────────
+
+def load_model_faster(mid: str):
+    global model, model_type, sample_rate
+    from faster_qwen3_tts import FasterQwen3TTS
+
+    log.info("Loading faster-qwen3-tts model: %s", mid)
+    model = FasterQwen3TTS.from_pretrained(mid)
+    sample_rate = 24000  # Qwen3-TTS always 24kHz
+
+    # Detect model type from class name (same heuristic as pytorch)
+    cls_name = type(model).__name__.lower()
+    if "customvoice" in cls_name:
+        model_type = "custom_voice"
+    else:
+        model_type = "base"
+    log.info("faster-qwen3-tts model loaded: type=%s", model_type)
+
+
+async def generate_pcm_faster(
+    tts_text: str, voice: str, ref_audio: str | None, request=None,
+):
+    """Stream PCM chunks from faster-qwen3-tts with true CUDA Graph streaming.
+
+    Uses generate_voice_clone_streaming() for real streaming output.
+    CustomVoice models fall back to non-streaming generate_custom_voice()
+    since it has no streaming variant.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    import queue as _queue
+
+    t0 = time.time()
+    first_chunk_time = None
+    total_bytes = 0
+    chunk_count = 0
+
+    if ref_audio:
+        # True streaming path — voice cloning with ref audio
+        pcm_queue: _queue.Queue = _queue.Queue(maxsize=8)
+        cancelled = False
+
+        def _produce():
+            try:
+                for audio_chunk, sr, timing in model.generate_voice_clone_streaming(
+                    text=tts_text,
+                    language="Auto",
+                    ref_audio=ref_audio,
+                    ref_text="",
+                    chunk_size=4,  # ~333ms per chunk
+                ):
+                    if cancelled:
+                        log.info("faster generate cancelled by client")
+                        break
+                    pcm = (audio_chunk * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+                    pcm_queue.put(pcm)
+                pcm_queue.put(None)
+            except Exception as e:
+                pcm_queue.put(e)
+
+        loop = asyncio.get_event_loop()
+        _executor = ThreadPoolExecutor(max_workers=1)
+        loop.run_in_executor(_executor, _produce)
+
+        try:
+            while True:
+                while pcm_queue.empty():
+                    # Check if client disconnected
+                    if request and await request.is_disconnected():
+                        cancelled = True
+                        log.info("Client disconnected, cancelling faster generate")
+                        return
+                    await asyncio.sleep(0.02)
+                item = pcm_queue.get_nowait()
+                if item is None:
+                    break
+                if isinstance(item, Exception):
+                    log.error("faster generate failed: %s", item)
+                    return
+                if first_chunk_time is None:
+                    first_chunk_time = time.time() - t0
+                total_bytes += len(item)
+                chunk_count += 1
+                yield item
+        finally:
+            cancelled = True
+            _executor.shutdown(wait=False)
+
+    elif model_type == "custom_voice":
+        # Non-streaming path — CustomVoice has no streaming API
+        try:
+            audio_list, sr = model.generate_custom_voice(
+                text=tts_text,
+                speaker=voice.capitalize(),
+                language="Auto",
+            )
+            audio_np = np.array(audio_list[0], dtype=np.float32).flatten()
+            pcm = (audio_np * 32767).clip(-32768, 32767).astype(np.int16).tobytes()
+            first_chunk_time = time.time() - t0
+            total_bytes = len(pcm)
+
+            chunk_size = sample_rate  # ~0.5s chunks
+            for i in range(0, len(pcm), chunk_size):
+                chunk_count += 1
+                yield pcm[i:i + chunk_size]
+                await asyncio.sleep(0)
+        except Exception as e:
+            log.error("faster generate_custom_voice failed: %s", e)
+            return
+
+    else:
+        # Base model without ref audio — use default voice's ref audio
+        _, fallback_ref = _resolve_voice(default_voice)
+        if fallback_ref:
+            async for chunk in generate_pcm_faster(tts_text, voice, fallback_ref, request):
+                yield chunk
+            return
+        else:
+            log.error("No ref audio and not a custom_voice model (faster backend)")
+            return
+
+    wall = time.time() - t0
+    audio_dur = total_bytes / (sample_rate * 2) if total_bytes else 0
+    log.info(
+        "faster streamed: %.1fs audio in %.3fs (first=%.3fs, %d chunks, RTF=%.3f, voice=%s)",
+        audio_dur, wall, first_chunk_time or 0, chunk_count,
+        wall / audio_dur if audio_dur > 0 else 0, voice,
+    )
+
+
+def warmup_faster():
+    """Warm up faster-qwen3-tts to capture CUDA graphs."""
+    try:
+        model.warmup(prefill_len=100)
+        log.info("faster-qwen3-tts warmup done (CUDA graphs captured)")
+    except Exception as e:
+        log.warning("faster-qwen3-tts warmup failed (non-fatal): %s", e)
 
 
 # ─── API endpoints ───────────────────────────────────────────
@@ -367,6 +504,7 @@ def warmup_pytorch():
 @app.get("/inference_sft")
 @app.post("/inference_sft")
 async def inference_sft(
+    request: Request,
     tts_text: str = Form(),
     spk_id: str = Form(default=""),
 ):
@@ -379,6 +517,8 @@ async def inference_sft(
 
     if backend == "mlx":
         gen = generate_pcm_mlx(tts_text, voice, ref_audio)
+    elif backend == "faster":
+        gen = generate_pcm_faster(tts_text, voice, ref_audio, request)
     else:
         gen = generate_pcm_pytorch(tts_text, voice, ref_audio)
 
@@ -396,7 +536,7 @@ async def health():
         "preset_voices": PRESET_VOICES if model_type == "custom_voice" else [],
         "custom_voices": list(custom_voices.keys()),
         "sample_rate": sample_rate,
-        "streaming": backend == "mlx",  # true streaming only on MLX
+        "streaming": backend in ("mlx", "faster"),  # true streaming on MLX and faster
     }
 
 
@@ -404,6 +544,7 @@ async def health():
 
 DEFAULT_MODELS = {
     "mlx": "mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16",
+    "faster": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
     "pytorch": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
 }
 
@@ -415,13 +556,20 @@ def detect_backend() -> str:
             return "mlx"
         except ImportError:
             pass
+    # Linux / CUDA: prefer faster-qwen3-tts for CUDA Graph acceleration
+    try:
+        import faster_qwen3_tts  # noqa: F401
+        log.info("faster-qwen3-tts available → using 'faster' backend")
+        return "faster"
+    except ImportError:
+        pass
     # Fallback to PyTorch
     try:
         import torch  # noqa: F401
         return "pytorch"
     except ImportError:
         pass
-    log.error("No backend available. Install mlx-audio (Mac) or qwen-tts (Linux).")
+    log.error("No backend available. Install mlx-audio (Mac) or faster-qwen3-tts / qwen-tts (Linux).")
     sys.exit(1)
 
 
@@ -435,7 +583,7 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="",
                         help="Model id (HuggingFace). Auto-selected per backend if empty.")
     parser.add_argument("--backend", type=str, default="auto",
-                        choices=["auto", "mlx", "pytorch"],
+                        choices=["auto", "mlx", "faster", "pytorch"],
                         help="Force a specific backend (default: auto-detect)")
     args = parser.parse_args()
     default_voice = args.voice
@@ -458,6 +606,8 @@ if __name__ == "__main__":
     # Load model
     if backend == "mlx":
         load_model_mlx(model_id)
+    elif backend == "faster":
+        load_model_faster(model_id)
     else:
         load_model_pytorch(model_id)
 
@@ -468,6 +618,8 @@ if __name__ == "__main__":
     log.info("Warming up...")
     if backend == "mlx":
         warmup_mlx()
+    elif backend == "faster":
+        warmup_faster()
     else:
         warmup_pytorch()
     log.info("Ready. Default voice: %s, backend: %s", default_voice, backend)
