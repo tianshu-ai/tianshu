@@ -721,6 +721,7 @@ interface EmbeddingStatus {
 
 function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
   const t = usePluginT("wiki");
+  const dateLoc = useDateLocale();
   const { Modal } = useUiPrimitives();
   const [kbStatus, setKbStatus] = useState<KbStatus | null>(null);
   const [sessionStatus, setSessionStatus] = useState<{ running: boolean; progress: number; indexedDays: number; totalDays: number; pendingDays: number } | null>(null);
