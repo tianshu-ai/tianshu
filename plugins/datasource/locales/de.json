@@ -1,6 +1,22 @@
 {
   "manifest.displayName": "Datenquellen",
-  "manifest.description": "Verbinden Sie Agenten mit Datenbanken: Neo4j, MySQL und mehr. Abfragen, Schreiben und Schema-Inspektion über mehrere Datenquellen hinweg.",
+  "manifest.description": "Agents mit Datenbanken verbinden: Neo4j, MySQL und mehr. Abfragen, Schreiben und Schema-Inspektion über mehrere Datenquellen.",
   "manifest.topBarButtons.toggle": "Datenquellen",
-  "manifest.rightPanels.main": "Datenquellen"
+  "manifest.rightPanels.main": "Datenquellen",
+
+  "panel.schemaTitle": "Schema",
+  "panel.historyTitle": "Verlauf",
+  "panel.hintRun": "⌘+Enter zum Ausführen",
+  "panel.run": "Ausführen",
+  "panel.noResults": "Keine Ergebnisse.",
+  "panel.rowCount": "{n} Zeile(n)",
+  "panel.statusMs": "{ms} ms",
+  "panel.filterActive": "{active} Filter aktiv · {filtered} / {total} Zeilen",
+  "panel.clear": "Löschen",
+  "panel.clearFilter": "Filter löschen",
+  "panel.filterPlaceholder": "{col} filtern…",
+  "panel.nullCell": "NULL",
+  "panel.placeholderNeo4j": "MATCH (n) RETURN n LIMIT 10",
+  "panel.placeholderRest": "GET /endpoint?param=value",
+  "panel.placeholderSql": "SELECT * FROM table_name LIMIT 10"
 }

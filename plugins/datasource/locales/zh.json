@@ -1,6 +1,22 @@
 {
   "manifest.displayName": "数据源",
-  "manifest.description": "将代理连接到数据库：Neo4j、MySQL 等。跨多个数据源执行查询、写入和 Schema 检查。",
+  "manifest.description": "将 Agent 连接到数据库：Neo4j、MySQL 等。跨多个数据源查询、写入和查看 Schema。",
   "manifest.topBarButtons.toggle": "数据源",
-  "manifest.rightPanels.main": "数据源"
+  "manifest.rightPanels.main": "数据源",
+
+  "panel.schemaTitle": "Schema",
+  "panel.historyTitle": "历史",
+  "panel.hintRun": "⌘+Enter 执行",
+  "panel.run": "执行",
+  "panel.noResults": "无结果。",
+  "panel.rowCount": "{n} 行",
+  "panel.statusMs": "{ms}ms",
+  "panel.filterActive": "{active} 个筛选器 · {filtered} / {total} 行",
+  "panel.clear": "清除",
+  "panel.clearFilter": "清除筛选",
+  "panel.filterPlaceholder": "筛选 {col}…",
+  "panel.nullCell": "NULL",
+  "panel.placeholderNeo4j": "MATCH (n) RETURN n LIMIT 10",
+  "panel.placeholderRest": "GET /endpoint?param=value",
+  "panel.placeholderSql": "SELECT * FROM table_name LIMIT 10"
 }

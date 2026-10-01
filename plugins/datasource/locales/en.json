@@ -2,5 +2,21 @@
   "manifest.displayName": "Data Sources",
   "manifest.description": "Connect agents to databases: Neo4j, MySQL, and more. Query, write, and inspect schema across multiple data sources.",
   "manifest.topBarButtons.toggle": "Data Sources",
-  "manifest.rightPanels.main": "Data Sources"
+  "manifest.rightPanels.main": "Data Sources",
+
+  "panel.schemaTitle": "Schema",
+  "panel.historyTitle": "History",
+  "panel.hintRun": "⌘+Enter to run",
+  "panel.run": "Run",
+  "panel.noResults": "No results.",
+  "panel.rowCount": "{n} row(s)",
+  "panel.statusMs": "{ms}ms",
+  "panel.filterActive": "{active} filter(s) active · {filtered} / {total} rows",
+  "panel.clear": "Clear",
+  "panel.clearFilter": "Clear filter",
+  "panel.filterPlaceholder": "Filter {col}…",
+  "panel.nullCell": "NULL",
+  "panel.placeholderNeo4j": "MATCH (n) RETURN n LIMIT 10",
+  "panel.placeholderRest": "GET /endpoint?param=value",
+  "panel.placeholderSql": "SELECT * FROM table_name LIMIT 10"
 }

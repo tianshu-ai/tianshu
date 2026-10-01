@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { Database, Play, Clock, Table2, Loader2, ArrowUp, ArrowDown, Filter, X } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/datasource";
 
@@ -23,6 +23,7 @@ interface QueryResult {
 }
 
 function DataSourcePanel(_props: PanelProps) {
+  const t = usePluginT("datasource");
   const [sources, setSources] = useState<Source[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [query, setQuery] = useState("");
@@ -124,10 +125,10 @@ function DataSourcePanel(_props: PanelProps) {
 
   const selectedSource = sources.find((s) => s.name === selected);
   const placeholder = selectedSource?.type === "neo4j"
-    ? "MATCH (n) RETURN n LIMIT 10"
+    ? t("panel.placeholderNeo4j")
     : selectedSource?.type === "rest"
-    ? "GET /endpoint?param=value"
-    : "SELECT * FROM table_name LIMIT 10";
+    ? t("panel.placeholderRest")
+    : t("panel.placeholderSql");
 
   return (
     <div className="flex h-full flex-col text-[12px]">
@@ -149,7 +150,7 @@ function DataSourcePanel(_props: PanelProps) {
           type="button"
           onClick={() => setShowSchema((v) => !v)}
           className={`rounded px-2 py-1 text-[11px] ${showSchema ? "bg-brand-600 text-white" : "text-fg-muted hover:bg-bg-raised"}`}
-          title="Schema"
+          title={t("panel.schemaTitle")}
         >
           <Table2 size={12} />
         </button>
@@ -157,7 +158,7 @@ function DataSourcePanel(_props: PanelProps) {
           type="button"
           onClick={() => setShowHistory((v) => !v)}
           className={`rounded px-2 py-1 text-[11px] ${showHistory ? "bg-brand-600 text-white" : "text-fg-muted hover:bg-bg-raised"}`}
-          title="History"
+          title={t("panel.historyTitle")}
         >
           <Clock size={12} />
         </button>
@@ -202,7 +203,7 @@ function DataSourcePanel(_props: PanelProps) {
           }}
         />
         <div className="flex items-center justify-between px-3 py-1.5">
-          <span className="text-[10px] text-fg-fainter">⌘+Enter to run</span>
+          <span className="text-[10px] text-fg-fainter">{t("panel.hintRun")}</span>
           <button
             type="button"
             onClick={runQuery}
@@ -210,7 +211,7 @@ function DataSourcePanel(_props: PanelProps) {
             className="inline-flex items-center gap-1 rounded bg-brand-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-brand-500 disabled:opacity-40"
           >
             {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
-            Run
+            {t("panel.run")}
           </button>
         </div>
       </div>
@@ -224,7 +225,7 @@ function DataSourcePanel(_props: PanelProps) {
             <div className="px-3 py-2 text-[12px] text-danger">{result.error}</div>
           )}
           {result && !result.error && result.rows.length === 0 && (
-            <div className="px-3 py-2 text-fg-faint">No results.</div>
+            <div className="px-3 py-2 text-fg-faint">{t("panel.noResults")}</div>
           )}
         </div>
       )}
@@ -232,7 +233,7 @@ function DataSourcePanel(_props: PanelProps) {
       {/* Status bar */}
       {result && (
         <div className="flex items-center justify-between border-t border-border-subtle px-3 py-1 text-[10px] text-fg-faint">
-          <span>{result.rowCount} row(s)</span>
+          <span>{t("panel.rowCount", { n: result.rowCount })}</span>
           {result.durationMs !== undefined && <span>{result.durationMs}ms</span>}
         </div>
       )}
@@ -245,6 +246,7 @@ function DataSourcePanel(_props: PanelProps) {
 type SortDir = "asc" | "desc" | null;
 
 function ResultTable({ result }: { result: QueryResult }) {
+  const t = usePluginT("datasource");
   const { columns, rows } = result;
   const [colWidths, setColWidths] = useState<Record<string, number>>({});
   const [sortCol, setSortCol] = useState<string | null>(null);
@@ -320,13 +322,13 @@ function ResultTable({ result }: { result: QueryResult }) {
       {activeFilters > 0 && (
         <div className="flex items-center gap-2 border-b border-border-subtle bg-bg-raised/30 px-3 py-1 text-[10px] text-fg-muted">
           <Filter size={10} />
-          <span>{activeFilters} filter(s) active · {processedRows.length} / {rows.length} rows</span>
+          <span>{t("panel.filterActive", { active: activeFilters, filtered: processedRows.length, total: rows.length })}</span>
           <button
             type="button"
             onClick={() => setFilters({})}
             className="ml-auto text-fg-faint hover:text-fg-default"
           >
-            <X size={10} /> Clear
+            <X size={10} /> {t("panel.clear")}
           </button>
         </div>
       )}
@@ -364,7 +366,7 @@ function ResultTable({ result }: { result: QueryResult }) {
                     <div className="absolute left-0 top-full z-20 min-w-[160px] rounded border border-border-default bg-bg-surface p-1 shadow-lg">
                       <input
                         className="w-full rounded border border-border-default bg-bg-default px-2 py-1 text-[11px] text-fg-default outline-none placeholder:text-fg-fainter"
-                        placeholder={`Filter ${col}...`}
+                        placeholder={t("panel.filterPlaceholder", { col })}
                         value={filters[col] ?? ""}
                         onChange={(e) => setFilters((p) => ({ ...p, [col]: e.target.value }))}
                         onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") setFilterOpen(null); }}
@@ -376,7 +378,7 @@ function ResultTable({ result }: { result: QueryResult }) {
                           className="mt-1 w-full rounded px-2 py-0.5 text-[10px] text-fg-muted hover:bg-bg-hover"
                           onClick={() => { setFilters((p) => { const n = { ...p }; delete n[col]; return n; }); setFilterOpen(null); }}
                         >
-                          Clear filter
+                          {t("panel.clearFilter")}
                         </button>
                       )}
                     </div>
