@@ -1,0 +1,6 @@
+{
+  "manifest.displayName": "Datenquellen",
+  "manifest.description": "Verbinden Sie Agenten mit Datenbanken: Neo4j, MySQL und mehr. Abfragen, Schreiben und Schema-Inspektion über mehrere Datenquellen hinweg.",
+  "manifest.topBarButtons.toggle": "Datenquellen",
+  "manifest.rightPanels.main": "Datenquellen"
+}

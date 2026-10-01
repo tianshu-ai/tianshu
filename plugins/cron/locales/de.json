@@ -1,0 +1,44 @@
+{
+  "manifest.adminPages.settings": "Zeitplaner",
+  "manifest.configGroups.schedule.label": "Zeitplan",
+  "manifest.configGroups.schedule.badge": "Laufzeit",
+  "manifest.config.defaultTz.label": "Standard-Zeitzone",
+  "manifest.config.defaultTz.description": "IANA-Zeitzone (z. B. Asia/Shanghai), die auf Cron-Jobs angewendet wird, deren Ersteller keine angegeben hat. Leer lassen, um die lokale Zeitzone des Servers zu verwenden. Gilt nur für Cron-Jobs; Einmal-Jobs verwenden absolute Zeitstempel.",
+  "manifest.topBarButtons.toggle": "Geplante Jobs",
+  "manifest.rightPanels.main": "Zeitplan",
+
+  "weekday.sun": "So",
+  "weekday.mon": "Mo",
+  "weekday.tue": "Di",
+  "weekday.wed": "Mi",
+  "weekday.thu": "Do",
+  "weekday.fri": "Fr",
+  "weekday.sat": "Sa",
+
+  "aria.prevMonth": "Vorheriger Monat",
+  "aria.nextMonth": "Nächster Monat",
+  "aria.deleteJob": "Job löschen",
+
+  "agenda.jobCountOne": "{n} Job",
+  "agenda.jobCountMany": "{n} Jobs",
+  "agenda.noJobs": "Keine Jobs",
+  "agenda.today": "Heute",
+  "agenda.nothingScheduled": "Nichts geplant",
+
+  "job.recurring": "Wiederkehrend",
+  "job.oneTime": "Einmalig",
+  "job.task": "Aufgabe",
+  "job.message": "Nachricht",
+  "job.disabled": "⏸️ deaktiviert",
+  "job.executed": "ausgeführt",
+
+  "delete.title": "Geplanten Job löschen?",
+  "delete.confirmPre": "Dadurch wird ",
+  "delete.confirmCron": " unwiderruflich entfernt und alle zukünftigen Ausführungen gestoppt.",
+  "delete.confirmOnce": ".",
+  "delete.confirmSuffix": " Dies kann nicht rückgängig gemacht werden.",
+  "delete.cancel": "Abbrechen",
+  "delete.delete": "Löschen",
+  "manifest.displayName": "Zeitplaner",
+  "manifest.description": "Geplante und wiederkehrende Jobs. Senden Sie eine Nachricht in eine Chat-Sitzung oder legen Sie eine Aufgabe auf dem Workboard zu einem zukünftigen Zeitpunkt (einmalig) oder nach einem Cron-Zeitplan ab. Zeitzonen-fähig. Das `schedule`-Tool des Agenten und ein Kalender-Panel verwalten die Jobs."
+}

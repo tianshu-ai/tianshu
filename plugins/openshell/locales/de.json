@@ -1,0 +1,40 @@
+{
+  "manifest.adminPages.policy": "Netzwerkrichtlinie",
+
+  "window.5min": "5 Min.",
+  "window.15min": "15 Min.",
+  "window.60min": "60 Min.",
+  "window.6hr": "6 Std.",
+  "window.24hr": "24 Std.",
+
+  "page.title": "Sandbox-Netzwerkrichtlinie",
+  "page.description": "Ausgangsrichtlinie für die OpenShell-Sandbox. Unten: ausgehende Anfragen, die im gewählten Zeitfenster abgelehnt wurden, und die aktuelle Zulassungsliste der geltenden Endpunkte. Schreibgeschützt – Regeln ändern sich, wenn der Agent Egress über den Richtlinienberater vorschlägt oder ein Task ihn gewährt.",
+  "page.refresh": "Aktualisieren",
+
+  "denials.title": "Abgelehnte Anfragen",
+  "denials.logUnavailable": "Die Sandbox meldet, dass kein Ablehnungsprotokoll verfügbar ist (Richtlinienprotokollierung ist möglicherweise deaktiviert).",
+  "denials.emptyPre": "Keine abgelehnten Anfragen in den letzten ",
+  "denials.emptyPost": ".",
+  "denials.col.time": "Zeit",
+  "denials.col.hostPort": "Host:Port",
+  "denials.col.engine": "Engine",
+  "denials.col.binary": "Binary",
+  "denials.col.reason": "Grund",
+  "denials.col.action": "Aktion",
+  "denials.allowed": "Zugelassen",
+  "denials.allow": "Zulassen",
+  "denials.allowTitle": "{host}:{port} zulassen",
+
+  "allowed.title": "Gültige Richtlinie (aktive Zulassungsliste)",
+  "allowed.allowFailed": "Zulassung fehlgeschlagen: {error}",
+  "allowed.loading": "Richtlinie wird geladen…",
+  "allowed.col.rule": "Regel",
+  "allowed.col.hostPort": "Host:Port",
+  "allowed.col.proto": "Protokoll",
+  "allowed.col.enforce": "Durchsetzung",
+  "allowed.col.binaries": "Binaries",
+  "allowed.noneParsed": "Keine Endpunkte geparst – Raw-Policy-JSON anzeigen",
+  "allowed.emptyPolicy": "(leere Richtlinie)",
+  "manifest.displayName": "OpenShell (Docker)",
+  "manifest.description": "Shell-Befehle in OpenShell-verwalteten Docker-Sandboxes ausführen (NVIDIA OpenShell). Alternative zu microsandbox: vermeidet macOS Hypervisor.framework (kein CPU-Leerlaufverbrauch auf Apple Silicon Tahoe), enthält Netzwerk-/Inference-Richtlinienunterstützung. MVP bietet nur sandbox.shell; Browser-Sidecar und Task-Pool sind für Folge-PRs vorgesehen."
+}

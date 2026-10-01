@@ -1,0 +1,11 @@
+{
+  "manifest.topBarButtons.toggle": "Boards",
+  "manifest.rightPanels.main": "Boards",
+
+  "panel.noBoards": "Keine Boards",
+  "panel.refresh": "Aktualisieren",
+  "panel.loading": "Wird geladen…",
+  "panel.addHint": "Erstellen Sie eines unter board/<name>/index.html",
+  "manifest.displayName": "Boards",
+  "manifest.description": "Rendert HTML-Dashboards eines Benutzers als interaktive Oberfläche. Legen Sie eine index.html in board/<name>/ in Ihrem Workspace ab – der Agent kann sie per `show_board`-Tool im Chat anzeigen (als MCP-UI-Ressource), oder Sie durchsuchen Boards im Seitenpanel."
+}
