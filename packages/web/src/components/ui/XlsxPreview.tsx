@@ -65,7 +65,7 @@ export function XlsxPreview({ src, className = "" }: XlsxPreviewProps) {
             <button
               key={s.name}
               onClick={() => setActiveSheet(i)}
-              className={`px-3 py-1.5 text-[11px] whitespace-nowrap transition-colors ${
+              className={`px-3 py-1.5 text-xs whitespace-nowrap transition-colors ${
                 i === activeSheet
                   ? "text-fg-default bg-bg-surface border-b-2 border-link font-medium"
                   : "text-fg-muted hover:text-fg-default hover:bg-bg-hover"

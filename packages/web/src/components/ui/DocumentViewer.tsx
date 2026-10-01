@@ -155,7 +155,7 @@ export function DocumentViewer({
           {t("viewer.office.body", { ext })}
         </div>
         {sizeBytes != null && (
-          <div className="text-[11px] text-fg-fainter">{formatSize(sizeBytes)}</div>
+          <div className="text-xs text-fg-fainter">{formatSize(sizeBytes)}</div>
         )}
       </div>
     );

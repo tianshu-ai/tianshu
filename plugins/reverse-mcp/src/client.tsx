@@ -44,7 +44,7 @@ function CmdBlock(props: {
   const t = usePluginT("reverse-mcp");
   return (
     <div className="mb-1 flex items-stretch gap-1">
-      <pre className="flex-1 overflow-x-auto rounded-md bg-bg-raised px-2 py-1.5 text-[11px] leading-relaxed text-fg-default">
+      <pre className="flex-1 overflow-x-auto rounded-md bg-bg-raised px-2 py-1.5 text-xs leading-relaxed text-fg-default">
         {props.text}
       </pre>
       <button
@@ -148,7 +148,7 @@ function BridgePanel(_props: PanelProps) {
         </button>
       </div>
 
-      <div className="space-y-4 px-3 py-3 text-[12px]">
+      <div className="space-y-4 px-3 py-3 text-sm">
         <p className="leading-relaxed text-fg-muted">
           {t("panel.intro.pre")}
           <b>{t("panel.intro.your")}</b>{t("panel.intro.post")}
@@ -280,9 +280,9 @@ function BridgePanel(_props: PanelProps) {
         <div>
           <div className="mb-1 font-medium text-fg-default">{t("panel.devices.title")}</div>
           {loading ? (
-            <div className="text-[11px] text-fg-fainter">{t("panel.devices.loading")}</div>
+            <div className="text-xs text-fg-fainter">{t("panel.devices.loading")}</div>
           ) : conns.length === 0 ? (
-            <div className="rounded border border-dashed border-border-subtle px-3 py-3 text-center text-[11px] text-fg-fainter">
+            <div className="rounded border border-dashed border-border-subtle px-3 py-3 text-center text-xs text-fg-fainter">
               {t("panel.devices.empty")}
             </div>
           ) : (

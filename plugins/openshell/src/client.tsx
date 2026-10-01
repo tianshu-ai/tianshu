@@ -243,7 +243,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
           <h2 className="flex items-center gap-2 text-sm font-semibold text-fg-default">
             <ShieldAlert size={15} className="text-red-400" />
             {t("denials.title")}
-            <span className="rounded-full bg-bg-raised px-2 py-0.5 text-[11px] text-fg-muted">
+            <span className="rounded-full bg-bg-raised px-2 py-0.5 text-xs text-fg-muted">
               {denialCount}
             </span>
           </h2>
@@ -254,7 +254,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                 key={o.value}
                 type="button"
                 onClick={() => setMinutes(o.value)}
-                className={`rounded-md px-2 py-1 text-[11px] ${
+                className={`rounded-md px-2 py-1 text-xs ${
                   minutes === o.value
                     ? "bg-brand-500/20 text-brand-300"
                     : "text-fg-muted hover:bg-bg-raised/50"
@@ -330,19 +330,19 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                         {d.host ? `${d.host}:${d.port ?? "?"}` : "—"}
                       </td>
                       <td className="px-3 py-2">
-                        <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted">
+                        <span className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-muted">
                           {d.engine ?? "?"}
                         </span>
                       </td>
                       <td
-                        className={`max-w-[180px] truncate px-3 py-2 font-mono text-[11px] text-fg-faint ${
+                        className={`max-w-[180px] truncate px-3 py-2 font-mono text-xs text-fg-faint ${
                           resolved ? "line-through" : ""
                         }`}
                       >
                         {shortBinary(d.binary)}
                       </td>
                       <td
-                        className={`max-w-[240px] px-3 py-2 text-[11px] text-fg-muted ${
+                        className={`max-w-[240px] px-3 py-2 text-xs text-fg-muted ${
                           resolved ? "line-through" : ""
                         }`}
                       >
@@ -350,7 +350,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                       </td>
                       <td className="whitespace-nowrap px-3 py-2 text-right">
                         {resolved ? (
-                          <span className="inline-flex items-center gap-1 rounded-md border border-green-500/30 bg-green-500/10 px-2 py-1 text-[11px] text-green-300">
+                          <span className="inline-flex items-center gap-1 rounded-md border border-green-500/30 bg-green-500/10 px-2 py-1 text-xs text-green-300">
                             <Check size={11} />
                             {t("denials.allowed")}
                           </span>
@@ -360,7 +360,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                             onClick={() => allowDenial(d)}
                             disabled={busy}
                             title={t("denials.allowTitle", { host: d.host, port: d.port })}
-                            className="inline-flex items-center gap-1 rounded-md border border-green-500/40 px-2 py-1 text-[11px] text-green-300 hover:bg-green-500/10 disabled:opacity-50"
+                            className="inline-flex items-center gap-1 rounded-md border border-green-500/40 px-2 py-1 text-xs text-green-300 hover:bg-green-500/10 disabled:opacity-50"
                           >
                             {busy ? (
                               <Loader2 size={11} className="animate-spin" />
@@ -370,7 +370,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                             {t("denials.allow")}
                           </button>
                         ) : (
-                          <span className="text-[11px] text-fg-faint">—</span>
+                          <span className="text-xs text-fg-faint">—</span>
                         )}
                       </td>
                     </tr>
@@ -429,7 +429,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                     <td className="px-3 py-2 text-fg-muted">
                       {r.enforcement ?? "—"}
                     </td>
-                    <td className="max-w-[240px] px-3 py-2 font-mono text-[11px] text-fg-faint">
+                    <td className="max-w-[240px] px-3 py-2 font-mono text-xs text-fg-faint">
                       {r.binaries && r.binaries.length
                         ? r.binaries.map(shortBinary).join(", ")
                         : "—"}
@@ -448,7 +448,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
               <summary className="cursor-pointer px-3 py-2 text-[12px] text-fg-muted">
                 {t("allowed.noneParsed")}
               </summary>
-              <pre className="max-h-[420px] overflow-auto border-t border-border-default p-3 font-mono text-[11px] leading-relaxed text-fg-muted">
+              <pre className="max-h-[420px] overflow-auto border-t border-border-default p-3 font-mono text-xs leading-relaxed text-fg-muted">
                 {allowedRaw || t("allowed.emptyPolicy")}
               </pre>
             </details>

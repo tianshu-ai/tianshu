@@ -205,7 +205,7 @@ function SourceGroup({
           <h2 className="text-[13px] font-semibold uppercase tracking-wide text-fg-muted">
             {title}
           </h2>
-          <p className="text-[11px] text-fg-faint">{subtitle}</p>
+          <p className="text-xs text-fg-faint">{subtitle}</p>
         </div>
       </div>
       {items.length === 0 ? (
@@ -372,7 +372,7 @@ function ServerCard({
                 : t("mcp.badge.plugin", { id: server.sourceId })}
             </span>
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-fg-faint">
+          <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-faint">
             <span>
               {t("mcp.meta.id")} <code className="text-fg-muted">{server.id}</code>
             </span>
@@ -395,7 +395,7 @@ function ServerCard({
           </div>
         </div>
         <div className="flex flex-shrink-0 items-center gap-1.5">
-          <span className="rounded-md border border-border-default bg-bg-base px-2 py-1 text-[11px] text-fg-muted">
+          <span className="rounded-md border border-border-default bg-bg-base px-2 py-1 text-xs text-fg-muted">
             {t("mcp.toolCount", { n: server.toolCount })}
           </span>
           <button
@@ -422,7 +422,7 @@ function ServerCard({
                 type="button"
                 onClick={onToggle}
                 disabled={busy}
-                className="rounded-md border border-border-default px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
+                className="rounded-md border border-border-default px-2 py-1 text-xs text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
               >
                 {server.enabled ? t("common.disable") : t("common.enable")}
               </button>
@@ -441,7 +441,7 @@ function ServerCard({
       </div>
 
       {lastErr && (
-        <div className="border-b border-border-subtle bg-rose-950/30 px-4 py-2 text-[11px] text-danger">
+        <div className="border-b border-border-subtle bg-rose-950/30 px-4 py-2 text-xs text-danger">
           <AlertTriangle size={12} className="mr-1 inline-block" />
           {lastErr}
         </div>
@@ -460,7 +460,7 @@ function ServerCard({
           </div>
         ) : (
           <table className="w-full text-[12px]">
-            <thead className="border-b border-border-subtle text-left text-[11px] uppercase tracking-wide text-fg-faint">
+            <thead className="border-b border-border-subtle text-left text-xs uppercase tracking-wide text-fg-faint">
               <tr>
                 <th className="px-4 py-2 font-medium">{t("mcp.table.toolName")}</th>
                 <th className="px-4 py-2 font-medium">{t("mcp.table.upstream")}</th>
@@ -638,7 +638,7 @@ function EditDialog({
         </label>
 
         {validationError && (
-          <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[11px] text-danger">
+          <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-xs text-danger">
             {validationError}
           </div>
         )}
@@ -679,11 +679,11 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-[11px] font-medium text-fg-muted">
+      <label className="mb-1 block text-xs font-medium text-fg-muted">
         {label}
       </label>
       {children}
-      {hint && <p className="mt-1 text-[11px] text-fg-faint">{hint}</p>}
+      {hint && <p className="mt-1 text-xs text-fg-faint">{hint}</p>}
     </div>
   );
 }

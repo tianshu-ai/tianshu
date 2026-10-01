@@ -179,7 +179,7 @@ export function ImageLightbox({
             e.stopPropagation();
             cycleZoom();
           }}
-          className="rounded-md bg-white/10 px-2.5 py-1.5 text-[11px] font-medium text-white/90 hover:bg-white/20"
+          className="rounded-md bg-white/10 px-2.5 py-1.5 text-xs font-medium text-white/90 hover:bg-white/20"
           aria-label="Cycle zoom"
           title="Cycle zoom (Space / = / -)"
         >

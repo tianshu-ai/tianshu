@@ -128,7 +128,7 @@ export default function LoginPage() {
 
             {/* Divider when both local + OAuth are present */}
             {cfg.localLogin && cfg.providers.length > 0 && (
-              <div className="my-4 flex items-center gap-3 text-[11px] uppercase tracking-wider text-fg-fainter">
+              <div className="my-4 flex items-center gap-3 text-xs uppercase tracking-wider text-fg-fainter">
                 <span className="h-px flex-1 bg-border-subtle" />
                 {t("login.or")}
                 <span className="h-px flex-1 bg-border-subtle" />

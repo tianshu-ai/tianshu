@@ -182,7 +182,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
                   type="button"
                   onClick={() => testConnection(name)}
                   disabled={dirty}
-                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-raised disabled:opacity-40"
+                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-fg-muted hover:bg-bg-raised disabled:opacity-40"
                   title={dirty ? t("ds.saveFirst") : t("ds.testConnection")}
                 >
                   <Zap size={12} /> {t("ds.test")}
@@ -198,7 +198,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
             </div>
 
             {test && (
-              <div className={`flex items-center gap-1 text-[11px] ${test.ok ? "text-success" : "text-danger"}`}>
+              <div className={`flex items-center gap-1 text-xs ${test.ok ? "text-success" : "text-danger"}`}>
                 {test.ok ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
                 {test.msg}
               </div>
@@ -206,7 +206,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="mb-0.5 block text-[11px] text-fg-faint">{t("ds.description")}</label>
+                <label className="mb-0.5 block text-xs text-fg-faint">{t("ds.description")}</label>
                 <input
                   className={INPUT}
                   value={String(conn.description ?? "")}
@@ -224,7 +224,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
                 }
                 return (
                   <div key={f.key}>
-                    <label className="mb-0.5 block text-[11px] text-fg-faint">
+                    <label className="mb-0.5 block text-xs text-fg-faint">
                       {t(f.label)}{f.required ? " *" : ""}
                     </label>
                     {f.fieldType === "select" && f.options ? (

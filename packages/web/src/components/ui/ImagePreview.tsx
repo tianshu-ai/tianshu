@@ -89,7 +89,7 @@ function ModeToggle({
 }) {
   const t = useT();
   return (
-    <div className="inline-flex rounded-md border border-border-subtle bg-bg-elevated/60 p-0.5 text-[11px] text-fg-muted">
+    <div className="inline-flex rounded-md border border-border-subtle bg-bg-elevated/60 p-0.5 text-xs text-fg-muted">
       <button
         type="button"
         onClick={() => onChange("render")}

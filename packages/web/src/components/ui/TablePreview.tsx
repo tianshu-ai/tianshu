@@ -136,7 +136,7 @@ export function TablePreview({
   return (
     <div className={`flex min-h-0 flex-1 flex-col ${className}`}>
       {truncated && (
-        <div className="mx-3 mt-3 rounded border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-200">
+        <div className="mx-3 mt-3 rounded border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-xs text-amber-200">
           Showing first {MAX_ROWS.toLocaleString()} of{" "}
           {parsed.totalRows.toLocaleString()} data rows. Download the file to
           inspect the rest.

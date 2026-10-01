@@ -364,13 +364,13 @@ function SolutionIDE({
         ) : null}
         {driftCount !== null ? (
           driftCount > 0 ? (
-            <span className="text-[11px] text-warning-fg">
+            <span className="text-xs text-warning-fg">
               {driftCount === 1
                 ? t("ide.drift.differs.one", { n: driftCount })
                 : t("ide.drift.differs", { n: driftCount })}
             </span>
           ) : (
-            <span className="text-[11px] text-success-fg">
+            <span className="text-xs text-success-fg">
               {t("ide.drift.matches")}
             </span>
           )

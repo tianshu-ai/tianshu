@@ -96,7 +96,7 @@ function StatusPill({ status, detail }: { status: BindingView["status"]; detail:
   const cfg = config[status];
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[11px] ${cfg.tone}`}
+      className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-xs ${cfg.tone}`}
       title={detail ?? undefined}
     >
       {status === "starting" && <Loader2 className="h-3 w-3 animate-spin" />}
@@ -259,7 +259,7 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
             >
               {t("add.continue")}
             </button>
-            <div className="text-[11px] text-fg-fainter">
+            <div className="text-xs text-fg-fainter">
               {t("add.changeLater")}
             </div>
           </>
@@ -274,8 +274,8 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
           <>
             <div className="text-sm text-fg-muted">{t("add.scanToAuthorise")}</div>
             <QrCanvas value={qr.qrCodeImageUrl} />
-            <div className="text-[11px] text-fg-faint">{t("add.scanSteps")}</div>
-            <div className="flex items-center gap-2 text-[11px] text-fg-fainter">
+            <div className="text-xs text-fg-faint">{t("add.scanSteps")}</div>
+            <div className="flex items-center gap-2 text-xs text-fg-fainter">
               <Loader2 className="h-3 w-3 animate-spin" />
               {t("add.waitingForScan")}
             </div>
@@ -462,13 +462,13 @@ function WeChatPanel(_props: PanelProps) {
         // host's cascade-replace policy.
         <>
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-[11px] text-fg-faint">
+          <span className="text-xs text-fg-faint">
             {t("page.bound.hint")}
           </span>
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-2.5 py-1 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+            className="inline-flex items-center gap-1.5 rounded-md border border-border-default px-2.5 py-1 text-xs text-fg-muted hover:bg-bg-hover hover:text-fg-default"
           >
             <RefreshCw className="h-3 w-3" />
             {t("page.bound.rescan")}
@@ -502,7 +502,7 @@ function WeChatPanel(_props: PanelProps) {
                 {b.id}
               </div>
               {/* Meta chips: status / model / date, wrapping cleanly. */}
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-fg-faint">
+              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-fg-faint">
                 <StatusPill status={b.status} detail={b.statusDetail} />
                 {typeof b.config.modelId === "string" && b.config.modelId && (
                   <span
@@ -625,12 +625,12 @@ function WeChatSidebarSection(_props: SidebarSectionProps) {
             }`}
             title={s.title ?? s.channelChatId}
           >
-            <span className="flex-shrink-0 rounded bg-success/15 px-1 py-px text-[11px] uppercase tracking-wider text-success">
+            <span className="flex-shrink-0 rounded bg-success/15 px-1 py-px text-xs uppercase tracking-wider text-success">
               {t("sidebar.wechat")}
             </span>
             <span className="flex-1 truncate text-xs">{formatLabel(s.title)}</span>
             {active && (
-              <span className="text-[11px] uppercase tracking-wider text-fg-faint">
+              <span className="text-xs uppercase tracking-wider text-fg-faint">
                 {t("sidebar.active")}
               </span>
             )}

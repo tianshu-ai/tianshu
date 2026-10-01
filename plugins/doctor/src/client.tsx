@@ -109,7 +109,7 @@ function LineItem({
                 size={12}
                 className={line.severity === "blocker" ? "text-rose-400" : "text-amber-400"}
               />
-              <span className="text-[11px] text-fg-faint/80 whitespace-nowrap">{t("panel.fix")}</span>
+              <span className="text-xs text-fg-faint/80 whitespace-nowrap">{t("panel.fix")}</span>
             </span>
           </>
         ) : (
@@ -117,7 +117,7 @@ function LineItem({
         )}
       </span>
       <div className="min-w-0 flex-1">
-        <span className="text-[11px] text-fg-default">{tText(line.text)}</span>
+        <span className="text-xs text-fg-default">{tText(line.text)}</span>
         {line.detail && (
           <div className="text-xs text-fg-faint truncate" title={actionable ? undefined : line.detail}>
             {line.detail}
@@ -237,7 +237,7 @@ function DoctorPanel(_props: PanelProps) {
           type="button"
           onClick={runCheck}
           disabled={loading}
-          className="inline-flex items-center gap-1 rounded px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-raised hover:text-fg-default disabled:opacity-40"
+          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-fg-muted hover:bg-bg-raised hover:text-fg-default disabled:opacity-40"
           title={t("panel.recheckTitle")}
         >
           <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
@@ -249,13 +249,13 @@ function DoctorPanel(_props: PanelProps) {
       {loading && !report && (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-fg-faint">
           <Loader2 size={20} className="animate-spin" />
-          <span className="text-[11px]">{t("panel.running")}</span>
+          <span className="text-xs">{t("panel.running")}</span>
         </div>
       )}
 
       {/* Error state */}
       {error && (
-        <div className="mx-3 mt-2 rounded border border-rose-700/50 bg-rose-950/30 px-3 py-2 text-[11px] text-rose-300">
+        <div className="mx-3 mt-2 rounded border border-rose-700/50 bg-rose-950/30 px-3 py-2 text-xs text-rose-300">
           {error}
         </div>
       )}

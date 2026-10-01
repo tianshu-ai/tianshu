@@ -264,7 +264,7 @@ export function WorkerAgentsPage(): ReactElement {
 
       <div className="overflow-x-auto rounded-md border border-border-subtle">
         <table className="min-w-full divide-y divide-gray-800 text-[12px]">
-          <thead className="bg-bg-elevated/60 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+          <thead className="bg-bg-elevated/60 text-xs font-semibold uppercase tracking-wide text-fg-muted">
             <tr>
               <th className="px-3 py-2 text-left">{t("agents.table.state")}</th>
               <th className="px-3 py-2 text-left">{t("agents.table.name")}</th>
@@ -341,13 +341,13 @@ export function WorkerAgentsPage(): ReactElement {
                     <td className="px-3 py-2">
                       <div className="font-medium text-fg-default">{a.name}</div>
                       {a.description && (
-                        <div className="text-[11px] text-fg-faint">
+                        <div className="text-xs text-fg-faint">
                           {a.description}
                         </div>
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <code className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted">
+                      <code className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-muted">
                         {kindLabel(a.kind)}
                       </code>
                     </td>
@@ -362,10 +362,10 @@ export function WorkerAgentsPage(): ReactElement {
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-fg-muted">
+                    <td className="px-3 py-2 font-mono text-xs text-fg-muted">
                       {a.modelId ?? "—"}
                     </td>
-                    <td className="px-3 py-2 font-mono text-[11px] text-fg-faint">
+                    <td className="px-3 py-2 font-mono text-xs text-fg-faint">
                       {a.builtinKey ?? a.id}
                     </td>
                   </tr>,
@@ -465,7 +465,7 @@ function AgentDetail({
   }, [agent.effectiveSkills, agent.skills, skillCatalog]);
   return (
     <div className="mt-1 space-y-3 rounded-md border border-border-subtle bg-bg-elevated/40 p-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-fg-faint">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-fg-faint">
         <span>
           {t("agents.detail.slot")}{" "}
           <code className="rounded bg-bg-raised px-1.5 py-0.5 text-fg-muted">
@@ -486,15 +486,15 @@ function AgentDetail({
       <DetailSection title={t("agents.detail.skills")} data={skills} />
 
       <div>
-        <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-fg-muted">
           {t("agents.detail.systemPrompt")}
         </div>
         {agent.systemPrompt ? (
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-bg-base p-2 text-[11px] leading-relaxed text-fg-muted">
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-bg-base p-2 text-xs leading-relaxed text-fg-muted">
             {agent.systemPrompt}
           </pre>
         ) : (
-          <div className="text-[11px] italic text-fg-faint">
+          <div className="text-xs italic text-fg-faint">
             {t("agents.detail.systemPromptEmpty")}
           </div>
         )}
@@ -534,7 +534,7 @@ function DetailSection({
   return (
     <div>
       <div className="mb-1 flex items-center gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+        <span className="text-xs font-semibold uppercase tracking-wide text-fg-muted">
           {title}
         </span>
         {data.kind !== "unknown" && (
@@ -545,11 +545,11 @@ function DetailSection({
         {badge}
       </div>
       {data.kind === "unknown" ? (
-        <div className="text-[11px] italic text-fg-faint">
+        <div className="text-xs italic text-fg-faint">
           {t("agents.list.unknown")}
         </div>
       ) : data.items.length === 0 ? (
-        <div className="text-[11px] italic text-fg-faint">
+        <div className="text-xs italic text-fg-faint">
           {t("agents.list.empty")}
         </div>
       ) : (
@@ -557,7 +557,7 @@ function DetailSection({
           {data.items.map((name) => (
             <code
               key={name}
-              className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted"
+              className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-muted"
             >
               {name}
             </code>
@@ -606,7 +606,7 @@ function ConfigureWorkboardDialog({
             <div className="text-sm font-medium text-fg-default">
               {t("agents.configDialog.title")}
             </div>
-            <div className="mt-0.5 text-[11px] text-fg-faint">
+            <div className="mt-0.5 text-xs text-fg-faint">
               {t("agents.configDialog.subtitle")}
             </div>
           </div>

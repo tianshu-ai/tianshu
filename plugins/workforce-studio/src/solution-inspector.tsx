@@ -42,12 +42,12 @@ export function SolutionInspector({
             type="button"
             onClick={() => void edits.runDiff()}
             disabled={edits.busy}
-            className="rounded border border-border-subtle px-2 py-1 text-[11px] hover:bg-bg-raised disabled:opacity-50"
+            className="rounded border border-border-subtle px-2 py-1 text-xs hover:bg-bg-raised disabled:opacity-50"
           >
             {t("inspector.diff.compute")}
           </button>
         ) : edits.diff.entries.length === 0 ? (
-          <div className="text-[11px] text-fg-muted">
+          <div className="text-xs text-fg-muted">
             {t("inspector.diff.none")}
           </div>
         ) : (
@@ -55,10 +55,10 @@ export function SolutionInspector({
             {edits.diff.entries.map((e) => (
               <li
                 key={e.path}
-                className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]"
+                className="flex items-center gap-1.5 py-0.5 font-mono text-xs"
               >
                 <span
-                  className={`rounded px-1 text-[11px] ${
+                  className={`rounded px-1 text-xs ${
                     e.op === "add"
                       ? "bg-success-fg/15 text-success-fg"
                       : e.op === "remove"
@@ -80,7 +80,7 @@ export function SolutionInspector({
       </InspectorSection>
 
       <InspectorSection title={t("inspector.rendered.title")}>
-        <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-2.5 font-mono text-[11px] leading-relaxed text-fg-muted">
+        <pre className="max-h-[40vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-base p-2.5 font-mono text-xs leading-relaxed text-fg-muted">
           {renderedPreview(selected, detail, edits) || t("inspector.rendered.empty")}
         </pre>
       </InspectorSection>
@@ -97,7 +97,7 @@ function InspectorSection({
 }): ReactElement {
   return (
     <div className="border-b border-border-subtle px-3.5 py-3">
-      <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">
         {title}
       </h3>
       {children}

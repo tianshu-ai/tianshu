@@ -147,7 +147,7 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps = 
           >
             {groups.map((g) => (
               <div key={g.label}>
-                <div className="px-3 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-fg-faint">
+                <div className="px-3 pb-1 pt-2.5 text-xs font-semibold uppercase tracking-wider text-fg-faint">
                   {g.label}
                 </div>
                 {g.items.map((m) => (
@@ -165,7 +165,7 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps = 
                   >
                     <span className="flex-1 truncate">{m.name}</span>
                     {m.reasoning && (
-                      <span className="shrink-0 rounded bg-amber-500/15 px-1 py-px text-[11px] text-warning">
+                      <span className="shrink-0 rounded bg-amber-500/15 px-1 py-px text-xs text-warning">
                         reasoning
                       </span>
                     )}

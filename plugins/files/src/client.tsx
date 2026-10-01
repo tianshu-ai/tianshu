@@ -502,7 +502,7 @@ function FilePreviewModal({
       <div className="flex min-h-0 flex-1 flex-col">
         {/* Sub-header with file metadata + icon. Modal already
             owns the close button + name in its own header. */}
-        <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-[11px] text-fg-faint">
+        <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-xs text-fg-faint">
           {fileIcon(entry)}
           <span>
             {formatSize(entry.size, t)} · {formatModified(entry.modifiedMs, t, dateLoc)}

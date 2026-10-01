@@ -144,12 +144,12 @@ export default function Sidebar() {
           by <PluginSidebarSections /> below; the host doesn't
           enumerate channel sessions here. */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
-        <div className="px-1 pb-1 pt-2 text-[11px] uppercase tracking-wider text-fg-fainter">
+        <div className="px-1 pb-1 pt-2 text-xs uppercase tracking-wider text-fg-fainter">
           {t("sidebar.channels")}
         </div>
         <WebchatRow />
         <PluginSidebarSections anchor="channels" />
-        <p className="px-2 pt-2 text-[11px] leading-relaxed text-fg-fainter">
+        <p className="px-2 pt-2 text-xs leading-relaxed text-fg-fainter">
           {t("sidebar.sessionsNote")}
         </p>
       </nav>
@@ -235,8 +235,8 @@ function SidebarFooter() {
           {initial}
         </div>
         <div className="min-w-0 flex-1 text-left">
-          <div className="truncate text-[11px] text-fg-muted">{displayName}</div>
-          <div className="truncate text-[11px] text-fg-fainter">{subline}</div>
+          <div className="truncate text-xs text-fg-muted">{displayName}</div>
+          <div className="truncate text-xs text-fg-fainter">{subline}</div>
         </div>
         <ChevronDown
           size={12}
@@ -252,7 +252,7 @@ function SidebarFooter() {
           {/* Identity header inside menu, mirrors Linear/Discord style. */}
           <div className="border-b border-border-subtle px-3 py-2">
             <div className="truncate text-fg-default">{displayName}</div>
-            <div className="truncate text-[11px] text-fg-fainter">{subline}</div>
+            <div className="truncate text-xs text-fg-fainter">{subline}</div>
           </div>
 
           {/* Admin entry — tenant-admins / super-admins only (dev mode:
@@ -290,7 +290,7 @@ function SidebarFooter() {
               >
                 <Building2 size={14} className="text-fg-faint" />
                 <span className="flex-1 text-left">{t("user.switchTenant")}</span>
-                <span className="max-w-[80px] truncate text-[11px] text-fg-faint">{me?.tenantId}</span>
+                <span className="max-w-[80px] truncate text-xs text-fg-faint">{me?.tenantId}</span>
                 <ChevronRight
                   size={12}
                   className={`text-fg-faint transition-transform ${tenantOpen ? "rotate-90" : ""}`}
@@ -351,7 +351,7 @@ function SidebarFooter() {
           >
             <Globe size={14} className="text-fg-faint" />
             <span className="flex-1 text-left">{t("lang.label")}</span>
-            <span className="text-[11px] text-fg-faint">{LOCALE_LABELS[locale]}</span>
+            <span className="text-xs text-fg-faint">{LOCALE_LABELS[locale]}</span>
             <ChevronRight
               size={12}
               className={`text-fg-faint transition-transform ${langOpen ? "rotate-90" : ""}`}
@@ -492,7 +492,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
               </div>
             )}
             <label className="text-sm">
-              <span className="mb-1 block text-[11px] text-fg-faint">{t("user.oldPassword")}</span>
+              <span className="mb-1 block text-xs text-fg-faint">{t("user.oldPassword")}</span>
               <input
                 type="password" autoFocus
                 value={oldPw} onChange={(e) => setOldPw(e.target.value)}
@@ -500,7 +500,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
               />
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-[11px] text-fg-faint">{t("user.newPassword")}</span>
+              <span className="mb-1 block text-xs text-fg-faint">{t("user.newPassword")}</span>
               <input
                 type="password"
                 value={newPw} onChange={(e) => setNewPw(e.target.value)}
@@ -511,7 +511,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
               )}
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-[11px] text-fg-faint">{t("user.confirmPassword")}</span>
+              <span className="mb-1 block text-xs text-fg-faint">{t("user.confirmPassword")}</span>
               <input
                 type="password"
                 value={confirmPw} onChange={(e) => setConfirmPw(e.target.value)}
@@ -562,7 +562,7 @@ function WebchatRow() {
       <Hash size={12} className="flex-shrink-0" />
       <span className="flex-1 truncate text-xs">webchat</span>
       {active && (
-        <span className="text-[11px] uppercase tracking-wider text-fg-faint">
+        <span className="text-xs uppercase tracking-wider text-fg-faint">
           active
         </span>
       )}

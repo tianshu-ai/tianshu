@@ -212,7 +212,7 @@ export default function McpUiFrame({ ui }: { ui: McpUiResource }) {
     // or the tool ran in another session). The reference is here but
     // the payload isn't — tell the user how to get it back.
     return (
-      <div className="w-full bg-bg-elevated/60 px-3 py-4 text-[11px] text-fg-faint">
+      <div className="w-full bg-bg-elevated/60 px-3 py-4 text-xs text-fg-faint">
         Interactive UI ({ui.uri}) isn’t loaded in this tab. Re-run the tool
         to display it.
       </div>

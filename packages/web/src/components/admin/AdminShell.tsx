@@ -448,14 +448,14 @@ function AdminSidebar({
 
       <nav className="flex-1 space-y-3 overflow-y-auto p-2">
         {grouped.length === 0 && (
-          <p className="px-3 py-2 text-[11px] leading-relaxed text-fg-faint">
+          <p className="px-3 py-2 text-xs leading-relaxed text-fg-faint">
             {t("admin.emptyNav")}
           </p>
         )}
         {grouped.map((bucket, i) => (
           <div key={i}>
             {bucket.group && (
-              <div className="px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-wide text-fg-faint">
+              <div className="px-3 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-fg-faint">
                 {localizeGroup(t, bucket.group)}
               </div>
             )}
@@ -489,9 +489,9 @@ function AdminSidebar({
             {userLabel.slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[11px] text-fg-muted">{userLabel}</div>
+            <div className="truncate text-xs text-fg-muted">{userLabel}</div>
             {localizedRole && (
-              <div className="text-[11px] text-fg-fainter">{localizedRole}</div>
+              <div className="text-xs text-fg-fainter">{localizedRole}</div>
             )}
           </div>
           {showLogout && (
@@ -704,7 +704,7 @@ function PluginConfigSettingsPage({
             <h2 className="text-[13px] font-semibold uppercase tracking-wide text-fg-muted">
               {t("admin.pluginConfig.sectionTitle")}
             </h2>
-            <p className="text-[11px] text-fg-faint">
+            <p className="text-xs text-fg-faint">
               {t("admin.pluginConfig.sectionHint")}
             </p>
           </div>

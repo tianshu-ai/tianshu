@@ -30,7 +30,7 @@ export function ThemeToggle({ compact = false, className = "" }: ThemeToggleProp
   const setMode = useThemeStore((s) => s.setMode);
   return (
     <div
-      className={`inline-flex rounded-md border p-0.5 text-[11px] ${className}`}
+      className={`inline-flex rounded-md border p-0.5 text-xs ${className}`}
       style={{
         background: "var(--color-bg-elevated)",
         borderColor: "var(--color-border-default)",

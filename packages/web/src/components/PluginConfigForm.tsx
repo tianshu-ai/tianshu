@@ -221,7 +221,7 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
       )}
       <div className="flex items-center gap-2 border-t border-border-subtle pt-3">
         {savedAt && !dirty && (
-          <span className="inline-flex items-center gap-1 text-[11px] text-success">
+          <span className="inline-flex items-center gap-1 text-xs text-success">
             <CheckCircle2 size={12} /> {tCfg("common.saved")}
           </span>
         )}
@@ -389,7 +389,7 @@ function ConfigGroupCard({
         )}
       </header>
       {groupDesc && (
-        <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
+        <p className="mt-1 text-xs leading-relaxed text-fg-faint">
           {groupDesc}
         </p>
       )}
@@ -422,7 +422,7 @@ function ConfigFieldRow({
         <div className="min-w-0 flex-1">
           <div className="font-medium text-fg-default">{fLabel}</div>
           {fDesc && (
-            <p className="mt-0.5 text-[11px] leading-relaxed text-fg-faint">
+            <p className="mt-0.5 text-xs leading-relaxed text-fg-faint">
               {fDesc}
             </p>
           )}
@@ -458,13 +458,13 @@ function ConfigFieldRow({
             className={`${INPUT_BASE} w-40`}
           />
           {field.unit && (
-            <span className="text-[11px] text-fg-faint">
+            <span className="text-xs text-fg-faint">
               {cfgL(`config.${field.key}.unit`, field.unit)}
             </span>
           )}
         </div>
         {fDesc && (
-          <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
+          <p className="mt-1 text-xs leading-relaxed text-fg-faint">
             {fDesc}
           </p>
         )}
@@ -494,7 +494,7 @@ function ConfigFieldRow({
           ))}
         </select>
         {fDesc && (
-          <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
+          <p className="mt-1 text-xs leading-relaxed text-fg-faint">
             {fDesc}
           </p>
         )}
@@ -545,7 +545,7 @@ function ConfigFieldRow({
           {isSet && stringValue === "" && (
             <button
               type="button"
-              className="shrink-0 rounded border border-border-default bg-bg-elevated px-2 py-1 text-[11px] text-fg-muted hover:border-rose-700 hover:text-danger"
+              className="shrink-0 rounded border border-border-default bg-bg-elevated px-2 py-1 text-xs text-fg-muted hover:border-rose-700 hover:text-danger"
               onClick={() => onChange({ __secret: true, clear: true })}
             >
               {tRow("common.clear")}
@@ -553,7 +553,7 @@ function ConfigFieldRow({
           )}
         </div>
         {fDesc && (
-          <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
+          <p className="mt-1 text-xs leading-relaxed text-fg-faint">
             {fDesc}
           </p>
         )}
@@ -588,7 +588,7 @@ function ConfigFieldRow({
         />
       )}
       {fDesc && (
-        <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
+        <p className="mt-1 text-xs leading-relaxed text-fg-faint">
           {fDesc}
         </p>
       )}

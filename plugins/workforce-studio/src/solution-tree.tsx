@@ -349,7 +349,7 @@ function TreeBadge({
         : "bg-fg-muted/15 text-fg-muted";
   return (
     <span
-      className={`ml-auto rounded-full px-1.5 py-0.5 text-[11px] font-medium ${cls}`}
+      className={`ml-auto rounded-full px-1.5 py-0.5 text-xs font-medium ${cls}`}
     >
       {badge.text}
     </span>

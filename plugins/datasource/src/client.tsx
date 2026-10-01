@@ -149,7 +149,7 @@ function DataSourcePanel(_props: PanelProps) {
         <button
           type="button"
           onClick={() => setShowSchema((v) => !v)}
-          className={`rounded px-2 py-1 text-[11px] ${showSchema ? "bg-brand-600 text-white" : "text-fg-muted hover:bg-bg-raised"}`}
+          className={`rounded px-2 py-1 text-xs ${showSchema ? "bg-brand-600 text-white" : "text-fg-muted hover:bg-bg-raised"}`}
           title={t("panel.schemaTitle")}
         >
           <Table2 size={12} />
@@ -157,7 +157,7 @@ function DataSourcePanel(_props: PanelProps) {
         <button
           type="button"
           onClick={() => setShowHistory((v) => !v)}
-          className={`rounded px-2 py-1 text-[11px] ${showHistory ? "bg-brand-600 text-white" : "text-fg-muted hover:bg-bg-raised"}`}
+          className={`rounded px-2 py-1 text-xs ${showHistory ? "bg-brand-600 text-white" : "text-fg-muted hover:bg-bg-raised"}`}
           title={t("panel.historyTitle")}
         >
           <Clock size={12} />
@@ -166,7 +166,7 @@ function DataSourcePanel(_props: PanelProps) {
 
       {/* Schema panel */}
       {showSchema && schema && (
-        <div className="max-h-[200px] overflow-auto border-b border-border-subtle bg-bg-raised/30 px-3 py-2 text-[11px] text-fg-muted whitespace-pre-wrap">
+        <div className="max-h-[200px] overflow-auto border-b border-border-subtle bg-bg-raised/30 px-3 py-2 text-xs text-fg-muted whitespace-pre-wrap">
           {schema}
         </div>
       )}
@@ -178,7 +178,7 @@ function DataSourcePanel(_props: PanelProps) {
             <button
               key={i}
               type="button"
-              className="w-full truncate px-3 py-1 text-left text-[11px] text-fg-muted hover:bg-bg-hover"
+              className="w-full truncate px-3 py-1 text-left text-xs text-fg-muted hover:bg-bg-hover"
               onClick={() => { setQuery(h.query); setSelected(h.source); setShowHistory(false); }}
             >
               <span className="text-fg-faint">[{h.source}]</span> {h.query}
@@ -208,7 +208,7 @@ function DataSourcePanel(_props: PanelProps) {
             type="button"
             onClick={runQuery}
             disabled={running || !query.trim()}
-            className="inline-flex items-center gap-1 rounded bg-brand-600 px-3 py-1 text-[11px] font-medium text-white hover:bg-brand-500 disabled:opacity-40"
+            className="inline-flex items-center gap-1 rounded bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-40"
           >
             {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
             {t("panel.run")}
@@ -334,7 +334,7 @@ function ResultTable({ result }: { result: QueryResult }) {
       )}
 
       <div ref={tableRef} className="flex-1 overflow-auto">
-        <table className="text-[11px]" style={{ minWidth: "100%", borderCollapse: "collapse" }}>
+        <table className="text-xs" style={{ minWidth: "100%", borderCollapse: "collapse" }}>
           <thead className="sticky top-0 z-10">
             <tr className="border-b border-border-subtle bg-bg-raised">
               {columns.map((col) => (
@@ -365,7 +365,7 @@ function ResultTable({ result }: { result: QueryResult }) {
                   {filterOpen === col && (
                     <div className="absolute left-0 top-full z-20 min-w-[160px] rounded border border-border-default bg-bg-surface p-1 shadow-lg">
                       <input
-                        className="w-full rounded border border-border-default bg-bg-default px-2 py-1 text-[11px] text-fg-default outline-none placeholder:text-fg-fainter"
+                        className="w-full rounded border border-border-default bg-bg-default px-2 py-1 text-xs text-fg-default outline-none placeholder:text-fg-fainter"
                         placeholder={t("panel.filterPlaceholder", { col })}
                         value={filters[col] ?? ""}
                         onChange={(e) => setFilters((p) => ({ ...p, [col]: e.target.value }))}

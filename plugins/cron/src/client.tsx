@@ -278,7 +278,7 @@ function CalendarPanel(_props: PanelProps) {
                 key={day}
                 onClick={() => setSelected(new Date(y, m, day))}
                 style={{ maxHeight: 44 }}
-                className={`aspect-square w-full rounded-md text-[11px] relative transition-colors flex items-center justify-center ${
+                className={`aspect-square w-full rounded-md text-xs relative transition-colors flex items-center justify-center ${
                   isSel
                     ? "bg-accent text-fg-on-accent font-semibold"
                     : isToday
@@ -379,7 +379,7 @@ function CalendarPanel(_props: PanelProps) {
         {!sameDay(today, selected.getFullYear(), selected.getMonth(), selected.getDate()) && (
           <button
             onClick={goToday}
-            className="text-[11px] text-fg-muted hover:text-accent px-2.5 py-1 rounded-md ring-1 ring-inset ring-border-default hover:ring-accent/50 transition-colors"
+            className="text-xs text-fg-muted hover:text-accent px-2.5 py-1 rounded-md ring-1 ring-inset ring-border-default hover:ring-accent/50 transition-colors"
           >
             {t("agenda.today")}
           </button>
@@ -418,7 +418,7 @@ function CalendarPanel(_props: PanelProps) {
                   }`}
                 >
                   <div className="flex-shrink-0 w-12 text-right">
-                    <span className="text-[11px] font-mono text-fg-muted">{time}</span>
+                    <span className="text-xs font-mono text-fg-muted">{time}</span>
                   </div>
                   <div
                     className={`w-0.5 self-stretch rounded-full flex-shrink-0 ${

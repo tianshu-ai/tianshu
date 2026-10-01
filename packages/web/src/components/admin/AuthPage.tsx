@@ -542,7 +542,7 @@ function TenantsSection() {
               <div className="flex items-center gap-2">
                 <span className="font-mono text-sm text-fg-default">{tn.id}</span>
                 {tn.disabled && (
-                  <span className="rounded-full border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-[11px] text-amber-200">
+                  <span className="rounded-full border border-amber-700/40 bg-amber-950/30 px-2 py-0.5 text-xs text-amber-200">
                     {t("auth.tenants.disabledBadge")}
                   </span>
                 )}
@@ -659,7 +659,7 @@ function LocalUsersSection() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium text-fg-default">{u.username}</span>
-                  {u.email && <span className="text-[11px] text-fg-faint">{u.email}</span>}
+                  {u.email && <span className="text-xs text-fg-faint">{u.email}</span>}
                   {u.superAdmin ? (
                     <span className="text-xs rounded bg-link/20 px-1.5 py-0.5 text-link">
                       {t("auth.users.superAdminBadge")}
@@ -682,7 +682,7 @@ function LocalUsersSection() {
                   <button
                     type="button"
                     onClick={() => void toggleRole(u)}
-                    className="rounded-md px-2.5 py-1 text-[11px] text-fg-muted hover:text-fg-default hover:bg-bg-hover border border-border-default transition-colors"
+                    className="rounded-md px-2.5 py-1 text-xs text-fg-muted hover:text-fg-default hover:bg-bg-hover border border-border-default transition-colors"
                   >
                     {u.role === "admin" ? t("auth.users.demote") : t("auth.users.promote")}
                   </button>
@@ -853,7 +853,7 @@ function AssignRoleModal({
       <div className="flex flex-col gap-3 p-1">
         {err && <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-1.5 text-xs text-danger">{err}</div>}
         <label className="text-sm">
-          <span className="mb-1 block text-[11px] text-fg-faint">{t("auth.users.roleInTenantLabel")}</span>
+          <span className="mb-1 block text-xs text-fg-faint">{t("auth.users.roleInTenantLabel")}</span>
           <select
             value={role}
             onChange={(e) => setRole(e.target.value as "admin" | "member")}
@@ -912,7 +912,7 @@ function Field({
 }) {
   return (
     <label className="text-sm">
-      <span className="mb-1 block text-[11px] text-fg-faint">{label}</span>
+      <span className="mb-1 block text-xs text-fg-faint">{label}</span>
       <input
         type={type}
         value={value}

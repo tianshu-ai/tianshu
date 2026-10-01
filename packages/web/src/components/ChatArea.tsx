@@ -105,7 +105,7 @@ export default function ChatArea() {
             {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
           </button>
           <h1 className="ml-3 text-sm font-medium text-fg-muted">main</h1>
-          <span className="ml-3 text-[11px] text-fg-faint">
+          <span className="ml-3 text-xs text-fg-faint">
             tenant <span className="text-fg-muted">{me?.tenantId ?? "…"}</span> · user{" "}
             <span className="text-fg-muted">{me?.displayName ?? me?.userId ?? "…"}</span>
           </span>
@@ -191,7 +191,7 @@ export default function ChatArea() {
                   <button
                     type="button"
                     onClick={clearStreamError}
-                    className="ml-3 flex-none text-[11px] uppercase tracking-wider text-rose-300/80 hover:text-white"
+                    className="ml-3 flex-none text-xs uppercase tracking-wider text-rose-300/80 hover:text-white"
                   >
                     {t("chat.dismiss")}
                   </button>
@@ -219,7 +219,7 @@ export default function ChatArea() {
                 <button
                   type="button"
                   onClick={clearRetryNotice}
-                  className="ml-3 text-[11px] uppercase tracking-wider text-sky-300/80 hover:text-white"
+                  className="ml-3 text-xs uppercase tracking-wider text-sky-300/80 hover:text-white"
                 >
                   {t("chat.dismiss")}
                 </button>
@@ -240,7 +240,7 @@ export default function ChatArea() {
                 <button
                   type="button"
                   onClick={clearCompactNotice}
-                  className="ml-3 text-[11px] uppercase tracking-wider text-amber-300/80 hover:text-white"
+                  className="ml-3 text-xs uppercase tracking-wider text-amber-300/80 hover:text-white"
                 >
                   {t("chat.dismiss")}
                 </button>
@@ -409,12 +409,12 @@ function ChannelSessionFooter({ sessionId }: { sessionId: string }) {
   return (
     <div className="flex flex-col items-center gap-1 border-t border-border-subtle bg-bg-elevated px-4 py-2.5">
       {binding && (
-        <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
+        <div className="flex items-center gap-1.5 text-xs text-fg-faint">
           <span>{t("chat.model")}</span>
           <ModelSelector value={binding.modelId} onChange={onChange} />
         </div>
       )}
-      <span className="text-[11px] text-fg-fainter">
+      <span className="text-xs text-fg-fainter">
         {t("chat.readOnlyChannel")}
       </span>
     </div>
@@ -459,7 +459,7 @@ function AutoRetryBanner({
       <button
         type="button"
         onClick={onStop}
-        className="ml-3 flex-none rounded border border-amber-400/40 px-2 py-0.5 text-[11px] uppercase tracking-wider text-amber-100 hover:bg-amber-400/10 hover:text-white"
+        className="ml-3 flex-none rounded border border-amber-400/40 px-2 py-0.5 text-xs uppercase tracking-wider text-amber-100 hover:bg-amber-400/10 hover:text-white"
       >
         {tr("chat.stopLower")}
       </button>

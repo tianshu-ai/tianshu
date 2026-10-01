@@ -274,7 +274,7 @@ export default function FileOpenDialog(): ReactElement | null {
             scroll container when it needs one. */}
         <div className="flex min-h-0 flex-1 flex-col bg-bg-base">
           {view.kind === "text" && view.truncated && (
-            <div className="mx-3 mt-3 rounded border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-[11px] text-amber-200">
+            <div className="mx-3 mt-3 rounded border border-amber-900/40 bg-amber-950/30 px-2 py-1 text-xs text-amber-200">
               {t("file.truncated", { n: MAX_TEXT_BYTES.toLocaleString() })}
             </div>
           )}

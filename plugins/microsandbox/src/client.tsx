@@ -345,7 +345,7 @@ function SandboxfileSection() {
                   loadTemplate(e.target.value);
                   e.target.value = "";
                 }}
-                className="rounded-md border border-border-subtle bg-bg-elevated px-2 py-1 text-[11px] text-fg-muted hover:border-border-default focus:border-blue-700 focus:outline-none"
+                className="rounded-md border border-border-subtle bg-bg-elevated px-2 py-1 text-xs text-fg-muted hover:border-border-default focus:border-blue-700 focus:outline-none"
                 title={t("sandboxfile.loadTemplate.title")}
               >
                 <option value="">{t("sandboxfile.loadTemplate")}</option>
@@ -360,7 +360,7 @@ function SandboxfileSection() {
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-xs text-fg-muted"
               title={t("sandboxfile.reload.title")}
             >
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
@@ -370,7 +370,7 @@ function SandboxfileSection() {
               type="button"
               onClick={() => void save()}
               disabled={!dirty || saving}
-              className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
+              className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
             >
               {saving ? (
                 <Loader2 size={12} className="animate-spin" />
@@ -401,7 +401,7 @@ function SandboxfileSection() {
         className="mt-2 h-64 w-full resize-y rounded-md border border-border-subtle bg-bg-base px-3 py-2 font-mono text-[12px] leading-relaxed text-fg-default outline-none focus:border-blue-700"
         placeholder="image: python:3.12-slim&#10;cpus: 4&#10;memory_mib: 4096"
       />
-      <p className="mt-2 text-[11px] leading-relaxed text-fg-faint">
+      <p className="mt-2 text-xs leading-relaxed text-fg-faint">
         {t("sandboxfile.pathLabel")} <code className="rounded bg-bg-raised px-1">{payload?.path ?? "…"}</code>.
         {" "}{t("sandboxfile.grammarLead")} <code className="rounded bg-bg-raised px-1">image:</code>,{" "}
         <code className="rounded bg-bg-raised px-1">cpus:</code>,{" "}
@@ -633,7 +633,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               type="button"
               onClick={() => void load()}
               disabled={loading}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-xs text-fg-muted"
             >
               <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
               {t("builds.refresh")}
@@ -642,7 +642,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               value={basedOnSnapshot}
               onChange={(e) => setBasedOnSnapshot(e.target.value)}
               disabled={building}
-              className="rounded border border-border-default bg-bg-elevated px-2 py-1 text-[11px] text-fg-default disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded border border-border-default bg-bg-elevated px-2 py-1 text-xs text-fg-default disabled:cursor-not-allowed disabled:opacity-50"
               title={t("builds.basedOn.title")}
             >
               <option value="">{t("builds.basedOn.fresh")}</option>
@@ -656,7 +656,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               type="button"
               onClick={() => void build()}
               disabled={building}
-              className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
+              className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
               title={
                 basedOnSnapshot
                   ? t("builds.build.titleOnTop", { snapshot: basedOnSnapshot })
@@ -689,7 +689,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
       {(building || buildLog.length > 0) && (
         <div className="mb-3 overflow-hidden rounded-md border border-border-subtle bg-bg-base">
           <div className="flex items-center justify-between border-b border-border-subtle px-3 py-1.5">
-            <div className="flex items-center gap-2 text-[11px] text-fg-muted">
+            <div className="flex items-center gap-2 text-xs text-fg-muted">
               {building ? (
                 <Loader2 size={11} className="animate-spin text-success" />
               ) : (
@@ -712,7 +712,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
           </div>
           <pre
             ref={logRef}
-            className="max-h-72 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-[11px] leading-relaxed text-fg-muted"
+            className="max-h-72 overflow-auto whitespace-pre-wrap px-3 py-2 font-mono text-xs leading-relaxed text-fg-muted"
           >
             {buildLog.length > 0
               ? buildLog.join("\n")
@@ -737,7 +737,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <code className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-default">
+                    <code className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-default">
                       {b.buildId}
                     </code>
                     {(b.roles?.browser ?? b.published) && (
@@ -750,12 +750,12 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                         <CheckCircle2 size={10} /> {t("builds.role.task")}
                       </span>
                     )}
-                    <span className="text-[11px] text-fg-muted" title={b.basedOnSnapshot ? t("builds.layeredTitle", { snapshot: b.basedOnSnapshot }) : t("builds.imageTitle", { image: b.baseImage })}>{b.basedOnSnapshot ? `↳ ${b.basedOnSnapshot.split('-build-').pop() ?? b.basedOnSnapshot}` : b.baseImage}</span>
+                    <span className="text-xs text-fg-muted" title={b.basedOnSnapshot ? t("builds.layeredTitle", { snapshot: b.basedOnSnapshot }) : t("builds.imageTitle", { image: b.baseImage })}>{b.basedOnSnapshot ? `↳ ${b.basedOnSnapshot.split('-build-').pop() ?? b.basedOnSnapshot}` : b.baseImage}</span>
                     <span className="text-xs text-fg-fainter">
                       {(b.durationMs / 1000).toFixed(1)}s · {formatRelative(b.builtAt, t)}
                     </span>
                   </div>
-                  <p className="mt-1 truncate text-[11px] text-fg-faint">
+                  <p className="mt-1 truncate text-xs text-fg-faint">
                     {t("builds.snapshotLabel")}{" "}
                     <code className="rounded bg-bg-raised px-1 text-fg-muted">
                       {b.snapshotName}
@@ -777,7 +777,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                           type="button"
                           onClick={() => void useBuild(b.buildId, "browser", false)}
                           disabled={usingId === b.buildId || browserActive}
-                          className="flex items-center gap-1 px-2 py-1 text-[11px] text-emerald-200 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                          className="flex items-center gap-1 px-2 py-1 text-xs text-emerald-200 hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
                           title={
                             browserActive
                               ? t("builds.browserActive.title")
@@ -796,7 +796,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                             type="button"
                             onClick={() => void useBuild(b.buildId, "browser", true)}
                             disabled={usingId === b.buildId}
-                            className="flex items-center gap-1 border-l border-border-subtle px-2 py-1 text-[11px] text-success hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                            className="flex items-center gap-1 border-l border-border-subtle px-2 py-1 text-xs text-success hover:bg-emerald-900/30 disabled:cursor-not-allowed disabled:opacity-40"
                             title={t("builds.andReset.title")}
                           >
                             <RotateCcw size={11} />
@@ -809,7 +809,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                         type="button"
                         onClick={() => void useBuild(b.buildId, "task", false)}
                         disabled={usingId === b.buildId || taskActive}
-                        className="flex items-center justify-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-[11px] text-sky-200 hover:bg-sky-900/30 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="flex items-center justify-center gap-1 rounded-md border border-border-subtle px-2 py-1 text-xs text-sky-200 hover:bg-sky-900/30 disabled:cursor-not-allowed disabled:opacity-40"
                         title={
                           taskActive
                             ? t("builds.taskActive.title")
@@ -828,11 +828,11 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                 })()}
               </div>
               {b.logTail && (
-                <details className="mt-1.5 text-[11px]">
+                <details className="mt-1.5 text-xs">
                   <summary className="cursor-pointer text-fg-faint hover:text-fg-muted">
                     {t("builds.logTail")}
                   </summary>
-                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-bg-base px-2 py-1 text-[11px] leading-relaxed text-fg-muted">
+                  <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap rounded bg-bg-base px-2 py-1 text-xs leading-relaxed text-fg-muted">
                     {b.logTail}
                   </pre>
                 </details>
@@ -1035,7 +1035,7 @@ function ShellSection() {
             <button
               type="button"
               onClick={() => void loadBuilds()}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-xs text-fg-muted"
               title={t("shell.reloadBuilds.title")}
             >
               <RefreshCw size={11} />
@@ -1045,7 +1045,7 @@ function ShellSection() {
               type="button"
               onClick={clear}
               disabled={history.length === 0}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted disabled:opacity-50"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-xs text-fg-muted disabled:opacity-50"
               title={t("shell.clear.title")}
             >
               <Trash2 size={12} />
@@ -1056,7 +1056,7 @@ function ShellSection() {
       />
 
       {history.length === 0 && (
-        <p className="mb-2 rounded-md border border-dashed border-border-subtle px-3 py-3 text-center text-[11px] text-fg-faint">
+        <p className="mb-2 rounded-md border border-dashed border-border-subtle px-3 py-3 text-center text-xs text-fg-faint">
           {t("shell.empty.lead")}{" "}
           <code className="rounded bg-bg-raised px-1 text-fg-muted">ls /workspace</code>
           {" · "}
@@ -1079,7 +1079,7 @@ function ShellSection() {
           <select
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            className={`rounded border px-2 py-0.5 font-mono text-[11px] text-fg-default outline-none focus:border-blue-700 ${
+            className={`rounded border px-2 py-0.5 font-mono text-xs text-fg-default outline-none focus:border-blue-700 ${
               target === "live"
                 ? "border-emerald-700/40 bg-bg-elevated"
                 : "border-amber-700/40 bg-amber-950/30"
@@ -1105,7 +1105,7 @@ function ShellSection() {
             value={workdir}
             onChange={(e) => setWorkdir(e.target.value)}
             spellCheck={false}
-            className="flex-1 rounded border border-border-subtle bg-bg-elevated px-2 py-0.5 font-mono text-[11px] text-fg-default outline-none focus:border-blue-700"
+            className="flex-1 rounded border border-border-subtle bg-bg-elevated px-2 py-0.5 font-mono text-xs text-fg-default outline-none focus:border-blue-700"
           />
         </div>
         <div className="flex items-end gap-2">
@@ -1127,7 +1127,7 @@ function ShellSection() {
             <button
               type="button"
               onClick={cancel}
-              className="flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-rose-500"
+              className="flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-500"
               title={t("shell.cancel.title")}
             >
               <X size={12} />
@@ -1138,7 +1138,7 @@ function ShellSection() {
               type="button"
               onClick={() => void run()}
               disabled={command.trim().length === 0}
-              className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
+              className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-bg-raised disabled:text-fg-faint"
             >
               <Terminal size={12} />
               {t("shell.run")}
@@ -1162,7 +1162,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
   const failed = (result && !result.ok) || transportError != null;
 
   return (
-    <div className="rounded-md border border-border-subtle bg-bg-elevated/50 px-3 py-2 font-mono text-[11px] leading-relaxed">
+    <div className="rounded-md border border-border-subtle bg-bg-elevated/50 px-3 py-2 font-mono text-xs leading-relaxed">
       <div className="mb-1 flex items-center gap-2">
         {running ? (
           <Loader2 size={11} className="animate-spin text-fg-muted" />
@@ -1173,7 +1173,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         )}
         <code className="flex-1 break-all text-fg-default">{entry.command}</code>
         <span
-          className={`rounded px-1 py-0.5 text-[11px] uppercase tracking-wide ${
+          className={`rounded px-1 py-0.5 text-xs uppercase tracking-wide ${
             entry.target === "live"
               ? "bg-emerald-900/40 text-success"
               : "bg-amber-900/40 text-warning"
@@ -1186,13 +1186,13 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         >
           {entry.target === "live" ? t("shellEntry.live") : t("shellEntry.preview", { target: entry.target })}
         </span>
-        <span className="text-[11px] text-fg-fainter">{t("shellEntry.cwd", { workdir: entry.workdir })}</span>
+        <span className="text-xs text-fg-fainter">{t("shellEntry.cwd", { workdir: entry.workdir })}</span>
         {result && (
           <span
             className={
               ok
-                ? "rounded bg-emerald-900/40 px-1.5 py-0.5 text-[11px] text-success"
-                : "rounded bg-rose-900/40 px-1.5 py-0.5 text-[11px] text-danger"
+                ? "rounded bg-emerald-900/40 px-1.5 py-0.5 text-xs text-success"
+                : "rounded bg-rose-900/40 px-1.5 py-0.5 text-xs text-danger"
             }
           >
             {t("shellEntry.exit", { code: result.exitCode })}
@@ -1203,19 +1203,19 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         )}
       </div>
       {transportError && (
-        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-rose-950/40 px-2 py-1 text-[11px] text-danger">
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-rose-950/40 px-2 py-1 text-xs text-danger">
           {transportError}
         </pre>
       )}
       {result && (result.stdout || result.stderr) && (
         <div className="space-y-1">
           {result.stdout && (
-            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-bg-base px-2 py-1 text-[11px] text-fg-default">
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-bg-base px-2 py-1 text-xs text-fg-default">
               {result.stdout}
             </pre>
           )}
           {result.stderr && (
-            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-amber-950/30 px-2 py-1 text-[11px] text-amber-200">
+            <pre className="max-h-72 overflow-auto whitespace-pre-wrap rounded bg-amber-950/30 px-2 py-1 text-xs text-amber-200">
               {result.stderr}
             </pre>
           )}
@@ -1306,7 +1306,7 @@ function ResetSection({
             <button
               type="button"
               onClick={() => void loadStatus()}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-xs text-fg-muted"
             >
               <RefreshCw size={12} />
               {t("reset.refresh")}
@@ -1314,7 +1314,7 @@ function ResetSection({
             <button
               type="button"
               onClick={() => setConfigOpen(true)}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-xs text-fg-muted"
               title={t("reset.configure.title")}
             >
               <Settings size={12} />
@@ -1324,7 +1324,7 @@ function ResetSection({
               type="button"
               onClick={() => void reset()}
               disabled={resetting}
-              className="flex items-center gap-1.5 rounded-md border border-rose-700/60 bg-rose-950/40 px-3 py-1.5 text-[11px] font-medium text-danger hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-md border border-rose-700/60 bg-rose-950/40 px-3 py-1.5 text-xs font-medium text-danger hover:bg-rose-900/40 disabled:cursor-not-allowed disabled:opacity-50"
               title={t("reset.resetBtn.title")}
             >
               {resetting ? (
@@ -1341,7 +1341,7 @@ function ResetSection({
       {error && <Banner kind="error" text={error} />}
       <div className="rounded-md border border-border-subtle bg-bg-elevated/40">
         {status && (
-        <dl className="grid grid-cols-3 gap-x-4 gap-y-1.5 p-3 text-[11px]">
+        <dl className="grid grid-cols-3 gap-x-4 gap-y-1.5 p-3 text-xs">
           <Field label={t("reset.field.state")}>
             {status.runner === "nullable" ? t("reset.state.notRunning") : status.state}
           </Field>
@@ -1496,7 +1496,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
             type="button"
             onClick={() => void load()}
             disabled={loading}
-            className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
+            className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-xs text-fg-muted"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
             {t("taskPool.refresh")}
@@ -1508,7 +1508,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
 
       {entries !== null && entries.length > 0 && (
         <div className="overflow-hidden rounded-md border border-border-subtle">
-          <table className="w-full text-[11px]">
+          <table className="w-full text-xs">
             <thead className="bg-bg-elevated/60 text-xs uppercase tracking-wide text-fg-faint">
               <tr>
                 <th className="px-3 py-1.5 text-left">{t("taskPool.col.state")}</th>
@@ -1634,7 +1634,7 @@ function ConfigureSandboxDialog({
             <div className="text-sm font-medium text-fg-default">
               {t("configDialog.title")}
             </div>
-            <div className="mt-0.5 text-[11px] text-fg-faint">
+            <div className="mt-0.5 text-xs text-fg-faint">
               {t("configDialog.desc")}
             </div>
           </div>
@@ -1693,7 +1693,7 @@ function SectionHeader({
       <div>
         <h2 className="text-sm font-semibold text-fg-default">{title}</h2>
         {description && (
-          <p className="mt-0.5 text-[11px] text-fg-faint">{description}</p>
+          <p className="mt-0.5 text-xs text-fg-faint">{description}</p>
         )}
       </div>
       {actions && <div className="flex items-center gap-1.5">{actions}</div>}
@@ -1723,7 +1723,7 @@ function Banner({
         ? Loader2
         : AlertTriangle;
   return (
-    <div className={`mb-2 flex items-start gap-2 rounded-md border px-3 py-2 text-[11px] ${cls}`}>
+    <div className={`mb-2 flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${cls}`}>
       <Icon
         size={12}
         className={kind === "info" ? "mt-0.5 animate-spin" : "mt-0.5 flex-shrink-0"}
@@ -1831,7 +1831,7 @@ function BrowserViewportPanel(_props: PanelProps) {
       </div>
 
       {error && (
-        <div className="m-3 flex items-start gap-1.5 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[11px] text-danger">
+        <div className="m-3 flex items-start gap-1.5 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-xs text-danger">
           <AlertTriangle size={12} className="mt-px flex-shrink-0" />
           <span className="break-all">{error}</span>
         </div>

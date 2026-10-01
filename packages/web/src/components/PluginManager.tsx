@@ -194,7 +194,7 @@ export default function PluginManager({ open, onClose }: Props) {
           <TabButton active={tab === "installed"} onClick={() => setTab("installed")}>
             {t("plugin.tab.installed")}
             {plugins && (
-              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted">
+              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-muted">
                 {plugins.length}
               </span>
             )}
@@ -202,7 +202,7 @@ export default function PluginManager({ open, onClose }: Props) {
           <TabButton active={tab === "catalog"} onClick={() => setTab("catalog")}>
             {t("plugin.tab.catalog")}
             {catalog && (
-              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted">
+              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-muted">
                 {catalog.entries.length}
               </span>
             )}
@@ -213,7 +213,7 @@ export default function PluginManager({ open, onClose }: Props) {
               type="button"
               onClick={() => void refreshPlugins()}
               disabled={refreshingPlugins}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-xs text-fg-muted"
               title={t("plugin.refresh.installedTooltip")}
             >
               <RefreshCw
@@ -228,7 +228,7 @@ export default function PluginManager({ open, onClose }: Props) {
               type="button"
               onClick={refreshCatalog}
               disabled={refreshing}
-              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-[11px] text-fg-muted"
+              className="btn-ghost flex items-center gap-1.5 px-2 py-1 text-xs text-fg-muted"
               title={t("plugin.refresh.catalogTooltip")}
             >
               <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
@@ -258,7 +258,7 @@ export default function PluginManager({ open, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="border-t border-border-subtle px-5 py-3 text-[11px] leading-relaxed text-fg-faint">
+        <div className="border-t border-border-subtle px-5 py-3 text-xs leading-relaxed text-fg-faint">
           {tab === "installed" ? (
             <>
               Changes persist to{" "}
@@ -433,13 +433,13 @@ function InstalledList({
   return (
     <div className="space-y-4">
       {readOnly && (
-        <div className="rounded-md border border-border-subtle bg-bg-raised/50 px-3 py-2 text-[11px] text-fg-muted">
+        <div className="rounded-md border border-border-subtle bg-bg-raised/50 px-3 py-2 text-xs text-fg-muted">
           {t("plugin.readonly.notice")}
         </div>
       )}
       {orderedKeys.map((key) => (
         <section key={key}>
-          <h3 className="mb-1.5 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+          <h3 className="mb-1.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-fg-muted">
             {categoryLabel(t, key)}
             <span className="text-fg-fainter">{buckets.get(key)!.length}</span>
           </h3>
@@ -494,7 +494,7 @@ function PluginCard({
         )}
         <CapabilityBadges entry={p} />
         {p.failedReason && (
-          <div className="mt-1 flex items-start gap-1 text-[11px] text-danger">
+          <div className="mt-1 flex items-start gap-1 text-xs text-danger">
             <AlertTriangle size={11} className="mt-px flex-shrink-0" />
             <span className="break-all">{p.failedReason}</span>
           </div>
@@ -591,7 +591,7 @@ function CatalogList({
   return (
     <>
       {catalog.entriesDropped > 0 && (
-        <div className="mb-3 rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-[11px] text-warning">
+        <div className="mb-3 rounded-md border border-amber-700/50 bg-amber-950/40 px-3 py-2 text-xs text-warning">
           {catalog.entriesDropped} catalog{" "}
           {catalog.entriesDropped === 1 ? "entry was" : "entries were"} dropped because{" "}
           {catalog.entriesDropped === 1 ? "it failed" : "they failed"} schema validation.
@@ -628,7 +628,7 @@ function CatalogRow({
           </code>
           <span className="text-xs text-fg-fainter">v{entry.latestVersion}</span>
           {entry.verified && (
-            <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[11px] uppercase text-success">
+            <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-xs uppercase text-success">
               <ShieldCheck size={10} /> verified
             </span>
           )}
@@ -647,7 +647,7 @@ function CatalogRow({
             {entry.tags.map((t) => (
               <span
                 key={t}
-                className="rounded bg-bg-raised px-1.5 py-px text-[11px] text-fg-faint"
+                className="rounded bg-bg-raised px-1.5 py-px text-xs text-fg-faint"
               >
                 {t}
               </span>
@@ -659,7 +659,7 @@ function CatalogRow({
         type="button"
         disabled
         title={tr("plugin.catalog.installTooltip")}
-        className="flex-shrink-0 cursor-not-allowed rounded-md bg-bg-raised px-3 py-1.5 text-[11px] font-medium text-fg-faint"
+        className="flex-shrink-0 cursor-not-allowed rounded-md bg-bg-raised px-3 py-1.5 text-xs font-medium text-fg-faint"
       >
         {alreadyInstalled ? tr("plugin.catalog.installed") : tr("plugin.catalog.install")}
       </button>
@@ -672,7 +672,7 @@ function SourceBadge({ source }: { source: PluginListEntry["source"] }) {
     source === "builtin"
       ? "bg-bg-raised text-fg-muted"
       : "bg-violet-900/50 text-violet-300";
-  return <span className={`rounded px-1.5 py-0.5 text-[11px] uppercase ${cls}`}>{source}</span>;
+  return <span className={`rounded px-1.5 py-0.5 text-xs uppercase ${cls}`}>{source}</span>;
 }
 
 function StateBadge({ state }: { state: PluginState }) {
@@ -680,25 +680,25 @@ function StateBadge({ state }: { state: PluginState }) {
   switch (state) {
     case "active":
       return (
-        <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[11px] uppercase text-success">
+        <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-xs uppercase text-success">
           <CheckCircle2 size={10} /> {t("plugin.state.active")}
         </span>
       );
     case "disabled":
       return (
-        <span className="flex items-center gap-1 rounded border border-border-default bg-bg-hover px-1.5 py-0.5 text-[11px] uppercase text-fg-muted">
+        <span className="flex items-center gap-1 rounded border border-border-default bg-bg-hover px-1.5 py-0.5 text-xs uppercase text-fg-muted">
           <Pause size={10} /> {t("plugin.state.disabled")}
         </span>
       );
     case "failed":
       return (
-        <span className="flex items-center gap-1 rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-[11px] uppercase text-danger">
+        <span className="flex items-center gap-1 rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-xs uppercase text-danger">
           <AlertTriangle size={10} /> {t("plugin.state.failed")}
         </span>
       );
     case "client-bundle-missing":
       return (
-        <span className="rounded border border-warning/40 bg-warning/15 px-1.5 py-0.5 text-[11px] uppercase text-warning">
+        <span className="rounded border border-warning/40 bg-warning/15 px-1.5 py-0.5 text-xs uppercase text-warning">
           {t("plugin.state.noClientBundle")}
         </span>
       );

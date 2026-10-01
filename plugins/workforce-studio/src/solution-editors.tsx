@@ -202,7 +202,7 @@ function MetadataEditor({
           />
         </Field>
       </div>
-      <div className="rounded border border-info-fg/30 bg-info-fg/5 px-3 py-2 text-[11px] text-info-fg">
+      <div className="rounded border border-info-fg/30 bg-info-fg/5 px-3 py-2 text-xs text-info-fg">
         <strong>{t("editor.metadata.save")}</strong>{" "}
         {t("editor.metadata.saveApplyHint")}{" "}
         <strong>{t("editor.metadata.apply")}</strong>{" "}
@@ -218,7 +218,7 @@ function MetadataEditor({
         </button>
       ) : null}
       {isCurrent ? (
-        <div className="rounded border border-info-fg/30 bg-info-fg/5 px-3 py-2 text-[11px] text-info-fg">
+        <div className="rounded border border-info-fg/30 bg-info-fg/5 px-3 py-2 text-xs text-info-fg">
           {t("editor.metadata.currentMirror.lead")}{" "}
           <strong>{t("editor.metadata.currentMirror.current")}</strong>{" "}
           {t("editor.metadata.currentMirror.mid")}{" "}
@@ -318,7 +318,7 @@ function TenantPromptEditor({
         onChange={(e) => edits.setTenantPrompt(e.target.value)}
         rows={18}
         placeholder={isCurrent ? "" : t("editor.tenantPrompt.placeholder")}
-        className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+        className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-xs leading-snug disabled:opacity-60"
       />
     </EditorShell>
   );
@@ -386,10 +386,10 @@ function OverrideEditor({
           disabled={isCurrent}
           onChange={(e) => set(e.target.value)}
           rows={16}
-          className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+          className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-xs leading-snug disabled:opacity-60"
         />
       ) : (
-        <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-elevated p-2 font-mono text-[11px] leading-snug">
+        <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-elevated p-2 font-mono text-xs leading-snug">
           {defaultText}
         </pre>
       )}
@@ -442,7 +442,7 @@ function FragmentEditor({
         onChange={(e) => patch({ body: e.target.value })}
         rows={14}
         placeholder={t("editor.fragment.bodyPlaceholder")}
-        className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+        className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-xs leading-snug disabled:opacity-60"
       />
       {!isCurrent ? (
         <button
@@ -574,7 +574,7 @@ function WorkerNodeEditor({
           onChange={(e) => set({ soul: e.target.value })}
           rows={18}
           placeholder={isCurrent ? "" : t("editor.worker.soul.placeholder")}
-          className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+          className="w-full rounded border border-border-subtle bg-bg-elevated px-2 py-1.5 font-mono text-xs leading-snug disabled:opacity-60"
         />
       </EditorShell>
     );
@@ -634,10 +634,10 @@ function WorkerNodeEditor({
               disabled={isCurrent}
               onChange={(e) => set({ executionBias: e.target.value })}
               rows={14}
-              className="w-full border-t border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-[11px] leading-snug disabled:opacity-60"
+              className="w-full border-t border-border-subtle bg-bg-base px-2 py-1.5 font-mono text-xs leading-snug disabled:opacity-60"
             />
           ) : (
-            <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words border-t border-border-subtle bg-bg-base p-2 font-mono text-[11px] leading-snug">
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words border-t border-border-subtle bg-bg-base p-2 font-mono text-xs leading-snug">
               {defaultText}
             </pre>
           )}
@@ -816,7 +816,7 @@ export function ResourcePicker({
     <div className="overflow-hidden rounded-lg border border-border-subtle">
       <div className="flex items-center gap-2 bg-bg-elevated px-3 py-2">
         <span className="text-sm font-semibold">{title}</span>
-        <span className="text-[11px] text-fg-muted">{options.length}</span>
+        <span className="text-xs text-fg-muted">{options.length}</span>
         {excludedCount > 0 ? (
           <span className="ml-auto rounded-full bg-danger-fg/10 px-2 py-0.5 text-xs font-medium text-danger-fg">
             {t("resource.excludedCount", { n: excludedCount })}
@@ -829,7 +829,7 @@ export function ResourcePicker({
           return (
             <div key={key}>
               <div className="sticky top-0 z-10 flex items-center gap-2 bg-bg-base/95 px-3 pb-1 pt-2 backdrop-blur">
-                <span className="text-[11px] font-semibold text-fg-default">
+                <span className="text-xs font-semibold text-fg-default">
                   {groupLabel(key, t)}
                 </span>
                 <span className="rounded-full bg-fg-muted/10 px-1.5 text-xs text-fg-muted">
@@ -879,7 +879,7 @@ function ResourceRow({
       }`}
     >
       <code
-        className={`font-mono text-[11px] ${
+        className={`font-mono text-xs ${
           isExcluded
             ? "text-fg-muted line-through"
             : o.locked

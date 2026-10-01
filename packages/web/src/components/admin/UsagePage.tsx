@@ -138,7 +138,7 @@ export default function UsagePage() {
             ].map((s) => (
               <div key={s.label} className="rounded-md border border-border-subtle bg-bg-surface px-4 py-3">
                 <div className="text-xl font-semibold text-fg-default">{s.value}</div>
-                <div className="text-[11px] text-fg-faint mt-0.5">{s.label}</div>
+                <div className="text-xs text-fg-faint mt-0.5">{s.label}</div>
               </div>
             ))}
           </div>
@@ -242,7 +242,7 @@ export default function UsagePage() {
                     const userModels = (data.byUserModel ?? []).filter((um) => um.userId === u.userId);
                     return (
                       <div key={u.userId}>
-                        <div className="flex items-center justify-between text-[11px] mb-1">
+                        <div className="flex items-center justify-between text-xs mb-1">
                           <span className="text-fg-default truncate">{u.displayName || <span className="font-mono">{u.userId.slice(0, 16)}</span>}</span>
                           <span className="text-fg-muted shrink-0 ml-2">{fmt(u.total)}</span>
                         </div>
@@ -261,12 +261,12 @@ export default function UsagePage() {
                         </div>
                         <div className="flex gap-2 mt-0.5 flex-wrap">
                           {userModels.map((um) => (
-                            <span key={um.model} className="text-[11px] text-fg-fainter flex items-center gap-1">
+                            <span key={um.model} className="text-xs text-fg-fainter flex items-center gap-1">
                               <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: modelColorMap.get(um.model) ?? COLORS[0] }} />
                               {um.model}: {fmt(um.totalTokens)}
                             </span>
                           ))}
-                          <span className="text-[11px] text-fg-fainter">{u.messages} {t("usage.msgs")}</span>
+                          <span className="text-xs text-fg-fainter">{u.messages} {t("usage.msgs")}</span>
                         </div>
                       </div>
                     );

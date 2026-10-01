@@ -100,7 +100,7 @@ export default function AsrModelsPage() {
               {installedCount}/{models.length} {t("asr.installed").toLowerCase()}
             </span>
           </p>
-          <p className="mt-0.5 text-[11px] text-fg-fainter font-mono">{modelsDir}</p>
+          <p className="mt-0.5 text-xs text-fg-fainter font-mono">{modelsDir}</p>
         </div>
         <button
           type="button"
@@ -179,13 +179,13 @@ export default function AsrModelsPage() {
                     </span>
                   )}
                 </div>
-                <p className="mt-0.5 text-[11px] text-fg-faint">{translatedDesc}</p>
+                <p className="mt-0.5 text-xs text-fg-faint">{translatedDesc}</p>
 
                 {/* Progress bar */}
                 {dp && (dp.status === "downloading" || dp.status === "extracting") && (
                   <div className="mt-1.5 flex items-center gap-2">
                     <Loader2 size={11} className="animate-spin text-link" />
-                    <span className="text-[11px] text-link">
+                    <span className="text-xs text-link">
                       {dp.status === "extracting"
                         ? t("asr.extracting")
                         : dp.total > 0
@@ -202,7 +202,7 @@ export default function AsrModelsPage() {
                   </div>
                 )}
                 {dp?.status === "error" && (
-                  <div className="mt-1 flex items-center gap-1 text-[11px] text-danger">
+                  <div className="mt-1 flex items-center gap-1 text-xs text-danger">
                     <AlertCircle size={11} /> {t("asr.downloadFailed")}: {dp.error?.slice(0, 60)}
                   </div>
                 )}
@@ -253,7 +253,7 @@ export default function AsrModelsPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-fg-default">{t("asr.languageLabel")}</p>
-            <p className="text-[11px] text-fg-faint mt-0.5">{t("asr.languageHint")}</p>
+            <p className="text-xs text-fg-faint mt-0.5">{t("asr.languageHint")}</p>
           </div>
           <select
             value={asrLang}
@@ -284,7 +284,7 @@ export default function AsrModelsPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm font-medium text-fg-default">{t("asr.shortcutLabel")}</p>
-            <p className="text-[11px] text-fg-faint mt-0.5">{t("asr.shortcutHint")}</p>
+            <p className="text-xs text-fg-faint mt-0.5">{t("asr.shortcutHint")}</p>
           </div>
           <div className="flex items-center gap-2">
             <input
@@ -317,7 +317,7 @@ export default function AsrModelsPage() {
       </div>
 
       {/* Footer note */}
-      <div className="mt-6 rounded-md border border-border-subtle bg-bg-surface px-4 py-3 text-[11px] text-fg-faint space-y-0.5">
+      <div className="mt-6 rounded-md border border-border-subtle bg-bg-surface px-4 py-3 text-xs text-fg-faint space-y-0.5">
         <p><strong>{t("asr.howItWorks")}:</strong> {t("asr.howItWorksDesc")}</p>
         <p><strong>{t("asr.dependency")}:</strong> {t("asr.dependencyDesc")}</p>
         <p><strong>{t("asr.crossPlatform")}:</strong> {t("asr.crossPlatformDesc")}</p>

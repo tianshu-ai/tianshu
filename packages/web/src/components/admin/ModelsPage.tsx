@@ -340,7 +340,7 @@ export default function ModelsPage() {
 
       {/* Default model */}
       <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
-        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-fg-muted">
           {t("models.defaultModel")}
         </label>
         <select
@@ -367,14 +367,14 @@ export default function ModelsPage() {
               <option value={defaultModelId}>{t("models.notInCatalog", { id: defaultModelId })}</option>
             )}
         </select>
-        <p className="mt-1 text-[11px] text-fg-fainter">
+        <p className="mt-1 text-xs text-fg-fainter">
           {t("models.defaultModel.hint")}
         </p>
       </div>
 
       {/* Image generation model */}
       <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
-        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-fg-muted">
           Image generation model
         </label>
         <select
@@ -401,14 +401,14 @@ export default function ModelsPage() {
               <option value={imageGenModelId}>{imageGenModelId} (not an image-gen model)</option>
             )}
         </select>
-        <p className="mt-1 text-[11px] text-fg-fainter">
+        <p className="mt-1 text-xs text-fg-fainter">
           Used by the built-in <code>generate_image</code> tool. Only models with mode <code>image-gen</code> are shown. Leave empty to hide the tool from agents entirely.
         </p>
       </div>
 
       {/* Default output language */}
       <div className="mb-5 rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
-        <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-fg-muted">
           {t("models.outputLanguage")}
         </label>
         <select
@@ -427,7 +427,7 @@ export default function ModelsPage() {
           <option value="ja">日本語 (Japanese)</option>
           <option value="ko">한국어 (Korean)</option>
         </select>
-        <p className="mt-1 text-[11px] text-fg-fainter">
+        <p className="mt-1 text-xs text-fg-fainter">
           {t("models.outputLanguage.hint")}
         </p>
       </div>
@@ -526,7 +526,7 @@ function ProviderCard({
           placeholder={t("models.providerIdPlaceholder")}
           className="w-44 rounded border border-border-default bg-bg-base px-2 py-1 text-sm font-medium text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
         />
-        <span className="text-[11px] text-fg-fainter">
+        <span className="text-xs text-fg-fainter">
           {t("models.modelCount", { n: models.length })}
         </span>
         {provider.hasApiKey && (
@@ -538,7 +538,7 @@ function ProviderCard({
         <button
           type="button"
           onClick={onDelete}
-          className="flex items-center gap-1 rounded-md border border-danger/60 px-2 py-1 text-[11px] font-medium text-danger hover:bg-danger hover:text-white"
+          className="flex items-center gap-1 rounded-md border border-danger/60 px-2 py-1 text-xs font-medium text-danger hover:bg-danger hover:text-white"
         >
           <Trash2 size={12} /> {t("common.remove")}
         </button>
@@ -598,7 +598,7 @@ function ProviderCard({
                       })
                     }
                     title={t("models.clearStoredKey")}
-                    className="flex-shrink-0 rounded border border-border-default px-2 py-1.5 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+                    className="flex-shrink-0 rounded border border-border-default px-2 py-1.5 text-xs text-fg-muted hover:bg-bg-hover hover:text-fg-default"
                   >
                     {t("common.clear")}
                   </button>
@@ -617,7 +617,7 @@ function ProviderCard({
 
           {/* Models */}
           <div>
-            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+            <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-fg-muted">
               {t("models.title")}
             </div>
             <div className="space-y-2">
@@ -688,7 +688,7 @@ function ProviderCard({
                         inputMode="numeric"
                         className="col-span-1 rounded border border-border-default bg-bg-base px-2 py-1 text-[13px] text-fg-default placeholder:text-fg-fainter focus:border-link focus:outline-none"
                       />
-                      <label className="col-span-2 flex items-center gap-1 text-[11px] text-fg-muted">
+                      <label className="col-span-2 flex items-center gap-1 text-xs text-fg-muted">
                         <input
                           type="checkbox"
                           checked={!!m.reasoning}
@@ -712,7 +712,7 @@ function ProviderCard({
                 );
               })}
               {models.length === 0 && (
-                <div className="rounded border border-dashed border-border-subtle px-3 py-3 text-center text-[11px] text-fg-fainter">
+                <div className="rounded border border-dashed border-border-subtle px-3 py-3 text-center text-xs text-fg-fainter">
                   {t("models.noModels")}
                 </div>
               )}
@@ -720,7 +720,7 @@ function ProviderCard({
             <button
               type="button"
               onClick={addModel}
-              className="mt-2 flex items-center gap-1 rounded border border-dashed border-border-default px-2 py-1 text-[11px] text-fg-muted hover:bg-bg-hover hover:text-fg-default"
+              className="mt-2 flex items-center gap-1 rounded border border-dashed border-border-default px-2 py-1 text-xs text-fg-muted hover:bg-bg-hover hover:text-fg-default"
             >
               <Plus size={12} /> {t("models.addModel")}
             </button>
@@ -740,7 +740,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
+      <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-fg-muted">
         {label}
       </label>
       {children}

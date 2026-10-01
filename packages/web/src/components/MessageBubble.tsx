@@ -103,7 +103,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
     <div className={isEvent ? "flex justify-end" : isUser ? "flex justify-end" : "flex justify-start"}>
       <div className={`flex max-w-[85%] min-w-0 flex-col ${isEvent ? "items-end" : isUser ? "items-end" : "items-start"}`}>
         {!isEvent && (
-          <div className="mb-1 flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-fg-faint">
+          <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
             {isUser ? <User size={11} /> : <img src="/classical/tianshu-avatar.png" alt="" className="h-5 w-5 rounded-full object-cover" />}
             <span>{isUser ? "you" : "tianshu"}</span>
           </div>
@@ -460,7 +460,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           ))}
         </div>
         {expanded && result && (
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] text-fg-muted">
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
             {truncate(result.text, 4000)}
           </pre>
         )}
@@ -505,7 +505,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           ))}
         </div>
         {expanded && result && (
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] text-fg-muted">
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
             {truncate(result.text, 4000)}
           </pre>
         )}
@@ -549,7 +549,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           </span>
         </button>
         {expanded && result && (
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] text-fg-muted">
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
             {truncate(result.text, 4000)}
           </pre>
         )}
@@ -590,11 +590,11 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           <CheckCircle2 size={11} className="shrink-0 text-emerald-500/60" />
         )}
         <code className="shrink-0 font-mono text-[12px] text-link">{call.name}</code>
-        <span className="min-w-0 flex-1 truncate text-left font-mono text-[11px] text-fg-fainter">
+        <span className="min-w-0 flex-1 truncate text-left font-mono text-xs text-fg-fainter">
           {summariseArgs(call.arguments)}
         </span>
         {running ? (
-          <span className="shrink-0 text-[11px] text-fg-fainter">running…</span>
+          <span className="shrink-0 text-xs text-fg-fainter">running…</span>
         ) : expanded ? (
           <ChevronDown size={11} className="shrink-0 text-fg-fainter" />
         ) : (
@@ -605,7 +605,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       {expanded && result && (
         <pre
           className={
-            "mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-[11px] " +
+            "mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-xs " +
             (isError
               ? "border-rose-700/40 bg-rose-950/30 text-danger"
               : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted")
@@ -755,7 +755,7 @@ function EventCard({ event }: { event: SystemEvent }) {
           </p>
         )}
         {event.firedAt && (
-          <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
+          <div className="flex items-center gap-1.5 text-xs text-fg-faint">
             <Calendar size={11} />
             <span>{formatEventTime(event.firedAt, dateLoc)}</span>
           </div>

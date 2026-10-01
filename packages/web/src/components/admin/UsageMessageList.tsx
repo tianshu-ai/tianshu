@@ -73,7 +73,7 @@ export default function UsageMessageList({ day, onBack }: { day: string; onBack:
         </button>
         <div className="rounded-md border border-border-subtle bg-bg-surface p-4 mb-4">
           <div className="text-sm font-semibold text-fg-default mb-2">{t("usage.messageDetail")}</div>
-          <div className="grid grid-cols-2 gap-2 text-[11px]">
+          <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="text-fg-faint">Session</div>
             <div className="text-fg-default font-mono truncate">{detail.sessionId.slice(0, 20)}</div>
             <div className="text-fg-faint">User</div>
@@ -95,7 +95,7 @@ export default function UsageMessageList({ day, onBack }: { day: string; onBack:
               ].map((s) => (
                 <div key={s.label} className="rounded bg-bg-raised px-2 py-1.5">
                   <div className="text-sm font-semibold text-fg-default">{s.value}</div>
-                  <div className="text-[11px] text-fg-faint">{s.label}</div>
+                  <div className="text-xs text-fg-faint">{s.label}</div>
                 </div>
               ))}
             </div>
@@ -107,7 +107,7 @@ export default function UsageMessageList({ day, onBack }: { day: string; onBack:
           <div className="space-y-1">
             {detail.context.map((c) => (
               <div key={c.id}
-                className={`flex items-center gap-2 text-[11px] px-2 py-1 rounded ${c.isCurrent ? "bg-link/10 border border-link/30" : ""}`}>
+                className={`flex items-center gap-2 text-xs px-2 py-1 rounded ${c.isCurrent ? "bg-link/10 border border-link/30" : ""}`}>
                 <span className={`w-14 shrink-0 font-mono ${ROLE_COLORS[c.role] ?? "text-fg-faint"}`}>{c.role}</span>
                 <span className="text-fg-fainter w-16 shrink-0">{ts(c.createdAt)}</span>
                 <span className="text-fg-muted w-12 shrink-0 text-right">{fmt(c.contentBytes)}B</span>
@@ -132,21 +132,21 @@ export default function UsageMessageList({ day, onBack }: { day: string; onBack:
       <div className="text-sm font-semibold text-fg-default mb-1">
         <Clock size={14} className="inline mr-1" />{day}
       </div>
-      <div className="text-[11px] text-fg-faint mb-3">
+      <div className="text-xs text-fg-faint mb-3">
         {messages.length} {t("usage.msgs")} · {fmt(messages.reduce((s, m) => s + m.totalTokens, 0))} tokens
       </div>
 
       {loading ? (
-        <div className="text-[11px] text-fg-fainter py-4 text-center">Loading...</div>
+        <div className="text-xs text-fg-fainter py-4 text-center">Loading...</div>
       ) : messages.length === 0 ? (
-        <div className="text-[11px] text-fg-fainter py-4 text-center">{t("usage.noData")}</div>
+        <div className="text-xs text-fg-fainter py-4 text-center">{t("usage.noData")}</div>
       ) : (
         <div className="space-y-1">
           {messages.map((m) => (
             <button key={m.messageId} onClick={() => void loadDetail(m.messageId)}
               className="w-full flex items-center gap-3 text-left rounded-md border border-border-subtle bg-bg-surface px-3 py-2 hover:bg-bg-hover transition-colors">
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 text-[11px]">
+                <div className="flex items-center gap-2 text-xs">
                   <User size={11} className="text-fg-faint shrink-0" />
                   <span className="font-mono text-fg-default truncate">{m.userId.slice(0, 12)}</span>
                   <Cpu size={11} className="text-fg-faint shrink-0 ml-1" />

@@ -438,7 +438,7 @@ function PluginsPanel({
                 </span>
               </div>
               {p.description ? (
-                <div className="mt-1 text-[11px] text-fg-muted">
+                <div className="mt-1 text-xs text-fg-muted">
                   {p.description}
                 </div>
               ) : null}
@@ -514,7 +514,7 @@ function MainAgentPanel({ main, t }: { main: MainAgent; t: Translator }): ReactE
               size: formatBytes(main.systemPrompt.length),
             })}
           </div>
-          <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-[11px] leading-snug">
+          <pre className="max-h-[60vh] overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-xs leading-snug">
             {main.systemPrompt}
           </pre>
         </div>
@@ -628,9 +628,9 @@ function BlockCard({
       {open ? (
         <div className="border-t border-border-subtle px-3 py-2">
           {block.note ? (
-            <div className="mb-2 text-[11px] text-fg-muted">{block.note}</div>
+            <div className="mb-2 text-xs text-fg-muted">{block.note}</div>
           ) : null}
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-elevated p-2 font-mono text-[11px] leading-snug">
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded border border-border-subtle bg-bg-elevated p-2 font-mono text-xs leading-snug">
             {block.text}
           </pre>
         </div>
@@ -794,7 +794,7 @@ function WorkerDetail({
       {view === "develop" ? (
         <PromptBlocks blocks={worker.blocks} t={t} />
       ) : (
-        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-[11px] leading-snug">
+        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border-subtle bg-bg-base p-3 font-mono text-xs leading-snug">
           {worker.systemPrompt.trim() || t("worker.emptyPrompt")}
         </pre>
       )}
@@ -864,7 +864,7 @@ function ToolsList({ tools, t }: { tools: ToolEntry[]; t: Translator }): ReactEl
           className="rounded border border-border-subtle bg-bg-elevated px-2 py-1.5"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <code className="font-mono text-[11px]">{tool.name}</code>
+            <code className="font-mono text-xs">{tool.name}</code>
             <OriginBadge origin={tool.origin} t={t} />
             <span className="rounded bg-fg-muted/10 px-1 text-xs">
               {tool.pluginId}
@@ -876,7 +876,7 @@ function ToolsList({ tools, t }: { tools: ToolEntry[]; t: Translator }): ReactEl
             ) : null}
           </div>
           {tool.description ? (
-            <div className="mt-0.5 text-[11px] text-fg-muted">
+            <div className="mt-0.5 text-xs text-fg-muted">
               {tool.description}
             </div>
           ) : null}
@@ -898,7 +898,7 @@ function SkillsList({ skills, t }: { skills: SkillEntry[]; t: Translator }): Rea
           className="rounded border border-border-subtle bg-bg-elevated px-2 py-1.5"
         >
           <div className="flex flex-wrap items-center gap-2">
-            <code className="font-mono text-[11px]">{s.name}</code>
+            <code className="font-mono text-xs">{s.name}</code>
             <OriginBadge origin={s.origin} t={t} />
             <span className="rounded bg-fg-muted/10 px-1 text-xs">
               {s.pluginId}
@@ -913,7 +913,7 @@ function SkillsList({ skills, t }: { skills: SkillEntry[]; t: Translator }): Rea
             </span>
           </div>
           {s.description ? (
-            <div className="mt-0.5 text-[11px] text-fg-muted">
+            <div className="mt-0.5 text-xs text-fg-muted">
               {s.description}
             </div>
           ) : null}
