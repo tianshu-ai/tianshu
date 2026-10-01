@@ -125,10 +125,10 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps = 
         ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1 rounded-full bg-bg-hover/60 py-1 pl-2.5 pr-2 text-xs font-medium text-fg-muted transition-colors hover:bg-bg-hover"
+        className="inline-flex items-center gap-1 rounded-full bg-bg-surface py-1 pl-2.5 pr-2 text-xs font-medium text-fg-muted transition-colors hover:bg-bg-hover"
         title={activeId}
       >
-        <span className="max-w-[160px] truncate">{displayName}</span>
+        <span className="max-w-[200px] truncate">{displayName}</span>
         <ChevronDown
           size={12}
           className={`text-fg-muted transition-transform ${open ? "rotate-180" : ""}`}
@@ -158,8 +158,8 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps = 
                     className={
                       "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors " +
                       (m.id === activeId
-                        ? "bg-bg-hover text-fg-default"
-                        : "text-fg-muted hover:bg-bg-hover/40")
+                        ? "bg-accent-faint text-accent"
+                        : "text-fg-muted hover:bg-bg-hover/60")
                     }
                     title={m.id}
                   >
@@ -170,7 +170,7 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps = 
                       </span>
                     )}
                     {m.id === activeId && (
-                      <Check size={14} className="shrink-0 text-link" />
+                      <Check size={14} className="shrink-0 text-accent" />
                     )}
                   </button>
                 ))}
