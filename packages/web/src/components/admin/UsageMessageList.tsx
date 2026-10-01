@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ArrowLeft, Clock, User, Cpu, MessageSquare, ChevronRight } from "lucide-react";
 import { useT } from "../../hooks/useT";
+import { useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 
 interface MessageRow {
   messageId: string; sessionId: string; userId: string;
@@ -40,6 +41,7 @@ const ROLE_COLORS: Record<string, string> = {
 
 export default function UsageMessageList({ day, onBack }: { day: string; onBack: () => void }) {
   const t = useT();
+  const dateLoc = useDateLocale();
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [detail, setDetail] = useState<MessageDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,7 +79,7 @@ export default function UsageMessageList({ day, onBack }: { day: string; onBack:
             <div className="text-fg-faint">User</div>
             <div className="text-fg-default font-mono">{detail.userId.slice(0, 16)}</div>
             <div className="text-fg-faint">Time</div>
-            <div className="text-fg-default">{new Date(detail.createdAt).toLocaleString()}</div>
+            <div className="text-fg-default">{new Date(detail.createdAt).toLocaleString(dateLoc)}</div>
             <div className="text-fg-faint">Content size</div>
             <div className="text-fg-default">{fmt(detail.contentBytes)} bytes</div>
           </div>

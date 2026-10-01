@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdminPageProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { usePluginT } from "@tianshu-ai/plugin-sdk/client";
+import { usePluginT, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import {
   ShieldAlert,
   ShieldCheck,
@@ -72,6 +72,7 @@ const WINDOW_OPTIONS = [
 
 function OpenShellPolicyPage(_props: AdminPageProps) {
   const t = usePluginT("openshell");
+  const dateLoc = useDateLocale();
   const [minutes, setMinutes] = useState(60);
   const [denials, setDenials] = useState<Denial[] | null>(null);
   const [logAvailable, setLogAvailable] = useState(true);
@@ -319,7 +320,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
                           resolved ? "line-through" : ""
                         }`}
                       >
-                        {d.at ? new Date(d.at).toLocaleTimeString() : "—"}
+                        {d.at ? new Date(d.at).toLocaleTimeString(dateLoc) : "—"}
                       </td>
                       <td
                         className={`px-3 py-2 font-mono text-fg-default ${

@@ -15,7 +15,7 @@
 // monospace pre block.
 
 import { memo, useState } from "react";
-import { useUiPrimitives } from "@tianshu-ai/plugin-sdk/client";
+import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
   Bell,
@@ -654,7 +654,7 @@ function stripSystemPrefix(text: string): string {
 }
 
 /** Format UTC timestamp to friendly relative/absolute time. */
-function formatEventTime(firedAt: string): string {
+function formatEventTime(firedAt: string, dateLoc: string): string {
   try {
     const d = new Date(firedAt.replace(" ", "T").replace(" (UTC)", "Z"));
     if (isNaN(d.getTime())) return firedAt;
@@ -663,7 +663,7 @@ function formatEventTime(firedAt: string): string {
     if (diff < 60_000) return "Just now";
     if (diff < 3600_000) return `${Math.floor(diff / 60_000)}m ago`;
     if (diff < 86400_000) return `${Math.floor(diff / 3600_000)}h ago`;
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    return d.toLocaleDateString(dateLoc, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   } catch {
     return firedAt;
   }
@@ -671,6 +671,7 @@ function formatEventTime(firedAt: string): string {
 
 /** Event card for system events (cron fires, recovery, upgrades, etc.) */
 function EventCard({ event }: { event: SystemEvent }) {
+  const dateLoc = useDateLocale();
   const styles = {
     cron: {
       border: "border-amber-500/30",
@@ -756,7 +757,7 @@ function EventCard({ event }: { event: SystemEvent }) {
         {event.firedAt && (
           <div className="flex items-center gap-1.5 text-[11px] text-fg-faint">
             <Calendar size={11} />
-            <span>{formatEventTime(event.firedAt)}</span>
+            <span>{formatEventTime(event.firedAt, dateLoc)}</span>
           </div>
         )}
       </div>

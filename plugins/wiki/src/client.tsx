@@ -17,7 +17,7 @@ import type {
   PluginClientExports,
   ComposerActionProps,
 } from "@tianshu-ai/plugin-sdk/client";
-import { useUiPrimitives, subscribeToWsEvent, useChatNav, usePluginT } from "@tianshu-ai/plugin-sdk/client";
+import { useUiPrimitives, subscribeToWsEvent, useChatNav, usePluginT, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/wiki";
 
@@ -84,7 +84,7 @@ const SECTION_EMOJI: Record<string, string> = {
 };
 
 /** Format an ISO date string as a short relative/absolute label. */
-function formatRelativeDate(iso: string): string {
+function formatRelativeDate(iso: string, locale?: string): string {
   const d = new Date(iso);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
@@ -95,12 +95,13 @@ function formatRelativeDate(iso: string): string {
   if (diffH < 24) return `${diffH}h ago`;
   const diffD = Math.floor(diffH / 24);
   if (diffD < 7) return `${diffD}d ago`;
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  return d.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
 function WikiPanel(_props: PanelProps) {
   const { MarkdownBlock, Modal } = useUiPrimitives();
   const t = usePluginT("wiki");
+  const dateLoc = useDateLocale();
   const [tab, setTab] = useState<"browse" | "indexing">("browse");
   const [sourceFilter, setSourceFilter] = useState<"all" | "kb" | "session">("all");
   const [pages, setPages] = useState<WikiPage[]>([]);
@@ -596,7 +597,7 @@ function WikiPanel(_props: PanelProps) {
                   <FileText size={14} className="shrink-0 text-fg-fainter group-hover:text-fg-muted" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[12px] leading-snug text-fg-muted group-hover:text-fg-default">{p.title}</div>
-                    <div className="text-[10px] text-fg-fainter">{p.updatedAt ? formatRelativeDate(p.updatedAt) : ""}</div>
+                    <div className="text-[10px] text-fg-fainter">{p.updatedAt ? formatRelativeDate(p.updatedAt, dateLoc) : ""}</div>
                   </div>
                 </button>
               ))}
@@ -637,7 +638,7 @@ function WikiPanel(_props: PanelProps) {
                     </div>
                     {p.updatedAt && (
                       <div className="text-[10px] text-fg-fainter">
-                        {formatRelativeDate(p.updatedAt)}
+                        {formatRelativeDate(p.updatedAt, dateLoc)}
                       </div>
                     )}
                   </div>
@@ -922,7 +923,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               />
             </div>
             {kbStatus.lastScanAt && (
-              <div className="text-[10px] text-fg-fainter">{t("indexing.lastScan", { time: new Date(kbStatus.lastScanAt).toLocaleString() })}</div>
+              <div className="text-[10px] text-fg-fainter">{t("indexing.lastScan", { time: new Date(kbStatus.lastScanAt).toLocaleString(dateLoc) })}</div>
             )}
           </>) : (
             <div className="text-[11px] text-fg-muted">{t("indexing.kbPlaceholder")}</div>

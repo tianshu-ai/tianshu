@@ -41,6 +41,7 @@ import {
   useChatNav,
   useUiPrimitives,
   usePluginT,
+  useDateLocale,
 } from "@tianshu-ai/plugin-sdk/client";
 
 // ─── wire shapes ────────────────────────────────────────────────
@@ -354,6 +355,7 @@ function QrCanvas({ value }: { value: string }) {
 
 function WeChatPanel(_props: PanelProps) {
   const t = usePluginT("wechat");
+  const dateLoc = useDateLocale();
   const [bindings, setBindings] = useState<BindingView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -511,7 +513,7 @@ function WeChatPanel(_props: PanelProps) {
                   </span>
                 )}
                 <span className="text-fg-fainter">
-                  {t("page.bound.boundOn", { date: new Date(b.createdAt).toLocaleDateString() })}
+                  {t("page.bound.boundOn", { date: new Date(b.createdAt).toLocaleDateString(dateLoc) })}
                 </span>
               </div>
             </li>

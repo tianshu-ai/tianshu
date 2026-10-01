@@ -666,6 +666,29 @@ export function usePluginT(
     t(`plugin.${pluginId}.${key}`, params);
 }
 
+// ─── Date locale ────────────────────────────────────────────
+
+/** BCP-47 locale tags for `Intl` / `toLocaleString` date formatting. */
+const DATE_LOCALE_MAP: Record<string, string> = {
+  en: "en-US",
+  zh: "zh-CN",
+  de: "de-DE",
+};
+
+/**
+ * Return a BCP-47 locale tag matching the host's active locale,
+ * suitable for `Date.toLocaleDateString(tag, opts)` and other
+ * `Intl` APIs.  Falls back to `"en-US"` for unknown locales.
+ *
+ * @example
+ *   const dateLoc = useDateLocale();
+ *   new Date().toLocaleDateString(dateLoc, { weekday: "long", month: "short", day: "numeric" });
+ */
+export function useDateLocale(): string {
+  const { locale } = useLocale();
+  return DATE_LOCALE_MAP[locale] ?? "en-US";
+}
+
 // ─── ChatNav — host-managed selection of which session the chat
 // area is currently viewing.
 //

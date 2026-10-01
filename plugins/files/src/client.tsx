@@ -41,6 +41,7 @@ import {
   useUiPrimitives,
   subscribeToWsEvent,
   usePluginT,
+  useDateLocale,
 } from "@tianshu-ai/plugin-sdk/client";
 import { Paperclip } from "lucide-react";
 
@@ -138,7 +139,7 @@ function formatSize(bytes: number, t?: Translator): string {
   return tr("size.gb", { n: (bytes / (1024 * 1024 * 1024)).toFixed(1) });
 }
 
-function formatModified(ms: number, t?: Translator): string {
+function formatModified(ms: number, t?: Translator, dateLoc?: string): string {
   if (ms === 0) return t ? t("modified.empty") : "—";
   const diff = Date.now() - ms;
   if (diff < 60_000) return t ? t("modified.justNow") : "Just now";
@@ -154,11 +155,12 @@ function formatModified(ms: number, t?: Translator): string {
     const n = Math.floor(diff / 86_400_000);
     return t ? t("modified.daysAgo", { n }) : `${n}d ago`;
   }
-  return new Date(ms).toLocaleDateString();
+  return new Date(ms).toLocaleDateString(dateLoc);
 }
 
 function FilesPanel({ plugin }: PanelProps) {
   const t = usePluginT("files");
+  const dateLoc = useDateLocale();
   const [dir, setDir] = useState("/");
   const [list, setList] = useState<ListResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -368,7 +370,7 @@ function FilesPanel({ plugin }: PanelProps) {
                   {e.type === "file" ? formatSize(e.size, t) : t("panel.dash")}
                 </span>
                 <span className="w-24 text-right text-xs text-fg-faint">
-                  {formatModified(e.modifiedMs, t)}
+                  {formatModified(e.modifiedMs, t, dateLoc)}
                 </span>
               </li>
             ))}
@@ -502,7 +504,7 @@ function FilePreviewModal({
         <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-[11px] text-fg-faint">
           {fileIcon(entry)}
           <span>
-            {formatSize(entry.size, t)} · {formatModified(entry.modifiedMs, t)}
+            {formatSize(entry.size, t)} · {formatModified(entry.modifiedMs, t, dateLoc)}
           </span>
         </div>
         {/* No `overflow-auto` on this wrapper. DocumentViewer

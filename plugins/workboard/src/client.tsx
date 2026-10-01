@@ -49,6 +49,7 @@ import {
   subscribeToWsEvent,
   useOpenFile,
   usePluginT,
+  useDateLocale,
   useUiPrimitives,
   type AdminPageProps,
   type PanelProps,
@@ -944,6 +945,7 @@ const BoardCard = memo(function BoardCard({
   onDelete: (id: string) => Promise<void>;
 }) {
   const t = usePluginT("workboard");
+  const dateLoc = useDateLocale();
   const { Modal } = useUiPrimitives();
   const [expanded, setExpanded] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -1244,14 +1246,14 @@ const BoardCard = memo(function BoardCard({
             <div>
               {t("panel.card.created")}{" "}
               <span className="text-fg-muted">
-                {new Date(task.createdAt).toLocaleString()}
+                {new Date(task.createdAt).toLocaleString(dateLoc)}
               </span>
             </div>
             {task.startedAt && (
               <div>
                 {t("panel.card.started")}{" "}
                 <span className="text-fg-muted">
-                  {new Date(task.startedAt).toLocaleString()}
+                  {new Date(task.startedAt).toLocaleString(dateLoc)}
                 </span>
               </div>
             )}
@@ -1259,7 +1261,7 @@ const BoardCard = memo(function BoardCard({
               <div>
                 {t("panel.card.ended")}{" "}
                 <span className="text-fg-muted">
-                  {new Date(task.endedAt).toLocaleString()}
+                  {new Date(task.endedAt).toLocaleString(dateLoc)}
                 </span>
               </div>
             )}
@@ -1340,6 +1342,7 @@ const BoardCard = memo(function BoardCard({
  */
 function ExecutionSection({ task }: { task: Task }) {
   const t = usePluginT("workboard");
+  const dateLoc = useDateLocale();
   const [open, setOpen] = useState(false);
   const showButton = task.status === "in_progress" || Boolean(task.sessionId);
   if (!showButton) return null;
@@ -1664,6 +1667,7 @@ function mergeAssistantToolResults(
 /** One assistant / user turn rendered MessageBubble-style. */
 function ExecutionTurn({ row }: { row: MergedTurn }) {
   const t = usePluginT("workboard");
+  const dateLoc = useDateLocale();
   const isUser = row.role === "user";
   const roleLabel = isUser
     ? t("panel.turn.you")
@@ -1686,7 +1690,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
           <span>{roleLabel}</span>
           <span className="text-fg-fainter">·</span>
           <span className="text-fg-fainter">
-            {new Date(row.createdAt).toLocaleTimeString()}
+            {new Date(row.createdAt).toLocaleTimeString(dateLoc)}
           </span>
         </div>
         {row.text && (
@@ -2314,6 +2318,7 @@ function TaskModal({
   onDelete: () => Promise<void>;
 }) {
   const t = usePluginT("workboard");
+  const dateLoc = useDateLocale();
   const { Modal } = useUiPrimitives();
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || "");
@@ -2515,14 +2520,14 @@ function TaskModal({
             <div>
               {t("panel.modal.created")}
               <div className="text-fg-muted">
-                {new Date(task.createdAt).toLocaleString()}
+                {new Date(task.createdAt).toLocaleString(dateLoc)}
               </div>
             </div>
             {task.startedAt && (
               <div>
                 {t("panel.modal.started")}
                 <div className="text-fg-muted">
-                  {new Date(task.startedAt).toLocaleString()}
+                  {new Date(task.startedAt).toLocaleString(dateLoc)}
                 </div>
               </div>
             )}
@@ -2530,7 +2535,7 @@ function TaskModal({
               <div>
                 {t("panel.modal.ended")}
                 <div className="text-fg-muted">
-                  {new Date(task.endedAt).toLocaleString()}
+                  {new Date(task.endedAt).toLocaleString(dateLoc)}
                 </div>
               </div>
             )}

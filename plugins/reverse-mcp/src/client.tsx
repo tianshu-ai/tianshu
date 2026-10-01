@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Plug, Copy, Check, RefreshCw, Laptop } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent, usePluginT } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, usePluginT, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/reverse-mcp";
 
@@ -60,6 +60,7 @@ function CmdBlock(props: {
 
 function BridgePanel(_props: PanelProps) {
   const t = usePluginT("reverse-mcp");
+  const dateLoc = useDateLocale();
   const [info, setInfo] = useState<ConnectInfo | null>(null);
   const [conns, setConns] = useState<Conn[]>([]);
   const [loading, setLoading] = useState(true);
@@ -265,7 +266,7 @@ function BridgePanel(_props: PanelProps) {
 
           {info?.authEnabled && info.expiresAt && (
             <p className="mt-2 text-[10px] text-fg-fainter">
-              {t("panel.tokenValid", { date: new Date(info.expiresAt).toLocaleDateString() })}
+              {t("panel.tokenValid", { date: new Date(info.expiresAt).toLocaleDateString(dateLoc) })}
             </p>
           )}
           {info && !info.authEnabled && (

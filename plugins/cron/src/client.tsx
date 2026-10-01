@@ -21,7 +21,7 @@ import {
   Trash2,
 } from "lucide-react";
 import type { PanelProps, PluginClientExports } from "@tianshu-ai/plugin-sdk/client";
-import { subscribeToWsEvent, useUiPrimitives, useLocale, usePluginT } from "@tianshu-ai/plugin-sdk/client";
+import { subscribeToWsEvent, useUiPrimitives, useDateLocale, usePluginT } from "@tianshu-ai/plugin-sdk/client";
 
 const API_BASE = "/api/p/cron";
 
@@ -98,10 +98,7 @@ const SHORT_DAY_KEYS = [
   "weekday.sat",
 ] as const;
 
-/** Map the host locale to a BCP-47 tag for Intl date formatting. */
-function dateLocaleTag(locale: string): string {
-  return locale === "zh" ? "zh-CN" : "en-US";
-}
+
 
 function sameDay(a: Date, y: number, m: number, d: number): boolean {
   return a.getFullYear() === y && a.getMonth() === m && a.getDate() === d;
@@ -111,9 +108,8 @@ function sameDay(a: Date, y: number, m: number, d: number): boolean {
 
 function CalendarPanel(_props: PanelProps) {
   const { Modal } = useUiPrimitives();
-  const { locale } = useLocale();
+  const dateLoc = useDateLocale();
   const t = usePluginT("cron");
-  const dateLoc = dateLocaleTag(locale);
   const [jobs, setJobs] = useState<ScheduledJob[]>([]);
   const [selected, setSelected] = useState(() => new Date());
   const [month, setMonth] = useState(() => {
