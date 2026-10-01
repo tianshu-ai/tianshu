@@ -210,8 +210,8 @@
 
   --color-fg-default:     #0f172a;          /* slate-900 */
   --color-fg-muted:       #475569;          /* slate-600 — secondary text, icons */
-  --color-fg-faint:       #64748b;          /* slate-500 — tertiary */
-  --color-fg-fainter:     #94a3b8;          /* slate-400 — decorative */
+  --color-fg-faint:       #64748b;          /* slate-500 — 4.76:1 on #fff */
+  --color-fg-fainter:     #647182;          /* WCAG AA 4.97:1 on #fff */
   --color-fg-on-accent:   #ffffff;
 
   --color-border-default: #cbd5e1;          /* slate-300 — standard borders */
@@ -307,8 +307,8 @@
 
   --color-fg-default:     #2d2823;          /* concentrated ink */
   --color-fg-muted:       #5c5347;          /* diluted ink */
-  --color-fg-faint:       #8a7e6e;          /* light ink wash */
-  --color-fg-fainter:     #b5a997;          /* faint ink trace */
+  --color-fg-faint:       #736756;          /* ink wash — 4.87:1 on #f5f0e8 */
+  --color-fg-fainter:     #776b5c;          /* faint ink — 4.58:1 on #f5f0e8 */
   --color-fg-on-accent:   #fffaf2;
 
   --color-border-default: #d4c4a8;          /* bamboo strip */
