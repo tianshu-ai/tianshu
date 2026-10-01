@@ -6,6 +6,34 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.77.0](https://github.com/tianshu-ai/tianshu/compare/v0.76.1...v0.77.0) (2026-10-01)
+
+
+### Features
+
+* **datasource:** extract hardcoded UI strings to i18n (en/zh/de) ([e4b1d24](https://github.com/tianshu-ai/tianshu/commit/e4b1d244e534b864bbbc00968371a77e822d3517))
+* **doctor:** add complete German (de) translation tables ([a0be8b6](https://github.com/tianshu-ai/tianshu/commit/a0be8b69ae2e057ee480f02b5f98d11f60037f75))
+* **i18n:** add complete German (de) locale ([253a9e6](https://github.com/tianshu-ai/tianshu/commit/253a9e6f7d09bdb6fb5dc27616fba9500047d130))
+* **i18n:** add German locale for board, cron, custom-ui, datasource, files, microsandbox, openshell plugins ([bda85b5](https://github.com/tianshu-ai/tianshu/commit/bda85b5a9563b005e4fddae1d5c4ca829057c827))
+* **i18n:** add German locale for custom-ui, files, openshell, wechat, reverse-mcp plugins ([e4da1e5](https://github.com/tianshu-ai/tianshu/commit/e4da1e5c6b47cfcf023173604eaad092a866c677))
+* **i18n:** add German locale for wiki plugin (from parallel task) ([ca7121b](https://github.com/tianshu-ai/tianshu/commit/ca7121bbea6feb4829066e485ac5c98de8170633))
+* **i18n:** add German locale for workboard, workforce-studio plugins ([2684136](https://github.com/tianshu-ai/tianshu/commit/2684136ee97a5b883efab4fab62fc22e2dda96a3))
+
+
+### Bug Fixes
+
+* **files:** add missing dateLoc in FilePreviewModal ([717a72a](https://github.com/tianshu-ai/tianshu/commit/717a72a8e55b37d0c1a707d5d0e2c92ab7f5bc69))
+* **files:** default sort by modified time descending ([0a41484](https://github.com/tianshu-ai/tianshu/commit/0a41484f89f8cce055402beefb61772d221baf87))
+* **i18n:** escape typographic quotes in de.json (microsandbox, reverse-mcp, wiki) ([66c243f](https://github.com/tianshu-ai/tianshu/commit/66c243fa181db558ae79228d85a8a54249c73382))
+* **i18n:** extract remaining hardcoded strings in doctor, wiki plugins ([eb589af](https://github.com/tianshu-ai/tianshu/commit/eb589afc99401ef36236c71a8282eb29607cdfbe))
+* restore package.json and release manifest (corrupted by conflict resolution) ([7e15f25](https://github.com/tianshu-ai/tianshu/commit/7e15f2576ef76e324108c6128d6d9fc1206e3619))
+* **wiki:** add missing dateLoc in IndexingTab ([a9e8037](https://github.com/tianshu-ai/tianshu/commit/a9e803745ab4fb1aaed0bf7c4e2ab5b30e8204e8))
+
+
+### Refactor
+
+* **i18n:** unify date formatting with useDateLocale() across all plugins ([b53fc88](https://github.com/tianshu-ai/tianshu/commit/b53fc8849ccff2300e96c16a753172c9433b94e0))
+
 ## [0.76.1](https://github.com/tianshu-ai/tianshu/compare/v0.76.0...v0.76.1) (2026-09-30)
 
 
