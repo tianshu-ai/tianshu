@@ -137,7 +137,7 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
 
   if (fields.length === 0) {
     return (
-      <p className="text-[12px] text-fg-faint">
+      <p className="text-xs text-fg-faint">
         {tCfg("plugin.config.empty")}
       </p>
     );
@@ -206,12 +206,12 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
         })}
       </div>
       {error && (
-        <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[12px] text-danger">
+        <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-xs text-danger">
           {error}
         </div>
       )}
       {testResult && (
-        <div className={`rounded-md border px-3 py-2 text-[12px] ${
+        <div className={`rounded-md border px-3 py-2 text-xs ${
           testResult.ok
             ? "border-emerald-700/50 bg-emerald-950/40 text-success"
             : "border-rose-700/50 bg-rose-950/40 text-danger"
@@ -247,7 +247,7 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
               }
             }}
             disabled={testing || dirty}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-raised/50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {testing ? <Loader2 className="inline h-3 w-3 animate-spin" /> : "⚡"} Test Connection
           </button>
@@ -256,7 +256,7 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
           type="button"
           onClick={reset}
           disabled={!dirty || busy}
-          className="ml-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:cursor-not-allowed disabled:opacity-50"
+          className="ml-auto inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-raised/50 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {tCfg("common.reset")}
         </button>
@@ -264,7 +264,7 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
           type="button"
           onClick={save}
           disabled={!dirty || busy}
-          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? <Loader2 className="inline h-3 w-3 animate-spin" /> : tCfg("common.save")}
         </button>
@@ -274,7 +274,7 @@ function PluginConfigFormInner({ plugin }: { plugin: PluginListEntry }) {
 }
 
 const INPUT_BASE =
-  "w-full rounded-md border border-border-default bg-bg-elevated px-3 py-1.5 text-[12px] text-fg-default outline-none placeholder:text-fg-fainter focus:border-brand-500";
+  "w-full rounded-md border border-border-default bg-bg-elevated px-3 py-1.5 text-xs text-fg-default outline-none placeholder:text-fg-fainter focus:border-brand-500";
 
 /** Pill-style toggle, visually identical to the one in PluginManager
  *  so enable/disable and individual config booleans share the same
@@ -418,7 +418,7 @@ function ConfigFieldRow({
   if (field.kind === "boolean") {
     const checked = value === true;
     return (
-      <div className="flex items-start justify-between gap-3 text-[12px]">
+      <div className="flex items-start justify-between gap-3 text-xs">
         <div className="min-w-0 flex-1">
           <div className="font-medium text-fg-default">{fLabel}</div>
           {fDesc && (
@@ -443,7 +443,7 @@ function ConfigFieldRow({
           ? Number(value)
           : (field.default ?? 0);
     return (
-      <div className="text-[12px]">
+      <div className="text-xs">
         <label className="mb-1 block font-medium text-fg-default">
           {fLabel}
         </label>
@@ -478,7 +478,7 @@ function ConfigFieldRow({
         ? value
         : (field.default ?? opts[0]?.value ?? "");
     return (
-      <div className="text-[12px]">
+      <div className="text-xs">
         <label className="mb-1 block font-medium text-fg-default">
           {fLabel}
         </label>
@@ -517,7 +517,7 @@ function ConfigFieldRow({
       isRedacted && (value as { set?: unknown }).set === true;
     const stringValue = typeof value === "string" ? value : "";
     return (
-      <div className="text-[12px]">
+      <div className="text-xs">
         <label className="mb-1 block font-medium text-fg-default">
           {fLabel}
           {isSet ? (
@@ -566,7 +566,7 @@ function ConfigFieldRow({
     ? cfgL(`config.${field.key}.placeholder`, field.placeholder)
     : undefined;
   return (
-    <div className="text-[12px]">
+    <div className="text-xs">
       <label className="mb-1 block font-medium text-fg-default">
         {fLabel}
       </label>

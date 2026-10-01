@@ -687,13 +687,13 @@ function PluginConfigSettingsPage({
           {plugin ? meta.displayName(plugin.displayName) : pluginId}
         </h1>
         {plugin?.description && (
-          <p className="mt-1 max-w-3xl text-[12px] text-fg-faint">
+          <p className="mt-1 max-w-3xl text-xs text-fg-faint">
             {meta.description(plugin.description)}
           </p>
         )}
       </div>
       {!plugin ? (
-        <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-faint">
+        <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-xs text-fg-faint">
           {t("admin.pluginConfig.inactiveBefore")}
           <code>{pluginId}</code>
           {t("admin.pluginConfig.inactiveAfter")}

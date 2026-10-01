@@ -161,7 +161,7 @@ function GroupSection({ group, onPin }: { group: CheckGroup; onPin: (line: Check
           <ChevronRight size={12} className="text-fg-faint flex-shrink-0" />
         )}
         <SeverityIcon severity={worst} size={14} />
-        <span className="flex-1 text-[12px] font-medium text-fg-default">
+        <span className="flex-1 text-xs font-medium text-fg-default">
           {tTitle(group.title)}
         </span>
         <span className="text-xs text-fg-faint">
@@ -226,12 +226,12 @@ function DoctorPanel(_props: PanelProps) {
   }, [runCheck]);
 
   return (
-    <div className="flex h-full flex-col text-[12px]">
+    <div className="flex h-full flex-col text-xs">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2">
         <div className="flex items-center gap-2">
           <span className="text-sm">🩺</span>
-          <span className="text-[12px] font-medium text-fg-default">{t("panel.title")}</span>
+          <span className="text-xs font-medium text-fg-default">{t("panel.title")}</span>
         </div>
         <button
           type="button"

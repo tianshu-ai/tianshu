@@ -50,7 +50,7 @@ export function InteractionButtons() {
   return (
     <div className="mt-2 mb-1 px-3 flex flex-col items-center">
       {question && (
-        <div className="text-[12px] text-fg-muted mb-2">{question}</div>
+        <div className="text-xs text-fg-muted mb-2">{question}</div>
       )}
       <div className="flex flex-wrap justify-center gap-2">
         {options.map((opt) => {
@@ -62,7 +62,7 @@ export function InteractionButtons() {
               onClick={() => handleClick(opt.value)}
               className={[
                 "inline-flex flex-col items-start rounded-lg border px-3 py-2",
-                "text-left text-[12px] transition-all duration-150",
+                "text-left text-xs transition-all duration-150",
                 "hover:border-accent hover:bg-accent/10",
                 isSelected
                   ? "border-accent bg-accent/15 text-fg-default"
@@ -83,7 +83,7 @@ export function InteractionButtons() {
         <button
           type="button"
           onClick={handleConfirm}
-          className="mt-2 rounded-md bg-accent px-4 py-1.5 text-[12px] font-medium text-white hover:bg-accent/90 transition-colors"
+          className="mt-2 rounded-md bg-accent px-4 py-1.5 text-xs font-medium text-white hover:bg-accent/90 transition-colors"
         >
           确认选择 ({selected.size})
         </button>

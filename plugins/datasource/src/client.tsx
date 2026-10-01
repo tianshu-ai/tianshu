@@ -131,12 +131,12 @@ function DataSourcePanel(_props: PanelProps) {
     : t("panel.placeholderSql");
 
   return (
-    <div className="flex h-full flex-col text-[12px]">
+    <div className="flex h-full flex-col text-xs">
       {/* Header: source selector */}
       <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
         <Database size={14} className="text-fg-faint" />
         <select
-          className="flex-1 rounded border border-border-default bg-bg-elevated px-2 py-1 text-[12px] text-fg-default"
+          className="flex-1 rounded border border-border-default bg-bg-elevated px-2 py-1 text-xs text-fg-default"
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
         >
@@ -191,7 +191,7 @@ function DataSourcePanel(_props: PanelProps) {
       <div className="flex flex-col border-b border-border-subtle">
         <textarea
           ref={textareaRef}
-          className="min-h-[80px] resize-y bg-transparent px-3 py-2 font-mono text-[12px] text-fg-default placeholder:text-fg-fainter focus:outline-none"
+          className="min-h-[80px] resize-y bg-transparent px-3 py-2 font-mono text-xs text-fg-default placeholder:text-fg-fainter focus:outline-none"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder={placeholder}
@@ -222,7 +222,7 @@ function DataSourcePanel(_props: PanelProps) {
       ) : (
         <div className="flex-1 overflow-auto">
           {result?.error && (
-            <div className="px-3 py-2 text-[12px] text-danger">{result.error}</div>
+            <div className="px-3 py-2 text-xs text-danger">{result.error}</div>
           )}
           {result && !result.error && result.rows.length === 0 && (
             <div className="px-3 py-2 text-fg-faint">{t("panel.noResults")}</div>

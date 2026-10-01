@@ -143,7 +143,7 @@ export function TablePreview({
         </div>
       )}
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        <table className="border-collapse text-[12px]">
+        <table className="border-collapse text-xs">
           <thead>
             <tr className="bg-bg-elevated text-fg-muted">
               {parsed.headers.map((h, i) => (

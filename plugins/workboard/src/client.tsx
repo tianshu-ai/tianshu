@@ -1748,7 +1748,7 @@ function ToolCallChip({
         ) : (
           <CheckCircle2 className="h-3 w-3 text-emerald-500/60" />
         )}
-        <code className="font-mono text-[12px] text-link">
+        <code className="font-mono text-xs text-link">
           {call.toolName}
         </code>
         <span className="font-mono text-xs text-fg-fainter">

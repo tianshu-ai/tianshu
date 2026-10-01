@@ -525,7 +525,7 @@ function WikiPanel(_props: PanelProps) {
               <span>{t("reader.backToList") || "Back"}</span>
             </button>
             {pageTitle && (
-              <span className="truncate text-[12px] font-medium text-fg-default">{pageTitle}</span>
+              <span className="truncate text-xs font-medium text-fg-default">{pageTitle}</span>
             )}
           </div>
           {/* Content */}
@@ -596,7 +596,7 @@ function WikiPanel(_props: PanelProps) {
                 >
                   <FileText size={14} className="shrink-0 text-fg-fainter group-hover:text-fg-muted" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-[12px] leading-snug text-fg-muted group-hover:text-fg-default">{p.title}</div>
+                    <div className="truncate text-xs leading-snug text-fg-muted group-hover:text-fg-default">{p.title}</div>
                     <div className="text-xs text-fg-fainter">{p.updatedAt ? formatRelativeDate(p.updatedAt, dateLoc) : ""}</div>
                   </div>
                 </button>
@@ -862,7 +862,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               <Notebook size={14} className="text-brand-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-medium text-fg-default">{t("indexing.sessions")}</div>
+              <div className="text-xs font-medium text-fg-default">{t("indexing.sessions")}</div>
             </div>
             <span className={"text-xs px-2 py-0.5 rounded-full font-medium " +
               (sessionStatus?.running
@@ -898,7 +898,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               <FileText size={14} className="text-brand-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-medium text-fg-default">{t("indexing.kb")}</div>
+              <div className="text-xs font-medium text-fg-default">{t("indexing.kb")}</div>
             </div>
             <span className={"text-xs px-2 py-0.5 rounded-full font-medium " +
               (running && hasPendingKb
@@ -938,7 +938,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               <Share2 size={14} className="text-purple-400" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-medium text-fg-default">{t("indexing.audit")}</div>
+              <div className="text-xs font-medium text-fg-default">{t("indexing.audit")}</div>
             </div>
             {auditing ? (
               <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-purple-500/10 text-purple-400">
@@ -1008,7 +1008,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               <Sparkles size={14} className={embStatus?.enabled ? "text-brand-400" : "text-fg-fainter"} />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[12px] font-medium text-fg-default">{t("indexing.semanticSearch")}</div>
+              <div className="text-xs font-medium text-fg-default">{t("indexing.semanticSearch")}</div>
             </div>
             {/* Reindex action — inline in header */}
             <button

@@ -197,7 +197,7 @@ export function WorkerAgentsPage(): ReactElement {
 
   return (
     <div className="mx-auto max-w-5xl p-6">
-      <div className="mb-4 rounded-md border border-amber-900/40 bg-amber-950/30 px-3 py-2 text-[12px] leading-relaxed text-amber-200/90">
+      <div className="mb-4 rounded-md border border-amber-900/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200/90">
         <div className="font-semibold text-amber-100">
           {t("agents.banner.title")}
         </div>
@@ -224,7 +224,7 @@ export function WorkerAgentsPage(): ReactElement {
             <Bot size={18} className="text-brand-400" />
             {t("agents.heading")}
           </h1>
-          <p className="mt-1 max-w-3xl text-[12px] leading-relaxed text-fg-faint">
+          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-fg-faint">
             {t("agents.description")}
           </p>
         </div>
@@ -232,7 +232,7 @@ export function WorkerAgentsPage(): ReactElement {
           <button
             type="button"
             onClick={() => setConfigOpen(true)}
-            className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised"
+            className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-xs text-fg-muted hover:bg-bg-raised"
             title={t("agents.actions.configureTitle")}
           >
             <Settings size={12} />
@@ -242,7 +242,7 @@ export function WorkerAgentsPage(): ReactElement {
             type="button"
             onClick={() => void refresh()}
             disabled={loading}
-            className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised disabled:opacity-50"
+            className="flex items-center gap-1 rounded-md border border-border-default px-2.5 py-1.5 text-xs text-fg-muted hover:bg-bg-raised disabled:opacity-50"
             title={t("agents.actions.reloadTitle")}
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
@@ -257,13 +257,13 @@ export function WorkerAgentsPage(): ReactElement {
       />
 
       {error && (
-        <div className="mb-4 rounded-md border border-red-900/40 bg-red-950/40 px-3 py-2 text-[12px] text-red-300">
+        <div className="mb-4 rounded-md border border-red-900/40 bg-red-950/40 px-3 py-2 text-xs text-red-300">
           {error}
         </div>
       )}
 
       <div className="overflow-x-auto rounded-md border border-border-subtle">
-        <table className="min-w-full divide-y divide-gray-800 text-[12px]">
+        <table className="min-w-full divide-y divide-gray-800 text-xs">
           <thead className="bg-bg-elevated/60 text-xs font-semibold uppercase tracking-wide text-fg-muted">
             <tr>
               <th className="px-3 py-2 text-left">{t("agents.table.state")}</th>

@@ -444,7 +444,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           ) : (
             <CheckCircle2 size={11} className="text-emerald-500/60" />
           )}
-          <code className="font-mono text-[12px] text-link">{call.name}</code>
+          <code className="font-mono text-xs text-link">{call.name}</code>
           <span className="ml-auto text-xs text-fg-fainter">
             {expanded ? "hide details" : "details"}
           </span>
@@ -490,7 +490,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           ) : (
             <CheckCircle2 size={11} className="text-emerald-500/60" />
           )}
-          <code className="font-mono text-[12px] text-link">{call.name}</code>
+          <code className="font-mono text-xs text-link">{call.name}</code>
           <span className="ml-auto text-xs text-fg-fainter">
             {expanded ? "hide details" : "details"}
           </span>
@@ -543,7 +543,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           ) : (
             <CheckCircle2 size={11} className="text-emerald-500/60" />
           )}
-          <code className="font-mono text-[12px] text-link">{call.name}</code>
+          <code className="font-mono text-xs text-link">{call.name}</code>
           <span className="ml-auto text-xs text-fg-fainter">
             {expanded ? "hide details" : "details"}
           </span>
@@ -589,7 +589,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         ) : (
           <CheckCircle2 size={11} className="shrink-0 text-emerald-500/60" />
         )}
-        <code className="shrink-0 font-mono text-[12px] text-link">{call.name}</code>
+        <code className="shrink-0 font-mono text-xs text-link">{call.name}</code>
         <span className="min-w-0 flex-1 truncate text-left font-mono text-xs text-fg-fainter">
           {summariseArgs(call.arguments)}
         </span>

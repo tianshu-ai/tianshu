@@ -190,7 +190,7 @@ export function CodeBlock({ code, lang, className = "" }: CodeBlockProps) {
         {/* Gutter: line numbers in monospace dim grey. */}
         <pre
           aria-hidden
-          className="select-none border-r border-border-subtle bg-bg-base px-3 py-3 text-right font-mono text-[12px] leading-[1.6] text-fg-fainter"
+          className="select-none border-r border-border-subtle bg-bg-base px-3 py-3 text-right font-mono text-xs leading-[1.6] text-fg-fainter"
         >
           {Array.from({ length: lineCount }, (_, i) => i + 1).join("\n")}
         </pre>
@@ -214,11 +214,11 @@ export function CodeBlock({ code, lang, className = "" }: CodeBlockProps) {
             // index.css so the body's first source line aligns
             // with the gutter's "1".
             <div
-              className="shiki-host font-mono text-[12px] leading-[1.6]"
+              className="shiki-host font-mono text-xs leading-[1.6]"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           ) : (
-            <pre className="whitespace-pre px-3 py-3 font-mono text-[12px] leading-[1.6] text-fg-default">
+            <pre className="whitespace-pre px-3 py-3 font-mono text-xs leading-[1.6] text-fg-default">
               {code}
             </pre>
           )}

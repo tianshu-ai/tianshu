@@ -112,7 +112,7 @@ export default function McpServersPage() {
             <Server size={18} className="text-brand-400" />
             {t("mcp.title")}
           </h1>
-          <p className="mt-1 text-[12px] text-fg-faint">
+          <p className="mt-1 text-xs text-fg-faint">
             {t("mcp.description")}
           </p>
         </div>
@@ -124,7 +124,7 @@ export default function McpServersPage() {
             type="button"
             onClick={fetchServers}
             disabled={loading}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
           >
             <RefreshCw size={12} className={loading ? "animate-spin" : undefined} />
             {t("common.refresh")}
@@ -132,7 +132,7 @@ export default function McpServersPage() {
           <button
             type="button"
             onClick={() => setEditing("new")}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500"
           >
             <Plus size={12} />
             {t("mcp.addServer")}
@@ -141,7 +141,7 @@ export default function McpServersPage() {
       </div>
 
       {error && (
-        <div className="mb-4 flex items-start gap-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[12px] text-danger">
+        <div className="mb-4 flex items-start gap-2 rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-xs text-danger">
           <AlertTriangle size={14} className="mt-px flex-shrink-0" />
           <span className="break-all">{error}</span>
         </div>
@@ -231,13 +231,13 @@ function EmptyGroup({ source }: { source: "plugin" | "user" }) {
   const t = useT();
   if (source === "plugin") {
     return (
-      <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-faint">
+      <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-xs text-fg-faint">
         {t("mcp.empty.plugin")}
       </div>
     );
   }
   return (
-    <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-[12px] text-fg-faint">
+    <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-xs text-fg-faint">
       {t("mcp.empty.userBefore")}{" "}
       <span className="text-fg-muted">{t("mcp.addServer")}</span>{" "}
       {t("mcp.empty.userAfter")}
@@ -449,7 +449,7 @@ function ServerCard({
 
       {open &&
         (tools.length === 0 ? (
-          <div className="px-4 py-6 text-center text-[12px] text-fg-faint">
+          <div className="px-4 py-6 text-center text-xs text-fg-faint">
             {endpoint
               ? t("mcp.tools.empty.reachable")
               : !server.enabled
@@ -459,7 +459,7 @@ function ServerCard({
                   : t("mcp.tools.empty.unreachable")}
           </div>
         ) : (
-          <table className="w-full text-[12px]">
+          <table className="w-full text-xs">
             <thead className="border-b border-border-subtle text-left text-xs uppercase tracking-wide text-fg-faint">
               <tr>
                 <th className="px-4 py-2 font-medium">{t("mcp.table.toolName")}</th>
@@ -627,7 +627,7 @@ function EditDialog({
           />
         </Field>
 
-        <label className="flex items-center gap-2 text-[12px] text-fg-muted">
+        <label className="flex items-center gap-2 text-xs text-fg-muted">
           <input
             type="checkbox"
             checked={enabled}
@@ -647,14 +647,14 @@ function EditDialog({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50"
+            className="rounded-md border border-border-default px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-raised/50"
           >
             {t("common.cancel")}
           </button>
           <button
             type="submit"
             disabled={busy}
-            className="rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500 disabled:opacity-50"
+            className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-50"
           >
             {busy
               ? t("common.saving")

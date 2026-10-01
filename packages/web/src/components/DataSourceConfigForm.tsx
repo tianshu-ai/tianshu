@@ -55,7 +55,7 @@ const DRIVER_TYPES: DriverType[] = [
 ];
 
 const INPUT =
-  "w-full rounded-md border border-border-default bg-bg-elevated px-3 py-1.5 text-[12px] text-fg-default outline-none placeholder:text-fg-fainter focus:border-brand-500";
+  "w-full rounded-md border border-border-default bg-bg-elevated px-3 py-1.5 text-xs text-fg-default outline-none placeholder:text-fg-fainter focus:border-brand-500";
 
 export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
   const t = useT();
@@ -157,7 +157,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
   return (
     <div className="space-y-4">
       {names.length === 0 && !adding && (
-        <p className="text-[12px] text-fg-faint">{t("ds.noConnections")}</p>
+        <p className="text-xs text-fg-faint">{t("ds.noConnections")}</p>
       )}
 
       {names.map((name) => {
@@ -280,14 +280,14 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
             type="button"
             onClick={addConnection}
             disabled={!newName.trim()}
-            className="rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500 disabled:opacity-40"
+            className="rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:opacity-40"
           >
             {t("ds.add")}
           </button>
           <button
             type="button"
             onClick={() => setAdding(false)}
-            className="text-[12px] text-fg-faint hover:text-fg-default"
+            className="text-xs text-fg-faint hover:text-fg-default"
           >
             {t("common.cancel")}
           </button>
@@ -296,14 +296,14 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="inline-flex items-center gap-1 rounded-md border border-dashed border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised"
+          className="inline-flex items-center gap-1 rounded-md border border-dashed border-border-default px-3 py-1.5 text-xs text-fg-muted hover:bg-bg-raised"
         >
           <Plus size={12} /> {t("ds.addDataSource")}
         </button>
       )}
 
       {error && (
-        <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-[12px] text-danger">
+        <div className="rounded-md border border-rose-700/50 bg-rose-950/40 px-3 py-2 text-xs text-danger">
           {error}
         </div>
       )}
@@ -313,7 +313,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
           type="button"
           onClick={save}
           disabled={!dirty || saving}
-          className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-md bg-brand-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {saving ? <Loader2 className="inline h-3 w-3 animate-spin" /> : null}
           {t("common.save")}

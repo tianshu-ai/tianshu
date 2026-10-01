@@ -247,7 +247,7 @@ function SidebarFooter() {
       {menuOpen && (
         <div
           role="menu"
-          className="absolute bottom-full left-2 right-2 z-50 mb-1 rounded-md border border-border-default bg-bg-elevated py-1 text-[12px] shadow-xl"
+          className="absolute bottom-full left-2 right-2 z-50 mb-1 rounded-md border border-border-default bg-bg-elevated py-1 text-xs shadow-xl"
         >
           {/* Identity header inside menu, mirrors Linear/Discord style. */}
           <div className="border-b border-border-subtle px-3 py-2">
@@ -394,7 +394,7 @@ function SidebarFooter() {
            *  toggled the first time someone sets up the app, then
            *  ignored. Keeps it out of the way of more common
            *  actions like Admin / Language. */}
-          <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-3 py-2 text-[12px] text-fg-muted">
+          <div className="flex items-center justify-between gap-2 border-t border-border-subtle px-3 py-2 text-xs text-fg-muted">
             <span>{t("user.theme")}</span>
             <ThemeToggle compact />
           </div>

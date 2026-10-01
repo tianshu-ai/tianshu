@@ -151,7 +151,7 @@ export function DocumentViewer({
         <div className="text-sm font-medium text-fg-default">
           {t("viewer.office.title")}
         </div>
-        <div className="max-w-md text-[12px] leading-relaxed text-fg-faint">
+        <div className="max-w-md text-xs leading-relaxed text-fg-faint">
           {t("viewer.office.body", { ext })}
         </div>
         {sizeBytes != null && (
