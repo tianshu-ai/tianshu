@@ -291,7 +291,7 @@ export default function ModelsPage() {
             <Boxes size={18} className="text-link" />
             {t("models.title")}
           </h1>
-          <p className="mt-1 max-w-3xl text-xs text-fg-faint">
+          <p className="mt-1 max-w-3xl text-sm text-fg-faint">
             {t("models.subtitle.prefix")}{" "}
             <code className="text-fg-muted">~/.tianshu/config.json</code>{" "}
             (<code className="text-fg-muted">models.providers</code>).{" "}
@@ -433,7 +433,7 @@ export default function ModelsPage() {
       </div>
 
       {loading && !providers && (
-        <div className="rounded-md border border-dashed border-border-subtle px-4 py-10 text-center text-xs text-fg-faint">
+        <div className="rounded-md border border-dashed border-border-subtle px-4 py-10 text-center text-sm text-fg-faint">
           {t("models.loadingProviders")}
         </div>
       )}
@@ -712,7 +712,7 @@ function ProviderCard({
                 );
               })}
               {models.length === 0 && (
-                <div className="rounded border border-dashed border-border-subtle px-3 py-3 text-center text-xs text-fg-fainter">
+                <div className="rounded border border-dashed border-border-subtle px-3 py-3 text-center text-sm text-fg-fainter">
                   {t("models.noModels")}
                 </div>
               )}

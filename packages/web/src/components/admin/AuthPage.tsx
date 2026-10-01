@@ -381,7 +381,7 @@ export function AuthProvidersPage() {
         </div>
 
         {providers.length === 0 && (
-          <div className="rounded-md border border-border-subtle bg-bg-raised/40 px-3 py-3 text-center text-xs text-fg-faint">
+          <div className="rounded-md border border-border-subtle bg-bg-raised/40 px-3 py-3 text-center text-sm text-fg-faint">
             {t("auth.providers.empty")}
           </div>
         )}
@@ -529,7 +529,7 @@ function TenantsSection() {
       )}
 
       {tenants.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center text-xs text-fg-fainter">
+        <div className="rounded-lg border border-dashed border-border-subtle px-3 py-6 text-center text-sm text-fg-fainter">
           {t("auth.tenants.empty")}
         </div>
       ) : (
@@ -627,7 +627,7 @@ function LocalUsersSection() {
             <UserCog size={18} className="text-link" />
             {t("auth.users.title")}
           </h1>
-          <p className="mt-1 max-w-3xl text-xs text-fg-faint">
+          <p className="mt-1 max-w-3xl text-sm text-fg-faint">
             {t("auth.users.sectionHelp")}{" "}
             <span className="text-fg-muted">{users.length} {t("auth.users.count")}</span>
           </p>
@@ -648,7 +648,7 @@ function LocalUsersSection() {
       )}
 
       {users.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-xs text-fg-fainter">
+        <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-sm text-fg-fainter">
           {t("auth.users.empty")}
         </div>
       ) : (

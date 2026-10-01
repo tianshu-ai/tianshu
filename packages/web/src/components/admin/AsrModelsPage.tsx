@@ -94,7 +94,7 @@ export default function AsrModelsPage() {
             <Mic size={18} className="text-link" />
             {t("asr.title")}
           </h1>
-          <p className="mt-1 max-w-3xl text-xs text-fg-faint">
+          <p className="mt-1 max-w-3xl text-sm text-fg-faint">
             {t("asr.subtitle")}{" "}
             <span className="text-fg-muted">
               {installedCount}/{models.length} {t("asr.installed").toLowerCase()}

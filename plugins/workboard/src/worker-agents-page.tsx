@@ -224,7 +224,7 @@ export function WorkerAgentsPage(): ReactElement {
             <Bot size={18} className="text-brand-400" />
             {t("agents.heading")}
           </h1>
-          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-fg-faint">
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-fg-faint">
             {t("agents.description")}
           </p>
         </div>

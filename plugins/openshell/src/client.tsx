@@ -215,7 +215,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
             <ShieldCheck size={18} className="text-brand-400" />
             {t("page.title")}
           </h1>
-          <p className="mt-1 text-[12px] text-fg-faint">
+          <p className="mt-1 text-sm text-fg-faint">
             {t("page.description")}
           </p>
         </div>
@@ -224,7 +224,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
             type="button"
             onClick={refreshAll}
             disabled={denialsLoading || allowedLoading}
-            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-[12px] text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md border border-border-default px-3 py-1.5 text-sm text-fg-muted hover:bg-bg-raised/50 disabled:opacity-50"
           >
             <RefreshCw
               size={12}
@@ -267,17 +267,17 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
         </div>
 
         {denialsErr && (
-          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
             {denialsErr}
           </div>
         )}
         {!denialsErr && !logAvailable && (
-          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-300">
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
             {t("denials.logUnavailable")}
           </div>
         )}
         {!denialsErr && denials && denialCount === 0 && (
-          <div className="rounded-md border border-border-default bg-bg-raised/30 px-3 py-6 text-center text-[12px] text-fg-faint">
+          <div className="rounded-md border border-border-default bg-bg-raised/30 px-3 py-6 text-center text-sm text-fg-faint">
             <Ban size={20} className="mx-auto mb-2 text-fg-faint/60" />
             {t("denials.emptyPre")}
             {(() => {
@@ -289,7 +289,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
         )}
         {!denialsErr && denialCount > 0 && (
           <div className="overflow-hidden rounded-md border border-border-default">
-            <table className="w-full text-left text-[12px]">
+            <table className="w-full text-left text-sm">
               <thead className="bg-bg-raised/60 text-fg-muted">
                 <tr>
                   <th className="px-3 py-2 font-medium">{t("denials.col.time")}</th>
@@ -389,23 +389,23 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
           {t("allowed.title")}
         </h2>
         {allowErr && (
-          <div className="mb-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="mb-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
             {t("allowed.allowFailed", { error: allowErr })}
           </div>
         )}
         {allowedErr && (
-          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-300">
+          <div className="rounded-md border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
             {allowedErr}
           </div>
         )}
         {!allowedErr && allowedLoading && !allowedRaw && (
-          <div className="rounded-md border border-border-default bg-bg-raised/30 px-3 py-6 text-center text-[12px] text-fg-faint">
+          <div className="rounded-md border border-border-default bg-bg-raised/30 px-3 py-6 text-center text-sm text-fg-faint">
             {t("allowed.loading")}
           </div>
         )}
         {!allowedErr && allowedRules && allowedRules.length > 0 && (
           <div className="mb-3 overflow-hidden rounded-md border border-border-default">
-            <table className="w-full text-left text-[12px]">
+            <table className="w-full text-left text-sm">
               <thead className="bg-bg-raised/60 text-fg-muted">
                 <tr>
                   <th className="px-3 py-2 font-medium">{t("allowed.col.rule")}</th>
@@ -445,7 +445,7 @@ function OpenShellPolicyPage(_props: AdminPageProps) {
           allowedRules.length === 0 &&
           allowedRaw != null && (
             <details className="rounded-md border border-border-default bg-bg-raised/40">
-              <summary className="cursor-pointer px-3 py-2 text-[12px] text-fg-muted">
+              <summary className="cursor-pointer px-3 py-2 text-sm text-fg-muted">
                 {t("allowed.noneParsed")}
               </summary>
               <pre className="max-h-[420px] overflow-auto border-t border-border-default p-3 font-mono text-xs leading-relaxed text-fg-muted">

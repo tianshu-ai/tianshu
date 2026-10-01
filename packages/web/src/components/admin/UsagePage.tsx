@@ -100,7 +100,7 @@ export default function UsagePage() {
             <BarChart3 size={18} className="text-link" />
             {t("usage.title")}
           </h1>
-          <p className="mt-1 text-xs text-fg-faint">
+          <p className="mt-1 text-sm text-fg-faint">
             {t("usage.subtitle")} · {me?.tenantId}
           </p>
         </div>
@@ -279,7 +279,7 @@ export default function UsagePage() {
       )}
 
       {!loading && !data && !error && (
-        <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-xs text-fg-fainter">
+        <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-sm text-fg-fainter">
           {t("usage.noData")}
         </div>
       )}

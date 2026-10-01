@@ -112,7 +112,7 @@ export default function McpServersPage() {
             <Server size={18} className="text-brand-400" />
             {t("mcp.title")}
           </h1>
-          <p className="mt-1 text-xs text-fg-faint">
+          <p className="mt-1 text-sm text-fg-faint">
             {t("mcp.description")}
           </p>
         </div>
@@ -231,13 +231,13 @@ function EmptyGroup({ source }: { source: "plugin" | "user" }) {
   const t = useT();
   if (source === "plugin") {
     return (
-      <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-xs text-fg-faint">
+      <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-sm text-fg-faint">
         {t("mcp.empty.plugin")}
       </div>
     );
   }
   return (
-    <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-xs text-fg-faint">
+    <div className="rounded-md border border-dashed border-border-subtle px-4 py-6 text-center text-sm text-fg-faint">
       {t("mcp.empty.userBefore")}{" "}
       <span className="text-fg-muted">{t("mcp.addServer")}</span>{" "}
       {t("mcp.empty.userAfter")}
@@ -449,7 +449,7 @@ function ServerCard({
 
       {open &&
         (tools.length === 0 ? (
-          <div className="px-4 py-6 text-center text-xs text-fg-faint">
+          <div className="px-4 py-6 text-center text-sm text-fg-faint">
             {endpoint
               ? t("mcp.tools.empty.reachable")
               : !server.enabled
@@ -683,7 +683,7 @@ function Field({
         {label}
       </label>
       {children}
-      {hint && <p className="mt-1 text-xs text-fg-faint">{hint}</p>}
+      {hint && <p className="mt-1 text-sm text-fg-faint">{hint}</p>}
     </div>
   );
 }
