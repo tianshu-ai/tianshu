@@ -6,6 +6,45 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.80.0](https://github.com/tianshu-ai/tianshu/compare/v0.79.0...v0.80.0) (2026-10-01)
+
+
+### Features
+
+* **ui:** breathing room — borderless bubbles + wider spacing ([2d64d2d](https://github.com/tianshu-ai/tianshu/commit/2d64d2d28481d26851ad89dfdfb0c7895de3c82d))
+* **ui:** collapsible sidebar workers section ([0913065](https://github.com/tianshu-ai/tianshu/commit/0913065302afa465d32f5a070b5d25ee5d0a2da0))
+* **ui:** dynamic welcome starters based on active plugins ([2e1544b](https://github.com/tianshu-ai/tianshu/commit/2e1544b3e2ec54f67f2f64daaf9e12eba999f974))
+* **ui:** light theme accent blue→Star Gold 700 ([23f6991](https://github.com/tianshu-ai/tianshu/commit/23f699176aba5fb514b7adba2ba2261f0810372c))
+* **ui:** model picker — accent highlight + wider truncate ([9b07cd1](https://github.com/tianshu-ai/tianshu/commit/9b07cd1973f60bb14ec4c3753006d8a0252a4083))
+* **ui:** sidebar gold active bar + input focus gold border ([bbd71f3](https://github.com/tianshu-ai/tianshu/commit/bbd71f36725b426f83ee7429470c85a6525d6b6d))
+* **ui:** Star Gold design system + Geist font + markdown table polish ([435eced](https://github.com/tianshu-ai/tianshu/commit/435ecedaf1394c9f831c7913d5ae25fe03607351))
+* **ui:** suggested follow-up chips after assistant replies ([3d06323](https://github.com/tianshu-ai/tianshu/commit/3d06323f6b6ac8f0b5f1782410bbe3969cb2a2da))
+* **ui:** tool call card redesign — bordered cards with status ([766ad39](https://github.com/tianshu-ai/tianshu/commit/766ad392cf2e5f9c2b45a562ca3a29cb653d53b3))
+* **ui:** top bar cleanup — lighter border, smarter tenant label ([6314d8b](https://github.com/tianshu-ai/tianshu/commit/6314d8bb8e1add97afe759096a808143fd930239))
+* **ui:** welcome screen with starter prompt cards ([21aa7fd](https://github.com/tianshu-ai/tianshu/commit/21aa7fd3c7194727ee4be31d6358eb21860f2b2e))
+
+
+### Bug Fixes
+
+* **test:** clear inbox flush timers before closing DB in tests ([0c49eb7](https://github.com/tianshu-ai/tianshu/commit/0c49eb7db572a25b5a92e899c5bcfc4693cfd969))
+* **ui:** force table cell padding over Tailwind Typography ([e14e66b](https://github.com/tianshu-ai/tianshu/commit/e14e66be1412ecddb821dc011c85dea730038716))
+* **ui:** markdown table visible grid + more padding ([7a69325](https://github.com/tianshu-ai/tianshu/commit/7a693255361b15f98083ea1f8ff84d855b7e77d7))
+* **ui:** smarter follow-up suggestions based on reply context ([c3c5d8a](https://github.com/tianshu-ai/tianshu/commit/c3c5d8ac06e10cdd375446baccee46bee6e93285))
+* **ui:** table padding 20px→12px horizontal, 12→8px vertical ([4a46183](https://github.com/tianshu-ai/tianshu/commit/4a46183a61856159ef204bd853a304899774bac6))
+* **ui:** tool call bg opacity 30%→70% for visible tint ([a7e77a4](https://github.com/tianshu-ai/tianshu/commit/a7e77a407659208faf8a4830aa5748246a5d42cd))
+* **ui:** tool call bg use opaque bg-surface instead of transparent elevated ([e6b89b2](https://github.com/tianshu-ai/tianshu/commit/e6b89b2718ab96766adc1708c37d5378d462c5ef))
+* **ui:** tool call cards borderless to match message bubbles ([31a0411](https://github.com/tianshu-ai/tianshu/commit/31a041108a02b39b697861245fd0bba5fdd46c5d))
+* **ui:** WCAG AA contrast + tap targets + reduced motion + avatar ([7ac8915](https://github.com/tianshu-ai/tianshu/commit/7ac8915e9f8b5cc7f45629185bc700148ad8f3c3))
+* **ui:** WCAG AA contrast for all three themes ([49e76d9](https://github.com/tianshu-ai/tianshu/commit/49e76d906145b9dc4c9f41bf9a7fe8faaae77760))
+* **ui:** welcome screen — use avatar instead of emoji, plain text starters ([6ccd3c5](https://github.com/tianshu-ai/tianshu/commit/6ccd3c5c4221ccb42333082190aa8659a6c4dac9))
+* **ui:** welcome setup nudge — navigate to maintenance mode instead of sending message ([4fbaba4](https://github.com/tianshu-ai/tianshu/commit/4fbaba461ea1b138e8dcd786c04d3c4085f5215b))
+* **ui:** welcome starter prompts — Lucide icons instead of plain text ([f7c5563](https://github.com/tianshu-ai/tianshu/commit/f7c55634cadf66b2b0eb41fbbc8a5f94753a0685))
+
+
+### Reverts
+
+* remove suggested follow-ups feature ([c7608cf](https://github.com/tianshu-ai/tianshu/commit/c7608cfcb73d3a98ea3f436072fb7acb6a076e39))
+
 ## [0.79.0](https://github.com/tianshu-ai/tianshu/compare/v0.78.1...v0.79.0) (2026-10-01)
 
 
