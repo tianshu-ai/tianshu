@@ -96,7 +96,7 @@ export default function MessageAttachments({
           >
             <FileIcon size={12} className="text-fg-muted" />
             <span className="max-w-[12rem] truncate">{a.name ?? a.path}</span>
-            <span className="text-[10px] text-fg-faint">{formatSize(a.size)}</span>
+            <span className="text-xs text-fg-faint">{formatSize(a.size)}</span>
           </div>
         );
       })}

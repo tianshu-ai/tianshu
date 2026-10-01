@@ -194,7 +194,7 @@ export default function PluginManager({ open, onClose }: Props) {
           <TabButton active={tab === "installed"} onClick={() => setTab("installed")}>
             {t("plugin.tab.installed")}
             {plugins && (
-              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[9px] text-fg-muted">
+              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted">
                 {plugins.length}
               </span>
             )}
@@ -202,7 +202,7 @@ export default function PluginManager({ open, onClose }: Props) {
           <TabButton active={tab === "catalog"} onClick={() => setTab("catalog")}>
             {t("plugin.tab.catalog")}
             {catalog && (
-              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[9px] text-fg-muted">
+              <span className="ml-1.5 rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-muted">
                 {catalog.entries.length}
               </span>
             )}
@@ -482,10 +482,10 @@ function PluginCard({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-fg-default">{displayName}</span>
-          <code className="rounded bg-bg-raised px-1 py-0.5 text-[10px] text-fg-muted">
+          <code className="rounded bg-bg-raised px-1 py-0.5 text-xs text-fg-muted">
             {p.id}
           </code>
-          <span className="text-[10px] text-fg-fainter">v{p.version}</span>
+          <span className="text-xs text-fg-fainter">v{p.version}</span>
           <SourceBadge source={p.source} />
           <StateBadge state={p.state} />
         </div>
@@ -520,7 +520,7 @@ function CapabilityBadges({ entry }: { entry: PluginListEntry }) {
     return null;
   }
   return (
-    <div className="mt-1 flex flex-wrap gap-1.5 text-[10px]">
+    <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
       {provided.map((c) => (
         <span
           key={`p-${c}`}
@@ -623,12 +623,12 @@ function CatalogRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-fg-default">{entry.displayName}</span>
-          <code className="rounded bg-bg-raised px-1 py-0.5 text-[10px] text-fg-muted">
+          <code className="rounded bg-bg-raised px-1 py-0.5 text-xs text-fg-muted">
             {entry.id}
           </code>
-          <span className="text-[10px] text-fg-fainter">v{entry.latestVersion}</span>
+          <span className="text-xs text-fg-fainter">v{entry.latestVersion}</span>
           {entry.verified && (
-            <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[9px] uppercase text-success">
+            <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[11px] uppercase text-success">
               <ShieldCheck size={10} /> verified
             </span>
           )}
@@ -636,7 +636,7 @@ function CatalogRow({
             href={entry.repository}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-[10px] text-fg-faint hover:text-brand-400"
+            className="inline-flex items-center gap-1 text-xs text-fg-faint hover:text-brand-400"
           >
             {entry.author} <ExternalLink size={9} />
           </a>
@@ -647,7 +647,7 @@ function CatalogRow({
             {entry.tags.map((t) => (
               <span
                 key={t}
-                className="rounded bg-bg-raised px-1.5 py-px text-[9px] text-fg-faint"
+                className="rounded bg-bg-raised px-1.5 py-px text-[11px] text-fg-faint"
               >
                 {t}
               </span>
@@ -672,7 +672,7 @@ function SourceBadge({ source }: { source: PluginListEntry["source"] }) {
     source === "builtin"
       ? "bg-bg-raised text-fg-muted"
       : "bg-violet-900/50 text-violet-300";
-  return <span className={`rounded px-1.5 py-0.5 text-[9px] uppercase ${cls}`}>{source}</span>;
+  return <span className={`rounded px-1.5 py-0.5 text-[11px] uppercase ${cls}`}>{source}</span>;
 }
 
 function StateBadge({ state }: { state: PluginState }) {
@@ -680,25 +680,25 @@ function StateBadge({ state }: { state: PluginState }) {
   switch (state) {
     case "active":
       return (
-        <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[9px] uppercase text-success">
+        <span className="flex items-center gap-1 rounded border border-success/40 bg-success/15 px-1.5 py-0.5 text-[11px] uppercase text-success">
           <CheckCircle2 size={10} /> {t("plugin.state.active")}
         </span>
       );
     case "disabled":
       return (
-        <span className="flex items-center gap-1 rounded border border-border-default bg-bg-hover px-1.5 py-0.5 text-[9px] uppercase text-fg-muted">
+        <span className="flex items-center gap-1 rounded border border-border-default bg-bg-hover px-1.5 py-0.5 text-[11px] uppercase text-fg-muted">
           <Pause size={10} /> {t("plugin.state.disabled")}
         </span>
       );
     case "failed":
       return (
-        <span className="flex items-center gap-1 rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-[9px] uppercase text-danger">
+        <span className="flex items-center gap-1 rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-[11px] uppercase text-danger">
           <AlertTriangle size={10} /> {t("plugin.state.failed")}
         </span>
       );
     case "client-bundle-missing":
       return (
-        <span className="rounded border border-warning/40 bg-warning/15 px-1.5 py-0.5 text-[9px] uppercase text-warning">
+        <span className="rounded border border-warning/40 bg-warning/15 px-1.5 py-0.5 text-[11px] uppercase text-warning">
           {t("plugin.state.noClientBundle")}
         </span>
       );

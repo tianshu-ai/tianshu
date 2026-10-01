@@ -354,11 +354,11 @@ function SolutionIDE({
           ))}
         </select>
         {isCurrent ? (
-          <span className="rounded bg-info-fg/10 px-1.5 py-0.5 text-[10px] text-info-fg">
+          <span className="rounded bg-info-fg/10 px-1.5 py-0.5 text-xs text-info-fg">
             {t("ide.badge.liveMirror")}
           </span>
         ) : detail.isActive ? (
-          <span className="rounded bg-success-fg/15 px-1.5 py-0.5 text-[10px] font-medium text-success-fg">
+          <span className="rounded bg-success-fg/15 px-1.5 py-0.5 text-xs font-medium text-success-fg">
             {t("ide.badge.active")}
           </span>
         ) : null}

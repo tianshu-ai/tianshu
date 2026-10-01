@@ -373,7 +373,7 @@ function ConfigGroupCard({
     <section className="rounded-md border border-border-subtle bg-bg-elevated/30 p-4">
       <header className="flex flex-wrap items-center gap-2">
         {groupBadge && (
-          <span className="rounded border border-border-default bg-bg-raised/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+          <span className="rounded border border-border-default bg-bg-raised/60 px-1.5 py-0.5 font-mono text-xs font-semibold uppercase tracking-wide text-fg-muted">
             {groupBadge}
           </span>
         )}
@@ -521,7 +521,7 @@ function ConfigFieldRow({
         <label className="mb-1 block font-medium text-fg-default">
           {fLabel}
           {isSet ? (
-            <span className="ml-2 rounded bg-emerald-700/40 px-1.5 py-0.5 text-[10px] uppercase text-success">
+            <span className="ml-2 rounded bg-emerald-700/40 px-1.5 py-0.5 text-xs uppercase text-success">
               set
             </span>
           ) : null}

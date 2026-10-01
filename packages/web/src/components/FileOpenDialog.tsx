@@ -261,7 +261,7 @@ export default function FileOpenDialog(): ReactElement | null {
         {/* Sub-header keeps the file icon + full path under the
             modal's own title bar so users can see where the file
             lives, not just its basename. */}
-        <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-1.5 text-[10px] text-fg-faint">
+        <div className="flex items-center gap-2 border-b border-border-subtle px-4 py-1.5 text-xs text-fg-faint">
           <FileIcon size={12} className="shrink-0 text-fg-faint" />
           <span className="truncate font-mono" title={cleanedPath}>
             {cleanedPath}

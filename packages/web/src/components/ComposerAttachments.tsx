@@ -48,7 +48,7 @@ export default function ComposerAttachments() {
               <FileIcon size={12} className="text-fg-muted" />
             )}
             <span className="max-w-[12rem] truncate">{a.name}</span>
-            <span className="text-[10px] text-fg-faint">
+            <span className="text-xs text-fg-faint">
               {formatSize(a.size)}
             </span>
             <button

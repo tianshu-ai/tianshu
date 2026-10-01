@@ -328,7 +328,7 @@ function TreeRow({
           {node.label}
         </span>
         {node.count ? (
-          <span className="text-[10px] text-fg-muted">{node.count}</span>
+          <span className="text-xs text-fg-muted">{node.count}</span>
         ) : null}
         {node.badge ? <TreeBadge badge={node.badge} /> : null}
       </button>
@@ -349,7 +349,7 @@ function TreeBadge({
         : "bg-fg-muted/15 text-fg-muted";
   return (
     <span
-      className={`ml-auto rounded-full px-1.5 py-0.5 text-[9px] font-medium ${cls}`}
+      className={`ml-auto rounded-full px-1.5 py-0.5 text-[11px] font-medium ${cls}`}
     >
       {badge.text}
     </span>

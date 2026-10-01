@@ -395,7 +395,7 @@ function FilesPanel({ plugin }: PanelProps) {
         )}
 
         {list?.truncated && (
-          <div className="px-3 py-2 text-[10px] text-warning">
+          <div className="px-3 py-2 text-xs text-warning">
             {t("panel.truncated")}
           </div>
         )}
@@ -761,7 +761,7 @@ function FileAttachment({ attachment }: AttachmentRendererProps) {
     >
       <File size={12} className="text-fg-muted" />
       <span className="max-w-[12rem] truncate">{label}</span>
-      <span className="text-[10px] text-fg-faint">
+      <span className="text-xs text-fg-faint">
         {formatSize(attachment.size ?? 0, t)}
       </span>
     </div>

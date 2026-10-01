@@ -661,11 +661,11 @@ function LocalUsersSection() {
                   <span className="text-sm font-medium text-fg-default">{u.username}</span>
                   {u.email && <span className="text-[11px] text-fg-faint">{u.email}</span>}
                   {u.superAdmin ? (
-                    <span className="text-[10px] rounded bg-link/20 px-1.5 py-0.5 text-link">
+                    <span className="text-xs rounded bg-link/20 px-1.5 py-0.5 text-link">
                       {t("auth.users.superAdminBadge")}
                     </span>
                   ) : (
-                    <span className={`text-[10px] rounded px-1.5 py-0.5 ${
+                    <span className={`text-xs rounded px-1.5 py-0.5 ${
                       u.role === "admin"
                         ? "bg-link/20 text-link"
                         : "bg-bg-raised text-fg-faint"

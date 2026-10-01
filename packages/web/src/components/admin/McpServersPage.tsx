@@ -363,7 +363,7 @@ function ServerCard({
               {server.displayName}
             </span>
             <span
-              className={`rounded-sm px-1.5 py-0.5 text-[10px] ${
+              className={`rounded-sm px-1.5 py-0.5 text-xs ${
                 isUser ? "bg-blue-950 text-link" : "bg-bg-raised text-fg-muted"
               }`}
             >

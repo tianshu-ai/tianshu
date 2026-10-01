@@ -261,12 +261,12 @@ export default function UsagePage() {
                         </div>
                         <div className="flex gap-2 mt-0.5 flex-wrap">
                           {userModels.map((um) => (
-                            <span key={um.model} className="text-[9px] text-fg-fainter flex items-center gap-1">
+                            <span key={um.model} className="text-[11px] text-fg-fainter flex items-center gap-1">
                               <span className="inline-block w-1.5 h-1.5 rounded-full" style={{ backgroundColor: modelColorMap.get(um.model) ?? COLORS[0] }} />
                               {um.model}: {fmt(um.totalTokens)}
                             </span>
                           ))}
-                          <span className="text-[9px] text-fg-fainter">{u.messages} {t("usage.msgs")}</span>
+                          <span className="text-[11px] text-fg-fainter">{u.messages} {t("usage.msgs")}</span>
                         </div>
                       </div>
                     );

@@ -175,7 +175,7 @@ function BridgePanel(_props: PanelProps) {
                 onChange={(e) => setBrowserOn(e.target.checked)}
               />
               <span className="font-medium">{t("panel.browser")}</span>
-              <span className="text-[10px] text-fg-fainter">{t("panel.browserHint")}</span>
+              <span className="text-xs text-fg-fainter">{t("panel.browserHint")}</span>
             </label>
             {browserOn && (
               <div className="ml-6 flex flex-col gap-1">
@@ -187,7 +187,7 @@ function BridgePanel(_props: PanelProps) {
                     onChange={() => setEngine("own")}
                   />
                   <span>{t("panel.ownChrome")}</span>
-                  <span className="text-[10px] text-fg-fainter">
+                  <span className="text-xs text-fg-fainter">
                     {t("panel.ownChromeHint")}
                   </span>
                 </label>
@@ -199,7 +199,7 @@ function BridgePanel(_props: PanelProps) {
                     onChange={() => setEngine("stealth")}
                   />
                   <span>{t("panel.stealth")}</span>
-                  <span className="text-[10px] text-fg-fainter">
+                  <span className="text-xs text-fg-fainter">
                     {t("panel.stealthHint")}
                   </span>
                 </label>
@@ -210,7 +210,7 @@ function BridgePanel(_props: PanelProps) {
                     onChange={(e) => setHeadless(e.target.checked)}
                   />
                   <span>{t("panel.headless")}</span>
-                  <span className="text-[10px] text-fg-fainter">
+                  <span className="text-xs text-fg-fainter">
                     {t("panel.headlessHint")}
                   </span>
                 </label>
@@ -225,10 +225,10 @@ function BridgePanel(_props: PanelProps) {
                 onChange={(e) => setShellOn(e.target.checked)}
               />
               <span className="font-medium">{t("panel.shell")}</span>
-              <span className="text-[10px] text-fg-fainter">{t("panel.shellHint")}</span>
+              <span className="text-xs text-fg-fainter">{t("panel.shellHint")}</span>
             </label>
             {shellOn && (
-              <div className="ml-6 text-[10px] text-warning">{t("panel.shellWarning")}</div>
+              <div className="ml-6 text-xs text-warning">{t("panel.shellWarning")}</div>
             )}
           </div>
         </div>
@@ -246,7 +246,7 @@ function BridgePanel(_props: PanelProps) {
           >
             ↓ Download Tianshu Bridge
           </a>
-          <p className="mt-1 text-[10px] text-fg-fainter">
+          <p className="mt-1 text-xs text-fg-fainter">
             Available for Windows, macOS, and Linux. No Node.js required.
           </p>
         </div>
@@ -254,7 +254,7 @@ function BridgePanel(_props: PanelProps) {
         {/* Step 2 — Copy config to the app */}
         <div>
           <div className="mb-1 font-medium text-fg-default">Step 2 — Configure</div>
-          <div className="mb-0.5 text-[10px] text-fg-fainter">
+          <div className="mb-0.5 text-xs text-fg-fainter">
             Copy the config below, then paste it in the desktop app (click &quot;Paste config from clipboard&quot;).
           </div>
           <CmdBlock
@@ -265,12 +265,12 @@ function BridgePanel(_props: PanelProps) {
           />
 
           {info?.authEnabled && info.expiresAt && (
-            <p className="mt-2 text-[10px] text-fg-fainter">
+            <p className="mt-2 text-xs text-fg-fainter">
               {t("panel.tokenValid", { date: new Date(info.expiresAt).toLocaleDateString(dateLoc) })}
             </p>
           )}
           {info && !info.authEnabled && (
-            <p className="mt-2 text-[10px] text-fg-fainter">
+            <p className="mt-2 text-xs text-fg-fainter">
               {t("panel.authDisabled")}
             </p>
           )}
@@ -295,7 +295,7 @@ function BridgePanel(_props: PanelProps) {
                   <div className="flex items-center gap-1.5">
                     <Laptop size={12} className="text-brand-400" />
                     <span className="font-medium">{c.label || c.deviceId}</span>
-                    <span className="ml-auto text-[10px] text-fg-fainter">
+                    <span className="ml-auto text-xs text-fg-fainter">
                       {t("panel.devices.toolCount", { n: c.tools.length })}
                     </span>
                   </div>
@@ -304,7 +304,7 @@ function BridgePanel(_props: PanelProps) {
                       {c.tools.map((toolName) => (
                         <span
                           key={toolName}
-                          className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-muted"
+                          className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-muted"
                         >
                           {toolName}
                         </span>

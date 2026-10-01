@@ -173,7 +173,7 @@ export function DataSourceConfigForm({ plugin }: { plugin: PluginListEntry }) {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-[13px] font-medium text-fg-default">{name}</span>
-                <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-faint">
+                <span className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-faint">
                   {conn.type}
                 </span>
               </div>

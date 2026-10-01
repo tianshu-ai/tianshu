@@ -142,7 +142,7 @@ function Field({
 }): ReactElement {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-wide text-fg-muted">
+      <span className="text-xs uppercase tracking-wide text-fg-muted">
         {label}
       </span>
       {children}
@@ -262,10 +262,10 @@ function PluginsEditor({
               >
                 {p.displayName}
               </span>
-              <code className="text-[10px] text-fg-muted">{p.id}</code>
+              <code className="text-xs text-fg-muted">{p.id}</code>
               <OriginBadge origin={p.origin} t={t} />
               {p.state !== "active" ? (
-                <span className="rounded bg-danger-fg/10 px-1.5 py-0.5 text-[10px] text-danger-fg">
+                <span className="rounded bg-danger-fg/10 px-1.5 py-0.5 text-xs text-danger-fg">
                   {p.state}
                 </span>
               ) : null}
@@ -275,7 +275,7 @@ function PluginsEditor({
                 onClick={() =>
                   edits.setPluginsEnabled((prev) => toggleInSet(prev, p.id))
                 }
-                className={`ml-auto rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
+                className={`ml-auto rounded-md border px-2 py-0.5 text-xs font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
                   enabled
                     ? "border-border-subtle bg-bg-elevated text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"
                     : "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
@@ -352,7 +352,7 @@ function OverrideEditor({
     >
       <div className="flex items-center gap-2">
         <span
-          className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
             isOverridden
               ? "bg-warning-fg/15 text-warning-fg"
               : "bg-fg-muted/15 text-fg-muted"
@@ -365,7 +365,7 @@ function OverrideEditor({
             <button
               type="button"
               onClick={() => set(null)}
-              className="rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+              className="rounded border border-border-subtle px-2 py-0.5 text-xs hover:bg-bg-raised"
             >
               {t("editor.override.reset")}
             </button>
@@ -373,7 +373,7 @@ function OverrideEditor({
             <button
               type="button"
               onClick={() => set(defaultText)}
-              className="rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+              className="rounded border border-border-subtle px-2 py-0.5 text-xs hover:bg-bg-raised"
             >
               {t("editor.override.override")}
             </button>
@@ -450,7 +450,7 @@ function FragmentEditor({
           onClick={() =>
             edits.setFragments((prev) => prev.filter((x) => x.id !== fragmentId))
           }
-          className="self-start rounded border border-danger-fg/40 px-2 py-0.5 text-[10px] text-danger-fg hover:bg-danger-fg/5"
+          className="self-start rounded border border-danger-fg/40 px-2 py-0.5 text-xs text-danger-fg hover:bg-danger-fg/5"
         >
           {t("editor.fragment.remove")}
         </button>
@@ -501,13 +501,13 @@ function WorkersOverview({
               >
                 {e?.name || w.name}
               </span>
-              <code className="text-[10px] text-fg-muted">{w.slug}</code>
-              <span className="text-[10px] text-fg-muted">{w.kind}</span>
+              <code className="text-xs text-fg-muted">{w.slug}</code>
+              <span className="text-xs text-fg-muted">{w.kind}</span>
               <button
                 type="button"
                 disabled={isCurrent}
                 onClick={toggle}
-                className={`ml-auto rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
+                className={`ml-auto rounded-md border px-2 py-0.5 text-xs font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
                   excluded
                     ? "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
                     : "border-border-subtle bg-bg-raised text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"
@@ -600,7 +600,7 @@ function WorkerNodeEditor({
         <div className="rounded border border-border-subtle bg-bg-elevated">
           <div className="flex items-center gap-2 px-3 py-2 text-xs">
             <span
-              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                 isOverridden
                   ? "bg-warning-fg/15 text-warning-fg"
                   : "bg-fg-muted/15 text-fg-muted"
@@ -613,7 +613,7 @@ function WorkerNodeEditor({
                 <button
                   type="button"
                   onClick={() => set({ executionBias: null })}
-                  className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+                  className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-xs hover:bg-bg-raised"
                 >
                   {t("editor.override.reset")}
                 </button>
@@ -621,7 +621,7 @@ function WorkerNodeEditor({
                 <button
                   type="button"
                   onClick={() => set({ executionBias: defaultText })}
-                  className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-[10px] hover:bg-bg-raised"
+                  className="ml-auto rounded border border-border-subtle px-2 py-0.5 text-xs hover:bg-bg-raised"
                 >
                   {t("editor.override.override")}
                 </button>
@@ -686,13 +686,13 @@ function WorkerNodeEditor({
       sub={t("editor.worker.root.sub")}
     >
       <div className="flex items-center gap-2">
-        <code className="text-[10px] text-fg-muted">{worker.slug}</code>
-        <span className="text-[10px] text-fg-muted">{worker.kind}</span>
+        <code className="text-xs text-fg-muted">{worker.slug}</code>
+        <span className="text-xs text-fg-muted">{worker.kind}</span>
         <button
           type="button"
           disabled={isCurrent}
           onClick={() => set({ enabled: !edit.enabled })}
-          className={`ml-auto rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
+          className={`ml-auto rounded-md border px-2 py-0.5 text-xs font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
             excluded
               ? "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
               : "border-border-subtle bg-bg-elevated text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"
@@ -775,7 +775,7 @@ function OriginBadge({ origin, t }: { origin: BlockOrigin; t: Translator }): Rea
   const { label, className } = map[origin];
   return (
     <span
-      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${className}`}
+      className={`rounded px-1.5 py-0.5 text-xs font-medium ${className}`}
     >
       {label}
     </span>
@@ -818,7 +818,7 @@ export function ResourcePicker({
         <span className="text-sm font-semibold">{title}</span>
         <span className="text-[11px] text-fg-muted">{options.length}</span>
         {excludedCount > 0 ? (
-          <span className="ml-auto rounded-full bg-danger-fg/10 px-2 py-0.5 text-[10px] font-medium text-danger-fg">
+          <span className="ml-auto rounded-full bg-danger-fg/10 px-2 py-0.5 text-xs font-medium text-danger-fg">
             {t("resource.excludedCount", { n: excludedCount })}
           </span>
         ) : null}
@@ -832,7 +832,7 @@ export function ResourcePicker({
                 <span className="text-[11px] font-semibold text-fg-default">
                   {groupLabel(key, t)}
                 </span>
-                <span className="rounded-full bg-fg-muted/10 px-1.5 text-[10px] text-fg-muted">
+                <span className="rounded-full bg-fg-muted/10 px-1.5 text-xs text-fg-muted">
                   {items.length}
                 </span>
               </div>
@@ -901,7 +901,7 @@ function ResourceRow({
           type="button"
           disabled={disabled}
           onClick={() => onToggle(o.name)}
-          className={`ml-auto rounded-md border px-2 py-0.5 text-[10px] font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
+          className={`ml-auto rounded-md border px-2 py-0.5 text-xs font-medium shadow-sm transition-colors active:translate-y-px disabled:opacity-50 ${
             isExcluded
               ? "border-success-fg/40 bg-success-fg/10 text-success-fg hover:bg-success-fg/20"
               : "border-border-subtle bg-bg-elevated text-fg-default hover:border-danger-fg/40 hover:bg-danger-fg/10 hover:text-danger-fg"

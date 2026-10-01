@@ -530,7 +530,7 @@ function ProviderCard({
           {t("models.modelCount", { n: models.length })}
         </span>
         {provider.hasApiKey && (
-          <span className="flex items-center gap-1 rounded-full bg-bg-raised px-2 py-0.5 text-[10px] text-fg-muted">
+          <span className="flex items-center gap-1 rounded-full bg-bg-raised px-2 py-0.5 text-xs text-fg-muted">
             <KeyRound size={10} /> {t("models.keySet")}
           </span>
         )}

@@ -261,7 +261,7 @@ function BoardPanel(_props: PanelProps) {
           <span className="text-xs">
             {loading ? t("panel.loading") : t("panel.noBoards")}
           </span>
-          <span className="mt-1 text-[10px] text-fg-fainter">
+          <span className="mt-1 text-xs text-fg-fainter">
             {t("panel.addHint")}
           </span>
         </div>

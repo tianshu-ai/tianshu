@@ -58,7 +58,7 @@ export function SolutionInspector({
                 className="flex items-center gap-1.5 py-0.5 font-mono text-[11px]"
               >
                 <span
-                  className={`rounded px-1 text-[9px] ${
+                  className={`rounded px-1 text-[11px] ${
                     e.op === "add"
                       ? "bg-success-fg/15 text-success-fg"
                       : e.op === "remove"

@@ -95,7 +95,7 @@ export default function UsageMessageList({ day, onBack }: { day: string; onBack:
               ].map((s) => (
                 <div key={s.label} className="rounded bg-bg-raised px-2 py-1.5">
                   <div className="text-sm font-semibold text-fg-default">{s.value}</div>
-                  <div className="text-[9px] text-fg-faint">{s.label}</div>
+                  <div className="text-[11px] text-fg-faint">{s.label}</div>
                 </div>
               ))}
             </div>
@@ -154,7 +154,7 @@ export default function UsageMessageList({ day, onBack }: { day: string; onBack:
                   <MessageSquare size={11} className="text-fg-faint shrink-0 ml-1" />
                   <span className="text-fg-fainter">{ts(m.createdAt)}</span>
                 </div>
-                <div className="flex items-center gap-3 mt-0.5 text-[10px] text-fg-faint">
+                <div className="flex items-center gap-3 mt-0.5 text-xs text-fg-faint">
                   <span>In: {fmt(m.inputTokens)}</span>
                   <span>Out: {fmt(m.outputTokens)}</span>
                   <span className="font-semibold text-fg-muted">Total: {fmt(m.totalTokens)}</span>

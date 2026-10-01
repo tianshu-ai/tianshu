@@ -353,11 +353,11 @@ export function WorkerAgentsPage(): ReactElement {
                     </td>
                     <td className="px-3 py-2">
                       {a.source === "builtin" ? (
-                        <span className="rounded bg-indigo-950 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-300">
+                        <span className="rounded bg-indigo-950 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-indigo-300">
                           {t("agents.source.builtin")}
                         </span>
                       ) : (
-                        <span className="rounded bg-bg-raised px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-fg-muted">
+                        <span className="rounded bg-bg-raised px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-fg-muted">
                           {t("agents.source.user")}
                         </span>
                       )}
@@ -515,7 +515,7 @@ function DetailSection({
   if (data.kind === "explicit") {
     badge = (
       <span
-        className="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-success"
+        className="rounded bg-emerald-950 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-success"
         title={t("agents.badge.explicitTitle")}
       >
         {t("agents.badge.explicit")}
@@ -524,7 +524,7 @@ function DetailSection({
   } else if (data.kind === "effective") {
     badge = (
       <span
-        className="rounded bg-amber-950 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-warning"
+        className="rounded bg-amber-950 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-warning"
         title={t("agents.badge.effectiveTitle")}
       >
         {t("agents.badge.effective")}
@@ -538,7 +538,7 @@ function DetailSection({
           {title}
         </span>
         {data.kind !== "unknown" && (
-          <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-muted">
+          <span className="rounded bg-bg-raised px-1.5 py-0.5 text-xs text-fg-muted">
             {data.items.length}
           </span>
         )}

@@ -699,11 +699,11 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                 {building ? t("builds.log.inProgress") : t("builds.log.last")}
               </span>
               {building && elapsedMs > 0 && (
-                <span className="text-[10px] text-fg-faint">
+                <span className="text-xs text-fg-faint">
                   {t("builds.log.elapsed", { n: (elapsedMs / 1000).toFixed(0) })}
                 </span>
               )}
-              <span className="text-[10px] text-fg-fainter">
+              <span className="text-xs text-fg-fainter">
                 {buildLog.length === 1
                   ? t("builds.log.line", { n: buildLog.length })
                   : t("builds.log.lines", { n: buildLog.length })}
@@ -741,17 +741,17 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
                       {b.buildId}
                     </code>
                     {(b.roles?.browser ?? b.published) && (
-                      <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-[10px] uppercase text-success">
+                      <span className="flex items-center gap-1 rounded bg-emerald-900/40 px-1.5 py-0.5 text-xs uppercase text-success">
                         <CheckCircle2 size={10} /> {t("builds.role.browser")}
                       </span>
                     )}
                     {b.roles?.task && (
-                      <span className="flex items-center gap-1 rounded bg-sky-900/40 px-1.5 py-0.5 text-[10px] uppercase text-sky-300">
+                      <span className="flex items-center gap-1 rounded bg-sky-900/40 px-1.5 py-0.5 text-xs uppercase text-sky-300">
                         <CheckCircle2 size={10} /> {t("builds.role.task")}
                       </span>
                     )}
                     <span className="text-[11px] text-fg-muted" title={b.basedOnSnapshot ? t("builds.layeredTitle", { snapshot: b.basedOnSnapshot }) : t("builds.imageTitle", { image: b.baseImage })}>{b.basedOnSnapshot ? `↳ ${b.basedOnSnapshot.split('-build-').pop() ?? b.basedOnSnapshot}` : b.baseImage}</span>
-                    <span className="text-[10px] text-fg-fainter">
+                    <span className="text-xs text-fg-fainter">
                       {(b.durationMs / 1000).toFixed(1)}s · {formatRelative(b.builtAt, t)}
                     </span>
                   </div>
@@ -1074,7 +1074,7 @@ function ShellSection() {
       </div>
 
       <div className="rounded-md border border-border-subtle bg-bg-base p-2">
-        <div className="mb-1.5 flex flex-wrap items-center gap-2 text-[10px] text-fg-faint">
+        <div className="mb-1.5 flex flex-wrap items-center gap-2 text-xs text-fg-faint">
           <span>{t("shell.target")}</span>
           <select
             value={target}
@@ -1145,7 +1145,7 @@ function ShellSection() {
             </button>
           )}
         </div>
-        <p className="mt-1 text-[10px] text-fg-fainter">
+        <p className="mt-1 text-xs text-fg-fainter">
           {t("shell.footer.target")} <strong className="text-fg-muted">{targetLabel}</strong>
           {t("shell.footer.hints")}
         </p>
@@ -1173,7 +1173,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         )}
         <code className="flex-1 break-all text-fg-default">{entry.command}</code>
         <span
-          className={`rounded px-1 py-0.5 text-[9px] uppercase tracking-wide ${
+          className={`rounded px-1 py-0.5 text-[11px] uppercase tracking-wide ${
             entry.target === "live"
               ? "bg-emerald-900/40 text-success"
               : "bg-amber-900/40 text-warning"
@@ -1186,13 +1186,13 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         >
           {entry.target === "live" ? t("shellEntry.live") : t("shellEntry.preview", { target: entry.target })}
         </span>
-        <span className="text-[9px] text-fg-fainter">{t("shellEntry.cwd", { workdir: entry.workdir })}</span>
+        <span className="text-[11px] text-fg-fainter">{t("shellEntry.cwd", { workdir: entry.workdir })}</span>
         {result && (
           <span
             className={
               ok
-                ? "rounded bg-emerald-900/40 px-1.5 py-0.5 text-[9px] text-success"
-                : "rounded bg-rose-900/40 px-1.5 py-0.5 text-[9px] text-danger"
+                ? "rounded bg-emerald-900/40 px-1.5 py-0.5 text-[11px] text-success"
+                : "rounded bg-rose-900/40 px-1.5 py-0.5 text-[11px] text-danger"
             }
           >
             {t("shellEntry.exit", { code: result.exitCode })}
@@ -1222,7 +1222,7 @@ function ShellEntryView({ entry }: { entry: ShellEntry }) {
         </div>
       )}
       {result && !result.stdout && !result.stderr && !failed && (
-        <p className="text-[10px] italic text-fg-faint">{t("shellEntry.noOutput")}</p>
+        <p className="text-xs italic text-fg-faint">{t("shellEntry.noOutput")}</p>
       )}
     </div>
   );
@@ -1509,7 +1509,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
       {entries !== null && entries.length > 0 && (
         <div className="overflow-hidden rounded-md border border-border-subtle">
           <table className="w-full text-[11px]">
-            <thead className="bg-bg-elevated/60 text-[10px] uppercase tracking-wide text-fg-faint">
+            <thead className="bg-bg-elevated/60 text-xs uppercase tracking-wide text-fg-faint">
               <tr>
                 <th className="px-3 py-1.5 text-left">{t("taskPool.col.state")}</th>
                 <th className="px-3 py-1.5 text-left">{t("taskPool.col.sandbox")}</th>
@@ -1524,7 +1524,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                   <td className="px-3 py-1.5">
                     <PoolStateChip state={e.poolState} />
                   </td>
-                  <td className="px-3 py-1.5 font-mono text-[10px] text-fg-muted">
+                  <td className="px-3 py-1.5 font-mono text-xs text-fg-muted">
                     <code
                       className="cursor-pointer hover:text-fg-default"
                       title={t("taskPool.copyTitle")}
@@ -1537,10 +1537,10 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                       {e.sandboxName}
                     </code>
                   </td>
-                  <td className="px-3 py-1.5 font-mono text-[10px] text-fg-faint">
+                  <td className="px-3 py-1.5 font-mono text-xs text-fg-faint">
                     {e.taskId.slice(0, 8)}…
                   </td>
-                  <td className="px-3 py-1.5 text-[10px] text-fg-faint">
+                  <td className="px-3 py-1.5 text-xs text-fg-faint">
                     {e.createdAt
                       ? formatRelative(e.createdAt, t)
                       : t("taskPool.createdEmpty")}
@@ -1550,7 +1550,7 @@ function TaskPoolSection({ refreshTick }: { refreshTick: number }) {
                       type="button"
                       onClick={() => void destroy(e.sandboxName)}
                       disabled={destroying === e.sandboxName}
-                      className="flex items-center gap-1 rounded border border-border-subtle px-2 py-0.5 text-[10px] text-danger hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="flex items-center gap-1 rounded border border-border-subtle px-2 py-0.5 text-xs text-danger hover:bg-rose-950/40 disabled:cursor-not-allowed disabled:opacity-40"
                       title={
                         e.poolState === "running"
                           ? t("taskPool.destroy.runningTitle")
@@ -1588,7 +1588,7 @@ function PoolStateChip({ state }: { state: string }) {
             : "bg-bg-elevated/30 text-fg-muted border-border-subtle";
   return (
     <span
-      className={`inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wide ${className}`}
+      className={`inline-flex items-center rounded border px-1.5 py-0.5 font-mono text-xs uppercase tracking-wide ${className}`}
     >
       {state}
     </span>

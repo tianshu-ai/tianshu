@@ -203,7 +203,7 @@ function DataSourcePanel(_props: PanelProps) {
           }}
         />
         <div className="flex items-center justify-between px-3 py-1.5">
-          <span className="text-[10px] text-fg-fainter">{t("panel.hintRun")}</span>
+          <span className="text-xs text-fg-fainter">{t("panel.hintRun")}</span>
           <button
             type="button"
             onClick={runQuery}
@@ -232,7 +232,7 @@ function DataSourcePanel(_props: PanelProps) {
 
       {/* Status bar */}
       {result && (
-        <div className="flex items-center justify-between border-t border-border-subtle px-3 py-1 text-[10px] text-fg-faint">
+        <div className="flex items-center justify-between border-t border-border-subtle px-3 py-1 text-xs text-fg-faint">
           <span>{t("panel.rowCount", { n: result.rowCount })}</span>
           {result.durationMs !== undefined && <span>{result.durationMs}ms</span>}
         </div>
@@ -320,7 +320,7 @@ function ResultTable({ result }: { result: QueryResult }) {
     <div className="flex flex-1 flex-col overflow-hidden">
       {/* Filter count bar */}
       {activeFilters > 0 && (
-        <div className="flex items-center gap-2 border-b border-border-subtle bg-bg-raised/30 px-3 py-1 text-[10px] text-fg-muted">
+        <div className="flex items-center gap-2 border-b border-border-subtle bg-bg-raised/30 px-3 py-1 text-xs text-fg-muted">
           <Filter size={10} />
           <span>{t("panel.filterActive", { active: activeFilters, filtered: processedRows.length, total: rows.length })}</span>
           <button
@@ -375,7 +375,7 @@ function ResultTable({ result }: { result: QueryResult }) {
                       {filters[col] && (
                         <button
                           type="button"
-                          className="mt-1 w-full rounded px-2 py-0.5 text-[10px] text-fg-muted hover:bg-bg-hover"
+                          className="mt-1 w-full rounded px-2 py-0.5 text-xs text-fg-muted hover:bg-bg-hover"
                           onClick={() => { setFilters((p) => { const n = { ...p }; delete n[col]; return n; }); setFilterOpen(null); }}
                         >
                           {t("panel.clearFilter")}

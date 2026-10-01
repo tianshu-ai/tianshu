@@ -553,7 +553,7 @@ function WorkboardPanel(_props: PanelProps) {
         <button
           type="button"
           onClick={() => void ctrl.reload()}
-          className="text-[10px] uppercase tracking-wide text-fg-muted hover:text-fg-default"
+          className="text-xs uppercase tracking-wide text-fg-muted hover:text-fg-default"
         >
           {t("panel.refresh")}
         </button>
@@ -568,7 +568,7 @@ function WorkboardPanel(_props: PanelProps) {
       )}
 
       {ctrl.error && (
-        <div className="px-3 py-1.5 text-[10px] bg-red-900/40 border-b border-red-800 text-red-100 flex-shrink-0">
+        <div className="px-3 py-1.5 text-xs bg-red-900/40 border-b border-red-800 text-red-100 flex-shrink-0">
           {ctrl.error}
         </div>
       )}
@@ -833,7 +833,7 @@ function KanbanColumn({
                 : column.label}
         </span>
         <span
-          className={`ml-auto ${compact ? "text-[10px]" : "text-[11px]"} text-fg-faint`}
+          className={`ml-auto ${compact ? "text-xs" : "text-[11px]"} text-fg-faint`}
         >
           {tasks.length}
         </span>
@@ -880,7 +880,7 @@ function KanbanColumn({
 
         {!showAdd && tasks.length === 0 && (
           <li
-            className={`text-center text-[10px] text-fg-fainter py-3 ${
+            className={`text-center text-xs text-fg-fainter py-3 ${
               column.status === "ready"
                 ? "cursor-pointer hover:text-fg-muted"
                 : ""
@@ -993,13 +993,13 @@ const BoardCard = memo(function BoardCard({
               {task.title}
             </span>
             {task.priority > 0 && (
-              <span className="text-[9px] px-1 rounded bg-amber-900/50 text-amber-100">
+              <span className="text-[11px] px-1 rounded bg-amber-900/50 text-amber-100">
                 p{task.priority}
               </span>
             )}
             {task.workerAgentId && (
               <span
-                className="text-[9px] px-1 rounded bg-indigo-900/50 text-indigo-100"
+                className="text-[11px] px-1 rounded bg-indigo-900/50 text-indigo-100"
                 title={t("panel.card.assigneeTitle", { slug: task.workerAgentId })}
               >
                 @{agentNames.get(task.workerAgentId) ?? task.workerAgentId}
@@ -1010,20 +1010,20 @@ const BoardCard = memo(function BoardCard({
               // (kind id) without a workerAgentId. Show it so old
               // records aren't blank.
               <span
-                className="text-[9px] px-1 rounded bg-bg-raised text-fg-muted"
+                className="text-[11px] px-1 rounded bg-bg-raised text-fg-muted"
                 title={t("panel.card.legacyRoleTitle")}
               >
                 {task.workerRole}
               </span>
             )}
             {task.project && task.project !== PROJECT_INBOX_KEY && (
-              <span className="text-[9px] px-1 rounded bg-bg-raised text-fg-muted">
+              <span className="text-[11px] px-1 rounded bg-bg-raised text-fg-muted">
                 #{task.project}
               </span>
             )}
             {(task.dependsOn?.length ?? 0) > 0 && (
               <span
-                className={`inline-flex items-center gap-0.5 text-[9px] px-1 rounded border ${
+                className={`inline-flex items-center gap-0.5 text-[11px] px-1 rounded border ${
                   meta.blocked
                     ? "text-indigo-200 bg-indigo-500/15 border-indigo-500/40"
                     : "text-fg-muted bg-bg-hover/30 border-border-default"
@@ -1051,7 +1051,7 @@ const BoardCard = memo(function BoardCard({
           </div>
           {(task.labels ?? []).includes("awaiting-intervention") && (
             <div
-              className="mt-1 flex items-start gap-1 rounded border border-rose-500/50 bg-rose-500/10 px-1.5 py-1 text-[10px] text-danger"
+              className="mt-1 flex items-start gap-1 rounded border border-rose-500/50 bg-rose-500/10 px-1.5 py-1 text-xs text-danger"
               title={task.interventionReason ?? task.failureReason ?? ""}
               onClick={(e) => e.stopPropagation()}
             >
@@ -1097,7 +1097,7 @@ const BoardCard = memo(function BoardCard({
           )}
           {(task.labels ?? []).includes("stalled") && (
             <div
-              className="mt-1 flex items-start gap-1 rounded border border-orange-500/40 bg-orange-500/5 px-1.5 py-1 text-[10px] text-orange-200"
+              className="mt-1 flex items-start gap-1 rounded border border-orange-500/40 bg-orange-500/5 px-1.5 py-1 text-xs text-orange-200"
               title={task.failureReason ?? ""}
               onClick={(e) => e.stopPropagation()}
             >
@@ -1136,7 +1136,7 @@ const BoardCard = memo(function BoardCard({
               className="mt-1 flex items-center gap-1.5"
               onClick={(e) => e.stopPropagation()}
             >
-              <span className="inline-block rounded border border-yellow-500/40 bg-yellow-500/5 px-1.5 py-px text-[10px] text-yellow-200">
+              <span className="inline-block rounded border border-yellow-500/40 bg-yellow-500/5 px-1.5 py-px text-xs text-yellow-200">
                 {t("panel.card.draftSkip")}
               </span>
               <button
@@ -1163,7 +1163,7 @@ const BoardCard = memo(function BoardCard({
           )}
           {task.resultSummary && !expanded && (
             <div
-              className={`${compact ? "text-[10px]" : "text-[10.5px]"} text-success/90 mt-0.5 italic line-clamp-2 whitespace-pre-line`}
+              className={`${compact ? "text-xs" : "text-[10.5px]"} text-success/90 mt-0.5 italic line-clamp-2 whitespace-pre-line`}
             >
               → {task.resultSummary}
             </div>
@@ -1218,7 +1218,7 @@ const BoardCard = memo(function BoardCard({
                 {meta.deps.map((d) => (
                   <li
                     key={d.id}
-                    className="text-[10px] flex items-center gap-1"
+                    className="text-xs flex items-center gap-1"
                   >
                     {d.status === "done" ? (
                       <CheckCircle2 className="w-2.5 h-2.5 text-success shrink-0" />
@@ -1234,7 +1234,7 @@ const BoardCard = memo(function BoardCard({
                     >
                       {d.title}
                     </span>
-                    <span className="ml-auto text-[9px] text-fg-fainter shrink-0">
+                    <span className="ml-auto text-[11px] text-fg-fainter shrink-0">
                       {d.status.replace("_", " ")}
                     </span>
                   </li>
@@ -1355,7 +1355,7 @@ function ExecutionSection({ task }: { task: Task }) {
             e.stopPropagation();
             setOpen(true);
           }}
-          className="inline-flex items-center gap-1.5 rounded border border-border-default px-1.5 py-0.5 text-[10px] text-fg-muted hover:border-border-strong hover:bg-bg-raised"
+          className="inline-flex items-center gap-1.5 rounded border border-border-default px-1.5 py-0.5 text-xs text-fg-muted hover:border-border-strong hover:bg-bg-raised"
         >
           <ScrollText className="w-3 h-3" />
           {t("panel.execution.viewTranscript")}
@@ -1509,7 +1509,7 @@ function ExecutionDialog({
         // selection wins.
         onDragStart={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-[10px] text-fg-faint">
+        <header className="flex items-center gap-2 border-b border-border-subtle px-4 py-2 text-xs text-fg-faint">
           <ScrollText className="h-3.5 w-3.5 text-fg-faint" />
           <div className="flex items-center gap-0.5">
             <button
@@ -1588,7 +1588,7 @@ function ExecutionDialog({
                 </div>
               )}
               {rawLog !== null && rawLog.trim() !== "" && (
-                <pre className="whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-fg-muted">
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-fg-muted">
                   {rawLog}
                 </pre>
               )}
@@ -1681,7 +1681,7 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
       <div
         className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}
       >
-        <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-faint">
+        <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
           {isUser ? (
             <User className="h-3 w-3" />
           ) : (
@@ -1818,7 +1818,7 @@ function Section({
 }) {
   return (
     <div>
-      <div className="text-[9px] uppercase tracking-wide text-fg-faint mb-0.5">
+      <div className="text-[11px] uppercase tracking-wide text-fg-faint mb-0.5">
         {label}
       </div>
       {children}
@@ -2053,7 +2053,7 @@ function FieldRow({
 }) {
   return (
     <label className="block">
-      <span className="block text-[9px] uppercase tracking-wide text-fg-faint mb-0.5">
+      <span className="block text-[11px] uppercase tracking-wide text-fg-faint mb-0.5">
         {label}
       </span>
       {children}
@@ -2121,7 +2121,7 @@ function DependencyPicker({
             return (
               <span
                 key={id}
-                className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded border ${
+                className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded border ${
                   done
                     ? "text-success bg-success/10 border-success/30"
                     : "text-indigo-200 bg-indigo-500/15 border-indigo-500/40"
@@ -2268,7 +2268,7 @@ function WorkerStatusRow({
         <span
           key={w.agentId}
           title={`Type: ${w.kind}\nAgent: ${w.name}`}
-          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border font-mono uppercase tracking-wide ${
+          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs border font-mono uppercase tracking-wide ${
             w.busy
               ? "bg-blue-900/40 border-blue-700 text-blue-100"
               : "bg-bg-elevated border-border-default text-fg-muted"
@@ -2292,7 +2292,7 @@ function WorkerStatusRow({
       <button
         type="button"
         onClick={onNudge}
-        className="ml-auto text-[10px] uppercase tracking-wide text-fg-muted hover:text-fg-default"
+        className="ml-auto text-xs uppercase tracking-wide text-fg-muted hover:text-fg-default"
       >
         {t("panel.workers.nudge")}
       </button>
@@ -2370,10 +2370,10 @@ function TaskModal({
       <div className="flex min-h-0 flex-1 flex-col">
         <header className="px-4 py-3 border-b border-border-subtle flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <span className="text-[10px] uppercase text-fg-faint tracking-wide">
+            <span className="text-xs uppercase text-fg-faint tracking-wide">
               {t("panel.modal.task")}
             </span>
-            <span className="text-[10px] text-fg-fainter font-mono truncate">
+            <span className="text-xs text-fg-fainter font-mono truncate">
               {task.id}
             </span>
             <button
@@ -2389,11 +2389,11 @@ function TaskModal({
               className="flex items-center gap-1.5"
               title={t("panel.modal.sandboxTitle")}
             >
-              <span className="text-[10px] uppercase text-fg-faint tracking-wide">
+              <span className="text-xs uppercase text-fg-faint tracking-wide">
                 {t("panel.modal.sandbox")}
               </span>
               <code
-                className="text-[10px] text-fg-faint font-mono truncate cursor-pointer hover:text-fg-muted"
+                className="text-xs text-fg-faint font-mono truncate cursor-pointer hover:text-fg-muted"
                 onClick={(e) => {
                   if (!task.sandboxName) return;
                   void navigator.clipboard
@@ -2417,7 +2417,7 @@ function TaskModal({
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3 text-xs">
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
+            <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
               {t("panel.modal.title")}
             </label>
             <input
@@ -2427,7 +2427,7 @@ function TaskModal({
             />
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
+            <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
               {t("panel.modal.description")}
             </label>
             <textarea
@@ -2439,7 +2439,7 @@ function TaskModal({
           </div>
           <div className="grid grid-cols-3 gap-2">
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
+              <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
                 {t("panel.modal.project")}
               </label>
               <input
@@ -2450,7 +2450,7 @@ function TaskModal({
               />
             </div>
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
+              <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
                 {t("panel.modal.priority")}
               </label>
               <input
@@ -2461,7 +2461,7 @@ function TaskModal({
               />
             </div>
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
+              <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
                 {t("panel.modal.workerRole")}
               </label>
               <input
@@ -2473,7 +2473,7 @@ function TaskModal({
             </div>
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
+            <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
               {t("panel.modal.status")}
             </label>
             <div className="flex flex-wrap gap-1">
@@ -2483,7 +2483,7 @@ function TaskModal({
                   type="button"
                   disabled={busy || s === task.status}
                   onClick={() => void onPatch({ status: s })}
-                  className={`text-[10px] px-2 py-1 rounded border ${
+                  className={`text-xs px-2 py-1 rounded border ${
                     s === task.status
                       ? "bg-blue-700/40 border-blue-600 text-blue-100 cursor-default"
                       : "border-border-default text-fg-muted hover:bg-bg-raised hover:text-fg-default"
@@ -2495,7 +2495,7 @@ function TaskModal({
             </div>
           </div>
           <div>
-            <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
+            <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
               {t("panel.modal.dependsOn")}
             </label>
             <DependencyPicker
@@ -2508,7 +2508,7 @@ function TaskModal({
           </div>
           {task.resultSummary && (
             <div>
-              <label className="block text-[10px] uppercase tracking-wide text-fg-faint mb-1">
+              <label className="block text-xs uppercase tracking-wide text-fg-faint mb-1">
                 {t("panel.modal.result")}
               </label>
               <div className="bg-bg-elevated border border-border-subtle rounded px-2 py-1.5 text-success italic whitespace-pre-line">
@@ -2516,7 +2516,7 @@ function TaskModal({
               </div>
             </div>
           )}
-          <div className="grid grid-cols-3 gap-2 text-[10px] text-fg-faint border-t border-border-subtle pt-2">
+          <div className="grid grid-cols-3 gap-2 text-xs text-fg-faint border-t border-border-subtle pt-2">
             <div>
               {t("panel.modal.created")}
               <div className="text-fg-muted">
@@ -2678,7 +2678,7 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
         <span className="flex-1 text-sm font-medium text-fg-muted">
           {t("workers.title")}
         </span>
-        <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[9px] text-fg-fainter">
+        <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-fainter">
           {t("workers.busyCount", {
             busy: busyCount,
             total: realWorkers.length,
@@ -2687,7 +2687,7 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
       </div>
       <div className="space-y-1.5">
         {realWorkers.length === 0 ? (
-          <div className="text-[10px] text-fg-fainter px-1">
+          <div className="text-xs text-fg-fainter px-1">
             {t("workers.empty")}
           </div>
         ) : (
@@ -2733,11 +2733,11 @@ function SidebarWorkerRow({
           {name}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="truncate rounded bg-bg-raised/80 px-1 py-px font-mono text-[9px] font-semibold uppercase tracking-wide text-fg-muted">
+          <span className="truncate rounded bg-bg-raised/80 px-1 py-px font-mono text-[11px] font-semibold uppercase tracking-wide text-fg-muted">
             {kind}
           </span>
           <span
-            className={`rounded px-1 py-px text-[9px] ${
+            className={`rounded px-1 py-px text-[11px] ${
               busy
                 ? "bg-blue-900/40 text-blue-100 border border-blue-700"
                 : "bg-bg-raised/60 text-fg-fainter"

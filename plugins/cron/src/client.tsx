@@ -258,7 +258,7 @@ function CalendarPanel(_props: PanelProps) {
 
         <div className="grid grid-cols-7 mb-0.5">
           {SHORT_DAY_KEYS.map((k) => (
-            <div key={k} className="text-center text-[10px] text-fg-fainter py-0.5">
+            <div key={k} className="text-center text-xs text-fg-fainter py-0.5">
               {t(k)}
             </div>
           ))}
@@ -368,7 +368,7 @@ function CalendarPanel(_props: PanelProps) {
               day: "numeric",
             })}
           </div>
-          <div className="text-[10px] text-fg-faint mt-0.5">
+          <div className="text-xs text-fg-faint mt-0.5">
             {selectedJobs.length > 0
               ? selectedJobs.length > 1
                 ? t("agenda.jobCountMany", { n: selectedJobs.length })
@@ -435,7 +435,7 @@ function CalendarPanel(_props: PanelProps) {
                     >
                       {j.title}
                     </div>
-                    <div className="text-[10px] text-fg-faint flex items-center gap-1 mt-0.5 flex-wrap">
+                    <div className="text-xs text-fg-faint flex items-center gap-1 mt-0.5 flex-wrap">
                       {j.scheduleType === "cron" ? <Repeat size={9} /> : <Clock size={9} />}
                       <span>{j.scheduleType === "cron" ? t("job.recurring") : t("job.oneTime")}</span>
                       <span className="text-fg-fainter">·</span>
@@ -466,7 +466,7 @@ function CalendarPanel(_props: PanelProps) {
                       )}
                     </div>
                     {msg && (
-                      <div className="text-[10px] text-fg-faint mt-1 truncate">“{msg}”</div>
+                      <div className="text-xs text-fg-faint mt-1 truncate">“{msg}”</div>
                     )}
                   </div>
                   <button

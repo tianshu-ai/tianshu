@@ -498,7 +498,7 @@ function WeChatPanel(_props: PanelProps) {
                 </button>
               </div>
               {/* Binding id on its own line (it's long + monospace). */}
-              <div className="mt-0.5 truncate font-mono text-[10px] text-fg-faint" title={b.id}>
+              <div className="mt-0.5 truncate font-mono text-xs text-fg-faint" title={b.id}>
                 {b.id}
               </div>
               {/* Meta chips: status / model / date, wrapping cleanly. */}
@@ -506,7 +506,7 @@ function WeChatPanel(_props: PanelProps) {
                 <StatusPill status={b.status} detail={b.statusDetail} />
                 {typeof b.config.modelId === "string" && b.config.modelId && (
                   <span
-                    className="rounded bg-bg-hover px-1.5 py-px font-mono text-[10px] text-fg-muted"
+                    className="rounded bg-bg-hover px-1.5 py-px font-mono text-xs text-fg-muted"
                     title={t("page.bound.modelTitle")}
                   >
                     {String(b.config.modelId)}
@@ -625,12 +625,12 @@ function WeChatSidebarSection(_props: SidebarSectionProps) {
             }`}
             title={s.title ?? s.channelChatId}
           >
-            <span className="flex-shrink-0 rounded bg-success/15 px-1 py-px text-[9px] uppercase tracking-wider text-success">
+            <span className="flex-shrink-0 rounded bg-success/15 px-1 py-px text-[11px] uppercase tracking-wider text-success">
               {t("sidebar.wechat")}
             </span>
             <span className="flex-1 truncate text-xs">{formatLabel(s.title)}</span>
             {active && (
-              <span className="text-[9px] uppercase tracking-wider text-fg-faint">
+              <span className="text-[11px] uppercase tracking-wider text-fg-faint">
                 {t("sidebar.active")}
               </span>
             )}

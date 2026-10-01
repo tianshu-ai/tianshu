@@ -384,7 +384,7 @@ function MessageMeta({
   const justify = align === "end" ? "justify-end" : "justify-start";
   return (
     <div
-      className={`mt-1 flex flex-wrap items-center gap-1.5 text-[10px] text-fg-fainter ${justify}`}
+      className={`mt-1 flex flex-wrap items-center gap-1.5 text-xs text-fg-fainter ${justify}`}
     >
       {parts.map((p, i) => (
         <span key={i} className="flex items-center gap-1.5">
@@ -445,7 +445,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
             <CheckCircle2 size={11} className="text-emerald-500/60" />
           )}
           <code className="font-mono text-[12px] text-link">{call.name}</code>
-          <span className="ml-auto text-[10px] text-fg-fainter">
+          <span className="ml-auto text-xs text-fg-fainter">
             {expanded ? "hide details" : "details"}
           </span>
         </button>
@@ -491,7 +491,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
             <CheckCircle2 size={11} className="text-emerald-500/60" />
           )}
           <code className="font-mono text-[12px] text-link">{call.name}</code>
-          <span className="ml-auto text-[10px] text-fg-fainter">
+          <span className="ml-auto text-xs text-fg-fainter">
             {expanded ? "hide details" : "details"}
           </span>
         </button>
@@ -544,7 +544,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
             <CheckCircle2 size={11} className="text-emerald-500/60" />
           )}
           <code className="font-mono text-[12px] text-link">{call.name}</code>
-          <span className="ml-auto text-[10px] text-fg-fainter">
+          <span className="ml-auto text-xs text-fg-fainter">
             {expanded ? "hide details" : "details"}
           </span>
         </button>
@@ -744,7 +744,7 @@ function EventCard({ event }: { event: SystemEvent }) {
         <span className={`text-[13px] font-semibold ${s.titleColor} truncate`}>
           {event.title}
         </span>
-        <span className={`ml-auto shrink-0 rounded-full ${s.badgeBg} px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${s.badgeColor}`}>
+        <span className={`ml-auto shrink-0 rounded-full ${s.badgeBg} px-2 py-0.5 text-xs font-medium uppercase tracking-wider ${s.badgeColor}`}>
           {badge}
         </span>
       </div>

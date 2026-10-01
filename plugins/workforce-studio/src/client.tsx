@@ -352,7 +352,7 @@ function OriginBadge({ origin, t }: { origin: Origin; t: Translator }): ReactEle
   const { label, className } = originStyle(origin, t);
   return (
     <span
-      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${className}`}
+      className={`rounded px-1.5 py-0.5 text-xs font-medium ${className}`}
       title={originTitle(origin, t)}
     >
       {label}
@@ -407,7 +407,7 @@ function PluginsPanel({
           {t("plugins.count", { n: plugins.length })}
         </span>
         <span
-          className="ml-1 text-[10px] text-fg-muted"
+          className="ml-1 text-xs text-fg-muted"
           title={t("plugins.activeHintTitle")}
         >
           {t("plugins.activeHint")}
@@ -464,7 +464,7 @@ function PluginStateBadge({
       : "bg-fg-muted/10";
   return (
     <span
-      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${cls}`}
+      className={`rounded px-1.5 py-0.5 text-xs font-medium ${cls}`}
       title={failureReason ?? undefined}
     >
       {state}
@@ -604,14 +604,14 @@ function BlockCard({
         ) : (
           <ChevronRight className="size-3.5 text-fg-muted" />
         )}
-        <span className="text-[10px] text-fg-muted">#{index}</span>
+        <span className="text-xs text-fg-muted">#{index}</span>
         <span className="font-medium">{block.title}</span>
         <BlockOriginBadge origin={block.origin} t={t} />
         <span
           className={
             block.editable
-              ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-[10px] font-medium text-success-fg"
-              : "rounded bg-fg-muted/15 px-1.5 py-0.5 text-[10px] font-medium"
+              ? "rounded bg-success-fg/10 px-1.5 py-0.5 text-xs font-medium text-success-fg"
+              : "rounded bg-fg-muted/15 px-1.5 py-0.5 text-xs font-medium"
           }
           title={
             block.editable
@@ -621,7 +621,7 @@ function BlockCard({
         >
           {block.editable ? t("block.editable") : t("block.readOnly")}
         </span>
-        <span className="ml-auto text-[10px] text-fg-muted">
+        <span className="ml-auto text-xs text-fg-muted">
           {block.source}
         </span>
       </button>
@@ -673,7 +673,7 @@ function BlockOriginBadge({
   const { label, className } = map[origin];
   return (
     <span
-      className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${className}`}
+      className={`rounded px-1.5 py-0.5 text-xs font-medium ${className}`}
     >
       {label}
     </span>
@@ -866,11 +866,11 @@ function ToolsList({ tools, t }: { tools: ToolEntry[]; t: Translator }): ReactEl
           <div className="flex flex-wrap items-center gap-2">
             <code className="font-mono text-[11px]">{tool.name}</code>
             <OriginBadge origin={tool.origin} t={t} />
-            <span className="rounded bg-fg-muted/10 px-1 text-[10px]">
+            <span className="rounded bg-fg-muted/10 px-1 text-xs">
               {tool.pluginId}
             </span>
             {tool.since ? (
-              <span className="text-[10px] text-fg-muted">
+              <span className="text-xs text-fg-muted">
                 {t("tools.since", { v: tool.since })}
               </span>
             ) : null}
@@ -900,15 +900,15 @@ function SkillsList({ skills, t }: { skills: SkillEntry[]; t: Translator }): Rea
           <div className="flex flex-wrap items-center gap-2">
             <code className="font-mono text-[11px]">{s.name}</code>
             <OriginBadge origin={s.origin} t={t} />
-            <span className="rounded bg-fg-muted/10 px-1 text-[10px]">
+            <span className="rounded bg-fg-muted/10 px-1 text-xs">
               {s.pluginId}
             </span>
             {s.scope ? (
-              <span className="rounded bg-info-fg/10 px-1 text-[10px] text-info-fg">
+              <span className="rounded bg-info-fg/10 px-1 text-xs text-info-fg">
                 {t("skills.scopeOnly", { scope: s.scope })}
               </span>
             ) : null}
-            <span className="ml-auto text-[10px] text-fg-muted">
+            <span className="ml-auto text-xs text-fg-muted">
               {formatBytes(s.body.length)}
             </span>
           </div>

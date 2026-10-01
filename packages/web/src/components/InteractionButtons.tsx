@@ -71,7 +71,7 @@ export function InteractionButtons() {
             >
               <span className="font-medium">{opt.label}</span>
               {opt.description && (
-                <span className="text-[10px] text-fg-faint mt-0.5">
+                <span className="text-xs text-fg-faint mt-0.5">
                   {opt.description}
                 </span>
               )}

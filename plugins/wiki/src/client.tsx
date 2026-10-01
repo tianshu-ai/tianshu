@@ -375,12 +375,12 @@ function WikiPanel(_props: PanelProps) {
           <button
             key={f}
             onClick={() => setSourceFilter(f)}
-            className={"rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors " + (sourceFilter === f ? "bg-brand-500/15 text-brand-400" : "text-fg-muted hover:bg-bg-hover")}
+            className={"rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors " + (sourceFilter === f ? "bg-brand-500/15 text-brand-400" : "text-fg-muted hover:bg-bg-hover")}
           >
             {f === "all" ? t("filter.all") : f === "kb" ? t("filter.kb") : t("filter.session")}
           </button>
         ))}
-        <span className="ml-auto text-[10px] text-fg-fainter">
+        <span className="ml-auto text-xs text-fg-fainter">
           {pages.length} {pages.length === 1 ? "page" : "pages"}
         </span>
         <button
@@ -401,7 +401,7 @@ function WikiPanel(_props: PanelProps) {
               <button
                 key={p}
                 onClick={() => setRangePreset(p)}
-                className={"rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors " +
+                className={"rounded-full px-2 py-0.5 text-xs font-medium transition-colors " +
                   (rangePreset === p
                     ? "bg-brand-500/15 text-brand-400"
                     : "text-fg-muted hover:bg-bg-hover")}
@@ -419,7 +419,7 @@ function WikiPanel(_props: PanelProps) {
                   setCustomTo(new Date().toISOString().slice(0, 10));
                 }
               }}
-              className={"rounded-full px-2 py-0.5 text-[10px] font-medium transition-colors " +
+              className={"rounded-full px-2 py-0.5 text-xs font-medium transition-colors " +
                 (rangePreset === "custom"
                   ? "bg-brand-500/15 text-brand-400"
                   : "text-fg-muted hover:bg-bg-hover")}
@@ -436,7 +436,7 @@ function WikiPanel(_props: PanelProps) {
                 onChange={(e) => setCustomFrom(e.target.value)}
                 className="flex-1 rounded-md bg-bg-raised px-2 py-1 text-[11px] text-fg-muted focus:outline-none focus:ring-1 focus:ring-brand-400/40"
               />
-              <span className="text-[10px] text-fg-fainter">–</span>
+              <span className="text-xs text-fg-fainter">–</span>
               <input
                 type="date"
                 value={customTo}
@@ -446,7 +446,7 @@ function WikiPanel(_props: PanelProps) {
             </div>
           )}
           {/* Range summary */}
-          <div className="text-[10px] text-fg-fainter">
+          <div className="text-xs text-fg-fainter">
             {rangePreset === "all" ? t("filter.period.all") : `${dateRange.from} – ${dateRange.to}`}
           </div>
         </div>
@@ -568,7 +568,7 @@ function WikiPanel(_props: PanelProps) {
                       {h.title}
                     </div>
                     {h.score != null && (
-                      <div className="text-[10px] text-fg-fainter">
+                      <div className="text-xs text-fg-fainter">
                         relevance {Math.round(h.score * 100)}%
                       </div>
                     )}
@@ -597,7 +597,7 @@ function WikiPanel(_props: PanelProps) {
                   <FileText size={14} className="shrink-0 text-fg-fainter group-hover:text-fg-muted" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-[12px] leading-snug text-fg-muted group-hover:text-fg-default">{p.title}</div>
-                    <div className="text-[10px] text-fg-fainter">{p.updatedAt ? formatRelativeDate(p.updatedAt, dateLoc) : ""}</div>
+                    <div className="text-xs text-fg-fainter">{p.updatedAt ? formatRelativeDate(p.updatedAt, dateLoc) : ""}</div>
                   </div>
                 </button>
               ))}
@@ -621,7 +621,7 @@ function WikiPanel(_props: PanelProps) {
                 <span>
                   {SECTION_LABEL_KEY[s] ? t(SECTION_LABEL_KEY[s]) : SECTION_LABEL[s] ?? s}
                 </span>
-                <span className="ml-auto rounded-full bg-bg-raised px-1.5 py-0.5 text-[9px] font-normal text-fg-fainter">
+                <span className="ml-auto rounded-full bg-bg-raised px-1.5 py-0.5 text-[11px] font-normal text-fg-fainter">
                   {items.length}
                 </span>
               </button>
@@ -637,7 +637,7 @@ function WikiPanel(_props: PanelProps) {
                       {p.title}
                     </div>
                     {p.updatedAt && (
-                      <div className="text-[10px] text-fg-fainter">
+                      <div className="text-xs text-fg-fainter">
                         {formatRelativeDate(p.updatedAt, dateLoc)}
                       </div>
                     )}
@@ -816,7 +816,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               strokeLinecap="round"
             />
           </svg>
-          <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-fg-default">
+          <span className="absolute inset-0 flex items-center justify-center text-xs font-semibold text-fg-default">
             {sessionPct}%
           </span>
         </div>
@@ -864,7 +864,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
             <div className="flex-1 min-w-0">
               <div className="text-[12px] font-medium text-fg-default">{t("indexing.sessions")}</div>
             </div>
-            <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
+            <span className={"text-xs px-2 py-0.5 rounded-full font-medium " +
               (sessionStatus?.running
                 ? "bg-brand-500/10 text-brand-400"
                 : sessionStatus && sessionStatus.pendingDays > 0
@@ -900,7 +900,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
             <div className="flex-1 min-w-0">
               <div className="text-[12px] font-medium text-fg-default">{t("indexing.kb")}</div>
             </div>
-            <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
+            <span className={"text-xs px-2 py-0.5 rounded-full font-medium " +
               (running && hasPendingKb
                 ? "bg-brand-500/10 text-brand-400"
                 : (kbStatus?.pendingFiles ?? 0) > 0
@@ -924,7 +924,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               />
             </div>
             {kbStatus.lastScanAt && (
-              <div className="text-[10px] text-fg-fainter">{t("indexing.lastScan", { time: new Date(kbStatus.lastScanAt).toLocaleString(dateLoc) })}</div>
+              <div className="text-xs text-fg-fainter">{t("indexing.lastScan", { time: new Date(kbStatus.lastScanAt).toLocaleString(dateLoc) })}</div>
             )}
           </>) : (
             <div className="text-[11px] text-fg-muted">{t("indexing.kbPlaceholder")}</div>
@@ -941,7 +941,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               <div className="text-[12px] font-medium text-fg-default">{t("indexing.audit")}</div>
             </div>
             {auditing ? (
-              <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-medium bg-purple-500/10 text-purple-400">
+              <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium bg-purple-500/10 text-purple-400">
                 <Share2 size={10} className="animate-spin" />
                 {t("indexing.auditing")}
               </span>
@@ -949,7 +949,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               <button
                 onClick={() => setConfirmAudit(true)}
                 disabled={running}
-                className="flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors disabled:opacity-40"
+                className="flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors disabled:opacity-40"
               >
                 <Share2 size={10} />
                 {t("indexing.runAudit")}
@@ -960,7 +960,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
             {t("indexing.auditDesc")}
           </div>
           {auditing && auditLog.length > 0 && (
-            <div className="mt-1 max-h-32 overflow-y-auto rounded-md bg-bg-default/60 p-2 text-[10px] text-fg-muted font-mono leading-relaxed space-y-0.5">
+            <div className="mt-1 max-h-32 overflow-y-auto rounded-md bg-bg-default/60 p-2 text-xs text-fg-muted font-mono leading-relaxed space-y-0.5">
               {auditLog.map((line, i) => (
                 <div key={i} className="truncate">{line}</div>
               ))}
@@ -1030,7 +1030,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               }}
               disabled={reindexing || !embStatus?.enabled}
               className={
-                "inline-flex items-center gap-1 text-[10px] transition-colors " +
+                "inline-flex items-center gap-1 text-xs transition-colors " +
                 (!embStatus?.enabled
                   ? "text-fg-fainter cursor-not-allowed"
                   : reindexing
@@ -1041,7 +1041,7 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
               <RefreshCw size={10} className={reindexing ? "animate-spin" : ""} />
               {reindexing ? t("indexing.reindexing") : t("indexing.rebuild")}
             </button>
-            <span className={"text-[10px] px-2 py-0.5 rounded-full font-medium " +
+            <span className={"text-xs px-2 py-0.5 rounded-full font-medium " +
               (embStatus?.enabled ? "bg-green-500/10 text-green-500" : "bg-bg-default text-fg-fainter")}>
               {embStatus?.enabled ? t("indexing.enabled") : t("indexing.notConfigured")}
             </span>
@@ -1060,13 +1060,13 @@ function IndexingTab({ onIndexed }: { onIndexed?: () => void }) {
                 <div className="h-full bg-green-500 rounded-full transition-all duration-700" style={{ width: `${embPct}%` }} />
               </div>
             )}
-            <div className="text-[10px] text-fg-fainter">{embStatus.model}</div>
+            <div className="text-xs text-fg-fainter">{embStatus.model}</div>
           </>) : (
             <div className="text-[11px] text-fg-muted">
               {t("indexing.embNotConfigured")}
             </div>
           )}
-          {reindexMsg && <div className="text-[10px] text-fg-muted">{reindexMsg}</div>}
+          {reindexMsg && <div className="text-xs text-fg-muted">{reindexMsg}</div>}
         </div>
       </div>
     </div>
@@ -1311,7 +1311,7 @@ function WikiGraphView({
               className="inline-block h-2 w-2 shrink-0 rounded-full"
               style={{ backgroundColor: nodeColor(picked.section) }}
             />
-            <span className="truncate text-[10px] uppercase tracking-wide text-fg-fainter">
+            <span className="truncate text-xs uppercase tracking-wide text-fg-fainter">
               {SECTION_LABEL_KEY[picked.section] ? t(SECTION_LABEL_KEY[picked.section]) : SECTION_LABEL[picked.section] ?? picked.section}
             </span>
           </div>
@@ -1339,7 +1339,7 @@ function WikiGraphView({
 
       {/* legend */}
       {data.nodes.length > 0 && (
-        <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-bg-base/70 px-2 py-1 text-[10px] text-fg-muted backdrop-blur-sm">
+        <div className="pointer-events-none absolute bottom-2 left-2 flex flex-wrap gap-x-3 gap-y-1 rounded-md bg-bg-base/70 px-2 py-1 text-xs text-fg-muted backdrop-blur-sm">
           {LEGEND.map((l) => (
             <span key={l.section} className="flex items-center gap-1">
               <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: l.color }} />

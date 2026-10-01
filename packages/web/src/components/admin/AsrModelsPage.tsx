@@ -166,15 +166,15 @@ export default function AsrModelsPage() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium text-fg-default">{translatedName}</span>
-                  <span className="text-[10px] rounded border border-border-subtle px-1.5 py-0.5 text-fg-faint">{m.size}</span>
-                  <span className="text-[10px] rounded border border-border-subtle px-1.5 py-0.5 text-fg-faint">{m.lang}</span>
+                  <span className="text-xs rounded border border-border-subtle px-1.5 py-0.5 text-fg-faint">{m.size}</span>
+                  <span className="text-xs rounded border border-border-subtle px-1.5 py-0.5 text-fg-faint">{m.lang}</span>
                   {isActive && (
-                    <span className="text-[10px] rounded bg-link/20 px-1.5 py-0.5 text-link flex items-center gap-0.5">
+                    <span className="text-xs rounded bg-link/20 px-1.5 py-0.5 text-link flex items-center gap-0.5">
                       <CircleDot size={9} /> {t("asr.active")}
                     </span>
                   )}
                   {m.installed && !isActive && (
-                    <span className="text-[10px] rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-400 flex items-center gap-0.5">
+                    <span className="text-xs rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-400 flex items-center gap-0.5">
                       <CheckCircle size={9} /> {t("asr.installed")}
                     </span>
                   )}
