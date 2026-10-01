@@ -218,9 +218,9 @@
   --color-border-strong:  #94a3b8;          /* slate-400 — hover / focus rings */
   --color-border-subtle:  #e2e8f0;          /* slate-200 — inside white surfaces (rows, dividers) */
 
-  --color-accent:         #4263eb;          /* brand-700 */
-  --color-accent-hover:   #3b5bdb;          /* brand-800 */
-  --color-accent-faint:   rgba(66 99 235 / 0.08);
+  --color-accent:         #856830;          /* Star Gold 700 — 5.22:1 on #fff */
+  --color-accent-hover:   #6b5325;          /* Star Gold 800 */
+  --color-accent-faint:   rgba(133 104 48 / 0.08);
 
   /* ─── Voice subtitle (VoiceSubtitleView filmstrip) ───
    * Light theme: indigo→slate→violet gradient. Non-current rows
@@ -241,7 +241,7 @@
   --voice-current-panel-ring:   rgba(15, 23, 42, 0.10);
   --voice-current-panel-shadow: rgba(15, 23, 42, 0.12);
 
-  --color-link:           #4263eb;          /* brand-700 */
+  --color-link:           #856830;          /* Star Gold 700 */
   --color-success:        #059669;
   --color-warning:        #b45309;
   --color-danger:         #be123c;
