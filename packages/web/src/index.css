@@ -61,8 +61,8 @@
 
   --color-fg-default:     #f3f4f6;          /* gray-100 */
   --color-fg-muted:       #d1d5db;          /* gray-300 */
-  --color-fg-faint:       #6b7280;          /* gray-500 */
-  --color-fg-fainter:     #4b5563;          /* gray-600 */
+  --color-fg-faint:       #828b99;          /* WCAG AA 5.85:1 on #030712 */
+  --color-fg-fainter:     #737d8c;          /* WCAG AA 4.83:1 on #030712 */
   --color-fg-on-accent:   #ffffff;
 
   --color-border-default: #374151;          /* gray-700 */
@@ -100,8 +100,8 @@
 
   --color-fg-default:     #f3f4f6;
   --color-fg-muted:       #d1d5db;
-  --color-fg-faint:       #6b7280;
-  --color-fg-fainter:     #4b5563;
+  --color-fg-faint:       #828b99;          /* WCAG AA 5.85:1 on #030712 */
+  --color-fg-fainter:     #737d8c;          /* WCAG AA 4.83:1 on #030712 */
   --color-fg-on-accent:   #ffffff;
 
   --color-border-default: #374151;
@@ -649,4 +649,14 @@ select,
 [role="listbox"],
 [role="menu"] {
   background-color: var(--color-bg-surface) !important;
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -485,7 +485,7 @@ function AdminSidebar({
       </div>
       {userLabel && (
         <div className="flex items-center gap-2 border-t border-border-subtle px-3 py-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-[10px] font-semibold text-white">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-slate-600 to-slate-700 text-[10px] font-semibold text-white">
             {userLabel.slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">

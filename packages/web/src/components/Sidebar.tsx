@@ -231,7 +231,7 @@ function SidebarFooter() {
         title={userId}
         className="flex w-full items-center gap-2 px-3 py-2 hover:bg-bg-raised/60 transition-colors"
       >
-        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-[10px] font-semibold text-white">
+        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-slate-600 to-slate-700 text-[10px] font-semibold text-white">
           {initial}
         </div>
         <div className="min-w-0 flex-1 text-left">

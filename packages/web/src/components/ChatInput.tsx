@@ -307,7 +307,7 @@ export default function ChatInput() {
           className={
             voiceEnabled
               ? "resize-none bg-transparent text-xl leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none sm:text-2xl"
-              : "resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
+              : "min-h-[28px] resize-none bg-transparent text-[14px] leading-relaxed text-fg-default placeholder:text-fg-faint focus:outline-none"
           }
         />
         <div className="flex items-center justify-between">
