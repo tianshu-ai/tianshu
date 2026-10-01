@@ -584,10 +584,10 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         className={
           "group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all " +
           (running
-            ? "cursor-default bg-accent-faint"
+            ? "cursor-default bg-bg-surface"
             : isError
-              ? "cursor-pointer bg-rose-950/40 hover:bg-rose-950/50"
-              : "cursor-pointer bg-bg-elevated/70 hover:bg-bg-elevated")
+              ? "cursor-pointer bg-rose-950/60 hover:bg-rose-950/80"
+              : "cursor-pointer bg-bg-surface hover:bg-bg-hover")
         }
       >
         {statusIcon}
@@ -614,8 +614,8 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
           className={
             "mt-1.5 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-xl px-3 py-2 text-xs " +
             (isError
-              ? "bg-rose-950/30 text-danger"
-              : "bg-bg-elevated/40 text-fg-muted")
+              ? "bg-rose-950/60 text-danger"
+              : "bg-bg-surface text-fg-muted")
           }
         >
           {truncate(result.text, 4000)}
