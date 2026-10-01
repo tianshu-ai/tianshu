@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Code2, FileText, Headphones, Mail, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Search, Stethoscope, Wrench, X } from "lucide-react";
+import {
+  BrainCircuit, Database, FileText, FolderOpen, Globe, Headphones,
+  LayoutDashboard, MessageSquare, PanelLeftClose, PanelLeftOpen,
+  Puzzle, RotateCw, Search, Settings, Stethoscope, Timer, Wrench, X,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
@@ -321,36 +326,58 @@ function MaintenanceBanner({ userId }: { userId?: string }) {
   );
 }
 
-import type { LucideIcon } from "lucide-react";
-
-const STARTER_PROMPTS_ZH: { icon: LucideIcon; label: string }[] = [
-  { icon: Code2, label: "帮我写一段代码" },
-  { icon: FileText, label: "总结一篇文章" },
-  { icon: Search, label: "分析一个问题" },
-  { icon: Mail, label: "帮我写一封邮件" },
-];
-
-const STARTER_PROMPTS_EN: { icon: LucideIcon; label: string }[] = [
-  { icon: Code2, label: "Help me write some code" },
-  { icon: FileText, label: "Summarize an article" },
-  { icon: Search, label: "Analyze a problem" },
-  { icon: Mail, label: "Help me draft an email" },
+/**
+ * Plugin → starter prompt mapping.
+ * Order = display priority (first match wins when we pick top 4).
+ */
+const PLUGIN_STARTERS: {
+  pluginId: string;
+  icon: LucideIcon;
+  zh: string;
+  en: string;
+}[] = [
+  { pluginId: "web-search", icon: Globe, zh: "帮我搜索一下最新的新闻", en: "Search the latest news for me" },
+  { pluginId: "workboard", icon: LayoutDashboard, zh: "给我分配一个研究任务", en: "Create a research task for me" },
+  { pluginId: "datasource", icon: Database, zh: "查询数据库", en: "Query a database" },
+  { pluginId: "files", icon: FolderOpen, zh: "查看工作区文件", en: "Browse workspace files" },
+  { pluginId: "wiki", icon: FileText, zh: "帮我写一篇 Wiki 文档", en: "Help me write a Wiki page" },
+  { pluginId: "cron", icon: Timer, zh: "设置一个定时任务", en: "Set up a scheduled task" },
+  { pluginId: "reverse-mcp", icon: MessageSquare, zh: "通过本地桥接执行命令", en: "Run a command via local bridge" },
+  { pluginId: "wechat", icon: MessageSquare, zh: "配置微信渠道", en: "Configure WeChat channel" },
+  { pluginId: "board", icon: LayoutDashboard, zh: "打开看板", en: "Open the board" },
+  { pluginId: "workforce-studio", icon: BrainCircuit, zh: "管理 Worker 配置", en: "Manage worker configuration" },
 ];
 
 function EmptyState({
   brandName,
-  brandEmoji,
-  tenantId,
 }: {
   brandName: string;
   brandEmoji: string;
   tenantId: string;
 }) {
   const t = useT();
-  void tenantId;
-  const starters = t("chat.welcome", { name: "" }).includes("欢迎")
-    ? STARTER_PROMPTS_ZH
-    : STARTER_PROMPTS_EN;
+  const plugins = usePluginStore((s) => s.plugins);
+  const isZh = t("chat.welcome", { name: "" }).includes("欢迎");
+
+  const starters = useMemo(() => {
+    const activeIds = new Set(
+      (plugins ?? []).filter((p) => p.state === "active").map((p) => p.id),
+    );
+    const matched = PLUGIN_STARTERS
+      .filter((s) => activeIds.has(s.pluginId))
+      .slice(0, 4)
+      .map((s) => ({ icon: s.icon, label: isZh ? s.zh : s.en }));
+    // No active user-facing plugins → nudge toward setup
+    if (matched.length === 0) {
+      return [{
+        icon: Settings,
+        label: isZh
+          ? "转到维护模式，让 Agent 帮你配置系统"
+          : "Switch to maintenance mode to configure the system",
+      }];
+    }
+    return matched;
+  }, [plugins, isZh]);
 
   const handleStarter = (text: string) => {
     useChatStore.getState().sendPrompt(text);
@@ -367,7 +394,9 @@ function EmptyState({
         {t("chat.welcome", { name: brandName })}
       </h2>
       <p className="mb-8 max-w-md text-sm text-fg-faint">{t("chat.welcomeBody")}</p>
-      <div className="grid w-full max-w-lg grid-cols-2 gap-3">
+      <div className={`grid w-full gap-3 ${
+        starters.length <= 2 ? "max-w-sm grid-cols-1" : "max-w-lg grid-cols-2"
+      }`}>
         {starters.map((s) => (
           <button
             key={s.label}
