@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Stethoscope, Wrench, X } from "lucide-react";
+import { Code2, FileText, Headphones, Mail, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Search, Stethoscope, Wrench, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
@@ -321,18 +321,20 @@ function MaintenanceBanner({ userId }: { userId?: string }) {
   );
 }
 
-const STARTER_PROMPTS_ZH = [
-  "帮我写一段代码",
-  "总结一篇文章",
-  "分析一个问题",
-  "帮我写一封邮件",
+import type { LucideIcon } from "lucide-react";
+
+const STARTER_PROMPTS_ZH: { icon: LucideIcon; label: string }[] = [
+  { icon: Code2, label: "帮我写一段代码" },
+  { icon: FileText, label: "总结一篇文章" },
+  { icon: Search, label: "分析一个问题" },
+  { icon: Mail, label: "帮我写一封邮件" },
 ];
 
-const STARTER_PROMPTS_EN = [
-  "Help me write some code",
-  "Summarize an article",
-  "Analyze a problem",
-  "Help me draft an email",
+const STARTER_PROMPTS_EN: { icon: LucideIcon; label: string }[] = [
+  { icon: Code2, label: "Help me write some code" },
+  { icon: FileText, label: "Summarize an article" },
+  { icon: Search, label: "Analyze a problem" },
+  { icon: Mail, label: "Help me draft an email" },
 ];
 
 function EmptyState({
@@ -368,12 +370,13 @@ function EmptyState({
       <div className="grid w-full max-w-lg grid-cols-2 gap-3">
         {starters.map((s) => (
           <button
-            key={s}
+            key={s.label}
             type="button"
-            onClick={() => handleStarter(s)}
-            className="rounded-xl bg-bg-surface px-4 py-3 text-left text-sm text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
+            onClick={() => handleStarter(s.label)}
+            className="flex items-center gap-3 rounded-xl bg-bg-surface px-4 py-3.5 text-left text-sm text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
           >
-            {s}
+            <s.icon size={16} className="shrink-0 text-fg-fainter" />
+            <span>{s.label}</span>
           </button>
         ))}
       </div>
