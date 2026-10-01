@@ -50,61 +50,55 @@ export default function SuggestedFollowups() {
 function generateSuggestions(messages: WireMessage[]): string[] {
   if (messages.length === 0) return [];
 
-  // Find last assistant message
-  const lastAssistant = [...messages]
-    .reverse()
-    .find((m) => m.role === "assistant" && m.text.trim().length > 10);
-  if (!lastAssistant) return [];
-
-  // Don't suggest on very old messages — only if it's the tail
+  // Only show when the last message is from the assistant
   const lastMsg = messages[messages.length - 1];
   if (lastMsg.role !== "assistant") return [];
 
-  const text = lastAssistant.text;
+  const text = lastMsg.text;
+  if (text.length < 50) return []; // Don't clutter short exchanges
+
   const suggestions: string[] = [];
 
-  // Pattern 1: If the message contains a question, suggest answering it
-  const questions = text.match(/[^.!?]*\?/g);
-  if (questions && questions.length > 0) {
-    const lastQ = questions[questions.length - 1].trim();
-    if (lastQ.length > 5 && lastQ.length < 80) {
-      // The assistant asked something — suggest a response
-      if (/要.*吗|需要.*吗|想.*吗|是否|好吗|可以吗|怎么样/u.test(lastQ)) {
-        suggestions.push("好的，开始吧");
-      }
-      if (/还是|或者|哪个/u.test(lastQ)) {
-        suggestions.push("你推荐哪个？");
-      }
+  // Priority 1: If the assistant explicitly asked a question, suggest answering it
+  const lines = text.split("\n");
+  const lastLine = lines.filter((l) => l.trim().length > 0).pop() ?? "";
+  if (/[？?]\s*$/.test(lastLine)) {
+    // The reply ends with a question — suggest affirmative + alternative
+    if (/要.*吗|需要.*吗|想.*吗|好吗|可以吗|怎么样|试试/u.test(lastLine)) {
+      suggestions.push("好的，开始吧");
+      suggestions.push("先等等，我想想");
+    } else if (/还是|或者|哪个|先/u.test(lastLine)) {
+      suggestions.push("你推荐哪个？");
+      suggestions.push("都做了吧");
+    } else if (/什么|做什么|干什么|怎么/u.test(lastLine)) {
+      // Open-ended question like "有什么需要做的？"
+      return []; // Let the user think
     }
   }
 
-  // Pattern 2: If the message mentions specific topics, suggest diving deeper
-  if (/代码|代码库|文件|组件|函数/u.test(text)) {
-    suggestions.push("详细解释一下");
-  }
-  if (/错误|bug|问题|失败|报错/u.test(text)) {
-    suggestions.push("帮我修复这个问题");
-  }
-  if (/任务|task|worker|工作/u.test(text)) {
-    suggestions.push("查看当前任务状态");
-  }
-
-  // Pattern 3: Generic useful follow-ups based on content type
-  if (text.length > 200 && suggestions.length < 2) {
-    suggestions.push("总结一下要点");
-  }
-  if (/步骤|第[一二三四五1-5]|首先|然后|最后/u.test(text) && suggestions.length < 3) {
-    suggestions.push("继续下一步");
-  }
-
-  // Pattern 4: If message contains code blocks
-  if (/```/.test(text) && suggestions.length < 3) {
-    suggestions.push("运行这段代码");
+  // Priority 2: Content-aware follow-ups (only if we don't already have 2+)
+  if (suggestions.length < 2) {
+    // Code explanation → ask to run or explain
+    if (/```/.test(text)) {
+      suggestions.push("解释一下这段代码");
+    }
+    // Error/problem discussed → suggest fix
+    if (/错误|bug|失败|报错|crash|异常|不工作/u.test(text) && !/已修复|修好了|解决了/u.test(text)) {
+      suggestions.push("帮我修一下");
+    }
+    // Long explanation → suggest summary
+    if (text.length > 500 && suggestions.length < 2) {
+      suggestions.push("总结一下要点");
+    }
+    // Steps/procedure → suggest next step
+    if (/步骤|第[一二三四五六七]|首先|接下来|然后|最后/u.test(text) && suggestions.length < 3) {
+      suggestions.push("继续");
+    }
   }
 
-  // Pattern 5: If message is a greeting or short
-  if (text.length < 50) {
-    return []; // Don't clutter short exchanges
+  // Priority 3: If the response has tool calls, suggest exploring results
+  if (lastMsg.toolCalls && lastMsg.toolCalls.length > 0 && suggestions.length < 3) {
+    suggestions.push("详细说说结果");
   }
 
   // Deduplicate and limit to 3
