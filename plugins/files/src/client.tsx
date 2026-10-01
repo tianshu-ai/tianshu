@@ -421,6 +421,7 @@ function FilePreviewModal({
   // the JSON `read` response.
   const { Modal, DocumentViewer } = useUiPrimitives();
   const t = usePluginT("files");
+  const dateLoc = useDateLocale();
   const [data, setData] = useState<ReadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
