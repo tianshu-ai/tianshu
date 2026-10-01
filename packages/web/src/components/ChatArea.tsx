@@ -322,17 +322,17 @@ function MaintenanceBanner({ userId }: { userId?: string }) {
 }
 
 const STARTER_PROMPTS_ZH = [
-  { icon: "💡", label: "帮我写一段代码" },
-  { icon: "📄", label: "总结一篇文章" },
-  { icon: "🔍", label: "分析一个问题" },
-  { icon: "✍️", label: "帮我写一封邮件" },
+  "帮我写一段代码",
+  "总结一篇文章",
+  "分析一个问题",
+  "帮我写一封邮件",
 ];
 
 const STARTER_PROMPTS_EN = [
-  { icon: "💡", label: "Help me write some code" },
-  { icon: "📄", label: "Summarize an article" },
-  { icon: "🔍", label: "Analyze a problem" },
-  { icon: "✍️", label: "Help me draft an email" },
+  "Help me write some code",
+  "Summarize an article",
+  "Analyze a problem",
+  "Help me draft an email",
 ];
 
 function EmptyState({
@@ -356,9 +356,11 @@ function EmptyState({
 
   return (
     <div className="flex h-full flex-col items-center justify-center text-center px-4">
-      <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-bg-surface">
-        <span className="text-4xl">{brandEmoji}</span>
-      </div>
+      <img
+        src="/classical/tianshu-avatar.png"
+        alt=""
+        className="mb-5 h-16 w-16 rounded-2xl object-cover"
+      />
       <h2 className="mb-2 text-2xl font-semibold text-fg-default">
         {t("chat.welcome", { name: brandName })}
       </h2>
@@ -366,13 +368,12 @@ function EmptyState({
       <div className="grid w-full max-w-lg grid-cols-2 gap-3">
         {starters.map((s) => (
           <button
-            key={s.label}
+            key={s}
             type="button"
-            onClick={() => handleStarter(s.label)}
-            className="flex items-center gap-3 rounded-xl bg-bg-surface px-4 py-3.5 text-left text-sm text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
+            onClick={() => handleStarter(s)}
+            className="rounded-xl bg-bg-surface px-4 py-3 text-left text-sm text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
           >
-            <span className="text-lg">{s.icon}</span>
-            <span>{s.label}</span>
+            {s}
           </button>
         ))}
       </div>
