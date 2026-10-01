@@ -455,7 +455,7 @@ function AdminSidebar({
         {grouped.map((bucket, i) => (
           <div key={i}>
             {bucket.group && (
-              <div className="px-3 pb-1 pt-1 text-xs font-semibold uppercase tracking-wide text-fg-faint">
+              <div className="px-3 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-wide text-fg-faint">
                 {localizeGroup(t, bucket.group)}
               </div>
             )}
@@ -485,13 +485,13 @@ function AdminSidebar({
       </div>
       {userLabel && (
         <div className="flex items-center gap-2 border-t border-border-subtle px-3 py-2">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-xs font-semibold text-white">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-[10px] font-semibold text-white">
             {userLabel.slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[11px] text-fg-muted">{userLabel}</div>
             {localizedRole && (
-              <div className="text-xs text-fg-fainter">{localizedRole}</div>
+              <div className="text-[10px] text-fg-fainter">{localizedRole}</div>
             )}
           </div>
           {showLogout && (

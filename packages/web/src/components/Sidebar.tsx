@@ -98,7 +98,7 @@ export default function Sidebar() {
           ) : (
             <span className="text-lg font-semibold text-fg-default">{brandName}</span>
           )}
-          {appVersion && <span className="ml-2 text-xs font-normal text-fg-muted">v{appVersion}</span>}
+          {appVersion && <span className="ml-2 text-[10px] font-normal text-fg-muted">v{appVersion}</span>}
         </div>
 
         {/* Maintenance mode icon — super-admins only, not shown when already in maintenance */}
@@ -144,12 +144,12 @@ export default function Sidebar() {
           by <PluginSidebarSections /> below; the host doesn't
           enumerate channel sessions here. */}
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-2">
-        <div className="px-1 pb-1 pt-2 text-xs uppercase tracking-wider text-fg-fainter">
+        <div className="px-1 pb-1 pt-2 text-[10px] uppercase tracking-wider text-fg-fainter">
           {t("sidebar.channels")}
         </div>
         <WebchatRow />
         <PluginSidebarSections anchor="channels" />
-        <p className="px-2 pt-2 text-xs leading-relaxed text-fg-fainter">
+        <p className="px-2 pt-2 text-[10px] leading-relaxed text-fg-fainter">
           {t("sidebar.sessionsNote")}
         </p>
       </nav>
@@ -231,12 +231,12 @@ function SidebarFooter() {
         title={userId}
         className="flex w-full items-center gap-2 px-3 py-2 hover:bg-bg-raised/60 transition-colors"
       >
-        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-xs font-semibold text-white">
+        <div className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-[10px] font-semibold text-white">
           {initial}
         </div>
         <div className="min-w-0 flex-1 text-left">
           <div className="truncate text-[11px] text-fg-muted">{displayName}</div>
-          <div className="truncate text-xs text-fg-fainter">{subline}</div>
+          <div className="truncate text-[10px] text-fg-fainter">{subline}</div>
         </div>
         <ChevronDown
           size={12}
@@ -252,7 +252,7 @@ function SidebarFooter() {
           {/* Identity header inside menu, mirrors Linear/Discord style. */}
           <div className="border-b border-border-subtle px-3 py-2">
             <div className="truncate text-fg-default">{displayName}</div>
-            <div className="truncate text-xs text-fg-fainter">{subline}</div>
+            <div className="truncate text-[10px] text-fg-fainter">{subline}</div>
           </div>
 
           {/* Admin entry — tenant-admins / super-admins only (dev mode:
@@ -290,7 +290,7 @@ function SidebarFooter() {
               >
                 <Building2 size={14} className="text-fg-faint" />
                 <span className="flex-1 text-left">{t("user.switchTenant")}</span>
-                <span className="max-w-[80px] truncate text-xs text-fg-faint">{me?.tenantId}</span>
+                <span className="max-w-[80px] truncate text-[10px] text-fg-faint">{me?.tenantId}</span>
                 <ChevronRight
                   size={12}
                   className={`text-fg-faint transition-transform ${tenantOpen ? "rotate-90" : ""}`}
@@ -351,7 +351,7 @@ function SidebarFooter() {
           >
             <Globe size={14} className="text-fg-faint" />
             <span className="flex-1 text-left">{t("lang.label")}</span>
-            <span className="text-xs text-fg-faint">{LOCALE_LABELS[locale]}</span>
+            <span className="text-[10px] text-fg-faint">{LOCALE_LABELS[locale]}</span>
             <ChevronRight
               size={12}
               className={`text-fg-faint transition-transform ${langOpen ? "rotate-90" : ""}`}
@@ -562,7 +562,7 @@ function WebchatRow() {
       <Hash size={12} className="flex-shrink-0" />
       <span className="flex-1 truncate text-xs">webchat</span>
       {active && (
-        <span className="text-[11px] uppercase tracking-wider text-fg-faint">
+        <span className="text-[9px] uppercase tracking-wider text-fg-faint">
           active
         </span>
       )}
