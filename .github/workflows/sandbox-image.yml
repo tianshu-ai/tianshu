@@ -26,7 +26,7 @@ jobs:
 
       - name: Build & push by digest
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: plugins/openshell/sandbox-image
           platforms: ${{ matrix.platform }}
