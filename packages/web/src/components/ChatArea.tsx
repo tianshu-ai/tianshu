@@ -319,6 +319,20 @@ function MaintenanceBanner({ userId }: { userId?: string }) {
   );
 }
 
+const STARTER_PROMPTS_ZH = [
+  { icon: "💡", label: "帮我写一段代码" },
+  { icon: "📄", label: "总结一篇文章" },
+  { icon: "🔍", label: "分析一个问题" },
+  { icon: "✍️", label: "帮我写一封邮件" },
+];
+
+const STARTER_PROMPTS_EN = [
+  { icon: "💡", label: "Help me write some code" },
+  { icon: "📄", label: "Summarize an article" },
+  { icon: "🔍", label: "Analyze a problem" },
+  { icon: "✍️", label: "Help me draft an email" },
+];
+
 function EmptyState({
   brandName,
   brandEmoji,
@@ -330,15 +344,36 @@ function EmptyState({
 }) {
   const t = useT();
   void tenantId;
+  const starters = t("chat.welcome", { name: "" }).includes("欢迎")
+    ? STARTER_PROMPTS_ZH
+    : STARTER_PROMPTS_EN;
+
+  const handleStarter = (text: string) => {
+    useChatStore.getState().sendPrompt(text);
+  };
+
   return (
-    <div className="flex h-full flex-col items-center justify-center text-center">
-      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-600/20">
-        <span className="text-2xl">{brandEmoji}</span>
+    <div className="flex h-full flex-col items-center justify-center text-center px-4">
+      <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-3xl bg-bg-surface">
+        <span className="text-4xl">{brandEmoji}</span>
       </div>
-      <h2 className="mb-2 text-xl font-semibold text-fg-default">
+      <h2 className="mb-2 text-2xl font-semibold text-fg-default">
         {t("chat.welcome", { name: brandName })}
       </h2>
-      <p className="max-w-md text-sm text-fg-faint">{t("chat.welcomeBody")}</p>
+      <p className="mb-8 max-w-md text-sm text-fg-faint">{t("chat.welcomeBody")}</p>
+      <div className="grid w-full max-w-lg grid-cols-2 gap-3">
+        {starters.map((s) => (
+          <button
+            key={s.label}
+            type="button"
+            onClick={() => handleStarter(s.label)}
+            className="flex items-center gap-3 rounded-xl bg-bg-surface px-4 py-3.5 text-left text-sm text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
+          >
+            <span className="text-lg">{s.icon}</span>
+            <span>{s.label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
