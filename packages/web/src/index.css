@@ -455,22 +455,35 @@ body,
 /* Seal watermark on AI bubbles */
 
 @layer components {
-  /* Markdown table styles in chat — visible grid, generous padding. */
+  /* Markdown table styles in chat.
+   * Tailwind Typography strips first/last-child cell padding to 0;
+   * we override with !important to keep a visible grid. */
   .prose table {
     @apply border-collapse text-sm w-full block overflow-x-auto;
     border: 1px solid var(--color-border-default);
     border-radius: 0.5rem;
   }
-  .prose th {
+  .prose th,
+  .prose thead th:first-child,
+  .prose thead th:last-child {
     background: var(--color-bg-raised);
     border: 1px solid var(--color-border-default);
     color: var(--color-fg-default);
-    @apply px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide;
+    padding: 12px 20px !important;
+    text-align: left;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
   }
-  .prose td {
+  .prose td,
+  .prose tbody td:first-child,
+  .prose tbody td:last-child,
+  .prose tfoot td:first-child,
+  .prose tfoot td:last-child {
     border: 1px solid var(--color-border-default);
     color: var(--color-fg-muted);
-    @apply px-5 py-3;
+    padding: 12px 20px !important;
   }
   .prose tr:hover td {
     background: color-mix(in srgb, var(--color-bg-raised) 40%, transparent);
