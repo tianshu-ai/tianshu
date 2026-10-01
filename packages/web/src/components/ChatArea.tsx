@@ -107,12 +107,29 @@ export default function ChatArea() {
   return (
     <main className="relative flex h-full min-w-0 flex-1 flex-col">
       {/* Drop overlay */}
-      {dragActive && (
-        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-bg-base/80 backdrop-blur-sm border-2 border-dashed border-brand-400 rounded-lg pointer-events-none">
-          <Upload size={40} className="text-brand-400" />
-          <span className="text-sm font-medium text-brand-400">{t("chat.dropFiles")}</span>
+      <div
+        className={`absolute inset-0 z-50 flex flex-col items-center justify-center pointer-events-none transition-all duration-200 ${
+          dragActive
+            ? "opacity-100 scale-100"
+            : "opacity-0 scale-95 pointer-events-none"
+        }`}
+        style={{ transitionProperty: "opacity, transform" }}
+      >
+        {/* Blurred backdrop */}
+        <div className="absolute inset-0 bg-bg-base/80 backdrop-blur-sm" />
+        {/* Animated dashed border */}
+        <div className="absolute inset-3 rounded-xl border-2 border-dashed border-brand-400/60 animate-pulse" />
+        {/* Center content */}
+        <div className="relative flex flex-col items-center gap-3">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-500/15 animate-bounce" style={{ animationDuration: "1.5s" }}>
+            <Upload size={28} className="text-brand-400" />
+          </div>
+          <div className="text-center">
+            <div className="text-sm font-semibold text-fg-default">{t("chat.dropFiles")}</div>
+            <div className="mt-1 text-xs text-fg-faint">{t("chat.dropFilesHint")}</div>
+          </div>
         </div>
-      )}
+      </div>
       {/* Top bar */}
       <header className="flex h-12 items-center justify-between border-b border-border-subtle bg-bg-elevated/50 px-4 backdrop-blur">
         <div className="flex items-center">
