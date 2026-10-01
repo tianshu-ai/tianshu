@@ -36,17 +36,17 @@
  * `border-border-default`. Plugins use these utilities directly.
  * ────────────────────────────────────────────────────────────── */
 @theme {
-  /* Brand palette — used by both themes as the accent ramp. */
-  --color-brand-50:  #f0f4ff;
-  --color-brand-100: #dbe4ff;
-  --color-brand-200: #bac8ff;
-  --color-brand-300: #91a7ff;
-  --color-brand-400: #748ffc;
-  --color-brand-500: #5c7cfa;
-  --color-brand-600: #4c6ef5;
-  --color-brand-700: #4263eb;
-  --color-brand-800: #3b5bdb;
-  --color-brand-900: #364fc7;
+  /* Brand palette — Star Gold ramp (天枢 = North Star). */
+  --color-brand-50:  #faf6ef;
+  --color-brand-100: #f0e6cc;
+  --color-brand-200: #e2cfa0;
+  --color-brand-300: #d4b876;
+  --color-brand-400: #c9a96e;
+  --color-brand-500: #b8944f;
+  --color-brand-600: #a07e3e;
+  --color-brand-700: #856830;
+  --color-brand-800: #6b5325;
+  --color-brand-900: #52401c;
 
   /* Semantic tokens — DARK defaults (the original chrome).
    * Same values reappear under `:root` below so the cascade
@@ -54,33 +54,33 @@
    * Tailwind utilities. */
   --color-bg-base:        transparent;
   --color-bg-elevated:    transparent;
-  --color-bg-raised:      rgba(31 41 55 / 0.4);  /* gray-800 semi-transparent */
-  --color-bg-surface:     #111827;           /* opaque — dropdowns, popups, inputs */
-  --color-bg-hover:       #1f2937;
+  --color-bg-raised:      rgba(20 28 42 / 0.5);  /* nebula semi-transparent */
+  --color-bg-surface:     #131a27;           /* opaque — dropdowns, popups, inputs */
+  --color-bg-hover:       #1a2332;
   --color-bg-overlay:     rgba(0 0 0 / 0.7);
 
-  --color-fg-default:     #f3f4f6;          /* gray-100 */
-  --color-fg-muted:       #d1d5db;          /* gray-300 */
-  --color-fg-faint:       #828b99;          /* WCAG AA 5.85:1 on #030712 */
-  --color-fg-fainter:     #737d8c;          /* WCAG AA 4.83:1 on #030712 */
-  --color-fg-on-accent:   #ffffff;
+  --color-fg-default:     #e2e8f0;          /* frost — cool white */
+  --color-fg-muted:       #cbd5e1;          /* slate-300 */
+  --color-fg-faint:       #828b99;          /* WCAG AA 5.85:1 on #0a0f1a */
+  --color-fg-fainter:     #737d8c;          /* WCAG AA 4.83:1 on #0a0f1a */
+  --color-fg-on-accent:   #0a0f1a;
 
-  --color-border-default: #374151;          /* gray-700 */
-  --color-border-strong:  #4b5563;          /* gray-600 */
-  --color-border-subtle:  #1f2937;          /* gray-800 */
+  --color-border-default: #1e2a3a;          /* deep blue-gray */
+  --color-border-strong:  #2d3b4e;          /* medium blue-gray */
+  --color-border-subtle:  #141c2a;          /* near-void */
 
-  --color-accent:         #4c6ef5;          /* brand-600 */
-  --color-accent-hover:   #4263eb;          /* brand-700 */
-  --color-accent-faint:   rgba(76 110 245 / 0.1);
+  --color-accent:         #c9a96e;          /* Star Gold */
+  --color-accent-hover:   #d4b876;          /* Star Gold lighter */
+  --color-accent-faint:   rgba(201 169 110 / 0.1);
 
-  --color-link:           #91a7ff;          /* brand-300 */
+  --color-link:           #d4b876;          /* Star Gold 300 */
   --color-success:        #10b981;
   --color-warning:        #f59e0b;
   --color-danger:         #f43f5e;
 
   /* Scrollbar tones. */
-  --color-scrollbar:        #374151;
-  --color-scrollbar-hover:  #4b5563;
+  --color-scrollbar:        #1e2a3a;
+  --color-scrollbar-hover:  #2d3b4e;
 }
 
 /* Dark theme is the implicit default; the @theme block above
@@ -93,24 +93,24 @@
 
   --color-bg-base:        transparent;
   --color-bg-elevated:    transparent;
-  --color-bg-raised:      rgba(31 41 55 / 0.4);
-  --color-bg-surface:     #111827;           /* opaque — dropdowns, popups, inputs */
-  --color-bg-hover:       #1f2937;
+  --color-bg-raised:      rgba(20 28 42 / 0.5);
+  --color-bg-surface:     #131a27;
+  --color-bg-hover:       #1a2332;
   --color-bg-overlay:     rgba(0 0 0 / 0.7);
 
-  --color-fg-default:     #f3f4f6;
-  --color-fg-muted:       #d1d5db;
-  --color-fg-faint:       #828b99;          /* WCAG AA 5.85:1 on #030712 */
-  --color-fg-fainter:     #737d8c;          /* WCAG AA 4.83:1 on #030712 */
-  --color-fg-on-accent:   #ffffff;
+  --color-fg-default:     #e2e8f0;
+  --color-fg-muted:       #cbd5e1;
+  --color-fg-faint:       #828b99;
+  --color-fg-fainter:     #737d8c;
+  --color-fg-on-accent:   #0a0f1a;
 
-  --color-border-default: #374151;
-  --color-border-strong:  #4b5563;
-  --color-border-subtle:  #1f2937;
+  --color-border-default: #1e2a3a;
+  --color-border-strong:  #2d3b4e;
+  --color-border-subtle:  #141c2a;
 
-  --color-accent:         #4c6ef5;
-  --color-accent-hover:   #4263eb;
-  --color-accent-faint:   rgba(76 110 245 / 0.1);
+  --color-accent:         #c9a96e;
+  --color-accent-hover:   #d4b876;
+  --color-accent-faint:   rgba(201 169 110 / 0.1);
 
   /* ─── Voice subtitle (VoiceSubtitleView filmstrip) ───
    * Dark theme: cyan→white→lavender gradient over near-black
@@ -132,7 +132,7 @@
   --voice-current-panel-ring:   rgba(255, 255, 255, 0.12);
   --voice-current-panel-shadow: rgba(0, 0, 0, 0.25);
 
-  --color-link:           #91a7ff;
+  --color-link:           #d4b876;          /* Star Gold */
   --color-success:        #10b981;
   --color-warning:        #f59e0b;
   --color-danger:         #f43f5e;
@@ -455,23 +455,27 @@ body,
 /* Seal watermark on AI bubbles */
 
 @layer components {
-  /* Markdown table styles in chat — switched to theme tokens. */
+  /* Markdown table styles in chat — generous padding, subtle borders. */
   .prose table {
     @apply border-collapse text-sm w-full block overflow-x-auto;
+    border-radius: 0.5rem;
   }
   .prose th {
     background: var(--color-bg-raised);
-    border: 1px solid var(--color-border-default);
-    color: var(--color-fg-muted);
-    @apply px-3 py-1.5 text-left font-medium;
+    border-bottom: 2px solid var(--color-border-strong);
+    color: var(--color-fg-default);
+    @apply px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide;
   }
   .prose td {
-    border: 1px solid var(--color-border-default);
+    border-bottom: 1px solid var(--color-border-subtle);
     color: var(--color-fg-muted);
-    @apply px-3 py-1.5;
+    @apply px-4 py-2;
+  }
+  .prose tr:last-child td {
+    border-bottom: none;
   }
   .prose tr:hover td {
-    background: color-mix(in srgb, var(--color-bg-raised) 50%, transparent);
+    background: color-mix(in srgb, var(--color-bg-raised) 40%, transparent);
   }
   .prose pre {
     @apply overflow-x-auto;
