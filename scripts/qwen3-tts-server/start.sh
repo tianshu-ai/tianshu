@@ -20,7 +20,7 @@ SERVER_PY="$SCRIPT_DIR/server.py"
 VENV_DIR="${TIANSHU_TTS_VENV:-$HOME/.tianshu/qwen-tts-venv}"
 PORT="${TIANSHU_TTS_PORT:-50000}"
 VOICE="${TIANSHU_TTS_VOICE:-yujie}"
-MODEL="${TIANSHU_TTS_MODEL:-mlx-community/Qwen3-TTS-12Hz-1.7B-Base-bf16}"
+MODEL="${TIANSHU_TTS_MODEL:-}"
 LOG_FILE="${TIANSHU_TTS_LOG:-/tmp/qwen3-tts-server.log}"
 PID_FILE="/tmp/qwen3-tts-server.pid"
 
@@ -113,7 +113,9 @@ cmd_start_foreground() {
   echo "  Voice:  $VOICE"
   echo "  Port:   $PORT"
   echo ""
-  exec "$py" "$SERVER_PY" --port "$PORT" --voice "$VOICE" --model "$MODEL"
+  local model_args=()
+  [ -n "$MODEL" ] && model_args+=(--model "$MODEL")
+  exec "$py" "$SERVER_PY" --port "$PORT" --voice "$VOICE" "${model_args[@]+${model_args[@]}}"
 }
 
 cmd_start_background() {
@@ -134,8 +136,10 @@ cmd_start_background() {
   echo "  Port:   $PORT"
   echo "  Log:    $LOG_FILE"
 
+  local model_args=()
+  [ -n "$MODEL" ] && model_args+=(--model "$MODEL")
   nohup "$py" "$SERVER_PY" \
-    --port "$PORT" --voice "$VOICE" --model "$MODEL" \
+    --port "$PORT" --voice "$VOICE" "${model_args[@]+${model_args[@]}}" \
     > "$LOG_FILE" 2>&1 &
   local pid=$!
   echo "$pid" > "$PID_FILE"
