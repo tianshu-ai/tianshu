@@ -175,7 +175,7 @@ function BridgePanel(_props: PanelProps) {
                 onChange={(e) => setBrowserOn(e.target.checked)}
               />
               <span className="font-medium">{t("panel.browser")}</span>
-              <span className="text-xs text-fg-fainter">{t("panel.browserHint")}</span>
+              <span className="text-sm text-fg-fainter">{t("panel.browserHint")}</span>
             </label>
             {browserOn && (
               <div className="ml-6 flex flex-col gap-1">
@@ -225,7 +225,7 @@ function BridgePanel(_props: PanelProps) {
                 onChange={(e) => setShellOn(e.target.checked)}
               />
               <span className="font-medium">{t("panel.shell")}</span>
-              <span className="text-xs text-fg-fainter">{t("panel.shellHint")}</span>
+              <span className="text-sm text-fg-fainter">{t("panel.shellHint")}</span>
             </label>
             {shellOn && (
               <div className="ml-6 text-xs text-warning">{t("panel.shellWarning")}</div>

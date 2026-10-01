@@ -211,7 +211,7 @@ function MicroSandboxAdminPage(_props: AdminPageProps) {
     <div className="mx-auto max-w-4xl px-6 py-6 text-fg-default">
       <header className="mb-6 border-b border-border-subtle pb-4">
         <h1 className="text-lg font-semibold text-fg-default">{t("page.title")}</h1>
-        <p className="mt-1 text-xs leading-relaxed text-fg-faint">
+        <p className="mt-1 text-sm leading-relaxed text-fg-faint">
           {t("page.intro")}
         </p>
       </header>
@@ -401,7 +401,7 @@ function SandboxfileSection() {
         className="mt-2 h-64 w-full resize-y rounded-md border border-border-subtle bg-bg-base px-3 py-2 font-mono text-xs leading-relaxed text-fg-default outline-none focus:border-blue-700"
         placeholder="image: python:3.12-slim&#10;cpus: 4&#10;memory_mib: 4096"
       />
-      <p className="mt-2 text-xs leading-relaxed text-fg-faint">
+      <p className="mt-2 text-sm leading-relaxed text-fg-faint">
         {t("sandboxfile.pathLabel")} <code className="rounded bg-bg-raised px-1">{payload?.path ?? "…"}</code>.
         {" "}{t("sandboxfile.grammarLead")} <code className="rounded bg-bg-raised px-1">image:</code>,{" "}
         <code className="rounded bg-bg-raised px-1">cpus:</code>,{" "}
@@ -722,7 +722,7 @@ function BuildsSection({ onMutate }: { onMutate: () => void }) {
       )}
 
       {data && data.builds.length === 0 && !building && (
-        <p className="rounded-md border border-dashed border-border-subtle px-3 py-6 text-center text-xs text-fg-faint">
+        <p className="rounded-md border border-dashed border-border-subtle px-3 py-6 text-center text-sm text-fg-faint">
           {t("builds.empty.lead")} <strong>{t("builds.empty.build")}</strong> {t("builds.empty.tail")}
         </p>
       )}
@@ -1056,7 +1056,7 @@ function ShellSection() {
       />
 
       {history.length === 0 && (
-        <p className="mb-2 rounded-md border border-dashed border-border-subtle px-3 py-3 text-center text-xs text-fg-faint">
+        <p className="mb-2 rounded-md border border-dashed border-border-subtle px-3 py-3 text-center text-sm text-fg-faint">
           {t("shell.empty.lead")}{" "}
           <code className="rounded bg-bg-raised px-1 text-fg-muted">ls /workspace</code>
           {" · "}
@@ -1852,7 +1852,7 @@ function BrowserViewportPanel(_props: PanelProps) {
             className="absolute inset-0 h-full w-full bg-bg-base"
           />
         ) : (
-          <div className="flex h-full items-center justify-center px-6 text-center text-xs text-fg-faint">
+          <div className="flex h-full items-center justify-center px-6 text-center text-sm text-fg-faint">
             {data
               ? data.hint ?? t("browserPanel.notRunning")
               : t("browserPanel.loading")}

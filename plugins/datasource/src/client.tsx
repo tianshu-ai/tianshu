@@ -131,7 +131,7 @@ function DataSourcePanel(_props: PanelProps) {
     : t("panel.placeholderSql");
 
   return (
-    <div className="flex h-full flex-col text-xs">
+    <div className="flex h-full flex-col text-sm">
       {/* Header: source selector */}
       <div className="flex items-center gap-2 border-b border-border-subtle px-3 py-2">
         <Database size={14} className="text-fg-faint" />

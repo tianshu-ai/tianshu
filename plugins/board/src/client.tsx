@@ -228,7 +228,7 @@ function BoardPanel(_props: PanelProps) {
             />
           </div>
         ) : (
-          <span className="text-xs text-fg-faint">{t("panel.noBoards")}</span>
+          <span className="text-sm text-fg-faint">{t("panel.noBoards")}</span>
         )}
         <button
           onClick={reload}

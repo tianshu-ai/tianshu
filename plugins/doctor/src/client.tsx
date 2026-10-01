@@ -226,7 +226,7 @@ function DoctorPanel(_props: PanelProps) {
   }, [runCheck]);
 
   return (
-    <div className="flex h-full flex-col text-xs">
+    <div className="flex h-full flex-col text-sm">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2">
         <div className="flex items-center gap-2">

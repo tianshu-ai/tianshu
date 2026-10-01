@@ -274,7 +274,7 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
           <>
             <div className="text-sm text-fg-muted">{t("add.scanToAuthorise")}</div>
             <QrCanvas value={qr.qrCodeImageUrl} />
-            <div className="text-xs text-fg-faint">{t("add.scanSteps")}</div>
+            <div className="text-sm text-fg-faint">{t("add.scanSteps")}</div>
             <div className="flex items-center gap-2 text-xs text-fg-fainter">
               <Loader2 className="h-3 w-3 animate-spin" />
               {t("add.waitingForScan")}
@@ -285,7 +285,7 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
           <>
             <CheckCircle2 className="h-10 w-10 text-success" />
             <div className="text-sm font-medium text-fg-default">{t("add.connected")}</div>
-            <div className="text-xs text-fg-muted">
+            <div className="text-sm text-fg-muted">
               {bound.displayName ?? bound.config.username ?? t("add.defaultAccountName")}
             </div>
           </>
@@ -294,7 +294,7 @@ function AddAccountFlow({ onClose, onBound }: AddModalProps) {
           <>
             <X className="h-10 w-10 text-danger" />
             <div className="text-sm text-fg-default">{t("add.loginFailed")}</div>
-            <div className="max-w-xs break-words text-xs text-fg-muted">{error}</div>
+            <div className="max-w-xs break-words text-sm text-fg-muted">{error}</div>
           </>
         )}
       </div>

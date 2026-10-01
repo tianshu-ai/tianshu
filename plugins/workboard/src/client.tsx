@@ -568,7 +568,7 @@ function WorkboardPanel(_props: PanelProps) {
       )}
 
       {ctrl.error && (
-        <div className="px-3 py-1.5 text-xs bg-red-900/40 border-b border-red-800 text-red-100 flex-shrink-0">
+        <div className="px-3 py-1.5 text-sm bg-red-900/40 border-b border-red-800 text-red-100 flex-shrink-0">
           {ctrl.error}
         </div>
       )}
@@ -664,7 +664,7 @@ function WorkboardAdminPage(_props: AdminPageProps) {
         <h1 className="text-xl font-semibold flex items-center gap-2">
           <Kanban className="w-5 h-5" /> {t("panel.admin.title")}
         </h1>
-        <p className="text-xs text-fg-faint mt-1 max-w-3xl">
+        <p className="text-sm text-fg-faint mt-1 max-w-3xl">
           {t("panel.admin.descPart1")}
           <Plus className="inline w-3 h-3 align-text-bottom" />
           {t("panel.admin.descPart2")}
@@ -675,7 +675,7 @@ function WorkboardAdminPage(_props: AdminPageProps) {
       </header>
 
       {ctrl.error && (
-        <div className="mx-6 mt-3 px-3 py-2 rounded bg-red-900/40 border border-red-800 text-xs text-red-100 flex-shrink-0">
+        <div className="mx-6 mt-3 px-3 py-2 rounded bg-red-900/40 border border-red-800 text-sm text-red-100 flex-shrink-0">
           {ctrl.error}
         </div>
       )}
