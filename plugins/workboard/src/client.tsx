@@ -2678,7 +2678,7 @@ function WorkersSidebarSection(_props: SidebarSectionProps) {
         <span className="flex-1 text-sm font-medium text-fg-muted">
           {t("workers.title")}
         </span>
-        <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[10px] text-fg-fainter">
+        <span className="rounded bg-bg-raised px-1.5 py-0.5 text-[11px] text-fg-fainter">
           {t("workers.busyCount", {
             busy: busyCount,
             total: realWorkers.length,

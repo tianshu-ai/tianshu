@@ -147,7 +147,7 @@ export default function ModelSelector({ value, onChange }: ModelSelectorProps = 
           >
             {groups.map((g) => (
               <div key={g.label}>
-                <div className="px-3 pb-1 pt-2.5 text-[10px] font-semibold uppercase tracking-wider text-fg-faint">
+                <div className="px-3 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-wider text-fg-faint">
                   {g.label}
                 </div>
                 {g.items.map((m) => (
