@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.78.0](https://github.com/tianshu-ai/tianshu/compare/v0.77.0...v0.78.0) (2026-10-01)
+
+
+### Features
+
+* **tts:** use faster-qwen3-tts for CUDA Graph accelerated inference on Linux ([1d3157d](https://github.com/tianshu-ai/tianshu/commit/1d3157deb80dba28c894503184343abb5a01d2b0))
+
+
+### Bug Fixes
+
+* **tts:** let start.sh auto-detect model per platform ([3b8f3fa](https://github.com/tianshu-ai/tianshu/commit/3b8f3fa95c751047858da0eaf477e5a530cf0ce0))
+
 ## [0.77.0](https://github.com/tianshu-ai/tianshu/compare/v0.76.1...v0.77.0) (2026-10-01)
 
 
