@@ -7,14 +7,14 @@
   "panel.title": "Local Bridge",
   "panel.refresh": "Aktualisieren",
   "panel.intro.pre": "Verbinden Sie Software auf Ihrem eigenen Rechner (Browser, Dateien, Shell) mit tianshu. Führen Sie den folgenden Befehl auf Ihrem Computer aus; er startet einen kleinen lokalen Client, der sich einwählt und seine Tools registriert. Nur ",
-  "panel.intro.your": "Ihre eigenen",
-  "panel.intro.post": " Sitzungen können diese nutzen.",
+  "panel.intro.your": "Ihre",
+  "panel.intro.post": " Sitzungen können sie verwenden.",
 
   "panel.steps.copy": "Kopieren Sie den folgenden Befehl.",
   "panel.steps.run": "Führen Sie ihn in einem Terminal auf dem Rechner aus, den Sie verbinden möchten.",
   "panel.steps.appearPre": "Das Gerät erscheint unter ",
   "panel.steps.connectedDevices": "Verbundene Geräte",
-  "panel.steps.appearPost": " und der Agent kann dessen Tools verwenden.",
+  "panel.steps.appearPost": " und der Agent kann seine Tools verwenden.",
 
   "panel.capabilities": "Funktionen",
   "panel.browser": "Browser",
@@ -22,12 +22,12 @@
   "panel.ownChrome": "Ihr eigenes Chrome",
   "panel.ownChromeHint": "echte Cookies + Fingerprint, kein Download",
   "panel.stealth": "Stealth-Browser",
-  "panel.stealthHint": "Anti-Bot-Erkennung (CloakBrowser); ca. 200 MB beim ersten Start",
+  "panel.stealthHint": "Anti-Bot-Erkennung (CloakBrowser); ~200 MB beim ersten Start",
   "panel.headless": "Headless",
   "panel.headlessHint": "kein Fenster (Standard: Browser anzeigen)",
   "panel.shell": "Shell",
-  "panel.shellHint": "Befehle ausführen + Dateien synchronisieren auf Ihrem Rechner",
-  "panel.shellWarning": "Führt Befehle auf Ihrem Rechner aus (beschränkt auf ~/.tianshu_shell). Nur aktivieren, wenn Sie dem Server vertrauen.",
+  "panel.shellHint": "Befehle ausführen + Dateien auf Ihrem Rechner synchronisieren",
+  "panel.shellWarning": "Führt Befehle auf Ihrem Rechner aus (eingeschränkt auf ~/.tianshu_shell). Nur für einen Server aktivieren, dem Sie vertrauen.",
   "panel.files": "Dateien",
   "panel.comingSoon": "Demnächst verfügbar",
 
@@ -42,18 +42,18 @@
   "panel.step2.optionB": "B · Menüleisten-App (macOS)",
   "panel.step2.installAppStep": "1. App installieren:",
   "panel.step2.installAppLabel": "App installieren",
-  "panel.step2.configStep": "2. Kopieren Sie diese Konfiguration, klicken Sie dann auf das Menüleisten-Symbol → Einstellungen → „Von tianshu einfügen":",
+  "panel.step2.configStep": "2. Kopieren Sie diese Konfiguration und klicken Sie auf das Menüleisten-Symbol → Einstellungen → „Aus tianshu einfügen":",
   "panel.step2.configLabel": "Konfiguration",
 
-  "panel.tokenValid": "Token gültig bis {date}. Aktualisieren Sie dieses Panel, um einen neuen Token zu erstellen; der alte Befehl funktioniert bis zum Ablauf weiter.",
-  "panel.authDisabled": "Authentifizierung ist auf diesem Server deaktiviert – kein Token erforderlich.",
+  "panel.tokenValid": "Token gültig bis {date}. Aktualisieren Sie dieses Panel, um ein neues zu erstellen; der alte Befehl funktioniert bis zum Ablauf weiter.",
+  "panel.authDisabled": "Authentifizierung ist auf diesem Server deaktiviert — kein Token erforderlich.",
   "panel.updateLaterPre": "Später aktualisieren mit ",
   "panel.updateLaterPost": ".",
 
   "panel.devices.title": "Verbundene Geräte",
-  "panel.devices.loading": "Wird geladen …",
+  "panel.devices.loading": "Laden…",
   "panel.devices.empty": "Noch keine Geräte verbunden. Führen Sie den obigen Befehl aus.",
   "panel.devices.toolCount": "{n} Tool(s)",
   "manifest.displayName": "Local Bridge",
-  "manifest.description": "Verbinden Sie Software auf Ihrem eigenen Rechner (Browser, Dateien, Shell) mit tianshu. Ein leichtgewichtiger lokaler Client wählt sich über den Chat-WebSocket ein und registriert sich als MCP-Server, sodass der serverseitige Agent Ihre lokalen Tools aufrufen kann. Beschränkt auf Ihre eigenen Sitzungen – nicht benutzerübergreifend geteilt."
+  "manifest.description": "Verbinden Sie Software auf Ihrem eigenen Rechner (Browser, Dateien, Shell) mit tianshu. Ein leichtgewichtiger lokaler Client wählt sich über den Chat-WebSocket ein und registriert sich als MCP-Server, sodass der serverseitige Agent Ihre lokalen Tools aufrufen kann. Beschränkt auf Ihre eigenen Sitzungen — nicht benutzerübergreifend geteilt."
 }
