@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.78.1](https://github.com/tianshu-ai/tianshu/compare/v0.78.0...v0.78.1) (2026-10-01)
+
+
+### Documentation
+
+* **setup:** update TTS section with faster-qwen3-tts backend info ([a04557b](https://github.com/tianshu-ai/tianshu/commit/a04557b8915b17a0e12e5574607f641cd3602460))
+
 ## [0.78.0](https://github.com/tianshu-ai/tianshu/compare/v0.77.0...v0.78.0) (2026-10-01)
 
 
