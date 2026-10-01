@@ -582,12 +582,12 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         type="button"
         onClick={() => !running && setExpanded((v) => !v)}
         className={
-          "group flex w-full min-w-0 select-none items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all " +
+          "group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all " +
           (running
-            ? "cursor-default border-accent/30 bg-accent-faint"
+            ? "cursor-default bg-accent-faint/60"
             : isError
-              ? "cursor-pointer border-rose-700/40 bg-rose-950/20 hover:bg-rose-950/30"
-              : "cursor-pointer border-border-default bg-bg-elevated/40 hover:bg-bg-hover hover:border-border-strong")
+              ? "cursor-pointer bg-rose-950/30 hover:bg-rose-950/40"
+              : "cursor-pointer bg-bg-elevated/30 hover:bg-bg-elevated/60")
         }
       >
         {statusIcon}
@@ -612,10 +612,10 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       {expanded && result && (
         <pre
           className={
-            "mt-1.5 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-lg border px-3 py-2 text-xs " +
+            "mt-1.5 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-xl px-3 py-2 text-xs " +
             (isError
-              ? "border-rose-700/40 bg-rose-950/30 text-danger"
-              : "border-border-subtle bg-bg-elevated/60 text-fg-muted")
+              ? "bg-rose-950/30 text-danger"
+              : "bg-bg-elevated/40 text-fg-muted")
           }
         >
           {truncate(result.text, 4000)}
