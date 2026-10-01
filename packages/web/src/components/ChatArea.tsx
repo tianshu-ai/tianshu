@@ -74,6 +74,27 @@ export default function ChatArea() {
     prevLastIdRef.current = lastId;
   }, [messages]);
 
+  // ?prompt= auto-send: fire once when the page loads with a prompt query param
+  // (used by the welcome screen's "go to maintenance" button).
+  const promptSentRef = useRef(false);
+  useEffect(() => {
+    if (promptSentRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const prompt = params.get("prompt");
+    if (!prompt) return;
+    promptSentRef.current = true;
+    // Clean URL without reload
+    params.delete("prompt");
+    const clean = params.toString();
+    const next = window.location.pathname + (clean ? `?${clean}` : "");
+    window.history.replaceState(null, "", next);
+    // Wait for WS to be ready before sending
+    const id = window.setTimeout(() => {
+      useChatStore.getState().sendPrompt(prompt);
+    }, 500);
+    return () => window.clearTimeout(id);
+  }, []);
+
   const [pluginManagerOpen, setPluginManagerOpen] = useState(false);
 
   const brand = me?.config.branding;
@@ -357,27 +378,30 @@ function EmptyState({
 }) {
   const t = useT();
   const plugins = usePluginStore((s) => s.plugins);
+  const me = useChatStore((s) => s.me);
   const isZh = t("chat.welcome", { name: "" }).includes("欢迎");
 
   const starters = useMemo(() => {
     const activeIds = new Set(
       (plugins ?? []).filter((p) => p.state === "active").map((p) => p.id),
     );
-    const matched = PLUGIN_STARTERS
+    return PLUGIN_STARTERS
       .filter((s) => activeIds.has(s.pluginId))
       .slice(0, 4)
       .map((s) => ({ icon: s.icon, label: isZh ? s.zh : s.en }));
-    // No active user-facing plugins → nudge toward setup
-    if (matched.length === 0) {
-      return [{
-        icon: Settings,
-        label: isZh
-          ? "转到维护模式，让 Agent 帮你配置系统"
-          : "Switch to maintenance mode to configure the system",
-      }];
-    }
-    return matched;
   }, [plugins, isZh]);
+
+  const showSetupNudge = starters.length === 0 && me?.superAdmin;
+
+  const goToMaintenance = useCallback(async () => {
+    try { await api.switchTenant("maintenance"); } catch { /* ignore */ }
+    const prompt = isZh
+      ? "帮我配置这个系统，我刚创建了一个新租户，还没有启用任何插件"
+      : "Help me configure this system — I just created a new tenant with no plugins enabled";
+    window.location.assign(
+      `/tenants/maintenance/users/${me?.userId ?? "admin"}?prompt=${encodeURIComponent(prompt)}`,
+    );
+  }, [me?.userId, isZh]);
 
   const handleStarter = (text: string) => {
     useChatStore.getState().sendPrompt(text);
@@ -394,21 +418,39 @@ function EmptyState({
         {t("chat.welcome", { name: brandName })}
       </h2>
       <p className="mb-8 max-w-md text-sm text-fg-faint">{t("chat.welcomeBody")}</p>
-      <div className={`grid w-full gap-3 ${
-        starters.length <= 2 ? "max-w-sm grid-cols-1" : "max-w-lg grid-cols-2"
-      }`}>
-        {starters.map((s) => (
-          <button
-            key={s.label}
-            type="button"
-            onClick={() => handleStarter(s.label)}
-            className="flex items-center gap-3 rounded-xl bg-bg-surface px-4 py-3.5 text-left text-sm text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
-          >
-            <s.icon size={16} className="shrink-0 text-fg-fainter" />
-            <span>{s.label}</span>
-          </button>
-        ))}
-      </div>
+
+      {starters.length > 0 && (
+        <div className={`grid w-full gap-3 ${
+          starters.length <= 2 ? "max-w-sm grid-cols-1" : "max-w-lg grid-cols-2"
+        }`}>
+          {starters.map((s) => (
+            <button
+              key={s.label}
+              type="button"
+              onClick={() => handleStarter(s.label)}
+              className="flex items-center gap-3 rounded-xl bg-bg-surface px-4 py-3.5 text-left text-sm text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
+            >
+              <s.icon size={16} className="shrink-0 text-fg-fainter" />
+              <span>{s.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showSetupNudge && (
+        <button
+          type="button"
+          onClick={() => void goToMaintenance()}
+          className="flex items-center gap-3 rounded-xl bg-bg-surface px-5 py-3.5 text-sm text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
+        >
+          <Settings size={16} className="shrink-0 text-fg-fainter" />
+          <span>
+            {isZh
+              ? "转到维护模式，让 Agent 帮你配置系统"
+              : "Switch to maintenance mode to configure the system"}
+          </span>
+        </button>
+      )}
     </div>
   );
 }
