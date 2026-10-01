@@ -455,24 +455,22 @@ body,
 /* Seal watermark on AI bubbles */
 
 @layer components {
-  /* Markdown table styles in chat — generous padding, subtle borders. */
+  /* Markdown table styles in chat — visible grid, generous padding. */
   .prose table {
     @apply border-collapse text-sm w-full block overflow-x-auto;
+    border: 1px solid var(--color-border-default);
     border-radius: 0.5rem;
   }
   .prose th {
     background: var(--color-bg-raised);
-    border-bottom: 2px solid var(--color-border-strong);
+    border: 1px solid var(--color-border-default);
     color: var(--color-fg-default);
-    @apply px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide;
+    @apply px-5 py-3 text-left text-xs font-semibold uppercase tracking-wide;
   }
   .prose td {
-    border-bottom: 1px solid var(--color-border-subtle);
+    border: 1px solid var(--color-border-default);
     color: var(--color-fg-muted);
-    @apply px-4 py-2;
-  }
-  .prose tr:last-child td {
-    border-bottom: none;
+    @apply px-5 py-3;
   }
   .prose tr:hover td {
     background: color-mix(in srgb, var(--color-bg-raised) 40%, transparent);
