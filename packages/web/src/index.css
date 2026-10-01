@@ -469,7 +469,7 @@ body,
     background: var(--color-bg-raised);
     border: 1px solid var(--color-border-default);
     color: var(--color-fg-default);
-    padding: 12px 20px !important;
+    padding: 8px 12px !important;
     text-align: left;
     font-size: 0.75rem;
     font-weight: 600;
@@ -483,7 +483,7 @@ body,
   .prose tfoot td:last-child {
     border: 1px solid var(--color-border-default);
     color: var(--color-fg-muted);
-    padding: 12px 20px !important;
+    padding: 8px 12px !important;
   }
   .prose tr:hover td {
     background: color-mix(in srgb, var(--color-bg-raised) 40%, transparent);
