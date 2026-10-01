@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Stethoscope, Upload, Wrench, X } from "lucide-react";
+import { useComposerStore } from "../stores/composer-store";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
@@ -91,18 +92,77 @@ export default function ChatArea() {
     return <VoiceSubtitleView />;
   }
 
-  // ── Drag-and-drop overlay ───────────────────────────────
-  // The files plugin fires a custom event on document when a file
-  // drag enters/leaves the window. We show a visual overlay so the
-  // user knows they can drop.
+  // ── Drag-and-drop ─────────────────────────────────────────
+  // Document-level listeners so files can be dropped anywhere on
+  // the chat area. On drop we upload via the files plugin API and
+  // stage attachments in the composer store.
   const [dragActive, setDragActive] = useState(false);
+  const addAttachment = useComposerStore((s) => s.addAttachment);
+  const updateAttachment = useComposerStore((s) => s.updateAttachment);
+
   useEffect(() => {
-    const handler = (e: Event) => {
-      setDragActive((e as CustomEvent<boolean>).detail);
+    let dragCounter = 0;
+
+    const onDragEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      dragCounter++;
+      if (dragCounter === 1) setDragActive(true);
     };
-    document.addEventListener("tianshu:dragactive", handler);
-    return () => document.removeEventListener("tianshu:dragactive", handler);
-  }, []);
+    const onDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; setDragActive(false); }
+    };
+    const onDrop = (e: DragEvent) => {
+      dragCounter = 0;
+      setDragActive(false);
+      if (!e.dataTransfer?.files.length) return;
+      e.preventDefault();
+      for (const file of Array.from(e.dataTransfer.files)) {
+        const MAX = 50 * 1024 * 1024;
+        if (file.size > MAX) {
+          addAttachment({ name: file.name, size: file.size, status: "error", error: `Exceeds ${MAX / 1024 / 1024} MB`, mimeType: file.type || "application/octet-stream" });
+          continue;
+        }
+        const id = addAttachment({ name: file.name, size: file.size, status: "uploading", mimeType: file.type || "application/octet-stream" });
+        void (async () => {
+          try {
+            const resp = await fetch("/api/p/files/upload", {
+              method: "POST",
+              credentials: "include",
+              headers: { "Content-Type": "application/octet-stream", "X-Filename": encodeURIComponent(file.name) },
+              body: file,
+            });
+            if (!resp.ok) {
+              updateAttachment(id, { status: "error", error: `${resp.status}: ${(await resp.text()).slice(0, 200)}` });
+              return;
+            }
+            const json = (await resp.json()) as { path: string; size: number };
+            updateAttachment(id, { status: "ready", path: json.path, size: json.size });
+          } catch (err) {
+            updateAttachment(id, { status: "error", error: err instanceof Error ? err.message : String(err) });
+          }
+        })();
+      }
+    };
+
+    document.addEventListener("dragenter", onDragEnter);
+    document.addEventListener("dragover", onDragOver);
+    document.addEventListener("dragleave", onDragLeave);
+    document.addEventListener("drop", onDrop);
+    return () => {
+      document.removeEventListener("dragenter", onDragEnter);
+      document.removeEventListener("dragover", onDragOver);
+      document.removeEventListener("dragleave", onDragLeave);
+      document.removeEventListener("drop", onDrop);
+    };
+  }, [addAttachment, updateAttachment]);
 
   return (
     <main className="relative flex h-full min-w-0 flex-1 flex-col">
