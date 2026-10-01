@@ -569,52 +569,68 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
     );
   }
 
+  // ── Default tool call: card style ──
+  const statusIcon = running ? (
+    <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
+  ) : isError ? (
+    <XCircle size={13} className="shrink-0 text-rose-400" />
+  ) : (
+    <CheckCircle2 size={13} className="shrink-0 text-emerald-500/80" />
+  );
+
+  const statusLabel = running
+    ? "running…"
+    : isError
+      ? "failed"
+      : undefined;
+
   return (
-    <div className="flex flex-col w-full min-w-0">
+    <div className={`flex flex-col w-full min-w-0 ${
+      inCard ? "" : "my-0.5"
+    }`}>
       <button
         type="button"
         onClick={() => !running && setExpanded((v) => !v)}
         className={
-          "flex w-full min-w-0 select-none items-center gap-1.5 py-1 text-xs transition-colors overflow-hidden " +
-          // Align with the card's other rows (text px-3.5, MCP-UI px-3)
-          // when rendered inside a unified turn card; bare otherwise.
-          (inCard ? "px-3 " : "") +
-          (running ? "cursor-default text-fg-faint" : "cursor-pointer text-fg-faint hover:text-fg-muted")
+          "group flex w-full min-w-0 select-none items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all " +
+          (running
+            ? "cursor-default border-accent/30 bg-accent-faint"
+            : isError
+              ? "cursor-pointer border-rose-700/40 bg-rose-950/20 hover:bg-rose-950/30"
+              : "cursor-pointer border-border-default bg-bg-elevated/40 hover:bg-bg-hover hover:border-border-strong")
         }
       >
-        {running ? (
-          <Loader2 size={11} className="shrink-0 animate-spin text-warning" />
-        ) : isError ? (
-          <XCircle size={11} className="shrink-0 text-rose-400/70" />
-        ) : (
-          <CheckCircle2 size={11} className="shrink-0 text-emerald-500/60" />
-        )}
-        <code className="shrink-0 font-mono text-xs text-link">{call.name}</code>
+        {statusIcon}
+        <code className="shrink-0 font-mono text-xs font-medium text-fg-default">{call.name}</code>
         <span className="min-w-0 flex-1 truncate text-left font-mono text-xs text-fg-fainter">
           {summariseArgs(call.arguments)}
         </span>
-        {running ? (
-          <span className="shrink-0 text-xs text-fg-fainter">running…</span>
-        ) : expanded ? (
-          <ChevronDown size={11} className="shrink-0 text-fg-fainter" />
-        ) : (
-          <ChevronRight size={11} className="shrink-0 text-fg-fainter" />
+        {statusLabel && (
+          <span className={`shrink-0 text-xs ${
+            isError ? "text-rose-400" : "text-accent"
+          }`}>{statusLabel}</span>
+        )}
+        {!running && (
+          expanded ? (
+            <ChevronDown size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+          ) : (
+            <ChevronRight size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+          )
         )}
       </button>
 
       {expanded && result && (
         <pre
           className={
-            "mt-1 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-md border px-3 py-2 text-xs " +
+            "mt-1.5 max-h-64 max-w-2xl overflow-auto whitespace-pre-wrap break-all rounded-lg border px-3 py-2 text-xs " +
             (isError
               ? "border-rose-700/40 bg-rose-950/30 text-danger"
-              : "border-border-subtle/60 bg-bg-elevated/60 text-fg-muted")
+              : "border-border-subtle bg-bg-elevated/60 text-fg-muted")
           }
         >
           {truncate(result.text, 4000)}
         </pre>
       )}
-
     </div>
   );
 }
