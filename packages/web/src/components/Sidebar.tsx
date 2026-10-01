@@ -562,7 +562,7 @@ function WebchatRow() {
       <Hash size={12} className="flex-shrink-0" />
       <span className="flex-1 truncate text-xs">webchat</span>
       {active && (
-        <span className="text-[9px] uppercase tracking-wider text-fg-faint">
+        <span className="text-[10px] uppercase tracking-wider text-fg-faint">
           active
         </span>
       )}
