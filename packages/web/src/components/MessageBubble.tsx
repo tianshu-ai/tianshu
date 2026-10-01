@@ -584,10 +584,10 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         className={
           "group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all " +
           (running
-            ? "cursor-default bg-accent-faint/60"
+            ? "cursor-default bg-accent-faint"
             : isError
-              ? "cursor-pointer bg-rose-950/30 hover:bg-rose-950/40"
-              : "cursor-pointer bg-bg-elevated/30 hover:bg-bg-elevated/60")
+              ? "cursor-pointer bg-rose-950/40 hover:bg-rose-950/50"
+              : "cursor-pointer bg-bg-elevated/70 hover:bg-bg-elevated")
         }
       >
         {statusIcon}
