@@ -42,7 +42,7 @@
   "panel.step2.optionB": "B · Menüleisten-App (macOS)",
   "panel.step2.installAppStep": "1. App installieren:",
   "panel.step2.installAppLabel": "App installieren",
-  "panel.step2.configStep": "2. Kopieren Sie diese Konfiguration und klicken Sie auf das Menüleisten-Symbol → Einstellungen → „Aus tianshu einfügen":",
+  "panel.step2.configStep": "2. Kopieren Sie diese Konfiguration und klicken Sie auf das Menüleisten-Symbol → Einstellungen → »Aus tianshu einfügen«:",
   "panel.step2.configLabel": "Konfiguration",
 
   "panel.tokenValid": "Token gültig bis {date}. Aktualisieren Sie dieses Panel, um ein neues zu erstellen; der alte Befehl funktioniert bis zum Ablauf weiter.",

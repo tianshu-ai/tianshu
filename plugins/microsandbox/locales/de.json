@@ -40,7 +40,7 @@
   "sandboxfile.reload": "Neu laden",
   "sandboxfile.reload.title": "Von Festplatte neu laden",
   "sandboxfile.save": "Speichern",
-  "sandboxfile.confirmReplace": "Sie haben ungespeicherte Änderungen. Editor-Inhalt durch die Vorlage „{name}" ersetzen?",
+  "sandboxfile.confirmReplace": "Sie haben ungespeicherte Änderungen. Editor-Inhalt durch die Vorlage »{name}« ersetzen?",
   "sandboxfile.parseError": "Gespeichert, aber die Datei lässt sich nicht parsen: {error}",
   "sandboxfile.savedOk": "Gespeichert.",
   "sandboxfile.pathLabel": "Pfad:",

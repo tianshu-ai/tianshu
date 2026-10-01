@@ -1,7 +1,7 @@
 {
   "manifest.adminPages.settings": "Wiki",
   "manifest.configGroups.embedding.label": "Semantische Suche (Embedding)",
-  "manifest.configGroups.embedding.description": "Wählen Sie ein Embedding-Modell für die semantische Suche. Die Modelle selbst (Basis-URL, API-Key, Dimensionen) konfigurieren Sie unter Einstellungen → Modelle. Auf „Keines" lassen, um die Stichwortsuche zu verwenden.",
+  "manifest.configGroups.embedding.description": "Wählen Sie ein Embedding-Modell für die semantische Suche. Die Modelle selbst (Basis-URL, API-Key, Dimensionen) konfigurieren Sie unter Einstellungen → Modelle. Auf »Keines« lassen, um die Stichwortsuche zu verwenden.",
   "manifest.config.embeddingModelId.label": "Embedding-Modell",
   "manifest.config.embeddingModelId.description": "Wählen Sie eines der unter Einstellungen → Modelle konfigurierten Embedding-Modelle. Wenn gesetzt, erstellt das Wiki einen semantischen Index und durchsucht ihn; andernfalls wird auf die Stichwortsuche zurückgegriffen.",
   "manifest.topBarButtons.toggle": "Wiki",
@@ -27,7 +27,7 @@
   "reset.body1a": "Dies löscht das ",
   "reset.body1b": "gesamte Wiki",
   "reset.body1c": " — jede Seite (tägliche / wöchentliche / monatliche / jährliche Journale, Themen, Entitäten, Konzepte, Quellen) und den Aufnahme-Fortschrittscursor.",
-  "reset.body2a": "Der nächste „Aufnehmen"-Lauf baut alles von Grund auf neu auf. ",
+  "reset.body2a": "Der nächste »Aufnehmen«-Lauf baut alles von Grund auf neu auf. ",
   "reset.body2b": "Dies kann nicht rückgängig gemacht werden.",
   "reset.cancel": "Abbrechen",
   "reset.resetting": "Wird zurückgesetzt…",
