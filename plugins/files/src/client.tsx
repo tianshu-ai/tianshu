@@ -598,6 +598,52 @@ function UploadButton(props: ComposerActionProps) {
     return () => document.removeEventListener("paste", onPaste);
   }, [composer, t]);
 
+  // Drag & drop: files dragged from the desktop / file manager land
+  // in the composer via the same upload path. We listen on the
+  // document so the entire chat area is a valid drop target. A
+  // custom event ("tianshu:dragactive") lets ChatArea show an
+  // overlay without the files plugin reaching into host DOM.
+  useEffect(() => {
+    let dragCounter = 0;
+    const signal = (active: boolean) =>
+      document.dispatchEvent(new CustomEvent("tianshu:dragactive", { detail: active }));
+
+    const onDragEnter = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      dragCounter++;
+      if (dragCounter === 1) signal(true);
+    };
+    const onDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    };
+    const onDragLeave = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes("Files")) return;
+      dragCounter--;
+      if (dragCounter <= 0) { dragCounter = 0; signal(false); }
+    };
+    const onDrop = (e: DragEvent) => {
+      dragCounter = 0;
+      signal(false);
+      if (!e.dataTransfer?.files.length) return;
+      e.preventDefault();
+      ingestFiles(Array.from(e.dataTransfer.files), composer, t);
+    };
+
+    document.addEventListener("dragenter", onDragEnter);
+    document.addEventListener("dragover", onDragOver);
+    document.addEventListener("dragleave", onDragLeave);
+    document.addEventListener("drop", onDrop);
+    return () => {
+      document.removeEventListener("dragenter", onDragEnter);
+      document.removeEventListener("dragover", onDragOver);
+      document.removeEventListener("dragleave", onDragLeave);
+      document.removeEventListener("drop", onDrop);
+    };
+  }, [composer, t]);
+
   const click = () => inputRef.current?.click();
 
   return (

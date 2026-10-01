@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Stethoscope, Wrench, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Headphones, PanelLeftClose, PanelLeftOpen, Puzzle, RotateCw, Stethoscope, Upload, Wrench, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useChatStore } from "../stores/chat-store";
 import MessageBubble from "./MessageBubble";
@@ -91,8 +91,28 @@ export default function ChatArea() {
     return <VoiceSubtitleView />;
   }
 
+  // ── Drag-and-drop overlay ───────────────────────────────
+  // The files plugin fires a custom event on document when a file
+  // drag enters/leaves the window. We show a visual overlay so the
+  // user knows they can drop.
+  const [dragActive, setDragActive] = useState(false);
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setDragActive((e as CustomEvent<boolean>).detail);
+    };
+    document.addEventListener("tianshu:dragactive", handler);
+    return () => document.removeEventListener("tianshu:dragactive", handler);
+  }, []);
+
   return (
-    <main className="flex h-full min-w-0 flex-1 flex-col">
+    <main className="relative flex h-full min-w-0 flex-1 flex-col">
+      {/* Drop overlay */}
+      {dragActive && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-3 bg-bg-base/80 backdrop-blur-sm border-2 border-dashed border-brand-400 rounded-lg pointer-events-none">
+          <Upload size={40} className="text-brand-400" />
+          <span className="text-sm font-medium text-brand-400">{t("chat.dropFiles")}</span>
+        </div>
+      )}
       {/* Top bar */}
       <header className="flex h-12 items-center justify-between border-b border-border-subtle bg-bg-elevated/50 px-4 backdrop-blur">
         <div className="flex items-center">
