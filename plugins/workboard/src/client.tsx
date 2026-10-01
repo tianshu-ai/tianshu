@@ -988,7 +988,7 @@ const BoardCard = memo(function BoardCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1 flex-wrap">
             <span
-              className={`${compact ? "text-[11.5px]" : "text-xs"} font-medium text-fg-default break-words`}
+              className={`${compact ? "text-xs" : "text-xs"} font-medium text-fg-default break-words`}
             >
               {task.title}
             </span>
@@ -1089,7 +1089,7 @@ const BoardCard = memo(function BoardCard({
                     interventionAt: null,
                   });
                 }}
-                className="shrink-0 rounded bg-rose-600 px-1.5 py-px text-[9.5px] font-medium text-white hover:bg-rose-500 disabled:opacity-50"
+                className="shrink-0 rounded bg-rose-600 px-1.5 py-px text-[11px] font-medium text-white hover:bg-rose-500 disabled:opacity-50"
               >
                 {t("panel.card.retry")}
               </button>
@@ -1125,7 +1125,7 @@ const BoardCard = memo(function BoardCard({
                     failureReason: null,
                   });
                 }}
-                className="shrink-0 rounded bg-orange-600 px-1.5 py-px text-[9.5px] font-medium text-white hover:bg-orange-500 disabled:opacity-50"
+                className="shrink-0 rounded bg-orange-600 px-1.5 py-px text-[11px] font-medium text-white hover:bg-orange-500 disabled:opacity-50"
               >
                 {t("panel.card.retry")}
               </button>
@@ -1150,25 +1150,25 @@ const BoardCard = memo(function BoardCard({
                     ),
                   });
                 }}
-                className="rounded border border-yellow-500/40 px-1 py-px text-[9.5px] font-medium text-yellow-100 hover:bg-yellow-500/15 disabled:opacity-50"
+                className="rounded border border-yellow-500/40 px-1 py-px text-[11px] font-medium text-yellow-100 hover:bg-yellow-500/15 disabled:opacity-50"
               >
                 {t("panel.card.publish")}
               </button>
             </div>
           )}
           {task.description && !expanded && (
-            <div className="text-[10.5px] text-fg-muted mt-0.5 line-clamp-2 whitespace-pre-line">
+            <div className="text-[11px] text-fg-muted mt-0.5 line-clamp-2 whitespace-pre-line">
               {task.description}
             </div>
           )}
           {task.resultSummary && !expanded && (
             <div
-              className={`${compact ? "text-xs" : "text-[10.5px]"} text-success/90 mt-0.5 italic line-clamp-2 whitespace-pre-line`}
+              className={`${compact ? "text-xs" : "text-[11px]"} text-success/90 mt-0.5 italic line-clamp-2 whitespace-pre-line`}
             >
               → {task.resultSummary}
             </div>
           )}
-          <div className="text-[9.5px] text-fg-faint mt-0.5 flex items-center gap-1">
+          <div className="text-[11px] text-fg-faint mt-0.5 flex items-center gap-1">
             <Clock className="w-2.5 h-2.5" />
             {fmtRelative(task.endedAt ?? task.startedAt ?? task.createdAt, t)}
           </div>
@@ -1189,14 +1189,14 @@ const BoardCard = memo(function BoardCard({
         >
           {task.description && (
             <Section label={t("panel.section.description")}>
-              <div className="text-[10.5px] text-fg-muted whitespace-pre-line break-words max-h-48 overflow-y-auto">
+              <div className="text-[11px] text-fg-muted whitespace-pre-line break-words max-h-48 overflow-y-auto">
                 {task.description}
               </div>
             </Section>
           )}
           {task.resultSummary && (
             <Section label={t("panel.section.result")}>
-              <div className="text-[10.5px] text-success italic whitespace-pre-line break-words max-h-48 overflow-y-auto">
+              <div className="text-[11px] text-success italic whitespace-pre-line break-words max-h-48 overflow-y-auto">
                 → {task.resultSummary}
               </div>
             </Section>
@@ -1242,7 +1242,7 @@ const BoardCard = memo(function BoardCard({
               </ul>
             </Section>
           )}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-0 text-[9.5px] text-fg-faint pt-1">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-0 text-[11px] text-fg-faint pt-1">
             <div>
               {t("panel.card.created")}{" "}
               <span className="text-fg-muted">
@@ -1847,7 +1847,7 @@ function DeliveryFile({ path }: { path: string }): React.ReactElement {
         e.stopPropagation();
         open(stripped);
       }}
-      className="inline-flex items-center gap-1 max-w-full text-[10.5px] font-mono text-success hover:underline truncate"
+      className="inline-flex items-center gap-1 max-w-full text-[11px] font-mono text-success hover:underline truncate"
       title={stripped}
     >
       <FileText className="w-3 h-3 shrink-0 opacity-70" />
@@ -1945,7 +1945,7 @@ function AddTaskRow({
             }
           }}
           placeholder={t("panel.addTask.titlePlaceholder")}
-          className="flex-1 min-w-0 bg-bg-raised border border-border-default rounded px-2 py-1 text-[11.5px] text-fg-default outline-none focus:border-blue-500"
+          className="flex-1 min-w-0 bg-bg-raised border border-border-default rounded px-2 py-1 text-xs text-fg-default outline-none focus:border-blue-500"
         />
         <button
           type="button"
@@ -2028,14 +2028,14 @@ function AddTaskRow({
       )}
 
       <div className="flex items-center gap-1 pt-1">
-        <span className="text-[9.5px] text-fg-fainter truncate">
+        <span className="text-[11px] text-fg-fainter truncate">
           {showMore ? t("panel.addTask.enterSaves") : t("panel.addTask.enterEscCancel")}
         </span>
         <button
           type="button"
           onClick={submit}
           disabled={!title.trim()}
-          className="ml-auto px-2.5 py-0.5 text-[10.5px] rounded bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+          className="ml-auto px-2.5 py-0.5 text-[11px] rounded bg-blue-700 hover:bg-blue-600 text-white disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {t("panel.addTask.add")}
         </button>

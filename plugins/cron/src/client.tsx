@@ -313,7 +313,7 @@ function CalendarPanel(_props: PanelProps) {
                             {dot}
                             {n > 1 && (
                               <span
-                                className={`text-[8px] leading-none font-medium ${countCls}`}
+                                className={`text-[10px] leading-none font-medium ${countCls}`}
                               >
                                 {n}
                               </span>

@@ -473,10 +473,10 @@ function ServerCard({
                   key={tool.toolName}
                   className="border-b border-border-subtle last:border-b-0"
                 >
-                  <td className="px-4 py-2 align-top font-mono text-[11.5px] text-fg-default">
+                  <td className="px-4 py-2 align-top font-mono text-xs text-fg-default">
                     {tool.toolName}
                   </td>
-                  <td className="px-4 py-2 align-top font-mono text-[11.5px] text-fg-faint">
+                  <td className="px-4 py-2 align-top font-mono text-xs text-fg-faint">
                     {tool.upstream.name}
                   </td>
                   <td className="px-4 py-2 align-top text-fg-muted">

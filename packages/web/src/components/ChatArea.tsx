@@ -414,7 +414,7 @@ function ChannelSessionFooter({ sessionId }: { sessionId: string }) {
           <ModelSelector value={binding.modelId} onChange={onChange} />
         </div>
       )}
-      <span className="text-[10.5px] text-fg-fainter">
+      <span className="text-[11px] text-fg-fainter">
         {t("chat.readOnlyChannel")}
       </span>
     </div>
