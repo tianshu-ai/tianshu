@@ -16,6 +16,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentToolContext } from "@tianshu-ai/plugin-sdk";
+import { clearPendingFlushTimers } from "../session-inbox.js";
 import {
   buildInspectSessionTool,
   buildNudgeSessionTool,
@@ -80,9 +81,12 @@ describe("recovery-tools", () => {
       );
   });
 
-  afterEach(async () => {
-    // Wait for any pending inbox flush timers to settle before closing DB.
-    await new Promise((r) => setTimeout(r, 200));
+  afterEach(() => {
+    // Cancel all pending inbox flush timers before closing the DB.
+    // The old 200ms wait was shorter than FLUSH_DEBOUNCE_MS (1500ms),
+    // so timers would fire after db.close() → "database connection is
+    // not open" flaky failure.
+    clearPendingFlushTimers();
     try {
       (ctx.db as unknown as { close: () => void }).close();
     } catch {

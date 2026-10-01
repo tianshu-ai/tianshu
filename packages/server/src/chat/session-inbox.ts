@@ -490,6 +490,22 @@ export function drainPendingTentative(
  * Reset in_flight rows back to pending. Called when followUp
  * throws so the next flush can retry delivery.
  */
+/**
+ * Cancel all pending flush timers. Call before closing the DB in
+ * tests to prevent orphan timer callbacks from hitting a closed
+ * database (the "database connection is not open" flaky failure).
+ */
+export function clearPendingFlushTimers(): void {
+  for (const timer of pendingFlushTimers.values()) clearTimeout(timer);
+  pendingFlushTimers.clear();
+  flushInFlight.clear();
+  idleTurnsInFlight.clear();
+}
+
+/**
+ * Reset in_flight rows back to pending. Called when followUp
+ * throws so the next flush can retry delivery.
+ */
 export function resetInFlight(
   ctx: TenantContext,
   ids: string[],

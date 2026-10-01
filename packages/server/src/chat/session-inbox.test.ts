@@ -18,7 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { markDeliveredFromMessage } from "./session-inbox.js";
+import { clearPendingFlushTimers, markDeliveredFromMessage } from "./session-inbox.js";
 import { runMigrations } from "../core/migrations/index.js";
 import type { TenantContext } from "../core/tenant-context.js";
 
@@ -54,6 +54,7 @@ describe("session-inbox.markDeliveredFromMessage", () => {
   });
 
   afterEach(() => {
+    clearPendingFlushTimers();
     try {
       (ctx.db as unknown as { close: () => void }).close();
     } catch {
