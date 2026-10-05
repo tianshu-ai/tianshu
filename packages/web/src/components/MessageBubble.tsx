@@ -45,7 +45,7 @@ import type {
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
 import McpUiFrame from "./McpUiFrame";
-import ToolCallDag from "./ToolCallDag";
+import { humanizeToolCall, humanizeToolGroup } from "../lib/humanize-tool";
 import { useT } from "../hooks/useT";
 
 
@@ -596,9 +596,11 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         }
       >
         {statusIcon}
-        <code className="shrink-0 font-mono text-xs font-medium text-fg-default">{call.name}</code>
-        <span className="min-w-0 flex-1 truncate text-left font-mono text-xs text-fg-fainter">
-          {summariseArgs(call.arguments)}
+        <span className="shrink-0 text-xs font-medium text-fg-default">
+          {humanizeToolCall(call.name, call.arguments) || call.name}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-left font-mono text-[10px] text-fg-fainter">
+          {shortToolName(call.name)}
         </span>
         {statusLabel && (
           <span className={`shrink-0 text-xs ${
@@ -739,62 +741,86 @@ function shortToolName(name: string): string {
   return name;
 }
 
-/** Collapsed group header for 2+ consecutive tool calls. */
-/** Render a single tool-name chip with status icon. */
-function ToolChip({ name, running, failed }: { name: string; running: boolean; failed: boolean }) {
-  return (
-    <span className="flex items-center gap-0.5 min-w-0">
-      {running && <Loader2 size={10} className="shrink-0 animate-spin text-accent" />}
-      {failed && <XCircle size={10} className="shrink-0 text-rose-400" />}
-      {!running && !failed && <CheckCircle2 size={10} className="shrink-0 text-emerald-500/60" />}
-      <code className={`truncate font-mono text-xs ${
-        running ? "font-medium text-accent" : failed ? "text-rose-400" : "text-fg-fainter"
-      }`}>{name}</code>
-    </span>
-  );
-}
-
-/** One batch row inside the pipeline: shows parallel calls side-by-side. */
-function BatchRow({ batch }: { batch: ToolBatch }) {
-  return (
-    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
-      {batch.calls.map((c, ci) => (
-        <span key={c.id} className="flex items-center gap-1 min-w-0">
-          {ci > 0 && <span className="text-fg-fainter">·</span>}
-          <ToolChip
-            name={shortToolName(c.name)}
-            running={!c.result}
-            failed={!!c.result && !c.result.ok}
-          />
-        </span>
-      ))}
-    </div>
-  );
-}
-
 function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   const [expanded, setExpanded] = useState(false);
 
   const allCalls = batches.flatMap((b) => b.calls);
+  const errorCount = allCalls.filter((c) => c.result && !c.result.ok).length;
+  const allDone = allCalls.every((c) => !!c.result);
+  const runningIdx = allCalls.findIndex((c) => !c.result);
+
+  // Summary line: human-readable pipeline description
+  const summary = humanizeToolGroup(allCalls);
+
+  // Progress: "2/5" style
+  const doneCount = allCalls.filter((c) => !!c.result).length;
+  const progressText = !allDone ? `${doneCount}/${allCalls.length}` : undefined;
+
+  // Currently running step description
+  const runningHint = runningIdx >= 0
+    ? humanizeToolCall(allCalls[runningIdx].name, allCalls[runningIdx].arguments)
+      || shortToolName(allCalls[runningIdx].name)
+    : undefined;
+
+  const headerIcon = !allDone ? (
+    <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
+  ) : errorCount > 0 ? (
+    <XCircle size={13} className="shrink-0 text-rose-400" />
+  ) : (
+    <CheckCircle2 size={13} className="shrink-0 text-emerald-500/80" />
+  );
 
   return (
     <div className="flex flex-col w-full min-w-0 my-0.5">
-      {/* DAG visualization — always visible */}
-      <div
-        role="button"
-        tabIndex={0}
+      <button
+        type="button"
         onClick={() => setExpanded((v) => !v)}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpanded((v) => !v); }}
-        className="group cursor-pointer overflow-x-auto rounded-xl bg-bg-surface px-3 py-2 transition-colors hover:bg-bg-hover"
+        className="group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer bg-bg-surface hover:bg-bg-hover"
       >
-        <ToolCallDag batches={batches} />
-      </div>
-      {/* Expanded: individual tool call detail rows */}
+        {headerIcon}
+        <span className="min-w-0 flex-1 text-left truncate">
+          {!allDone && runningHint ? (
+            /* While running: show current step */
+            <span className="text-accent font-medium">{runningHint}</span>
+          ) : (
+            /* Done: show full summary */
+            <span className="text-fg-muted">{summary}</span>
+          )}
+        </span>
+        {progressText && (
+          <span className="shrink-0 tabular-nums text-fg-fainter">{progressText}</span>
+        )}
+        {errorCount > 0 && (
+          <span className="shrink-0 text-rose-400">
+            {errorCount} 失败
+          </span>
+        )}
+        {expanded ? (
+          <ChevronDown size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+        ) : (
+          <ChevronRight size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+        )}
+      </button>
       {expanded && (
-        <div className="mt-1 flex flex-col gap-1 pl-2">
-          {allCalls.map((c) => (
-            <ToolCallRow key={c.id} call={c} />
-          ))}
+        <div className="mt-1 flex flex-col gap-0.5 pl-2">
+          {allCalls.map((c) => {
+            const running = !c.result;
+            const failed = !!c.result && !c.result.ok;
+            const label = humanizeToolCall(c.name, c.arguments) || shortToolName(c.name);
+            return (
+              <div key={c.id} className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg">
+                {running && <Loader2 size={10} className="shrink-0 animate-spin text-accent" />}
+                {failed && <XCircle size={10} className="shrink-0 text-rose-400" />}
+                {!running && !failed && <CheckCircle2 size={10} className="shrink-0 text-emerald-500/60" />}
+                <span className={running ? "text-accent font-medium" : failed ? "text-rose-400" : "text-fg-muted"}>
+                  {label}
+                </span>
+                <span className="text-fg-fainter font-mono text-[10px] ml-auto">
+                  {shortToolName(c.name)}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
