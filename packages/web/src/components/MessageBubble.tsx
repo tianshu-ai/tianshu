@@ -753,6 +753,24 @@ function ToolChip({ name, running, failed }: { name: string; running: boolean; f
   );
 }
 
+/** One batch row inside the pipeline: shows parallel calls side-by-side. */
+function BatchRow({ batch }: { batch: ToolBatch }) {
+  return (
+    <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+      {batch.calls.map((c, ci) => (
+        <span key={c.id} className="flex items-center gap-1 min-w-0">
+          {ci > 0 && <span className="text-fg-fainter">·</span>}
+          <ToolChip
+            name={shortToolName(c.name)}
+            running={!c.result}
+            failed={!!c.result && !c.result.ok}
+          />
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -768,48 +786,43 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
     <Wrench size={13} className="shrink-0 text-fg-fainter" />
   );
 
+  // Single batch — all parallel, render flat inline row
+  const isSingleBatch = batches.length === 1;
+
   return (
     <div className="flex flex-col w-full min-w-0 my-0.5">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="group flex w-full min-w-0 select-none items-center gap-1.5 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer bg-bg-surface hover:bg-bg-hover"
+        className="group flex w-full min-w-0 select-none items-start gap-1.5 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer bg-bg-surface hover:bg-bg-hover"
       >
-        {headerIcon}
-        {/* Batch chips: parallel calls joined with ·, sequential batches joined with → */}
-        <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden flex-wrap">
-          {batches.map((batch, bi) => (
-            <span key={bi} className="flex items-center gap-1 min-w-0">
-              {bi > 0 && <span className="text-fg-fainter">→</span>}
-              {batch.calls.length === 1 ? (
-                <ToolChip
-                  name={shortToolName(batch.calls[0].name)}
-                  running={!batch.calls[0].result}
-                  failed={!!batch.calls[0].result && !batch.calls[0].result.ok}
-                />
-              ) : (
-                /* Parallel group: calls separated by · */
-                <span className="flex items-center gap-0.5 min-w-0">
-                  {batch.calls.map((c, ci) => (
-                    <span key={c.id} className="flex items-center gap-0.5 min-w-0">
-                      {ci > 0 && <span className="text-fg-fainter">·</span>}
-                      <ToolChip
-                        name={shortToolName(c.name)}
-                        running={!c.result}
-                        failed={!!c.result && !c.result.ok}
-                      />
-                    </span>
-                  ))}
-                </span>
-              )}
-            </span>
-          ))}
-        </span>
-        {expanded ? (
-          <ChevronDown size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+        <span className="mt-0.5">{headerIcon}</span>
+        {isSingleBatch ? (
+          /* Single batch: flat inline chips */
+          <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden flex-wrap">
+            <BatchRow batch={batches[0]} />
+          </span>
         ) : (
-          <ChevronRight size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+          /* Multi-batch pipeline: vertical layout with connector lines */
+          <span className="flex min-w-0 flex-1 flex-col gap-0">
+            {batches.map((batch, bi) => (
+              <span key={bi} className="flex items-center gap-1.5 min-w-0">
+                {/* Vertical connector: │ between batches, └ for last */}
+                <span className="w-3 flex-shrink-0 text-center font-mono text-fg-fainter leading-none">
+                  {bi === 0 ? "" : bi < batches.length - 1 ? "├" : "└"}
+                </span>
+                <BatchRow batch={batch} />
+              </span>
+            ))}
+          </span>
         )}
+        <span className="mt-0.5">
+          {expanded ? (
+            <ChevronDown size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+          ) : (
+            <ChevronRight size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+          )}
+        </span>
       </button>
       {expanded && (
         <div className="mt-1 flex flex-col gap-1 pl-2">
