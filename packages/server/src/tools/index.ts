@@ -26,6 +26,36 @@ export type ToolResult = unknown;
 export type ToolExecutor = (args: Record<string, unknown>) => Promise<ToolResult> | ToolResult;
 
 /**
+ * Inject an optional `_title` property into a tool's parameters schema.
+ * The agent can fill this with a one-line human-readable description of
+ * what the call is doing (e.g. "查看系统信息"). The frontend shows it
+ * as the tool call summary; when absent, a regex classifier kicks in.
+ *
+ * Returns a new schema object; the original is not mutated.
+ */
+function injectTitleParam(schema: Tool): Tool {
+  const params = schema.parameters as Record<string, unknown>;
+  const props = (params.properties ?? {}) as Record<string, unknown>;
+  // Don't overwrite if the tool already defines _title
+  if (props._title) return schema;
+  return {
+    ...schema,
+    parameters: {
+      ...params,
+      properties: {
+        ...props,
+        _title: Type.Optional(Type.String({
+          description:
+            "One-line human-readable summary of what this call does, " +
+            "shown to the user instead of the raw tool name. " +
+            "Write in the conversation language. Keep under 40 chars.",
+        })),
+      },
+    } as Tool["parameters"],
+  };
+}
+
+/**
  * Wrap a raw tool executor with a safety net that:
  *   1. Honors an aborted signal before invoking the tool.
  *   2. Catches any throw / promise rejection from the tool body
@@ -266,7 +296,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       );
       continue;
     }
-    schemas.push(tool.schema);
+    schemas.push(injectTitleParam(tool.schema));
     // Skip admin-only tools for member users — don't even expose to LLM
     const effectiveAccess = toolAccess ?? "member";
     if (effectiveAccess === "admin" && toolContext.userRole === "member") continue;
@@ -282,7 +312,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
   // Host-level tools (always available, not from plugins).
   for (const { schema, executor } of opts.hostTools ?? []) {
     if (!executors[schema.name]) {
-      schemas.push(schema);
+      schemas.push(injectTitleParam(schema));
       executors[schema.name] = wrapExecutorWithErrorGuard(
         schema.name,
         "host",

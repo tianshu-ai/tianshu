@@ -175,6 +175,10 @@ export function humanizeToolCall(
   args: Args,
   t: T = translate,
 ): string {
+  // Agent-supplied title takes priority
+  const title = typeof args._title === "string" ? args._title.trim() : "";
+  if (title) return title;
+  // Fallback to regex classification
   const normalized = normalizeBridgeName(name);
   const fn = TOOL_MAP[normalized];
   if (fn) return fn(t, args);
