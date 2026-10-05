@@ -15,14 +15,15 @@ import { useMemo } from "react";
 import type { MergedToolCall } from "../lib/merge-tool-turns";
 
 // ── Layout constants ──────────────────────────────────────
-const NODE_H = 26;          // node pill height
-const NODE_PAD_X = 10;      // horizontal text padding inside pill
-const NODE_GAP_Y = 6;       // vertical gap between parallel nodes
-const COL_GAP = 32;         // horizontal gap between columns (for edges)
-const FONT_SIZE = 11;
-const ICON_R = 4;            // status dot radius
-const ICON_GAP = 6;          // gap between status dot and text
-const CHAR_W = 6.8;          // approx monospace char width at 11px
+const NODE_H = 22;          // node pill height
+const NODE_PAD_X = 8;       // horizontal text padding inside pill
+const NODE_GAP_Y = 5;       // vertical gap between parallel nodes
+const COL_GAP = 24;         // horizontal gap between columns (for edges)
+const FONT_SIZE = 10;
+const ICON_R = 3.5;          // status dot radius
+const ICON_GAP = 5;          // gap between status dot and text
+const CHAR_W = 6;            // approx monospace char width at 10px
+const MAX_LABEL_CHARS = 16;  // truncate long tool names
 
 // ── Types ─────────────────────────────────────────────────
 interface ToolBatch {
@@ -39,10 +40,7 @@ interface NodeLayout {
   y: number;
   w: number;
   h: number;
-  /** Short display name */
   label: string;
-  /** First key=value from args for subtitle */
-  argHint: string;
 }
 
 interface EdgeLayout {
@@ -59,15 +57,8 @@ function shortToolName(name: string): string {
   return name;
 }
 
-function shortArgs(args: Record<string, unknown>): string {
-  const keys = Object.keys(args);
-  if (keys.length === 0) return "";
-  const k = keys[0];
-  const v = args[k];
-  const sv = typeof v === "string"
-    ? (v.length > 24 ? v.slice(0, 22) + "…" : v)
-    : String(v ?? "").slice(0, 24);
-  return `${k}=${sv}`;
+function truncLabel(s: string): string {
+  return s.length > MAX_LABEL_CHARS ? s.slice(0, MAX_LABEL_CHARS - 1) + "…" : s;
 }
 
 // ── Component ─────────────────────────────────────────────
@@ -84,23 +75,21 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
       const colNodes: NodeLayout[] = [];
       let maxW = 0;
       for (const c of batch.calls) {
-        const label = shortToolName(c.name);
-        const argHint = shortArgs(c.arguments);
-        const textW = Math.max(label.length, argHint.length) * CHAR_W;
+        const label = truncLabel(shortToolName(c.name));
+        const textW = label.length * CHAR_W;
         const w = ICON_GAP + ICON_R * 2 + NODE_PAD_X * 2 + textW + 4;
         colNodes.push({
           id: c.id,
           name: c.name,
           label,
-          argHint,
           running: !c.result,
           failed: !!c.result && !c.result.ok,
           done: !!c.result && c.result.ok !== false,
-          x: 0, y: 0, // filled below
-          w: Math.max(w, 60),
-          h: argHint ? NODE_H + 12 : NODE_H,
+          x: 0, y: 0,
+          w: Math.max(w, 50),
+          h: NODE_H,
         });
-        maxW = Math.max(maxW, Math.max(w, 60));
+        maxW = Math.max(maxW, Math.max(w, 50));
       }
       columns.push({ nodes: colNodes, colW: maxW });
       curX += maxW + COL_GAP;
@@ -267,19 +256,7 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
             >
               {n.label}
             </text>
-            {/* Arg hint (smaller, below name) */}
-            {n.argHint && (
-              <text
-                x={n.x + NODE_PAD_X + ICON_R * 2 + ICON_GAP}
-                y={n.y + NODE_H + 4}
-                dominantBaseline="central"
-                fill="var(--fg-fainter, #475569)"
-                fontSize={9}
-                fontFamily="var(--font-mono, ui-monospace, monospace)"
-              >
-                {n.argHint}
-              </text>
-            )}
+
           </g>
         );
       })}
