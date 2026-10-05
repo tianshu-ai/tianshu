@@ -201,8 +201,5 @@ export function humanizeToolGroup(
       summaries.push(label);
     }
   }
-  if (summaries.length > 4) {
-    return summaries.slice(0, 3).join(" → ") + t("tool.groupOverflow", { total: calls.length });
-  }
   return summaries.join(" → ");
 }

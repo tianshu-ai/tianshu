@@ -662,36 +662,84 @@ const GENERATED_IMAGE_RE = /generated-images\/([\w.-]+\.(?:png|jpg|jpeg|webp|gif
 
 // ── Vertical ticker for collapsed tool-call summaries ──────────────
 
-/** Cycles through labels with a vertical slide transition. */
-const TICK_H = 20; // px — matches text-xs line height in the toolbar
-function ToolStepTicker({ labels, className }: { labels: string[]; className?: string }) {
-  const [idx, setIdx] = useState(0);
-  const count = labels.length;
+/**
+ * Horizontal marquee for tool step summaries.
+ * Shows the full " → "-joined text. If it overflows the container,
+ * scrolls left continuously; when it reaches the end, pauses briefly
+ * then jumps back to the start.
+ */
+function ToolStepMarquee({ text, className }: { text: string; className?: string }) {
+  const outerRef = useRef<HTMLSpanElement>(null);
+  const innerRef = useRef<HTMLSpanElement>(null);
+  const [offset, setOffset] = useState(0);
+  const [overflow, setOverflow] = useState(false);
+
+  // Detect whether text overflows the container
   useEffect(() => {
-    if (count <= 1) return;
-    const id = setInterval(() => setIdx((i) => (i + 1) % count), 2500);
-    return () => clearInterval(id);
-  }, [count]);
-  if (count === 0) return null;
-  if (count === 1) return <span className={className}>{labels[0]}</span>;
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+    setOverflow(inner.scrollWidth > outer.clientWidth + 2);
+    setOffset(0);
+  }, [text]);
+
+  // Animate: scroll left at ~50px/s, pause 2s at each end
+  useEffect(() => {
+    if (!overflow) return;
+    const inner = innerRef.current;
+    const outer = outerRef.current;
+    if (!inner || !outer) return;
+    const maxScroll = inner.scrollWidth - outer.clientWidth;
+    if (maxScroll <= 0) return;
+
+    let raf: number;
+    let paused = true;
+    let pauseTimer: ReturnType<typeof setTimeout>;
+    let scrollingRight = true; // true = scrolling content left (revealing right side)
+
+    const startAfterPause = (ms: number) => {
+      paused = true;
+      pauseTimer = setTimeout(() => { paused = false; step(); }, ms);
+    };
+
+    const step = () => {
+      if (paused) return;
+      setOffset((prev) => {
+        if (scrollingRight) {
+          const next = prev + 0.8; // ~48px/s at 60fps
+          if (next >= maxScroll) {
+            scrollingRight = false;
+            startAfterPause(1500);
+            return maxScroll;
+          }
+          return next;
+        } else {
+          // Jump back to start
+          scrollingRight = true;
+          startAfterPause(1000);
+          return 0;
+        }
+      });
+      raf = requestAnimationFrame(step);
+    };
+
+    // Initial pause before scrolling starts
+    startAfterPause(1500);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(pauseTimer);
+    };
+  }, [overflow]);
+
   return (
-    <span
-      className={`inline-block overflow-hidden align-middle ${className ?? ""}`}
-      style={{ height: TICK_H }}
-    >
+    <span ref={outerRef} className={`block overflow-hidden whitespace-nowrap ${className ?? ""}`}>
       <span
-        className="flex flex-col transition-transform duration-500 ease-in-out"
-        style={{ transform: `translateY(-${idx * TICK_H}px)` }}
+        ref={innerRef}
+        className="inline-block whitespace-nowrap"
+        style={{ transform: `translateX(-${offset}px)` }}
       >
-        {labels.map((l, i) => (
-          <span
-            key={i}
-            className="block truncate"
-            style={{ height: TICK_H, lineHeight: `${TICK_H}px` }}
-          >
-            {l}
-          </span>
-        ))}
+        {text}
       </span>
     </span>
   );
@@ -779,19 +827,8 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   const allDone = allCalls.every((c) => !!c.result);
   const runningIdx = allCalls.findIndex((c) => !c.result);
 
-  // Per-step labels for ticker display
-  const stepLabels = useMemo(() => {
-    const labels: string[] = [];
-    for (const c of allCalls) {
-      const h = humanizeToolCall(c.name, c.arguments, t);
-      const label = h || normalizeBridgeName(c.name);
-      // Deduplicate consecutive identical labels
-      if (labels.length === 0 || labels[labels.length - 1] !== label) {
-        labels.push(label);
-      }
-    }
-    return labels;
-  }, [allCalls, t]);
+  // Full summary text for horizontal marquee
+  const summaryText = useMemo(() => humanizeToolGroup(allCalls, t), [allCalls, t]);
 
   // Progress: "2/5" style
   const doneCount = allCalls.filter((c) => !!c.result).length;
@@ -825,7 +862,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
             <span className="text-accent font-medium">{runningHint}</span>
           ) : (
             /* Done: ticker cycles through all step labels */
-            <ToolStepTicker labels={stepLabels} className="text-fg-muted" />
+            <ToolStepMarquee text={summaryText} className="text-fg-muted" />
           )}
         </span>
         {progressText && (
