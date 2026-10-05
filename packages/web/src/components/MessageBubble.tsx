@@ -705,17 +705,33 @@ function groupBlocks(blocks: MergedAssistantBlock[]): BlockRun[] {
 }
 
 /** Collapsed group header for 2+ consecutive tool calls. */
+/** Shorten tool names for the collapsed summary line.
+ *  `bridge_yuyudemac_studio_local_exec` → `exec`
+ *  `bridge_yuyudemac_studio_local_sync_up` → `sync_up`
+ *  `web_search` → `web_search` (already short) */
+function shortToolName(name: string): string {
+  // bridge_*_local_<action> → <action>
+  const bridgeM = name.match(/^bridge_.*?_local_(.+)$/);
+  if (bridgeM) return bridgeM[1];
+  return name;
+}
+
+/** Collapsed group header for 2+ consecutive tool calls. */
 function ToolCallGroup({ calls }: { calls: MergedToolCall[] }) {
   const [expanded, setExpanded] = useState(false);
-  const t = useT();
-  const _ = t; void _; // suppress unused (i18n keys added later)
 
-  const runningCount = calls.filter((c) => !c.result).length;
   const errorCount = calls.filter((c) => c.result && !c.result.ok).length;
-  const doneCount = calls.length - runningCount - errorCount;
-  const allDone = runningCount === 0;
+  const allDone = calls.every((c) => !!c.result);
 
-  const summaryIcon = runningCount > 0 ? (
+  // Build the inline tool name chips for the collapsed header
+  const chips = calls.map((c) => {
+    const running = !c.result;
+    const failed = !!c.result && !c.result.ok;
+    return { id: c.id, name: shortToolName(c.name), running, failed };
+  });
+
+  // Overall status icon (leftmost)
+  const headerIcon = !allDone ? (
     <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
   ) : errorCount > 0 ? (
     <XCircle size={13} className="shrink-0 text-rose-400" />
@@ -723,27 +739,38 @@ function ToolCallGroup({ calls }: { calls: MergedToolCall[] }) {
     <Wrench size={13} className="shrink-0 text-fg-fainter" />
   );
 
-  const summaryText = runningCount > 0
-    ? `${runningCount} running, ${doneCount + errorCount} done`
-    : errorCount > 0
-      ? `${calls.length} actions · ${errorCount} failed`
-      : `${calls.length} actions`;
-
   return (
     <div className="flex flex-col w-full min-w-0 my-0.5">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer bg-bg-surface hover:bg-bg-hover"
+        className="group flex w-full min-w-0 select-none items-center gap-1.5 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer bg-bg-surface hover:bg-bg-hover"
       >
-        {summaryIcon}
-        <span className="text-xs font-medium text-fg-muted">{summaryText}</span>
-        <span className="flex-1" />
-        {allDone && errorCount === 0 && (
-          <span className="flex items-center gap-0.5 text-emerald-500/80">
-            <CheckCircle2 size={11} />
-          </span>
-        )}
+        {headerIcon}
+        {/* Tool name chips — running one pulses, done ones are muted */}
+        <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+          {chips.map((chip, i) => (
+            <span key={chip.id} className="flex items-center gap-1 min-w-0">
+              {i > 0 && <span className="text-fg-fainter">→</span>}
+              {chip.running && (
+                <Loader2 size={10} className="shrink-0 animate-spin text-accent" />
+              )}
+              {chip.failed && (
+                <XCircle size={10} className="shrink-0 text-rose-400" />
+              )}
+              {!chip.running && !chip.failed && (
+                <CheckCircle2 size={10} className="shrink-0 text-emerald-500/60" />
+              )}
+              <code className={`truncate font-mono text-xs ${
+                chip.running
+                  ? "font-medium text-accent"
+                  : chip.failed
+                    ? "text-rose-400"
+                    : "text-fg-fainter"
+              }`}>{chip.name}</code>
+            </span>
+          ))}
+        </span>
         {expanded ? (
           <ChevronDown size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
         ) : (
@@ -760,7 +787,6 @@ function ToolCallGroup({ calls }: { calls: MergedToolCall[] }) {
     </div>
   );
 }
-
 /** Renders blocks with consecutive plain tool calls grouped into
  *  collapsible runs. Rich tool calls (screenshots/UI/images) and text
  *  blocks render individually as before. */
