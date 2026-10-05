@@ -754,23 +754,51 @@ function ToolCallStepRow({ call }: { call: MergedToolCall }) {
             : <ChevronRight size={10} className="shrink-0 text-fg-fainter" />
         )}
       </button>
-      {open && (
-        <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
-          {/* Input */}
-          <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
-            {formatArgsText(call.arguments)}
-          </pre>
-          {/* Output */}
-          {call.result && (
-            <pre
-              className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
-                (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
-            >
-              {formatResultText(call.result.text)}
+      {open && (() => {
+        const isExec = /exec$/i.test(call.name) || call.name === "shell_exec";
+        const cmd = typeof call.arguments.command === "string" ? call.arguments.command : undefined;
+        if (isExec && cmd) {
+          // Terminal style for exec tools
+          const output = call.result ? formatResultText(call.result.text) : "";
+          return (
+            <div className="ml-5 mt-0.5 mb-1 rounded-lg overflow-hidden border border-[#333] shadow-sm">
+              {/* Terminal title bar */}
+              <div className="flex items-center gap-1.5 px-3 py-1 bg-[#1a1a1a]">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]"></span>
+                <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]"></span>
+                <span className="ml-2 text-[10px] text-[#888] font-mono">terminal</span>
+              </div>
+              {/* Terminal body */}
+              <pre className={"max-h-64 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] font-mono leading-relaxed " +
+                (failed ? "bg-[#0d0d0d] text-[#e06c75]" : "bg-[#0d0d0d] text-[#abb2bf]")}
+              >
+                <span className="text-[#98c379]">$ </span>
+                <span className="text-[#e5c07b]">{cmd}</span>
+                {output ? "\n" + output : ""}
+                {failed && call.result && "\n"}
+                {failed && <span className="text-[#e06c75]">exit {(() => { try { const p = JSON.parse(call.result?.text ?? ""); return p.exit_code ?? 1; } catch { return 1; } })()}</span>}
+              </pre>
+            </div>
+          );
+        }
+        // Default: key-value args + result
+        return (
+          <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
+            <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
+              {formatArgsText(call.arguments)}
             </pre>
-          )}
-        </div>
-      )}
+            {call.result && (
+              <pre
+                className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
+                  (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
+              >
+                {formatResultText(call.result.text)}
+              </pre>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
