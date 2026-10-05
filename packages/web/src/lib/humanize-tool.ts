@@ -47,7 +47,7 @@ function classifyCommand(cmd: string): TranslationKey {
 }
 
 // ── Bridge tool name normalizer ───────────────────────────
-function normalizeBridgeName(name: string): string {
+export function normalizeBridgeName(name: string): string {
   const m = name.match(/^bridge_.*?_local_(.+)$/);
   return m ? m[1] : name;
 }

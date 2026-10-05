@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -45,7 +45,7 @@ import type {
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
 import McpUiFrame from "./McpUiFrame";
-import { humanizeToolCall, humanizeToolGroup, shortToolName } from "../lib/humanize-tool";
+import { humanizeToolCall, humanizeToolGroup, normalizeBridgeName, shortToolName } from "../lib/humanize-tool";
 import { useT } from "../hooks/useT";
 
 
@@ -660,6 +660,34 @@ const SCREENSHOT_RE = /bridge-screenshots\/[\w.-]+\.(?:png|jpg|jpeg|webp|gif)/g;
 /** Regex matching generated-images paths (from generate_image host tool). */
 const GENERATED_IMAGE_RE = /generated-images\/([\w.-]+\.(?:png|jpg|jpeg|webp|gif))/g;
 
+// ── Vertical ticker for collapsed tool-call summaries ──────────────
+
+/** Cycles through labels with a vertical slide + fade transition. */
+function ToolStepTicker({ labels, className }: { labels: string[]; className?: string }) {
+  const [idx, setIdx] = useState(0);
+  const count = labels.length;
+  useEffect(() => {
+    if (count <= 1) return;
+    const id = setInterval(() => setIdx((i) => (i + 1) % count), 2500);
+    return () => clearInterval(id);
+  }, [count]);
+  if (count === 0) return null;
+  if (count === 1) return <span className={className}>{labels[0]}</span>;
+  return (
+    <span className={`inline-flex overflow-hidden align-bottom ${className ?? ""}`}
+      style={{ height: "1.4em" }}>
+      <span
+        className="inline-flex flex-col transition-transform duration-500 ease-in-out"
+        style={{ transform: `translateY(-${idx * 1.4}em)` }}
+      >
+        {labels.map((l, i) => (
+          <span key={i} className="block truncate" style={{ height: "1.4em", lineHeight: "1.4em" }}>{l}</span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
 // ── Tool-call grouping for collapsed runs ──────────────────────────
 
 /** True when a tool call has special visual rendering (screenshots,
@@ -742,8 +770,19 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   const allDone = allCalls.every((c) => !!c.result);
   const runningIdx = allCalls.findIndex((c) => !c.result);
 
-  // Summary line: human-readable pipeline description
-  const summary = humanizeToolGroup(allCalls, t);
+  // Per-step labels for ticker display
+  const stepLabels = useMemo(() => {
+    const labels: string[] = [];
+    for (const c of allCalls) {
+      const h = humanizeToolCall(c.name, c.arguments, t);
+      const label = h || normalizeBridgeName(c.name);
+      // Deduplicate consecutive identical labels
+      if (labels.length === 0 || labels[labels.length - 1] !== label) {
+        labels.push(label);
+      }
+    }
+    return labels;
+  }, [allCalls, t]);
 
   // Progress: "2/5" style
   const doneCount = allCalls.filter((c) => !!c.result).length;
@@ -776,8 +815,8 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
             /* While running: show current step */
             <span className="text-accent font-medium">{runningHint}</span>
           ) : (
-            /* Done: show full summary */
-            <span className="text-fg-muted">{summary}</span>
+            /* Done: ticker cycles through all step labels */
+            <ToolStepTicker labels={stepLabels} className="text-fg-muted" />
           )}
         </span>
         {progressText && (
