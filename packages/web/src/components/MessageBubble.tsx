@@ -45,7 +45,7 @@ import type {
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
 import McpUiFrame from "./McpUiFrame";
-import { humanizeToolCall, humanizeToolGroup } from "../lib/humanize-tool";
+import { humanizeToolCall, humanizeToolGroup, shortToolName } from "../lib/humanize-tool";
 import { useT } from "../hooks/useT";
 
 
@@ -405,6 +405,7 @@ function formatTokens(n: number): string {
 }
 
 function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: boolean }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
   const running = !call.result;
   const isError = !!call.result && !call.result.ok;
@@ -597,7 +598,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
       >
         {statusIcon}
         <span className="shrink-0 text-xs font-medium text-fg-default">
-          {humanizeToolCall(call.name, call.arguments) || call.name}
+          {humanizeToolCall(call.name, call.arguments, t) || call.name}
         </span>
         <span className="min-w-0 flex-1 truncate text-left font-mono text-[10px] text-fg-fainter">
           {shortToolName(call.name)}
@@ -730,18 +731,10 @@ function groupBlocks(blocks: MergedAssistantBlock[]): BlockRun[] {
 }
 
 /** Collapsed group header for 2+ consecutive tool calls. */
-/** Shorten tool names for the collapsed summary line.
- *  `bridge_yuyudemac_studio_local_exec` → `exec`
- *  `bridge_yuyudemac_studio_local_sync_up` → `sync_up`
- *  `web_search` → `web_search` (already short) */
-function shortToolName(name: string): string {
-  // bridge_*_local_<action> → <action>
-  const bridgeM = name.match(/^bridge_.*?_local_(.+)$/);
-  if (bridgeM) return bridgeM[1];
-  return name;
-}
+// shortToolName imported from ../lib/humanize-tool
 
 function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
+  const t = useT();
   const [expanded, setExpanded] = useState(false);
 
   const allCalls = batches.flatMap((b) => b.calls);
@@ -750,7 +743,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   const runningIdx = allCalls.findIndex((c) => !c.result);
 
   // Summary line: human-readable pipeline description
-  const summary = humanizeToolGroup(allCalls);
+  const summary = humanizeToolGroup(allCalls, t);
 
   // Progress: "2/5" style
   const doneCount = allCalls.filter((c) => !!c.result).length;
@@ -758,7 +751,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
 
   // Currently running step description
   const runningHint = runningIdx >= 0
-    ? humanizeToolCall(allCalls[runningIdx].name, allCalls[runningIdx].arguments)
+    ? humanizeToolCall(allCalls[runningIdx].name, allCalls[runningIdx].arguments, t)
       || shortToolName(allCalls[runningIdx].name)
     : undefined;
 
@@ -792,7 +785,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
         )}
         {errorCount > 0 && (
           <span className="shrink-0 text-rose-400">
-            {errorCount} 失败
+            {t("tool.nFailed", { n: errorCount })}
           </span>
         )}
         {expanded ? (
@@ -806,7 +799,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
           {allCalls.map((c) => {
             const running = !c.result;
             const failed = !!c.result && !c.result.ok;
-            const label = humanizeToolCall(c.name, c.arguments) || shortToolName(c.name);
+            const label = humanizeToolCall(c.name, c.arguments, t) || shortToolName(c.name);
             return (
               <div key={c.id} className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg">
                 {running && <Loader2 size={10} className="shrink-0 animate-spin text-accent" />}

@@ -1,12 +1,15 @@
 /**
  * Translate raw tool call (name + args) into a short human-readable
- * sentence that non-technical users can understand.
+ * sentence via the i18n layer.
  *
- * Returns undefined when no good mapping exists — caller falls back
- * to the raw tool name.
+ * Returns a translated string, or empty string when no mapping exists
+ * (caller falls back to the raw tool name).
  */
 
+import { translate, type TranslationKey } from "./i18n";
+
 type Args = Record<string, unknown>;
+type T = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -22,189 +25,183 @@ function shorten(s: string, max = 30): string {
   return s.slice(0, max - 1) + "…";
 }
 
-/** Extract a meaningful fragment from a shell command string. */
-function commandHint(cmd: string): string {
+/** Classify a shell command string into a known action key. */
+function commandKey(cmd: string): TranslationKey {
   const c = cmd.trim();
-  // pip / npm / yarn install
-  if (/\b(pip3?|npm|yarn|pnpm)\s+install\b/i.test(c)) return "安装依赖";
-  // git operations
-  if (/\bgit\s+clone\b/i.test(c)) return "克隆仓库";
-  if (/\bgit\s+pull\b/i.test(c)) return "拉取更新";
-  if (/\bgit\s+push\b/i.test(c)) return "推送代码";
-  if (/\bgit\s+commit\b/i.test(c)) return "提交变更";
-  if (/\bgit\s+checkout\b/i.test(c)) return "切换分支";
-  // python / node script
-  if (/\b(python3?|node)\s+/i.test(c)) return "运行脚本";
-  // curl / wget
-  if (/\b(curl|wget)\s+/i.test(c)) return "请求网络资源";
-  // cat / echo to file
-  if (/\bcat\s+>/.test(c)) return "写入文件";
-  // mkdir
-  if (/\bmkdir\b/.test(c)) return "创建目录";
-  // rm
-  if (/\brm\b/.test(c)) return "删除文件";
-  // ls / dir
-  if (/\b(ls|dir)\b/.test(c)) return "列出文件";
-  // cd
-  if (/\bcd\b/.test(c)) return "切换目录";
-  // docker
-  if (/\bdocker\b/i.test(c)) return "执行 Docker 操作";
-  // generic — first word
-  const first = c.split(/\s+/)[0];
-  return `运行 ${shorten(first, 20)}`;
+  if (/\b(pip3?|npm|yarn|pnpm)\s+install\b/i.test(c)) return "tool.cmd.install";
+  if (/\bgit\s+clone\b/i.test(c)) return "tool.cmd.gitClone";
+  if (/\bgit\s+pull\b/i.test(c)) return "tool.cmd.gitPull";
+  if (/\bgit\s+push\b/i.test(c)) return "tool.cmd.gitPush";
+  if (/\bgit\s+commit\b/i.test(c)) return "tool.cmd.gitCommit";
+  if (/\bgit\s+checkout\b/i.test(c)) return "tool.cmd.gitCheckout";
+  if (/\b(python3?|node)\s+/i.test(c)) return "tool.cmd.runScript";
+  if (/\b(curl|wget)\s+/i.test(c)) return "tool.cmd.httpRequest";
+  if (/\bcat\s+>/.test(c)) return "tool.cmd.writeFile";
+  if (/\bmkdir\b/.test(c)) return "tool.cmd.mkdir";
+  if (/\brm\b/.test(c)) return "tool.cmd.rm";
+  if (/\b(ls|dir)\b/.test(c)) return "tool.cmd.ls";
+  if (/\bdocker\b/i.test(c)) return "tool.cmd.docker";
+  return "tool.cmd.run";
 }
 
-// ── Main mapping table ────────────────────────────────────
-type Humanizer = (args: Args) => string;
-
-const TOOL_MAP: Record<string, Humanizer> = {
-  // File operations
-  write_file: (a) => {
-    const p = str(a.path);
-    return p ? `写入 ${shorten(basename(p))}` : "写入文件";
-  },
-  read_file: (a) => {
-    const p = str(a.path);
-    return p ? `读取 ${shorten(basename(p))}` : "读取文件";
-  },
-  edit_file: (a) => {
-    const p = str(a.path);
-    return p ? `编辑 ${shorten(basename(p))}` : "编辑文件";
-  },
-  delete_file: (a) => {
-    const p = str(a.path);
-    return p ? `删除 ${shorten(basename(p))}` : "删除文件";
-  },
-  list_files: () => "浏览文件列表",
-  create_directory: (a) => {
-    const p = str(a.path);
-    return p ? `创建目录 ${shorten(basename(p))}` : "创建目录";
-  },
-
-  // Sync / bridge
-  sync_up: (a) => {
-    const p = str(a.path || a.localPath);
-    return p ? `上传 ${shorten(basename(p))}` : "上传文件到服务器";
-  },
-  sync_down: (a) => {
-    const p = str(a.path || a.remotePath);
-    return p ? `下载 ${shorten(basename(p))}` : "从服务器下载文件";
-  },
-
-  // Shell exec
-  exec: (a) => {
-    const cmd = str(a.command);
-    return cmd ? commandHint(cmd) : "执行命令";
-  },
-  shell_exec: (a) => {
-    const cmd = str(a.command);
-    return cmd ? commandHint(cmd) : "执行命令";
-  },
-
-  // Search & web
-  web_search: (a) => {
-    const q = str(a.query);
-    return q ? `搜索「${shorten(q, 20)}」` : "搜索网页";
-  },
-  web_fetch: (a) => {
-    const u = str(a.url);
-    try {
-      const host = new URL(u).hostname;
-      return `获取 ${host} 内容`;
-    } catch { /* */ }
-    return "获取网页内容";
-  },
-
-  // Code interpreter / analysis
-  code_interpreter: () => "运行代码分析",
-  python: () => "运行 Python 代码",
-
-  // Database
-  ds_query: (a) => {
-    const src = str(a.source || a.connection);
-    return src ? `查询数据库 ${shorten(src, 16)}` : "查询数据库";
-  },
-  ds_execute: (a) => {
-    const src = str(a.source || a.connection);
-    return src ? `执行数据库操作 ${shorten(src, 16)}` : "执行数据库操作";
-  },
-  ds_schema: () => "查看数据库结构",
-  ds_list: () => "列出数据源",
-  ds_panel: () => "推送到数据面板",
-
-  // Knowledge / memory
-  wiki_search: (a) => {
-    const q = str(a.query);
-    return q ? `搜索知识库「${shorten(q, 16)}」` : "搜索知识库";
-  },
-  wiki_read: () => "读取知识库",
-  memory_search: () => "搜索记忆",
-  memory_read: () => "读取记忆",
-
-  // Image generation
-  generate_image: (a) => {
-    const p = str(a.prompt);
-    return p ? `生成图片：${shorten(p, 24)}` : "生成图片";
-  },
-
-  // Configuration
-  tenant_config_read: () => "读取配置",
-  tenant_config_write: () => "更新配置",
-  tenant_config_list: () => "列出配置项",
-  model_list: () => "查看可用模型",
-  task_list_workers: () => "查看工作者状态",
-
-  // Cron / scheduling
-  cron_list: () => "查看定时任务",
-  cron_create: () => "创建定时任务",
-  cron_delete: () => "删除定时任务",
-
-  // Board / workboard
-  board_create: () => "创建看板",
-  board_update: () => "更新看板",
-  board_render: () => "渲染看板",
-};
-
 // ── Bridge tool name normalizer ───────────────────────────
-// Bridge tools arrive as `bridge_<host>_local_<actual>`, e.g.
-// `bridge_yuyudemac_studio_local_exec`.
 function normalizeBridgeName(name: string): string {
   const m = name.match(/^bridge_.*?_local_(.+)$/);
   return m ? m[1] : name;
 }
 
+/** Short display name (no i18n, just strip bridge prefix). */
+export function shortToolName(name: string): string {
+  return normalizeBridgeName(name);
+}
+
+// ── Mapping table: tool name → (t, args) → translated string ──
+type Humanizer = (t: T, args: Args) => string;
+
+const TOOL_MAP: Record<string, Humanizer> = {
+  // File operations
+  write_file: (t, a) => {
+    const p = str(a.path);
+    return p ? t("tool.writeFileNamed", { name: shorten(basename(p)) }) : t("tool.writeFile");
+  },
+  read_file: (t, a) => {
+    const p = str(a.path);
+    return p ? t("tool.readFileNamed", { name: shorten(basename(p)) }) : t("tool.readFile");
+  },
+  edit_file: (t, a) => {
+    const p = str(a.path);
+    return p ? t("tool.editFileNamed", { name: shorten(basename(p)) }) : t("tool.editFile");
+  },
+  delete_file: (t, a) => {
+    const p = str(a.path);
+    return p ? t("tool.deleteFileNamed", { name: shorten(basename(p)) }) : t("tool.deleteFile");
+  },
+  list_files: (t) => t("tool.listFiles"),
+  create_directory: (t, a) => {
+    const p = str(a.path);
+    return p ? t("tool.mkdirNamed", { name: shorten(basename(p)) }) : t("tool.mkdir");
+  },
+
+  // Sync / bridge
+  sync_up: (t, a) => {
+    const p = str(a.path || a.localPath);
+    return p ? t("tool.uploadNamed", { name: shorten(basename(p)) }) : t("tool.upload");
+  },
+  sync_down: (t, a) => {
+    const p = str(a.path || a.remotePath);
+    return p ? t("tool.downloadNamed", { name: shorten(basename(p)) }) : t("tool.download");
+  },
+
+  // Shell exec
+  exec: (t, a) => {
+    const cmd = str(a.command);
+    return cmd ? t(commandKey(cmd)) : t("tool.exec");
+  },
+  shell_exec: (t, a) => {
+    const cmd = str(a.command);
+    return cmd ? t(commandKey(cmd)) : t("tool.exec");
+  },
+
+  // Search & web
+  web_search: (t, a) => {
+    const q = str(a.query);
+    return q ? t("tool.searchNamed", { query: shorten(q, 20) }) : t("tool.search");
+  },
+  web_fetch: (t, a) => {
+    const u = str(a.url);
+    try {
+      const host = new URL(u).hostname;
+      return t("tool.fetchNamed", { host });
+    } catch { /* */ }
+    return t("tool.fetch");
+  },
+
+  // Code
+  code_interpreter: (t) => t("tool.codeAnalysis"),
+  python: (t) => t("tool.runPython"),
+
+  // Database
+  ds_query: (t, a) => {
+    const src = str(a.source || a.connection);
+    return src ? t("tool.dbQueryNamed", { name: shorten(src, 16) }) : t("tool.dbQuery");
+  },
+  ds_execute: (t, a) => {
+    const src = str(a.source || a.connection);
+    return src ? t("tool.dbExecNamed", { name: shorten(src, 16) }) : t("tool.dbExec");
+  },
+  ds_schema: (t) => t("tool.dbSchema"),
+  ds_list: (t) => t("tool.dbList"),
+  ds_panel: (t) => t("tool.dbPanel"),
+
+  // Knowledge
+  wiki_search: (t, a) => {
+    const q = str(a.query);
+    return q ? t("tool.wikiSearchNamed", { query: shorten(q, 16) }) : t("tool.wikiSearch");
+  },
+  wiki_read: (t) => t("tool.wikiRead"),
+  memory_search: (t) => t("tool.memorySearch"),
+  memory_read: (t) => t("tool.memoryRead"),
+
+  // Image
+  generate_image: (t, a) => {
+    const p = str(a.prompt);
+    return p ? t("tool.genImageNamed", { prompt: shorten(p, 24) }) : t("tool.genImage");
+  },
+
+  // Config
+  tenant_config_read: (t) => t("tool.configRead"),
+  tenant_config_write: (t) => t("tool.configWrite"),
+  tenant_config_list: (t) => t("tool.configList"),
+  model_list: (t) => t("tool.modelList"),
+  task_list_workers: (t) => t("tool.workerList"),
+
+  // Cron
+  cron_list: (t) => t("tool.cronList"),
+  cron_create: (t) => t("tool.cronCreate"),
+  cron_delete: (t) => t("tool.cronDelete"),
+
+  // Board
+  board_create: (t) => t("tool.boardCreate"),
+  board_update: (t) => t("tool.boardUpdate"),
+  board_render: (t) => t("tool.boardRender"),
+};
+
 // ── Public API ────────────────────────────────────────────
 
+/**
+ * Translate a single tool call into a human-readable label.
+ * Pass `t` from useT() for reactive locale, or omit to use the
+ * current locale's translate() directly.
+ */
 export function humanizeToolCall(
   name: string,
   args: Args,
+  t: T = translate,
 ): string {
   const normalized = normalizeBridgeName(name);
   const fn = TOOL_MAP[normalized];
-  if (fn) return fn(args);
-  // Fallback: return undefined-ish — caller shows raw name
+  if (fn) return fn(t, args);
   return "";
 }
 
 /**
  * Summarize a group of tool calls into one sentence.
- * e.g. "安装依赖 → 运行脚本 → 上传文件"
+ * e.g. "Install dependencies → Run script → Upload files"
  */
 export function humanizeToolGroup(
   calls: { name: string; arguments: Args; result?: { ok?: boolean } }[],
+  t: T = translate,
 ): string {
-  // Deduplicate consecutive identical summaries
   const summaries: string[] = [];
   for (const c of calls) {
-    const h = humanizeToolCall(c.name, c.arguments);
+    const h = humanizeToolCall(c.name, c.arguments, t);
     const label = h || normalizeBridgeName(c.name);
     if (summaries.length === 0 || summaries[summaries.length - 1] !== label) {
       summaries.push(label);
     }
   }
-  // Cap at 4 steps to avoid overflow
   if (summaries.length > 4) {
-    return summaries.slice(0, 3).join(" → ") + ` → …共 ${calls.length} 步`;
+    return summaries.slice(0, 3).join(" → ") + t("tool.groupOverflow", { total: calls.length });
   }
   return summaries.join(" → ");
 }
