@@ -303,7 +303,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       );
       continue;
     }
-    schemas.push(injectTitleParam(tool.schema));
+    schemas.push(tool.schema);
     // Skip admin-only tools for member users — don't even expose to LLM
     const effectiveAccess = toolAccess ?? "member";
     if (effectiveAccess === "admin" && toolContext.userRole === "member") continue;
@@ -319,7 +319,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
   // Host-level tools (always available, not from plugins).
   for (const { schema, executor } of opts.hostTools ?? []) {
     if (!executors[schema.name]) {
-      schemas.push(injectTitleParam(schema));
+      schemas.push(schema);
       executors[schema.name] = wrapExecutorWithErrorGuard(
         schema.name,
         "host",
