@@ -6,6 +6,52 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.81.0](https://github.com/tianshu-ai/tianshu/compare/v0.80.0...v0.81.0) (2026-10-05)
+
+
+### Features
+
+* agent-supplied _title for tool calls ([34e192f](https://github.com/tianshu-ai/tianshu/commit/34e192f5423c30161319170e851342ee0d0a1242))
+* **i18n:** localize tool call humanization — en/zh/de ([b7898d4](https://github.com/tianshu-ai/tianshu/commit/b7898d47e7b723ea08cd06babf89c3f7239ae8d9))
+* re-enable _title injection with JSON round-trip (safe) ([70382a0](https://github.com/tianshu-ai/tianshu/commit/70382a0fc6f0d79fcfa0d5f121fcc57750f1a2ee))
+* **ui:** collapse consecutive tool calls into grouped summary ([60de41b](https://github.com/tianshu-ai/tianshu/commit/60de41b3efb822133e0cce65496f80acd03c8d68))
+* **ui:** distinguish parallel vs sequential tool calls ([d8b0df7](https://github.com/tianshu-ai/tianshu/commit/d8b0df7f6c4632d4a78830a7bc65fcfaf38b10fc))
+* **ui:** expandable tool call steps with args + result detail ([0b91f8c](https://github.com/tianshu-ai/tianshu/commit/0b91f8c00fef80569890298d07e18d52b78d2c3e))
+* **ui:** horizontal marquee for collapsed tool-call summaries ([abea946](https://github.com/tianshu-ai/tianshu/commit/abea9462c6ce7196d2a97b3073e93dc4506965f3))
+* **ui:** parse structured tool results — show stdout, not raw JSON ([1765f92](https://github.com/tianshu-ai/tianshu/commit/1765f921526eb9eca110a52d3e67f6acaf873dcd))
+* **ui:** pipeline layout for tool call DAG — vertical batches with tree connectors ([f871945](https://github.com/tianshu-ai/tianshu/commit/f871945deeb7b38c5634d21cc25511c0bc889004))
+* **ui:** semantic tool call summaries — replace DAG with human-readable descriptions ([34dbfe9](https://github.com/tianshu-ai/tianshu/commit/34dbfe9ba8d3601154382c8ca1dbd2a244ec91bf))
+* **ui:** show both input args and output in tool step details ([b6ba92f](https://github.com/tianshu-ai/tianshu/commit/b6ba92f1b0e0ad74810bcf71babdd382810227f6))
+* **ui:** show concrete details in tool call summaries ([93e3f35](https://github.com/tianshu-ai/tianshu/commit/93e3f35f4fdef4728125ec6c57f240ac10d8fa37))
+* **ui:** SVG DAG visualization for tool call pipelines ([366c257](https://github.com/tianshu-ai/tianshu/commit/366c257d63ac3e7f718bc5fa26c71e4a43726843))
+* **ui:** terminal-style rendering for exec tool call details ([72086c3](https://github.com/tianshu-ai/tianshu/commit/72086c36ef49627822917587cd920c20e2e0bb7c))
+* **ui:** ticker carousel for collapsed tool-call summaries ([9061ea3](https://github.com/tianshu-ai/tianshu/commit/9061ea3e2b53ad8b1f7d97754529614d9175bda0))
+* **ui:** tool call group shows inline tool name chips with status ([7b1b63a](https://github.com/tianshu-ai/tianshu/commit/7b1b63a59d60c4a0ad266e8ce2a892bf2e0cedd2))
+* **ui:** vertical top-to-bottom DAG layout ([7462a0a](https://github.com/tianshu-ai/tianshu/commit/7462a0af74054d2dde5634953b00703b2e9385e2))
+
+
+### Bug Fixes
+
+* _title injection broke tool schemas — preserve typebox symbols ([125729c](https://github.com/tianshu-ai/tianshu/commit/125729ca5f2a44992ad19e5f91adc73d6cd34787))
+* **ui:** '(6 steps)' format for collapsed summary ([cee150c](https://github.com/tianshu-ai/tianshu/commit/cee150c7160b0c2901ec59a7c3ff48dac7b1b718))
+* **ui:** '(6 steps)' in collapsed summary ([749157a](https://github.com/tianshu-ai/tianshu/commit/749157ae4e101a46cb907853be41a8947629c3e7))
+* **ui:** '6 steps total' not '6 steps' — count is total, not omitted ([6cf0677](https://github.com/tianshu-ai/tianshu/commit/6cf0677ebd61a437f30107f928172d59e6e8e666))
+* **ui:** add ┬ connector to first batch row in tool call DAG tree ([2a1b61f](https://github.com/tianshu-ai/tianshu/commit/2a1b61f6c30ac4e3cd16c2ef0002377656543ee9))
+* **ui:** clean tool call summaries — no raw shell commands ([4c10db3](https://github.com/tianshu-ai/tianshu/commit/4c10db35a700249f1c4ebf2ccdf9722b9f8a7f4d))
+* **ui:** compact DAG nodes — remove arg hints, tighter layout ([6c44d79](https://github.com/tianshu-ai/tianshu/commit/6c44d79902912956508610dcdbb7f0ee510c4cb3))
+* **ui:** DAG edges more visible — thicker stroke, higher opacity ([810406b](https://github.com/tianshu-ai/tianshu/commit/810406bb55ee964abfa89482ca0cee7f6f66bebf))
+* **ui:** separate ellipsis and total count — '[…] … (6)' ([9697e7d](https://github.com/tianshu-ai/tianshu/commit/9697e7d3414e62934c17aa523bd328f71ea637c6))
+* **ui:** show first + last 2 steps in collapsed summary ([202af2b](https://github.com/tianshu-ai/tianshu/commit/202af2b5155a9d31a32a96e91c4421484df4d17c))
+* **ui:** show full tool name instead of shortened alias ([4a7d6f5](https://github.com/tianshu-ai/tianshu/commit/4a7d6f51abfef56adb3ddf6eea2b1bd2605b23a8))
+* **ui:** ticker invisible — switch from em to fixed px height ([ae4ff4b](https://github.com/tianshu-ai/tianshu/commit/ae4ff4be38135a221f1191dd6ed19f7cae9bbd3c))
+* use fixed 20px height matching the toolbar line height. ([ae4ff4b](https://github.com/tianshu-ai/tianshu/commit/ae4ff4be38135a221f1191dd6ed19f7cae9bbd3c))
+
+
+### Reverts
+
+* disable _title injection — broke bridge tool schemas ([881a5c0](https://github.com/tianshu-ai/tianshu/commit/881a5c0c00724f85c1136d816c46d90f5310e063))
+* **ui:** remove marquee, restore static truncated summary ([4b8086c](https://github.com/tianshu-ai/tianshu/commit/4b8086ce1757147cbc224deac6075a855bcf7f9e))
+
 ## [0.80.0](https://github.com/tianshu-ai/tianshu/compare/v0.79.0...v0.80.0) (2026-10-01)
 
 
