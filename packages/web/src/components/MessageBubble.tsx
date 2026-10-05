@@ -809,7 +809,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
               <span key={bi} className="flex items-center gap-1.5 min-w-0">
                 {/* Vertical connector: │ between batches, └ for last */}
                 <span className="w-3 flex-shrink-0 text-center font-mono text-fg-fainter leading-none">
-                  {bi === 0 ? "" : bi < batches.length - 1 ? "├" : "└"}
+                  {bi === 0 ? "┬" : bi < batches.length - 1 ? "├" : "└"}
                 </span>
                 <BatchRow batch={batch} />
               </span>
