@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -662,88 +662,7 @@ const GENERATED_IMAGE_RE = /generated-images\/([\w.-]+\.(?:png|jpg|jpeg|webp|gif
 
 // ── Vertical ticker for collapsed tool-call summaries ──────────────
 
-/**
- * Horizontal marquee for tool step summaries.
- * Shows the full " → "-joined text. If it overflows the container,
- * scrolls left continuously; when it reaches the end, pauses briefly
- * then jumps back to the start.
- */
-function ToolStepMarquee({ text, className }: { text: string; className?: string }) {
-  const outerRef = useRef<HTMLSpanElement>(null);
-  const innerRef = useRef<HTMLSpanElement>(null);
-  const [offset, setOffset] = useState(0);
-  const [overflow, setOverflow] = useState(false);
 
-  // Detect whether text overflows the container
-  useEffect(() => {
-    const outer = outerRef.current;
-    const inner = innerRef.current;
-    if (!outer || !inner) return;
-    setOverflow(inner.scrollWidth > outer.clientWidth + 2);
-    setOffset(0);
-  }, [text]);
-
-  // Animate: scroll left at ~50px/s, pause 2s at each end
-  useEffect(() => {
-    if (!overflow) return;
-    const inner = innerRef.current;
-    const outer = outerRef.current;
-    if (!inner || !outer) return;
-    const maxScroll = inner.scrollWidth - outer.clientWidth;
-    if (maxScroll <= 0) return;
-
-    let raf: number;
-    let paused = true;
-    let pauseTimer: ReturnType<typeof setTimeout>;
-    let scrollingRight = true; // true = scrolling content left (revealing right side)
-
-    const startAfterPause = (ms: number) => {
-      paused = true;
-      pauseTimer = setTimeout(() => { paused = false; step(); }, ms);
-    };
-
-    const step = () => {
-      if (paused) return;
-      setOffset((prev) => {
-        if (scrollingRight) {
-          const next = prev + 0.8; // ~48px/s at 60fps
-          if (next >= maxScroll) {
-            scrollingRight = false;
-            startAfterPause(1500);
-            return maxScroll;
-          }
-          return next;
-        } else {
-          // Jump back to start
-          scrollingRight = true;
-          startAfterPause(1000);
-          return 0;
-        }
-      });
-      raf = requestAnimationFrame(step);
-    };
-
-    // Initial pause before scrolling starts
-    startAfterPause(1500);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      clearTimeout(pauseTimer);
-    };
-  }, [overflow]);
-
-  return (
-    <span ref={outerRef} className={`block overflow-hidden whitespace-nowrap ${className ?? ""}`}>
-      <span
-        ref={innerRef}
-        className="inline-block whitespace-nowrap"
-        style={{ transform: `translateX(-${offset}px)` }}
-      >
-        {text}
-      </span>
-    </span>
-  );
-}
 
 // ── Tool-call grouping for collapsed runs ──────────────────────────
 
@@ -827,8 +746,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   const allDone = allCalls.every((c) => !!c.result);
   const runningIdx = allCalls.findIndex((c) => !c.result);
 
-  // Full summary text for horizontal marquee
-  const summaryText = useMemo(() => humanizeToolGroup(allCalls, t), [allCalls, t]);
+  const summary = humanizeToolGroup(allCalls, t);
 
   // Progress: "2/5" style
   const doneCount = allCalls.filter((c) => !!c.result).length;
@@ -862,7 +780,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
             <span className="text-accent font-medium">{runningHint}</span>
           ) : (
             /* Done: ticker cycles through all step labels */
-            <ToolStepMarquee text={summaryText} className="text-fg-muted" />
+            <span className="text-fg-muted">{summary}</span>
           )}
         </span>
         {progressText && (
