@@ -457,7 +457,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         </div>
         {expanded && result && (
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
-            {truncate(result.text, 4000)}
+            {formatResultText(result.text)}
           </pre>
         )}
       </>
@@ -502,7 +502,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         </div>
         {expanded && result && (
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
-            {truncate(result.text, 4000)}
+            {formatResultText(result.text)}
           </pre>
         )}
       </>
@@ -546,7 +546,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         </button>
         {expanded && result && (
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
-            {truncate(result.text, 4000)}
+            {formatResultText(result.text)}
           </pre>
         )}
         {uiResources.map((u, i) => (
@@ -626,7 +626,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
               : "bg-bg-surface text-fg-muted")
           }
         >
-          {truncate(result.text, 4000)}
+          {formatResultText(result.text)}
         </pre>
       )}
     </div>
@@ -652,6 +652,42 @@ function shortValue(v: unknown): string {
 function truncate(s: string, max: number): string {
   if (s.length <= max) return s;
   return s.slice(0, max - 1) + "\n…(truncated)";
+}
+
+/**
+ * Format tool result text for display. Parses structured JSON results
+ * (exec/bridge_exec) and extracts the meaningful content (stdout/stderr)
+ * instead of showing raw JSON with ok/exit_code/truncated/etc metadata.
+ */
+function formatResultText(text: string, maxLen = 4000): string {
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{")) return truncate(text, maxLen);
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (typeof parsed !== "object" || parsed === null) return truncate(text, maxLen);
+    // Exec-style result: { ok, exit_code, stdout, stderr, ... }
+    if ("stdout" in parsed || "stderr" in parsed) {
+      const parts: string[] = [];
+      const stdout = typeof parsed.stdout === "string" ? parsed.stdout.trim() : "";
+      const stderr = typeof parsed.stderr === "string" ? parsed.stderr.trim() : "";
+      if (stdout) parts.push(stdout);
+      if (stderr) parts.push("stderr:\n" + stderr);
+      if (parsed.exit_code !== undefined && parsed.exit_code !== 0) {
+        parts.push(`exit code: ${parsed.exit_code}`);
+      }
+      if (parts.length > 0) return truncate(parts.join("\n\n"), maxLen);
+      // All empty — show exit code only
+      return `exit code: ${parsed.exit_code ?? 0}`;
+    }
+    // Generic { ok, text } result
+    if ("text" in parsed && typeof parsed.text === "string") {
+      return truncate(parsed.text, maxLen);
+    }
+    // Fallback: raw JSON
+    return truncate(text, maxLen);
+  } catch {
+    return truncate(text, maxLen);
+  }
 }
 
 /** Regex matching bridge-screenshots paths in tool result text. */
@@ -696,21 +732,13 @@ function ToolCallStepRow({ call }: { call: MergedToolCall }) {
             : <ChevronRight size={10} className="shrink-0 text-fg-fainter" />
         )}
       </button>
-      {open && (
-        <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
-          {/* Args */}
-          <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
-            {JSON.stringify(call.arguments, null, 2)}
-          </pre>
-          {/* Result */}
-          {call.result && (
-            <pre className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
-              (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
-            >
-              {truncate(call.result.text, 4000)}
-            </pre>
-          )}
-        </div>
+      {open && call.result && (
+        <pre
+          className={"ml-5 mt-0.5 mb-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1.5 text-xs font-mono " +
+            (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface text-fg-muted")}
+        >
+          {formatResultText(call.result.text)}
+        </pre>
       )}
     </div>
   );
