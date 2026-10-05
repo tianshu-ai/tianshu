@@ -662,7 +662,8 @@ const GENERATED_IMAGE_RE = /generated-images\/([\w.-]+\.(?:png|jpg|jpeg|webp|gif
 
 // ── Vertical ticker for collapsed tool-call summaries ──────────────
 
-/** Cycles through labels with a vertical slide + fade transition. */
+/** Cycles through labels with a vertical slide transition. */
+const TICK_H = 20; // px — matches text-xs line height in the toolbar
 function ToolStepTicker({ labels, className }: { labels: string[]; className?: string }) {
   const [idx, setIdx] = useState(0);
   const count = labels.length;
@@ -674,14 +675,22 @@ function ToolStepTicker({ labels, className }: { labels: string[]; className?: s
   if (count === 0) return null;
   if (count === 1) return <span className={className}>{labels[0]}</span>;
   return (
-    <span className={`inline-flex overflow-hidden align-bottom ${className ?? ""}`}
-      style={{ height: "1.4em" }}>
+    <span
+      className={`inline-block overflow-hidden align-middle ${className ?? ""}`}
+      style={{ height: TICK_H }}
+    >
       <span
-        className="inline-flex flex-col transition-transform duration-500 ease-in-out"
-        style={{ transform: `translateY(-${idx * 1.4}em)` }}
+        className="flex flex-col transition-transform duration-500 ease-in-out"
+        style={{ transform: `translateY(-${idx * TICK_H}px)` }}
       >
         {labels.map((l, i) => (
-          <span key={i} className="block truncate" style={{ height: "1.4em", lineHeight: "1.4em" }}>{l}</span>
+          <span
+            key={i}
+            className="block truncate"
+            style={{ height: TICK_H, lineHeight: `${TICK_H}px` }}
+          >
+            {l}
+          </span>
         ))}
       </span>
     </span>
