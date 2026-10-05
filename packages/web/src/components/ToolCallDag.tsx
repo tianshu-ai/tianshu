@@ -160,7 +160,7 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
           markerHeight="5"
           orient="auto-start-reverse"
         >
-          <path d="M 0 0 L 6 3 L 0 6 z" fill="var(--border-default, #334155)" />
+          <path d="M 0 0 L 6 3 L 0 6 z" fill="var(--fg-fainter, #475569)" />
         </marker>
         {/* Running pulse */}
         <filter id="dag-pulse">
@@ -183,10 +183,10 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
             key={`e${i}`}
             d={`M ${e.fromX} ${e.fromY} C ${e.fromX + cp} ${e.fromY}, ${e.toX - cp} ${e.toY}, ${e.toX} ${e.toY}`}
             fill="none"
-            stroke="var(--border-default, #334155)"
-            strokeWidth={1}
+            stroke="var(--fg-fainter, #475569)"
+            strokeWidth={1.5}
             markerEnd="url(#dag-arrow)"
-            opacity={0.5}
+            opacity={0.7}
           />
         );
       })}
