@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -664,6 +664,58 @@ const GENERATED_IMAGE_RE = /generated-images\/([\w.-]+\.(?:png|jpg|jpeg|webp|gif
 
 
 
+// ── Per-step expandable row inside a tool group ─────────────
+
+function ToolCallStepRow({ call }: { call: MergedToolCall }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const running = !call.result;
+  const failed = !!call.result && !call.result.ok;
+  const label = humanizeToolCall(call.name, call.arguments, t) || shortToolName(call.name);
+
+  return (
+    <div className="flex flex-col min-w-0">
+      <button
+        type="button"
+        onClick={() => !running && setOpen((v) => !v)}
+        className={"group flex w-full min-w-0 items-center gap-1.5 px-2 py-1 text-xs rounded-lg transition-colors " +
+          (running ? "cursor-default" : "cursor-pointer hover:bg-bg-hover")}
+      >
+        {running && <Loader2 size={10} className="shrink-0 animate-spin text-accent" />}
+        {failed && <XCircle size={10} className="shrink-0 text-rose-400" />}
+        {!running && !failed && <CheckCircle2 size={10} className="shrink-0 text-emerald-500/60" />}
+        <span className={running ? "text-accent font-medium" : failed ? "text-rose-400" : "text-fg-muted"}>
+          {label}
+        </span>
+        <span className="text-fg-fainter font-mono text-[10px] ml-auto truncate max-w-[40%]" title={call.name}>
+          {call.name}
+        </span>
+        {!running && (
+          open
+            ? <ChevronDown size={10} className="shrink-0 text-fg-fainter" />
+            : <ChevronRight size={10} className="shrink-0 text-fg-fainter" />
+        )}
+      </button>
+      {open && (
+        <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
+          {/* Args */}
+          <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
+            {JSON.stringify(call.arguments, null, 2)}
+          </pre>
+          {/* Result */}
+          {call.result && (
+            <pre className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
+              (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
+            >
+              {truncate(call.result.text, 4000)}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Tool-call grouping for collapsed runs ──────────────────────────
 
 /** True when a tool call has special visual rendering (screenshots,
@@ -799,24 +851,7 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
       </button>
       {expanded && (
         <div className="mt-1 flex flex-col gap-0.5 pl-2">
-          {allCalls.map((c) => {
-            const running = !c.result;
-            const failed = !!c.result && !c.result.ok;
-            const label = humanizeToolCall(c.name, c.arguments, t) || shortToolName(c.name);
-            return (
-              <div key={c.id} className="flex items-center gap-1.5 px-2 py-1 text-xs rounded-lg">
-                {running && <Loader2 size={10} className="shrink-0 animate-spin text-accent" />}
-                {failed && <XCircle size={10} className="shrink-0 text-rose-400" />}
-                {!running && !failed && <CheckCircle2 size={10} className="shrink-0 text-emerald-500/60" />}
-                <span className={running ? "text-accent font-medium" : failed ? "text-rose-400" : "text-fg-muted"}>
-                  {label}
-                </span>
-                <span className="text-fg-fainter font-mono text-[10px] ml-auto truncate max-w-[40%]" title={c.name}>
-                  {c.name}
-                </span>
-              </div>
-            );
-          })}
+          {allCalls.map((c) => <ToolCallStepRow key={c.id} call={c} />)}
         </div>
       )}
     </div>
