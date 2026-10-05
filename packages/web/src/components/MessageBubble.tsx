@@ -655,6 +655,28 @@ function truncate(s: string, max: number): string {
 }
 
 /**
+ * Format tool call arguments for display. Extracts the meaningful
+ * fields and skips internal metadata like _title.
+ */
+function formatArgsText(args: Record<string, unknown>): string {
+  const filtered = Object.entries(args).filter(([k]) => !k.startsWith("_"));
+  if (filtered.length === 0) return "(no arguments)";
+  // Single string arg (command, query, path, etc.) — show directly
+  if (filtered.length === 1 && typeof filtered[0][1] === "string") {
+    return `${filtered[0][0]}: ${filtered[0][1]}`;
+  }
+  return filtered
+    .map(([k, v]) => {
+      if (typeof v === "string") {
+        return v.length > 200 ? `${k}: ${v.slice(0, 197)}…` : `${k}: ${v}`;
+      }
+      const s = JSON.stringify(v);
+      return s.length > 200 ? `${k}: ${s.slice(0, 197)}…` : `${k}: ${s}`;
+    })
+    .join("\n");
+}
+
+/**
  * Format tool result text for display. Parses structured JSON results
  * (exec/bridge_exec) and extracts the meaningful content (stdout/stderr)
  * instead of showing raw JSON with ok/exit_code/truncated/etc metadata.
@@ -732,13 +754,22 @@ function ToolCallStepRow({ call }: { call: MergedToolCall }) {
             : <ChevronRight size={10} className="shrink-0 text-fg-fainter" />
         )}
       </button>
-      {open && call.result && (
-        <pre
-          className={"ml-5 mt-0.5 mb-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1.5 text-xs font-mono " +
-            (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface text-fg-muted")}
-        >
-          {formatResultText(call.result.text)}
-        </pre>
+      {open && (
+        <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
+          {/* Input */}
+          <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
+            {formatArgsText(call.arguments)}
+          </pre>
+          {/* Output */}
+          {call.result && (
+            <pre
+              className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
+                (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
+            >
+              {formatResultText(call.result.text)}
+            </pre>
+          )}
+        </div>
       )}
     </div>
   );
