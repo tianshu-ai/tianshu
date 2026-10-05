@@ -600,8 +600,8 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         <span className="shrink-0 text-xs font-medium text-fg-default">
           {humanizeToolCall(call.name, call.arguments, t) || call.name}
         </span>
-        <span className="min-w-0 flex-1 truncate text-left font-mono text-[10px] text-fg-fainter">
-          {shortToolName(call.name)}
+        <span className="min-w-0 flex-1 truncate text-left font-mono text-[10px] text-fg-fainter" title={call.name}>
+          {call.name}
         </span>
         {statusLabel && (
           <span className={`shrink-0 text-xs ${
@@ -808,8 +808,8 @@ function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
                 <span className={running ? "text-accent font-medium" : failed ? "text-rose-400" : "text-fg-muted"}>
                   {label}
                 </span>
-                <span className="text-fg-fainter font-mono text-[10px] ml-auto">
-                  {shortToolName(c.name)}
+                <span className="text-fg-fainter font-mono text-[10px] ml-auto truncate max-w-[40%]" title={c.name}>
+                  {c.name}
                 </span>
               </div>
             );
