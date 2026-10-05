@@ -14,7 +14,7 @@
 // chevron. Expanded body shows the tool's result text inside a
 // monospace pre block.
 
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { useUiPrimitives, useDateLocale } from "@tianshu-ai/plugin-sdk/client";
 import { useThemeStore } from "../stores/theme-store";
 import {
@@ -32,6 +32,7 @@ import {
   Play,
   Repeat,
   User,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import { useVoiceStore } from "../stores/voice-store";
@@ -148,11 +149,12 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
               )}
             </div>
           ) : (
-            <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
-              {blocks.map((b, i) =>
-                renderAssistantBlock(b, i, isUser, MarkdownBlock, proseInvert),
-              )}
-            </div>
+            <GroupedBlocks
+              blocks={blocks}
+              isUser={isUser}
+              MarkdownBlock={MarkdownBlock}
+              proseInvert={proseInvert}
+            />
           )
         ) : (
           <>
@@ -651,6 +653,147 @@ const SCREENSHOT_RE = /bridge-screenshots\/[\w.-]+\.(?:png|jpg|jpeg|webp|gif)/g;
 
 /** Regex matching generated-images paths (from generate_image host tool). */
 const GENERATED_IMAGE_RE = /generated-images\/([\w.-]+\.(?:png|jpg|jpeg|webp|gif))/g;
+
+// ── Tool-call grouping for collapsed runs ──────────────────────────
+
+/** True when a tool call has special visual rendering (screenshots,
+ *  generated images, MCP-UI frames) and should NOT be folded into a
+ *  collapsed group — it needs its own full-height row. */
+function isRichToolCall(call: MergedToolCall): boolean {
+  const txt = call.result?.text ?? "";
+  if ((call.result?.ui?.length ?? 0) > 0) return true;
+  if (SCREENSHOT_RE.test(txt)) { SCREENSHOT_RE.lastIndex = 0; return true; }
+  const imgRe = new RegExp(GENERATED_IMAGE_RE.source);
+  if (imgRe.test(txt)) return true;
+  return false;
+}
+
+/** A run of consecutive blocks that are either all plain tool calls
+ *  (groupable) or a single non-tool / rich-tool block. */
+type BlockRun =
+  | { kind: "tools"; calls: MergedToolCall[] }
+  | { kind: "single"; block: MergedAssistantBlock; index: number };
+
+/** Group consecutive plain (non-rich) toolCall blocks into runs.
+ *  Text blocks, rich tool calls, and lone tool calls stay as singles. */
+function groupBlocks(blocks: MergedAssistantBlock[]): BlockRun[] {
+  const runs: BlockRun[] = [];
+  let toolBuf: MergedToolCall[] = [];
+
+  const flushTools = () => {
+    if (toolBuf.length > 0) {
+      runs.push({ kind: "tools", calls: [...toolBuf] });
+      toolBuf = [];
+    }
+  };
+
+  for (let i = 0; i < blocks.length; i++) {
+    const b = blocks[i];
+    if (b.kind === "toolCall") {
+      // Cast: toolCall blocks carry the same fields as MergedToolCall
+      const tc = b as unknown as MergedToolCall;
+      if (!isRichToolCall(tc)) {
+        toolBuf.push(tc);
+        continue;
+      }
+    }
+    flushTools();
+    runs.push({ kind: "single", block: b, index: i });
+  }
+  flushTools();
+  return runs;
+}
+
+/** Collapsed group header for 2+ consecutive tool calls. */
+function ToolCallGroup({ calls }: { calls: MergedToolCall[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const t = useT();
+  const _ = t; void _; // suppress unused (i18n keys added later)
+
+  const runningCount = calls.filter((c) => !c.result).length;
+  const errorCount = calls.filter((c) => c.result && !c.result.ok).length;
+  const doneCount = calls.length - runningCount - errorCount;
+  const allDone = runningCount === 0;
+
+  const summaryIcon = runningCount > 0 ? (
+    <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
+  ) : errorCount > 0 ? (
+    <XCircle size={13} className="shrink-0 text-rose-400" />
+  ) : (
+    <Wrench size={13} className="shrink-0 text-fg-fainter" />
+  );
+
+  const summaryText = runningCount > 0
+    ? `${runningCount} running, ${doneCount + errorCount} done`
+    : errorCount > 0
+      ? `${calls.length} actions · ${errorCount} failed`
+      : `${calls.length} actions`;
+
+  return (
+    <div className="flex flex-col w-full min-w-0 my-0.5">
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="group flex w-full min-w-0 select-none items-center gap-2 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer bg-bg-surface hover:bg-bg-hover"
+      >
+        {summaryIcon}
+        <span className="text-xs font-medium text-fg-muted">{summaryText}</span>
+        <span className="flex-1" />
+        {allDone && errorCount === 0 && (
+          <span className="flex items-center gap-0.5 text-emerald-500/80">
+            <CheckCircle2 size={11} />
+          </span>
+        )}
+        {expanded ? (
+          <ChevronDown size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+        ) : (
+          <ChevronRight size={12} className="shrink-0 text-fg-fainter group-hover:text-fg-muted transition-colors" />
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-1 flex flex-col gap-1 pl-2">
+          {calls.map((c) => (
+            <ToolCallRow key={c.id} call={c} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Renders blocks with consecutive plain tool calls grouped into
+ *  collapsible runs. Rich tool calls (screenshots/UI/images) and text
+ *  blocks render individually as before. */
+function GroupedBlocks({
+  blocks,
+  isUser,
+  MarkdownBlock,
+  proseInvert,
+}: {
+  blocks: MergedAssistantBlock[];
+  isUser: boolean;
+  MarkdownBlock: React.ComponentType<{ children: string; noProse?: boolean }>;
+  proseInvert: string;
+}) {
+  const runs = useMemo(() => groupBlocks(blocks), [blocks]);
+  return (
+    <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
+      {runs.map((run, ri) => {
+        if (run.kind === "tools") {
+          // Single tool call → render normally (no extra nesting)
+          if (run.calls.length === 1) {
+            const c = run.calls[0];
+            return <ToolCallRow key={c.id} call={c} />;
+          }
+          // 2+ consecutive tool calls → collapsed group
+          return <ToolCallGroup key={`tg${ri}`} calls={run.calls} />;
+        }
+        // Single block (text or rich tool call)
+        return renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert);
+      })}
+    </div>
+  );
+}
 
 /** Strip the [System] Triggered at: ... prefix from cron text, keep only user message. */
 function stripSystemPrefix(text: string): string {
