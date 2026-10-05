@@ -1,14 +1,14 @@
 /**
  * SVG DAG visualization for tool call pipelines.
  *
- * Layout: left-to-right flow. Each batch (LLM turn) is a column.
- * Parallel calls within a batch stack vertically.
- * Edges connect every node in batch[i] to every node in batch[i+1].
+ * Layout: top-to-bottom flow. Each batch (LLM turn) is a row.
+ * Parallel calls within a batch spread horizontally.
+ * Edges connect every node in row[i] to every node in row[i+1].
  *
  * Node states:
  *   - running: accent border + pulse animation
  *   - failed:  red border + red text
- *   - done:    green left-edge accent + muted text
+ *   - done:    green dot + muted text
  */
 
 import { useMemo } from "react";
@@ -17,13 +17,14 @@ import type { MergedToolCall } from "../lib/merge-tool-turns";
 // ── Layout constants ──────────────────────────────────────
 const NODE_H = 22;          // node pill height
 const NODE_PAD_X = 8;       // horizontal text padding inside pill
-const NODE_GAP_Y = 5;       // vertical gap between parallel nodes
-const COL_GAP = 24;         // horizontal gap between columns (for edges)
+const NODE_GAP_X = 8;       // horizontal gap between parallel nodes
+const ROW_GAP = 20;         // vertical gap between rows (for edges)
 const FONT_SIZE = 10;
 const ICON_R = 3.5;          // status dot radius
 const ICON_GAP = 5;          // gap between status dot and text
 const CHAR_W = 6;            // approx monospace char width at 10px
 const MAX_LABEL_CHARS = 16;  // truncate long tool names
+const MARGIN = 8;            // svg margin
 
 // ── Types ─────────────────────────────────────────────────
 interface ToolBatch {
@@ -61,24 +62,28 @@ function truncLabel(s: string): string {
   return s.length > MAX_LABEL_CHARS ? s.slice(0, MAX_LABEL_CHARS - 1) + "…" : s;
 }
 
+function nodeWidth(label: string): number {
+  const textW = label.length * CHAR_W;
+  return Math.max(ICON_GAP + ICON_R * 2 + NODE_PAD_X * 2 + textW + 4, 50);
+}
+
 // ── Component ─────────────────────────────────────────────
 export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
   const { nodes, edges, width, height } = useMemo(() => {
     const allNodes: NodeLayout[] = [];
     const allEdges: EdgeLayout[] = [];
 
-    // First pass: compute node sizes
-    const columns: { nodes: NodeLayout[]; colW: number }[] = [];
-    let curX = 8; // left margin
+    // Build rows: each batch is a horizontal row
+    const rows: { nodes: NodeLayout[]; rowW: number }[] = [];
 
     for (const batch of batches) {
-      const colNodes: NodeLayout[] = [];
-      let maxW = 0;
-      for (const c of batch.calls) {
+      const rowNodes: NodeLayout[] = [];
+      let totalW = 0;
+      for (let i = 0; i < batch.calls.length; i++) {
+        const c = batch.calls[i];
         const label = truncLabel(shortToolName(c.name));
-        const textW = label.length * CHAR_W;
-        const w = ICON_GAP + ICON_R * 2 + NODE_PAD_X * 2 + textW + 4;
-        colNodes.push({
+        const w = nodeWidth(label);
+        rowNodes.push({
           id: c.id,
           name: c.name,
           label,
@@ -86,56 +91,48 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
           failed: !!c.result && !c.result.ok,
           done: !!c.result && c.result.ok !== false,
           x: 0, y: 0,
-          w: Math.max(w, 50),
+          w,
           h: NODE_H,
         });
-        maxW = Math.max(maxW, Math.max(w, 50));
+        totalW += w + (i > 0 ? NODE_GAP_X : 0);
       }
-      columns.push({ nodes: colNodes, colW: maxW });
-      curX += maxW + COL_GAP;
+      rows.push({ nodes: rowNodes, rowW: totalW });
     }
 
-    // Second pass: assign positions
-    curX = 8;
-    const totalH: number[] = [];
-    for (const col of columns) {
-      const colH = col.nodes.reduce((s, n) => s + n.h + NODE_GAP_Y, -NODE_GAP_Y);
-      totalH.push(colH);
-    }
-    const maxColH = Math.max(...totalH, NODE_H);
+    // Find max row width for centering
+    const maxRowW = Math.max(...rows.map((r) => r.rowW));
 
-    for (let ci = 0; ci < columns.length; ci++) {
-      const col = columns[ci];
-      const colH = totalH[ci];
-      let curY = (maxColH - colH) / 2 + 8; // center vertically + top margin
-
-      for (const node of col.nodes) {
+    // Assign positions: center each row horizontally
+    let curY = MARGIN;
+    for (const row of rows) {
+      let curX = MARGIN + (maxRowW - row.rowW) / 2; // center
+      for (const node of row.nodes) {
         node.x = curX;
         node.y = curY;
         allNodes.push(node);
-        curY += node.h + NODE_GAP_Y;
+        curX += node.w + NODE_GAP_X;
       }
-      curX += col.colW + COL_GAP;
+      curY += NODE_H + ROW_GAP;
     }
 
-    // Third pass: edges
-    for (let ci = 0; ci < columns.length - 1; ci++) {
-      const fromCol = columns[ci].nodes;
-      const toCol = columns[ci + 1].nodes;
-      for (const from of fromCol) {
-        for (const to of toCol) {
+    // Edges: from bottom-center of each node in row[i] to top-center of each node in row[i+1]
+    for (let ri = 0; ri < rows.length - 1; ri++) {
+      const fromRow = rows[ri].nodes;
+      const toRow = rows[ri + 1].nodes;
+      for (const from of fromRow) {
+        for (const to of toRow) {
           allEdges.push({
-            fromX: from.x + from.w,
-            fromY: from.y + from.h / 2,
-            toX: to.x,
-            toY: to.y + to.h / 2,
+            fromX: from.x + from.w / 2,
+            fromY: from.y + from.h,
+            toX: to.x + to.w / 2,
+            toY: to.y,
           });
         }
       }
     }
 
-    const svgW = curX - COL_GAP + 8; // remove last gap, add right margin
-    const svgH = maxColH + 16; // top+bottom margin
+    const svgW = maxRowW + MARGIN * 2;
+    const svgH = curY - ROW_GAP + MARGIN; // remove last gap, add bottom margin
 
     return { nodes: allNodes, edges: allEdges, width: svgW, height: svgH };
   }, [batches]);
@@ -150,7 +147,6 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
       aria-label="Tool execution pipeline"
     >
       <defs>
-        {/* Arrowhead marker */}
         <marker
           id="dag-arrow"
           viewBox="0 0 6 6"
@@ -162,7 +158,6 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
         >
           <path d="M 0 0 L 6 3 L 0 6 z" fill="var(--fg-fainter, #475569)" />
         </marker>
-        {/* Running pulse */}
         <filter id="dag-pulse">
           <feFlood floodColor="var(--accent, #c9a96e)" floodOpacity="0.4" result="color" />
           <feComposite in="color" in2="SourceGraphic" operator="in" result="shadow" />
@@ -174,14 +169,14 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
         </filter>
       </defs>
 
-      {/* Edges */}
+      {/* Edges — vertical bezier curves */}
       {edges.map((e, i) => {
-        const dx = e.toX - e.fromX;
-        const cp = dx * 0.4;
+        const dy = e.toY - e.fromY;
+        const cp = dy * 0.4;
         return (
           <path
             key={`e${i}`}
-            d={`M ${e.fromX} ${e.fromY} C ${e.fromX + cp} ${e.fromY}, ${e.toX - cp} ${e.toY}, ${e.toX} ${e.toY}`}
+            d={`M ${e.fromX} ${e.fromY} C ${e.fromX} ${e.fromY + cp}, ${e.toX} ${e.toY - cp}, ${e.toX} ${e.toY}`}
             fill="none"
             stroke="var(--fg-fainter, #475569)"
             strokeWidth={1.5}
@@ -216,7 +211,6 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
 
         return (
           <g key={n.id} filter={n.running ? "url(#dag-pulse)" : undefined}>
-            {/* Pill background */}
             <rect
               x={n.x}
               y={n.y}
@@ -228,7 +222,6 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
               stroke={borderColor}
               strokeWidth={n.running ? 1.5 : 1}
             />
-            {/* Status dot */}
             <circle
               cx={n.x + NODE_PAD_X + ICON_R}
               cy={n.y + NODE_H / 2}
@@ -244,7 +237,6 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
                 />
               )}
             </circle>
-            {/* Tool name */}
             <text
               x={n.x + NODE_PAD_X + ICON_R * 2 + ICON_GAP}
               y={n.y + NODE_H / 2}
@@ -256,7 +248,6 @@ export default function ToolCallDag({ batches }: { batches: ToolBatch[] }) {
             >
               {n.label}
             </text>
-
           </g>
         );
       })}
