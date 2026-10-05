@@ -203,7 +203,7 @@ export function humanizeToolGroup(
   }
   if (summaries.length > 4) {
     // First step … last two steps
-    return summaries[0] + " → …" + calls.length + " steps… → " + summaries.slice(-2).join(" → ");
+    return summaries[0] + " → …" + calls.length + " steps total… → " + summaries.slice(-2).join(" → ");
   }
   return summaries.join(" → ");
 }
