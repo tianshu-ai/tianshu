@@ -202,7 +202,8 @@ export function humanizeToolGroup(
     }
   }
   if (summaries.length > 4) {
-    return summaries.slice(0, 3).join(" → ") + " → …" + calls.length + " steps";
+    // First step … last two steps
+    return summaries[0] + " → …" + calls.length + " steps… → " + summaries.slice(-2).join(" → ");
   }
   return summaries.join(" → ");
 }
