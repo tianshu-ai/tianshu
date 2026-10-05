@@ -38,21 +38,28 @@ function injectTitleParam(schema: Tool): Tool {
   const props = (params.properties ?? {}) as Record<string, unknown>;
   // Don't overwrite if the tool already defines _title
   if (props._title) return schema;
-  return {
-    ...schema,
-    parameters: {
-      ...params,
-      properties: {
-        ...props,
-        _title: Type.Optional(Type.String({
-          description:
-            "One-line human-readable summary of what this call does, " +
-            "shown to the user instead of the raw tool name. " +
-            "Write in the conversation language. Keep under 40 chars.",
-        })),
-      },
-    } as Tool["parameters"],
+
+  // IMPORTANT: typebox schemas carry Symbol metadata ([Kind], [Symbol]).
+  // Shallow-spreading the parameters object strips those symbols and
+  // produces invalid JSON Schema that breaks tool calling.
+  // Instead, mutate a deep-cloned copy of properties only.
+  const clonedProps = { ...props };
+  clonedProps._title = {
+    type: "string" as const,
+    description:
+      "One-line human-readable summary of what this call does, " +
+      "shown to the user instead of the raw tool name. " +
+      "Write in the conversation language. Keep under 40 chars.",
   };
+
+  // Clone the parameters object preserving its prototype / symbols
+  const clonedParams = Object.create(
+    Object.getPrototypeOf(params),
+    Object.getOwnPropertyDescriptors(params),
+  ) as Record<string, unknown>;
+  clonedParams.properties = clonedProps;
+
+  return { ...schema, parameters: clonedParams as Tool["parameters"] };
 }
 
 /**
