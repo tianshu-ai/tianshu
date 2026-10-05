@@ -346,6 +346,8 @@ function renderAssistantBlock(
       </div>
     );
   }
+  // turnBoundary: invisible marker, skip rendering
+  if (block.kind === "turnBoundary") return null;
   // toolCall block: reuse the same chip the legacy path renders.
   return <ToolCallRow key={`c${i}-${block.id}`} call={block} inCard={inCard} />;
 }
@@ -668,39 +670,59 @@ function isRichToolCall(call: MergedToolCall): boolean {
   return false;
 }
 
-/** A run of consecutive blocks that are either all plain tool calls
+/** A batch of tool calls that were issued in the same LLM turn
+ *  (parallel), or a single sequential call in its own turn. */
+interface ToolBatch { calls: MergedToolCall[] }
+
+/** A run of consecutive blocks that are either tool-call batches
  *  (groupable) or a single non-tool / rich-tool block. */
 type BlockRun =
-  | { kind: "tools"; calls: MergedToolCall[] }
+  | { kind: "tools"; batches: ToolBatch[] }
   | { kind: "single"; block: MergedAssistantBlock; index: number };
 
 /** Group consecutive plain (non-rich) toolCall blocks into runs.
+ *  Uses turnBoundary markers to separate parallel batches.
  *  Text blocks, rich tool calls, and lone tool calls stay as singles. */
 function groupBlocks(blocks: MergedAssistantBlock[]): BlockRun[] {
   const runs: BlockRun[] = [];
-  let toolBuf: MergedToolCall[] = [];
+  let batchBuf: MergedToolCall[] = [];   // current parallel batch
+  let batchesBuf: ToolBatch[] = [];      // accumulated batches for current run
 
-  const flushTools = () => {
-    if (toolBuf.length > 0) {
-      runs.push({ kind: "tools", calls: [...toolBuf] });
-      toolBuf = [];
+  const flushBatch = () => {
+    if (batchBuf.length > 0) {
+      batchesBuf.push({ calls: [...batchBuf] });
+      batchBuf = [];
+    }
+  };
+  const flushRun = () => {
+    flushBatch();
+    if (batchesBuf.length > 0) {
+      runs.push({ kind: "tools", batches: [...batchesBuf] });
+      batchesBuf = [];
     }
   };
 
   for (let i = 0; i < blocks.length; i++) {
     const b = blocks[i];
+    if (b.kind === "turnBoundary") {
+      // Boundary between LLM turns — start a new batch within the
+      // same run (sequential boundary between parallel groups).
+      flushBatch();
+      continue;
+    }
     if (b.kind === "toolCall") {
-      // Cast: toolCall blocks carry the same fields as MergedToolCall
       const tc = b as unknown as MergedToolCall;
       if (!isRichToolCall(tc)) {
-        toolBuf.push(tc);
+        batchBuf.push(tc);
         continue;
       }
     }
-    flushTools();
+    // Non-tool or rich-tool block — flush accumulated tools and
+    // emit the block as a single.
+    flushRun();
     runs.push({ kind: "single", block: b, index: i });
   }
-  flushTools();
+  flushRun();
   return runs;
 }
 
@@ -717,20 +739,27 @@ function shortToolName(name: string): string {
 }
 
 /** Collapsed group header for 2+ consecutive tool calls. */
-function ToolCallGroup({ calls }: { calls: MergedToolCall[] }) {
+/** Render a single tool-name chip with status icon. */
+function ToolChip({ name, running, failed }: { name: string; running: boolean; failed: boolean }) {
+  return (
+    <span className="flex items-center gap-0.5 min-w-0">
+      {running && <Loader2 size={10} className="shrink-0 animate-spin text-accent" />}
+      {failed && <XCircle size={10} className="shrink-0 text-rose-400" />}
+      {!running && !failed && <CheckCircle2 size={10} className="shrink-0 text-emerald-500/60" />}
+      <code className={`truncate font-mono text-xs ${
+        running ? "font-medium text-accent" : failed ? "text-rose-400" : "text-fg-fainter"
+      }`}>{name}</code>
+    </span>
+  );
+}
+
+function ToolCallGroup({ batches }: { batches: ToolBatch[] }) {
   const [expanded, setExpanded] = useState(false);
 
-  const errorCount = calls.filter((c) => c.result && !c.result.ok).length;
-  const allDone = calls.every((c) => !!c.result);
+  const allCalls = batches.flatMap((b) => b.calls);
+  const errorCount = allCalls.filter((c) => c.result && !c.result.ok).length;
+  const allDone = allCalls.every((c) => !!c.result);
 
-  // Build the inline tool name chips for the collapsed header
-  const chips = calls.map((c) => {
-    const running = !c.result;
-    const failed = !!c.result && !c.result.ok;
-    return { id: c.id, name: shortToolName(c.name), running, failed };
-  });
-
-  // Overall status icon (leftmost)
   const headerIcon = !allDone ? (
     <Loader2 size={13} className="shrink-0 animate-spin text-accent" />
   ) : errorCount > 0 ? (
@@ -747,27 +776,32 @@ function ToolCallGroup({ calls }: { calls: MergedToolCall[] }) {
         className="group flex w-full min-w-0 select-none items-center gap-1.5 rounded-xl px-3 py-2 text-xs transition-all cursor-pointer bg-bg-surface hover:bg-bg-hover"
       >
         {headerIcon}
-        {/* Tool name chips — running one pulses, done ones are muted */}
-        <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
-          {chips.map((chip, i) => (
-            <span key={chip.id} className="flex items-center gap-1 min-w-0">
-              {i > 0 && <span className="text-fg-fainter">→</span>}
-              {chip.running && (
-                <Loader2 size={10} className="shrink-0 animate-spin text-accent" />
+        {/* Batch chips: parallel calls joined with ·, sequential batches joined with → */}
+        <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden flex-wrap">
+          {batches.map((batch, bi) => (
+            <span key={bi} className="flex items-center gap-1 min-w-0">
+              {bi > 0 && <span className="text-fg-fainter">→</span>}
+              {batch.calls.length === 1 ? (
+                <ToolChip
+                  name={shortToolName(batch.calls[0].name)}
+                  running={!batch.calls[0].result}
+                  failed={!!batch.calls[0].result && !batch.calls[0].result.ok}
+                />
+              ) : (
+                /* Parallel group: calls separated by · */
+                <span className="flex items-center gap-0.5 min-w-0">
+                  {batch.calls.map((c, ci) => (
+                    <span key={c.id} className="flex items-center gap-0.5 min-w-0">
+                      {ci > 0 && <span className="text-fg-fainter">·</span>}
+                      <ToolChip
+                        name={shortToolName(c.name)}
+                        running={!c.result}
+                        failed={!!c.result && !c.result.ok}
+                      />
+                    </span>
+                  ))}
+                </span>
               )}
-              {chip.failed && (
-                <XCircle size={10} className="shrink-0 text-rose-400" />
-              )}
-              {!chip.running && !chip.failed && (
-                <CheckCircle2 size={10} className="shrink-0 text-emerald-500/60" />
-              )}
-              <code className={`truncate font-mono text-xs ${
-                chip.running
-                  ? "font-medium text-accent"
-                  : chip.failed
-                    ? "text-rose-400"
-                    : "text-fg-fainter"
-              }`}>{chip.name}</code>
             </span>
           ))}
         </span>
@@ -779,7 +813,7 @@ function ToolCallGroup({ calls }: { calls: MergedToolCall[] }) {
       </button>
       {expanded && (
         <div className="mt-1 flex flex-col gap-1 pl-2">
-          {calls.map((c) => (
+          {allCalls.map((c) => (
             <ToolCallRow key={c.id} call={c} />
           ))}
         </div>
@@ -806,13 +840,13 @@ function GroupedBlocks({
     <div className={`flex w-full min-w-0 flex-col gap-1.5 ${isUser ? "items-end" : "items-start"}`}>
       {runs.map((run, ri) => {
         if (run.kind === "tools") {
+          const allCalls = run.batches.flatMap((b) => b.calls);
           // Single tool call → render normally (no extra nesting)
-          if (run.calls.length === 1) {
-            const c = run.calls[0];
-            return <ToolCallRow key={c.id} call={c} />;
+          if (allCalls.length === 1) {
+            return <ToolCallRow key={allCalls[0].id} call={allCalls[0]} />;
           }
-          // 2+ consecutive tool calls → collapsed group
-          return <ToolCallGroup key={`tg${ri}`} calls={run.calls} />;
+          // 2+ tool calls → collapsed group with batch info
+          return <ToolCallGroup key={`tg${ri}`} batches={run.batches} />;
         }
         // Single block (text or rich tool call)
         return renderAssistantBlock(run.block, run.index, isUser, MarkdownBlock, proseInvert);

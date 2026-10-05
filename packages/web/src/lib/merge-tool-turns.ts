@@ -26,7 +26,8 @@ export interface MergedToolCall extends WireToolCall {
  *  their resolved result. UI renders these in author order. */
 export type MergedAssistantBlock =
   | { kind: "text"; text: string }
-  | (Extract<WireAssistantBlock, { kind: "toolCall" }> & { result?: WireToolResult });
+  | (Extract<WireAssistantBlock, { kind: "toolCall" }> & { result?: WireToolResult })
+  | { kind: "turnBoundary" };
 
 export interface MergedMessage
   extends Omit<WireMessage, "toolCalls" | "toolResult" | "blocks"> {
@@ -203,7 +204,14 @@ function coalesceAssistantTurns(rows: MergedMessage[]): MergedMessage[] {
       hasToolCall(toBlocks(prev))
     ) {
       // Fold this assistant turn into the previous one.
-      const mergedBlocks = [...toBlocks(prev), ...toBlocks(row)];
+      // Insert a turnBoundary marker so the UI can distinguish
+      // parallel tool calls (same turn) from sequential ones
+      // (across turns).
+      const mergedBlocks: MergedAssistantBlock[] = [
+        ...toBlocks(prev),
+        { kind: "turnBoundary" },
+        ...toBlocks(row),
+      ];
       // Concatenate speech sources across the fold so the play
       // button on the merged bubble reads the whole spoken turn.
       //
