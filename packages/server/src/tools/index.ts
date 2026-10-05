@@ -33,33 +33,44 @@ export type ToolExecutor = (args: Record<string, unknown>) => Promise<ToolResult
  *
  * Returns a new schema object; the original is not mutated.
  */
+const TITLE_PROP = {
+  type: "string",
+  description:
+    "One-line human-readable summary of what this call does, " +
+    "shown to the user instead of the raw tool name. " +
+    "Write in the conversation language. Keep under 40 chars.",
+} as const;
+
+/**
+ * Add an optional `_title` string to a tool's parameters schema.
+ *
+ * Strategy: JSON round-trip the parameters to get a clean plain
+ * object (strips typebox Symbols / prototypes that caused breakage
+ * in earlier attempts), then add _title to properties.
+ *
+ * pi-ai serializes parameters to JSON before sending to providers,
+ * so the round-trip produces the exact same wire format.
+ */
 function injectTitleParam(schema: Tool): Tool {
-  const params = schema.parameters as Record<string, unknown>;
-  const props = (params.properties ?? {}) as Record<string, unknown>;
-  // Don't overwrite if the tool already defines _title
-  if (props._title) return schema;
-
-  // IMPORTANT: typebox schemas carry Symbol metadata ([Kind], [Symbol]).
-  // Shallow-spreading the parameters object strips those symbols and
-  // produces invalid JSON Schema that breaks tool calling.
-  // Instead, mutate a deep-cloned copy of properties only.
-  const clonedProps = { ...props };
-  clonedProps._title = {
-    type: "string" as const,
-    description:
-      "One-line human-readable summary of what this call does, " +
-      "shown to the user instead of the raw tool name. " +
-      "Write in the conversation language. Keep under 40 chars.",
-  };
-
-  // Clone the parameters object preserving its prototype / symbols
-  const clonedParams = Object.create(
-    Object.getPrototypeOf(params),
-    Object.getOwnPropertyDescriptors(params),
-  ) as Record<string, unknown>;
-  clonedParams.properties = clonedProps;
-
-  return { ...schema, parameters: clonedParams as Tool["parameters"] };
+  try {
+    const plain = JSON.parse(JSON.stringify(schema.parameters)) as Record<string, unknown>;
+    if (typeof plain !== "object" || plain === null) return schema;
+    // Ensure properties exists
+    if (!plain.properties || typeof plain.properties !== "object") {
+      plain.properties = {};
+    }
+    const props = plain.properties as Record<string, unknown>;
+    if (props._title) return schema; // already defined
+    props._title = TITLE_PROP;
+    return {
+      name: schema.name,
+      description: schema.description,
+      parameters: plain as Tool["parameters"],
+    };
+  } catch {
+    // If anything goes wrong, return original — never break tools
+    return schema;
+  }
 }
 
 /**
@@ -303,7 +314,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
       );
       continue;
     }
-    schemas.push(tool.schema);
+    schemas.push(injectTitleParam(tool.schema));
     // Skip admin-only tools for member users — don't even expose to LLM
     const effectiveAccess = toolAccess ?? "member";
     if (effectiveAccess === "admin" && toolContext.userRole === "member") continue;
@@ -319,7 +330,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
   // Host-level tools (always available, not from plugins).
   for (const { schema, executor } of opts.hostTools ?? []) {
     if (!executors[schema.name]) {
-      schemas.push(schema);
+      schemas.push(injectTitleParam(schema));
       executors[schema.name] = wrapExecutorWithErrorGuard(
         schema.name,
         "host",
