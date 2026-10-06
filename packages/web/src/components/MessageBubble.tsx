@@ -1180,6 +1180,20 @@ function RecallToolCallRow({ name, args, result }: { name: string; args: string;
   );
 }
 
+/** Parse <!--inbox-events:[...]--> from a text blob. Returns parsed events + remaining text. */
+function extractInboxEvents(text: string): { events: Array<{ kind: string; text: string; source?: string; firedAt?: string; scheduleType?: string; title?: string }>; rest: string } {
+  const match = text.match(/<!--\s*inbox-events:(\[.*?\])\s*-->/s);
+  if (!match) return { events: [], rest: text };
+  try {
+    const parsed = JSON.parse(match[1]);
+    if (Array.isArray(parsed)) {
+      const rest = (text.slice(0, match.index!) + text.slice(match.index! + match[0].length)).trim();
+      return { events: parsed, rest };
+    }
+  } catch { /* fall through */ }
+  return { events: [], rest: text };
+}
+
 function RecallView({ text }: { text: string }) {
   const rawEntries = parseRecall(text);
   if (rawEntries.length === 0) return <pre className="whitespace-pre-wrap text-[11px] text-fg-muted">{text}</pre>;
@@ -1227,22 +1241,48 @@ function RecallView({ text }: { text: string }) {
               </div>
 
               {/* Message bubble — uses main-chat .user-bubble / .ai-bubble classes */}
-              {combinedText && (
-                <div className={`relative ${isUser ? "user-bubble" : "ai-bubble"}`}>
-                  <div
-                    className={
-                      "prose prose-sm w-full overflow-x-auto rounded-xl px-4 py-3 text-[14px] leading-relaxed max-w-none " +
-                      (isUser
-                        ? "bg-brand-500/10 text-fg-default"
-                        : "bg-bg-elevated/40 text-fg-default")
-                    }
-                  >
-                    {combinedText.length > 500
-                      ? <ExpandableSnippet text={combinedText} />
-                      : <div className="whitespace-pre-wrap break-words">{combinedText}</div>}
-                  </div>
-                </div>
-              )}
+              {combinedText && (() => {
+                // Extract any inbox-events marker from the text
+                const { events: inboxEvents, rest: cleanText } = isUser
+                  ? extractInboxEvents(combinedText)
+                  : { events: [], rest: combinedText };
+                return (
+                  <>
+                    {inboxEvents.length > 0 && (
+                      <div className="flex flex-col gap-1.5 w-full">
+                        {inboxEvents.map((e, j) => (
+                          <EventCard
+                            key={j}
+                            event={{
+                              type: deriveEventType(e),
+                              title: e.title || (e.source === "cron" ? "Scheduled Event" : "Notification"),
+                              body: stripSystemPrefix(e.text),
+                              firedAt: e.firedAt,
+                              scheduleType: e.scheduleType,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {cleanText && (
+                      <div className={`relative ${isUser ? "user-bubble" : "ai-bubble"}`}>
+                        <div
+                          className={
+                            "prose prose-sm w-full overflow-x-auto rounded-xl px-4 py-3 text-[14px] leading-relaxed max-w-none " +
+                            (isUser
+                              ? "bg-brand-500/10 text-fg-default"
+                              : "bg-bg-elevated/40 text-fg-default")
+                          }
+                        >
+                          {cleanText.length > 500
+                            ? <ExpandableSnippet text={cleanText} />
+                            : <div className="whitespace-pre-wrap break-words">{cleanText}</div>}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
 
               {/* Tool calls — same layout as main-chat ToolCallRow placement */}
               {toolCalls.length > 0 && (
