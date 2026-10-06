@@ -29,6 +29,7 @@ import * as p from "@clack/prompts";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 // pi 0.80: global `complete()` dispatch lives behind `/compat`.
 import { complete } from "@earendil-works/pi-ai/compat";
 import type {
@@ -2614,13 +2615,13 @@ function pluginSetupPluginsRoot(): string {
     return process.env.TIANSHU_PLUGINS_DIR;
   }
   // dist/setup/cli-agent.js → ../../../plugins
-  const here = new URL(".", import.meta.url);
+  // IMPORTANT: use fileURLToPath, not .pathname. On Windows, URL.pathname
+  // returns "/C:/Users/..." with a leading slash, which breaks downstream
+  // path.join / fs calls. fileURLToPath handles both OSes correctly.
+  const here = path.dirname(fileURLToPath(import.meta.url));
   // here = .../packages/server/dist/setup/
-  // Up three levels = .../packages/server, up one more = .../packages, up one more = .../<repo-root>
-  // The builtinConfig path is computed at packages/server/builtinConfig/plugins, not repo-root/plugins;
   // mirror what index.ts does: `<here>/../../../plugins`.
-  const url = new URL("../../../plugins", here);
-  return url.pathname;
+  return path.resolve(here, "..", "..", "..", "plugins");
 }
 
 interface BuildMetadataLite {

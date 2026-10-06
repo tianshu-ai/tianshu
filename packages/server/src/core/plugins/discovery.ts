@@ -9,6 +9,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { PluginManifest } from "@tianshu-ai/plugin-sdk";
 import { getTenantSharedDir } from "../paths.js";
 import { parseManifest, PluginManifestError } from "./manifest.js";
@@ -47,8 +48,15 @@ export function getBuiltinConfigDir(): string {
   if (env) return path.resolve(env);
   // Resolve relative to this file at runtime: dist/core/plugins/discovery.js
   // → ../../../builtinConfig (server package root).
-  // For ESM we can't use __dirname; rely on import.meta.url.
-  const here = new URL(".", import.meta.url).pathname;
+  //
+  // IMPORTANT: use fileURLToPath, not .pathname. On Windows,
+  // `new URL(..., import.meta.url).pathname` returns "/C:/Users/..."
+  // (with a leading slash), which path.resolve then interprets as
+  // absolute-from-root and produces a bogus path. fileURLToPath
+  // strips the slash and normalises separators correctly.
+  // Node docs:
+  // https://nodejs.org/api/url.html#urlfileurltopathurl-options
+  const here = fileURLToPath(new URL(".", import.meta.url));
   return path.resolve(here, "..", "..", "..", "builtinConfig");
 }
 
