@@ -6,6 +6,18 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.84.0](https://github.com/tianshu-ai/tianshu/compare/v0.83.0...v0.84.0) (2026-10-06)
+
+
+### Features
+
+* **plugins:** platform gate — skip plugins on unsupported OSes ([ca749fa](https://github.com/tianshu-ai/tianshu/commit/ca749fa6d3966c1ad8e4962eefc96ed62bac61a4))
+
+
+### Bug Fixes
+
+* **doctor:** skip sandbox/openshell checks on Windows, add 'info' severity ([4758e02](https://github.com/tianshu-ai/tianshu/commit/4758e02c962035296a19299ac1d7795be9f4ecc7))
+
 ## [0.83.0](https://github.com/tianshu-ai/tianshu/compare/v0.82.0...v0.83.0) (2026-10-06)
 
 
