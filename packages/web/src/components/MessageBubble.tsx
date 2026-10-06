@@ -414,10 +414,12 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
   const result = call.result;
   const uiResources = result?.ui ?? [];
   const hasUi = uiResources.length > 0;
-  // Screenshot paths in result — but skip file-manifest tools (sync_up/sync_down etc.)
-  // whose results mention screenshot paths as filenames, not actual images.
-  const isFileManifest = /sync_up|sync_down|list_dir|list_files/i.test(call.name);
-  const screenshots = isFileManifest ? [] : ((result?.text ?? "").match(SCREENSHOT_RE) ?? []);
+  // Screenshot paths in result — only render for tools that actually produce screenshots.
+  // Many tools (solution, sync_up, tenant_config_read, etc.) mention screenshot paths
+  // as data references in their JSON output, not as actual displayable images.
+  const normalized = normalizeBridgeName(call.name);
+  const isScreenshotProducer = /exec$|shell_exec|browser_screenshot|browser_health_check|bridge_view_image/i.test(normalized);
+  const screenshots = isScreenshotProducer ? ((result?.text ?? "").match(SCREENSHOT_RE) ?? []) : [];
   const hasScreenshots = screenshots.length > 0;
   // Extract only the filename group so URL construction stays simple.
   const generatedImageFilenames: string[] = [];
