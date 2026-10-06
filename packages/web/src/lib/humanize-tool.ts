@@ -208,6 +208,137 @@ export function humanizeToolGroup(
   return summaries.join(" → ");
 }
 
+// ── Humanized args for expanded detail view ─────────────────
+
+type ArgsFormatter = (args: Args) => string;
+
+/** Per-tool formatters that turn raw args into readable text. */
+const ARGS_MAP: Record<string, ArgsFormatter> = {
+  // Host tools
+  compact_context: () => "压缩对话上下文",
+  tool_catalog_refresh: (a) => `刷新工具目录` + (str(a.mode) ? ` (模式: ${a.mode})` : ""),
+  switch_panel: (a) => `切换面板: ${str(a.panel) || "未知"}`,
+  solution: (a) => {
+    const action = str(a.action);
+    const slug = str(a.slug);
+    if (action === "active") return "查看当前激活方案";
+    if (action === "get" && slug) return `获取方案: ${slug}`;
+    if (action === "save") return `保存方案: ${slug || "新方案"}`;
+    if (action === "list") return "列出所有方案";
+    if (action === "activate" && slug) return `激活方案: ${slug}`;
+    if (action === "delete" && slug) return `删除方案: ${slug}`;
+    return `方案操作: ${action || "未知"}`;
+  },
+  generate_image: (a) => {
+    const p = str(a.prompt);
+    const parts = ["生成图片"];
+    if (p) parts.push(`描述: ${shorten(p, 60)}`);
+    if (str(a.style)) parts.push(`风格: ${a.style}`);
+    if (str(a.size)) parts.push(`尺寸: ${a.size}`);
+    return parts.join(" \xb7 ");
+  },
+  ask_user: (a) => `询问用户: ${str(a.question) || str(a.message) || "…"}`,
+  channel_send_file: (a) => `发送文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
+  recall_tool_call: (a) => `回顾工具调用: ${str(a.callId) || "…"}`,
+  recall_range: () => "回顾历史消息",
+  inspect_session: (a) => `检查会话: ${str(a.sessionId) || "当前"}`,
+  read_session_log: () => "读取会话日志",
+  nudge_session: (a) => `唤醒会话: ${shorten(str(a.message) || "", 40)}`,
+
+  // File operations
+  write_file: (a) => `写入文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
+  read_file: (a) => `读取文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
+  edit_file: (a) => `编辑文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
+  delete_file: (a) => `删除文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
+  list_files: (a) => `列出目录: ${str(a.path) || "."}`,
+  create_directory: (a) => `创建目录: ${str(a.path) || "未知"}`,
+  list_dir: (a) => `列出目录: ${str(a.path) || "."}`,
+
+  // Sync
+  sync_up: (a) => `上传文件: ${str(a.path || a.localPath) ? basename(str(a.path || a.localPath)!) : "未知"}`,
+  sync_down: (a) => `下载文件: ${str(a.path || a.remotePath) ? basename(str(a.path || a.remotePath)!) : "未知"}`,
+
+  // Exec
+  exec: (a) => {
+    const cmd = str(a.command);
+    return cmd ? `执行命令: ${shorten(cmd, 80)}` : "执行命令";
+  },
+  shell_exec: (a) => {
+    const cmd = str(a.command);
+    return cmd ? `执行命令: ${shorten(cmd, 80)}` : "执行命令";
+  },
+
+  // Web
+  web_search: (a) => `搜索: ${str(a.query) || "…"}`,
+  web_fetch: (a) => {
+    const u = str(a.url);
+    try { return `获取网页: ${new URL(u).hostname}`; } catch { /* */ }
+    return `获取网页: ${shorten(u, 40)}`;
+  },
+
+  // Database
+  ds_query: (a) => {
+    const src = str(a.source || a.connection);
+    const q = str(a.query || a.sql);
+    return `查询数据库${src ? " " + src : ""}: ${shorten(q || "", 60)}`;
+  },
+  ds_execute: (a) => {
+    const src = str(a.source || a.connection);
+    return `执行 SQL${src ? " " + src : ""}: ${shorten(str(a.query || a.sql) || "", 60)}`;
+  },
+  ds_schema: (a) => `查看数据库 Schema: ${str(a.source || a.name) || "全部"}`,
+  ds_list: () => "列出数据源",
+  ds_panel: (a) => `推送到数据面板: ${shorten(str(a.query || a.sql) || "", 40)}`,
+
+  // Knowledge
+  wiki_search: (a) => `搜索知识库: ${str(a.query) || "…"}`,
+  wiki_read: (a) => `读取知识页: ${str(a.page || a.path) || "…"}`,
+  memory_search: (a) => `搜索记忆: ${str(a.query) || "…"}`,
+  memory_read: (a) => `读取记忆: ${str(a.key || a.path) || "…"}`,
+
+  // Config
+  tenant_config_read: (a) => `读取配置: ${str(a.path) || "…"}`,
+  tenant_config_write: (a) => `写入配置: ${str(a.path) || "…"}`,
+  tenant_config_list: () => "列出配置",
+  model_list: () => "列出可用模型",
+  task_list_workers: () => "列出工作者",
+
+  // Tasks
+  task_create: (a) => `创建任务: ${str(a.title) || "…"}`,
+  task_list: (a) => `列出任务${str(a.status) ? " (状态: " + a.status + ")" : ""}`,
+  task_update: (a) => `更新任务: ${str(a.title) || str(a.taskId) || "…"}`,
+
+  // Cron
+  cron_list: () => "列出定时任务",
+  cron_create: (a) => `创建定时任务: ${str(a.name) || "…"}`,
+  cron_delete: (a) => `删除定时任务: ${str(a.name || a.id) || "…"}`,
+
+  // Board
+  board_create: () => "创建看板",
+  board_update: () => "更新看板",
+  board_render: () => "渲染看板",
+
+  // Code
+  code_interpreter: () => "运行代码分析",
+  python: () => "运行 Python",
+};
+
+/**
+ * Human-readable description of a tool call's arguments.
+ * Used in the expanded detail view instead of raw key-value dump.
+ * Returns undefined when no formatter is registered — caller
+ * falls back to formatArgsText().
+ */
+export function humanizeArgs(name: string, args: Args): string | undefined {
+  const normalized = normalizeBridgeName(name);
+  // Bridge exec uses the exec formatter
+  if (/exec$/i.test(normalized) && ARGS_MAP.exec) {
+    return ARGS_MAP.exec(args);
+  }
+  const fn = ARGS_MAP[normalized];
+  return fn ? fn(args) : undefined;
+}
+
 // ── Render-type inference ───────────────────────────────────────
 
 /**
