@@ -684,7 +684,7 @@ function formatArgsText(args: Record<string, unknown>, toolName?: string, t: T =
  * (exec/bridge_exec) and extracts the meaningful content (stdout/stderr)
  * instead of showing raw JSON with ok/exit_code/truncated/etc metadata.
  */
-function formatResultText(text: string, maxLen = 4000, t: T = translate): string {
+function formatResultText(text: string, maxLen = 20000, t: T = translate): string {
   const trimmed = text.trim();
   // Strip common "ok:true, message:" / "ok:false, message:" prefix
   const msgMatch = trimmed.match(/^ok:\s*(?:true|false)\s*,\s*message:\s*"?(.*?)"?\s*$/s);
