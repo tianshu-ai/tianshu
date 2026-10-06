@@ -893,11 +893,7 @@ function ToonView({ nodes }: { nodes: ToonNode[] }) {
         return (
           <div key={i} className={n.indent ? "pl-4" : ""}>
             <span className="text-fg-fainter">{n.label}:</span>
-            <div className="pl-4">
-              {n.items.map((item, j) => (
-                <div key={j}>• {item}</div>
-              ))}
-            </div>
+            <ExpandableList items={n.items} />
           </div>
         );
       })}
@@ -1004,6 +1000,29 @@ function stripSnippetNoise(s: string): string {
 
 function extractDomain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+}
+
+/** List with click-to-expand. Shows first 3 items by default when total > 5. */
+function ExpandableList({ items, threshold = 5, preview = 3 }: { items: string[]; threshold?: number; preview?: number }) {
+  const [expanded, setExpanded] = useState(false);
+  const needsCollapse = items.length > threshold;
+  const shown = needsCollapse && !expanded ? items.slice(0, preview) : items;
+  const hidden = items.length - shown.length;
+  return (
+    <div className="pl-4">
+      {shown.map((item, j) => (
+        <div key={j}>• {item}</div>
+      ))}
+      {needsCollapse && (
+        <div
+          className="text-link text-[10px] cursor-pointer mt-0.5"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "…less" : `…more (${hidden})`}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** Snippet with click-to-expand. Shows 2 lines by default, full text on click. */
