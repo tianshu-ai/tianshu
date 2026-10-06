@@ -11,7 +11,7 @@
 import { translate, type TranslationKey } from "./i18n";
 
 type Args = Record<string, unknown>;
-type T = (key: TranslationKey, params?: Record<string, string | number>) => string;
+export type T = (key: TranslationKey, params?: Record<string, string | number>) => string;
 
 function str(v: unknown): string {
   return typeof v === "string" ? v : "";
@@ -210,129 +210,148 @@ export function humanizeToolGroup(
 
 // ── Humanized args for expanded detail view ─────────────────
 
-type ArgsFormatter = (args: Args) => string;
+type ArgsFormatter = (t: T, args: Args) => string;
 
 /** Per-tool formatters that turn raw args into readable text. */
 const ARGS_MAP: Record<string, ArgsFormatter> = {
   // Host tools
-  compact_context: () => "压缩对话上下文",
-  tool_catalog_refresh: (a) => `刷新工具目录` + (str(a.mode) ? ` (模式: ${a.mode})` : ""),
-  switch_panel: (a) => {
-    const p = str(a.panel);
-    if (!p) return "切换面板";
-    if (p === "list") return "查看可用面板列表";
-    if (p === "close" || p === "none") return "关闭侧边栏面板";
-    const PANEL_NAMES: Record<string, string> = {
-      "board.main": "看板", "cron.main": "定时任务",
-      "datasource.main": "数据源", "files.main": "文件",
-      "reverse-mcp.main": "Local Bridge", "wiki.main": "知识库",
-      "workboard.main": "任务", "workforce-studio.main": "工作者",
-    };
-    return `切换到${PANEL_NAMES[p] || p}面板`;
+  compact_context: (t) => t("toolDetail.compactContext"),
+  tool_catalog_refresh: (t, a) => {
+    const mode = str(a.mode);
+    return mode ? t("toolDetail.catalogRefreshMode", { mode }) : t("toolDetail.catalogRefresh");
   },
-  solution: (a) => {
+  switch_panel: (t, a) => {
+    const p = str(a.panel);
+    if (!p) return t("toolDetail.switchPanel");
+    if (p === "list") return t("toolDetail.switchPanelList");
+    if (p === "close" || p === "none") return t("toolDetail.switchPanelClose");
+    const PANEL_KEY: Record<string, TranslationKey> = {
+      "board.main": "toolDetail.panel.board",
+      "cron.main": "toolDetail.panel.cron",
+      "datasource.main": "toolDetail.panel.datasource",
+      "files.main": "toolDetail.panel.files",
+      "reverse-mcp.main": "toolDetail.panel.reverseMcp",
+      "wiki.main": "toolDetail.panel.wiki",
+      "workboard.main": "toolDetail.panel.workboard",
+      "workforce-studio.main": "toolDetail.panel.workforce",
+    };
+    const panelName = PANEL_KEY[p] ? t(PANEL_KEY[p]) : p;
+    return t("toolDetail.switchPanelTo", { panel: panelName });
+  },
+  solution: (t, a) => {
     const action = str(a.action);
     const slug = str(a.slug);
-    if (action === "active") return "查看当前激活方案";
-    if (action === "get" && slug) return `获取方案: ${slug}`;
-    if (action === "save") return `保存方案: ${slug || "新方案"}`;
-    if (action === "list") return "列出所有方案";
-    if (action === "activate" && slug) return `激活方案: ${slug}`;
-    if (action === "delete" && slug) return `删除方案: ${slug}`;
-    return `方案操作: ${action || "未知"}`;
+    if (action === "active") return t("toolDetail.solutionActive");
+    if (action === "get" && slug) return t("toolDetail.solutionGet", { slug });
+    if (action === "save") return t("toolDetail.solutionSave", { slug: slug || t("toolDetail.newSolution") });
+    if (action === "list") return t("toolDetail.solutionList");
+    if (action === "activate" && slug) return t("toolDetail.solutionActivate", { slug });
+    if (action === "delete" && slug) return t("toolDetail.solutionDelete", { slug });
+    return t("toolDetail.solutionAction", { action: action || t("toolDetail.unknown") });
   },
-  generate_image: (a) => {
+  generate_image: (t, a) => {
     const p = str(a.prompt);
-    const parts = ["生成图片"];
-    if (p) parts.push(`描述: ${shorten(p, 60)}`);
-    if (str(a.style)) parts.push(`风格: ${a.style}`);
-    if (str(a.size)) parts.push(`尺寸: ${a.size}`);
+    const parts = [t("toolDetail.genImage")];
+    if (p) parts.push(t("toolDetail.genImagePrompt", { prompt: shorten(p, 60) }));
+    if (str(a.style)) parts.push(t("toolDetail.genImageStyle", { style: String(a.style) }));
+    if (str(a.size)) parts.push(t("toolDetail.genImageSize", { size: String(a.size) }));
     return parts.join(" \xb7 ");
   },
-  ask_user: (a) => `询问用户: ${str(a.question) || str(a.message) || "…"}`,
-  channel_send_file: (a) => `发送文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
-  recall_tool_call: (a) => `回顾工具调用: ${str(a.callId) || "…"}`,
-  recall_range: () => "回顾历史消息",
-  inspect_session: (a) => `检查会话: ${str(a.sessionId) || "当前"}`,
-  read_session_log: () => "读取会话日志",
-  nudge_session: (a) => `唤醒会话: ${shorten(str(a.message) || "", 40)}`,
+  ask_user: (t, a) => t("toolDetail.askUser", { question: str(a.question) || str(a.message) || "…" }),
+  channel_send_file: (t, a) => t("toolDetail.sendFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
+  recall_tool_call: (t, a) => t("toolDetail.recallToolCall", { id: str(a.callId) || "…" }),
+  recall_range: (t) => t("toolDetail.recallRange"),
+  inspect_session: (t, a) => t("toolDetail.inspectSession", { id: str(a.sessionId) || t("toolDetail.current") }),
+  read_session_log: (t) => t("toolDetail.readSessionLog"),
+  nudge_session: (t, a) => t("toolDetail.nudgeSession", { message: shorten(str(a.message) || "", 40) }),
 
   // File operations
-  write_file: (a) => `写入文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
-  read_file: (a) => `读取文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
-  edit_file: (a) => `编辑文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
-  delete_file: (a) => `删除文件: ${str(a.path) ? basename(str(a.path)!) : "未知"}`,
-  list_files: (a) => `列出目录: ${str(a.path) || "."}`,
-  create_directory: (a) => `创建目录: ${str(a.path) || "未知"}`,
-  list_dir: (a) => `列出目录: ${str(a.path) || "."}`,
+  write_file: (t, a) => t("toolDetail.writeFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
+  read_file: (t, a) => t("toolDetail.readFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
+  edit_file: (t, a) => t("toolDetail.editFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
+  delete_file: (t, a) => t("toolDetail.deleteFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
+  list_files: (t, a) => t("toolDetail.listDir", { path: str(a.path) || "." }),
+  create_directory: (t, a) => t("toolDetail.createDir", { path: str(a.path) || t("toolDetail.unknown") }),
+  list_dir: (t, a) => t("toolDetail.listDir", { path: str(a.path) || "." }),
 
   // Sync
-  sync_up: (a) => `上传文件: ${str(a.path || a.localPath) ? basename(str(a.path || a.localPath)!) : "未知"}`,
-  sync_down: (a) => `下载文件: ${str(a.path || a.remotePath) ? basename(str(a.path || a.remotePath)!) : "未知"}`,
+  sync_up: (t, a) => t("toolDetail.uploadFile", { name: str(a.path || a.localPath) ? basename(str(a.path || a.localPath)) : t("toolDetail.unknown") }),
+  sync_down: (t, a) => t("toolDetail.downloadFile", { name: str(a.path || a.remotePath) ? basename(str(a.path || a.remotePath)) : t("toolDetail.unknown") }),
 
   // Exec
-  exec: (a) => {
+  exec: (t, a) => {
     const cmd = str(a.command);
-    return cmd ? `执行命令: ${shorten(cmd, 80)}` : "执行命令";
+    return cmd ? t("toolDetail.execCmdDetail", { cmd: shorten(cmd, 80) }) : t("toolDetail.execCmd");
   },
-  shell_exec: (a) => {
+  shell_exec: (t, a) => {
     const cmd = str(a.command);
-    return cmd ? `执行命令: ${shorten(cmd, 80)}` : "执行命令";
+    return cmd ? t("toolDetail.execCmdDetail", { cmd: shorten(cmd, 80) }) : t("toolDetail.execCmd");
   },
 
   // Web
-  web_search: (a) => `搜索: ${str(a.query) || "…"}`,
-  web_fetch: (a) => {
+  web_search: (t, a) => t("toolDetail.webSearch", { query: str(a.query) || "…" }),
+  web_fetch: (t, a) => {
     const u = str(a.url);
-    try { return `获取网页: ${new URL(u).hostname}`; } catch { /* */ }
-    return `获取网页: ${shorten(u, 40)}`;
+    try {
+      const host = new URL(u).hostname;
+      return t("toolDetail.webFetchHost", { host });
+    } catch { /* */ }
+    return t("toolDetail.webFetchUrl", { url: shorten(u, 40) });
   },
 
   // Database
-  ds_query: (a) => {
+  ds_query: (t, a) => {
     const src = str(a.source || a.connection);
-    const q = str(a.query || a.sql);
-    return `查询数据库${src ? " " + src : ""}: ${shorten(q || "", 60)}`;
+    const q = shorten(str(a.query || a.sql) || "", 60);
+    return src
+      ? t("toolDetail.dbQuery", { source: src, query: q })
+      : t("toolDetail.dbQueryPlain", { query: q });
   },
-  ds_execute: (a) => {
+  ds_execute: (t, a) => {
     const src = str(a.source || a.connection);
-    return `执行 SQL${src ? " " + src : ""}: ${shorten(str(a.query || a.sql) || "", 60)}`;
+    const q = shorten(str(a.query || a.sql) || "", 60);
+    return src
+      ? t("toolDetail.dbExec", { source: src, query: q })
+      : t("toolDetail.dbExecPlain", { query: q });
   },
-  ds_schema: (a) => `查看数据库 Schema: ${str(a.source || a.name) || "全部"}`,
-  ds_list: () => "列出数据源",
-  ds_panel: (a) => `推送到数据面板: ${shorten(str(a.query || a.sql) || "", 40)}`,
+  ds_schema: (t, a) => t("toolDetail.dbSchema", { source: str(a.source || a.name) || t("toolDetail.all") }),
+  ds_list: (t) => t("toolDetail.dbList"),
+  ds_panel: (t, a) => t("toolDetail.dbPanel", { query: shorten(str(a.query || a.sql) || "", 40) }),
 
   // Knowledge
-  wiki_search: (a) => `搜索知识库: ${str(a.query) || "…"}`,
-  wiki_read: (a) => `读取知识页: ${str(a.page || a.path) || "…"}`,
-  memory_search: (a) => `搜索记忆: ${str(a.query) || "…"}`,
-  memory_read: (a) => `读取记忆: ${str(a.key || a.path) || "…"}`,
+  wiki_search: (t, a) => t("toolDetail.wikiSearch", { query: str(a.query) || "…" }),
+  wiki_read: (t, a) => t("toolDetail.wikiRead", { page: str(a.page || a.path) || "…" }),
+  memory_search: (t, a) => t("toolDetail.memorySearch", { query: str(a.query) || "…" }),
+  memory_read: (t, a) => t("toolDetail.memoryRead", { key: str(a.key || a.path) || "…" }),
 
   // Config
-  tenant_config_read: (a) => `读取配置: ${str(a.path) || "…"}`,
-  tenant_config_write: (a) => `写入配置: ${str(a.path) || "…"}`,
-  tenant_config_list: () => "列出配置",
-  model_list: () => "列出可用模型",
-  task_list_workers: () => "列出工作者",
+  tenant_config_read: (t, a) => t("toolDetail.configRead", { path: str(a.path) || "…" }),
+  tenant_config_write: (t, a) => t("toolDetail.configWrite", { path: str(a.path) || "…" }),
+  tenant_config_list: (t) => t("toolDetail.configList"),
+  model_list: (t) => t("toolDetail.modelList"),
+  task_list_workers: (t) => t("toolDetail.workerList"),
 
   // Tasks
-  task_create: (a) => `创建任务: ${str(a.title) || "…"}`,
-  task_list: (a) => `列出任务${str(a.status) ? " (状态: " + a.status + ")" : ""}`,
-  task_update: (a) => `更新任务: ${str(a.title) || str(a.taskId) || "…"}`,
+  task_create: (t, a) => t("toolDetail.taskCreate", { title: str(a.title) || "…" }),
+  task_list: (t, a) => {
+    const status = str(a.status);
+    return status ? t("toolDetail.taskListStatus", { status }) : t("toolDetail.taskList");
+  },
+  task_update: (t, a) => t("toolDetail.taskUpdate", { title: str(a.title) || str(a.taskId) || "…" }),
 
   // Cron
-  cron_list: () => "列出定时任务",
-  cron_create: (a) => `创建定时任务: ${str(a.name) || "…"}`,
-  cron_delete: (a) => `删除定时任务: ${str(a.name || a.id) || "…"}`,
+  cron_list: (t) => t("toolDetail.cronList"),
+  cron_create: (t, a) => t("toolDetail.cronCreate", { name: str(a.name) || "…" }),
+  cron_delete: (t, a) => t("toolDetail.cronDelete", { name: str(a.name || a.id) || "…" }),
 
   // Board
-  board_create: () => "创建看板",
-  board_update: () => "更新看板",
-  board_render: () => "渲染看板",
+  board_create: (t) => t("toolDetail.boardCreate"),
+  board_update: (t) => t("toolDetail.boardUpdate"),
+  board_render: (t) => t("toolDetail.boardRender"),
 
   // Code
-  code_interpreter: () => "运行代码分析",
-  python: () => "运行 Python",
+  code_interpreter: (t) => t("toolDetail.codeInterpreter"),
+  python: (t) => t("toolDetail.python"),
 };
 
 /**
@@ -341,14 +360,14 @@ const ARGS_MAP: Record<string, ArgsFormatter> = {
  * Returns undefined when no formatter is registered — caller
  * falls back to formatArgsText().
  */
-export function humanizeArgs(name: string, args: Args): string | undefined {
+export function humanizeArgs(name: string, args: Args, t: T = translate): string | undefined {
   const normalized = normalizeBridgeName(name);
   // Bridge exec uses the exec formatter
   if (/exec$/i.test(normalized) && ARGS_MAP.exec) {
-    return ARGS_MAP.exec(args);
+    return ARGS_MAP.exec(t, args);
   }
   const fn = ARGS_MAP[normalized];
-  return fn ? fn(args) : undefined;
+  return fn ? fn(t, args) : undefined;
 }
 
 // ── Render-type inference ───────────────────────────────────────

@@ -45,7 +45,8 @@ import type {
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
 import McpUiFrame from "./McpUiFrame";
-import { humanizeArgs, humanizeToolCall, humanizeToolGroup, inferRender, normalizeBridgeName, shortToolName } from "../lib/humanize-tool";
+import { humanizeArgs, humanizeToolCall, humanizeToolGroup, inferRender, normalizeBridgeName, shortToolName, type T } from "../lib/humanize-tool";
+import { translate } from "../lib/i18n";
 import { getToolDisplay, type ResolvedToolDisplay } from "../lib/tool-display";
 import { useT } from "../hooks/useT";
 
@@ -650,10 +651,10 @@ function truncate(s: string, max: number): string {
  * Format tool call arguments for display. Extracts the meaningful
  * fields and skips internal metadata like _title.
  */
-function formatArgsText(args: Record<string, unknown>, toolName?: string): string {
+function formatArgsText(args: Record<string, unknown>, toolName?: string, t: T = translate): string {
   // Try semantic humanization first
   if (toolName) {
-    const h = humanizeArgs(toolName, args);
+    const h = humanizeArgs(toolName, args, t);
     if (h) return h;
   }
   const filtered = Object.entries(args).filter(([k]) => !k.startsWith("_"));
@@ -788,12 +789,13 @@ function ConfiguredInputRenderer({
   cfg: NonNullable<ResolvedToolDisplay["input"]>;
   toolName?: string;
 }) {
+  const t = useT();
   if (cfg.format === "hidden") return null;
 
   const filteredArgs = filterArgs(args, cfg);
 
   if (cfg.format === "terminal") {
-    const cmd = typeof filteredArgs.command === "string" ? filteredArgs.command : formatArgsText(filteredArgs, toolName);
+    const cmd = typeof filteredArgs.command === "string" ? filteredArgs.command : formatArgsText(filteredArgs, toolName, t);
     return (
       <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d0d0d] px-3 py-2 text-[11px] font-mono">
         <span className="text-[#98c379]">$ </span>
@@ -827,7 +829,7 @@ function ConfiguredInputRenderer({
   if (cfg.format === "code") {
     return (
       <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d0d0d] px-3 py-1.5 text-[11px] font-mono text-[#abb2bf]">
-        {formatArgsText(filteredArgs, toolName)}
+        {formatArgsText(filteredArgs, toolName, t)}
       </pre>
     );
   }
@@ -970,6 +972,7 @@ function ConfiguredOutputRenderer({
 
 /** Renders a tool call's input + output based on plugin display config or inferRender(). */
 function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolean }) {
+  const t = useT();
   // Try plugin-declared display config first.
   const displayConfig = getToolDisplay(call.name);
 
@@ -1006,7 +1009,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
         )}
         {!displayConfig.input && (
           <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
-            {formatArgsText(call.arguments, call.name)}
+            {formatArgsText(call.arguments, call.name, t)}
           </pre>
         )}
         {call.result && displayConfig.output && (
@@ -1054,7 +1057,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
     return (
       <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
         <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
-          {formatArgsText(call.arguments, call.name)}
+          {formatArgsText(call.arguments, call.name, t)}
         </pre>
         {text && (
           <div className={"max-h-64 overflow-auto rounded-lg px-3 py-2 text-xs prose prose-sm prose-invert max-w-none " +
@@ -1070,7 +1073,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
   return (
     <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
       <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
-        {formatArgsText(call.arguments, call.name)}
+        {formatArgsText(call.arguments, call.name, t)}
       </pre>
       {call.result && (
         <pre
