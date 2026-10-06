@@ -81,6 +81,13 @@
         "kind": "shell",
         "module": "bridgeShell"
       }
+    ],
+    "toolDisplay": [
+      {
+        "tool": "bridge_*_exec",
+        "input": { "format": "terminal" },
+        "output": { "format": "terminal" }
+      }
     ]
   },
   "provides": [

@@ -22,6 +22,7 @@ import type {
   SkillContribution,
   SystemPromptFragmentContribution,
   ToolContribution,
+  ToolDisplayContribution,
   SidebarSectionContribution,
   TopBarButtonContribution,
   WsMessageContribution,
@@ -571,6 +572,9 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
   if ("wsMessages" in raw) {
     out.wsMessages = parseArray(raw.wsMessages, "wsMessages", acc, parseWsMessage);
   }
+  if ("toolDisplay" in raw) {
+    out.toolDisplay = parseArray(raw.toolDisplay, "toolDisplay", acc, parseToolDisplay);
+  }
   // `commands` slot was declared in ADR-0003 §5 but never wired
   // through to a UI; chore-ai/plugin-sdk-cleanup removed it. If a
   // manifest still carries `commands`, ignore it silently — we
@@ -830,6 +834,88 @@ function parseApiRoute(raw: unknown, ctx: string, acc: Acc): ApiRouteContributio
     handler,
     access,
   };
+}
+
+const TOOL_DISPLAY_INPUT_FORMATS = new Set(["terminal", "key-value", "sql", "code", "hidden"]);
+const TOOL_DISPLAY_OUTPUT_FORMATS = new Set(["terminal", "markdown", "table", "json", "code", "plain"]);
+
+function parseToolDisplay(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): ToolDisplayContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const tool = expectString(raw, "tool", acc, ctx);
+  if (tool == null) return null;
+
+  let input: ToolDisplayContribution["input"];
+  if (raw.input !== undefined && raw.input !== null) {
+    if (!isPlainObject(raw.input)) {
+      acc.issues.push(`${ctx}.input must be an object`);
+    } else {
+      const fmt = expectString(raw.input, "format", acc, `${ctx}.input`);
+      if (fmt != null && !TOOL_DISPLAY_INPUT_FORMATS.has(fmt)) {
+        acc.issues.push(
+          `${ctx}.input.format "${fmt}" must be one of ${[...TOOL_DISPLAY_INPUT_FORMATS].join(", ")}`,
+        );
+      } else if (fmt != null) {
+        input = {
+          format: fmt as NonNullable<ToolDisplayContribution["input"]>["format"],
+          labels: optionalStringRecord(raw.input, "labels", acc, `${ctx}.input`),
+          pick: optionalStringArray(raw.input as Record<string, unknown>, "pick", acc),
+          omit: optionalStringArray(raw.input as Record<string, unknown>, "omit", acc),
+        };
+      }
+    }
+  }
+
+  let output: ToolDisplayContribution["output"];
+  if (raw.output !== undefined && raw.output !== null) {
+    if (!isPlainObject(raw.output)) {
+      acc.issues.push(`${ctx}.output must be an object`);
+    } else {
+      const fmt = expectString(raw.output, "format", acc, `${ctx}.output`);
+      if (fmt != null && !TOOL_DISPLAY_OUTPUT_FORMATS.has(fmt)) {
+        acc.issues.push(
+          `${ctx}.output.format "${fmt}" must be one of ${[...TOOL_DISPLAY_OUTPUT_FORMATS].join(", ")}`,
+        );
+      } else if (fmt != null) {
+        output = {
+          format: fmt as NonNullable<ToolDisplayContribution["output"]>["format"],
+          extract: optionalString(raw.output, "extract", acc, `${ctx}.output`),
+          language: optionalString(raw.output, "language", acc, `${ctx}.output`),
+        };
+      }
+    }
+  }
+
+  return { tool, input, output };
+}
+
+function optionalStringRecord(
+  raw: Record<string, unknown>,
+  key: string,
+  acc: Acc,
+  ctx?: string,
+): Record<string, string> | undefined {
+  const v = raw[key];
+  if (v === undefined || v === null) return undefined;
+  if (!isPlainObject(v)) {
+    acc.issues.push(`${ctx ? `${ctx}.` : ""}${key} must be an object`);
+    return undefined;
+  }
+  const out: Record<string, string> = {};
+  for (const [k, val] of Object.entries(v)) {
+    if (typeof val !== "string") {
+      acc.issues.push(`${ctx ? `${ctx}.` : ""}${key}.${k} must be a string`);
+      continue;
+    }
+    out[k] = val;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 function parseWsMessage(raw: unknown, ctx: string, acc: Acc): WsMessageContribution | null {

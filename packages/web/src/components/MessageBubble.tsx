@@ -46,6 +46,7 @@ import type {
 import MessageAttachments from "./MessageAttachments";
 import McpUiFrame from "./McpUiFrame";
 import { humanizeToolCall, humanizeToolGroup, inferRender, normalizeBridgeName, shortToolName } from "../lib/humanize-tool";
+import { getToolDisplay, type ResolvedToolDisplay } from "../lib/tool-display";
 import { useT } from "../hooks/useT";
 
 
@@ -715,8 +716,296 @@ const GENERATED_IMAGE_RE = /generated-images\/([\w.-]+\.(?:png|jpg|jpeg|webp|gif
 
 // ── Render-type-aware tool call detail view ─────────────────
 
-/** Renders a tool call's input + output based on inferRender(). */
+// ── Config-driven input renderers ───────────────────────────────
+
+/** Filter + relabel args according to the display config. */
+function filterArgs(
+  args: Record<string, unknown>,
+  cfg?: ResolvedToolDisplay["input"],
+): Record<string, unknown> {
+  let entries = Object.entries(args).filter(([k]) => !k.startsWith("_"));
+  if (cfg?.pick) {
+    const pickSet = new Set(cfg.pick);
+    entries = entries.filter(([k]) => pickSet.has(k));
+  }
+  if (cfg?.omit) {
+    const omitSet = new Set(cfg.omit);
+    entries = entries.filter(([k]) => !omitSet.has(k));
+  }
+  return Object.fromEntries(entries);
+}
+
+function formatKeyValueArgs(
+  args: Record<string, unknown>,
+  labels?: Record<string, string>,
+): string {
+  const entries = Object.entries(args).filter(([k]) => !k.startsWith("_"));
+  if (entries.length === 0) return "(no arguments)";
+  return entries
+    .map(([k, v]) => {
+      const label = labels?.[k] ?? k;
+      const val = typeof v === "string" ? v : JSON.stringify(v);
+      return `${label}: ${val.length > 200 ? val.slice(0, 197) + "…" : val}`;
+    })
+    .join("\n");
+}
+
+/** Extract a specific field from a JSON result string. */
+function extractResultField(text: string, field: string): string {
+  try {
+    const parsed = JSON.parse(text.trim());
+    if (parsed && typeof parsed === "object" && field in parsed) {
+      const val = parsed[field];
+      return typeof val === "string" ? val : JSON.stringify(val, null, 2);
+    }
+  } catch { /* fall through */ }
+  return text;
+}
+
+/** Render input block according to display config. */
+function ConfiguredInputRenderer({
+  args,
+  cfg,
+}: {
+  args: Record<string, unknown>;
+  cfg: NonNullable<ResolvedToolDisplay["input"]>;
+}) {
+  if (cfg.format === "hidden") return null;
+
+  const filteredArgs = filterArgs(args, cfg);
+
+  if (cfg.format === "terminal") {
+    const cmd = typeof filteredArgs.command === "string" ? filteredArgs.command : formatArgsText(filteredArgs);
+    return (
+      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d0d0d] px-3 py-2 text-[11px] font-mono">
+        <span className="text-[#98c379]">$ </span>
+        <span className="text-[#e5c07b]">{cmd}</span>
+      </pre>
+    );
+  }
+
+  if (cfg.format === "sql") {
+    // Show the SQL query prominently — extract from query/sql/cypher param
+    const sqlParam = filteredArgs.query ?? filteredArgs.sql ?? filteredArgs.cypher ?? "";
+    const sqlText = typeof sqlParam === "string" ? sqlParam : JSON.stringify(sqlParam);
+    const otherArgs = Object.fromEntries(
+      Object.entries(filteredArgs).filter(([k]) => k !== "query" && k !== "sql" && k !== "cypher"),
+    );
+    const hasOther = Object.keys(otherArgs).length > 0;
+    return (
+      <div className="flex flex-col gap-0.5">
+        {hasOther && (
+          <pre className="max-h-16 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
+            {formatKeyValueArgs(otherArgs, cfg.labels)}
+          </pre>
+        )}
+        <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d0d0d] px-3 py-1.5 text-[11px] font-mono text-[#e5c07b]">
+          {sqlText}
+        </pre>
+      </div>
+    );
+  }
+
+  if (cfg.format === "code") {
+    return (
+      <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-[#0d0d0d] px-3 py-1.5 text-[11px] font-mono text-[#abb2bf]">
+        {formatArgsText(filteredArgs)}
+      </pre>
+    );
+  }
+
+  // "key-value" (default for config-driven)
+  return (
+    <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
+      {formatKeyValueArgs(filteredArgs, cfg.labels)}
+    </pre>
+  );
+}
+
+/** Render output block according to display config. */
+function ConfiguredOutputRenderer({
+  text,
+  failed,
+  cfg,
+}: {
+  text: string;
+  failed: boolean;
+  cfg: NonNullable<ResolvedToolDisplay["output"]>;
+}) {
+  const displayText = cfg.extract ? extractResultField(text, cfg.extract) : formatResultText(text);
+
+  if (cfg.format === "terminal") {
+    return (
+      <pre
+        className={"max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg px-3 py-2 text-[11px] font-mono leading-relaxed " +
+          (failed ? "bg-[#0d0d0d] text-[#e06c75]" : "bg-[#0d0d0d] text-[#abb2bf]")}
+      >
+        {displayText}
+      </pre>
+    );
+  }
+
+  if (cfg.format === "markdown") {
+    return (
+      <div
+        className={"max-h-64 overflow-auto rounded-lg px-3 py-2 text-xs prose prose-sm prose-invert max-w-none " +
+          (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}
+        dangerouslySetInnerHTML={{ __html: displayText }}
+      />
+    );
+  }
+
+  if (cfg.format === "table") {
+    // Try to parse as JSON with columns/rows structure
+    try {
+      const data = JSON.parse(text.trim());
+      const rows: Record<string, unknown>[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.rows)
+          ? data.rows
+          : null;
+      if (rows && rows.length > 0) {
+        const columns = Array.isArray(data?.columns)
+          ? (data.columns as string[])
+          : Object.keys(rows[0] as object);
+        return (
+          <div className={"max-h-64 overflow-auto rounded-lg text-[11px] font-mono " +
+            (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}
+          >
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="border-b border-border-subtle">
+                  {columns.map((col) => (
+                    <th key={col} className="px-2 py-1 text-left text-fg-muted font-medium">
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.slice(0, 50).map((row, i) => (
+                  <tr key={i} className="border-b border-border-subtle/50">
+                    {columns.map((col) => {
+                      const val = (row as Record<string, unknown>)[col];
+                      const cellText = val == null ? "" : typeof val === "string" ? val : JSON.stringify(val);
+                      return (
+                        <td key={col} className="px-2 py-0.5 text-fg-fainter max-w-[200px] truncate" title={cellText}>
+                          {cellText}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {rows.length > 50 && (
+              <div className="px-2 py-1 text-fg-fainter text-[10px]">…{rows.length - 50} more rows</div>
+            )}
+          </div>
+        );
+      }
+    } catch { /* fall through to plain */ }
+    // Fallback to plain for unparseable results
+    return (
+      <pre className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
+        (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
+      >
+        {displayText}
+      </pre>
+    );
+  }
+
+  if (cfg.format === "json") {
+    // Pretty-print JSON
+    let pretty = displayText;
+    try {
+      pretty = JSON.stringify(JSON.parse(displayText.trim()), null, 2);
+    } catch { /* keep raw */ }
+    return (
+      <pre className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
+        (failed ? "bg-rose-950/40 text-danger" : "bg-[#0d0d0d] text-[#abb2bf]")}
+      >
+        {pretty}
+      </pre>
+    );
+  }
+
+  if (cfg.format === "code") {
+    return (
+      <pre className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-3 py-1.5 text-[11px] font-mono " +
+        (failed ? "bg-rose-950/40 text-danger" : "bg-[#0d0d0d] text-[#abb2bf]")}
+      >
+        {displayText}
+      </pre>
+    );
+  }
+
+  // "plain" (default)
+  return (
+    <pre className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
+      (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
+    >
+      {displayText}
+    </pre>
+  );
+}
+
+/** Renders a tool call's input + output based on plugin display config or inferRender(). */
 function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolean }) {
+  // Try plugin-declared display config first.
+  const displayConfig = getToolDisplay(call.name);
+
+  if (displayConfig) {
+    const resultText = call.result ? call.result.text : "";
+    // Full terminal mode: both input and output are terminal-style
+    if (displayConfig.input?.format === "terminal" && displayConfig.output?.format === "terminal") {
+      const cmd = typeof call.arguments.command === "string" ? call.arguments.command : undefined;
+      const output = call.result ? formatResultText(call.result.text) : "";
+      return (
+        <div className="ml-5 mt-0.5 mb-1 rounded-lg overflow-hidden border border-[#333] shadow-sm">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-[#1a1a1a]">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
+            <span className="ml-2 text-[10px] text-[#888] font-mono">terminal</span>
+          </div>
+          <pre className={"max-h-64 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] font-mono leading-relaxed " +
+            (failed ? "bg-[#0d0d0d] text-[#e06c75]" : "bg-[#0d0d0d] text-[#abb2bf]")}
+          >
+            {cmd && <><span className="text-[#98c379]">$ </span><span className="text-[#e5c07b]">{cmd}</span>{"\n"}</>}
+            {output}
+            {failed && call.result && "\n"}
+            {failed && <span className="text-[#e06c75]">exit {(() => { try { const p = JSON.parse(call.result?.text ?? ""); return p.exit_code ?? 1; } catch { return 1; } })()}</span>}
+          </pre>
+        </div>
+      );
+    }
+    // Mixed config: render input and output independently
+    return (
+      <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
+        {displayConfig.input && (
+          <ConfiguredInputRenderer args={call.arguments} cfg={displayConfig.input} />
+        )}
+        {!displayConfig.input && (
+          <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
+            {formatArgsText(call.arguments)}
+          </pre>
+        )}
+        {call.result && displayConfig.output && (
+          <ConfiguredOutputRenderer text={resultText} failed={failed} cfg={displayConfig.output} />
+        )}
+        {call.result && !displayConfig.output && (
+          <pre className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
+            (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
+          >
+            {formatResultText(call.result.text)}
+          </pre>
+        )}
+      </div>
+    );
+  }
+
+  // ── Fallback: inferRender() for tools without a display config ──
   const renderType = inferRender(call.name);
 
   if (renderType === "terminal") {

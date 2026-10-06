@@ -13,6 +13,18 @@
       { "id": "web_search", "module": "WebSearchTool", "since": "0.1.0" },
       { "id": "web_fetch", "module": "WebFetchTool", "since": "0.2.0" }
     ],
+    "toolDisplay": [
+      {
+        "tool": "web_search",
+        "input": { "format": "key-value", "pick": ["query"], "labels": { "query": "Query" } },
+        "output": { "format": "markdown" }
+      },
+      {
+        "tool": "web_fetch",
+        "input": { "format": "key-value", "pick": ["url"], "labels": { "url": "URL" } },
+        "output": { "format": "markdown" }
+      }
+    ],
     "skills": [
       {
         "id": "web-search-howto",

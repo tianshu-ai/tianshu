@@ -6,8 +6,24 @@
 
 import type { WireMessage } from "../types/chat";
 
+/** Wire shape for a tool display hint from the server. */
+export interface WireToolDisplay {
+  tool: string;
+  input?: {
+    format: "terminal" | "key-value" | "sql" | "code" | "hidden";
+    labels?: Record<string, string>;
+    pick?: string[];
+    omit?: string[];
+  };
+  output?: {
+    format: "terminal" | "markdown" | "table" | "json" | "code" | "plain";
+    extract?: string;
+    language?: string;
+  };
+}
+
 export type ServerEvent =
-  | { type: "connected"; tenantId: string; userId: string }
+  | { type: "connected"; tenantId: string; userId: string; toolDisplay?: WireToolDisplay[] }
   | { type: "history"; messages: WireMessage[]; hasMore: boolean }
   | {
       type: "history_page";

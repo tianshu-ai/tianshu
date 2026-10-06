@@ -153,6 +153,28 @@
         "since": "0.1.0"
       }
     ],
+    "toolDisplay": [
+      {
+        "tool": "read_file",
+        "input": { "format": "key-value", "pick": ["path"], "labels": { "path": "File" } },
+        "output": { "format": "code" }
+      },
+      {
+        "tool": "write_file",
+        "input": { "format": "key-value", "pick": ["path"], "labels": { "path": "File" } },
+        "output": { "format": "plain" }
+      },
+      {
+        "tool": "edit_file",
+        "input": { "format": "code" },
+        "output": { "format": "plain" }
+      },
+      {
+        "tool": "list_dir",
+        "input": { "format": "key-value", "pick": ["path"], "labels": { "path": "Directory" } },
+        "output": { "format": "plain" }
+      }
+    ],
     "skills": [
       {
         "id": "workspace-layout",

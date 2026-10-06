@@ -94,8 +94,24 @@ export interface WireAttachment {
 
 // ─── Server → Client ──────────────────────────────────────────────
 
+/** Wire shape for a tool display hint, collected from plugin manifests. */
+export interface WireToolDisplay {
+  tool: string;
+  input?: {
+    format: "terminal" | "key-value" | "sql" | "code" | "hidden";
+    labels?: Record<string, string>;
+    pick?: string[];
+    omit?: string[];
+  };
+  output?: {
+    format: "terminal" | "markdown" | "table" | "json" | "code" | "plain";
+    extract?: string;
+    language?: string;
+  };
+}
+
 export type ServerMsg =
-  | { type: "connected"; tenantId: string; userId: string }
+  | { type: "connected"; tenantId: string; userId: string; toolDisplay?: WireToolDisplay[] }
   /**
    * Replaces the client's current message list. Sent on initial
    * `history` request and after a session switch. `hasMore` tells

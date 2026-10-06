@@ -363,6 +363,58 @@ export interface PluginEntryRef {
   entry: string;
 }
 
+// ─── Tool Display (ADR-0003 §14) ──────────────────────────────────
+
+/**
+ * Declarative display hint for a plugin-contributed tool's input/output
+ * in the chat UI's expanded tool-call detail view. Plugins declare these
+ * in `contributes.toolDisplay[]`; the host collects them and ships them
+ * to the frontend so `ToolCallDetail` can pick a renderer without
+ * hard-coding tool-name checks.
+ *
+ * `tool` supports trailing wildcards: `"ds_*"` matches `ds_query`,
+ * `ds_execute`, etc. Exact names take priority over wildcards.
+ */
+export interface ToolDisplayContribution {
+  /** Tool name. Supports trailing wildcard: `"ds_*"` matches any
+   *  tool whose name starts with `ds_`. */
+  tool: string;
+  /** Input (arguments) display configuration. */
+  input?: {
+    /** Rendering format for the tool's arguments.
+     *  - `"terminal"` — faux-terminal (`$ command` + stdout).
+     *  - `"key-value"` — labelled key: value pairs.
+     *  - `"sql"` — SQL-highlighted code block.
+     *  - `"code"` — generic code block (use `language` on output).
+     *  - `"hidden"` — don't show input at all.
+     */
+    format: "terminal" | "key-value" | "sql" | "code" | "hidden";
+    /** Parameter label overrides: `{ panel: "Panel", action: "Action" }`. */
+    labels?: Record<string, string>;
+    /** Only show these parameters (whitelist). */
+    pick?: string[];
+    /** Hide these parameters (blacklist, e.g. `["_title"]`). */
+    omit?: string[];
+  };
+  /** Output (result) display configuration. */
+  output?: {
+    /** Rendering format for the tool's result.
+     *  - `"terminal"` — faux-terminal output.
+     *  - `"markdown"` — render as Markdown.
+     *  - `"table"` — tabular display.
+     *  - `"json"` — syntax-highlighted JSON.
+     *  - `"code"` — code block with optional language.
+     *  - `"plain"` — monospace pre block.
+     */
+    format: "terminal" | "markdown" | "table" | "json" | "code" | "plain";
+    /** Extract this field from a JSON result object for display
+     *  (e.g. `"message"`, `"stdout"`). */
+    extract?: string;
+    /** Language hint for `"code"` format (e.g. `"sql"`, `"json"`). */
+    language?: string;
+  };
+}
+
 export interface ContributesV1 {
   topBarButtons?: TopBarButtonContribution[];
   rightPanels?: RightPanelContribution[];
@@ -474,6 +526,14 @@ export interface ContributesV1 {
   attachmentRenderers?: AttachmentRendererContribution[];
   apiRoutes?: ApiRouteContribution[];
   wsMessages?: WsMessageContribution[];
+  /**
+   * Declarative display hints for this plugin's tools in the chat
+   * UI's expanded tool-call detail view. Each entry maps a tool name
+   * (or wildcard pattern) to input/output rendering preferences.
+   * The host collects all active plugins' entries and ships the
+   * merged config to the frontend on WS connect.
+   */
+  toolDisplay?: ToolDisplayContribution[];
 }
 
 export type SandboxKind = "shell" | "bridge";

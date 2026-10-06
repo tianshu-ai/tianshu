@@ -318,7 +318,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // History fetch as soon as we're connected. We pin to
     // `viewingSessionId` when set so a deep-link to a channel
     // session paints the right thread on first paint.
-    tianshuWs.on("connected", () => {
+    tianshuWs.on("connected", (m) => {
+      // Store tool display config from active plugins.
+      if (m.toolDisplay) {
+        import("../lib/tool-display").then(({ setToolDisplayConfig }) =>
+          setToolDisplayConfig(m.toolDisplay!),
+        );
+      }
       const sid = get().viewingSessionId;
       tianshuWs.send(
         sid ? { type: "history", sessionId: sid } : { type: "history" },

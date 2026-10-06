@@ -223,7 +223,9 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
     socket.send(JSON.stringify(msg));
   };
 
-  send({ type: "connected", tenantId: ctx.tenantId, userId });
+  // Collect tool display hints from all active plugins for this tenant.
+  const toolDisplay = collectToolDisplay(pluginRegistry, ctx.tenantId);
+  send({ type: "connected", tenantId: ctx.tenantId, userId, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
 
   // Re-push any pending ask_user interactions so a page
   // refresh (or reconnect) restores the option buttons.
@@ -287,7 +289,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
 
     switch (parsed.type) {
       case "hello":
-        send({ type: "connected", tenantId: ctx.tenantId, userId });
+        send({ type: "connected", tenantId: ctx.tenantId, userId, ...(toolDisplay.length > 0 ? { toolDisplay } : {}) });
         return;
       case "history": {
         const opts = makeWireOpts(ctx);
@@ -2879,6 +2881,31 @@ export function loadHostSkills(): LoadedSkill[] {
 
 // re-exported here so server/index.ts only imports from one barrel.
 export type { ChatMessage };
+
+/**
+ * Collect all toolDisplay entries from active plugins for a tenant.
+ * Returns a flat array ready to ship over the WS `connected` event.
+ */
+function collectToolDisplay(
+  pluginRegistry: import("../core/plugins/registry.js").PluginRegistry | undefined,
+  tenantId: string,
+): import("./ws-protocol.js").WireToolDisplay[] {
+  if (!pluginRegistry) return [];
+  const out: import("./ws-protocol.js").WireToolDisplay[] = [];
+  for (const entry of pluginRegistry.listForTenant(tenantId)) {
+    if (entry.state !== "active") continue;
+    const displays = entry.manifest.contributes?.toolDisplay;
+    if (!displays || displays.length === 0) continue;
+    for (const d of displays) {
+      out.push({
+        tool: d.tool,
+        ...(d.input ? { input: d.input } : {}),
+        ...(d.output ? { output: d.output } : {}),
+      });
+    }
+  }
+  return out;
+}
 
 function emptyHostCapabilities(): import("../core/plugins/registry.js").HostCapabilityHandle {
   return {
