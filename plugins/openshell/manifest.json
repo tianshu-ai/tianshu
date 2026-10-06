@@ -5,6 +5,10 @@
   "description": "Run shell commands in OpenShell-managed Docker sandboxes (NVIDIA OpenShell). Alternative to microsandbox: avoids macOS Hypervisor.framework (no idle-CPU burn on Apple Silicon Tahoe), includes network/inference policy support. MVP provides sandbox.shell only; browser sidecar and per-task pool are tracked for follow-ups.",
   "category": "runtime",
   "exclusiveGroup": "shell",
+  "platforms": [
+    "darwin",
+    "linux"
+  ],
   "license": "Apache-2.0",
   "homepage": "https://github.com/NVIDIA/OpenShell",
   "server": {
@@ -104,7 +108,7 @@
         "install": [
           {
             "label": "Docker Desktop (macOS / Windows)",
-            "description": "Recommended on macOS \u2014 the openshell driver auto-detects its host-gateway alias.",
+            "description": "Recommended on macOS — the openshell driver auto-detects its host-gateway alias.",
             "steps": [
               {
                 "cmd": "open 'https://www.docker.com/products/docker-desktop/'",

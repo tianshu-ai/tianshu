@@ -39,6 +39,19 @@ export interface PluginManifest {
    * rather than a `sandbox.shell` capability.
    */
   exclusiveGroup?: string;
+  /**
+   * Restrict this plugin to specific platforms. When set, the plugin
+   * is only loaded on matching `process.platform` values — on other
+   * OSes, discovery marks it as `state: "unsupported"` with a reason
+   * that the Plugin Manager UI can display.
+   *
+   * Values match Node's `process.platform`: `"darwin"`, `"linux"`,
+   * `"win32"`. Omitted or empty = available everywhere.
+   *
+   * Example: `["darwin", "linux"]` — available on macOS and Linux,
+   * skipped on Windows.
+   */
+  platforms?: string[];
   author?: string;
   license?: string;
   /**
