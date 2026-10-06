@@ -745,8 +745,39 @@ function formatResultText(text: string, maxLen = 4000): string {
     // Fallback: raw JSON
     return truncate(text, maxLen);
   } catch {
-    return truncate(text, maxLen);
+    // Not JSON — try TOON format: "key:value, key:value, ..." or multi-line TOON
+    return formatToon(text, maxLen);
   }
+}
+
+/**
+ * Format TOON (Token-Optimised Object Notation) text into readable key-value lines.
+ * TOON: "key:value, key:value" or multi-line "key:value, key:value\nkey:value, ..."
+ * Splits on ", " that look like field separators (not inside quoted strings).
+ */
+function formatToon(text: string, maxLen: number): string {
+  const trimmed = text.trim();
+  // Heuristic: looks like TOON if it has at least 2 unquoted "word:" patterns
+  const toonFieldCount = (trimmed.match(/(?:^|, )\w[\w.]*:/g) || []).length;
+  if (toonFieldCount < 2) return truncate(text, maxLen);
+
+  // Split multi-line first (array of toon objects)
+  const lines = trimmed.split("\n").filter(Boolean);
+  const formatted = lines.map((line) => {
+    // Split on ", " that precedes a key: pattern
+    // e.g. "slug:current, name:Current (live mirror), workerCount:5"
+    const fields = line.split(/,\s+(?=\w[\w.]*:)/);
+    return fields.map((f) => {
+      const colonIdx = f.indexOf(":");
+      if (colonIdx <= 0) return f;
+      const key = f.slice(0, colonIdx).trim();
+      const val = f.slice(colonIdx + 1).trim();
+      // Humanize common keys
+      return `${key}: ${val}`;
+    }).join("\n");
+  }).join("\n\n");
+
+  return truncate(formatted, maxLen);
 }
 
 // ── Search result parser ────────────────────────────────────────
