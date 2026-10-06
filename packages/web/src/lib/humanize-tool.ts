@@ -308,24 +308,7 @@ const ARGS_MAP: Record<string, ArgsFormatter> = {
   nudge_session: (t, a) => t("toolDetail.nudgeSession", { message: shorten(str(a.message) || "", 40) }),
 
   // File operations
-  write_file: (t, a) => {
-    const name = str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown");
-    // Bridge write_file sends base64-encoded content, not plaintext
-    const b64 = str(a.base64);
-    const plain = str(a.content);
-    if (b64) {
-      try {
-        const raw = atob(b64);
-        const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
-        const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-        return t("toolDetail.writeFile", { name }) + "\n\n" + shorten(decoded, 400);
-      } catch { /* binary or invalid — skip preview */ }
-    }
-    if (plain) {
-      return t("toolDetail.writeFile", { name }) + "\n\n" + shorten(plain, 400);
-    }
-    return t("toolDetail.writeFile", { name });
-  },
+  write_file: (t, a) => t("toolDetail.writeFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
   read_file: (t, a) => t("toolDetail.readFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
   edit_file: (t, a) => t("toolDetail.editFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
   delete_file: (t, a) => t("toolDetail.deleteFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
@@ -440,7 +423,7 @@ export function humanizeArgs(name: string, args: Args, t: T = translate): string
  * - `"image"`    — inline image(s) from result.
  * - `"plain"`    — monospace pre block (default).
  */
-export type ToolRenderType = "terminal" | "markdown" | "json" | "image" | "plain";
+export type ToolRenderType = "terminal" | "markdown" | "json" | "image" | "file" | "plain";
 
 /**
  * Infer how a tool call's detail view should render based on the
@@ -452,10 +435,76 @@ export function inferRender(name: string): ToolRenderType {
   if (/exec$/i.test(name) || name === "shell_exec") return "terminal";
   // web search / fetch → markdown (results are readable text)
   if (/^web_search$|^web_fetch$/i.test(name)) return "markdown";
-  // file read/write → plain
-  if (/^(read_file|write_file|list_dir|create_dir)$/i.test(name)) return "plain";
+  // file read/write/edit → file viewer
+  if (/^(read_file|write_file|edit_file|delete_file)$/i.test(name)) return "file";
+  // directory listing → plain
+  if (/^(list_dir|list_files|create_dir|create_directory)$/i.test(name)) return "plain";
   // generate_image / screenshot → image (handled separately)
   if (/generate_image|screenshot/i.test(name)) return "image";
   // default
   return "plain";
+}
+
+// ── File content helpers (used by ToolCallDetail renderer) ──────
+
+/** Try to decode base64 to UTF-8 text. Returns undefined for binary / invalid. */
+export function decodeBase64Text(b64: string, maxBytes = 50000): string | undefined {
+  if (!b64 || b64.length > maxBytes * 1.4) return undefined; // rough size guard
+  try {
+    const raw = atob(b64);
+    const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
+    // Reject binary: control chars other than \t \n \r
+    if (bytes.some((b) => b < 0x09 || (b > 0x0d && b < 0x20 && b !== 0x1b))) return undefined;
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Map file extension to syntax-highlight language hint. */
+export function extToLang(filename: string): string {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    js: "javascript", jsx: "javascript", ts: "typescript", tsx: "typescript",
+    py: "python", rb: "ruby", rs: "rust", go: "go", java: "java",
+    json: "json", yaml: "yaml", yml: "yaml", toml: "toml", xml: "xml",
+    html: "html", css: "css", scss: "scss", less: "less",
+    md: "markdown", sql: "sql", sh: "bash", bash: "bash", zsh: "bash",
+    c: "c", cpp: "cpp", h: "c", hpp: "cpp", cs: "csharp",
+    swift: "swift", kt: "kotlin", lua: "lua", php: "php", r: "r",
+    dockerfile: "dockerfile", makefile: "makefile",
+    txt: "text", log: "text", csv: "text", tsv: "text", env: "text",
+  };
+  return map[ext] || "text";
+}
+
+/** Extract file content from tool call args (bridge or direct). */
+export function extractFileContent(args: Args): string | undefined {
+  // Bridge write_file: base64 param
+  const b64 = str(args.base64);
+  if (b64) return decodeBase64Text(b64);
+  // Direct write: content param
+  const content = str(args.content);
+  if (content) return content;
+  return undefined;
+}
+
+/** Extract file content from tool result (read_file response). */
+export function extractFileResultContent(resultText: string): { filename: string; bytes: number; content?: string } | undefined {
+  try {
+    const parsed = JSON.parse(resultText.trim());
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    if (!("path" in parsed && "bytes" in parsed)) return undefined;
+    const p = typeof parsed.path === "string" ? parsed.path : "";
+    const b = typeof parsed.bytes === "number" ? parsed.bytes : 0;
+    const fname = p.split("/").pop() || p;
+    // Try decoding base64 content
+    if (typeof parsed.base64 === "string" && parsed.base64.length > 0) {
+      const decoded = decodeBase64Text(parsed.base64);
+      if (decoded) return { filename: fname, bytes: b, content: decoded };
+    }
+    return { filename: fname, bytes: b };
+  } catch {
+    return undefined;
+  }
 }

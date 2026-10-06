@@ -45,7 +45,7 @@ import type {
 } from "../lib/merge-tool-turns";
 import MessageAttachments from "./MessageAttachments";
 import McpUiFrame from "./McpUiFrame";
-import { humanizeArgs, humanizeToolCall, humanizeToolGroup, inferRender, normalizeBridgeName, shortToolName, type T } from "../lib/humanize-tool";
+import { humanizeArgs, humanizeToolCall, humanizeToolGroup, inferRender, normalizeBridgeName, shortToolName, extractFileContent, extractFileResultContent, extToLang, type T } from "../lib/humanize-tool";
 import { translate } from "../lib/i18n";
 import { getToolDisplay, type ResolvedToolDisplay } from "../lib/tool-display";
 import { useT } from "../hooks/useT";
@@ -1087,6 +1087,109 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
             (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}
             dangerouslySetInnerHTML={{ __html: text }}
           />
+        )}
+      </div>
+    );
+  }
+
+  // File viewer: read_file / write_file / edit_file
+  if (renderType === "file") {
+    const normalized = normalizeBridgeName(call.name);
+    const fname = typeof call.arguments.path === "string"
+      ? (call.arguments.path as string).split("/").pop() || (call.arguments.path as string)
+      : "file";
+    const lang = extToLang(fname);
+    const isWrite = /write/i.test(normalized);
+    const isEdit = /edit/i.test(normalized);
+    const isDelete = /delete/i.test(normalized);
+
+    // Input content (for write_file)
+    const inputContent = isWrite ? extractFileContent(call.arguments) : undefined;
+    // Edit file: show edits summary
+    const edits = isEdit && Array.isArray(call.arguments.edits) ? call.arguments.edits as Array<{oldText?: string; newText?: string}> : undefined;
+
+    // Output content (for read_file)
+    const fileResult = call.result ? extractFileResultContent(call.result.text) : undefined;
+    // Fallback result text for non-file-shaped results
+    const fallbackResult = call.result && !fileResult ? formatResultText(call.result.text) : undefined;
+
+    return (
+      <div className="ml-5 mt-0.5 mb-1 rounded-lg overflow-hidden border border-[#333] shadow-sm">
+        {/* File header bar */}
+        <div className="flex items-center gap-2 px-3 py-1 bg-[#1a1a1a]">
+          <span className="text-[10px] text-[#888] font-mono">
+            {isDelete ? "🗑" : isWrite ? "✏️" : isEdit ? "✂️" : "📄"}
+          </span>
+          <span className="text-[11px] text-[#ccc] font-mono font-medium">{fname}</span>
+          {fileResult && (
+            <span className="text-[10px] text-[#666] font-mono ml-auto">{fileResult.bytes} bytes</span>
+          )}
+        </div>
+
+        {/* Write: show content being written */}
+        {isWrite && inputContent && (
+          <pre className={"max-h-64 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] font-mono leading-relaxed bg-[#0d0d0d] " +
+            (lang === "json" ? "text-[#e5c07b]" : "text-[#abb2bf]")}
+          >
+            {inputContent.length > 2000 ? inputContent.slice(0, 2000) + "\n\n…(truncated)" : inputContent}
+          </pre>
+        )}
+
+        {/* Write with no decodable content (binary) */}
+        {isWrite && !inputContent && (
+          <div className="px-3 py-1.5 text-[11px] text-[#666] font-mono bg-[#0d0d0d]">
+            (binary content)
+          </div>
+        )}
+
+        {/* Edit: show edits */}
+        {isEdit && edits && edits.length > 0 && (
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] font-mono leading-relaxed bg-[#0d0d0d] text-[#abb2bf]">
+            {edits.map((e, i) => (
+              <span key={i}>
+                {i > 0 && "\n"}
+                <span className="text-[#e06c75]">- {typeof e.oldText === "string" ? (e.oldText.length > 200 ? e.oldText.slice(0, 200) + "…" : e.oldText) : ""}</span>
+                {"\n"}
+                <span className="text-[#98c379]">+ {typeof e.newText === "string" ? (e.newText.length > 200 ? e.newText.slice(0, 200) + "…" : e.newText) : ""}</span>
+              </span>
+            ))}
+          </pre>
+        )}
+
+        {/* Read: show file content */}
+        {fileResult?.content && (
+          <pre className={"max-h-64 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] font-mono leading-relaxed bg-[#0d0d0d] " +
+            (lang === "json" ? "text-[#e5c07b]" : "text-[#abb2bf]")}
+          >
+            {fileResult.content.length > 2000 ? fileResult.content.slice(0, 2000) + "\n\n…(truncated)" : fileResult.content}
+          </pre>
+        )}
+
+        {/* Read: binary or no content */}
+        {fileResult && !fileResult.content && (
+          <div className="px-3 py-1.5 text-[11px] text-[#666] font-mono bg-[#0d0d0d]">
+            {fileResult.bytes} bytes (binary)
+          </div>
+        )}
+
+        {/* Delete: just show the header is enough */}
+
+        {/* Non-file result fallback */}
+        {fallbackResult && (
+          <pre className={"max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] font-mono bg-[#0d0d0d] " +
+            (failed ? "text-[#e06c75]" : "text-[#abb2bf]")}
+          >
+            {fallbackResult}
+          </pre>
+        )}
+
+        {/* Success/fail indicator for write/edit/delete */}
+        {(isWrite || isEdit || isDelete) && call.result && (
+          <div className={"px-3 py-1 text-[10px] font-mono border-t border-[#333] " +
+            (failed ? "text-[#e06c75] bg-[#1a0a0a]" : "text-[#98c379] bg-[#0a1a0a]")}
+          >
+            {failed ? "✘ failed" : "✔ ok"}
+          </div>
         )}
       </div>
     );
