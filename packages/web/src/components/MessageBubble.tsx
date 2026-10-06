@@ -680,6 +680,9 @@ function formatArgsText(args: Record<string, unknown>, toolName?: string): strin
  */
 function formatResultText(text: string, maxLen = 4000): string {
   const trimmed = text.trim();
+  // Strip common "ok:true, message:" / "ok:false, message:" prefix
+  const msgMatch = trimmed.match(/^ok:\s*(?:true|false)\s*,\s*message:\s*"?(.*?)"?\s*$/s);
+  if (msgMatch) return truncate(msgMatch[1], maxLen);
   if (!trimmed.startsWith("{")) return truncate(text, maxLen);
   try {
     const parsed = JSON.parse(trimmed);
@@ -698,9 +701,17 @@ function formatResultText(text: string, maxLen = 4000): string {
       // All empty — show exit code only
       return `exit code: ${parsed.exit_code ?? 0}`;
     }
-    // Generic { ok, text } result
+    // Generic { ok, text } or { ok, message } result
     if ("text" in parsed && typeof parsed.text === "string") {
       return truncate(parsed.text, maxLen);
+    }
+    if ("message" in parsed && typeof parsed.message === "string") {
+      return truncate(parsed.message, maxLen);
+    }
+    // { ok, data } — stringify data
+    if ("data" in parsed && parsed.data != null) {
+      const d = typeof parsed.data === "string" ? parsed.data : JSON.stringify(parsed.data, null, 2);
+      return truncate(d, maxLen);
     }
     // Fallback: raw JSON
     return truncate(text, maxLen);
