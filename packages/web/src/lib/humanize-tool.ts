@@ -310,9 +310,19 @@ const ARGS_MAP: Record<string, ArgsFormatter> = {
   // File operations
   write_file: (t, a) => {
     const name = str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown");
-    const content = str(a.content);
-    if (content) {
-      return t("toolDetail.writeFile", { name }) + "\n\n" + shorten(content, 200);
+    // Bridge write_file sends base64-encoded content, not plaintext
+    const b64 = str(a.base64);
+    const plain = str(a.content);
+    if (b64) {
+      try {
+        const raw = atob(b64);
+        const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
+        const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        return t("toolDetail.writeFile", { name }) + "\n\n" + shorten(decoded, 400);
+      } catch { /* binary or invalid — skip preview */ }
+    }
+    if (plain) {
+      return t("toolDetail.writeFile", { name }) + "\n\n" + shorten(plain, 400);
     }
     return t("toolDetail.writeFile", { name });
   },
