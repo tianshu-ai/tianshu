@@ -2892,17 +2892,25 @@ function collectToolDisplay(
 ): import("./ws-protocol.js").WireToolDisplay[] {
   if (!pluginRegistry) return [];
   const out: import("./ws-protocol.js").WireToolDisplay[] = [];
+  const DEBUG_LIST_DIR = true;
   for (const entry of pluginRegistry.listForTenant(tenantId)) {
     if (entry.state !== "active") continue;
     const displays = entry.manifest.contributes?.toolDisplay;
     if (!displays || displays.length === 0) continue;
     for (const d of displays) {
+      if (DEBUG_LIST_DIR && (d.tool === "list_dir" || d.tool === "sync_up")) {
+        console.log(`[toolDisplay-debug] plugin=${entry.manifest.id} tool=${d.tool} output=${JSON.stringify(d.output)}`);
+      }
       out.push({
         tool: d.tool,
         ...(d.input ? { input: d.input } : {}),
         ...(d.output ? { output: d.output } : {}),
       });
     }
+  }
+  if (DEBUG_LIST_DIR) {
+    const listDir = out.find((o) => o.tool === "list_dir");
+    console.log(`[toolDisplay-debug] final list_dir entry on wire: ${JSON.stringify(listDir)}`);
   }
   return out;
 }
