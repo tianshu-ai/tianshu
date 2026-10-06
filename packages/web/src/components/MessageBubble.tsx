@@ -901,6 +901,134 @@ function ToonView({ nodes }: { nodes: ToonNode[] }) {
   );
 }
 
+// ── Recall tool rendering ─────────────────────────────────────────
+
+type RecallEntry =
+  | { kind: "turn"; n: number; role: "USER" | "ASSISTANT" | "TOOL" }
+  | { kind: "text"; content: string }
+  | { kind: "toolCall"; name: string; id: string; params: string[] };
+
+function parseRecall(text: string): RecallEntry[] {
+  const entries: RecallEntry[] = [];
+  const lines = text.split("\n");
+  let bufText: string[] = [];
+  const flushText = () => {
+    if (bufText.length === 0) return;
+    const content = bufText.join("\n").trim();
+    bufText = [];
+    if (content) entries.push({ kind: "text", content });
+  };
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    // Turn marker: ─── turn N: ROLE ───
+    const turnMatch = line.match(/^─{3}\s*turn\s+(\d+):\s*(USER|ASSISTANT|TOOL)\s*─{3}/i);
+    if (turnMatch) {
+      flushText();
+      entries.push({
+        kind: "turn",
+        n: Number(turnMatch[1]),
+        role: turnMatch[2].toUpperCase() as "USER" | "ASSISTANT" | "TOOL",
+      });
+      i++;
+      continue;
+    }
+    // Tool call: [toolCall name(id=xxx)] possibly followed by param lines
+    const callMatch = line.match(/^\[toolCall\s+(\w+)\(id=([^)]+)\)\]\s*(.*)$/);
+    if (callMatch) {
+      flushText();
+      const name = callMatch[1];
+      const id = callMatch[2];
+      const params: string[] = [];
+      // First param (on same line after ])
+      const firstParam = callMatch[3].trim();
+      if (firstParam) params.push(firstParam);
+      // Continuation param lines (until next [toolCall], turn marker, or blank gap)
+      i++;
+      while (i < lines.length) {
+        const next = lines[i];
+        if (/^─{3}/.test(next) || /^\[toolCall\s/.test(next)) break;
+        const trimmed = next.trim();
+        if (trimmed && /^\w[\w-]*:/.test(trimmed)) {
+          params.push(trimmed);
+          i++;
+        } else {
+          break;
+        }
+      }
+      entries.push({ kind: "toolCall", name, id, params });
+      continue;
+    }
+    bufText.push(line);
+    i++;
+  }
+  flushText();
+  return entries;
+}
+
+const RECALL_ROLE_STYLES: Record<"USER" | "ASSISTANT" | "TOOL", { label: string; icon: string; cls: string }> = {
+  USER: { label: "User", icon: "👤", cls: "text-info bg-info/5 border-l-info/60" },
+  ASSISTANT: { label: "Assistant", icon: "⭐", cls: "text-accent bg-accent/5 border-l-accent/60" },
+  TOOL: { label: "Tool", icon: "🔧", cls: "text-fg-muted bg-bg-surface/40 border-l-border-strong/60" },
+};
+
+function RecallView({ text }: { text: string }) {
+  const entries = parseRecall(text);
+  if (entries.length === 0) return <pre className="whitespace-pre-wrap text-[11px] text-fg-muted">{text}</pre>;
+
+  // Group entries by turn
+  const turns: Array<{ n: number; role: "USER" | "ASSISTANT" | "TOOL"; body: RecallEntry[] }> = [];
+  let current: typeof turns[0] | null = null;
+  for (const e of entries) {
+    if (e.kind === "turn") {
+      current = { n: e.n, role: e.role, body: [] };
+      turns.push(current);
+    } else if (current) {
+      current.body.push(e);
+    }
+  }
+
+  return (
+    <div className="space-y-2 text-[11px]">
+      {turns.map((turn, i) => {
+        const style = RECALL_ROLE_STYLES[turn.role];
+        return (
+          <div key={i} className={`border-l-2 pl-3 py-1 rounded-r ${style.cls}`}>
+            <div className="flex items-center gap-2 text-fg-fainter mb-1 text-[10px] uppercase tracking-wide">
+              <span>{style.icon}</span>
+              <span className="font-semibold">Turn {turn.n} · {style.label}</span>
+            </div>
+            {turn.body.map((e, j) => {
+              if (e.kind === "text") {
+                const isLong = e.content.length > 300;
+                return isLong
+                  ? <ExpandableSnippet key={j} text={e.content} />
+                  : <div key={j} className="whitespace-pre-wrap break-words text-fg-muted font-mono">{e.content}</div>;
+              }
+              if (e.kind === "toolCall") {
+                return (
+                  <div key={j} className="my-1 rounded bg-bg-surface/60 px-2 py-1 border border-border-subtle/40">
+                    <div className="text-fg-strong text-[10px] font-semibold">
+                      ⧉ {e.name}
+                    </div>
+                    {e.params.length > 0 && (
+                      <div className="text-fg-fainter font-mono text-[10px] pl-3 mt-0.5">
+                        {e.params.map((p, k) => <div key={k}>{p}</div>)}
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+              return null;
+            })}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function formatToon(text: string, maxLen: number, t: T = translate): string {
   // Kept as string for backward compat with non-React callers.
   // React callers should use parseToon + ToonView.
@@ -1502,6 +1630,24 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
             (failed ? "text-[#e06c75] bg-[#1a0a0a]" : "text-[#98c379] bg-[#0a1a0a]")}
           >
             {failed ? "✘ failed" : "✔ ok"}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // "recall" — structured turn-by-turn view
+  if (renderType === "recall") {
+    return (
+      <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
+        <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
+          {formatArgsText(call.arguments, call.name, t)}
+        </pre>
+        {call.result && (
+          <div className={"max-h-[32rem] overflow-auto rounded-lg px-3 py-2 " +
+            (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}
+          >
+            <RecallView text={call.result.text} />
           </div>
         )}
       </div>

@@ -491,7 +491,7 @@ export function humanizeArgs(name: string, args: Args, t: T = translate): string
  * - `"image"`    — inline image(s) from result.
  * - `"plain"`    — monospace pre block (default).
  */
-export type ToolRenderType = "terminal" | "markdown" | "json" | "image" | "file" | "plain";
+export type ToolRenderType = "terminal" | "markdown" | "json" | "image" | "file" | "recall" | "plain";
 
 /**
  * Infer how a tool call's detail view should render based on the
@@ -506,6 +506,8 @@ export function inferRender(name: string): ToolRenderType {
   if (/^web_search$|^web_fetch$/i.test(n)) return "markdown";
   // file read/write/edit → file viewer
   if (/^(read_file|write_file|edit_file|delete_file)$/i.test(n)) return "file";
+  // recall tools → structured turn-by-turn viewer
+  if (/^(recall_range|recall_near|recall_turn)$/i.test(n)) return "recall";
   // directory listing → plain
   if (/^(list_dir|list_files|create_dir|create_directory)$/i.test(n)) return "plain";
   // generate_image / screenshot → image (handled separately)
