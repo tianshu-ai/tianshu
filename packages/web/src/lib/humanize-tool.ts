@@ -430,7 +430,19 @@ const ARGS_MAP: Record<string, ArgsFormatter> = {
   task_list_workers: (t) => t("toolDetail.workerList"),
 
   // Tasks
-  task_create: (t, a) => t("toolDetail.taskCreate", { title: str(a.title) || "…" }),
+  task_create: (t, a) => {
+    // task_create takes `tasks: [{Title/title, ...}]` array — pull first title
+    if (Array.isArray(a.tasks) && a.tasks.length > 0) {
+      const first = a.tasks[0];
+      const title = str(first?.Title) || str(first?.title);
+      if (title) {
+        return a.tasks.length === 1
+          ? t("toolDetail.taskCreate", { title })
+          : t("toolDetail.taskCreateMulti", { title, count: String(a.tasks.length - 1) });
+      }
+    }
+    return t("toolDetail.taskCreate", { title: str(a.title) || "…" });
+  },
   task_list: (t, a) => {
     const status = str(a.status);
     return status ? t("toolDetail.taskListStatus", { status }) : t("toolDetail.taskList");
