@@ -927,6 +927,117 @@ function ToonView({ nodes }: { nodes: ToonNode[] }) {
   );
 }
 
+// ── File list rendering (list_dir, sync_up, sync_down) ─────────────────
+
+type FileEntry = { name: string; bytes?: number; isDir?: boolean };
+
+function fmtBytes(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1048576) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / 1048576).toFixed(1)} MB`;
+}
+
+/** File type icon by extension. */
+function fileIcon(name: string, isDir?: boolean): string {
+  if (isDir || name.endsWith("/")) return "📁";
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  const iconMap: Record<string, string> = {
+    js: "📜", jsx: "⚛️", ts: "📜", tsx: "⚛️",
+    py: "🐍", rb: "💎", rs: "🦀", go: "🐹",
+    json: "📄", yaml: "📄", yml: "📄", toml: "📄",
+    md: "📝", txt: "📃", csv: "📊", tsv: "📊",
+    html: "🌐", xml: "📄", css: "🎨", scss: "🎨",
+    png: "🖼️", jpg: "🖼️", jpeg: "🖼️", gif: "🖼️", webp: "🖼️", svg: "🖼️",
+    mp4: "🎬", mp3: "🎵", wav: "🎵",
+    pdf: "📕", zip: "📦", tar: "📦", gz: "📦",
+    sh: "⚡", bash: "⚡", zsh: "⚡",
+  };
+  return iconMap[ext] || "📄";
+}
+
+/** Clean a file path for display: strip workspace:/// prefix, keep readable name. */
+function cleanFilePath(p: string): string {
+  return p
+    .replace(/^workspace:\/+/, "")
+    .replace(/^file:\/+/, "")
+    .replace(/^[/\\]+/, "");
+}
+
+/** Parse file list text (list_dir format or sync_up JSON). */
+function parseFiles(text: string): FileEntry[] | null {
+  const trimmed = text.trim();
+
+  // Try JSON first (sync_up / bridge result)
+  if (trimmed.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && Array.isArray(parsed.files)) {
+        return parsed.files.map((f: unknown): FileEntry => {
+          const obj = f as Record<string, unknown>;
+          return {
+            name: cleanFilePath(String(obj.path ?? obj.name ?? "")),
+            bytes: typeof obj.bytes === "number" ? obj.bytes : (typeof obj.size === "number" ? obj.size : undefined),
+          };
+        }).filter((f: FileEntry) => f.name);
+      }
+    } catch { /* fall through */ }
+  }
+
+  // Try line-oriented format: "workspace:///xxx.yaml  (247 bytes)" or "filename.ext  128 bytes"
+  const lines = trimmed.split("\n").map((l) => l.trim()).filter(Boolean);
+  const entries: FileEntry[] = [];
+  for (const line of lines) {
+    // Pattern: <path> (<N> bytes)   or   <path>  <N> bytes
+    const m = line.match(/^(.+?)\s+\(?(\d+)\s+bytes\)?$/i);
+    if (m) {
+      entries.push({ name: cleanFilePath(m[1].trim()), bytes: Number(m[2]) });
+      continue;
+    }
+    // Pattern: directory marker like "<path>/"
+    const dirMatch = line.match(/^(.+?)\/\s*$/);
+    if (dirMatch) {
+      entries.push({ name: cleanFilePath(dirMatch[1]), isDir: true });
+      continue;
+    }
+    // Just a path?
+    if (/^[\w./\\:-]+$/.test(line)) {
+      entries.push({ name: cleanFilePath(line) });
+    }
+  }
+  return entries.length > 0 ? entries : null;
+}
+
+function FilesView({ text }: { text: string }) {
+  const entries = parseFiles(text);
+  if (!entries || entries.length === 0) {
+    return <pre className="whitespace-pre-wrap break-all text-[11px] text-fg-muted font-mono">{text}</pre>;
+  }
+  // Sort: directories first, then by name
+  const sorted = [...entries].sort((a, b) => {
+    if (!!a.isDir !== !!b.isDir) return a.isDir ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  const totalBytes = sorted.reduce((s, f) => s + (f.bytes || 0), 0);
+  return (
+    <div className="text-[11px] font-mono">
+      <div className="text-fg-fainter text-[10px] mb-1">
+        {sorted.length} {sorted.length === 1 ? "item" : "items"}{totalBytes > 0 ? ` · ${fmtBytes(totalBytes)}` : ""}
+      </div>
+      <div className="divide-y divide-border-subtle/40">
+        {sorted.map((f, i) => (
+          <div key={i} className="flex items-baseline gap-2 py-0.5">
+            <span className="text-[12px] leading-none">{fileIcon(f.name, f.isDir)}</span>
+            <span className="flex-1 text-fg-muted break-all">{f.name}</span>
+            {f.bytes !== undefined && (
+              <span className="text-fg-fainter text-[10px] tabular-nums shrink-0">{fmtBytes(f.bytes)}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Recall tool rendering ─────────────────────────────────────────
 
 type RecallEntry =
@@ -1656,6 +1767,24 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
             (failed ? "text-[#e06c75] bg-[#1a0a0a]" : "text-[#98c379] bg-[#0a1a0a]")}
           >
             {failed ? "✘ failed" : "✔ ok"}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // "files" — structured file list (list_dir, sync_up, sync_down)
+  if (renderType === "files") {
+    return (
+      <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
+        <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
+          {formatArgsText(call.arguments, call.name, t, { skipHumanize: true })}
+        </pre>
+        {call.result && (
+          <div className={"max-h-80 overflow-auto rounded-lg px-3 py-2 " +
+            (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}
+          >
+            <FilesView text={call.result.text} />
           </div>
         )}
       </div>

@@ -373,7 +373,19 @@ const ARGS_MAP: Record<string, ArgsFormatter> = {
   list_dir: (t, a) => t("toolDetail.listDir", { path: str(a.path) || "." }),
 
   // Sync
-  sync_up: (t, a) => t("toolDetail.uploadFile", { name: str(a.path || a.localPath) ? basename(str(a.path || a.localPath)) : t("toolDetail.unknown") }),
+  sync_up: (t, a) => {
+    // sync_up takes paths: string[] (relative to shell root). Show first path + count.
+    if (Array.isArray(a.paths) && a.paths.length > 0) {
+      const first = basename(String(a.paths[0]));
+      return a.paths.length === 1
+        ? t("toolDetail.syncUp", { name: first })
+        : t("toolDetail.syncUpMulti", { name: first, count: String(a.paths.length - 1) });
+    }
+    const legacy = str(a.path || a.localPath);
+    return legacy
+      ? t("toolDetail.uploadFile", { name: basename(legacy) })
+      : t("toolDetail.uploadFile", { name: t("toolDetail.unknown") });
+  },
   sync_down: (t, a) => t("toolDetail.downloadFile", { name: str(a.path || a.remotePath) ? basename(str(a.path || a.remotePath)) : t("toolDetail.unknown") }),
 
   // Exec
@@ -491,7 +503,7 @@ export function humanizeArgs(name: string, args: Args, t: T = translate): string
  * - `"image"`    — inline image(s) from result.
  * - `"plain"`    — monospace pre block (default).
  */
-export type ToolRenderType = "terminal" | "markdown" | "json" | "image" | "file" | "recall" | "plain";
+export type ToolRenderType = "terminal" | "markdown" | "json" | "image" | "file" | "files" | "recall" | "plain";
 
 /**
  * Infer how a tool call's detail view should render based on the
@@ -508,8 +520,9 @@ export function inferRender(name: string): ToolRenderType {
   if (/^(read_file|write_file|edit_file|delete_file)$/i.test(n)) return "file";
   // recall tools → structured turn-by-turn viewer
   if (/^(recall_range|recall_near|recall_turn)$/i.test(n)) return "recall";
-  // directory listing → plain
-  if (/^(list_dir|list_files|create_dir|create_directory)$/i.test(n)) return "plain";
+  // directory listing / sync → files list viewer
+  if (/^(list_dir|list_files|sync_up|sync_down)$/i.test(n)) return "files";
+  if (/^(create_dir|create_directory)$/i.test(n)) return "plain";
   // generate_image / screenshot → image (handled separately)
   if (/generate_image|screenshot/i.test(name)) return "image";
   // default
