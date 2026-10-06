@@ -774,7 +774,7 @@ function parseSearchResults(text: string): SearchResultItem[] {
         url: String(r.url ?? ""),
         domain: extractDomain(String(r.url ?? "")),
         date: r.publishedDate ? String(r.publishedDate).split("T")[0] : undefined,
-        snippet: r.content ? String(r.content).trim() : undefined,
+        snippet: r.content ? stripSnippetNoise(String(r.content)) : undefined,
       }));
     }
   } catch { /* not JSON */ }
@@ -804,12 +804,30 @@ function parseSearchResults(text: string): SearchResultItem[] {
         snippetStart = 2;
       }
     }
-    const snippet = lines.slice(snippetStart).join(" ") || undefined;
+    const snippet = stripSnippetNoise(lines.slice(snippetStart).join(" ")) || undefined;
     if (title && !title.match(/^\d+ results? from/)) {
       items.push({ title, url, domain: extractDomain(url), date, snippet });
     }
   }
   return items;
+}
+
+/** Strip markdown/HTML noise from search snippets. */
+function stripSnippetNoise(s: string): string {
+  return s
+    // Remove markdown headings: # Title
+    .replace(/^#+\s+/gm, "")
+    // Remove markdown links: [text](url) → text
+    .replace(/\[([^\]]*?)\]\(https?:\/\/[^)]+\)/g, "$1")
+    // Remove bare ](url) fragments
+    .replace(/\]\(https?:\/\/[^)]*\)/g, "")
+    // Remove standalone URLs
+    .replace(/https?:\/\/\S+/g, "")
+    // Remove metadata prefixes: Author: ... Published: ... Source: ... Language: ..
+    .replace(/\b(?:Author|Published|Source|Language):\s*\S+/g, "")
+    // Collapse whitespace
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function extractDomain(url: string): string {
