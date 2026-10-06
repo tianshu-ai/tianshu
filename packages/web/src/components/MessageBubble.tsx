@@ -690,9 +690,9 @@ function formatArgValue(key: string, v: unknown): string {
   return s.length > 400 ? `${key}: ${s.slice(0, 397)}…` : `${key}: ${s}`;
 }
 
-function formatArgsText(args: Record<string, unknown>, toolName?: string, t: T = translate): string {
-  // Try semantic humanization first
-  if (toolName) {
+function formatArgsText(args: Record<string, unknown>, toolName?: string, t: T = translate, options?: { skipHumanize?: boolean }): string {
+  // Try semantic humanization first — unless caller wants full expansion
+  if (toolName && !options?.skipHumanize) {
     const h = humanizeArgs(toolName, args, t);
     if (h) return h;
   }
@@ -1484,7 +1484,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
         )}
         {!displayConfig.input && (
           <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
-            {formatArgsText(call.arguments, call.name, t)}
+            {formatArgsText(call.arguments, call.name, t, { skipHumanize: true })}
           </pre>
         )}
         {call.result && displayConfig.output && (
@@ -1534,7 +1534,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
     return (
       <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
         <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
-          {formatArgsText(call.arguments, call.name, t)}
+          {formatArgsText(call.arguments, call.name, t, { skipHumanize: true })}
         </pre>
         {searchResults.length > 0 ? (
           <div className={"max-h-80 overflow-auto rounded-lg px-3 py-2 text-xs " + (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}>
@@ -1667,7 +1667,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
     return (
       <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
         <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
-          {formatArgsText(call.arguments, call.name, t)}
+          {formatArgsText(call.arguments, call.name, t, { skipHumanize: true })}
         </pre>
         {call.result && (
           <div className={"max-h-[32rem] overflow-auto rounded-lg px-3 py-2 " +
@@ -1684,7 +1684,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
   return (
     <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
       <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
-        {formatArgsText(call.arguments, call.name, t)}
+        {formatArgsText(call.arguments, call.name, t, { skipHumanize: true })}
       </pre>
       {call.result && (() => {
         // Try structured toon rendering first — supports collapsible long text
