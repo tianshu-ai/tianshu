@@ -1104,12 +1104,6 @@ function parseRecall(text: string): RecallEntry[] {
   return entries;
 }
 
-const RECALL_ROLE_STYLES: Record<"USER" | "ASSISTANT" | "TOOL", { label: string; icon: string; cls: string }> = {
-  USER: { label: "User", icon: "👤", cls: "text-info bg-info/5 border-l-info/60" },
-  ASSISTANT: { label: "Assistant", icon: "⭐", cls: "text-accent bg-accent/5 border-l-accent/60" },
-  TOOL: { label: "Tool", icon: "🔧", cls: "text-fg-muted bg-bg-surface/40 border-l-border-strong/60" },
-};
-
 function RecallView({ text }: { text: string }) {
   const entries = parseRecall(text);
   if (entries.length === 0) return <pre className="whitespace-pre-wrap text-[11px] text-fg-muted">{text}</pre>;
@@ -1127,38 +1121,67 @@ function RecallView({ text }: { text: string }) {
   }
 
   return (
-    <div className="space-y-2 text-[11px]">
+    <div className="flex flex-col gap-3 text-[12px]">
       {turns.map((turn, i) => {
-        const style = RECALL_ROLE_STYLES[turn.role];
+        const isUser = turn.role === "USER";
+        const isAssistant = turn.role === "ASSISTANT";
+        const isTool = turn.role === "TOOL";
+        // Combine text content into one bubble per turn
+        const textParts = turn.body.filter((e) => e.kind === "text");
+        const toolCalls = turn.body.filter((e) => e.kind === "toolCall");
+        const combinedText = textParts.map((e) => e.kind === "text" ? e.content : "").join("\n\n").trim();
+
         return (
-          <div key={i} className={`border-l-2 pl-3 py-1 rounded-r ${style.cls}`}>
-            <div className="flex items-center gap-2 text-fg-fainter mb-1 text-[10px] uppercase tracking-wide">
-              <span>{style.icon}</span>
-              <span className="font-semibold">Turn {turn.n} · {style.label}</span>
-            </div>
-            {turn.body.map((e, j) => {
-              if (e.kind === "text") {
-                const isLong = e.content.length > 300;
-                return isLong
-                  ? <ExpandableSnippet key={j} text={e.content} />
-                  : <div key={j} className="whitespace-pre-wrap break-words text-fg-muted font-mono">{e.content}</div>;
-              }
-              if (e.kind === "toolCall") {
-                return (
-                  <div key={j} className="my-1 rounded bg-bg-surface/60 px-2 py-1 border border-border-subtle/40">
-                    <div className="text-fg-strong text-[10px] font-semibold">
-                      ⧉ {e.name}
-                    </div>
-                    {e.params.length > 0 && (
-                      <div className="text-fg-fainter font-mono text-[10px] pl-3 mt-0.5">
-                        {e.params.map((p, k) => <div key={k}>{p}</div>)}
+          <div key={i} className={isUser ? "flex justify-end" : "flex justify-start"}>
+            <div className={`flex max-w-[85%] min-w-0 flex-col ${isUser ? "items-end" : "items-start"}`}>
+              {/* Turn label */}
+              <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-fainter">
+                {isUser && <><User size={10} /><span>you</span></>}
+                {isAssistant && <><img src="/classical/tianshu-avatar.png" alt="" className="h-4 w-4 rounded-full object-cover" /><span>tianshu</span></>}
+                {isTool && <><span>🔧</span><span>tool</span></>}
+                <span className="text-fg-faint normal-case">· turn {turn.n}</span>
+              </div>
+
+              {/* Message bubble */}
+              {combinedText && (
+                <div
+                  className={
+                    "rounded-xl px-3 py-2 text-[12px] leading-relaxed break-words whitespace-pre-wrap " +
+                    (isUser
+                      ? "bg-brand-500/10 text-fg-default"
+                      : isAssistant
+                        ? "bg-bg-elevated/40 text-fg-default"
+                        : "bg-bg-surface/40 text-fg-muted font-mono text-[11px]")
+                  }
+                >
+                  {combinedText.length > 500
+                    ? <ExpandableSnippet text={combinedText} />
+                    : combinedText}
+                </div>
+              )}
+
+              {/* Tool calls indented below the bubble */}
+              {toolCalls.length > 0 && (
+                <div className={`mt-1 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+                  {toolCalls.map((e, j) => {
+                    if (e.kind !== "toolCall") return null;
+                    return (
+                      <div key={j} className="rounded-lg bg-bg-surface/60 px-2 py-1 border border-border-subtle/40 text-[11px]">
+                        <div className="flex items-center gap-1.5 text-fg-strong">
+                          <span className="text-[10px] text-fg-fainter">→</span>
+                          <span className="font-mono">{e.name}</span>
+                        </div>
+                        {e.params.length > 0 && (
+                          <div className="text-fg-fainter font-mono text-[10px] pl-4 mt-0.5">
+                            {e.params.map((p, k) => <div key={k} className="break-all">{p}</div>)}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              }
-              return null;
-            })}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         );
       })}
