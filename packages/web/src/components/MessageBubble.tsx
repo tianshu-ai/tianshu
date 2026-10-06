@@ -755,11 +755,23 @@ function formatResultText(text: string, maxLen = 4000, t: T = translate): string
  * TOON: "key:value, key:value" or multi-line "key:value, key:value\nkey:value, ..."
  * Splits on ", " that look like field separators (not inside quoted strings).
  */
-// Keys to hide from toon output — purely technical identifiers
+// Keys to hide from toon output — purely technical identifiers.
+// Matches both exact names and any key ending with ".<name>" (nested paths).
 const TOON_HIDDEN_KEYS = new Set([
   "slug", "id", "isCurrent", "kind", "type", "_id", "userId", "tenantId",
   "sessionId", "parentId", "leafId", "projectSlug",
+  "schema", "tianshuVersion", "extractedAt", "extractedFrom",
 ]);
+
+/** True if this toon path should be hidden (exact match or any segment is hidden). */
+function isHiddenToonPath(key: string): boolean {
+  const segments = key.split(".");
+  // Hidden if last segment or any middle segment is hidden
+  for (const seg of segments) {
+    if (TOON_HIDDEN_KEYS.has(seg)) return true;
+  }
+  return false;
+}
 
 // Keys that have i18n labels (toonKey.* keys in i18n.ts)
 const TOON_HUMANIZED_KEYS = new Set([
@@ -770,6 +782,13 @@ const TOON_HUMANIZED_KEYS = new Set([
   "modelId", "source", "path", "bytes",
   "ok", "error", "message", "count",
 ]);
+
+/** Humanize a toon key path. Takes the leaf name, humanizes if known. */
+function humanizeToonKey(key: string, t: T): string {
+  const leaf = key.split(".").pop() || key;
+  if (TOON_HUMANIZED_KEYS.has(leaf)) return t((`toonKey.${leaf}`) as TranslationKey);
+  return leaf;
+}
 
 /** Format a toon value for display. */
 function humanizeToonValue(key: string, val: string, t: T): string {
@@ -790,6 +809,13 @@ function humanizeToonValue(key: string, val: string, t: T): string {
   return val;
 }
 
+/** Format a comma-list value. If it has 3+ items, render as bulleted list. */
+function formatToonList(key: string, val: string, t: T): string {
+  const parts = val.split(/,\s+/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length < 3) return humanizeToonValue(key, val, t);
+  return "\n  • " + parts.join("\n  • ");
+}
+
 function formatToon(text: string, maxLen: number, t: T = translate): string {
   const trimmed = text.trim();
   // Heuristic: looks like TOON if it has at least 2 unquoted "word:" patterns
@@ -800,20 +826,38 @@ function formatToon(text: string, maxLen: number, t: T = translate): string {
   const lines = trimmed.split("\n").filter(Boolean);
   const formatted = lines.map((line) => {
     const fields = line.split(/,\s+(?=\w[\w.]*:)/);
-    return fields
-      .map((f) => {
-        const colonIdx = f.indexOf(":");
-        if (colonIdx <= 0) return f;
-        const key = f.slice(0, colonIdx).trim();
-        const val = f.slice(colonIdx + 1).trim();
-        // Skip hidden technical keys
-        if (TOON_HIDDEN_KEYS.has(key)) return null;
-        const label = TOON_HUMANIZED_KEYS.has(key) ? t((`toonKey.${key}`) as TranslationKey) : key;
-        const humanVal = humanizeToonValue(key, val, t);
-        return `${label}: ${humanVal}`;
-      })
-      .filter(Boolean)
-      .join("\n");
+    const rendered: string[] = [];
+    let lastGroup = "";
+    for (const f of fields) {
+      const colonIdx = f.indexOf(":");
+      if (colonIdx <= 0) continue;
+      const key = f.slice(0, colonIdx).trim();
+      const val = f.slice(colonIdx + 1).trim();
+      // Skip hidden technical keys / paths
+      if (isHiddenToonPath(key)) continue;
+      // Nested path handling: group by top-level segment
+      const segments = key.split(".");
+      // Strip leading "spec." or similar wrapper prefix (common in Solution output)
+      const effective = segments[0] === "spec" ? segments.slice(1) : segments;
+      if (effective.length === 0) continue;
+      const label = humanizeToonKey(effective.join("."), t);
+      // Add group separator for nested paths
+      const groupKey = effective.length > 1 ? effective[0] : "";
+      if (groupKey && groupKey !== lastGroup) {
+        if (lastGroup) rendered.push("");
+        rendered.push(`[${humanizeToonKey(groupKey, t)}]`);
+        lastGroup = groupKey;
+      } else if (!groupKey && lastGroup) {
+        rendered.push("");
+        lastGroup = "";
+      }
+      // Format value — lists get bulleted
+      const humanVal = val.includes(",") ? formatToonList(key, val, t) : humanizeToonValue(key, val, t);
+      // Indent nested fields under their group
+      const prefix = groupKey ? "  " : "";
+      rendered.push(`${prefix}${label}: ${humanVal}`);
+    }
+    return rendered.join("\n");
   }).join("\n\n");
 
   return truncate(formatted, maxLen);
