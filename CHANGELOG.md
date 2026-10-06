@@ -6,6 +6,23 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.83.0](https://github.com/tianshu-ai/tianshu/compare/v0.82.0...v0.83.0) (2026-10-06)
+
+
+### Features
+
+* **setup:** Windows service backend via Task Scheduler ([0826055](https://github.com/tianshu-ai/tianshu/commit/0826055aa79fc03add95fc72e8f9bdb3b858073d))
+
+
+### Bug Fixes
+
+* **windows:** use fileURLToPath instead of URL.pathname for ESM dir resolve ([f2250b1](https://github.com/tianshu-ai/tianshu/commit/f2250b10f14e4c07cc63d182dcc26ef1ebd56cf6))
+
+
+### Documentation
+
+* **readme:** add Windows install notes — Local Bridge path ([68bbdbb](https://github.com/tianshu-ai/tianshu/commit/68bbdbb8bcf67af323ba8cf44704e1237a262db7))
+
 ## [0.82.0](https://github.com/tianshu-ai/tianshu/compare/v0.81.0...v0.82.0) (2026-10-06)
 
 
