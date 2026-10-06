@@ -51,7 +51,7 @@
 | What           | Why                                                |
 |----------------|----------------------------------------------------|
 | **Node 22+**   | Runtime. Use a Node manager (`nvm` / `volta` / `asdf`); avoid system Node with `sudo`. |
-| **Docker** (recommended) *or* **macOS Apple Silicon / Linux + KVM** | Sandbox layer. The default **OpenShell** backend needs a running Docker daemon (Docker Desktop / Colima / OrbStack / …). The alternative **microsandbox** backend needs hardware virt instead of Docker. Pick one — they're mutually exclusive. Chat still works without either, but `exec` / browser tools won't. |
+| **Sandbox layer** (choose one) | **macOS / Linux**: OpenShell (Docker, recommended) or microsandbox (VZ.framework / KVM). **Windows**: Local Bridge — shell commands run directly on the host (no isolation, see Windows notes below). Chat still works without any sandbox, but `exec` / browser tools won't. |
 | **An LLM API key** | Anthropic, OpenAI, or Google. Or a local model server reachable on the network. |
 
 ### One command
@@ -102,12 +102,39 @@ tianshu setup --non-interactive --provider=openai --api-key=*** \
 tianshu start
 ```
 
-On macOS this installs a launchd agent
-(`~/Library/LaunchAgents/ai.tianshu.prod.plist`) that auto-starts
-at login and auto-restarts on crash. On Linux a systemd unit
-(`tianshu-prod.service`) is installed instead.
+This installs a background service that auto-starts at login
+and auto-restarts on crash:
+- **macOS**: launchd agent (`~/Library/LaunchAgents/ai.tianshu.prod.plist`)
+- **Linux**: systemd unit (`tianshu-prod.service`)
+- **Windows**: Task Scheduler task (`Tianshu-Prod`,
+  logs at `%LOCALAPPDATA%\tianshu\logs\`)
 
 Open <http://localhost:3110> and start chatting.
+
+### Windows notes
+
+Windows is supported with one caveat: **neither OpenShell nor
+microsandbox runs natively**. OpenShell has no Windows binary
+upstream; microsandbox needs Hyper-V plumbing we don't ship.
+Use the **Local Bridge** plugin (`reverse-mcp`) instead — the
+agent's shell commands execute directly on your Windows host
+via a lightweight local client. Zero native dependencies,
+but no sandbox isolation either; only use it for workflows
+you'd trust yourself to run manually.
+
+Setup after `tianshu start` finishes:
+1. In the web UI, **Settings → Plugins**, enable `reverse-mcp`
+   and disable any sandbox plugin.
+2. Install the Local Bridge client:
+   `npm install -g @tianshu-ai/local-bridge`
+3. Run `tianshu-local-bridge` in a terminal — it dials in to
+   the server and registers as the agent's shell + browser.
+4. Everything else (chat, workspace files, plugins, settings)
+   works the same as on macOS/Linux.
+
+If you want full sandbox isolation on Windows, run tianshu
+inside WSL2 instead — standard Linux install path, with the
+native OpenShell backend.
 
 ### Finish setup in the UI — Maintenance Mode
 
