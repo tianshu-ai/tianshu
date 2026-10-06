@@ -217,7 +217,19 @@ const ARGS_MAP: Record<string, ArgsFormatter> = {
   // Host tools
   compact_context: () => "压缩对话上下文",
   tool_catalog_refresh: (a) => `刷新工具目录` + (str(a.mode) ? ` (模式: ${a.mode})` : ""),
-  switch_panel: (a) => `切换面板: ${str(a.panel) || "未知"}`,
+  switch_panel: (a) => {
+    const p = str(a.panel);
+    if (!p) return "切换面板";
+    if (p === "list") return "查看可用面板列表";
+    if (p === "close" || p === "none") return "关闭侧边栏面板";
+    const PANEL_NAMES: Record<string, string> = {
+      "board.main": "看板", "cron.main": "定时任务",
+      "datasource.main": "数据源", "files.main": "文件",
+      "reverse-mcp.main": "Local Bridge", "wiki.main": "知识库",
+      "workboard.main": "任务", "workforce-studio.main": "工作者",
+    };
+    return `切换到${PANEL_NAMES[p] || p}面板`;
+  },
   solution: (a) => {
     const action = str(a.action);
     const slug = str(a.slug);
