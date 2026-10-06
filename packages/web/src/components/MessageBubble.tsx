@@ -1043,7 +1043,14 @@ function FilesView({ text }: { text: string }) {
 type RecallEntry =
   | { kind: "turn"; n: number; role: "USER" | "ASSISTANT" | "TOOL" }
   | { kind: "text"; content: string }
-  | { kind: "toolCall"; name: string; id: string; params: string[] };
+  | { kind: "toolCall"; name: string; id: string; args: string }
+  | { kind: "toolResult"; name: string; id: string; content: string };
+
+/** Split a comma-separated args string into one line per key. */
+function splitRecallArgs(args: string): string {
+  const fields = args.split(/,\s+(?=\w[\w.-]*:)/);
+  return fields.map((f) => f.trim()).filter(Boolean).join("\n");
+}
 
 function parseRecall(text: string): RecallEntry[] {
   const entries: RecallEntry[] = [];
@@ -1071,30 +1078,40 @@ function parseRecall(text: string): RecallEntry[] {
       i++;
       continue;
     }
-    // Tool call: [toolCall name(id=xxx)] possibly followed by param lines
-    const callMatch = line.match(/^\[toolCall\s+(\w+)\(id=([^)]+)\)\]\s*(.*)$/);
+    // Tool call: [toolCall name(id=xxx)] args-on-next-line-or-same
+    const callMatch = line.match(/^\[toolCall\s+([\w.-]+)\(id=([^)]+)\)\]\s*(.*)$/);
     if (callMatch) {
       flushText();
       const name = callMatch[1];
       const id = callMatch[2];
-      const params: string[] = [];
-      // First param (on same line after ])
-      const firstParam = callMatch[3].trim();
-      if (firstParam) params.push(firstParam);
-      // Continuation param lines (until next [toolCall], turn marker, or blank gap)
+      const argLines: string[] = [];
+      if (callMatch[3].trim()) argLines.push(callMatch[3].trim());
       i++;
       while (i < lines.length) {
         const next = lines[i];
-        if (/^─{3}/.test(next) || /^\[toolCall\s/.test(next)) break;
-        const trimmed = next.trim();
-        if (trimmed && /^\w[\w-]*:/.test(trimmed)) {
-          params.push(trimmed);
-          i++;
-        } else {
-          break;
-        }
+        if (/^─{3}/.test(next) || /^\[tool(Call|Result)\s/.test(next)) break;
+        if (next.trim()) argLines.push(next);
+        i++;
       }
-      entries.push({ kind: "toolCall", name, id, params });
+      entries.push({ kind: "toolCall", name, id, args: argLines.join("\n") });
+      continue;
+    }
+    // Tool result: [toolResult name(id=xxx)] result-content
+    const resultMatch = line.match(/^\[toolResult\s+([\w.-]+)\(id=([^)]+)\)\]\s*(.*)$/);
+    if (resultMatch) {
+      flushText();
+      const name = resultMatch[1];
+      const id = resultMatch[2];
+      const bodyLines: string[] = [];
+      if (resultMatch[3].trim()) bodyLines.push(resultMatch[3].trim());
+      i++;
+      while (i < lines.length) {
+        const next = lines[i];
+        if (/^─{3}/.test(next) || /^\[tool(Call|Result)\s/.test(next)) break;
+        bodyLines.push(next);
+        i++;
+      }
+      entries.push({ kind: "toolResult", name, id, content: bodyLines.join("\n").trim() });
       continue;
     }
     bufText.push(line);
@@ -1104,11 +1121,30 @@ function parseRecall(text: string): RecallEntry[] {
   return entries;
 }
 
-function RecallView({ text }: { text: string }) {
-  const entries = parseRecall(text);
-  if (entries.length === 0) return <pre className="whitespace-pre-wrap text-[11px] text-fg-muted">{text}</pre>;
+/** Pair up toolResult entries with their matching toolCall by id. */
+function mergeRecallEntries(entries: RecallEntry[]): RecallEntry[] {
+  const resultById = new Map<string, string>();
+  for (const e of entries) {
+    if (e.kind === "toolResult") resultById.set(e.id, e.content);
+  }
+  // Return turns + text + toolCalls (with results attached); drop standalone toolResults
+  // and drop empty TOOL turn markers that only wrapped a toolResult (now attached above).
+  return entries.filter((e) => e.kind !== "toolResult");
+}
 
-  // Group entries by turn
+function RecallView({ text }: { text: string }) {
+  const rawEntries = parseRecall(text);
+  if (rawEntries.length === 0) return <pre className="whitespace-pre-wrap text-[11px] text-fg-muted">{text}</pre>;
+
+  // Map toolResult content by id so we can attach to the matching toolCall
+  const resultById = new Map<string, string>();
+  for (const e of rawEntries) {
+    if (e.kind === "toolResult") resultById.set(e.id, e.content);
+  }
+
+  // Group entries by turn, filtering out standalone toolResults (merged into calls)
+  // and TOOL turns that only wrap already-attached results
+  const entries = mergeRecallEntries(rawEntries);
   const turns: Array<{ n: number; role: "USER" | "ASSISTANT" | "TOOL"; body: RecallEntry[] }> = [];
   let current: typeof turns[0] | null = null;
   for (const e of entries) {
@@ -1119,16 +1155,17 @@ function RecallView({ text }: { text: string }) {
       current.body.push(e);
     }
   }
+  // Drop empty TOOL turns — their results now live under the ASSISTANT turn's toolCall
+  const nonEmptyTurns = turns.filter((t) => !(t.role === "TOOL" && t.body.length === 0));
 
   return (
     <div className="flex flex-col gap-3 text-[12px]">
-      {turns.map((turn, i) => {
+      {nonEmptyTurns.map((turn, i) => {
         const isUser = turn.role === "USER";
         const isAssistant = turn.role === "ASSISTANT";
         const isTool = turn.role === "TOOL";
-        // Combine text content into one bubble per turn
         const textParts = turn.body.filter((e) => e.kind === "text");
-        const toolCalls = turn.body.filter((e) => e.kind === "toolCall");
+        const toolCalls = turn.body.filter((e): e is Extract<RecallEntry, { kind: "toolCall" }> => e.kind === "toolCall");
         const combinedText = textParts.map((e) => e.kind === "text" ? e.content : "").join("\n\n").trim();
 
         return (
@@ -1160,20 +1197,31 @@ function RecallView({ text }: { text: string }) {
                 </div>
               )}
 
-              {/* Tool calls indented below the bubble */}
+              {/* Tool calls (each with its result attached) */}
               {toolCalls.length > 0 && (
                 <div className={`mt-1 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
                   {toolCalls.map((e, j) => {
-                    if (e.kind !== "toolCall") return null;
+                    const result = resultById.get(e.id);
+                    const argsLines = splitRecallArgs(e.args);
                     return (
-                      <div key={j} className="rounded-lg bg-bg-surface/60 px-2 py-1 border border-border-subtle/40 text-[11px]">
-                        <div className="flex items-center gap-1.5 text-fg-strong">
+                      <div key={j} className="rounded-lg bg-bg-surface/60 border border-border-subtle/40 text-[11px] max-w-full overflow-hidden">
+                        {/* Header: tool name */}
+                        <div className="flex items-center gap-1.5 px-2 py-1 text-fg-strong">
                           <span className="text-[10px] text-fg-fainter">→</span>
                           <span className="font-mono">{e.name}</span>
                         </div>
-                        {e.params.length > 0 && (
-                          <div className="text-fg-fainter font-mono text-[10px] pl-4 mt-0.5">
-                            {e.params.map((p, k) => <div key={k} className="break-all">{p}</div>)}
+                        {/* Args */}
+                        {argsLines && (
+                          <div className="text-fg-fainter font-mono text-[10px] px-2 pb-1 pl-6 whitespace-pre-wrap break-words">
+                            {argsLines}
+                          </div>
+                        )}
+                        {/* Result */}
+                        {result && (
+                          <div className="border-t border-border-subtle/40 px-2 py-1 pl-6 text-fg-muted font-mono text-[10px]">
+                            {result.length > 200
+                              ? <ExpandableSnippet text={result} />
+                              : <div className="whitespace-pre-wrap break-words">{result}</div>}
                           </div>
                         )}
                       </div>
