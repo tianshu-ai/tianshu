@@ -774,7 +774,7 @@ function parseSearchResults(text: string): SearchResultItem[] {
         url: String(r.url ?? ""),
         domain: extractDomain(String(r.url ?? "")),
         date: r.publishedDate ? String(r.publishedDate).split("T")[0] : undefined,
-        snippet: r.content ? String(r.content).trim().slice(0, 200) : undefined,
+        snippet: r.content ? String(r.content).trim() : undefined,
       }));
     }
   } catch { /* not JSON */ }
@@ -804,7 +804,7 @@ function parseSearchResults(text: string): SearchResultItem[] {
         snippetStart = 2;
       }
     }
-    const snippet = lines.slice(snippetStart).join(" ").slice(0, 200) || undefined;
+    const snippet = lines.slice(snippetStart).join(" ") || undefined;
     if (title && !title.match(/^\d+ results? from/)) {
       items.push({ title, url, domain: extractDomain(url), date, snippet });
     }
@@ -814,6 +814,22 @@ function parseSearchResults(text: string): SearchResultItem[] {
 
 function extractDomain(url: string): string {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+}
+
+/** Snippet with click-to-expand. Shows 2 lines by default, full text on click. */
+function ExpandableSnippet({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = text.length > 120;
+  return (
+    <div
+      className={"text-[11px] text-fg-fainter mt-0.5" + (isLong && !expanded ? " cursor-pointer" : "")}
+      onClick={isLong ? () => setExpanded((v) => !v) : undefined}
+    >
+      <span className={!expanded && isLong ? "line-clamp-2" : ""}>{text}</span>
+      {isLong && !expanded && <span className="text-link text-[10px] ml-1">…more</span>}
+      {isLong && expanded && <span className="text-link text-[10px] ml-1 cursor-pointer">…less</span>}
+    </div>
+  );
 }
 
 /** Regex matching bridge-screenshots paths in tool result text. */
@@ -1162,7 +1178,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
               <div key={i} className={i > 0 ? "mt-2 pt-2 border-t border-border-subtle/30" : ""}>
                 <div className="font-medium text-fg-muted">{r.title}</div>
                 <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-link hover:underline truncate block">{r.domain}{r.date ? ` · ${r.date}` : ""}</a>
-                {r.snippet && <div className="text-[11px] text-fg-fainter mt-0.5 line-clamp-2">{r.snippet}</div>}
+                {r.snippet && <ExpandableSnippet text={r.snippet} />}
               </div>
             ))}
           </div>
