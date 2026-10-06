@@ -431,14 +431,15 @@ export type ToolRenderType = "terminal" | "markdown" | "json" | "image" | "file"
  * it pattern-matches against known tool-name conventions.
  */
 export function inferRender(name: string): ToolRenderType {
+  const n = normalizeBridgeName(name);
   // exec-style tools → terminal
-  if (/exec$/i.test(name) || name === "shell_exec") return "terminal";
+  if (/exec$/i.test(n) || n === "shell_exec") return "terminal";
   // web search / fetch → markdown (results are readable text)
-  if (/^web_search$|^web_fetch$/i.test(name)) return "markdown";
+  if (/^web_search$|^web_fetch$/i.test(n)) return "markdown";
   // file read/write/edit → file viewer
-  if (/^(read_file|write_file|edit_file|delete_file)$/i.test(name)) return "file";
+  if (/^(read_file|write_file|edit_file|delete_file)$/i.test(n)) return "file";
   // directory listing → plain
-  if (/^(list_dir|list_files|create_dir|create_directory)$/i.test(name)) return "plain";
+  if (/^(list_dir|list_files|create_dir|create_directory)$/i.test(n)) return "plain";
   // generate_image / screenshot → image (handled separately)
   if (/generate_image|screenshot/i.test(name)) return "image";
   // default
