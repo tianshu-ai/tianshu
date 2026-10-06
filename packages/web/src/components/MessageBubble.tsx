@@ -1132,6 +1132,54 @@ function mergeRecallEntries(entries: RecallEntry[]): RecallEntry[] {
   return entries.filter((e) => e.kind !== "toolResult");
 }
 
+/** Compact ToolCallRow for recall — shares styling with main-chat ToolCallRow */
+function RecallToolCallRow({ name, args, result }: { name: string; args: string; result?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const argsLines = splitRecallArgs(args);
+  const argPreview = argsLines.split("\n")[0] || "";
+  const hasMore = argsLines.includes("\n") || !!result;
+
+  return (
+    <div className="rounded-lg bg-bg-surface/60 border border-border-subtle/40 text-[12px] max-w-full overflow-hidden">
+      <button
+        type="button"
+        onClick={() => hasMore && setExpanded((v) => !v)}
+        className={"w-full flex items-center gap-2 px-3 py-1.5 text-left " +
+          (hasMore ? "hover:bg-bg-surface/80 cursor-pointer" : "cursor-default")}
+      >
+        <span className="text-fg-fainter text-[11px]">→</span>
+        <span className="font-mono text-fg-strong">{name}</span>
+        {!expanded && argPreview && (
+          <span className="text-fg-fainter font-mono text-[11px] truncate flex-1">
+            {argPreview}{argsLines.includes("\n") ? "…" : ""}
+          </span>
+        )}
+        {hasMore && (
+          <span className="text-fg-fainter text-[10px] ml-auto">
+            {expanded ? "▲" : "▼"}
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <>
+          {argsLines && (
+            <div className="px-3 pb-1.5 pl-7 text-fg-muted font-mono text-[11px] whitespace-pre-wrap break-words">
+              {argsLines}
+            </div>
+          )}
+          {result && (
+            <div className="border-t border-border-subtle/40 px-3 py-1.5 pl-7 text-fg-muted font-mono text-[11px]">
+              {result.length > 300
+                ? <ExpandableSnippet text={result} />
+                : <div className="whitespace-pre-wrap break-words">{result}</div>}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function RecallView({ text }: { text: string }) {
   const rawEntries = parseRecall(text);
   if (rawEntries.length === 0) return <pre className="whitespace-pre-wrap text-[11px] text-fg-muted">{text}</pre>;
@@ -1143,7 +1191,6 @@ function RecallView({ text }: { text: string }) {
   }
 
   // Group entries by turn, filtering out standalone toolResults (merged into calls)
-  // and TOOL turns that only wrap already-attached results
   const entries = mergeRecallEntries(rawEntries);
   const turns: Array<{ n: number; role: "USER" | "ASSISTANT" | "TOOL"; body: RecallEntry[] }> = [];
   let current: typeof turns[0] | null = null;
@@ -1159,11 +1206,10 @@ function RecallView({ text }: { text: string }) {
   const nonEmptyTurns = turns.filter((t) => !(t.role === "TOOL" && t.body.length === 0));
 
   return (
-    <div className="flex flex-col gap-3 text-[12px]">
+    <div className="flex flex-col gap-4">
       {nonEmptyTurns.map((turn, i) => {
         const isUser = turn.role === "USER";
         const isAssistant = turn.role === "ASSISTANT";
-        const isTool = turn.role === "TOOL";
         const textParts = turn.body.filter((e) => e.kind === "text");
         const toolCalls = turn.body.filter((e): e is Extract<RecallEntry, { kind: "toolCall" }> => e.kind === "toolCall");
         const combinedText = textParts.map((e) => e.kind === "text" ? e.content : "").join("\n\n").trim();
@@ -1171,62 +1217,44 @@ function RecallView({ text }: { text: string }) {
         return (
           <div key={i} className={isUser ? "flex justify-end" : "flex justify-start"}>
             <div className={`flex max-w-[85%] min-w-0 flex-col ${isUser ? "items-end" : "items-start"}`}>
-              {/* Turn label */}
-              <div className="mb-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-fg-fainter">
-                {isUser && <><User size={10} /><span>you</span></>}
-                {isAssistant && <><img src="/classical/tianshu-avatar.png" alt="" className="h-4 w-4 rounded-full object-cover" /><span>tianshu</span></>}
-                {isTool && <><span>🔧</span><span>tool</span></>}
-                <span className="text-fg-faint normal-case">· turn {turn.n}</span>
+              {/* Turn label — same visual language as main chat */}
+              <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
+                {isUser
+                  ? <User size={11} />
+                  : <img src="/classical/tianshu-avatar.png" alt="" className="h-5 w-5 rounded-full object-cover" />}
+                <span>{isUser ? "you" : "tianshu"}</span>
+                <span className="text-fg-fainter normal-case">· turn {turn.n}</span>
               </div>
 
-              {/* Message bubble */}
+              {/* Message bubble — uses main-chat .user-bubble / .ai-bubble classes */}
               {combinedText && (
-                <div
-                  className={
-                    "rounded-xl px-3 py-2 text-[12px] leading-relaxed break-words whitespace-pre-wrap " +
-                    (isUser
-                      ? "bg-brand-500/10 text-fg-default"
-                      : isAssistant
-                        ? "bg-bg-elevated/40 text-fg-default"
-                        : "bg-bg-surface/40 text-fg-muted font-mono text-[11px]")
-                  }
-                >
-                  {combinedText.length > 500
-                    ? <ExpandableSnippet text={combinedText} />
-                    : combinedText}
+                <div className={`relative ${isUser ? "user-bubble" : "ai-bubble"}`}>
+                  <div
+                    className={
+                      "prose prose-sm w-full overflow-x-auto rounded-xl px-4 py-3 text-[14px] leading-relaxed max-w-none " +
+                      (isUser
+                        ? "bg-brand-500/10 text-fg-default"
+                        : "bg-bg-elevated/40 text-fg-default")
+                    }
+                  >
+                    {combinedText.length > 500
+                      ? <ExpandableSnippet text={combinedText} />
+                      : <div className="whitespace-pre-wrap break-words">{combinedText}</div>}
+                  </div>
                 </div>
               )}
 
-              {/* Tool calls (each with its result attached) */}
+              {/* Tool calls — same layout as main-chat ToolCallRow placement */}
               {toolCalls.length > 0 && (
-                <div className={`mt-1 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
-                  {toolCalls.map((e, j) => {
-                    const result = resultById.get(e.id);
-                    const argsLines = splitRecallArgs(e.args);
-                    return (
-                      <div key={j} className="rounded-lg bg-bg-surface/60 border border-border-subtle/40 text-[11px] max-w-full overflow-hidden">
-                        {/* Header: tool name */}
-                        <div className="flex items-center gap-1.5 px-2 py-1 text-fg-strong">
-                          <span className="text-[10px] text-fg-fainter">→</span>
-                          <span className="font-mono">{e.name}</span>
-                        </div>
-                        {/* Args */}
-                        {argsLines && (
-                          <div className="text-fg-fainter font-mono text-[10px] px-2 pb-1 pl-6 whitespace-pre-wrap break-words">
-                            {argsLines}
-                          </div>
-                        )}
-                        {/* Result */}
-                        {result && (
-                          <div className="border-t border-border-subtle/40 px-2 py-1 pl-6 text-fg-muted font-mono text-[10px]">
-                            {result.length > 200
-                              ? <ExpandableSnippet text={result} />
-                              : <div className="whitespace-pre-wrap break-words">{result}</div>}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                <div className={`mt-1.5 flex w-full min-w-0 flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}>
+                  {toolCalls.map((e, j) => (
+                    <RecallToolCallRow
+                      key={j}
+                      name={e.name}
+                      args={e.args}
+                      result={resultById.get(e.id)}
+                    />
+                  ))}
                 </div>
               )}
             </div>
