@@ -837,7 +837,7 @@ function parseApiRoute(raw: unknown, ctx: string, acc: Acc): ApiRouteContributio
 }
 
 const TOOL_DISPLAY_INPUT_FORMATS = new Set(["terminal", "key-value", "sql", "code", "hidden"]);
-const TOOL_DISPLAY_OUTPUT_FORMATS = new Set(["terminal", "markdown", "table", "json", "code", "plain"]);
+const TOOL_DISPLAY_OUTPUT_FORMATS = new Set(["terminal", "markdown", "table", "json", "code", "files", "plain"]);
 
 function parseToolDisplay(
   raw: unknown,
