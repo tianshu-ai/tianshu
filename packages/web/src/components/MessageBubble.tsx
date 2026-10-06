@@ -747,6 +747,75 @@ function formatResultText(text: string, maxLen = 4000): string {
   }
 }
 
+// ── Search result parser ────────────────────────────────────────
+
+interface SearchResultItem {
+  title: string;
+  url: string;
+  domain: string;
+  date?: string;
+  snippet?: string;
+}
+
+/**
+ * Parse web_search structured text output:
+ *   "N results from brave for \"query\":\n\n1. Title\n   url (date)\n   snippet"
+ * Also tries JSON with data.results array.
+ */
+function parseSearchResults(text: string): SearchResultItem[] {
+  const trimmed = text.trim();
+
+  // Try JSON first — result may have { data: { results: [...] } }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed?.data?.results && Array.isArray(parsed.data.results)) {
+      return parsed.data.results.map((r: Record<string, unknown>) => ({
+        title: String(r.title ?? ""),
+        url: String(r.url ?? ""),
+        domain: extractDomain(String(r.url ?? "")),
+        date: r.publishedDate ? String(r.publishedDate).split("T")[0] : undefined,
+        snippet: r.content ? String(r.content).trim().slice(0, 200) : undefined,
+      }));
+    }
+  } catch { /* not JSON */ }
+
+  // Parse the numbered text format:
+  // 1. Title
+  //    https://url (2026-10-06T...)
+  //    Snippet text...
+  const items: SearchResultItem[] = [];
+  // Split on numbered entries: "1. ", "2. ", etc.
+  const blocks = trimmed.split(/(?:^|\n)\d+\.\s+/).filter(Boolean);
+  for (const block of blocks) {
+    const lines = block.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (lines.length === 0) continue;
+    const title = lines[0];
+    // Second line should be URL (possibly with date in parens)
+    let url = "";
+    let date: string | undefined;
+    let snippetStart = 1;
+    if (lines.length > 1) {
+      const urlLine = lines[1];
+      const urlMatch = urlLine.match(/^(https?:\/\/\S+)/);
+      if (urlMatch) {
+        url = urlMatch[1];
+        const dateMatch = urlLine.match(/\((\d{4}-\d{2}-\d{2})/); 
+        if (dateMatch) date = dateMatch[1];
+        snippetStart = 2;
+      }
+    }
+    const snippet = lines.slice(snippetStart).join(" ").slice(0, 200) || undefined;
+    if (title && !title.match(/^\d+ results? from/)) {
+      items.push({ title, url, domain: extractDomain(url), date, snippet });
+    }
+  }
+  return items;
+}
+
+function extractDomain(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; }
+}
+
 /** Regex matching bridge-screenshots paths in tool result text. */
 const SCREENSHOT_RE = /bridge-screenshots\/[\w.-]+\.(?:png|jpg|jpeg|webp|gif)/g;
 
@@ -1079,17 +1148,32 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
   }
 
   if (renderType === "markdown") {
-    const text = call.result ? formatResultText(call.result.text) : "";
+    const rawResult = call.result?.text ?? "";
+    // Try to parse structured search results: "N results from ... for ...:\n\n1. Title\n   url (date)\n   snippet"
+    const searchResults = parseSearchResults(rawResult);
     return (
       <div className="ml-5 mt-0.5 mb-1 flex flex-col gap-1">
         <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
           {formatArgsText(call.arguments, call.name, t)}
         </pre>
-        {text && (
-          <div className={"max-h-64 overflow-auto rounded-lg px-3 py-2 text-xs prose prose-sm prose-invert max-w-none " +
-            (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}
-            dangerouslySetInnerHTML={{ __html: text }}
-          />
+        {searchResults.length > 0 ? (
+          <div className={"max-h-80 overflow-auto rounded-lg px-3 py-2 text-xs " + (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}>
+            {searchResults.map((r, i) => (
+              <div key={i} className={i > 0 ? "mt-2 pt-2 border-t border-border-subtle/30" : ""}>
+                <div className="font-medium text-fg-muted">{r.title}</div>
+                <a href={r.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-link hover:underline truncate block">{r.domain}{r.date ? ` · ${r.date}` : ""}</a>
+                {r.snippet && <div className="text-[11px] text-fg-fainter mt-0.5 line-clamp-2">{r.snippet}</div>}
+              </div>
+            ))}
+          </div>
+        ) : (
+          rawResult && (
+            <pre className={"max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg px-3 py-2 text-[11px] font-mono " +
+              (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
+            >
+              {formatResultText(rawResult)}
+            </pre>
+          )
         )}
       </div>
     );
