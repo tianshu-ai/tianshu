@@ -732,10 +732,10 @@ function formatResultText(text: string, maxLen = 4000): string {
     }
     // Generic { ok, text } or { ok, message } result
     if ("text" in parsed && typeof parsed.text === "string") {
-      return truncate(parsed.text, maxLen);
+      return formatToon(parsed.text, maxLen);
     }
     if ("message" in parsed && typeof parsed.message === "string") {
-      return truncate(parsed.message, maxLen);
+      return formatToon(parsed.message, maxLen);
     }
     // { ok, data } — stringify data
     if ("data" in parsed && parsed.data != null) {
