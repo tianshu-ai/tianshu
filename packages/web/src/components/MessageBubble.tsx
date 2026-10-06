@@ -1451,6 +1451,16 @@ function ConfiguredOutputRenderer({
     );
   }
 
+  if (cfg.format === "files") {
+    return (
+      <div className={"max-h-80 overflow-auto rounded-lg px-3 py-2 " +
+        (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}
+      >
+        <FilesView text={text} />
+      </div>
+    );
+  }
+
   if (cfg.format === "markdown") {
     return (
       <div

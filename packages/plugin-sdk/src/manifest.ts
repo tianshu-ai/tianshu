@@ -404,9 +404,10 @@ export interface ToolDisplayContribution {
      *  - `"table"` — tabular display.
      *  - `"json"` — syntax-highlighted JSON.
      *  - `"code"` — code block with optional language.
+     *  - `"files"` — structured file list with icons and sizes.
      *  - `"plain"` — monospace pre block.
      */
-    format: "terminal" | "markdown" | "table" | "json" | "code" | "plain";
+    format: "terminal" | "markdown" | "table" | "json" | "code" | "files" | "plain";
     /** Extract this field from a JSON result object for display
      *  (e.g. `"message"`, `"stdout"`). */
     extract?: string;

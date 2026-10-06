@@ -16,7 +16,7 @@ export interface WireToolDisplay {
     omit?: string[];
   };
   output?: {
-    format: "terminal" | "markdown" | "table" | "json" | "code" | "plain";
+    format: "terminal" | "markdown" | "table" | "json" | "code" | "files" | "plain";
     extract?: string;
     language?: string;
   };

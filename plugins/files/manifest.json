@@ -172,7 +172,7 @@
       {
         "tool": "list_dir",
         "input": { "format": "key-value", "pick": ["path"], "labels": { "path": "Directory" } },
-        "output": { "format": "plain" }
+        "output": { "format": "files" }
       }
     ],
     "skills": [
