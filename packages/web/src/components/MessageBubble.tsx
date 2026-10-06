@@ -46,7 +46,7 @@ import type {
 import MessageAttachments from "./MessageAttachments";
 import McpUiFrame from "./McpUiFrame";
 import { humanizeArgs, humanizeToolCall, humanizeToolGroup, inferRender, normalizeBridgeName, shortToolName, extractFileContent, extractFileResultContent, extToLang, type T } from "../lib/humanize-tool";
-import { translate } from "../lib/i18n";
+import { translate, type TranslationKey } from "../lib/i18n";
 import { getToolDisplay, type ResolvedToolDisplay } from "../lib/tool-display";
 import { useT } from "../hooks/useT";
 
@@ -464,7 +464,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         </div>
         {expanded && result && (
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
-            {formatResultText(result.text)}
+            {formatResultText(result.text, undefined, t)}
           </pre>
         )}
       </>
@@ -509,7 +509,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         </div>
         {expanded && result && (
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
-            {formatResultText(result.text)}
+            {formatResultText(result.text, undefined, t)}
           </pre>
         )}
       </>
@@ -553,7 +553,7 @@ function ToolCallRow({ call, inCard = false }: { call: MergedToolCall; inCard?: 
         </button>
         {expanded && result && (
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-xs text-fg-muted">
-            {formatResultText(result.text)}
+            {formatResultText(result.text, undefined, t)}
           </pre>
         )}
         {uiResources.map((u, i) => (
@@ -684,12 +684,12 @@ function formatArgsText(args: Record<string, unknown>, toolName?: string, t: T =
  * (exec/bridge_exec) and extracts the meaningful content (stdout/stderr)
  * instead of showing raw JSON with ok/exit_code/truncated/etc metadata.
  */
-function formatResultText(text: string, maxLen = 4000): string {
+function formatResultText(text: string, maxLen = 4000, t: T = translate): string {
   const trimmed = text.trim();
   // Strip common "ok:true, message:" / "ok:false, message:" prefix
   const msgMatch = trimmed.match(/^ok:\s*(?:true|false)\s*,\s*message:\s*"?(.*?)"?\s*$/s);
   if (msgMatch) return truncate(msgMatch[1], maxLen);
-  if (!trimmed.startsWith("{")) return formatToon(text, maxLen);
+  if (!trimmed.startsWith("{")) return formatToon(text, maxLen, t);
   try {
     const parsed = JSON.parse(trimmed);
     if (typeof parsed !== "object" || parsed === null) return truncate(text, maxLen);
@@ -732,10 +732,10 @@ function formatResultText(text: string, maxLen = 4000): string {
     }
     // Generic { ok, text } or { ok, message } result
     if ("text" in parsed && typeof parsed.text === "string") {
-      return formatToon(parsed.text, maxLen);
+      return formatToon(parsed.text, maxLen, t);
     }
     if ("message" in parsed && typeof parsed.message === "string") {
-      return formatToon(parsed.message, maxLen);
+      return formatToon(parsed.message, maxLen, t);
     }
     // { ok, data } — stringify data
     if ("data" in parsed && parsed.data != null) {
@@ -746,7 +746,7 @@ function formatResultText(text: string, maxLen = 4000): string {
     return truncate(text, maxLen);
   } catch {
     // Not JSON — try TOON format: "key:value, key:value, ..." or multi-line TOON
-    return formatToon(text, maxLen);
+    return formatToon(text, maxLen, t);
   }
 }
 
@@ -761,21 +761,21 @@ const TOON_HIDDEN_KEYS = new Set([
   "sessionId", "parentId", "leafId", "projectSlug",
 ]);
 
-// Human-readable key labels
-const TOON_KEY_LABELS: Record<string, string> = {
-  name: "名称", description: "描述", workerCount: "Workers", pluginCount: "Plugins",
-  isActive: "已激活", enabled: "已启用", status: "状态",
-  updatedAt: "更新时间", createdAt: "创建时间", endedAt: "结束时间",
-  title: "标题", priority: "优先级", assignee: "负责人", column: "列",
-  modelId: "模型", source: "来源", path: "路径", bytes: "大小",
-  ok: "结果", error: "错误", message: "信息", count: "数量",
-};
+// Keys that have i18n labels (toonKey.* keys in i18n.ts)
+const TOON_HUMANIZED_KEYS = new Set([
+  "name", "description", "workerCount", "pluginCount",
+  "isActive", "enabled", "status",
+  "updatedAt", "createdAt", "endedAt",
+  "title", "priority", "assignee", "column",
+  "modelId", "source", "path", "bytes",
+  "ok", "error", "message", "count",
+]);
 
 /** Format a toon value for display. */
-function humanizeToonValue(key: string, val: string): string {
+function humanizeToonValue(key: string, val: string, t: T): string {
   // Boolean
-  if (val === "true") return "✓ 是";
-  if (val === "false") return "✗ 否";
+  if (val === "true") return t("toonVal.yes");
+  if (val === "false") return t("toonVal.no");
   // Timestamps (unix ms > 1600000000000)
   if (/^\d{13}$/.test(val)) {
     try { return new Date(Number(val)).toLocaleString(); } catch { /* */ }
@@ -790,7 +790,7 @@ function humanizeToonValue(key: string, val: string): string {
   return val;
 }
 
-function formatToon(text: string, maxLen: number): string {
+function formatToon(text: string, maxLen: number, t: T = translate): string {
   const trimmed = text.trim();
   // Heuristic: looks like TOON if it has at least 2 unquoted "word:" patterns
   const toonFieldCount = (trimmed.match(/(?:^|, )\w[\w.]*:/g) || []).length;
@@ -808,8 +808,8 @@ function formatToon(text: string, maxLen: number): string {
         const val = f.slice(colonIdx + 1).trim();
         // Skip hidden technical keys
         if (TOON_HIDDEN_KEYS.has(key)) return null;
-        const label = TOON_KEY_LABELS[key] || key;
-        const humanVal = humanizeToonValue(key, val);
+        const label = TOON_HUMANIZED_KEYS.has(key) ? t((`toonKey.${key}`) as TranslationKey) : key;
+        const humanVal = humanizeToonValue(key, val, t);
         return `${label}: ${humanVal}`;
       })
       .filter(Boolean)
@@ -1053,7 +1053,8 @@ function ConfiguredOutputRenderer({
   failed: boolean;
   cfg: NonNullable<ResolvedToolDisplay["output"]>;
 }) {
-  const displayText = cfg.extract ? extractResultField(text, cfg.extract) : formatResultText(text);
+  const t = useT();
+  const displayText = cfg.extract ? extractResultField(text, cfg.extract) : formatResultText(text, undefined, t);
 
   if (cfg.format === "terminal") {
     return (
@@ -1182,7 +1183,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
     // Full terminal mode: both input and output are terminal-style
     if (displayConfig.input?.format === "terminal" && displayConfig.output?.format === "terminal") {
       const cmd = typeof call.arguments.command === "string" ? call.arguments.command : undefined;
-      const output = call.result ? formatResultText(call.result.text) : "";
+      const output = call.result ? formatResultText(call.result.text, undefined, t) : "";
       return (
         <div className="ml-5 mt-0.5 mb-1 rounded-lg overflow-hidden border border-[#333] shadow-sm">
           <div className="flex items-center gap-1.5 px-3 py-1 bg-[#1a1a1a]">
@@ -1220,7 +1221,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
           <pre className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
             (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
           >
-            {formatResultText(call.result.text)}
+            {formatResultText(call.result.text, undefined, t)}
           </pre>
         )}
       </div>
@@ -1232,7 +1233,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
 
   if (renderType === "terminal") {
     const cmd = typeof call.arguments.command === "string" ? call.arguments.command : undefined;
-    const output = call.result ? formatResultText(call.result.text) : "";
+    const output = call.result ? formatResultText(call.result.text, undefined, t) : "";
     return (
       <div className="ml-5 mt-0.5 mb-1 rounded-lg overflow-hidden border border-[#333] shadow-sm">
         <div className="flex items-center gap-1.5 px-3 py-1 bg-[#1a1a1a]">
@@ -1277,7 +1278,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
             <pre className={"max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-lg px-3 py-2 text-[11px] font-mono " +
               (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
             >
-              {formatResultText(rawResult)}
+              {formatResultText(rawResult, undefined, t)}
             </pre>
           )
         )}
@@ -1304,7 +1305,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
     // Output content (for read_file)
     const fileResult = call.result ? extractFileResultContent(call.result.text) : undefined;
     // Fallback result text for non-file-shaped results
-    const fallbackResult = call.result && !fileResult ? formatResultText(call.result.text) : undefined;
+    const fallbackResult = call.result && !fileResult ? formatResultText(call.result.text, undefined, t) : undefined;
 
     return (
       <div className="ml-5 mt-0.5 mb-1 rounded-lg overflow-hidden border border-[#333] shadow-sm">
@@ -1399,7 +1400,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
           className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
             (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
         >
-          {formatResultText(call.result.text)}
+          {formatResultText(call.result.text, undefined, t)}
         </pre>
       )}
     </div>
