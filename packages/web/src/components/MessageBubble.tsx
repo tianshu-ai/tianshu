@@ -710,12 +710,15 @@ function formatResultText(text: string, maxLen = 4000): string {
       // Try to decode base64 text content for display
       if (typeof parsed.base64 === "string" && parsed.base64.length > 0 && b < 50000) {
         try {
-          const decoded = atob(parsed.base64);
-          // Check if it looks like text (no control chars except newline/tab)
-          if (!/[\x00-\x08\x0e-\x1f]/.test(decoded)) {
+          const raw = atob(parsed.base64);
+          const bytes = Uint8Array.from(raw, (c) => c.charCodeAt(0));
+          // Check if it looks like text (no control chars except newline/tab/cr)
+          const hasBinary = bytes.some((b) => b < 0x09 || (b > 0x0d && b < 0x20 && b !== 0x1b));
+          if (!hasBinary) {
+            const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
             return truncate(`${fname} (${b} bytes)\n\n${decoded}`, maxLen);
           }
-        } catch { /* not valid base64 */ }
+        } catch { /* not valid base64 or not valid utf-8 */ }
       }
       // No decodable content — just show path + size
       return parsed.ok === false
