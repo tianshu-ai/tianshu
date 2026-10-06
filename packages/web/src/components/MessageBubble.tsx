@@ -702,6 +702,26 @@ function formatResultText(text: string, maxLen = 4000): string {
       // All empty — show exit code only
       return `exit code: ${parsed.exit_code ?? 0}`;
     }
+    // File operation result: { ok, path, bytes, base64? }
+    if ("path" in parsed && "bytes" in parsed) {
+      const p = typeof parsed.path === "string" ? parsed.path : "";
+      const b = typeof parsed.bytes === "number" ? parsed.bytes : 0;
+      const fname = p.split("/").pop() || p;
+      // Try to decode base64 text content for display
+      if (typeof parsed.base64 === "string" && parsed.base64.length > 0 && b < 50000) {
+        try {
+          const decoded = atob(parsed.base64);
+          // Check if it looks like text (no control chars except newline/tab)
+          if (!/[\x00-\x08\x0e-\x1f]/.test(decoded)) {
+            return truncate(`${fname} (${b} bytes)\n\n${decoded}`, maxLen);
+          }
+        } catch { /* not valid base64 */ }
+      }
+      // No decodable content — just show path + size
+      return parsed.ok === false
+        ? `Failed: ${fname}`
+        : `${fname} (${b} bytes)`;
+    }
     // Generic { ok, text } or { ok, message } result
     if ("text" in parsed && typeof parsed.text === "string") {
       return truncate(parsed.text, maxLen);
