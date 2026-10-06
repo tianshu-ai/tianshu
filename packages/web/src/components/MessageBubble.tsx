@@ -1180,14 +1180,20 @@ function RecallToolCallRow({ name, args, result }: { name: string; args: string;
   );
 }
 
-/** Parse <!--inbox-events:[...]--> from a text blob. Returns parsed events + remaining text. */
+/** Parse <!--inbox-events:[...]--> from a text blob. Returns parsed events + remaining text.
+ *  Also strips any trailing <system-note>...</system-note> wrapper that only exists to
+ *  tell the agent how to acknowledge the inbox event — user-irrelevant noise. */
 function extractInboxEvents(text: string): { events: Array<{ kind: string; text: string; source?: string; firedAt?: string; scheduleType?: string; title?: string }>; rest: string } {
   const match = text.match(/<!--\s*inbox-events:(\[.*?\])\s*-->/s);
   if (!match) return { events: [], rest: text };
   try {
     const parsed = JSON.parse(match[1]);
     if (Array.isArray(parsed)) {
-      const rest = (text.slice(0, match.index!) + text.slice(match.index! + match[0].length)).trim();
+      let rest = (text.slice(0, match.index!) + text.slice(match.index! + match[0].length)).trim();
+      // Strip <system-note>...</system-note> blocks — these are agent-only instructions
+      rest = rest.replace(/<system-note>[\s\S]*?<\/system-note>/g, "").trim();
+      // Also handle unclosed <system-note> ... (e.g. truncated / malformed)
+      rest = rest.replace(/<system-note>[\s\S]*$/g, "").trim();
       return { events: parsed, rest };
     }
   } catch { /* fall through */ }
