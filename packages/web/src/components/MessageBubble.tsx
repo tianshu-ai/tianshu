@@ -761,6 +761,8 @@ const TOON_HIDDEN_KEYS = new Set([
   "slug", "id", "isCurrent", "kind", "type", "_id", "userId", "tenantId",
   "sessionId", "parentId", "leafId", "projectSlug",
   "schema", "tianshuVersion", "extractedAt", "extractedFrom",
+  // Duplicate / low-value fields
+  "origin", "editable",
 ]);
 
 /** True if this toon path should be hidden (exact match or any segment is hidden). */
@@ -860,7 +862,10 @@ function formatToon(text: string, maxLen: number, t: T = translate): string {
     return rendered.join("\n");
   }).join("\n\n");
 
-  return truncate(formatted, maxLen);
+  // No truncation — outer <pre> has overflow-auto, user can scroll.
+  // maxLen is unused here but kept in signature for callers.
+  void maxLen;
+  return formatted;
 }
 
 // ── Search result parser ────────────────────────────────────────
