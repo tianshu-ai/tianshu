@@ -39,29 +39,35 @@ export function checkRuntime(): CheckGroup {
     (platform === "darwin" && arch === "arm64") ||
     platform === "linux";
   lines.push({
-    severity: supported ? "ok" : "warning",
+    severity: supported ? "ok" : "info",
     text: `${platform} ${release} (${arch})`,
     detail: supported
       ? undefined
-      : "Sandbox features need macOS Apple Silicon or Linux. Other platforms can run the chat surface but exec/browser tools won't work.",
+      : platform === "win32"
+        ? "Windows is supported for chat and most plugins. Sandbox and openshell features are macOS/Linux only."
+        : "Sandbox features need macOS Apple Silicon or Linux. Other platforms can run the chat surface but exec/browser tools won't work.",
   });
 
   // HOME env — openshell-gateway and other tools need it.
   // systemd services on Linux often don't set HOME.
-  if (!process.env.HOME) {
+  // Windows uses USERPROFILE instead of HOME — that's normal.
+  const homeVar = process.env.HOME ?? process.env.USERPROFILE;
+  if (!homeVar) {
     lines.push({
-      severity: "warning",
+      severity: platform === "win32" ? "info" : "warning",
       text: "HOME environment variable not set",
       detail:
-        "Some tools (openshell-gateway) require HOME. " +
-        (platform === "linux"
-          ? 'If running under systemd, add Environment=HOME=/root (or the appropriate user home) to the service unit.'
-          : "Set it in your shell profile."),
+        platform === "win32"
+          ? "Neither HOME nor USERPROFILE is set. This is unusual on Windows; Node's os.homedir() should still resolve correctly."
+          : "Some tools (openshell-gateway) require HOME. " +
+            (platform === "linux"
+              ? 'If running under systemd, add Environment=HOME=/root (or the appropriate user home) to the service unit.'
+              : "Set it in your shell profile."),
     });
   } else {
     lines.push({
       severity: "ok",
-      text: `HOME=${process.env.HOME}`,
+      text: platform === "win32" ? `USERPROFILE=${homeVar}` : `HOME=${homeVar}`,
     });
   }
 

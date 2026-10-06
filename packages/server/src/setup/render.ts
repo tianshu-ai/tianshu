@@ -7,7 +7,7 @@
 
 import * as p from "@clack/prompts";
 
-export type CheckSeverity = "ok" | "warning" | "blocker";
+export type CheckSeverity = "ok" | "info" | "warning" | "blocker";
 
 export interface CheckLine {
   severity: CheckSeverity;
@@ -25,6 +25,7 @@ export interface CheckGroup {
 
 const SYMBOLS: Record<CheckSeverity, string> = {
   ok: "✓",
+  info: "ℹ",
   warning: "⚠",
   blocker: "✗",
 };
@@ -47,12 +48,13 @@ export function renderGroup(group: CheckGroup): void {
 /** Summary helpers used by `tianshu doctor` and the startup hook. */
 export interface CheckTally {
   ok: number;
+  info: number;
   warning: number;
   blocker: number;
 }
 
 export function tallyGroups(groups: readonly CheckGroup[]): CheckTally {
-  const tally: CheckTally = { ok: 0, warning: 0, blocker: 0 };
+  const tally: CheckTally = { ok: 0, info: 0, warning: 0, blocker: 0 };
   for (const g of groups) {
     for (const l of g.lines) {
       tally[l.severity] += 1;

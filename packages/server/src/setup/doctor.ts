@@ -56,6 +56,7 @@ export interface DoctorOpts {
 export interface DoctorReport {
   groups: CheckGroup[];
   ok: number;
+  info: number;
   warning: number;
   blocker: number;
 }
@@ -127,7 +128,7 @@ export async function runDoctor(opts: DoctorOpts = {}): Promise<number> {
   }
   p.intro("Tianshu doctor");
   for (const g of report.groups) renderGroup(g);
-  const tally = { ok: report.ok, warning: report.warning, blocker: report.blocker };
+  const tally = { ok: report.ok, info: report.info ?? 0, warning: report.warning, blocker: report.blocker };
   const suggestion =
     report.blocker > 0
       ? "Run `tianshu setup --wizard` for an interactive fix, or edit the files mentioned above."

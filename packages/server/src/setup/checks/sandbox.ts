@@ -34,6 +34,18 @@ export async function checkSandbox(
 ): Promise<CheckGroup> {
   const lines: CheckGroup["lines"] = [];
 
+  // Microsandbox is macOS/Linux only. On Windows, skip the check
+  // entirely with an informational note instead of a scary warning
+  // about missing native bindings.
+  if (process.platform === "win32") {
+    lines.push({
+      severity: "info",
+      text: "Sandbox not available on Windows",
+      detail: "The microsandbox runtime requires macOS (Apple Silicon) or Linux. Chat and most plugins work normally without it.",
+    });
+    return { title: "Sandbox", lines };
+  }
+
   let mod: typeof import("microsandbox") | null = null;
   try {
     mod = await import("microsandbox");
