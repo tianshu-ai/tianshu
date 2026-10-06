@@ -166,6 +166,48 @@ const TOOL_MAP: Record<string, Humanizer> = {
   board_create: (t) => t("tool.boardCreate"),
   board_update: (t) => t("tool.boardUpdate"),
   board_render: (t) => t("tool.boardRender"),
+
+  // Host tools — system
+  compact_context: (t) => t("tool.compactContext"),
+  tool_catalog_refresh: (t) => t("tool.catalogRefresh"),
+  recall_range: (t) => t("tool.recallRange"),
+  recall_tool_call: (t) => t("tool.recallToolCall"),
+  inspect_session: (t) => t("tool.inspectSession"),
+  read_session_log: (t) => t("tool.readSessionLog"),
+
+  // Host tools — interactive
+  switch_panel: (t, a) => {
+    const p = str(a.panel);
+    if (!p || p === "list") return t("tool.listPanels");
+    return t("tool.switchPanel");
+  },
+  solution: (t, a) => {
+    const action = str(a.action);
+    if (action === "list") return t("tool.solutionList");
+    if (action === "active" || action === "get") return t("tool.solutionGet");
+    if (action === "save") return t("tool.solutionSave");
+    return t("tool.solution");
+  },
+  ask_user: (t, a) => {
+    const q = str(a.question);
+    return q ? t("tool.askUserNamed", { question: shorten(q, 30) }) : t("tool.askUser");
+  },
+  channel_send_file: (t, a) => {
+    const p = str(a.path);
+    return p ? t("tool.sendFileNamed", { name: basename(p) }) : t("tool.sendFile");
+  },
+  nudge_session: (t) => t("tool.nudgeSession"),
+
+  // Tasks
+  task_create: (t, a) => {
+    const title = str(a.title);
+    return title ? t("tool.taskCreateNamed", { title: shorten(title, 20) }) : t("tool.taskCreate");
+  },
+  task_list: (t) => t("tool.taskList"),
+  task_update: (t) => t("tool.taskUpdate"),
+
+  // Directory
+  list_dir: (t) => t("tool.listFiles"),
 };
 
 // ── Public API ────────────────────────────────────────────
