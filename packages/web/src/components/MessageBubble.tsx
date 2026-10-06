@@ -733,7 +733,7 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
         <pre className={"max-h-64 overflow-auto whitespace-pre-wrap break-all px-3 py-2 text-[11px] font-mono leading-relaxed " +
           (failed ? "bg-[#0d0d0d] text-[#e06c75]" : "bg-[#0d0d0d] text-[#abb2bf]")}
         >
-          {cmd && <><span className="text-[#98c379]">$ </span><span className="text-[#e5c07b]">{cmd}</span>\n</>}
+          {cmd && <><span className="text-[#98c379]">$ </span><span className="text-[#e5c07b]">{cmd}</span>{"\n"}</>}
           {output}
           {failed && call.result && "\n"}
           {failed && <span className="text-[#e06c75]">exit {(() => { try { const p = JSON.parse(call.result?.text ?? ""); return p.exit_code ?? 1; } catch { return 1; } })()}</span>}
