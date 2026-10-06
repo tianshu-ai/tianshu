@@ -208,6 +208,62 @@ const TOOL_MAP: Record<string, Humanizer> = {
 
   // Directory
   list_dir: (t) => t("tool.listFiles"),
+
+  // File operations — missing
+  copy_file: (t, a) => {
+    const p = str(a.destination || a.dest || a.to);
+    return p ? t("tool.copyFileNamed", { name: basename(p) }) : t("tool.copyFile");
+  },
+  move_file: (t, a) => {
+    const p = str(a.destination || a.dest || a.to);
+    return p ? t("tool.moveFileNamed", { name: basename(p) }) : t("tool.moveFile");
+  },
+
+  // Config — missing
+  tenant_config_edit: (t) => t("tool.configEdit"),
+  tenant_config_delete: (t) => t("tool.configDelete"),
+  tenant_config_glob: (t) => t("tool.configGlob"),
+
+  // Workboard — missing
+  task_delete: (t) => t("tool.taskDelete"),
+  task_abort: (t) => t("tool.taskAbort"),
+  task_complete: (t) => t("tool.taskComplete"),
+  task_continue: (t) => t("tool.taskContinue"),
+  task_move: (t) => t("tool.taskMove"),
+  task_retry_fresh: (t) => t("tool.taskRetry"),
+  task_extend_timeout: (t) => t("tool.taskExtendTimeout"),
+  task_get_history: (t) => t("tool.taskHistory"),
+  worker_analytics: (t) => t("tool.workerAnalytics"),
+
+  // Board — missing
+  show_board: (t) => t("tool.boardShow"),
+  board_act: (t) => t("tool.boardAct"),
+
+  // Wiki — missing
+  wiki_write_page: (t) => t("tool.wikiWrite"),
+  wiki_delete_page: (t) => t("tool.wikiDelete"),
+  wiki_list_pages: (t) => t("tool.wikiList"),
+  wiki_list_sources: (t) => t("tool.wikiSources"),
+  wiki_journal_write: (t) => t("tool.wikiJournal"),
+  wiki_day_done: (t) => t("tool.wikiDayDone"),
+  wiki_next_day: (t) => t("tool.wikiNextDay"),
+  wiki_reset: (t) => t("tool.wikiReset"),
+  wiki_kb_scan: (t) => t("tool.wikiKbScan"),
+  wiki_kb_status: (t) => t("tool.wikiKbStatus"),
+  wiki_kb_read_file: (t) => t("tool.wikiKbRead"),
+  wiki_kb_save_knowledge: (t) => t("tool.wikiKbSave"),
+  wiki_kb_mark_done: (t) => t("tool.wikiKbDone"),
+
+  // Sandbox — missing
+  get_sandbox_status: (t) => t("tool.sandboxStatus"),
+  reset_sandbox: (t) => t("tool.sandboxReset"),
+  build_sandbox: (t) => t("tool.sandboxBuild"),
+  update_sandbox_config: (t) => t("tool.sandboxConfig"),
+  browser_screenshot: (t) => t("tool.browserScreenshot"),
+  browser_health_check: (t) => t("tool.browserHealthCheck"),
+
+  // Bridge — view image
+  bridge_view_image: (t) => t("tool.viewImage"),
 };
 
 // ── Public API ────────────────────────────────────────────
