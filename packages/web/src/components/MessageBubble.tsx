@@ -689,7 +689,7 @@ function formatResultText(text: string, maxLen = 4000): string {
   // Strip common "ok:true, message:" / "ok:false, message:" prefix
   const msgMatch = trimmed.match(/^ok:\s*(?:true|false)\s*,\s*message:\s*"?(.*?)"?\s*$/s);
   if (msgMatch) return truncate(msgMatch[1], maxLen);
-  if (!trimmed.startsWith("{")) return truncate(text, maxLen);
+  if (!trimmed.startsWith("{")) return formatToon(text, maxLen);
   try {
     const parsed = JSON.parse(trimmed);
     if (typeof parsed !== "object" || parsed === null) return truncate(text, maxLen);
