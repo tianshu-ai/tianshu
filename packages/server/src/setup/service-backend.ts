@@ -1,14 +1,16 @@
 // Platform dispatcher for tianshu's background-service backend.
 //
-// macOS  → launchd.ts   (launchctl, ~/Library/LaunchAgents)
-// Linux  → systemd.ts   (systemctl --user, ~/.config/systemd/user)
+// macOS   → launchd.ts         (launchctl, ~/Library/LaunchAgents)
+// Linux   → systemd.ts         (systemctl --user, ~/.config/systemd/user)
+// Windows → windows-service.ts (schtasks.exe + Task Scheduler XML)
 //
-// Both modules expose the same function surface. service.ts and the
-// wizard import THIS module and stay OS-agnostic.
+// All three modules expose the same function surface. service.ts and
+// the wizard import THIS module and stay OS-agnostic.
 
 import os from "node:os";
 import * as launchd from "./launchd.js";
 import * as systemd from "./systemd.js";
+import * as windowsService from "./windows-service.js";
 import type {
   ServiceStatus,
   LaunchctlResult,
@@ -43,25 +45,27 @@ export interface ServiceBackend {
 /** True on a platform we have a service backend for. */
 export function isServiceManaged(): boolean {
   const p = os.platform();
-  return p === "darwin" || p === "linux";
+  return p === "darwin" || p === "linux" || p === "win32";
 }
 
 /** Human name for the underlying init system. */
-export function backendName(): "launchd" | "systemd" | "unsupported" {
+export function backendName(): "launchd" | "systemd" | "schtasks" | "unsupported" {
   const p = os.platform();
   if (p === "darwin") return "launchd";
   if (p === "linux") return "systemd";
+  if (p === "win32") return "schtasks";
   return "unsupported";
 }
 
 /**
  * Return the backend for the current platform, or null on an
- * unsupported OS (Windows, etc.). Callers render a friendly message
- * on null rather than crashing.
+ * unsupported OS. Callers render a friendly message on null rather
+ * than crashing.
  */
 export function getBackend(): ServiceBackend | null {
   const p = os.platform();
   if (p === "darwin") return launchd as unknown as ServiceBackend;
   if (p === "linux") return systemd as unknown as ServiceBackend;
+  if (p === "win32") return windowsService as unknown as ServiceBackend;
   return null;
 }

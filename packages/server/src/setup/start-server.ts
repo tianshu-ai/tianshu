@@ -25,6 +25,7 @@ import os from "node:os";
 import path from "node:path";
 import { getBackend, backendName } from "./service-backend.js";
 import * as systemd from "./systemd.js";
+import * as windowsService from "./windows-service.js";
 import {
   findRepoRoot,
   isTianshuCheckout,
@@ -283,9 +284,10 @@ export async function runStartServer(
     p.log.success(`Wrote server.port=${serverPort} to config.json`);
   }
 
-  // Cross-platform branch. macOS → launchd, Linux → systemd (user).
+  // Cross-platform branch. macOS → launchd, Linux → systemd (user),
+  // Windows → Task Scheduler via schtasks.exe.
   const platform = os.platform();
-  if (platform === "darwin" || platform === "linux") {
+  if (platform === "darwin" || platform === "linux" || platform === "win32") {
     return startViaServiceManager({ repoRoot, serverPort, webPort });
   }
   p.log.info(
@@ -311,8 +313,10 @@ async function startViaServiceManager(
 ): Promise<StartServerResult> {
   const backend = getBackend();
   if (!backend) return SKIPPED;
-  const isSystemd = backendName() === "systemd";
-  const kind = isSystemd ? "systemd unit" : "launchd plist";
+  const name = backendName();
+  const isSystemd = name === "systemd";
+  const isSchtasks = name === "schtasks";
+  const kind = isSchtasks ? "scheduled task" : isSystemd ? "systemd unit" : "launchd plist";
 
   // On Linux, a user systemd instance is required. In containers /
   // minimal images without a user bus, bail early with a clear
@@ -326,6 +330,22 @@ async function startViaServiceManager(
         "Run the server directly instead:",
         `  cd ${opts.repoRoot}`,
         "  npm run dev   # or: npm run serve",
+      ].join("\n"),
+    );
+    return SKIPPED;
+  }
+
+  // On Windows, Task Scheduler must be available. Virtually all Windows
+  // installs have it; the main failure mode is group-policy restrictions.
+  if (isSchtasks && !windowsService.userBusAvailable()) {
+    p.log.warn(
+      [
+        "Windows Task Scheduler (schtasks.exe) is unavailable.",
+        "This can happen under restrictive group policies.",
+        "",
+        "Run the server directly instead:",
+        `  cd ${opts.repoRoot}`,
+        "  npm run dev",
       ].join("\n"),
     );
     return SKIPPED;
