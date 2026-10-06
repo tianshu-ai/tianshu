@@ -6,6 +6,63 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.82.0](https://github.com/tianshu-ai/tianshu/compare/v0.81.0...v0.82.0) (2026-10-06)
+
+
+### Features
+
+* **plugins:** declarative tool display formatter ([057251e](https://github.com/tianshu-ai/tianshu/commit/057251ef3302dc77cf2364eacb1422071ea90fec))
+* **ui:** built-in tool display defaults for all host tools ([2a67564](https://github.com/tianshu-ai/tianshu/commit/2a6756426c274c3b67908b6984ef087bc91b3aa0))
+* **ui:** collapsible long lists in TOON output — …more (N) to expand ([b29e5b8](https://github.com/tianshu-ai/tianshu/commit/b29e5b8025d37fbf3e49fe11ae5a02f1625bc31c))
+* **ui:** complete TOOL_MAP coverage — all 80+ tools humanized ([caa03fa](https://github.com/tianshu-ai/tianshu/commit/caa03fa2a25b92a1988ffabed0e4ffccee3998dd))
+* **ui:** complete TOOL_MAP coverage for all system tools ([2676f9c](https://github.com/tianshu-ai/tianshu/commit/2676f9c2498f402386623bad222af20231a2c89f))
+* **ui:** expand array arguments in tool call inputs ([2fc84f6](https://github.com/tianshu-ai/tianshu/commit/2fc84f62f7f6d1287fec5b7a80aa4faad906064d))
+* **ui:** expandable search result snippets — click '…more' to show full text ([aa5ddf7](https://github.com/tianshu-ai/tianshu/commit/aa5ddf74a78cd9ba4529a3320a2331fcbad05325))
+* **ui:** file viewer renderer for read/write/edit/delete_file ([3983d80](https://github.com/tianshu-ai/tianshu/commit/3983d807ce31e009b49159e08e54a412aab0cfa4))
+* **ui:** humanize toon output — translate keys, format values, hide tech fields ([d572bc9](https://github.com/tianshu-ai/tianshu/commit/d572bc9bc5d3b741d3b9c7df9a4a2b20746e8035))
+* **ui:** i18n for TOON key labels — all three languages ([77333cb](https://github.com/tianshu-ai/tianshu/commit/77333cb630f3cb65f8f98d0e54bcde0fc3541ade))
+* **ui:** nested TOON path handling — groups, lists, strip spec.* prefix ([885e85b](https://github.com/tianshu-ai/tianshu/commit/885e85b52c520ea0aebab170778fba59dba5120c))
+* **ui:** parse TOON format into readable key-value lines ([8102039](https://github.com/tianshu-ai/tianshu/commit/8102039b0110fc17a40569b503731b2fd2c6303f))
+* **ui:** recall history now mimics the conversation chat layout ([1987c72](https://github.com/tianshu-ai/tianshu/commit/1987c72935809f685b56d775ade0d52f3fa13309))
+* **ui:** recall uses main-chat bubble/tool styles for visual parity ([4210c9f](https://github.com/tianshu-ai/tianshu/commit/4210c9ffd3fe9204b3c9437de7f0cfe224a01bc5))
+* **ui:** semantic humanizeArgs for all tool call details ([26afdd0](https://github.com/tianshu-ai/tianshu/commit/26afdd0ae0bfaa4f7ae036a34b18b5de82da320a))
+* **ui:** structured file list renderer for list_dir / sync_up / sync_down ([95988d4](https://github.com/tianshu-ai/tianshu/commit/95988d4c5db10e1539b42bc67dfc9ac3254e3b30))
+* **ui:** structured recall_range/recall_near renderer with turn grouping ([76e55f1](https://github.com/tianshu-ai/tianshu/commit/76e55f12006d5de8297f8866a2d7c2b3f47f532d))
+* **ui:** structured search results for web_search ([0eba3e3](https://github.com/tianshu-ai/tianshu/commit/0eba3e3f7e3eb01236781adc5a79bd5f67711c38))
+* **ui:** structured TOON rendering with collapsible long text ([2afa148](https://github.com/tianshu-ai/tianshu/commit/2afa14869a66fb2c9ecd1a72bc3e52bc80bd4619))
+* **ui:** wire list_dir to new 'files' format for structured file list ([bd0a3fb](https://github.com/tianshu-ai/tianshu/commit/bd0a3fbb6163882f5dede00394149f513aceb58a))
+* **web:** i18n humanizeArgs — toolDetail.* keys for en/zh/de ([b2c2654](https://github.com/tianshu-ai/tianshu/commit/b2c265433b9bf6695b350cffd23ef61d6e50b0a3))
+
+
+### Bug Fixes
+
+* **server:** add 'files' to toolDisplay output format whitelist ([981daa2](https://github.com/tianshu-ai/tianshu/commit/981daa2390ab88be88c0dafd4627f4620c09926f))
+* **ui:** decode base64 as UTF-8 — fixes Chinese garbled text in read_file ([006ce99](https://github.com/tianshu-ai/tianshu/commit/006ce99978694c394ebe693f07d621f65d625f7d))
+* **ui:** expand full args in tool call input area, keep humanized short form only for collapsed row ([750f5ec](https://github.com/tianshu-ai/tianshu/commit/750f5ec533b9e62783b30fd3cd83e50fa69e886d))
+* **ui:** humanize switch_panel — '切换到知识库面板' not '切换面板: wiki.main' ([de83516](https://github.com/tianshu-ai/tianshu/commit/de8351696321ace24316d82c7b26e5639aa39b65))
+* **ui:** inferRender normalize bridge prefix — file viewer now works for bridge tools ([e7806f4](https://github.com/tianshu-ai/tianshu/commit/e7806f4497901429eff1fb30d95acc1a0222d9d7))
+* **ui:** non-JSON result text now goes through formatToon ([0eb81c8](https://github.com/tianshu-ai/tianshu/commit/0eb81c8d32a96600473af7c9d40f0e8803e0b1b2))
+* **ui:** parse file operation results — decode base64 text content ([fa86203](https://github.com/tianshu-ai/tianshu/commit/fa8620318b4d42d60f0bd77d3cc8452a7b0d4aa7))
+* **ui:** raise formatResultText maxLen 4000→20000 ([aa356c0](https://github.com/tianshu-ai/tianshu/commit/aa356c0cdca915642f9aea835be394edc27f3800))
+* **ui:** recall merges toolCall + toolResult, splits args per line ([07d8c24](https://github.com/tianshu-ai/tianshu/commit/07d8c245cd5e0ed051bf9cf49ccd75a22accfe72))
+* **ui:** recall renders inbox-events marker as EventCard, not raw text ([848183d](https://github.com/tianshu-ai/tianshu/commit/848183dfe3a00fdfe80cf4250dd19973b2b6fabc))
+* **ui:** remove built-in toolDisplay overrides, fix result parsing ([4e4e2ce](https://github.com/tianshu-ai/tianshu/commit/4e4e2cecc4638366d9bfe7ff5d63af155d33fd89))
+* **ui:** remove formatToon truncation + hide duplicate 'origin'/'editable' fields ([94e122c](https://github.com/tianshu-ai/tianshu/commit/94e122cac6480d11812fb23de0c7cb4b95eb0d0a))
+* **ui:** route {ok,text} and {ok,message} through formatToon ([8c36f33](https://github.com/tianshu-ai/tianshu/commit/8c36f33ca6e32e4f0b4116818f96982429c11207))
+* **ui:** skip screenshot rendering for file-manifest tools (sync_up/sync_down) ([fde8f8f](https://github.com/tianshu-ai/tianshu/commit/fde8f8f0b770894c51af42dfe0326e713608f326))
+* **ui:** strip &lt;system-note&gt; wrapper from recall user turns ([64163f6](https://github.com/tianshu-ai/tianshu/commit/64163f65385539df17c3eb2952dda2bb28a5b957))
+* **ui:** strip markdown/HTML noise from search snippets ([a305d52](https://github.com/tianshu-ai/tianshu/commit/a305d522074c84e6cacfa048710994aeaf640595))
+* **ui:** task_create title shown instead of … in collapsed view ([123ddbb](https://github.com/tianshu-ai/tianshu/commit/123ddbbb2b9cab42aff32d2bdcabe24c1229f885))
+* **ui:** terminal newline after command — JSX literal \n → {"\n"} ([f84a5e7](https://github.com/tianshu-ai/tianshu/commit/f84a5e700604468ace4c97a7de5d99512aee8a2e))
+* **ui:** whitelist screenshot rendering — only exec/browser tools show images ([91060fe](https://github.com/tianshu-ai/tianshu/commit/91060fe48b3afd88174724dc884f3809aca4ae59))
+* **ui:** write_file shows content preview — decode base64 param from bridge ([bee66f8](https://github.com/tianshu-ai/tianshu/commit/bee66f8c480301ac3de344aeca86cda879f5f03f))
+* **ui:** write_file shows content preview in expanded detail ([17ba263](https://github.com/tianshu-ai/tianshu/commit/17ba263c94f2e6b1f6d0de969563387545e06fd9))
+
+
+### Refactor
+
+* **ui:** render-type-aware tool call detail view ([2bedd89](https://github.com/tianshu-ai/tianshu/commit/2bedd898ca2c53c5f5b0451eca3aeaff2080a726))
+
 ## [0.81.0](https://github.com/tianshu-ai/tianshu/compare/v0.80.0...v0.81.0) (2026-10-05)
 
 
