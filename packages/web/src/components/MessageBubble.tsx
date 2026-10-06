@@ -818,54 +818,105 @@ function formatToonList(key: string, val: string, t: T): string {
   return "\n  • " + parts.join("\n  • ");
 }
 
-function formatToon(text: string, maxLen: number, t: T = translate): string {
-  const trimmed = text.trim();
-  // Heuristic: looks like TOON if it has at least 2 unquoted "word:" patterns
-  const toonFieldCount = (trimmed.match(/(?:^|, )\w[\w.]*:/g) || []).length;
-  if (toonFieldCount < 2) return truncate(text, maxLen);
+// Structured toon rendering types
+type ToonNode =
+  | { kind: "group"; label: string }
+  | { kind: "field"; label: string; value: string; longText: boolean; indent: boolean }
+  | { kind: "list"; label: string; items: string[]; indent: boolean }
+  | { kind: "spacer" };
 
-  // Split multi-line first (array of toon objects)
+/** Parse toon text into structured nodes for React rendering. */
+function parseToon(text: string, t: T): ToonNode[] | null {
+  const trimmed = text.trim();
+  const toonFieldCount = (trimmed.match(/(?:^|, )\w[\w.]*:/g) || []).length;
+  if (toonFieldCount < 2) return null;
+
+  const nodes: ToonNode[] = [];
   const lines = trimmed.split("\n").filter(Boolean);
-  const formatted = lines.map((line) => {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     const fields = line.split(/,\s+(?=\w[\w.]*:)/);
-    const rendered: string[] = [];
     let lastGroup = "";
     for (const f of fields) {
       const colonIdx = f.indexOf(":");
       if (colonIdx <= 0) continue;
       const key = f.slice(0, colonIdx).trim();
       const val = f.slice(colonIdx + 1).trim();
-      // Skip hidden technical keys / paths
       if (isHiddenToonPath(key)) continue;
-      // Nested path handling: group by top-level segment
       const segments = key.split(".");
-      // Strip leading "spec." or similar wrapper prefix (common in Solution output)
       const effective = segments[0] === "spec" ? segments.slice(1) : segments;
       if (effective.length === 0) continue;
       const label = humanizeToonKey(effective.join("."), t);
-      // Add group separator for nested paths
       const groupKey = effective.length > 1 ? effective[0] : "";
       if (groupKey && groupKey !== lastGroup) {
-        if (lastGroup) rendered.push("");
-        rendered.push(`[${humanizeToonKey(groupKey, t)}]`);
+        if (lastGroup || nodes.length > 0) nodes.push({ kind: "spacer" });
+        nodes.push({ kind: "group", label: humanizeToonKey(groupKey, t) });
         lastGroup = groupKey;
       } else if (!groupKey && lastGroup) {
-        rendered.push("");
+        nodes.push({ kind: "spacer" });
         lastGroup = "";
       }
-      // Format value — lists get bulleted
-      const humanVal = val.includes(",") ? formatToonList(key, val, t) : humanizeToonValue(key, val, t);
-      // Indent nested fields under their group
-      const prefix = groupKey ? "  " : "";
-      rendered.push(`${prefix}${label}: ${humanVal}`);
+      // List value
+      if (val.includes(",")) {
+        const parts = val.split(/,\s+/).map((s) => s.trim()).filter(Boolean);
+        if (parts.length >= 3) {
+          nodes.push({ kind: "list", label, items: parts, indent: !!groupKey });
+          continue;
+        }
+      }
+      const humanVal = humanizeToonValue(key, val, t);
+      // Long text if > 100 chars — will use ExpandableSnippet
+      const longText = humanVal.length > 100;
+      nodes.push({ kind: "field", label, value: humanVal, longText, indent: !!groupKey });
     }
-    return rendered.join("\n");
-  }).join("\n\n");
+    if (i < lines.length - 1) nodes.push({ kind: "spacer" });
+  }
+  return nodes;
+}
 
-  // No truncation — outer <pre> has overflow-auto, user can scroll.
-  // maxLen is unused here but kept in signature for callers.
+/** React component to render structured toon nodes with ExpandableSnippet for long text. */
+function ToonView({ nodes }: { nodes: ToonNode[] }) {
+  return (
+    <div className="text-[11px] font-mono text-fg-muted leading-relaxed">
+      {nodes.map((n, i) => {
+        if (n.kind === "spacer") return <div key={i} className="h-2" />;
+        if (n.kind === "group") return <div key={i} className="text-fg-strong font-semibold mt-0.5">[{n.label}]</div>;
+        if (n.kind === "field") {
+          return (
+            <div key={i} className={n.indent ? "pl-4" : ""}>
+              <span className="text-fg-fainter">{n.label}: </span>
+              {n.longText ? <ExpandableSnippet text={n.value} /> : <span className="whitespace-pre-wrap break-words">{n.value}</span>}
+            </div>
+          );
+        }
+        // list
+        return (
+          <div key={i} className={n.indent ? "pl-4" : ""}>
+            <span className="text-fg-fainter">{n.label}:</span>
+            <div className="pl-4">
+              {n.items.map((item, j) => (
+                <div key={j}>• {item}</div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function formatToon(text: string, maxLen: number, t: T = translate): string {
+  // Kept as string for backward compat with non-React callers.
+  // React callers should use parseToon + ToonView.
   void maxLen;
-  return formatted;
+  const nodes = parseToon(text, t);
+  if (!nodes) return text;
+  return nodes.map((n) => {
+    if (n.kind === "spacer") return "";
+    if (n.kind === "group") return `[${n.label}]`;
+    if (n.kind === "field") return (n.indent ? "  " : "") + `${n.label}: ${n.value}`;
+    return (n.indent ? "  " : "") + `${n.label}:\n` + n.items.map((it) => `  • ${it}`).join("\n");
+  }).join("\n");
 }
 
 // ── Search result parser ────────────────────────────────────────
@@ -1444,14 +1495,38 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
       <pre className="max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-bg-surface/60 px-2 py-1 text-[11px] text-fg-fainter font-mono">
         {formatArgsText(call.arguments, call.name, t)}
       </pre>
-      {call.result && (
-        <pre
-          className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
-            (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
-        >
-          {formatResultText(call.result.text, undefined, t)}
-        </pre>
-      )}
+      {call.result && (() => {
+        // Try structured toon rendering first — supports collapsible long text
+        const rawText = call.result.text.trim();
+        let toonNodes: ToonNode[] | null = null;
+        if (!rawText.startsWith("{")) {
+          toonNodes = parseToon(rawText, t);
+        } else {
+          try {
+            const parsed = JSON.parse(rawText);
+            if (typeof parsed === "object" && parsed !== null && "text" in parsed && typeof parsed.text === "string") {
+              toonNodes = parseToon(parsed.text, t);
+            }
+          } catch { /* fall through */ }
+        }
+        if (toonNodes && toonNodes.length > 0) {
+          return (
+            <div className={"max-h-80 overflow-auto rounded-lg px-3 py-2 " +
+              (failed ? "bg-rose-950/40" : "bg-bg-surface/60")}
+            >
+              <ToonView nodes={toonNodes} />
+            </div>
+          );
+        }
+        return (
+          <pre
+            className={"max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg px-2 py-1 text-[11px] font-mono " +
+              (failed ? "bg-rose-950/40 text-danger" : "bg-bg-surface/60 text-fg-muted")}
+          >
+            {formatResultText(call.result.text, undefined, t)}
+          </pre>
+        );
+      })()}
     </div>
   );
 }
