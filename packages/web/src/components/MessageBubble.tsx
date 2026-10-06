@@ -755,6 +755,41 @@ function formatResultText(text: string, maxLen = 4000): string {
  * TOON: "key:value, key:value" or multi-line "key:value, key:value\nkey:value, ..."
  * Splits on ", " that look like field separators (not inside quoted strings).
  */
+// Keys to hide from toon output — purely technical identifiers
+const TOON_HIDDEN_KEYS = new Set([
+  "slug", "id", "isCurrent", "kind", "type", "_id", "userId", "tenantId",
+  "sessionId", "parentId", "leafId", "projectSlug",
+]);
+
+// Human-readable key labels
+const TOON_KEY_LABELS: Record<string, string> = {
+  name: "名称", description: "描述", workerCount: "Workers", pluginCount: "Plugins",
+  isActive: "已激活", enabled: "已启用", status: "状态",
+  updatedAt: "更新时间", createdAt: "创建时间", endedAt: "结束时间",
+  title: "标题", priority: "优先级", assignee: "负责人", column: "列",
+  modelId: "模型", source: "来源", path: "路径", bytes: "大小",
+  ok: "结果", error: "错误", message: "信息", count: "数量",
+};
+
+/** Format a toon value for display. */
+function humanizeToonValue(key: string, val: string): string {
+  // Boolean
+  if (val === "true") return "✓ 是";
+  if (val === "false") return "✗ 否";
+  // Timestamps (unix ms > 1600000000000)
+  if (/^\d{13}$/.test(val)) {
+    try { return new Date(Number(val)).toLocaleString(); } catch { /* */ }
+  }
+  // Byte sizes
+  if (key.toLowerCase().includes("byte") && /^\d+$/.test(val)) {
+    const n = Number(val);
+    if (n > 1048576) return `${(n / 1048576).toFixed(1)} MB`;
+    if (n > 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${n} B`;
+  }
+  return val;
+}
+
 function formatToon(text: string, maxLen: number): string {
   const trimmed = text.trim();
   // Heuristic: looks like TOON if it has at least 2 unquoted "word:" patterns
@@ -764,17 +799,21 @@ function formatToon(text: string, maxLen: number): string {
   // Split multi-line first (array of toon objects)
   const lines = trimmed.split("\n").filter(Boolean);
   const formatted = lines.map((line) => {
-    // Split on ", " that precedes a key: pattern
-    // e.g. "slug:current, name:Current (live mirror), workerCount:5"
     const fields = line.split(/,\s+(?=\w[\w.]*:)/);
-    return fields.map((f) => {
-      const colonIdx = f.indexOf(":");
-      if (colonIdx <= 0) return f;
-      const key = f.slice(0, colonIdx).trim();
-      const val = f.slice(colonIdx + 1).trim();
-      // Humanize common keys
-      return `${key}: ${val}`;
-    }).join("\n");
+    return fields
+      .map((f) => {
+        const colonIdx = f.indexOf(":");
+        if (colonIdx <= 0) return f;
+        const key = f.slice(0, colonIdx).trim();
+        const val = f.slice(colonIdx + 1).trim();
+        // Skip hidden technical keys
+        if (TOON_HIDDEN_KEYS.has(key)) return null;
+        const label = TOON_KEY_LABELS[key] || key;
+        const humanVal = humanizeToonValue(key, val);
+        return `${label}: ${humanVal}`;
+      })
+      .filter(Boolean)
+      .join("\n");
   }).join("\n\n");
 
   return truncate(formatted, maxLen);
