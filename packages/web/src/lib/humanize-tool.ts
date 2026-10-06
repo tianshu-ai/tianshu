@@ -266,7 +266,14 @@ const ARGS_MAP: Record<string, ArgsFormatter> = {
   nudge_session: (t, a) => t("toolDetail.nudgeSession", { message: shorten(str(a.message) || "", 40) }),
 
   // File operations
-  write_file: (t, a) => t("toolDetail.writeFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
+  write_file: (t, a) => {
+    const name = str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown");
+    const content = str(a.content);
+    if (content) {
+      return t("toolDetail.writeFile", { name }) + "\n\n" + shorten(content, 200);
+    }
+    return t("toolDetail.writeFile", { name });
+  },
   read_file: (t, a) => t("toolDetail.readFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
   edit_file: (t, a) => t("toolDetail.editFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
   delete_file: (t, a) => t("toolDetail.deleteFile", { name: str(a.path) ? basename(str(a.path)) : t("toolDetail.unknown") }),
