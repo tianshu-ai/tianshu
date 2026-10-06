@@ -1571,12 +1571,6 @@ function ToolCallDetail({ call, failed }: { call: MergedToolCall; failed: boolea
   const t = useT();
   // Try plugin-declared display config first.
   const displayConfig = getToolDisplay(call.name);
-  // Debug: trace list_dir / sync_up / list_files dispatch
-  if (/^(list_dir|list_files|sync_up|sync_down)$/i.test(call.name)) {
-    const renderType = inferRender(call.name);
-    // eslint-disable-next-line no-console
-    console.log(`[ToolCallDetail-debug] name=${call.name} displayConfig=${JSON.stringify(displayConfig)} inferRender=${renderType}`);
-  }
 
   if (displayConfig) {
     const resultText = call.result ? call.result.text : "";
