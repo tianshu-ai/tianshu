@@ -656,6 +656,40 @@ function truncate(s: string, max: number): string {
  * Format tool call arguments for display. Extracts the meaningful
  * fields and skips internal metadata like _title.
  */
+/** Format a single argument value — arrays expanded as bulleted lists of objects. */
+function formatArgValue(key: string, v: unknown): string {
+  if (typeof v === "string") {
+    return v.length > 400 ? `${key}: ${v.slice(0, 397)}…` : `${key}: ${v}`;
+  }
+  // Array of objects — expand each as a sub-block
+  if (Array.isArray(v) && v.length > 0 && typeof v[0] === "object" && v[0] !== null) {
+    const header = `${key}: (${v.length} ×)`;
+    const blocks = v.map((item, i) => {
+      const obj = item as Record<string, unknown>;
+      const fields = Object.entries(obj)
+        .filter(([k]) => !k.startsWith("_"))
+        .map(([k, val]) => {
+          if (typeof val === "string") {
+            return val.length > 300 ? `    ${k}: ${val.slice(0, 297)}…` : `    ${k}: ${val}`;
+          }
+          if (val === null || val === undefined) return `    ${k}: —`;
+          const s = JSON.stringify(val);
+          return s.length > 200 ? `    ${k}: ${s.slice(0, 197)}…` : `    ${k}: ${s}`;
+        })
+        .join("\n");
+      return `  [${i + 1}]\n${fields}`;
+    });
+    return [header, ...blocks].join("\n");
+  }
+  // Array of primitives
+  if (Array.isArray(v)) {
+    if (v.length <= 5) return `${key}: ${JSON.stringify(v)}`;
+    return `${key}: (${v.length} items)\n` + v.slice(0, 5).map((x) => `  • ${JSON.stringify(x)}`).join("\n") + `\n  …`;
+  }
+  const s = JSON.stringify(v);
+  return s.length > 400 ? `${key}: ${s.slice(0, 397)}…` : `${key}: ${s}`;
+}
+
 function formatArgsText(args: Record<string, unknown>, toolName?: string, t: T = translate): string {
   // Try semantic humanization first
   if (toolName) {
@@ -668,15 +702,7 @@ function formatArgsText(args: Record<string, unknown>, toolName?: string, t: T =
   if (filtered.length === 1 && typeof filtered[0][1] === "string") {
     return `${filtered[0][0]}: ${filtered[0][1]}`;
   }
-  return filtered
-    .map(([k, v]) => {
-      if (typeof v === "string") {
-        return v.length > 200 ? `${k}: ${v.slice(0, 197)}…` : `${k}: ${v}`;
-      }
-      const s = JSON.stringify(v);
-      return s.length > 200 ? `${k}: ${s.slice(0, 197)}…` : `${k}: ${s}`;
-    })
-    .join("\n");
+  return filtered.map(([k, v]) => formatArgValue(k, v)).join("\n");
 }
 
 /**
