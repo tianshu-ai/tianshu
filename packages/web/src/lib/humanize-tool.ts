@@ -207,3 +207,34 @@ export function humanizeToolGroup(
   }
   return summaries.join(" → ");
 }
+
+// ── Render-type inference ───────────────────────────────────────
+
+/**
+ * UI render hint for a tool call's expanded detail view.
+ *
+ * - `"terminal"` — faux-terminal: `$ command` + stdout/stderr.
+ * - `"markdown"` — render result text as Markdown.
+ * - `"json"`     — syntax-highlighted JSON viewer.
+ * - `"image"`    — inline image(s) from result.
+ * - `"plain"`    — monospace pre block (default).
+ */
+export type ToolRenderType = "terminal" | "markdown" | "json" | "image" | "plain";
+
+/**
+ * Infer how a tool call's detail view should render based on the
+ * tool name. Later this can read a server-supplied hint; for now
+ * it pattern-matches against known tool-name conventions.
+ */
+export function inferRender(name: string): ToolRenderType {
+  // exec-style tools → terminal
+  if (/exec$/i.test(name) || name === "shell_exec") return "terminal";
+  // web search / fetch → markdown (results are readable text)
+  if (/^web_search$|^web_fetch$/i.test(name)) return "markdown";
+  // file read/write → plain
+  if (/^(read_file|write_file|list_dir|create_dir)$/i.test(name)) return "plain";
+  // generate_image / screenshot → image (handled separately)
+  if (/generate_image|screenshot/i.test(name)) return "image";
+  // default
+  return "plain";
+}
