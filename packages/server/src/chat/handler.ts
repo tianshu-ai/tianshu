@@ -142,6 +142,7 @@ import {
   listMessagesForUser,
   listMessagesForUserPage,
   loadAgentHistoryForSession,
+  markMessageInterrupted,
   truncateAfterMessage,
   type ChatMessage,
   type ChatSession,
@@ -1122,6 +1123,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // aborts with large-result tools (the leading hypothesis for
   // the "整个 3110 卡" pattern). Cheap — outstandingToolCalls
   // is a small Map (usually 0-2 entries).
+  // Durable cancellation: when the user clicks Stop, we first ask
+  // pi-agent-core to cancel the operation gracefully — in-flight
+  // tools finish, the session writes a clean "aborted" terminal
+  // record, no half-written assistant messages stay in history.
+  // If reconciliation doesn't settle within ABORT_SETTLE_MS we
+  // force the gate signal so we don't hang the UI.
+  const ABORT_SETTLE_MS = 5_000;
   const onAbort = () => {
     if (outstandingToolCalls.size > 0) {
       const inFlight = Array.from(outstandingToolCalls.entries())
@@ -1133,13 +1141,46 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     } else {
       log.debug(`abort_context session=${session.id} in_flight_tools=0`);
     }
-    lane.abort(piContext).catch(() => {
-      // Expected: the abort fires while a tool call or provider
-      // request is in flight; the resulting AbortError is normal.
-      // Swallowing it here prevents an unhandledRejection that
-      // destabilises the session (stalled → 120s timeout → retry
-      // storm). The prompt-level .catch() in the WS handler
-      // already covers the user-visible error path.
+    // Use pi's two-phase durable cancel: requestOperationAbort marks
+    // the operation as cancel_requested, which prevents new effects
+    // from being admitted while letting in-flight tools complete.
+    // After the request, drive() runs reconcileOperation to settle
+    // the operation cleanly. We give it ABORT_SETTLE_MS before
+    // falling back to the old hard abort.
+    (async () => {
+      try {
+        const info = await lane.inspectExecution(piContext);
+        if (info.current) {
+          const reqResult = await lane.requestAbort(info.current.id, piContext);
+          if (reqResult.ok) {
+            log.debug(
+              `abort_durable session=${session.id} op=${info.current.id} newlyRequested=${reqResult.value.newlyRequested}`,
+            );
+            // Wait for reconcile to finish (drive settles the operation).
+            await Promise.race([
+              lane.waitForIdle(piContext),
+              new Promise<void>((_, reject) =>
+                setTimeout(() => reject(new Error("abort-settle-timeout")), ABORT_SETTLE_MS),
+              ),
+            ]);
+            log.debug(`abort_durable_settled session=${session.id} op=${info.current.id}`);
+            return; // Clean abort — reconcile wrote a proper "aborted" record.
+          }
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (msg === "abort-settle-timeout") {
+          log.warn(`abort_settle_timeout session=${session.id} — falling back to hard abort`);
+        }
+        // Fall through to hard abort.
+      }
+      // Fallback: hard abort via lane.abort() — same as the old path.
+      lane.abort(piContext).catch(() => {
+        // Expected: AbortError from in-flight requests. Swallowed to
+        // prevent unhandledRejection.
+      });
+    })().catch((err) => {
+      log.warn(`abort_durable_error session=${session.id}`, err instanceof Error ? err.message : String(err));
     });
   };
   signal.addEventListener("abort", onAbort, { once: true });
@@ -1759,6 +1800,23 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       }
     }
     outstandingToolCalls.clear();
+    // Mark the last assistant message as interrupted when the user
+    // clicked Stop. This prevents half-written assistant text from
+    // polluting future context and lets the UI show it was cut short.
+    const abortedRow = lastAssistantRow as ChatMessage | null;
+    if (signal.aborted && abortedRow?.id) {
+      try {
+        const marked = markMessageInterrupted(ctx, abortedRow.id);
+        if (marked) {
+          log.debug(`abort_mark_interrupted session=${session.id} msgId=${abortedRow.id}`);
+        }
+      } catch (markErr) {
+        log.warn(
+          `abort_mark_interrupted_failed session=${session.id}`,
+          markErr instanceof Error ? markErr.message : String(markErr),
+        );
+      }
+    }
     unsubscribe();
     unsubStructuredCompaction();
     unregisterHarness();

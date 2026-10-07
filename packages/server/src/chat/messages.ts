@@ -711,3 +711,28 @@ export function truncateAfterMessage(
     .run(sessionId, anchor.created_at);
   return result.changes;
 }
+
+/**
+ * Append an `[interrupted]` suffix to a message's content so the UI
+ * (and future context builds) know this assistant turn was cut short
+ * by a user-initiated abort. No-op if the message doesn't exist or
+ * already ends with the marker.
+ */
+export function markMessageInterrupted(
+  ctx: TenantContext,
+  messageId: string,
+): boolean {
+  const MARKER = "\n\n[interrupted]";
+  const row = ctx.db
+    .prepare<[string], { content: string }>(
+      `SELECT content FROM messages WHERE id = ?`,
+    )
+    .get(messageId);
+  if (!row || row.content.endsWith(MARKER)) return false;
+  ctx.db
+    .prepare<[string, string], unknown>(
+      `UPDATE messages SET content = ? WHERE id = ?`,
+    )
+    .run(row.content + MARKER, messageId);
+  return true;
+}
