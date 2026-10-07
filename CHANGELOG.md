@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.86.1](https://github.com/tianshu-ai/tianshu/compare/v0.86.0...v0.86.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* **tts:** show actionable setup steps when Qwen3-TTS is offline ([5a4c39a](https://github.com/tianshu-ai/tianshu/commit/5a4c39a775ecdc42bf44ecdfc54722f39d5325d0))
+
 ## [0.86.0](https://github.com/tianshu-ai/tianshu/compare/v0.85.3...v0.86.0) (2026-10-07)
 
 
