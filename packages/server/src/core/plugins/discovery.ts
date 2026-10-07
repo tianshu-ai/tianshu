@@ -21,6 +21,10 @@ export interface DiscoveredPlugin {
   /** Absolute path to the plugin directory. */
   dir: string;
   manifest: PluginManifest;
+  /** Set when the manifest declares `platforms` and the current OS
+   *  is not in the list. The plugin is structurally valid but cannot
+   *  run here. Registry should mark it `"unsupported"`. */
+  platformUnsupported?: string;
 }
 
 export interface FailedManifest {
@@ -122,21 +126,21 @@ function scanPluginDir(dir: string, source: PluginSource): ScanResult {
         continue;
       }
       // Platform gate: when a manifest declares `platforms` (e.g.
-      // ["darwin","linux"]), skip it on unlisted OSes. Surface as a
-      // failed entry so the Plugin Manager UI can show "not supported
-      // on this platform" instead of silently hiding it.
+      // ["darwin","linux"]), mark the plugin as unsupported on this OS.
+      // It still enters the plugins array (not failed) so the UI can
+      // render it as a greyed-out card with a clear explanation rather
+      // than as an error.
       if (
         manifest.platforms &&
         manifest.platforms.length > 0 &&
         !manifest.platforms.includes(process.platform)
       ) {
-        failed.push({
+        plugins.push({
           source,
           dir: pluginDir,
-          pluginId: manifest.id,
-          issues: [
-            `not supported on this platform (${process.platform}); requires ${manifest.platforms.join(", ")}`,
-          ],
+          manifest,
+          platformUnsupported:
+            `Not available on ${process.platform}. Requires ${manifest.platforms.join(" or ")}.`,
         });
         continue;
       }

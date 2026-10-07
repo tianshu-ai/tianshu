@@ -19,6 +19,7 @@ import {
   Puzzle,
   X,
   AlertTriangle,
+  Ban,
   CheckCircle2,
   Pause,
   ExternalLink,
@@ -477,8 +478,11 @@ function PluginCard({
   const meta = usePluginMeta(p.id);
   const displayName = meta.displayName(p.displayName);
   const description = meta.description(p.description);
+  const unsupported = p.state === "unsupported";
   return (
-    <li className="flex items-start justify-between gap-3 rounded-lg border border-border-subtle bg-bg-elevated/50 p-3">
+    <li className={`flex items-start justify-between gap-3 rounded-lg border border-border-subtle p-3 ${
+      unsupported ? "bg-bg-elevated/20 opacity-60" : "bg-bg-elevated/50"
+    }`}>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-fg-default">{displayName}</span>
@@ -494,8 +498,12 @@ function PluginCard({
         )}
         <CapabilityBadges entry={p} />
         {p.failedReason && (
-          <div className="mt-1 flex items-start gap-1 text-xs text-danger">
-            <AlertTriangle size={11} className="mt-px flex-shrink-0" />
+          <div className={`mt-1 flex items-start gap-1 text-xs ${
+            p.state === "unsupported" ? "text-fg-fainter" : "text-danger"
+          }`}>
+            {p.state === "unsupported"
+              ? <Ban size={11} className="mt-px flex-shrink-0" />
+              : <AlertTriangle size={11} className="mt-px flex-shrink-0" />}
             <span className="break-all">{p.failedReason}</span>
           </div>
         )}
@@ -506,6 +514,7 @@ function PluginCard({
         disabled={
           readOnly ||
           p.state === "failed" ||
+          p.state === "unsupported" ||
           p.state === "client-bundle-missing"
         }
         onClick={() => onToggle(p)}
@@ -694,6 +703,12 @@ function StateBadge({ state }: { state: PluginState }) {
       return (
         <span className="flex items-center gap-1 rounded border border-danger/40 bg-danger/15 px-1.5 py-0.5 text-xs uppercase text-danger">
           <AlertTriangle size={10} /> {t("plugin.state.failed")}
+        </span>
+      );
+    case "unsupported":
+      return (
+        <span className="flex items-center gap-1 rounded border border-border-default bg-bg-hover px-1.5 py-0.5 text-xs uppercase text-fg-fainter">
+          <Ban size={10} /> {t("plugin.state.unsupported")}
         </span>
       );
     case "client-bundle-missing":

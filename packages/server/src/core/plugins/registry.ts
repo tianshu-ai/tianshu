@@ -67,7 +67,7 @@ import {
 } from "./secrets.js";
 import { seedAgentDirs } from "../agent-seeds.js";
 
-export type PluginState = "active" | "disabled" | "failed" | "client-bundle-missing";
+export type PluginState = "active" | "disabled" | "failed" | "unsupported" | "client-bundle-missing";
 
 export interface ActivePluginEntry {
   manifest: PluginManifest;
@@ -339,8 +339,9 @@ export class PluginRegistry {
     const enabledIds = new Set(
       discovery.plugins
         .filter((p) =>
-          cfg[p.manifest.id]?.enabled === true ||
-          (isMaintenance && p.manifest.maintenanceOnly === true)
+          !p.platformUnsupported &&
+          (cfg[p.manifest.id]?.enabled === true ||
+          (isMaintenance && p.manifest.maintenanceOnly === true))
         )
         .map((p) => p.manifest.id),
     );
@@ -352,7 +353,24 @@ export class PluginRegistry {
 
     // Plugins that aren't enabled show up as disabled rows, with
     // their capabilityInfo precomputed for the UI.
+    // Platform-unsupported plugins are greyed out with a clear reason;
+    // they can never be enabled on this OS.
     for (const p of discovery.plugins) {
+      if (p.platformUnsupported) {
+        entries.push({
+          manifest: p.manifest,
+          source: p.source,
+          dir: p.dir,
+          state: "unsupported",
+          failedReason: p.platformUnsupported,
+          capabilityInfo: {
+            provided: [],
+            requires: capabilityList(p.manifest.requires),
+            missing: [],
+          },
+        });
+        continue;
+      }
       if (enabledIds.has(p.manifest.id)) continue;
       entries.push({
         manifest: p.manifest,

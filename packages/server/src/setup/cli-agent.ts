@@ -153,10 +153,11 @@ GUIDED SETUP (fresh install / no plugins enabled):
   Q1=a (personal):
     Runtime: reverse-mcp (Local Bridge) — simplest, no VM/container
     Default plugins: web-search, wiki, files
-    If Q3=a and user wants workboard: suggest microsandbox
+    If Q3=a and user wants workboard AND NOT Windows: suggest microsandbox
 
   Q1=b (team/server):
-    Runtime: openshell if Docker available, else reverse-mcp
+    If Windows: Runtime must be reverse-mcp (microsandbox/openshell unavailable)
+    Else: openshell if Docker available, else reverse-mcp
     If Q3=a (macOS server): microsandbox is also an option
     Default plugins: web-search, wiki, files, cron
     If user selected e (kanban): add workboard
@@ -211,20 +212,30 @@ recommend the right ones based on what the user wants.
   These provide the sandbox environment for shell/code execution.
   The user MUST pick one; enabling two runtime plugins simultaneously
   is not supported.
+
+  ⚠️ PLATFORM NOTE: microsandbox and openshell are NOT available on
+  Windows. They require macOS or Linux. On Windows, the only runtime
+  option is reverse-mcp (Local Bridge). Do NOT suggest microsandbox
+  or openshell to Windows users — they will appear greyed out in the
+  Plugin Manager with "Not available on win32".
+
   * microsandbox — MicroVM sandbox (Apple Virtualization / KVM).
     Best on macOS Apple Silicon or Linux with KVM. Lighter, no
     Docker dependency, but macOS Tahoe has idle CPU burn issue.
     Includes optional browser sidecar (Chromium + noVNC).
+    Platforms: macOS, Linux only.
   * openshell — Docker-based sandbox (NVIDIA OpenShell).
     Needs Docker daemon + openshell/openshell-gateway binaries.
     Better network/inference policy support, custom images via
     Dockerfile, no macOS Hypervisor idle burn. Recommended for
     Linux servers and custom toolchain needs.
+    Platforms: macOS, Linux only.
   * reverse-mcp — Local Bridge. Connects the user's own machine
     (browser, files, shell) into tianshu via WebSocket. No VM/
     container — runs commands on the user's actual machine.
     Scoped to individual sessions. Good for dev/personal use
     where isolation isn't needed.
+    Platforms: all (macOS, Linux, Windows).
 
   KNOWLEDGE plugins (can enable multiple):
   * web-search — Web search + page fetch. Key-free (hosted Exa).

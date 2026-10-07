@@ -29,7 +29,7 @@ export interface ModelListEntry {
 
 // Plugin Manager types — mirrored from server `PluginListEntry`
 // (ADR-0003 §8). Keep these in sync if the server shape changes.
-export type PluginState = "active" | "disabled" | "failed" | "client-bundle-missing";
+export type PluginState = "active" | "disabled" | "failed" | "unsupported" | "client-bundle-missing";
 
 export interface PluginConfigFieldGroup {
   id: string;
