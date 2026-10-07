@@ -6,6 +6,14 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.85.0](https://github.com/tianshu-ai/tianshu/compare/v0.84.0...v0.85.0) (2026-10-07)
+
+
+### Features
+
+* edit & resend — truncate history from a user message and retry ([db4ee0d](https://github.com/tianshu-ai/tianshu/commit/db4ee0da6e42a83fe62ca65c58d53afb71876708))
+* **plugins:** add 'unsupported' state for platform-incompatible plugins ([4faad7c](https://github.com/tianshu-ai/tianshu/commit/4faad7c07da7243d825d0f230a573a941c30d270))
+
 ## [0.84.0](https://github.com/tianshu-ai/tianshu/compare/v0.83.0...v0.84.0) (2026-10-06)
 
 
