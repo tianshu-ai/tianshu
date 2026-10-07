@@ -1195,6 +1195,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     const entryType = (event as any).entry?.type ?? '';
     const rawErr = (event as any).error;
     const errMsg = rawErr ? JSON.stringify(rawErr, Object.getOwnPropertyNames(rawErr), 2)?.slice(0, 500) ?? String(rawErr) : '';
+    // Diagnostic: log turn lifecycle events to trace Kimi/non-standard model completion.
+    if (ev.type === "run_end" || ev.type === "turn_end" || ev.type === "message_end") {
+      const stopReason = (event as any).message?.stopReason ?? (event as any).stopReason ?? (event as any).status ?? '';
+      log.debug(
+        `harness_event type=${ev.type} session=${session.id} role=${entryRole} stopReason=${stopReason} status=${(event as any).status ?? ''}`,
+      );
+    }
     // pi 0.85 renamed tool_execution_start → tool_start.
     if (ev.type === "tool_start") {
       const tc = event as unknown as {
@@ -1447,9 +1454,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     }
     // Guard against stuck operations: if waitForIdle doesn't
     // return within 120s, abort and move on.
+    log.debug(`waitForIdle_enter session=${session.id}`);
+    const idleT0 = Date.now();
     try {
       await Promise.race([
-        lane.waitForIdle(piContext),
+        lane.waitForIdle(piContext).then(() => {
+          log.debug(`waitForIdle_resolved session=${session.id} elapsed_ms=${Date.now() - idleT0}`);
+        }),
         new Promise<void>((_, reject) =>
           setTimeout(() => reject(new Error("waitForIdle-timeout")), 120_000),
         ),
