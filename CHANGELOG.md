@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.86.0](https://github.com/tianshu-ai/tianshu/compare/v0.85.3...v0.86.0) (2026-10-07)
+
+
+### Features
+
+* lazy tool loading — tier/group system for on-demand tools ([dfe48b8](https://github.com/tianshu-ai/tianshu/commit/dfe48b835aa75ae1128144ae502f6663a19caf3a))
+
 ## [0.85.3](https://github.com/tianshu-ai/tianshu/compare/v0.85.2...v0.85.3) (2026-10-07)
 
 
