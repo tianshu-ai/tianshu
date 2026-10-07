@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.85.3](https://github.com/tianshu-ai/tianshu/compare/v0.85.2...v0.85.3) (2026-10-07)
+
+
+### Bug Fixes
+
+* **workboard:** replace poll-based prompt with push-based task lifecycle ([d460abf](https://github.com/tianshu-ai/tianshu/commit/d460abfc6a9b79a1b7b9603d74a4e8b458b8e1ca))
+
 ## [0.85.2](https://github.com/tianshu-ai/tianshu/compare/v0.85.1...v0.85.2) (2026-10-07)
 
 
