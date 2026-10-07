@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.85.1](https://github.com/tianshu-ai/tianshu/compare/v0.85.0...v0.85.1) (2026-10-07)
+
+
+### Bug Fixes
+
+* durable cancellation — use pi-agent-core's two-phase abort ([90fa2b1](https://github.com/tianshu-ai/tianshu/commit/90fa2b1d76818a69e932c65b45a70fb01ca61e6e))
+
 ## [0.85.0](https://github.com/tianshu-ai/tianshu/compare/v0.84.0...v0.85.0) (2026-10-07)
 
 
