@@ -79,7 +79,11 @@ export type ClientMsg =
   | { type: "retry"; modelId?: string }
   | { type: "abort" }
   /** User responded to an ask_user interaction. */
-  | { type: "interaction_response"; id: string; value: string | string[] };
+  | { type: "interaction_response"; id: string; value: string | string[] }
+  /** Edit & resend: truncate all messages after `messageId`, then
+   *  send `text` as a new user message. If `text` is omitted, the
+   *  original message content is reused (pure retry from that point). */
+  | { type: "edit_resend"; messageId: string; text?: string };
 
 export interface WireAttachment {
   /** User-home-relative path, always starts with "/". */
@@ -135,6 +139,8 @@ export type ServerMsg =
   | { type: "stream_delta"; delta: string }
   | { type: "stream_end"; message: WireMessage }
   | { type: "stream_error"; reason: string }
+  /** History was truncated by an edit_resend. Client should reload. */
+  | { type: "history_truncated"; messageId: string; removed: number }
   /**
    * A transient LLM call failure is being retried. Emitted once per
    * retry attempt so the UI can show a small "retrying…" notice with

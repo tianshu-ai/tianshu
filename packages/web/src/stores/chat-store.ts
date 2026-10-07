@@ -215,6 +215,9 @@ interface ChatState {
    *  stays so the user sees what happened. */
   stopAutoRetry: () => void;
   abort: () => void;
+  /** Truncate history from `messageId` onward and optionally resend
+   *  with edited text. Reloads the message list from the server. */
+  editResend: (messageId: string, text?: string) => void;
   /** Request the next older page. No-op when already loading or
    *  when `hasMoreHistory` is false. */
   loadEarlier: () => void;
@@ -755,6 +758,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
         if (get().compactNotice) set({ compactNotice: null });
       }, 5000);
     });
+    tianshuWs.on("history_truncated", () => {
+      // Server truncated history (edit_resend). Reload from scratch.
+      tianshuWs.send({ type: "history" });
+      set({ messages: [], isStreaming: false, _awaitingResponse: false });
+    });
     tianshuWs.on("plugins_changed", (m) =>
       set((s) => {
         // Drop a compact notice line into the visible chat so the
@@ -987,6 +995,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
     resetRetryLoop();
     set({ _userAborted: true, autoRetry: null, _awaitingResponse: false, isStreaming: false });
     tianshuWs.send({ type: "abort" });
+  },
+
+  editResend: (messageId: string, text?: string) => {
+    resetRetryLoop();
+    set({ isStreaming: !!text, _awaitingResponse: !!text, _userAborted: false, autoRetry: null });
+    tianshuWs.send({ type: "edit_resend", messageId, ...(text !== undefined ? { text } : {}) });
   },
 
   loadEarlier: () => {

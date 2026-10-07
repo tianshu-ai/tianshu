@@ -684,3 +684,30 @@ function rowToSession(r: {
     createdAt: r.created_at,
   };
 }
+
+/**
+ * Delete all messages in a session that were created after the given
+ * message. The anchor message itself is also deleted (the caller will
+ * re-insert the edited version). Returns the number of rows removed.
+ */
+export function truncateAfterMessage(
+  ctx: TenantContext,
+  sessionId: string,
+  messageId: string,
+): number {
+  // Look up the anchor message's created_at so we can use it as a
+  // threshold. We also delete the anchor itself (>= not >) because
+  // the caller replaces it with the edited text.
+  const anchor = ctx.db
+    .prepare<[string, string], { created_at: number }>(
+      `SELECT created_at FROM messages WHERE id = ? AND session_id = ?`,
+    )
+    .get(messageId, sessionId);
+  if (!anchor) return 0;
+  const result = ctx.db
+    .prepare<[string, number], unknown>(
+      `DELETE FROM messages WHERE session_id = ? AND created_at >= ?`,
+    )
+    .run(sessionId, anchor.created_at);
+  return result.changes;
+}

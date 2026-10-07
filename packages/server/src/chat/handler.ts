@@ -142,6 +142,7 @@ import {
   listMessagesForUser,
   listMessagesForUserPage,
   loadAgentHistoryForSession,
+  truncateAfterMessage,
   type ChatMessage,
   type ChatSession,
 } from "./messages.js";
@@ -425,6 +426,45 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             if (!resolved) {
               console.warn(`[handler] interaction_response for unknown id=${id}`);
             }
+          });
+        }
+        return;
+      }
+      case "edit_resend": {
+        // Edit & resend: truncate history from the given message onward,
+        // then run a new turn with the (optionally edited) text.
+        const { messageId, text } = parsed as { messageId?: string; text?: string };
+        if (!messageId) return;
+        // Abort any in-flight turn.
+        if (aborter) {
+          aborter.abort();
+        }
+        aborter = new AbortController();
+        // Truncate messages from the anchor onward.
+        const session = ensureActiveSession(ctx, userId);
+        const removed = truncateAfterMessage(ctx, session.id, messageId);
+        console.log(
+          `[handler] edit_resend: truncated ${removed} message(s) after ${messageId} in session ${session.id}`,
+        );
+        // Notify the client to reload history.
+        send({ type: "history_truncated", messageId, removed });
+        // If text is provided, run a new turn with it. If not, just
+        // truncate (the user can type a new message manually).
+        if (text !== undefined && text.trim() !== "") {
+          runPrompt({
+            ctx,
+            userId,
+            send,
+            content: text,
+            signal: aborter.signal,
+            pluginRegistry,
+            homeDir,
+          }).catch((err) => {
+            console.error(`[handler] runPrompt(edit_resend) FAILED`, err?.stack ?? err);
+            send({
+              type: "stream_error",
+              reason: err instanceof Error ? err.message : String(err),
+            });
           });
         }
         return;
@@ -1523,6 +1563,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               void enqueueInbox(ctx, session.id, {
                 kind: "system_note",
                 text: `[auto-recovery ${recentRecoveries + 1}/${MAX_AUTO_RECOVERY}] ${retryPrompt}`,
+                meta: { internal: true },
               });
             }, 3000);
           }

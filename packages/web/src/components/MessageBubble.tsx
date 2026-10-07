@@ -32,6 +32,7 @@ import {
   Play,
   Repeat,
   User,
+  PencilLine,
   Wrench,
   XCircle,
 } from "lucide-react";
@@ -162,7 +163,7 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
         ) : (
           <>
             {hasText ? (
-              <div className={`relative ${isUser ? 'user-bubble' : 'ai-bubble'}`}>
+              <div className={`group/msg relative ${isUser ? 'user-bubble' : 'ai-bubble'}`}>
                 <div
                   className={
                     `prose${proseInvert} prose-sm w-full overflow-x-auto rounded-xl px-4 py-3 text-[14px] leading-relaxed ` +
@@ -173,6 +174,9 @@ function MessageBubbleImpl({ m }: { m: MergedMessage }) {
                 >
                   <MarkdownBlock noProse>{m.text}</MarkdownBlock>
                 </div>
+                {isUser && m.id && (
+                  <EditResendButton messageId={m.id} originalText={m.text} />
+                )}
               </div>
             ) : showStreamingPlaceholder ? (
               <div className="rounded-xl bg-bg-elevated/40 px-4 py-3 ai-bubble">
@@ -2364,5 +2368,59 @@ function Dot({ delay }: { delay: string }) {
         animationDelay: delay,
       }}
     />
+  );
+}
+
+// ─── Edit & Resend ────────────────────────────────────────────────
+
+import { useChatStore } from "../stores/chat-store";
+
+function EditResendButton({ messageId, originalText }: { messageId: string; originalText: string }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(originalText);
+  const editResend = useChatStore((s) => s.editResend);
+
+  if (editing) {
+    return (
+      <div className="mt-2 flex flex-col gap-2 w-full">
+        <textarea
+          className="w-full rounded-lg border border-border-default bg-bg-surface px-3 py-2 text-sm text-fg-default resize-y min-h-[60px] focus:outline-none focus:ring-1 focus:ring-accent"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Escape") { setEditing(false); setDraft(originalText); }
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+              editResend(messageId, draft);
+              setEditing(false);
+            }
+          }}
+        />
+        <div className="flex justify-end gap-2">
+          <button
+            className="rounded px-3 py-1 text-xs text-fg-muted hover:bg-bg-hover"
+            onClick={() => { setEditing(false); setDraft(originalText); }}
+          >
+            Cancel
+          </button>
+          <button
+            className="rounded bg-accent px-3 py-1 text-xs text-white hover:opacity-90"
+            onClick={() => { editResend(messageId, draft); setEditing(false); }}
+          >
+            Send
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className="absolute -left-8 top-1/2 -translate-y-1/2 rounded-full p-1 text-fg-fainter opacity-0 transition-opacity hover:bg-bg-hover hover:text-fg-muted group-hover/msg:opacity-100"
+      title="Edit & resend from here"
+      onClick={() => setEditing(true)}
+    >
+      <PencilLine size={14} />
+    </button>
   );
 }
