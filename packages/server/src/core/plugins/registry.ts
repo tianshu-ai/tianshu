@@ -718,8 +718,33 @@ export class PluginRegistry {
     return out;
   }
 
-  toolsForTenant(tenantId: string): Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin" }> {
-    const out: Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin" }> = [];
+  /**
+   * Collect tool group metadata from every active plugin's
+   * `manifest.contributes.toolGroups[]`. Used by the system-prompt
+   * builder to render `<available_tool_groups>` so the agent knows
+   * which on-demand groups exist before it calls `activate_tools`.
+   */
+  toolGroupsForTenant(
+    tenantId: string,
+  ): Array<{ pluginId: string; groupId: string; description: string }> {
+    const out: Array<{ pluginId: string; groupId: string; description: string }> = [];
+    const cached = this.cache.get(tenantId);
+    if (!cached) return out;
+    for (const e of cached.entries) {
+      if (e.state !== "active") continue;
+      for (const g of e.manifest.contributes?.toolGroups ?? []) {
+        out.push({
+          pluginId: e.manifest.id,
+          groupId: g.id,
+          description: g.description,
+        });
+      }
+    }
+    return out;
+  }
+
+  toolsForTenant(tenantId: string): Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin"; tier?: "core" | "ondemand"; group?: string }> {
+    const out: Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin"; tier?: "core" | "ondemand"; group?: string }> = [];
     const cached = this.cache.get(tenantId);
     if (!cached) return out;
 
@@ -758,7 +783,13 @@ export class PluginRegistry {
           delete e.exports;
           continue;
         }
-        out.push({ pluginId: e.manifest.id, tool, access: t.access });
+        out.push({
+          pluginId: e.manifest.id,
+          tool,
+          access: t.access,
+          tier: (t as { tier?: "core" | "ondemand" }).tier,
+          group: (t as { group?: string }).group,
+        });
       }
       // (2) Dynamic toolset providers: each provider's listTools()
       // is read every turn so MCP servers can come/go without a

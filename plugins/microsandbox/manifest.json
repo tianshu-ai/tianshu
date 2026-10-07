@@ -62,6 +62,12 @@
         "module": "MicroSandboxRunner"
       }
     ],
+    "toolGroups": [
+      {
+        "id": "sandbox_admin",
+        "description": "Sandbox management — reset/configure/build sandboxes, browser health check"
+      }
+    ],
     "tools": [
       {
         "id": "exec",
@@ -71,37 +77,51 @@
       {
         "id": "reset_sandbox",
         "module": "ResetSandboxTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "sandbox_admin"
       },
       {
         "id": "get_sandbox_status",
         "module": "GetSandboxStatusTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "sandbox_admin"
       },
       {
         "id": "update_sandbox_config",
         "module": "UpdateSandboxConfigTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "sandbox_admin"
       },
       {
         "id": "build_sandbox",
         "module": "BuildSandboxTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "sandbox_admin"
       },
       {
         "id": "list_sandbox_builds",
         "module": "ListSandboxBuildsTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "sandbox_admin"
       },
       {
         "id": "use_sandbox_build",
         "module": "UseSandboxBuildTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "sandbox_admin"
       },
       {
         "id": "browser_health_check",
         "module": "BrowserHealthCheckTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "sandbox_admin"
       }
     ],
     "toolsets": [

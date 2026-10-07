@@ -56,6 +56,12 @@
         "module": "OpenShellRunner"
       }
     ],
+    "toolGroups": [
+      {
+        "id": "sandbox_admin",
+        "description": "Sandbox management — reset sandbox, check status"
+      }
+    ],
     "tools": [
       {
         "id": "exec",
@@ -65,12 +71,16 @@
       {
         "id": "reset_sandbox",
         "module": "ResetSandboxTool",
-        "since": "0.4.0"
+        "since": "0.4.0",
+        "tier": "ondemand",
+        "group": "sandbox_admin"
       },
       {
         "id": "get_sandbox_status",
         "module": "GetSandboxStatusTool",
-        "since": "0.4.0"
+        "since": "0.4.0",
+        "tier": "ondemand",
+        "group": "sandbox_admin"
       },
       {
         "id": "sync_up",

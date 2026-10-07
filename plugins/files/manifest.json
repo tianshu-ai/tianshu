@@ -78,6 +78,12 @@
         "handler": "upload"
       }
     ],
+    "toolGroups": [
+      {
+        "id": "tenant_config",
+        "description": "Configuration management — read/write/list/edit/delete tenant config files"
+      }
+    ],
     "tools": [
       {
         "id": "list_dir",
@@ -122,35 +128,47 @@
       {
         "id": "tenant_config_list",
         "module": "TenantConfigListTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "tenant_config"
       },
       {
         "id": "tenant_config_read",
         "module": "TenantConfigReadTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "tenant_config"
       },
       {
         "id": "tenant_config_write",
         "module": "TenantConfigWriteTool",
         "since": "0.1.0",
-        "access": "admin"
+        "access": "admin",
+        "tier": "ondemand",
+        "group": "tenant_config"
       },
       {
         "id": "tenant_config_edit",
         "module": "TenantConfigEditTool",
         "since": "0.1.0",
-        "access": "admin"
+        "access": "admin",
+        "tier": "ondemand",
+        "group": "tenant_config"
       },
       {
         "id": "tenant_config_delete",
         "module": "TenantConfigDeleteTool",
         "since": "0.1.0",
-        "access": "admin"
+        "access": "admin",
+        "tier": "ondemand",
+        "group": "tenant_config"
       },
       {
         "id": "tenant_config_glob",
         "module": "TenantConfigGlobTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "tenant_config"
       }
     ],
     "toolDisplay": [

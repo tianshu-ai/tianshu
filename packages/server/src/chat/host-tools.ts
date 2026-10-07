@@ -64,6 +64,17 @@ export interface HostToolsOpts {
  * Mutable ref filled after harness creation. The compact tool's
  * executor reads from this at call-time (never at build-time).
  */
+/**
+ * Mutable ref filled after harness creation. The activate_tools
+ * executor reads from this at call-time (never at build-time).
+ */
+export interface ActivateToolsRef {
+  lane?: AgentLane;
+  context?: Context;
+  /** On-demand group id → tool names, populated from Toolset. */
+  ondemandGroups?: Map<string, string[]>;
+}
+
 export interface CompactToolRef {
   piSession?: PiSession;
   harness?: AgentHarness;
@@ -84,7 +95,11 @@ export function buildHostTools(opts: HostToolsOpts): Array<{ schema: Tool; execu
   // The ref is shared with the executor closure. Caller sets
   // ref.piSession / ref.harness after harness creation.
   const ref: CompactToolRef = {};
-  const tools: Array<{ schema: Tool; executor: ToolExecutor }> = [compactContextTool(opts, ref)];
+  const activateRef: ActivateToolsRef = {};
+  const tools: Array<{ schema: Tool; executor: ToolExecutor }> = [
+    compactContextTool(opts, ref),
+    activateToolsTool(activateRef),
+  ];
   if (opts.broadcast && opts.listPanels) {
     tools.push(switchPanelTool(opts.broadcast, opts.listPanels));
   }
@@ -102,8 +117,9 @@ export function buildHostTools(opts: HostToolsOpts): Array<{ schema: Tool; execu
       signal: opts.signal,
     }));
   }
-  // Attach ref to the array so the caller can grab it.
+  // Attach refs to the array so the caller can grab them.
   (tools as unknown as { _compactRef: CompactToolRef })._compactRef = ref;
+  (tools as unknown as { _activateRef: ActivateToolsRef })._activateRef = activateRef;
   return tools;
 }
 
@@ -131,6 +147,11 @@ export function buildRecallHostTools(deps: {
 /** Extract the CompactToolRef from a hostTools array. */
 export function getCompactRef(hostTools: Array<{ schema: Tool; executor: ToolExecutor }>): CompactToolRef {
   return (hostTools as unknown as { _compactRef: CompactToolRef })._compactRef;
+}
+
+/** Extract the ActivateToolsRef from a hostTools array. */
+export function getActivateRef(hostTools: Array<{ schema: Tool; executor: ToolExecutor }>): ActivateToolsRef {
+  return (hostTools as unknown as { _activateRef: ActivateToolsRef })._activateRef;
 }
 
 function compactContextTool(
@@ -241,6 +262,113 @@ function switchPanelTool(
       // Fallback: try as-is (might be a custom panel id)
       broadcast("ui:switch_panel", { panelId: key });
       return { ok: true, message: `Switched to ${key} (unrecognized — sent as-is).` };
+    },
+  };
+}
+
+// ─── activate_tools ────────────────────────────────────────────
+
+function activateToolsTool(
+  ref: ActivateToolsRef,
+): { schema: Tool; executor: ToolExecutor } {
+  return {
+    schema: {
+      name: "activate_tools",
+      description:
+        "Load on-demand tool groups into the active tool set. " +
+        "Some tool groups are not loaded by default to save context. " +
+        "Call this when you need tools from a specific group. " +
+        "The available groups are listed in <available_tool_groups> in your system prompt. " +
+        "After activation, the tools are immediately available for use.",
+      parameters: Type.Object({
+        groups: Type.Array(Type.String(), {
+          description:
+            'Tool group names to activate, e.g. ["wiki", "workboard"]. ' +
+            "See <available_tool_groups> for the full list.",
+        }),
+      }),
+    },
+    executor: async (args: unknown) => {
+      const { groups } = args as { groups: string[] };
+      if (!ref.lane || !ref.context || !ref.ondemandGroups) {
+        return {
+          ok: false,
+          message: "activate_tools not available (session not initialized).",
+        };
+      }
+
+      // Resolve requested groups → tool names.
+      const newToolNames: string[] = [];
+      const unknownGroups: string[] = [];
+      const alreadyActiveGroups: string[] = [];
+
+      // Read current active set.
+      let currentActive: string[];
+      try {
+        currentActive = await ref.lane.getActiveTools(ref.context);
+      } catch {
+        currentActive = [];
+      }
+      const activeSet = new Set(currentActive);
+
+      for (const groupId of groups) {
+        const toolNames = ref.ondemandGroups.get(groupId);
+        if (!toolNames) {
+          unknownGroups.push(groupId);
+          continue;
+        }
+        // Check if already active.
+        const allActive = toolNames.every((n) => activeSet.has(n));
+        if (allActive) {
+          alreadyActiveGroups.push(groupId);
+          continue;
+        }
+        for (const name of toolNames) {
+          if (!activeSet.has(name)) {
+            newToolNames.push(name);
+            activeSet.add(name);
+          }
+        }
+      }
+
+      if (newToolNames.length === 0 && unknownGroups.length === 0) {
+        return {
+          ok: true,
+          message: `All requested groups are already active: ${alreadyActiveGroups.join(", ")}.`,
+        };
+      }
+
+      if (newToolNames.length > 0) {
+        try {
+          await ref.lane.setActiveTools([...activeSet], ref.context);
+        } catch (err) {
+          return {
+            ok: false,
+            message: `Failed to activate tools: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          };
+        }
+      }
+
+      const parts: string[] = [];
+      if (newToolNames.length > 0) {
+        parts.push(
+          `Activated ${newToolNames.length} tool(s): ${newToolNames.join(", ")}.`,
+        );
+      }
+      if (alreadyActiveGroups.length > 0) {
+        parts.push(
+          `Already active: ${alreadyActiveGroups.join(", ")}.`,
+        );
+      }
+      if (unknownGroups.length > 0) {
+        parts.push(
+          `Unknown group(s): ${unknownGroups.join(", ")}. Available: ${[...ref.ondemandGroups.keys()].join(", ")}.`,
+        );
+      }
+      parts.push("You can now use the activated tools.");
+      return { ok: unknownGroups.length === 0, message: parts.join(" ") };
     },
   };
 }

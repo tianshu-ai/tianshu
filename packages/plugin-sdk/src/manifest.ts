@@ -449,6 +449,13 @@ export interface ContributesV1 {
    */
   sandboxes?: SandboxContribution[];
   /**
+   * Metadata for on-demand tool groups contributed by this plugin.
+   * Each entry describes a group that the agent can load at runtime
+   * via `activate_tools({ groups: ["..."] })`. Tools reference
+   * these groups through their `group` field.
+   */
+  toolGroups?: ToolGroupContribution[];
+  /**
    * Agent tools the plugin contributes. The host collects every
    * active plugin's tools each turn and registers them with the
    * chat agent. `module` is the key in the plugin's
@@ -591,6 +598,32 @@ export interface ToolContribution {
   /** Access level. "admin" = only tenant admins can invoke this tool
    *  via the agent. Default "member" (any user). */
   access?: "member" | "admin";
+  /**
+   * Loading tier. `"core"` tools are always sent to the LLM;
+   * `"ondemand"` tools are registered with the harness but hidden
+   * from the model until the agent calls `activate_tools` with the
+   * tool's `group`. Default `"core"` (backward-compatible: every
+   * existing tool stays always-active).
+   */
+  tier?: "core" | "ondemand";
+  /**
+   * On-demand group id. Required when `tier` is `"ondemand"`;
+   * ignored otherwise. The agent activates an entire group at once
+   * via `activate_tools({ groups: ["wiki"] })`. Group ids are
+   * scoped to the plugin but must be unique across the tenant.
+   */
+  group?: string;
+}
+
+/**
+ * Metadata for a tool group declared by a plugin. Groups gather
+ * related on-demand tools so the agent can activate them in one call.
+ */
+export interface ToolGroupContribution {
+  /** Group id matching the `group` field on individual ToolContributions. */
+  id: string;
+  /** One-line description shown to the LLM in `<available_tool_groups>`. */
+  description: string;
 }
 
 export interface ToolsetContribution {

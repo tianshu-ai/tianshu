@@ -47,6 +47,7 @@ import {
   defaultSystemPrompt,
   formatOutputLanguageLine,
   formatAvailableSkillsBlock,
+  formatAvailableToolGroupsBlock,
   formatExecutionBiasBlock,
   formatPluginPromptFragments,
   formatRuntimeContextBlock,
@@ -59,7 +60,7 @@ import { loadWorkerExecutionBiasOverride } from "../core/worker-agents-fs.js";
 import type { PluginRegistry } from "../core/plugins/registry.js";
 import { adaptToolset } from "./agent-tool-adapter.js";
 import { repairStaleLaneOperations } from "./repair-lane-state.js";
-import { buildHostTools, getCompactRef } from "./host-tools.js";
+import { buildHostTools, getCompactRef, getActivateRef } from "./host-tools.js";
 import { SqliteSessionRepo } from "./sqlite-session-repo.js";
 import { matchesAny } from "../core/glob-match.js";
 
@@ -470,6 +471,21 @@ export async function runAgentLoop(
   //   * Otherwise fall back to the host default, which already
   //     includes both the fragment and skill blocks via
   //     `defaultSystemPrompt`.
+  // Lazy tool loading: compute <available_tool_groups> block once
+  // for both the custom-SOUL and default-prompt paths.
+  const lazyToolGroupDescriptions =
+    pluginRegistry?.toolGroupsForTenant(ctx.tenantId) ?? [];
+  const lazyToolGroupsForPrompt = lazyToolGroupDescriptions
+    .filter((g) => toolset.ondemandGroups.has(g.groupId))
+    .map((g) => ({
+      groupId: g.groupId,
+      description: g.description,
+      toolCount: toolset.ondemandGroups.get(g.groupId)!.length,
+    }));
+  const lazyToolGroupsBlock = formatAvailableToolGroupsBlock(
+    lazyToolGroupsForPrompt,
+  );
+
   let systemPrompt: string;
   if (req.systemPrompt) {
     // Worker SOUL path. Order:
@@ -525,9 +541,16 @@ export async function runAgentLoop(
     }
     if (fragmentBlock) parts.push(fragmentBlock);
     if (skillBlock) parts.push(skillBlock);
+    if (lazyToolGroupsBlock) parts.push(lazyToolGroupsBlock);
     systemPrompt = parts.join("\n\n");
   } else {
-    systemPrompt = defaultSystemPrompt(ctx, userId, skills, pluginFragments);
+    systemPrompt = defaultSystemPrompt(
+      ctx,
+      userId,
+      skills,
+      pluginFragments,
+      { toolGroupsBlock: lazyToolGroupsBlock || undefined },
+    );
   }
   // Bind `<self>` / `<userId>` placeholders in the assembled
   // prompt to the worker's concrete userId. `defaultSystemPrompt`
@@ -601,6 +624,10 @@ export async function runAgentLoop(
       tools: adapted.tools as unknown as Parameters<
         typeof AgentHarness.create
       >[0]["tools"],
+      // Lazy tool loading: workers also get tier-aware tool gating.
+      ...(toolset.ondemandGroups.size > 0
+        ? { activeToolNames: toolset.coreToolNames }
+        : {}),
       systemPrompt,
       model: piModel,
       models: buildModels(piModel, apiKey, {
@@ -624,6 +651,12 @@ export async function runAgentLoop(
   workerCompactRef.harness = harness;
   workerCompactRef.lane = lane;
   workerCompactRef.context = piContext;
+
+  // Bind activate_tools deferred ref for workers.
+  const workerActivateRef = getActivateRef(workerHostTools);
+  workerActivateRef.lane = lane;
+  workerActivateRef.context = piContext;
+  workerActivateRef.ondemandGroups = toolset.ondemandGroups;
 
   // Watch harness events for two purposes:
   //   1. Reset the watchdog whenever something happens (timestamps

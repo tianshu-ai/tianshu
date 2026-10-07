@@ -27,8 +27,11 @@
         "component": "CalendarPanel"
       }
     ],
+    "toolGroups": [
+      { "id": "cron", "description": "Scheduled tasks — create/manage recurring and one-shot automations" }
+    ],
     "tools": [
-      { "id": "schedule", "module": "ScheduleTool", "since": "0.1.0" }
+      { "id": "schedule", "module": "ScheduleTool", "since": "0.1.0", "tier": "ondemand", "group": "cron" }
     ],
     "apiRoutes": [
       { "method": "GET",    "path": "/schedules",     "handler": "listSchedules"   },

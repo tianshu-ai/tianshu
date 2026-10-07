@@ -58,6 +58,10 @@ export interface MainAgentPromptOverrides {
   userOnboarding?: string | null;
   /** Extra fragments appended near the end of the prompt. */
   customFragments?: ReadonlyArray<{ id: string; title: string; body: string }>;
+  /** Pre-rendered `<available_tool_groups>` block for lazy tool
+   *  loading. Injected after the skills block. Empty string or
+   *  undefined means no on-demand tools — nothing is injected. */
+  toolGroupsBlock?: string;
 }
 
 /** One-line reply-language directive for the system prompt, or ""
@@ -275,6 +279,12 @@ export function defaultSystemPrompt(
 
   const skillBlock = formatAvailableSkillsBlock(skills);
   if (skillBlock) lines.push("", skillBlock);
+
+  // On-demand tool groups block (lazy tool loading). Injected
+  // after skills so the agent sees it close to the tools surface.
+  if (mainOverrides.toolGroupsBlock) {
+    lines.push("", mainOverrides.toolGroupsBlock);
+  }
 
   // Custom fragments from the applied solution — operator-authored
   // extra guidance, appended after skills (lower priority than
@@ -728,6 +738,34 @@ export function formatAvailableSkillsBlock(
     );
   }
   lines.push(`</available_skills>`);
+  return lines.join("\n");
+}
+
+/**
+ * Render the `<available_tool_groups>` block injected near the
+ * bottom of the system prompt so the agent knows which on-demand
+ * tool groups exist and how to activate them.
+ *
+ * @param groups  Group metadata collected from plugin manifests
+ *                (id + description + tool count).
+ */
+export function formatAvailableToolGroupsBlock(
+  groups: ReadonlyArray<{
+    groupId: string;
+    description: string;
+    toolCount: number;
+  }>,
+): string {
+  if (groups.length === 0) return "";
+  const lines: string[] = [
+    `<available_tool_groups>`,
+    `Call activate_tools(groups:["<group>"]) to load these tool groups:`,
+  ];
+  for (const g of groups) {
+    const plural = g.toolCount === 1 ? "tool" : "tools";
+    lines.push(`- ${g.groupId} (${g.toolCount} ${plural}): ${g.description}`);
+  }
+  lines.push(`</available_tool_groups>`);
   return lines.join("\n");
 }
 

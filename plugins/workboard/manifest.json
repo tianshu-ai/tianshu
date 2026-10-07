@@ -58,76 +58,110 @@
         "order": 10
       }
     ],
+    "toolGroups": [
+      {
+        "id": "workboard",
+        "description": "Task delegation — create/manage/monitor background tasks, workers, and analytics"
+      }
+    ],
     "tools": [
       {
         "id": "task_list_workers",
         "module": "ListWorkersTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_list",
         "module": "TaskListTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_create",
         "module": "TaskCreateTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_update",
         "module": "TaskUpdateTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_move",
         "module": "TaskMoveTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_delete",
         "module": "TaskDeleteTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_get_history",
         "module": "TaskGetHistoryTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_complete",
         "module": "TaskCompleteTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_continue",
         "module": "TaskContinueTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_retry_fresh",
         "module": "TaskRetryFreshTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_extend_timeout",
         "module": "TaskExtendTimeoutTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "task_abort",
         "module": "TaskAbortTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "model_list",
         "module": "ModelListTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "workboard"
       },
       {
         "id": "worker_analytics",
         "module": "WorkerAnalyticsTool",
-        "since": "0.3.20"
+        "since": "0.3.20",
+        "tier": "ondemand",
+        "group": "workboard"
       }
     ],
     "skills": [

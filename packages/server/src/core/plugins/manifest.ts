@@ -23,6 +23,7 @@ import type {
   SystemPromptFragmentContribution,
   ToolContribution,
   ToolDisplayContribution,
+  ToolGroupContribution,
   SidebarSectionContribution,
   TopBarButtonContribution,
   WsMessageContribution,
@@ -522,6 +523,9 @@ function optionalContributes(raw: unknown, acc: Acc): ContributesV1 | undefined 
   if ("sandboxes" in raw) {
     out.sandboxes = parseArray(raw.sandboxes, "sandboxes", acc, parseSandbox);
   }
+  if ("toolGroups" in raw) {
+    out.toolGroups = parseArray(raw.toolGroups, "toolGroups", acc, parseToolGroup);
+  }
   if ("tools" in raw) {
     out.tools = parseArray(raw.tools, "tools", acc, parseTool);
   }
@@ -636,7 +640,36 @@ function parseTool(raw: unknown, ctx: string, acc: Acc): ToolContribution | null
   if (id == null || moduleKey == null) return null;
   const rawAccess = isPlainObject(raw) ? (raw as { access?: unknown }).access : undefined;
   const access: "member" | "admin" = rawAccess === "admin" ? "admin" : "member";
-  return { id, module: moduleKey, access };
+  // Lazy tool loading: optional tier + group fields.
+  const rawTier = (raw as { tier?: unknown }).tier;
+  const tier: "core" | "ondemand" | undefined =
+    rawTier === "ondemand" ? "ondemand" : rawTier === "core" ? "core" : undefined;
+  const group = optionalString(raw, "group", acc, ctx);
+  if (tier === "ondemand" && !group) {
+    acc.issues.push(`${ctx} tier="ondemand" requires a group field`);
+  }
+  return {
+    id,
+    module: moduleKey,
+    access,
+    ...(tier ? { tier } : {}),
+    ...(group ? { group } : {}),
+  };
+}
+
+function parseToolGroup(
+  raw: unknown,
+  ctx: string,
+  acc: Acc,
+): ToolGroupContribution | null {
+  if (!isPlainObject(raw)) {
+    acc.issues.push(`${ctx} entry must be an object`);
+    return null;
+  }
+  const id = expectString(raw, "id", acc, ctx);
+  const description = expectString(raw, "description", acc, ctx);
+  if (id == null || description == null) return null;
+  return { id, description };
 }
 
 function parseChannel(

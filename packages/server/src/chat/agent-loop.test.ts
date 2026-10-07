@@ -380,6 +380,7 @@ describe("runAgentLoop (worker)", () => {
     return {
       systemPromptFragmentsForTenant: () => fragments,
       toolsForTenant: () => [],
+      toolGroupsForTenant: () => [],
       mirroredSkillsForTenant: () => [],
       refreshStaleToolsets: async () => 0,
       hostCapabilities: () => ({
@@ -401,6 +402,7 @@ describe("runAgentLoop (worker)", () => {
         order.push("toolsForTenant");
         return [];
       },
+      toolGroupsForTenant: () => [],
       mirroredSkillsForTenant: () => [],
       refreshStaleToolsets: async () => {
         refreshCalls += 1;

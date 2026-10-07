@@ -157,15 +157,30 @@ function deriveRecoveryHint(toolName: string, causeMessage: string): string {
 }
 
 export interface Toolset {
-  /** pi-ai Tool schemas to pass to streamSimple/agent loop. */
+  /** pi-ai Tool schemas for ALL tools (core + ondemand). */
   schemas: Tool[];
-  /** Map of tool name → executor. */
+  /** Map of tool name → executor for ALL tools. */
   executors: Record<string, ToolExecutor>;
+  /**
+   * Names of tools that should be active by default (core tier +
+   * host tools). When `activeToolNames` is passed to
+   * `AgentHarness.create()`, only these tools are sent to the LLM
+   * initially. On-demand tools become active when the agent calls
+   * `activate_tools`.
+   */
+  coreToolNames: string[];
+  /**
+   * On-demand tool groups: group id → tool names in that group.
+   * Used by `activate_tools` to look up which tools to activate
+   * and by the system-prompt builder to render
+   * `<available_tool_groups>`.
+   */
+  ondemandGroups: Map<string, string[]>;
 }
 
 export interface BuildToolsetOpts {
   /** Plugin tools collected from `pluginRegistry.toolsForTenant`. */
-  pluginTools: Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin" }>;
+  pluginTools: Array<{ pluginId: string; tool: AgentTool; access?: "member" | "admin"; tier?: "core" | "ondemand"; group?: string }>;
   /** Context passed to each plugin tool's `available()` and
    *  `execute()`. Required iff `pluginTools` is non-empty. */
   toolContext: BuildToolContext;
@@ -262,6 +277,8 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
 
   const schemas: Tool[] = [];
   const executors: Record<string, ToolExecutor> = {};
+  const coreToolNames: string[] = [];
+  const ondemandGroups = new Map<string, string[]>();
 
   // No skill meta-tool. The registry mirrors host / plugin
   // SKILL.md into `<tenant>/_tenant/config/skills/_host/<pid>/
@@ -275,7 +292,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
 
   const agentScope = toolContext.agentScope ?? { kind: "main" as const };
 
-  for (const { pluginId, tool, access: toolAccess } of pluginTools) {
+  for (const { pluginId, tool, access: toolAccess, tier: toolTier, group: toolGroup } of pluginTools) {
     const ctx: AgentToolContext = {
       pluginId,
       tenantId: toolContext.tenantId,
@@ -319,6 +336,15 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
     const effectiveAccess = toolAccess ?? "member";
     if (effectiveAccess === "admin" && toolContext.userRole === "member") continue;
 
+    // Track tier/group for lazy loading.
+    if (toolTier === "ondemand" && toolGroup) {
+      const arr = ondemandGroups.get(toolGroup) ?? [];
+      arr.push(name);
+      ondemandGroups.set(toolGroup, arr);
+    } else {
+      coreToolNames.push(name);
+    }
+
     executors[name] = wrapExecutorWithErrorGuard(
       name,
       pluginId,
@@ -331,6 +357,7 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
   for (const { schema, executor } of opts.hostTools ?? []) {
     if (!executors[schema.name]) {
       schemas.push(injectTitleParam(schema));
+      coreToolNames.push(schema.name);
       executors[schema.name] = wrapExecutorWithErrorGuard(
         schema.name,
         "host",
@@ -340,5 +367,5 @@ export async function buildToolset(opts: BuildToolsetOpts): Promise<Toolset> {
     }
   }
 
-  return { schemas, executors };
+  return { schemas, executors, coreToolNames, ondemandGroups };
 }

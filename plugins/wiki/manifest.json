@@ -65,81 +65,117 @@
         "order": 120
       }
     ],
+    "toolGroups": [
+      {
+        "id": "wiki",
+        "description": "Knowledge base management — read/write/search wiki pages, journal entries, KB scanning"
+      }
+    ],
     "tools": [
       {
         "id": "wiki_next_day",
         "module": "WikiNextDayTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_day_done",
         "module": "WikiDayDoneTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_list_sources",
         "module": "WikiListSourcesTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_list_pages",
         "module": "WikiListPagesTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_read",
         "module": "WikiReadTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_search",
         "module": "WikiSearchTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_write_page",
         "module": "WikiWritePageTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_journal_write",
         "module": "WikiJournalWriteTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_delete_page",
         "module": "WikiDeletePageTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_reset",
         "module": "WikiResetTool",
-        "since": "0.1.0"
+        "since": "0.1.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_kb_status",
         "module": "WikiKbStatusTool",
-        "since": "0.2.0"
+        "since": "0.2.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_kb_scan",
         "module": "WikiKbScanTool",
-        "since": "0.2.0"
+        "since": "0.2.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_kb_read_file",
         "module": "WikiKbReadFileTool",
-        "since": "0.2.0"
+        "since": "0.2.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_kb_save_knowledge",
         "module": "WikiKbSaveKnowledgeTool",
-        "since": "0.2.0"
+        "since": "0.2.0",
+        "tier": "ondemand",
+        "group": "wiki"
       },
       {
         "id": "wiki_kb_mark_done",
         "module": "WikiKbMarkDoneTool",
-        "since": "0.2.0"
+        "since": "0.2.0",
+        "tier": "ondemand",
+        "group": "wiki"
       }
     ],
     "systemPromptFragments": [

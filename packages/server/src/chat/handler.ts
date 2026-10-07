@@ -49,6 +49,7 @@ import path from "node:path";
 import { requireHomeDir } from "./require-home-dir.js";
 import {
   defaultSystemPrompt,
+  formatAvailableToolGroupsBlock,
   type PluginPromptFragment,
 } from "./system-prompt.js";
 import {
@@ -73,6 +74,7 @@ export {
 export {
   defaultSystemPrompt,
   formatAvailableSkillsBlock,
+  formatAvailableToolGroupsBlock,
   formatExecutionBiasBlock,
   formatMainAgentContextBlock,
   formatOutputLanguageLine,
@@ -155,7 +157,7 @@ import { CompactSkippedError, compactSession } from "./compact.js";
 import { loadGlobalConfig } from "../core/config.js";
 import { getUserStore } from "../core/auth/user-store.js";
 import { resolveTenantRole } from "../core/auth/identity.js";
-import { buildHostTools, buildRecallHostTools, getCompactRef } from "./host-tools.js";
+import { buildHostTools, buildRecallHostTools, getCompactRef, getActivateRef } from "./host-tools.js";
 import { progressiveHistoryTransform } from "./progressive-history.js";
 import { installStructuredCompactionHook } from "./structured-compaction.js";
 import { repairStaleLaneOperations } from "./repair-lane-state.js";
@@ -924,7 +926,8 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       ? skills.filter((s) => !mainConfig.skillsDeny.has(s.name))
       : skills;
   // Filter the toolset by the tool deny list. Toolset is
-  // { schemas[], executors{} } — drop denied tools from both.
+  // { schemas[], executors{}, coreToolNames[], ondemandGroups } —
+  // drop denied tools from all collections.
   const effectiveToolset =
     mainConfig.toolsDeny.size > 0
       ? {
@@ -936,11 +939,38 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
               ([name]) => !mainConfig.toolsDeny.has(name),
             ),
           ),
+          coreToolNames: toolset.coreToolNames.filter(
+            (n) => !mainConfig.toolsDeny.has(n),
+          ),
+          ondemandGroups: (() => {
+            const filtered = new Map<string, string[]>();
+            for (const [g, names] of toolset.ondemandGroups) {
+              const kept = names.filter((n) => !mainConfig.toolsDeny.has(n));
+              if (kept.length > 0) filtered.set(g, kept);
+            }
+            return filtered;
+          })(),
         }
       : toolset;
 
   const toolResultCfg = ctx.config.models?.toolResults;
   const adapted = adaptToolset(effectiveToolset);
+
+  // Build <available_tool_groups> block for the system prompt.
+  // Merges plugin-declared group descriptions with the effective
+  // on-demand tool counts so the LLM knows what it can activate.
+  const toolGroupDescriptions = isSetupTenant
+    ? []
+    : pluginRegistry?.toolGroupsForTenant(ctx.tenantId) ?? [];
+  const toolGroupsForPrompt = toolGroupDescriptions
+    .filter((g) => effectiveToolset.ondemandGroups.has(g.groupId))
+    .map((g) => ({
+      groupId: g.groupId,
+      description: g.description,
+      toolCount: effectiveToolset.ondemandGroups.get(g.groupId)!.length,
+    }));
+  const toolGroupsBlock = formatAvailableToolGroupsBlock(toolGroupsForPrompt);
+
   const systemPrompt = isSetupTenant
     ? setupRuntimeContext() + "\n\n" + SETUP_SYSTEM_PROMPT
     : defaultSystemPrompt(
@@ -954,6 +984,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
           replyStyle: mainConfig.overrides.replyStyle,
           userOnboarding: mainConfig.overrides.userOnboarding,
           customFragments: mainConfig.customFragments,
+          toolGroupsBlock,
         },
         { voiceMode: args.voiceMode === true },
       );
@@ -1016,6 +1047,15 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
       tools: adapted.tools as unknown as Parameters<
         typeof AgentHarness.create
       >[0]["tools"],
+      // Lazy tool loading: only core-tier tools are active by
+      // default. On-demand groups are registered with the harness
+      // (schemas + executors ready) but hidden from the LLM until
+      // the agent calls activate_tools. When there are no on-demand
+      // groups (all tools core), skip activeToolNames so pi sends
+      // every registered tool — backward-compatible default.
+      ...(effectiveToolset.ondemandGroups.size > 0
+        ? { activeToolNames: effectiveToolset.coreToolNames }
+        : {}),
       systemPrompt,
       model: piModel,
       toProviderMessages,
@@ -1093,6 +1133,13 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   compactRef.harness = harness;
   compactRef.lane = lane;
   compactRef.context = piContext;
+
+  // Bind activate_tools deferred ref so it can call
+  // lane.setActiveTools() mid-turn.
+  const activateRef = getActivateRef(hostToolsDefs);
+  activateRef.lane = lane;
+  activateRef.context = piContext;
+  activateRef.ondemandGroups = effectiveToolset.ondemandGroups;
 
   // Register this harness in the process-local registry so the
   // session inbox can route a live `enqueue()` through
