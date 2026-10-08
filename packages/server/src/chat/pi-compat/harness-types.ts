@@ -110,6 +110,7 @@ class AgentLaneAdapter implements AgentLane {
   private sessionId: string;
   private allTools: AgentTool<any>[];
   private harnessAdapter: AgentHarnessAdapter | null = null;
+  private _compactedThisTurn = false;
 
   constructor(agent: Agent, session: Session, sessionId: string, allTools: AgentTool<any>[]) {
     this.agent = agent;
@@ -148,7 +149,7 @@ class AgentLaneAdapter implements AgentLane {
   }
 
   async compact(_options?: { customInstructions?: string }, context?: Context): Promise<any> {
-    if (!this.harnessAdapter) {
+    if (!this.harnessAdapter || this._compactedThisTurn) {
       return { ok: false, error: { _tag: "NothingToCompact" } };
     }
     const messages = this.agent.state.messages as AgentMessage[];
@@ -238,12 +239,8 @@ class AgentLaneAdapter implements AgentLane {
     ];
     this.agent.state.messages = newMessages;
 
+    this._compactedThisTurn = true;
     console.log(`[harness-adapter] compact OK: ${toSummarize.length} summarized, ${retainedTail.length} kept, tokensBefore=${tokensBefore}`);
-
-    // Compaction is silent — no WS notification to the frontend.
-    // handler.ts's maybeAutoCompact sends history_compacted after
-    // tryAutoCompact returns compacted:true, which triggers a
-    // history refresh on the client.
 
     return {
       ok: true,
