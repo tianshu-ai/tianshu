@@ -359,7 +359,7 @@ export type WireAssistantBlock =
 export interface WireMessage {
   id: string;
   sessionId: string;
-  role: ChatMessage["role"];
+  role: ChatMessage["role"] | "compaction";
   /** Human-readable text. Empty string for tool-only assistant turns. */
   text: string;
   /** Tool calls authored by the assistant in this message, if any. */
@@ -379,6 +379,12 @@ export interface WireMessage {
   /** Structured inbox events attached to this message (cron fires,
    *  recovery notes, etc.). Frontend renders these as event cards. */
   inboxEvents?: WireInboxEvent[];
+  /** Compaction metadata — only set when role='compaction'. */
+  compaction?: {
+    summary: string;
+    summarisedCount: number;
+    keptCount: number;
+  };
   createdAt: number;
 }
 
@@ -409,6 +415,20 @@ export function toWire(m: ChatMessage, opts: ToWireOpts = {}): WireMessage {
     role: m.role,
     createdAt: m.createdAt,
   };
+  // Compaction markers render as divider lines in the chat UI.
+  if (m.entryType === "compaction") {
+    const details = m.entryDetails ? tryParse(m.entryDetails) as Record<string, unknown> | null : null;
+    return {
+      ...base,
+      role: "compaction" as any,
+      text: (details?.summary as string) ?? "",
+      compaction: {
+        summary: (details?.summary as string) ?? "",
+        summarisedCount: (details?.summarisedCount as number) ?? 0,
+        keptCount: (details?.keptCount as number) ?? 0,
+      },
+    };
+  }
   // Try parsing the content as a structured pi-ai Message; fall back
   // to treating it as plain text (legacy path).
   const parsed = tryParse(m.content);

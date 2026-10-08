@@ -73,7 +73,7 @@ export interface WireMessageMeta {
 export interface WireMessage {
   id: string;
   sessionId: string;
-  role: "user" | "assistant" | "tool" | "system";
+  role: "user" | "assistant" | "tool" | "system" | "compaction";
   /** Human-readable text body. May be empty for tool-only assistant turns. */
   text: string;
   /** Tool calls authored by the assistant in this message, if any. */
@@ -90,5 +90,11 @@ export interface WireMessage {
   /** Assistant-only display metadata (model, token usage, context
    *  window). Undefined for user/tool rows. */
   meta?: WireMessageMeta;
+  /** Compaction metadata — only set when role='compaction'. */
+  compaction?: {
+    summary: string;
+    summarisedCount: number;
+    keptCount: number;
+  };
   createdAt: number;
 }
