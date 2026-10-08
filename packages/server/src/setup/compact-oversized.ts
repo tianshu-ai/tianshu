@@ -246,14 +246,16 @@ export async function summariseForkedSession(args: {
     if (idx < segments.length) segmentSummaries[idx] = sum;
   }
 
-  for (let i = 0; i < segments.length; i++) {
-    if (segmentSummaries[i]) {
-      console.log(`[compact-oversized] segment ${i + 1}/${segments.length} already done, skipping`);
-      continue;
-    }
-    onProgress?.("summarising", i + 1, segments.length);
-    console.log(`[compact-oversized] summarising segment ${i + 1}/${segments.length} (${segments[i].length} msgs)`);
+  // Parallel summarisation — run up to CONCURRENCY segments at once
+  const CONCURRENCY = 5;
+  const pending = segments
+    .map((_, i) => i)
+    .filter(i => !segmentSummaries[i]);
 
+  let completed = existingMap.size;
+  const total = segments.length;
+
+  const summariseOne = async (i: number): Promise<void> => {
     const transcript = buildTranscriptFromRows(segments[i]);
     const summary = await callLlm(
       SEGMENT_SUMMARY_PROMPT,
@@ -262,6 +264,7 @@ export async function summariseForkedSession(args: {
       signal,
     );
     segmentSummaries[i] = summary;
+    completed++;
 
     // Checkpoint: persist to DB so we can resume after interruption
     db.prepare(
@@ -269,7 +272,15 @@ export async function summariseForkedSession(args: {
         (session_id, segment_index, total_segments, summary, created_at)
         VALUES (?, ?, ?, ?, ?)`,
     ).run(oldSessionId, i, segments.length, summary, Date.now());
-    console.log(`[compact-oversized] segment ${i + 1}/${segments.length} checkpointed`);
+    console.log(`[compact-oversized] segment ${i + 1}/${total} done (${completed}/${total})`);
+    onProgress?.("summarising", completed, total);
+  };
+
+  // Process in batches of CONCURRENCY
+  for (let batchStart = 0; batchStart < pending.length; batchStart += CONCURRENCY) {
+    const batch = pending.slice(batchStart, batchStart + CONCURRENCY);
+    console.log(`[compact-oversized] batch ${Math.floor(batchStart / CONCURRENCY) + 1}: segments [${batch.map(i => i + 1).join(", ")}]`);
+    await Promise.all(batch.map(i => summariseOne(i)));
   }
 
   // Merge
