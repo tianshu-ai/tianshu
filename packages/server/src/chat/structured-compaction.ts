@@ -28,12 +28,12 @@
 // summarization. The hook unsubscribe is captured in the same
 // cleanup set as harness.events.on(...) subscriptions.
 
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type {
   AgentHarness,
+  AgentMessage,
   CompactResult,
   CompactionPreparation,
-} from "./pi-compat/index.js";
+} from "@earendil-works/pi-agent-core";
 import type {
   AssistantMessage,
   Context as PiAiContext,

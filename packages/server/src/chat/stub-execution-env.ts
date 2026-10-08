@@ -16,24 +16,25 @@
 // harness level, we'll route them through the `files` plugin's
 // capability instead of growing this stub.
 
-import {
+import type {
+  ExecutionEnv,
   FileError,
   ExecutionError,
-  type ExecutionEnv,
-  type Result,
-} from "./pi-compat/index.js";
+} from "@earendil-works/pi-agent-core";
+import { FileError as FileErrorClass, ExecutionError as ExecutionErrorClass } from "@earendil-works/pi-agent-core";
+import type { Result } from "@earendil-works/pi-agent-core";
 
 function fileErr(message: string): Result<never, FileError> {
   return {
     ok: false,
-    error: new FileError("not_supported", message),
+    error: new FileErrorClass("not_supported", message),
   };
 }
 
 function execErr(message: string): Result<never, ExecutionError> {
   return {
     ok: false,
-    error: new ExecutionError("shell_unavailable", message),
+    error: new ExecutionErrorClass("shell_unavailable", message),
   };
 }
 

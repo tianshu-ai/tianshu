@@ -20,19 +20,18 @@
 //   - DEFAULT_COMPACTION_SETTINGS.enabled is false (future-proofs a
 //     per-tenant override even though today the constant is true)
 
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   DEFAULT_COMPACTION_SETTINGS,
   estimateContextTokens,
   shouldCompact,
+  type AgentHarness,
+  type AgentLane,
+  type AgentMessage,
   type CompactionSettings,
   type Context,
   type Entry,
   type Session as PiSession,
-} from "./pi-compat/index.js";
-// TODO phase 3: AgentHarness, AgentLane → Agent
-type AgentHarness = any;
-type AgentLane = any;
+} from "@earendil-works/pi-agent-core";
 
 // ─── compaction helpers ───────────────────────────────────────────────
 //
