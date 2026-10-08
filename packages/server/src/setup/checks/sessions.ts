@@ -141,9 +141,7 @@ function scanTenant(
          s.status,
          s.parent_id,
          s.channel_id,
-         (SELECT cb.channel || ':' || cb.chat_id
-          FROM channel_bindings cb WHERE cb.session_id = s.id LIMIT 1
-         ) AS channel_binding,
+         s.channel_chat_id AS channel_binding,
          s.kind,
          s.created_at,
          (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS msg_count,
