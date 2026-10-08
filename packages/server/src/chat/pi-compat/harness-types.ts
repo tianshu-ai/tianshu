@@ -122,42 +122,18 @@ class AgentLaneAdapter implements AgentLane {
   setHarness(h: AgentHarnessAdapter) { this.harnessAdapter = h; }
 
   async prompt(textOrMsg: string | AgentMessage | AgentMessage[], imagesOrCtx?: ImageContent[] | Context, _context?: Context): Promise<any> {
-    // Persist user message to session storage BEFORE running the model.
-    // The old harness did this automatically; without it, user messages
-    // are lost on refresh.
-    const ctx = _context ?? (typeof imagesOrCtx === "object" && imagesOrCtx && !Array.isArray(imagesOrCtx) ? imagesOrCtx as Context : { abortSignal: undefined });
+    // User message persistence is handled by the Agent's internal
+    // event flow: prompt() → message_end (for assistant) → entry_added
+    // synthesis → SqliteStorage.commit() → messages table.
+    // User messages themselves are persisted by handler.ts's own
+    // message insertion logic (SqliteSessionStorage), NOT by the
+    // harness adapter. Do NOT double-write here.
     if (typeof textOrMsg === "string") {
-      const userMsg: AgentMessage = {
-        role: "user",
-        content: textOrMsg,
-        timestamp: Date.now(),
-      } as any;
-      await this._persistMessage(userMsg, ctx);
       await this.agent.prompt(textOrMsg, imagesOrCtx as ImageContent[]);
     } else {
-      // Message object(s) — persist each non-system message
-      const msgs = Array.isArray(textOrMsg) ? textOrMsg : [textOrMsg];
-      for (const m of msgs) {
-        if ((m as any).role !== "system") {
-          await this._persistMessage(m, ctx);
-        }
-      }
       await this.agent.prompt(textOrMsg as AgentMessage | AgentMessage[]);
     }
     return { ok: true, value: { operationId: "op-" + Date.now() } };
-  }
-
-  /** Persist a message to session storage (best-effort). */
-  private async _persistMessage(msg: AgentMessage, ctx: Context): Promise<void> {
-    const id = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    try {
-      await this.session.mutate(async (mutation) => {
-        await mutation.commit([{
-          kind: "entry",
-          entry: { id, parentId: null, type: "message", message: msg },
-        } as any], ctx);
-      }, ctx);
-    } catch { /* best effort */ }
   }
 
   async followUp(message: string | AgentMessage, _images?: ImageContent[], _context?: Context): Promise<any> {
@@ -419,39 +395,6 @@ class AgentHarnessAdapter implements AgentHarness {
       if (listeners) {
         for (const fn of listeners) {
           try { await fn(harnessEvent, ctx); } catch { /* best effort */ }
-        }
-      }
-
-      // Persist tool results on turn_end — the old harness committed
-      // each tool result to storage automatically. turn_end.toolResults
-      // contains all ToolResultMessages from the completed turn.
-      if (agentEvent.type === "turn_end" && (agentEvent as any).toolResults) {
-        const toolResults = (agentEvent as any).toolResults as AgentMessage[];
-        for (const tr of toolResults) {
-          if ((tr as any).role === "toolResult") {
-            const trId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-            try {
-              await session.mutate(async (mutation) => {
-                await mutation.commit([{
-                  kind: "entry",
-                  entry: { id: trId, parentId: null, type: "message", message: tr },
-                } as any], ctx);
-              }, ctx);
-            } catch { /* best effort */ }
-
-            // Emit entry_added for tool results so handler pushes to WS
-            const trListeners = this.eventListeners.get("entry_added");
-            if (trListeners) {
-              const trEvent: HarnessEvent = {
-                type: "entry_added",
-                lane: "main",
-                entry: { id: trId, type: "message", message: tr },
-              };
-              for (const fn of trListeners) {
-                try { await fn(trEvent, ctx); } catch { /* best effort */ }
-              }
-            }
-          }
         }
       }
 
