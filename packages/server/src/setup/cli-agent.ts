@@ -2770,7 +2770,8 @@ export function buildTools(
               ok: true,
               phase: "summarise",
               ...result,
-              summaryPreview: result.summary.slice(0, 500),
+              succeeded: result.succeeded,
+              failed: result.failed,
             });
 
           } else {
