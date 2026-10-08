@@ -404,20 +404,33 @@ async function createAgentHarness(
 ): Promise<{ harness: AgentHarness; open: any[] }> {
   const { session, models, model, tools = [], systemPrompt, compaction } = options;
 
-  // Load existing messages from session
-  const entries = await session.findEntries(undefined, context);
-  const messages: AgentMessage[] = [];
-  for (const entry of entries) {
+  // Load messages from session.
+  // The old harness read from storage on demand; we must NOT load
+  // the entire history into Agent state — a long session (20k+
+  // messages) would blow past the context window before
+  // transformContext even runs. Instead, load only the tail that
+  // fits a reasonable budget. transformContext (progressive history)
+  // will further trim before each model call.
+  const allEntries = await session.findEntries(undefined, context);
+  // Extract messages from entries, respecting compaction summaries
+  const allMessages: AgentMessage[] = [];
+  for (const entry of allEntries) {
     if (entry.type === "message") {
-      messages.push(entry.message);
+      allMessages.push(entry.message);
     } else if (entry.type === "compaction") {
-      // Add compaction summary as a system message
-      messages.push({ role: "user", content: `[Previous context summary]: ${entry.summary}` } as any);
+      allMessages.push({ role: "user", content: `[Previous context summary]: ${entry.summary}` } as any);
       for (const msg of entry.retainedTail) {
-        messages.push(msg);
+        allMessages.push(msg);
       }
     }
   }
+  // Keep only the most recent messages. 200 turns (~400 messages
+  // for user+assistant pairs) is generous for any context window;
+  // progressive history trims further based on actual token counts.
+  const MAX_INITIAL_MESSAGES = 400;
+  const messages = allMessages.length > MAX_INITIAL_MESSAGES
+    ? allMessages.slice(-MAX_INITIAL_MESSAGES)
+    : allMessages;
 
   // Resolve system prompt
   let resolvedPrompt = "";
