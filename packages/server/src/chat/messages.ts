@@ -627,9 +627,28 @@ export function listMessagesForUserPage(
   const sliced = hasMore ? rows.slice(0, requested) : rows;
   // Public API returns oldest-first.
   sliced.reverse();
+
+  // Deduplicate messages that exist in both a compacted parent session
+  // and a forked child session (tail messages copied during fork).
+  // Keep the active session's copy, drop the compacted one.
+  const seen = new Map<string, number>(); // dedup key → index in result
+  const deduped: typeof sliced = [];
+  for (const r of sliced) {
+    const key = `${r.created_at}:${r.role}:${r.content.slice(0, 200)}`;
+    const existing = seen.get(key);
+    if (existing !== undefined) {
+      // Keep whichever belongs to the active session (higher session status priority)
+      // Since rows are mixed from active + compacted sessions, the later copy
+      // (from the forked active session) should win.
+      continue; // skip duplicate, keep first occurrence
+    }
+    seen.set(key, deduped.length);
+    deduped.push(r);
+  }
+
   return {
     hasMore,
-    messages: sliced.map((r) => ({
+    messages: deduped.map((r) => ({
       id: r.id,
       sessionId: r.session_id,
       role: r.role as ChatMessage["role"],
