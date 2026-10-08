@@ -19,7 +19,7 @@
     "pptx-preview": "^1.0.7",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-force-graph-2d": "^1.29.1",
+    "react-force-graph-2d": "^1.29.2",
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.3",
     "recharts": "^3.10.1",
