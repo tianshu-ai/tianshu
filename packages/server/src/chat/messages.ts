@@ -503,7 +503,7 @@ export function listMessagesForUser(ctx: TenantContext, userId: string): ChatMes
        WHERE s.user_id = ?
          AND s.kind = 'user'
          AND s.channel_id IS NULL
-         AND s.status = 'active'
+         AND s.status IN ('active', 'compacted')
        ORDER BY m.created_at ASC`,
     )
     .all(userId)
@@ -594,7 +594,7 @@ export function listMessagesForUserPage(
            JOIN sessions s ON m.session_id = s.id
            WHERE s.user_id = ? AND s.kind = 'user'
              AND s.channel_id IS NULL
-             AND s.status = 'active'
+             AND s.status IN ('active', 'compacted')
              AND (m.created_at < ?
                   OR (m.created_at = ? AND m.id < ?))
            ORDER BY m.created_at DESC, m.id DESC
@@ -617,7 +617,7 @@ export function listMessagesForUserPage(
            JOIN sessions s ON m.session_id = s.id
            WHERE s.user_id = ? AND s.kind = 'user'
              AND s.channel_id IS NULL
-             AND s.status = 'active'
+             AND s.status IN ('active', 'compacted')
            ORDER BY m.created_at DESC, m.id DESC
            LIMIT ?`,
         )
