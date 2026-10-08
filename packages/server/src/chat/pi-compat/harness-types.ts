@@ -224,26 +224,12 @@ class AgentLaneAdapter implements AgentLane {
       summary = `[Compacted ${toSummarize.length} messages] ` + texts.slice(-5).join(" ... ");
     }
 
-    // Write compaction entry to session
-    const entryId = `compact_${Date.now()}`;
-    const ctx = context ?? { abortSignal: undefined };
-    try {
-      await this.session.mutate(async (mutation) => {
-        await mutation.commit([{
-          kind: "entry",
-          entry: {
-            id: entryId,
-            parentId: null,
-            type: "compaction",
-            summary,
-            retainedTail,
-          },
-        } as any], ctx);
-      }, ctx);
-    } catch (err) {
-      console.warn(`[harness-adapter] compact entry write failed:`, err);
-      return { ok: false, error: { _tag: "NothingToCompact" } };
-    }
+    // Do NOT write compaction entry through pi-compat session.mutate().
+    // The pi-compat storage format doesn't match tianshu's SQLite
+    // messages table, causing retainedTail messages to leak into the
+    // chat display. handler.ts's maybeAutoCompact will detect the
+    // compaction via tryAutoCompact's return value and handle the
+    // tianshu-side persistence (history_compacted event + refresh).
 
     // Update agent state: replace messages with summary + tail
     const newMessages: AgentMessage[] = [
