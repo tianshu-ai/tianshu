@@ -454,9 +454,14 @@ async function createAgentHarness(
   //   → convertToLlm (AgentMessage[] → Message[])
   // So toProviderMessages maps to convertToLlm, NOT transformContext.
   const userTransform = options.toProviderMessages;
+  console.log(`[harness-adapter] toProviderMessages present: ${!!userTransform}`);
   const convertToLlm = userTransform
     ? async (msgs: AgentMessage[]): Promise<any[]> => {
-        return userTransform(msgs, context);
+        console.log(`[harness-adapter] convertToLlm called, ${msgs.length} messages in`);
+        const result = userTransform(msgs, context);
+        const out = result instanceof Promise ? await result : result;
+        console.log(`[harness-adapter] convertToLlm done, ${(out as any[]).length} messages out`);
+        return out;
       }
     : undefined;
 
