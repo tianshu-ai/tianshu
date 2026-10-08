@@ -446,14 +446,17 @@ async function createAgentHarness(
   // Create the stream function from Models
   const streamFn = models.streamSimple.bind(models) as any;
 
-  // Wire toProviderMessages as transformContext so progressive
-  // history trimming runs before every model request. Without this,
-  // long sessions blow past the context window.
+  // Wire toProviderMessages as convertToLlm.
+  // The old harness called toProviderMessages as the COMPLETE
+  // AgentMessage[] → Message[] conversion (progressive history
+  // stubbing + tool result pruning). The new Agent's pipeline is:
+  //   transformContext (AgentMessage[] → AgentMessage[])
+  //   → convertToLlm (AgentMessage[] → Message[])
+  // So toProviderMessages maps to convertToLlm, NOT transformContext.
   const userTransform = options.toProviderMessages;
-  const transformContext = userTransform
-    ? async (msgs: AgentMessage[], _signal?: AbortSignal): Promise<AgentMessage[]> => {
-        const transformed = await userTransform(msgs, context);
-        return transformed as AgentMessage[];
+  const convertToLlm = userTransform
+    ? async (msgs: AgentMessage[]): Promise<any[]> => {
+        return userTransform(msgs, context);
       }
     : undefined;
 
@@ -467,7 +470,7 @@ async function createAgentHarness(
       thinkingLevel: (options.thinkingLevel ?? "off") as any,
     },
     streamFn,
-    transformContext,
+    convertToLlm,
     getApiKey: options.getApiKey,
     beforeToolCall: options.beforeToolCall,
     afterToolCall: options.afterToolCall,
