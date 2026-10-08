@@ -16,8 +16,6 @@ import type { Tool } from "@earendil-works/pi-ai";
 import type {
   AgentHarness,
   AgentLane,
-} from "@earendil-works/pi-agent-core";
-import type {
   CompactionSettings,
   Context,
   Session as PiSession,

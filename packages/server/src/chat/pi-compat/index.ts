@@ -103,3 +103,11 @@ export {
   // ExecutionEnv
   type ExecutionEnv,
 } from "./execution-env.js";
+
+export {
+  type AgentLane,
+  AgentHarness,
+  type AgentHarnessEvents,
+  type AgentHarnessHooks,
+  type HarnessEvent,
+} from "./harness-types.js";

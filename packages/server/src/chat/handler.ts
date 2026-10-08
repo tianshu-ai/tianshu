@@ -18,12 +18,12 @@
 // in a loop with no productive progress would otherwise burn budget
 // forever. shouldStopAfterTurn enforces it.
 
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   AgentHarness,
   type AgentLane,
   type HarnessEvent,
-  type AgentMessage,
-} from "@earendil-works/pi-agent-core";
+} from "./pi-compat/index.js";
 import {
   BACKGROUND_CONTEXT,
   DEFAULT_COMPACTION_SETTINGS,

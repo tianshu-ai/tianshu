@@ -24,8 +24,6 @@
 import {
   AgentHarness,
   type HarnessEvent,
-} from "@earendil-works/pi-agent-core";
-import {
   BACKGROUND_CONTEXT,
   withAbortSignal,
   type Context,
