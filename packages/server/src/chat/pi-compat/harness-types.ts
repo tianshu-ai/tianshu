@@ -432,6 +432,10 @@ class AgentHarnessAdapter implements AgentHarness {
       // uses it (not message_end) to push the final message to WS.
       if (agentEvent.type === "message_end") {
         const msg = agentEvent.message;
+        const role = (msg as any).role;
+        // Skip system messages — they carry prompt/tool declarations
+        // and must NOT be persisted as chat entries or shown to users.
+        if (role === "system") return;
         const entryId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
         // Persist to session storage first
@@ -577,6 +581,9 @@ async function createAgentHarness(
         messages.push(msg);
       }
     } else if (entry.type === "message") {
+      // Skip system messages — they carry prompt/tool declarations
+      // that the Agent rebuilds from initialState.systemPrompt + tools
+      if ((entry.message as any)?.role === "system") continue;
       messages.push(entry.message);
     }
   }
