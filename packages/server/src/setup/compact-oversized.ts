@@ -292,46 +292,69 @@ export async function summariseForkedSession(args: {
   let completed = existingMap.size;
   const total = segments.length;
 
-  const summariseOne = async (i: number): Promise<void> => {
-    const transcript = buildTranscriptFromRows(segments[i]);
-    const summary = await callLlm(
-      SEGMENT_SUMMARY_PROMPT,
-      `Summarise this conversation segment (${segments[i].length} messages):\n\n${transcript}`,
-      modelInfo,
-      signal,
-    );
-    segmentSummaries[i] = summary;
-    completed++;
+  const failedSegments: Array<{ index: number; error: string }> = [];
 
-    // Checkpoint: persist to DB so we can resume after interruption
-    db.prepare(
-      `INSERT OR REPLACE INTO segment_summaries
-        (session_id, segment_index, total_segments, summary, created_at)
-        VALUES (?, ?, ?, ?, ?)`,
-    ).run(oldSessionId, i, segments.length, summary, Date.now());
-    console.log(`[compact-oversized] segment ${i + 1}/${total} done (${completed}/${total})`);
-    onProgress?.("summarising", completed, total);
+  const summariseOne = async (i: number): Promise<void> => {
+    const MAX_RETRIES = 2;
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const transcript = buildTranscriptFromRows(segments[i]);
+        const summary = await callLlm(
+          SEGMENT_SUMMARY_PROMPT,
+          `Summarise this conversation segment (${segments[i].length} messages):\n\n${transcript}`,
+          modelInfo,
+          signal,
+        );
+        segmentSummaries[i] = summary;
+        completed++;
+
+        // Checkpoint: persist to DB so we can resume after interruption
+        db.prepare(
+          `INSERT OR REPLACE INTO segment_summaries
+            (session_id, segment_index, total_segments, summary, created_at)
+            VALUES (?, ?, ?, ?, ?)`,
+        ).run(oldSessionId, i, segments.length, summary, Date.now());
+        console.log(`[compact-oversized] segment ${i + 1}/${total} done (${completed}/${total})`);
+        onProgress?.("summarising", completed, total);
+        return; // success
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (attempt < MAX_RETRIES) {
+          console.warn(`[compact-oversized] segment ${i + 1} attempt ${attempt} failed: ${msg}, retrying...`);
+        } else {
+          console.error(`[compact-oversized] segment ${i + 1} failed after ${MAX_RETRIES} attempts: ${msg}`);
+          failedSegments.push({ index: i, error: msg });
+        }
+      }
+    }
   };
 
   // Process in batches of CONCURRENCY
   for (let batchStart = 0; batchStart < pending.length; batchStart += CONCURRENCY) {
     const batch = pending.slice(batchStart, batchStart + CONCURRENCY);
     console.log(`[compact-oversized] batch ${Math.floor(batchStart / CONCURRENCY) + 1}: segments [${batch.map(i => i + 1).join(", ")}]`);
-    await Promise.all(batch.map(i => summariseOne(i)));
+    await Promise.allSettled(batch.map(i => summariseOne(i)));
   }
 
-  // Merge
+  if (failedSegments.length > 0) {
+    console.warn(`[compact-oversized] ${failedSegments.length} segment(s) failed: ${failedSegments.map(f => f.index + 1).join(", ")}`);
+  }
+
+  // Merge — only include successfully summarised segments
+  const successSummaries = segmentSummaries.filter(s => s && s !== "(summary generation failed)");
   onProgress?.("merging", 0, 1);
   let finalSummary: string;
-  if (segmentSummaries.length === 1) {
-    finalSummary = segmentSummaries[0];
+  if (successSummaries.length === 0) {
+    finalSummary = "(all segments failed to summarise)";
+  } else if (successSummaries.length === 1) {
+    finalSummary = successSummaries[0];
   } else {
-    const mergeInput = segmentSummaries
+    const mergeInput = successSummaries
       .map((s, i) => `## Segment ${i + 1}\n\n${s}`)
       .join("\n\n---\n\n");
     finalSummary = await callLlm(
       MERGE_SUMMARY_PROMPT,
-      `Merge these ${segmentSummaries.length} segment summaries into one:\n\n${mergeInput}`,
+      `Merge these ${successSummaries.length} segment summaries into one:\n\n${mergeInput}`,
       modelInfo,
       signal,
     );
