@@ -2610,6 +2610,134 @@ export function buildTools(
         });
       },
     },
+    check_sessions: {
+      schema: {
+        name: "check_sessions",
+        description:
+          "Check all active sessions for oversized message counts. Returns sessions exceeding the threshold (default 2000 messages) with their tenant, session id, user, and message count. Use this to identify sessions that need compaction.",
+        parameters: {
+          type: "object",
+          properties: {
+            threshold: {
+              type: "number",
+              description: "Message count threshold (default 2000)",
+            },
+          },
+          required: [],
+        } as never,
+      },
+      execute: async (args: Record<string, unknown>) => {
+        const { checkSessions } = await import("./checks/sessions.js");
+        const result = checkSessions({
+          home,
+          threshold: typeof args.threshold === "number" ? args.threshold : undefined,
+        });
+        return JSON.stringify(result);
+      },
+    },
+    compact_session: {
+      mutating: true,
+      describe: (args: Record<string, unknown>) =>
+        `Compact oversized session ${String(args.session_id ?? "?").slice(0, 20)}\u2026 in tenant ${String(args.tenant_id ?? "default")}`,
+      schema: {
+        name: "compact_session",
+        description:
+          "Compact an oversized session by splitting it into segments, summarising each with LLM, merging into a final summary, and forking a new lean session. The old session is preserved (status=compacted) with full message history accessible via recall. Use check_sessions first to identify candidates.",
+        parameters: {
+          type: "object",
+          properties: {
+            tenant_id: {
+              type: "string",
+              description: "Tenant id (default: 'default')",
+            },
+            session_id: {
+              type: "string",
+              description: "The session id to compact (from check_sessions output)",
+            },
+            model_id: {
+              type: "string",
+              description: "Model to use for summarisation (optional, uses tenant default)",
+            },
+            keep_tail: {
+              type: "number",
+              description: "Number of recent messages to keep verbatim (default 100)",
+            },
+          },
+          required: ["session_id"],
+        } as never,
+      },
+      execute: async (args: Record<string, unknown>) => {
+        const tenantId = String(args.tenant_id ?? "default");
+        const sessionId = String(args.session_id);
+        const keepTail = typeof args.keep_tail === "number" ? args.keep_tail : undefined;
+
+        const pathMod = await import("node:path");
+        const fsMod = await import("node:fs");
+        const { getTenantsRoot } = await import("../core/paths.js");
+        const { loadTenantConfig } = await import("../core/config.js");
+        const { findModel, getDefaultModel } = await import("../core/llm.js");
+        const Database = (await import("better-sqlite3")).default;
+        const dbPath = pathMod.join(getTenantsRoot(home), tenantId, "db.sqlite");
+        if (!fsMod.existsSync(dbPath)) {
+          return JSON.stringify({ ok: false, error: `tenant ${tenantId} db not found` });
+        }
+        const db = new Database(dbPath);
+
+        try {
+          const sessionRow = db
+            .prepare<[string], { id: string; user_id: string; status: string }>(
+              `SELECT id, user_id, status FROM sessions WHERE id = ?`,
+            )
+            .get(sessionId);
+          if (!sessionRow) {
+            return JSON.stringify({ ok: false, error: `session ${sessionId} not found` });
+          }
+          if (sessionRow.status !== "active") {
+            return JSON.stringify({ ok: false, error: `session is ${sessionRow.status}, not active` });
+          }
+
+          const config = loadTenantConfig(tenantId, home);
+          const modelId = typeof args.model_id === "string" ? args.model_id : undefined;
+          const modelInfo = (modelId ? findModel(config, modelId) : undefined) ?? getDefaultModel(config);
+          if (!modelInfo) {
+            return JSON.stringify({ ok: false, error: "no model configured for summarisation" });
+          }
+
+          const ctx = { db, config, tenantId } as any;
+          const session = {
+            id: sessionRow.id,
+            userId: sessionRow.user_id,
+            parentId: null,
+            status: "active" as const,
+            kind: "user" as const,
+            title: null,
+            createdAt: 0,
+          };
+
+          const { compactOversizedSession } = await import("./compact-oversized.js");
+          const result = await compactOversizedSession({
+            ctx,
+            userId: sessionRow.user_id,
+            session,
+            modelInfo,
+            keepTail,
+          });
+
+          return JSON.stringify({
+            ok: true,
+            oldSessionId: result.oldSessionId,
+            newSessionId: result.newSessionId,
+            totalMessages: result.totalMessages,
+            segments: result.segments,
+            keptTail: result.keptTail,
+            summaryPreview: result.summary.slice(0, 500),
+            durationMs: result.durationMs,
+          });
+        } finally {
+          db.close();
+        }
+      },
+    },
   };
 }
 

@@ -34,6 +34,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import { checkTenants } from "./checks/tenants.js";
 import { checkDb } from "./checks/db.js";
+import { checkSessions } from "./checks/sessions.js";
 import { checkAuth } from "./checks/auth.js";
 import { checkService } from "./checks/service.js";
 import { getTianshuHome } from "../core/paths.js";
@@ -87,6 +88,7 @@ export async function collectDoctorReport(
   groups.push(checkDb());
   groups.push(checkAuth());
   groups.push(checkService());
+  groups.push(checkSessions());
   // Per-plugin host prerequisites (manifest.setup). Only check
   // plugins that are enabled in at least one tenant — disabled
   // plugins don't need their prerequisites satisfied.
