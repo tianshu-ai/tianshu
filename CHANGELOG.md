@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.87.1](https://github.com/tianshu-ai/tianshu/compare/v0.87.0...v0.87.1) (2026-10-08)
+
+
+### Bug Fixes
+
+* wire toProviderMessages into Agent transformContext ([1c30f5f](https://github.com/tianshu-ai/tianshu/commit/1c30f5f7716b6f03da104285266d9aeb4290c961))
+
 ## [0.87.0](https://github.com/tianshu-ai/tianshu/compare/v0.86.2...v0.87.0) (2026-10-08)
 
 
