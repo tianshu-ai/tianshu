@@ -559,8 +559,12 @@ def detect_backend() -> str:
     # Linux / CUDA: prefer faster-qwen3-tts for CUDA Graph acceleration
     try:
         import faster_qwen3_tts  # noqa: F401
-        log.info("faster-qwen3-tts available → using 'faster' backend")
-        return "faster"
+        import torch
+        if torch.cuda.is_available():
+            log.info("faster-qwen3-tts available + CUDA → using 'faster' backend")
+            return "faster"
+        else:
+            log.info("faster-qwen3-tts installed but no CUDA available, falling back")
     except ImportError:
         pass
     # Fallback to PyTorch
