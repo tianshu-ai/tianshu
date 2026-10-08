@@ -32,8 +32,8 @@
 import type {
   AgentHarness,
   AgentLane,
-  Context,
 } from "@earendil-works/pi-agent-core";
+import type { Context } from "./pi-compat/index.js";
 import type { ServerMsg } from "./ws-protocol.js";
 
 /**

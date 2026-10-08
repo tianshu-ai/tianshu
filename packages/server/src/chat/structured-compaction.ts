@@ -31,9 +31,11 @@
 import type {
   AgentHarness,
   AgentMessage,
+} from "@earendil-works/pi-agent-core";
+import type {
   CompactResult,
   CompactionPreparation,
-} from "@earendil-works/pi-agent-core";
+} from "./pi-compat/index.js";
 import type {
   AssistantMessage,
   Context as PiAiContext,

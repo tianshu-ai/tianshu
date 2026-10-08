@@ -61,11 +61,11 @@ function dbg(msg: string): void {
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type {
-  AgentMessage,
   Entry,
   SessionMetadata,
-} from "@earendil-works/pi-agent-core";
+} from "./pi-compat/index.js";
 import type {
   AssistantMessage,
   ToolResultMessage,
