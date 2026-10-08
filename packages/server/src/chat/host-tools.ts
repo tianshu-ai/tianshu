@@ -19,7 +19,7 @@ import type {
   CompactionSettings,
   Context,
   Session as PiSession,
-} from "@earendil-works/pi-agent-core";
+} from "./pi-compat/index.js";
 import type { AgentTool } from "@tianshu-ai/plugin-sdk";
 import { tryAutoCompact } from "./compact-decision.js";
 import type { ToolExecutor } from "../tools/index.js";

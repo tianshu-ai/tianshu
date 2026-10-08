@@ -34,7 +34,7 @@
 //   apply per-kind and stamp seq via the counter table.
 
 import type { Database } from "better-sqlite3";
-import type { Context } from "@earendil-works/pi-agent-core";
+import type { Context } from "./pi-compat/index.js";
 import type {
   CommitResult,
   Entry,
@@ -51,14 +51,14 @@ import type {
   UsageRow,
   UsageScan,
   Write,
-} from "@earendil-works/pi-agent-core";
+} from "./pi-compat/index.js";
 import type {
   ListElement,
   ListReadOptions,
   StoredValue,
   Value,
   ValueList,
-} from "@earendil-works/pi-agent-core";
+} from "./pi-compat/index.js";
 import type { Usage } from "@earendil-works/pi-ai";
 import { isRealUserAgentMessage } from "./real-user-turn.js";
 import { chainMaxTurn } from "./session-chain.js";
