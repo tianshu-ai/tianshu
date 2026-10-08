@@ -226,20 +226,20 @@ export async function tryAutoCompact(args: {
         error: (result.error as Error).message ?? String(result.error),
       };
     }
-    // Recount after compact.
-    let msgsAfter = 0;
-    try {
-      const afterBranch = await piSession.findEntries(undefined, context);
-      msgsAfter = afterBranch.filter((e) => e.type === "message").length;
-    } catch { /* best-effort */ }
-    // Extract summary from compact result
+    // Extract counts from compact result. The DB is not modified
+    // (no messages deleted), so recounting via findEntries would
+    // always yield 0 summarised. Instead read from the compact
+    // result's retainedTail length.
     const compaction = (result.value as any)?.compaction;
     const summary: string | undefined = compaction?.summary;
+    const retainedTail: unknown[] = compaction?.retainedTail ?? [];
+    const keptCount = retainedTail.length;
+    const summarisedCount = Math.max(0, msgsBefore - keptCount);
     return {
       compacted: true,
       tokensBefore,
-      summarisedCount: Math.max(0, msgsBefore - msgsAfter),
-      keptCount: msgsAfter,
+      summarisedCount,
+      keptCount,
       summary,
       reason: "compacted",
     };
