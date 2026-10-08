@@ -10,7 +10,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import type { Api, ImageContent, Model, Models, Usage } from "@earendil-works/pi-ai";
 import type { Context } from "./context.js";
-import type { CompactionSettings } from "./compaction.js";
+import { type CompactionSettings, type CompactionPreparation, estimateTokens, estimateContextTokens } from "./compaction.js";
 import type { Entry, Session, Storage } from "./session-types.js";
 import type { JsonValue } from "@earendil-works/pi-ai";
 
@@ -109,6 +109,7 @@ class AgentLaneAdapter implements AgentLane {
   private session: Session;
   private sessionId: string;
   private allTools: AgentTool<any>[];
+  private harnessAdapter: AgentHarnessAdapter | null = null;
 
   constructor(agent: Agent, session: Session, sessionId: string, allTools: AgentTool<any>[]) {
     this.agent = agent;
@@ -116,6 +117,9 @@ class AgentLaneAdapter implements AgentLane {
     this.sessionId = sessionId;
     this.allTools = allTools;
   }
+
+  /** Link to parent harness adapter for hook dispatch. */
+  setHarness(h: AgentHarnessAdapter) { this.harnessAdapter = h; }
 
   async prompt(textOrMsg: string | AgentMessage | AgentMessage[], imagesOrCtx?: ImageContent[] | Context, _context?: Context): Promise<any> {
     if (typeof textOrMsg === "string") {
@@ -143,10 +147,119 @@ class AgentLaneAdapter implements AgentLane {
     await this.agent.waitForIdle();
   }
 
-  async compact(_options?: { customInstructions?: string }, _context?: Context): Promise<any> {
-    // Compaction is handled by tianshu's own compact-decision.ts
-    // which reads messages from storage and summarizes them.
-    return { ok: false, error: { kind: "nothing_to_compact" } };
+  async compact(_options?: { customInstructions?: string }, context?: Context): Promise<any> {
+    if (!this.harnessAdapter) {
+      return { ok: false, error: { _tag: "NothingToCompact" } };
+    }
+    const messages = this.agent.state.messages as AgentMessage[];
+    if (messages.length < 10) {
+      return { ok: false, error: { _tag: "NothingToCompact" } };
+    }
+
+    // Find cut point: keep last keepRecentTokens worth of messages
+    const settings = await this.harnessAdapter.getCompactionSettings();
+    const keepTokens = settings.keepRecentTokens || 20000;
+    let tailTokens = 0;
+    let cutIndex = messages.length;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      tailTokens += estimateTokens(messages[i]);
+      if (tailTokens > keepTokens) {
+        cutIndex = i + 1;
+        break;
+      }
+    }
+    if (cutIndex <= 1) {
+      return { ok: false, error: { _tag: "NothingToCompact" } };
+    }
+
+    const toSummarize = messages.slice(0, cutIndex);
+    const retainedTail = messages.slice(cutIndex);
+    const tokensBefore = estimateContextTokens(messages as AgentMessage[]).tokens;
+
+    // Build CompactionPreparation for the before_compaction hook
+    const preparation: CompactionPreparation = {
+      messagesToSummarize: toSummarize,
+      turnPrefixMessages: [],
+      retainedTail,
+      isSplitTurn: false,
+      tokensBefore,
+      fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+      settings,
+    };
+
+    // Fire before_compaction hooks (structured-compaction.ts)
+    let summary: string | undefined;
+    const hookHandlers = this.harnessAdapter.getHookHandlers("before_compaction");
+    if (hookHandlers && hookHandlers.size > 0) {
+      const ctx: Context = context ?? { abortSignal: undefined };
+      for (const handler of hookHandlers) {
+        try {
+          const result = await handler({ preparation }, ctx);
+          if (typeof result === "string" && result.trim()) {
+            summary = result;
+            break;
+          }
+          // structured-compaction returns CompactResult via event mutation
+          if (result && typeof result === "object" && (result as any).summary) {
+            summary = (result as any).summary;
+            break;
+          }
+        } catch (err) {
+          console.warn(`[harness-adapter] before_compaction hook failed:`, err);
+        }
+      }
+    }
+
+    if (!summary) {
+      // Fallback: basic summary from message content
+      const texts: string[] = [];
+      for (const msg of toSummarize) {
+        const m = msg as any;
+        if (m.role === "assistant" && Array.isArray(m.content)) {
+          for (const c of m.content) {
+            if (c.type === "text" && c.text) texts.push(c.text.slice(0, 200));
+          }
+        }
+      }
+      summary = `[Compacted ${toSummarize.length} messages] ` + texts.slice(-5).join(" ... ");
+    }
+
+    // Write compaction entry to session
+    const entryId = `compact_${Date.now()}`;
+    const ctx = context ?? { abortSignal: undefined };
+    try {
+      await this.session.mutate(async (mutation) => {
+        await mutation.commit([{
+          kind: "entry",
+          entry: {
+            id: entryId,
+            parentId: null,
+            type: "compaction",
+            summary,
+            retainedTail,
+          },
+        } as any], ctx);
+      }, ctx);
+    } catch (err) {
+      console.warn(`[harness-adapter] compact entry write failed:`, err);
+      return { ok: false, error: { _tag: "NothingToCompact" } };
+    }
+
+    // Update agent state: replace messages with summary + tail
+    const newMessages: AgentMessage[] = [
+      { role: "user", content: `[Previous context summary]: ${summary}`, timestamp: Date.now() } as any,
+      ...retainedTail,
+    ];
+    this.agent.state.messages = newMessages;
+
+    console.log(`[harness-adapter] compact OK: ${toSummarize.length} summarized, ${retainedTail.length} kept, tokensBefore=${tokensBefore}`);
+    return {
+      ok: true,
+      value: {
+        compaction: { summary, retainedTail },
+        tokensBefore,
+      },
+    };
   }
 
   async steer(message: string | AgentMessage, _images?: ImageContent[], _context?: Context): Promise<any> {
@@ -341,8 +454,15 @@ class AgentHarnessAdapter implements AgentHarness {
     },
   };
 
+  /** Expose hook handlers for lane's compact() to fire. */
+  getHookHandlers(name: string): Set<(event: any, context: Context) => any> | undefined {
+    return this.hookHandlers.get(name);
+  }
+
   async lane(name: string, optionsOrContext?: any, maybeContext?: Context): Promise<AgentLane> {
-    return new AgentLaneAdapter(this.agent, this.session, this.sessionId, this.allTools);
+    const l = new AgentLaneAdapter(this.agent, this.session, this.sessionId, this.allTools);
+    l.setHarness(this);
+    return l;
   }
 
   async getCompactionSettings(_context?: Context): Promise<CompactionSettings> {
