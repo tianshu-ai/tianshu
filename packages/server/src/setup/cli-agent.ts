@@ -1283,11 +1283,15 @@ export function buildTools(
         const which = String(args.which ?? "tenant");
         const patch = (args.patch as Record<string, unknown>) ?? {};
         if (which === "global") {
-          // Read-merge-write so partial patches don't drop
-          // existing keys (preserves the documented shallow-
-          // merge semantics).
+          // Read-merge-write with deep merge for nested objects.
+          // Top-level shallow merge would drop sibling keys inside
+          // nested objects (e.g. patching models.compaction would
+          // obliterate models.providers). We do a two-level merge:
+          // for each top-level key in the patch, if both the existing
+          // value and patch value are plain objects, merge them;
+          // otherwise the patch value wins.
           const cfg = readJsonOrEmpty(getGlobalConfigPath(home)) as GlobalConfig;
-          const merged = { ...cfg, ...patch } as GlobalConfig;
+          const merged = deepMergePatch(cfg as unknown as Record<string, unknown>, patch) as GlobalConfig;
           writeGlobalConfig(merged, home);
           return JSON.stringify({
             which: "global",
@@ -1310,7 +1314,7 @@ export function buildTools(
           "config.json",
         );
         const cfg = readJsonOrEmpty(cfgPath);
-        const merged = { ...cfg, ...patch };
+        const merged = deepMergePatch(cfg as Record<string, unknown>, patch);
         try {
           writeTenantConfig(tenantId, merged, home);
         } catch (err) {
@@ -2752,6 +2756,36 @@ export function buildTools(
       },
     },
   };
+}
+
+/**
+ * Recursive merge: for each key in patch, if both existing and patch
+ * values are plain objects, recurse; otherwise patch value wins.
+ * Prevents shallow-merge from dropping sibling keys inside nested
+ * objects (e.g. patching models.compaction must not obliterate
+ * models.providers).
+ */
+function deepMergePatch(
+  existing: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const result = { ...existing };
+  for (const [key, patchVal] of Object.entries(patch)) {
+    const existVal = result[key];
+    if (
+      existVal && patchVal &&
+      typeof existVal === "object" && !Array.isArray(existVal) &&
+      typeof patchVal === "object" && !Array.isArray(patchVal)
+    ) {
+      result[key] = deepMergePatch(
+        existVal as Record<string, unknown>,
+        patchVal as Record<string, unknown>,
+      );
+    } else {
+      result[key] = patchVal;
+    }
+  }
+  return result;
 }
 
 function maybeAppendTruncated(s: string, truncated: boolean): string {
