@@ -2614,24 +2614,16 @@ export function buildTools(
       schema: {
         name: "check_sessions",
         description:
-          "Check all active sessions for oversized message counts. Returns sessions exceeding the threshold (default 2000 messages) with their tenant, session id, user, and message count. Use this to identify sessions that need compaction.",
+          "Check all active sessions for oversized token usage. Groups sessions by tenant and channel, estimates token counts, and flags sessions exceeding the configured compaction threshold (compaction.triggerPercent * model contextWindow). Use this to identify sessions that need compaction.",
         parameters: {
           type: "object",
-          properties: {
-            threshold: {
-              type: "number",
-              description: "Message count threshold (default 2000)",
-            },
-          },
+          properties: {},
           required: [],
         } as never,
       },
       execute: async (args: Record<string, unknown>) => {
         const { checkSessions } = await import("./checks/sessions.js");
-        const result = checkSessions({
-          home,
-          threshold: typeof args.threshold === "number" ? args.threshold : undefined,
-        });
+        const result = checkSessions({ home });
         return JSON.stringify(result);
       },
     },
