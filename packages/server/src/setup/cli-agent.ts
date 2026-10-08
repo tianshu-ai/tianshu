@@ -2813,12 +2813,15 @@ export function buildTools(
             // Strategy:
             //   - Compacted children: MOVE messages back to original session
             //   - Active children: DELETE messages (they are copies + placeholders)
-            //   - Then delete all child session records
+            //   - Delete sessions leaf-first (reverse order) to avoid FK violations
             let movedBack = 0;
             let deletedCopied = 0;
             let deletedSessions = 0;
 
-            for (const cid of childIds) {
+            // Process leaf-first: reverse the BFS order so children are
+            // handled before their parents (avoids FK constraint on parent_id)
+            const reversedIds = [...childIds].reverse();
+            for (const cid of reversedIds) {
               const childRow = db
                 .prepare<[string], { status: string }>(
                   `SELECT status FROM sessions WHERE id = ?`,
