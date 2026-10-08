@@ -2719,9 +2719,9 @@ export function buildTools(
               return JSON.stringify({ ok: false, error: "new_session_id required for summarise phase" });
             }
 
-            const { loadTenantConfig } = await import("../core/config.js");
+            const { resolveTenantConfig } = await import("../core/config.js");
             const { findModel, getDefaultModel } = await import("../core/llm.js");
-            const config = loadTenantConfig(tenantId, home);
+            const config = resolveTenantConfig(tenantId, home);
             const modelId = typeof args.model_id === "string" ? args.model_id : undefined;
             const modelInfo = (modelId ? findModel(config, modelId) : undefined) ?? getDefaultModel(config);
             if (!modelInfo) {
