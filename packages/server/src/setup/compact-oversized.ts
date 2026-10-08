@@ -240,24 +240,15 @@ export function forkOversizedSession(args: {
      VALUES (?, ?, ?, 'active', 'user', ?)`,
   ).run(activeSessionId, userId, prevSessionId, now + msgSegments.length);
 
-  // Seed summary placeholder + ack in active session
-  db.prepare<[string, string, string, string, number], unknown>(
-    `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
-  ).run(
-    `msg_${randomUUID()}`,
-    activeSessionId,
-    "user",
-    `[Conversation summary — pending generation]\n\n[${totalMessages} messages split into ${msgSegments.length} compacted sessions. Summaries pending.]`,
-    now + msgSegments.length + 1,
-  );
+  // Seed summary placeholder in active session (assistant role so UI renders it correctly)
   db.prepare<[string, string, string, string, number], unknown>(
     `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
   ).run(
     `msg_${randomUUID()}`,
     activeSessionId,
     "assistant",
-    "Understood — I have the prior context and will continue from where we left off.",
-    now + msgSegments.length + 2,
+    `[Conversation summary — pending generation. ${totalMessages} messages split into ${msgSegments.length} compacted sessions.]`,
+    now + msgSegments.length + 1,
   );
 
   // Copy tail messages from the last compacted segment into active session
@@ -319,12 +310,8 @@ function simpleFork(
 
   db.prepare<[string, string, string, string, number], unknown>(
     `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
-  ).run(`msg_${randomUUID()}`, newSessionId, "user",
-    `[Conversation summary — pending generation]\n\n${placeholder}`, now);
-  db.prepare<[string, string, string, string, number], unknown>(
-    `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
   ).run(`msg_${randomUUID()}`, newSessionId, "assistant",
-    "Understood — I have the prior context and will continue from where we left off.", now + 1);
+    `[Conversation summary — pending generation. ${totalMessages} messages.]`, now);
 
   // Copy tail
   const tailRows = db
@@ -524,7 +511,7 @@ export async function summariseForkedSession(args: {
   const summaryMsgRow = db
     .prepare<[string], { id: string } | undefined>(
       `SELECT id FROM messages
-       WHERE session_id = ? AND role = 'user' AND content LIKE '%[Conversation summary%'
+       WHERE session_id = ? AND role = 'assistant' AND content LIKE '%[Conversation summary%'
        ORDER BY created_at ASC LIMIT 1`,
     )
     .get(newSessionId);
