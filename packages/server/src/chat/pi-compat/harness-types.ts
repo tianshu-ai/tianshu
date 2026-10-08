@@ -526,13 +526,16 @@ async function createAgentHarness(
   const { session, models, model, tools = [], systemPrompt, compaction } = options;
 
   // Load messages from the last compaction point forward.
-  // The old harness read from storage on demand starting at the
-  // most recent compaction. Loading the full history (20k+ messages)
-  // would blow past any context window.
+  // The compaction marker sits at the END of the message list
+  // (highest seq). It contains the summary of everything before
+  // the kept tail. Loading order:
+  //   1. Find the last compaction entry
+  //   2. Emit the summary as a context message
+  //   3. Load the kept tail (keptCount messages before the marker)
+  //   4. Load any messages after the marker (new turns since compact)
   const allEntries = await session.findEntries(undefined, context);
 
-  // Find the last compaction entry — everything before it is
-  // already summarized and should not be loaded.
+  // Find the last compaction entry.
   let lastCompactionIdx = -1;
   for (let i = allEntries.length - 1; i >= 0; i--) {
     if (allEntries[i].type === "compaction") {
@@ -542,20 +545,46 @@ async function createAgentHarness(
   }
 
   const messages: AgentMessage[] = [];
-  const startIdx = lastCompactionIdx >= 0 ? lastCompactionIdx : 0;
-  for (let i = startIdx; i < allEntries.length; i++) {
-    const entry = allEntries[i];
-    if (entry.type === "compaction") {
-      // Compaction summary + retained tail replaces all prior history
-      messages.push({ role: "user", content: `[Previous context summary]: ${entry.summary}` } as any);
-      for (const msg of entry.retainedTail) {
+  if (lastCompactionIdx >= 0) {
+    const compEntry = allEntries[lastCompactionIdx] as any;
+    // Summary as context
+    messages.push({ role: "user", content: `[Previous context summary]: ${compEntry.summary}` } as any);
+
+    // Retained tail from entry_details (if stored inline)
+    if (compEntry.retainedTail?.length > 0) {
+      for (const msg of compEntry.retainedTail) {
         messages.push(msg);
       }
-    } else if (entry.type === "message") {
-      // Skip system messages — they carry prompt/tool declarations
-      // that the Agent rebuilds from initialState.systemPrompt + tools
-      if ((entry.message as any)?.role === "system") continue;
-      messages.push(entry.message);
+    }
+
+    // Kept tail: the keptCount messages immediately before the
+    // compaction marker are the messages that were retained at
+    // compact time. They live in the DB as normal message rows.
+    const keptCount: number = compEntry.keptCount ?? compEntry.details?.keptCount ?? 0;
+    const tailStart = Math.max(0, lastCompactionIdx - keptCount);
+    for (let i = tailStart; i < lastCompactionIdx; i++) {
+      const entry = allEntries[i];
+      if (entry.type === "message") {
+        if ((entry.message as any)?.role === "system") continue;
+        messages.push(entry.message);
+      }
+    }
+
+    // Messages after the compaction marker (new turns since compact)
+    for (let i = lastCompactionIdx + 1; i < allEntries.length; i++) {
+      const entry = allEntries[i];
+      if (entry.type === "message") {
+        if ((entry.message as any)?.role === "system") continue;
+        messages.push(entry.message);
+      }
+    }
+  } else {
+    // No compaction — load all messages
+    for (const entry of allEntries) {
+      if (entry.type === "message") {
+        if ((entry.message as any)?.role === "system") continue;
+        messages.push(entry.message);
+      }
     }
   }
 

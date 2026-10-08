@@ -144,6 +144,8 @@ export interface AutoCompactDecision {
   summarisedCount?: number;
   /** Approximate number of messages kept verbatim. */
   keptCount?: number;
+  /** The compaction summary text (available when compacted=true). */
+  summary?: string;
   error?: string;
   /**
    * Structured outcome so callers can branch without string-matching
@@ -230,11 +232,15 @@ export async function tryAutoCompact(args: {
       const afterBranch = await piSession.findEntries(undefined, context);
       msgsAfter = afterBranch.filter((e) => e.type === "message").length;
     } catch { /* best-effort */ }
+    // Extract summary from compact result
+    const compaction = (result.value as any)?.compaction;
+    const summary: string | undefined = compaction?.summary;
     return {
       compacted: true,
       tokensBefore,
       summarisedCount: Math.max(0, msgsBefore - msgsAfter),
       keptCount: msgsAfter,
+      summary,
       reason: "compacted",
     };
   } catch (err) {

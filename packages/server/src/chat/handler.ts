@@ -1906,6 +1906,7 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     if (compactRef) compactRef.requestedByAgent = false;
     const preCompactSession = session;
     await maybeAutoCompact({
+      ctx,
       session,
       piSession,
       harness,
@@ -2781,6 +2782,7 @@ async function runOverWindowForkFallback(args: {
 }
 
 async function maybeAutoCompact(args: {
+  ctx: TenantContext;
   session: ChatSession;
   piSession: PiSession;
   harness: AgentHarness;
@@ -2791,7 +2793,7 @@ async function maybeAutoCompact(args: {
   onSuccessRefresh: () => void;
   compactionSettings?: CompactionSettings;
 }): Promise<void> {
-  const { session, piSession, harness, lane, context, modelInfo, send, onSuccessRefresh, compactionSettings } = args;
+  const { ctx, session, piSession, harness, lane, context, modelInfo, send, onSuccessRefresh, compactionSettings } = args;
   const decision = await tryAutoCompact({
     piSession,
     harness,
@@ -2808,13 +2810,64 @@ async function maybeAutoCompact(args: {
     return;
   }
   if (!decision.compacted) return;
+
+  // Persist a compaction marker into the same session's messages table.
+  // On restart, message loading (scanEntries → rowToEntry) finds this
+  // marker and only loads the summary + messages after it — not the
+  // full history. Uses entry_type='compaction' + entry_details JSON
+  // so rowToEntry produces a CompactionEntry with summary/retainedTail.
+  if (decision.summary) {
+    const markerId = `msg_compact_${Date.now()}`;
+    // Place the compaction marker at the end (MAX(seq)+1).
+    // The loading logic in harness-types.ts finds this marker,
+    // uses its summary as context, then loads messages AFTER it
+    // (the kept tail messages that arrive in subsequent turns).
+    // For messages that were "kept" at compact time but have seq
+    // < marker, keptCount is stored in entry_details so the
+    // loader can grab the tail from before the marker.
+    const maxSeqRow = ctx.db
+      .prepare<[string], { m: number | null }>(
+        `SELECT MAX(seq) AS m FROM messages WHERE session_id = ?`,
+      )
+      .get(session.id);
+    const markerSeq = (maxSeqRow?.m ?? 0) + 1;
+    try {
+      ctx.db
+        .prepare(
+          `INSERT INTO messages
+            (id, session_id, role, content, created_at, entry_type,
+             entry_details, parent_id, seq, turn_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          markerId,
+          session.id,
+          "system",       // role: not displayed; entry_type drives rowToEntry
+          "",             // content: unused for compaction entries
+          Date.now(),
+          "compaction",   // entry_type: rowToEntry reads this
+          JSON.stringify({
+            summary: decision.summary,
+            retainedTail: [],  // tail messages follow as normal rows
+            summarisedCount: decision.summarisedCount ?? 0,
+            keptCount: decision.keptCount ?? 0,
+            tokensBefore: decision.tokensBefore,
+          }),
+          null,           // parent_id
+          markerSeq,
+          null,           // turn_number
+        );
+      console.log(`[handler] compaction marker written: ${markerId} seq=${markerSeq} (${decision.summarisedCount} summarised, ${decision.keptCount} kept)`);
+    } catch (err) {
+      console.warn(`[handler] failed to write compaction marker:`, err);
+    }
+  } else {
+    console.warn(`[handler] auto-compact succeeded but no summary available — no marker written`);
+  }
+
   send({
     type: "history_compacted",
     reason: "auto",
-    // Old protocol carried oldSessionId/newSessionId because
-    // the legacy compactSession forked. pi's compact() writes
-    // a compaction entry into the SAME session — no fork — so
-    // both ids point at the current one.
     oldSessionId: session.id,
     newSessionId: session.id,
     summarisedCount: decision.summarisedCount ?? 0,
