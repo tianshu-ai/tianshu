@@ -438,7 +438,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
       case "edit_resend": {
         // Edit & resend: truncate history from the given message onward,
         // then run a new turn with the (optionally edited) text.
-        const { messageId, text } = parsed as { messageId?: string; text?: string };
+        const { messageId, text, modelId: editModelId } = parsed as { messageId?: string; text?: string; modelId?: string };
         if (!messageId) return;
         // Abort any in-flight turn.
         if (aborter) {
@@ -461,6 +461,7 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
             userId,
             send,
             content: text,
+            modelId: editModelId,
             signal: aborter.signal,
             pluginRegistry,
             homeDir,

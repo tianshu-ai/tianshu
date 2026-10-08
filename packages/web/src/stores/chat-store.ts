@@ -999,8 +999,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   editResend: (messageId: string, text?: string) => {
     resetRetryLoop();
+    const modelId = get().preferredModel ?? undefined;
     set({ isStreaming: !!text, _awaitingResponse: !!text, _userAborted: false, autoRetry: null });
-    tianshuWs.send({ type: "edit_resend", messageId, ...(text !== undefined ? { text } : {}) });
+    tianshuWs.send({ type: "edit_resend", messageId, ...(text !== undefined ? { text } : {}), ...(modelId ? { modelId } : {}) });
   },
 
   loadEarlier: () => {
