@@ -6,6 +6,15 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.86.2](https://github.com/tianshu-ai/tianshu/compare/v0.86.1...v0.86.2) (2026-10-08)
+
+
+### Bug Fixes
+
+* idle-runner uses session's last model + surface errors to chat UI ([8b43679](https://github.com/tianshu-ai/tianshu/commit/8b43679045d5e57f3eafe5078809362cc23c4ae0))
+* **tts:** check CUDA availability before using faster-qwen3-tts ([6e55336](https://github.com/tianshu-ai/tianshu/commit/6e553369f3907cec472f2b3fe0fe9a09a65a67f1))
+* **tts:** patch MimiConfig.rope_theta for transformers &gt;= 5.15 ([2c12110](https://github.com/tianshu-ai/tianshu/commit/2c121107d4cfecc65b21607f2a2413ae9c3d3d9d))
+
 ## [0.86.1](https://github.com/tianshu-ai/tianshu/compare/v0.86.0...v0.86.1) (2026-10-07)
 
 
