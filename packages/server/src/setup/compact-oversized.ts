@@ -215,9 +215,42 @@ export async function summariseForkedSession(args: {
   onProgress?.("splitting", 0, segments.length);
   console.log(`[compact-oversized] phase 2: ${allRows.length} msgs → ${segments.length} segments`);
 
-  // Summarise each segment
-  const segmentSummaries: string[] = [];
+  // Ensure segment_summaries table exists for checkpoint/resume
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS segment_summaries (
+      session_id TEXT NOT NULL,
+      segment_index INTEGER NOT NULL,
+      total_segments INTEGER NOT NULL,
+      summary TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (session_id, segment_index)
+    )
+  `);
+
+  // Load any previously completed segment summaries (resume support)
+  const existingRows = db
+    .prepare<[string], { segment_index: number; summary: string }>(
+      `SELECT segment_index, summary FROM segment_summaries
+       WHERE session_id = ? ORDER BY segment_index`,
+    )
+    .all(oldSessionId);
+  const existingMap = new Map(existingRows.map(r => [r.segment_index, r.summary]));
+  if (existingMap.size > 0) {
+    console.log(`[compact-oversized] resuming: ${existingMap.size}/${segments.length} segments already done`);
+  }
+
+  // Summarise each segment (skip already-completed ones)
+  const segmentSummaries: string[] = new Array(segments.length).fill("");
+  // Fill in existing
+  for (const [idx, sum] of existingMap) {
+    if (idx < segments.length) segmentSummaries[idx] = sum;
+  }
+
   for (let i = 0; i < segments.length; i++) {
+    if (segmentSummaries[i]) {
+      console.log(`[compact-oversized] segment ${i + 1}/${segments.length} already done, skipping`);
+      continue;
+    }
     onProgress?.("summarising", i + 1, segments.length);
     console.log(`[compact-oversized] summarising segment ${i + 1}/${segments.length} (${segments[i].length} msgs)`);
 
@@ -228,7 +261,15 @@ export async function summariseForkedSession(args: {
       modelInfo,
       signal,
     );
-    segmentSummaries.push(summary);
+    segmentSummaries[i] = summary;
+
+    // Checkpoint: persist to DB so we can resume after interruption
+    db.prepare(
+      `INSERT OR REPLACE INTO segment_summaries
+        (session_id, segment_index, total_segments, summary, created_at)
+        VALUES (?, ?, ?, ?, ?)`,
+    ).run(oldSessionId, i, segments.length, summary, Date.now());
+    console.log(`[compact-oversized] segment ${i + 1}/${segments.length} checkpointed`);
   }
 
   // Merge
@@ -247,6 +288,9 @@ export async function summariseForkedSession(args: {
       signal,
     );
   }
+
+  // Clean up checkpoint data now that merge is done
+  db.prepare(`DELETE FROM segment_summaries WHERE session_id = ?`).run(oldSessionId);
 
   // Update old session's compacted_summary
   db.prepare<[string, string], unknown>(
