@@ -1958,41 +1958,10 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
   // Still gated on compacted + !aborted: if compaction skipped
   // (below threshold) or the turn was aborted, injecting a note
   // would just add noise.
-  if (compacted && !signal.aborted) {
-    let hadToolCalls = false;
-    const lastRow = lastAssistantRow as ChatMessage | null;
-    if (lastRow) {
-      try {
-        const parsed = JSON.parse(lastRow.content) as {
-          content?: Array<{ type?: string }>;
-        };
-        hadToolCalls =
-          Array.isArray(parsed.content) &&
-          parsed.content.some(
-            (b: { type?: string }) => b.type === "tool_use" || b.type === "toolCall",
-          );
-      } catch {
-        // Content wasn't JSON — treat as "no known tool calls"
-        // and fall through to the generic branch below.
-      }
-    }
-    const noteText = hadToolCalls
-      ? "Context was automatically compacted to free space. " +
-        "You were in the middle of a task — continue where you left off."
-      : "Context was automatically compacted to free space. " +
-        "Earlier turns are now available as a summary rather than " +
-        "verbatim messages; keep this in mind if you're about to " +
-        "cite specific earlier exchanges.";
-    log.debug(
-      `post-compaction inbox note: hadToolCalls=${hadToolCalls} session=${session.id}`,
-    );
-    setTimeout(() => {
-      void enqueueInbox(ctx, session.id, {
-        kind: "system_note",
-        text: noteText,
-      });
-    }, 1000);
-  }
+  // Post-compaction system_note removed: the agent already sees
+  // "[Previous context summary]" in its history, which is sufficient
+  // signal that earlier turns were compressed. The old notification
+  // added noise and rendered as a visible Notification in the UI.
 
   // Emit stream_end so the UI re-enables the send button.
   //
