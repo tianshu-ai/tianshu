@@ -618,6 +618,19 @@ export async function runPrompt(args: RunPromptArgs): Promise<void> {
     return;
   }
 
+  // Persist the resolved model on the session so background turns
+  // (idle-runner inbox notifications) use the same model instead of
+  // falling back to the tenant default. Only write when the caller
+  // supplied an explicit modelId — background turns (idle-runner)
+  // pass one too, so we don't overwrite with a stale default.
+  if (modelId) {
+    try {
+      ctx.db
+        .prepare("UPDATE sessions SET last_model_id = ? WHERE id = ?")
+        .run(modelId, session.id);
+    } catch { /* best-effort; never block prompt */ }
+  }
+
   const piModel = buildModel(modelInfo);
   const apiKey = resolveApiKey(modelInfo);
   const userHome = ctx.userHomeDir(userId);

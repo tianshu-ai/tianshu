@@ -28,6 +28,7 @@ import * as toolResultToTool from "./016-toolresult-to-tool.js";
 import * as turnNumber from "./017-turn-number.js";
 import * as turnNumberForkSeed from "./018-turn-number-fork-seed.js";
 import * as turnNumberChainAbsolute from "./019-turn-number-chain-absolute.js";
+import * as sessionLastModel from "./020-session-last-model.js";
 
 export interface Migration {
   id: string;
@@ -55,6 +56,7 @@ export const MIGRATIONS: Migration[] = [
   { id: turnNumber.ID, up: turnNumber.up },
   { id: turnNumberForkSeed.ID, up: turnNumberForkSeed.up },
   { id: turnNumberChainAbsolute.ID, up: turnNumberChainAbsolute.up },
+  { id: sessionLastModel.ID, up: sessionLastModel.up },
 ];
 
 const ENSURE_MIGRATIONS_TABLE = `

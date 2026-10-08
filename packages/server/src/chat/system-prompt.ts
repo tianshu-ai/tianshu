@@ -229,6 +229,15 @@ export function defaultSystemPrompt(
       : formatExecutionBiasBlock(),
   );
 
+  // ask_user guidance — when and how to use the interactive
+  // choice tool. Placed right after Execution Bias so the agent
+  // sees it next to the "only three times you may stop and ask"
+  // rules. The tool schema tells the LLM *what* ask_user does;
+  // this block tells it *when* to reach for it.
+  // Only injected for main agents — workers don't interact with
+  // users and never see the ask_user tool anyway.
+  lines.push(``, formatAskUserGuidanceBlock());
+
   // Workspace context files. Each is optional; missing files emit
   // nothing. We inject content (not paths) so the agent has them
   // in context without having to read_file first.
@@ -443,6 +452,31 @@ function formatLocalIso(d: Date): string {
   const oh = pad(Math.floor(Math.abs(off) / 60));
   const om = pad(Math.abs(off) % 60);
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}:${ss}${sign}${oh}:${om}`;
+}
+
+export function formatAskUserGuidanceBlock(): string {
+  return [
+    `## ask_user — interactive choices`,
+    ``,
+    `When the user needs to pick between discrete options, use the \`ask_user\` tool to present clickable buttons instead of typing instructions in chat. This is faster and less error-prone.`,
+    ``,
+    `### When to use ask_user`,
+    `- The user must choose between 2-8 concrete alternatives (theme, approach, config value, action).`,
+    `- A destructive or irreversible action needs explicit confirmation (delete data, force-push, publish).`,
+    `- You hit a genuinely ambiguous fork where defaulting to either branch could waste significant effort.`,
+    ``,
+    `### When NOT to use ask_user`,
+    `- The answer can be inferred from context, conversation history, or sensible defaults — just proceed.`,
+    `- You want to confirm a plan before executing — this violates Execution Bias. Just do it.`,
+    `- The question needs a free-text answer (name, description, URL) — ask in normal chat instead.`,
+    `- Simple yes/no where "yes" is overwhelmingly likely — just do it and report what you did.`,
+    ``,
+    `### How`,
+    `- Keep labels short (2-6 words). Use a meaningful icon prefix when it aids scannability (e.g. a relevant symbol, not generic smiley faces).`,
+    `- Put the recommended option first.`,
+    `- 2-8 options. If you have more than 8, group or summarise.`,
+    `- ask_user SUSPENDS the agent loop — do not call another tool in the same turn after ask_user.`,
+  ].join("\n");
 }
 
 export function formatExecutionBiasBlock(): string {

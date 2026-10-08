@@ -52,6 +52,7 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
     let owningCtx: ReturnType<typeof globalOps.open> | null = null;
     let channelBindingId: string | null = null;
     let channelChatId: string | null = null;
+    let lastModelId: string | null = null;
     for (const tenantId of globalOps.list()) {
       const ctx = globalOps.open(tenantId);
       const row = ctx.db
@@ -61,9 +62,10 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
             id: string;
             channel_binding_id: string | null;
             channel_chat_id: string | null;
+            last_model_id: string | null;
           }
         >(
-          `SELECT id, channel_binding_id, channel_chat_id
+          `SELECT id, channel_binding_id, channel_chat_id, last_model_id
              FROM sessions WHERE id = ?`,
         )
         .get(sessionId);
@@ -71,6 +73,7 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
         owningCtx = ctx;
         channelBindingId = row.channel_binding_id;
         channelChatId = row.channel_chat_id;
+        lastModelId = row.last_model_id;
         break;
       }
     }
@@ -113,6 +116,9 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
         signal: controller.signal,
         pluginRegistry,
         homeDir: ctx.workspaceDir,
+        // Use the model the user last selected for this session
+        // instead of falling back to the tenant default.
+        ...(lastModelId ? { modelId: lastModelId } : {}),
       });
     } catch (err) {
       errorReason = err instanceof Error ? err.message : String(err);
@@ -127,10 +133,20 @@ export function installIdleRunner(deps: InstallIdleRunnerDeps): void {
     // — the log trail just stopped at "using idle-runner" and the
     // user saw a dead conversation with no explanation. Warn either
     // way; the channel-session branch adds its own extra log below.
+    //
+    // Yu, 2026-10-08: also push the error to the chat UI so the
+    // user sees it instead of a silent dead end after a notification
+    // card. Typical case: provider auth expired (403) — the
+    // notification renders but the agent never responds, leaving
+    // the user confused.
     if (errorReason.length > 0 && !isChannelSession) {
       console.warn(
         `[idle-runner] background turn errored on webchat session ${sessionId}: ${errorReason}`,
       );
+      send({
+        type: "stream_error",
+        reason: `Background turn failed: ${errorReason}`,
+      });
     }
 
     if (channelSink && channelBindingId && channelChatId) {
