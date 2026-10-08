@@ -296,6 +296,81 @@ function forkSession(
   };
 }
 
+/**
+ * Fork a session using a pre-computed summary (no LLM call).
+ * Used by the pi-agent-core compact path which already generated
+ * the summary in-memory — we only need the DB-side fork + persist.
+ *
+ * The kept tail is re-persisted from the current session's most
+ * recent `keptCount` message rows so the fork has verbatim copies.
+ */
+export function forkWithSummary(args: {
+  ctx: TenantContext;
+  userId: string;
+  oldSession: ChatSession;
+  summary: string;
+  keptCount: number;
+  summarisedCount: number;
+}): CompactResult {
+  const { ctx, userId, oldSession, summary, keptCount, summarisedCount } = args;
+
+  // Mark the old session compacted + stash the summary for audit.
+  ctx.db
+    .prepare<[string, number, string], unknown>(
+      `UPDATE sessions
+         SET status='compacted', compacted_summary=?, ended_at=?
+       WHERE id=?`,
+    )
+    .run(summary, Date.now(), oldSession.id);
+
+  // Fork a new active session.
+  const newSession = forkSession(ctx, userId, oldSession);
+
+  // Seed: history-summary user msg + ack assistant msg.
+  const seedTime = Date.now();
+  appendMessage(ctx, newSession, {
+    role: "user",
+    content: `[Conversation summary — generated at ${new Date(seedTime).toISOString()}]\n\n${summary}`,
+  });
+  appendMessage(ctx, newSession, {
+    role: "assistant",
+    content:
+      "Understood — I have the prior context and will continue from where we left off.",
+  });
+
+  // Re-persist the kept tail from the old session's most recent rows.
+  if (keptCount > 0) {
+    const tailRows = ctx.db
+      .prepare<[string, number], { role: string; content: string; created_at: number }>(
+        `SELECT role, content, created_at FROM messages
+         WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
+         ORDER BY created_at DESC, rowid DESC
+         LIMIT ?`,
+      )
+      .all(oldSession.id, keptCount);
+    // Reverse to oldest-first
+    tailRows.reverse();
+    for (const r of tailRows) {
+      const id = `msg_${randomUUID()}`;
+      ctx.db
+        .prepare<[string, string, string, string, number], unknown>(
+          `INSERT INTO messages (id, session_id, role, content, created_at)
+           VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(id, newSession.id, r.role, r.content, Date.now());
+    }
+  }
+
+  return {
+    summary,
+    newSession,
+    oldSessionId: oldSession.id,
+    summarisedCount,
+    keptCount,
+    durationMs: 0,
+  };
+}
+
 // ─── transcript helpers ───────────────────────────────────────────
 
 const MAX_TOOL_RESULT_CHARS = 600;

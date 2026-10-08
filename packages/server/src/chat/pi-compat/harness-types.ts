@@ -525,66 +525,17 @@ async function createAgentHarness(
 ): Promise<{ harness: AgentHarness; open: any[] }> {
   const { session, models, model, tools = [], systemPrompt, compaction } = options;
 
-  // Load messages from the last compaction point forward.
-  // The compaction marker sits at the END of the message list
-  // (highest seq). It contains the summary of everything before
-  // the kept tail. Loading order:
-  //   1. Find the last compaction entry
-  //   2. Emit the summary as a context message
-  //   3. Load the kept tail (keptCount messages before the marker)
-  //   4. Load any messages after the marker (new turns since compact)
+  // Load all messages from the session. With fork-based compaction,
+  // ensureActiveSession returns only the active (forked) session
+  // which contains: summary user msg + ack + kept tail + new turns.
+  // No need to search for compaction entries or truncate.
   const allEntries = await session.findEntries(undefined, context);
 
-  // Find the last compaction entry.
-  let lastCompactionIdx = -1;
-  for (let i = allEntries.length - 1; i >= 0; i--) {
-    if (allEntries[i].type === "compaction") {
-      lastCompactionIdx = i;
-      break;
-    }
-  }
-
   const messages: AgentMessage[] = [];
-  if (lastCompactionIdx >= 0) {
-    const compEntry = allEntries[lastCompactionIdx] as any;
-    // Summary as context
-    messages.push({ role: "user", content: `[Previous context summary]: ${compEntry.summary}` } as any);
-
-    // Retained tail from entry_details (if stored inline)
-    if (compEntry.retainedTail?.length > 0) {
-      for (const msg of compEntry.retainedTail) {
-        messages.push(msg);
-      }
-    }
-
-    // Kept tail: the keptCount messages immediately before the
-    // compaction marker are the messages that were retained at
-    // compact time. They live in the DB as normal message rows.
-    const keptCount: number = compEntry.keptCount ?? compEntry.details?.keptCount ?? 0;
-    const tailStart = Math.max(0, lastCompactionIdx - keptCount);
-    for (let i = tailStart; i < lastCompactionIdx; i++) {
-      const entry = allEntries[i];
-      if (entry.type === "message") {
-        if ((entry.message as any)?.role === "system") continue;
-        messages.push(entry.message);
-      }
-    }
-
-    // Messages after the compaction marker (new turns since compact)
-    for (let i = lastCompactionIdx + 1; i < allEntries.length; i++) {
-      const entry = allEntries[i];
-      if (entry.type === "message") {
-        if ((entry.message as any)?.role === "system") continue;
-        messages.push(entry.message);
-      }
-    }
-  } else {
-    // No compaction — load all messages
-    for (const entry of allEntries) {
-      if (entry.type === "message") {
-        if ((entry.message as any)?.role === "system") continue;
-        messages.push(entry.message);
-      }
+  for (const entry of allEntries) {
+    if (entry.type === "message") {
+      if ((entry.message as any)?.role === "system") continue;
+      messages.push(entry.message);
     }
   }
 

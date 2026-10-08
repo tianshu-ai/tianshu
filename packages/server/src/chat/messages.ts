@@ -26,10 +26,6 @@ export interface ChatMessage {
   role: "user" | "assistant" | "tool" | "system";
   content: string;
   createdAt: number;
-  /** Non-message entry types (e.g. 'compaction'). Undefined for normal messages. */
-  entryType?: string;
-  /** JSON details for non-message entries. */
-  entryDetails?: string;
 }
 
 export interface ChatSession {
@@ -501,26 +497,22 @@ export function listMessagesForUser(ctx: TenantContext, userId: string): ChatMes
         created_at: number;
       }
     >(
-      `SELECT m.id, m.session_id, m.role, m.content, m.created_at,
-              m.entry_type, m.entry_details
+      `SELECT m.id, m.session_id, m.role, m.content, m.created_at
        FROM messages m
        JOIN sessions s ON m.session_id = s.id
        WHERE s.user_id = ?
          AND s.kind = 'user'
          AND s.channel_id IS NULL
+         AND s.status = 'active'
        ORDER BY m.created_at ASC`,
     )
     .all(userId)
-    .map((r: any) => ({
+    .map((r) => ({
       id: r.id,
       sessionId: r.session_id,
       role: r.role as ChatMessage["role"],
       content: r.content,
       createdAt: r.created_at,
-      ...(r.entry_type && r.entry_type !== "message" ? {
-        entryType: r.entry_type,
-        entryDetails: r.entry_details ?? undefined,
-      } : {}),
     }));
 }
 
@@ -597,12 +589,12 @@ export function listMessagesForUserPage(
             created_at: number;
           }
         >(
-          `SELECT m.id, m.session_id, m.role, m.content, m.created_at,
-                  m.entry_type, m.entry_details
+          `SELECT m.id, m.session_id, m.role, m.content, m.created_at
            FROM messages m
            JOIN sessions s ON m.session_id = s.id
            WHERE s.user_id = ? AND s.kind = 'user'
              AND s.channel_id IS NULL
+             AND s.status = 'active'
              AND (m.created_at < ?
                   OR (m.created_at = ? AND m.id < ?))
            ORDER BY m.created_at DESC, m.id DESC
@@ -620,12 +612,12 @@ export function listMessagesForUserPage(
             created_at: number;
           }
         >(
-          `SELECT m.id, m.session_id, m.role, m.content, m.created_at,
-                  m.entry_type, m.entry_details
+          `SELECT m.id, m.session_id, m.role, m.content, m.created_at
            FROM messages m
            JOIN sessions s ON m.session_id = s.id
            WHERE s.user_id = ? AND s.kind = 'user'
              AND s.channel_id IS NULL
+             AND s.status = 'active'
            ORDER BY m.created_at DESC, m.id DESC
            LIMIT ?`,
         )
@@ -637,16 +629,12 @@ export function listMessagesForUserPage(
   sliced.reverse();
   return {
     hasMore,
-    messages: sliced.map((r: any) => ({
+    messages: sliced.map((r) => ({
       id: r.id,
       sessionId: r.session_id,
       role: r.role as ChatMessage["role"],
       content: r.content,
       createdAt: r.created_at,
-      ...(r.entry_type && r.entry_type !== "message" ? {
-        entryType: r.entry_type,
-        entryDetails: r.entry_details ?? undefined,
-      } : {}),
     })),
   };
 }

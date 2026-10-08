@@ -197,37 +197,9 @@ export default function ChatArea() {
               </button>
             )}
             {merged.map((m, i) => (
-              m.role === "compaction" ? (
-                <div key={m.id} className="my-6">
-                  <div className="flex items-center gap-3 px-4">
-                    <div className="h-px flex-1 bg-border/40" />
-                    <button
-                      type="button"
-                      className="group flex items-center gap-1.5 text-xs text-fg-faint hover:text-fg-muted transition-colors"
-                      onClick={() => {
-                        const el = document.getElementById(`compact-summary-${m.id}`);
-                        if (el) el.classList.toggle("hidden");
-                      }}
-                    >
-                      <span>{t("chat.compactDivider", {
-                        count: m.compaction?.summarisedCount ?? 0,
-                      })}</span>
-                      <span className="opacity-0 group-hover:opacity-100 transition-opacity">▾</span>
-                    </button>
-                    <div className="h-px flex-1 bg-border/40" />
-                  </div>
-                  <div
-                    id={`compact-summary-${m.id}`}
-                    className="hidden mt-3 mx-4 max-h-64 overflow-y-auto rounded-lg border border-border/30 bg-bg-raised/50 p-3 text-xs text-fg-faint whitespace-pre-wrap"
-                  >
-                    {m.compaction?.summary ?? m.text}
-                  </div>
-                </div>
-              ) : (
-                <div key={m.id} className={i === 0 ? "" : "mt-4"}>
-                  <MessageBubble m={m} />
-                </div>
-              )
+              <div key={m.id} className={i === 0 ? "" : "mt-4"}>
+                <MessageBubble m={m} />
+              </div>
             ))}
             {/* ask_user interaction buttons */}
             {/* No "streaming…" label here — the streaming bubble

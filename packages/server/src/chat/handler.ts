@@ -155,7 +155,7 @@ import {
   flushToolDeltaForSession,
   peekToolCatalogDelta,
 } from "./flush-tool-delta.js";
-import { CompactSkippedError, compactSession } from "./compact.js";
+import { CompactSkippedError, compactSession, forkWithSummary } from "./compact.js";
 import { loadGlobalConfig } from "../core/config.js";
 import { getUserStore } from "../core/auth/user-store.js";
 import { resolveTenantRole } from "../core/auth/identity.js";
@@ -2780,73 +2780,48 @@ async function maybeAutoCompact(args: {
   }
   if (!decision.compacted) return;
 
-  // Persist a compaction marker into the same session's messages table.
-  // On restart, message loading (scanEntries → rowToEntry) finds this
-  // marker and only loads the summary + messages after it — not the
-  // full history. Uses entry_type='compaction' + entry_details JSON
-  // so rowToEntry produces a CompactionEntry with summary/retainedTail.
+  // Fork session (same as v0.86.2): old session → status='compacted',
+  // new session gets summary + kept tail. ensureActiveSession returns
+  // the new one on restart, so no full-history reload.
   if (decision.summary) {
-    const markerId = `msg_compact_${Date.now()}`;
-    // Place the compaction marker at the end (MAX(seq)+1).
-    // The loading logic in harness-types.ts finds this marker,
-    // uses its summary as context, then loads messages AFTER it
-    // (the kept tail messages that arrive in subsequent turns).
-    // For messages that were "kept" at compact time but have seq
-    // < marker, keptCount is stored in entry_details so the
-    // loader can grab the tail from before the marker.
-    const maxSeqRow = ctx.db
-      .prepare<[string], { m: number | null }>(
-        `SELECT MAX(seq) AS m FROM messages WHERE session_id = ?`,
-      )
-      .get(session.id);
-    const markerSeq = (maxSeqRow?.m ?? 0) + 1;
     try {
-      ctx.db
-        .prepare(
-          `INSERT INTO messages
-            (id, session_id, role, content, created_at, entry_type,
-             entry_details, parent_id, seq, turn_number)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          markerId,
-          session.id,
-          "system",       // role: not displayed; entry_type drives rowToEntry
-          "",             // content: unused for compaction entries
-          Date.now(),
-          "compaction",   // entry_type: rowToEntry reads this
-          JSON.stringify({
-            summary: decision.summary,
-            retainedTail: [],  // tail messages follow as normal rows
-            summarisedCount: decision.summarisedCount ?? 0,
-            keptCount: decision.keptCount ?? 0,
-            tokensBefore: decision.tokensBefore,
-          }),
-          null,           // parent_id
-          markerSeq,
-          null,           // turn_number
-        );
-      console.log(`[handler] compaction marker written: ${markerId} seq=${markerSeq} (${decision.summarisedCount} summarised, ${decision.keptCount} kept)`);
+      const result = forkWithSummary({
+        ctx,
+        userId: session.userId,
+        oldSession: session,
+        summary: decision.summary,
+        keptCount: decision.keptCount ?? 0,
+        summarisedCount: decision.summarisedCount ?? 0,
+      });
+      console.log(`[handler] compact fork: old=${session.id} new=${result.newSession.id} (${decision.summarisedCount} summarised, ${decision.keptCount} kept)`);
+
+      send({
+        type: "history_compacted",
+        reason: "auto",
+        oldSessionId: session.id,
+        newSessionId: result.newSession.id,
+        summarisedCount: decision.summarisedCount ?? 0,
+        keptCount: decision.keptCount ?? 0,
+        durationMs: 0,
+        tokensBefore: decision.tokensBefore,
+      });
+      onSuccessRefresh();
     } catch (err) {
-      console.warn(`[handler] failed to write compaction marker:`, err);
+      console.warn(`[handler] compact fork failed:`, err);
     }
   } else {
-    console.warn(`[handler] auto-compact succeeded but no summary available — no marker written`);
-  }
-
-  send({
-    type: "history_compacted",
-    reason: "auto",
-    oldSessionId: session.id,
-    newSessionId: session.id,
-    summarisedCount: decision.summarisedCount ?? 0,
-    keptCount: decision.keptCount ?? 0,
-    durationMs: 0,
-    tokensBefore: decision.tokensBefore,
-  });
-  onSuccessRefresh();
-  if ((decision.summarisedCount ?? 0) === 0) {
-    console.log(`[handler] auto-compact reported 0 summarised — compact entry written but no messages removed`);
+    console.warn(`[handler] auto-compact succeeded but no summary available — no fork`);
+    send({
+      type: "history_compacted",
+      reason: "auto",
+      oldSessionId: session.id,
+      newSessionId: session.id,
+      summarisedCount: decision.summarisedCount ?? 0,
+      keptCount: decision.keptCount ?? 0,
+      durationMs: 0,
+      tokensBefore: decision.tokensBefore,
+    });
+    onSuccessRefresh();
   }
 }
 
