@@ -250,7 +250,7 @@ class AgentLaneAdapter implements AgentLane {
     return {
       ok: true,
       value: {
-        compaction: { summary, retainedTail },
+        compaction: { summary, retainedTail, summarisedCount: toSummarize.length },
         tokensBefore,
       },
     };

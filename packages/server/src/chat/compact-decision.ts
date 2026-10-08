@@ -226,15 +226,15 @@ export async function tryAutoCompact(args: {
         error: (result.error as Error).message ?? String(result.error),
       };
     }
-    // Extract counts from compact result. The DB is not modified
-    // (no messages deleted), so recounting via findEntries would
-    // always yield 0 summarised. Instead read from the compact
-    // result's retainedTail length.
+    // Extract counts directly from the compact result.
+    // The DB is not modified (no messages deleted), so recounting
+    // via findEntries would be wrong. The adapter returns the
+    // exact counts from the in-memory compact operation.
     const compaction = (result.value as any)?.compaction;
     const summary: string | undefined = compaction?.summary;
+    const summarisedCount: number = compaction?.summarisedCount ?? 0;
     const retainedTail: unknown[] = compaction?.retainedTail ?? [];
     const keptCount = retainedTail.length;
-    const summarisedCount = Math.max(0, msgsBefore - keptCount);
     return {
       compacted: true,
       tokensBefore,
