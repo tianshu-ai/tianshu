@@ -162,7 +162,14 @@ class AgentLaneAdapter implements AgentLane {
   }
 
   async setModel(model: { provider: string; modelId: string }, _context?: Context): Promise<void> {
-    this.agent.state.model = model as any;
+    // handler passes { provider, modelId } — merge into existing
+    // model to preserve api, baseUrl, cost, etc.
+    const current = this.agent.state.model;
+    this.agent.state.model = {
+      ...current,
+      provider: model.provider,
+      id: model.modelId,
+    } as any;
   }
 
   async getActiveTools(_context?: Context): Promise<string[]> {
