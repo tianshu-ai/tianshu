@@ -1,45 +1,65 @@
 // Session health check.
 //
-// Detects active sessions with excessive message counts that will
-// blow past any model's context window. Reports them as warnings
-// with enough detail for the setup agent to offer a fix (fork +
-// LLM-summarise).
+// Scans all tenants, groups active sessions by channel, reports
+// message counts, and flags oversized sessions that need compaction.
 
-import type { CheckGroup, CheckLine } from "../render.js";
-import { GlobalOps } from "../../core/global-ops.js";
-import { getTenantsRoot, getTianshuHome } from "../../core/paths.js";
 import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import type { CheckGroup } from "../render.js";
+import { getTenantsRoot, getTianshuHome } from "../../core/paths.js";
+import { GlobalOps } from "../../core/global-ops.js";
 
 /** Sessions with more messages than this trigger a warning. */
-const OVERSIZED_THRESHOLD = 2000;
+const WARNING_THRESHOLD = 500;
 
 export interface SessionCheckOpts {
   home?: string;
-  /** Override the message-count threshold (for tests). */
   threshold?: number;
 }
 
-interface OversizedSession {
-  tenantId: string;
+export interface SessionInfo {
   sessionId: string;
   userId: string;
+  status: string;
+  parentId: string | null;
+  channelId: string | null;
+  channelBinding: string | null;
   messageCount: number;
-  oldestMessage: number; // epoch ms
-  newestMessage: number; // epoch ms
+  createdAt: number;
+  newestMessage: number | null;
 }
 
-export function checkSessions(opts: SessionCheckOpts = {}): CheckGroup {
+export interface ChannelGroup {
+  channelId: string | null;
+  channelBinding: string | null;
+  sessions: SessionInfo[];
+}
+
+export interface TenantSessionReport {
+  tenantId: string;
+  channels: ChannelGroup[];
+  totalSessions: number;
+  totalMessages: number;
+  oversizedCount: number;
+}
+
+export interface SessionCheckResult {
+  title: string;
+  lines: CheckGroup["lines"];
+  tenants: TenantSessionReport[];
+}
+
+export function checkSessions(opts: SessionCheckOpts = {}): SessionCheckResult {
   const home = opts.home ?? getTianshuHome();
-  const threshold = opts.threshold ?? OVERSIZED_THRESHOLD;
-  const lines: CheckLine[] = [];
-  const oversized: OversizedSession[] = [];
+  const threshold = opts.threshold ?? WARNING_THRESHOLD;
+  const lines: CheckGroup["lines"] = [];
+  const tenants: TenantSessionReport[] = [];
 
   const tenantsRoot = getTenantsRoot(home);
   if (!fs.existsSync(tenantsRoot)) {
     lines.push({ severity: "ok", text: "no tenants yet" });
-    return { title: "Session Health", lines, oversized } as any;
+    return { title: "Session Health", lines, tenants };
   }
 
   let ops: GlobalOps;
@@ -47,11 +67,10 @@ export function checkSessions(opts: SessionCheckOpts = {}): CheckGroup {
     ops = new GlobalOps({ home });
   } catch {
     lines.push({ severity: "warning", text: "could not open GlobalOps" });
-    return { title: "Session Health", lines, oversized } as any;
+    return { title: "Session Health", lines, tenants };
   }
 
-  const ids = ops.list();
-  for (const tenantId of ids) {
+  for (const tenantId of ops.list()) {
     const dbPath = path.join(tenantsRoot, tenantId, "db.sqlite");
     if (!fs.existsSync(dbPath)) continue;
 
@@ -59,47 +78,25 @@ export function checkSessions(opts: SessionCheckOpts = {}): CheckGroup {
     try {
       db = new Database(dbPath, { readonly: true });
     } catch {
+      lines.push({ severity: "warning", text: `${tenantId}: cannot open db` });
       continue;
     }
 
     try {
-      const rows = db
-        .prepare<
-          [number],
-          {
-            id: string;
-            user_id: string;
-            cnt: number;
-            oldest: number;
-            newest: number;
-          }
-        >(
-          `SELECT s.id, s.user_id,
-                  COUNT(m.id) AS cnt,
-                  MIN(m.created_at) AS oldest,
-                  MAX(m.created_at) AS newest
-           FROM sessions s
-           JOIN messages m ON m.session_id = s.id
-           WHERE s.status = 'active' AND s.kind = 'user'
-           GROUP BY s.id
-           HAVING cnt > ?
-           ORDER BY cnt DESC`,
-        )
-        .all(threshold);
+      const report = scanTenant(db, tenantId, threshold);
+      tenants.push(report);
 
-      for (const r of rows) {
-        oversized.push({
-          tenantId,
-          sessionId: r.id,
-          userId: r.user_id,
-          messageCount: r.cnt,
-          oldestMessage: r.oldest,
-          newestMessage: r.newest,
-        });
+      // Summary line for this tenant
+      if (report.oversizedCount > 0) {
         lines.push({
           severity: "warning",
-          text: `tenant ${tenantId}: session ${r.id.slice(0, 20)}… has ${r.cnt} messages (threshold: ${threshold})`,
-          detail: `user=${r.user_id} — may cause context-window overflows. Use /compact or the session-compact tool to fork and summarise.`,
+          text: `${tenantId}: ${report.oversizedCount} oversized session(s) (>${threshold} msgs) across ${report.channels.length} channel(s), ${report.totalSessions} total sessions, ${report.totalMessages} total messages`,
+          detail: `Use compact_session to split oversized sessions.`,
+        });
+      } else {
+        lines.push({
+          severity: "ok",
+          text: `${tenantId}: ${report.totalSessions} session(s), ${report.totalMessages} messages — all healthy`,
         });
       }
     } finally {
@@ -108,17 +105,90 @@ export function checkSessions(opts: SessionCheckOpts = {}): CheckGroup {
   }
 
   if (lines.length === 0) {
-    lines.push({
-      severity: "ok",
-      text: "all active sessions are within healthy message counts",
-    });
+    lines.push({ severity: "ok", text: "no tenants with sessions" });
   }
 
-  // Attach oversized list for programmatic consumers (setup agent tool).
-  const group: CheckGroup & { oversized?: OversizedSession[] } = {
-    title: "Session Health",
-    lines,
+  return { title: "Session Health", lines, tenants };
+}
+
+// ─── Internal ─────────────────────────────────────────────────────
+
+function scanTenant(
+  db: Database.Database,
+  tenantId: string,
+  threshold: number,
+): TenantSessionReport {
+  // Query all sessions with message counts, grouped by channel
+  const rows = db
+    .prepare<
+      [],
+      {
+        id: string;
+        user_id: string;
+        status: string;
+        parent_id: string | null;
+        channel_id: string | null;
+        channel_binding: string | null;
+        kind: string;
+        created_at: number;
+        msg_count: number;
+        newest_msg: number | null;
+      }
+    >(
+      `SELECT
+         s.id,
+         s.user_id,
+         s.status,
+         s.parent_id,
+         s.channel_id,
+         (SELECT cb.channel || ':' || cb.chat_id
+          FROM channel_bindings cb WHERE cb.session_id = s.id LIMIT 1
+         ) AS channel_binding,
+         s.kind,
+         s.created_at,
+         (SELECT COUNT(*) FROM messages m WHERE m.session_id = s.id) AS msg_count,
+         (SELECT MAX(m.created_at) FROM messages m WHERE m.session_id = s.id) AS newest_msg
+       FROM sessions s
+       WHERE s.status = 'active'
+       ORDER BY s.channel_id, s.created_at`,
+    )
+    .all();
+
+  // Group by channel
+  const channelMap = new Map<string, ChannelGroup>();
+  let totalMessages = 0;
+  let oversizedCount = 0;
+
+  for (const r of rows) {
+    const key = r.channel_id ?? r.channel_binding ?? "(direct/no-channel)";
+    if (!channelMap.has(key)) {
+      channelMap.set(key, {
+        channelId: r.channel_id,
+        channelBinding: r.channel_binding,
+        sessions: [],
+      });
+    }
+    const info: SessionInfo = {
+      sessionId: r.id,
+      userId: r.user_id,
+      status: r.status,
+      parentId: r.parent_id,
+      channelId: r.channel_id,
+      channelBinding: r.channel_binding,
+      messageCount: r.msg_count,
+      createdAt: r.created_at,
+      newestMessage: r.newest_msg,
+    };
+    channelMap.get(key)!.sessions.push(info);
+    totalMessages += r.msg_count;
+    if (r.msg_count > threshold) oversizedCount++;
+  }
+
+  return {
+    tenantId,
+    channels: Array.from(channelMap.values()),
+    totalSessions: rows.length,
+    totalMessages,
+    oversizedCount,
   };
-  if (oversized.length > 0) group.oversized = oversized;
-  return group;
 }

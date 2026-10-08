@@ -2654,13 +2654,21 @@ export function buildTools(
               type: "string",
               description: "The session id to compact (from check_sessions output)",
             },
+            phase: {
+              type: "string",
+              description: "Phase: 'fork' (instant SQL split, default) or 'summarise' (LLM summary generation after fork)",
+            },
+            new_session_id: {
+              type: "string",
+              description: "The new session id returned by the fork phase (required for summarise phase)",
+            },
             model_id: {
               type: "string",
               description: "Model to use for summarisation (optional, uses tenant default)",
             },
             keep_tail: {
               type: "number",
-              description: "Number of recent messages to keep verbatim (default 100)",
+              description: "Number of recent messages to keep verbatim in fork (default 100)",
             },
           },
           required: ["session_id"],
@@ -2669,13 +2677,12 @@ export function buildTools(
       execute: async (args: Record<string, unknown>) => {
         const tenantId = String(args.tenant_id ?? "default");
         const sessionId = String(args.session_id);
+        const phase = String(args.phase ?? "fork");
         const keepTail = typeof args.keep_tail === "number" ? args.keep_tail : undefined;
 
         const pathMod = await import("node:path");
         const fsMod = await import("node:fs");
         const { getTenantsRoot } = await import("../core/paths.js");
-        const { loadTenantConfig } = await import("../core/config.js");
-        const { findModel, getDefaultModel } = await import("../core/llm.js");
         const Database = (await import("better-sqlite3")).default;
         const dbPath = pathMod.join(getTenantsRoot(home), tenantId, "db.sqlite");
         if (!fsMod.existsSync(dbPath)) {
@@ -2684,55 +2691,69 @@ export function buildTools(
         const db = new Database(dbPath);
 
         try {
-          const sessionRow = db
-            .prepare<[string], { id: string; user_id: string; status: string }>(
-              `SELECT id, user_id, status FROM sessions WHERE id = ?`,
-            )
-            .get(sessionId);
-          if (!sessionRow) {
-            return JSON.stringify({ ok: false, error: `session ${sessionId} not found` });
+          if (phase === "fork") {
+            // Phase 1: instant SQL fork
+            const sessionRow = db
+              .prepare<[string], { id: string; user_id: string; status: string }>(
+                `SELECT id, user_id, status FROM sessions WHERE id = ?`,
+              )
+              .get(sessionId);
+            if (!sessionRow) {
+              return JSON.stringify({ ok: false, error: `session ${sessionId} not found` });
+            }
+            if (sessionRow.status !== "active") {
+              return JSON.stringify({ ok: false, error: `session is ${sessionRow.status}, not active` });
+            }
+
+            const { forkOversizedSession } = await import("./compact-oversized.js");
+            const result = forkOversizedSession({
+              db,
+              sessionId,
+              userId: sessionRow.user_id,
+              keepTail,
+            });
+
+            return JSON.stringify({
+              ok: true,
+              phase: "fork",
+              ...result,
+              hint: "Session forked. Run compact_session with phase=summarise and new_session_id to generate real summary.",
+            });
+
+          } else if (phase === "summarise") {
+            // Phase 2: LLM summarise
+            const newSessionId = typeof args.new_session_id === "string" ? args.new_session_id : undefined;
+            if (!newSessionId) {
+              return JSON.stringify({ ok: false, error: "new_session_id required for summarise phase" });
+            }
+
+            const { loadTenantConfig } = await import("../core/config.js");
+            const { findModel, getDefaultModel } = await import("../core/llm.js");
+            const config = loadTenantConfig(tenantId, home);
+            const modelId = typeof args.model_id === "string" ? args.model_id : undefined;
+            const modelInfo = (modelId ? findModel(config, modelId) : undefined) ?? getDefaultModel(config);
+            if (!modelInfo) {
+              return JSON.stringify({ ok: false, error: "no model configured for summarisation" });
+            }
+
+            const { summariseForkedSession } = await import("./compact-oversized.js");
+            const result = await summariseForkedSession({
+              db,
+              oldSessionId: sessionId,
+              newSessionId,
+              modelInfo,
+            });
+
+            return JSON.stringify({
+              ok: true,
+              phase: "summarise",
+              ...result,
+              summaryPreview: result.summary.slice(0, 500),
+            });
+
+          } else {
+            return JSON.stringify({ ok: false, error: `unknown phase: ${phase}. Use 'fork' or 'summarise'.` });
           }
-          if (sessionRow.status !== "active") {
-            return JSON.stringify({ ok: false, error: `session is ${sessionRow.status}, not active` });
-          }
-
-          const config = loadTenantConfig(tenantId, home);
-          const modelId = typeof args.model_id === "string" ? args.model_id : undefined;
-          const modelInfo = (modelId ? findModel(config, modelId) : undefined) ?? getDefaultModel(config);
-          if (!modelInfo) {
-            return JSON.stringify({ ok: false, error: "no model configured for summarisation" });
-          }
-
-          const ctx = { db, config, tenantId } as any;
-          const session = {
-            id: sessionRow.id,
-            userId: sessionRow.user_id,
-            parentId: null,
-            status: "active" as const,
-            kind: "user" as const,
-            title: null,
-            createdAt: 0,
-          };
-
-          const { compactOversizedSession } = await import("./compact-oversized.js");
-          const result = await compactOversizedSession({
-            ctx,
-            userId: sessionRow.user_id,
-            session,
-            modelInfo,
-            keepTail,
-          });
-
-          return JSON.stringify({
-            ok: true,
-            oldSessionId: result.oldSessionId,
-            newSessionId: result.newSessionId,
-            totalMessages: result.totalMessages,
-            segments: result.segments,
-            keptTail: result.keptTail,
-            summaryPreview: result.summary.slice(0, 500),
-            durationMs: result.durationMs,
-          });
         } finally {
           db.close();
         }

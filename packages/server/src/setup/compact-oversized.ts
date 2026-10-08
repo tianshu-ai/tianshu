@@ -1,6 +1,11 @@
-// Compact an oversized session by splitting it into segments,
-// summarising each segment independently, then combining segment
-// summaries into one final summary and forking the session.
+// Compact an oversized session in two phases:
+//
+// Phase 1 (instant): SQL fork — new session gets last N messages,
+//   old session marked compacted with placeholder summary.
+//   Session is immediately usable.
+//
+// Phase 2 (async): LLM summarise — split old messages into segments,
+//   summarise each, merge into final summary, update the placeholder.
 //
 // Designed for sessions with thousands of messages that cannot
 // be summarised in a single LLM call.
@@ -18,10 +23,7 @@ import { appendMessage, type ChatSession } from "../chat/messages.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 
-/** Max messages per segment for individual summarisation. */
 const SEGMENT_SIZE = 400;
-
-/** How many recent messages to keep verbatim in the fork. */
 const KEEP_TAIL = 100;
 
 const SEGMENT_SUMMARY_PROMPT = `You are a conversation-compaction assistant. Summarise this segment of a chat between a user and an AI agent. Preserve:
@@ -53,66 +55,171 @@ interface MessageRow {
   created_at: number;
 }
 
-export interface CompactOversizedResult {
+export interface ForkResult {
   oldSessionId: string;
   newSessionId: string;
   totalMessages: number;
-  segments: number;
   keptTail: number;
+  /** True = placeholder summary, needs phase 2. */
+  pendingSummary: boolean;
+}
+
+export interface SummariseResult {
+  oldSessionId: string;
+  newSessionId: string;
+  segments: number;
   summary: string;
   durationMs: number;
 }
 
-// ─── Main entry point ─────────────────────────────────────────────
+// ─── Phase 1: Instant SQL fork ────────────────────────────────────
 
-export async function compactOversizedSession(args: {
-  ctx: TenantContext;
+/**
+ * Fork a session immediately — no LLM call. The new session gets
+ * the most recent `keepTail` messages; the old session is marked
+ * compacted with a placeholder summary. Returns instantly.
+ */
+export function forkOversizedSession(args: {
+  db: import("better-sqlite3").Database;
+  sessionId: string;
   userId: string;
-  session: ChatSession;
+  keepTail?: number;
+}): ForkResult {
+  const { db, sessionId, userId, keepTail = KEEP_TAIL } = args;
+
+  // Count messages
+  const countRow = db
+    .prepare<[string], { cnt: number }>(
+      `SELECT COUNT(*) AS cnt FROM messages
+       WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')`,
+    )
+    .get(sessionId);
+  const totalMessages = countRow?.cnt ?? 0;
+
+  // Clean any garbage compaction markers from earlier bugs
+  db.prepare(
+    `DELETE FROM messages WHERE session_id = ? AND entry_type = 'compaction'`,
+  ).run(sessionId);
+
+  // Mark old session compacted
+  const placeholder = `[Pending LLM summary — ${totalMessages} messages, forked at ${new Date().toISOString()}. Use compact_session phase 2 to generate real summary.]`;
+  db.prepare<[string, number, string], unknown>(
+    `UPDATE sessions SET status='compacted', compacted_summary=?, ended_at=? WHERE id=?`,
+  ).run(placeholder, Date.now(), sessionId);
+
+  // Create new session
+  const newSessionId = `session_${randomUUID()}`;
+  const now = Date.now();
+  db.prepare<[string, string, string, string, string, number], unknown>(
+    `INSERT INTO sessions (id, user_id, parent_id, status, kind, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(newSessionId, userId, sessionId, "active", "user", now);
+
+  // Seed: placeholder summary + ack
+  db.prepare<[string, string, string, string, number], unknown>(
+    `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(
+    `msg_${randomUUID()}`,
+    newSessionId,
+    "user",
+    `[Conversation summary — pending generation]\n\n${placeholder}`,
+    now,
+  );
+  db.prepare<[string, string, string, string, number], unknown>(
+    `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+  ).run(
+    `msg_${randomUUID()}`,
+    newSessionId,
+    "assistant",
+    "Understood — I have the prior context and will continue from where we left off.",
+    now + 1,
+  );
+
+  // Copy tail messages
+  const tailRows = db
+    .prepare<[string, number], { role: string; content: string; created_at: number }>(
+      `SELECT role, content, created_at FROM messages
+       WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
+       ORDER BY created_at DESC, rowid DESC
+       LIMIT ?`,
+    )
+    .all(sessionId, keepTail);
+  tailRows.reverse();
+
+  for (const r of tailRows) {
+    db.prepare<[string, string, string, string, number], unknown>(
+      `INSERT INTO messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)`,
+    ).run(`msg_${randomUUID()}`, newSessionId, r.role, r.content, r.created_at);
+  }
+
+  console.log(`[compact-oversized] phase 1 fork: old=${sessionId} new=${newSessionId} (${totalMessages} msgs → ${tailRows.length} tail)`);
+
+  return {
+    oldSessionId: sessionId,
+    newSessionId,
+    totalMessages,
+    keptTail: tailRows.length,
+    pendingSummary: true,
+  };
+}
+
+// ─── Phase 2: LLM summarise + update ─────────────────────────────
+
+/**
+ * Generate a real summary for a previously-forked session.
+ * Reads old session messages, splits into segments, summarises
+ * each, merges, and updates both the old session's
+ * compacted_summary and the new session's summary message.
+ */
+export async function summariseForkedSession(args: {
+  db: import("better-sqlite3").Database;
+  oldSessionId: string;
+  newSessionId: string;
   modelInfo: ResolvedModelInfo;
   signal?: AbortSignal;
   segmentSize?: number;
-  keepTail?: number;
   onProgress?: (stage: string, current: number, total: number) => void;
-}): Promise<CompactOversizedResult> {
+}): Promise<SummariseResult> {
   const {
-    ctx, userId, session, modelInfo, signal,
+    db, oldSessionId, newSessionId, modelInfo, signal,
     segmentSize = SEGMENT_SIZE,
-    keepTail = KEEP_TAIL,
     onProgress,
   } = args;
   const t0 = Date.now();
 
-  // 1. Load all message rows.
-  const allRows: MessageRow[] = ctx.db
+  // Load old session messages (excluding the tail that was already copied)
+  const allRows: MessageRow[] = db
     .prepare<[string], MessageRow>(
       `SELECT id, role, content, created_at FROM messages
        WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
        ORDER BY created_at ASC, rowid ASC`,
     )
-    .all(session.id);
+    .all(oldSessionId);
 
-  const totalMessages = allRows.length;
-  if (totalMessages <= keepTail) {
-    throw new Error(`Session only has ${totalMessages} messages, below keepTail=${keepTail}`);
+  if (allRows.length === 0) {
+    return {
+      oldSessionId,
+      newSessionId,
+      segments: 0,
+      summary: "(empty session)",
+      durationMs: Date.now() - t0,
+    };
   }
 
-  // 2. Split: everything except tail → segments for summarisation.
-  const toSummarise = allRows.slice(0, allRows.length - keepTail);
-  const tail = allRows.slice(allRows.length - keepTail);
+  // Split into segments
   const segments: MessageRow[][] = [];
-  for (let i = 0; i < toSummarise.length; i += segmentSize) {
-    segments.push(toSummarise.slice(i, i + segmentSize));
+  for (let i = 0; i < allRows.length; i += segmentSize) {
+    segments.push(allRows.slice(i, i + segmentSize));
   }
 
   onProgress?.("splitting", 0, segments.length);
-  console.log(`[compact-oversized] ${totalMessages} messages → ${segments.length} segments + ${tail.length} tail`);
+  console.log(`[compact-oversized] phase 2: ${allRows.length} msgs → ${segments.length} segments`);
 
-  // 3. Summarise each segment independently.
+  // Summarise each segment
   const segmentSummaries: string[] = [];
   for (let i = 0; i < segments.length; i++) {
     onProgress?.("summarising", i + 1, segments.length);
-    console.log(`[compact-oversized] summarising segment ${i + 1}/${segments.length} (${segments[i].length} messages)`);
+    console.log(`[compact-oversized] summarising segment ${i + 1}/${segments.length} (${segments[i].length} msgs)`);
 
     const transcript = buildTranscriptFromRows(segments[i]);
     const summary = await callLlm(
@@ -124,10 +231,8 @@ export async function compactOversizedSession(args: {
     segmentSummaries.push(summary);
   }
 
-  // 4. Merge segment summaries into one final summary.
+  // Merge
   onProgress?.("merging", 0, 1);
-  console.log(`[compact-oversized] merging ${segmentSummaries.length} segment summaries`);
-
   let finalSummary: string;
   if (segmentSummaries.length === 1) {
     finalSummary = segmentSummaries[0];
@@ -143,68 +248,73 @@ export async function compactOversizedSession(args: {
     );
   }
 
-  // 5. Fork session: mark old as compacted, create new with summary + tail.
-  onProgress?.("forking", 0, 1);
-  console.log(`[compact-oversized] forking session`);
+  // Update old session's compacted_summary
+  db.prepare<[string, string], unknown>(
+    `UPDATE sessions SET compacted_summary = ? WHERE id = ?`,
+  ).run(finalSummary, oldSessionId);
 
-  ctx.db
-    .prepare<[string, number, string], unknown>(
-      `UPDATE sessions
-         SET status='compacted', compacted_summary=?, ended_at=?
-       WHERE id=?`,
+  // Update the placeholder summary message in the new session
+  const summaryMsgRow = db
+    .prepare<[string], { id: string } | undefined>(
+      `SELECT id FROM messages
+       WHERE session_id = ? AND role = 'user' AND content LIKE '%[Conversation summary%'
+       ORDER BY created_at ASC LIMIT 1`,
     )
-    .run(finalSummary, Date.now(), session.id);
+    .get(newSessionId);
 
-  const newSessionId = `session_${randomUUID()}`;
-  const now = Date.now();
-  ctx.db
-    .prepare<[string, string, string, string, string, number], unknown>(
-      `INSERT INTO sessions (id, user_id, parent_id, status, kind, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    )
-    .run(newSessionId, userId, session.id, "active", "user", now);
-
-  const newSession: ChatSession = {
-    id: newSessionId,
-    userId,
-    parentId: session.id,
-    status: "active",
-    kind: "user",
-    title: null,
-    createdAt: now,
-  };
-
-  appendMessage(ctx, newSession, {
-    role: "user",
-    content: `[Conversation summary — generated at ${new Date(now).toISOString()}]\n\n${finalSummary}`,
-  });
-  appendMessage(ctx, newSession, {
-    role: "assistant",
-    content: "Understood — I have the prior context and will continue from where we left off.",
-  });
-
-  for (const r of tail) {
-    const id = `msg_${randomUUID()}`;
-    ctx.db
-      .prepare<[string, string, string, string, number], unknown>(
-        `INSERT INTO messages (id, session_id, role, content, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(id, newSessionId, r.role, r.content, r.created_at);
+  if (summaryMsgRow) {
+    db.prepare<[string, string], unknown>(
+      `UPDATE messages SET content = ? WHERE id = ?`,
+    ).run(
+      `[Conversation summary — generated at ${new Date().toISOString()}]\n\n${finalSummary}`,
+      summaryMsgRow.id,
+    );
   }
 
   const durationMs = Date.now() - t0;
-  console.log(`[compact-oversized] done: old=${session.id} new=${newSessionId} (${durationMs}ms)`);
+  console.log(`[compact-oversized] phase 2 done: ${segments.length} segments, ${durationMs}ms`);
 
   return {
-    oldSessionId: session.id,
+    oldSessionId,
     newSessionId,
-    totalMessages,
     segments: segments.length,
-    keptTail: tail.length,
     summary: finalSummary,
     durationMs,
   };
+}
+
+// ─── Convenience: both phases in one call ─────────────────────────
+
+export async function compactOversizedSession(args: {
+  ctx: TenantContext;
+  userId: string;
+  session: ChatSession;
+  modelInfo: ResolvedModelInfo;
+  signal?: AbortSignal;
+  segmentSize?: number;
+  keepTail?: number;
+  onProgress?: (stage: string, current: number, total: number) => void;
+}): Promise<ForkResult & SummariseResult> {
+  const { ctx, userId, session, modelInfo, signal, segmentSize, keepTail, onProgress } = args;
+
+  const fork = forkOversizedSession({
+    db: ctx.db,
+    sessionId: session.id,
+    userId,
+    keepTail,
+  });
+
+  const summary = await summariseForkedSession({
+    db: ctx.db,
+    oldSessionId: fork.oldSessionId,
+    newSessionId: fork.newSessionId,
+    modelInfo,
+    signal,
+    segmentSize,
+    onProgress,
+  });
+
+  return { ...fork, ...summary, pendingSummary: false };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────
