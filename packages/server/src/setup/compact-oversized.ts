@@ -233,14 +233,17 @@ export async function summariseForkedSession(args: {
     };
   }
 
-  // Refine segment size using actual message content bytes
+  // Refine segment size by sampling actual transcript output.
+  // buildTranscriptFromRows truncates tool results to 500 chars,
+  // so the transcript is much smaller than raw message content.
   if (!explicitSegmentSize && modelInfo.contextWindow) {
-    const totalBytes = allRows.reduce((sum, r) => sum + (r.content?.length ?? 0), 0);
-    const avgBytesPerMsg = totalBytes / allRows.length;
-    const avgTokensPerMsg = Math.max(10, avgBytesPerMsg / BYTES_PER_TOKEN);
+    const sampleSize = Math.min(100, allRows.length);
+    const sampleTranscript = buildTranscriptFromRows(allRows.slice(0, sampleSize));
+    const avgTranscriptBytesPerMsg = sampleTranscript.length / sampleSize;
+    const avgTokensPerMsg = Math.max(10, avgTranscriptBytesPerMsg / BYTES_PER_TOKEN);
     const targetTokens = Math.floor(modelInfo.contextWindow * CONTEXT_USAGE_RATIO);
-    segmentSize = Math.max(100, Math.floor(targetTokens / avgTokensPerMsg));
-    console.log(`[compact-oversized] refined: avg ${avgBytesPerMsg.toFixed(0)} bytes/msg ≈ ${avgTokensPerMsg.toFixed(0)} tokens/msg → segment size ${segmentSize}`);
+    segmentSize = Math.max(200, Math.floor(targetTokens / avgTokensPerMsg));
+    console.log(`[compact-oversized] refined (transcript sample): avg ${avgTranscriptBytesPerMsg.toFixed(0)} transcript bytes/msg ≈ ${avgTokensPerMsg.toFixed(0)} tokens/msg → segment size ${segmentSize}`);
   }
 
   // Split into segments
