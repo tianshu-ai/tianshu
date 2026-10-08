@@ -2638,7 +2638,7 @@ export function buildTools(
       schema: {
         name: "compact_session",
         description:
-          "Compact an oversized session by splitting it into segments, summarising each with LLM, merging into a final summary, and forking a new lean session. The old session is preserved (status=compacted) with full message history accessible via recall. Use check_sessions first to identify candidates.",
+          "Compact an oversized session by splitting it into segments, summarising each with LLM, merging into a final summary, and forking a new lean session. The old session is preserved (status=compacted) with full message history accessible via recall. Use check_sessions first to identify candidates.\n\nIMPORTANT: For summarise phase, always pass a fast model_id (e.g. gemini-2.5-flash, claude-sonnet). The default model (often Opus) is far too slow for 40+ segment summarisations. The code auto-selects a fast model when model_id is omitted, but explicit is better.",
         parameters: {
           type: "object",
           properties: {
