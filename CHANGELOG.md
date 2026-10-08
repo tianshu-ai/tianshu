@@ -6,6 +6,13 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.87.0](https://github.com/tianshu-ai/tianshu/compare/v0.86.2...v0.87.0) (2026-10-08)
+
+
+### Features
+
+* migrate to pi-agent-core 1.0 + pi-ai 1.0 ([#572](https://github.com/tianshu-ai/tianshu/issues/572)) ([f874e5b](https://github.com/tianshu-ai/tianshu/commit/f874e5b8401b3289d5afb6abe63d41ec2f91ccba))
+
 ## [0.86.2](https://github.com/tianshu-ai/tianshu/compare/v0.86.1...v0.86.2) (2026-10-08)
 
 
