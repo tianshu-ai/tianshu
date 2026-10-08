@@ -122,12 +122,42 @@ class AgentLaneAdapter implements AgentLane {
   setHarness(h: AgentHarnessAdapter) { this.harnessAdapter = h; }
 
   async prompt(textOrMsg: string | AgentMessage | AgentMessage[], imagesOrCtx?: ImageContent[] | Context, _context?: Context): Promise<any> {
+    // Persist user message to session storage BEFORE running the model.
+    // The old harness did this automatically; without it, user messages
+    // are lost on refresh.
+    const ctx = _context ?? (typeof imagesOrCtx === "object" && imagesOrCtx && !Array.isArray(imagesOrCtx) ? imagesOrCtx as Context : { abortSignal: undefined });
     if (typeof textOrMsg === "string") {
+      const userMsg: AgentMessage = {
+        role: "user",
+        content: textOrMsg,
+        timestamp: Date.now(),
+      } as any;
+      await this._persistMessage(userMsg, ctx);
       await this.agent.prompt(textOrMsg, imagesOrCtx as ImageContent[]);
     } else {
+      // Message object(s) — persist each non-system message
+      const msgs = Array.isArray(textOrMsg) ? textOrMsg : [textOrMsg];
+      for (const m of msgs) {
+        if ((m as any).role !== "system") {
+          await this._persistMessage(m, ctx);
+        }
+      }
       await this.agent.prompt(textOrMsg as AgentMessage | AgentMessage[]);
     }
     return { ok: true, value: { operationId: "op-" + Date.now() } };
+  }
+
+  /** Persist a message to session storage (best-effort). */
+  private async _persistMessage(msg: AgentMessage, ctx: Context): Promise<void> {
+    const id = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    try {
+      await this.session.mutate(async (mutation) => {
+        await mutation.commit([{
+          kind: "entry",
+          entry: { id, parentId: null, type: "message", message: msg },
+        } as any], ctx);
+      }, ctx);
+    } catch { /* best effort */ }
   }
 
   async followUp(message: string | AgentMessage, _images?: ImageContent[], _context?: Context): Promise<any> {
@@ -392,6 +422,39 @@ class AgentHarnessAdapter implements AgentHarness {
         }
       }
 
+      // Persist tool results on turn_end — the old harness committed
+      // each tool result to storage automatically. turn_end.toolResults
+      // contains all ToolResultMessages from the completed turn.
+      if (agentEvent.type === "turn_end" && (agentEvent as any).toolResults) {
+        const toolResults = (agentEvent as any).toolResults as AgentMessage[];
+        for (const tr of toolResults) {
+          if ((tr as any).role === "toolResult") {
+            const trId = `tr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+            try {
+              await session.mutate(async (mutation) => {
+                await mutation.commit([{
+                  kind: "entry",
+                  entry: { id: trId, parentId: null, type: "message", message: tr },
+                } as any], ctx);
+              }, ctx);
+            } catch { /* best effort */ }
+
+            // Emit entry_added for tool results so handler pushes to WS
+            const trListeners = this.eventListeners.get("entry_added");
+            if (trListeners) {
+              const trEvent: HarnessEvent = {
+                type: "entry_added",
+                lane: "main",
+                entry: { id: trId, type: "message", message: tr },
+              };
+              for (const fn of trListeners) {
+                try { await fn(trEvent, ctx); } catch { /* best effort */ }
+              }
+            }
+          }
+        }
+      }
+
       // Synthesize `entry_added` after `message_end` — the old harness
       // emitted this AFTER committing the entry to storage. handler.ts
       // uses it (not message_end) to push the final message to WS.
@@ -572,14 +635,10 @@ async function createAgentHarness(
   //   → convertToLlm (AgentMessage[] → Message[])
   // So toProviderMessages maps to convertToLlm, NOT transformContext.
   const userTransform = options.toProviderMessages;
-  console.log(`[harness-adapter] toProviderMessages present: ${!!userTransform}`);
   const convertToLlm = userTransform
     ? async (msgs: AgentMessage[]): Promise<any[]> => {
-        console.log(`[harness-adapter] convertToLlm called, ${msgs.length} messages in`);
         const result = userTransform(msgs, context);
-        const out = result instanceof Promise ? await result : result;
-        console.log(`[harness-adapter] convertToLlm done, ${(out as any[]).length} messages out`);
-        return out;
+        return result instanceof Promise ? await result : result;
       }
     : undefined;
 
