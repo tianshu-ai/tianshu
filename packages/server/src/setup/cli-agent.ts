@@ -2652,7 +2652,7 @@ export function buildTools(
             },
             phase: {
               type: "string",
-              description: "Phase: 'fork' (instant SQL split, default) or 'summarise' (LLM summary generation after fork)",
+              description: "Phase: 'fork' (instant SQL split, default), 'summarise' (LLM summary after fork), or 'reverse' (undo a previous fork, restore session to active)",
             },
             new_session_id: {
               type: "string",
@@ -2774,8 +2774,104 @@ export function buildTools(
               failed: result.failed,
             });
 
+          } else if (phase === "reverse") {
+            // Reverse a previous fork: restore compacted session to active,
+            // delete forked child sessions and their messages.
+            const sessionRow = db
+              .prepare<[string], { id: string; user_id: string; status: string }>(
+                `SELECT id, user_id, status FROM sessions WHERE id = ?`,
+              )
+              .get(sessionId);
+            if (!sessionRow) {
+              return JSON.stringify({ ok: false, error: `session ${sessionId} not found` });
+            }
+            if (sessionRow.status !== "compacted") {
+              return JSON.stringify({ ok: false, error: `session is ${sessionRow.status}, not compacted — nothing to reverse` });
+            }
+
+            // Find all child sessions (direct + transitive via parent chain)
+            const childIds: string[] = [];
+            const queue = [sessionId];
+            while (queue.length > 0) {
+              const parentId = queue.shift()!;
+              const children = db
+                .prepare<[string], { id: string }>(
+                  `SELECT id FROM sessions WHERE parent_id = ? AND status IN ('active', 'compacted')`,
+                )
+                .all(parentId)
+                .map(r => r.id);
+              for (const cid of children) {
+                childIds.push(cid);
+                queue.push(cid);
+              }
+            }
+
+            // Reverse: move messages back and delete child sessions.
+            //
+            // Multi-level fork MOVEs messages from original to compacted children.
+            // Simple fork COPIEs tail messages into the active child.
+            // Strategy:
+            //   - Compacted children: MOVE messages back to original session
+            //   - Active children: DELETE messages (they are copies + placeholders)
+            //   - Then delete all child session records
+            let movedBack = 0;
+            let deletedCopied = 0;
+            let deletedSessions = 0;
+
+            for (const cid of childIds) {
+              const childRow = db
+                .prepare<[string], { status: string }>(
+                  `SELECT status FROM sessions WHERE id = ?`,
+                )
+                .get(cid);
+              if (!childRow) continue;
+
+              if (childRow.status === "compacted") {
+                // These messages were MOVEd from the original — move them back
+                const r = db
+                  .prepare(`UPDATE messages SET session_id = ? WHERE session_id = ?`)
+                  .run(sessionId, cid);
+                movedBack += r.changes;
+              } else {
+                // Active child — messages are copies/placeholders, delete them
+                const r = db
+                  .prepare(`DELETE FROM messages WHERE session_id = ?`)
+                  .run(cid);
+                deletedCopied += r.changes;
+              }
+
+              db.prepare(`DELETE FROM sessions WHERE id = ?`).run(cid);
+              deletedSessions++;
+            }
+
+            // Restore original session to active
+            db.prepare(
+              `UPDATE sessions SET status = 'active', compacted_summary = NULL, ended_at = NULL WHERE id = ?`,
+            ).run(sessionId);
+
+            // Clean up segment checkpoint data
+            try {
+              db.prepare(`DELETE FROM segment_summaries WHERE session_id = ?`).run(sessionId);
+              for (const cid of childIds) {
+                db.prepare(`DELETE FROM segment_summaries WHERE session_id = ?`).run(cid);
+              }
+            } catch { /* table may not exist */ }
+
+            console.log(`[compact-oversized] reverse: restored ${sessionId}, deleted ${deletedSessions} child sessions, moved back ${movedBack} msgs, deleted ${deletedCopied} copied msgs`);
+
+            return JSON.stringify({
+              ok: true,
+              phase: "reverse",
+              sessionId,
+              restoredStatus: "active",
+              deletedSessions,
+              movedBackMessages: movedBack,
+              deletedCopiedMessages: deletedCopied,
+              childSessionIds: childIds,
+            });
+
           } else {
-            return JSON.stringify({ ok: false, error: `unknown phase: ${phase}. Use 'fork' or 'summarise'.` });
+            return JSON.stringify({ ok: false, error: `unknown phase: ${phase}. Use 'fork', 'summarise', or 'reverse'.` });
           }
         } finally {
           db.close();
