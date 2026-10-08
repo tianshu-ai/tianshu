@@ -430,6 +430,17 @@ async function createAgentHarness(
   // Create the stream function from Models
   const streamFn = models.streamSimple.bind(models) as any;
 
+  // Wire toProviderMessages as transformContext so progressive
+  // history trimming runs before every model request. Without this,
+  // long sessions blow past the context window.
+  const userTransform = options.toProviderMessages;
+  const transformContext = userTransform
+    ? async (msgs: AgentMessage[], _signal?: AbortSignal): Promise<AgentMessage[]> => {
+        const transformed = await userTransform(msgs, context);
+        return transformed as AgentMessage[];
+      }
+    : undefined;
+
   // Create Agent
   const agent = new Agent({
     initialState: {
@@ -440,6 +451,7 @@ async function createAgentHarness(
       thinkingLevel: (options.thinkingLevel ?? "off") as any,
     },
     streamFn,
+    transformContext,
     getApiKey: options.getApiKey,
     beforeToolCall: options.beforeToolCall,
     afterToolCall: options.afterToolCall,
