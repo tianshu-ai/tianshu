@@ -404,33 +404,36 @@ async function createAgentHarness(
 ): Promise<{ harness: AgentHarness; open: any[] }> {
   const { session, models, model, tools = [], systemPrompt, compaction } = options;
 
-  // Load messages from session.
-  // The old harness read from storage on demand; we must NOT load
-  // the entire history into Agent state — a long session (20k+
-  // messages) would blow past the context window before
-  // transformContext even runs. Instead, load only the tail that
-  // fits a reasonable budget. transformContext (progressive history)
-  // will further trim before each model call.
+  // Load messages from the last compaction point forward.
+  // The old harness read from storage on demand starting at the
+  // most recent compaction. Loading the full history (20k+ messages)
+  // would blow past any context window.
   const allEntries = await session.findEntries(undefined, context);
-  // Extract messages from entries, respecting compaction summaries
-  const allMessages: AgentMessage[] = [];
-  for (const entry of allEntries) {
-    if (entry.type === "message") {
-      allMessages.push(entry.message);
-    } else if (entry.type === "compaction") {
-      allMessages.push({ role: "user", content: `[Previous context summary]: ${entry.summary}` } as any);
-      for (const msg of entry.retainedTail) {
-        allMessages.push(msg);
-      }
+
+  // Find the last compaction entry — everything before it is
+  // already summarized and should not be loaded.
+  let lastCompactionIdx = -1;
+  for (let i = allEntries.length - 1; i >= 0; i--) {
+    if (allEntries[i].type === "compaction") {
+      lastCompactionIdx = i;
+      break;
     }
   }
-  // Keep only the most recent messages. 200 turns (~400 messages
-  // for user+assistant pairs) is generous for any context window;
-  // progressive history trims further based on actual token counts.
-  const MAX_INITIAL_MESSAGES = 400;
-  const messages = allMessages.length > MAX_INITIAL_MESSAGES
-    ? allMessages.slice(-MAX_INITIAL_MESSAGES)
-    : allMessages;
+
+  const messages: AgentMessage[] = [];
+  const startIdx = lastCompactionIdx >= 0 ? lastCompactionIdx : 0;
+  for (let i = startIdx; i < allEntries.length; i++) {
+    const entry = allEntries[i];
+    if (entry.type === "compaction") {
+      // Compaction summary + retained tail replaces all prior history
+      messages.push({ role: "user", content: `[Previous context summary]: ${entry.summary}` } as any);
+      for (const msg of entry.retainedTail) {
+        messages.push(msg);
+      }
+    } else if (entry.type === "message") {
+      messages.push(entry.message);
+    }
+  }
 
   // Resolve system prompt
   let resolvedPrompt = "";
