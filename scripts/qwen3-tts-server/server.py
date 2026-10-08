@@ -48,6 +48,17 @@ import uvicorn
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("qwen3-tts-server")
 
+# ── Workaround: qwen_tts._transformers_compat patches Mimi's rope
+# function but accesses config.rope_theta which MimiConfig doesn't have
+# in transformers >= 5.15. Patch MimiConfig to provide a default.
+try:
+    from transformers.models.mimi.configuration_mimi import MimiConfig
+    if not hasattr(MimiConfig, "rope_theta"):
+        MimiConfig.rope_theta = 10000.0
+        log.info("Patched MimiConfig.rope_theta for transformers compat")
+except Exception:
+    pass
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
