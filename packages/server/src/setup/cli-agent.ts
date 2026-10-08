@@ -2724,10 +2724,36 @@ export function buildTools(
             }
 
             const { resolveTenantConfig } = await import("../core/config.js");
-            const { findModel, getDefaultModel } = await import("../core/llm.js");
+            const { findModel, getDefaultModel, listModels } = await import("../core/llm.js");
             const config = resolveTenantConfig(tenantId, home);
             const modelId = typeof args.model_id === "string" ? args.model_id : undefined;
-            const modelInfo = (modelId ? findModel(config, modelId) : undefined) ?? getDefaultModel(config);
+
+            // Auto-select a fast model for summarisation when not explicitly specified.
+            // Summarisation is bulk work — use the largest context window, cheapest model.
+            // Prefer: flash > sonnet > haiku > any non-opus > default
+            let modelInfo = modelId ? findModel(config, modelId) : undefined;
+            if (!modelInfo) {
+              const all = listModels(config);
+              const scored = all
+                .filter(m => m.contextWindow && m.contextWindow > 0)
+                .map(m => {
+                  const id = m.modelId.toLowerCase();
+                  // Prefer fast models with large context windows
+                  let priority = 0;
+                  if (id.includes("flash")) priority = 100;
+                  else if (id.includes("sonnet")) priority = 80;
+                  else if (id.includes("haiku")) priority = 70;
+                  else if (id.includes("gemini")) priority = 60;
+                  else if (id.includes("opus")) priority = 10; // avoid for bulk work
+                  else priority = 40;
+                  return { model: m, priority, window: m.contextWindow! };
+                })
+                .sort((a, b) => b.priority - a.priority || b.window - a.window);
+              modelInfo = scored[0]?.model ?? getDefaultModel(config);
+              if (modelInfo) {
+                console.log(`[compact-oversized] auto-selected model: ${modelInfo.providerId}/${modelInfo.modelId} (context: ${modelInfo.contextWindow ?? "?"})`);
+              }
+            }
             if (!modelInfo) {
               return JSON.stringify({ ok: false, error: "no model configured for summarisation" });
             }
