@@ -271,11 +271,44 @@ class AgentHarnessAdapter implements AgentHarness {
     // Bridge new Agent events to old HarnessEvent listeners
     this.unsubscribe = agent.subscribe(async (agentEvent: AgentEvent) => {
       const harnessEvent = mapAgentEvent(agentEvent);
+      const ctx: Context = { abortSignal: agent.signal };
+
+      // Dispatch the mapped event
       const listeners = this.eventListeners.get(harnessEvent.type);
       if (listeners) {
-        const ctx: Context = { abortSignal: agent.signal };
         for (const fn of listeners) {
           try { await fn(harnessEvent, ctx); } catch { /* best effort */ }
+        }
+      }
+
+      // Synthesize `entry_added` after `message_end` — the old harness
+      // emitted this AFTER committing the entry to storage. handler.ts
+      // uses it (not message_end) to push the final message to WS.
+      if (agentEvent.type === "message_end") {
+        const msg = agentEvent.message;
+        const entryId = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+        // Persist to session storage first
+        try {
+          await session.mutate(async (mutation) => {
+            await mutation.commit([{
+              kind: "entry",
+              entry: { id: entryId, parentId: null, type: "message", message: msg },
+            } as any], ctx);
+          }, ctx);
+        } catch { /* best effort persistence */ }
+
+        // Then emit entry_added so handler reads back the persisted row
+        const entryAddedListeners = this.eventListeners.get("entry_added");
+        if (entryAddedListeners) {
+          const entryAddedEvent: HarnessEvent = {
+            type: "entry_added",
+            lane: "main",
+            entry: { id: entryId, type: "message", message: msg },
+          };
+          for (const fn of entryAddedListeners) {
+            try { await fn(entryAddedEvent, ctx); } catch { /* best effort */ }
+          }
         }
       }
     });
@@ -409,21 +442,8 @@ async function createAgentHarness(
     toolExecution: options.toolExecution ?? "sequential",
   });
 
-  // Persist new messages back to session as they arrive
-  agent.subscribe(async (event: AgentEvent) => {
-    if (event.type === "message_end") {
-      const msg = event.message;
-      const id = `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      try {
-        await session.mutate(async (mutation) => {
-          await mutation.commit([{
-            kind: "entry",
-            entry: { id, parentId: null, type: "message", message: msg },
-          } as any], context);
-        }, context);
-      } catch { /* best effort persistence */ }
-    }
-  });
+  // Persistence is handled inside AgentHarnessAdapter's subscribe
+  // bridge (entry_added synthesis after message_end).
 
   const harness = new AgentHarnessAdapter(agent, session, session.metadata?.id ?? "", tools as AgentTool<any>[]);
 
