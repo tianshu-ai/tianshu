@@ -23,7 +23,16 @@ import { appendMessage, type ChatSession } from "../chat/messages.js";
 
 // ─── Constants ────────────────────────────────────────────────────
 
-const SEGMENT_SIZE = 400;
+/**
+ * Fallback segment size when model context window is unknown.
+ * Actual segment size is computed from the model's context window:
+ * each segment targets ~70% of the context window in estimated tokens,
+ * leaving room for the system prompt and output.
+ */
+const FALLBACK_SEGMENT_SIZE = 2000;
+const BYTES_PER_TOKEN = 4;
+/** Use 70% of context window for input; 30% for system prompt + output */
+const CONTEXT_USAGE_RATIO = 0.7;
 const KEEP_TAIL = 100;
 
 const SEGMENT_SUMMARY_PROMPT = `You are a conversation-compaction assistant. Summarise this segment of a chat between a user and an AI agent. Preserve:
@@ -182,10 +191,28 @@ export async function summariseForkedSession(args: {
 }): Promise<SummariseResult> {
   const {
     db, oldSessionId, newSessionId, modelInfo, signal,
-    segmentSize = SEGMENT_SIZE,
+    segmentSize: explicitSegmentSize,
     onProgress,
   } = args;
   const t0 = Date.now();
+
+  // Compute segment size from model context window if not explicitly set
+  let segmentSize: number;
+  if (explicitSegmentSize) {
+    segmentSize = explicitSegmentSize;
+  } else if (modelInfo.contextWindow) {
+    // Target tokens per segment = 70% of context window
+    const targetTokensPerSegment = Math.floor(modelInfo.contextWindow * CONTEXT_USAGE_RATIO);
+    // Estimate average tokens per message from the session content
+    // We'll refine after loading messages, but need a rough estimate for planning
+    // Average message ~200 bytes → ~50 tokens
+    const avgTokensPerMsg = 50;
+    segmentSize = Math.max(100, Math.floor(targetTokensPerSegment / avgTokensPerMsg));
+    console.log(`[compact-oversized] segment size from context window: ${modelInfo.contextWindow} tokens × ${CONTEXT_USAGE_RATIO} / ~${avgTokensPerMsg} tokens/msg ≈ ${segmentSize} msgs`);
+  } else {
+    segmentSize = FALLBACK_SEGMENT_SIZE;
+    console.log(`[compact-oversized] no context window, using fallback segment size: ${segmentSize}`);
+  }
 
   // Load old session messages (excluding the tail that was already copied)
   const allRows: MessageRow[] = db
@@ -204,6 +231,16 @@ export async function summariseForkedSession(args: {
       summary: "(empty session)",
       durationMs: Date.now() - t0,
     };
+  }
+
+  // Refine segment size using actual message content bytes
+  if (!explicitSegmentSize && modelInfo.contextWindow) {
+    const totalBytes = allRows.reduce((sum, r) => sum + (r.content?.length ?? 0), 0);
+    const avgBytesPerMsg = totalBytes / allRows.length;
+    const avgTokensPerMsg = Math.max(10, avgBytesPerMsg / BYTES_PER_TOKEN);
+    const targetTokens = Math.floor(modelInfo.contextWindow * CONTEXT_USAGE_RATIO);
+    segmentSize = Math.max(100, Math.floor(targetTokens / avgTokensPerMsg));
+    console.log(`[compact-oversized] refined: avg ${avgBytesPerMsg.toFixed(0)} bytes/msg ≈ ${avgTokensPerMsg.toFixed(0)} tokens/msg → segment size ${segmentSize}`);
   }
 
   // Split into segments
