@@ -24,10 +24,10 @@
 import {
   AgentHarness,
   type HarnessEvent,
-  type Context,
   BACKGROUND_CONTEXT,
   withAbortSignal,
-} from "@earendil-works/pi-agent-core";
+  type Context,
+} from "./pi-compat/index.js";
 import type { TenantContext } from "../core/index.js";
 import {
   buildModel,
@@ -917,8 +917,8 @@ export async function runAgentLoop(
 }
 
 async function lastAssistantText(
-  session: import("@earendil-works/pi-agent-core").Session,
-  context: import("@earendil-works/pi-agent-core").Context,
+  session: import("./pi-compat/index.js").Session,
+  context: import("./pi-compat/index.js").Context,
 ): Promise<string> {
   const entries = await session.findEntries(undefined, context);
   for (let i = entries.length - 1; i >= 0; i--) {

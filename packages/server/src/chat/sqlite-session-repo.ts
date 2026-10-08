@@ -32,8 +32,8 @@ import type {
   Session,
   SessionRepo,
   Write,
-} from "@earendil-works/pi-agent-core";
-import { StorageBackedSession } from "@earendil-works/pi-agent-core";
+} from "./pi-compat/index.js";
+import { StorageBackedSession } from "./pi-compat/index.js";
 import type { TenantContext } from "../core/index.js";
 import { SqliteStorage } from "./sqlite-storage.js";
 import type { SqliteSessionMetadata } from "./sqlite-session-storage.js";
