@@ -253,6 +253,31 @@ class AgentLaneAdapter implements AgentLane {
     this.agent.state.messages = newMessages;
 
     console.log(`[harness-adapter] compact OK: ${toSummarize.length} summarized, ${retainedTail.length} kept, tokensBefore=${tokensBefore}`);
+
+    // Emit compaction events so handler's WS bridge notifies the frontend
+    const emitCtx: Context = context ?? { abortSignal: undefined };
+    const startListeners = this.harnessAdapter.eventListeners?.get("compaction_start");
+    if (startListeners) {
+      const startEvent: HarnessEvent = { type: "compaction_start", lane: "main" };
+      for (const fn of startListeners) {
+        try { await fn(startEvent, emitCtx); } catch { /* best effort */ }
+      }
+    }
+    const endListeners = this.harnessAdapter.eventListeners?.get("compaction_end");
+    if (endListeners) {
+      const endEvent: HarnessEvent = {
+        type: "compaction_end",
+        lane: "main",
+        summary,
+        summarisedCount: toSummarize.length,
+        keptCount: retainedTail.length,
+        tokensBefore,
+      };
+      for (const fn of endListeners) {
+        try { await fn(endEvent, emitCtx); } catch { /* best effort */ }
+      }
+    }
+
     return {
       ok: true,
       value: {
@@ -378,7 +403,8 @@ class AgentHarnessAdapter implements AgentHarness {
     reserveTokens: 16384,
     keepRecentTokens: 20000,
   };
-  private eventListeners = new Map<string, Set<(event: any, context: Context) => void | Promise<void>>>();
+  /** @internal exposed for lane compact event emission */
+  eventListeners = new Map<string, Set<(event: any, context: Context) => void | Promise<void>>>();
   private hookHandlers = new Map<string, Set<(event: any, context: Context) => any>>();
   private unsubscribe: (() => void) | null = null;
 
