@@ -196,11 +196,43 @@ export default function ChatArea() {
                 {loadingMore ? t("chat.loading") : t("chat.loadEarlier")}
               </button>
             )}
-            {merged.map((m, i) => (
-              <div key={m.id} className={i === 0 ? "" : "mt-4"}>
-                <MessageBubble m={m} />
-              </div>
-            ))}
+            {merged.map((m, i) => {
+              // Render compact summary as a divider line, not a message bubble
+              const isCompactSummary =
+                m.role === "assistant" &&
+                typeof m.text === "string" &&
+                m.text.startsWith("[Conversation summary");
+              if (isCompactSummary) {
+                // Extract summary text after the header line
+                const lines = m.text.split("\n");
+                const header = lines[0].replace(/^\[|\]$/g, "");
+                const body = lines.slice(1).join("\n").trim();
+                return (
+                  <details
+                    key={m.id}
+                    className={`group my-2 ${i === 0 ? "" : "mt-4"}`}
+                  >
+                    <summary className="flex cursor-pointer items-center gap-2 text-xs text-muted select-none">
+                      <span className="h-px flex-1 bg-border-subtle" />
+                      <span className="shrink-0 opacity-60 group-open:opacity-100">
+                        {header}
+                      </span>
+                      <span className="h-px flex-1 bg-border-subtle" />
+                    </summary>
+                    {body && (
+                      <div className="mx-auto mt-2 max-w-2xl rounded-md bg-bg-elevated/50 px-4 py-3 text-xs text-muted whitespace-pre-wrap">
+                        {body}
+                      </div>
+                    )}
+                  </details>
+                );
+              }
+              return (
+                <div key={m.id} className={i === 0 ? "" : "mt-4"}>
+                  <MessageBubble m={m} />
+                </div>
+              );
+            })}
             {/* ask_user interaction buttons */}
             {/* No "streaming…" label here — the streaming bubble
              *  itself shows incoming text or a typing indicator,
