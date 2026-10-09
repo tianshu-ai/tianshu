@@ -1664,42 +1664,41 @@ function mergeAssistantToolResults(
   return out;
 }
 
-/** One assistant / user turn rendered MessageBubble-style. */
+/** One assistant / user turn rendered in the same style as the main
+ *  chat UI's MessageBubble — ai-bubble / user-bubble CSS classes,
+ *  tianshu avatar, MarkdownBlock for assistant text. */
 function ExecutionTurn({ row }: { row: MergedTurn }) {
   const t = usePluginT("workboard");
   const dateLoc = useDateLocale();
   const { MarkdownBlock } = useUiPrimitives();
   const isUser = row.role === "user";
-  const roleLabel = isUser
-    ? t("panel.turn.you")
-    : row.role === "assistant"
-      ? t("panel.turn.assistant")
-      : row.role === "system"
-        ? t("panel.turn.system")
-        : row.role;
+
   return (
     <div className={isUser ? "flex justify-end" : "flex justify-start"}>
       <div
-        className={`flex max-w-[85%] flex-col ${isUser ? "items-end" : "items-start"}`}
+        className={`flex max-w-[85%] min-w-0 flex-col ${isUser ? "items-end" : "items-start"}`}
       >
+        {/* Header: avatar + role label */}
         <div className="mb-1 flex items-center gap-1.5 text-xs uppercase tracking-wider text-fg-faint">
           {isUser ? (
             <User className="h-3 w-3" />
           ) : (
-            <Bot className="h-3 w-3 text-link" />
+            <img
+              src="/classical/tianshu-avatar.png"
+              alt=""
+              className="h-5 w-5 rounded-full object-cover"
+            />
           )}
-          <span>{roleLabel}</span>
-          <span className="text-fg-fainter">·</span>
-          <span className="text-fg-fainter">
-            {new Date(row.createdAt).toLocaleTimeString(dateLoc)}
-          </span>
+          <span>{isUser ? t("panel.turn.you") : "tianshu"}</span>
         </div>
+
+        {/* Text bubble — uses the same ai-bubble / user-bubble classes
+         *  as the main chat so gradients, border accents, and theme
+         *  variants are identical. */}
         {row.text && (
           <div
-            className={`break-words rounded-lg border px-3 py-2 text-[13px] leading-relaxed ${
-              isUser
-                ? "border-brand-400/30 bg-brand-500/10 text-fg-default"
-                : "border-border-subtle bg-bg-elevated/60 text-fg-default"
+            className={`relative break-words rounded-lg border border-border-subtle/40 px-3 py-2 text-[13px] leading-relaxed ${
+              isUser ? "user-bubble" : "ai-bubble"
             }`}
           >
             {isUser ? (
@@ -1709,6 +1708,8 @@ function ExecutionTurn({ row }: { row: MergedTurn }) {
             )}
           </div>
         )}
+
+        {/* Tool call chips */}
         {row.calls.length > 0 && (
           <div
             className={`mt-1.5 flex flex-col gap-1 ${isUser ? "items-end" : "items-start"}`}
