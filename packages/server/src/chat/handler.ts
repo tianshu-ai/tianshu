@@ -2985,6 +2985,7 @@ async function runManualCompact(args: {
     // pi 0.85+: lane.compact() returns Result<{compaction, run?}, err>.
     // NothingToCompact means the tail is already a compaction entry
     // — nothing new to fold in.
+    log.info(`runManualCompact: calling lane.compact() session=${session.id} msgsBefore=${msgsBefore}`);
     const result = await lane.compact(undefined, piContext);
     if (!result.ok) {
       const errTag = (result.error as { _tag?: string })._tag;
@@ -3010,13 +3011,16 @@ async function runManualCompact(args: {
 
     // Extract compaction summary from the pi compaction entry.
     const compactionEntries = branchAfter.filter((e) => e.type === "compaction");
+    log.info(`runManualCompact: compactionEntries=${compactionEntries.length} msgsAfter=${msgsAfter} summarised=${summarisedCount}`);
     const lastCompaction = compactionEntries[compactionEntries.length - 1] as
       | { summary?: string } | undefined;
     const summary = lastCompaction?.summary ?? "(no summary available)";
+    log.info(`runManualCompact: summary length=${summary.length} preview=${summary.slice(0, 100)}`);
 
     // Fork the session: mark the old session compacted, create a new
     // active session with the summary as a divider, and re-persist
     // the kept tail messages.
+    log.info(`runManualCompact: calling forkWithSummary oldSession=${session.id}`);
     const forkResult = forkWithSummary({
       ctx,
       userId,
@@ -3025,6 +3029,7 @@ async function runManualCompact(args: {
       keptCount,
       summarisedCount,
     });
+    log.info(`runManualCompact: forked → newSession=${forkResult.newSession.id}`);
 
     send({
       type: "history_compacted",
