@@ -3008,22 +3008,29 @@ async function runManualCompact(args: {
     const keptCount = msgsAfter;
     const durationMs = Date.now() - t0;
 
-    // Extract compaction summary from the pi compaction entry and
-    // persist it as a visible assistant message so the UI can render
-    // it as a divider line (ChatArea detects `[Conversation summary`).
+    // Extract compaction summary from the pi compaction entry.
     const compactionEntries = branchAfter.filter((e) => e.type === "compaction");
     const lastCompaction = compactionEntries[compactionEntries.length - 1] as
       | { summary?: string } | undefined;
-    if (lastCompaction?.summary) {
-      const summaryText = `[Conversation summary — ${summarisedCount} messages compacted]\n${lastCompaction.summary}`;
-      appendMessage(ctx, session, { role: "assistant", content: summaryText });
-    }
+    const summary = lastCompaction?.summary ?? "(no summary available)";
+
+    // Fork the session: mark the old session compacted, create a new
+    // active session with the summary as a divider, and re-persist
+    // the kept tail messages.
+    const forkResult = forkWithSummary({
+      ctx,
+      userId,
+      oldSession: session,
+      summary,
+      keptCount,
+      summarisedCount,
+    });
 
     send({
       type: "history_compacted",
       reason: "manual",
       oldSessionId: session.id,
-      newSessionId: session.id,
+      newSessionId: forkResult.newSession.id,
       summarisedCount,
       keptCount,
       durationMs,
