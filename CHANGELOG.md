@@ -6,6 +6,72 @@ See [Conventional Commits](https://www.conventionalcommits.org) and
 [release-please](https://github.com/googleapis/release-please) for how
 this file is automatically maintained.
 
+## [0.88.0](https://github.com/tianshu-ai/tianshu/compare/v0.87.1...v0.88.0) (2026-10-09)
+
+
+### Features
+
+* auto-select fast model for compact summarisation ([7b46620](https://github.com/tianshu-ai/tianshu/commit/7b46620e30d7caf74b25a4153d96acff047c6665))
+* compact_session reverse phase — undo fork and restore session ([e00b5cf](https://github.com/tianshu-ai/tianshu/commit/e00b5cfdc68f6a6af72409b8698e356e99d57875))
+* context usage ring in ChatInput ([4915c5f](https://github.com/tianshu-ai/tianshu/commit/4915c5f22e01fb9db8e781885db978c6fd560936))
+* doctor session health check + compact_session setup tool ([e1606b7](https://github.com/tianshu-ai/tianshu/commit/e1606b7c4b10d56103c9d1325db8c9bfd9e8f24a))
+* dynamic segment size based on model context window ([ab8e998](https://github.com/tianshu-ai/tianshu/commit/ab8e998ef1861d4789017107c7e173a1ebe0905a))
+* hide edit button on compacted session messages ([293e93b](https://github.com/tianshu-ai/tianshu/commit/293e93b31b6053cb5776317bf0529c1bbfa8fa6f))
+* multi-level session splitting for oversized compaction ([d5ec71a](https://github.com/tianshu-ai/tianshu/commit/d5ec71a79fe51861651fa637c5c4b0db6b877272))
+* parallel segment summarisation (5 concurrent) ([917ffb1](https://github.com/tianshu-ai/tianshu/commit/917ffb1c254501b4c9a0cabd0ff00d8d0b48677b))
+* publish-next CI job + promote workflow ([8473b7f](https://github.com/tianshu-ai/tianshu/commit/8473b7f8e97a4b48ef8c58eeef1bdc20f3d4f2e0))
+* render compact summary as divider line in chat UI ([e75cb73](https://github.com/tianshu-ai/tianshu/commit/e75cb73b26f869c4db55d5ebc3bd8e711778e888))
+* render compaction markers as divider lines in chat UI ([86f8d30](https://github.com/tianshu-ai/tianshu/commit/86f8d303dc6547b7cfe571e96cc90500d592680a))
+* segment summarise checkpoint/resume support ([79a3e98](https://github.com/tianshu-ai/tianshu/commit/79a3e98d4b1ae3c9f70e6f127152f408d9473e56))
+* two-phase compact — instant fork + async LLM summary ([3daac1a](https://github.com/tianshu-ai/tianshu/commit/3daac1ac374f72756c4483e9936dfa11f271f333))
+
+
+### Bug Fixes
+
+* agent-loop test mock targets pi-compat barrel, not pi-agent-core ([962f59b](https://github.com/tianshu-ai/tianshu/commit/962f59b664d35e8740ad8ace3e2dccf746dfbf81))
+* cap initial message loading to prevent context overflow ([569d15a](https://github.com/tianshu-ai/tianshu/commit/569d15a83516b2322236891c0e3f17b476dbb0ce))
+* compact_session summarise uses resolveTenantConfig for model lookup ([f61ca3e](https://github.com/tianshu-ai/tianshu/commit/f61ca3e2935854c213e2506779c5cf88be0f0467))
+* config_write uses deep merge to prevent dropping nested keys ([aa3180a](https://github.com/tianshu-ai/tianshu/commit/aa3180a743950b5f0ca5cbd29c74e5168a0c3b77))
+* context ring uses fg-muted color matching model selector ([8dcc741](https://github.com/tianshu-ai/tianshu/commit/8dcc741b0b58088ab143839a5639d505e16f8afb))
+* correct summarisedCount — use retainedTail length from compact result ([9156f6e](https://github.com/tianshu-ai/tianshu/commit/9156f6e0d9a395b1e21e1b0c8be1eb92957a25ae))
+* deduplicate fork-copied messages in history pagination ([3d4e42b](https://github.com/tianshu-ai/tianshu/commit/3d4e42be1c38429537db60342cd051e5b56e9213))
+* don't write compaction entry to pi-compat storage ([da94303](https://github.com/tianshu-ai/tianshu/commit/da94303bb58bb07646e9aef1a57199f1257571f6))
+* edit_resend uses the currently selected model ([d5a15f1](https://github.com/tianshu-ai/tianshu/commit/d5a15f1102492f0d730e39b081902b81766aaf23))
+* emit compaction_start/end events for frontend notification ([ff17930](https://github.com/tianshu-ai/tianshu/commit/ff17930e18d56cd152ffcaf6947bcfef9913fb6c))
+* empty persisted assistant rows render nothing, not typing-dots ([02e32a6](https://github.com/tianshu-ai/tianshu/commit/02e32a679225a55e3cf3312abfbcdcb8f5f4d232))
+* filter out system messages from persistence and display ([b4fc43f](https://github.com/tianshu-ai/tianshu/commit/b4fc43f4895e6c24b8fd2596f3fa37c588241778))
+* hide compaction markers from chat UI message queries ([66739df](https://github.com/tianshu-ai/tianshu/commit/66739df20c4892c37998f44ec8486ef930167ea2))
+* history page includes compacted session messages ([66ec303](https://github.com/tianshu-ai/tianshu/commit/66ec3039bd88b211a4577d44eae3cb5d0952566a))
+* i18n for context ring (en/zh/de) ([64ea90a](https://github.com/tianshu-ai/tianshu/commit/64ea90aa25a830ed272ebf389658f79985d4456e))
+* implement real compact() in harness adapter ([28ccef7](https://github.com/tianshu-ai/tianshu/commit/28ccef77994675b452e31d487ba53ef8533cdcbc))
+* load messages from last compaction point, not full history ([d31d982](https://github.com/tianshu-ai/tianshu/commit/d31d9820eae277b415d0f238084a525df2ba9499))
+* move compactedThisSession flag to harness adapter level ([1650833](https://github.com/tianshu-ai/tianshu/commit/16508336938f0ab9f5358f73e9c5e29d5f8b5a02))
+* persist compaction marker to DB for restart survival ([81c7f84](https://github.com/tianshu-ai/tianshu/commit/81c7f842e347ca00cd4afba60b1f02a899c59274))
+* persist user messages and tool results to storage ([86e073e](https://github.com/tianshu-ai/tianshu/commit/86e073eeaf4a8b2881c8e6bb745b5c0e1bfe1482))
+* prevent double-compact in same harness lifetime ([93fb4dd](https://github.com/tianshu-ai/tianshu/commit/93fb4ddcc7947f9eb0dd5fd4b71b07d6f92fbcce))
+* reject edit_resend on compacted session messages ([cb20e1a](https://github.com/tianshu-ai/tianshu/commit/cb20e1ae60a15fc33a0798ae78ba39624e8b6672))
+* remove compaction notification events from chat ([880b68a](https://github.com/tianshu-ai/tianshu/commit/880b68a4e98bcd9dc4681ed31412808e6884455a))
+* remove post-compaction system_note notification ([b120f34](https://github.com/tianshu-ai/tianshu/commit/b120f34cabcbc6e1765f365f33cea99cc822a32d))
+* reverse deletes child sessions leaf-first to avoid FK violations ([10ef080](https://github.com/tianshu-ai/tianshu/commit/10ef08047dbb59c0becfa13699210be57c159b76))
+* revert [#9](https://github.com/tianshu-ai/tianshu/issues/9)/[#10](https://github.com/tianshu-ai/tianshu/issues/10) double-write — Agent already persists via message_end ([eda4d78](https://github.com/tianshu-ai/tianshu/commit/eda4d78486678d848ebec48fde8da74549e6d0f6))
+* segment size estimation uses transcript sample, not raw content ([42d7e2d](https://github.com/tianshu-ai/tianshu/commit/42d7e2d3e337d0e1373fb0ae1a5f6ccfe86e0e75))
+* segment summarise error handling — retry + partial success ([a69ae09](https://github.com/tianshu-ai/tianshu/commit/a69ae09454b3e67037b33e0c51fe3396aa284132))
+* session health check uses compaction config, not hardcoded threshold ([33e09b9](https://github.com/tianshu-ai/tianshu/commit/33e09b9b2b59f4f923614f6fc0c394f3a2e35301))
+* summary message uses assistant role, not user ([6075f89](https://github.com/tianshu-ai/tianshu/commit/6075f89a3389f8ac109a1d84b46102be4c8c7f17))
+* use actual summarisedCount from compact result, not DB total ([f4d3d30](https://github.com/tianshu-ai/tianshu/commit/f4d3d30eb30828ba27bbdbef6ff5f5d809c1be76))
+* use correct column names in session health check query ([454deff](https://github.com/tianshu-ai/tianshu/commit/454deff0f2fce39cd5ce82c789c449c954fc4e1b))
+* wire toProviderMessages as convertToLlm, not transformContext ([5e0941f](https://github.com/tianshu-ai/tianshu/commit/5e0941fde3b9ff16411e739e8833da96ca10dcb7))
+
+
+### Documentation
+
+* compact_session tool warns to use fast model for summarise ([0633c6f](https://github.com/tianshu-ai/tianshu/commit/0633c6fb8df67c9421ec7558b7b6569809c520d5))
+
+
+### Refactor
+
+* restore fork-based compaction (same as v0.86.2) ([660ec4d](https://github.com/tianshu-ai/tianshu/commit/660ec4d3c429093e524c8df9ab62eae72105b5eb))
+
 ## [0.87.1](https://github.com/tianshu-ai/tianshu/compare/v0.87.0...v0.87.1) (2026-10-08)
 
 
