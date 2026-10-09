@@ -294,7 +294,23 @@ export function loadAgentHistoryForSession(
       });
     }
   }
-  return { messages: out, rows };
+  // ── Drop orphan toolResult at the head of the message list ──
+  // After compaction the summary replaces earlier messages, so a
+  // fork_tail that starts with toolResult rows has lost the matching
+  // assistant tool_call.  Sending those to the LLM triggers a 400
+  // "tool_call_id … is not found".  Walk from the front and remove
+  // any toolResult that precedes the first assistant message.
+  const cleaned: Message[] = [];
+  let seenAssistant = false;
+  for (const m of out) {
+    if (!seenAssistant && m.role === "toolResult") {
+      // orphan — skip
+      continue;
+    }
+    if (m.role === "assistant") seenAssistant = true;
+    cleaned.push(m);
+  }
+  return { messages: cleaned, rows };
 }
 
 export function loadAgentHistory(

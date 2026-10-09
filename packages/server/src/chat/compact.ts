@@ -335,7 +335,19 @@ export function forkWithSummary(args: {
 
   // Re-persist the kept tail from the old session's most recent rows
   // so the agent has recent context in the new session.
+  //
+  // IMPORTANT: copy by turn boundary, not by raw message count.
+  // A single turn can span many messages (user → assistant w/ tool_call
+  // → tool_result ×N → assistant).  Cutting in the middle leaves orphan
+  // tool_result rows whose tool_call was summarised away — the LLM
+  // then returns 400 "tool_call_id … is not found".
+  //
+  // Strategy: fetch more rows than keptCount, then trim from the front
+  // to the nearest user-message turn boundary.
   if (keptCount > 0) {
+    // Fetch extra rows to have room to snap to a turn boundary.
+    // A heavy tool turn can be 20+ messages, so 3× gives headroom.
+    const fetchLimit = keptCount * 3;
     const tailRows = ctx.db
       .prepare<[string, number], { role: string; content: string; created_at: number }>(
         `SELECT role, content, created_at FROM messages
@@ -343,9 +355,30 @@ export function forkWithSummary(args: {
          ORDER BY created_at DESC, rowid DESC
          LIMIT ?`,
       )
-      .all(oldSession.id, keptCount);
+      .all(oldSession.id, fetchLimit);
     tailRows.reverse();
-    for (const r of tailRows) {
+
+    // Find the turn boundary closest to keptCount from the end.
+    // Walk backward from `tailRows.length - keptCount` looking for
+    // the nearest `role='user'` — that's a clean turn start.
+    const idealStart = Math.max(0, tailRows.length - keptCount);
+    let turnStart = idealStart;
+    // Search forward from idealStart for the first user message
+    // (= start of a complete turn).
+    while (turnStart < tailRows.length && tailRows[turnStart]!.role !== 'user') {
+      turnStart++;
+    }
+    // If we didn't find a user message searching forward, search
+    // backward from idealStart.
+    if (turnStart >= tailRows.length) {
+      turnStart = idealStart;
+      while (turnStart > 0 && tailRows[turnStart]!.role !== 'user') {
+        turnStart--;
+      }
+    }
+    const trimmed = tailRows.slice(turnStart);
+
+    for (const r of trimmed) {
       const id = `msg_${randomUUID()}`;
       ctx.db
         .prepare<[string, string, string, string, number], unknown>(
