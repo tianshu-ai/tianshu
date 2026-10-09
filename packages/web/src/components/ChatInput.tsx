@@ -372,24 +372,35 @@ export default function ChatInput() {
                 )}
               </button>
             )}
-            {effectiveStreaming && (
-              <button
-                type="button"
-                onClick={abort}
-                className="rounded-lg p-1.5 text-danger transition-colors hover:bg-bg-hover hover:text-danger"
-                title={t("chat.stop")}
-              >
-                <Square size={18} />
-              </button>
-            )}
-            {(!effectiveStreaming || canFollowUp) && (
+            {effectiveStreaming ? (
+              canFollowUp ? (
+                <button
+                  type="button"
+                  onClick={() => void submit()}
+                  className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default"
+                  title={t("chat.followUp")}
+                  aria-label={t("chat.followUp")}
+                >
+                  <Send size={18} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={abort}
+                  className="rounded-lg p-1.5 text-danger transition-colors hover:bg-bg-hover hover:text-danger"
+                  title={t("chat.stop")}
+                >
+                  <Square size={18} />
+                </button>
+              )
+            ) : (
               <button
                 type="button"
                 onClick={() => void submit()}
                 disabled={!sendAllowed}
                 className="rounded-lg p-1.5 text-fg-muted transition-colors hover:bg-bg-hover hover:text-fg-default disabled:cursor-not-allowed disabled:opacity-30"
-                title={canFollowUp ? t("chat.followUp") : hasPending ? t("chat.waitingUploads") : t("chat.send")}
-                aria-label={canFollowUp ? t("chat.followUp") : t("chat.send")}
+                title={hasPending ? t("chat.waitingUploads") : t("chat.send")}
+                aria-label={t("chat.send")}
               >
                 <Send size={18} />
               </button>
