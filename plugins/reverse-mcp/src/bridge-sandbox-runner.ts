@@ -4,7 +4,6 @@
 import type {
   ExecRequest,
   ExecResult,
-  RunOpencodeOpts,
   SandboxRunner,
   SandboxKind,
   SandboxStatus,
@@ -196,74 +195,6 @@ export class BridgeSandboxRunner implements SandboxRunner {
     } catch (err) {
       console.error(`[BridgeSandboxRunner] writeFile ERROR:`, err instanceof Error ? err.message : String(err));
     }
-  }
-
-  /**
-   * Run opencode using the user's LOCAL config (no tianshu proxy).
-   * The bridge machine already has opencode installed + configured
-   * with the user's own API keys.
-   */
-  async runOpencode(opts: RunOpencodeOpts): Promise<ExecResult> {
-    const { workdir, prompt, resume, timeoutMs, userId } = opts;
-    console.log(`[BridgeSandboxRunner] runOpencode:`, { workdir, promptLen: prompt.length, resume });
-
-    // 1. Create workdir + write prompt
-    await this.exec({ command: `mkdir -p ${JSON.stringify(workdir)}`, userId });
-    // Write prompt via base64
-    const b64 = Buffer.from(prompt).toString("base64");
-    await this.exec({
-      command: `echo '${b64}' | base64 -d > ${JSON.stringify(workdir + "/.prompt.txt")}`,
-      userId,
-    });
-
-    // 2. Run opencode with user's own config (no OPENCODE_CONFIG override)
-    const cmd =
-      `cd ${JSON.stringify(workdir)} && ` +
-      `opencode run --auto --format json ` +
-      (resume ? `--continue ` : ``) +
-      `< .prompt.txt > oc.out 2> oc.err ; ` +
-      `echo $? > .exitcode`;
-
-    console.log(`[BridgeSandboxRunner] runOpencode cmd:`, cmd.slice(0, 200));
-    await this.exec({
-      command: cmd,
-      userId,
-      timeoutMs: timeoutMs ?? 1200000,
-    });
-
-    // Read the FULL oc.out via chunked reads (bridge exec truncates at 8KB).
-    let stdout = "";
-    let stderr = "";
-    let exitCode = 0;
-    console.log(`[BridgeSandboxRunner] runOpencode: reading oc.out...`);
-    try {
-      stdout = await this.readFile(`${workdir}/oc.out`);
-      console.log(`[BridgeSandboxRunner] runOpencode: oc.out read OK, ${stdout.length} bytes`);
-    } catch (e) { console.log(`[BridgeSandboxRunner] runOpencode: oc.out read FAILED`, e); }
-    try {
-      stderr = await this.readFile(`${workdir}/oc.err`);
-      console.log(`[BridgeSandboxRunner] runOpencode: oc.err read OK, ${stderr.length} bytes`);
-    } catch (e) { console.log(`[BridgeSandboxRunner] runOpencode: oc.err read FAILED`, e); }
-    try {
-      const rc = await this.readFile(`${workdir}/.exitcode`);
-      exitCode = parseInt(rc.trim(), 10) || 0;
-      console.log(`[BridgeSandboxRunner] runOpencode: exitCode=${exitCode}`);
-    } catch { /* default 0 */ }
-
-    const result: ExecResult = { stdout, stderr, exitCode, durationMs: 0, timedOut: false };
-
-    // 3. Collect deliverables: simple cp (avoids find+while zsh issues).
-    // Copy all non-scaffolding files from workdir into .deliverables/
-    const collectCmd =
-      `cd ${JSON.stringify(workdir)} && mkdir -p .deliverables && ` +
-      `for f in $(find . -maxdepth 3 -type f ` +
-      `! -path './.deliverables/*' ! -path './.oc-config/*' ! -path './.oc-data/*' ! -path './opencode/*' ` +
-      `! -name opencode.json ! -name .prompt.txt ! -name oc.out ! -name oc.err ` +
-      `! -name '*.pyc' 2>/dev/null); do ` +
-      `cp "$f" .deliverables/ 2>/dev/null; done; echo DONE`;
-    await this.exec({ command: collectCmd, userId, timeoutMs: 15000 });
-
-    return result;
   }
 
   workspacePath(): string {

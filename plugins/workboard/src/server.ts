@@ -34,6 +34,7 @@ import type {
   ToolCatalogCapability,
   SkillCatalogCapability,
   TaskSandboxPool,
+  SandboxRunner,
 } from "@tianshu-ai/plugin-sdk";
 import { setAgentEnabled } from "./fs-worker-agents.js";
 import {
@@ -43,6 +44,7 @@ import {
   type AgentSpec,
   type WorkerHandle,
 } from "./worker/pool.js";
+import { CodingWorker } from "./worker/coding-worker.js";
 import { WORKER_DENY_TOOLS_SET } from "./worker/tool-policy.js";
 import {
   buildListWorkersTool,
@@ -81,66 +83,6 @@ interface ActiveState {
 }
 
 let active: ActiveState | null = null;
-
-/**
- * Build a system prompt for coding-agent workers (opencode / claude-code).
- * The LLM agent loop drives the CLI via exec, so the prompt teaches it
- * the invocation pattern, output handling, and error recovery.
- */
-function buildCodingAgentPrompt(
-  cli: "opencode" | "claude",
-  userSystemPrompt: string | null,
-): string {
-  const preamble = cli === "claude"
-    ? `You are a coding worker that drives Claude Code CLI (\`claude\`) to complete tasks.
-
-To execute a coding task, run:
-\`\`\`
-claude -p "<your detailed prompt here>" --output-format stream-json
-\`\`\`
-
-Key flags:
-- \`-p\` — non-interactive prompt mode (required; never run without it)
-- \`--output-format stream-json\` — structured NDJSON output
-- \`--allowedTools\` — restrict tools if needed (e.g. \`edit,write,bash\`)
-- \`--max-turns N\` — limit conversation turns (default: no limit)`
-    : `You are a coding worker that drives OpenCode CLI (\`opencode\`) to complete tasks.
-
-To execute a coding task, run:
-\`\`\`
-opencode run "<your detailed prompt here>" --format json
-\`\`\`
-
-Key flags:
-- \`run\` — non-interactive single-prompt mode (required)
-- \`--format json\` — structured NDJSON output
-- \`--provider\` / \`--model\` — override model if needed`;
-
-  const common = `
-
-## Workflow
-
-1. **Understand the task** — read the task description carefully. If files are mentioned, read them first.
-2. **Plan** — break down what the CLI needs to do. Write a clear, detailed prompt.
-3. **Execute** — run the CLI command via exec. The CLI runs on the user's local machine through bridge.
-4. **Verify** — check the output. If the CLI reports errors or incomplete work, fix the prompt and retry.
-5. **Complete** — call \`task_complete\` with a summary of what was done and any files created/modified.
-
-## Important
-
-- The CLI runs on the USER's machine (via bridge exec), not in a sandbox.
-- The CLI has access to the user's filesystem, git, and installed tools.
-- Write detailed prompts for the CLI — it's an autonomous coding agent, give it full context.
-- If the CLI fails, read the error output, adjust your prompt, and retry.
-- Do NOT run the CLI in interactive mode — always use the non-interactive flag.
-- After the CLI finishes, verify the result before calling task_complete.`;
-
-  const userPart = userSystemPrompt?.trim()
-    ? `\n\n## Additional Instructions\n\n${userSystemPrompt.trim()}`
-    : "";
-
-  return preamble + common + userPart;
-}
 
 /** WorkerKinds the workboard runtime knows how to staff. Kept as
  *  plugin-local data — we no longer surface this as a manifest
@@ -311,30 +253,31 @@ const plugin: PluginServerModule = {
           taskPool,
         });
       }
-      // Coding-agent workers: LLM agent loop with a system prompt
-      // that teaches it to drive opencode or claude-code via exec.
-      // The CLI runs on the user's bridge machine — no sandbox,
-      // no proxy, no omo. Just exec + the CLI.
+      // Coding-agent workers: drive opencode or claude-code CLI
+      // on the user's bridge machine. The CodingWorker spawns the
+      // CLI via bridge exec, polls NDJSON stdout, and writes
+      // structured events into a worker session in real time.
       if (a.kind === "opencode" || a.kind === "claude-code") {
-        if (!llmEnabled) return null;
-        if (!agentLoopRunner) return null;
+        // Lazy shell proxy: resolved at run time so activation
+        // order with the sandbox provider plugin doesn't matter.
+        const lazyShell = new Proxy({} as SandboxRunner, {
+          get(_, prop) {
+            const real = ctx.capabilities.get<SandboxRunner>("sandbox.shell");
+            if (!real) throw new Error("No sandbox.shell runner available. Enable openshell or connect a bridge.");
+            return (real as unknown as Record<string | symbol, unknown>)[prop];
+          },
+        });
         const row = agentRowsById.get(a.id);
-        const defaultUserId = row?.ownerUserId ?? fallbackUser ?? "unknown";
-        const cliName = a.kind === "claude-code" ? "claude" : "opencode";
-        const codingPrompt = buildCodingAgentPrompt(cliName, row?.systemPrompt ?? null);
-        return new LLMWorker({
+        return new CodingWorker({
           agentId: a.id,
           name: a.name,
-          defaultUserId,
-          systemPrompt: codingPrompt,
+          cli: a.kind === "claude-code" ? "claude" : "opencode",
           modelId: row?.modelId ?? null,
-          toolsAllow: row?.toolsAllow ?? null,
-          skillsAllow: row?.skills ?? null,
-          timeouts: llmTimeouts,
-          runner: agentLoopRunner,
-          log: ctx.log,
+          systemPrompt: row?.systemPrompt ?? null,
+          shell: lazyShell,
           db: ctx.db,
-          taskPool,
+          log: ctx.log,
+          maxRunMs: llmTimeouts.maxRunMs || 1_800_000,
         });
       }
       return null;
