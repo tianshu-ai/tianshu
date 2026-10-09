@@ -440,6 +440,33 @@ export function attachChatHandler(opts: ChatHandlerOpts): void {
         // then run a new turn with the (optionally edited) text.
         const { messageId, text, modelId: editModelId } = parsed as { messageId?: string; text?: string; modelId?: string };
         if (!messageId) return;
+
+        // Guard: reject edits targeting messages in compacted (archived)
+        // sessions. The UI shows compacted session messages via fork-chain
+        // history traversal, but they belong to a sealed session that
+        // can't be modified. Without this check, truncateAfterMessage
+        // finds nothing (wrong session_id), then runPrompt duplicates
+        // the message in the active session.
+        const editMsgRow = ctx.db
+          .prepare<[string], { session_id: string } | undefined>(
+            `SELECT session_id FROM messages WHERE id = ?`,
+          )
+          .get(messageId);
+        if (editMsgRow) {
+          const msgSessionRow = ctx.db
+            .prepare<[string], { status: string } | undefined>(
+              `SELECT status FROM sessions WHERE id = ?`,
+            )
+            .get(editMsgRow.session_id);
+          if (msgSessionRow && msgSessionRow.status !== "active") {
+            send({
+              type: "stream_error",
+              reason: "Cannot edit messages from a compacted session. This message belongs to an earlier conversation that has been archived.",
+            });
+            return;
+          }
+        }
+
         // Abort any in-flight turn.
         if (aborter) {
           aborter.abort();
