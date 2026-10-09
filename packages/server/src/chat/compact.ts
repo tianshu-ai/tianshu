@@ -240,20 +240,10 @@ export async function compactSession(args: {
     content: `[Conversation summary — generated at ${new Date(seedTime).toISOString()}]\n\n${summary}`,
   });
 
-  // Re-persist the kept tail rows. Copy the original `content` JSON
-  // verbatim so attachments / structured tool turns survive.
-  for (const r of plan.keepRows) {
-    const id = `msg_${randomUUID()}`;
-    ctx.db
-      .prepare<
-        [string, string, string, string, number],
-        unknown
-      >(
-        `INSERT INTO messages (id, session_id, role, content, created_at)
-         VALUES (?, ?, ?, ?, ?)`,
-      )
-      .run(id, newSession.id, r.role, r.content, Date.now());
-  }
+  // No need to copy kept tail rows — listMessagesForUserPage queries
+  // across both active and compacted sessions, so the tail messages
+  // in the old session are already visible. Copying them would create
+  // duplicates.
 
   return {
     summary,
@@ -330,28 +320,9 @@ export function forkWithSummary(args: {
     content: `[Conversation summary — generated at ${new Date(seedTime).toISOString()}]\n\n${summary}`,
   });
 
-  // Re-persist the kept tail from the old session's most recent rows.
-  if (keptCount > 0) {
-    const tailRows = ctx.db
-      .prepare<[string, number], { role: string; content: string; created_at: number }>(
-        `SELECT role, content, created_at FROM messages
-         WHERE session_id = ? AND (entry_type IS NULL OR entry_type = 'message')
-         ORDER BY created_at DESC, rowid DESC
-         LIMIT ?`,
-      )
-      .all(oldSession.id, keptCount);
-    // Reverse to oldest-first
-    tailRows.reverse();
-    for (const r of tailRows) {
-      const id = `msg_${randomUUID()}`;
-      ctx.db
-        .prepare<[string, string, string, string, number], unknown>(
-          `INSERT INTO messages (id, session_id, role, content, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
-        )
-        .run(id, newSession.id, r.role, r.content, r.created_at);
-    }
-  }
+  // No need to copy kept tail rows — listMessagesForUserPage queries
+  // across both active and compacted sessions, so the tail messages
+  // in the old session are already visible. Copying creates duplicates.
 
   return {
     summary,

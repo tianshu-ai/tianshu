@@ -628,29 +628,9 @@ export function listMessagesForUserPage(
   // Public API returns oldest-first.
   sliced.reverse();
 
-  // Deduplicate messages that exist in both a compacted parent session
-  // and a forked child session (tail messages copied during fork).
-  // Key on role + content prefix only (no timestamp) — historical forks
-  // used Date.now() for copied messages, so timestamps won't match.
-  // To avoid false positives on short repeated messages, we only dedup
-  // when the same content appears across different sessions.
-  const seen = new Map<string, { idx: number; sessionId: string }>(); // dedup key → first occurrence
-  const deduped: typeof sliced = [];
-  for (const r of sliced) {
-    const key = `${r.role}:${r.content.slice(0, 200)}`;
-    const existing = seen.get(key);
-    if (existing !== undefined && existing.sessionId !== r.session_id) {
-      // Same content across different sessions = fork duplicate.
-      // Skip this one, keep the first occurrence.
-      continue;
-    }
-    if (!existing) seen.set(key, { idx: deduped.length, sessionId: r.session_id });
-    deduped.push(r);
-  }
-
   return {
     hasMore,
-    messages: deduped.map((r) => ({
+    messages: sliced.map((r) => ({
       id: r.id,
       sessionId: r.session_id,
       role: r.role as ChatMessage["role"],
