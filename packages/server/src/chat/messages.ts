@@ -294,22 +294,31 @@ export function loadAgentHistoryForSession(
       });
     }
   }
-  // ── Drop orphan toolResult at the head of the message list ──
-  // After compaction the summary replaces earlier messages, so a
-  // fork_tail that starts with toolResult rows has lost the matching
-  // assistant tool_call.  Sending those to the LLM triggers a 400
-  // "tool_call_id … is not found".  Walk from the front and remove
-  // any toolResult that precedes the first assistant message.
-  const cleaned: Message[] = [];
-  let seenAssistant = false;
+  // ── Drop orphan toolResult messages ──
+  // After compaction the summary replaces earlier messages, so
+  // fork_tail tool_result rows may reference tool_call ids that no
+  // longer exist in any assistant message.  The LLM returns 400
+  // "tool_call_id … is not found" for these.
+  //
+  // Strategy: collect every tool_call id present in assistant messages,
+  // then drop any toolResult whose toolCallId is not in the set.
+  const toolCallIds = new Set<string>();
   for (const m of out) {
-    if (!seenAssistant && m.role === "toolResult") {
-      // orphan — skip
-      continue;
+    if (m.role === "assistant" && Array.isArray(m.content)) {
+      for (const block of m.content) {
+        const b = block as unknown as Record<string, unknown>;
+        if (b.type === "toolCall" && typeof b.id === "string") {
+          toolCallIds.add(b.id);
+        }
+      }
     }
-    if (m.role === "assistant") seenAssistant = true;
-    cleaned.push(m);
   }
+  const cleaned = out.filter((m) => {
+    if (m.role === "toolResult" && "toolCallId" in m) {
+      return toolCallIds.has((m as Record<string, unknown>).toolCallId as string);
+    }
+    return true;
+  });
   return { messages: cleaned, rows };
 }
 
