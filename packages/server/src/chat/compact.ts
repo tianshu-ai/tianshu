@@ -232,16 +232,12 @@ export async function compactSession(args: {
   // at the old one.
   const newSession = forkSession(ctx, userId, oldSession);
 
-  // Seed: history-summary user msg + ack assistant msg.
+  // Seed: history-summary as an assistant message (rendered as a
+  // collapsible divider in ChatArea).
   const seedTime = Date.now();
   appendMessage(ctx, newSession, {
-    role: "user",
-    content: `[Conversation summary — generated at ${new Date(seedTime).toISOString()}]\n\n${summary}`,
-  });
-  appendMessage(ctx, newSession, {
     role: "assistant",
-    content:
-      "Understood — I have the prior context and will continue from where we left off.",
+    content: `[Conversation summary — generated at ${new Date(seedTime).toISOString()}]\n\n${summary}`,
   });
 
   // Re-persist the kept tail rows. Copy the original `content` JSON
@@ -326,16 +322,12 @@ export function forkWithSummary(args: {
   // Fork a new active session.
   const newSession = forkSession(ctx, userId, oldSession);
 
-  // Seed: history-summary user msg + ack assistant msg.
+  // Seed: history-summary as an assistant message (rendered as a
+  // collapsible divider in ChatArea).
   const seedTime = Date.now();
   appendMessage(ctx, newSession, {
-    role: "user",
-    content: `[Conversation summary — generated at ${new Date(seedTime).toISOString()}]\n\n${summary}`,
-  });
-  appendMessage(ctx, newSession, {
     role: "assistant",
-    content:
-      "Understood — I have the prior context and will continue from where we left off.",
+    content: `[Conversation summary — generated at ${new Date(seedTime).toISOString()}]\n\n${summary}`,
   });
 
   // Re-persist the kept tail from the old session's most recent rows.
@@ -357,7 +349,7 @@ export function forkWithSummary(args: {
           `INSERT INTO messages (id, session_id, role, content, created_at)
            VALUES (?, ?, ?, ?, ?)`,
         )
-        .run(id, newSession.id, r.role, r.content, Date.now());
+        .run(id, newSession.id, r.role, r.content, r.created_at);
     }
   }
 

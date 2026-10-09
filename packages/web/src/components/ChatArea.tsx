@@ -206,15 +206,9 @@ export default function ChatArea() {
             {merged.map((m, i) => {
               // Render compact summary as a divider line, not a message bubble
               const isCompactSummary =
-                (m.role === "assistant" || m.role === "user") &&
-                typeof m.text === "string" &&
-                m.text.startsWith("[Conversation summary");
-              // Hide the fork ack message that follows a compact summary
-              const isCompactAck =
                 m.role === "assistant" &&
                 typeof m.text === "string" &&
-                m.text.startsWith("Understood \u2014 I have the prior context");
-              if (isCompactAck) return null;
+                m.text.startsWith("[Conversation summary");
               if (isCompactSummary) {
                 // Extract summary text after the header line
                 const lines = m.text.split("\n");
